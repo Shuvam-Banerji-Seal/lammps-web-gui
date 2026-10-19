@@ -42,7 +42,7 @@ export class EngineHost {
   constructor(private post: (msg: FromEngine, transfer?: Transferable[]) => void) {}
 
   async handle(msg: ToEngine): Promise<void> {
-    if (msg.type === 'reset') return this.reset(msg.backend, msg.threads, msg.frameEvery, msg.frameVelocities ?? false);
+    if (msg.type === 'reset') return this.reset(msg.backend, msg.threads, msg.frameEvery, msg.frameVelocities ?? false, msg.partitions ?? 1);
     if (msg.type === 'backend') return this.switchBackend(msg.backend, msg.threads);
     if (msg.type === 'cancel') { this.session?.cancel(); return; }
     if (msg.type === 'exec') return this.exec(msg.id, msg.text, msg.firstLine);
@@ -114,12 +114,12 @@ export class EngineHost {
     const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
     this.post({
       type: 'ready', backend: backend.label, kind: backend.kind, webgpuAvailable, cores: cores(), note,
-      device: this.device!, auto: this.plan, threads: this.threadsInUse,
+      device: this.device!, auto: this.plan, threads: this.threadsInUse, partitions: this.session?.partitions ?? 1,
       commands: [...SUPPORTED_COMMANDS], styles: styleNames(),
     });
   }
 
-  private async reset(choice: BackendChoice, threads: number, frameEvery: number, frameVelocities = false): Promise<void> {
+  private async reset(choice: BackendChoice, threads: number, frameEvery: number, frameVelocities = false, partitions = 1): Promise<void> {
     this.backend?.dispose();
     this.frameEvery = frameEvery;
     this.frameVelocities = frameVelocities;
@@ -137,7 +137,7 @@ export class EngineHost {
         }
       },
       writeFile: (name, text, append) => this.post({ type: 'file', id: this.current, name, text, append }),
-    }, backend, this.frameEvery);
+    }, backend, this.frameEvery, partitions);
     this.session.setFrameVelocities(this.frameVelocities);
     for (const [name, text] of this.files) this.session.addFile(name, text);
     this.ready(backend, note);

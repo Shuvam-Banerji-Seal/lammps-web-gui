@@ -45,8 +45,15 @@ const run = async (text: string, partitions = 2, steps = 0) => {
 
 describe('fix gemc refusals', () => {
   it('needs exactly two partitions (native: Must use exactly two partitions with fix gemc)', async () => {
-    expect((await run(setup(), 1)).error?.message).toMatch(/Must use exactly two partitions with fix gemc/);
-    expect((await run(setup(), 3)).error?.message).toMatch(/Must use exactly two partitions with fix gemc/);
+    // without world variables: the fix refuses the partition count (measured with native LAMMPS on one partition)
+    const plain = setup().replace('variable rho world 0.2 0.5\nvariable ncell world 1 2\n', '')
+      .replace('lattice fcc ${rho}', 'lattice fcc 0.5').replace('block 0 ${ncell} 0 ${ncell} 0 ${ncell}', 'block 0 1 0 1 0 1');
+    expect((await run(plain, 1)).error?.message).toMatch(/Must use exactly two partitions with fix gemc/);
+    expect((await run(plain, 3)).error?.message).toMatch(/Must use exactly two partitions with fix gemc/);
+    // with the two-value world variables, the variable command refuses first (measured with native LAMMPS:
+    // World variable count 2 doesn't match # of partitions 1)
+    expect((await run(setup(), 1)).error?.message).toMatch(/World variable count 2 doesn't match # of partitions 1/);
+    expect((await run(setup(), 3)).error?.message).toMatch(/World variable count 2 doesn't match # of partitions 3/);
   });
 
   it('takes its eight arguments (native: Illegal fix gemc command: missing argument(s))', async () => {

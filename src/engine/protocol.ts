@@ -12,7 +12,8 @@ export type ToEngine =
    * frameVelocities: frames carry the atoms' velocities and masses (EngineEvent 'frame', v and mass); off by default.
    * Takes effect at the reset (the session's frames from then on).
    */
-  | { type: 'reset'; backend: BackendChoice; threads: number; frameEvery: number; frameVelocities?: boolean }
+  /** partitions: replicas of the session, as lammps -partition N (neb, temper, prd, tad, fix pimd); 1 when absent. */
+  | { type: 'reset'; backend: BackendChoice; threads: number; frameEvery: number; frameVelocities?: boolean; partitions?: number }
   /** Switches the force backend of the current session, keeping its system. */
   | { type: 'backend'; backend: BackendChoice; threads: number }
   /** Runs one cell's text in the current session. */
@@ -37,6 +38,8 @@ export type FromEngine =
     auto?: AutoPlan;
     /** CPU threads the backend runs (pair term; for a GPU backend, the runs the GPU path cannot take). */
     threads: number;
+    /** Partitions (replicas) of the session, as lammps -partition N. */
+    partitions?: number;
     note?: string;
     /** Commands the engine accepts (for the notebook's help panel). */
     commands: string[];

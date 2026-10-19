@@ -59,10 +59,10 @@ export class EngineClient {
     }
   }
 
-  /** Starts a fresh session; resolves with the backend actually in use. */
-  reset(backend: BackendChoice, frameEvery = 0, threads = 1, frameVelocities = false): Promise<Extract<FromEngine, { type: 'ready' }>> {
+  /** Starts a fresh session (with `partitions` replicas, as lammps -partition N); resolves with the backend in use. */
+  reset(backend: BackendChoice, frameEvery = 0, threads = 1, frameVelocities = false, partitions = 1): Promise<Extract<FromEngine, { type: 'ready' }>> {
     const p = new Promise<Extract<FromEngine, { type: 'ready' }>>((r) => this.readyWaiters.push(r));
-    this.send({ type: 'reset', backend, threads, frameEvery, frameVelocities });
+    this.send({ type: 'reset', backend, threads, frameEvery, frameVelocities, partitions });
     return p;
   }
 

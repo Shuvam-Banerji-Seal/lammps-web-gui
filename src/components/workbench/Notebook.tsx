@@ -82,6 +82,7 @@ const STARTER: Cell[] = [
 
 const BACKEND_KEY = 'm3d.notebook.backend';
 const THREADS_KEY = 'm3d.notebook.threads';
+const PARTITIONS_KEY = 'm3d.notebook.partitions';
 const RECORD_KEY = 'm3d.notebook.recordEvery';
 const RADIUS_KEY = 'm3d.notebook.atomRadius';
 const BOX_KEY = 'm3d.notebook.showBox';
@@ -93,6 +94,11 @@ const browserCores = (): number =>
 const AUTO_THREADS = 0;
 const reviveThreads = (raw: unknown): number | null =>
   typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 ? Math.min(raw, browserCores()) : null;
+
+/** Partitions (replicas) of the session, as lammps -partition N: neb, temper, prd, tad and fix pimd use one per replica. */
+const MAX_PARTITIONS = 16;
+const revivePartitions = (raw: unknown): number | null =>
+  typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= MAX_PARTITIONS ? raw : null;
 
 const reviveBackend = (raw: unknown): BackendChoice | null => (raw === 'auto' || raw === 'cpu' || raw === 'webgpu' ? raw : null);
 
@@ -139,6 +145,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const { cells, setCells } = session;
   const [backend, setBackend] = usePersistentState<BackendChoice>(BACKEND_KEY, 'auto', reviveBackend);
   const [threads, setThreads] = usePersistentState<number>(THREADS_KEY, AUTO_THREADS, reviveThreads);
+  const [partitions, setPartitions] = usePersistentState<number>(PARTITIONS_KEY, 1, revivePartitions);
   /** Run speed (engine 'perf' events) for the resource monitor, and the run's timestep/units. */
   const [perf, setPerf] = useState<Extract<EngineEvent, { kind: 'perf' }> | null>(null);
   const [perfHistory, setPerfHistory] = useState<number[]>([]);
@@ -218,10 +225,10 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setFiles({});
     setSeries([]);
     setRuns({});
-    const info = await client().reset(choice, recordEvery, nThreads, true);
+    const info = await client().reset(choice, recordEvery, nThreads, true, partitions);
     sendInputs();
     setReady(info);
-  }, [client, recordEvery, traj, sendInputs]);
+  }, [client, recordEvery, traj, sendInputs, partitions]);
 
   // A notebook replaced from the library (New, Open, Import, Close): the engine starts over and imported output shows.
   const lastGeneration = useRef(session.generation);
@@ -546,8 +553,20 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           </select>
           <span className={ct.muted}>of {cores}</span>
         </label>
+        <label className="flex items-center gap-1 text-xs"
+          title="Partitions of the session, as lammps -partition N: neb, temper, prd, tad and fix pimd run one replica per partition. A change applies when the session restarts (Reset session or Run all)">
+          <span className={ct.muted}>Partitions</span>
+          <select aria-label="Partitions" value={partitions} disabled={busy}
+            onChange={(e) => setPartitions(Number(e.target.value))}
+            className={`min-h-6 rounded border px-1 py-0.5 text-xs ${ct.input}`}>
+            {Array.from({ length: MAX_PARTITIONS }, (_, k) => k + 1).map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+          {ready && (ready.partitions ?? 1) !== partitions && (
+            <span className={ct.muted} role="status">applies on Reset session or Run all</span>
+          )}
+        </label>
         <span className={`text-xs ${ct.muted}`} aria-live="polite">
-          {ready ? `${ready.auto && backend === 'auto' ? 'Auto: ' : ''}${ready.backend}${ready.note ? ` — ${ready.note}` : ''}` : 'starting engine…'}
+          {ready ? `${ready.auto && backend === 'auto' ? 'Auto: ' : ''}${ready.backend}${(ready.partitions ?? 1) > 1 ? ` · ${ready.partitions} partitions` : ''}${ready.note ? ` — ${ready.note}` : ''}` : 'starting engine…'}
         </span>
         <button className={`${btn} ${ct.button}`} onClick={() => fileInput.current?.click()}
           title="Add data, include or potential files; scripts refer to them by file name">
@@ -869,9 +888,14 @@ const RunProgress: React.FC<{ ct: ReturnType<typeof getThemeTokens>; from: numbe
 /** An engine error: its head, a "did you mean" for an unknown name, and the supported list folded away. */
 const EngineErrorText: React.FC<{ ct: ReturnType<typeof getThemeTokens>; message: string }> = ({ ct, message }) => {
   const v = explainEngineError(message);
+  // neb, temper, prd, tad, fix pimd and the partition command need more than one replica
+  const needsPartitions = /partition|replica|beads/i.test(v.head);
   return (
     <div role="alert" className={`rounded px-1.5 py-1 ${ct.errorBox}`}>
       <p>{v.head}</p>
+      {needsPartitions && (
+        <p className="mt-0.5">Set <strong>Partitions</strong> in the toolbar to the number of replicas (as with lmp -partition N), then Run all.</p>
+      )}
       {v.suggestion && <p className="mt-0.5 font-semibold">Did you mean <code>{v.suggestion}</code>?</p>}
       {v.supported.length > 0 && (
         <details className="mt-0.5">

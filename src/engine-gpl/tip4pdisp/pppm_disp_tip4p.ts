@@ -1,6 +1,6 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0: src/KSPACE/pppm_disp_tip4p.cpp and
- * pppm_disp_tip4p.h (PPPMDispTIP4P::init, particle_map_c, make_rho_c, fieldforce_c_ik, find_M). Contributing authors of
+ * pppm_disp_tip4p.h (PPPMDispTIP4P::init, particle_map_c, make_rho_c, fieldforce_c_ik, fieldforce_c_peratom, find_M). Contributing authors of
  * the LAMMPS file: Amalie Frischknecht and Ahmed Ismail (SNL), Rolf Isele-Holder (Aachen University). Copyright (2003)
  * Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0). This file is GPL-2.0 too.
  *
@@ -10,8 +10,11 @@
  * _c routines). The M site is find_M of the native code: O + alpha/2 (d1 + d2) with d1, d2 the minimum-image H - O
  * vectors (the same sites as the pair style, tip4p_sites.ts). Requires pair style lj/long/tip4p/long (the M-site model).
  *
- * Refused (StyleError): the native triclinic and slab branches (pppm/disp refuses them already), and the per-atom
- * energy and virial. The ad differentiation scheme is refused by the pppm/disp port.
+ * The per-atom energy and virial (fieldforce_c_peratom) are interpolated at M and split the same way: O takes 1 - alpha
+ * and each H alpha / 2 of qfactor u and qfactor v; the self terms stay on O (PPPMDisp::compute).
+ *
+ * Refused (StyleError): the native triclinic and slab branches (pppm/disp refuses them already). The ad differentiation
+ * scheme is refused by the pppm/disp port.
  */
 import { StyleError, type KSpaceCompute, type Pair, type StyleContext } from '../../engine/force/types';
 import type { SimState } from '../../engine/types';
@@ -22,8 +25,6 @@ import { PairLJLongTIP4PLong, checkTip4pHydrogens } from './pair_lj_long_tip4p_l
 
 export class KSpacePPPMDispTIP4P extends KSpacePPPMDisp {
   override readonly name: string = 'pppm/disp/tip4p';
-  /** compute pe/atom and stress/atom: the M-site per-atom energy and virial (pppm_disp_tip4p.cpp fieldforce_c_peratom) are not ported. */
-  protected override peratomPorted(): boolean { return false; }
   private tip4p: PairLJLongTIP4PLong | null = null;
   /** The M-site model and the owned H indices of the current compute (set by coulombPositions). */
   private model: Tip4pModel | null = null;
@@ -51,6 +52,29 @@ export class KSpacePPPMDispTIP4P extends KSpacePPPMDisp {
     this.h2 = sites.h2;
     this.types = s.type;
     return sites.M;
+  }
+
+  /** fieldforce_c_peratom: an O's M-site energy and virial go 1 - alpha to O and alpha / 2 to each of its H atoms. */
+  protected override addCoulombPeratom(kc: KSpaceCompute, i: number, o: Float64Array, qfactor: number): void {
+    const m = this.model;
+    if (!m || this.types[i] !== m.otype) {
+      super.addCoulombPeratom(kc, i, o, qfactor);
+      return;
+    }
+    const alpha = m.alpha;
+    const a = this.h1[i], b = this.h2[i];
+    if (kc.eatom) {
+      kc.eatom[i] += qfactor * o[0] * (1 - alpha);
+      kc.eatom[a] += qfactor * o[0] * alpha * 0.5;
+      kc.eatom[b] += qfactor * o[0] * alpha * 0.5;
+    }
+    if (kc.vatom) {
+      for (let c = 0; c < 6; c++) {
+        kc.vatom[6 * i + c] += o[1 + c] * (1 - alpha) * qfactor;
+        kc.vatom[6 * a + c] += o[1 + c] * alpha * 0.5 * qfactor;
+        kc.vatom[6 * b + c] += o[1 + c] * alpha * 0.5 * qfactor;
+      }
+    }
   }
 
   /** find_M: the charge of an O sits on M, so its field force is split on O (1 - alpha) and on its H atoms (alpha / 2). */

@@ -1,0 +1,34 @@
+# oracle: compute pe/atom and stress/atom (all terms and the kspace terms) with pair lj/long/tip4p/long long long and kspace pppm/disp/tip4p (the w242tp_ljlong_long_disp waters): the M-site per-atom energy and virial split 1 - alpha on O and alpha/2 on each H, in the pair (ev_tally_tip4p) and in the mesh (fieldforce_c_peratom), dumps at steps 0 and 50
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.5e-12, atoms 1.3e-12 (the dumped per-atom values included; the level of w242tp_ljlong_long_disp).
+# oracle-inputs: w117cf_tip4p_pppm_water.data
+# oracle-files: w271pd_tip4p_peratom.dump
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10 filerel=1e-9
+units           real
+atom_style      full
+boundary        p p p
+read_data       w117cf_tip4p_pppm_water.data
+pair_style      lj/long/tip4p/long long long 1 2 1 1 0.1546 8.5
+pair_modify     table 0 table/disp 0
+pair_coeff      1 1 0.1852 3.1589
+pair_coeff      1 2 0.0 1.0
+pair_coeff      2 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+kspace_style    pppm/disp/tip4p 1.0e-5
+kspace_modify   gewald 0.37833912 mesh 12 12 12 order 5 gewald/disp 0.3 mesh/disp 12 12 12 order/disp 5
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        1.0
+fix             2 all nve
+thermo_style    custom step pe evdwl ecoul elong press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+compute         pa all pe/atom
+compute         sa all stress/atom NULL virial
+compute         pk all pe/atom kspace
+compute         sk all stress/atom NULL kspace
+dump            d all custom 50 w271pd_tip4p_peratom.dump id c_pa c_sa[1] c_sa[2] c_sa[3] c_sa[4] c_sa[5] c_sa[6] c_pk c_sk[1] c_sk[2] c_sk[3] c_sk[4] c_sk[5] c_sk[6]
+dump_modify     d sort id format float %.15g
+run             50

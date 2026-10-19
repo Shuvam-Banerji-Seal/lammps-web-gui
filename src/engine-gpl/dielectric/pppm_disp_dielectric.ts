@@ -14,7 +14,10 @@
  *  - the energy and the Coulomb virial are summed over two poisson passes, the scaled density and then ("switch to unscaled
  *    charges") the unscaled density, both added to energy_1 and virial_1 which native does not reset in between; the energy
  *    is 0.5 V (sum) - self terms, times qqrd2e (no 1 / epsilon_ave: compute_ave_epsilon is computed but unused natively);
- *  - the dispersion part is unchanged from pppm/disp.
+ *  - the dispersion part is unchanged from pppm/disp;
+ *  - the per-atom energy and virial (fieldforce_c_peratom) interpolate the potential and virial bricks of the scaled
+ *    density with qfactor 0.5 qqrd2e q_i of the unscaled charge, and the self terms use q_i and qsum of the unscaled
+ *    charges (qsum_qsq): the pppm/disp path with these charges.
  *
  * Native accepts it only with pair_style lj/long/coul/long/dielectric ("KSpace style pppm/disp/dielectric is incompatible
  * with Pair style ..." otherwise; kspace.cpp at b332f28). It needs the dispersion parameters (kspace_modify gewald/disp and
@@ -22,7 +25,7 @@
  *
  * Refused (StyleError): the Coulomb automatic G-ewald and grid (set with kspace_modify gewald and mesh; native estimates them
  * from q2 = qqrd2e sum q^2 / epsilon, qsum_qsq), slab (the native slabcorr uses the unscaled charges in its dipole and the
- * per-atom energy is not ported), triclinic boxes, per-atom energy and virial, and the diff ad scheme (pppm/disp refuses it).
+ * per-atom energy is not ported), triclinic boxes, and the diff ad scheme (pppm/disp refuses it).
  */
 import { StyleError, type KSpaceCompute, type Pair, type StyleContext } from '../../engine/force/types';
 import type { SimState } from '../../engine/types';
@@ -33,8 +36,6 @@ import { dielArrays } from './common';
 
 export class KSpacePPPMDispDielectric extends KSpacePPPMDisp {
   override readonly name: string = 'pppm/disp/dielectric';
-  /** compute pe/atom and stress/atom: the per-atom energy and virial of the dielectric Coulomb mesh are not ported. */
-  protected override peratomPorted(): boolean { return false; }
   /** Electric field of the Coulomb mesh at each owned atom, native efield: scale * epsilon_i * E (3 per atom). */
   efield = new Float64Array(0);
   private pairLinked: Pair | null = null;

@@ -1,0 +1,23 @@
+# oracle: pair lj/long/coul/long long long with special_bonds lj/coul 0.0 0.5 1.0 on bonded chains (1-2, 1-3 and 1-4 pairs) and kspace pppm/disp: a special pair scales the repulsion and takes back (1 - w) C6/r^6 of the k-space dispersion; the default dispersion table (the table branch beyond tabinner/disp), 16 atoms, run 0 then 20 NVE steps
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.5e-15, atoms 1.9e-14.
+# oracle-inputs: w273sl_full16.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10
+units           real
+atom_style      full
+read_data       w273sl_full16.data
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+timestep        0.01
+fix             1 all nve
+thermo_style    custom step pe ecoul elong evdwl press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+pair_style      lj/long/coul/long long long 8.0
+pair_modify     table 0
+pair_coeff      1 1 0.02 2.0
+pair_coeff      2 2 0.05 2.5
+kspace_style    pppm/disp 1.0e-4
+kspace_modify   gewald 0.25 mesh 12 12 12 gewald/disp 0.35 mesh/disp 12 12 12 order 5 order/disp 5
+thermo          10
+run             0
+run             20

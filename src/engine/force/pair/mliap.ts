@@ -32,8 +32,8 @@ import { libm } from '../../libm';
  * the derivation): dE_i/dd is accumulated from the adjoint of the bispectrum with respect to the
  * model's dE_i/dB, gam = dE_i/dB of the model (energy(e, B, gam) in src/engine/mliap/model.ts).
  *
- * "This pair style does not support the pair_modify shift, table, and tail options." Per-atom
- * virial (stress/atom) is a StyleError, as for pair_style snap.
+ * "This pair style does not support the pair_modify shift, table, and tail options." The per-atom
+ * virial (stress/atom) is tallied as for pair_style snap (see the force loop below).
  *
  * chemflag 1 in the sna descriptor (explicit multi-element SNAP, Cusentino, Wood, Thompson 2020): the
  * descriptor is the multi-element bispectrum of src/engine/compute/snapChem.ts, shared with pair_style snap,

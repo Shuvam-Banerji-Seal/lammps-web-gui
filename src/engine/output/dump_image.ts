@@ -193,6 +193,8 @@ export class ImageDump {
   private lightSet: { ambient: number; key: number; fill: number; back: number } | null = null;
   private bcolorByType = new Map<number, Col>();
   private bdiamByType = new Map<number, number>();
+  /** dump_modify btrans: the transparency (0..1, 1 opaque) of the bonds of each type, native bopacity (default 1). */
+  private bopacityByType = new Map<number, number>();
   private backcolor: RGB = [0, 0, 0];
   /** dump_modify backcolor2: the top of a background gradient (null: a single background colour). */
   private backcolor2: RGB | null = null;
@@ -637,6 +639,18 @@ export class ImageDump {
       for (let t = lo; t <= hi; t++) out.push(t);
       return out;
     };
+    // a bond type or range: the wildcard bounds are the bond types (utils::bounds_typelabel with atom->nbondtypes)
+    const bondRange = (w: string): number[] => {
+      const m = /^(?:(\d+)?\*(\d+)?|\*|(\d+))$/.exec(w);
+      if (!m) throw new StyleError(`dump ${this.id}: dump_modify ${key} needs a bond type or a type range`);
+      const n = this.sys.state.topo.nbondtypes;
+      if (m[3] !== undefined) return [Number(m[3])];
+      const lo = m[1] ? Number(m[1]) : 1;
+      const hi = m[2] ? Number(m[2]) : n;
+      const out: number[] = [];
+      for (let t = lo; t <= hi; t++) out.push(t);
+      return out;
+    };
     const colors = (w: string): Col[] => w.split('/').map((c) => this.color(c));
     switch (key) {
       case 'acolor': {
@@ -668,13 +682,26 @@ export class ImageDump {
         return 5;
       }
       case 'bcolor': {
-        const types = typeRange(a[k + 1]);
+        const types = bondRange(a[k + 1]);
         const cs = colors(a[k + 2]);
         types.forEach((t, i) => this.bcolorByType.set(t, cs[i % cs.length]));
         return 3;
       }
       case 'bdiam': {
-        for (const t of typeRange(a[k + 1])) this.bdiamByType.set(t, this.num(a[k + 2], 'bdiam'));
+        for (const t of bondRange(a[k + 1])) this.bdiamByType.set(t, this.num(a[k + 2], 'bdiam'));
+        return 3;
+      }
+      // dump_image.html: "btrans args = type transparency" with the "transparency = value from 0.0 (transparent) to 1.0
+      // (opaque)". As native LAMMPS does (dump_image.cpp modify_param at b332f28): refused without bond types, ignored
+      // when the dump draws no bonds, and the value is checked ("Invalid btrans opacity in dump_modify command").
+      case 'btrans': {
+        if (a[k + 2] === undefined) throw new StyleError('Illegal dump_modify btrans command: missing argument(s)');
+        if (this.sys.state.topo.nbondtypes === 0) throw new StyleError('Dump modify btrans not allowed with no bond types');
+        if (!this.bond) return 3;
+        const types = bondRange(a[k + 1]);
+        const v = this.num(a[k + 2], 'btrans');
+        if (v < 0 || v > 1) throw new StyleError('Invalid btrans opacity in dump_modify command');
+        for (const t of types) this.bopacityByType.set(t, v);
         return 3;
       }
       // dump_image.html (dump_modify options): "*ssaosamples* arg = nsamples" and "nsamples = number of SSAO sampling
@@ -1515,11 +1542,6 @@ export class ImageDump {
   private drawBonds(s: SimState, ctx: DrawCtx, diamVals: Float64Array | null): void {
     const bonds = s.topo.bonds;
     if (!bonds || bonds.n === 0) return;
-    // native draws the halves of an atom-coloured bond with the atoms' transparency (aopacity); the engine draws a bond in
-    // one colour, so with any transparent type the bonds are named as unsupported instead of drawn opaque
-    for (const v of this.aopacityByType.values()) {
-      if (v < 1) throw new StyleError(`dump ${this.id}: dump image bonds with dump_modify atrans below 1 are not supported by the browser engine`);
-    }
     const map = buildAtomMap(s);
     const bond = this.bond!;
     const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
@@ -1562,16 +1584,21 @@ export class ImageDump {
       const g = this.sys.geom;
       const del = [x2[0] - x1[0], x2[1] - x1[1], x2[2] - x1[2]];
       const crosses = (g.periodic[0] && Math.abs(del[0]) > 0.5 * g.lx) || (g.periodic[1] && Math.abs(del[1]) > 0.5 * g.ly) || (g.periodic[2] && Math.abs(del[2]) > 0.5 * g.lz);
+      // the opacity: an atom-coloured half takes its atom's (aopacity, dump_modify atrans), the others the bond type's
+      // (bopacity, dump_modify btrans), as dump_image.cpp's bond loop passes them to draw_cylinder
+      const bop = this.bopacityByType.get(bonds.type[bi]) ?? 1;
       if (!crosses && bond.color !== 'atom') {
-        ctx.shading.drawCylinder(ctx.frame, x1, x2, col, width, 3, 1);
+        ctx.shading.drawCylinder(ctx.frame, x1, x2, col, width, 3, bop);
         continue;
       }
       if (crosses) g.minimumImage(del);
       const mid1: Vec3 = [x1[0] + 0.5 * del[0], x1[1] + 0.5 * del[1], x1[2] + 0.5 * del[2]];
       const mid2: Vec3 = [x2[0] - 0.5 * del[0], x2[1] - 0.5 * del[1], x2[2] - 0.5 * del[2]];
       const col2: Col = bond.color === 'atom' ? this.atomColor(s, i2, colorVals, cmap) : col;
-      ctx.shading.drawCylinder(ctx.frame, x1, mid1, col, width, 3, 1);
-      ctx.shading.drawCylinder(ctx.frame, mid2, x2, col2, width, 3, 1);
+      const op1 = bond.color === 'atom' ? this.atomOpacity(s.type[i1]) : bop;
+      const op2 = bond.color === 'atom' ? this.atomOpacity(s.type[i2]) : bop;
+      ctx.shading.drawCylinder(ctx.frame, x1, mid1, col, width, 3, op1);
+      ctx.shading.drawCylinder(ctx.frame, mid2, x2, col2, width, 3, op2);
     }
   }
 
@@ -1580,10 +1607,6 @@ export class ImageDump {
    * the GPL autobond loop (engine-gpl/graphics/autobond.ts); the core gives it the atoms, their colours and the rules.
    */
   private drawAutoBonds(s: SimState, ctx: DrawCtx, ab: { cutoff: number; width: number }): void {
-    // the same atrans rule as the bond keyword: the halves of a bond would need the atoms' transparency
-    for (const v of this.aopacityByType.values()) {
-      if (v < 1) throw new StyleError(`dump ${this.id}: dump image bonds with dump_modify atrans below 1 are not supported by the browser engine`);
-    }
     const group = this.sys.groupBit(this.group);
     const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
     const cmap = this.atomColorMap(colorVals, s);
@@ -1613,6 +1636,7 @@ export class ImageDump {
       minimumImage: (d) => g.minimumImage(d),
       excluded,
       colorOf: (i) => this.atomColor(s, i, colorVals, cmap),
+      opacityOf: (i) => this.atomOpacity(s.type[i]),
       cutoff: ab.cutoff,
       width: ab.width,
     });

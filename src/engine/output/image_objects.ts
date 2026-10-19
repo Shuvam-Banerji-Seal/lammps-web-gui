@@ -174,6 +174,8 @@ export interface AutoBondSpec {
   excluded?: (i: number, j: number) => boolean;
   /** Colour (0..1 per channel) of atom i as the atom colour of the dump gives it. */
   colorOf: (i: number) => Vec3;
+  /** Opacity of atom i (dump_modify atrans of its type): the half of a bond at atom i is drawn with it. */
+  opacityOf: (i: number) => number;
   /** Bond cutoff (distance units) and bond diameter (dump image autobond values). */
   cutoff: number;
   width: number;

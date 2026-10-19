@@ -48,9 +48,12 @@ describe('kspace_style pppm/dipole/spin', () => {
     expect(ad.error).toContain('diff ad');
   });
 
-  it('refuses per-atom energy and virial by name', async () => {
-    const r = await run(`${header}kspace_style pppm/dipole/spin 1.0e-4\ncompute pa all pe/atom\nthermo_style custom step c_pa\nrun 0\n`);
-    expect(r.error).toContain('pe/atom');
+  it('computes the per-atom energy (oracle case w272sp_pppm_spin_peatom) and refuses the per-atom virial as native', async () => {
+    const e = await run(`${header}kspace_style pppm/dipole/spin 1.0e-4\ncompute pa all pe/atom\ncompute r all reduce sum c_pa\nthermo_style custom step pe c_r\nrun 0\n`);
+    expect(e.error).toBeNull();
+    // Measured with native LAMMPS: any compute stress/atom stops the run with this message (pppm_dipole_spin.cpp compute)
+    const v = await run(`${header}kspace_style pppm/dipole/spin 1.0e-4\ncompute sa all stress/atom NULL ke\ncompute r all reduce sum c_sa[1]\nthermo_style custom step c_r\nrun 0\n`);
+    expect(v.error).toContain('Cannot (yet) compute per-atom virial with kspace style pppm/dipole/spin');
   });
 
   it('refuses a system without spins', async () => {

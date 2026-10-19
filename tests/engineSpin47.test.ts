@@ -48,7 +48,12 @@ describe('SPIN core', () => {
 
   it('refuses a bad lattice value; stt and zero directions', async () => {
     const m = await run(`${header}pair_style spin/exchange 4.0\npair_coeff * * exchange 4.0 0.02726 0.2171 1.841\nfix 1 all nve/spin lattice wobbly\nrun 0\n`);
-    expect(m.error).toContain('lattice must be moving or frozen');
+    expect(m.error).toContain('Illegal fix/nve/spin command');
+    // the earlier yes/no values still work (native: no, off, false = frozen; yes, on, true = moving)
+    for (const v of ['no', 'off', 'false', 'yes', 'on', 'true']) {
+      const ok = await run(`${header}pair_style spin/exchange 4.0\npair_coeff * * exchange 4.0 0.02726 0.2171 1.841\nfix 1 all nve/spin lattice ${v}\nrun 0\n`);
+      expect(ok.error, v).toBeNull();
+    }
     // native LAMMPS runs nve/spin without a spin pair style (a zeeman-only spin rotates)
     const p = await run(`${header}fix 1 all nve/spin lattice frozen\nrun 0\n`);
     expect(p.error).toBeNull();

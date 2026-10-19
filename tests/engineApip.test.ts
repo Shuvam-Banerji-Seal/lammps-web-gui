@@ -6,9 +6,9 @@
  * atom style apip in compute property/atom command" (and "... apip_lambda for atom style atomic ..." for an atomic
  * style); atom_style hybrid apip atomic runs; write_restart/read_restart keeps
  * the switching parameters (sum 1 for four atoms at 0.25) and read_data starts them at 0 ("Atoms # apip" lines). The
- * stage-2 messages (fix lambda/apip, fix lambda_thermostat/apip, pair lambda/input/csp/apip and lambda/zone/apip) are
- * also the native ones of these inputs. The native parity of the pair styles and fixes is the oracle cases w278ap_* and
- * w279ap_*.
+ * stage-2 messages (fix lambda/apip, fix lambda_thermostat/apip, pair lambda/input/csp/apip and lambda/zone/apip) and
+ * the stage-3 ones (fix lambda/la/csp/apip) are also the native ones of these inputs. The native parity of the pair
+ * styles and fixes is the oracle cases w278ap_*, w279ap_* and w280ap_*.
  */
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
@@ -135,6 +135,26 @@ describe('dynamic switching parameters (stage 2): native messages', () => {
   for (const [label, lines, re] of cases) {
     it(label, async () => {
       expect(await errorOf(lines)).toMatch(re);
+    });
+  }
+});
+
+describe('conservative switching parameters (stage 3, fix lambda/la/csp/apip): native messages', () => {
+  const box = ['units metal', 'atom_style apip conservative', 'lattice fcc 3.615', 'region b block 0 3 0 3 0 3', 'create_box 1 b', 'create_atoms 1 box', 'mass 1 63.5'];
+  const fix = 'fix l all lambda/la/csp/apip 0.7 2.0 3.0 5.0 fcc';
+  const cases: [string, string[], RegExp][] = [
+    ['too few arguments', ['fix l all lambda/la/csp/apip 0.7 2.0 3.0'], /fix lambda\/la\/csp\/apip requires five arguments/],
+    ['csp_mode', [`${fix} csp_mode foo`], /expected dynamic or static instead of foo/],
+    ['unknown argument', [`${fix} bogus`], /unknown argument bogus/],
+    ['cutoffs', ['fix l all lambda/la/csp/apip 0.7 2.0 5.0 3.0 fcc'], /0 <= cut_lo <= cut_hi required/],
+    ['thresholds', ['fix l all lambda/la/csp/apip 2.0 0.7 3.0 5.0 fcc'], /0 <= threshold_lo <= threshold_hi required/],
+    ['lambda_non_group', [`${fix} lambda_non_group 3`], /0 <= lambda_non_group <= 1 required/],
+    ['store_peratom', [`${fix} store_peratom 0`], /store_peratom frequency needs to be positive\./],
+    ['pair cutoff', [fix, 'pair_style zero 4.0', 'pair_coeff * *', 'run 0'], /cutoff of potential \(4\) smaller than cutoff of weighting function \(5\)/],
+  ];
+  for (const [label, lines, re] of cases) {
+    it(label, async () => {
+      expect((await run([...box, ...lines])).error).toMatch(re);
     });
   }
 });

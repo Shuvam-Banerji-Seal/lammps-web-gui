@@ -1,0 +1,32 @@
+# oracle: conservative APIP (atom_style apip conservative) with fix lambda/la/csp/apip in its default static CSP-pair mode on a 256-atom fcc Cu slab with free surfaces (hybrid/overlay eam/fs/apip + pace/apip with Cu-1.yace + zero 6.0), store_peratom, 10 NVE steps: energy, pressure (with the fix virial), the per-atom energy and stress sums (native drops the fix's per-atom virial of ghost images), the lambda counts and the per-atom stats
+# Native reference: LAMMPS b332f28 built with PKG_APIP and PKG_ML-PACE (/store/shuvam/software/lammps-build-apip/lmp)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.2e-14, atoms 6.8e-15.
+# oracle-examples: PACKAGES/apip/Cu_300K_Immel_2023.eam.fs PACKAGES/apip/Cu-1.yace
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      apip conservative
+lattice         fcc 3.615
+region          box block 0 4 0 4 -1 6
+region          slab block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 region slab
+mass            1 63.546
+displace_atoms  all random 0.05 0.05 0.05 4928459
+velocity        all create 300 4928459 loop geom
+fix             nve all nve
+fix             la all lambda/la/csp/apip 0.7 2.0 3.0 5.0 fcc store_peratom 5
+pair_style      hybrid/overlay eam/fs/apip pace/apip zero 6.0
+pair_coeff      * * eam/fs/apip Cu_300K_Immel_2023.eam.fs Cu
+pair_coeff      * * pace/apip Cu-1.yace Cu
+pair_coeff      * * zero
+compute         lambda all property/atom apip_lambda
+compute         eatom all pe/atom
+compute         satom all stress/atom NULL
+compute         sums all reduce sum c_lambda c_eatom c_satom[1] c_satom[2] c_satom[3] c_satom[4] f_la[1] f_la[2] f_la[3] f_la[4] f_la[5]
+variable        flag_switch atom c_lambda<1&&c_lambda>0
+variable        flag_complex atom c_lambda==0
+compute         lambda_types all reduce sum v_flag_switch v_flag_complex
+thermo_style    custom step temp etotal pe press pxx pyy pzz pxy pxz pyz c_lambda_types[*] c_sums[*] fnorm fmax
+thermo_modify   format float %.15g
+thermo          5
+run             10

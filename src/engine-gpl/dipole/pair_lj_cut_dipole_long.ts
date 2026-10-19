@@ -252,6 +252,12 @@ export class PairLJCutDipoleLong extends PairDipoleBase {
           const h = 0.5 * (eLJ + eC);
           pc.eatom[i] += h; pc.eatom[j] += h;
         }
+        // ev_tally_xyz(i, j, nlocal, newton_pair, evdwl, ecoul, fx, fy, fz, del): half of del (x) f to each atom
+        if (pc.vatom) {
+          const va = pc.vatom;
+          const w = [0.5 * delx * fx, 0.5 * dely * fy, 0.5 * delz * fz, 0.5 * delx * fy, 0.5 * delx * fz, 0.5 * dely * fz];
+          for (let c = 0; c < 6; c++) { va[6 * i + c] += w[c]; va[6 * j + c] += w[c]; }
+        }
       }
     }
     nb.reverseSum(tq, 3, s.torque);

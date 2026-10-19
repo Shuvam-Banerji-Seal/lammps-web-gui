@@ -55,9 +55,9 @@ describe('kspace_style pppm/dipole', () => {
     expect(r.error).toBeNull();
   });
 
-  it('refuses per-atom stress by name (the per-atom virial of pppm/dipole is not ported)', async () => {
-    const r = await run(`${header('0.0')}kspace_style pppm/dipole 1.0e-4\nkspace_modify gewald 0.5 mesh 8 8 8\ncompute sa all stress/atom NULL\nthermo_style custom step c_sa[1]\nrun 0\n`);
-    expect(r.error).toContain('stress/atom');
+  it('computes per-atom stress (compute stress/atom; checked against native in tests/enginePerAtomTallyPppmDipole)', async () => {
+    const r = await run(`${header('0.0')}kspace_style pppm/dipole 1.0e-4\nkspace_modify gewald 0.5 mesh 8 8 8\ncompute sa all stress/atom NULL\ncompute rs all reduce sum c_sa[1]\nthermo_style custom step c_rs\nrun 0\n`);
+    expect(r.error).toBeNull();
   });
 
   it('refuses kspace_modify slab, diff, force and minorder by name', async () => {
@@ -68,9 +68,9 @@ describe('kspace_style pppm/dipole', () => {
     }
   });
 
-  it('refuses per-atom energy and virial by name', async () => {
-    const r = await run(`${header('0.0')}kspace_style pppm/dipole 1.0e-4\nkspace_modify gewald 0.5 mesh 8 8 8\ncompute pa all pe/atom\nthermo_style custom step c_pa\nrun 0\n`);
-    expect(r.error).toContain('pe/atom');
+  it('computes per-atom energy (compute pe/atom)', async () => {
+    const r = await run(`${header('0.0')}kspace_style pppm/dipole 1.0e-4\nkspace_modify gewald 0.5 mesh 8 8 8\ncompute pa all pe/atom\ncompute rs all reduce sum c_pa\nthermo_style custom step pe c_rs\nrun 0\n`);
+    expect(r.error).toBeNull();
   });
 
   it('refuses a system with no dipoles', async () => {

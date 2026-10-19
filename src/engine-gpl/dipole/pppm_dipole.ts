@@ -19,8 +19,10 @@
  * k-space error estimates (newton_raphson_f, compute_df_kspace_dipole), and the self and neutralization terms of
  * compute (qsum, qsqsum). A non-neutral system is accepted with a warning, as native (KSpace::qsum_qsq).
  *
- * Not ported (refused by name): per-atom energy and virial (compute pe/atom, stress/atom), the slab correction
- * (kspace_modify slab), kspace_modify diff ad (native: not with dipoles), kspace_modify force, kspace_modify minorder,
+ * Per-atom energy and virial (compute pe/atom, stress/atom): poisson_peratom_dipole and fieldforce_peratom_dipole with
+ * the per-atom self terms of compute() (not for pppm/dipole/spin).
+ *
+ * Not ported (refused by name): the slab correction (kspace_modify slab), kspace_modify diff ad (native: not with dipoles), kspace_modify force, kspace_modify minorder,
  * triclinic boxes and non-periodic boundaries.
  */
 import { StyleError, type KSpaceCompute, type StyleContext } from '../../engine/force/types';
@@ -588,8 +590,11 @@ export class KSpacePPPMDipole extends KSpaceBase {
     if (key !== this.greenKey) this.buildGreen(lx, ly, lz);
   }
 
+  /** Whether this style's per-atom energy and virial are ported (pppm/dipole/spin: not yet). */
+  protected peratomPorted(): boolean { return true; }
+
   compute(kc: KSpaceCompute): void {
-    if (kc.eatom || kc.vatom) {
+    if ((kc.eatom || kc.vatom) && !this.peratomPorted()) {
       throw new StyleError(`compute pe/atom and stress/atom with kspace_style ${this.name} are not supported by the browser engine`);
     }
     const s = kc.s, geom = kc.geom, n = s.n;
@@ -792,6 +797,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
       E[0] = ex; E[1] = ey; E[2] = ez;
       this.applyField(kc, i, C, E, mu);
     }
+    if (kc.eatom || kc.vatom) this.peratom(kc, n, C, mu, hasQ, part, r, dens, Dre, Dim, spec);
     // energy: 0.5 V sum, minus the self term and the neutralizing-background term, times the prefactor (native
     // compute); virial: 0.5 prefactor V sum
     const g3 = this.gEwald * this.gEwald * this.gEwald;
@@ -800,5 +806,137 @@ export class KSpacePPPMDipole extends KSpaceBase {
     energy -= g * this.qsqsumCharge / MY_PIS + MY_PI2 * this.qsumCharge * this.qsumCharge / (g * g * V);
     kc.acc.elong += energy * C;
     for (let c = 0; c < 6; c++) kc.acc.vlong[c] += 0.5 * C * V * W[c];
+  }
+
+  /**
+   * Per-atom energy and virial (compute pe/atom, stress/atom), as native LAMMPS does (src/KSPACE/pppm_dipole.cpp at
+   * b332f28): poisson_peratom_dipole builds the charge potential u_brick = IFFT of scaleinv (gqq Q - i gqm D), the six
+   * charge virial bricks IFFT of scaleinv [vg_iv (gqq Q - i gqm D) - 2 i gqm k_b P_a] and the eighteen dipole virial
+   * bricks IFFT of scaleinv k_c [vg_iv (gdd D + i gqm Q) + 2 gdd k_b P_a] (iv: (a, b) = xx yy zz xy xz yz);
+   * fieldforce_peratom_dipole interpolates them with the dipole field bricks (spec 0..2) and tallies
+   * mu . u + q uq and mu_x v_iv,x + mu_y v_iv,y + mu_z v_iv,z + q vq_iv; compute() then halves the energy, subtracts
+   * the dipole and charge self terms and scales by qscale, and scales the virial by 0.5 qscale.
+   */
+  private peratom(kc: KSpaceCompute, n: number, C: number, mu: Float64Array, hasQ: boolean, part: Int32Array,
+    r: Float64Array, dens: Float64Array[], Dre: Float64Array, Dim: Float64Array, spec: Float64Array[]): void {
+    const s = kc.s;
+    const [nx, ny, nz] = this.nxyz;
+    const Ng = nx * ny * nz;
+    const P = this.order;
+    const scaleinv = 1.0 / Ng;
+    const G = this.greensfn, GQQ = this.greensfnQq, GQM = this.greensfnQm, VG = this.vg, fk = this.fk;
+    const wantE = kc.eatom !== null, wantV = kc.vatom !== null;
+    const q = s.q;
+    // the charge potential brick (the dipole field bricks are spec 0..2 of the force pass)
+    let uq: Float64Array | null = null;
+    if (wantE && hasQ) {
+      uq = new Float64Array(2 * Ng);
+      for (let idx = 0; idx < Ng; idx++) {
+        const gqq = GQQ[idx], gqm = GQM[idx];
+        const Qr = dens[3][2 * idx], Qi = dens[3][2 * idx + 1];
+        uq[2 * idx] = scaleinv * (gqq * Qr + gqm * Dim[idx]);
+        uq[2 * idx + 1] = scaleinv * (gqq * Qi - gqm * Dre[idx]);
+      }
+      fft3d(uq, nx, ny, nz, 1);
+    }
+    // the virial bricks: vq[iv] (charge channel) and vd[c][iv] (dipole channel, field component c)
+    const vq: Float64Array[] = [];
+    const vd: Float64Array[][] = [[], [], []];
+    if (wantV) {
+      const Pw = [0, 1, 2, 0, 0, 1];
+      const kbIndex = [0, 1, 2, 1, 2, 2];
+      for (let iv = 0; iv < 6; iv++) {
+        const Pa = dens[Pw[iv]];
+        const ib = kbIndex[iv];
+        if (hasQ) {
+          const w = new Float64Array(2 * Ng);
+          for (let iz = 0; iz < nz; iz++) for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) {
+            const idx = (iz * ny + iy) * nx + ix;
+            const kc3 = [fk[0][ix], fk[1][iy], fk[2][iz]];
+            const kb = kc3[ib];
+            const gqq = GQQ[idx], gqm = GQM[idx];
+            const Qr = dens[3][2 * idx], Qi = dens[3][2 * idx + 1];
+            const Dr = Dre[idx], Di = Dim[idx];
+            const phiR = gqq * Qr + gqm * Di;
+            const phiI = gqq * Qi - gqm * Dr;
+            w[2 * idx] = scaleinv * (VG[6 * idx + iv] * phiR + 2.0 * gqm * kb * Pa[2 * idx + 1]);
+            w[2 * idx + 1] = scaleinv * (VG[6 * idx + iv] * phiI - 2.0 * gqm * kb * Pa[2 * idx]);
+          }
+          fft3d(w, nx, ny, nz, 1);
+          vq.push(w);
+        }
+        for (let c = 0; c < 3; c++) {
+          const w = new Float64Array(2 * Ng);
+          for (let iz = 0; iz < nz; iz++) for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) {
+            const idx = (iz * ny + iy) * nx + ix;
+            const kc3 = [fk[0][ix], fk[1][iy], fk[2][iz]];
+            const kb = kc3[ib];
+            const gqm = GQM[idx], gdd = G[idx];
+            const Qr = hasQ ? dens[3][2 * idx] : 0, Qi = hasQ ? dens[3][2 * idx + 1] : 0;
+            const Dr = Dre[idx], Di = Dim[idx];
+            const EmuR = gdd * Dr - gqm * Qi;
+            const EmuI = gdd * Di + gqm * Qr;
+            const baseR = VG[6 * idx + iv] * EmuR + 2.0 * gdd * kb * Pa[2 * idx];
+            const baseI = VG[6 * idx + iv] * EmuI + 2.0 * gdd * kb * Pa[2 * idx + 1];
+            w[2 * idx] = scaleinv * kc3[c] * baseR;
+            w[2 * idx + 1] = scaleinv * kc3[c] * baseI;
+          }
+          fft3d(w, nx, ny, nz, 1);
+          vd[c].push(w);
+        }
+      }
+    }
+    const g = this.gEwald, g3 = g * g * g;
+    const V = kc.geom.lx * kc.geom.ly * kc.geom.lz;
+    for (let i = 0; i < n; i++) {
+      const lo = s.box.lo;
+      const delinv = [nx / kc.geom.lx, ny / kc.geom.ly, nz / kc.geom.lz];
+      const ds = [0, 1, 2].map((d) => part[3 * i + d] + this.shiftone - (s.x[3 * i + d] - lo[d]) * delinv[d]);
+      this.rho1dAll(ds[0], ds[1], ds[2], r);
+      const px = part[3 * i], py = part[3 * i + 1], pz = part[3 * i + 2];
+      const qtmp = hasQ ? q![i] : 0;
+      let ux = 0, uy = 0, uz = 0, uqa = 0;
+      const vqa = [0, 0, 0, 0, 0, 0];
+      const vda = [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]];
+      for (let nn = this.nlower; nn <= this.nupper; nn++) {
+        const mz = wrap(nn + pz, nz);
+        const z0 = r[2 * P + (nn - this.kmin)];
+        for (let mm = this.nlower; mm <= this.nupper; mm++) {
+          const my = wrap(mm + py, ny);
+          const y0 = z0 * r[1 * P + (mm - this.kmin)];
+          for (let ll = this.nlower; ll <= this.nupper; ll++) {
+            const mx = wrap(ll + px, nx);
+            const x0 = y0 * r[ll - this.kmin];
+            const idx2 = 2 * ((mz * ny + my) * nx + mx);
+            if (wantE) {
+              ux += x0 * spec[0][idx2];
+              uy += x0 * spec[1][idx2];
+              uz += x0 * spec[2][idx2];
+              if (uq) uqa += x0 * uq[idx2];
+            }
+            if (wantV) {
+              if (hasQ) for (let iv = 0; iv < 6; iv++) vqa[iv] += x0 * vq[iv][idx2];
+              for (let c = 0; c < 3; c++) for (let iv = 0; iv < 6; iv++) vda[c][iv] += x0 * vd[c][iv][idx2];
+            }
+          }
+        }
+      }
+      const m0 = mu[3 * i], m1 = mu[3 * i + 1], m2 = mu[3 * i + 2];
+      if (wantE) {
+        let e = m0 * ux + m1 * uy + m2 * uz;
+        if (hasQ) e += qtmp * uqa;
+        // compute(): eatom *= 0.5, minus the dipole and charge self terms, times qscale
+        e *= 0.5;
+        e -= (m0 * m0 + m1 * m1 + m2 * m2) * 2.0 * g3 / 3.0 / MY_PIS;
+        if (hasQ) e -= g * qtmp * qtmp / MY_PIS + MY_PI2 * qtmp * this.qsumCharge / (g * g * V);
+        kc.eatom![i] += e * C;
+      }
+      if (wantV) {
+        for (let iv = 0; iv < 6; iv++) {
+          const v = m0 * vda[0][iv] + m1 * vda[1][iv] + m2 * vda[2][iv] + qtmp * vqa[iv];
+          kc.vatom![6 * i + iv] += v * (0.5 * C);
+        }
+      }
+    }
   }
 }

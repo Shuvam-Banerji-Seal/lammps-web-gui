@@ -61,15 +61,20 @@ export class FixNVESpin extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (!sys.state.sp) throw new StyleError('fix nve/spin requires atom_style spin');
+    // As native LAMMPS does (src/SPIN/fix_nve_spin.cpp at b332f28): the keywords are read before the atom style is
+    // checked, and lattice also takes the earlier yes/no values ("for now, (yes,no) still works"): no, off, false or
+    // frozen is a frozen lattice, yes, on, true or moving a moving one; anything else is "Illegal fix/nve/spin command".
     for (let k = 0; k < args.length;) {
       if (args[k] === 'lattice') {
+        if (k + 2 > args.length) throw new StyleError('Illegal fix/nve/spin command');
         const v = args[k + 1];
-        if (v !== 'moving' && v !== 'frozen') throw new StyleError(`fix nve/spin: lattice must be moving or frozen, got '${v ?? ''}'`);
-        this.lattice = v;
+        if (v === 'no' || v === 'off' || v === 'false' || v === 'frozen') this.lattice = 'frozen';
+        else if (v === 'yes' || v === 'on' || v === 'true' || v === 'moving') this.lattice = 'moving';
+        else throw new StyleError('Illegal fix/nve/spin command');
         k += 2;
-      } else throw new StyleError(`Illegal fix nve/spin keyword: ${args[k]}`);
+      } else throw new StyleError('Illegal fix/nve/spin command');
     }
+    if (!sys.state.sp) throw new StyleError('fix nve/spin requires atom_style spin');
     this.timeIntegrate = true;
   }
 

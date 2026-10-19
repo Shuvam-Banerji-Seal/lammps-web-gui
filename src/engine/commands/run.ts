@@ -180,6 +180,20 @@ const runStyle: Handler = ({ sys }, a) => {
 // cfg is a lazily loaded helper (lazyStyles.ts group gpl_dump_cfg, loaded before the dump command by the session: its
 // name is a word of the command)
 const DUMP_STYLES: DumpStyle[] = ['atom', 'custom', 'cfg', 'xyz', 'extxyz', 'yaml', 'local', 'image'];
+/** The COMPRESS package's gzip dump styles (dump.html: "atom/gz, cfg/gz, custom/gz, local/gz, xyz/gz"). */
+const GZ_STYLES = ['atom/gz', 'cfg/gz', 'custom/gz', 'local/gz', 'xyz/gz'];
+
+/**
+ * A COMPRESS style name: its base style and the /gz name (null for an uncompressed style). The zstd styles need the
+ * Zstandard compressor, which the browser engine does not have.
+ */
+const compressStyle = (style: string): { base: string; gzStyle: string | null } => {
+  if (GZ_STYLES.includes(style)) return { base: style.slice(0, -3), gzStyle: style };
+  if (/^(atom|cfg|custom|local|xyz)\/zstd$/.test(style)) {
+    throw new StyleError(`dump ${style}: Zstandard compression is not available in the browser engine; use ${style.split('/')[0]}/gz or ${style.split('/')[0]}`);
+  }
+  return { base: style, gzStyle: null };
+};
 
 /** dump ID group style N file args — dump.html. */
 const dump: Handler = ({ sys }, a) => {
@@ -187,16 +201,16 @@ const dump: Handler = ({ sys }, a) => {
   const [id, group, style, every, file, ...cols] = a;
   if (!id || !group || !style || !every || !file) throw new StyleError('usage: dump ID group-ID style N file [attributes]');
   if (sys.dumps.some((d) => d.id === id)) throw new StyleError(`reuse of dump ID '${id}' (undump it first)`);
-  if (/\/(gz|zstd)$/.test(style)) throw new StyleError(`dump ${style}: compressed dump files are not available in the browser; use ${style.split('/')[0]}`);
+  const { base, gzStyle } = compressStyle(style);
   // vtk is a lazily loaded style (lazyStyles.ts group gpl_dump_vtk, loaded before this command by the session)
-  if (!(DUMP_STYLES as string[]).includes(style) && style !== 'vtk') throw removedStyleError('dump', style) ?? new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${[...DUMP_STYLES, 'vtk'].join(', ')}`);
+  if (!(DUMP_STYLES as string[]).includes(base) && base !== 'vtk') throw removedStyleError('dump', style) ?? new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${[...DUMP_STYLES, 'vtk', ...GZ_STYLES].join(', ')}`);
   let n: number | string;
   if (every.startsWith('v_')) n = every.slice(2);
   else {
     n = int(every, 'dump interval');
     if (n < 1) throw new StyleError('dump interval must be > 0');
   }
-  sys.dumps.push(new Dump(sys, id, group, style as DumpStyle, n, file, cols));
+  sys.dumps.push(new Dump(sys, id, group, base as DumpStyle, n, file, cols, false, gzStyle));
 };
 
 const undump: Handler = ({ sys }, a) => {
@@ -217,10 +231,11 @@ const writeDump: Handler = ({ sys }, a) => {
   if (!group || !style || !file) throw new StyleError('usage: write_dump group-ID style file [attributes] [modify ...]');
   const mi = rest.indexOf('modify');
   const cols = mi >= 0 ? rest.slice(0, mi) : rest;
-  if (!(DUMP_STYLES as string[]).includes(style)) throw new StyleError(`write_dump style '${style}' is not supported; supported: ${DUMP_STYLES.join(', ')}`);
+  const { base, gzStyle } = compressStyle(style);
+  if (!(DUMP_STYLES as string[]).includes(base)) throw new StyleError(`write_dump style '${style}' is not supported; supported: ${[...DUMP_STYLES, ...GZ_STYLES].join(', ')}`);
   // write_dump: a dump image or cfg file needs no '*' (multifile_override, see dump_image.ts; As native LAMMPS does
   // (src/write_dump.cpp at b332f28): "if (strcmp(arg[1], "cfg") == 0) dump->multifile_override = 1")
-  const d = new Dump(sys, '__write_dump', group, style as DumpStyle, 1, file, cols, true);
+  const d = new Dump(sys, '__write_dump', group, base as DumpStyle, 1, file, cols, true, gzStyle);
   if (mi >= 0) d.modify(rest.slice(mi + 1));
   d.write();
 };

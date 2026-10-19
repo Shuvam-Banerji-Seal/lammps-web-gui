@@ -384,13 +384,41 @@ describe('gzip writer (gzip.ts, write_data.rst 11Feb2026)', () => {
     expect(plain.files.get('plain.data')!.startsWith('LAMMPS data file via write_data')).toBe(true);
   });
 
-  it('a dump with a .gz name is an error, not plain text (native: dump writes gzip)', async () => {
-    const msg = await errorOf(`${LJ}\ndump 1 all custom 1 d.dump.gz id x\nrun 0\n`);
-    expect(msg).toContain('compressed (.gz) dump file is not supported');
+  const unzip = (latin: string): string => new TextDecoder().decode(gunzip(Uint8Array.from(latin, (c) => c.charCodeAt(0))));
+
+  it('a dump with a .gz name writes gzip members that decompress to the plain dump (dump.html, Dump::openfile)', async () => {
+    const plain = await exec(`${LJ}\ndump 1 all custom 2 d.dump id x y z\nrun 4\n`);
+    const gz = await exec(`${LJ}\ndump 1 all custom 2 d.dump.gz id x y z\nrun 4\n`);
+    expect(gz.errors).toEqual([]);
+    const latin = gz.files.get('d.dump.gz')!;
+    expect(latin.charCodeAt(0)).toBe(0x1f);
+    expect(latin.charCodeAt(1)).toBe(0x8b);
+    expect(unzip(latin)).toBe(plain.files.get('d.dump'));
   });
 
-  it('write_dump with a .gz name is an error too (native: write_dump writes gzip)', async () => {
-    const msg = await errorOf(`${LJ}\nwrite_dump all custom wd.gz id x y z\n`);
-    expect(msg).toContain('compressed (.gz) dump file is not supported');
+  it('the COMPRESS /gz styles write gzip, need a compressed name, and take compression_level in [-1, 9] (native messages)', async () => {
+    const plain = await exec(`${LJ}\ndump 1 all atom 2 d.atom\nrun 2\n`);
+    const gz = await exec(`${LJ}\ndump 1 all atom/gz 2 d.atom.gz\ndump_modify 1 compression_level 9\nrun 2\n`);
+    expect(gz.errors).toEqual([]);
+    expect(unzip(gz.files.get('d.atom.gz')!)).toBe(plain.files.get('d.atom'));
+    expect(await errorOf(`${LJ}\ndump 1 all custom/gz 1 d.dump id x\nrun 0\n`)).toContain('Dump custom/gz only writes compressed files');
+    expect(await errorOf(`${LJ}\ndump 1 all custom/gz 1 d.gz id x\ndump_modify 1 compression_level 10\n`)).toContain('Compression level must in the range of [-1, 9]');
+    expect(await errorOf(`${LJ}\ndump 1 all custom 1 d.gz id x\ndump_modify 1 compression_level 5\n`)).toContain("unsupported dump_modify keyword 'compression_level'");
+    expect(await errorOf(`${LJ}\ndump 1 all custom/zstd 1 d.zst id x\n`)).toContain('Zstandard compression is not available');
+    expect(await errorOf(`${LJ}\ndump 1 all custom 1 d.dump.bz2 id x\n`)).toContain('compressed (.bz2) custom dump file is not supported');
+  });
+
+  it('a compressed dump ignores dump_modify append (native rewrites the file through the compressor)', async () => {
+    const first = await exec(`${LJ}\ndump 1 all custom 1 a.gz id x\ndump_modify 1 append yes\nrun 0\nundump 1\ndump 2 all custom 1 a.gz id x\ndump_modify 2 append yes\nrun 0\n`);
+    const once = await exec(`${LJ}\ndump 1 all custom 1 a.dump id x\nrun 0\n`);
+    expect(first.errors).toEqual([]);
+    expect(unzip(first.files.get('a.gz')!)).toBe(once.files.get('a.dump'));
+  });
+
+  it('write_dump with a .gz name writes the gzipped snapshot', async () => {
+    const plain = await exec(`${LJ}\nwrite_dump all custom wd.dump id x y z\n`);
+    const gz = await exec(`${LJ}\nwrite_dump all custom wd.gz id x y z\n`);
+    expect(gz.errors).toEqual([]);
+    expect(unzip(gz.files.get('wd.gz')!)).toBe(plain.files.get('wd.dump'));
   });
 });

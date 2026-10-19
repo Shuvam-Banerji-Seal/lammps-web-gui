@@ -2,7 +2,8 @@
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0: src/MC/fix_hmc.cpp and fix_hmc.h (class
  * FixHMC; contributing authors Charlles R. A. Abreu (Federal University of Rio de Janeiro) and Ana J. Silveira (Federal
  * University of Rio de Janeiro); copyright Sandia Corporation), with src/group.cpp Group::mass and Group::vcm and
- * src/compute_ke.cpp ComputeKE::compute_scalar. This file is GPL-2.0 too (src/engine-gpl/LICENSE).
+ * src/compute_ke.cpp ComputeKE::compute_scalar, and FixRigidSmall::resample_momenta of src/RIGID/fix_rigid_small.cpp (the rigid
+ * keyword). This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * docs.lammps.org/fix_hmc.html (verbatim): "This fix implements the hybrid or Hamiltonian Monte Carlo (HMC) algorithm. The
  * basic idea is to use molecular dynamics (MD) to generate trial MC "moves" which are then accepted or rejected via the
@@ -20,8 +21,14 @@
  *  - random_velocities(): per owned atom in local order, v[i][j] = sqrt(KT/m) gaussian() for j < dimension (the z velocity
  *    of a 2d system is left as it is); with mom yes the group's centre-of-mass velocity (Group::vcm) is subtracted.
  *
- * Not supported (named StyleErrors): the rigid keyword (fix rigid/small bodies), and a change in the number of atoms
- * during a move. Per-atom arrays of other fixes (native restores them through their exchange callbacks) are not saved.
+ *  - rigid ID (fix rigid/small or rigid/nve/small): setup draws the atom velocities, then resample_momenta draws the bodies'
+ *    centre-of-mass and angular velocities (per body in the native storage order: vcm_j then the body-frame omega_j for
+ *    each axis, omega from the principal moments, the mom option on the bodies' mass-weighted vcm) and sets the atom
+ *    velocities from them; later moves resample the bodies only. The body data travel with their owner atoms in the
+ *    saved state (pack_exchange), so a rejection brings the bodies back and stores them in the saved atom order.
+ *
+ * Not supported (named StyleErrors): a change in the number of atoms during a move. Per-atom arrays of other fixes
+ * (native restores them through their exchange callbacks) are not saved, except the rigid bodies.
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
@@ -30,6 +37,31 @@ import { massOf, nativeOrder } from '../../engine/atoms';
 import type { CustomProp } from '../../engine/types';
 import { RanPark } from '../random_park';
 import { exp as libmExp } from '../libm/exp';
+import { matvec, omegaToAngmom, qToExyz } from '../rigid/math_extra';
+import { nativeGhosts } from '../neighbor/nativeOrder';
+
+/** The body data fix hmc reads and writes (src/engine/fix/rigid.ts, rigid/small). */
+interface HmcBody {
+  owner: number;
+  mass: number;
+  inertia: number[];
+  q: number[];
+  vcm: number[];
+  omega: number[];
+  angmom: number[];
+}
+
+/** The rigid/small fix as fix hmc uses it (src/engine/fix/rigid.ts). */
+interface HmcRigid {
+  readonly id: string;
+  readonly style: string;
+  readonly virial: Float64Array;
+  bodiesInNativeOrder(): HmcBody[];
+  setBodyNativeOrder(ownerIds: readonly number[]): void;
+  velocitiesFromBodies(virialFactor: number): void;
+  snapshotBodies(): object[];
+  restoreBodies(snap: object[]): void;
+}
 
 /** Fix styles that set box_change in native LAMMPS (fix_deform.cpp, fix_nh.cpp with a barostat, ...). */
 const BOX_CHANGE = /^(deform|deform\/pressure|balance|box\/relax|press\/berendsen|press\/langevin|npt\/cauchy|msst|qbmsst|bocs|append\/atoms|gemc|ipi|nphug)$|^(np[th]|rigid\/np[th]|tgnp[th])(\/|$)|\/np[th](\/|$)/;
@@ -53,6 +85,8 @@ interface Saved {
   shape: Float64Array | null;
   quat: Float64Array | null;
   custom: [string, CustomProp][];
+  /** the rigid bodies (rigid keyword) */
+  bodies: object[] | null;
 }
 
 const copy = <T extends Float64Array | Int32Array>(a: T | null): T | null => (a ? (a.slice() as T) : null);
@@ -95,6 +129,7 @@ export class FixHmc extends Fix {
   /** The force array of a rejected trial, put back after the restored state's energies are computed. */
   private trialForce: Float64Array | null = null;
   private nextReneighbor = -1;
+  private readonly rigidId: string | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -131,7 +166,8 @@ export class FixHmc extends Fix {
         if (!/^rigid\/small/.test(style) && !/^rigid\/nve\/small/.test(style)) {
           throw new StyleError(`Fix ID ${rid} for fix hmc does not point to fix rigid/small or rigid/nve/small`);
         }
-        throw new StyleError(`fix hmc rigid ${rid} is not supported by the browser engine yet (native rigid/small resampling and body restore are not reproduced)`);
+        this.rigidId = rid;
+        iarg += 2;
       } else {
         throw new StyleError(`Unknown fix hmc keyword ${key}`);
       }
@@ -169,6 +205,103 @@ export class FixHmc extends Fix {
     }
   }
 
+  /** The rigid/small fix of the rigid keyword (looked up again at each use, as native init does). */
+  private rigid(): HmcRigid | null {
+    if (!this.rigidId) return null;
+    const ifix = this.sys.fixes.find((f) => f.id === this.rigidId) as unknown as HmcRigid | undefined;
+    if (!ifix) throw new StyleError(`Unknown rigid fix id ${this.rigidId} for fix hmc`);
+    if ((!/^rigid\/small/.test(ifix.style) && !/^rigid\/nve\/small/.test(ifix.style)) || typeof ifix.bodiesInNativeOrder !== 'function') {
+      throw new StyleError(`Fix ID ${this.rigidId} for fix hmc does not point to fix rigid/small or rigid/nve/small`);
+    }
+    return ifix;
+  }
+
+  /**
+   * The bodies native keeps in front of the live ones: restore_saved_state unpacks the saved bodies after the existing
+   * ones (nlocal_body is not reset), so each rejected move leaves a copy of the body list before it. resample_momenta
+   * still draws for them (with the mask of the atom at their old local index) and counts their masses in the mom sum.
+   */
+  private stale: { mass: number; inertia: number[]; ilocal: number }[] = [];
+  /**
+   * vglobal of the rigid fix: native saves the global virials (pair, bonded, kspace and the fixes', the rigid one
+   * included) at the end of setup and of every end_of_step, and puts them back on a rejection; the engine recomputes the
+   * force-field virials of the restored configuration and keeps the rigid fix's here.
+   */
+  private savedRigidVirial: Float64Array | null = null;
+
+  /** nghost_body: the ghost images of body owners after native borders() at the current positions. */
+  private nativeGhostBodyCount(owners: Set<number>): number {
+    const sys = this.sys, s = sys.state;
+    const order = nativeOrder(s);
+    const n = order.length;
+    const xn = new Float64Array(3 * n);
+    for (let k = 0; k < n; k++) for (let c = 0; c < 3; c++) xn[3 * k + c] = s.x[3 * order[k] + c];
+    const gh = nativeGhosts(xn, n, sys.geom, sys.nb.cutghost, s.dimension === 2);
+    let count = 0;
+    for (let k = n; k < gh.nall; k++) if (owners.has(s.id[order[gh.root[k]]])) count++;
+    return count;
+  }
+
+  /** FixRigidSmall::resample_momenta(groupbit, mom_flag, random, KT). */
+  private rigidBodyRandomVelocities(): void {
+    const rigid = this.rigid()!;
+    const s = this.sys.state;
+    const idx = new Map<number, number>();
+    for (let i = 0; i < s.n; i++) idx.set(s.id[i], i);
+    const order = nativeOrder(s);
+    const live = rigid.bodiesInNativeOrder();
+    const bit = this.groupBit;
+    // the native body array: the stale copies, then the live bodies
+    type Entry = { mass: number; inertia: number[]; inGroup: boolean; body: HmcBody | null; vcm: number[]; omega: number[] };
+    const entries: Entry[] = [];
+    for (const st of this.stale) {
+      entries.push({ mass: st.mass, inertia: st.inertia, inGroup: (s.mask[order[st.ilocal]] & bit) !== 0, body: null, vcm: [0, 0, 0], omega: [0, 0, 0] });
+    }
+    for (const b of live) entries.push({ mass: b.mass, inertia: b.inertia, inGroup: (s.mask[idx.get(b.owner)!] & bit) !== 0, body: b, vcm: [0, 0, 0], omega: [0, 0, 0] });
+    let totalMass = 0;
+    const vcm = [0.0, 0.0, 0.0];
+    const wbody = [0, 0, 0];
+    for (const e of entries) {
+      if (!e.inGroup) continue;
+      const bmass = e.mass;
+      const stdev = Math.sqrt(this.KT / bmass);
+      totalMass += bmass;
+      for (let j = 0; j < 3; j++) {
+        e.vcm[j] = stdev * this.random.gaussian();
+        vcm[j] += e.vcm[j] * bmass;
+        wbody[j] = e.inertia[j] > 0.0 ? Math.sqrt(this.KT / e.inertia[j]) * this.random.gaussian() : 0.0;
+      }
+      if (e.body) {
+        const { ex, ey, ez } = qToExyz(e.body.q);
+        matvec(ex, ey, ez, wbody, e.omega);
+      }
+    }
+    if (this.momFlag && totalMass > 0.0) {
+      for (let j = 0; j < 3; j++) vcm[j] /= totalMass;
+      for (const e of entries) if (e.inGroup) for (let j = 0; j < 3; j++) e.vcm[j] -= vcm[j];
+    }
+    for (const e of entries) {
+      if (!e.body || !e.inGroup) continue;
+      e.body.vcm = e.vcm.slice();
+      e.body.omega = e.omega.slice();
+    }
+    // angular momenta: native loops "for (ibody = 0; ibody < ntotal; ibody++)" with ntotal = nghost_body, so only the
+    // first nghost_body entries of the body array take the angular momentum of their new omega
+    const nghost = this.nativeGhostBodyCount(new Set(live.map((b) => b.owner)));
+    for (let k = 0; k < Math.min(nghost, entries.length); k++) {
+      const b = entries[k].body;
+      if (!b) continue;
+      const { ex, ey, ez } = qToExyz(b.q);
+      const m = [0, 0, 0];
+      omegaToAngmom(b.omega, ex, ey, ez, b.inertia, m);
+      b.angmom = m;
+    }
+    // set_v(): with the virial of the step being accumulated (setup, and the steps whose pressure is computed), native
+    // adds one half of x . f_c of the velocity change to the rigid fix's virial
+    rigid.velocitiesFromBodies(0.5);
+    this.sys.refreshComputes();
+  }
+
   reneighborDue(step: number): boolean {
     return step === this.nextReneighbor;
   }
@@ -191,10 +324,14 @@ export class FixHmc extends Fix {
 
   /** FixHMC::setup: draw velocities, PE and KE of the start, save the state (every run). */
   setup(): void {
+    // native: fix_rigid->setup first (the engine's rigid fix, defined before this one, has run its setup), then the atom
+    // velocities, then with the rigid keyword the bodies' momenta
     this.randomVelocities();
+    if (this.rigidId) this.rigidBodyRandomVelocities();
     this.PE = this.computePE();
     this.KE = this.computeKE();
     this.saveCurrentState();
+    if (this.rigidId) this.savedRigidVirial = this.rigid()!.virial.slice();
   }
 
   /** FixHMC::end_of_step: the Metropolis test, then save or restore, then new velocities if needed. */
@@ -217,10 +354,14 @@ export class FixHmc extends Fix {
       this.restoreSavedState();
       this.nextReneighbor = s.step + 1;
     }
+    if (!accept && this.rigidId && this.savedRigidVirial) this.rigid()!.virial.set(this.savedRigidVirial);
     if (!accept || this.resampleOnAccept) {
-      this.randomVelocities();
+      if (this.rigidId) this.rigidBodyRandomVelocities();
+      else this.randomVelocities();
       this.KE = this.computeKE();
     }
+    // the global virials saved for the next move are those at the end of this one
+    if (this.rigidId) this.savedRigidVirial = this.rigid()!.virial.slice();
     if (!accept) {
       // the energies (and virial) of the restored configuration, then the trial forces back: native restores the global
       // energies and keeps atom->f of the rejected trial for the next half-kick
@@ -243,6 +384,7 @@ export class FixHmc extends Fix {
       type: s.type.slice(0, n), mask: s.mask.slice(0, n), q: s.q.slice(0, n),
       rmass: copy(s.rmass), radius: copy(s.radius), omega: copy(s.omega), angmom: copy(s.angmom), mu: copy(s.mu),
       sp: copy(s.sp), shape: copy(s.shape), quat: copy(s.quat), custom,
+      bodies: this.rigidId ? this.rigid()!.snapshotBodies() : null,
     };
   }
 
@@ -258,6 +400,7 @@ export class FixHmc extends Fix {
     if (!sv) return;
     if (s.n !== sv.n) throw new StyleError(`fix ${this.id} hmc: the number of atoms changed during an MC move (${sv.n} -> ${s.n}), which the browser engine does not restore`);
     this.trialForce = s.f.slice();
+    const preOrder = nativeOrder(s).slice();
     s.x.set(sv.x); s.v.set(sv.v); s.image.set(sv.image);
     s.type.set(sv.type); s.mask.set(sv.mask); s.q.set(sv.q);
     if (sv.rmass && s.rmass) s.rmass.set(sv.rmass);
@@ -274,6 +417,19 @@ export class FixHmc extends Fix {
     }
     // the atoms come back in the saved local order
     s.order = sv.order.slice();
+    // the rigid bodies come back with their owner atoms (unpack_exchange appends each body in the saved atom order)
+    if (sv.bodies) {
+      const rigid = this.rigid()!;
+      // the bodies before the restore stay in front (see stale), at the local indices their owners had
+      const rank = new Map<number, number>();
+      preOrder.forEach((i, r) => rank.set(s.id[i], r));
+      for (const b of rigid.bodiesInNativeOrder()) this.stale.push({ mass: b.mass, inertia: b.inertia.slice(), ilocal: rank.get(b.owner)! });
+      rigid.restoreBodies(sv.bodies);
+      const owners = new Set(rigid.bodiesInNativeOrder().map((b) => b.owner));
+      const ordered: number[] = [];
+      for (const i of sv.order) if (owners.has(s.id[i])) ordered.push(s.id[i]);
+      rigid.setBodyNativeOrder(ordered);
+    }
     for (const f of sys.fixes) f.preExchange?.();
     sys.pbc();
     sys.bump();

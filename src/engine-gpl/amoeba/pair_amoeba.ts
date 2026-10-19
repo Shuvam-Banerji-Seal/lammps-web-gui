@@ -231,7 +231,8 @@ export class PairAmoeba extends Pair {
     if (!this.prm || (!this.tables && !this.hippo) || !this.key) throw new StyleError('pair_coeff * * file.prm file.key is required for pair style amoeba');
     const prm = this.prm;
     const s = pc.s;
-    if (pc.eatom || pc.vatom) throw new StyleError('pair amoeba: per-atom energy and virial are not ported yet');
+    // as native LAMMPS does (pair_amoeba.cpp compute at b332f28): per-atom energy and virial are not computed
+    if (pc.eatom || pc.vatom) throw new StyleError(`Cannot (yet) compute per-atom energy/virial with pair_style ${this.name}`);
     if (prm.hasPolarity && prm.poltyp !== 'mutual') {
       throw new StyleError(`pair amoeba: polarization ${prm.poltyp} is not ported yet (only mutual)`);
     }

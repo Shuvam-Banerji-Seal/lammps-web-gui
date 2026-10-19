@@ -19,6 +19,8 @@ import { fmLongOf } from './dipole_long_field';
 import { MUB2MU0, MUB2MU0HBINV } from './pair_spin_dipole_cut';
 
 export class KSpacePPPMDipoleSpin extends KSpacePPPMDipole {
+  /** compute pe/atom and stress/atom: the spin per-atom energy and virial (pppm_dipole_spin.cpp) are not ported. */
+  protected override peratomPorted(): boolean { return false; }
   /** The precession buffer of this compute (fm_long per atom id), reset at the start of each pass. */
   private fmLong: Float64Array = new Float64Array(0);
 

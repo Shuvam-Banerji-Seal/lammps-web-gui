@@ -142,6 +142,18 @@ describe('shell putenv', () => {
     expect(session.sys.env.get('FOO')).toBe('1');
   });
 
+  it('LAMMPS_POTENTIALS is a colon-separated list searched in order, by the base name of the file (native get_potential_file_path)', async () => {
+    const { session } = newSession();
+    session.addFile('b/Cu.eam', 'from b');
+    session.addFile('c/Cu.eam', 'from c');
+    session.addFile('c/Ni.eam', 'Ni from c');
+    await session.execute('shell putenv LAMMPS_POTENTIALS=a:b:c\n');
+    // a relative path that does not exist is looked up by its base name
+    expect(session.sys.readFile('../../potentials/Cu.eam')).toBe('from b');
+    expect(session.sys.readFile('Ni.eam')).toBe('Ni from c');
+    expect(() => session.sys.readFile('Fe.eam')).toThrow(/cannot open file Fe\.eam/);
+  });
+
   it('LAMMPS_POTENTIALS is searched for a file that is not in the working directory', async () => {
     const { session } = newSession();
     session.addFile('pots/Ar.eam', 'potential text');

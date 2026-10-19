@@ -257,10 +257,17 @@ export class System {
 
   readFile(name: string): string {
     let f = this.files.get(this.resolveFile(name));
-    // native LAMMPS (utils::get_potential_file_path): a file not found in the working directory is looked up in the
-    // directory of the LAMMPS_POTENTIALS environment variable (set by shell putenv)
-    const potDir = this.env.get('LAMMPS_POTENTIALS');
-    if (f === undefined && potDir !== undefined) f = this.files.get(resolveFileName('', `${potDir}/${name}`));
+    // As native LAMMPS does (src/utils.cpp get_potential_file_path and src/platform.cpp list_pathenv at b332f28): a file
+    // not found where its name points is looked up, by its base name, in each directory of the colon-separated
+    // LAMMPS_POTENTIALS environment variable (set by shell putenv), in order
+    const potDirs = this.env.get('LAMMPS_POTENTIALS');
+    if (f === undefined && potDirs !== undefined) {
+      const base = name.slice(name.lastIndexOf('/') + 1);
+      for (const dir of potDirs.split(':')) {
+        f = this.files.get(resolveFileName('', `${dir}/${base}`));
+        if (f !== undefined) break;
+      }
+    }
     if (f === undefined) {
       throw new StyleError(`cannot open file ${name}: add it to the notebook's files (upload) or write it earlier in the session`);
     }

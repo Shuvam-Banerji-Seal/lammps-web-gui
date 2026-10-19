@@ -186,8 +186,10 @@ export class System {
   get hasForces(): boolean { return this.forcesVersion === this.stateVersion; }
 
   /** Forces were computed for the current state by the run loop. */
-  forcesCurrent(): void {
+  forcesCurrent(flags?: ComputeFlags): void {
     this.forcesVersion = this.stateVersion;
+    // the per-atom terms an integrator assembled itself (run_style respa) are those of these flags
+    if (flags) this.flagsUsed = flags;
   }
 
   /** comm_modify vel yes|no (comm_modify.html: ghost atoms store velocity info). */

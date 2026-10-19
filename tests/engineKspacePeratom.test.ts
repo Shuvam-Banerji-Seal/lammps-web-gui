@@ -46,7 +46,7 @@ run 0
     });
   }
 
-  it('styles without per-atom terms in the engine refuse pe/atom by name', async () => {
+  it('ewald/dipole: pe/atom sums to the k-space energy (parity with native per atom in tests/enginePerAtomTallyEwaldDipole)', async () => {
     const r = await run(`units lj
 atom_style hybrid sphere dipole
 lattice sc 0.8
@@ -58,10 +58,14 @@ mass * 1.0
 pair_style lj/cut/dipole/long 2.5
 pair_coeff * * 1 1
 kspace_style ewald/dipole 1.0e-4
-compute pe all pe/atom
-thermo_style custom step c_pe
+compute pe all pe/atom kspace
+compute r all reduce sum c_pe
+thermo_style custom step elong c_r
+thermo_modify norm no
 run 0
 `);
-    expect(r.error).toMatch(/compute pe\/atom and stress\/atom with kspace_style ewald\/dipole are not supported/);
+    expect(r.error).toBeFalsy();
+    const row = r.rows[r.rows.length - 1];
+    expect(Math.abs(row.c_r - row.elong)).toBeLessThan(1e-10 * Math.abs(row.elong));
   });
 });

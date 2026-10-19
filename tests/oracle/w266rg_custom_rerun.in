@@ -1,0 +1,23 @@
+# oracle: fix rigid custom v_bid (an atom-style variable of the positions) over two runs: native evaluates the variable once, when the fix is defined, so the bodies keep their atoms in the second run although the atoms moved across the variable's steps (the engine re-evaluated it at each run's init and regrouped the atoms)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.4e-14, atoms 1.2e-13. Before the fix the setup row of the second run had temp 0.18300 where native prints 0.25971.
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+units           lj
+lattice         sc 0.5
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        bid atom floor(x/2.0)+3*floor(y/2.5)
+fix             1 all rigid custom v_bid
+variable        vx atom 0.3*sin(0.9*x+0.4*z)
+variable        vy atom 0.3*cos(0.6*y+0.8*x)
+variable        vz atom 0.3*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.002
+thermo_style    custom step temp pe ke etotal press f_1[1][1] f_1[1][4] f_1[4][7] f_1[2][13]
+thermo_modify   format float %.15g
+thermo          10
+run             60
+run             20

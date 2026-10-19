@@ -323,6 +323,12 @@ export class FixRigid extends Fix {
   private customVar: string | null = null;
   /** bodystyle custom i_name: the fix property/atom integer vector name. */
   private customProp: string | null = null;
+  /**
+   * bodystyle custom: each atom's body value (by atom ID), taken when the fix is defined. As native LAMMPS does
+   * (src/RIGID/fix_rigid.cpp constructor at b332f28): the variable or property is evaluated once, in the constructor,
+   * and its value cast to an integer ("(tagint) value[i]", truncation toward zero); the bodies keep that membership.
+   */
+  private customKeys: Map<number, string> | null = null;
   /** keyword mol: molecule template-ID whose molecules may be added during the run (fix deposit rigid). */
   private molTemplateId: string | null = null;
   /** keyword gravity: ID of the fix gravity whose acceleration is applied to each body's centre of mass. */
@@ -378,7 +384,8 @@ export class FixRigid extends Fix {
       /* docs.lammps.org/fix_rigid.html: "*custom* args = *i_propname* or *v_varname*",
        * "i_propname = a custom integer vector defined via fix property/atom" and
        * "v_varname = an atom-style or atomfile-style variable"; "the floating-point value
-       * produced by the variable is rounded to an integer". */
+       * produced by the variable is rounded to an integer". The native code casts it ("(tagint) value[i]"): measured with
+       * native LAMMPS, values 0.6, 0.7, 1.4 and 1.45 give 2 rigid bodies (truncation), not 1. */
       const w = args[1] ?? '';
       if (w.startsWith('i_') && w.length > 2) {
         const c = sys.state.custom.get(w.slice(2));
@@ -464,6 +471,12 @@ export class FixRigid extends Fix {
     if (this.molTemplateId && this.bodystyle !== 'molecule') {
       throw new StyleError(`fix ${style}: the mol keyword requires bodystyle molecule`);
     }
+    if (this.customVar || this.customProp) {
+      const s = sys.state;
+      const values = this.customVar ? sys.atomVariable(this.customVar) : s.custom.get(this.customProp!)!.data;
+      this.customKeys = new Map();
+      for (let i = 0; i < s.n; i++) if (s.mask[i] & this.groupBit) this.customKeys.set(s.id[i], String(Math.trunc(values[i])));
+    }
   }
 
   // ---------------------------------------------------------------- setup
@@ -480,15 +493,14 @@ export class FixRigid extends Fix {
     const s = sys.state;
     this.maxExtent = 0;
     const members = new Map<string, number[]>();
-    // bodystyle custom: the atom-style variable's value, rounded to an integer (per-atom, all atoms)
-    const custom = this.customVar ? sys.atomVariable(this.customVar)
-      : this.customProp ? s.custom.get(this.customProp)!.data : null;
+    // bodystyle custom: the body values taken when the fix was defined (customKeys)
+    const custom = this.customKeys;
     for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
+      if (!custom && !(s.mask[i] & this.groupBit)) continue;
       let key: string | null = null;
       if (this.bodystyle === 'single') key = '1';
       else if (this.bodystyle === 'molecule') key = String(s.molecule[i]);
-      else if (custom) key = String(Math.round(custom[i]));
+      else if (custom) key = custom.get(s.id[i]) ?? null;
       else {
         const k = this.groupList.findIndex((gname) => (s.mask[i] & sys.groups.bit(gname)) !== 0);
         if (k >= 0) key = String(k + 1);

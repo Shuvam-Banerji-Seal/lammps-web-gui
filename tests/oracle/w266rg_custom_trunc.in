@@ -1,0 +1,22 @@
+# oracle: fix rigid custom with fractional variable values: native casts them to integers by truncation (values 0.6, 0.7, 1.4, 1.45 make two bodies, not one), so f_1 has a second row
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.8e-16, atoms 0.0e+0. Before the fix the engine rounded the values and made one body (f_1[2][1]: rigid body 2 does not exist).
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+units           lj
+atom_modify     map array
+region          box block 0 10 0 10 0 10
+create_box      1 box
+create_atoms    1 single 1 1 1
+create_atoms    1 single 2 1 1
+create_atoms    1 single 5 5 5
+create_atoms    1 single 6 5 5
+mass            1 1.0
+variable        bid atom (id==1)*0.6+(id==2)*0.7+(id==3)*1.4+(id==4)*1.45
+fix             1 all rigid custom v_bid
+velocity        all set 0.1 0.2 -0.1 units box
+pair_style      zero 2.0
+pair_coeff      * *
+timestep        0.005
+thermo_style    custom step ke f_1[1][1] f_1[2][1] f_1[2][4]
+thermo_modify   format float %.15g
+thermo          5
+run             10

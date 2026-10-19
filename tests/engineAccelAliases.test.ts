@@ -324,11 +324,12 @@ describe('suffix, package and aliased names: errors', () => {
   });
 
   it('names the base style when the base is not supported', async () => {
-    // pace (ML-PACE) needs the external PACE library, so its KOKKOS alias stays an example of an unsupported base
-    const r = await runScript(`${MELT_HEAD}pair_style pace/kk\n`);
+    // pace/extrapolation (the ACE extrapolation grades) is not supported yet, so its KOKKOS alias stays an example of an
+    // unsupported base
+    const r = await runScript(`${MELT_HEAD}pair_style pace/extrapolation/kk\n`);
     expect(r.error).not.toBeNull();
-    expect(r.error!.message).toMatch(/pace/);
-    expect(r.error!.message).not.toMatch(/pace\/kk/);
+    expect(r.error!.message).toMatch(/pace\/extrapolation/);
+    expect(r.error!.message).not.toMatch(/pace\/extrapolation\/kk/);
   });
 });
 

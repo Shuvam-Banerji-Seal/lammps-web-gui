@@ -137,6 +137,9 @@ export class AngleSpica extends SimpleBonded {
       const w = [d[0] * d[0] * fpair, d[1] * d[1] * fpair, d[2] * d[2] * fpair, d[0] * d[1] * fpair, d[0] * d[2] * fpair, d[1] * d[2] * fpair];
       for (let q = 0; q < 6; q++) bc.virial[q] += w[q];
       if (bc.eatom) { bc.eatom[i] += 0.5 * eRep; bc.eatom[k] += 0.5 * eRep; }
+      // As native LAMMPS does (src/CG-SPICA/angle_spica.cpp ev_tally13 at b332f28): half of the 1-3 virial to each of
+      // atoms 1 and 3
+      if (bc.vatom) for (let q = 0; q < 6; q++) { bc.vatom[6 * i + q] += 0.5 * w[q]; bc.vatom[6 * k + q] += 0.5 * w[q]; }
       er += eRep;
     }
     bc.acc.eangle += er;

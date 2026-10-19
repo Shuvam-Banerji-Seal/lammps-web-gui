@@ -58,9 +58,22 @@ describe('pppm/disp/tip4p and lj/long/tip4p/long (GPL port)', () => {
       .toThrow('kspace_style pppm/disp/tip4p needs pair style lj/long/tip4p/long');
   });
 
-  it('refuses per-atom energy and virial by name', () => {
-    const k = new KSpacePPPMDispTIP4P();
-    expect(() => k.compute({ eatom: new Float64Array(3), vatom: null } as never))
-      .toThrow(/pe\/atom or stress\/atom with kspace_style pppm\/disp/);
+  it('splits the per-atom energy and virial of an O M site: 1 - alpha to O, alpha/2 to each H (parity in w271pd_tip4p_peratom)', () => {
+    const k = new KSpacePPPMDispTIP4P() as unknown as {
+      model: { otype: number; alpha: number }; types: Int32Array; h1: Int32Array; h2: Int32Array;
+      addCoulombPeratom(kc: { eatom: Float64Array; vatom: Float64Array }, i: number, o: Float64Array, q: number): void;
+    };
+    k.model = { otype: 1, alpha: 0.2 };
+    k.types = Int32Array.from([1, 2, 2, 3]);
+    k.h1 = Int32Array.from([1, 0, 0, 0]);
+    k.h2 = Int32Array.from([2, 0, 0, 0]);
+    const kc = { eatom: new Float64Array(4), vatom: new Float64Array(24) };
+    const o = Float64Array.from([10, 1, 2, 3, 4, 5, 6]);
+    k.addCoulombPeratom(kc, 0, o, 0.5);
+    k.addCoulombPeratom(kc, 3, o, 0.5);
+    expect(Array.from(kc.eatom)).toEqual([0.5 * 10 * 0.8, 0.5 * 10 * 0.1, 0.5 * 10 * 0.1, 5]);
+    expect(kc.vatom[0]).toBeCloseTo(1 * 0.8 * 0.5, 15);
+    expect(kc.vatom[6 + 5]).toBeCloseTo(6 * 0.1 * 0.5, 15);
+    expect(kc.vatom[18 + 2]).toBe(1.5);
   });
 });

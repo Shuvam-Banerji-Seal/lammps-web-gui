@@ -141,6 +141,28 @@ export const tallyAtomXyz = (
   }
 };
 
+/**
+ * Tallies one ordered pair of a full neighbor list whose force goes to the owned atom i only, as native LAMMPS does in
+ * Pair::ev_tally_full (src/pair.cpp at b332f28): half of the energies to the totals and to atom i, half of
+ * del (x) del fpair to the global virial and to atom i (the style then has no fdotr virial).
+ */
+export const evTallyFull = (
+  pc: PairCompute, i: number, evdwl: number, ecoul: number, fpair: number, dx: number, dy: number, dz: number,
+): void => {
+  const a = pc.acc;
+  a.evdwl += 0.5 * evdwl;
+  a.ecoul += 0.5 * ecoul;
+  if (pc.eatom) pc.eatom[i] += 0.5 * (evdwl + ecoul);
+  const h = 0.5 * fpair;
+  const v0 = dx * dx * h, v1 = dy * dy * h, v2 = dz * dz * h, v3 = dx * dy * h, v4 = dx * dz * h, v5 = dy * dz * h;
+  const v = a.virial;
+  v[0] += v0; v[1] += v1; v[2] += v2; v[3] += v3; v[4] += v4; v[5] += v5;
+  if (pc.vatom) {
+    const va = pc.vatom;
+    va[6 * i] += v0; va[6 * i + 1] += v1; va[6 * i + 2] += v2; va[6 * i + 3] += v3; va[6 * i + 4] += v4; va[6 * i + 5] += v5;
+  }
+};
+
 /** Parses a type argument: "n", "*", "*n", "n*", "m*n" (docs.lammps.org/pair_coeff.html). */
 export const typeBounds = (word: string, n: number): [number, number] => {
   const bad = () => new StyleError(`invalid type '${word}' (expected 1..${n}, or a wildcard *, *n, n*, m*n)`);

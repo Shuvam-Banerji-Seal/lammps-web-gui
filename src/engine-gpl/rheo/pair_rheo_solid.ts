@@ -125,7 +125,6 @@ export class PairRHEOSolid extends Pair {
       fpair -= this.gamma[q] * dot * smooth * rinv;
       fpair *= factor * rinv;
       const fx = dx * fpair, fy = dy * fpair, fz = dz * fpair;
-      { const g = ((globalThis as any).__prs ??= []); if (g.length < 40) g.push([i, j, owned ? 1 : 0, factor, r, fpair]); }
       f[3 * i] += fx;
       f[3 * i + 1] += fy;
       f[3 * i + 2] += fz;
@@ -142,6 +141,13 @@ export class PairRHEOSolid extends Pair {
       vir[3] += w * dx * fy;
       vir[4] += w * dx * fz;
       vir[5] += w * dy * fz;
+      // per-atom: half of the product to the owned i, and to j when it is owned (ev_tally, newton off)
+      const va = pc.vatom;
+      if (va) {
+        const p6 = [0.5 * dx * fx, 0.5 * dy * fy, 0.5 * dz * fz, 0.5 * dx * fy, 0.5 * dx * fz, 0.5 * dy * fz];
+        for (let c = 0; c < 6; c++) va[6 * i + c] += p6[c];
+        if (owned) for (let c = 0; c < 6; c++) va[6 * j + c] += p6[c];
+      }
     };
     for (let i = 0; i < nlocal; i++) {
       if (!(status[i] & STATUS_SOLID)) continue;

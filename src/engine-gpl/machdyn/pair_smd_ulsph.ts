@@ -355,6 +355,13 @@ export class PairSMDUlsph extends Pair {
       vir[3] += w * dx[0] * sum[1];
       vir[4] += w * dx[0] * sum[2];
       vir[5] += w * dx[1] * sum[2];
+      // per-atom: half of dx (x) sum to i, and to j when it is owned (ev_tally_xyz, newton off)
+      if (pc.vatom) {
+        const va = pc.vatom;
+        const w6 = [0.5 * dx[0] * sum[0], 0.5 * dx[1] * sum[1], 0.5 * dx[2] * sum[2], 0.5 * dx[0] * sum[1], 0.5 * dx[0] * sum[2], 0.5 * dx[1] * sum[2]];
+        for (let c = 0; c < 6; c++) va[6 * i + c] += w6[c];
+        if (j < nlocal) for (let c = 0; c < 6; c++) va[6 * j + c] += w6[c];
+      }
       if (j < nlocal) {
         for (let a = 0; a < 3; a++) f[3 * j + a] -= sum[a];
         desph[j] += deltaE;

@@ -1,0 +1,18 @@
+# oracle: the pressure of pair lj/cut/coul/cut/dielectric (w243de_efield_cutcoul with press and its components, then 10 nve steps): native sets no_virial_fdotr_compute, so the virial is the sum of the Pair::ev_tally_full tallies of the full list (the force on i only); x.f over those forces is not that sum when the dielectric constants of a pair differ
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.2e-14, atoms 2.4e-16. Before the fix the engine printed press -3287.4 at step 0 where native prints -177.4.
+# oracle-inputs: w226cs_diel.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      dielectric
+read_data       w226cs_diel.data
+pair_style      lj/cut/coul/cut/dielectric 0.2 8.0
+pair_coeff      * * 0.02 2.0
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+thermo_style    custom step pe ecoul evdwl press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+fix             1 all nve
+timestep        0.5
+thermo          2
+run             10

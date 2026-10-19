@@ -12,7 +12,7 @@
  * The field of the pair term carries no qqrd2e (native prefactorE = q_j / r), unlike coul/long/dielectric.
  */
 import { PairLJLongCoulLong, type DispTable } from '../../engine/force/pair/lj_long';
-import { evTally, StyleError, type PairCompute } from '../../engine/force/types';
+import { evTallyFull, StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { ErfcTableCache, erfcPoly, EWALD_F, type ErfcTable } from '../../engine/force/erfc';
 import { makeDispTable } from '../pair_disp/dispTable';
@@ -169,8 +169,8 @@ export class PairLJLongCoulLongDielectric extends PairLJLongCoulLong {
         P[i] += efieldI;
         efieldI *= ei * r2inv;
         E[3 * i] += dx * efieldI; E[3 * i + 1] += dy * efieldI; E[3 * i + 2] += dz * efieldI;
-        // ev_tally_full: each ordered pair carries half of the energies and of the virial
-        evTally(pc, i, j, 0.5 * evdwl, 0.5 * ecoul, 0.5 * fpairI, dx, dy, dz);
+        // Pair::ev_tally_full: half of the energies and of the virial of each ordered pair, to atom i
+        evTallyFull(pc, i, evdwl, ecoul, fpairI, dx, dy, dz);
       }
     }
   }

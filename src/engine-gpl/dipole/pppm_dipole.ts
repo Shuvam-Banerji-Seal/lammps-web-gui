@@ -590,7 +590,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
     if (key !== this.greenKey) this.buildGreen(lx, ly, lz);
   }
 
-  /** Whether this style's per-atom energy and virial are ported (pppm/dipole/spin: not yet). */
+  /** Whether this style's per-atom energy and virial are ported (every subclass now; kept for a future variant). */
   protected peratomPorted(): boolean { return true; }
 
   compute(kc: KSpaceCompute): void {

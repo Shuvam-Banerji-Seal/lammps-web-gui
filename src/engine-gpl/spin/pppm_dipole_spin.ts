@@ -10,7 +10,12 @@
  * carry mub2mu0 = mub^2 mu_0 / (4 pi). The precession field of atom i, fm_long_i = (mub2mu0/hbar) |sp_i| E_i (native
  * fieldforce_ik_spin), is stored per atom id (fmLongOf) for fix nve/spin, not as a torque.
  *
- * Not ported (refused by name): per-atom energy and virial, the slab correction, kspace_modify diff ad, triclinic boxes.
+ * Per-atom energy (fieldforce_peratom_spin and the end of compute): the PPPMDipole per-atom path with these moments
+ * and prefactor, spx u_x + spy u_y + spz u_z, halved, less the self term of |sp_i sp3_i|^2, times mub2mu0. As native
+ * LAMMPS does (compute), the per-atom virial is refused: "Cannot (yet) compute per-atom virial with kspace style
+ * pppm/dipole/spin".
+ *
+ * Not ported (refused by name): the slab correction, kspace_modify diff ad, triclinic boxes.
  */
 import { StyleError, type KSpaceCompute } from '../../engine/force/types';
 import type { SimState } from '../../engine/types';
@@ -19,8 +24,6 @@ import { fmLongOf } from './dipole_long_field';
 import { MUB2MU0, MUB2MU0HBINV } from './pair_spin_dipole_cut';
 
 export class KSpacePPPMDipoleSpin extends KSpacePPPMDipole {
-  /** compute pe/atom and stress/atom: the spin per-atom energy and virial (pppm_dipole_spin.cpp) are not ported. */
-  protected override peratomPorted(): boolean { return false; }
   /** The precession buffer of this compute (fm_long per atom id), reset at the start of each pass. */
   private fmLong: Float64Array = new Float64Array(0);
 
@@ -54,6 +57,11 @@ export class KSpacePPPMDipoleSpin extends KSpacePPPMDipole {
 
   protected noMomentError(): string {
     return 'Using kspace solver PPPMDipoleSpin on system with no spins';
+  }
+
+  override compute(kc: KSpaceCompute): void {
+    if (kc.vatom) throw new StyleError('Cannot (yet) compute per-atom virial with kspace style pppm/dipole/spin');
+    super.compute(kc);
   }
 
   protected beginField(kc: KSpaceCompute): void {

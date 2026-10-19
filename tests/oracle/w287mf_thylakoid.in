@@ -1,0 +1,27 @@
+# oracle: fix nve/manifold/rattle on the thylakoid manifold (two grana stacks joined by a bridge; wB LB lB = 5 10 3 as equal-style variables substituted with ${}), examples/PACKAGES/manifold/thylakoid (4001 particles, a sphere of type 2, 20% deleted with delete_atoms random fraction (porosity has been removed from LAMMPS)), 100 steps
+# Native reference: LAMMPS b332f28 built with PKG_MANIFOLD (/store/shuvam/software/lammps-build-manifold/lmp; the installed binary has no MANIFOLD)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.1e-15, atoms 2.1e-16.
+# oracle-examples: PACKAGES/manifold/thylakoid/thylakoid.data
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       3
+boundary        f f p
+pair_style      lj/cut 1.1225
+read_data       thylakoid.data
+pair_coeff      * * 1.0 1.0
+pair_modify     shift yes
+region          make_two sphere -29 0 0 6.25
+region          everywhere block -25 25 -25 25 -25 25
+group           two region make_two
+set             group two type 2
+group           one type 1
+set             group one type 1
+delete_atoms    random fraction 0.2 no all everywhere 123
+variable        wB equal 5.0
+variable        LB equal 10.0
+variable        lB equal 3.0
+fix             step all nve/manifold/rattle 1e-4 10 thylakoid ${wB} ${LB} ${lB}
+thermo_style    custom step atoms pe ke etotal temp
+thermo_modify   format float %.15g
+thermo          20
+run             100

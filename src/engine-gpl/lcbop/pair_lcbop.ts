@@ -1,7 +1,8 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
  * Source: src/MANYBODY/pair_lcbop.cpp and src/MANYBODY/pair_lcbop.h at commit b332f28 (PairLCBOP:
- * settings, coeff, init_style, init_one, compute, SR_neigh, FSR, FLR, FNij, FMij, bondorder, b).
+ * settings, coeff, init_style, init_one, compute, SR_neigh, FSR, FLR, FNij, FMij, bondorder, b); the per-atom virial
+ * through the Pair::v_tally2 / v_tally3 ports of ../airebo/tally.ts.
  * Neighbor lists: built here from the owned and ghost positions with a binned search (the SR list of
  * every owned and ghost atom, and the full list of owned atoms within r_2_LR), in place of the LAMMPS
  * neighbor request.
@@ -21,6 +22,7 @@ import { readLcbopFile, splineInit, type LcbopParams, type LcbopTables } from '.
 import { cmax, cmin, f_c, f_c_LR, F_conj, gSpline, hSpline, type FConjD, type Ref } from './funcs';
 import { exp } from '../libm/exp';
 import { pow } from '../libm/pow';
+import { vTally2, vTally3 } from '../airebo/tally';
 
 /** TOL in pair_lcbop.cpp */
 const TOL = 1.0e-9;
@@ -45,6 +47,8 @@ export class PairLCBOP extends Pair {
   protected x: Float64Array = new Float64Array(0);
   protected f: Float64Array = new Float64Array(0);
   protected N: Float64Array = new Float64Array(0);
+  /** Per-atom virial of the current compute (6 per owned and ghost atom), or null when not requested. */
+  protected vatom: Float64Array | null = null;
   protected M: Float64Array = new Float64Array(0);
   /** SR neighbors of every owned and ghost atom: row a is srList[srStart[a] .. srStart[a+1]) */
   protected srStart: Int32Array = new Int32Array(1);
@@ -98,10 +102,10 @@ export class PairLCBOP extends Pair {
 
   override compute(pc: PairCompute): void {
     if (!this.p || !this.T) throw new StyleError('pair_style lcbop has no potential file');
-    if (pc.vatom) throw new StyleError('compute stress/atom is not supported by pair style lcbop');
     const nall = pc.nall, nlocal = pc.nlocal;
     this.x = pc.x;
     this.f = pc.f;
+    this.vatom = pc.vatom;
     const x = pc.x;
     // every atom is a carbon atom of the element map (NULL types are not mapped to another element)
     const mt = new Int32Array(nall);
@@ -211,6 +215,7 @@ export class PairLCBOP extends Pair {
         f[3 * j + 2] -= delz * fpair;
         const evdwl = VR - Bij * VA;
         this.tally(acc, eatom, i, j, evdwl);
+        if (this.vatom) vTally2(this.vatom, i, j, fpair, delx, dely, delz);
       }
     }
   }
@@ -272,6 +277,7 @@ export class PairLCBOP extends Pair {
         f[3 * j + 1] -= dely * fpair;
         f[3 * j + 2] -= delz * fpair;
         this.tally(acc, eatom, i, j, V);
+        if (this.vatom) vTally2(this.vatom, i, j, fpair, delx, dely, delz);
       }
     }
   }
@@ -300,6 +306,7 @@ export class PairLCBOP extends Pair {
           f[3 * atomk] -= rik0 * fpair;
           f[3 * atomk + 1] -= rik1 * fpair;
           f[3 * atomk + 2] -= rik2 * fpair;
+          if (this.vatom) vTally2(this.vatom, atomi, atomk, fpair, rik0, rik1, rik2);
         }
       }
     }
@@ -334,6 +341,7 @@ export class PairLCBOP extends Pair {
           f[3 * atomk] -= rik0 * fpair;
           f[3 * atomk + 1] -= rik1 * fpair;
           f[3 * atomk + 2] -= rik2 * fpair;
+          if (this.vatom) vTally2(this.vatom, atomi, atomk, fpair, rik0, rik1, rik2);
         }
         if (dF.v > TOL) {
           const factor2 = factor * f_c_ik * dF.v;
@@ -517,6 +525,10 @@ export class PairLCBOP extends Pair {
         f[3 * atomi] += fi0; f[3 * atomi + 1] += fi1; f[3 * atomi + 2] += fi2;
         f[3 * atomj] += fj0; f[3 * atomj + 1] += fj1; f[3 * atomj + 2] += fj2;
         f[3 * atomk] += fk0; f[3 * atomk + 1] += fk1; f[3 * atomk + 2] += fk2;
+        if (this.vatom) {
+          vTally3(this.vatom, atomi, atomj, atomk, [fj0, fj1, fj2], [fk0, fk1, fk2], [-rij[0], -rij[1], -rij[2]],
+            [-rik0, -rik1, -rik2]);
+        }
       }
     }
     return bij;

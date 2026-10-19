@@ -22,6 +22,8 @@ import { PairLJLongTIP4PLong, checkTip4pHydrogens } from './pair_lj_long_tip4p_l
 
 export class KSpacePPPMDispTIP4P extends KSpacePPPMDisp {
   override readonly name: string = 'pppm/disp/tip4p';
+  /** compute pe/atom and stress/atom: the M-site per-atom energy and virial (pppm_disp_tip4p.cpp fieldforce_c_peratom) are not ported. */
+  protected override peratomPorted(): boolean { return false; }
   private tip4p: PairLJLongTIP4PLong | null = null;
   /** The M-site model and the owned H indices of the current compute (set by coulombPositions). */
   private model: Tip4pModel | null = null;

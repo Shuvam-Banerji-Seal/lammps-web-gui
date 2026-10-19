@@ -13,7 +13,10 @@
  * Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0). This file is GPL-2.0 too.
  *
  * Scope of this port (everything else is refused by name, as StyleError):
- *  - orthogonal, fully periodic boxes; no slab correction; no per-atom energy or virial; kspace_modify diff ik only;
+ *  - orthogonal, fully periodic boxes; no slab correction; kspace_modify diff ik only;
+ *  - per-atom energy and virial (compute pe/atom, stress/atom): poisson_ik's per-atom part, poisson_peratom,
+ *    poisson_2s_ik's per-atom part, poisson_2s_peratom, fieldforce_c_peratom, fieldforce_g_peratom,
+ *    fieldforce_a_peratom and the per-atom self terms of compute() (not for pppm/disp/tip4p or pppm/disp/dielectric);
  *  - dispersion with geometric mixing (one grid: B_i = sqrt(|4 eps_ii sigma_ii^6|)) and with arithmetic mixing
  *    (seven grids, B_ik = sqrt(eps_i) sigma_i^k sqrt(C(6,k)) / 4, the pair energies of the pairs (k, 6-k)); the
  *    arithmetic path needs at least two distinct eigen-directions of the C6 matrix (nsplit > 1), else geometric as in
@@ -43,7 +46,7 @@ import { hasChargeStyle } from '../../engine/atoms';
 import { fft3d } from '../../engine/force/fft';
 import {
   OFFSET, MAXORDER, SMALL, LARGE, factorable, makeStencil, rho1d, meshGeom, greenCoulomb, greenDispersion,
-  virialCoulomb, virialDispersion, ljRspaceError, qoptDispersionIk, qoptCoulombIk, symEigenvalues, type MeshGeom,
+  virialCoulomb, virialDispersion, virialCross, ljRspaceError, qoptDispersionIk, qoptCoulombIk, symEigenvalues, type MeshGeom,
   type Stencil,
 } from './grid';
 import { pow as libmPow } from '../libm/pow';
@@ -182,6 +185,126 @@ const fieldsIk = (F: Float64Array, mg: MeshGeom, G: Float64Array): [Float64Array
   return [vx, vy, vz];
 };
 
+/** The per-atom bricks of one density: the potential u (per-atom energy) and the six virial bricks, or null when not asked. */
+interface PaBricks {
+  u: Float64Array | null;
+  v: Float64Array[] | null;
+}
+
+/** IFFT of one packed complex mesh: real part to `re`, minus the imaginary part to `im` (the brick pairs of the C++). */
+const ifftPair = (w: Float64Array, mg: MeshGeom, re: Float64Array, im: Float64Array): void => {
+  fft3d(w, mg.N[0], mg.N[1], mg.N[2], 1);
+  for (let idx = 0; idx < re.length; idx++) {
+    re[idx] = w[2 * idx];
+    im[idx] = -w[2 * idx + 1];
+  }
+};
+
+/**
+ * poisson_ik's per-atom part (orthogonal branch, eflag_atom) and poisson_peratom for one density F (the unscaled
+ * forward transform): W = F G / N; u = IFFT(W); the virial bricks v0..v5 from three packed transforms,
+ * W (vg0 - i vg1), W (vg2 - i vg2_xy) and W (vg2_xz - i vg2_yz), as the C++ packs them.
+ */
+const peratomBricks = (F: Float64Array, mg: MeshGeom, G: Float64Array, vg: Float64Array, vg2: Float64Array,
+  wantE: boolean, wantV: boolean): PaBricks => {
+  const ng = mg.N[0] * mg.N[1] * mg.N[2];
+  const scaleinv = 1.0 / ng;
+  const W = new Float64Array(2 * ng);
+  for (let i = 0; i < ng; i++) {
+    const f = scaleinv * G[i];
+    W[2 * i] = F[2 * i] * f;
+    W[2 * i + 1] = F[2 * i + 1] * f;
+  }
+  const out: PaBricks = { u: null, v: null };
+  const w2 = new Float64Array(2 * ng);
+  if (wantE) {
+    w2.set(W);
+    fft3d(w2, mg.N[0], mg.N[1], mg.N[2], 1);
+    out.u = new Float64Array(ng);
+    for (let idx = 0; idx < ng; idx++) out.u[idx] = w2[2 * idx];
+  }
+  if (wantV) {
+    const v = [0, 1, 2, 3, 4, 5].map(() => new Float64Array(ng));
+    // the (a, b) coefficient pairs of the three transforms: (vg0, vg1), (vg2, vg2[0]), (vg2[1], vg2[2])
+    const coef = (n: number, pass: number): [number, number] =>
+      pass === 0 ? [vg[6 * n], vg[6 * n + 1]] : pass === 1 ? [vg[6 * n + 2], vg2[3 * n]] : [vg2[3 * n + 1], vg2[3 * n + 2]];
+    for (let pass = 0; pass < 3; pass++) {
+      for (let n = 0; n < ng; n++) {
+        const [a, b] = coef(n, pass);
+        w2[2 * n] = W[2 * n] * a + W[2 * n + 1] * b;
+        w2[2 * n + 1] = W[2 * n + 1] * a - W[2 * n] * b;
+      }
+      ifftPair(w2, mg, v[2 * pass], v[2 * pass + 1]);
+    }
+    out.v = v;
+  }
+  return out;
+};
+
+/**
+ * poisson_2s_ik's per-atom part and poisson_2s_peratom (orthogonal) for two densities F1 and F2: the packed
+ * W = (F1 - i F2) G / N; u1, u2 from IFFT(W) and v_c1, v_c2 from IFFT(W vg_c), the real part to the first density
+ * and minus the imaginary part to the second, as the C++ packs them.
+ */
+const peratomBricks2s = (F1: Float64Array, F2: Float64Array, mg: MeshGeom, G: Float64Array, vg: Float64Array,
+  wantE: boolean, wantV: boolean): [PaBricks, PaBricks] => {
+  const ng = mg.N[0] * mg.N[1] * mg.N[2];
+  const scaleinv = 1.0 / ng;
+  const W = new Float64Array(2 * ng);
+  for (let i = 0; i < ng; i++) {
+    const f = scaleinv * G[i];
+    // F1 + (-i F2), the sum of the two forward transforms of the C++ (work1_6 += work2_6), then times G / N
+    W[2 * i] = (F1[2 * i] + F2[2 * i + 1]) * f;
+    W[2 * i + 1] = (F1[2 * i + 1] - F2[2 * i]) * f;
+  }
+  const b1: PaBricks = { u: null, v: null }, b2: PaBricks = { u: null, v: null };
+  const w2 = new Float64Array(2 * ng);
+  if (wantE) {
+    w2.set(W);
+    b1.u = new Float64Array(ng);
+    b2.u = new Float64Array(ng);
+    ifftPair(w2, mg, b1.u, b2.u);
+  }
+  if (wantV) {
+    b1.v = [0, 1, 2, 3, 4, 5].map(() => new Float64Array(ng));
+    b2.v = [0, 1, 2, 3, 4, 5].map(() => new Float64Array(ng));
+    for (let c = 0; c < 6; c++) {
+      for (let n = 0; n < ng; n++) {
+        w2[2 * n] = W[2 * n] * vg[6 * n + c];
+        w2[2 * n + 1] = W[2 * n + 1] * vg[6 * n + c];
+      }
+      ifftPair(w2, mg, b1.v[c], b2.v[c]);
+    }
+  }
+  return [b1, b2];
+};
+
+/** fieldforce_*_peratom: the stencil sums of u and of the six virial bricks at atom i, into out[0] and out[1..6]. */
+const interpPeratom = (x: Float64Array, i: number, lo: [number, number, number], mg: MeshGeom, st: Stencil,
+  base: Int32Array, b: PaBricks, out: Float64Array): void => {
+  const [nx, ny, nz] = mg.N;
+  const P = st.order;
+  const r0 = new Float64Array(P), r1 = new Float64Array(P), r2 = new Float64Array(P);
+  atomWeights(x, i, lo, mg, st, base, r0, r1, r2);
+  const bx = base[3 * i], by = base[3 * i + 1], bz = base[3 * i + 2];
+  out.fill(0);
+  for (let nn = 0; nn < P; nn++) {
+    const mz = wrap(bz + st.nlower + nn, nz);
+    const z0 = r2[nn];
+    for (let mm = 0; mm < P; mm++) {
+      const my = wrap(by + st.nlower + mm, ny);
+      const y0 = z0 * r1[mm];
+      for (let ll = 0; ll < P; ll++) {
+        const mx = wrap(bx + st.nlower + ll, nx);
+        const x0 = y0 * r0[ll];
+        const idx = (mz * ny + my) * nx + mx;
+        if (b.u) out[0] += x0 * b.u[idx];
+        if (b.v) for (let c = 0; c < 6; c++) out[1 + c] += x0 * b.v[c][idx];
+      }
+    }
+  }
+};
+
 /** kspace_style pppm/disp — see the header of this file for the ported scope. */
 export class KSpacePPPMDisp extends KSpaceBase {
   readonly name: string = 'pppm/disp';
@@ -210,6 +333,9 @@ export class KSpacePPPMDisp extends KSpaceBase {
   private B7 = new Float64Array(0);
   private csum = 0;
   private csumij = 0;
+  /** calc_csum per type: csumi[t] = sum_j N_j B_t B_j (arithmetic: over the seven terms) and cii[t] the self coefficient. */
+  private csumi = new Float64Array(0);
+  private cii = new Float64Array(0);
   /** Box lengths the influence functions are built for (set at init, rebuilt when the box changes: native setup()). */
   private prdCur: [number, number, number] = [0, 0, 0];
   /** The Coulomb accuracy estimate of final_accuracy (for the log). */
@@ -393,11 +519,23 @@ export class KSpacePPPMDisp extends KSpaceBase {
           cij += cnt[i] * this.B7[7 * i + k] * cnt[j] * this.B7[7 * j + 6 - k];
         }
         this.csumij = cij;
+        this.cii = new Float64Array(nt);
+        this.csumi = new Float64Array(nt);
+        for (let i = 1; i <= pair.ntypes; i++) {
+          this.cii[i] = (64.0 / 20.0) * this.B7[7 * i + 3] * this.B7[7 * i + 3];
+          for (let j = 1; j <= pair.ntypes; j++) for (let k = 0; k <= 6; k++) this.csumi[i] += cnt[j] * this.B7[7 * i + k] * this.B7[7 * (j + 1) - k - 1];
+        }
       } else {
         for (let i = 0; i < s.n; i++) csum += this.B[s.type[i]] * this.B[s.type[i]];
         let sb = 0;
         for (let t = 1; t < nt; t++) sb += cnt[t] * this.B[t];
         this.csumij = sb * sb;
+        this.cii = new Float64Array(nt);
+        this.csumi = new Float64Array(nt);
+        for (let i = 1; i < nt; i++) {
+          this.cii[i] = this.B[i] * this.B[i];
+          for (let j = 1; j < nt; j++) this.csumi[i] += cnt[j] * this.B[i] * this.B[j];
+        }
       }
       this.csum = csum;
       const prd = prdOf(geom);
@@ -502,6 +640,7 @@ export class KSpacePPPMDisp extends KSpaceBase {
       mg,
       G: kind === 'coul' ? greenCoulomb(mg, g, P) : greenDispersion(mg, g, P),
       vg: kind === 'coul' ? virialCoulomb(mg, g) : virialDispersion(mg, g),
+      vg2: virialCross(mg, g, kind),
     };
   }
 
@@ -624,8 +763,12 @@ export class KSpacePPPMDisp extends KSpaceBase {
     kc.f[3 * i + 2] += fz;
   }
 
+  /** Whether this style's per-atom energy and virial are ported (the TIP4P and dielectric variants: not yet). */
+  protected peratomPorted(): boolean { return true; }
+
   compute(kc: KSpaceCompute): void {
-    if (kc.eatom || kc.vatom) throw new StyleError('compute pe/atom or stress/atom with kspace_style pppm/disp is not ported (per-atom energies and virials)');
+    const pa = kc.eatom !== null || kc.vatom !== null;
+    if (pa && !this.peratomPorted()) throw new StyleError(`compute pe/atom or stress/atom with kspace_style ${this.name} is not ported (per-atom energies and virials)`);
     const s = kc.s;
     const n = s.n;
     const qqrd2e = kc.qqrd2e;
@@ -641,6 +784,9 @@ export class KSpacePPPMDisp extends KSpaceBase {
     }
     const V = prdNow[0] * prdNow[1] * prdNow[2];
     const virial = new Float64Array(6);
+    // the per-atom self terms are applied after every mesh term (the end of compute() of the C++)
+    let coulSelf: { qsum: number; qqrd2e: number } | null = null;
+    let dispSelf: { V: number; g: number } | null = null;
 
     if (this.coulOn && this.infoC) {
       const info = this.infoC;
@@ -684,6 +830,18 @@ export class KSpacePPPMDisp extends KSpaceBase {
       }
       for (let c = 0; c < 6; c++) virial[c] += 0.5 * qqrd2e * V * vir[c];
       kc.acc.elong += e1;
+      if (pa) {
+        // fieldforce_c_peratom: qfactor = 0.5 qqrd2e scale q_i times the interpolated potential and virial bricks
+        const b = peratomBricks(F, mg, info.G, info.vg, info.vg2, kc.eatom !== null, kc.vatom !== null);
+        const o = new Float64Array(7);
+        for (let i = 0; i < n; i++) {
+          interpPeratom(xc, i, lo, mg, st, base, b, o);
+          const qf = 0.5 * qqrd2e * q[i];
+          if (kc.eatom) kc.eatom[i] += o[0] * qf;
+          if (kc.vatom) for (let c = 0; c < 6; c++) kc.vatom[6 * i + c] += o[1 + c] * qf;
+        }
+        coulSelf = { qsum, qqrd2e };
+      }
     }
 
     if (this.dispOn && this.info6) {
@@ -737,6 +895,31 @@ export class KSpacePPPMDisp extends KSpaceBase {
         kc.f[3 * i + 2] += fz;
       }
       for (let c = 0; c < 6; c++) virial[c] += 0.5 * V * vir[c];
+      if (pa) {
+        // fieldforce_g_peratom (lj = B_t / 2) or fieldforce_a_peratom (grid k with lj = B_t[6 - k] / 2; the pairs
+        // (0, 6), (1, 5), (2, 4) from poisson_2s_ik and grid 3 from poisson_ik)
+        const wantE = kc.eatom !== null, wantV = kc.vatom !== null;
+        const bricks: PaBricks[] = new Array(kinds.length);
+        if (!this.dispArith) bricks[0] = peratomBricks(Fs[0], mg, info.G, info.vg, info.vg2, wantE, wantV);
+        else {
+          bricks[3] = peratomBricks(Fs[3], mg, info.G, info.vg, info.vg2, wantE, wantV);
+          for (let m = 0; m < 3; m++) [bricks[m], bricks[6 - m]] = peratomBricks2s(Fs[m], Fs[6 - m], mg, info.G, info.vg, wantE, wantV);
+        }
+        const o = new Float64Array(7);
+        const sum = new Float64Array(7);
+        for (let i = 0; i < n; i++) {
+          const t = s.type[i];
+          sum.fill(0);
+          for (let idx = 0; idx < kinds.length; idx++) {
+            interpPeratom(x, i, lo, mg, st, base, bricks[idx], o);
+            const lj = (this.dispArith ? this.B7[7 * t + 6 - kinds[idx]] : this.B[t]) * 0.5;
+            for (let c = 0; c < 7; c++) sum[c] += o[c] * lj;
+          }
+          if (kc.eatom) kc.eatom[i] += sum[0];
+          if (kc.vatom) for (let c = 0; c < 6; c++) kc.vatom[6 * i + c] += sum[1 + c];
+        }
+        dispSelf = { V, g };
+      }
       const a = piSqrt / (6 * V) * libmPow(g, 3) * this.csumij;
       virial[0] -= a;
       virial[1] -= a;
@@ -744,6 +927,23 @@ export class KSpacePPPMDisp extends KSpaceBase {
       kc.acc.elong += e6;
     }
     for (let c = 0; c < 6; c++) kc.acc.vlong[c] += virial[c];
+    // the per-atom self terms (the end of PPPMDisp::compute): the Coulomb self energy, then the dispersion self energy
+    // and its virial on the diagonal
+    if (kc.eatom && coulSelf) {
+      const q = s.q, qscale = coulSelf.qqrd2e, gE = this.gEwald;
+      for (let i = 0; i < n; i++) {
+        kc.eatom[i] -= qscale * gE * q[i] * q[i] / MY_PIS + qscale * (Math.PI / 2) * q[i] * coulSelf.qsum / (gE * gE * V);
+      }
+    }
+    if (dispSelf) {
+      const piSqrt = Math.PI * MY_PIS;
+      const g3 = libmPow(dispSelf.g, 3), g6 = libmPow(dispSelf.g, 6);
+      for (let i = 0; i < n; i++) {
+        const t = s.type[i];
+        if (kc.eatom) kc.eatom[i] += -piSqrt / (6 * V) * g3 * this.csumi[t] + (1.0 / 12.0) * g6 * this.cii[t];
+        if (kc.vatom) for (let c = 0; c < 3; c++) kc.vatom[6 * i + c] -= piSqrt / (6 * V) * g3 * this.csumi[t];
+      }
+    }
   }
 }
 
@@ -752,4 +952,6 @@ interface Influence {
   mg: MeshGeom;
   G: Float64Array;
   vg: Float64Array;
+  /** The cross-term virial coefficients of the per-atom pass (setup() vg2). */
+  vg2: Float64Array;
 }

@@ -33,6 +33,8 @@ import { dielArrays } from './common';
 
 export class KSpacePPPMDispDielectric extends KSpacePPPMDisp {
   override readonly name: string = 'pppm/disp/dielectric';
+  /** compute pe/atom and stress/atom: the per-atom energy and virial of the dielectric Coulomb mesh are not ported. */
+  protected override peratomPorted(): boolean { return false; }
   /** Electric field of the Coulomb mesh at each owned atom, native efield: scale * epsilon_i * E (3 per atom). */
   efield = new Float64Array(0);
   private pairLinked: Pair | null = null;

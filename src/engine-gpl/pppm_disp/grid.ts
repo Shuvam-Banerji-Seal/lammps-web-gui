@@ -305,6 +305,44 @@ export const virialDispersion = (mg: MeshGeom, g: number): Float64Array => {
   return vg;
 };
 
+/**
+ * The cross-term virial coefficients of the per-atom pass, setup() of pppm_disp.cpp: vg2[n][0..2] = vterm (k_a k_b +
+ * k2_a k2_b) / 2 for xy, xz and yz (k2 the mirrored wave vector), so that the packed inverse transforms of
+ * poisson_peratom stay Hermitian. vterm is that of virialCoulomb (kind 'coul') or virialDispersion (kind 'disp').
+ */
+export const virialCross = (mg: MeshGeom, g: number, kind: 'coul' | 'disp'): Float64Array => {
+  const [nx, ny, nz] = mg.N;
+  const vg2 = new Float64Array(3 * nx * ny * nz);
+  const gew2inv = 1 / (g * g);
+  const gewinv = 1 / g;
+  const rtpi = Math.sqrt(Math.PI);
+  let n = 0;
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const kx = mg.fk[0][i], ky = mg.fk[1][j], kz = mg.fk[2][k];
+    const kx2 = mg.fk2[0][i], ky2 = mg.fk2[1][j], kz2 = mg.fk2[2][k];
+    const sqk = kx * kx + ky * ky + kz * kz;
+    if (sqk !== 0.0) {
+      let vterm: number;
+      if (kind === 'coul') vterm = -2.0 * (1.0 / sqk + 0.25 * gew2inv);
+      else {
+        const b = 0.5 * Math.sqrt(sqk) * gewinv;
+        const bs = b * b;
+        const bt = bs * b;
+        const erft = 2 * bt * rtpi * libmErfc(b);
+        const expt = libmExp(-bs);
+        const nom = erft - 2 * bs * expt;
+        const denom = nom + expt;
+        vterm = denom === 0 ? 3.0 / sqk : 3.0 * nom / (sqk * denom);
+      }
+      vg2[3 * n] = vterm * 0.5 * (kx * ky + kx2 * ky2);
+      vg2[3 * n + 1] = vterm * 0.5 * (kx * kz + kx2 * kz2);
+      vg2[3 * n + 2] = vterm * 0.5 * (ky * kz + ky2 * kz2);
+    }
+    n++;
+  }
+  return vg2;
+};
+
 /** The lj_rspace_error of pppm_disp.cpp: the real-space force error of the dispersion term. */
 export const ljRspaceError = (
   cutoffLj: number, g: number, csum: number, natoms: number, xprd: number, yprd: number, zprd: number,

@@ -1,0 +1,22 @@
+# oracle: pair_style mliap model linear with descriptor ace on three elements: the H_N_O_ccs.yace descriptors of the LAMMPS example examples/mliap (91 per element) with constructed linear coefficients, on that example's 161-atom H/N/O cell (ace_compute_struct.data), run 0 then 4 NVE steps
+# Native reference: LAMMPS b332f28 built with PKG_ML-IAP, PKG_ML-SNAP and PKG_ML-PACE (the installed binary has no ML-PACE)
+# Measured max relative error, engine vs native: thermo 1.4e-13, atoms 3.9e-15.
+# oracle-inputs: w277ma_HNO_linear.mliap.model
+# oracle-examples: mliap/H_N_O_ccs.yace mliap/ace_compute_struct.data
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      atomic
+boundary        p p p
+atom_modify     map hash
+read_data       ace_compute_struct.data
+mass            1 1.00
+mass            2 14.00
+mass            3 15.999
+pair_style      mliap model linear w277ma_HNO_linear.mliap.model descriptor ace H_N_O_ccs.yace
+pair_coeff      * * H N O
+thermo_style    custom step pe press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+fix             1 all nve
+timestep        0.0001
+thermo          2
+run             4

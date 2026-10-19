@@ -10,7 +10,8 @@ import { parseMliapSnaDescriptor, type MliapSnaDescriptor } from '../mliap/descr
  * Syntax (verbatim): "compute ID group-ID mliap ... keyword values ..."; "two or more keyword/value
  * pairs must be appended"; keyword = model, descriptor or gradgradflag. Implemented: "model linear"
  * and "model quadratic" (the doc lists linear, quadratic and mliappy; mliappy needs Python and is a
- * StyleError), "descriptor sna <file>" (the doc lists sna, ace; ace is a StyleError), and
+ * StyleError), "descriptor sna <file>" (the doc lists sna, ace; ace is the lazily loaded port of
+ * src/engine/mliap/ace.ts, chosen by the registry in src/engine/registry/mliap.ts), and
  * "gradgradflag 0/1" (see the note below).
  *
  * Doc, Output info (paraphrase): the array has nelems blocks of nparams columns, in element order, and a

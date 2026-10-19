@@ -6,16 +6,26 @@ import { parseMliapModel, type MliapModel, type ModelKind } from '../../mliap/mo
 import { parseMliapSo3Descriptor, So3Engine, type So3Descriptor } from '../../mliap/so3';
 import { ChemSna } from '../../compute/snapChem';
 import { libm } from '../../libm';
+import { gplHook } from '../../gplHooks';
+import type { MliapAceDescriptor, MliapAceHook } from '../../mliap/ace';
 
 /*
  * pair_style mliap (wave 16) — docs.lammps.org/pair_mliap.html (plans/lammps-docs/pair_mliap.rst).
  *
  * Syntax (verbatim): "pair_style mliap ... keyword values ..."; "one or two keyword/value pairs must
  * be appended"; "keyword = model or descriptor or unified". This engine implements the pair
- * model plus descriptor combinations: model linear, quadratic or nn with descriptor sna, and model
- * linear or nn with descriptor so3 (src/engine/mliap/so3.ts). The other styles are reported as
- * StyleError: model mliappy, descriptor ace, and the unified keyword (they need the Python or ML-PACE
- * packages or a serialized Python object).
+ * model plus descriptor combinations: model linear, quadratic or nn with descriptor sna, model
+ * linear or nn with descriptor so3 (src/engine/mliap/so3.ts), and model linear, quadratic or nn with descriptor
+ * ace (the ACE projections of a .ace or .yace file, src/engine/mliap/ace.ts). The other styles are reported as
+ * StyleError: model mliappy and the unified keyword (they need the Python package or a serialized Python object).
+ *
+ * descriptor ace: as native LAMMPS does (src/ML-IAP/mliap_descriptor_ace.cpp and mliap_data.cpp at b332f28): the
+ * neighbours of atom i are those of the full list with r^2 < cutsq of the two elements (computed in single
+ * precision), and the descriptors are the projections of atom type t as ACE species t - 1 (the pair_coeff names map
+ * the types to the model's element blocks and the cutoffs). The force on atom i is the sum over neighbours j and
+ * descriptors k of beta_k dB_k/dr_j, with the opposite force on j; the per-atom virial tallies -r_ij (x) f_ij, half to
+ * each atom (PairMLIAP::v_tally), and the global virial is the f.r sum. The doc lists linear and mliappy as the
+ * models with ace; quadratic and nn use the same descriptor gradients through dE/dB, as natively.
  *
  * pair_coeff: the first 2 arguments must be * *, followed by N element names mapping the MLIAP elements
  * to the N LAMMPS atom types (paraphrase of the doc). NULL mapping is refused by the native reader in
@@ -55,7 +65,7 @@ import { libm } from '../../libm';
  * Doc (docs.lammps.org/compute_mliap.html, plans/lammps-docs-live/compute_mliap.rst), the sna descriptor of
  * compute mliap: "The SNAP descriptor style *sna* is the same as that used by :doc:`pair_style snap <pair_snap>`, including the linear, quadratic, and chem variants."
  */
-const DESCRIPTOR_STYLES = ['sna', 'so3'];
+const DESCRIPTOR_STYLES = ['sna', 'so3', 'ace'];
 
 export class PairMliap extends Pair {
   readonly name = 'mliap';
@@ -72,6 +82,7 @@ export class PairMliap extends Pair {
   /** Descriptor so3 (wave 37, src/engine/mliap/so3.ts); null for sna. */
   private so3: So3Descriptor | null = null;
   private so3Engine: So3Engine | null = null;
+  private ace: MliapAceDescriptor | null = null;
   private model: MliapModel | null = null;
   /** Per atom type: element index in the descriptor, or -1 for NULL. */
   private elemOf = new Int32Array(0);
@@ -118,7 +129,13 @@ export class PairMliap extends Pair {
     }
     this.modelKind = kind as ModelKind;
     this.modelFile = mfile;
-    if (dstyle === 'so3') {
+    this.ace = null;
+    if (dstyle === 'ace') {
+      this.ace = gplHook<MliapAceHook>('ace').load(ctx.readFile(dfile), dfile);
+      this.desc = null;
+      this.so3 = null;
+      this.so3Engine = null;
+    } else if (dstyle === 'so3') {
       this.so3 = parseMliapSo3Descriptor(ctx.readFile(dfile), dfile);
       this.so3Engine = new So3Engine(this.so3);
       this.desc = null;
@@ -135,33 +152,33 @@ export class PairMliap extends Pair {
   coeff(args: string[]): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
     const base = this.desc ?? this.so3;
-    if (!base || !this.modelKind) throw new StyleError('pair_coeff for style mliap needs pair_style mliap first');
+    if ((!base && !this.ace) || !this.modelKind) throw new StyleError('pair_coeff for style mliap needs pair_style mliap first');
+    const descElems: readonly string[] = this.ace ? this.ace.elements : base!.elems;
     if (args.length < 2 || args[0] !== '*' || args[1] !== '*') throw new StyleError('the first 2 arguments of pair_coeff for style mliap must be * *');
     // Measured with native LAMMPS (black box): the Si nn example's "pair_coeff * * Si Si" runs with one atom type,
     // so extra element names are accepted and only the first N (N = atom types) are mapped. Fewer names: StyleError.
     const elems = args.slice(2);
     if (elems.length < this.ntypes) throw new StyleError(`pair_coeff for style mliap needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
-    const d = base;
     const chem = this.desc !== null && this.desc.chem;
     if (chem && this.modelKind !== 'linear') {
       throw new StyleError(`pair_style mliap: descriptor sna with chemflag 1 is implemented for model linear only (got model ${this.modelKind})`);
     }
-    const nmodel = this.desc ? this.desc.nmodel : d.K;
-    this.model = parseMliapModel(this.modelKind, this.modelText, this.modelFile, nmodel, d.elems.length);
+    const nmodel = this.ace ? this.ace.ndescriptors : this.desc ? this.desc.nmodel : base!.K;
+    this.model = parseMliapModel(this.modelKind, this.modelText, this.modelFile, nmodel, descElems.length);
     const nt = this.ntypes + 1;
     this.elemOf = new Int32Array(nt).fill(-1);
     for (let t = 1; t <= this.ntypes; t++) {
       const name = elems[t - 1];
       if (name === 'NULL') throw new StyleError('NULL element mapping for pair_style mliap is not implemented in this engine');
-      const idx = d.elems.indexOf(name);
-      if (idx < 0) throw new StyleError(`element '${name}' is not in the mliap descriptor file ${this.descFile} (elements: ${d.elems.join(' ')})`);
+      const idx = descElems.indexOf(name);
+      if (idx < 0) throw new StyleError(`element '${name}' is not in the mliap descriptor file ${this.descFile} (elements: ${descElems.join(' ')})`);
       this.elemOf[t] = idx;
     }
     if (chem) {
       // Measured with native LAMMPS (black box): see the header. The chem index follows the descriptor order.
       for (let t = 1; t <= this.ntypes; t++) {
-        if (this.elemOf[t] !== t - 1 || this.ntypes !== d.elems.length) {
-          throw new StyleError(`pair_style mliap with descriptor sna chemflag 1: pair_coeff must name the ${d.elems.length} descriptor elements (${d.elems.join(' ')}) in that order, one per atom type (got ${elems.slice(0, this.ntypes).join(' ')})`);
+        if (this.elemOf[t] !== t - 1 || this.ntypes !== descElems.length) {
+          throw new StyleError(`pair_style mliap with descriptor sna chemflag 1: pair_coeff must name the ${descElems.length} descriptor elements (${descElems.join(' ')}) in that order, one per atom type (got ${elems.slice(0, this.ntypes).join(' ')})`);
         }
       }
     }
@@ -170,15 +187,21 @@ export class PairMliap extends Pair {
 
   /** Cutoff rcutfac (R_i + R_j) between mapped types. */
   initOne(i: number, j: number): number {
-    if (!this.desc && !this.so3) throw new StyleError('pair_coeff for style mliap has not been given');
+    if (!this.desc && !this.so3 && !this.ace) throw new StyleError('pair_coeff for style mliap has not been given');
     const ei = this.elemOf[i], ej = this.elemOf[j];
     if (ei < 0 || ej < 0) return 0;
+    // ace: PairMLIAP::init_one, sqrt of the descriptor's cutsq of the two elements
+    if (this.ace) return Math.sqrt(this.ace.cutsq(ei, ej));
     // so3: every pair is cut at rcutfac (measured with native LAMMPS, black box; see so3.ts)
     if (this.so3) return this.so3.rcutfac;
     return this.desc!.rcutfac * (this.desc!.radius[ei] + this.desc!.radius[ej]);
   }
 
   compute(pc: PairCompute): void {
+    if (this.ace && this.model) {
+      this.computeAce(pc, this.ace, this.model);
+      return;
+    }
     if (this.so3Engine && this.so3 && this.model) {
       this.computeSo3(pc, this.so3Engine, this.so3, this.model);
       return;
@@ -411,6 +434,60 @@ export class PairMliap extends Pair {
   }
 
   /** Descriptor so3 path: same energy and force conventions as the sna path (F_j = -G_j, F_i = +sum G_j). */
+  private computeAce(pc: PairCompute, ace: MliapAceDescriptor, model: MliapModel): void {
+    const list = pc.full;
+    if (!list) throw new Error('pair style mliap needs a full neighbor list');
+    const { x, f, type } = pc;
+    const K = ace.ndescriptors;
+    const gam = new Float64Array(K);
+    const va = pc.vatom;
+    const nbrs = ace.nativeNeighbors(pc, list);
+    let jl = new Int32Array(64);
+    let evdwl = 0;
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
+      const ei = this.elemOf[type[i]];
+      if (ei < 0) continue;
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+      const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
+      if (jl.length < k1 - k0) jl = new Int32Array(k1 - k0);
+      // MLIAPData::generate_neighdata: the neighbours inside cutsq of the two elements, in list order
+      let m = 0;
+      for (let k = k0; k < k1; k++) {
+        const j = nbrs[k] & NEIGHMASK;
+        const ej = this.elemOf[type[j]];
+        const dx = x[3 * j] - xi, dy = x[3 * j + 1] - yi, dz = x[3 * j + 2] - zi;
+        const rsq = dx * dx + dy * dy + dz * dz;
+        if (ej >= 0 && rsq < ace.cutsq(ei, ej)) jl[m++] = j;
+      }
+      const { B, dB } = ace.evaluate(i, x, type, m, jl);
+      const E = model.energy(ei, B, gam);
+      evdwl += E;
+      if (pc.eatom) pc.eatom[i] += E;
+      // compute_forces: beta_k dB_k/dr_j to atom i and the opposite to j, then v_tally of -r_ij (x) f_ij
+      for (let jj = 0; jj < m; jj++) {
+        const j = jl[jj];
+        let fx = 0, fy = 0, fz = 0;
+        for (let k = 0; k < K; k++) {
+          const o = (k * m + jj) * 3;
+          const g = gam[k];
+          const gx = dB[o] * g, gy = dB[o + 1] * g, gz = dB[o + 2] * g;
+          fx += gx; fy += gy; fz += gz;
+          f[3 * i] += gx; f[3 * i + 1] += gy; f[3 * i + 2] += gz;
+          f[3 * j] -= gx; f[3 * j + 1] -= gy; f[3 * j + 2] -= gz;
+        }
+        if (va) {
+          const dx = x[3 * j] - xi, dy = x[3 * j + 1] - yi, dz = x[3 * j + 2] - zi;
+          const v0 = -dx * fx, v1 = -dy * fy, v2 = -dz * fz, v3 = -dx * fy, v4 = -dx * fz, v5 = -dy * fz;
+          va[6 * i] += 0.5 * v0; va[6 * i + 1] += 0.5 * v1; va[6 * i + 2] += 0.5 * v2;
+          va[6 * i + 3] += 0.5 * v3; va[6 * i + 4] += 0.5 * v4; va[6 * i + 5] += 0.5 * v5;
+          va[6 * j] += 0.5 * v0; va[6 * j + 1] += 0.5 * v1; va[6 * j + 2] += 0.5 * v2;
+          va[6 * j + 3] += 0.5 * v3; va[6 * j + 4] += 0.5 * v4; va[6 * j + 5] += 0.5 * v5;
+        }
+      }
+    }
+    pc.acc.evdwl += evdwl;
+  }
+
   private computeSo3(pc: PairCompute, eng: So3Engine, d: So3Descriptor, model: MliapModel): void {
     const list = pc.full;
     if (!list) throw new Error('pair style mliap needs a full neighbor list');

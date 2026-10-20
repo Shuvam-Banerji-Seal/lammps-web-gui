@@ -325,8 +325,10 @@ export class FixAveChunk extends Fix {
   private sample(): void {
     const s = this.sys.state;
     if (this.nSample === 0) {
-      // As native LAMMPS does (src/fix_ave_chunk.cpp at b332f28): the first sample of a window locks the
-      // chunk/atom until the window's last sample (Nrepeat > 1, ave one), or for good (ave running / window)
+      // As native LAMMPS does (src/fix_ave_chunk.cpp at b332f28): the first sample of a window sets up the chunks,
+      // then locks the chunk/atom until the window's last sample (Nrepeat > 1, ave one), or for good (ave running /
+      // window)
+      this.chunk.ensure();
       if (this.nRepeat > 1 && this.aveMode === 'one') this.chunk.lock(this, s.step, s.step + (this.nRepeat - 1) * this.nEvery);
       else if (this.aveMode !== 'one' && !this.lockedForever) {
         this.chunk.lock(this, s.step, -1);

@@ -156,6 +156,12 @@ export class ComputeChunkAtom extends Compute {
   private lockOwner: object | null = null;
   private lockStart = 0;
   private lockStop = 0;
+  /**
+   * Native's Nchunk is set up at the start of a run only with nchunk once; with nchunk every it is set up when the
+   * compute is first used. A lock taken before that holds Nchunk = 0 (no chunks, every chunk ID 0) until unlocked.
+   */
+  private readonly setupOnUse: boolean;
+  private lockEmpty = false;
   /** ids nfreq: the step on which the window's IDs were last kept. */
   private restoredStep = -1;
   private haveIds = false;
@@ -373,6 +379,10 @@ export class ComputeChunkAtom extends Compute {
     // once for type; for mol style if region is none; for binning style if ... units = reduced
     const defaultOnce = kind! === 'type' || (kind! === 'molecule' && regionId === null) || (kind! === 'bin' && units === 'reduced');
     this.held = nchunkMode === 'once' || (nchunkMode === null && !compress && defaultOnce);
+    // nchunk every: given, or the default with compress yes, for the c_/f_/v_ styles and for molecule with a region
+    // (binning styles in box or lattice units default to once in a static box and every otherwise; taken as once)
+    this.setupOnUse = nchunkMode === 'every'
+      || (nchunkMode === null && (compress || kind! === 'value' || (kind! === 'molecule' && regionId !== null)));
     this.scalarFlag = true;
     this.peratomFlag = true;
   }
@@ -405,6 +415,7 @@ export class ComputeChunkAtom extends Compute {
       this.lockOwner = owner;
       this.lockStart = start;
       this.lockStop = stop;
+      this.lockEmpty = !this.haveIds && this.setupOnUse;
       // the window's chunks are set up on its first step, also if they were computed earlier on this step
       this.lastEpoch = -1;
       if (!this.held) this.radGeo = null;
@@ -420,6 +431,7 @@ export class ComputeChunkAtom extends Compute {
   unlock(owner: object): void {
     if (owner !== this.lockOwner) return;
     this.lockOwner = null;
+    this.lockEmpty = false;
     if (!this.held) {
       this.heldN = null;
       this.heldKmin = null;
@@ -744,6 +756,11 @@ export class ComputeChunkAtom extends Compute {
         // docs: an exact limit applied before compress still sets Nchunk to Nc
         if (exactNc !== null) nch = exactNc;
       }
+    }
+    if (this.lockEmpty) {
+      raw.fill(0);
+      nch = 0;
+      if (this.compress) origIds = [];
     }
     if (this.compress && origIds === null) origIds = [];
     this.ids = raw;

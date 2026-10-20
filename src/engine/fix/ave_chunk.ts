@@ -5,6 +5,7 @@ import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
 import { formatNumber } from '../script';
 import { massOf } from '../atoms';
 import { chunkCompute, type ComputeChunkAtom } from '../compute/chunk';
+import type { Compute } from '../compute/compute';
 
 /*
  * fix ave/chunk — implemented from docs.lammps.org/fix_ave_chunk.html only
@@ -99,6 +100,12 @@ export class FixAveChunk extends Fix {
   private words: string[] = [];
   private vals: Val[] = [];
   private wantTemp = false;
+  /**
+   * bias keyword (docs.lammps.org/fix_ave_chunk.html): "The bias keyword specifies the ID of a temperature compute that
+   * removes a "bias" velocity from each atom, specified as bias-ID. It is only used when the temp value is calculated".
+   */
+  private biasId: string | null = null;
+  private bias: Compute | null = null;
 
   // sums over the samples of the current window (per chunk)
   private cntAll = new Float64Array(0);
@@ -169,7 +176,9 @@ export class FixAveChunk extends Fix {
           throw new StyleError(`${what}: ave must be one, running or window M, got '${v}'`);
         }
         case 'bias':
-          throw new StyleError(`${what}: the bias keyword is not supported by the engine yet`);
+          this.biasId = need();
+          k += 2;
+          break;
         case 'adof':
           this.adof = Number(need());
           if (!Number.isFinite(this.adof)) throw new StyleError(`${what}: adof must be a number`);
@@ -233,6 +242,16 @@ export class FixAveChunk extends Fix {
       }
     });
     this.wantTemp = this.vals.some((v) => v.t === 'temp');
+    // As native LAMMPS does (src/fix_ave_chunk.cpp FixAveChunk::init at b332f28): the bias compute must exist, compute a
+    // temperature and remove a velocity bias
+    this.bias = null;
+    if (this.biasId !== null) {
+      const c = this.sys.computes.find((x) => x.id === this.biasId);
+      if (!c) throw new StyleError(`Could not find compute ID ${this.biasId} for temperature bias`);
+      if (!c.tempFlag) throw new StyleError(`Bias compute ${this.biasId} does not calculate temperature`);
+      if (!c.hasBias()) throw new StyleError(`Bias compute ${this.biasId} does not calculate a velocity bias`);
+      this.bias = c;
+    }
     // ave running / window: Nchunk must stay constant for the whole run (docs)
     if (this.aveMode !== 'one') this.chunk.holdNchunk();
     // The window (samples taken since the last output) carries over a run boundary: native keeps it
@@ -317,10 +336,18 @@ export class FixAveChunk extends Fix {
         }
         sums[j][c - 1] += x;
       }
-      if (this.wantTemp) {
+    }
+    if (this.wantTemp) {
+      // the kinetic energy of the temp value, with the velocity bias of the bias compute taken out while it is summed
+      if (this.bias) { this.bias.computeBias(); this.bias.removeBiasAll(); }
+      for (let i = 0; i < s.n; i++) {
+        if (!(s.mask[i] & this.groupBit)) continue;
+        const c = ids[i];
+        if (c <= 0 || c > N) continue;
         const vx = s.v[3 * i], vy = s.v[3 * i + 1], vz = s.v[3 * i + 2];
-        ke2[c - 1] += m * (vx * vx + vy * vy + vz * vz);
+        ke2[c - 1] += massOf(s, i) * (vx * vx + vy * vy + vz * vz);
       }
+      if (this.bias) this.bias.restoreBiasAll();
     }
     const adof = this.adof ?? this.sys.dimension;
     const vol = this.volume();

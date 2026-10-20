@@ -1,0 +1,13 @@
+# oracle: pair_write of lj/cut/coul/cut 1-2 in style r with the charges Qi Qj = 1.0 -1.0 (N 40, inner 1.0, outer 3.5, keyword COUL12)
+# oracle-files: w255pw_coulcut_q.table
+# oracle-compare: thermo=all atoms=none filerel=1e-15
+# Measured max relative error, engine vs native (thermo rows, final atoms): none (no run, no thermo or atoms); the written table agrees with native token by token within filerel 1e-15.
+units           lj
+atom_style      charge
+region          box block 0 10 0 10 0 10
+create_box      2 box
+mass            * 1.0
+pair_style      lj/cut/coul/cut 2.5 3.0
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.5 1.2
+pair_write      1 2 40 r 1.0 3.5 w255pw_coulcut_q.table COUL12 1.0 -1.0

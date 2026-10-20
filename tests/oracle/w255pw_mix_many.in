@@ -1,0 +1,15 @@
+# oracle: pair_write of a three-type lj/cut mix (pair_coeff for 1 1, 2 2 and 3 3, geometric mixing) writing 1 3 in style rsq (N 45, inner 0.95, outer 2.5, keyword MIX13)
+# oracle-files: w255pw_mix_many.table
+# oracle-compare: thermo=all atoms=none filerel=1e-15
+# Measured max relative error, engine vs native (thermo rows, final atoms): none (no run, no thermo or atoms); the written table agrees with native token by token within filerel 1e-15.
+units           lj
+atom_style      atomic
+region          box block 0 10 0 10 0 10
+create_box      3 box
+mass            * 1.0
+pair_style      lj/cut 2.5
+pair_modify     mix geometric
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.7 1.1
+pair_coeff      3 3 0.4 0.9
+pair_write      1 3 45 rsq 0.95 2.5 w255pw_mix_many.table MIX13

@@ -74,7 +74,7 @@ const SESSION_FLOW_WORDS = /\b(label|jump|next|include|quit|clear|echo|neb|run|m
  * ID and a group before the style; every other word of the commands below is a style name, a sub-style of a
  * hybrid style, or a number (pair_coeff's type ranges). suffix and package name accelerator packages, not
  * styles, and the other commands take no style name, so they are not rewritten.
- * *_write (pair_write, bond_write, ...) takes a style name too; the engine does not implement those commands yet.
+ * *_write (pair_write, bond_write, angle_write, ...) takes a style name too; the lazily loaded gpl_cmds group implements them.
  */
 const STYLE_WORDS_FROM: Record<string, number> = {
   pair_style: 0, pair_coeff: 0, pair_modify: 0, pair_write: 0,

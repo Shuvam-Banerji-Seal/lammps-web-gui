@@ -1,0 +1,14 @@
+# oracle: bond_write of bond_style fene, bond type 1 (K 30 R0 1.5 epsilon 1.0 sigma 1.0, N 40 values, inner 0.9, outer 1.45, keyword FENE with atom types 1 2)
+# oracle-files: w255pw_bond_fene.table
+# oracle-compare: thermo=all atoms=none filerel=1e-15
+# Measured max relative error, engine vs native (thermo rows, final atoms): none (no run, no thermo or atoms); the written table agrees with native token by token within filerel 1e-15.
+units           lj
+atom_style      bond
+region          box block -5 5 -5 5 -5 5
+create_box      2 box bond/types 1 extra/bond/per/atom 2 extra/special/per/atom 2
+mass            * 1.0
+pair_style      zero 2.5
+pair_coeff      * *
+bond_style      fene
+bond_coeff      1 30.0 1.5 1.0 1.0
+bond_write      1 40 0.9 1.45 w255pw_bond_fene.table FENE 1 2

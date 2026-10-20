@@ -1,6 +1,6 @@
 import type { Ctx, Handler } from './args';
 import { int, num } from './args';
-import { StyleError } from '../force/types';
+import { StyleError, type KSpace } from '../force/types';
 import { removedStyleError } from '../deprecated';
 import { checkFixStateNotStored } from '../fix/restartRecord';
 import { FIX_STYLES, COMPUTE_STYLES, styleNames } from '../styles';
@@ -12,7 +12,7 @@ import { RunCancelled } from '../errors';
 import { DYNAMIC_GROUP_FIXES, NO_DYNAMIC_GROUP_FIXES } from '../group';
 import type { System } from '../system';
 import type { EngineEvent } from '../types';
-import { massOf } from '../atoms';
+import { hasCharge, massOf } from '../atoms';
 import { minimize, MIN_STYLES } from '../run/min';
 import { MINIMIZERS } from '../run/minimizers';
 import { accelerator, runAccelerated } from '../run/accel';
@@ -147,8 +147,9 @@ const thermoModify: Handler = ({ sys }, a) => {
 
 /**
  * run_style style args — docs.lammps.org/run_style.html: "*style* = *verlet* or *verlet/split* or
- * *respa* or *respa/omp*"; "*verlet* args = none". run_style verlet selects the plain velocity-Verlet
- * path; run_style respa selects the rRESPA integrator (run/respa.ts). verlet/split and respa/omp are
+ * *verlet/split/rk* or *respa* or *respa/omp*"; "*verlet* args = none". run_style verlet selects the plain
+ * velocity-Verlet path; run_style respa selects the rRESPA integrator (run/respa.ts); verlet/split and
+ * verlet/split/rk split the force calculation between two partitions (runSplitKspace below); respa/omp is
  * refused. Measured with native LAMMPS (black box): before a box exists the command stops with
  * Run_style command before simulation box is defined.
  */
@@ -158,23 +159,29 @@ const runStyle: Handler = ({ sys }, a) => {
   if (style === 'verlet') {
     if (a.length > 1) throw new StyleError('run_style verlet takes no arguments');
     sys.respa = null;
+    sys.splitRun = null;
     return;
   }
   if (style === 'respa') {
     sys.respa = parseRunStyleRespa(a);
+    sys.splitRun = null;
     return;
   }
-  // run_style verlet/split and verlet/split/rk need two partitions (-partition 2x1, one for the pair forces and one
-  // for the kspace forces; the doc says the force calculation is split "over 2 partitions of processors"). Measured
-  // with native LAMMPS (black box): verlet/split on one partition stops with Verlet/split requires 2 partitions.
-  // The browser engine runs a single partition, so both are refused and named here.
+  // run_style.html: "The *verlet/split* style is also a velocity-Verlet integrator, but it splits the force calculation
+  // within each timestep over 2 partitions of processors." As native LAMMPS does (src/REPLICA/verlet_split.cpp at
+  // b332f28): verlet/split checks the partition count when the run style is set; verlet/split/rk does not (its
+  // pppm/rk checks it when the run starts).
   if (style === 'verlet/split' || style === 'verlet/split/rk') {
-    throw new StyleError(`run_style ${style} needs two partitions (native LAMMPS: Verlet/split requires 2 partitions); the browser engine runs one partition, so it is refused`);
+    if (a.length > 1) throw new StyleError(`run_style ${style} takes no arguments`);
+    if (style === 'verlet/split' && sys.vars.nworlds !== 2) throw new StyleError('Verlet/split requires 2 partitions');
+    sys.respa = null;
+    sys.splitRun = style;
+    return;
   }
   if (style === 'respa/omp') {
     throw new StyleError(`run_style ${style} is not supported by the browser engine (it runs velocity Verlet only)`);
   }
-  throw new StyleError(`unknown run_style '${style ?? ''}' (verlet, verlet/split, respa or respa/omp)`);
+  throw new StyleError(`unknown run_style '${style ?? ''}' (verlet, verlet/split, verlet/split/rk, respa or respa/omp)`);
 };
 
 // cfg is a lazily loaded helper (lazyStyles.ts group gpl_dump_cfg, loaded before the dump command by the session: its
@@ -378,12 +385,68 @@ const runCoupledSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<numb
   return taken;
 };
 
+/**
+ * The checks a run makes of its run style and kspace style before it starts. As native LAMMPS does (VerletSplit::init and
+ * VerletSplitRK::init in src/REPLICA/verlet_split.cpp and verlet_split_rk.cpp, Integrate::init in src/integrate.cpp and
+ * PPPM_RK::setupRKBlock in src/KSPACE/pppm_rk.cpp at b332f28), in that order. A verlet/split run without a kspace style
+ * is refused here (native warns and then stops with a segmentation fault).
+ */
+const checkSplitRun = (sys: System): void => {
+  const k = sys.ff.kspace;
+  const unsupportedSolver = (kk: KSpace): boolean => /tip4p|spin/.test(kk.name) || kk.dipole();
+  if (sys.splitRun === 'verlet/split') {
+    if (!k) throw new StyleError('A KSpace style must be defined with verlet/split');
+    if (!hasCharge(sys.state) || unsupportedSolver(k)) throw new StyleError(`Verlet/split cannot (yet) be used with kpace style ${k.name}`);
+  } else if (sys.splitRun === 'verlet/split/rk') {
+    if (!k) throw new StyleError('A KSpace style must be defined with verlet/split/rk');
+    if (!k.rkFlag) throw new StyleError(`The kspace style ${k.name} does not support an rk decomposition. Verlet/split/rk requires a kspace style (such as pppm/rk) that supports an rk decomposition.`);
+    if (unsupportedSolver(k)) throw new StyleError(`Verlet/split/rk cannot (yet) be used with kspace style ${k.name}`);
+  }
+  if (k && k.computeOn && k.rkFlag && sys.splitRun !== 'verlet/split/rk') {
+    throw new StyleError(`The Integrate type must support an rk decomposition (e.g., run_style verlet/split/rk) that is compatible with kspace style ${k.name}`);
+  }
+  if (k?.rkFlag && sys.vars.nworlds !== 2) throw new StyleError('pppm/rk requires 2 partitions');
+};
+
+/**
+ * The run of the Kspace partition (partition 2) of run_style verlet/split or verlet/split/rk. As native LAMMPS does
+ * (VerletSplit::setup and run in src/REPLICA/verlet_split.cpp at b332f28): that partition integrates nothing, invokes
+ * no fix, and writes no thermo, dump or restart output; each step it computes the kspace forces of the Rspace
+ * partition's atoms (their coordinates and charges, gathered in the Rspace partition's order) and returns them, and its
+ * step count advances with the run. Partition 1 runs first here and computes its own kspace forces, which gives native's
+ * forces: measured with native LAMMPS, a 64-ion pppm run prints the same thermo with run_style verlet/split on two
+ * partitions as with run_style verlet, to all 15 printed digits (pppm/rk with verlet/split/rk too). After the run,
+ * partition 2 holds the Rspace partition's coordinates and charges and keeps its own velocities and image flags
+ * (measured with native LAMMPS for verlet/split). Native copies them in the Rspace partition's local order, which its
+ * spatial sort at the run's setup has changed (measured with native LAMMPS: atom 53 of partition 2 then has another
+ * atom's coordinates), and after verlet/split/rk partition 2's coordinates are not meaningful (measured: atom 1 at 0);
+ * here each atom takes the coordinates and charge of the atom with its ID.
+ */
+const runSplitKspace = (sys: System, n: number): number => {
+  const rspace = sys.replicaPeers()[0];
+  const s = sys.state, r = rspace.state;
+  if (r.n !== s.n) {
+    throw new StyleError(`run_style ${sys.splitRun}: the Rspace partition has ${r.n} atoms and the Kspace partition ${s.n}; the browser engine keeps the two partitions' atoms one to one`);
+  }
+  for (let i = 0; i < s.n; i++) {
+    const j = rspace.indexOfId(s.id[i]);
+    if (j < 0) throw new StyleError(`run_style ${sys.splitRun}: atom ${s.id[i]} of the Kspace partition is not in the Rspace partition`);
+    s.x[3 * i] = r.x[3 * j]; s.x[3 * i + 1] = r.x[3 * j + 1]; s.x[3 * i + 2] = r.x[3 * j + 2];
+    s.q[i] = r.q[j];
+  }
+  s.step += n;
+  sys.bump();
+  return n;
+};
+
 /** One run of n steps with output; returns steps taken. */
 const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => {
   const { sys, session } = ctx;
   // fix_halt.html: after a soft halt "additional run or minimize commands will be skipped" (no output)
   if (softHalted(sys)) return 0;
   clearHaltRequest(sys);
+  checkSplitRun(sys);
+  if (sys.splitRun && sys.vars.partition === 1) return runSplitKspace(sys, n);
   if (session.coupledSystems) return runCoupledSteps(ctx, n, opts);
   const s = sys.state;
   const first = s.step;
@@ -556,6 +619,10 @@ const minimizeCmd: Handler = async (ctx, a) => {
   if (etol < 0 || ftol < 0) throw new StyleError('minimize tolerances must be >= 0');
   if (softHalted(sys)) return;
   clearHaltRequest(sys);
+  // native LAMMPS splits the pppm/rk solve between the minimizations of the two partitions (src/KSPACE/pppm_rk.cpp at
+  // b332f28, PPPM_RK::compute); measured with native LAMMPS: partition 1 then minimizes as with pppm, and partition 2
+  // with a kspace energy of its own (0.0128 where pppm gives -2031.9). The browser engine refuses it by name.
+  if (sys.ff.kspace?.rkFlag) throw new StyleError('minimize with kspace_style pppm/rk is not supported by the browser engine (native splits the kspace solve between the two partitions\' minimizations); use kspace_style pppm');
   ensureThermoComputes(sys);
   const s = sys.state;
   const th = sys.thermo;

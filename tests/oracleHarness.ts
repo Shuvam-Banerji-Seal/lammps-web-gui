@@ -23,7 +23,8 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  *   # oracle-partitions: N   the case runs on N replicas (partitions). A NEB case's fixture holds the NEB table
  *                            rows and the "Climbing replica" lines, compared with the same rel/abs. Any other
  *                            case's fixture holds each partition's thermo rows and final atoms (perPartition),
- *                            compared partition by partition with the same tolerances
+ *                            compared partition by partition with the same tolerances; atomparts=0,2 compares
+ *                            the final atoms of the listed partitions only (their thermo rows are always compared)
  */
 
 
@@ -67,7 +68,7 @@ const directive = (text: string, key: string): string[] => {
 };
 
 const options = (text: string) => {
-  const o: { thermo: string; atoms: string; rel: number; abs: number; atomrel?: number; filerel?: number; printed?: number; skip: Set<string>; atomskip: Set<string> } = {
+  const o: { thermo: string; atoms: string; rel: number; abs: number; atomrel?: number; filerel?: number; printed?: number; skip: Set<string>; atomskip: Set<string>; atomparts?: Set<number> } = {
     thermo: 'all', atoms: 'all', rel: 1e-8, abs: 1e-10, skip: new Set<string>(), atomskip: new Set<string>(),
   };
   for (const w of directive(text, 'oracle-compare')) {
@@ -81,6 +82,7 @@ const options = (text: string) => {
     else if (k === 'printed') o.printed = Number(v);
     else if (k === 'skip') for (const s of v.split(',')) o.skip.add(s);
     else if (k === 'atomskip') for (const s of v.split(',')) o.atomskip.add(s);
+    else if (k === 'atomparts') o.atomparts = new Set(v.split(',').map(Number));
   }
   return o;
 };
@@ -194,7 +196,7 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
           }
           // ORACLE_MEASURE=1 prints the measured errors for the case header ("# Measured with native LAMMPS: ...")
           if (process.env.ORACLE_MEASURE) console.log(`MEASURE ${name} partition ${k} thermo ${thermoWorst.toExponential(1)}`);
-          if (o.atoms === 'all') {
+          if (o.atoms === 'all' && (!o.atomparts || o.atomparts.has(k))) {
             const dump = files.get(`oracle_final.${k}.dump`) ?? '';
             const lines = dump.trim().split('\n');
             const k0 = lines.findIndex((l) => l.startsWith('ITEM: ATOMS'));

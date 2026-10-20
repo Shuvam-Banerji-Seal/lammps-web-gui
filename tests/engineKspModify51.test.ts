@@ -82,14 +82,15 @@ describe('kspace_modify keywords refused by the engine', () => {
 });
 
 describe('run_style refusals name the keyword and say why', () => {
-  it('names verlet/split and says it needs two partitions', async () => {
+  it('verlet/split on one partition: native Verlet/split requires 2 partitions', async () => {
     const err = await run('units lj\natom_style atomic\nregion box block 0 5 0 5 0 5\ncreate_box 1 box\nrun_style verlet/split\n');
-    expect(err).toMatch(/run_style verlet\/split needs two partitions/);
+    expect(err).toMatch(/Verlet\/split requires 2 partitions/);
   });
 
-  it('names verlet/split/rk and says it needs two partitions', async () => {
-    const err = await run('units lj\natom_style atomic\nregion box block 0 5 0 5 0 5\ncreate_box 1 box\nrun_style verlet/split/rk\n');
-    expect(err).toMatch(/run_style verlet\/split\/rk needs two partitions/);
+  it('verlet/split/rk without a kspace style: native A KSpace style must be defined with verlet/split/rk', async () => {
+    // measured with native LAMMPS: run_style verlet/split/rk itself is accepted on one partition; the run stops
+    const err = await run('units lj\natom_style atomic\nregion box block 0 5 0 5 0 5\ncreate_box 1 box\nmass 1 1\nrun_style verlet/split/rk\nrun 0\n');
+    expect(err).toMatch(/A KSpace style must be defined with verlet\/split\/rk/);
   });
 
   it('keeps the unknown run_style message for a style that does not exist', async () => {

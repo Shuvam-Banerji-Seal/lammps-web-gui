@@ -103,9 +103,9 @@ describe('neb command', () => {
     expect((await run('neb 0.0 0.01 10 10 10 final\n')).error?.message).toMatch(/needs a filename/);
   });
 
-  it('needs min_style quickmin', async () => {
+  it('needs a damped dynamics minimizer (native: NEB requires a damped dynamics minimizer)', async () => {
     const { error } = await run('min_style cg\nneb 0.0 0.01 10 10 10 final final.tiny\n');
-    expect(error?.message).toMatch(/min_style quickmin/);
+    expect(error?.message).toMatch(/NEB requires a damped dynamics minimizer/);
   });
 
   it('needs fix neb in every replica', async () => {
@@ -114,19 +114,31 @@ describe('neb command', () => {
     expect(error?.message).toMatch(/fix neb/);
   });
 
-  it('refuses the settings the browser engine does not run yet, by name', async () => {
-    const cases: [string, RegExp][] = [
-      ['fix 2 all neb 1.0 perp 1.0\n', /perp/],
-      ['fix 2 all neb 1.0 end first 1.0\n', /end/],
-      ['fix 2 all neb 1.0 parallel equal\n', /equal/],
-    ];
-    for (const [fix, want] of cases) {
+  it('runs every fix neb keyword and verbosity (perp, end, parallel equal, terse, verbose)', async () => {
+    for (const fix of ['fix 2 all neb 1.0 perp 1.0\n', 'fix 2 all neb 1.0 end first 1.0 end last 1.0\n', 'fix 2 all neb 1.0 end last/efirst/middle 1.0\n', 'fix 2 all neb 1.0 parallel equal\n']) {
       const setup = SETUP.replace('fix 2 all neb 1.0 parallel ideal\n', fix);
-      const { error } = await run('neb 0.0 0.01 10 10 10 none\n', 3, setup);
-      expect(error?.message, fix).toMatch(want);
+      const { error } = await run('neb 0.0 0.01 10 10 10 final final.tiny\n', 3, setup);
+      expect(error, fix).toBeNull();
     }
-    const verbose = await run('neb 0.0 0.01 10 10 10 none verbosity verbose\n');
-    expect(verbose.error?.message).toMatch(/verbosity verbose/);
+    const terse = await run('neb 0.0 0.01 10 10 10 final final.tiny verbosity terse\n');
+    expect(terse.error).toBeNull();
+    const terseRow = terse.events.find((e) => e.kind === 'thermo' && 'RDT' in e.row);
+    expect(terseRow?.kind === 'thermo' && 'RD1' in terseRow.row).toBe(false);
+    const verbose = await run('neb 0.0 0.01 10 10 10 final final.tiny verbosity verbose\n');
+    expect(verbose.error).toBeNull();
+    // the last row: on the straight initial path the middle replica's path cosine rounds past 1 (acos gives nan)
+    const row = verbose.events.filter((e) => e.kind === 'thermo' && 'RDT' in e.row).pop();
+    if (row?.kind !== 'thermo') throw new Error('no NEB row');
+    // the end replicas have no path angle and the last no gradient angle (native prints nan)
+    expect(Number.isNaN(row.row.pathangle1) && Number.isNaN(row.row.pathangle3) && Number.isNaN(row.row.anglegrad3)).toBe(true);
+    expect(Number.isFinite(row.row.pathangle2) && Number.isFinite(row.row.RepForce2)).toBe(true);
+  });
+
+  it('refuses bad fix neb values like native (Illegal fix neb command)', async () => {
+    for (const fix of ['fix 2 all neb 0.0\n', 'fix 2 all neb 1.0 perp -1\n', 'fix 2 all neb 1.0 end middle 1.0\n', 'fix 2 all neb 1.0 end first\n', 'fix 2 all neb 1.0 parallel side\n']) {
+      const setup = SETUP.replace('fix 2 all neb 1.0 parallel ideal\n', fix);
+      expect((await run('', 3, setup)).error?.message, fix).toMatch(/Illegal fix neb command/);
+    }
   });
 
   it('refuses fix neb outside the neb command instead of ignoring its forces', async () => {
@@ -137,7 +149,7 @@ describe('neb command', () => {
   it('refuses fix neb keywords it does not know', async () => {
     const setup = SETUP.replace('fix 2 all neb 1.0 parallel ideal\n', 'fix 2 all neb 1.0 sideways 2\n');
     const { error } = await run('', 3, setup);
-    expect(error?.message).toMatch(/illegal fix neb keyword/);
+    expect(error?.message).toMatch(/Illegal fix neb command/);
   });
 
   it('reads a malformed final file as an error, not as coordinates', async () => {

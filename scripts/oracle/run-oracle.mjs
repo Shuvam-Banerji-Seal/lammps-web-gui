@@ -192,7 +192,9 @@ for (const name of cases) {
   const isNeb = /^\s*neb(\/spin)?\s/m.test(text);
   writeFileSync(join(dir, 'in.case'), partitions > 1 ? (isNeb ? `${text}\n` : `${text}\n${partitionFinalDump(partitions)}\n`) : `${text}\n${FINAL_DUMP}\n`);
   try {
-    if (partitions > 1) execFileSync(MPIRUN, ['-np', String(partitions), LMP, '-partition', `${partitions}x1`, '-in', 'in.case', '-log', 'log.lammps', '-screen', 'none'], { cwd: dir, stdio: 'pipe' });
+    // the partitions' ranks yield while they wait for each other: busy-polling ranks on a loaded machine made a 5-partition
+    // hop1 NEB take 24 s instead of 0.6 s (Open MPI mpi_yield_when_idle; the results are the same)
+    if (partitions > 1) execFileSync(MPIRUN, ['-np', String(partitions), LMP, '-partition', `${partitions}x1`, '-in', 'in.case', '-log', 'log.lammps', '-screen', 'none'], { cwd: dir, stdio: 'pipe', env: { ...process.env, OMPI_MCA_mpi_yield_when_idle: '1' } });
     else execFileSync(LMP, ['-in', 'in.case', '-log', 'log.lammps', '-screen', 'none'], { cwd: dir, stdio: 'pipe' });
   } catch (e) {
     const log = existsSync(join(dir, 'log.lammps')) ? readFileSync(join(dir, 'log.lammps'), 'utf8') : '';

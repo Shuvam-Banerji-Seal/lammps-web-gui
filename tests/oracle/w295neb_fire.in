@@ -1,0 +1,26 @@
+# oracle: w295neb_fire — 3 replicas of 3 atoms in a 2d lj/cut box, neb final with min_style fire (default parameters): the replicas minimize together (v.f, v.v and f.f summed over replicas, the smallest dmax step), fix neb parallel ideal
+# oracle-partitions: 3
+# oracle-inputs: w46neb_tiny.final
+# oracle-compare: rel=1e-5 abs=1e-6
+# Measured max relative error, engine vs native (NEB table, printed with 8 significant digits): 3.3e-8.
+dimension 2
+boundary p s p
+units lj
+atom_style atomic
+atom_modify map array
+region box block 0 6 0 6 -0.5 0.5
+create_box 1 box
+create_atoms 1 single 1.5 1.5 0
+create_atoms 1 single 3.0 1.7 0
+create_atoms 1 single 4.5 1.5 0
+mass 1 1.0
+pair_style lj/cut 2.5
+pair_coeff * * 1.0 1.0 2.5
+pair_modify shift yes
+variable u uloop 3
+fix 1 all enforce2d
+fix 2 all neb 1.0 parallel ideal
+timestep 0.05
+thermo 10
+min_style fire
+neb 0.0 0.01 40 40 10 final w46neb_tiny.final

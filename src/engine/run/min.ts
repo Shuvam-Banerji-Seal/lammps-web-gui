@@ -1,4 +1,5 @@
 import type { System } from '../system';
+import type { SimState } from '../types';
 import { StyleError } from '../force/types';
 import { massOf } from '../atoms';
 import type { BoxDof } from '../fix/box_relax';
@@ -90,8 +91,47 @@ export interface QuadraticLinesearch {
   step(alpha: number): number;
 }
 export interface QuadraticResult { status: 'ok' | 'downhill' | 'zeroquad' | 'zeroalpha'; energy: number }
+/** A replica the fire minimizer moves (the GPL port of native MinFire, src/engine-gpl/min/min_fire.ts). */
+export interface FireReplicaSpec { readonly s: SimState; mass(i: number): number }
+/** The min_modify settings of fire, with native's defaults (min.cpp at b332f28). */
+export interface FireSettings {
+  dmax: number; delaystep: number; dtgrow: number; dtshrink: number; alpha0: number; alphashrink: number;
+  tmax: number; tmin: number; integrator: 'eulerimplicit' | 'verlet' | 'leapfrog' | 'eulerexplicit';
+  halfstepback: boolean; initialdelay: boolean; vdfmax: number; abcfire: boolean;
+  etol: number; ftol: number; normstyle: 'two' | 'max' | 'inf';
+}
+/** The fire minimizer of one or more replicas (several: neb). */
+export interface FireRunner {
+  dt: number; ecurrent: number; eprevious: number; niter: number; neval: number;
+  init(dt: number, ntimestep: number): void;
+  setupStyle(): void;
+  setEnergies(es: number[]): void;
+  iterate(maxiter: number, hooks: { advance(): number; afterIteration(step: number): Promise<void>; cancelled(): boolean }, ftm2v: number): Promise<string>;
+}
 /** the lazily loaded helper of the 'minimize' HOOKS entry (src/engine-gpl/registry/linemin.ts) */
-export interface LineminHook { quadratic(eoriginal: number, ls: QuadraticLinesearch): QuadraticResult }
+export interface LineminHook {
+  quadratic(eoriginal: number, ls: QuadraticLinesearch): QuadraticResult;
+  /** evaluateAll: the energy and forces of every replica together (neb nudges with all of them); their energies */
+  fire(p: FireSettings, reps: FireReplicaSpec[], evaluateAll: () => number[], multireplica: boolean): FireRunner;
+}
+
+/**
+ * The fire settings from min_modify (values checked by the min_modify command): native defaults, "integrator =
+ * eulerimplicit, tmax = 10.0, tmin = 0.02, delaystep = 20, dtgrow = 1.1, dtshrink = 0.5, alpha0 = 0.25,
+ * alphashrink = 0.99, vdfmax = 2000, halfstepback = yes and initialdelay = yes" (min_modify.html), abcfire no.
+ */
+export const fireSettings = (sys: System, etol: number, ftol: number): FireSettings => {
+  const f = sys.minSettings.fire;
+  const num = (k: string, d: number) => (f[k] !== undefined ? Number(f[k]) : d);
+  const yes = (k: string, d: boolean) => (f[k] !== undefined ? ['yes', 'on', 'true', '1'].includes(f[k].toLowerCase()) : d);
+  return {
+    dmax: sys.minSettings.dmax, delaystep: num('delaystep', 20), dtgrow: num('dtgrow', 1.1), dtshrink: num('dtshrink', 0.5),
+    alpha0: num('alpha0', 0.25), alphashrink: num('alphashrink', 0.99), tmax: num('tmax', 10), tmin: num('tmin', 0.02),
+    integrator: (f.integrator ?? 'eulerimplicit') as FireSettings['integrator'],
+    halfstepback: yes('halfstepback', true), initialdelay: yes('initialdelay', true), vdfmax: num('vdfmax', 2000),
+    abcfire: yes('abcfire', false), etol, ftol, normstyle: sys.minSettings.norm,
+  };
+};
 
 export const minimize = async (
   sys: System, p: { etol: number; ftol: number; maxiter: number; maxeval: number }, hooks: MinHooks,
@@ -335,8 +375,34 @@ export const minimize = async (
     // Measured with native LAMMPS (black box, tests/engineLineSearch.test.ts): the cg/sd summary counts only the
     // line-search trials, not the setup evaluation (minimize 0 0 1 with line quadratic: 1 force evaluation)
     evaluations--;
+  } else if (style === 'fire') {
+    // As native LAMMPS does (src/min_fire.cpp at b332f28; the GPL port in src/engine-gpl/min/min_fire.ts): the four
+    // integrators, abcfire, vdfmax and initialdelay; the timestep it grows and shrinks is the system's while it runs
+    // (thermo dt shows it) and comes back at the end (Min::cleanup: update->dt = dtinit)
+    const runner = gplHook<LineminHook>('minimize').fire(fireSettings(sys, p.etol, p.ftol), [{ s, mass: (i) => massOf(s, i) }], () => [evaluate()], false);
+    const dtinit = s.dt;
+    runner.init(s.dt, s.step);
+    runner.setupStyle();
+    runner.setEnergies([e]);
+    try {
+      reason = await runner.iterate(p.maxiter, {
+        advance: () => ++s.step,
+        afterIteration: async () => {
+          checkMinHalt(sys);
+          hooks.thermo(false);
+          if (performance.now() - lastYield > 30) { await yieldNow(); lastYield = performance.now(); }
+        },
+        cancelled: () => hooks.cancelled(),
+      }, s.units.ftm2v);
+    } finally {
+      s.dt = dtinit;
+    }
+    iter = runner.niter;
+    e = runner.ecurrent;
+    ePrev = runner.eprevious;
+    evaluations--;
   } else {
-    // damped dynamics: quickmin or fire
+    // damped dynamics: quickmin (fire is the branch above)
     const fp = set.fire;
     const getNum = (k: string, d: number) => (fp[k] !== undefined ? Number(fp[k]) : d);
     const tmax = getNum('tmax', 10), tmin = getNum('tmin', 0.02), delaystep = getNum('delaystep', 20);

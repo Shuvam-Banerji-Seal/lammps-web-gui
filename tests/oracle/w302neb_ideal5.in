@@ -1,0 +1,34 @@
+# oracle: w302neb_ideal5 — LAMMPS examples/neb in.neb.hop1 on 5 replicas with fix neb parallel ideal: while climbing, the ideal positions on each side of the climbing replica are scaled by the mean distance of the whole path (fix_neb.cpp calculate_ideal_positions)
+# oracle-partitions: 5
+# oracle-examples: neb/initial.hop1 neb/final.hop1
+# oracle-compare: rel=1e-5 abs=1e-6
+# Measured max relative error, engine vs native (NEB table, printed with 8 significant digits): 3.0e-8. The core nudging before the GPL port (scaled by the mean distance of each side of the climbing replica) was 1.7e-4 off in RD2 at step 60.
+# The hop1 path interpolated over 4 or 5 replicas starts with overlapping atoms and quickmin amplifies rounding: a 1e-13 displacement of the engine's own input grows to 1e-7 by step 80 and to order 1 by step 135, so the case stops before that. Measured with native LAMMPS: min_style fire on this path ends in a segmentation fault.
+dimension       2
+boundary        p s p
+atom_style      atomic
+neighbor        0.3 bin
+neigh_modify    delay 5
+atom_modify     map array sort 0 0.0
+variable        u uloop 20
+lattice         hex 0.9
+region          box block 0 20 0 10 -0.25 0.25
+read_data       initial.hop1
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+pair_modify     shift yes
+region          1 block INF INF INF 1.25 INF INF
+group           lower region 1
+group           mobile subtract all lower
+set             group lower type 2
+timestep        0.05
+region          surround block 10 18 17 20 0 0 units box
+group           nebatoms region surround
+set             group nebatoms type 3
+group           nonneb subtract all nebatoms
+fix             1 lower setforce 0.0 0.0 0.0
+fix             2 nebatoms neb 1.0 parallel ideal
+fix             3 all enforce2d
+thermo          100
+min_style       quickmin
+neb             0.0 0.05 50 10 10 final final.hop1

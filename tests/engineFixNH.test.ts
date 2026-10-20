@@ -75,7 +75,20 @@ describe('fix nvt / npt / nph keywords', () => {
 
   it('mtk and the nonzero keyword values are validated', async () => {
     expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 1.0 mtk maybe')).toMatch(/mtk must be yes or no/);
-    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 1.0 pchain -1')).toMatch(/pchain must be >= 0/);
+    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 1.0 pchain -1')).toMatch(/Invalid fix npt pchain argument: -1/);
+    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 x 1.0 1.0 1.0 nreset -2')).toMatch(/Invalid fix npt nreset argument: -2/);
+  });
+
+  it('has the PE_strain vector entry only with a deviatoric keyword (x, y, z, xy, yz, xz), as native compute_vector', async () => {
+    const size = async (fix: string): Promise<number> => {
+      const session = new Session({ emit: (_e: EngineEvent) => {} });
+      await session.execute(`${BASE}\n${fix}\nrun 0\n`);
+      return session.sys.fix('1').sizeVector;
+    };
+    // nph pchain 3: omega, omega_dot (3), etap, etap_dot (3), PE_omega, KE_omega_dot (3), PE_etap, KE_etap_dot (3)
+    expect(await size('fix 1 all nph aniso 1.0 1.0 1.0 ptemp 1.0')).toBe(24);
+    expect(await size('fix 1 all nph x 1.0 1.0 1.0 y 1.0 1.0 1.0 z 1.0 1.0 1.0 ptemp 1.0')).toBe(25);
+    expect(await size('fix 1 all nph iso 1.0 1.0 1.0 ptemp 1.0')).toBe(16);
   });
 
   it('barostatting a non-periodic dimension is refused', async () => {

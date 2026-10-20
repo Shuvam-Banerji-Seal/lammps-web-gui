@@ -51,9 +51,9 @@ describe('fix npt/cauchy (EXTRA-FIX)', () => {
     expect(error).toContain('Continuation run must follow a previously equilibrated npt/cauchy run');
   });
 
-  it('names the keywords it does not implement', async () => {
+  it('names the keywords it does not implement (nreset now runs, through the core deviatoric terms)', async () => {
     expect((await runScript(`${base}fix c all npt/cauchy temp 1.0 1.0 1.0 x 1.0 1.0 1.0 ptemp 1.0\nrun 1\n`)).error).toContain("'ptemp' is not a fix npt/cauchy keyword");
-    expect((await runScript(`${base}fix c all npt/cauchy temp 1.0 1.0 1.0 x 1.0 1.0 1.0 nreset 5\nrun 1\n`)).error).toContain('nreset is not supported');
+    expect((await runScript(`${base}fix c all npt/cauchy temp 1.0 1.0 1.0 x 1.0 1.0 1.0 nreset 5\nrun 1\n`)).error).toBe('');
     expect((await runScript(`${base}fix c all npt/cauchy temp 1.0 1.0 1.0 x 1.0 1.0 1.0 drag 0.1\nrun 1\n`)).error).toContain('drag is not supported');
   });
 

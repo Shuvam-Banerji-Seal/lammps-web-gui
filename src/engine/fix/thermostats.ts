@@ -186,8 +186,10 @@ export interface LangevinAngmomOptions {
   ratio: Float64Array;
   /** keyword angmom factor (nonzero here) */
   ascale: number;
-  /** target temperature of this step */
-  tt: number;
+  /** sqrt of the target temperature of this step (a constant or equal-style target) */
+  tsqrt: number;
+  /** the per-atom target temperatures of an atom-style variable (then tsqrt is unused), or null */
+  tforce: Float64Array | null;
   /** the fix's random draws, one per call, in native order */
   uniform: () => number;
 }
@@ -228,7 +230,17 @@ export class FixLangevin extends Fix {
   private omegaOn = false;
   /** keyword angmom factor (0 = off): rotational thermostat of ellipsoid angular momentum. */
   private ascale = 0;
-  private exchanged = 0;
+  /** Tstart is an atom-style variable: one target temperature per atom (native tstyle ATOM), set at init. */
+  private tAtom = false;
+  /**
+   * The tally energy as native LAMMPS keeps it (src/fix_langevin.cpp at b332f28, end_of_step and compute_scalar):
+   * energy adds the power sum F_L . v times dt at the end of every step; a scalar read on the run's first step resets
+   * it to half the first term, and the scalar is -(energy - energyOneStep dt / 2), a trapezoidal sum.
+   */
+  private tallyEnergy = 0;
+  private energyOneStep = 0;
+  /** The Langevin forces have been computed once (native flangevin_allocated); the scalar is 0 before. */
+  private flSet = false;
   private fl = new Float64Array(0);
   private temp: Compute | null = null;
 
@@ -283,12 +295,41 @@ export class FixLangevin extends Fix {
       }
     }
     this.checkAngmom();
-    if (this.omegaOn) {
-      if (!s.omega || !s.torque || !s.radius) throw new StyleError('fix langevin omega yes needs finite-size spheres (atom_style sphere)');
-      if (this.tally || this.zero) throw new StyleError('fix langevin omega yes with tally or zero is not supported by the browser engine yet');
-    }
-    this.scalarFlag = this.tally;
+    this.checkOmega();
+    // As native LAMMPS does (src/fix_langevin.cpp at b332f28): the fix always has a global scalar (scalar_flag = 1),
+    // which is 0 without tally.
+    this.scalarFlag = true;
     this.extscalar = 1;
+  }
+
+  /**
+   * The checks of keyword omega (src/fix_langevin.cpp init at b332f28: "Fix langevin omega requires atom attribute
+   * omega", "... requires atom attribute radius" and, for a group atom of radius 0, "Fix langevin omega requires extended
+   * particles"). Run when the fix is built and again at each run's init.
+   */
+  private checkOmega(): void {
+    if (!this.omegaOn) return;
+    const s = this.sys.state;
+    if (!s.omega || !s.torque) throw new StyleError('Fix langevin omega requires atom attribute omega');
+    if (!s.radius) throw new StyleError('Fix langevin omega requires atom attribute radius');
+    for (let i = 0; i < s.n; i++) {
+      if ((s.mask[i] & this.groupBit) && s.radius[i] === 0.0) throw new StyleError('Fix langevin omega requires extended particles');
+    }
+  }
+
+  /**
+   * The style of a v_name target temperature (src/fix_langevin.cpp init at b332f28): an equal-style variable (equal,
+   * internal or timer) gives one temperature, an atom-style one (atom or atomfile) a temperature per atom; any other
+   * style is "Variable X for fix langevin is invalid style".
+   */
+  private checkVariable(): void {
+    if (typeof this.tStart === 'number') { this.tAtom = false; return; }
+    const name = this.tStart.variable;
+    const v = this.sys.vars.get(name);
+    if (!v) throw new StyleError(`Variable name ${name} for fix langevin does not exist`);
+    if (v.style === 'atom' || v.style === 'atomfile') this.tAtom = true;
+    else if (v.style === 'equal' || v.style === 'internal' || v.style === 'timer') this.tAtom = false;
+    else throw new StyleError(`Variable ${name} for fix langevin is invalid style`);
   }
 
   modify(key: string, values: string[]): number {
@@ -315,7 +356,7 @@ export class FixLangevin extends Fix {
     }
   }
 
-  init(): void { this.checkAngmom(); }
+  init(): void { this.checkVariable(); this.checkAngmom(); this.checkOmega(); }
 
   // Measured with native LAMMPS (black box): run 0 already dumps the random
   // forces, so the setup force evaluation includes this fix.
@@ -327,6 +368,7 @@ export class FixLangevin extends Fix {
    * fix_charge_regulation.html).
    */
   targetTemperature(): number {
+    if (this.tAtom) throw new StyleError(`fix ${this.id} langevin: an atom-style temperature variable gives no single target temperature`);
     return typeof this.tStart === 'number' ? ramp(this.sys, this.tStart, this.tStop) : valueOf(this.sys, this.tStart);
   }
 
@@ -339,35 +381,80 @@ export class FixLangevin extends Fix {
     this.tStart = tNew; this.tStop = tNew;
   }
 
+  /**
+   * The Langevin forces, written as native LAMMPS computes them (src/fix_langevin.cpp post_force_templated at
+   * b332f28): gamma1 = -m / damp / ftm2v and gamma2 = sqrt(m) sqrt(24 kB / damp / dt / mvv2e) / ftm2v, then gamma1 times
+   * 1 / ratio and gamma2 times sqrt(T) / sqrt(ratio) (the per-type factors of a per-type mass are formed in the same
+   * order: gfactor1, gfactor2 in init). With a bias compute, a velocity component that is zero once the bias is
+   * removed gets no random force. The draws follow native's atom list (SimState.order, see System.sortAtoms).
+   */
   postForce(): void {
     const sys = this.sys;
     const s = sys.state;
     const u = s.units;
-    const tt = this.targetTemperature();
-    if (tt < 0) throw new StyleError(`fix ${this.id} langevin: target temperature is negative`);
+    // compute_target: one sqrt(T) for a constant or equal-style target, one T per atom for an atom-style variable
+    let tsqrt = 0;
+    let tforce: Float64Array | null = null;
+    if (this.tAtom) {
+      tforce = sys.atomVariable((this.tStart as { variable: string }).variable);
+      for (let i = 0; i < s.n; i++) {
+        if ((s.mask[i] & this.groupBit) && tforce[i] < 0.0) throw new StyleError('Fix langevin variable returned negative temperature');
+      }
+    } else {
+      const tt = this.targetTemperature();
+      if (tt < 0) {
+        throw new StyleError(typeof this.tStart === 'number' ? `fix ${this.id} langevin: target temperature is negative` : 'Fix langevin variable returned negative temperature');
+      }
+      tsqrt = Math.sqrt(tt);
+    }
+    const zero = this.zero;
+    let count = 0;
+    if (zero) {
+      for (let i = 0; i < s.n; i++) if (s.mask[i] & this.groupBit) count++;
+      if (count === 0) throw new StyleError('Cannot zero Langevin force of 0 atoms');
+    }
     const bias = this.temp?.hasBias() ?? false;
     if (bias) { this.temp!.computeBias(); this.temp!.removeBiasAll(); }
-    const { f, v, type, mask } = s;
-    if (this.tally && this.fl.length !== 3 * s.n) this.fl = new Float64Array(3 * s.n);
-    let sx = 0, sy = 0, sz = 0, count = 0;
-    const rand = this.zero ? new Float64Array(3 * s.n) : null;
-    // the draws follow native LAMMPS's atom list (SimState.order, see System.sortAtoms)
+    const { f, v, type, mask, rmass } = s;
+    if (this.tally) {
+      if (this.fl.length !== 3 * s.n) this.fl = new Float64Array(3 * s.n);
+      this.flSet = true;
+    }
+    const damp = this.damp, ftm2v = u.ftm2v;
+    const c24 = Math.sqrt(24.0 * u.boltz / damp / s.dt / u.mvv2e);
+    let sx = 0, sy = 0, sz = 0;
     for (const i of nativeOrder(s)) {
       if (!(mask[i] & this.groupBit)) continue;
-      const m = massOf(s, i);
-      // "scale ... factor by which to scale the damping coefficient": a ratio of 2
-      // doubles damp (measured: native random amplitude follows damp * ratio)
-      const damp = this.damp * this.ratio[type[i]];
-      const g1 = -(m / damp) / u.ftm2v;
-      const g2 = Math.sqrt(m) * Math.sqrt((24 * u.boltz * tt) / (u.mvv2e * s.dt * damp)) / u.ftm2v;
-      // three draws per atom in native storage order, also in 2d (measured: native keeps fz)
-      const rx = g2 * (this.rng.uniform() - 0.5), ry = g2 * (this.rng.uniform() - 0.5), rz = g2 * (this.rng.uniform() - 0.5);
+      const ts = tforce ? Math.sqrt(tforce[i]) : tsqrt;
+      const ratio = this.ratio[type[i]];
+      let g1: number, g2: number;
+      if (rmass) {
+        g1 = -rmass[i] / damp / ftm2v;
+        g2 = Math.sqrt(rmass[i]) * c24 / ftm2v;
+        g1 *= 1.0 / ratio;
+        g2 *= 1.0 / Math.sqrt(ratio) * ts;
+      } else {
+        const m = s.massByType[type[i]];
+        g1 = -m / damp / ftm2v;
+        g2 = Math.sqrt(m) / ftm2v;
+        g2 *= c24;
+        g1 *= 1.0 / ratio;
+        g2 *= 1.0 / Math.sqrt(ratio);
+        g2 *= ts;
+      }
+      // three draws per atom, also in 2d (native keeps the z component)
+      let rx = g2 * (this.rng.uniform() - 0.5), ry = g2 * (this.rng.uniform() - 0.5), rz = g2 * (this.rng.uniform() - 0.5);
+      if (bias) {
+        if (v[3 * i] === 0.0) rx = 0.0;
+        if (v[3 * i + 1] === 0.0) ry = 0.0;
+        if (v[3 * i + 2] === 0.0) rz = 0.0;
+      }
       const fx = g1 * v[3 * i] + rx, fy = g1 * v[3 * i + 1] + ry, fz = g1 * v[3 * i + 2] + rz;
-      if (rand) { rand[3 * i] = rx; rand[3 * i + 1] = ry; rand[3 * i + 2] = rz; sx += rx; sy += ry; sz += rz; count++; }
       f[3 * i] += fx; f[3 * i + 1] += fy; f[3 * i + 2] += fz;
+      if (zero) { sx += rx; sy += ry; sz += rz; }
       if (this.tally) { this.fl[3 * i] = fx; this.fl[3 * i + 1] = fy; this.fl[3 * i + 2] = fz; }
     }
-    if (rand && count > 0) {
+    if (zero) {
       // "the total random force is set exactly to zero by subtracting off an equal part of it from each atom"
       sx /= count; sy /= count; sz /= count;
       for (let i = 0; i < s.n; i++) {
@@ -376,55 +463,80 @@ export class FixLangevin extends Fix {
         if (this.tally) { this.fl[3 * i] -= sx; this.fl[3 * i + 1] -= sy; this.fl[3 * i + 2] -= sz; }
       }
     }
-    if (this.omegaOn) this.rotationalTorques(tt);
+    if (bias) this.temp!.restoreBiasAll();
+    // the rotational thermostats come after the translational forces (and the zero correction), omega before angmom
+    if (this.omegaOn) this.rotationalTorques(tsqrt, tforce);
     if (this.ascale !== 0) {
       gplHook<LangevinAngmomHook>('angmom').angmomTorques(s, {
-        groupBit: this.groupBit, damp: this.damp, ratio: this.ratio, ascale: this.ascale, tt,
+        groupBit: this.groupBit, damp: this.damp, ratio: this.ratio, ascale: this.ascale, tsqrt, tforce,
         uniform: () => this.rng.uniform(),
       });
     }
-    if (bias) this.temp!.restoreBiasAll();
   }
 
   /**
-   * fix langevin omega: torque = -(I s / damp) omega + random, with I = 0.4 m r^2 and the scale factor s = 10/3 for
-   * spheres. The random amplitude carries sqrt(s). The rotational draws follow all the translational draws, one
-   * uniform deviate per component and atom, in native order (measured with native LAMMPS, black box).
+   * fix langevin omega: torque = -(I s / damp) omega + random, with I = 0.4 m r^2 and the factor s = 10/3 for spheres;
+   * the random amplitude carries sqrt(s) (sqrt(80) = sqrt(24 s)). As native LAMMPS does (src/fix_langevin.cpp
+   * omega_thermostat at b332f28): gamma1 = -(10/3) I / damp / ftm2v and gamma2 = sqrt(I) sqrt(80 kB / damp / dt / mvv2e)
+   * / ftm2v, then times 1 / ratio and sqrt(T) / sqrt(ratio). One draw per component and atom, after all the
+   * translational draws, in native order.
    */
-  private rotationalTorques(tt: number): void {
+  private rotationalTorques(tsqrt: number, tforce: Float64Array | null): void {
     const s = this.sys.state;
     const u = s.units;
     const { torque, omega, mask, type, radius } = s;
-    const sc = 10 / 3;
+    const tendivthree = 10.0 / 3.0;
+    const c80 = Math.sqrt(80.0 * u.boltz / this.damp / s.dt / u.mvv2e);
     for (const i of nativeOrder(s)) {
-      if (!(mask[i] & this.groupBit)) continue;
-      const r = (radius as Float64Array)[i];
-      const inertia = 0.4 * massOf(s, i) * r * r;
-      const damp = this.damp * this.ratio[type[i]];
-      const g1 = -(inertia * sc / damp) / u.ftm2v;
-      const g2 = Math.sqrt(inertia) * Math.sqrt((24 * u.boltz * tt * sc) / (u.mvv2e * s.dt * damp)) / u.ftm2v;
-      for (let d = 0; d < 3; d++) {
-        torque![3 * i + d] += g1 * omega![3 * i + d] + g2 * (this.rng.uniform() - 0.5);
-      }
+      if (!(mask[i] & this.groupBit) || !(radius![i] > 0.0)) continue;
+      const r = radius![i];
+      const inertia = 0.4 * r * r * massOf(s, i);
+      const ts = tforce ? Math.sqrt(tforce[i]) : tsqrt;
+      const ratio = this.ratio[type[i]];
+      let g1 = -tendivthree * inertia / this.damp / u.ftm2v;
+      let g2 = Math.sqrt(inertia) * c80 / u.ftm2v;
+      g1 *= 1.0 / ratio;
+      g2 *= 1.0 / Math.sqrt(ratio) * ts;
+      const t0 = g2 * (this.rng.uniform() - 0.5), t1 = g2 * (this.rng.uniform() - 0.5), t2 = g2 * (this.rng.uniform() - 0.5);
+      torque![3 * i] += g1 * omega![3 * i] + t0;
+      torque![3 * i + 1] += g1 * omega![3 * i + 1] + t1;
+      torque![3 * i + 2] += g1 * omega![3 * i + 2] + t2;
     }
   }
 
-  /** Energy added by the Langevin forces over the step (tally yes): -sum F_L . v dt. */
+  /** The power sum of the Langevin forces, sum F_L . v over the group, in native atom order (tally yes). */
+  private power(): number {
+    const s = this.sys.state;
+    let e = 0;
+    for (const i of nativeOrder(s)) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      e += this.fl[3 * i] * s.v[3 * i] + this.fl[3 * i + 1] * s.v[3 * i + 1] + this.fl[3 * i + 2] * s.v[3 * i + 2];
+    }
+    return e;
+  }
+
+  /** tally yes: the step's power sum is added to the energy (end_of_step). */
   endOfStep(): void {
     if (!this.tally) return;
-    const s = this.sys.state;
-    let w = 0;
-    for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      w += this.fl[3 * i] * s.v[3 * i] + this.fl[3 * i + 1] * s.v[3 * i + 1] + this.fl[3 * i + 2] * s.v[3 * i + 2];
-    }
-    // force x distance is energy in every unit style
-    this.exchanged -= w * s.dt;
+    this.energyOneStep = this.power();
+    this.tallyEnergy += this.energyOneStep * this.sys.state.dt;
   }
 
-  ecouple(): number { return this.tally ? this.exchanged : 0; }
+  /** The thermostat's energy (thermo ecouple): the scalar, as native modify->energy_couple() sums it. */
+  ecouple(): number { return this.computeScalar(); }
+
+  /**
+   * As native LAMMPS does (src/fix_langevin.cpp compute_scalar at b332f28): 0 without tally or before the forces were
+   * computed; on the run's first step the energy restarts from half that step's power times dt; the value is
+   * -(energy - power dt / 2).
+   */
   computeScalar(): number {
-    if (!this.tally) throw new StyleError(`fix ${this.id} langevin computes a scalar only with tally yes`);
-    return this.exchanged;
+    if (!this.tally || !this.flSet) return 0.0;
+    const s = this.sys.state;
+    if (s.step === this.sys.run.beginStep) {
+      this.energyOneStep = this.power();
+      this.tallyEnergy = 0.5 * this.energyOneStep * s.dt;
+    }
+    return -(this.tallyEnergy - 0.5 * this.energyOneStep * s.dt);
   }
 }

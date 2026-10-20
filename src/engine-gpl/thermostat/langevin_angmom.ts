@@ -10,31 +10,36 @@
  */
 import type { System } from '../../engine/system';
 import type { LangevinAngmomOptions } from '../../engine/fix/thermostats';
-import { ellipsoidInertia, quatToMatrix, rotateTransposeVec, rotateVec } from '../../engine/compute/asphere';
+import { ellipsoidInertia } from '../../engine/compute/asphere';
 import { nativeOrder } from '../../engine/atoms';
+import { mqToOmega } from '../asphere/math_extra';
 
 /**
- * Adds the angmom torques of the group atoms. wb = R^T L / I (I = 0.2 m (b^2 + c^2) etc., mq_to_omega) is damped with
- * gamma1 = -ascale / damp / ftm2v and the random torque sqrt(I) gamma2 (u - 0.5) in body axes, one draw per component
- * and atom, after the omega draws, in native atom order.
+ * Adds the angmom torques of the group atoms. omega = mq_to_omega(angmom, quat, I) with I = 0.2 m (b^2 + c^2) etc.;
+ * gamma1 = -ascale / damp / ftm2v and gamma2 = sqrt(ascale 24 kB / damp / dt / mvv2e) / ftm2v, then gamma1 times
+ * 1 / ratio and gamma2 times sqrt(T) / sqrt(ratio); torque_k += I_k gamma1 omega_k + sqrt(I_k) gamma2 (u - 0.5). One
+ * draw per component and atom, after the omega draws, in native atom order.
  */
 export const angmomTorques = (s: System['state'], o: LangevinAngmomOptions): void => {
   const u = s.units;
   const { torque, angmom, quat, mask, type } = s;
   const ascale = o.ascale;
+  const omega = new Float64Array(3);
   for (const i of nativeOrder(s)) {
     if (!(mask[i] & o.groupBit)) continue;
     const I = ellipsoidInertia(s, i);
-    const R = quatToMatrix(quat![4 * i], quat![4 * i + 1], quat![4 * i + 2], quat![4 * i + 3]);
-    const Lb = rotateTransposeVec(R, angmom![3 * i], angmom![3 * i + 1], angmom![3 * i + 2]);
-    const wbody = [0, 1, 2].map((d) => (I[d] === 0 ? 0 : Lb[d] / I[d]));
-    const w = rotateVec(R, wbody[0], wbody[1], wbody[2]);
-    const damp = o.damp * o.ratio[type[i]];
-    const gamma1 = -ascale / damp / u.ftm2v;
-    const gamma2 = Math.sqrt((ascale * 24 * u.boltz * o.tt) / (damp * s.dt * u.mvv2e)) / u.ftm2v;
-    for (let d = 0; d < 3; d++) {
-      const tran = Math.sqrt(I[d]) * gamma2 * (o.uniform() - 0.5);
-      torque![3 * i + d] += I[d] * gamma1 * w[d] + tran;
-    }
+    mqToOmega(angmom![3 * i], angmom![3 * i + 1], angmom![3 * i + 2], quat![4 * i], quat![4 * i + 1], quat![4 * i + 2], quat![4 * i + 3], I, omega);
+    const tsqrt = o.tforce ? Math.sqrt(o.tforce[i]) : o.tsqrt;
+    const ratio = o.ratio[type[i]];
+    let gamma1 = -ascale / o.damp / u.ftm2v;
+    let gamma2 = Math.sqrt(ascale * 24.0 * u.boltz / o.damp / s.dt / u.mvv2e) / u.ftm2v;
+    gamma1 *= 1.0 / ratio;
+    gamma2 *= 1.0 / Math.sqrt(ratio) * tsqrt;
+    const t0 = Math.sqrt(I[0]) * gamma2 * (o.uniform() - 0.5);
+    const t1 = Math.sqrt(I[1]) * gamma2 * (o.uniform() - 0.5);
+    const t2 = Math.sqrt(I[2]) * gamma2 * (o.uniform() - 0.5);
+    torque![3 * i] += I[0] * gamma1 * omega[0] + t0;
+    torque![3 * i + 1] += I[1] * gamma1 * omega[1] + t1;
+    torque![3 * i + 2] += I[2] * gamma1 * omega[2] + t2;
   }
 };

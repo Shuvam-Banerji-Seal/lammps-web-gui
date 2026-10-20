@@ -8,7 +8,9 @@
  * Forces (docs.lammps.org/pair_dpd.html): the conservative term a0 wd, the drag -gamma wd^2 (dv . rhat), and the
  * random term sigma wd theta / sqrt(dt), sigma = sqrt(2 kB T gamma), wd = 1 - r/rc, with theta a Gaussian deviate
  * from a Marsaglia RanMars stream seeded by the pair_style seed. "dpd/tstat" has no conservative term; its sigma
- * follows the temperature of the pair_style (ramped in the source; only t_start == t_stop is supported here).
+ * follows the temperature of the pair_style, ramped from t_start to t_stop over the run as pair_dpd_tstat.cpp compute()
+ * does: T = t_start + delta (t_stop - t_start) with delta = (ntimestep - beginstep) / (endstep - beginstep), and sigma
+ * recomputed for every type pair.
  *
  * Random numbers are drawn once per pair inside the cutoff, in native LAMMPS's neighbor-list order: the pair
  * order comes from src/engine-gpl/neighbor/nativeOrder.ts (native local order, ghost atoms, bins and the half
@@ -57,6 +59,8 @@ export class PairDPD extends Pair {
   private readonly order = new NativePairOrder();
   private logFn: ((text: string) => void) | null = null;
   private triWarned = false;
+  /** the run's begin and end steps (StyleContext.runSteps), read for the dpd/tstat ramp */
+  private runSteps: (() => { begin: number; end: number }) | null = null;
 
   constructor(tstat = false) {
     super();
@@ -70,7 +74,6 @@ export class PairDPD extends Pair {
     if (this.tstat) {
       this.tStart = parseNum(args[0], 't_start');
       this.tStop = parseNum(args[1], 't_stop');
-      if (this.tStart !== this.tStop) throw new StyleError('pair_style dpd/tstat with t_start != t_stop (a temperature ramp) is not supported by the browser engine yet');
       this.temperature = this.tStart;
       this.cutGlobal = parseNum(args[2], 'cutoff');
       this.seed = parseNum(args[3], 'seed');
@@ -108,6 +111,7 @@ export class PairDPD extends Pair {
     // the random deviates follow native's pair order for orthogonal boxes (nativeOrder.ts); triclinic boxes keep the
     // engine's list order, so with T > 0 they match native LAMMPS only statistically (warned once in compute)
     this.logFn = (text) => ctx.log(text);
+    this.runSteps = ctx.runSteps ?? null;
     // pair_dpd.cpp init_style(): "Pair dpd requires ghost atoms store velocity"
     if (ctx.ghostVelocity !== true) throw new StyleError('Pair dpd requires ghost atoms store velocity (use comm_modify vel yes)');
     // pair_dpd.cpp: "Pair dpd needs newton pair on for momentum conservation" (a warning natively; this port
@@ -129,9 +133,24 @@ export class PairDPD extends Pair {
     return p.get('cut', i, j);
   }
 
+  /** pair_dpd_tstat.cpp compute(): "adjust sigma if target T is changing". */
+  private ramp(step: number): void {
+    const rs = this.runSteps?.() ?? { begin: step, end: step };
+    let delta = step - rs.begin;
+    if (delta !== 0.0) delta /= rs.end - rs.begin;
+    this.temperature = this.tStart + delta * (this.tStop - this.tStart);
+    const nt = this.nt;
+    for (let i = 1; i <= this.ntypes; i++) {
+      for (let j = i; j <= this.ntypes; j++) {
+        this.sigma[i * nt + j] = this.sigma[j * nt + i] = Math.sqrt(2.0 * this.boltz * this.temperature * this.p.get('gamma', i, j));
+      }
+    }
+  }
+
   compute(pc: PairCompute): void {
     const rng = this.rng;
     if (!rng) throw new StyleError('pair dpd used before pair_style');
+    if (this.tstat && this.tStart !== this.tStop) this.ramp(pc.s.step);
     if (pc.geom.triclinic && this.temperature > 0 && !this.triWarned) {
       this.triWarned = true;
       this.logFn?.('WARNING: pair_style ' + this.name + ': triclinic box: random forces are drawn in the browser engine\'s pair order (native\'s enumeration is not ported for triclinic boxes); with T > 0 the run matches native LAMMPS only statistically');

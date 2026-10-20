@@ -11,7 +11,8 @@
  *
  * The centres of mass come from a compute com/chunk with the same chunk/atom compute (comID); with its wrap yes the
  * centres are mapped back into the periodic box (Domain::remap) before the springs are evaluated, as native reads the
- * compute's array. Native's chunk lock (the reference COMs keep the chunk IDs from changing) is not modelled.
+ * compute's array. The first evaluation locks the chunk/atom for good (cchunk->lock(this, step, -1)), so Nchunk and
+ * the bins stay as they were then while the reference centres exist; unfix releases the lock (the destructor).
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
@@ -63,6 +64,7 @@ export class FixSpringChunk extends Fix {
     const sys = this.sys;
     const s = sys.state;
     const chunk = this.cchunk!;
+    if (this.com0 === null) chunk.lock(this, s.step, -1);
     const N = refreshChunk(chunk);
     const ichunk = chunk.ids;
     const sums = comSums(sys, this.ccom!.groupBit, ichunk, N);
@@ -79,14 +81,17 @@ export class FixSpringChunk extends Fix {
       }
     }
     if (this.com0 === null) {
-      // native: the reference COMs are stored the first time the fix is evaluated
+      // native: the reference COMs are stored the first time the fix is evaluated. With no chunks (a chunk/atom with
+      // nchunk every locked before it was set up) memory->create gives a null com0, so the next evaluation locks again
+      // with a later start step and stops with "Two fix commands using same compute chunk/atom command in
+      // incompatible ways" (measured with native LAMMPS: at step 1 of the run).
       this.nchunk = N;
-      this.com0 = com.slice();
       this.fcom = new Float64Array(3 * N);
+      if (N > 0) this.com0 = com.slice();
     } else if (this.nchunk !== N) {
       throw new StyleError(`Fix spring/chunk: the number of chunks changed from ${this.nchunk} to ${N}`);
     }
-    const com0 = this.com0;
+    const com0 = this.com0 ?? com;
     const fcom = this.fcom;
     const k = this.k;
     this.esprings = 0;
@@ -113,6 +118,8 @@ export class FixSpringChunk extends Fix {
   }
 
   minPostForce(): void { this.postForce(); }
+
+  destroy(): void { this.cchunk?.unlock(this); }
 
   energy(): number { return this.esprings; }
   computeScalar(): number { return this.esprings; }

@@ -147,6 +147,33 @@ run             0
     expect(r.error).toMatch(/Illegal fix momentum\/chunk command/);
   });
 
+  it('spring/chunk locks a chunk/atom with nchunk every before it was set up: Nchunk 0, then the native lock error', async () => {
+    // Measured with native LAMMPS: step 0 prints f_2 = 0 and c_cm = 0, then step 1 stops with this error; with the
+    // default nchunk once the chunks are set up at the start of the run (c_cm = 2) and the run goes on
+    const every = await runScript(`${SETUP}
+compute         cm all chunk/atom type nchunk every
+compute         com all com/chunk cm
+fix             1 all nve
+fix             2 all spring/chunk 2.0 cm com
+thermo_style    custom step f_2 c_cm
+thermo          1
+run             5
+`);
+    expect(every.thermo[0]).toMatchObject({ step: 0, f_2: 0, c_cm: 0 });
+    expect(every.error).toMatch(/Two fix commands using same compute chunk\/atom command in incompatible ways/);
+    const once = await runScript(`${SETUP}
+compute         cm all chunk/atom type
+compute         com all com/chunk cm
+fix             1 all nve
+fix             2 all spring/chunk 2.0 cm com
+thermo_style    custom step f_2 c_cm
+thermo          1
+run             5
+`);
+    expect(once.error).toBeNull();
+    expect(once.thermo[0]).toMatchObject({ step: 0, c_cm: 2 });
+  });
+
   it('vcm/chunk rejects a chunk ID of another style', async () => {
     const r = await runScript(`${SETUP}
 compute         ine all inertia

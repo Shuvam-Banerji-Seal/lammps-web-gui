@@ -18,9 +18,11 @@
  * used for event detection is written to the dump file at the beginning of each PRD run"), and a restart file of
  * replica 0 every N uncorrelated events ("a frequency of 10 means write a restart file every 10th uncorrelated event").
  *
- * Refused with a StyleError: fix deform (a changing box), vel local (native's loop local draws the velocities in its own
- * local atom order), and a compute other than event/displace. The engine has no time-dependent fix or region to refuse
- * (native refuses them: "Cannot use PRD with a time-dependent fix defined").
+ * The dephasing velocities follow vel all, local or geom (accelerated.ts createVelocity; local draws in native's atom
+ * storage order, which the engine keeps in SimState.order).
+ *
+ * Refused with a StyleError: fix deform (a changing box) and a compute other than event/displace. The engine has no
+ * time-dependent fix or region to refuse (native refuses them: "Cannot use PRD with a time-dependent fix defined").
  */
 import type { Ctx } from '../../engine/commands/args';
 import { int, num } from '../../engine/commands/args';
@@ -71,7 +73,7 @@ interface PrdEvent {
 interface Options {
   etol: number; ftol: number; maxiter: number; maxeval: number;
   tempFlag: boolean; tempDephase: number;
-  loop: 'all' | 'geom'; gaussian: boolean;
+  loop: 'all' | 'local' | 'geom'; gaussian: boolean;
   stepmode: 'steps' | 'clock';
 }
 
@@ -103,8 +105,7 @@ const parseOptions = (w: readonly string[]): Options => {
       }
       case 'vel': {
         if (k + 3 > w.length) throw new StyleError('Illegal prd command');
-        if (w[k + 1] === 'local') throw new StyleError('prd vel local is not supported by the browser engine yet (loop all and loop geom are)');
-        if (!['all', 'geom'].includes(w[k + 1])) throw new StyleError('Illegal prd command');
+        if (!['all', 'local', 'geom'].includes(w[k + 1])) throw new StyleError('Illegal prd command');
         if (w[k + 2] !== 'uniform' && w[k + 2] !== 'gaussian') throw new StyleError('Illegal prd command');
         o.loop = w[k + 1] as Options['loop'];
         o.gaussian = w[k + 2] === 'gaussian';
@@ -269,7 +270,7 @@ export const runPrd = async (ctx: Ctx, a: string[]): Promise<void> => {
         while (!done) {
           let sd = Math.trunc(w.rdephase.uniform() * MAXSMALLINT);
           if (sd === 0) sd = 1;
-          createVelocity(w.sys, w.tempDephase, sd, o.loop === 'all' ? 'all' : 'geom', o.gaussian, () => temperatureOf(w));
+          createVelocity(w.sys, w.tempDephase, sd, o.loop, o.gaussian, () => temperatureOf(w));
           await dynamics(run, w.sys, tDephase, dynOpts);
           w.hot = snapOf(w.sys);
           await quench(run, w.sys, qopts, cancelled);

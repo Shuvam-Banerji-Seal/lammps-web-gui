@@ -19,6 +19,7 @@ import type { SimState } from '../../engine/types';
 /** The mass of atom i (atoms.ts massOf: the per-atom mass, else the type's). */
 const massOf = (s: SimState, i: number): number => (s.rmass ? s.rmass[i] : s.massByType[s.type[i]]);
 import { RanPark } from '../random_park';
+import { nativeOrder } from '../../engine/atoms';
 
 /** The per-atom state a fix event stores (FixEvent: x, v and the image flags). */
 export interface Snap { x: Float64Array; v: Float64Array; image: Int32Array }
@@ -140,12 +141,13 @@ export const zeroMomentumAll = (sys: System): void => {
 };
 
 /**
- * velocity all create T seed loop {all|geom} dist {uniform|gaussian} mom yes rot no, as PRD::dephase calls it
- * (velocity.cpp at b332f28). loop all draws the atoms in ID order from one RanPark(seed); loop geom seeds each atom
- * from its seed and coordinates (RanPark::reset(seed, x)). Each deviate is scaled by 1/sqrt(mass) and the velocities
+ * velocity all create T seed loop {all|local|geom} dist {uniform|gaussian} mom yes rot no, as PRD::dephase calls it
+ * (velocity.cpp at b332f28). loop all draws the atoms in ID order from one RanPark(seed); loop local draws them in the
+ * process's storage order (native's atom order, SimState.order) from RanPark(seed + me) after WARMUP = 100 deviates, me
+ * = 0 with one process per partition; loop geom seeds each atom from its seed and coordinates (RanPark::reset(seed, x)). Each deviate is scaled by 1/sqrt(mass) and the velocities
  * are rescaled to T with the temperature compute (temperature(), the prd_temp of the command).
  */
-export const createVelocity = (sys: System, t: number, seed: number, loop: 'all' | 'geom', gaussian: boolean, temperature: () => number): void => {
+export const createVelocity = (sys: System, t: number, seed: number, loop: 'all' | 'local' | 'geom', gaussian: boolean, temperature: () => number): void => {
   const s = sys.state;
   const n = s.n;
   const draw = (rng: RanPark, i: number) => {
@@ -163,6 +165,10 @@ export const createVelocity = (sys: System, t: number, seed: number, loop: 'all'
     for (let i = 0; i < n; i++) slot[s.id[i]] = i;
     const rng = new RanPark(seed);
     for (let id = 1; id <= maxId; id++) draw(rng, slot[id]);
+  } else if (loop === 'local') {
+    const rng = new RanPark(seed);
+    for (let k = 0; k < 100; k++) rng.uniform();
+    for (const i of nativeOrder(s)) draw(rng, i);
   } else {
     const rp = new RanPark(1);
     for (let i = 0; i < n; i++) {

@@ -53,8 +53,8 @@ describe('min16 line search (native-measured)', () => {
     expect(rows[rows.length - 1].pe).toBeCloseTo(13.4877808078577, 9);
   });
 
-  it('forcezero is refused with a named StyleError (native differs from quadratic)', async () => {
-    await expect(run('min_style sd\nmin_modify line forcezero\nminimize 1.0e-10 1.0e-10 1 50\n')).rejects.toThrow(/forcezero/);
+  it('forcezero runs (native linemin_forcezero; native parity in tests/oracle/w315min_forcezero.in and w316min_forcezero_lj.in)', async () => {
+    await expect(run('min_style sd\nmin_modify line forcezero\nminimize 1.0e-10 1.0e-10 1 50\n')).resolves.not.toThrow();
   });
 
   it('sanity: the chain minimizes monotonically under backtracking', async () => {

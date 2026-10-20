@@ -1,6 +1,6 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
- * Source: src/min_linesearch.cpp at commit b332f28, MinLineSearch::linemin_quadratic and the constants above it
+ * Source: src/min_linesearch.cpp at commit b332f28, MinLineSearch::linemin_quadratic, linemin_forcezero and the constants above them
  * (ALPHA_MAX 1.0, ALPHA_REDUCE 0.5, BACKTRACK_SLOPE 0.4, QUADRATIC_TOL 0.1, EMACH 1.0e-8, EPS_QUAD 1.0e-28), and the
  * normalisation of fdothall and fh by the atom count when thermo norm is on. LAMMPS is Copyright (2003) Sandia
  * Corporation and distributed under the GNU General Public License, version 2; this file is GPL-2.0 too (see
@@ -15,7 +15,7 @@
  * state: it stores the start point, moves the atoms and the box DOF for a trial alpha and evaluates the energy and the
  * force there. This routine decides the alpha, in the same order of trials as native.
  */
-import type { QuadraticLinesearch, QuadraticResult } from '../../engine/run/min';
+import type { ForcezeroLinesearch, QuadraticLinesearch, QuadraticResult } from '../../engine/run/min';
 
 const ALPHA_MAX = 1.0;
 const ALPHA_REDUCE = 0.5;
@@ -73,5 +73,70 @@ export const lineminQuadratic = (eoriginal: number, ls: QuadraticLinesearch): Qu
     alpha *= ALPHA_REDUCE;
     // backtracked to zero: reset to the start point
     if (alpha <= 0.0 || deIdeal >= -EMACH) return { status: 'zeroalpha', energy: ls.step(0) };
+  }
+};
+
+/**
+ * native linemin_forcezero (min_modify line forcezero), with its constants: the search moves along h by increments
+ * of alpha until the directional derivative f.h has fallen to GRAD_TOL = 0.1 of its start. A step that raises the
+ * energy by ZERO_ENERGY = 1e-12 or more, or that changes the sign of f.h, is taken back and the increment reduced
+ * (by the zero of the linearised f.h, or by ALPHA_FACT = 0.1); otherwise the increment grows by the linearised f.h,
+ * at most LIMIT_BOOST = 4. The first increment is min(max(EPS_QUAD, 0.1 |E| / f.h), alpha_max / 2); the search
+ * ends successfully when the next alpha would pass alpha_max (the state stays at the last evaluated point), and fails
+ * (ZEROALPHA, the start point restored) when hmax * increment <= MIN_ALPHA_FAC = 1e-14. The energies and f.h are
+ * divided by the atom count when thermo norm is on, as native's energy_force and compute_dir_deriv do: that changes
+ * the ZERO_ENERGY test. After a backtrack native leaves the atoms at the step it took back while its ecurrent is the
+ * energy before it; the returned energy is that ecurrent.
+ */
+export const lineminForcezero = (eoriginal: number, ls: ForcezeroLinesearch): QuadraticResult => {
+  const ALPHA_FACT = 0.1;
+  const ZERO_ENERGY = 1e-12;
+  const GRAD_TOL = 0.1;
+  const MIN_ALPHA_FAC = 1e-14;
+  const LIMIT_BOOST = 4.0;
+  const norm = (v: number): number => (ls.natoms !== null ? v / ls.natoms : v);
+  const fdothall = norm(dot(ls.f0, ls.h));
+  if (fdothall <= 0.0) return { status: 'downhill', energy: eoriginal };
+  const alphaMax = ls.alphaMax;
+  let fhCurr = fdothall;
+  const fhoriginal = fhCurr;
+  let engCurr = norm(eoriginal);
+  /** native's ecurrent, as the caller's (unnormalised) energy */
+  let ecurrent = eoriginal;
+  const alphaInit = Math.max(EPS_QUAD, 0.1 * Math.abs(norm(eoriginal)) / fdothall);
+  let alpha = 0.0;
+  let alphaDel = Math.min(alphaInit, 0.5 * alphaMax);
+  for (;;) {
+    let backtrack = false;
+    const fhPrev = fhCurr;
+    const engPrev = engCurr;
+    const ecurrentPrev = ecurrent;
+    alpha += alphaDel;
+    if (alpha > alphaMax) {
+      // done enough in the allowed search space: the state stays at the last evaluated point
+      alpha -= alphaDel;
+      return { status: 'ok', energy: ecurrent };
+    }
+    ecurrent = ls.step(alpha);
+    engCurr = norm(ecurrent);
+    fhCurr = norm(dot(ls.force, ls.h));
+    const de = engCurr - engPrev;
+    if (de >= ZERO_ENERGY) backtrack = true;
+    if (!backtrack && Math.abs(fhCurr / fhoriginal) <= GRAD_TOL) return { status: 'ok', energy: ecurrent };
+    if (fhCurr < 0.0) backtrack = true;
+    if (backtrack) {
+      alpha -= alphaDel;
+      if (fhCurr < 0.0) alphaDel *= fhPrev / (fhPrev - fhCurr);
+      else alphaDel *= ALPHA_FACT;
+      engCurr = engPrev;
+      ecurrent = ecurrentPrev;
+      fhCurr = fhPrev;
+      if (ls.hmax * alphaDel <= MIN_ALPHA_FAC) return { status: 'zeroalpha', energy: ls.step(0.0) };
+    } else {
+      let boostFactor = LIMIT_BOOST;
+      if (fhPrev > fhCurr) boostFactor = fhCurr / (fhPrev - fhCurr);
+      boostFactor = Math.min(boostFactor, LIMIT_BOOST);
+      alphaDel *= boostFactor;
+    }
   }
 };

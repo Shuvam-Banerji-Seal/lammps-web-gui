@@ -91,6 +91,13 @@ export interface QuadraticLinesearch {
   step(alpha: number): number;
 }
 export interface QuadraticResult { status: 'ok' | 'downhill' | 'zeroquad' | 'zeroalpha'; energy: number }
+/** The trial state of the forcezero line search: also the largest search-direction component and the atom count. */
+export interface ForcezeroLinesearch extends QuadraticLinesearch {
+  /** the largest |h| over all degrees of freedom (native hmaxall) */
+  readonly hmax: number;
+  /** the atom count when thermo norm is on (energies and f.h are divided by it), else null */
+  readonly natoms: number | null;
+}
 /** A replica the fire minimizer moves (the GPL port of native MinFire, src/engine-gpl/min/min_fire.ts). */
 export interface FireReplicaSpec { readonly s: SimState; mass(i: number): number }
 /** The min_modify settings of fire, with native's defaults (min.cpp at b332f28). */
@@ -111,6 +118,7 @@ export interface FireRunner {
 /** the lazily loaded helper of the 'minimize' HOOKS entry (src/engine-gpl/registry/linemin.ts) */
 export interface LineminHook {
   quadratic(eoriginal: number, ls: QuadraticLinesearch): QuadraticResult;
+  forcezero(eoriginal: number, ls: ForcezeroLinesearch): QuadraticResult;
   /** evaluateAll: the energy and forces of every replica together (neb nudges with all of them); their energies */
   fire(p: FireSettings, reps: FireReplicaSpec[], evaluateAll: () => number[], multireplica: boolean): FireRunner;
 }
@@ -156,9 +164,6 @@ export const minimize = async (
   const K = perAtom ? s.n : 0;
   const xe = new Float64Array(K);
   const eF = new Float64Array(K);
-  // measured with native LAMMPS (black box): min_modify line forcezero gives different energies from quadratic
-  // (chain, dmax 0.1: 13.4795499709744 vs 13.4813750335936 after one iteration); not reproduced yet
-  if (set.line === 'forcezero') throw new StyleError('min_modify line forcezero is not supported by the browser engine yet; use line quadratic or backtrack');
   const nb = sys.nb;
   const saved = { every: nb.every, delay: nb.delay, check: nb.check };
   if (nb.every !== 1 || nb.delay !== 0) {
@@ -242,7 +247,7 @@ export const minimize = async (
 
   if (style === 'cg' || style === 'sd') {
     // the default line search is the GPL port (lazy 'minimize' HOOKS entry, see gplHooks.ts); backtrack is core
-    const lineminQuad = set.line === 'backtrack' ? null : gplHook<LineminHook>('minimize').quadratic;
+    const lineminHook = set.line === 'backtrack' ? null : gplHook<LineminHook>('minimize');
     // vector: atoms, then box DOF, then the pair's per-atom DOF; the cg restart period counts all of them
     const L = n3 + M + K;
     const eOff = n3 + M;
@@ -320,9 +325,12 @@ export const minimize = async (
           if (alpha <= 0 || deIdeal >= -EMACH) { eTry = stepLS(0); status = de < 0 ? 'etol' : 'zeroalpha'; break; }
         }
       } else {
-        // native min_modify line quadratic (linemin_quadratic, src/engine-gpl/min/linemin.ts): the hook decides the
-        // trials and leaves the state at the point it returns (or at x0 after a failure)
-        const r = lineminQuad!(e, { h, f0: g, force: gNew, alphaMax, step: stepLS });
+        // native min_modify line quadratic or forcezero (linemin_quadratic, linemin_forcezero in
+        // src/engine-gpl/min/linemin.ts): the hook decides the trials and leaves the state at the point it returns (or
+        // at x0 after a failure)
+        const r = set.line === 'forcezero'
+          ? lineminHook!.forcezero(e, { h, f0: g, force: gNew, alphaMax, step: stepLS, hmax: Math.max(hmax, hbox, hext), natoms: sys.thermo.norm ? s.n : null })
+          : lineminHook!.quadratic(e, { h, f0: g, force: gNew, alphaMax, step: stepLS });
         status = r.status;
         eTry = r.energy;
       }

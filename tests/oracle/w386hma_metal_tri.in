@@ -1,0 +1,21 @@
+# oracle: compute hma u p in metal units (EAM Cu, Mishin) on a triclinic box with fix langevin as the thermostat: the sites are unwrapped through the tilted box (Domain::unmap), the pressure uses nktv2p and k_B of metal units, and the set temperature is fix langevin's t_target
+# oracle-potentials: Cu_mishin1.eam.alloy
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      atomic
+lattice         fcc 3.615
+region          box prism 0 3 0 3 0 3 0.2 0.1 0.0
+create_box      1 box
+create_atoms    1 box
+mass            1 63.546
+pair_style      eam/alloy
+pair_coeff      * * Cu_mishin1.eam.alloy Cu
+velocity        all create 300.0 45678 dist gaussian
+fix             1 all nve
+fix             settemp all langevin 300.0 300.0 0.1 48279
+compute         hma all hma settemp u p 0.0
+timestep        0.002
+thermo_style    custom step pe temp press c_hma[1] c_hma[2]
+thermo_modify   format float %.15g
+thermo          20
+run             100

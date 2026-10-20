@@ -50,6 +50,11 @@ export abstract class RescaleFix extends Fix {
   init(): void { this.temp = this.sys.compute(this.tempId); }
   destroy(): void { if (this.tempId === `${this.id}_temp`) removeCompute(this.sys, this.tempId); }
 
+  /** extract("t_target") (fix temp/berendsen, temp/rescale, temp/csvr: the target temperature of this step; compute hma reads it). */
+  extract(name: string): number | null {
+    return name === 't_target' ? target(this.sys, this.tStart, this.tStop) : null;
+  }
+
   modify(key: string, values: string[]): number {
     if (key === 'temp') {
       const c = this.sys.compute(values[0] ?? '');
@@ -367,6 +372,11 @@ export class FixLangevin extends Fix {
    * tempfixid keyword: "Using *tempfixid* overrides any fixed temperature set by *temp*" (docs.lammps.org/
    * fix_charge_regulation.html).
    */
+  /** extract("t_target") (fix_langevin.cpp extract; compute hma reads it). */
+  extract(name: string): number | null {
+    return name === 't_target' ? this.targetTemperature() : null;
+  }
+
   targetTemperature(): number {
     if (this.tAtom) throw new StyleError(`fix ${this.id} langevin: an atom-style temperature variable gives no single target temperature`);
     return typeof this.tStart === 'number' ? ramp(this.sys, this.tStart, this.tStop) : valueOf(this.sys, this.tStart);

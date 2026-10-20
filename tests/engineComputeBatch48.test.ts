@@ -82,17 +82,19 @@ describe('compute temp/profile', () => {
 
 describe('compute hma', () => {
   const FIX = 'fix settemp all nvt temp 1.0 1.0 0.5\n';
-  it('refuses anharmonic and bad keywords', async () => {
-    expect((await run(`${LATTICE}${FIX}compute h all hma settemp u anharmonic\nrun 0\n`)).errors[0]).toMatch(/keyword anharmonic is not implemented/);
-    expect((await run(`${LATTICE}${FIX}compute h all hma settemp anharmonic u\nrun 0\n`)).errors[0]).toMatch(/keyword anharmonic is not implemented/);
-    expect((await run(`${LATTICE}${FIX}compute h all hma settemp w\nrun 0\n`)).errors[0]).toMatch(/unknown keyword 'w'/);
-    expect((await run(`${LATTICE}${FIX}compute h all hma settemp p\nrun 0\n`)).errors[0]).toMatch(/keyword p needs a pressure value/);
+  it('takes anharmonic (oracle w385hma_anharmonic) and names bad keywords as native does', async () => {
+    expect((await run(`${LATTICE}${FIX}compute h all hma settemp u anharmonic\nrun 0\n`)).errors).toEqual([]);
+    expect((await run(`${LATTICE}${FIX}compute h all hma settemp w\nrun 0\n`)).errors[0]).toMatch(/Unknown compute hma keyword w/);
+    expect((await run(`${LATTICE}${FIX}compute h all hma settemp p\nrun 0\n`)).errors[0]).toMatch(/Illegal compute hma command/);
+    // a repeated p is skipped without its value, which native then reads as a keyword
+    expect((await run(`${LATTICE}${FIX}compute h all hma settemp p 1.0 p 2.0\nrun 0\n`)).errors[0]).toMatch(/Unknown compute hma keyword 2.0/);
     expect((await run(`${LATTICE}${FIX}compute h all hma settemp u\nrun 0\n`)).errors).toEqual([]);
   });
 
-  it('refuses groups other than all and temp-IDs that are not thermostats', async () => {
-    expect((await run(`${LATTICE}${FIX}group g1 id 1 2\ncompute h g1 hma settemp u\nrun 0\n`)).errors[0]).toMatch(/group must be all/);
-    expect((await run(`${LATTICE}fix nve1 all nve\ncompute h all hma nve1 u\nrun 0\n`)).errors[0]).toMatch(/must be a thermostat fix/);
+  it('refuses groups other than all and temp-IDs that are not thermostats, with native texts', async () => {
+    expect((await run(`${LATTICE}${FIX}group g1 id 1 2\ncompute h g1 hma settemp u\nrun 0\n`)).errors[0]).toMatch(/Compute hma must use group all/);
+    expect((await run(`${LATTICE}fix nve1 all nve\ncompute h all hma nve1 u\nrun 0\n`)).errors[0]).toMatch(/Fix ID nve1 is not a thermostat/);
+    expect((await run(`${LATTICE}${FIX}compute h all hma NULL u\nrun 0\n`)).errors[0]).toMatch(/fix ID specifying the set temperature of canonical simulation is required/);
   });
 
   it('u equals pe + 3/2 (N-1) T when defined after the displacement (sites are then the displaced positions)', async () => {

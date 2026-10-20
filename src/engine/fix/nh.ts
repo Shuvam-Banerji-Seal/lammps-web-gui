@@ -217,6 +217,8 @@ export class FixNH extends Fix {
         case 'temp':
           this.tstat = true;
           this.tStart = n(1, 'Tstart'); this.tStop = n(2, 'Tstop'); this.tPeriod = n(3, 'Tdamp');
+          // fix_nh.cpp constructor: "t_target = t_start" (what extract("t_target") gives before the first setup)
+          this.tTarget = this.tStart;
           if (!(this.tPeriod > 0)) throw new StyleError(`fix ${style}: Tdamp must be > 0`);
           k += 4;
           break;
@@ -384,6 +386,8 @@ export class FixNH extends Fix {
    */
   extract(name: string): number | number[] | null {
     if (name === 't_start' || name === 't_stop') return this.tstat ? (name === 't_start' ? this.tStart : this.tStop) : null;
+    // fix_nh.cpp extract: "if (tstat_flag && strcmp(str,"t_target") == 0)" (compute hma reads it)
+    if (name === 't_target') return this.tstat ? this.tTarget : null;
     if (name === 'p_start') return this.pstat ? Array.from(this.pStart) : null;
     if (name === 'p_stop') return this.pstat ? Array.from(this.pStop) : null;
     if (name === 'p_flag') return this.pstat ? this.pFlag.map((b) => (b ? 1 : 0)) : null;

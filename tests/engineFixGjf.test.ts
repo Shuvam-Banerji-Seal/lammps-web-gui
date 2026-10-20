@@ -62,15 +62,24 @@ describe('fix gjf argument errors', () => {
     const r = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0 9182 vel half\nrun 1`);
     expect(errorText(r.error)).toMatch(/vel must be vfull or vhalf/);
   });
-  it('method must be 1-8', async () => {
+  it('method must be 0-8 (native: Invalid GJ method choice in gjf command)', async () => {
     const r = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0 9182 method 9\nrun 1`);
-    expect(errorText(r.error)).toMatch(/method must be 1-8/);
+    expect(errorText(r.error)).toMatch(/Invalid GJ method choice in gjf command/);
   });
-  it('methods 7 and 8 are named as not implemented', async () => {
-    const r7 = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0 9182 method 7 0.95\nrun 1`);
-    expect(errorText(r7.error)).toMatch(/method 7 \(GJ-VII\) is not implemented/);
-    const r8 = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0 9182 method 8\nrun 1`);
-    expect(errorText(r8.error)).toMatch(/method 8 \(GJ-VIII\) is not implemented/);
+  it('method 7 needs c2 in [0, 1] (native texts) and sets the timestep; methods 0 and 8 run', async () => {
+    const r7 = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0 9182 method 7\nrun 1`);
+    expect(errorText(r7.error)).toMatch(/Illegal fix gjf command for GJ-VII/);
+    const r7b = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0 9182 method 7 1.5\nrun 1`);
+    expect(errorText(r7b.error)).toMatch(/Choice of c2 in GJ-VII must be 0≤c2≤1/);
+    // dt = (1 + c2)/(1 - c2) ln(c2)^2 damp/2 (native's value is in w351gjf_method7)
+    const ok = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0 9182 method 7 0.995\nrun 1`);
+    expect(ok.error).toBeNull();
+    const c2 = 0.995;
+    expect(ok.session.sys.state.dt).toBeCloseTo((1 + c2) / (1 - c2) * Math.log(c2) ** 2 * 0.5 * 2.0, 12);
+    for (const m of ['0', '8']) {
+      const r = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0 9182 method ${m}\nrun 1`);
+      expect(r.error, `method ${m}`).toBeNull();
+    }
   });
   it('unknown keywords throw a StyleError naming them', async () => {
     const r = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0 9182 tally yes\nrun 1`);

@@ -46,7 +46,7 @@ export class AngleDipole extends SimpleBonded {
 
   /** The equilibrium angle in degrees (fix shake convention). */
   equilibrium(type: number): number {
-    return this.params.p('gamma0')[type] / Math.PI * 180.0;
+    return (180 / Math.PI) * this.equilibriumRadians(type);
   }
 
   /** angle_dipole.cpp equilibrium_angle(): gamma0 in radians. */

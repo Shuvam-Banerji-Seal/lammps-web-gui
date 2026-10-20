@@ -107,7 +107,9 @@ export class AngleMesoCNT extends Bonded {
     if (s && !s.custom.has(BUCKLED)) s.custom.set(BUCKLED, { int: true, cols: 0, data: new Float64Array(s.n) } satisfies CustomProp);
   }
 
-  equilibrium(_type: number): number { return 180.0; }
+  /** angle_mesocnt.cpp equilibrium_angle() returns the literal 180.0, which native hands to its radian consumers as it is. */
+  equilibriumRadians(_type: number): number { return 180.0; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   dataCoeffs(): string[] {
     const out: string[] = [];

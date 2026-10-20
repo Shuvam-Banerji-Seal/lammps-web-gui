@@ -353,9 +353,9 @@ export class FixShake extends Fix {
           if (x2 !== id || !this.angleTypes.has(A.type[e])) continue;
           const ends = new Set([x1, x3]);
           if (!(ends.has(c.ids[1]) && ends.has(c.ids[2]))) continue;
-          const th = (ff.angle!.equilibrium(A.type[e]) * Math.PI) / 180;
+          const th = ff.angle!.equilibriumRadians(A.type[e]);
           const d1 = Math.sqrt(c.cons[0].d2), d2 = Math.sqrt(c.cons[1].d2);
-          c.cons.push({ a: 1, b: 2, d2: d1 * d1 + d2 * d2 - 2 * d1 * d2 * libm.cos(th) });
+          c.cons.push({ a: 1, b: 2, d2: d1 * d1 + d2 * d2 - 2 * d1 * d2 * libm.cosAlone(th) }); // native FixShake::init calls cos() alone (glibc's FMA cos, libm.ts)
         }
       }
       for (const x of c.ids) {

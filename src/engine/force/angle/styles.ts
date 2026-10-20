@@ -38,6 +38,10 @@ export class AngleCosine extends SimpleBonded {
   readonly kind = 'angle' as const;
   readonly paramNames = ['K'];
 
+  /** angle_cosine.cpp equilibrium_angle(): MY_PI */
+  equilibriumRadians(_type: number): number { return Math.PI; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
+
   compute(bc: BondedCompute): void {
     const K = this.params.p('K');
     const A = bc.s.topo.angles;
@@ -83,7 +87,9 @@ export class AngleCosineSquared extends SimpleBonded {
   }
 
   // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
-  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
+  /** native equilibrium_angle() (radians, the stored parameter) */
+  equilibriumRadians(type: number): number { return this.params.p('theta0')[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), th0 = this.params.p('theta0');
@@ -130,6 +136,13 @@ export class AngleCosinePeriodic extends SimpleBonded {
     if (args.length !== 3) throw new StyleError('angle_coeff cosine/periodic needs C B n');
     return [parseNum(args[0], 'C'), parseNum(args[1], 'B'), parseInt_(args[2], 'n')];
   }
+
+  /** angle_cosine_periodic.cpp equilibrium_angle(): MY_PI*(1.0 - ((b[i]>0) ? 0.0 : (1.0/multiplicity[i]))) */
+  equilibriumRadians(type: number): number {
+    const B = this.params.p('B')[type], n = this.params.p('n')[type];
+    return Math.PI * (1.0 - (B > 0 ? 0.0 : 1.0 / n));
+  }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const C = this.params.p('C'), B = this.params.p('B'), n = this.params.p('n');
@@ -186,7 +199,9 @@ export class AngleCosineShift extends SimpleBonded {
   }
 
   // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
-  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
+  /** native equilibrium_angle() (radians, the stored parameter) */
+  equilibriumRadians(type: number): number { return this.params.p('theta0')[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const U = this.params.p('Umin'), th0 = this.params.p('theta0');
@@ -233,7 +248,9 @@ export class AngleCosineDelta extends SimpleBonded {
   }
 
   // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
-  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
+  /** native equilibrium_angle() (radians, the stored parameter) */
+  equilibriumRadians(type: number): number { return this.params.p('theta0')[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), th0 = this.params.p('theta0');
@@ -283,8 +300,9 @@ export class AngleCharmm extends SimpleBonded {
   }
 
   // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
-  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
+  /** native equilibrium_angle() (radians, the stored parameter) */
   equilibriumRadians(type: number): number { return this.params.p('theta0')[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), th0 = this.params.p('theta0');
@@ -344,7 +362,9 @@ export class AngleQuartic extends SimpleBonded {
   }
 
   // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
-  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
+  /** native equilibrium_angle() (radians, the stored parameter) */
+  equilibriumRadians(type: number): number { return this.params.p('theta0')[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const th0 = this.params.p('theta0'), K2 = this.params.p('K2'), K3 = this.params.p('K3'), K4 = this.params.p('K4');
@@ -376,6 +396,18 @@ export class AngleFourier extends SimpleBonded {
   readonly name = 'fourier';
   readonly kind = 'angle' as const;
   readonly paramNames = ['K', 'C0', 'C1', 'C2'];
+
+  /** angle_fourier.cpp equilibrium_angle(): acos(-C1/4/C2) when |C1/4/C2| <= 1, else C1/4/C2; MY_PI when C2 is 0. */
+  equilibriumRadians(type: number): number {
+    const C1 = this.params.p('C1')[type], C2 = this.params.p('C2')[type];
+    let ret = Math.PI;
+    if (C2 !== 0.0) {
+      ret = C1 / 4.0 / C2;
+      if (Math.abs(ret) <= 1.0) ret = libm.acos(-ret);
+    }
+    return ret;
+  }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), C0 = this.params.p('C0'), C1 = this.params.p('C1'), C2 = this.params.p('C2');
@@ -413,6 +445,10 @@ export class AngleFourierSimple extends SimpleBonded {
   readonly name = 'fourier/simple';
   readonly kind = 'angle' as const;
   readonly paramNames = ['K', 'c', 'n'];
+
+  /** angle_fourier_simple.cpp equilibrium_angle(): MY_PI / N[i] */
+  equilibriumRadians(type: number): number { return Math.PI / this.params.p('n')[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), c = this.params.p('c'), n = this.params.p('n');
@@ -472,7 +508,8 @@ export class AngleZero extends Bonded {
     // another style's coefficients
     if (args.length > 2 && !this.nocoeff) throw new StyleError('angle_coeff zero: incorrect args (only one value allowed)');
     if (args.length === 2 && !this.nocoeff) {
-      const v = parseNum(args[1], 'theta0');
+      // theta0 in degrees -> radians, DEG2RAD * theta0_one (angle_zero.cpp coeff)
+      const v = (Math.PI / 180) * parseNum(args[1], 'theta0');
       for (let t = lo; t <= hi; t++) this.eq[t] = v;
     }
     for (let t = lo; t <= hi; t++) this.set[t] = 1;
@@ -489,9 +526,11 @@ export class AngleZero extends Bonded {
   dataCoeffs(): string[] | null {
     if (this.nocoeff) return null;
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(this.eq[t])}`);
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff((180 / Math.PI) * this.eq[t])}`);
     return out;
   }
 
-  equilibrium(type: number): number { return this.eq[type]; }
+  /** angle_zero.cpp equilibrium_angle(): theta0 (radians) */
+  equilibriumRadians(type: number): number { return this.eq[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 }

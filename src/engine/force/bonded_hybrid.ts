@@ -226,14 +226,26 @@ export class BondedHybrid extends Bonded {
   subEnergies(): Float64Array { return this.energy; }
 
   equilibrium(type: number): number {
+    const sub = this.equilibriumSub(type);
+    return sub ? sub.equilibrium(type) : Number.NaN;
+  }
+
+  /** Angle::equilibrium_angle of the hybrid is the sub-style's (angle_hybrid.cpp), in radians. */
+  equilibriumRadians(type: number): number {
+    const sub = this.equilibriumSub(type);
+    return sub ? sub.equilibriumRadians(type) : Number.NaN;
+  }
+
+  /** The sub-style that owns the type, or null when the type is unset; throws for style none, as native does. */
+  private equilibriumSub(type: number): Bonded | null {
     const a = type >= 0 && type < this.assign.length ? this.assign[type] : UNSET;
     if (a === NONE) {
       if (this.kind === 'bond') throw new StyleError('Invoked bond equil distance on bond style none');
       if (this.kind === 'angle') throw new StyleError('Invoked angle equil angle on angle style none');
-      return Number.NaN;
+      return null;
     }
-    if (a < 0) return Number.NaN;
-    return this.build()[a].equilibrium(type);
+    if (a < 0) return null;
+    return this.build()[a];
   }
 
   private usedBy(k: number): boolean {

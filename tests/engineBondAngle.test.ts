@@ -292,7 +292,7 @@ describe('coefficients', () => {
     az.coeff(['*'], CTX);
     az.coeff(['2', '120'], CTX);
     az.init(CTX);
-    expect(az.equilibrium(2)).toBe(120);
+    expect(az.equilibrium(2)).toBeCloseTo(120, 12); // the degrees are derived from the stored radians, as native stores theta0
     expect(() => az.coeff(['1', '120', '5'], CTX)).toThrow(StyleError);
   });
   it('missing or wrong-count coefficients throw StyleError', () => {

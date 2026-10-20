@@ -54,7 +54,8 @@ export class AngleCosineSquaredRestricted extends SimpleBonded {
   }
 
   // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
-  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
+  equilibriumRadians(type: number): number { return this.params.p('theta0')[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), th0 = this.params.p('theta0');
@@ -128,7 +129,8 @@ export class AngleMm3 extends SimpleBonded {
   }
 
   // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
-  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
+  equilibriumRadians(type: number): number { return this.params.p('theta0')[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), th0 = this.params.p('theta0');

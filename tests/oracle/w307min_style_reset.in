@@ -1,0 +1,21 @@
+# oracle: w307min_style_reset — min_style makes a new minimizer (src/update.cpp Update::create_minimize), so min_modify settings given before it are back at their defaults: min_modify dmax 0.01 then min_style quickmin, then min_modify integrator verlet then min_style fire
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.0e-15, atoms 6.4e-14.
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+displace_atoms  all random 0.1 0.1 0.1 87287
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+thermo          5
+thermo_style    custom step pe fnorm
+thermo_modify   format float %.15g
+min_modify      dmax 0.01
+min_style       quickmin
+minimize        0 0 10 100
+min_modify      integrator verlet dmax 0.02
+min_style       fire
+minimize        0 0 20 100

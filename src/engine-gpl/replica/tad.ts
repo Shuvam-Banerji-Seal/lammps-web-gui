@@ -13,8 +13,15 @@
  * NEB calculations, so here only replica 0 is stepped and every replica joins the NEB (neb.ts runNeb). The NEB output
  * goes to the neb_log file (native: universe->ulogfile of the NEB), not to the screen.
  *
- * Refused with a StyleError: neb_style other than quickmin (fire is not in the browser engine's NEB yet), a dump or
- * restart output, atom_modify sort, fix deform (a changing box), and a compute other than event/displace.
+ * As tad.cpp does, the quench minimizer is made anew when the command starts and after each NEB, and the NEB minimizer
+ * (neb_style: quickmin or fire) for each NEB, all with the default min_modify settings (Update::create_minimize).
+ *
+ * Output as tad.rst gives it: dumps are written only by replica 0, when an event is taken and at the start, with the
+ * quenched coordinates ("the requested dump frequency in the dump command is ignored"; "A dump snapshot corresponding to
+ * the initial minimum state used for event detection is written to the dump file at the beginning of each TAD run"),
+ * and a restart file every N events ("The restart file is generated after an event is executed").
+ *
+ * Refused with a StyleError: atom_modify sort, fix deform (a changing box), and a compute other than event/displace.
  */
 import type { Ctx } from '../../engine/commands/args';
 import { int, num } from '../../engine/commands/args';
@@ -163,12 +170,9 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
   if (nsteps % tEvent) throw new StyleError('TAD nsteps must be multiple of t_event');
   if (deltaConf <= 0 || deltaConf >= 1) throw new StyleError('Invalid delta_conf in tad command');
   if (tmax <= 0) throw new StyleError('Invalid tmax in tad command');
-  if (o.nebStyle !== 'quickmin') throw new StyleError(`tad neb_style ${o.nebStyle} is not supported by the browser engine yet (quickmin only: the NEB of the engine is damped dynamics with quickmin)`);
   const sys0 = reps[0];
   for (const sys of reps) {
     if (!sys.hasBox) throw new StyleError('TAD command before simulation box is defined');
-    if (sys.dumps.length) throw new StyleError('tad with a dump command is not supported by the browser engine yet (the event snapshots are not written)');
-    if (sys.restartOut.length) throw new StyleError('tad with restart output is not supported by the browser engine yet');
     if (sys.fixes.some((f) => f.style === 'deform')) throw new StyleError('Cannot use TAD with a changing box (fix deform)');
     if (sys.sortEvery > 0) throw new StyleError('Cannot use TAD with atom_modify sort enabled for NEB');
   }
@@ -194,6 +198,8 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
   const emitLog = (text: string) => session.emit({ kind: 'log', text });
   const nebLines: string[] = [];
 
+  // tad.cpp: "set minimize style for quench" (a new minimizer of the session's min_style on every partition)
+  for (const sys of reps) run.createMinimize(sys, sys.minStyle);
   const saved = reps.map((sys) => ({ every: sys.nb.every, delay: sys.nb.delay, check: sys.nb.check }));
   if (reps.some((sys) => sys.nb.every !== 1 || sys.nb.delay !== 0 || !sys.nb.check)) sys0.warn('Resetting reneighboring criteria during TAD');
   for (const sys of reps) { sys.nb.every = 1; sys.nb.delay = 0; sys.nb.check = true; }
@@ -214,6 +220,16 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
   /** TAD::log_event: the event row of the screen table (Step CPU N M Status Barrier Margin t_lo delt_lo). */
   const logEvent = (timestep: number, ievent: number, status: string, ebarrier: number, tfrac: number, tlo: number, delt: number): void => {
     emitLog(`${timestep} ${cpu()} ${main.number} ${ievent} ${status} ${ebarrier.toFixed(3)} ${tfrac.toFixed(3)} ${tlo.toFixed(3)} ${delt.toFixed(3)}`);
+  };
+
+  /**
+   * The dump snapshot of TAD::log_event: replica 0 (holding the quenched coordinates) is reneighbored and its forces
+   * computed (integrate->setup_minimal(1)), then every dump writes the current timestep, whatever its interval.
+   */
+  const eventDump = async (): Promise<void> => {
+    if (!sys0.dumps.length) return;
+    await run.runVerlet(sys0, 0, { cancelled, afterSetup: () => undefined, afterStep: () => undefined, yieldMs: 30 });
+    for (const d of sys0.dumps) d.write();
   };
 
   const checkEvent = (): boolean => comp.displacement().count > 0;
@@ -278,15 +294,14 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
       }
       sys.pbc();
     }
-    // fix neb 1.0 in every replica (tad.cpp: add_fix "neb all neb 1.0"), quickmin for the NEB, and its timestep
+    // fix neb 1.0 in every replica (tad.cpp: add_fix "neb all neb 1.0"), a new minimizer of neb_style for the NEB, and
+    // its timestep
     const nebFix: { sys: System; fix: Fix }[] = [];
     const holds = reps.map((sys) => ({ minStyle: sys.minStyle, dt: sys.state.dt, step: sys.state.step }));
     for (const sys of reps) {
       const f = run.makeNebFix(sys, 'neb', 'all', ['1.0']);
       sys.fixes.push(f as unknown as (typeof sys.fixes)[number]);
       nebFix.push({ sys, fix: f });
-      sys.minStyle = 'quickmin';
-      sys.state.dt = dtNeb;
     }
     const lines: string[] = [];
     const host: NebHost = {
@@ -306,6 +321,10 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
     };
     let ebf = 0;
     try {
+      for (const sys of reps) {
+        run.createMinimize(sys, o.nebStyle);
+        sys.state.dt = dtNeb;
+      }
       ebf = await run.runNeb(host, [String(o.etolNeb), String(o.ftolNeb), String(o.n1), String(o.n2), String(o.nevery), 'none']);
     } finally {
       // neb.cpp sets update->max_eval to N1 and then N2 steps (lines 240 and 337 at b332f28), and tad.cpp
@@ -316,7 +335,8 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
         if (k >= 0) sys.fixes.splice(k, 1);
       });
       reps.forEach((sys, r) => {
-        sys.minStyle = holds[r].minStyle;
+        // tad.cpp: "switch minimize style back for quench" (a new minimizer, default min_modify settings)
+        run.createMinimize(sys, holds[r].minStyle);
         sys.state.dt = holds[r].dt;
         sys.state.step = holds[r].step;
       });
@@ -338,7 +358,7 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
   };
 
   /** TAD::perform_event: the event is taken: the timestep and the event state become the main event's. */
-  const performEvent = (ievent: number): void => {
+  const performEvent = async (ievent: number): Promise<void> => {
     const ev = events[ievent];
     s0.step = ev.timestep;
     main.tlo = ev.tlo;
@@ -349,6 +369,7 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
     main.xevent = unwrappedOf(sys0);
     comp.storeReference();
     logEvent(main.timestep, eventFirst, 'E ', main.ebarrier, 0, main.tlo, deltfirst);
+    await eventDump();
     restoreSnap(sys0, ev.hot);
     main.hot = snapOf(sys0);
   };
@@ -364,6 +385,7 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
     comp.storeReference();
     main.xevent = unwrappedOf(sys0);
     logEvent(main.timestep, 0, 'E ', 0, 0, 0, 0);
+    await eventDump();
     reps.forEach((sys, k) => restoreSnap(sys, hotAll[k]));
     // the full setup (integrate->setup(1))
     for (const sys of reps) await setupOnly(run, sys, { cancelled });
@@ -392,8 +414,12 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
         revertState();
       }
       if (!confident) break;
-      performEvent(eventFirst);
+      await performEvent(eventFirst);
+      // a restart file every N events (restart N: output->restart_every_single or _double), replica 0 only, of the hot
+      // coordinates after the full setup (output->write_restart: every restart file of the restart command)
+      const restartFlag = sys0.restartOut.some((r) => r.everyVar === null && r.every > 0 && main.number % r.every === 0);
       await setupOnly(run, sys0, { cancelled });
+      if (restartFlag) run.writeRestarts(sys0, s0.step, true);
     }
     const seconds = (performance.now() - t0) / 1000;
     emitLog(`Loop time of ${seconds.toFixed(3)} s for ${s0.step - beginStep} steps with ${s0.n} atoms (CPU · fp64, ${N} partitions)`);

@@ -91,9 +91,13 @@ describe('neb/spin refusals', () => {
   });
 
   it('refuses the fix neb/spin keywords and a minimize with the fix', async () => {
-    expect((await run('', 3, setup({ fix: 'neb/spin 1.0 parallel neigh' }))).error?.message).toMatch(/fix neb\/spin parallel is not supported/);
-    expect((await run('', 3, setup({ fix: 'neb/spin 1.0 lattice yes' }))).error?.message).toMatch(/fix neb\/spin lattice is not supported/);
-    expect((await run('', 3, setup({ fix: 'neb/spin 0.0' }))).error?.message).toMatch(/Kspring must be a number > 0/);
+    // As native LAMMPS does (src/SPIN/fix_neb_spin.cpp at b332f28): parallel and perp are errors, end and lattice are read
+    // past and ignored, a Kspring <= 0 is "Illegal fix neb command"
+    expect((await run('', 3, setup({ fix: 'neb/spin 1.0 parallel neigh' }))).error?.message).toMatch(/Illegal fix neb\/spin command/);
+    expect((await run('', 3, setup({ fix: 'neb/spin 1.0 perp 1.0' }))).error?.message).toMatch(/Illegal fix neb\/spin command/);
+    expect((await run('', 3, setup({ fix: 'neb/spin 1.0 lattice yes end first 1.0' }))).error).toBeNull();
+    expect((await run('', 3, setup({ fix: 'neb/spin 1.0 sideways 2' }))).error?.message).toMatch(/Illegal fix neb\/spin command/);
+    expect((await run('', 3, setup({ fix: 'neb/spin 0.0' }))).error?.message).toMatch(/Illegal fix neb command/);
     expect((await run('minimize 0.0 0.0 5 5\n', 1)).error?.message).toMatch(/acts only inside a neb\/spin command/);
   });
 });

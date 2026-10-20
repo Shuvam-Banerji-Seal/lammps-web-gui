@@ -26,6 +26,8 @@ export interface RunApi {
   runNeb(host: NebHost, a: string[]): Promise<number>;
   /** fix neb Kspring of a replica, as tad adds one to every replica (fix/neb.ts) */
   makeNebFix(sys: System, id: string, group: string, args: string[]): Fix;
+  /** a new minimizer of a style with the default min_modify settings, as min_style and tad make one (run.ts) */
+  createMinimize(sys: System, style: string): void;
 }
 
 /** What a command handler sees. */

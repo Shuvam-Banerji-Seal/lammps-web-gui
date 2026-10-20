@@ -78,7 +78,10 @@ import type { SimState } from '../types';
  * style is re-initialized, and reset yes restores them after the run. Native writes doubles through integer arrays
  * (dihedral charmm n and d, improper cvff d and n): those parameters are refused, as the doc table lists only k.
  *
- * Not supported (StyleError): kspace attributes; bonded hybrid styles (their sub-styles are rebuilt from the
+ * kspace v_name (fix_adapt.rst): "The *kspace* keyword used the specified variable as a scale factor on the energy,
+ * forces, virial calculated by whatever k-space solver is defined by the kspace_style command." It sets KSpace.scale.
+ *
+ * Not supported (StyleError): bonded hybrid styles (their sub-styles are rebuilt from the
  * coefficient lines at every init here); bonded styles outside BONDED_ADAPT; pair
  * styles and parameters other than those listed in ADAPTABLE (a cutoff is never adaptable:
  * the neighbor list would not follow it); mixed type pairs; diameter/disc; sub-style
@@ -224,6 +227,8 @@ export class FixAdapt extends Fix {
   private pairs: PairTarget[] = [];
   private readonly bonded: BondedTarget[] = [];
   private readonly atoms: AtomTarget[] = [];
+  /** kspace v_name: the variables that set the kspace scale factor (native KSpace::scale) */
+  private readonly kspaces: string[] = [];
   private scale = false;
   private reset = false;
   private massFlag = true;
@@ -277,7 +282,14 @@ export class FixAdapt extends Fix {
         continue;
       }
       if (w === 'kspace') {
-        throw new StyleError(`fix ${id} (adapt): attribute kspace is not supported by this engine (pair, bond, angle, dihedral, improper and atom are)`);
+        // fix_adapt.cpp at b332f28: "Argument must be variable not {}"
+        const vw = args[k + 1];
+        if (vw === undefined) throw new StyleError(`fix ${id} (adapt): kspace needs v_name (${USAGE})`);
+        if (!vw.startsWith('v_')) throw new StyleError(`Argument must be variable not ${vw}`);
+        this.checkVariable(id, vw);
+        this.kspaces.push(vw.slice(2));
+        k += 2; nattr++;
+        continue;
       }
       throw new StyleError(`fix ${id} (adapt): unknown attribute or keyword '${w}' (${USAGE})`);
     }
@@ -365,6 +377,11 @@ export class FixAdapt extends Fix {
       });
     }
     for (const b of this.bonded) this.resolveBonded(b);
+    if (this.kspaces.length && !this.sys.ff.kspace) throw new StyleError('Fix adapt expected a kspace style but none was defined');
+    // As native LAMMPS does (src/atom_vec_sphere.cpp init at b332f28): changing diameters needs atom_style sphere 1
+    if (this.atoms.some((a) => a.kind !== 'charge') && isSphereStyle(s.atomStyle) && !this.sys.radvary) {
+      throw new StyleError('Fix adapt changes atom radii but atom_style sphere is not dynamic');
+    }
     for (const a of this.atoms) {
       if (a.kind === 'charge' && !hasChargeStyle(s.atomStyle)) {
         throw new StyleError(`fix ${this.id} (adapt): atom charge needs atom_style charge or full (atom_style is ${s.atomStyle})`);
@@ -468,6 +485,8 @@ export class FixAdapt extends Fix {
       for (let i = b.lo; i <= b.hi; i++) b.arr![i] = this.scale ? v * b.orig[i] : v / b.ratio;
     }
     this.reinitBonded();
+    // fix_adapt.cpp change_settings: "*kspace_scale = value" (scale yes does not apply to it)
+    for (const vname of this.kspaces) this.sys.ff.kspace!.scale = sys.equalVariable(vname);
     for (const a of this.atoms) {
       if (a.kind === 'charge') {
         if (charges) this.setCharges(a, sys.equalVariable(a.vname), s);
@@ -557,6 +576,8 @@ export class FixAdapt extends Fix {
     if (pairChanged) this.refreshPairs(true);
     for (const b of this.bonded) for (let i = b.lo; i <= b.hi; i++) b.arr![i] = b.orig[i];
     this.reinitBonded();
+    // fix_adapt.cpp restore_settings: "*kspace_scale = 1.0"
+    if (this.kspaces.length && this.sys.ff.kspace) this.sys.ff.kspace.scale = 1.0;
     for (const a of this.atoms) {
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.groupBit)) continue;

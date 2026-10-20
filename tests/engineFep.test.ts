@@ -117,9 +117,9 @@ describe('fix adapt/fep and compute fep (src/engine-gpl/fep/)', () => {
     await expect(runLines([...base, 'compute FEP all fep 300.0 pair lj/cut/coul/long/soft lambda * * v_dl bogus yes', 'run 0'])).rejects.toThrow(/bogus/);
   });
 
-  it('fix adapt/fep names the keywords it does not support', async () => {
-    await expect(runLines([...base, 'fix A all adapt/fep 10 kspace v_x', 'run 0'])).rejects.toThrow(/kspace/);
-    await expect(runLines([...base, 'fix A all adapt/fep 10 atom diameter 1 v_x', 'run 0'])).rejects.toThrow(/diameter/);
+  it('fix adapt/fep names the keywords it does not support, and gives native texts for kspace and diameter', async () => {
+    await expect(runLines([...base, 'fix A all adapt/fep 10 kspace x', 'run 0'])).rejects.toThrow(/Illegal fix adapt\/fep command/);
+    await expect(runLines([...base, 'variable x equal 1.0', 'fix A all adapt/fep 10 atom diameter 1 v_x', 'run 0'])).rejects.toThrow(/Fix adapt\/fep requires atom attribute diameter/);
     await expect(runLines([...base, 'fix A all adapt/fep 10 pair lj/cut/coul/long/soft lambda * * v_dl bogus yes', 'run 0'])).rejects.toThrow(/bogus/);
   });
 

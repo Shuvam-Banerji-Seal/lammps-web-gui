@@ -4,6 +4,12 @@
  * at commit b332f28 (see extra_compute/hma.ts). Copyright the LAMMPS development team (GNU General Public License).
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
- * The lazy HOOKS entry 'hma' (lazyStyles.ts group gpl_hma): the core compute hma calls the cv phi_sum through it.
+ * Compute hma, loaded lazily through src/engine/lazyStyles.ts (group gpl_hma).
  */
-export { HOOKS } from '../extra_compute/hma';
+import type { Compute } from '../../engine/compute/compute';
+import type { System } from '../../engine/system';
+import { ComputeHMA } from '../extra_compute/hma';
+
+export const COMPUTES: Record<string, (sys: System, id: string, group: string, args: string[]) => Compute> = {
+  hma: (sys, id, group, args) => new ComputeHMA(sys, id, group, args),
+};

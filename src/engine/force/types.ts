@@ -726,6 +726,13 @@ export abstract class KSpace {
   abstract readonly name: string;
   /** Relative accuracy target from kspace_style. */
   accuracy = 1e-4;
+  /**
+   * The factor of the Coulomb kspace terms (native KSpace::scale, 1 by default; fix adapt and fix adapt/fep set it
+   * through extract("scale")). As native LAMMPS does (e.g. src/KSPACE/pppm.cpp at b332f28: "const double qscale =
+   * qqrd2e * scale"), it multiplies qqrd2e for the kspace forces, energy and virial, so the force field passes the
+   * product to compute().
+   */
+  scale = 1.0;
   gEwald = 0;
   /** kspace_modify compute: false skips the kspace force, energy and virial (setup still runs; kspace_modify.html). */
   computeOn = true;

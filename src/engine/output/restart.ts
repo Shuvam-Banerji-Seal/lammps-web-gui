@@ -421,6 +421,8 @@ export const writeRestartText = (sys: System): string => {
     apip,
     smd,
     comm: { style: sys.commStyle, vel: sys.ghostVelocity, cutoff: sys.nb.commCutoff },
+    // atom_style sphere 1 (dynamic radii), as native writes the atom style's arguments
+    radvary: sys.radvary,
     groups: encodeValue({ names: sys.groups.names, dynamic: sys.groups.dynamic }, 'groups', []),
     special: encodeValue(sys.ff.special, 'special', []),
     // Howto_type_labels.html: "This map is also written to and read from restart files, by the write_restart and read_restart commands."
@@ -470,7 +472,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     if (header.startsWith('LAMMPS-WEB-RESTART')) throw new StyleError(`${name}: restart format '${header}' is not supported (this engine reads '${RESTART_MAGIC}')`);
     throw new StyleError(`${name} is not a restart file written by this browser engine or by native LAMMPS (a native binary restart file starts with 'LammpS RestartT'). Use write_restart or write_data here; a native file of another kind can be converted with the lmp -restart2data command-line flag and read with read_data`);
   }
-  let doc: { format: string; version: number; step: number; state: Json; electron?: Json | null; dielectric?: Json | null; sph?: Json | null; dpdMeso?: Json | null; rheo?: Json | null; dpd?: Json | null; apip?: Json | null; smd?: Json | null; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
+  let doc: { format: string; version: number; step: number; state: Json; electron?: Json | null; dielectric?: Json | null; sph?: Json | null; dpdMeso?: Json | null; rheo?: Json | null; dpd?: Json | null; apip?: Json | null; smd?: Json | null; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; radvary?: boolean; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
   try {
     doc = JSON.parse(text.slice(nl + 1));
   } catch {
@@ -603,6 +605,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   sys.dimension = state.dimension;
   sys.boundary = state.box.boundary.map((f) => [f[0], f[1]]) as SimState['box']['boundary'];
   sys.atomStyle = state.atomStyle;
+  sys.radvary = doc.radvary ?? false;
   sys.commStyle = doc.comm.style;
   sys.ghostVelocity = doc.comm.vel;
   sys.nb.commCutoff = doc.comm.cutoff;

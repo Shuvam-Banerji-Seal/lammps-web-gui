@@ -1,0 +1,19 @@
+# oracle: compute hma anharmonic u p cv: the first evaluation (step 0, atoms on their sites) takes the lattice energy and pressure, which the later values subtract, and the harmonic terms are left out
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+units           lj
+atom_style      atomic
+lattice         fcc 1.0
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/smooth/linear 3
+pair_coeff      * * 1.0 1.0
+velocity        all create 0.1 45678 dist gaussian
+fix             settemp all nvt temp 1.0 1.0 0.5
+compute         hma all hma settemp anharmonic u p 9.579586686264458 cv
+timestep        0.005
+thermo_style    custom step pe temp c_hma[1] c_hma[2] c_hma[3]
+thermo_modify   format float %.15g
+thermo          50
+run             200

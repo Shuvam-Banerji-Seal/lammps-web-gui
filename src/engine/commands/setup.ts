@@ -91,9 +91,10 @@ const atomStyle: Handler = ({ sys }, a) => {
       throw new StyleError(`atom_style '${w}' is not supported by the browser engine; supported: ${ATOM_STYLES.join(', ')}, hybrid`);
     }
   };
-  // atom_style.html: "*sphere* arg = 0/1 (optional) for static/dynamic particle radii"; the engine
-  // never changes radii during a run, so both values behave the same.
+  // atom_style.html: "*sphere* arg = 0/1 (optional) for static/dynamic particle radii"; 1 is kept as sys.radvary (the
+  // engine's ghosts read their owners' radii, so it changes no numbers; fixes that change radii check it)
   const sphereArg = (w: string | undefined) => w === '0' || w === '1';
+  sys.radvary = false;
   // atom_style.html: "tdpd Nspecies": the number of chemical species is a positive integer
   const tdpdArg = (w: string | undefined): string => {
     if (!w || !/^[1-9]\d*$/.test(w)) throw new StyleError('Invalid atom_style tdpd command');
@@ -139,7 +140,10 @@ const atomStyle: Handler = ({ sys }, a) => {
       known(w);
       if (subs.includes(w)) throw new StyleError(`atom_style hybrid lists ${w} twice`);
       subs.push(w);
-      if ((w === 'sphere' || w === 'bpm/sphere') && sphereArg(a[k + 1])) k++;
+      if ((w === 'sphere' || w === 'bpm/sphere') && sphereArg(a[k + 1])) {
+        if (a[k + 1] === '1') sys.radvary = true;
+        k++;
+      }
     }
     if (!subs.length) throw new StyleError('usage: atom_style hybrid sub-style1 sub-style2 ...');
     // atom_style.html: "When using the *hybrid* style, you cannot combine the *template* style"
@@ -192,6 +196,7 @@ const atomStyle: Handler = ({ sys }, a) => {
   known(a[0]);
   if (a[0] === 'sphere' || a[0] === 'bpm/sphere') {
     if (a.length > 2 || (a.length === 2 && !sphereArg(a[1]))) throw new StyleError(`usage: atom_style ${a[0]} [0|1]`);
+    sys.radvary = a[1] === '1';
   } else if (a.length > 1) throw new StyleError(`atom_style ${a[0]} takes no arguments`);
   sys.atomStyle = a[0] as AtomStyle;
 };

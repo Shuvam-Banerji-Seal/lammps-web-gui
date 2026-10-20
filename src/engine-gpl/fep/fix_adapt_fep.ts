@@ -7,9 +7,9 @@
  * fix ID group-ID adapt/fep N keyword args ... keyword value ... (docs.lammps.org/fix_adapt_fep.html). Differences
  * from fix adapt (src/engine/fix/adapt.ts): the pair keyword takes the soft-core parameter lambda of the
  * lj/cut/coul/long/soft family (any pair parameter table of the defined style is accepted); the keywords
- * reset, scale and after; the atom keyword takes charge only; the timing follows fix_adapt_fep.cpp
- * (pre_force: "if (afterflag) ... update at n+1"). Not supported (StyleError): kspace, atom diameter, dynamic
- * groups with atom attributes, and respa.
+ * reset, scale and after; the atom keyword takes charge or diameter for a type range; kspace sets the kspace scale
+ * factor (KSpace.scale); the timing follows fix_adapt_fep.cpp (pre_force: "if (afterflag) ... update at n+1").
+ * Not supported (StyleError): dynamic groups with atom attributes, and respa.
  *
  * Source notes kept from fix_adapt_fep.cpp: setup applies the variables at every run start (setup_pre_force);
  * pre_force applies at steps where ntimestep % N == 0, or with "after yes" at steps N+1, 2N+1, ... (and
@@ -18,7 +18,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { Pair, StyleError, typeBounds } from '../../engine/force/types';
-import { hasChargeStyle } from '../../engine/atoms';
+import { hasChargeStyle, isSphereStyle } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 import { refreshChargeSums, reinitPair, resolvePairTable, setPairValue, typePairs, type PairTable } from './pair_table';
 
@@ -36,22 +36,29 @@ interface PairAdapt {
   orig: Float64Array;
 }
 
-interface ChargeAdapt {
+interface AtomAdapt {
+  kind: 'charge' | 'diameter';
   vname: string;
   /** Type range as given (resolved against ntypes at run start). */
   iw: string;
 }
 
+/** fix_adapt_fep.cpp: the volume of a sphere of radius r, 4.0*MY_PI/3.0 * r*r*r in native's operation order. */
+const sphereVolume = (r: number): number => 4.0 * Math.PI / 3.0 * r * r * r;
+
 export class FixAdaptFEP extends Fix {
   readonly style = 'adapt/fep';
   private readonly pending: Array<{ pstyle: string; pparam: string; iw: string; jw: string; vname: string }> = [];
-  private readonly charges: ChargeAdapt[] = [];
+  private readonly atoms: AtomAdapt[] = [];
+  /** kspace v_name entries (the kspace scale factor) */
+  private readonly kspaces: string[] = [];
   private pairs: PairAdapt[] = [];
   private reset = false;
   private scale = false;
   private after = false;
-  /** Charges as the fix saw them when defined, by atom ID (reset yes restores them). */
+  /** Charges and radii as the fix saw them when defined, by atom ID (reset yes restores them; the STORE/ATOM vectors). */
   private readonly origQ = new Map<number, number>();
+  private readonly origR = new Map<number, number>();
   private definedQ = false;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
@@ -81,25 +88,38 @@ export class FixAdaptFEP extends Fix {
       if (w === 'atom') {
         const kind = args[k + 1], iw = args[k + 2], vw = args[k + 3];
         if (vw === undefined || !vw.startsWith('v_')) throw new StyleError(`fix ${id} (adapt/fep): atom needs atomparam type v_name (${USAGE})`);
-        if (kind === 'diameter') throw new StyleError(`fix ${id} (adapt/fep): atom diameter is not supported by this engine (only atom charge)`);
-        if (kind !== 'charge') throw new StyleError(`fix ${id} (adapt/fep): atom parameter '${kind}' is not supported (charge)`);
-        this.charges.push({ vname: vw.slice(2), iw });
+        if (kind !== 'charge' && kind !== 'diameter') throw new StyleError('Illegal fix adapt/fep command');
+        this.atoms.push({ kind, vname: vw.slice(2), iw });
         k += 4; nattr++;
         continue;
       }
-      if (w === 'kspace') throw new StyleError(`fix ${id} (adapt/fep): attribute kspace is not supported by this engine (pair and atom charge are)`);
+      if (w === 'kspace') {
+        const vw = args[k + 1];
+        if (vw === undefined || !vw.startsWith('v_')) throw new StyleError('Illegal fix adapt/fep command');
+        this.kspaces.push(vw.slice(2));
+        k += 2; nattr++;
+        continue;
+      }
       throw new StyleError(`fix ${id} (adapt/fep): unknown attribute or keyword '${w}' (${USAGE})`);
     }
     if (nattr === 0) throw new StyleError(`fix ${id} (adapt/fep): nothing to adapt (${USAGE})`);
-    if (this.scale && this.charges.length) throw new StyleError(`fix ${id} (adapt/fep): keyword 'scale yes' is not supported with 'atom'`);
-    // the STORE/ATOM vector of the native fix is filled when the fix is defined
-    if (this.reset && this.charges.length) this.storeCharges();
+    if (this.scale && this.atoms.length) throw new StyleError("Keyword 'scale yes' is not supported with fix adapt/fep for 'atom'");
+    // the STORE/ATOM vectors of the native fix are filled when the fix is defined (post_constructor, reset yes only)
+    if (this.reset && this.atoms.length) this.storeAtoms();
   }
 
-  private storeCharges(): void {
+  private get hasCharge(): boolean { return this.atoms.some((a) => a.kind === 'charge'); }
+  private get hasDiameter(): boolean { return this.atoms.some((a) => a.kind === 'diameter'); }
+
+  private storeAtoms(): void {
     const s = this.sys.state;
     this.origQ.clear();
-    for (let i = 0; i < s.n; i++) if (s.mask[i] & this.groupBit) this.origQ.set(s.id[i], s.q[i]);
+    this.origR.clear();
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      if (this.hasCharge && s.q) this.origQ.set(s.id[i], s.q[i]);
+      if (this.hasDiameter && s.radius) this.origR.set(s.id[i], s.radius[i]);
+    }
     this.definedQ = true;
   }
 
@@ -110,9 +130,13 @@ export class FixAdaptFEP extends Fix {
    */
   init(): void {
     const s = this.sys.state;
-    if (this.charges.length) {
-      if (!hasChargeStyle(s.atomStyle)) throw new StyleError(`fix ${this.id} (adapt/fep): requires atom attribute charge`);
+    if (this.kspaces.length && !this.sys.ff.kspace) throw new StyleError('Fix adapt/fep kspace style does not exist');
+    if (this.hasDiameter && !s.radius) throw new StyleError('Fix adapt/fep requires atom attribute diameter');
+    // AtomVecSphere::init (src/atom_vec_sphere.cpp at b332f28): changing diameters needs atom_style sphere 1
+    if (this.hasDiameter && isSphereStyle(s.atomStyle) && !this.sys.radvary) {
+      throw new StyleError('Fix adapt/fep changes atom radii but atom_style sphere is not dynamic');
     }
+    if (this.hasCharge && !hasChargeStyle(s.atomStyle)) throw new StyleError('Fix adapt/fep requires atom attribute charge');
     this.pairs = [];
     for (const p of this.pending) {
       const table = resolvePairTable(this.sys, `fix ${this.id} (adapt/fep)`, p.pstyle, p.pparam);
@@ -122,7 +146,7 @@ export class FixAdaptFEP extends Fix {
       pairs.forEach(([i, j], k) => { orig[k] = table.table.get(table.name, i, j); });
       this.pairs.push({ vname: p.vname, table, pairs, orig });
     }
-    if (this.reset && this.charges.length && !this.definedQ) this.storeCharges();
+    if (this.reset && this.atoms.length && !this.definedQ) this.storeAtoms();
     this.apply();
   }
 
@@ -139,16 +163,29 @@ export class FixAdaptFEP extends Fix {
       owners.add(p.table.owner);
     }
     for (const owner of owners) reinitPair(sys, owner);
-    if (this.charges.length) {
-      for (const c of this.charges) {
-        const v = sys.equalVariable(c.vname);
-        const [ilo, ihi] = typeBounds(c.iw, s.ntypes);
+    // set kspace scale factor
+    for (const vname of this.kspaces) sys.ff.kspace!.scale = sys.equalVariable(vname);
+    for (const a of this.atoms) {
+      const v = sys.equalVariable(a.vname);
+      const [ilo, ihi] = typeBounds(a.iw, s.ntypes);
+      if (a.kind === 'charge') {
         for (let i = 0; i < s.n; i++) {
           if (s.type[i] >= ilo && s.type[i] <= ihi && (s.mask[i] & this.groupBit)) s.q[i] = v;
         }
+      } else {
+        // reset radius from diameter, also scale rmass to new value (at the same density)
+        const radius = s.radius!, rmass = s.rmass;
+        for (let i = 0; i < s.n; i++) {
+          if (!(s.type[i] >= ilo && s.type[i] <= ihi && (s.mask[i] & this.groupBit))) continue;
+          if (!rmass) { radius[i] = 0.5 * v; continue; }
+          const density = rmass[i] / sphereVolume(radius[i]);
+          radius[i] = 0.5 * v;
+          rmass[i] = sphereVolume(radius[i]) * density;
+        }
       }
-      refreshChargeSums(sys);
     }
+    if (this.hasDiameter) sys.bump();
+    if (this.hasCharge) refreshChargeSums(sys);
   }
 
   preForce(): void {
@@ -170,13 +207,23 @@ export class FixAdaptFEP extends Fix {
       owners.add(p.table.owner);
     }
     for (const owner of owners) reinitPair(sys, owner);
-    if (this.charges.length) {
+    if (this.kspaces.length && sys.ff.kspace) sys.ff.kspace.scale = 1.0;
+    // native restores both stored vectors once for each atom entry (the radius at the same density)
+    for (let e = 0; e < this.atoms.length; e++) {
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.groupBit)) continue;
-        const q = this.origQ.get(s.id[i]);
-        if (q !== undefined) s.q[i] = q;
+        if (this.hasDiameter && s.radius && s.rmass) {
+          const density = s.rmass[i] / sphereVolume(s.radius[i]);
+          s.radius[i] = this.origR.get(s.id[i]) ?? s.radius[i];
+          s.rmass[i] = sphereVolume(s.radius[i]) * density;
+        }
+        if (this.hasCharge) {
+          const q = this.origQ.get(s.id[i]);
+          if (q !== undefined) s.q[i] = q;
+        }
       }
-      refreshChargeSums(sys);
     }
+    if (this.hasDiameter) sys.bump();
+    if (this.hasCharge) refreshChargeSums(sys);
   }
 }

@@ -1,0 +1,35 @@
+# oracle: fix adapt/fep kspace v_s and atom charge for type 2 with pppm, after yes, every 2 steps: the kspace scale factor and the charges follow their variables; reset yes restores both for the second run
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      charge
+lattice         sc 0.8
+region          b block 0 4 0 4 0 4
+create_box      2 b
+create_atoms    1 box
+mass            * 1.0
+set             group all charge 1.0
+group           odd id 1:64:2
+set             group odd type 2
+set             group odd charge -1.0
+variable        dx atom 0.1*sin(1.3*x+0.7*y)
+variable        dy atom 0.1*cos(0.9*y-1.1*z)
+variable        dz atom 0.1*sin(1.7*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.5*sin(1.7*x+2.3*y+0.7*z)
+variable        vy atom 0.5*cos(2.1*x-1.1*y+0.3*z)
+variable        vz atom 0.5*sin(0.5*x+1.9*z+1.3*y)
+velocity        all set v_vx v_vy v_vz units box
+timestep        0.002
+pair_style      lj/cut/coul/long 2.5
+pair_coeff      * * 0.5 1.0
+kspace_style    pppm 1.0e-5
+variable        s equal ramp(1.0,0.5)
+variable        q equal ramp(-1.0,-0.6)
+fix             1 all adapt/fep 2 kspace v_s atom charge 2 v_q after yes reset yes
+fix             2 all nve
+thermo_style    custom step temp pe ecoul elong press
+thermo_modify   format float %.15g
+thermo          10
+run             40
+unfix           1
+run             20

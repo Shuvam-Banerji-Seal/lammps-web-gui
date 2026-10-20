@@ -251,9 +251,19 @@ variable e equal 2.0
     expect(r.message).toMatch(/unknown attribute or keyword 'frob'/);
   });
 
-  it('kspace attribute is an unsupported option (StyleError naming it)', async () => {
-    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 kspace v_e\n`);
-    expect(r.message).toMatch(/attribute kspace is not supported/);
+  it('kspace attribute: native texts without a variable or a kspace style (numbers in oracle w382adapt_kspace)', async () => {
+    const nv = await runScript(`${pairSetup}\nfix 1 all adapt 1 kspace e\n`);
+    expect(nv.message).toMatch(/Argument must be variable not e/);
+    const nk = await runScript(`${pairSetup}\nvariable e equal 0.5\nfix 1 all adapt 1 kspace v_e\nrun 0\n`);
+    expect(nk.message).toMatch(/Fix adapt expected a kspace style but none was defined/);
+  });
+
+  it('atom diameter needs atom_style sphere 1, as native AtomVecSphere::init', async () => {
+    const box = 'units lj\natom_style sphere\nlattice fcc 0.8442\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\ncreate_atoms 1 box\npair_style lj/cut 2.5\npair_coeff * * 1 1\nvariable d equal 1.2\n';
+    const r = await runScript(`${box}fix 1 all adapt 1 atom diameter v_d\nrun 0\n`);
+    expect(r.message).toMatch(/Fix adapt changes atom radii but atom_style sphere is not dynamic/);
+    const ok = await runScript(`${box.replace('atom_style sphere', 'atom_style sphere 1')}fix 1 all adapt 1 atom diameter v_d\nrun 0\n`);
+    expect(ok.message ?? '').toBe('');
   });
 
   // bonded attributes: native's texts (src/fix_adapt.cpp at b332f28); numerical parity is in w345-w347adapt_bonded*

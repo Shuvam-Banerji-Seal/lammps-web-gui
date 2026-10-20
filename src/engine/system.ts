@@ -80,6 +80,12 @@ export class System {
   initSmall: [number, number, number] | null = null;
   boundary: SimState['box']['boundary'] = [['p', 'p'], ['p', 'p'], ['p', 'p']];
   atomStyle: AtomStyle = 'atomic';
+  /**
+   * atom_style sphere 1 or bpm/sphere 1 (alone or in hybrid): dynamic particle radii. atom_style.html: "*sphere* arg =
+   * 0/1 (optional) for static/dynamic particle radii". As native AtomVecSphere::init does (src/atom_vec_sphere.cpp at
+   * b332f28), fix adapt and fix adapt/fep that change diameters need it.
+   */
+  radvary = false;
   lattice: Lattice | null = null;
   /** timestep given before the box exists. */
   pendingDt: number | null = null;

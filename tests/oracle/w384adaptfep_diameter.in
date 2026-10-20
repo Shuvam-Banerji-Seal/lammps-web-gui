@@ -1,0 +1,27 @@
+# oracle: fix adapt/fep atom diameter for type 1 on spheres (atom_style sphere 1, fix nve/sphere): the radius follows the variable and the mass follows the volume at the same density (4 pi/3 r^3 rho, as fix_adapt_fep.cpp), so the dynamics change; reset yes restores the radii and masses after the run
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      sphere 1
+lattice         fcc 0.8442
+region          b block 0 3 0 3 0 3
+create_box      2 b
+create_atoms    1 box
+group           odd id 1:108:2
+set             group odd type 2
+set             group all diameter 1.0
+set             group all density 1.2
+velocity        all create 1.0 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+timestep        0.002
+variable        d equal ramp(1.0,1.6)
+compute         rr all property/atom radius mass
+compute         sr all reduce sum c_rr[1] c_rr[2]
+fix             1 all adapt/fep 1 atom diameter 1 v_d reset yes
+fix             2 all nve/sphere
+thermo_style    custom step temp pe ke c_sr[1] c_sr[2]
+thermo_modify   format float %.15g
+thermo          10
+run             40
+unfix           1
+run             10

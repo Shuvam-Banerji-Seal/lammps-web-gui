@@ -183,7 +183,7 @@ export class ForceField {
     }
     if (this.pair) {
       if (this.pair.ntypes !== s.ntypes) this.pair.allocate(s.ntypes);
-      this.pair.linkBonded?.({ bond: (t) => this.bond?.equilibrium(t) ?? Number.NaN, angle: (t) => this.angle?.equilibrium(t) ?? Number.NaN });
+      this.pair.linkBonded?.({ bond: (t) => this.bond?.equilibrium(t) ?? Number.NaN, angle: (t) => this.angle?.equilibriumRadians(t) ?? Number.NaN });
       this.pair.init(ctx);
     }
     for (const b of [this.bond, this.angle, this.dihedral, this.improper]) b?.linkForceField?.({ pair: this.pair, special: this.special });

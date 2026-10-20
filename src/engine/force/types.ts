@@ -305,7 +305,10 @@ export interface StyleContext {
   runSteps?(): { begin: number; end: number };
 }
 
-/** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */
+/**
+ * Equilibrium bond lengths and angles by type, for Pair.linkBonded: the angle in radians, as native
+ * Angle::equilibrium_angle gives it (Bonded.equilibriumRadians).
+ */
 export interface BondedEquilibria {
   bond(type: number): number;
   angle(type: number): number;

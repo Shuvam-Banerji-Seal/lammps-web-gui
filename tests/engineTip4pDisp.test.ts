@@ -35,7 +35,7 @@ describe('pppm/disp/tip4p and lj/long/tip4p/long (GPL port)', () => {
     const p = new PairLJLongTIP4PLong();
     p.settings(['long', 'long', '1', '2', '1', '1', '0.1546', '8.5']);
     expect(p.siteModel()).toBeNull();
-    p.linkBonded({ bond: () => 0.9572, angle: () => 104.52 });
+    p.linkBonded({ bond: () => 0.9572, angle: () => (104.52 * Math.PI) / 180 }); // radians, as Angle::equilibrium_angle
     p.initStyle();
     const m = p.siteModel();
     expect(m).not.toBeNull();

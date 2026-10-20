@@ -7,10 +7,11 @@
  * Nose-Hoover chains on three groups of degrees of freedom of a Drude model (docs.lammps.org/fix_tgnh_drude.html):
  * the centres of mass of the molecules, the internal motion of the atoms (core and non-polarizable atoms relative to
  * their molecule, the core-Drude pair centre relative to the molecule), and the relative motion of each core-Drude
- * pair. Syntax: fix ID group tgnvt/drude temp Tstart Tstop Tperiod Tdrude Tdrude_period [iso P Pstart Pstop Pperiod]
- * [tchain N] [pchain N] [mtk yes|no] [tloop N] [ploop N]. Fix tgnpt/drude takes the iso barostat; the other
- * barostat keywords (aniso, tri, x, y, z, xy, yz, xz, couple other than xyz, the box flip and fixedpoint keywords)
- * are refused by name.
+ * pair. Syntax: fix ID group tgnvt/drude temp Tstart Tstop Tperiod Tdrude Tdrude_period, and for fix tgnpt/drude the
+ * barostat keywords of fix nh (iso, aniso, tri, x, y, z, xy, yz, xz, couple, tchain, pchain, mtk, tloop, ploop, nreset,
+ * scalexy, scalexz, scaleyz, flip, fixedpoint). The deviatoric terms of the x ... xz keywords are the ones of fix nh
+ * (compute_sigma, compute_deviatoric and compute_strain_energy are the same code; ../fix/nh_deviatoric.ts). A box flip
+ * (flip yes, a tilt past 0.6 of the box length) is refused, as the engine has no box flips.
  */
 import { Fix } from '../../engine/fix/fix';
 import { ownCompute, ramp, removeCompute } from '../../engine/fix/util';
@@ -20,6 +21,7 @@ import { StyleError } from '../../engine/force/types';
 import { massOf } from '../../engine/atoms';
 import { CORE_TYPE, DRUDE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
 import { exp as libmExp } from '../libm/exp';
+import { boxHInv, computeDeviatoric, computeSigma, computeStrainEnergy } from '../fix/nh_deviatoric';
 
 const num = (w: string | undefined, what: string): number => {
   const v = Number(w);
@@ -33,8 +35,16 @@ const int = (w: string | undefined, what: string): number => {
   return v;
 };
 
-/** Keywords the port does not implement (the barostat shapes and the box flip): named in the refusal. */
-const REFUSED = new Set(['aniso', 'tri', 'x', 'y', 'z', 'xy', 'yz', 'xz', 'scalexy', 'scalexz', 'scaleyz', 'flip', 'fixedpoint', 'nreset']);
+/** utils::logical of LAMMPS: yes/no, on/off, true/false, 1/0. */
+const logical = (w: string | undefined): boolean => {
+  if (w === 'yes' || w === 'on' || w === 'true' || w === '1') return true;
+  if (w === 'no' || w === 'off' || w === 'false' || w === '0') return false;
+  throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' in input script`);
+};
+
+/** fix_tgnh_drude.cpp: a flip is triggered when a tilt exceeds 0.5 + DELTAFLIP of its box length; TILTMAX per step. */
+const DELTAFLIP = 0.1;
+const TILTMAX = 1.5;
 
 export class FixTGNHDrude extends Fix {
   readonly style: string;
@@ -45,15 +55,26 @@ export class FixTGNHDrude extends Fix {
   private tTarget = 0; private tFreq = 0; private tdrudeFreq = 0;
   private mtchain = 3; private mpchain = 3; private ncTchain = 1; private ncPchain = 1;
   private mtkFlag = true;
-  // barostat (iso only)
-  private pStart = 0; private pStop = 0; private pPeriod = 0;
-  private pTarget = 0; private pHydro = 0; private pCurrent = 0;
-  private pFreq = 0; private pFreqMax = 0;
-  private readonly pdim: number;
+  // barostat: the six components x y z yz xz xy (Voigt order) of fix nh
+  private pStart = new Float64Array(6); private pStop = new Float64Array(6);
+  private pFlag = [false, false, false, false, false, false];
+  private pTarget = new Float64Array(6); private pCurrent = new Float64Array(6); private pFreq = new Float64Array(6);
+  private pHydro = 0; private pFreqMax = 0;
+  private pcouple: 'none' | 'xyz' | 'xy' | 'yz' | 'xz' = 'none';
+  private pstyle: 'iso' | 'aniso' | 'tri' = 'iso';
+  private pdim = 0;
+  private deviatoric = false;
+  private nresetH0 = 0;
+  private scalexy = false; private scalexz = false; private scaleyz = false;
+  /** flip yes with a tilt barostat or a tilted box (native pre_exchange_flag): a flip is refused when needed */
+  private flipCheck = false;
+  /** the reference volume and cell (vol0, h0_inv), taken at the first init or by nreset */
   private vol0 = 0;
+  private h0Inv: number[] = [0, 0, 0, 0, 0, 0];
+  private sigma: number[] = [0, 0, 0, 0, 0, 0];
   private readonly fixedpoint: number[];
-  private omegaDot = new Float64Array(3);
-  private omegaMass = new Float64Array(3);
+  private omegaDot = new Float64Array(6);
+  private omegaMass = new Float64Array(6);
   private mtkTerm1 = 0; private mtkTerm2 = 0;
   // chains: index 0..M-1 used, M is the dummy eta_dot of the chain end
   private etamol: Float64Array; private etamolDot: Float64Array; private etamolDotdot: Float64Array; private etamolMass: Float64Array;
@@ -89,13 +110,31 @@ export class FixTGNHDrude extends Fix {
     this.vectorFlag = true;
     this.sizeVector = 3;
     this.fixedpoint = [0, 1, 2].map((d) => 0.5 * (sys.state.box.lo[d] + sys.state.box.hi[d]));
-    this.pdim = 3;
+    const dimension = sys.dimension;
+    const box0 = sys.state.box, g0 = sys.geom;
+    // turn on tilt factor scaling, whenever applicable
+    this.scalexy = box0.periodic[1] && g0.xy !== 0;
+    if (box0.periodic[2] && dimension === 3) {
+      this.scaleyz = g0.yz !== 0;
+      this.scalexz = g0.xz !== 0;
+    }
     if (args.length < 2) throw new StyleError(`Illegal fix ${style} command`);
     let tdrudeT = 0;
-    let havePress = false;
     let tstat = false;
-    let pstat = false;
     let tPeriodSet = 0, tdrudePeriodSet = 0;
+    let flipflag = true;
+    const pPeriod = new Float64Array(6);
+    const setP = (d: number, k: number): void => {
+      if (k + 4 > args.length) throw new StyleError(`Illegal fix ${style} ${args[k]}: needs Pstart Pstop Pdamp`);
+      this.pStart[d] = num(args[k + 1], 'Pstart');
+      this.pStop[d] = num(args[k + 2], 'Pstop');
+      pPeriod[d] = num(args[k + 3], 'Pdamp');
+      this.pFlag[d] = true;
+    };
+    const unset = (d: number): void => {
+      this.pStart[d] = this.pStop[d] = pPeriod[d] = 0;
+      this.pFlag[d] = false;
+    };
     for (let k = 0; k < args.length;) {
       const key = args[k];
       if (key === 'temp') {
@@ -105,60 +144,122 @@ export class FixTGNHDrude extends Fix {
         this.tTarget = this.tStart;
         this.tStop = num(args[k + 2], 'Tstop');
         tPeriodSet = num(args[k + 3], 'Tperiod');
-        tdrudeT = num(args[k + 4], 'Tdrude');
-        tdrudePeriodSet = num(args[k + 5], 'Tdrude period');
         if (this.tStart <= 0) throw new StyleError(`Target temperature for fix ${style} cannot be <= 0.0`);
         if (this.tStop <= 0) throw new StyleError(`Target temperature for fix ${style} cannot be <= 0.0`);
+        tdrudeT = num(args[k + 4], 'Tdrude');
+        tdrudePeriodSet = num(args[k + 5], 'Tdrude period');
         if (tdrudeT <= 0) throw new StyleError(`Target Drude temperature for fix ${style} cannot be <= 0.0`);
         k += 6;
-      } else if (key === 'iso') {
-        if (k + 4 > args.length) throw new StyleError(`Illegal fix ${style} iso: needs Pstart Pstop Pperiod`);
-        pstat = true; havePress = true;
-        this.pStart = num(args[k + 1], 'Pstart');
-        this.pStop = num(args[k + 2], 'Pstop');
-        this.pPeriod = num(args[k + 3], 'Pperiod');
+      } else if (key === 'iso' || key === 'aniso' || key === 'tri') {
+        this.pcouple = key === 'iso' ? 'xyz' : 'none';
+        if (key === 'tri') this.scalexy = this.scalexz = this.scaleyz = false;
+        for (let d = 0; d < 3; d++) setP(d, k);
+        if (key === 'tri') {
+          for (let d = 3; d < 6; d++) {
+            this.pStart[d] = this.pStop[d] = 0;
+            pPeriod[d] = pPeriod[0];
+            this.pFlag[d] = true;
+          }
+        }
+        if (dimension === 2) {
+          unset(2);
+          if (key === 'tri') { unset(3); unset(4); }
+        }
         k += 4;
+      } else if (key === 'x' || key === 'y' || key === 'z' || key === 'yz' || key === 'xz' || key === 'xy') {
+        const d = ['x', 'y', 'z', 'yz', 'xz', 'xy'].indexOf(key);
+        setP(d, k);
+        this.deviatoric = true;
+        if (key === 'yz') this.scaleyz = false;
+        if (key === 'xz') this.scalexz = false;
+        if (key === 'xy') this.scalexy = false;
+        k += 4;
+        if (dimension === 2 && (key === 'z' || key === 'yz' || key === 'xz')) throw new StyleError(`Invalid fix ${style} command for a 2d simulation`);
       } else if (key === 'couple') {
-        if (args[k + 1] !== 'xyz') throw new StyleError(`fix ${style} supports only 'couple xyz' (iso), got '${args[k + 1] ?? ''}'`);
+        const c = args[k + 1];
+        if (c !== 'xyz' && c !== 'xy' && c !== 'yz' && c !== 'xz' && c !== 'none') throw new StyleError(`Illegal fix ${style} couple option: ${c ?? ''}`);
+        this.pcouple = c;
         k += 2;
-      } else if (key === 'tchain' || key === 'pchain' || key === 'tloop' || key === 'ploop') {
+      } else if (key === 'tchain' || key === 'pchain' || key === 'tloop' || key === 'ploop' || key === 'nreset') {
         const n = int(args[k + 1], key);
-        if (n < 0 || ((key === 'tchain' || key === 'tloop') && n < 1)) throw new StyleError(`Invalid fix ${style} ${key} argument: ${n}`);
+        if (key === 'tchain' ? n < 1 : n < 0) throw new StyleError(`Invalid fix ${style} ${key} argument: ${n}`);
         if (key === 'tchain') this.mtchain = n;
         else if (key === 'pchain') this.mpchain = n;
         else if (key === 'tloop') this.ncTchain = n;
-        else this.ncPchain = n;
+        else if (key === 'ploop') this.ncPchain = n;
+        else this.nresetH0 = n;
         k += 2;
       } else if (key === 'mtk') {
-        const v = args[k + 1];
-        if (v !== 'yes' && v !== 'no') throw new StyleError(`Expected boolean parameter instead of '${v ?? ''}' in input script`);
-        this.mtkFlag = v === 'yes';
+        this.mtkFlag = logical(args[k + 1]);
         k += 2;
-      } else if (REFUSED.has(key)) {
-        throw new StyleError(`fix ${style} keyword '${key}' is not supported by the browser engine (iso barostat only)`);
+      } else if (key === 'scalexy' || key === 'scalexz' || key === 'scaleyz') {
+        const v = logical(args[k + 1]);
+        if (key === 'scalexy') this.scalexy = v;
+        else if (key === 'scalexz') this.scalexz = v;
+        else this.scaleyz = v;
+        k += 2;
+      } else if (key === 'flip') {
+        flipflag = logical(args[k + 1]);
+        k += 2;
+      } else if (key === 'fixedpoint') {
+        if (k + 4 > args.length) throw new StyleError(`Illegal fix ${style} fixedpoint: needs three coordinates`);
+        for (let d = 0; d < 3; d++) this.fixedpoint[d] = num(args[k + 1 + d], 'fixedpoint');
+        k += 4;
       } else {
         throw new StyleError(`Unknown fix ${style} keyword: ${key}`);
       }
     }
+    // error checks (fix_tgnh_drude.cpp constructor, in its order)
+    const f = this.pFlag, per = box0.periodic, c = this.pcouple;
+    const bad = (msg: string): never => { throw new StyleError(msg); };
+    if (dimension === 2 && (f[2] || f[3] || f[4])) bad(`Invalid fix ${style} command for a 2d simulation`);
+    if (dimension === 2 && (c === 'yz' || c === 'xz')) bad(`Invalid fix ${style} command for a 2d simulation`);
+    if (dimension === 2 && (this.scalexz || this.scaleyz)) bad(`Invalid fix ${style} command for a 2d simulation`);
+    if (c === 'xyz' && (!f[0] || !f[1])) bad(`Invalid fix ${style} command pressure settings`);
+    if (c === 'xyz' && dimension === 3 && !f[2]) bad(`Invalid fix ${style} command pressure settings`);
+    if (c === 'xy' && (!f[0] || !f[1])) bad(`Invalid fix ${style} command pressure settings`);
+    if (c === 'yz' && (!f[1] || !f[2])) bad(`Invalid fix ${style} command pressure settings`);
+    if (c === 'xz' && (!f[0] || !f[2])) bad(`Invalid fix ${style} command pressure settings`);
+    if (f[0] && !per[0]) bad(`Cannot use fix ${style} on a non-periodic x dimension`);
+    if (f[1] && !per[1]) bad(`Cannot use fix ${style} on a non-periodic y dimension`);
+    if (f[2] && !per[2]) bad(`Cannot use fix ${style} on a non-periodic z dimension`);
+    if ((f[3] || f[4]) && !per[2]) bad(`Cannot use fix ${style} on a 2nd non-periodic dimension`);
+    if (f[5] && !per[1]) bad(`Cannot use fix ${style} on a 2nd non-periodic dimension`);
+    if (this.scaleyz && !per[2]) bad(`Cannot use fix ${style} with yz scaling when z is non-periodic dimension`);
+    if (this.scalexz && !per[2]) bad(`Cannot use fix ${style} with xz scaling when z is non-periodic dimension`);
+    if (this.scalexy && !per[1]) bad(`Cannot use fix ${style} with xy scaling when y is non-periodic dimension`);
+    if (f[3] && this.scaleyz) bad(`Cannot use fix ${style} with both yz dynamics and yz scaling`);
+    if (f[4] && this.scalexz) bad(`Cannot use fix ${style} with both xz dynamics and xz scaling`);
+    if (f[5] && this.scalexy) bad(`Cannot use fix ${style} with both xy dynamics and xy scaling`);
+    if (!box0.triclinic && (f[3] || f[4] || f[5])) bad(`Can not specify Pxy/Pxz/Pyz in fix ${style} with non-triclinic box`);
+    const same = (a: number, b: number): boolean => this.pStart[a] === this.pStart[b] && this.pStop[a] === this.pStop[b] && pPeriod[a] === pPeriod[b];
+    if (c === 'xyz' && dimension === 3 && (!same(0, 1) || !same(0, 2))) bad(`Invalid fix ${style} pressure settings`);
+    if (c === 'xyz' && dimension === 2 && !same(0, 1)) bad(`Invalid fix ${style} pressure settings`);
+    if (c === 'xy' && !same(0, 1)) bad(`Invalid fix ${style} pressure settings`);
+    if (c === 'yz' && !same(1, 2)) bad(`Invalid fix ${style} pressure settings`);
+    if (c === 'xz' && !same(0, 2)) bad(`Invalid fix ${style} pressure settings`);
+    if ((tstat && tPeriodSet <= 0) || (tstat && tdrudePeriodSet <= 0) || [0, 1, 2, 3, 4, 5].some((d) => f[d] && pPeriod[d] <= 0)) {
+      bad(`Fix ${style} damping parameters must be > 0.0`);
+    }
+    const pstat = f.some((b) => b);
+    if (pstat) {
+      // pstyle = TRICLINIC if any off-diagonal term is controlled, else ISO with xyz coupling (xy in 2d), else ANISO
+      if (f[3] || f[4] || f[5]) this.pstyle = 'tri';
+      else if (c === 'xyz' || (dimension === 2 && c === 'xy')) this.pstyle = 'iso';
+      else this.pstyle = 'aniso';
+      if (flipflag && (f[3] || f[4] || f[5])) this.flipCheck = true;
+      if (flipflag && (g0.yz !== 0 || g0.xz !== 0 || g0.xy !== 0)) this.flipCheck = true;
+    }
     this.tstat = tstat;
     this.pstat = pstat;
-    if (style === 'tgnvt/drude') {
-      if (!tstat) throw new StyleError(`Temperature control must be used with fix ${style}`);
-      if (havePress) throw new StyleError(`Pressure control can not be used with fix ${style}`);
-    } else if (!pstat) throw new StyleError(`Pressure control must be used with fix ${style}`);
-    if (tstat && (tPeriodSet <= 0 || tdrudePeriodSet <= 0)) throw new StyleError(`Fix ${style} damping parameters must be > 0.0`);
-    if (pstat && this.pPeriod <= 0) throw new StyleError(`Fix ${style} damping parameters must be > 0.0`);
+    // fix_tgnvt_drude.cpp and fix_tgnpt_drude.cpp
+    if (!tstat) throw new StyleError(`Temperature control must be used with fix ${style}`);
+    if (style === 'tgnvt/drude' && pstat) throw new StyleError(`Pressure control can not be used with fix ${style}`);
+    if (style === 'tgnpt/drude' && !pstat) throw new StyleError(`Pressure control must be used with fix ${style}`);
     this.tdrudeTarget = tdrudeT;
-    if (tstat) {
-      this.tFreq = 1 / tPeriodSet;
-      this.tdrudeFreq = 1 / tdrudePeriodSet;
-    }
-    if (pstat) {
-      this.pFreq = 1 / this.pPeriod;
-      this.pFreqMax = this.pFreq;
-      this.pTarget = this.pStart;
-      this.pCurrent = 0;
-    }
+    this.tFreq = 1 / tPeriodSet;
+    this.tdrudeFreq = 1 / tdrudePeriodSet;
+    for (let d = 0; d < 6; d++) if (f[d]) this.pFreq[d] = 1 / pPeriod[d];
     const mt = this.mtchain, mp = this.mpchain;
     this.etamol = new Float64Array(mt); this.etamolDot = new Float64Array(mt + 1); this.etamolDotdot = new Float64Array(mt); this.etamolMass = new Float64Array(mt);
     this.etaint = new Float64Array(mt); this.etaintDot = new Float64Array(mt + 1); this.etaintDotdot = new Float64Array(mt); this.etaintMass = new Float64Array(mt);
@@ -185,10 +286,39 @@ export class FixTGNHDrude extends Fix {
     this.dthalf = 0.5 * dt;
     this.dt4 = 0.25 * dt;
     this.dt8 = 0.125 * dt;
-    if (this.pstat && this.vol0 === 0) this.vol0 = this.sys.geom.volume(s.dimension);
+    this.pFreqMax = 0;
+    if (this.pstat) {
+      const pf = this.pFreq;
+      this.pFreqMax = Math.max(pf[0], pf[1]);
+      this.pFreqMax = Math.max(this.pFreqMax, pf[2]);
+      if (this.pstyle === 'tri') {
+        this.pFreqMax = Math.max(this.pFreqMax, pf[3]);
+        this.pFreqMax = Math.max(this.pFreqMax, pf[4]);
+        this.pFreqMax = Math.max(this.pFreqMax, pf[5]);
+      }
+      // tally the number of dimensions that are barostatted; set the reference volume and cell, if not already done
+      this.pdim = (this.pFlag[0] ? 1 : 0) + (this.pFlag[1] ? 1 : 0) + (this.pFlag[2] ? 1 : 0);
+      if (this.vol0 === 0) this.setReferenceCell();
+    }
   }
 
-  private volume(): number { return this.sys.geom.volume(this.sys.state.dimension); }
+  /** The box h of LAMMPS' domain: xprd, yprd, zprd, yz, xz, xy. */
+  private boxH(): number[] {
+    const g = this.sys.geom;
+    return [g.lx, g.ly, g.lz, g.yz, g.xz, g.xy];
+  }
+
+  /** vol0 and h0_inv from the current box (init, and nreset in compute_sigma). */
+  private setReferenceCell(): void {
+    const g = this.sys.geom;
+    this.vol0 = this.sys.state.dimension === 3 ? g.lx * g.ly * g.lz : g.lx * g.ly;
+    this.h0Inv = boxHInv(this.boxH(), this.sys.state.box.triclinic);
+  }
+
+  private volume(): number {
+    const g = this.sys.geom;
+    return this.sys.state.dimension === 3 ? g.lx * g.ly * g.lz : g.lx * g.ly;
+  }
 
   /** The Drude model of fix drude, read once (the type words are fixed when the fix is defined). */
   private drude(): DrudeModel {
@@ -204,11 +334,6 @@ export class FixTGNHDrude extends Fix {
   private tempScalar(): number {
     this.sys.refreshComputes();
     return this.tempCompute.scalarValue();
-  }
-
-  private pressScalar(): number {
-    this.sys.refreshComputes();
-    return this.pressCompute!.scalarValue();
   }
 
   /** Molecule masses, degrees of freedom of the molecules, atoms and dipoles (setup_mol_mass_dof). */
@@ -251,15 +376,61 @@ export class FixTGNHDrude extends Fix {
     this.ke2drudeTarget = this.dofDrude * kB * this.tdrudeTarget;
   }
 
+  /** compute_press_target: the ramped targets, p_hydro over the barostatted diagonal, and sigma when deviatoric. */
   private computePressTarget(): void {
-    this.pTarget = ramp(this.sys, this.pStart, this.pStop);
-    this.pHydro = this.pTarget;
+    this.pHydro = 0;
+    for (let i = 0; i < 3; i++) {
+      if (this.pFlag[i]) {
+        this.pTarget[i] = ramp(this.sys, this.pStart[i], this.pStop[i]);
+        this.pHydro += this.pTarget[i];
+      }
+    }
+    if (this.pdim > 0) this.pHydro /= this.pdim;
+    if (this.pstyle === 'tri') for (let i = 3; i < 6; i++) this.pTarget[i] = ramp(this.sys, this.pStart[i], this.pStop[i]);
+    if (this.deviatoric) {
+      // compute_sigma: with nreset > 0 the reference cell is taken again every nreset steps of the run
+      if (this.nresetH0 > 0 && (this.sys.state.step - this.sys.run.beginStep) % this.nresetH0 === 0) this.setReferenceCell();
+      this.sigma = computeSigma(this.vol0, this.h0Inv, this.pTarget, this.pHydro);
+    }
   }
 
-  /** Iso coupling: the current pressure is the scalar of compute pressure (couple). */
+  /**
+   * couple: the current pressure, the compute's scalar for an iso barostat, else its tensor (temperature tensor
+   * fresh), averaged over the coupled dimensions; the tilt components for a triclinic barostat.
+   */
   private couple(): void {
-    this.pCurrent = this.pressScalar();
-    if (!Number.isFinite(this.pCurrent)) throw new StyleError(`Non-numeric pressure - simulation unstable (fix ${this.style})`);
+    this.sys.refreshComputes();
+    const pc = this.pressCompute!;
+    const p = this.pCurrent;
+    if (this.pstyle === 'iso') {
+      const sc = pc.scalarValue();
+      p[0] = p[1] = p[2] = sc;
+    } else {
+      const tensor = pc.vectorValues();
+      if (this.pcouple === 'xyz') {
+        const ave = 1.0 / 3.0 * (tensor[0] + tensor[1] + tensor[2]);
+        p[0] = p[1] = p[2] = ave;
+      } else if (this.pcouple === 'xy') {
+        const ave = 0.5 * (tensor[0] + tensor[1]);
+        p[0] = p[1] = ave;
+        p[2] = tensor[2];
+      } else if (this.pcouple === 'yz') {
+        const ave = 0.5 * (tensor[1] + tensor[2]);
+        p[1] = p[2] = ave;
+        p[0] = tensor[0];
+      } else if (this.pcouple === 'xz') {
+        const ave = 0.5 * (tensor[0] + tensor[2]);
+        p[0] = p[2] = ave;
+        p[1] = tensor[1];
+      } else {
+        p[0] = tensor[0]; p[1] = tensor[1]; p[2] = tensor[2];
+      }
+      // switch order from xy-xz-yz to Voigt
+      if (this.pstyle === 'tri') { p[3] = tensor[5]; p[4] = tensor[4]; p[5] = tensor[3]; }
+    }
+    for (let d = 0; d < (this.pstyle === 'tri' ? 6 : 3); d++) {
+      if (!Number.isFinite(p[d])) throw new StyleError(`Non-numeric pressure - simulation unstable (fix ${this.style})`);
+    }
   }
 
   override setup(): void {
@@ -290,7 +461,8 @@ export class FixTGNHDrude extends Fix {
     if (this.pstat) {
       const kt = kB * this.tTarget;
       const nkt = (s.n + 1) * kt;
-      for (let i = 0; i < 3; i++) this.omegaMass[i] = nkt / (this.pFreq * this.pFreq);
+      for (let i = 0; i < 3; i++) if (this.pFlag[i]) this.omegaMass[i] = nkt / (this.pFreq[i] * this.pFreq[i]);
+      if (this.pstyle === 'tri') for (let i = 3; i < 6; i++) if (this.pFlag[i]) this.omegaMass[i] = nkt / (this.pFreq[i] * this.pFreq[i]);
       if (this.mpchain) {
         this.etapMass[0] = kB * this.tTarget / (this.pFreqMax * this.pFreqMax);
         for (let ich = 1; ich < this.mpchain; ich++) this.etapMass[ich] = kB * this.tTarget / (this.pFreqMax * this.pFreqMax);
@@ -498,22 +670,31 @@ export class FixTGNHDrude extends Fix {
     }
   }
 
-  /** Thermostat chain of the barostat over dt/2 (nhc_press_integrate, iso). */
+  /** Thermostat chain of the barostat over dt/2 (nhc_press_integrate). */
   private nhcPress(): void {
     const s = this.sys.state;
     const kB = s.units.boltz;
     const kt = kB * this.tTarget;
+    // update masses, to preserve initial freq, if t_target changed
     const nkt = (s.n + 1) * kt;
-    for (let i = 0; i < 3; i++) this.omegaMass[i] = nkt / (this.pFreq * this.pFreq);
+    const tri = this.pstyle === 'tri';
+    const dims = tri ? 6 : 3;
+    for (let i = 0; i < dims; i++) if (this.pFlag[i]) this.omegaMass[i] = nkt / (this.pFreq[i] * this.pFreq[i]);
     const mp = this.mpchain;
     if (mp) {
       this.etapMass[0] = kt / (this.pFreqMax * this.pFreqMax);
       for (let ich = 1; ich < mp; ich++) this.etapMass[ich] = kt / (this.pFreqMax * this.pFreqMax);
       for (let ich = 1; ich < mp; ich++) this.etapDotdot[ich] = (this.etapMass[ich - 1] * this.etapDot[ich - 1] * this.etapDot[ich - 1] - kt) / this.etapMass[ich];
     }
-    let kecurrent = 0;
-    for (let i = 0; i < 3; i++) kecurrent += this.omegaMass[i] * this.omegaDot[i] * this.omegaDot[i];
-    const lktPress = kt;
+    const keBaro = (): number => {
+      let ke = 0;
+      for (let i = 0; i < dims; i++) if (this.pFlag[i]) ke += this.omegaMass[i] * this.omegaDot[i] * this.omegaDot[i];
+      return ke;
+    };
+    let pdof = 0;
+    for (let i = 0; i < dims; i++) if (this.pFlag[i]) pdof++;
+    let kecurrent = keBaro();
+    const lktPress = this.pstyle === 'iso' ? kt : pdof * kt;
     this.etapDotdot[0] = (kecurrent - lktPress) / this.etapMass[0];
     const ncfac = 1 / this.ncPchain;
     for (let iloop = 0; iloop < this.ncPchain; iloop++) {
@@ -529,9 +710,8 @@ export class FixTGNHDrude extends Fix {
       this.etapDot[0] *= expfac;
       for (let ich = 0; ich < mp; ich++) this.etap[ich] += ncfac * this.dthalf * this.etapDot[ich];
       const factorEtap = libmExp(-ncfac * this.dthalf * this.etapDot[0]);
-      for (let i = 0; i < 3; i++) this.omegaDot[i] *= factorEtap;
-      kecurrent = 0;
-      for (let i = 0; i < 3; i++) kecurrent += this.omegaMass[i] * this.omegaDot[i] * this.omegaDot[i];
+      for (let i = 0; i < dims; i++) if (this.pFlag[i]) this.omegaDot[i] *= factorEtap;
+      kecurrent = keBaro();
       this.etapDotdot[0] = (kecurrent - lktPress) / this.etapMass[0];
       this.etapDot[0] *= expfac;
       this.etapDot[0] += this.etapDotdot[0] * ncfac * this.dt4;
@@ -546,38 +726,72 @@ export class FixTGNHDrude extends Fix {
     }
   }
 
-  /** Barostat velocity scaling by dt/4 on each side of the kick (nh_v_press). */
+  /** Barostat velocity scaling by dt/4 on each side of the tilt coupling (nh_v_press). */
   private nhVPress(): void {
     const s = this.sys.state;
     const { v, mask } = s;
-    const factor = libmExp(-this.dt4 * (this.omegaDot[0] + this.mtkTerm2));
+    const w = this.omegaDot;
+    const f0 = libmExp(-this.dt4 * (w[0] + this.mtkTerm2));
+    const f1 = libmExp(-this.dt4 * (w[1] + this.mtkTerm2));
+    const f2 = libmExp(-this.dt4 * (w[2] + this.mtkTerm2));
+    const tri = this.pstyle === 'tri';
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & this.groupBit)) continue;
-      v[3 * i] *= factor; v[3 * i + 1] *= factor; v[3 * i + 2] *= factor;
-      v[3 * i] *= factor; v[3 * i + 1] *= factor; v[3 * i + 2] *= factor;
+      const k = 3 * i;
+      v[k] *= f0; v[k + 1] *= f1; v[k + 2] *= f2;
+      if (tri) {
+        v[k] += -this.dthalf * (v[k + 1] * w[5] + v[k + 2] * w[4]);
+        v[k + 1] += -this.dthalf * v[k + 2] * w[3];
+      }
+      v[k] *= f0; v[k + 1] *= f1; v[k + 2] *= f2;
     }
   }
 
-  /** Barostat velocity update over dt/2 (nh_omega_dot, iso). */
+  /** Barostat velocity update over dt/2 (nh_omega_dot). */
   private nhOmegaDot(): void {
     const s = this.sys.state;
     const kB = s.units.boltz;
     const nktv2p = s.units.nktv2p;
     const volume = this.volume();
+    const fdev = this.deviatoric ? computeDeviatoric(this.boxH(), this.sigma) : null;
     this.mtkTerm1 = 0;
-    if (this.mtkFlag) this.mtkTerm1 = (this.tdof * kB * this.tCurrent) / (this.pdim * s.n);
+    if (this.mtkFlag) {
+      if (this.pstyle === 'iso') {
+        this.mtkTerm1 = this.tdof * kB * this.tCurrent;
+        this.mtkTerm1 /= this.pdim * s.n;
+      } else {
+        // the temperature's kinetic tensor, computed with the pressure in couple()
+        const mvv = this.tempCompute.vectorValues();
+        for (let i = 0; i < 3; i++) if (this.pFlag[i]) this.mtkTerm1 += mvv[i];
+        this.mtkTerm1 /= this.pdim * s.n;
+      }
+    }
     for (let i = 0; i < 3; i++) {
-      const fOmega = (this.pCurrent - this.pHydro) * volume / (this.omegaMass[i] * nktv2p) + this.mtkTerm1 / this.omegaMass[i];
+      if (!this.pFlag[i]) continue;
+      let fOmega = (this.pCurrent[i] - this.pHydro) * volume / (this.omegaMass[i] * nktv2p) + this.mtkTerm1 / this.omegaMass[i];
+      if (fdev) fOmega -= fdev[i] / (this.omegaMass[i] * nktv2p);
       this.omegaDot[i] += fOmega * this.dthalf;
     }
     this.mtkTerm2 = 0;
     if (this.mtkFlag) {
-      for (let i = 0; i < 3; i++) this.mtkTerm2 += this.omegaDot[i];
-      this.mtkTerm2 /= this.pdim * s.n;
+      for (let i = 0; i < 3; i++) if (this.pFlag[i]) this.mtkTerm2 += this.omegaDot[i];
+      if (this.pdim > 0) this.mtkTerm2 /= this.pdim * s.n;
+    }
+    if (this.pstyle === 'tri') {
+      for (let i = 3; i < 6; i++) {
+        if (!this.pFlag[i]) continue;
+        let fOmega = this.pCurrent[i] * volume / (this.omegaMass[i] * nktv2p);
+        if (fdev) fOmega -= fdev[i] / (this.omegaMass[i] * nktv2p);
+        this.omegaDot[i] += fOmega * this.dthalf;
+      }
     }
   }
 
-  /** Box and all atoms over dt/2 (remap, iso): the box is dilated about the fixed point (box centre at definition). */
+  /**
+   * remap: the box over dt/2 (h_dot = omega_dot h, the tilts swept before and after the diagonal scaling about the
+   * fixed point, with the tilt scale flags) and all atoms in fractional coordinates. A tilt past TILTMAX of its box
+   * length in one step is an error, and a tilt that would need a box flip is refused.
+   */
   private remap(): void {
     const sys = this.sys;
     const s = sys.state;
@@ -590,19 +804,70 @@ export class FixTGNHDrude extends Fix {
       g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], tmp);
       lam[3 * i] = tmp[0]; lam[3 * i + 1] = tmp[1]; lam[3 * i + 2] = tmp[2];
     }
+    const w = this.omegaDot;
+    const f = this.pFlag;
+    const h = this.boxH();
+    const xprd = h[0], yprd = h[1];
+    const dto2 = dto / 2.0, dto4 = dto / 4.0, dto8 = dto / 8.0;
+    const sweep = (): void => {
+      if (this.pstyle !== 'tri') return;
+      if (f[4]) {
+        const e = libmExp(dto8 * w[0]);
+        h[4] *= e; h[4] += dto4 * (w[5] * h[3] + w[4] * h[2]); h[4] *= e;
+      }
+      if (f[3]) {
+        const e = libmExp(dto4 * w[1]);
+        h[3] *= e; h[3] += dto2 * (w[3] * h[2]); h[3] *= e;
+      }
+      if (f[5]) {
+        const e = libmExp(dto4 * w[0]);
+        h[5] *= e; h[5] += dto2 * (w[5] * h[1]); h[5] *= e;
+      }
+      if (f[4]) {
+        const e = libmExp(dto8 * w[0]);
+        h[4] *= e; h[4] += dto4 * (w[5] * h[3] + w[4] * h[2]); h[4] *= e;
+      }
+    };
+    sweep();
     for (let d = 0; d < 3; d++) {
-      const expfac = libmExp(dto * this.omegaDot[d]);
+      if (!f[d]) continue;
+      const expfac = libmExp(dto * w[d]);
       const fp = this.fixedpoint[d];
       b.lo[d] = (b.lo[d] - fp) * expfac + fp;
       b.hi[d] = (b.hi[d] - fp) * expfac + fp;
+      if (d === 1 && this.scalexy) h[5] *= expfac;
+      if (d === 2) {
+        if (this.scalexz) h[4] *= expfac;
+        if (this.scaleyz) h[3] *= expfac;
+      }
     }
+    sweep();
+    // tilt factor to cell length ratio can not exceed TILTMAX in one step (the lengths before this remap)
+    if (h[3] < -TILTMAX * yprd || h[3] > TILTMAX * yprd || h[4] < -TILTMAX * xprd || h[4] > TILTMAX * xprd ||
+      h[5] < -TILTMAX * xprd || h[5] > TILTMAX * xprd) {
+      throw new StyleError(`Fix ${this.style} has tilted box too far in one step - periodic cell is too far from equilibrium state`);
+    }
+    if (b.triclinic) { b.tilt[0] = h[5]; b.tilt[1] = h[4]; b.tilt[2] = h[3]; }
     b.minLo = [...b.lo]; b.minHi = [...b.hi];
     g.update();
     for (let i = 0; i < s.n; i++) {
       g.fromLamda(lam[3 * i], lam[3 * i + 1], lam[3 * i + 2], tmp);
       s.x[3 * i] = tmp[0]; s.x[3 * i + 1] = tmp[1]; s.x[3 * i + 2] = tmp[2];
     }
-    for (const f of sys.fixes) if (f !== this) f.boxChanged?.();
+    for (const fx of sys.fixes) if (fx !== this) fx.boxChanged?.();
+    if (this.flipCheck) this.refuseFlip();
+  }
+
+  /**
+   * pre_exchange of fix_tgnh_drude.cpp flips the box when a tilt passes (0.5 + DELTAFLIP) of its box length (yz of
+   * yprd with y periodic, xz and xy of xprd with x periodic); the engine has no box flips, so that state is refused.
+   */
+  private refuseFlip(): void {
+    const g = this.sys.geom;
+    const per = this.sys.state.box.periodic;
+    const xt = (0.5 + DELTAFLIP) * g.lx, yt = (0.5 + DELTAFLIP) * g.ly;
+    const flip = (per[1] && (g.yz < -yt || g.yz >= yt)) || (per[0] && (g.xz < -xt || g.xz >= xt || g.xy < -xt || g.xy >= xt));
+    if (flip) throw new StyleError(`fix ${this.style}: the box needs a flip (a tilt passed ${0.5 + DELTAFLIP} of its box length); box flips are not supported by the browser engine (use flip no)`);
   }
 
   override ecouple(): number { return this.energyChain(); }
@@ -631,13 +896,22 @@ export class FixTGNHDrude extends Fix {
       const volume = this.volume();
       let lktPress = 0;
       for (let i = 0; i < 3; i++) {
+        if (!this.pFlag[i]) continue;
         energy += 0.5 * this.omegaDot[i] * this.omegaDot[i] * this.omegaMass[i] + this.pHydro * (volume - this.vol0) / (this.pdim * nktv2p);
         lktPress += kt;
+      }
+      if (this.pstyle === 'tri') {
+        for (let i = 3; i < 6; i++) {
+          if (!this.pFlag[i]) continue;
+          energy += 0.5 * this.omegaDot[i] * this.omegaDot[i] * this.omegaMass[i];
+          lktPress += kt;
+        }
       }
       if (this.mpchain) {
         energy += lktPress * this.etap[0] + 0.5 * this.etapMass[0] * this.etapDot[0] * this.etapDot[0];
         for (let ich = 1; ich < this.mpchain; ich++) energy += kt * this.etap[ich] + 0.5 * this.etapMass[ich] * this.etapDot[ich] * this.etapDot[ich];
       }
+      if (this.deviatoric) energy += computeStrainEnergy(this.boxH(), this.sigma, nktv2p);
     }
     return energy;
   }

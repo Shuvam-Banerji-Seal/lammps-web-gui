@@ -65,9 +65,11 @@ describe('DRUDE styles in a script', () => {
     expect(await run(BOX + 'fix N all tgnvt/drude temp 1 1 100 1 20\n')).toMatch(/requires fix drude/);
   });
 
-  it('tgnpt/drude refuses the barostat shapes it does not implement, by name', async () => {
-    const msg = await run(BOX + 'fix F all drude C D\nfix N all tgnpt/drude temp 1 1 100 1 20 aniso 1 1 100\n');
-    expect(msg).toMatch(/aniso/);
+  it('tgnpt/drude takes the barostat shapes of fix nh and names its argument errors as native does', async () => {
+    expect(await run(BOX + 'fix F all drude C D\nfix N all tgnpt/drude temp 1 1 100 1 20 aniso 1 1 100\n')).toBeNull();
     expect(await run(BOX + 'fix F all drude C D\nfix N all tgnpt/drude temp 1 1 100 1 20\n')).toMatch(/Pressure control must be used/);
+    expect(await run(BOX + 'fix F all drude C D\nfix N all tgnpt/drude temp 1 1 100 1 20 xy 1 1 100\n')).toMatch(/Can not specify Pxy\/Pxz\/Pyz in fix tgnpt\/drude with non-triclinic box/);
+    expect(await run(BOX + 'fix F all drude C D\nfix N all tgnpt/drude temp 1 1 100 1 20 x 1 1 100 y 2 2 100 couple xy\n')).toMatch(/Invalid fix tgnpt\/drude pressure settings/);
+    expect(await run(BOX + 'fix F all drude C D\nfix N all tgnpt/drude iso 1 1 100\n')).toMatch(/Temperature control must be used with fix tgnpt\/drude/);
   });
 });

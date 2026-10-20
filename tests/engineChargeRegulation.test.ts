@@ -39,9 +39,14 @@ describe('fix charge/regulation options', () => {
     expect(await errorOf('fix cr all charge/regulation 2 3 acid_type 1 rxd 0.5 seed 1')).toMatch(/rxd/);
   });
 
-  it('refuses onlysalt and group by name', async () => {
-    expect(await errorOf('fix cr all charge/regulation 2 3 onlysalt yes 1 -1 seed 1')).toMatch(/onlysalt/);
-    expect(await errorOf('fix cr all charge/regulation 2 3 group foo seed 1')).toMatch(/'group'/);
+  it('accepts onlysalt, tag and group, with native checks of the salt charges and the group', async () => {
+    expect(await errorOf('fix cr all charge/regulation 2 3 onlysalt yes 2 -1 tag yes seed 1')).toBeNull();
+    expect(await errorOf('fix cr all charge/regulation 2 3 onlysalt no tag no seed 1')).toBeNull();
+    // src/MC/fix_charge_regulation.cpp at b332f28: the charges must be +/- and one must divide the other
+    expect(await errorOf('fix cr all charge/regulation 2 3 onlysalt yes -1 1 seed 1')).toMatch(/Illegal fix charge\/regulation command$/);
+    expect(await errorOf('fix cr all charge/regulation 2 3 onlysalt yes 3 -2 seed 1')).toMatch(/must be divisible/);
+    expect(await errorOf('fix cr all charge/regulation 2 3 onlysalt maybe seed 1')).toMatch(/Expected boolean parameter/);
+    expect(await errorOf('fix cr all charge/regulation 2 3 group foo seed 1\nrun 0')).toMatch(/Could not find fix charge\/regulation group ID/);
   });
 
   it('refuses an equal-style variable for pH', async () => {

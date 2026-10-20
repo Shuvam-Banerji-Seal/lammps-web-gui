@@ -1,0 +1,27 @@
+# oracle: fix charge/regulation onlysalt yes 1 -2 (one divalent anion with two cations per move) and tag yes
+# oracle-inputs: data.chreg-acid
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      charge
+neighbor        3.0 bin
+read_data       data.chreg-acid
+velocity        all create 1.0 8008 loop geom
+pair_style      lj/cut/coul/long 1.122462048309373 12.5
+pair_coeff      * *  1.0 1.0
+kspace_style    ewald 1.0e-3
+pair_modify     shift yes
+group           ions type 2 3
+group           extra empty
+fix             fnve all nve
+compute         dtemp all temp
+compute_modify  dtemp dynamic/dof yes
+fix             fT all langevin 1.0 1.0 1.0 123
+fix_modify      fT temp dtemp
+fix chareg      all charge/regulation 2 3 pIp 2.5 pIm 3.5 onlysalt yes 1 -2 tag yes lunit_nm 0.72 nevery 50 nmc 60 seed 2345 tempfixid fT
+variable        nx equal count(extra)
+variable        nions equal count(ions)
+thermo          25
+thermo_style custom step atoms pe c_dtemp f_chareg[1] f_chareg[2] f_chareg[7] f_chareg[8] v_nx v_nions
+thermo_modify   format float %.15g
+timestep        0.005
+run             150

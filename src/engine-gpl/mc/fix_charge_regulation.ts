@@ -6,8 +6,11 @@
  *
  * fix charge/regulation: reaction-ensemble Monte Carlo of acid/base protonation and of salt ion insertion and
  * deletion, run between MD steps (docs.lammps.org/fix_charge_regulation.html). The browser engine supports the
- * box-wide moves (rxd 0), pmcmoves, the thermostat temperature (tempfixid or temp), and the seeded native random
- * streams; the other keywords are refused by name (see the constructor).
+ * box-wide moves (rxd 0), pmcmoves, onlysalt (multivalent ion pairs), tag, group, the thermostat temperature
+ * (tempfixid or temp), and the seeded native random streams; the other keywords are refused by name (see the
+ * constructor). Each inserted ion takes the largest ID + 1 when it is inserted, as native insert_particle calls
+ * Atom::tag_extend(); so native's assign_tags at the end of an event (tag yes) finds no ion without an ID, and the
+ * tag keyword changes nothing.
  *
  * Native structure kept here: two Park-Miller streams seeded with the fix's seed (random_equal drives the move
  * choice, positions and acceptances; random_unequal the velocities of inserted ions); a trial inserts or changes
@@ -51,8 +54,12 @@ const int = (w: string | undefined, what: string): number => {
   return v;
 };
 
-/** Options refused by name: the browser engine does not implement them. */
-const REFUSED = new Set(['onlysalt', 'group', 'tag']);
+/** utils::logical: yes/no, true/false, on/off, 1/0. */
+const logical = (w: string): boolean => {
+  if (w === 'yes' || w === 'true' || w === 'on' || w === '1') return true;
+  if (w === 'no' || w === 'false' || w === 'off' || w === '0') return false;
+  throw new StyleError(`Expected boolean parameter instead of '${w}' in input script or data file`);
+};
 
 /** The state fix charge/regulation keeps in a restart file (fix_charge_regulation.cpp write_restart). */
 export interface ChargeRegulationRestart { seed: number; seedUnequal: number; nextEvent: number; step: number; counters: number[] }
@@ -93,6 +100,14 @@ export class FixChargeRegulation extends Fix {
   private volumeRx = 0;
   private c10pH = 0; private c10pKa = 0; private c10pKb = 0; private c10pOH = 0; private c10pIplus = 0; private c10pIminus = 0;
   private beta = 0;
+  /** onlysalt: only ion insertion and deletion, with the cation and anion charges (salt_charge) and their ratio. */
+  private onlySalt = false;
+  private readonly saltCharge = [1, -1];
+  private saltRatio = 1;
+  private addTags = false;
+  private readonly groupNames: string[] = [];
+  /** The mask of inserted ions (native groupbitall: all, the fix group and the group keywords). */
+  private groupBitAll = 0;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -130,20 +145,36 @@ export class FixChargeRegulation extends Fix {
         case 'pmcmoves':
           this.pmcmoves[0] = num(v(1), 'pmcmoves'); this.pmcmoves[1] = num(v(2), 'pmcmoves'); this.pmcmoves[2] = num(v(3), 'pmcmoves');
           i += 4; break;
+        // tag yes: native's assign_tags numbers ions without an ID, and every inserted ion already has one (see the header)
+        case 'tag': this.addTags = logical(v(1)); i += 2; break;
+        case 'onlysalt':
+          this.onlySalt = logical(v(1));
+          i += 2;
+          if (this.onlySalt) {
+            if (args[i + 1] === undefined) throw new StyleError('Illegal fix charge/regulation command');
+            this.saltCharge[0] = int(args[i], 'onlysalt cation charge');
+            this.saltCharge[1] = int(args[i + 1], 'onlysalt anion charge');
+            i += 2;
+          }
+          break;
+        case 'group': this.groupNames.push(v(1)); i += 2; break;
         case 'rxd': {
           const rd = num(v(1), 'rxd');
           if (rd > 0) throw new StyleError('fix charge/regulation rxd > 0 (reaction distance) is not supported by the browser engine');
           i += 2; break;
         }
         default:
-          if (REFUSED.has(key)) throw new StyleError(`fix charge/regulation keyword '${key}' is not supported by the browser engine`);
           throw new StyleError(`Illegal fix charge/regulation command: unknown keyword '${key}'`);
       }
     }
-    if (this.mcEvery <= 0 || this.nmc < 0 || this.lunit < 0 || this.reservoirT < 0 || this.cationType <= 0 || this.anionType <= 0) {
+    if (this.mcEvery <= 0 || this.nmc < 0 || this.lunit < 0 || this.reservoirT < 0 || this.cationType <= 0 || this.anionType <= 0
+      || this.saltCharge[0] <= 0 || this.saltCharge[1] >= 0) {
       throw new StyleError('Illegal fix charge/regulation command');
     }
     if (!(this.seed > 0)) throw new StyleError('Illegal fix charge/regulation command: Seed value (positive integer) must be provided ');
+    if (this.saltCharge[1] % this.saltCharge[0] !== 0 && this.saltCharge[0] % this.saltCharge[1] !== 0) {
+      throw new StyleError('Illegal fix charge/regulation command, multivalent cation/anion charges are allowed, but must be divisible, e.g. (3,-1) is fine, but (3,-2) is not implemented');
+    }
     if (this.pmcmoves.some((p) => p < 0)) throw new StyleError('Illegal fix charge/regulation command');
     if (this.acidType < 0) this.pmcmoves[0] = 0;
     if (this.baseType < 0) this.pmcmoves[1] = 0;
@@ -201,6 +232,11 @@ export class FixChargeRegulation extends Fix {
       this.excl = k === 31 ? -0x80000000 : 1 << k;
       sys.nb.excludes.push({ kind: 'group', a: this.excl, b: ALL_GROUP_BIT });
     }
+    this.groupBitAll = ALL_GROUP_BIT | this.groupBit;
+    for (const g of this.groupNames) {
+      if (sys.groups.find(g) < 0) throw new StyleError('Could not find fix charge/regulation group ID');
+      this.groupBitAll |= sys.groups.bit(g);
+    }
     this.ready = true;
   }
 
@@ -239,18 +275,30 @@ export class FixChargeRegulation extends Fix {
     this.nacidCharged = this.countParticles(this.acidType, -1);
     this.nbaseNeutral = this.countParticles(this.baseType, 0);
     this.nbaseCharged = this.countParticles(this.baseType, 1);
-    this.ncation = this.countParticles(this.cationType, 1);
-    this.nanion = this.countParticles(this.anionType, -1);
+    this.ncation = this.countParticles(this.cationType, this.saltCharge[0]);
+    this.nanion = this.countParticles(this.anionType, this.saltCharge[1]);
 
-    const pm = this.pmcmoves;
-    for (let i = 0; i < this.nmc; i++) {
-      const r = this.rngEq.uniform();
-      if (r < pm[0] / 2) { this.forwardAcid(); this.nacidAtt++; }
-      else if (r < pm[0]) { this.backwardAcid(); this.nacidAtt++; }
-      else if (r < pm[0] + pm[1] / 2) { this.forwardBase(); this.nbaseAtt++; }
-      else if (r < pm[0] + pm[1]) { this.backwardBase(); this.nbaseAtt++; }
-      else if (r < pm[0] + pm[1] + pm[2] / 2) { this.forwardIons(); this.nsaltAtt++; }
-      else { this.backwardIons(); this.nsaltAtt++; }
+    if (!this.onlySalt) {
+      const pm = this.pmcmoves;
+      for (let i = 0; i < this.nmc; i++) {
+        const r = this.rngEq.uniform();
+        if (r < pm[0] / 2) { this.forwardAcid(); this.nacidAtt++; }
+        else if (r < pm[0]) { this.backwardAcid(); this.nacidAtt++; }
+        else if (r < pm[0] + pm[1] / 2) { this.forwardBase(); this.nbaseAtt++; }
+        else if (r < pm[0] + pm[1]) { this.backwardBase(); this.nbaseAtt++; }
+        else if (r < pm[0] + pm[1] + pm[2] / 2) { this.forwardIons(); this.nsaltAtt++; }
+        else { this.backwardIons(); this.nsaltAtt++; }
+      }
+    } else {
+      // only ion insertion and deletion; the larger charge is balanced by saltRatio ions of the other kind
+      // (C++ integer division of the two charges)
+      const [qc, qa] = this.saltCharge;
+      this.saltRatio = qc >= -qa ? Math.trunc(-qc / qa) : Math.trunc(-qa / qc);
+      for (let i = 0; i < this.nmc; i++) {
+        if (this.rngEq.uniform() < 0.5) this.forwardIonsMultival();
+        else this.backwardIonsMultival();
+        this.nsaltAtt++;
+      }
     }
     this.sys.atomsChanged();
     this.sys.ff.reinitTail(this.sys.state);
@@ -292,7 +340,7 @@ export class FixChargeRegulation extends Fix {
     c[1] = lo[1] + this.rngEq.uniform() * (hi[1] - lo[1]);
     c[2] = lo[2] + this.rngEq.uniform() * (hi[2] - lo[2]);
     const n0 = s.n;
-    appendAtoms(s, { x: c, type: ptype, mask: this.groupBit });
+    appendAtoms(s, { x: c, type: ptype, mask: this.groupBitAll });
     const sigma = Math.sqrt(s.units.boltz * this.target / s.massByType[ptype] / s.units.mvv2e);
     s.v[3 * n0] = this.rngUneq.gaussian() * sigma;
     s.v[3 * n0 + 1] = this.rngUneq.gaussian() * sigma;
@@ -512,6 +560,95 @@ export class FixChargeRegulation extends Fix {
     }
   }
 
+  /** Native forward_ions_multival: one ion of the larger charge and saltRatio ions of the other kind. */
+  private forwardIonsMultival(): void {
+    const before = this.energyStored;
+    const [qc, qa] = this.saltCharge;
+    const k = 1 + this.saltRatio;
+    let factor = 1;
+    if (qc <= -qa) {
+      // one anion and saltRatio cations
+      this.insert(this.anionType, qa);
+      factor *= this.volumeRx * this.c10pIminus / (1 + this.nanion);
+      for (let i = 0; i < this.saltRatio; i++) {
+        this.insert(this.cationType, qc);
+        factor *= this.volumeRx * this.c10pIplus / (1 + this.ncation + i);
+      }
+    } else {
+      this.insert(this.cationType, qc);
+      factor *= this.volumeRx * this.c10pIplus / (1 + this.ncation);
+      for (let i = 0; i < this.saltRatio; i++) {
+        this.insert(this.anionType, qa);
+        factor *= this.volumeRx * this.c10pIminus / (1 + this.nanion + i);
+      }
+    }
+    const after = this.energyFull();
+    if (this.accept(factor, after)) {
+      this.energyStored = after;
+      this.nsaltSucc++;
+      if (qc <= -qa) { this.ncation += this.saltRatio; this.nanion++; } else { this.nanion += this.saltRatio; this.ncation++; }
+    } else {
+      this.energyStored = before;
+      this.popLast(k);
+    }
+  }
+
+  /** Native backward_ions_multival: deletes one ion of the larger charge and saltRatio ions of the other kind. */
+  private backwardIonsMultival(): void {
+    const s = this.sys.state;
+    const before = this.energyStored;
+    const [qc, qa] = this.saltCharge;
+    const k = 1 + this.saltRatio;
+    const mm: number[] = [];
+    const qq: number[] = [];
+    const maskTmp: number[] = [];
+    let factor = 1;
+    const take = (m: number) => {
+      mm.push(m);
+      if (m >= 0) { qq.push(s.q[m]); s.q[m] = 0; maskTmp.push(s.mask[m]); s.mask[m] = this.excl; } else { qq.push(0); maskTmp.push(0); }
+    };
+    const inconsistent = () => new StyleError('fix charge/regulation salt count inconsistent');
+    if (qc <= -qa) {
+      if (this.ncation < this.saltRatio || this.nanion < 1) return;
+      take(this.pick(this.anionType, qa));
+      if (this.npartXrd !== this.nanion) throw inconsistent();
+      factor *= this.volumeRx * this.c10pIminus / this.nanion;
+      for (let i = 0; i < this.saltRatio; i++) {
+        const m = this.pick(this.cationType, qc);
+        if (this.npartXrd !== this.ncation - i) throw inconsistent();
+        factor *= this.volumeRx * this.c10pIplus / (this.ncation - i);
+        take(m);
+      }
+    } else {
+      if (this.nanion < this.saltRatio || this.ncation < 1) return;
+      take(this.pick(this.cationType, qc));
+      if (this.npartXrd !== this.ncation) throw inconsistent();
+      factor *= this.volumeRx * this.c10pIplus / this.ncation;
+      for (let i = 0; i < this.saltRatio; i++) {
+        const m = this.pick(this.anionType, qa);
+        if (this.npartXrd !== this.nanion - i) throw inconsistent();
+        take(m);
+        factor *= this.volumeRx * this.c10pIminus / (this.nanion - i);
+      }
+    }
+    const after = this.energyFull();
+    if (this.accept(1.0 / factor, after)) {
+      this.energyStored = after;
+      // native deletes them in order of decreasing storage position (a deletion moves the last atom into its slot)
+      const ord = nativeOrder(s);
+      const byPos = mm.filter((m) => m >= 0).map((m) => ({ id: this.idOf(m), pos: ord.indexOf(m) })).sort((a, b) => b.pos - a.pos);
+      for (const { id } of byPos) this.removeId(id);
+      this.nsaltSucc++;
+      if (qc <= -qa) { this.ncation -= this.saltRatio; this.nanion--; } else { this.nanion -= this.saltRatio; this.ncation--; }
+    } else {
+      this.energyStored = before;
+      for (let i = 0; i < k; i++) {
+        const m = mm[i];
+        if (m >= 0) { s.q[m] = qq[i]; s.mask[m] = maskTmp[i]; }
+      }
+    }
+  }
+
   private idOf(i: number): number { return this.sys.state.id[i]; }
 
   /** fix charge/regulation f_ID[1..8] (native compute_vector): attempts, successes, then particle counts. */
@@ -523,8 +660,8 @@ export class FixChargeRegulation extends Fix {
       case 3: return this.countParticles(this.acidType, -1);
       case 4: return this.countParticles(this.baseType, 0);
       case 5: return this.countParticles(this.baseType, 1);
-      case 6: return this.countParticles(this.cationType, 1);
-      case 7: return this.countParticles(this.anionType, -1);
+      case 6: return this.countParticles(this.cationType, this.saltCharge[0]);
+      case 7: return this.countParticles(this.anionType, this.saltCharge[1]);
       default: return 0;
     }
   }

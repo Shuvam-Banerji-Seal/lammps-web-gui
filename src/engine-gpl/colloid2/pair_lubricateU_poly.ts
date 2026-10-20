@@ -73,7 +73,7 @@ export class PairLubricateUPoly extends PairLubricateU {
     for (let i = 0; i < s.n; i++) {
       if (s.radius[i] === 0.0) throw new StyleError('Pair lubricateU/poly requires extended particles');
     }
-    this.flagdeform = ctx.fixOf?.('deform') ? 1 : 0;
+    this.flagdeform = (ctx.fixOf?.('deform') ?? ctx.fixOf?.('deform/pressure')) ? 1 : 0;
     const walls = findWallFixes(ctx);
     this.flagwall = 0;
     this.wallFix = null;

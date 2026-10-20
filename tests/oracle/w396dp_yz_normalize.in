@@ -1,0 +1,20 @@
+# oracle: fix deform/pressure yz pressure with normalize/pressure and max/rate on a triclinic LJ liquid (flip no), plus x pressure/mean, every 4 steps (thermo every 4: native tallies the virial on an update step only when an output asks for it), fix nve
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS: engine vs native thermo 2.4e-11, atoms 7.2e-12. With N = 2 and thermo every 20, native stops at step 2 with "Virial was not tallied on needed timestep": its pressure compute is asked for the virial only on the step after an update.
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box prism 0 3 0 3 0 3 0.0 0.0 0.2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.005
+fix             1 all nve
+fix             2 all deform/pressure 4 yz pressure 0.4 2.0 x pressure/mean 1.0 0.5 normalize/pressure yes max/rate 0.5 flip no
+thermo_style    custom step temp press pxx pyz lx ly lz xy xz yz
+thermo_modify   format float %.15g
+thermo          4
+run             300

@@ -27,7 +27,7 @@ const FIX_STATE_NOT_STORED = new Set([
   // widom: fix_widom.cpp restart() reads a third value (list[2]) that write_restart never wrote, so the next event step
   // native restores is not defined; its state cannot be stored exactly
   'widom',
-  'adapt', 'amoeba/bitorsion', 'amoeba/pitorsion', 'bocs', 'bond/react', 'deform',
+  'adapt', 'amoeba/bitorsion', 'amoeba/pitorsion', 'bocs', 'bond/react', 'deform', 'deform/pressure',
   'graphics/lines', 'rigid/nph', 'rigid/nph/small', 'rigid/npt', 'rigid/npt/small', 'rigid/nvt', 'rigid/nvt/small',
   'smd/adjust_dt', 'spring/self', 'store/state', 'tgnpt/drude', 'tgnvt/drude', 'ti/spring', 'ttm', 'ttm/cascade',
   'ttm/grid', 'ttm/mod', 'ttm/thermal', 'wall/body/polygon', 'wall/body/polyhedron', 'wall/gran', 'wall/gran/region',

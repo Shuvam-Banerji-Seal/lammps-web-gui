@@ -11,7 +11,7 @@ import { FixNH } from '../../engine/fix/nh';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { ramp, removeCompute } from '../../engine/fix/util';
-import type { FixDeform } from '../../engine/fix/deform';
+import { isDeformFix, type FixDeform } from '../../engine/fix/deform';
 import { ComputeTempDeform } from '../../engine/compute/temp_deform';
 import { massOf } from '../../engine/atoms';
 import { exp as libmExp } from '../libm/exp';
@@ -56,7 +56,7 @@ import { exp as libmExp } from '../libm/exp';
  */
 
 const findDeform = (sys: System): FixDeform => {
-  const f = sys.fixes.find((x) => x.style === 'deform');
+  const f = sys.fixes.find((x) => isDeformFix(x));
   if (!f) throw new StyleError('fix nvt/sllod requires a fix deform command (none defined)');
   return f as FixDeform;
 };

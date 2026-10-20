@@ -3,7 +3,7 @@ import type { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
-import type { FixDeform } from '../fix/deform';
+import { isDeformFix, type FixDeform } from '../fix/deform';
 
 /*
  * compute ID group-ID temp/deform — docs.lammps.org/compute_temp_deform.html.
@@ -124,7 +124,7 @@ export class ComputeTempDeform extends ComputeTemp {
   }
 
   private findDeform(): FixDeform {
-    const f = this.sys.fixes.find((x) => x.style === 'deform');
+    const f = this.sys.fixes.find((x) => isDeformFix(x));
     if (!f) throw new StyleError('compute temp/deform requires a fix deform command (none defined)');
     return f as FixDeform;
   }

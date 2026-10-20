@@ -17,6 +17,7 @@ import { massOf, ELECTRON_RFORCE, ELECTRON_RVEL, ELECTRON_RADIUS, ELECTRON_SPIN 
 import { ownCompute, removeCompute } from '../../engine/fix/util';
 import { FixNHEff } from '../eff/fix_nh_eff';
 import { ComputeTempDeformEff, boxH, deformRates, multiplyShapeShape } from './compute_temp_deform_eff';
+import { isDeformFix } from '../../engine/fix/deform';
 import { exp as libmExp } from '../libm/exp';
 
 /** logical keyword value: yes / no (utils::logical). */
@@ -103,7 +104,7 @@ export class FixNVTSllodEff extends FixNHEff {
         throw new StyleError('Fix nvt/sllod/eff used with lab-frame velocity and non-deform temperature bias. For non-deform biases, either set peculiar = yes or pass an explicit temp/deform/eff with an extra bias');
       }
     }
-    const deforms = this.sys.fixes.filter((f) => f.style === 'deform');
+    const deforms = this.sys.fixes.filter((f) => isDeformFix(f));
     if (deforms.length === 0) throw new StyleError('Using fix nvt/sllod/eff with no fix deform defined');
     for (const f of deforms) {
       const df = f as unknown as { remapFlag(): string; init?(): void; style: string };

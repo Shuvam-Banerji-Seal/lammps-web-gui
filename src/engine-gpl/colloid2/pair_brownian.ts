@@ -233,7 +233,7 @@ export class PairBrownian extends Pair {
       if (i > 1 && radtype !== this.rad) throw new StyleError('Pair brownian requires monodisperse particles');
       this.rad = radtype;
     }
-    this.flagdeform = ctx.fixOf?.('deform') ? 1 : 0;
+    this.flagdeform = (ctx.fixOf?.('deform') ?? ctx.fixOf?.('deform/pressure')) ? 1 : 0;
     this.wall = this.findWallView(ctx, 'pair brownian');
     this.flagwall = this.wall ? (wallMoves(this.wall) ? 2 : 1) : 0;
     const prd = [s.box.hi[0] - s.box.lo[0], s.box.hi[1] - s.box.lo[1], s.box.hi[2] - s.box.lo[2]];

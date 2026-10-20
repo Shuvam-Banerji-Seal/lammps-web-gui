@@ -177,7 +177,7 @@ export class PairLubricate extends Pair {
 
   /** The native checks shared by both styles (fix deform and fix wall), in the native order. */
   protected checkDeformAndWalls(ctx: StyleContext): void {
-    const df = ctx.fixOf?.('deform') ?? null;
+    const df = (ctx.fixOf?.('deform') ?? ctx.fixOf?.('deform/pressure')) ?? null;
     this.shearing = false;
     this.flagdeform = false;
     if (df) {

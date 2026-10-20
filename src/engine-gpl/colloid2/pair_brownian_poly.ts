@@ -49,7 +49,7 @@ export class PairBrownianPoly extends PairBrownian {
     for (let i = 0; i < s.n; i++) {
       if (s.radius[i] === 0.0) throw new StyleError('Pair brownian/poly requires extended particles');
     }
-    this.flagdeform = ctx.fixOf?.('deform') ? 1 : 0;
+    this.flagdeform = (ctx.fixOf?.('deform') ?? ctx.fixOf?.('deform/pressure')) ? 1 : 0;
     this.wall = this.findWallView(ctx, 'pair brownian/poly');
     this.flagwall = this.wall ? (wallMoves(this.wall) ? 2 : 1) : 0;
     const prd = [s.box.hi[0] - s.box.lo[0], s.box.hi[1] - s.box.lo[1], s.box.hi[2] - s.box.lo[2]];

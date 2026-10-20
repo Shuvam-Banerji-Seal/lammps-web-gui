@@ -17,6 +17,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { massOf, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle } from '../../engine/atoms';
 import { ComputeTempEff } from '../eff/compute_temp_eff';
+import { isDeformFix } from '../../engine/fix/deform';
 import { exp as libmExp } from '../libm/exp';
 
 /** domain.h h_rate and h_ratelo (zero without a fix deform). */
@@ -24,7 +25,7 @@ export interface DeformRates { hRate: number[]; hRatelo: number[] }
 
 /** The box rates of the system's fix deform (fix_deform.cpp init: h_rate[i] = dhi_dt - dlo_dt, h_ratelo[i] = dlo_dt). */
 export const deformRates = (sys: System): DeformRates => {
-  const f = sys.fixes.find((x) => x.style === 'deform') as unknown as { lenDot: number[]; tiltDot: number[]; loDot: number[] } | undefined;
+  const f = sys.fixes.find((x) => isDeformFix(x)) as unknown as { lenDot: number[]; tiltDot: number[]; loDot: number[] } | undefined;
   if (!f) return { hRate: [0, 0, 0, 0, 0, 0], hRatelo: [0, 0, 0] };
   // domain.h order: the length rates, then yz, xz and xy (the tilt rates)
   return {

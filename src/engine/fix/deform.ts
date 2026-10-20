@@ -108,6 +108,49 @@ const PRESSURE_STYLES = ['pressure', 'pressure/mean'];
 /** fix deform/pressure-only keywords. */
 const PRESSURE_KEYWORDS = ['couple', 'vol/balance/p', 'max/rate', 'normalize/pressure'];
 
+/**
+ * The arguments of a child style of fix deform (fix deform/pressure): the styles of an x ... yz parameter that the
+ * parent leaves to it with their word counts, its own parameters (box), and its trailing keywords with their word
+ * counts. As native LAMMPS does (src/fix_deform.cpp constructor and options() at b332f28), the parent records where
+ * they are (leftover) and the child parses them.
+ */
+export interface DeformChildArgs {
+  /** The child's fix style, for the messages. */
+  name: string;
+  styles: Record<string, number>;
+  params: string[];
+  options: Record<string, number>;
+}
+
+/**
+ * The box of one update while it is being built: lo and hi bounds, lengths, tilts (xy, xz, yz), and the rates other
+ * fixes and computes read (length rate, lo-boundary rate, tilt rate). apply is false for the rates set at init (no box
+ * change); setup is true for the update the fix makes at the run setup.
+ */
+export interface DeformTargets {
+  lo: number[];
+  hi: number[];
+  len: number[];
+  lenD: number[];
+  loD: number[];
+  tilt: number[];
+  tiltD: number[];
+  apply: boolean;
+  setup: boolean;
+}
+
+/** How a volume dimension follows the others (native ONE_FROM_ONE, ONE_FROM_TWO, TWO_FROM_ONE). */
+export interface VolumeLink {
+  dim: number;
+  kind: 'one-from-one' | 'one-from-two' | 'two-from-one';
+  fixed: number;
+  dynamic1: number;
+  dynamic2: number;
+}
+
+/** A fix that deforms the box (native get_fix_by_style("^deform"): fix deform and fix deform/pressure). */
+export const isDeformFix = (f: { style: string }): boolean => f.style === 'deform' || f.style === 'deform/pressure';
+
 interface DimSpec {
   /** 'x' | 'y' | 'z' | 'xy' | 'xz' | 'yz'. */
   name: string;
@@ -127,24 +170,29 @@ interface DimSpec {
 }
 
 export class FixDeform extends Fix {
-  readonly style = 'deform';
-  private readonly specs: DimSpec[] = [];
-  private remapMode: 'x' | 'v' | 'none' = 'x';
-  private flip = true;
+  readonly style: string = 'deform';
+  protected readonly specs: DimSpec[] = [];
+  protected remapMode: 'x' | 'v' | 'none' = 'x';
+  protected flip = true;
   private readonly unitsLattice: boolean;
+  /** Positions in args of the child style's words (native leftover_iarg), in the order they appear. */
+  protected readonly leftover: number[] = [];
+  /** The volume dimensions and the dimensions they follow (native set[i].substyle, fixed, dynamic1, dynamic2). */
+  protected volumeLinks: VolumeLink[] = [];
 
   // box at the start of the run (paraphrased, not quoted: the box set by
   // create_box, read_data or read_restart, or the values from the end of the
   // previous run; paraphrase of the fix_deform.rst description of run start)
-  private lo0: number[] = [0, 0, 0];
-  private hi0: number[] = [0, 0, 0];
-  private len0: number[] = [0, 0, 0];
-  private mid0: number[] = [0, 0, 0];
-  private tilt0: number[] = [0, 0, 0];
+  protected lo0: number[] = [0, 0, 0];
+  protected hi0: number[] = [0, 0, 0];
+  protected len0: number[] = [0, 0, 0];
+  protected mid0: number[] = [0, 0, 0];
+  protected tilt0: number[] = [0, 0, 0];
   /** Length perpendicular to the shear: y for xy, z for xz and yz. */
-  private perp0: number[] = [0, 0, 0];
-  private vol0 = 0;
-  private captured = false;
+  protected perp0: number[] = [0, 0, 0];
+  /** The box volume at the start of the run, xprd yprd zprd as native vol_start (also in 2d). */
+  protected vol0 = 0;
+  protected captured = false;
 
   /** Current box deformation rates: d(length)/dt, d(tilt)/dt, lo-boundary velocity. */
   private lenDot: number[] = [0, 0, 0];
@@ -162,7 +210,7 @@ export class FixDeform extends Fix {
    */
   private flipPending: { step: number; tilt: number[]; m: number; n: number; p: number } | null = null;
 
-  constructor(sys: System, id: string, group: string, args: string[]) {
+  constructor(sys: System, id: string, group: string, args: string[], child?: DeformChildArgs) {
     super(sys, id, group, args);
     const n = int(args[0], 'fix deform N');
     // fix_deform.rst: "For N > 0, the box is updated at the end of the time step every N steps. For N = 0, the box is updated immediately after position updates on every time step."
@@ -170,8 +218,24 @@ export class FixDeform extends Fix {
     this.nevery = n;
     let units: string | null = null;
     // first pass: keywords (they may follow any parameter sequence)
+    // the child's words are recorded with their positions, as native leftover_iarg (its keywords, and its parameters)
+    const skipChild = (k: number, nskip: number, what: string): number => {
+      if (k + nskip > args.length) throw new StyleError(`Illegal fix ${child!.name} ${what} command: missing argument(s)`);
+      for (let j = 0; j < nskip; j++) this.leftover.push(k + j);
+      return nskip;
+    };
     for (let k = 1; k < args.length;) {
       const w = args[k];
+      if (child && Object.hasOwn(child.options, w)) {
+        k += skipChild(k, child.options[w], w);
+        continue;
+      }
+      if (child && child.params.includes(w)) {
+        const st = args[k + 1];
+        if (st === undefined || !Object.hasOwn(child.styles, st)) throw new StyleError(`Illegal fix ${child.name} command argument: ${st ?? ''}`);
+        k += skipChild(k, child.styles[st], `${w} ${st}`);
+        continue;
+      }
       if (w === 'remap' || w === 'flip' || w === 'units' || PRESSURE_KEYWORDS.includes(w)) {
         const val = args[k + 1];
         if (val === undefined) throw new StyleError(`fix deform: keyword '${w}' is missing its value`);
@@ -184,14 +248,15 @@ export class FixDeform extends Fix {
           if (val !== 'lattice' && val !== 'box') throw new StyleError(`fix deform: units must be lattice or box (got '${val}')`);
           units = val;
         } else {
-          throw new StyleError(`fix deform: keyword '${w}' belongs to fix deform/pressure, which is not supported by the browser engine`);
+          // fix_deform.cpp options(): "Unknown fix {} keyword: {}" (the keyword is one of fix deform/pressure)
+          throw new StyleError(`Unknown fix deform keyword: ${w} (a fix deform/pressure keyword)`);
         }
         k += 2;
         continue;
       }
-      k += this.parseParam(args, k);
+      k += this.parseParam(args, k, child);
     }
-    if (!this.specs.length) throw new StyleError('fix deform: at least one parameter (x, y, z, xy, xz, yz) is required');
+    if (!this.specs.length && !child) throw new StyleError('fix deform: at least one parameter (x, y, z, xy, xz, yz) is required');
     // fix_deform.rst (live docs): for N = 0 the box update is not compatible with the variable style. Native error (black box), no quote marks:
     // Fix deform cannot use the variable style with nevery = 0
     if (n === 0 && this.specs.some((sp) => sp.style === 'variable')) {
@@ -214,6 +279,14 @@ export class FixDeform extends Fix {
         }
       }
     }
+    // the volume dimensions and the ones they follow (a child style links its own, as native "only check for parent,
+    // otherwise child will check")
+    if (!child) {
+      this.volumeLinks = this.linkVolumes((d) => {
+        const sp = this.specs.find((x) => !x.tilt && x.dim === d);
+        return !sp ? 'none' : sp.style === 'volume' ? 'volume' : 'other';
+      }, 'deform');
+    }
     // units conversion happens after the full parse: the keyword may follow
     // the parameter sequences it scales. region.html (style prism): "The lattice spacing
     // in dimension x is applied to xy and xz, and the spacing in dimension y
@@ -235,16 +308,25 @@ export class FixDeform extends Fix {
   }
 
   /** Parses one parameter/args sequence at args[k]; returns the words consumed. */
-  private parseParam(a: string[], k: number): number {
+  private parseParam(a: string[], k: number, child?: DeformChildArgs): number {
     const name = a[k];
     const tilt = name.length === 2;
     const style = a[k + 1];
     if (!['x', 'y', 'z', 'xy', 'xz', 'yz'].includes(name)) {
       throw new StyleError(`fix deform: unknown parameter '${name}' (expected x, y, z, xy, xz or yz)`);
     }
+    // a style the parent does not know is the child's (native child_styles): its words are left to the child
+    const parentStyle = tilt ? style === 'erate/rescale' || TILT_STYLES.includes(style as DimStyle) : LEN_STYLES.includes(style as DimStyle);
+    if (child && !parentStyle && style !== undefined && Object.hasOwn(child.styles, style)) {
+      const nskip = child.styles[style];
+      if (k + nskip > a.length) throw new StyleError(`Illegal fix ${child.name} ${style} command: missing argument(s)`);
+      for (let j = 0; j < nskip; j++) this.leftover.push(k + j);
+      return nskip;
+    }
     if (this.specs.some((s) => s.name === name)) throw new StyleError(`fix deform: parameter ${name} given twice`);
     if (PRESSURE_STYLES.includes(style)) {
-      throw new StyleError(`fix deform: style '${style}' belongs to fix deform/pressure, which is not supported by the browser engine`);
+      // fix_deform.cpp constructor: "Illegal fix {} command argument: {}" (the style is one of fix deform/pressure)
+      throw new StyleError(`Illegal fix deform command argument: ${style} (a fix deform/pressure style)`);
     }
     // fix_deform.rst: "The *erate/rescale* style operates similarly to the *erate* style with a specified strain rate"
     // The rescale variant is implemented only for a lone tilt parameter (see the check after the parse loop).
@@ -317,9 +399,44 @@ export class FixDeform extends Fix {
     return used;
   }
 
+  /**
+   * As native LAMMPS does (src/fix_deform.cpp constructor at b332f28): each volume dimension follows the others. With
+   * one undeformed other dimension it takes the volume from the deformed one and the undeformed one's start length
+   * (one-from-one); with two deformed others, from both (one-from-two); when the other is also a volume dimension, the
+   * two share the volume left by the deformed one and keep their start length ratio (two-from-one). A volume
+   * dimension needs at least one deformed other dimension: "Fix {} volume setting is invalid".
+   */
+  protected linkVolumes(kindOf: (d: number) => 'none' | 'volume' | 'other', name: string): VolumeLink[] {
+    const links: VolumeLink[] = [];
+    for (let i = 0; i < 3; i++) {
+      if (kindOf(i) !== 'volume') continue;
+      const o1 = (i + 1) % 3, o2 = (i + 2) % 3;
+      const k1 = kindOf(o1), k2 = kindOf(o2);
+      if (k1 !== 'other' && k2 !== 'other') throw new StyleError(`Fix ${name} volume setting is invalid`);
+      if (k1 === 'none') links.push({ dim: i, kind: 'one-from-one', fixed: o1, dynamic1: o2, dynamic2: -1 });
+      else if (k2 === 'none') links.push({ dim: i, kind: 'one-from-one', fixed: o2, dynamic1: o1, dynamic2: -1 });
+      else if (k1 === 'volume') links.push({ dim: i, kind: 'two-from-one', fixed: o1, dynamic1: o2, dynamic2: -1 });
+      else if (k2 === 'volume') links.push({ dim: i, kind: 'two-from-one', fixed: o2, dynamic1: o1, dynamic2: -1 });
+      else links.push({ dim: i, kind: 'one-from-two', fixed: -1, dynamic1: o1, dynamic2: o2 });
+    }
+    return links;
+  }
+
+  /** Does this fix set box length d (native dimflag[0..2])? */
+  controlsLength(d: number): boolean {
+    return this.specs.some((sp) => !sp.tilt && sp.dim === d);
+  }
+
+  /** Does this fix set tilt t, 0 xy, 1 xz, 2 yz (native dimflag[5], [4], [3])? */
+  controlsTilt(t: number): boolean {
+    return this.specs.some((sp) => sp.tilt && sp.dim === t);
+  }
+
   init(): void {
     const s = this.sys.state;
     const g = this.sys.geom;
+    // fix_deform.cpp init(): "More than one fix deform" (get_fix_by_style("deform") counts fix deform/pressure too)
+    if (this.sys.fixes.filter((f) => isDeformFix(f)).length > 1) throw new StyleError('More than one fix deform');
     for (let d = 0; d < 3; d++) {
       this.lo0[d] = s.box.lo[d];
       this.hi0[d] = s.box.hi[d];
@@ -330,7 +447,7 @@ export class FixDeform extends Fix {
     // "L0 is the original length of the box perpendicular to the shear
     // direction (e.g. y box length for xy deformation)"
     this.perp0 = [g.ly, g.lz, g.lz];
-    this.vol0 = g.volume(s.dimension);
+    this.vol0 = g.lx * g.ly * g.lz;
     for (const sp of this.specs) {
       if (sp.style === 'trate' && sp.tilt && this.tilt0[sp.dim] === 0) {
         throw new StyleError(`fix deform: the initial tilt factor must be non-zero to use the trate option (${sp.name} is 0)`);
@@ -349,9 +466,8 @@ export class FixDeform extends Fix {
    */
   private checkYzFlips(): void {
     const yz = this.specs.find((sp) => sp.tilt && sp.dim === 2);
-    const xy = this.specs.find((sp) => sp.tilt && sp.dim === 0);
     const xz = this.specs.find((sp) => sp.tilt && sp.dim === 1);
-    if (!yz || !xy || xz?.rescale || !this.flip) return;
+    if (!yz || !this.controlsTilt(0) || xz?.rescale || !this.flip) return;
     if (yz.style === 'variable') throw new StyleError('Fix deform cannot use yz variable with box flips and a defined xy unless xz is erate/rescale');
     if (yz.rescale) throw new StyleError('Fix deform cannot use yz erate/rescale with box flips and a defined xy unless xz is erate/rescale');
     const sys = this.sys;
@@ -378,8 +494,7 @@ export class FixDeform extends Fix {
 
   setup(): void {
     // LAMMPS calls end_of_step() from the fix's setup() as well (also for N = 0)
-    if (this.nevery === 0) this.deform(true);
-    else this.endOfStep();
+    if (this.nevery === 0 || this.sys.state.step % this.nevery === 0) this.deform(true, true);
     // remap v: the first remap window starts at the run setup
     const s = this.sys.state;
     this.remapLastStep = s.step;
@@ -398,7 +513,7 @@ export class FixDeform extends Fix {
    * fractional coordinates of the fix group's atoms, v/none keep their
    * Cartesian ones).
    */
-  private deform(apply: boolean): void {
+  private deform(apply: boolean, setup = false): void {
     if (!this.captured) return;
     const sys = this.sys;
     const s = sys.state;
@@ -476,34 +591,13 @@ export class FixDeform extends Fix {
       loD[d] = loRate;
     }
 
-    // volume styles: V0 is the box volume at the start of the run
-    const volSpecs = this.specs.filter((sp) => !sp.tilt && sp.style === 'volume');
-    if (volSpecs.length) {
-      const k = volSpecs.length;
-      let prod = 1;
-      let sum = 0;
-      for (let d = 0; d < ndims; d++) {
-        if (volSpecs.some((sp) => sp.dim === d)) continue;
-        prod *= len[d];
-        sum += lenD[d] / len[d];
-      }
-      if (!(prod > 0)) throw new StyleError('fix deform: volume style needs a positive product of the other box lengths');
-      const L = Math.pow(this.vol0 / prod, 1 / k);
-      for (const sp of volSpecs) {
-        len[sp.dim] = L;
-        lenD[sp.dim] = (-1 / k) * L * sum;
-        loD[sp.dim] = -lenD[sp.dim] / 2;
-        lo[sp.dim] = this.mid0[sp.dim] - 0.5 * L;
-        hi[sp.dim] = this.mid0[sp.dim] + 0.5 * L;
-      }
-    }
-
-    for (let d = 0; d < ndims; d++) {
-      if (!(len[d] > 0)) throw new StyleError(`fix deform: box length in ${'xyz'[d]} became ${len[d]}`);
-    }
+    // the child's controls (fix deform/pressure), then the volume dimensions, which follow the others' new lengths
+    const tiltD = [0, 0, 0];
+    const tg: DeformTargets = { lo, hi, len, lenD, loD, tilt, tiltD, apply, setup };
+    this.controlTargets(tg);
+    this.applyVolume(tg);
 
     // tilt styles
-    const tiltD = [0, 0, 0];
     for (const sp of this.specs) {
       if (!sp.tilt) continue;
       const t = sp.dim, T0 = this.tilt0[t];
@@ -545,6 +639,10 @@ export class FixDeform extends Fix {
       tilt[t] = T;
       tiltD[t] = TD;
     }
+    this.boxTargets(tg);
+    for (let d = 0; d < ndims; d++) {
+      if (!(len[d] > 0)) throw new StyleError(`fix deform: box length in ${'xyz'[d]} became ${len[d]}`);
+    }
 
     if (apply && s.box.triclinic) this.tiltTargets(lo, hi, tilt);
 
@@ -567,6 +665,36 @@ export class FixDeform extends Fix {
     // force evaluation (energies, virial and per-atom forces), as LAMMPS does
     // when fix deform changes the box after final_integrate
     if (this.nevery > 0) sys.forcesCurrent();
+  }
+
+  /** The child's controls of an update, after the strain styles and before the volume ones (fix deform/pressure). */
+  protected controlTargets(_tg: DeformTargets): void {}
+
+  /** The child's controls of an update after the volume styles (fix deform/pressure box). */
+  protected boxTargets(_tg: DeformTargets): void {}
+
+  /**
+   * As native LAMMPS does (src/fix_deform.cpp apply_volume at b332f28): the half length of a volume dimension, from
+   * the start volume (xprd yprd zprd) and the lengths it follows (see linkVolumes), set about the start mid point;
+   * its length rate is the change from the current length over one time step, (2 shift - L) / dt.
+   */
+  protected applyVolume(tg: DeformTargets): void {
+    const s = this.sys.state;
+    for (const vl of this.volumeLinks) {
+      const i = vl.dim;
+      const v0 = this.vol0;
+      const target = (d: number): number => tg.hi[d] - tg.lo[d];
+      const start = (d: number): number => this.hi0[d] - this.lo0[d];
+      let shift: number;
+      if (vl.kind === 'one-from-one') shift = 0.5 * (v0 / target(vl.dynamic1) / start(vl.fixed));
+      else if (vl.kind === 'one-from-two') shift = 0.5 * (v0 / target(vl.dynamic1) / target(vl.dynamic2));
+      else shift = 0.5 * Math.sqrt(v0 * start(i) / target(vl.dynamic1) / start(vl.fixed));
+      tg.lenD[i] = (2.0 * shift - (s.box.hi[i] - s.box.lo[i])) / s.dt;
+      tg.loD[i] = -0.5 * tg.lenD[i];
+      tg.lo[i] = 0.5 * (this.lo0[i] + this.hi0[i]) - shift;
+      tg.hi[i] = 0.5 * (this.lo0[i] + this.hi0[i]) + shift;
+      tg.len[i] = tg.hi[i] - tg.lo[i];
+    }
   }
 
   /**
@@ -645,7 +773,7 @@ export class FixDeform extends Fix {
         if (m || n || p) this.flipPending = { step: s.step + (this.nevery > 0 ? 1 : 0), tilt: fl, m, n, p };
       }
     }
-    for (const sp of this.specs) if (sp.tilt) tilt[sp.dim] = target[sp.dim];
+    for (let t = 0; t < 3; t++) if (this.controlsTilt(t)) tilt[t] = target[t];
   }
 
   /** The neighbor lists are rebuilt on the step of a pending box flip (native next_reneighbor). */
@@ -667,12 +795,12 @@ export class FixDeform extends Fix {
 
   /** Does the fix change a box tilt (BOX_CHANGE_SHAPE in native LAMMPS)? */
   hasTilt(): boolean {
-    return this.specs.some((sp) => sp.tilt);
+    return [0, 1, 2].some((t) => this.controlsTilt(t));
   }
 
   /** Does the fix change a box length (BOX_CHANGE_SIZE in native LAMMPS)? */
   hasLengthChange(): boolean {
-    return this.specs.some((sp) => !sp.tilt);
+    return [0, 1, 2].some((d) => this.controlsLength(d));
   }
 
   /** The remap keyword (x, v or none). */
@@ -723,7 +851,7 @@ export class FixDeform extends Fix {
       // flipped values ("if (dimflag[3]) domain->yz = ... tilt_flip"), then the image flags and the atoms follow
       this.flipPending = null;
       const tilt = [s.box.tilt[0], s.box.tilt[1], s.box.tilt[2]];
-      for (const sp of this.specs) if (sp.tilt) tilt[sp.dim] = fp.tilt[sp.dim];
+      for (let t = 0; t < 3; t++) if (this.controlsTilt(t)) tilt[t] = fp.tilt[t];
       this.sys.flipBox(tilt, fp.m, fp.n, fp.p, this);
       // the flip maps every atom into the new box without a velocity change (Domain::remap), as native does, so
       // these wraps are not the engine's own and are not undone later

@@ -12,7 +12,9 @@
  * overlap), max_rxn and rate_limit with one reaction, reset_mol_ids yes/no, shuffle_seed (used only with
  * multi-reaction limits). Wildcard atoms take their bonded types from the type labels (inferBondType and the
  * other labelmap inferences in src/engine/labelmap.ts). The site fit of created atoms is superpose() (a port of
- * Superpose3D with the Jacobi eigen-solver). Refused by name: constraints, ChiralIDs, custom_charges, v_ variables,
+ * Superpose3D with the Jacobi eigen-solver). Constraints (distance, angle, dihedral, arrhenius, rmsd, custom with
+ * rxnsum, rxnave and rxnbond, combined by their logic) and ChiralIDs are checked as check_constraints does. Refused
+ * by name: custom_charges, v_ variables,
  * file, vizsteps, reset_mol_ids molmap, and created atoms with a per-atom mass style.
  *
  * Engine representation: topology lists are global (by atom ID) instead of per-atom storage, so the
@@ -33,6 +35,11 @@ import type { CustomProp, TopoList } from '../../engine/types';
 import type { FixFactory } from '../../engine/styles';
 import { RanMars } from '../random_mars';
 import { inferAngleType, inferBondType, inferDihedralType, inferImproperType } from '../../engine/labelmap';
+import { evaluateScalar } from '../../engine/formula';
+import { termRows } from '../../engine/compute/local';
+import { acos as libmAcos } from '../libm/acos';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 const BIG = 1.0e20;
 const MAXGUESS = 20;
@@ -97,7 +104,33 @@ interface Rxn {
   overlapsq: number;
   /** modify_create fit fragment: index in the post-reaction template, or -1 for all atoms (native modify_create_fragid). */
   fitFragment: number;
+  /** Constraints section, and the boolean logic that combines them ('C' marks each constraint, native constraintstr). */
+  constraints: Constraint[];
+  constraintStr: string;
+  /** ChiralIDs: per pre-reaction template atom (0-based), or null. */
+  chiral: (Chiral | null)[];
 }
+
+/** A constraint ID: a pre-reaction template atom (1-based) or a fragment of the pre-reaction template (its index). */
+interface ConstraintId { frag: boolean; id: number }
+
+/** One constraint of the Constraints section (fix_bond_react.h Reaction::Constraint). */
+interface Constraint {
+  type: 'distance' | 'angle' | 'dihedral' | 'arrhenius' | 'rmsd' | 'custom';
+  ids: ConstraintId[];
+  rminsq: number; rmaxsq: number;
+  amin: number; amax: number; amin2: number; amax2: number;
+  A: number; n: number; Ea: number; seed: number; rng: RanMars | null;
+  rmsdmax: number;
+  /** rmsd: the fragment index, or -1 for all template atoms. */
+  rmsdFrag: number;
+  /** custom: the expression (the text between the double quotes). */
+  str: string;
+  satisfied: boolean;
+}
+
+/** A chiral center of the pre-reaction template (ChiralIDs): its handedness and the types of its four 1-2 neighbors. */
+interface Chiral { handed: number; types: number[] }
 
 /** A created atom waiting for the insertion (native addatoms entry). */
 interface PendingAtom { x: number[]; type: number; tag: number; image: number[]; v: number[]; mask: number }
@@ -170,15 +203,24 @@ const readMap = (rxn: Rxn, text: string, name: string): void => {
     else if (l.includes('equivalences')) nequiv = num();
     else if (l.includes('deleteIDs')) ndelete = num();
     else if (l.includes('createIDs')) ncreate = num();
-    else if (l.includes('chiralIDs')) nchiral = num();
+    else if (l.includes('chiralIDs')) {
+      nchiral = num();
+      if (!(nchiral >= 0 && nchiral <= rxn.reactant.n)) throw new StyleError('Fix bond/react: Invalid number of chiralIDs in map file');
+    }
     else if (l.includes('wildcards')) nwild = num();
-    else if (l.includes('constraints')) nconstr = num();
+    else if (l.includes('constraints')) {
+      nconstr = num();
+      if (!(nconstr >= 0 && nconstr <= 4096)) throw new StyleError('Fix bond/react: Invalid number of constraints in map file');
+    }
     else break;
     rd.advance();
   }
-  if (nchiral > 0) throw new StyleError(`fix bond/react: ChiralIDs in map file ${name} is not supported by the browser engine`);
   if (nwild < 0 || nwild > rxn.reactant.n) throw new StyleError('Fix bond/react: Invalid number of wildcards in map file');
-  if (nconstr > 0) throw new StyleError(`fix bond/react: Constraints in map file ${name} are not supported by the browser engine`);
+  rxn.constraints = Array.from({ length: nconstr }, (): Constraint => ({
+    type: 'distance', ids: [], rminsq: 0, rmaxsq: 0, amin: 0, amax: 0, amin2: 0, amax2: 0, A: 0, n: 0, Ea: 0, seed: 0,
+    rng: null, rmsdmax: 0, rmsdFrag: -1, str: '', satisfied: true,
+  }));
+  rxn.chiral = new Array(rxn.reactant.n).fill(null);
   if (ncreate < 0 || ncreate > rxn.product.n) throw new StyleError('Fix bond/react: Invalid number of createIDs in map file');
   if (ncreate === 0 && rxn.reactant.n !== rxn.product.n) throw new StyleError('Fix bond/react: Reaction templates must contain the same number of atoms');
   if (ncreate > 0 && rxn.reactant.n + ncreate !== rxn.product.n) throw new StyleError('Fix bond/react: Incorrect number of created atoms');
@@ -250,6 +292,10 @@ const readMap = (rxn: Rxn, text: string, name: string): void => {
         if (v < 1 || v > rxn.reactant.n) throw new StyleError('Bond/react: Invalid template atom ID in map file');
         rxn.atoms[v - 1].wildcard = true;
       }
+    } else if (kw === 'ChiralIDs') {
+      readChiral(rxn, rd, nchiral);
+    } else if (kw === 'Constraints') {
+      readConstraints(rxn, rd);
     } else if (kw === 'DeleteIDs') {
       for (let i = 0; i < ndelete; i++) {
         const v = rd.int('DeleteIDs section is incorrectly formatted');
@@ -266,6 +312,193 @@ const readMap = (rxn: Rxn, text: string, name: string): void => {
     const my = rxn.atoms[i].ramap[1];
     if (my && rxn.atoms[my - 1].created === 1) throw new StyleError('Fix bond/react: Created atoms cannot also be listed in Equivalences section');
   }
+};
+
+/**
+ * get_chirality: the handedness (1 or -1) of four ordered points: the side of the plane of the first three (oriented
+ * by (p1 - p2) x (p2 - p3)) on which the fourth lies, seen from their mean.
+ */
+const getChirality = (c: number[]): number => {
+  const v1 = [0, 0, 0], v2 = [0, 0, 0], v4 = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    v1[i] = c[i] - c[i + 3];
+    v2[i] = c[i + 3] - c[i + 6];
+  }
+  const v3 = [v1[1] * v2[2] - v1[2] * v2[1], v1[2] * v2[0] - v1[0] * v2[2], v1[0] * v2[1] - v1[1] * v2[0]];
+  for (let i = 0; i < 3; i++) {
+    const mean = (c[i] + c[i + 3] + c[i + 6]) / 3;
+    v4[i] = c[i + 9] - mean;
+  }
+  let dot = v3[0] * v4[0] + v3[1] * v4[1] + v3[2] * v4[2];
+  dot = dot / Math.abs(dot);
+  return Math.trunc(dot);
+};
+
+/** ChiralCenters: each chiral template atom has four 1-2 neighbors of distinct types; their order and handedness. */
+const readChiral = (rxn: Rxn, rd: MapReader, nchiral: number): void => {
+  const R = rxn.reactant;
+  for (let i = 0; i < nchiral; i++) {
+    const tmp = rd.int('ChiralIDs section is incorrectly formatted');
+    if (tmp < 1 || tmp > R.n) throw new StyleError('Fix bond/react: Invalid template atom ID in map file');
+    if (R.tn[tmp - 1][0] !== 4) throw new StyleError('Fix bond/react: Chiral atoms must have exactly four first neighbors');
+    const nb = R.tsp[tmp - 1].slice(0, 4);
+    for (let j = 0; j < 4; j++) {
+      for (let k = j + 1; k < 4; k++) {
+        if (R.t.type[nb[j] - 1] === R.t.type[nb[k] - 1]) throw new StyleError('Fix bond/react: First neighbors of chiral atoms must be of mutually different types');
+      }
+    }
+    // record the order of the atom types, and the coords
+    const c = new Array<number>(12).fill(0);
+    const types: number[] = [];
+    for (let j = 0; j < 4; j++) {
+      types.push(R.t.type[nb[j] - 1]);
+      for (let k = 0; k < 3; k++) c[3 * j + k] = R.t.x[3 * (nb[j] - 1) + k];
+    }
+    rxn.chiral[tmp - 1] = { handed: getChirality(c), types };
+  }
+};
+
+/** readID: an ID starting with a letter is a fragment of the pre-reaction template, else a template atom ID. */
+const readId = (s: string, rxn: Rxn): ConstraintId => {
+  if (/^[A-Za-z]/.test(s)) {
+    const f = rxn.reactant.t.fragments.findIndex((fr) => fr.name === s);
+    if (f < 0) throw new StyleError(`Fix bond/react: Molecule fragment ${s} does not exist`);
+    return { frag: true, id: f };
+  }
+  const v = Number(s);
+  if (!Number.isInteger(v)) throw new StyleError(`Expected integer parameter instead of '${s}' in input script or data file`);
+  if (v > rxn.reactant.n) throw new StyleError(`Fix bond/react: Invalid template atom ID ${s} in map file`);
+  return { frag: false, id: v };
+};
+
+/**
+ * ReadConstraints: one constraint per line. The left parentheses before its name, the right parentheses after its
+ * values, and a following && or || (else && between constraints) build the logic string, with C for each constraint.
+ * Angles are given in degrees, distances in distance units.
+ */
+const readConstraints = (rxn: Rxn, rd: MapReader): void => {
+  const deg = (v: number): number => v / 180.0 * Math.PI;
+  const toNum = (s: string | undefined): number => {
+    const v = s === undefined ? NaN : Number(s);
+    return v;
+  };
+  let str = '(';
+  for (const [ci, c] of rxn.constraints.entries()) {
+    let line = rd.next();
+    if (line === null) throw new StyleError('Fix bond/react: Unexpected end of map file');
+    // left parentheses before the constraint name
+    for (let j = 0; j < line.length; j++) {
+      if (line[j] === '(') str += '(';
+      if (/[A-Za-z]/.test(line[j])) { line = line.slice(j); break; }
+    }
+    str += 'C';
+    // the rest after the values: past the last double quote (custom), else past the first two words
+    let rest: number;
+    const q = line.lastIndexOf('"');
+    if (q >= 0) rest = q + 1;
+    else {
+      rest = 0;
+      while (rest < line.length && line[rest] !== ' ') rest++;
+      while (rest < line.length && (line[rest] === ' ' || line[rest] === '\t')) rest++;
+      while (rest < line.length && line[rest] !== ' ') rest++;
+    }
+    let tail = line.slice(rest);
+    for (const ch of tail) if (ch === ')') str += ')';
+    let cut = -1;
+    const and = tail.indexOf('&&'), or = tail.indexOf('||');
+    if (and >= 0) { str += '&&'; cut = and; }
+    else if (or >= 0) { str += '||'; cut = or; }
+    else if (ci + 1 < rxn.constraints.length) str += '&&';
+    if (cut >= 0) tail = tail.slice(0, cut);
+    const rp = tail.indexOf(')');
+    if (rp >= 0) tail = tail.slice(0, rp);
+    line = line.slice(0, rest) + tail;
+    const w = line.trim().split(/\s+/);
+    const type = w[0];
+    if (type === 'distance') {
+      c.type = 'distance';
+      const r0 = toNum(w[3]), r1 = toNum(w[4]);
+      if (w.length < 5 || !Number.isFinite(r0) || !Number.isFinite(r1)) throw new StyleError('Distance constraint is incorrectly formatted');
+      c.ids = [readId(w[1], rxn), readId(w[2], rxn)];
+      c.rminsq = r0 * r0;
+      c.rmaxsq = r1 * r1;
+    } else if (type === 'angle') {
+      c.type = 'angle';
+      const a0 = toNum(w[4]), a1 = toNum(w[5]);
+      if (w.length < 6 || !Number.isFinite(a0) || !Number.isFinite(a1)) throw new StyleError('Angle constraint is incorrectly formatted');
+      c.ids = [readId(w[1], rxn), readId(w[2], rxn), readId(w[3], rxn)];
+      c.amin = deg(a0);
+      c.amax = deg(a1);
+    } else if (type === 'dihedral') {
+      c.type = 'dihedral';
+      const v = [toNum(w[5]), toNum(w[6]), toNum(w[7]), toNum(w[8])];
+      const nv = v.filter((x) => Number.isFinite(x)).length;
+      if (!(Number.isFinite(v[0]) && Number.isFinite(v[1])) || (nv !== 2 && nv !== 4)) throw new StyleError('Dihedral constraint is incorrectly formatted');
+      // a second range is optional; native's default (181, 182) degrees can never hold
+      if (nv === 2) { v[2] = 181.0; v[3] = 182.0; }
+      c.ids = [readId(w[1], rxn), readId(w[2], rxn), readId(w[3], rxn), readId(w[4], rxn)];
+      c.amin = deg(v[0]); c.amax = deg(v[1]); c.amin2 = deg(v[2]); c.amax2 = deg(v[3]);
+    } else if (type === 'arrhenius') {
+      c.type = 'arrhenius';
+      const v = [toNum(w[1]), toNum(w[2]), toNum(w[3]), toNum(w[4])];
+      if (!v.every((x) => Number.isFinite(x))) throw new StyleError('Arrhenius constraint is incorrectly formatted');
+      [c.A, c.n, c.Ea, c.seed] = v;
+      // initialize Marsaglia RNG with the seed (rank 0: seed + comm->me)
+      c.rng = new RanMars(Math.trunc(c.seed));
+    } else if (type === 'rmsd') {
+      c.type = 'rmsd';
+      const v = toNum(w[1]);
+      if (!Number.isFinite(v)) throw new StyleError('RMSD constraint is incorrectly formatted');
+      c.rmsdmax = v;
+      c.rmsdFrag = -1;
+      if (w[2] !== undefined && /^[A-Za-z]/.test(w[2])) {
+        const f = rxn.reactant.t.fragments.findIndex((fr) => fr.name === w[2]);
+        if (f < 0) throw new StyleError('Fix bond/react: Molecule fragment does not exist');
+        c.rmsdFrag = f;
+      }
+    } else if (type === 'custom') {
+      c.type = 'custom';
+      const m = /"([^"]*)"/.exec(line);
+      c.str = m ? m[1] : (w[1] ?? '');
+    } else {
+      throw new StyleError("Fix bond/react: Illegal constraint type in 'Constraints' section of map file");
+    }
+  }
+  str += ')';
+  rxn.constraintStr = str;
+};
+
+/**
+ * Variable::evaluate_boolean for the constraint logic: 0 and 1 joined by && and || (AND before OR, left to right)
+ * with parentheses.
+ */
+const evalLogic = (src: string): boolean => {
+  let k = 0;
+  const atom = (): boolean => {
+    if (src[k] === '(') {
+      k++;
+      const v = or();
+      if (src[k] !== ')') throw new StyleError(`Invalid Boolean syntax in if command: ${src}`);
+      k++;
+      return v;
+    }
+    const c = src[k++];
+    if (c !== '0' && c !== '1') throw new StyleError(`Invalid Boolean syntax in if command: ${src}`);
+    return c === '1';
+  };
+  const and = (): boolean => {
+    let v = atom();
+    while (src.startsWith('&&', k)) { k += 2; const r = atom(); v = v && r; }
+    return v;
+  };
+  const or = (): boolean => {
+    let v = and();
+    while (src.startsWith('||', k)) { k += 2; const r = and(); v = v || r; }
+    return v;
+  };
+  const v = or();
+  if (k !== src.length) throw new StyleError(`Invalid Boolean syntax in if command: ${src}`);
+  return v;
 };
 
 /** Landlocked flags (find_landlocked_atoms): atoms whose topology is contained in the post-reaction template. */
@@ -424,7 +657,7 @@ const maxEntryRow2 = (M: number[][], w: number, n: number): number => {
  * b332f28; Jewett's quaternion form of Theobald's method, with the eigen-solver of jacobiDiagonalize4) without
  * rescaling. fix bond/react uses it to fit the post-reaction template onto the reaction site.
  */
-export const superpose = (frozen: number[][], mobile: number[][]): { R: number[][]; T: number[] } => {
+export const superpose = (frozen: number[][], mobile: number[][]): { R: number[][]; T: number[]; rmsd: number } => {
   const n = frozen.length;
   const cf = [0, 0, 0], cm = [0, 0, 0];
   for (let i = 0; i < n; i++) for (let d = 0; d < 3; d++) { cf[d] += frozen[i][d]; cm[d] += mobile[i][d]; }
@@ -446,7 +679,14 @@ export const superpose = (frozen: number[][], mobile: number[][]): { R: number[]
   P[2][3] = V[2]; P[3][2] = V[2];
   P[3][3] = 0.0;
   // principal eigenvector (the eigenvalues come sorted in decreasing order); a single point is not rotated
-  const p = n < 2 ? [0, 0, 0, 1] : jacobiDiagonalize4(P).evec[0].slice();
+  const singular = n < 2;
+  let pPp = 0.0;
+  let p = [0, 0, 0, 1];
+  if (!singular) {
+    const eig = jacobiDiagonalize4(P);
+    pPp = eig.eval[0];
+    p = eig.evec[0].slice();
+  }
   const pnorm = Math.sqrt(p.reduce((a, x) => a + x * x, 0));
   for (let i = 0; i < 4; i++) p[i] /= pnorm;
   const R = [
@@ -454,8 +694,19 @@ export const superpose = (frozen: number[][], mobile: number[][]): { R: number[]
     [2 * (p[0] * p[1] + p[2] * p[3]), -(p[0] * p[0]) + (p[1] * p[1]) - (p[2] * p[2]) + (p[3] * p[3]), 2 * (p[1] * p[2] - p[0] * p[3])],
     [2 * (p[0] * p[2] - p[1] * p[3]), 2 * (p[1] * p[2] + p[0] * p[3]), -(p[0] * p[0]) - (p[1] * p[1]) + (p[2] * p[2]) + (p[3] * p[3])],
   ];
-  const T = [0, 1, 2].map((i) => cf[i] - (R[i][0] * cm[0] + R[i][1] * cm[1] + R[i][2] * cm[2]));
-  return { R, T };
+  // the RMSD (equation 24 of the paper, unit weights and no rescaling): E0 - 2 pPp over the points
+  let E0 = 0.0;
+  for (let k = 0; k < n; k++) for (let d = 0; d < 3; d++) { const e = sf[k][d] - 1.0 * sm[k][d]; E0 += 1.0 * (e * e); }
+  let sumSqrDist = E0 - 1.0 * 2.0 * pPp;
+  if (sumSqrDist < 0.0) sumSqrDist = 0.0;
+  const rmsd = singular ? 0.0 : Math.sqrt(sumSqrDist / n);
+  // T_i = Xcm_i - sum_j c R_ij xcm_j, subtracted term by term as native
+  const T = [0, 1, 2].map((i) => {
+    let t = cf[i];
+    for (let j = 0; j < 3; j++) t -= 1.0 * R[i][j] * cm[j];
+    return t;
+  });
+  return { R, T, rmsd };
 };
 
 /** Counts of the multiset `b` contained in the multiset `a` (std::includes on sorted ranges). */
@@ -507,6 +758,7 @@ class Superimposer {
     private limited: (id: number) => boolean,
     private nlocal: number,
     private charge: (glove: number[]) => number,
+    private check: (glove: number[]) => boolean,
   ) {
     const n = rxn.reactant.n;
     this.glove = new Array(n).fill(0);
@@ -547,9 +799,6 @@ class Superimposer {
     return true;
   }
 
-  /** check_constraints: no constraints are ported, so an accepted site always satisfies them. */
-  private checkConstraints(): boolean { return true; }
-
   /** Native: a site found (status ACCEPT) survives the probability draw, else it is rejected. */
   private acceptSite(): void {
     if (this.rxn.fraction < 1.0 && this.rxn.random.uniform() >= this.rxn.fraction) {
@@ -575,7 +824,7 @@ class Superimposer {
       if (this.gloveCounter === R.n) {
         const a1 = this.glove[rxn.ibonding - 1], a2 = this.glove[rxn.jbonding - 1];
         const n1 = this.n12(a1), n2 = this.n12(a2);
-        if (n1 === R.tn[rxn.ibonding - 1][0] && n2 === n1 && (n1 === 0 || this.xs(a1, 0) === a2) && this.checkConstraints()) {
+        if (n1 === R.tn[rxn.ibonding - 1][0] && n2 === n1 && (n1 === 0 || this.xs(a1, 0) === a2) && this.check(this.glove)) {
           this.acceptSite();
         } else this.status = 'REJECT';
       }
@@ -678,7 +927,7 @@ class Superimposer {
               for (let j = 0; j < R.tn[rn - 1][0]; j++) this.pioneerCount[R.tsp[rn - 1][j] - 1]++;
               this.gloveCounter++;
               if (this.gloveCounter === R.n) {
-                this.status = this.ringCheck() && this.checkConstraints() ? 'ACCEPT' : 'GUESSFAIL';
+                this.status = this.ringCheck() && this.check(this.glove) ? 'ACCEPT' : 'GUESSFAIL';
                 return;
               }
               return;
@@ -705,7 +954,7 @@ class Superimposer {
           for (let ii = 0; ii < R.tn[rn - 1][0]; ii++) this.pioneerCount[R.tsp[rn - 1][ii] - 1]++;
           this.gloveCounter++;
           if (this.gloveCounter === R.n) {
-            this.status = this.ringCheck() && this.checkConstraints() ? 'ACCEPT' : 'GUESSFAIL';
+            this.status = this.ringCheck() && this.check(this.glove) ? 'ACCEPT' : 'GUESSFAIL';
             return;
           }
           return;
@@ -772,7 +1021,7 @@ class Superimposer {
     for (let i = 0; i < R.tn[rA - 1][0]; i++) this.pioneerCount[R.tsp[rA - 1][i] - 1]++;
     this.gloveCounter++;
     if (this.gloveCounter === R.n) {
-      this.status = this.ringCheck() && this.checkConstraints() ? 'ACCEPT' : 'GUESSFAIL';
+      this.status = this.ringCheck() && this.check(this.glove) ? 'ACCEPT' : 'GUESSFAIL';
       return;
     }
     this.status = 'CONTINUE';
@@ -816,7 +1065,7 @@ const buildReaction = (sys: System, id: number, r: ReactArgs, stabilization: boo
     closeneigh: -1, fraction: 1.0, probVar: null, seed: 12345, random: new RanMars(12345), limitDuration: 60,
     rescaleFlag: false, rescaleCount: 0, molTotalCharge: 0, moleculeKeyword: 'off', atoms: [], attempts: [],
     localCount: 0, nlocalkeep: Number.MAX_SAFE_INTEGER, reactionCountTotal: 0,
-    createFlag: false, overlapsq: 0, fitFragment: -1,
+    createFlag: false, overlapsq: 0, fitFragment: -1, constraints: [], constraintStr: '', chiral: [],
   };
   const o = r.opts;
   for (let k = 0; k < o.length;) {
@@ -904,6 +1153,12 @@ export class FixBondReact extends Fix {
   private readonly statted: CustomProp | null;
   private maxNatoms = 0;
   private nve: FixNVELimit | null = null;
+  /** customvarnames: the per-atom variables (v_name) that rxnsum and rxnave of custom constraints read. */
+  private customVars: string[] = [];
+  /** get_customvars: their values per owned atom (0 outside the fix group), evaluated before each site search. */
+  private vvec = new Map<string, Float64Array>();
+  /** get_atoms2bond: compute bond/local row of each bonded pair ("tag1,tag2", sorted), built once per search. */
+  private atoms2bond: Map<string, number> | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -997,6 +1252,29 @@ export class FixBondReact extends Fix {
       rxn.iatomtype = rxn.reactant.t.type[rxn.ibonding - 1];
       rxn.jatomtype = rxn.reactant.t.type[rxn.jbonding - 1];
       findLandlocked(rxn);
+    }
+    // customvarnames: the variables named by rxnsum and rxnave in custom constraints
+    for (const rxn of this.rxns) {
+      for (const c of rxn.constraints) {
+        if (c.type !== 'custom') continue;
+        let prev3 = -1;
+        for (;;) {
+          let pos1 = -1;
+          for (const fn of ['rxnsum', 'rxnave']) {
+            const pos = c.str.indexOf(fn, prev3 + 1);
+            if (pos >= 0 && (pos1 < 0 || pos < pos1)) pos1 = pos;
+          }
+          if (pos1 < 0) break;
+          const pos2 = c.str.indexOf('(', pos1);
+          const pos3 = pos2 < 0 ? -1 : c.str.indexOf(')', pos2);
+          if (pos2 < 0 || pos3 < 0) throw new StyleError('Fix bond/react: Illegal rxn function syntax');
+          prev3 = pos3;
+          const arg = c.str.slice(pos2 + 1, pos3).replace(/\s/g, '');
+          const comma = arg.indexOf(',');
+          const varid = comma >= 0 ? arg.slice(0, comma) : arg;
+          if (!this.customVars.includes(varid)) this.customVars.push(varid);
+        }
+      }
     }
     for (const rxn of this.rxns) {
       if (rxn.rescaleFlag) {
@@ -1138,6 +1416,9 @@ export class FixBondReact extends Fix {
     }
     const nattempt = this.rxns.reduce((a, r) => a + r.attempts.length, 0);
     if (!nattempt) { this.unlimit(); return; }
+    // evaluate custom constraint variable values here (get_customvars); the per-bond map is built on first use
+    this.getCustomVars();
+    this.atoms2bond = null;
     this.superimposeAndUpdate(sim);
     this.unlimit();
   }
@@ -1262,6 +1543,7 @@ export class FixBondReact extends Fix {
         rxn, (id) => sim.get(id), (id) => s.type[this.map(id)],
         (id) => this.lim.data[this.map(id)] !== 0, s.n,
         (glove) => this.totalCharge(rxn, glove),
+        (glove) => this.checkConstraints(rxn, glove, sim),
       );
       sup.run();
       megas.push(...sup.megas);
@@ -1325,6 +1607,274 @@ export class FixBondReact extends Fix {
   }
 
   /** Sum of the charges of the reactant atoms whose charge is rescaled (native get_totalcharge). */
+  /** get_customvars: each atom-style variable of the custom constraints, 0 for atoms outside the fix group. */
+  private getCustomVars(): void {
+    const s = this.sys.state;
+    for (const name of this.customVars) {
+      if (!name.startsWith('v_')) throw new StyleError("Fix bond/react: Reaction special function variable name should begin with 'v_'");
+      const v = this.sys.vars.get(name.slice(2));
+      if (!v) throw new StyleError('Fix bond/react: Reaction special function variable name does not exist');
+      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError('Fix bond/react: Reaction special function must reference an atom-style variable');
+      const vals = this.sys.atomVariable(name.slice(2));
+      const out = new Float64Array(s.n);
+      for (let i = 0; i < s.n; i++) out[i] = s.mask[i] & this.groupBit ? vals[i] : 0.0;
+      this.vvec.set(name, out);
+    }
+  }
+
+  /** The atom at the image of p closest to ref (Domain::closest_image: the ghost image, its owner shifted by box vectors). */
+  private closestImage(p: number[], ref: number[]): number[] {
+    const s = this.sys.state, g = this.sys.geom, per = s.box.periodic;
+    const q = [p[0], p[1], p[2]];
+    if (per[2] && Math.abs(q[2] - ref[2]) > 0.5 * g.lz) {
+      const k = Math.round((q[2] - ref[2]) / g.lz);
+      q[2] -= k * g.lz; q[1] -= k * g.yz; q[0] -= k * g.xz;
+    }
+    if (per[1] && Math.abs(q[1] - ref[1]) > 0.5 * g.ly) {
+      const k = Math.round((q[1] - ref[1]) / g.ly);
+      q[1] -= k * g.ly; q[0] -= k * g.xy;
+    }
+    if (per[0] && Math.abs(q[0] - ref[0]) > 0.5 * g.lx) {
+      const k = Math.round((q[0] - ref[0]) / g.lx);
+      q[0] -= k * g.lx;
+    }
+    return q;
+  }
+
+  private posOf(tag: number): number[] {
+    const s = this.sys.state;
+    const i = this.map(tag);
+    if (i < 0) throw new StyleError('Bond/react: Fix bond/react needs ghost atoms from further away');
+    return [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]];
+  }
+
+  /** get_IDcoords: a template atom's position, or a fragment's geometric center at the closest images to its first atom. */
+  private idCoords(id: ConstraintId, rxn: Rxn, glove: number[]): number[] {
+    if (!id.frag) return this.posOf(glove[id.id - 1]);
+    const members = rxn.reactant.t.fragments[id.id].atoms;
+    const center = [0, 0, 0];
+    let ref: number[] | null = null;
+    let nfrag = 0;
+    for (let i = 0; i < rxn.reactant.n; i++) {
+      if (!members.includes(i + 1)) continue;
+      const p = this.posOf(glove[i]);
+      if (!ref) ref = p;
+      const q = this.closestImage(p, ref);
+      for (let j = 0; j < 3; j++) center[j] += q[j];
+      nfrag++;
+    }
+    if (nfrag > 0) for (let i = 0; i < 3; i++) center[i] /= nfrag;
+    return center;
+  }
+
+  /** get_temperature: the kinetic temperature of the atoms of a reaction site (dimension degrees of freedom each). */
+  private siteTemperature(glove: number[]): number {
+    const s = this.sys.state, u = s.units;
+    let t = 0.0;
+    for (const tag of glove) {
+      const i = this.map(tag);
+      t += (s.v[3 * i] * s.v[3 * i] + s.v[3 * i + 1] * s.v[3 * i + 1] + s.v[3 * i + 2] * s.v[3 * i + 2]) * massOf(s, i);
+    }
+    const dof = s.dimension * glove.length;
+    t *= u.mvv2e / (dof * u.boltz);
+    return t;
+  }
+
+  /** rxnfunction: rxnsum or rxnave of a per-atom variable over the site (or one fragment), or rxnbond of compute bond/local. */
+  private rxnFunction(fn: string, varid: string, fragid: string, rxn: Rxn, glove: number[]): number {
+    const mol = rxn.reactant;
+    let ifrag = -1;
+    if (fragid !== 'all') {
+      ifrag = mol.t.fragments.findIndex((f) => f.name === fragid);
+      if (ifrag < 0) throw new StyleError('Bond/react: Molecule fragment in reaction special function does not exist');
+    }
+    const inFrag = (i: number): boolean => ifrag >= 0 && mol.t.fragments[ifrag].atoms.includes(i + 1);
+    if (fn === 'rxnbond') {
+      if (!varid.startsWith('c_')) throw new StyleError("Bond/react: Reaction special function compute name should begin with 'c_'");
+      const c = this.sys.computes.find((x) => x.id === varid.slice(2));
+      if (!c) throw new StyleError('Bond/react: Reaction special function compute name does not exist');
+      if (c.style !== 'bond/local') throw new StyleError("Bond/react: Compute used by reaction special function 'rxnbond' must be of style 'bond/local'");
+      if (c.sizeLocalCols > 0) throw new StyleError("Bond/react: 'Compute bond/local' used by reaction special function 'rxnbond' must compute one value");
+      if (!this.atoms2bond) {
+        // get_atoms2bond: the compute's rows in native order (its group, broken bonds left out)
+        this.atoms2bond = new Map();
+        const s = this.sys.state;
+        for (const [m, row] of termRows(this.sys, 'bond', c.groupBit).entries()) {
+          const a = s.id[row.idx[0]], b = s.id[row.idx[1]];
+          this.atoms2bond.set(a < b ? `${a},${b}` : `${b},${a}`, m);
+        }
+      }
+      const aset = new Set<number>();
+      for (let i = 0; i < mol.n; i++) if (inFrag(i)) aset.add(glove[i]);
+      if (aset.size !== 2) throw new StyleError("Bond/react: Molecule fragment of reaction special function 'rxnbond' must contain exactly two atoms");
+      const [a, b] = [...aset];
+      const row = this.atoms2bond.get(a < b ? `${a},${b}` : `${b},${a}`);
+      if (row === undefined) throw new StyleError("Bond/react: Unable to locate bond referenced by reaction special function 'rxnbond'");
+      return c.localValues()[row];
+    }
+    const vals = this.vvec.get(varid);
+    if (!vals) throw new StyleError('Fix bond/react: Reaction special function variable name does not exist');
+    let sum = 0, nsum = 0;
+    if (fragid === 'all') {
+      for (let i = 0; i < mol.n; i++) sum += vals[this.map(glove[i])];
+      nsum = mol.n;
+    } else {
+      for (let i = 0; i < mol.n; i++) {
+        if (inFrag(i)) { sum += vals[this.map(glove[i])]; nsum++; }
+      }
+    }
+    if (fn === 'rxnsum') return sum;
+    if (fn === 'rxnave') return sum / nsum;
+    return 0.0;
+  }
+
+  /**
+   * custom_constraint: each rxnsum, rxnave or rxnbond call of the expression replaced by its value as std::to_string
+   * prints it (six decimals), then the expression evaluated as an equal-style formula; nonzero satisfies it.
+   */
+  private customConstraint(str: string, rxn: Rxn, glove: number[]): boolean {
+    const funcs = ['rxnsum', 'rxnave', 'rxnbond'];
+    const toStringF = (v: number): string => {
+      if (Number.isNaN(v)) return v < 0 ? '-nan' : 'nan';
+      if (!Number.isFinite(v)) return v < 0 ? '-inf' : 'inf';
+      if (Object.is(v, -0)) return '-0.000000';
+      return v.toFixed(6);
+    };
+    const parts: string[] = [];
+    let prev3 = -1;
+    for (;;) {
+      let pos1 = -1, ifn = -1;
+      for (const [k, fn] of funcs.entries()) {
+        const pos = str.indexOf(fn, prev3 + 1);
+        if (pos >= 0 && (pos1 < 0 || pos < pos1)) { pos1 = pos; ifn = k; }
+      }
+      if (pos1 < 0) break;
+      const pos2 = str.indexOf('(', pos1);
+      const pos3 = pos2 < 0 ? -1 : str.indexOf(')', pos2);
+      if (pos2 < 0 || pos3 < 0) throw new StyleError('Fix bond/react: Illegal rxn function syntax');
+      parts.push(str.slice(prev3 + 1, pos1));
+      prev3 = pos3;
+      const arg = str.slice(pos2 + 1, pos3).replace(/\s/g, '');
+      const comma = arg.indexOf(',');
+      const varid = comma >= 0 ? arg.slice(0, comma) : arg;
+      const fragid = comma >= 0 ? arg.slice(comma + 1) : 'all';
+      parts.push(toStringF(this.rxnFunction(funcs[ifn], varid, fragid, rxn, glove)));
+    }
+    parts.push(str.slice(prev3 + 1));
+    return evaluateScalar(parts.join(''), this.sys.formulaEnv) !== 0;
+  }
+
+  /**
+   * check_constraints: every constraint of the map file is evaluated (distance and angle ranges, dihedral ranges,
+   * the Arrhenius probability, the RMSD to the template, custom expressions), the results combined by the logic of
+   * the Constraints section, then each chiral center's handedness must match the template's.
+   */
+  private checkConstraints(rxn: Rxn, glove: number[], sim: Map<number, Special>): boolean {
+    const s = this.sys.state, g = this.sys.geom;
+    const sub = (a: number[], b: number[]): number[] => {
+      const d = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+      g.minimumImage(d);
+      return d;
+    };
+    for (const c of rxn.constraints) c.satisfied = true;
+    for (const c of rxn.constraints) {
+      if (c.type === 'distance') {
+        const d = sub(this.idCoords(c.ids[0], rxn, glove), this.idCoords(c.ids[1], rxn, glove));
+        const rsq = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+        if (rsq < c.rminsq || rsq > c.rmaxsq) c.satisfied = false;
+      } else if (c.type === 'angle') {
+        const x1 = this.idCoords(c.ids[0], rxn, glove), x2 = this.idCoords(c.ids[1], rxn, glove), x3 = this.idCoords(c.ids[2], rxn, glove);
+        const d1 = sub(x1, x2), d2 = sub(x3, x2);
+        const r1 = Math.sqrt(d1[0] * d1[0] + d1[1] * d1[1] + d1[2] * d1[2]);
+        const r2 = Math.sqrt(d2[0] * d2[0] + d2[1] * d2[1] + d2[2] * d2[2]);
+        let cs = d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2];
+        cs /= r1 * r2;
+        if (cs > 1.0) cs = 1.0;
+        if (cs < -1.0) cs = -1.0;
+        if (libmAcos(cs) < c.amin || libmAcos(cs) > c.amax) c.satisfied = false;
+      } else if (c.type === 'dihedral') {
+        // phi as dihedral style harmonic computes it
+        const x1 = this.idCoords(c.ids[0], rxn, glove), x2 = this.idCoords(c.ids[1], rxn, glove);
+        const x3 = this.idCoords(c.ids[2], rxn, glove), x4 = this.idCoords(c.ids[3], rxn, glove);
+        const vb1 = sub(x1, x2), vb2 = sub(x3, x2);
+        const vb2m = [-vb2[0], -vb2[1], -vb2[2]];
+        g.minimumImage(vb2m);
+        const vb3 = sub(x4, x3);
+        const ax = vb1[1] * vb2m[2] - vb1[2] * vb2m[1];
+        const ay = vb1[2] * vb2m[0] - vb1[0] * vb2m[2];
+        const az = vb1[0] * vb2m[1] - vb1[1] * vb2m[0];
+        const bx = vb3[1] * vb2m[2] - vb3[2] * vb2m[1];
+        const by = vb3[2] * vb2m[0] - vb3[0] * vb2m[2];
+        const bz = vb3[0] * vb2m[1] - vb3[1] * vb2m[0];
+        const rasq = ax * ax + ay * ay + az * az;
+        const rbsq = bx * bx + by * by + bz * bz;
+        const rgsq = vb2m[0] * vb2m[0] + vb2m[1] * vb2m[1] + vb2m[2] * vb2m[2];
+        const rg = Math.sqrt(rgsq);
+        let ra2inv = 0.0, rb2inv = 0.0;
+        if (rasq > 0) ra2inv = 1.0 / rasq;
+        if (rbsq > 0) rb2inv = 1.0 / rbsq;
+        const rabinv = Math.sqrt(ra2inv * rb2inv);
+        let cs = (ax * bx + ay * by + az * bz) * rabinv;
+        const sn = rg * rabinv * (ax * vb3[0] + ay * vb3[1] + az * vb3[2]);
+        if (cs > 1.0) cs = 1.0;
+        if (cs < -1.0) cs = -1.0;
+        const phi = Math.atan2(sn, cs);
+        let gate = 0;
+        if (c.amin < c.amax) { if (phi > c.amin && phi < c.amax) gate = 1; }
+        else if (phi > c.amin || phi < c.amax) gate = 1;
+        if (c.amin2 < c.amax2) { if (phi > c.amin2 && phi < c.amax2) gate = 1; }
+        else if (phi > c.amin2 || phi < c.amax2) gate = 1;
+        if (gate !== 1) c.satisfied = false;
+      } else if (c.type === 'arrhenius') {
+        const t = this.siteTemperature(glove.slice(0, rxn.reactant.n));
+        const prrhob = c.A * libmPow(t, c.n) * libmExp(-c.Ea / (s.units.boltz * t));
+        if (prrhob < c.rng!.uniform()) c.satisfied = false;
+      } else if (c.type === 'rmsd') {
+        // superpose the site (the closest images to its first atom) on the pre-reaction template
+        const frozen: number[][] = [], mobile: number[][] = [];
+        const members = c.rmsdFrag >= 0 ? rxn.reactant.t.fragments[c.rmsdFrag].atoms : null;
+        let ref: number[] | null = null;
+        for (let j = 0; j < rxn.reactant.n; j++) {
+          if (members && !members.includes(j + 1)) continue;
+          const p = this.posOf(glove[j]);
+          if (!ref) ref = p;
+          frozen.push(this.closestImage(p, ref));
+          const t = rxn.reactant.t.x;
+          mobile.push([t[3 * j], t[3 * j + 1], t[3 * j + 2]]);
+        }
+        if (superpose(frozen, mobile).rmsd > c.rmsdmax) c.satisfied = false;
+      } else {
+        c.satisfied = this.customConstraint(c.str, rxn, glove);
+      }
+    }
+    if (rxn.constraints.length) {
+      let evalstr = rxn.constraintStr;
+      for (const c of rxn.constraints) evalstr = evalstr.replace('C', c.satisfied ? '1' : '0');
+      if (!evalLogic(evalstr)) return false;
+    }
+    // chirality: the four 1-2 neighbors of the site atom in the order of the template's neighbor types
+    for (let i = 0; i < rxn.reactant.n; i++) {
+      const ch = rxn.chiral[i];
+      if (!ch) continue;
+      const c4 = new Array<number>(12).fill(0);
+      const center = this.posOf(glove[i]);
+      const sp = sim.get(glove[i]);
+      if (!sp) throw new StyleError('Fix bond/react: Fix bond/react needs ghost atoms from further away');
+      for (let j = 0; j < 4; j++) {
+        const nbTag = sp.flat[j];
+        for (let jj = 0; jj < 4; jj++) {
+          if (s.type[this.map(nbTag)] === ch.types[jj]) {
+            const q = this.closestImage(this.posOf(nbTag), center);
+            for (let k = 0; k < 3; k++) c4[3 * jj + k] = q[k];
+            break;
+          }
+        }
+      }
+      if (getChirality(c4) !== ch.handed) return false;
+    }
+    return true;
+  }
+
   private totalCharge(rxn: Rxn, glove: number[]): number {
     const s = this.sys.state;
     let q = 0;

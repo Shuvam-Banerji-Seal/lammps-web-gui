@@ -13,11 +13,11 @@ import { libm } from '../libm';
 
 /*
  * fix ID group-ID wall/gran fstyle fstyle_params wallstyle args keyword values ...
- * — docs.lammps.org/fix_wall_gran.html (fix_wall_gran.rst). Supported here:
- * fstyle hooke, hooke/history, hertz/history; wallstyle xplane, yplane,
- * zplane; keywords wiggle and shear. Everything else throws a StyleError
- * naming it: fstyle granular, keyword contacts, keyword temperature, the
- * zcylinder wallstyle, and fix wall/gran/region.
+ * — docs.lammps.org/fix_wall_gran.html (fix_wall_gran.rst). This class: fstyle hooke, hooke/history,
+ * hertz/history on wallstyle xplane, yplane, zplane, with the keywords wiggle, shear and contacts (fstyle
+ * granular and fix wall/gran/region are FixWallGranGranular below). "If the :code:`contacts` option is used,
+ * this fix generates a per-atom array" of the contact data. These styles have no heat model, so the temperature
+ * keyword stops as native does ("Must define wall temperature with heat model").
  *
  * "The equation for the force between the wall and particles touching it is
  * the same as the corresponding equation on the :doc:`pair_style gran/\* <pair_gran>` and
@@ -122,6 +122,11 @@ export class FixWallGran extends Fix {
   private readonly step0: number;
   /** Shear displacement per (plane index, atom ID) while in contact. */
   private shear = new Map<string, Float64Array>();
+  /**
+   * keyword contacts: the per-atom array of the contact data, as native fix_wall_gran.cpp post_force stores it after
+   * clear_stored_contacts: column 1 flag (1 in contact), 2-4 the wall force on the atom, 5-7 the contact point, 8 radius.
+   */
+  private contactsOn = false;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -199,9 +204,16 @@ export class FixWallGran extends Fix {
         this.setMotion({ kind: 'shear', dim: d, amp: 0, omega: 0, vshear }, id);
         k += 3;
       } else if (w === 'contacts') {
-        throw new StyleError('fix wall/gran keyword contacts is not supported yet');
+        // fix_wall_gran.cpp: "peratom_flag = 1; size_peratom_cols = 8 + model->nsvector" (no extra values here)
+        this.contactsOn = true;
+        this.peratomFlag = true;
+        this.sizePeratomCols = 8;
+        k += 1;
       } else if (w === 'temperature') {
-        throw new StyleError('fix wall/gran keyword temperature is not supported yet (needs a heat model)');
+        // fix_wall_gran.cpp: these styles have no heat model, so a wall temperature is "Must define wall
+        // temperature with heat model"
+        if (args[k + 1] === undefined) throw new StyleError('Illegal fix wall/gran command');
+        throw new StyleError('Must define wall temperature with heat model');
       } else {
         throw new StyleError(`fix ${id} wall/gran: unknown keyword or argument '${w}'`);
       }
@@ -285,6 +297,11 @@ export class FixWallGran extends Fix {
     });
     const { kn, kt, gn, gt, xmu } = this;
     const bit = this.groupBit;
+    if (this.contactsOn) {
+      // clear_stored_contacts: the per-atom contact data restart every evaluation
+      if (this.arrayAtom.length !== 8 * s.n) this.arrayAtom = new Float64Array(8 * s.n);
+      else this.arrayAtom.fill(0);
+    }
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
       const R = radius[i];
@@ -350,6 +367,15 @@ export class FixWallGran extends Fix {
         f[3 * i] += fn * n[0] + ft0;
         f[3 * i + 1] += fn * n[1] + ft1;
         f[3 * i + 2] += fn * n[2] + ft2;
+        if (this.contactsOn) {
+          // store contact info: the flag, the force on the atom, the contact point on the wall, the radius
+          const av = this.arrayAtom, base = 8 * i;
+          av[base] = 1.0;
+          av[base + 1] = fn * n[0] + ft0; av[base + 2] = fn * n[1] + ft1; av[base + 3] = fn * n[2] + ft2;
+          av[base + 4] = x[3 * i]; av[base + 5] = x[3 * i + 1]; av[base + 6] = x[3 * i + 2];
+          av[base + 4 + d] = x[3 * i + d] - sd;
+          av[base + 7] = R;
+        }
         // torque on the particle: -R n x F_t
         torque[3 * i] -= R * (n[1] * ft2 - n[2] * ft1);
         torque[3 * i + 1] -= R * (n[2] * ft0 - n[0] * ft2);
@@ -382,8 +408,9 @@ export class FixWallGran extends Fix {
  * for a moving region the surface velocity enters the granular contact through the full relative
  * velocity (measured with native LAMMPS, see updateVelocities).  A side-out region (or a compound
  * region with a side-out member) contributes the nearest point of the solid (region.ts
- * surfaceContacts/outContacts), measured with native LAMMPS for block, sphere and cylinder.  The
- * contacts and temperature keywords throw a StyleError.
+ * surfaceContacts/outContacts), measured with native LAMMPS for block, sphere and cylinder. The contacts
+ * keyword stores each atom's contact data (planes and regions), and temperature sets the wall temperature of the
+ * heat model.
  */
 
 const WALL_WORDS = ['xplane', 'yplane', 'zplane', 'zcylinder', 'region'] as const;
@@ -493,8 +520,8 @@ export class FixWallGranGranular extends Fix {
         this.motion = { kind: 'shear', dim: d, amp: 0, omega: 0, vshear: parseNum(args[k + 2], 'shear velocity') };
         k += 3;
       } else if (w === 'contacts') {
-        // fix_wall_gran_region.html: "contacts" stores the contact data of each atom as a per-atom array (see apply)
-        if (!regionMode) throw new StyleError(`fix ${id} wall/gran: keyword contacts is for fix wall/gran/region`);
+        // fix_wall_gran.html and fix_wall_gran_region.html: "contacts" stores the contact data of each atom as a
+        // per-atom array (see apply)
         this.contactsOn = true;
         k += 1;
         continue;

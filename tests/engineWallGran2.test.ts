@@ -45,7 +45,7 @@ describe('fix wall/gran granular argument errors', () => {
     await expect(fzOn(base('fix 2 all wall/gran granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity zplane NULL NULL'))).rejects.toThrow(/both NULL/);
   });
   it('names an unsupported keyword and an unsupported region style', async () => {
-    await expect(fzOn(base('fix 2 all wall/gran granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity zplane 0.0 NULL contacts'))).rejects.toThrow(/contacts/);
+    await expect(fzOn(base('fix 2 all wall/gran granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity zplane 0.0 NULL frob'))).rejects.toThrow(/frob/);
     await expect(fzOn(base('fix 2 all wall/gran/region granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity region reg', 'region reg plane 0 0 0 0 0 1 side out units box'))).rejects.toThrow(/side-out/);
   });
   it('accepts a side-out block region (contacts with its outer surface; oracle w36wgr_out_block)', async () => {

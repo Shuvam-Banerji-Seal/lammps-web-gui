@@ -65,8 +65,8 @@ describe('fix wall/gran argument errors', () => {
   const cases: [string, string, RegExp][] = [
     ['unknown fstyle', 'foo 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL', /foo/],
     ['zcylinder wallstyle', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zcylinder 1.0', /zcylinder/],
-    ['contacts keyword', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL contacts', /contacts/],
-    ['temperature keyword', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL temperature 1.0', /temperature/],
+    // fix_wall_gran.cpp: the classic styles have no heat model
+    ['temperature keyword without a heat model', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL temperature 1.0', /Must define wall temperature with heat model/],
     ['both wiggle and shear', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL wiggle z 0.1 2.0 shear x 0.1', /Cannot wiggle and shear/],
     ['shear along the wall normal', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL shear z 0.1', /Invalid shear direction/],
     ['both planes NULL', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane NULL NULL', /NULL/],

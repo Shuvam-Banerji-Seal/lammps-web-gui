@@ -189,6 +189,17 @@ export class Geometry {
     x[3 * i + 2] = this.lz * l[2] + this.lo[2];
   }
 
+  /** Atom i taken to lamda = h^-1 (x - lo) and back to x = h lamda + lo, summed as native's x2lamda/lamda2x do. */
+  lamdaRoundTrip(x: Float64Array, i: number): void {
+    const dx = x[3 * i] - this.lo[0], dy = x[3 * i + 1] - this.lo[1], dz = x[3 * i + 2] - this.lo[2];
+    const l0 = this.i00 * dx + this.i01 * dy + this.i02 * dz;
+    const l1 = this.i11 * dy + this.i12 * dz;
+    const l2 = this.i22 * dz;
+    x[3 * i] = this.lx * l0 + this.xy * l1 + this.xz * l2 + this.lo[0];
+    x[3 * i + 1] = this.ly * l1 + this.yz * l2 + this.lo[1];
+    x[3 * i + 2] = this.lz * l2 + this.lo[2];
+  }
+
   private readonly scratchX = new Float64Array(3);
   private readonly scratchImage = new Int32Array(3);
 

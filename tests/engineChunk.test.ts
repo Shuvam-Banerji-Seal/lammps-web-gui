@@ -75,6 +75,40 @@ run 0`);
     expect(counts(files.get('edge.txt')!)).toEqual([3, 2, 1, 2]);
   });
 
+  it('bin/sphere: shells by distance from the centre, clamped to the first and last shell unless discard yes', async () => {
+    // centre (5,5,5), shells [1,2) [2,3) [3,4]: distances 0.5 (below rmin), 1.5, 2.5, 3.5, 4.5 (beyond rmax)
+    const atoms = [0.5, 1.5, 2.5, 3.5, 4.5];
+    const create = atoms.map((d) => `create_atoms 1 single ${5 + d} 5 5`).join('\n');
+    const { session, error, files } = await runScript(`${BOX}\n${create}
+compute a all chunk/atom bin/sphere 5 5 5 1 4 3 units box
+compute b all chunk/atom bin/sphere 5 5 5 1 4 3 units box discard yes
+fix f all ave/chunk 1 1 1 a density/number file sph.txt
+fix g all ave/chunk 1 1 1 b vx file sphb.txt
+run 0`);
+    expect(error).toBeNull();
+    expect(session.sys.compute('a').scalarValue()).toBe(3);
+    expect(counts(files.get('sph.txt')!)).toEqual([2, 1, 2]);
+    expect(counts(files.get('sphb.txt')!)).toEqual([1, 1, 1]);
+    // Coord1 is the mid radius; the density divides by the shell volume 4/3 pi (rhi^3 - rlo^3)
+    const row = sections(files.get('sph.txt')!).at(-1)!.rows[0];
+    expect(Number(row[1])).toBeCloseTo(1.5, 12);
+    expect(Number(row[3])).toBeCloseTo(2 / ((4 / 3) * Math.PI * (8 - 1)), 6);
+  });
+
+  it('bin/cylinder: the axial bin varies fastest, then the radial bin', async () => {
+    // axis along z through (5,5), 2 axial bins of 5 and radial bins [0,2) [2,4)
+    const create = ['5.5 5 1', '5.5 5 6', '8 5 1', '8 5 6', '5 8.5 7'].map((p) => `create_atoms 1 single ${p}`).join('\n');
+    const { session, error, files } = await runScript(`${BOX}\n${create}
+compute a all chunk/atom bin/cylinder z lower 5 5 5 0 4 2 units box
+fix f all ave/chunk 1 1 1 a vx file cyl.txt
+run 0`);
+    expect(error).toBeNull();
+    expect(session.sys.compute('a').scalarValue()).toBe(4);
+    // columns: chunk ID, Coord1 (radius), Coord2 (axis), Ncount
+    expect(sections(files.get('cyl.txt')!).at(-1)!.rows.map((r) => Number(r[3]))).toEqual([1, 1, 1, 2]);
+    expect(files.get('cyl.txt')!).toContain('# Chunk Coord1 Coord2 Ncount vx');
+  });
+
   it('the global array f_ID[i][j] holds the chunk table (row = chunk, column = Ncount then values)', async () => {
     const create = [1.0, 2.0, 6.0].map((x) => `create_atoms 1 single ${x} 1 1`).join('\n');
     const { session, error } = await runScript(`${BOX}\n${create}
@@ -183,15 +217,22 @@ run 0`);
 
   it('argument errors name the problem', async () => {
     for (const [cmd, msg] of [
-      ['compute c all chunk/atom bin/sphere 0 0 0 1 2 3', 'bin/sphere is not supported'],
-      ['compute c all chunk/atom bin/cylinder z lower 2 1 1 1 2 3', 'bin/cylinder is not supported'],
+      ['compute c all chunk/atom bin/sphere 0 0 0 2 1 3', 'Illegal compute chunk/atom bin/sphere command'],
+      ['compute c all chunk/atom bin/sphere 0 0 0 0 1 0', 'Illegal compute chunk/atom bin/sphere command'],
+      ['compute c all chunk/atom bin/sphere 0 0 0 0 1', 'bin/sphere needs xorig yorig zorig rmin rmax nsbin'],
+      ['compute c all chunk/atom bin/cylinder z lower 2 1 1 1 1 3', 'Illegal compute chunk/atom bin/cylinder command'],
+      ['compute c all chunk/atom bin/cylinder z lower 2 1 1 1 2', 'bin/cylinder needs dim origin delta c1 c2 rmin rmax ncbin'],
+      ['compute c all chunk/atom bin/sphere 5 5 5 0 6 3 pbc yes units box\nthermo_style custom step c_c', 'Compute chunk/atom bin/sphere radius is too large for periodic box'],
+      ['compute c all chunk/atom bin/cylinder z lower 2 5 5 0 6 3 pbc yes units box\nthermo_style custom step c_c', ''],
       ['compute c all chunk/atom bin/1d q lower 1', 'dim must be x, y or z'],
       ['compute c all chunk/atom bin/1d x lower 0', 'delta must be > 0'],
       ['compute c all chunk/atom bin/1d x lower 1 units furlongs', 'units must be box, lattice or reduced'],
       ['compute c all chunk/atom type discard mixed', 'discard mixed is only for the binning styles'],
       ['compute c all chunk/atom type limit 2 sideways', "limit needs 'max' or 'exact'"],
       ['compute c all chunk/atom type ids nfreq', 'ids nfreq is not supported'],
-      ['compute c all chunk/atom type pbc yes', 'pbc yes applies only to bin/sphere and bin/cylinder'],
+      ['compute c all chunk/atom type pbc yes', ''],
+      ['compute c all chunk/atom type pbc maybe', 'pbc must be yes or no'],
+      ['change_box all triclinic\ncompute c all chunk/atom bin/1d x lower 1', 'Compute chunk/atom for triclinic boxes requires units reduced'],
       ['compute c all chunk/atom bin/1d x lower 1 bound y 0 5', 'bound given for a dimension with no bins'],
       ['compute c all chunk/atom type bogus 1', "unknown keyword 'bogus'"],
       ['compute c all chunk/atom nothing', "unknown chunk/atom style 'nothing'"],

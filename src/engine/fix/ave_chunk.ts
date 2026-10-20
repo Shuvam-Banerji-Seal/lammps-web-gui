@@ -283,9 +283,11 @@ export class FixAveChunk extends Fix {
     return v;
   }
 
-  /** Volume for density values: the bin volume for binning chunks, else the box. */
-  private volume(): number {
-    return this.chunk.kind === 'bin' ? this.chunk.binVolume() : this.boxVolume();
+  /** Volume of chunk c (0-based) for density values: the bin volume for binning chunks, else the box. */
+  private volume(): (c: number) => number {
+    if (this.chunk.kind === 'bin') return this.chunk.chunkVolumes();
+    const v = this.boxVolume();
+    return () => v;
   }
 
   setup(): void { this.endOfStep(); }
@@ -351,6 +353,7 @@ export class FixAveChunk extends Fix {
     }
     const adof = this.adof ?? this.sys.dimension;
     const vol = this.volume();
+    const mv2d = s.units.mv2d;
     this.totalLast = 0;
     this.cntAll = grow(this.cntAll, N);
     this.ke2All = grow(this.ke2All, N);
@@ -368,8 +371,10 @@ export class FixAveChunk extends Fix {
           const dof = cnt[c] * adof + this.cdof;
           this.acc[j][c] += this.tempOf(ke2[c], dof);
         } else if (v.t === 'dnum' || v.t === 'dmass') {
+          // As native LAMMPS does (src/fix_ave_chunk.cpp at b332f28): a mass density is converted by mv2d
           if (this.norm === 'all') this.sumAll[j][c] += sums[j][c];
-          else this.acc[j][c] += sums[j][c] / vol;
+          else if (v.t === 'dnum') this.acc[j][c] += sums[j][c] / vol(c);
+          else this.acc[j][c] += mv2d * (sums[j][c] / vol(c));
         } else if (this.norm === 'all') {
           this.sumAll[j][c] += sums[j][c];
         } else if (this.norm === 'sample') {
@@ -420,7 +425,9 @@ export class FixAveChunk extends Fix {
             x = dof > 0 ? (u.mvv2e * (this.ke2All[c] ?? 0)) / (dof * u.boltz) : 0;
           } else x = acc / nr;
         } else if (v.t === 'dnum' || v.t === 'dmass') {
-          x = this.norm === 'all' ? sumAll / (nr * vol) : acc / nr;
+          if (this.norm !== 'all') x = acc / nr;
+          else if (v.t === 'dnum') x = sumAll / vol(c) / nr;
+          else x = (sumAll / vol(c)) * (u.mv2d / nr);
         } else if (this.norm === 'all') {
           x = cntTot > 0 ? sumAll / cntTot : 0;
         } else {

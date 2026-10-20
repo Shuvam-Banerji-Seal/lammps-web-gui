@@ -2587,7 +2587,11 @@ const displaceAtoms: Handler = ({ sys }, a) => {
     }
   }
   if (s.dimension === 2) for (const i of members) s.x[3 * i + 2] = 0;
-  for (const i of members) sys.geom.remap(s.x, s.image, i);
+  // As native LAMMPS does (src/displace_atoms.cpp at b332f28): every atom is remapped, and in a triclinic box
+  // all coordinates then go to lamda and back once more (x2lamda/lamda2x around the atom migration), which
+  // can change their last bits; velocity loop geom hashes those bits
+  for (let i = 0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
+  if (sys.geom.triclinic) for (let i = 0; i < s.n; i++) sys.geom.lamdaRoundTrip(s.x, i);
   sys.bump();
   sys.nb.lastBuild = -1;
 };

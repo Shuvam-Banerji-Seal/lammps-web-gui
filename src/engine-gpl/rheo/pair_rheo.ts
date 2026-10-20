@@ -167,8 +167,9 @@ export class PairRHEO extends Pair {
       const etai = visc[i], etaj = visc[oj];
       const fluidi = !(status[i] & PHASECHECK);
       const fluidj = !(status[oj] & PHASECHECK);
-      // pair_rheo.cpp: cs = sqrt(csq) per type (no variable sound speed)
-      const csAve = 0.5 * (Math.sqrt(csq[itype]) + Math.sqrt(csq[jtype]));
+      // pair_rheo.cpp: cs = sqrt(csq) per type, or fix rheo/pressure's calc_csq of each end (variable_csq)
+      const vcsq = m.variableCsq;
+      const csAve = vcsq ? 0.5 * (Math.sqrt(vcsq(i)) + Math.sqrt(vcsq(oj))) : 0.5 * (Math.sqrt(csq[itype]) + Math.sqrt(csq[jtype]));
       // pair_force_flag: a fluid end; pair_rho_flag: both fluid (no interface, so the artificial viscosity follows the force)
       const pairForce = fluidi || fluidj;
       const pairAvisc = pairForce;

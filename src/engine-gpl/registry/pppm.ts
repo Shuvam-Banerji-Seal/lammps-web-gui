@@ -16,5 +16,6 @@ export const HOOKS: Record<string, PppmGplHook> = {
   'pppm/cg': PPPM_HOOK,
   'pppm/dielectric': PPPM_HOOK,
   'pppm/electrode': PPPM_HOOK,
+  'pppm/rk': PPPM_HOOK,
   'pppm/tip4p': PPPM_HOOK,
 };

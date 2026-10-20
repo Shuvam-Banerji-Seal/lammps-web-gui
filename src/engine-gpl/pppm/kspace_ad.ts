@@ -341,12 +341,14 @@ export class KSpacePPPMAd extends KSpacePPPM {
 
 /**
  * kspace_modify diff ad on a kspace_style pppm instance: the analytic-differentiation style with the same settings
- * (the instance's fields are copied). Returns null for other styles (pppm/cg, the electrode and dielectric variants),
- * and the instance itself when it is already ad.
+ * (the instance's fields are copied, its name and rk flag too). Returns null for other styles (pppm/cg, the electrode
+ * and dielectric variants), and the instance itself when it is already ad.
  */
 export const promoteAd = (base: KSpacePPPM): KSpacePPPM | null => {
   if (base instanceof KSpacePPPMAd) return base;
-  if (base.name !== 'pppm' || base.constructor !== KSpacePPPM) return null;
+  // kspace_style pppm/rk is PPPM with native's rk_flag (src/engine-gpl/pppmx/pppm_rk.ts); PPPM_RK keeps PPPM's ad path
+  const plain = base.name === 'pppm' && base.constructor === KSpacePPPM;
+  if (!plain && !(base.name === 'pppm/rk' && base.rkFlag)) return null;
   return Object.assign(new KSpacePPPMAd(), base);
 };
 

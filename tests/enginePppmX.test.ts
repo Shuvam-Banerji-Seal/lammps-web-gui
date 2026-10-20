@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 
 /*
- * Unit tests of the pppm/stagger and pppm/rk styles (src/engine-gpl/pppmx). The G and grid values are the ones native
+ * Unit tests of the pppm/stagger and pppm/rk styles (src/engine-gpl/pppmx; the two-partition runs of pppm/rk are in
+ * tests/engineVerletSplit.test.ts). The G and grid values are the ones native
  * LAMMPS (b332f28) prints for the same inputs as the w237pk oracle cases ("G vector" and "grid" lines of the log).
  */
 
@@ -112,8 +113,16 @@ run 0
 });
 
 describe('kspace_style pppm/rk', () => {
-  it('is refused: it needs two partitions (-partition and run_style verlet/split/rk)', async () => {
+  it('needs run_style verlet/split/rk (native: The Integrate type must support an rk decomposition ...)', async () => {
     const r = await run(`${SETUP}kspace_style pppm/rk 1.0e-4
+run 0
+`);
+    expect(r.errors.join('\n')).toContain('The Integrate type must support an rk decomposition (e.g., run_style verlet/split/rk) that is compatible with kspace style pppm/rk');
+  }, 60_000);
+
+  it('needs two partitions with run_style verlet/split/rk (native: pppm/rk requires 2 partitions)', async () => {
+    const r = await run(`${SETUP}kspace_style pppm/rk 1.0e-4
+run_style verlet/split/rk
 run 0
 `);
     expect(r.errors.join('\n')).toContain('pppm/rk requires 2 partitions');

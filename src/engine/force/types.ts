@@ -719,6 +719,11 @@ export abstract class KSpace {
   /** kspace_modify compute: false skips the kspace force, energy and virial (setup still runs; kspace_modify.html). */
   computeOn = true;
   /**
+   * The solver splits its work between an Rspace and a Kspace partition (native KSpace::rk_flag, kspace_style pppm/rk;
+   * kspace_style.html: "The *pppm/rk* kspace style must be paired with an analogous *rk* type run style").
+   */
+  rkFlag = false;
+  /**
    * When true, the charge sums of the self and background energies keep the values of the last refresh instead of
    * following the charges at each compute. A fix that changes charges without changing the atom count sets it (the
    * browser port of fix bond/react does). Measured with native LAMMPS (black box): after a reaction changes the

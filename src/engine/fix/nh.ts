@@ -7,6 +7,7 @@ import { ownCompute, ramp, removeCompute } from './util';
 import { massOf } from '../atoms';
 import { ComputePressure } from '../compute/pressure';
 import { libm } from '../libm';
+import { gplHook } from '../gplHooks';
 
 /*
  * fix nvt / npt / nph — docs.lammps.org/fix_nh.html.
@@ -52,22 +53,25 @@ import { libm } from '../libm';
  * Global scalar: "The scalar is the same cumulative energy change due to this
  * fix described in the previous paragraph", reported by thermo ecouple.
  *
+ * Reference cell and deviatoric stress, as native LAMMPS does (src/fix_nh.cpp at b332f28, checked with
+ * tests/oracle/w358nh_*-w362nh_*): the reference volume vol0 and cell h0_inv are taken at the fix's first init and
+ * kept for later runs (nreset N takes them again every N steps of a run, counted from its first step). The x, y,
+ * z, xy, yz and xz keywords set deviatoric_flag: the barostat force then subtracts fdev = h sigma h^t, with
+ * sigma = vol0 h0_inv (P_target - p_hydro) h0_inv^t, the scalar adds the strain energy 0.5 Tr(sigma h h^t), and the
+ * vector ends with that PE_strain entry. The diagonal barostat force is (P - p_hydro) V (p_hydro the mean target
+ * over the barostatted diagonal dimensions), the tilt force P V. These terms are the port in
+ * src/engine-gpl/fix/nh_deviatoric.ts, loaded with the keywords that set the flag (lazy HOOKS x, y, z, xy, yz, xz).
+ * The global vector follows fix_nh.cpp compute_vector: eta, eta_dot (tchain), omega, omega_dot (1 for iso, 3, or 6
+ * with tilts), etap, etap_dot (pchain), PE_eta, KE_eta_dot, PE_omega (p_hydro (V - vol0), divided among the
+ * barostatted diagonal dimensions), KE_omega_dot, PE_etap, KE_etap_dot, and PE_strain[1] with deviatoric_flag.
+ * Without a thermostat the barostat temperature t0 is set at the first run and kept.
+ *
  * Measured with native LAMMPS (black box, tests/oracle/w7nh_*.in and w42nhm_*.in):
- *   - the global vector (f_ID[k]) layout: eta, eta_dot (tchain), omega, omega_dot (ndof), etap, etap_dot
- *     (pchain), PE_eta, KE_eta_dot, PE_omega, KE_omega_dot, PE_etap, KE_etap_dot, and PE_strain[1] for the
- *     diagonal couplings (couple none; 25 entries for nph with pchain 3, 13 with pchain 0; npt adds the tchain
- *     blocks). Iso has no PE_strain entry (12 entries for nph with pchain 3).
  *   - PE_etap[k] = k_B T_p etap[k] for every k (T_p the barostat temperature); no count of barostatted dims.
- *   - PE_omega per barostatted diagonal dimension = Pbar (V - V0) / (nbaro nktv2p), with Pbar the mean
- *     target over the barostatted dimensions and free dimensions 0. Native for x only: P_x (V - V0) (one entry).
  *   - the scalar is the sum of the KE_omega_dot, PE_omega, PE_strain, and barostat-chain entries (equal
  *     to ecouple with the thermo normalisation: lj units divide an extensive scalar by the atom count).
- *   - PE_strain = [ -(3 - nbaro)/2 * Pbar * V0 + sum_d (P_d - Pbar) V0 (r_d^2 - 1)/2 ] / nktv2p, with
- *     r_d = L_d / L_d(0) over the barostatted diagonal dimensions. The first term is the step-0 reference
- *     (x only: -P V0; x and y: -P V0/2). The second term was fitted to native (least squares over the 100 steps
- *     of nph x 1 y 3 z 2 and npt x 2 y 3, z free) with residual 1e-12. Under a ramp the current targets are used.
- *   - the barostat velocity update, the MTK terms and the thermostat chain for the cases with equal
- *     targets (or one barostatted dimension) match native to rel 1e-9 over 100 steps (w42nhm_*).
+ *   - the barostat velocity update, the MTK terms and the thermostat chain match native to rel 1e-9 over
+ *     100 steps (w42nhm_*).
  *   - the MTK force term (per barostatted dimension) is the sum over the barostatted diagonal
  *     dimensions of sum m v^2, divided by (number of barostatted dimensions) * N. The iso
  *     barostat (couple xyz) uses the temperature compute's dof * k_B T instead (rotational dof
@@ -76,9 +80,6 @@ import { libm } from '../libm';
  *   - barostat velocity scaling: both scalings of a half step come before the kick in the initial step and
  *     after it in the final step.
  *   - the barostat chain force counts the barostatted dimensions (couple none).
- *   - the step-0 scalar is -(3 - nbaro)/2 * P_mean * V0 / nktv2p (nbaro = barostatted diagonal
- *     dimensions): x only -P V0, x and y -P V0/2, iso and xyz 0. The 3 is used in 2d too (2d x only
- *     -P V0, 2d x and y -P V0/2), so the 2d form is this same rule.
  *   - two Nose-Hoover fixes in one run, npt on a group that is a subset of the temperature group (npt's
  *     temperature compute is group all) with nvt on the other atoms (w74nhsub_*): the first thermostat update of
  *     a step and the iso barostat's MTK term use the kinetic energy tracked through the previous thermostat update
@@ -92,23 +93,26 @@ import { libm } from '../libm';
  *   - tilts: the xy-only barostat is exact (xy += ly * omega_xy); with the
  *     diagonal and tilt couplings together, the box is within ~3e-8 of the
  *     exact flow at dt = 0.02 (not reproduced; see the w7nh_npt_tri notes).
- * Not resolved (unequal diagonal targets, e.g. x 1, y 3, z 2): the barostat velocities differ from native
- * by a small term proportional to (P_d - Pbar) (about 1e-5 relative after one step, 9 % in the box after
- * 100 steps for nph x 1, y 3, z 2 with pchain 0; measured with w42nhm cases generated and checked, not
- * committed). The term is linear in (P_d - Pbar) and its coefficient depends on the state (it grows as the
- * kinetic energy falls). Its form has not been identified. The strain energy and the vector formulas above
- * were fitted to native values from the same state, so they hold; the scalar matches native only for the
- * cases with equal targets.
- * Not implemented (StyleError): dilate with a partial group's strain-energy
- * reference cell (nreset > 0 is accepted; the reference cell is the current
- * one), box flips (flip yes stops with an error when a tilt passes 0.6 of the
- * box length), update dipole.
+ * Not implemented (StyleError): box flips (flip yes stops with an error when a tilt passes 0.6 of the box
+ * length); update dipole is for the /sphere variants (nh_sphere.ts).
  */
 
 
 type Dim = 0 | 1 | 2 | 3 | 4 | 5;   // x y z yz xz xy (Voigt order as LAMMPS documents for tensors)
 
 const KEYS = ['x', 'y', 'z', 'yz', 'xz', 'xy'];
+
+/**
+ * The deviatoric barostat terms (src/engine-gpl/fix/nh_deviatoric.ts, a port of fix_nh.cpp compute_sigma,
+ * compute_deviatoric and compute_strain_energy), loaded lazily under the HOOKS words x, y, z, xy, yz, xz: the keywords
+ * that set native's deviatoric_flag. Tensors are Voigt (xx yy zz yz xz xy); h is (xprd, yprd, zprd, yz, xz, xy).
+ */
+export interface NHDeviatoricHook {
+  boxHInv(h: ArrayLike<number>, triclinic: boolean): number[];
+  computeSigma(vol0: number, h0Inv: ArrayLike<number>, pTarget: ArrayLike<number>, pHydro: number): number[];
+  computeDeviatoric(h: ArrayLike<number>, sigma: ArrayLike<number>): number[];
+  computeStrainEnergy(h: ArrayLike<number>, sigma: ArrayLike<number>, nktv2p: number): number;
+}
 
 /**
  * The thermostat and barostat variables of fix nvt/npt/nph that a binary restart file holds. fix_nh.html: "These
@@ -126,9 +130,12 @@ export interface NHRestart {
   omegaDot: number[];
   omegaPos: number[];
   ecoupleCum: number;
-  /** the strain reference (volume and box lengths) of the run that wrote the file */
+  /** the reference volume (fix_nh.cpp vol0) of the fix that wrote the file */
   vol0: number;
-  len0: number[];
+  /** the reference cell h0_inv (fix_nh.cpp, stored when deviatoric_flag is set) */
+  h0Inv?: number[];
+  /** the box lengths of the reference cell (files written before h0Inv; not used) */
+  len0?: number[];
   /** the barostat reference temperature (fix_nh.cpp t0, the temperature of the masses of an nph run), when there is a barostat */
   t0?: number;
 }
@@ -172,12 +179,23 @@ export class FixNH extends Fix {
   private tempId: string;
   private pressId: string | null = null;
   protected dthalf = 0; protected dt4 = 0; private dt8 = 0; private dtf = 0; private dtv = 0;
-  private vol0 = 0;
-  private len0: number[] = [1, 1, 1];   // box lengths at the start of the run (strain reference)
-  /** the strain reference came from a restart file: the next init keeps it */
-  private refRestored = false;
-  /** the barostat reference temperature a restart file held (null when none was read) */
-  private restoredT0: number | null = null;
+  /**
+   * The reference volume and cell (fix_nh.cpp vol0 and h0_inv): as native LAMMPS does (src/fix_nh.cpp init at b332f28),
+   * they are taken at the first init of the fix ("if (vol0 == 0.0)") and kept for the later runs, unless nreset
+   * resets them (computePressTarget) or a restart file gives them.
+   */
+  protected vol0 = 0;
+  private h0Inv: number[] | null = null;
+  /** fix_nh.cpp nreset_h0: the reference cell is reset every this many steps of a run (0: never) */
+  private nresetH0 = 0;
+  /** fix_nh.cpp sigma: the deviatoric target stress in the reference cell (set by computePressTarget) */
+  private sigma: number[] = [0, 0, 0, 0, 0, 0];
+  /**
+   * fix_nh.cpp t0: the barostat temperature without a thermostat. As native LAMMPS does (src/fix_nh.cpp setup at
+   * b332f28), it is set once ("if (t0 == 0.0)"), from ptemp or the current temperature, and kept for later runs; a
+   * restart file gives it ("if it was read in from a restart file, leave it be").
+   */
+  private baroT0 = 0;
   private ecoupleCum = 0;
   protected scaleTilt = [true, true, true];   // yz xz xy with their second dimension
 
@@ -217,6 +235,8 @@ export class FixNH extends Fix {
           const d = KEYS.indexOf(key) as Dim;
           if (sys.dimension === 2 && (key === 'z' || key === 'yz' || key === 'xz')) throw new StyleError(`fix ${style} ${key} is invalid for a 2d simulation`);
           this.setP(d, n(1, 'Pstart'), n(2, 'Pstop'), n(3, 'Pdamp'));
+          // As native LAMMPS does (src/fix_nh.cpp at b332f28): each of these keywords sets deviatoric_flag
+          this.deviatoric = true;
           k += 4;
           break;
         }
@@ -225,8 +245,8 @@ export class FixNH extends Fix {
           this.couple = args[k + 1] as FixNH['couple'];
           k += 2;
           break;
-        case 'tchain': this.tchain = Math.trunc(n(1, 'tchain')); if (this.tchain < 1) throw new StyleError('tchain must be >= 1'); k += 2; break;
-        case 'pchain': this.pchain = Math.trunc(n(1, 'pchain')); if (this.pchain < 0) throw new StyleError('pchain must be >= 0'); k += 2; break;
+        case 'tchain': this.tchain = Math.trunc(n(1, 'tchain')); if (this.tchain < 1) throw new StyleError(`Invalid fix ${style} tchain argument: ${this.tchain}`); k += 2; break;
+        case 'pchain': this.pchain = Math.trunc(n(1, 'pchain')); if (this.pchain < 0) throw new StyleError(`Invalid fix ${style} pchain argument: ${this.pchain}`); k += 2; break;
         case 'tloop': this.tloop = Math.trunc(n(1, 'tloop')); k += 2; break;
         case 'ploop': this.ploop = Math.trunc(n(1, 'ploop')); k += 2; break;
         case 'mtk':
@@ -234,8 +254,12 @@ export class FixNH extends Fix {
           this.mtk = args[k + 1] === 'yes';
           k += 2;
           break;
-        case 'nreset': n(1, 'nreset'); k += 2; break;
-        case 'drag': this.drag = n(1, 'drag'); if (this.drag < 0) throw new StyleError('drag must be >= 0'); k += 2; break;
+        case 'nreset':
+          this.nresetH0 = Math.trunc(n(1, 'nreset'));
+          if (this.nresetH0 < 0) throw new StyleError(`Invalid fix ${style} nreset argument: ${this.nresetH0}`);
+          k += 2;
+          break;
+        case 'drag': this.drag = n(1, 'drag'); if (this.drag < 0) throw new StyleError(`Invalid fix ${style} drag argument: ${this.drag}`); k += 2; break;
         case 'ptemp': this.ptemp = n(1, 'ptemp'); k += 2; break;
         case 'dilate': this.dilateBit = sys.groupBit(args[k + 1] ?? ''); k += 2; break;
         case 'scalexy': case 'scaleyz': case 'scalexz': {
@@ -392,20 +416,20 @@ export class FixNH extends Fix {
     this.tempCompute = this.sys.compute(this.tempId);
     if (this.pressId) this.pressCompute = this.sys.compute(this.pressId);
     this.resetDt();
-    if (this.refRestored) this.refRestored = false;
-    else {
-      this.vol0 = this.sys.geom.volume(s.dimension);
-      this.len0 = [this.sys.geom.lx, this.sys.geom.ly, this.sys.geom.lz];
-    }
+    // As native LAMMPS does (src/fix_nh.cpp init at b332f28): "set initial volume and reference cell, if not already done"
+    if (this.pstat && this.vol0 === 0) this.setReferenceCell();
+    else if (this.pstat && this.deviatoric && this.h0Inv === null) this.h0Inv = this.deviatoricHook().boxHInv(this.boxH(), s.box.triclinic);
     // barostat target temperature
     this.tTarget = this.tstat ? ramp(this.sys, this.tStart, this.tStop) : this.currentTemp();
     if (this.pstat) {
-      // fix_nh.cpp setup: "if it was read in from a restart file, leave it be" (t0 of an nph run)
-      let tb = this.tstat ? this.tTarget : this.restoredT0 ?? this.ptemp ?? this.currentTemp();
-      if (!this.tstat && this.restoredT0 === null && this.ptemp === null && !(tb > 0)) {
-        throw new StyleError(`fix ${this.style}: the system temperature is 0; set ptemp to give the barostat a target temperature`);
+      if (!this.tstat && this.baroT0 === 0) {
+        if (this.ptemp !== null) this.baroT0 = this.ptemp;
+        else {
+          this.baroT0 = this.currentTemp();
+          if (this.baroT0 < 1.0e-6) throw new StyleError('Current temperature too close to zero, consider using ptemp keyword');
+        }
       }
-      if (!(tb > 0)) tb = this.ptemp ?? 1;
+      const tb = this.tstat ? this.tTarget : this.baroT0;
       this.pTempFixed = tb;
       const kt = s.units.boltz * tb;
       const nAtoms = s.n;
@@ -442,8 +466,11 @@ export class FixNH extends Fix {
    * final kick or after its thermostat scaling) do not reproduce the 10-step values, so later updates stay current.
    */
   protected tSetup: number | null = null;
-  /** fix_nh.cpp deviatoric_flag: the strain energy enters the scalar (fix nphug turns it off). */
-  protected deviatoric = true;
+  /**
+   * fix_nh.cpp deviatoric_flag: set by the x, y, z, xy, yz and xz keywords (fix nphug turns it off). With it the
+   * barostat force has the deviatoric term, the scalar the strain energy, and the vector its PE_strain entry.
+   */
+  protected deviatoric = false;
   /**
    * Kinetic energy 2 KE (energy units, = dof k_B T) tracked through the chain's last update of the previous step
    * (null after setup). The chain multiplies it by the square of each velocity factor it applies, as its own
@@ -826,18 +853,39 @@ export class FixNH extends Fix {
     const nb = this.nbaroDiag();
     this.pHydro = nb > 0 ? acc / nb : 0;
     this.pressTargetSet();
+    // "if deviatoric, recompute sigma each time p_target changes" (src/fix_nh.cpp compute_press_target at b332f28)
+    if (this.deviatoric) this.computeSigma();
   }
 
   /** Hook after the targets of a step are set (fix npt/cauchy changes them here). */
   protected pressTargetSet(): void {}
 
+  /** The deviatoric helpers, loaded with the keyword that set the flag (gpl_nh_deviatoric). */
+  private deviatoricHook(): NHDeviatoricHook {
+    return gplHook<NHDeviatoricHook>('x');
+  }
+
+  /** The box h of LAMMPS' domain: xprd, yprd, zprd, yz, xz, xy. */
+  private boxH(): number[] {
+    const g = this.sys.geom;
+    return [g.lx, g.ly, g.lz, g.yz, g.xz, g.xy];
+  }
+
+  /** fix_nh.cpp vol0 and h0_inv from the current box (xprd yprd zprd, or xprd yprd in 2d). */
+  private setReferenceCell(): void {
+    const g = this.sys.geom;
+    this.vol0 = this.sys.state.dimension === 3 ? g.lx * g.ly * g.lz : g.lx * g.ly;
+    if (this.deviatoric) this.h0Inv = this.deviatoricHook().boxHInv(this.boxH(), this.sys.state.box.triclinic);
+  }
+
   /**
-   * Hook: barostat force numerator term of the deviatoric stress on dimension d, in the units of the pressure
-   * difference (fdev[d] / nktv2p, subtracted by omegaUpdate). Zero unless a subclass sets a deviatoric stress.
+   * fix_nh.cpp compute_sigma: with nreset > 0 the reference cell is taken again on every nreset-th step of the run
+   * (counted from the run's begin step), then sigma from the reference cell and the current targets.
    */
-  protected deviatoricStress(_d: number): number { return 0; }
-  /** True when the subclass supplies deviatoricStress and takes native's p_hydro form of the barostat force. */
-  protected nativeDeviatoric(): boolean { return false; }
+  private computeSigma(): void {
+    if (this.nresetH0 > 0 && (this.sys.state.step - this.sys.run.beginStep) % this.nresetH0 === 0) this.setReferenceCell();
+    this.sigma = this.deviatoricHook().computeSigma(this.vol0, this.h0Inv!, this.pTarget, this.pHydro);
+  }
 
   /**
    * Hook: whether the kinetic tensor of the temperature compute is the initial step's one at the final half step. Native
@@ -850,8 +898,10 @@ export class FixNH extends Fix {
   /** Hook: whether the barostat chain runs before the thermostat target update of the step (fix_nh.cpp order). */
   protected barostatChainFirst(): boolean { return this.chainMassTemp !== null || this.baroMassTemp !== null; }
 
-  /** Hook: strain energy term of the scalar (fix_nh.cpp compute_strain_energy; the default is the measured form). */
-  protected strainEnergyValue(): number { return this.strainEnergy(); }
+  /** fix_nh.cpp compute_strain_energy: 0.5 Tr(sigma h h^t) / nktv2p (deviatoric_flag only). */
+  protected strainEnergyValue(): number {
+    return this.deviatoricHook().computeStrainEnergy(this.boxH(), this.sigma, this.sys.state.units.nktv2p);
+  }
 
   /**
    * Current pressure (tensor), averaged over coupled dimensions.
@@ -926,15 +976,15 @@ export class FixNH extends Fix {
       }
     }
     const drag = this.drag > 0 ? 1 - this.dtv / this.pPeriod.reduce((a, b) => Math.max(a, b), 0) * this.drag : 1;
+    // As native LAMMPS does (src/fix_nh.cpp nh_omega_dot at b332f28): the diagonal force uses the hydrostatic target
+    // p_hydro, the tilt force the current tilt stress alone, and with deviatoric_flag the deviatoric force
+    // fdev = h sigma h^t of the current box enters both.
+    const fdev = this.deviatoric ? this.deviatoricHook().computeDeviatoric(this.boxH(), this.sigma) : null;
     for (let d = 0; d < 6; d++) {
       if (!this.pFlag[d]) continue;
-      // A subclass that supplies the deviatoric stress (nativeDeviatoric) takes the form of src/fix_nh.cpp
-      // nh_omega_dot at b332f28: the diagonal force uses the hydrostatic target p_hydro, the tilt force the current
-      // tilt stress alone, and the deviatoric stress enters both. The core styles keep P - P_target per dimension.
-      const dev = this.nativeDeviatoric();
-      let force = (dev ? (d < 3 ? this.pCurrent[d] - this.pHydro : this.pCurrent[d]) : this.pCurrent[d] - this.pTarget[d]) * vol / s.units.nktv2p;
+      let force = (d < 3 ? this.pCurrent[d] - this.pHydro : this.pCurrent[d]) * vol / s.units.nktv2p;
       if (d < 3) force += mtkTerm1;
-      if (dev) force -= this.deviatoricStress(d);
+      if (fdev) force -= fdev[d] / s.units.nktv2p;
       this.omegaDot[d] += force / this.omegaMass[d] * this.dthalf;
       this.omegaDot[d] *= drag;
     }
@@ -1116,35 +1166,10 @@ export class FixNH extends Fix {
 
   // ------------------------------------------------------------------ output
 
-  /** Mean target pressure over the barostatted diagonal dimensions (0 when none). */
-  private pbarDiag(): number {
-    const nb = this.nbaroDiag();
-    if (nb === 0) return 0;
-    let acc = 0;
-    for (let d = 0; d < 3; d++) if (this.pFlag[d]) acc += this.pTarget[d];
-    return acc / nb;
-  }
-
-  /**
-   * Strain energy of the diagonal barostat (the scalar's PE_strain entry), in energy units:
-   *   [ -(3 - nbaro)/2 * Pbar * V0 + sum_d (P_d - Pbar) * V0 * (r_d^2 - 1)/2 ] / nktv2p,
-   * over the barostatted diagonal dimensions d, with r_d = L_d / L_d(0) and Pbar the mean target
-   * (see the header comment for the measurements behind it).
-   */
-  private strainEnergy(): number {
-    const s = this.sys.state;
-    const nb = this.nbaroDiag();
-    if (nb === 0) return 0;
-    const pbar = this.pbarDiag();
+  /** The volume of LAMMPS' compute_scalar and compute_vector: xprd yprd zprd, or xprd yprd in 2d. */
+  private boxVolume(): number {
     const g = this.sys.geom;
-    const len = [g.lx, g.ly, g.lz];
-    let e = -((3 - nb) / 2) * pbar * this.vol0;
-    for (let d = 0; d < 3; d++) {
-      if (!this.pFlag[d]) continue;
-      const r = len[d] / this.len0[d];
-      e += (this.pTarget[d] - pbar) * this.vol0 * (r * r - 1) / 2;
-    }
-    return e / s.units.nktv2p;
+    return this.sys.state.dimension === 3 ? g.lx * g.ly * g.lz : g.lx * g.ly;
   }
 
   /** Energy exchanged with the reservoirs (extended-system terms). */
@@ -1153,9 +1178,11 @@ export class FixNH extends Fix {
     const r: NHRestart = {
       eta: Array.from(this.eta), etaDot: Array.from(this.etaDot), etap: Array.from(this.etap), etapDot: Array.from(this.etapDot),
       omegaDot: Array.from(this.omegaDot), omegaPos: Array.from(this.omegaPos), ecoupleCum: this.ecoupleCum,
-      vol0: this.vol0, len0: this.len0.slice(),
+      vol0: this.vol0,
     };
-    if (this.pstat) r.t0 = this.pTempFixed;
+    if (this.deviatoric && this.h0Inv) r.h0Inv = this.h0Inv.slice();
+    // fix_nh.cpp pack_restart_data writes t0, which only a barostat without a thermostat sets (0 for npt)
+    if (this.pstat) r.t0 = this.baroT0;
     const extra = this.restartExtra();
     if (extra) r.extra = extra;
     return r;
@@ -1178,13 +1205,12 @@ export class FixNH extends Fix {
     }
     if (chain) { this.eta.set(r.eta); this.etaDot.set(r.etaDot); }
     if (barostat) { this.etap.set(r.etap); this.etapDot.set(r.etapDot); }
-    if (this.pstat && r.t0 !== undefined) this.restoredT0 = r.t0;
+    if (this.pstat && r.t0 !== undefined) this.baroT0 = r.t0;
     this.omegaDot.set(r.omegaDot); this.omegaPos.set(r.omegaPos);
     this.ecoupleCum = r.ecoupleCum;
     this.vol0 = r.vol0;
-    this.len0 = r.len0.slice();
+    if (r.h0Inv) this.h0Inv = r.h0Inv.slice();
     this.restoredExtra = r.extra;
-    this.refRestored = true;
   }
 
   ecouple(): number {
@@ -1202,21 +1228,19 @@ export class FixNH extends Fix {
       for (let k = 1; k < this.tchain; k++) e += kt * this.eta[k] + 0.5 * qk * this.etaDot[k] * this.etaDot[k];
     }
     if (this.pstat) {
-      const vol = this.sys.geom.volume(s.dimension);
+      const vol = this.boxVolume();
       let pfreqMax = 0;
-      let pHydro = 0, nhyd = 0;
+      // As native LAMMPS does (src/fix_nh.cpp compute_scalar at b332f28): each barostatted diagonal dimension adds
+      // p_hydro (V - vol0) / pdim, with vol0 the fix's reference volume
+      const pdim = this.nbaroDiag();
       for (let d = 0; d < 6; d++) {
         if (!this.pFlag[d]) continue;
         e += 0.5 * this.omegaDot[d] * this.omegaDot[d] * this.omegaMass[d];
+        if (d < 3) e += this.pHydro * (vol - this.vol0) / (pdim * s.units.nktv2p);
         pfreqMax = Math.max(pfreqMax, 1 / this.pPeriod[d]);
-        if (d < 3) { pHydro += this.pTarget[d]; nhyd++; }
       }
       let nflag = 0;
       for (let d = 0; d < 6; d++) if (this.pFlag[d]) nflag++;
-      if (nhyd) {
-        const pMean = pHydro / nhyd;
-        e += pMean * (vol - this.vol0) / s.units.nktv2p;
-      }
       // fix_nh.cpp compute_scalar: "if (deviatoric_flag) energy += compute_strain_energy()" (inside pstat_flag)
       if (this.deviatoric) e += this.strainEnergyValue();
       if (this.pchain > 0) {
@@ -1278,15 +1302,20 @@ export class FixNH extends Fix {
     const nT = this.tstat ? this.tchain : 0;
     const nP = this.pstat ? this.pchain : 0;
     const dims = this.ndofDims();
-    const tilt = this.pFlag[3] || this.pFlag[4] || this.pFlag[5];
-    const nb = this.nbaroDiag();
-    const dV = this.sys.geom.volume(s.dimension) - this.vol0;
-    // barostat potential energy: a single entry (iso, 2d xy) holds Pbar dV; otherwise each barostatted
-    // dimension holds an equal share of Pbar dV (tilt keywords keep the earlier group form)
+    const pdim = this.nbaroDiag();
+    const dV = this.boxVolume() - this.vol0;
+    const nktv2p = s.units.nktv2p;
+    // As native LAMMPS does (src/fix_nh.cpp compute_vector at b332f28): the iso entry is p_hydro (V - vol0); the
+    // anisotropic and triclinic entries are p_hydro (V - vol0) / pdim for each barostatted diagonal dimension and 0
+    // otherwise (0 for the tilts); the iso KE_omega_dot entry is pdim times the first dimension's energy.
+    const iso = dims.length === 1;
     const peOmega = (j: number): number => {
-      if (tilt) return this.omegaGroupSum(j) * dV / (3 * s.units.nktv2p);
-      if (dims.length === 1) return this.pbarDiag() * dV / s.units.nktv2p;
-      return this.pFlag[dims[j]] ? this.pbarDiag() * dV / (nb * s.units.nktv2p) : 0;
+      if (iso) return this.pHydro * dV / nktv2p;
+      return j < 3 && this.pFlag[j] ? this.pHydro * dV / (pdim * nktv2p) : 0;
+    };
+    const keOmega = (j: number): number => {
+      if (iso) return pdim * 0.5 * this.omegaDot[0] * this.omegaDot[0] * this.omegaMass[0];
+      return this.pFlag[j] ? 0.5 * this.omegaDot[j] * this.omegaDot[j] * this.omegaMass[j] : 0;
     };
     const kt = kB * this.tTarget;
     const ktP = kB * this.baroTemp();
@@ -1306,20 +1335,12 @@ export class FixNH extends Fix {
       { n: nT, value: (k) => (k === 0 ? dof * kt : kt) * this.eta[k] },
       { n: nT, value: (k) => 0.5 * qT(k) * this.etaDot[k] * this.etaDot[k] },
       { n: dims.length, value: (j) => peOmega(j) },
-      { n: dims.length, value: (j) => (dims.length === 1 ? [0, 1, 2] : [dims[j]]).reduce((a, d) => a + 0.5 * this.omegaMass[d] * this.omegaDot[d] * this.omegaDot[d], 0) },
+      { n: dims.length, value: (j) => keOmega(j) },
       { n: nP, value: (k) => ktP * this.etap[k] },
       { n: nP, value: (k) => 0.5 * qP() * this.etapDot[k] * this.etapDot[k] },
-      // "PE_strain[1] = scalar strain energy (energy units)" (fix_nh.rst): the diagonal barostat's strain energy
-      // (diagonal couplings only; the measured iso layout has no such entry)
-      { n: this.pstat && !tilt && this.couple === 'none' ? 1 : 0, value: () => this.strainEnergy() },
+      // "PE_strain[1] = scalar strain energy (energy units)" (fix_nh.rst), with deviatoric_flag only (fix_nh.cpp)
+      { n: this.pstat && this.deviatoric ? 1 : 0, value: () => this.strainEnergyValue() },
     ];
-  }
-
-  /** Sum of target pressures over the group of a tilt-keyword vector entry (the earlier form, kept for tilts). */
-  private omegaGroupSum(j: number): number {
-    const dims = this.ndofDims();
-    const group = dims.length === 1 ? [0, 1, 2] : [dims[j]];
-    return group.reduce((acc, d) => acc + this.pTarget[d], 0);
   }
 
 }

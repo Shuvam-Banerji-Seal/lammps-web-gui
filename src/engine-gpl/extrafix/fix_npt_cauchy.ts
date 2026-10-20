@@ -1,9 +1,10 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
  * Source: src/EXTRA-FIX/fix_npt_cauchy.cpp and src/EXTRA-FIX/fix_npt_cauchy.h at commit b332f28 (class FixNPTCauchy,
- * fix npt/cauchy): the CauchyStat routines (CauchyStat_init, CauchyStat, CauchyStat_Step), compute_sigma,
- * compute_deviatoric, compute_strain_energy, and the keyword side effects of the constructor. The Nose-Hoover
- * machinery is the core FixNH (src/engine/fix/nh.ts), reached through its protected hooks. Copyright Sandia
+ * fix npt/cauchy): the CauchyStat routines (CauchyStat_init, CauchyStat, CauchyStat_Step) and the keyword side effects
+ * of the constructor. The Nose-Hoover machinery is the core FixNH (src/engine/fix/nh.ts), reached through its
+ * protected hooks; its deviatoric terms (compute_sigma, compute_deviatoric, compute_strain_energy, which
+ * fix_npt_cauchy.cpp repeats from fix_nh.cpp) are ../fix/nh_deviatoric.ts, called by the core. Copyright Sandia
  * Corporation (GNU General Public License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
  * Documented behaviour (docs.lammps.org/fix_npt_cauchy.html): the keywords of fix npt; "cauchystat" is not a keyword
@@ -12,7 +13,7 @@
  * converges to the requested values. The stored state lives per system (keyed by the fix ID plus "_FIX_NH_STORE",
  * as the STORE/GLOBAL fix of native LAMMPS does), so it survives re-specifying the fix.
  *
- * Refused by name (StyleError): ptemp, nreset (other than 0), drag (other than 0), and 2d boxes.
+ * Refused by name (StyleError): ptemp, drag (other than 0), and 2d boxes.
  */
 import { FixNH } from '../../engine/fix/nh';
 import { StyleError } from '../../engine/force/types';
@@ -153,11 +154,6 @@ export class FixNPTCauchy extends FixNH {
   private setPK: Mat3 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
   private initPK = true;
   private initRUN = false;
-  private readonly deviatoricKeys: boolean;
-  /** fix_npt_cauchy.cpp vol0 and h0_inv: taken at the first init of the fix (sigma's reference cell). */
-  private vol0Ref = 0;
-  private h0Inv: number[] | null = null;
-  private sigma: number[] = [0, 0, 0, 0, 0, 0];
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     // the keywords this class reads (alpha, continue) are removed before the core parse
@@ -165,8 +161,6 @@ export class FixNPTCauchy extends FixNH {
     super(sys, id, group, scan.coreArgs, 'npt/cauchy');
     this.alpha = scan.alpha;
     this.restartPK = scan.restartPK;
-    this.deviatoricKeys = scan.deviatoric;
-    this.deviatoric = scan.deviatoric;
     this.scaleTilt = [scan.scaleyz, scan.scalexz, scan.scalexy];
     this.idStore = `${id}_FIX_NH_STORE`;
 
@@ -198,10 +192,10 @@ export class FixNPTCauchy extends FixNH {
    * Reads the keywords of the fix that the core FixNH does not take (alpha, continue), refuses the ones this engine
    * does not implement, and works out the constructor's side effects of fix_npt_cauchy.cpp: the scalexy, scaleyz and
    * scalexz defaults (on when the periodic second dimension has a tilt), and the keywords that clear them (x, xy, xz,
-   * yz and tri set them to 0), and deviatoric_flag (set by the x, y, z, xy, yz and xz keywords).
+   * yz and tri set them to 0). deviatoric_flag (set by the x, y, z, xy, yz and xz keywords) is set by the core parse.
    */
   private static scanArgs(sys: System, args: string[]): {
-    coreArgs: string[]; alpha: number; restartPK: boolean; deviatoric: boolean;
+    coreArgs: string[]; alpha: number; restartPK: boolean;
     scalexy: boolean; scalexz: boolean; scaleyz: boolean;
   } {
     const s = sys.state;
@@ -212,7 +206,6 @@ export class FixNPTCauchy extends FixNH {
     let scaleyz = s.box.periodic[2] && g.yz !== 0;
     let alpha = 0.001;
     let restartPK = false;
-    let deviatoric = false;
     const coreArgs: string[] = [];
     const num = (k: number, key: string): number => {
       const v = Number(args[k]);
@@ -230,24 +223,20 @@ export class FixNPTCauchy extends FixNH {
         case 'alpha': alpha = num(k + 1, key); k += 2; break;
         case 'continue': restartPK = logical(k + 1, key); k += 2; break;
         case 'x': case 'y': case 'z':
-          deviatoric = true;
           if (key === 'x') scalexy = false;
           coreArgs.push(...args.slice(k, k + 4)); k += 4; break;
-        case 'xy': deviatoric = true; scalexy = false; coreArgs.push(...args.slice(k, k + 4)); k += 4; break;
-        case 'yz': deviatoric = true; scaleyz = false; coreArgs.push(...args.slice(k, k + 4)); k += 4; break;
-        case 'xz': deviatoric = true; scalexz = false; coreArgs.push(...args.slice(k, k + 4)); k += 4; break;
+        case 'xy': scalexy = false; coreArgs.push(...args.slice(k, k + 4)); k += 4; break;
+        case 'yz': scaleyz = false; coreArgs.push(...args.slice(k, k + 4)); k += 4; break;
+        case 'xz': scalexz = false; coreArgs.push(...args.slice(k, k + 4)); k += 4; break;
         case 'tri': scalexy = false; scalexz = false; scaleyz = false; coreArgs.push(...args.slice(k, k + 4)); k += 4; break;
         case 'scalexy': scalexy = logical(k + 1, key); coreArgs.push(...args.slice(k, k + 2)); k += 2; break;
         case 'scalexz': scalexz = logical(k + 1, key); coreArgs.push(...args.slice(k, k + 2)); k += 2; break;
         case 'scaleyz': scaleyz = logical(k + 1, key); coreArgs.push(...args.slice(k, k + 2)); k += 2; break;
-        case 'nreset':
-          if (num(k + 1, key) !== 0) throw new StyleError('fix npt/cauchy nreset is not supported by the browser engine yet (src/EXTRA-FIX/fix_npt_cauchy.cpp compute_sigma)');
-          k += 2; break;
         case 'drag':
           if (num(k + 1, key) !== 0) throw new StyleError('fix npt/cauchy drag is not supported by the browser engine yet (src/EXTRA-FIX/fix_npt_cauchy.cpp pdrag_factor)');
           k += 2; break;
         case 'iso': case 'aniso': case 'temp': case 'couple': case 'tchain': case 'pchain': case 'tloop': case 'ploop':
-        case 'mtk': case 'dilate': case 'flip': case 'fixedpoint':
+        case 'mtk': case 'dilate': case 'flip': case 'fixedpoint': case 'nreset':
           // the arity of the core keywords: 4 for the ones with three numbers, 2 for one value
           {
             const n = key === 'iso' || key === 'aniso' || key === 'temp' || key === 'fixedpoint' ? 4 : 2;
@@ -262,34 +251,7 @@ export class FixNPTCauchy extends FixNH {
           break;
       }
     }
-    return { coreArgs, alpha, restartPK, deviatoric, scalexy, scalexz, scaleyz };
-  }
-
-  /**
-   * fix_npt_cauchy.cpp pack_restart_data: the FixNH list, with the deviatoric reference h0_inv (when deviatoric_flag
-   * is set) and vol0 that sigma uses. The reference of the run that wrote the file is kept by a restart.
-   */
-  protected restartExtra(): Record<string, number> | undefined {
-    if (this.h0Inv === null) return undefined;
-    const h = this.h0Inv;
-    return { vol0Ref: this.vol0Ref, h0_0: h[0], h0_1: h[1], h0_2: h[2], h0_3: h[3], h0_4: h[4], h0_5: h[5] };
-  }
-
-  /** fix_npt_cauchy.cpp init: sigma's reference (vol0 and h0_inv) at the first init, then the core init. */
-  init(): void {
-    super.init();
-    // a restart file's reference replaces the box of this run (FixNH::restart reads h0_inv and vol0 from the file)
-    const r = this.restoredExtra;
-    if (r && r.h0_0 !== undefined) {
-      this.restoredExtra = undefined;
-      this.vol0Ref = r.vol0Ref;
-      this.h0Inv = [r.h0_0, r.h0_1, r.h0_2, r.h0_3, r.h0_4, r.h0_5];
-    }
-    if (this.h0Inv === null) {
-      const g = this.sys.geom;
-      this.vol0Ref = g.lx * g.ly * g.lz;
-      this.h0Inv = voigtInverse(g.lx, g.ly, g.lz, g.xy, g.xz, g.yz);
-    }
+    return { coreArgs, alpha, restartPK, scalexy, scalexz, scaleyz };
   }
 
   /** Voigt h of the domain: lx ly lz yz xz xy (LAMMPS domain->h). */
@@ -314,13 +276,12 @@ export class FixNPTCauchy extends FixNH {
 
   /**
    * fix_npt_cauchy.cpp compute_press_target tail: CauchyStat once the pressure has been evaluated (initRUN), the
-   * reference box at the first call, then sigma when the deviatoric keywords are used.
+   * reference box at the first call; the core computes sigma after this hook when the deviatoric keywords are used.
    */
   protected pressTargetSet(): void {
     if (this.initRUN) this.cauchyStat();
     else this.hOld = this.hVoigt();
     this.initRUN = true;
-    if (this.deviatoric) this.computeSigma();
   }
 
   /** CauchyStat (fix_npt_cauchy.cpp): the PK stress and the target pressure of the next step. */
@@ -390,60 +351,6 @@ export class FixNPTCauchy extends FixNH {
     const a = this.astore;
     a[0] = setcauchy[0][0]; a[1] = setcauchy[0][1]; a[2] = setcauchy[0][2];
     a[3] = setcauchy[1][1]; a[4] = setcauchy[1][2]; a[5] = setcauchy[2][2];
-  }
-
-  /** compute_sigma (fix_npt_cauchy.cpp): sigma = vol0 h0inv (p_target - p_hydro) h0inv^t in Voigt order. */
-  private computeSigma(): void {
-    const h = this.h0Inv!;
-    const p = this.pTarget;
-    const ph = this.pHydro;
-    const v0 = this.vol0Ref;
-    this.sigma = [
-      v0 * (h[0] * ((p[0] - ph) * h[0] + p[5] * h[5] + p[4] * h[4]) +
-        h[5] * (p[5] * h[0] + (p[1] - ph) * h[5] + p[3] * h[4]) +
-        h[4] * (p[4] * h[0] + p[3] * h[5] + (p[2] - ph) * h[4])),
-      v0 * (h[1] * ((p[1] - ph) * h[1] + p[3] * h[3]) +
-        h[3] * (p[3] * h[1] + (p[2] - ph) * h[3])),
-      v0 * (h[2] * ((p[2] - ph) * h[2])),
-      v0 * (h[1] * (p[3] * h[2]) + h[3] * ((p[2] - ph) * h[2])),
-      v0 * (h[0] * (p[4] * h[2]) + h[5] * (p[3] * h[2]) + h[4] * ((p[2] - ph) * h[2])),
-      v0 * (h[0] * (p[5] * h[1] + p[4] * h[3]) +
-        h[5] * ((p[1] - ph) * h[1] + p[3] * h[3]) +
-        h[4] * (p[3] * h[1] + (p[2] - ph) * h[3])),
-    ];
-  }
-
-  /** compute_deviatoric (fix_npt_cauchy.cpp): fdev = h sigma h^t in Voigt order, from the current box. */
-  private deviatoricTensor(): number[] {
-    const h = this.hVoigt();
-    const s = this.sigma;
-    return [
-      h[0] * (s[0] * h[0] + s[5] * h[5] + s[4] * h[4]) + h[5] * (s[5] * h[0] + s[1] * h[5] + s[3] * h[4]) + h[4] * (s[4] * h[0] + s[3] * h[5] + s[2] * h[4]),
-      h[1] * (s[1] * h[1] + s[3] * h[3]) + h[3] * (s[3] * h[1] + s[2] * h[3]),
-      h[2] * (s[2] * h[2]),
-      h[1] * (s[3] * h[2]) + h[3] * (s[2] * h[2]),
-      h[0] * (s[4] * h[2]) + h[5] * (s[3] * h[2]) + h[4] * (s[2] * h[2]),
-      h[0] * (s[5] * h[1] + s[4] * h[3]) + h[5] * (s[1] * h[1] + s[3] * h[3]) + h[4] * (s[3] * h[1] + s[2] * h[3]),
-    ];
-  }
-
-  /** The deviatoric barostat term of nh_omega_dot: fdev[d] / nktv2p (zero without the deviatoric keywords). */
-  /** native nh_omega_dot form (p_hydro and the deviatoric stress): fix_npt_cauchy.cpp sets deviatoric_flag. */
-  protected override nativeDeviatoric(): boolean { return true; }
-
-  protected deviatoricStress(d: number): number {
-    if (!this.deviatoricKeys) return 0;
-    return this.deviatoricTensor()[d] / this.sys.state.units.nktv2p;
-  }
-
-  /** compute_strain_energy (fix_npt_cauchy.cpp): 0.5 Tr(sigma h h^t) / nktv2p. */
-  protected strainEnergyValue(): number {
-    const h = this.hVoigt();
-    const s = this.sigma;
-    const d0 = s[0] * (h[0] * h[0] + h[5] * h[5] + h[4] * h[4]) + s[5] * (h[1] * h[5] + h[3] * h[4]) + s[4] * (h[2] * h[4]);
-    const d1 = s[5] * (h[5] * h[1] + h[4] * h[3]) + s[1] * (h[1] * h[1] + h[3] * h[3]) + s[3] * (h[2] * h[3]);
-    const d2 = s[4] * (h[4] * h[2]) + s[3] * (h[3] * h[2]) + s[2] * (h[2] * h[2]);
-    return 0.5 * (d0 + d1 + d2) / this.sys.state.units.nktv2p;
   }
 
   /** fix_npt_cauchy.cpp initial_integrate: the barostat chain runs before the thermostat target update. */

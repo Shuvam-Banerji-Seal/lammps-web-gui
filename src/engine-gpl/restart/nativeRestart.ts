@@ -862,8 +862,8 @@ const fixRecordOf = (style: string, dv: DataView, h: Header): Partial<FixRecord>
  * A fix nvt, npt or nph block (fix_nh.cpp FixNH::pack_restart_data): tstat_flag, then mtchain, eta[mtchain], eta_dot[mtchain]
  * when set; pstat_flag, then omega[6], omega_dot[6], vol0, t0, mpchain, etap[mpchain], etap_dot[mpchain] (when mpchain
  * is set), deviatoric_flag (then h0_inv[6]) and isochoric (then p_isoch[3] and vol_start). The engine holds the chains
- * and barostat variables (NHRestart): the strain reference is 1 / h0_inv when the file has it, else the box lengths the
- * header gives (the engine's len0). An isochoric barostat is a marker, since the engine has no isochoric barostat.
+ * and barostat variables (NHRestart), with vol0 and the reference cell h0_inv when the file has it. An isochoric
+ * barostat is a marker, since the engine has no isochoric barostat.
  * The style must match the flags (nvt a thermostat only, nph a barostat only, npt both).
  */
 const nhRecord = (style: string, dv: DataView, h: Header): Partial<FixRecord> | null => {
@@ -903,12 +903,11 @@ const nhRecord = (style: string, dv: DataView, h: Header): Partial<FixRecord> | 
   } else if (pflag !== 0) return null;
   if (k !== d.length) return null;
   if ((tflag === 1) !== (style !== 'nph') || (pflag === 1) !== (style !== 'nvt')) return null;
-  const boxLen = [0, 1, 2].map((a) => h.boxhi[a] - h.boxlo[a]);
-  const len0 = h0inv ? [0, 1, 2].map((a) => 1 / h0inv![a]) : boxLen;
   const nh: NHRestart = {
     eta, etaDot: [...etaDot, 0], etap, etapDot: pflag === 1 ? [...etapDot, 0] : [],
-    omegaDot, omegaPos: omega, ecoupleCum: 0, vol0, len0,
+    omegaDot, omegaPos: omega, ecoupleCum: 0, vol0,
   };
+  if (h0inv) nh.h0Inv = h0inv;
   if (pflag === 1) nh.t0 = t0;
   return { nh };
 };

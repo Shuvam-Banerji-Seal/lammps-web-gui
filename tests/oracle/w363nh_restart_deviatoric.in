@@ -1,0 +1,29 @@
+# oracle: fix npt with unequal targets (x 1, y 2.5, z free) survives write_restart/read_restart: the reference volume and cell (vol0, h0_inv) of the first run come back from the file, so the deviatoric force, the strain energy and the scalar continue; 20 steps, write_restart, clear, read_restart, fix npt re-specified, 20 more steps
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      atomic
+boundary        p p p
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 4928 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+timestep        0.004
+fix             1 all npt temp 1.0 1.0 0.5 x 1.0 1.0 0.8 y 2.5 2.5 0.8
+thermo_style    custom step temp pe press lx ly lz vol f_1 f_1[25]
+thermo_modify   format float %.15g
+thermo          5
+run             20
+write_restart   w363nh_restart_deviatoric.restart
+clear
+read_restart    w363nh_restart_deviatoric.restart
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+fix             1 all npt temp 1.0 1.0 0.5 x 1.0 1.0 0.8 y 2.5 2.5 0.8
+thermo_style    custom step temp pe press lx ly lz vol f_1 f_1[25]
+thermo_modify   format float %.15g
+thermo          5
+run             20

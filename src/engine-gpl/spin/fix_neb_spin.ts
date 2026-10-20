@@ -11,7 +11,9 @@
  *
  * Quote, docs.lammps.org/fix_neb_spin.html: "Add nudging forces to spins in the group for a multi-replica simulation
  * run via the neb/spin command to perform a geodesic nudged elastic band (GNEB) calculation for finding the transition
- * state." Only the kspring argument is supported; the parallel, perp, end and lattice keywords are refused.
+ * state." As native's constructor does: parallel and perp are errors ("Illegal fix neb/spin command"), and end (two
+ * values) and lattice (one value) are read past and change nothing (SpinLattice stays false, "no spin-lattice neb for
+ * now", and the free-end switches stay off).
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
@@ -52,14 +54,16 @@ export class FixNEBSpin extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (!args.length) throw new StyleError('Illegal fix neb/spin command: usage fix ID group-ID neb/spin Kspring');
+    if (!args.length) throw new StyleError('Illegal fix neb/spin command');
+    if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(args[0])) throw new StyleError(`Expected floating point parameter instead of '${args[0]}' in input script or data file`);
     this.kspring = Number(args[0]);
-    if (!(this.kspring > 0)) throw new StyleError(`fix neb/spin Kspring must be a number > 0 (got '${args[0]}')`);
-    for (let k = 1; k < args.length; k++) {
+    // native's text names fix neb here (fix_neb_spin.cpp at b332f28)
+    if (!(this.kspring > 0)) throw new StyleError('Illegal fix neb command');
+    for (let k = 1; k < args.length;) {
       const key = args[k];
-      if (key === 'parallel' || key === 'perp') throw new StyleError(`fix neb/spin ${key} is not supported (native LAMMPS rejects it: "Illegal fix neb/spin command")`);
-      if (key === 'end' || key === 'lattice') throw new StyleError(`fix neb/spin ${key} is not supported by the browser engine yet (native LAMMPS accepts and ignores it)`);
-      throw new StyleError(`illegal fix neb/spin keyword '${key}'`);
+      if (key === 'end') { k += 3; continue; }
+      if (key === 'lattice') { k += 2; continue; }
+      throw new StyleError('Illegal fix neb/spin command');
     }
   }
 

@@ -13,9 +13,14 @@
  * (check_event, the choice of the event replica) are made from the same generators on every replica (random_select
  * and random_clock are the same stream on every partition, random_dephase is RanMars(seed + partition)).
  *
- * Refused with a StyleError: a dump or a restart output (the event snapshots are not written), fix deform (a changing
- * box), vel local (loop local is not ported), and a compute other than event/displace. The engine has no time-dependent
- * fix or region to refuse (native refuses them: "Cannot use PRD with a time-dependent fix defined").
+ * Output as prd.rst gives it: dumps are written only at events, by replica 0, with the event's quenched coordinates ("the
+ * requested dump frequency in the dump command is ignored"; "A dump snapshot corresponding to the initial minimum state
+ * used for event detection is written to the dump file at the beginning of each PRD run"), and a restart file of
+ * replica 0 every N uncorrelated events ("a frequency of 10 means write a restart file every 10th uncorrelated event").
+ *
+ * Refused with a StyleError: fix deform (a changing box), vel local (native's loop local draws the velocities in its own
+ * local atom order), and a compute other than event/displace. The engine has no time-dependent fix or region to refuse
+ * (native refuses them: "Cannot use PRD with a time-dependent fix defined").
  */
 import type { Ctx } from '../../engine/commands/args';
 import { int, num } from '../../engine/commands/args';
@@ -142,8 +147,6 @@ export const runPrd = async (ctx: Ctx, a: string[]): Promise<void> => {
   if (nDephase < 0 || tDephase < 0 || tCorr < 0) throw new StyleError('Illegal prd command');
   for (const sys of reps) {
     if (!sys.hasBox) throw new StyleError('PRD command before simulation box is defined');
-    if (sys.dumps.length) throw new StyleError('prd with a dump command is not supported by the browser engine yet (the event snapshots are not written)');
-    if (sys.restartOut.length) throw new StyleError('prd with restart output is not supported by the browser engine yet');
     if (sys.fixes.some((f) => f.style === 'deform')) throw new StyleError('Cannot use PRD with a changing box (fix deform)');
   }
   const N = reps.length;
@@ -204,8 +207,19 @@ export const runPrd = async (ctx: Ctx, a: string[]): Promise<void> => {
     for (const w of worlds) copyPositions(w.sys, src);
   };
 
+  /**
+   * The dump snapshot of share_event: replica 0 (which holds the event's quenched coordinates) is reneighbored and its
+   * forces computed (integrate->setup_minimal(1)), then every dump writes the current timestep, whatever its interval.
+   */
+  const writeEventDumps = async (): Promise<void> => {
+    const sys = reps[0];
+    if (!sys.dumps.length) return;
+    await run.runVerlet(sys, 0, { cancelled, afterSetup: () => undefined, afterStep: () => undefined, yieldMs: 30 });
+    for (const d of sys.dumps) d.write();
+  };
+
   /** PRD::share_event: the quenched state of replica ireplica becomes the event, then the hot state is restored and shared. */
-  const shareEvent = (ireplica: number, flag: number, decrement: number): void => {
+  const shareEvent = async (ireplica: number, flag: number, decrement: number): Promise<void> => {
     replicate(ireplica);
     const corrAdjust = ev.number < 1 || flag === 2 ? 0 : tCorr;
     let delta = stepOf(worlds[ireplica]) - ev.timestep - corrAdjust;
@@ -220,6 +234,7 @@ export const runPrd = async (ctx: Ctx, a: string[]): Promise<void> => {
       ev.ncoincident = ncoincident;
     }
     if (flag === 0) ev.number--;
+    await writeEventDumps();
     for (const w of worlds) if (w.hot) restoreSnap(w.sys, w.hot);
     replicate(ireplica);
   };
@@ -288,7 +303,7 @@ export const runPrd = async (ctx: Ctx, a: string[]): Promise<void> => {
       await quench(run, w.sys, qopts, cancelled);
     }
     ncoincident = 0;
-    shareEvent(0, 0, 0);
+    await shareEvent(0, 0, 0);
     logEvent();
     await setupAll();
     if (!o.tempFlag) {
@@ -328,13 +343,16 @@ export const runPrd = async (ctx: Ctx, a: string[]): Promise<void> => {
       }
       const decrement = (tEvent - fracT) * N;
       loopClock -= decrement;
-      shareEvent(ireplica, 1, decrement);
+      await shareEvent(ireplica, 1, decrement);
       logEvent();
+      // a restart file every N uncorrelated events (restart N: output->restart_every_single or _double), replica 0 only;
+      // it is written after the correlated-event loop, unless that loop reaches the end of the run
+      let restartFlag = reps[0].restartOut.some((r) => r.everyVar === null && r.every > 0 && ev.number % r.every === 0);
 
       // correlated event loop: other replicas may be dephasing during this time in native LAMMPS
       let corrEnd = stepOf(worlds[0]) + tCorr;
       while (stepOf(worlds[0]) < corrEnd) {
-        if (stepOf(worlds[0]) === endStep) break;
+        if (stepOf(worlds[0]) === endStep) { restartFlag = false; break; }
         for (const w of worlds) {
           await dynamics(run, w.sys, tEvent, dynOpts);
           w.hot = snapOf(w.sys);
@@ -343,7 +361,7 @@ export const runPrd = async (ctx: Ctx, a: string[]): Promise<void> => {
         loopClock += tEvent;
         const corr = checkEvent(ireplica);
         if (corr >= 0) {
-          shareEvent(ireplica, 2, 0);
+          await shareEvent(ireplica, 2, 0);
           logEvent();
           corrEnd = stepOf(worlds[0]) + tCorr;
         } else for (const w of worlds) if (w.hot) restoreSnap(w.sys, w.hot);
@@ -356,6 +374,8 @@ export const runPrd = async (ctx: Ctx, a: string[]): Promise<void> => {
         const t = temperatureOf(worlds[ireplica]);
         for (const w of worlds) w.tempDephase = t;
       }
+      // the restart file of the hot coordinates (output->write_restart: every restart file of the restart command)
+      if (restartFlag) run.writeRestarts(reps[0], stepOf(worlds[0]), true);
       istep = istepOf();
     }
     const steps = stepOf(worlds[0]) - beginStep;

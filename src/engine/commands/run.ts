@@ -13,7 +13,7 @@ import { DYNAMIC_GROUP_FIXES, NO_DYNAMIC_GROUP_FIXES } from '../group';
 import type { System } from '../system';
 import type { EngineEvent } from '../types';
 import { hasCharge, massOf } from '../atoms';
-import { minimize, MIN_STYLES } from '../run/min';
+import { defaultMinSettings, minimize, MIN_STYLES } from '../run/min';
 import { MINIMIZERS } from '../run/minimizers';
 import { accelerator, runAccelerated } from '../run/accel';
 import { restartDue, startRestarts, writeRestarts } from './restart';
@@ -668,13 +668,27 @@ const minimizeCmd: Handler = async (ctx, a) => {
   if (session.isCancelled) throw new RunCancelled();
 };
 
+/**
+ * A new minimizer of a style, as min_style makes one. As native LAMMPS does (src/update.cpp Update::create_minimize at
+ * b332f28): the new minimizer's constructor (src/min.cpp Min::Min) sets every min_modify setting back to its default.
+ * Measured with native LAMMPS: min_modify dmax 0.01 followed by min_style quickmin minimizes as with the defaults.
+ * The tad command makes its quench and NEB minimizers the same way (src/REPLICA/tad.cpp).
+ */
+export const createMinimize = (sys: System, style: string): void => {
+  if (!Object.prototype.hasOwnProperty.call(MINIMIZERS, style) && !(MIN_STYLES as readonly string[]).includes(style)) {
+    throw new StyleError(`Unknown minimize style ${style}`);
+  }
+  sys.minStyle = style;
+  sys.minSettings = defaultMinSettings();
+};
+
 /** min_style cg|sd|fire|quickmin|hftn — min_style.html. */
 const minStyle: Handler = ({ sys }, a) => {
-  if (a[0] && Object.prototype.hasOwnProperty.call(MINIMIZERS, a[0])) { sys.minStyle = a[0]; return; }
-  if (!a[0] || !(MIN_STYLES as readonly string[]).includes(a[0])) {
+  const known = a[0] !== undefined && (Object.prototype.hasOwnProperty.call(MINIMIZERS, a[0]) || (MIN_STYLES as readonly string[]).includes(a[0]));
+  if (!known) {
     throw removedStyleError('min_style', a[0] ?? '') ?? new StyleError(`min_style '${a[0] ?? ''}' is not supported by the browser engine; supported: ${MIN_STYLES.join(', ')}`);
   }
-  sys.minStyle = a[0];
+  createMinimize(sys, a[0]);
 };
 
 /** min_modify keyword value ... — min_modify.html. */

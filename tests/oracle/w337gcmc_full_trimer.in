@@ -1,0 +1,22 @@
+# oracle: fix gcmc full_energy with bonded trimer molecules (bent at 70 degrees, so the 1-3 pair sits near the LJ minimum) and special_bonds lj 0.0 0.5 1.0: native's energy after a trial deletion keeps the molecule's own pairs at their special weights while its bond and angle are switched off; the case fails if that pair energy is left out
+# oracle-inputs: w337gcmc_trimer.mol
+# oracle-compare: thermo=all atoms=all rel=1e-8
+units lj
+atom_style molecular
+pair_style lj/cut 2.5
+pair_modify tail no
+bond_style harmonic
+angle_style harmonic
+region box block 0 7 0 7 0 7
+create_box 1 box bond/types 1 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 4
+pair_coeff * * 1.0 1.0
+bond_coeff 1 50.0 1.0
+angle_coeff 1 20.0 70.0
+special_bonds lj 0.0 0.5 1.0
+mass 1 1.0
+molecule tri w337gcmc_trimer.mol
+fix mygcmc all gcmc 1 5 4 0 6151 1.5 -0.5 0.5 mol tri mcmoves 0 1 1 full_energy
+thermo_style custom step atoms pe ebond eangle f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6] f_mygcmc[7] f_mygcmc[8]
+thermo 10
+thermo_modify format float %.15g
+run 150

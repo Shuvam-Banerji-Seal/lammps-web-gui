@@ -231,6 +231,8 @@ export class FixGcmc extends Fix {
   /** pressure keyword (null: the chemical potential mu is used) and fugacity_coeff. */
   private pressure: number | null = null;
   private fugacity = 1.0;
+  /** Full-energy path: native's energy_stored, the energy each move starts from (see event()). */
+  private energyStored = 0;
   private readonly displace: number;
   private readonly rng: RanPark;
   /** Second stream with the same seed: acceptance numbers and inserted velocities (see header). */
@@ -482,6 +484,14 @@ export class FixGcmc extends Fix {
   private event(): void {
     this.setImageShells();
     this.partial = this.canPartial();
+    // As native FixGCMC::pre_exchange (fix_gcmc.cpp at b332f28): the full-energy path evaluates the energy once per
+    // event (energy_stored = energy_full()); each move starts from it and an accepted move stores its energy after
+    if (!this.partial) {
+      // the tail of the last run init or reinit is kept through the event (see reinitTail)
+      const ff = this.sys.ff;
+      if (this.fullEnergy && ff.pair?.tail && !ff.tailHold) ff.tailHold = { etail: ff.etailV, ptail: ff.ptailV };
+      this.energyStored = this.potentialEnergy();
+    }
     const before = this.successCount();
     const ncycles = this.X + this.M;
     for (let c = 0; c < ncycles; c++) {
@@ -797,7 +807,7 @@ export class FixGcmc extends Fix {
     if (!p) return;
     const nPart = this.nParticles(gas);
     if (this.partial) { this.insertionPartial(p, nPart); return; }
-    const eBefore = this.potentialEnergy();
+    const eBefore = this.energyStored;
     const snap = capture(s);
     const kT = s.units.boltz * this.T;
     let mass = 0;
@@ -822,11 +832,13 @@ export class FixGcmc extends Fix {
       appendAtoms(s, { x: Float64Array.from(p), type: this.type, v: new Float64Array(3), q: this.charge ?? undefined, mask: this.extraMask() });
       sys.atomsChanged();
     }
+    this.reinitTail();
     // the trial molecule's bonds stay in the energy until it is accepted (see the header)
     this.shakeFix?.extendTopology();
     // native full_energy insertions draw their velocities before the acceptance test (attempt_*_insertion_full)
     const vel0 = this.fullEnergy ? this.drawVelocity(mass, this.vecStream()) : null;
-    let dU = this.potentialEnergy() - eBefore;
+    const eAfter = this.potentialEnergy();
+    let dU = eAfter - eBefore;
     if (!this.fullEnergy) dU -= this.molTemplate ? this.intraMolEnergy : 0;
     dU -= this.intraEnergy;
     const overlap = this.overlapCutoff > 0 && this.hasOverlap(snap.n, this.overlapCutoff);
@@ -836,6 +848,7 @@ export class FixGcmc extends Fix {
       : (this.mu - dU) / kT + libm.log(this.volume / ((nPart + 1) * l3));
     if (!overlap && this.accept(this.acceptStream(), exponent)) {
       this.ninsSucc++;
+      this.energyStored = eAfter;
       // the trial's bonds are kept; a partial-energy insertion draws its velocities after the acceptance
       const vel = vel0 ?? this.drawVelocity(mass, this.vecStream());
       for (let i = snap.n; i < s.n; i++) {
@@ -851,6 +864,7 @@ export class FixGcmc extends Fix {
     } else {
       restore(s, snap);
       sys.atomsChanged();
+      this.reinitTail();
       this.shakeFix?.extendTopology();
     }
   }
@@ -875,7 +889,8 @@ export class FixGcmc extends Fix {
     }
     const nPart = this.nParticles(gas);
     if (this.partial) { this.deletionPartial(idx, nPart); return; }
-    const eBefore = this.potentialEnergy();
+    const eBefore = this.energyStored;
+    const intraPair = this.fullEnergy && this.molTemplate ? this.moleculePairEnergy(idx) : 0;
     const snap = capture(s);
     const bodySnap = this.rigidFix?.snapshotBodies();
     const delIds = idx.map((i) => s.id[i]);
@@ -883,11 +898,14 @@ export class FixGcmc extends Fix {
     for (const i of idx) mass += s.massByType[s.type[i]];
     const flags = new Uint8Array(s.n);
     for (const i of idx) flags[i] = 1;
+    // native reinits the pair while the trial atoms are only masked out, so the tail still counts them
+    this.reinitTail();
     deleteAtoms(s, flags);
     sys.atomsChanged();
     this.shakeFix?.rebuildClusters();
     this.rigidFix?.removeMolecule(delIds);
-    let dU = this.potentialEnergy() - eBefore;
+    const eAfter = this.potentialEnergy() + intraPair;
+    let dU = eAfter - eBefore;
     if (!this.fullEnergy) dU -= this.molTemplate ? this.intraMolEnergy : 0;
     dU -= this.intraEnergy;
     const kT = s.units.boltz * this.T;
@@ -897,12 +915,30 @@ export class FixGcmc extends Fix {
       : -(this.mu + dU) / kT + libm.log((nPart * l3) / this.volume);
     if (this.accept(this.acceptStream(), exponent)) {
       this.ndelSucc++;
+      this.energyStored = eAfter;
     } else {
       restore(s, snap);
       sys.atomsChanged();
+      this.reinitTail();
       this.shakeFix?.rebuildClusters();
       if (this.rigidFix && bodySnap) this.rigidFix.restoreBodies(bodySnap);
     }
+  }
+
+  /**
+   * As native LAMMPS does (src/MC/fix_gcmc.cpp at b332f28) on the full-energy path with a tail correction: the tail
+   * changes only at force->pair->reinit(), which counts the atoms of each type. Insertion trials reinit after adding
+   * the atoms and after removing a rejected trial; deletion trials reinit while the atoms are only masked out (still
+   * counted) and again after a rejection, but not after an accepted deletion, so that tail keeps counting the deleted
+   * atoms until the next reinit or run. Here the tail is held (ForceField.tailHold) between those points; the hold
+   * ends at the next run's init.
+   */
+  private reinitTail(): void {
+    const ff = this.sys.ff;
+    if (!this.fullEnergy || !ff.pair?.tail) return;
+    ff.tailHold = null;
+    ff.updateTail(this.sys.state);
+    ff.tailHold = { etail: ff.etailV, ptail: ff.ptailV };
   }
 
   /**
@@ -1079,14 +1115,21 @@ export class FixGcmc extends Fix {
     }
     if (this.overlapCutoff > 0 && this.atomEnergy(i, nw, this.type).overlap) return;
     const oldImage = this.snapshotImages([i]);
-    const eBefore = this.potentialEnergy();
+    const eBefore = this.energyStored;
     for (let k = 0; k < 3; k++) s.x[3 * i + k] = nw[k];
     sys.bump();
-    const dU = this.potentialEnergy() - eBefore;
+    const eAfter = this.potentialEnergy();
+    const dU = eAfter - eBefore;
     if (this.accept(this.acceptStream(), -dU / (s.units.boltz * this.T))) {
       this.ntransSucc++;
+      this.energyStored = eAfter;
     } else {
-      this.restoreTrial([i], Float64Array.from(old), oldImage);
+      // As native LAMMPS does (src/MC/fix_gcmc.cpp at b332f28, attempt_atomic_translation_full): only the position is
+      // put back. The energy evaluation wrapped a trial position outside the periodic box (domain->pbc(), here pbc()
+      // in setupNeighbors) and changed the image flag, which stays changed. Where the engine only stands in for
+      // native's partial-energy move (fullEnergy off: a triclinic box, neighbor exclusions), nothing had moved natively.
+      if (this.fullEnergy) for (let k = 0; k < 3; k++) s.x[3 * i + k] = old[k];
+      else this.restoreTrial([i], Float64Array.from(old), oldImage);
       sys.bump();
     }
   }
@@ -1130,14 +1173,20 @@ export class FixGcmc extends Fix {
     }
     if (this.overlapCutoff > 0 && this.groupEnergy(idx, moved).overlap) return;
     const oldImage = this.snapshotImages(idx);
-    const eBefore = this.potentialEnergy();
+    const eBefore = this.energyStored;
     for (const i of idx) for (let k = 0; k < 3; k++) s.x[3 * i + k] += shift[k];
     sys.bump();
-    const dU = this.potentialEnergy() - eBefore;
+    const eAfter = this.potentialEnergy();
+    const dU = eAfter - eBefore;
     if (this.accept(this.acceptStream(), -dU / (s.units.boltz * this.T))) {
       this.ntransSucc++;
+      this.energyStored = eAfter;
     } else {
-      this.restoreTrial(idx, old, oldImage);
+      // As native LAMMPS does (src/MC/fix_gcmc.cpp at b332f28, attempt_molecule_translation_full): the displacement is
+      // subtracted from the coordinates the energy evaluation may have wrapped, and the image flags are left as the
+      // wrap set them (the next wrap brings a coordinate outside the box back); without full_energy as above
+      if (this.fullEnergy) for (const i of idx) for (let k = 0; k < 3; k++) s.x[3 * i + k] -= shift[k];
+      else this.restoreTrial(idx, old, oldImage);
       sys.bump();
     }
   }
@@ -1182,12 +1231,14 @@ export class FixGcmc extends Fix {
     }
     if (this.overlapCutoff > 0 && this.groupEnergy(idx, nw).overlap) return;
     const oldImage = this.snapshotImages(idx);
-    const eBefore = this.potentialEnergy();
+    const eBefore = this.energyStored;
     this.writeRotated(idx, nw);
     sys.bump();
-    const dU = this.potentialEnergy() - eBefore;
+    const eAfter = this.potentialEnergy();
+    const dU = eAfter - eBefore;
     if (this.accept(this.acceptStream(), -dU / (s.units.boltz * this.T))) {
       this.nrotSucc++;
+      this.energyStored = eAfter;
     } else {
       this.restoreTrial(idx, old, oldImage);
       sys.bump();
@@ -1252,6 +1303,46 @@ export class FixGcmc extends Fix {
     const out = new Float64Array(3 * idx.length);
     idx.forEach((i, k) => { for (let d = 0; d < 3; d++) out[3 * k + d] = s.x[3 * i + d]; });
     return out;
+  }
+
+  /**
+   * As native LAMMPS does (src/MC/fix_gcmc.cpp at b332f28, attempt_molecule_deletion_full): the trial deletion sets the
+   * molecule's masks to the exclusion-group bit alone, switches its bonded terms off and zeroes its charges. The
+   * neighbor exclusion "exclude group <gcmc exclusion> all" (src/npair.cpp at b332f28: "mask[i] & ex1_bit[m] && mask[j]
+   * & ex2_bit[m]") then drops the molecule's pairs with every other atom but keeps the pairs inside it, since neither
+   * atom still has the all bit. So native's energy after the trial deletion still holds the molecule's own pair energy,
+   * which this returns: its pairs within the cutoff (minimum image) at the special_bonds weights, with zero charges.
+   */
+  private moleculePairEnergy(idx: readonly number[]): number {
+    const s = this.sys.state;
+    const ff = this.sys.ff;
+    const pair = ff.pair;
+    if (!pair?.single) return 0;
+    const nt = s.ntypes + 1;
+    const special = ff.specialPartners;
+    const d = [0, 0, 0];
+    let e = 0;
+    for (let a = 0; a < idx.length; a++) {
+      const i = idx[a];
+      for (let b = a + 1; b < idx.length; b++) {
+        const j = idx[b];
+        d[0] = s.x[3 * j] - s.x[3 * i]; d[1] = s.x[3 * j + 1] - s.x[3 * i + 1]; d[2] = s.x[3 * j + 2] - s.x[3 * i + 2];
+        this.sys.geom.minimumImage(d);
+        const rsq = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+        if (rsq >= pair.cutsq[s.type[i] * nt + s.type[j]]) continue;
+        let flj = 1, fc = 1;
+        if (special) {
+          for (let k = special.offset[i]; k < special.offset[i + 1]; k++) {
+            if (special.partner[k] !== s.id[j]) continue;
+            flj = ff.special.lj[special.order[k] - 1];
+            fc = ff.special.coul[special.order[k] - 1];
+            break;
+          }
+        }
+        e += pair.single(i, j, s.type[i], s.type[j], rsq, fc, flj, 0, 0).eng;
+      }
+    }
+    return e;
   }
 
   /**

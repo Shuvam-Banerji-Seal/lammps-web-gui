@@ -8,7 +8,9 @@
  * version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * The velocity and position updates and the thermostat scaling are methods, so the eFF subclasses (fix_nh_eff.ts)
- * extend them for the electron radial velocities, as fix_nh_eff.cpp overrides nve_v, nve_x and nh_v_temp.
+ * extend them for the electron radial velocities, as fix_nh_eff.cpp overrides nve_v, nve_x and nh_v_temp. It is the
+ * base of fix nvt/sllod/eff (../rigeff/fix_nvt_sllod_eff.ts), which takes no pressure keyword; fix nvt/eff, npt/eff
+ * and nph/eff are built on the core FixNH, which has every barostat keyword.
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';

@@ -198,7 +198,7 @@ export class FixNVTSllod extends FixNH {
     if (!rest.includes('tchain')) rest.push('tchain', '1');
     // fix_nvt_sllod.rst: "*peculiar* = *yes*" stores the velocity relative to the flow; not implemented here
     if (peculiar) throw new StyleError('fix nvt/sllod peculiar yes is not supported by the browser engine (only peculiar no, the default, is implemented)');
-    super(sys, id, group, rest, 'nvt');
+    super(sys, id, group, rest, 'nvt', 'nvt/sllod');
     this.psllod = psllod;
     this.kickPending = kick;
     // the fix's own temperature is compute temp/deform, not the temp FixNH made

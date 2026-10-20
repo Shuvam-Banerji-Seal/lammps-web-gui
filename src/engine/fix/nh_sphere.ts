@@ -95,7 +95,7 @@ export class FixNHSphere extends FixNH {
         k++;
       }
     }
-    super(sys, id, group, rest, variant);
+    super(sys, id, group, rest, variant, name);
     this.style = name;
     this.inertia = disc ? 0.5 : 0.4;
 

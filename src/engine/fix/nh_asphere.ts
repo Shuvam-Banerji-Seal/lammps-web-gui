@@ -87,7 +87,7 @@ export class FixNHAsphere extends FixNH {
       }
       if (args[k] !== 'disc') rest.push(args[k]);
     }
-    super(sys, id, group, rest, variant);
+    super(sys, id, group, rest, variant, name);
     this.style = name;
 
     // compute fix-ID_temp group-ID temp/asphere (nvt) or compute fix-ID_temp all temp/asphere (npt, nph)

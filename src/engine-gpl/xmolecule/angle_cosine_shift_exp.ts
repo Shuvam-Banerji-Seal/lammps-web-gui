@@ -76,9 +76,9 @@ export class AngleCosineShiftExp extends Bonded {
     }
   }
 
-  /** angle_cosine_shift_exp.cpp equilibrium_angle(): theta0 (radians); degrees here, as the other angle styles. */
-  equilibrium(type: number): number { return (this.theta0[type] * 180) / Math.PI; }
+  /** angle_cosine_shift_exp.cpp equilibrium_angle(): theta0 (radians) */
   equilibriumRadians(type: number): number { return this.theta0[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   /** write_data: "%d %g %g %g" with theta0 converted back to degrees (theta0[i]/MY_PI*180.0). */
   dataCoeffs(): string[] {

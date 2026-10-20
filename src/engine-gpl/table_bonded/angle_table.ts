@@ -143,7 +143,7 @@ export class AngleTable extends Bonded {
   }
 
   /** The equilibrium angle in degrees (Angle::equilibrium: RAD2DEG * theta0). */
-  equilibrium(type: number): number { return RAD2DEG * this.theta0[type]; }
+  equilibrium(type: number): number { return RAD2DEG * this.equilibriumRadians(type); }
   /** The equilibrium angle in radians, as the style stores it (AngleTable::equilibrium_angle). */
   equilibriumRadians(type: number): number { return this.theta0[type]; }
 

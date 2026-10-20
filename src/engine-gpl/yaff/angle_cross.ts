@@ -46,7 +46,9 @@ export class AngleCross extends SimpleBonded {
     return out;
   }
 
-  equilibrium(type: number): number { return (this.params.p('theta0')[type] * 180) / Math.PI; }
+  /** angle_cross.cpp equilibrium_angle(): theta0 (radians) */
+  equilibriumRadians(type: number): number { return this.params.p('theta0')[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const P = (n: string) => this.params.p(n);

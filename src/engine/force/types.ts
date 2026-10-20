@@ -305,7 +305,10 @@ export interface StyleContext {
   runSteps?(): { begin: number; end: number };
 }
 
-/** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */
+/**
+ * Equilibrium bond lengths and angles by type, for Pair.linkBonded: the angle in radians, as native
+ * Angle::equilibrium_angle gives it (Bonded.equilibriumRadians).
+ */
 export interface BondedEquilibria {
   bond(type: number): number;
   angle(type: number): number;
@@ -697,10 +700,13 @@ export abstract class Bonded {
    * class 2 cross terms; read_data reads them back (output/data.ts CLASS2_SECTIONS).
    */
   dataCrossSections(): { title: string; lines: string[] }[] { return []; }
-  /** Equilibrium length (bond) or angle in degrees (angle), for fix shake. */
+  /** Equilibrium length (bond) or angle in degrees (angle), for fix shake. Angle styles derive it from equilibriumRadians. */
   equilibrium(_type: number): number { return Number.NaN; }
-  /** The equilibrium angle as the style stores it, in radians (native Angle::equilibrium_angle; fix filter/corotate). */
-  equilibriumRadians?(type: number): number;
+  /**
+   * The equilibrium angle in radians, the value native Angle::equilibrium_angle returns (fix shake, fix ilves, fix
+   * filter/corotate, fix efield/tip4p, angle_write). NaN where the style has none (bond styles, and the default).
+   */
+  equilibriumRadians(_type: number): number { return Number.NaN; }
 }
 
 /** What a kspace style sees during compute(). */

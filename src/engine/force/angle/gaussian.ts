@@ -75,6 +75,10 @@ export class AngleGaussian extends Bonded {
     for (let t = 1; t <= this.ntypes; t++) if (!this.set[t]) throw new StyleError(`all angle coeffs are not set (type ${t})`);
   }
 
+  /** angle_gaussian.cpp equilibrium_angle(): theta0[i][0], the first term's centre (radians) */
+  equilibriumRadians(type: number): number { const t0 = this.terms[type]?.[0]; return t0 ? t0.th : Number.NaN; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
+
   compute(bc: BondedCompute): void {
     const A = bc.s.topo.angles;
     const kb = bc.s.units.boltz;

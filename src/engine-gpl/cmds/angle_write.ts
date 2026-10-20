@@ -35,7 +35,7 @@ const angleWrite: Handler = async ({ sys, session }, a) => {
   const keyword = a[3];
   if (n < 2) throw new StyleError('Must have at least 2 table values');
   // the equilibrium angle in degrees (native equilibrium_angle(atype) * RAD2DEG)
-  const theta0 = (angle.equilibriumRadians ? angle.equilibriumRadians(atype) : (angle.equilibrium(atype) * Math.PI) / 180) * RAD2DEG;
+  const theta0 = angle.equilibriumRadians(atype) * RAD2DEG;
   const coeffLines = angle.dataCoeffs() ?? [];
   const { head, append } = startTableFile(sys, { file: tableFile, cmd: 'angle_write' });
 

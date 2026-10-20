@@ -42,9 +42,13 @@ export interface Tip4pModel {
   alpha: number;
 }
 
-/** alpha = qdist / (r0 cos(theta0 / 2)); theta0 in degrees. */
-export const tip4pAlpha = (qdist: number, r0: number, thetaDeg: number): number =>
-  qdist / (r0 * libm.cos((thetaDeg * Math.PI) / 360));
+/**
+ * alpha = qdist / (cos(theta0 / 2) r0), theta0 in radians. As native LAMMPS does (src/KSPACE/pair_lj_cut_tip4p_long.cpp
+ * init_style at b332f28, "alpha = qdist / (cos(0.5*theta) * blen)" with theta = equilibrium_angle): cos() alone, which
+ * glibc computes with its FMA build (libm.cosAlone).
+ */
+export const tip4pAlpha = (qdist: number, r0: number, thetaRad: number): number =>
+  qdist / (libm.cosAlone(0.5 * thetaRad) * r0);
 
 /** Sites of the owned atoms: M positions (3 per atom; the atom's own position for non-O atoms) and the H owned indices (-1 for non-O). */
 export interface OwnedSites {

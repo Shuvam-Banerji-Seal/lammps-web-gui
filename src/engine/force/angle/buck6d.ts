@@ -71,6 +71,10 @@ export class AngleCosineBuck6d extends SimpleBonded {
     this.pair = pair;
   }
 
+  /** angle_cosine_buck6d.cpp equilibrium_angle(): MY_PI */
+  equilibriumRadians(_type: number): number { return Math.PI; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
+
   compute(bc: BondedCompute): void {
     const A = bc.s.topo.angles;
     const K = this.params.p('K'), n = this.params.p('n'), th0 = this.params.p('theta0');

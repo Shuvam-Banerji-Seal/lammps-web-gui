@@ -63,8 +63,8 @@ export class AngleMWLC extends Bonded {
   }
 
   /** angle_mwlc.cpp equilibrium_angle(): MY_PI (radians); 180 degrees here. */
-  equilibrium(_type: number): number { return 180; }
   equilibriumRadians(_type: number): number { return Math.PI; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   dataCoeffs(): string[] {
     const out: string[] = [];

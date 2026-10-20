@@ -64,7 +64,9 @@ export class AngleSpica extends SimpleBonded {
   }
 
   // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
-  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
+  /** angle_spica.cpp equilibrium_angle(): theta0 (radians) */
+  equilibriumRadians(type: number): number { return this.params.p('theta0')[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   linkForceField(link: { pair: Pair | null }): void {
     this.pair = spicaSubStyle(link.pair);

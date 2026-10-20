@@ -1,0 +1,23 @@
+# oracle: minimize with fix shake "a" angle constraints on the four water molecules (w143cf_water_min.data) and
+#   angle_style charmm with Urey-Bradley K = 0 (theta0 = 104.52 degrees, stored as DEG2RAD * theta0 and handed to fix
+#   shake in radians: src/MOLECULE/angle_charmm.cpp at b332f28, equilibrium_angle). Constraints are harmonic restraints
+#   (kbond default), as in w143cf_shake_min. cg (backtrack line search) for 15 iterations.
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.5e-10, atoms 1.9e-9.
+# oracle-inputs: w143cf_water_min.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      angle
+read_data       w143cf_water_min.data
+pair_style      lj/cut 6.0
+pair_coeff      1 1 0.1553 3.166
+pair_coeff      2 2 0.0 1.0
+pair_coeff      1 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     charmm
+angle_coeff     1 55.0 104.52 0.0 0.0
+fix             1 all shake 0.0001 20 0 b 1 a 1
+thermo_style    custom step pe fnorm
+thermo_modify   format float %.15g
+min_modify      line backtrack
+minimize        0.0 0.0 15 250

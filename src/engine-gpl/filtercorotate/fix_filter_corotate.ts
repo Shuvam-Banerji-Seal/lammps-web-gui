@@ -341,7 +341,7 @@ export class FixFilterCorotate extends Fix {
     const angle = sys.ff.angle;
     for (let i = 1; i <= topo.nangletypes; i++) {
       // Angle::equilibrium_angle: the stored theta0 in radians
-      this.angleDistance[i] = angle ? (angle.equilibriumRadians ? angle.equilibriumRadians(i) : angle.equilibrium(i) * (MY_PI / 180)) : Number.NaN;
+      this.angleDistance[i] = angle ? angle.equilibriumRadians(i) : Number.NaN;
     }
   }
 

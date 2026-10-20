@@ -133,7 +133,9 @@ export class AngleClass2 extends Bonded {
   }
 
   // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
-  equilibrium(type: number): number { return (180 / Math.PI) * this.th0[type]; }
+  /** angle_class2.cpp equilibrium_angle(): theta0 (radians) */
+  equilibriumRadians(type: number): number { return this.th0[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const A = bc.s.topo.angles;

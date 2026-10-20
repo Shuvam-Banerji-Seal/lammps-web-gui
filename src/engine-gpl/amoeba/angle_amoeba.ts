@@ -131,7 +131,9 @@ export class AngleAmoeba extends Bonded {
     }
   }
 
-  equilibrium(type: number): number { return (this.theta0[type] * 180) / Math.PI; }
+  /** angle_amoeba.cpp equilibrium_angle(): theta0 (radians) */
+  equilibriumRadians(type: number): number { return this.theta0[type]; }
+  equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
     const A = bc.s.topo.angles;

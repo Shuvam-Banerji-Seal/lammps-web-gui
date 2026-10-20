@@ -1,0 +1,25 @@
+# oracle: minimize with fix shake "a" angle constraints on the four water molecules (w143cf_water_min.data) and
+#   angle_style cosine/periodic with B = -1, n = 2: the equilibrium angle is MY_PI*(1.0 - 1.0/n) = 90 degrees
+#   (src/EXTRA-MOLECULE/angle_cosine_periodic.cpp at b332f28, equilibrium_angle), which fix shake takes in radians
+#   (src/RIGID/fix_shake.cpp at b332f28: angle = force->angle->equilibrium_angle(i)). The engine used to have no equilibrium
+#   for this style. Constraints are harmonic restraints (kbond default), as in w143cf_shake_min. cg (backtrack line
+#   search) for 15 iterations. Compared: thermo pe and fnorm, and the final per-atom positions and forces.
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 8.9e-9, atoms 2.5e-8.
+# oracle-inputs: w143cf_water_min.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      angle
+read_data       w143cf_water_min.data
+pair_style      lj/cut 6.0
+pair_coeff      1 1 0.1553 3.166
+pair_coeff      2 2 0.0 1.0
+pair_coeff      1 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     cosine/periodic
+angle_coeff     1 20.0 -1 2
+fix             1 all shake 0.0001 20 0 b 1 a 1
+thermo_style    custom step pe fnorm
+thermo_modify   format float %.15g
+min_modify      line backtrack
+minimize        0.0 0.0 15 250

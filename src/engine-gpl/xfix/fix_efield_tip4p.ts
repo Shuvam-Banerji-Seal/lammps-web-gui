@@ -15,7 +15,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { PairTIP4PBase } from '../../engine/force/pair/tip4p';
 import { PairHybrid } from '../../engine/force/pair/hybrid';
-import { tip4pAlpha } from '../../engine/force/pair/tip4p_sites';
+import { cosFma } from '../libm/sincos_fma';
 
 /** The first TIP4P sub-style of a hybrid pair (as native pair->extract answers), or the pair itself. */
 const tip4pStyleOf = (pair: unknown): PairTIP4PBase | null => {
@@ -71,12 +71,13 @@ export class FixEfieldTIP4P extends Fix {
     this.htype = pair.htype;
     const { bond, angle } = sys.ff;
     if (!bond || !angle) throw new StyleError('Bond and angle potentials must be defined for fix efield/tip4p');
-    const theta = angle.equilibrium(pair.atype);
+    const theta = angle.equilibriumRadians(pair.atype);
     if (!Number.isFinite(theta)) throw new StyleError('Bad TIP4P angle type for fix efield/tip4p');
     const blen = bond.equilibrium(pair.btype);
     if (!Number.isFinite(blen)) throw new StyleError('Bad TIP4P bond type for fix efield/tip4p');
     // native: alpha = *p_qdist / (cos(0.5 * theta) * blen), theta in radians (equilibrium_angle)
-    this.alpha = tip4pAlpha(pair.qdist, blen, theta);
+    // FixEfieldTIP4P::init calls cos() alone, which glibc computes with its FMA build (sincos_fma.ts)
+    this.alpha = pair.qdist / (cosFma(0.5 * theta) * blen);
   }
 
   /** Native FixEfieldTIP4P::post_force with the constant or variable field of fix efield. */

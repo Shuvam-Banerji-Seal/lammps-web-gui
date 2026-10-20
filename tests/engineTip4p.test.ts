@@ -52,14 +52,14 @@ const bondedScript = [
 describe('TIP4P M-site geometry', () => {
   it('alpha = qdist / (r0 cos(theta0/2)) (measured with native LAMMPS)', () => {
     // r0 = 1.0, theta0 = 110 degrees, qdist = 0.15 gave alpha 0.26151701934 natively
-    expect(tip4pAlpha(0.15, 1.0, 110)).toBeCloseTo(0.2615170193, 9);
-    expect(tip4pAlpha(0.1546, 0.9572, 104.52)).toBeCloseTo(0.2638755364, 9);
+    expect(tip4pAlpha(0.15, 1.0, (110 * Math.PI) / 180)).toBeCloseTo(0.2615170193, 9);
+    expect(tip4pAlpha(0.1546, 0.9572, (104.52 * Math.PI) / 180)).toBeCloseTo(0.2638755364, 9);
   });
 
   it('places M on the HOH bisector at qdist from O for the equilibrium geometry', () => {
     const geom = new Geometry(makeBox({ lo: [-30, -30, -30], hi: [30, 30, 30], periodic: [false, false, false] } as never));
     const qdist = 0.15, r0 = 0.9572, th = 104.52;
-    const alpha = tip4pAlpha(qdist, r0, th);
+    const alpha = tip4pAlpha(qdist, r0, (th * Math.PI) / 180);
     const x = new Float64Array([0, 0, 0, -0.7569503, 0.5858823, 0, 0.7569503, 0.5858823, 0]);
     const type = new Int32Array([1, 2, 2]);
     const ids = new Int32Array([1, 2, 3]);
@@ -101,7 +101,7 @@ describe('TIP4P force projection and Coulomb cutoff', () => {
     expect(r.error).toBe('');
     const rows = (r.written.get('t4.dump') ?? '').split('ITEM: ATOMS')[1].trim().split('\n').slice(1).map((l) => l.split(/\s+/).map(Number));
     const f = new Map(rows.map((w) => [w[0], [w[1], w[2], w[3]]]));
-    const alpha = tip4pAlpha(0.15, 0.9572, 104.52);
+    const alpha = tip4pAlpha(0.15, 0.9572, (104.52 * Math.PI) / 180);
     const fM = f.get(4)!.map((v) => -v); // force on the massless site is minus the ion's force
     // ion force magnitude = C qO qI / (ion - M)^2 with |M - O| = 0.15 on the bisector
     expect(Math.hypot(...fM)).toBeCloseTo((C * 1.04) / (8 - 0.15) ** 2, 6);

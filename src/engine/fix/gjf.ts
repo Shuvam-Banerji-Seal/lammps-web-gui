@@ -38,8 +38,11 @@ import { libm } from '../libm';
  *   5 GJ-V   c2 = c3 = 1/(1 + x)
  *   6 GJ-VI  c2 = b^2, b = 1/(1 + x/2)
  * "The keyword *method* selects one of the eight GJ-methods implemented in
- * LAMMPS." Methods 7 and 8 need the splitting forms of Finkelstein et al. 2021
- * and Gronbech-Jensen 2024 and are rejected with a StyleError.
+ * LAMMPS." As native LAMMPS does (src/EXTRA-FIX/fix_gjf.cpp at b332f28, init and
+ * reset_dt): method 0 takes c2 = 0; method 8 (GJ-VIII) c2 = sqrt(x^2 + 1) - x;
+ * method 7 (GJ-VII) reads c2 after the method number (0 <= c2 <= 1) and sets the
+ * timestep to dt = (1 + c2)/(1 - c2) ln(c2)^2 damp / 2 at every init and timestep
+ * change; all methods share the same integration with c1 = (1 + c2)/2.
  *
  * Velocity: docs.lammps.org/fix_gjf.html "*vfull* = use on-site velocity" and
  * "The option *vhalf* outputs the 2GJ half-step velocity given in". The
@@ -61,9 +64,12 @@ const targetT = (sys: System, t: NumOrVar, tStop: number): number =>
   typeof t === 'number' ? ramp(sys, t, tStop) : valueOf(sys, t);
 
 /** Unit-less GJ coefficients (paper Table 1) for method and x = alpha dt/m = dt/damp. */
-export const gjCoefficients = (method: number, x: number): { c1: number; c2: number; c3: number } => {
+export const gjCoefficients = (method: number, x: number, c2Given = 0): { c1: number; c2: number; c3: number } => {
   let c2: number;
   switch (method) {
+    case 0: c2 = 0; break;
+    case 7: c2 = c2Given; break;
+    case 8: c2 = Math.sqrt(x * x + 1.0) - x; break;
     case 1: c2 = (1 - x / 2) / (1 + x / 2); break;
     case 2: c2 = libm.exp(-x); break;
     case 3: c2 = 1 - x; break;
@@ -86,6 +92,8 @@ export class FixGJF extends Fix {
   private cached: number | null = null;
   private readonly vhalf: boolean;
   private readonly method: number;
+  /** method 7: the c2 given after the method number. */
+  private readonly c2Given: number = 0;
   /** Per-atom storage: old force (paper units), this step's noise, on-site velocity (vhalf only). */
   private fOld = new Float64Array(0);
   private beta = new Float64Array(0);
@@ -114,9 +122,18 @@ export class FixGJF extends Fix {
         k += 2;
       } else if (key === 'method') {
         method = Number(args[k + 1]);
-        if (!Number.isInteger(method) || method < 1 || method > 8) throw new StyleError(`fix gjf method must be 1-8, not '${args[k + 1]}'`);
-        // method 7 takes an extra scalar; both need splitting forms not implemented here
-        if (method === 7 || method === 8) throw new StyleError(`fix gjf method ${method} (GJ-${method === 7 ? 'VII' : 'VIII'}) is not implemented in this engine`);
+        if (method === 7) {
+          // native: "method 7 c2"
+          if (k + 2 >= args.length) throw new StyleError('Illegal fix gjf command for GJ-VII');
+          const c2 = Number(args[k + 2]);
+          if (!Number.isFinite(c2)) throw new StyleError(`Expected floating point parameter instead of '${args[k + 2]}' in input script or data file`);
+          if (c2 < 0 || c2 > 1) throw new StyleError('Choice of c2 in GJ-VII must be 0≤c2≤1');
+          this.c2Given = c2;
+          k += 3;
+          continue;
+        }
+        if (k + 1 >= args.length) throw new StyleError('Illegal fix gjf command');
+        if (!Number.isInteger(method) || method < 0 || method > 8) throw new StyleError('Invalid GJ method choice in gjf command');
         k += 2;
       } else {
         throw new StyleError(`unknown fix gjf keyword '${key}'`);
@@ -181,7 +198,13 @@ export class FixGJF extends Fix {
   resetDt(): void { this.resetCoef(); }
 
   private resetCoef(): void {
-    this.coef = gjCoefficients(this.method, this.sys.state.dt / this.damp);
+    if (this.method === 7) {
+      // native init and reset_dt: update->dt = (1.0 + gjfc2) / (1.0 - gjfc2) * log(gjfc2) * log(gjfc2) * 0.5 * t_period
+      const c2 = this.c2Given;
+      const dt = (1.0 + c2) / (1.0 - c2) * libm.log(c2) * libm.log(c2) * 0.5 * this.damp;
+      if (this.sys.state.dt !== dt) this.sys.state.dt = dt;
+    }
+    this.coef = gjCoefficients(this.method, this.sys.state.dt / this.damp, this.c2Given);
   }
 
   initialIntegrate(): void {

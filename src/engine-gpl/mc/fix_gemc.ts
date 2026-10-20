@@ -36,8 +36,11 @@
  * The engine recomputes the tail at each force-field init and atom change unless it is held (ForceField.tailHold), so
  * each box holds it while the fix runs and refreshes it where native reinits.
  *
- * Not supported (named StyleErrors): molecules (native refuses them too), triclinic boxes, rigid bodies, an exchange
- * from an empty box, and nevery below 1.
+ * A triclinic box: the volume change scales the lengths and keeps the tilt factors (the atoms move in lamda
+ * coordinates), and an inserted atom is a uniform point in lamda coordinates (domain->lamda2x), as native does.
+ *
+ * Not supported (named StyleErrors): molecules (native refuses them too), rigid bodies, an exchange from an empty box,
+ * and nevery below 1.
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
@@ -160,7 +163,6 @@ export class FixGEMC extends Fix {
     if (this.sys.fixes.some((f) => f.style.startsWith('rigid'))) {
       throw new StyleError('fix gemc with rigid bodies is not supported by the browser engine yet');
     }
-    if (s.box.tilt.some((t) => t !== 0)) throw new StyleError('fix gemc with a triclinic box is not supported by the browser engine yet');
     this.sys.compute('thermo_pe');
     this.boltz = s.units.boltz;
     this.mvv2e = s.units.mvv2e;
@@ -360,9 +362,13 @@ export class FixGEMC extends Fix {
   /** inside_nonperiodic: only the non-periodic dimensions are checked. */
   private insideNonperiodic(c: number[]): boolean {
     const b = this.sys.state.box;
+    // Domain::inside_nonperiodic: a triclinic box compares the lamda coordinates with [0, 1]
+    const p = b.triclinic ? (() => { const l = [0, 0, 0]; this.sys.geom.toLamda(c[0], c[1], c[2], l); return l; })() : c;
     for (let d = 0; d < 3; d++) {
       if (b.boundary[d][0] === 'p') continue;
-      if (c[d] < b.lo[d] || c[d] > b.hi[d]) return false;
+      const lo = b.triclinic ? 0 : b.lo[d], hi = b.triclinic ? 1 : b.hi[d];
+      // half-open, as native: x < lo or x >= hi is outside
+      if (p[d] < lo || p[d] >= hi) return false;
     }
     return true;
   }
@@ -449,11 +455,22 @@ export class FixGEMC extends Fix {
     {
       const b = rcv.sys.state.box;
       const coord = [0, 0, 0];
-      coord[0] = b.lo[0] + rcv.randomProc.uniform() * (b.hi[0] - b.lo[0]);
-      coord[1] = b.lo[1] + rcv.randomProc.uniform() * (b.hi[1] - b.lo[1]);
-      coord[2] = b.lo[2] + rcv.randomProc.uniform() * (b.hi[2] - b.lo[2]);
-      rcv.remapPoint(coord);
-      if (!rcv.inside(coord)) throw new StyleError('Fix gemc put atom outside box');
+      if (b.triclinic) {
+        // a uniform point in lamda coordinates (1.0 is folded to 0.0), then domain->lamda2x
+        const lamda = [rcv.randomProc.uniform(), rcv.randomProc.uniform(), rcv.randomProc.uniform()];
+        for (let d = 0; d < 3; d++) if (lamda[d] === 1.0) lamda[d] = 0.0;
+        const lx = b.hi[0] - b.lo[0], ly = b.hi[1] - b.lo[1], lz = b.hi[2] - b.lo[2];
+        const [xy, xz, yz] = b.tilt;
+        coord[0] = lx * lamda[0] + xy * lamda[1] + xz * lamda[2] + b.lo[0];
+        coord[1] = ly * lamda[1] + yz * lamda[2] + b.lo[1];
+        coord[2] = lz * lamda[2] + b.lo[2];
+      } else {
+        coord[0] = b.lo[0] + rcv.randomProc.uniform() * (b.hi[0] - b.lo[0]);
+        coord[1] = b.lo[1] + rcv.randomProc.uniform() * (b.hi[1] - b.lo[1]);
+        coord[2] = b.lo[2] + rcv.randomProc.uniform() * (b.hi[2] - b.lo[2]);
+        rcv.remapPoint(coord);
+        if (!rcv.inside(coord)) throw new StyleError('Fix gemc put atom outside box');
+      }
       appendAtoms(rcv.sys.state, { x: Float64Array.from(coord), type: 1, v: new Float64Array(3), mask: rcv.groupBit });
       const s = rcv.sys.state;
       const m = s.n - 1;

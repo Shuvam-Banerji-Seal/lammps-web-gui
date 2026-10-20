@@ -174,24 +174,34 @@ export const makeErfcTable = (N: number, g: number, cutsq: number, inner: number
     const x = g * r, ex = libm.exp(-x * x), ec = erfcPoly(x, ex);
     return which === 0 ? ec / r : (ec + EWALD_F * x * ex) / r;
   };
-  const interp = (rsq: number, tab: Float64Array, which: 0 | 1 | 2): number => {
+  // per node: its rsq (node), the inverse of its spacing (an exact power of two, so multiplying by it is the same as
+  // dividing by the spacing) and the difference to the next node of each table, computed once instead of per lookup
+  const node = new Float64Array(n), invsp = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    const e = eMin + Math.floor(k / perOctave), top = k % perOctave;
+    node[k] = 2 ** (e - 127) * (1 + top / perOctave);
+    invsp[k] = 1 / 2 ** (e - 127 - M);
+  }
+  const diffs = (tab: Float64Array): Float64Array => {
+    const d = new Float64Array(n);
+    for (let k = 0; k + 1 < n; k++) d[k] = tab[k + 1] - tab[k];
+    return d;
+  };
+  const dE = diffs(eTab), dF = diffs(fTab), dC = diffs(cTab);
+  const interp = (rsq: number, tab: Float64Array, dtab: Float64Array, which: 0 | 1 | 2): number => {
     if (rsq <= inner) return direct(rsq, which);
     f32[0] = rsq;
     const bits = u32[0];
-    const e = bits >>> 23;
-    const top = (bits & 0x7fffff) >>> shift;
-    const k = (e - eMin) * perOctave + top;
+    const k = ((bits >>> 23) - eMin) * perOctave + ((bits & 0x7fffff) >>> shift);
     if (k + 1 >= n) return direct(rsq, which);
-    const sp = 2 ** (e - 127 - M);
-    const s0 = 2 ** (e - 127) * (1 + top / perOctave);
-    const t = ((doubleRsq ? rsq : f32[0]) - s0) / sp;
-    return tab[k] + (tab[k + 1] - tab[k]) * t;
+    const t = ((doubleRsq ? rsq : f32[0]) - node[k]) * invsp[k];
+    return tab[k] + dtab[k] * t;
   };
   return {
     inner,
-    energy: (rsq) => interp(rsq, eTab, 0),
-    force: (rsq) => interp(rsq, fTab, 1),
-    coul: (rsq) => interp(rsq, cTab, 2),
+    energy: (rsq) => interp(rsq, eTab, dE, 0),
+    force: (rsq) => interp(rsq, fTab, dF, 1),
+    coul: (rsq) => interp(rsq, cTab, dC, 2),
   };
 };
 

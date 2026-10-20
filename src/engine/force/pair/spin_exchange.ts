@@ -37,10 +37,9 @@ import { libm } from '../../libm';
  * \frac{\partial {J} \left(r_{ij} \right)}{ \partial r_{ij}} \left(
  * \vec{s}_{i}\cdot \vec{s}_{j} \right) \vec{e}_{ij}" with "\hbar the Planck
  * constant (in metal units)". Measured with native LAMMPS (black box): the
- * precession vector of atom i is (J/hbar) sum_j s_j with hbar = 6.5821191e-4 eV ps
- * (fitted to the fmx fmy fmz of compute property/atom for two atoms; the
- * magnitude equals J(r) / hbar for unit spins, independent of the spin
- * magnitude g).
+ * precession vector of atom i is (J/hbar) sum_j s_j (fitted to the fmx fmy fmz
+ * of compute property/atom for two atoms; the magnitude equals J(r) / hbar for
+ * unit spins, independent of the spin magnitude g), with hbar = SPIN_HBAR below.
  *
  * Offset: "offset yes" gives "H_{ex} = -\sum_{i,j}^N J_{ij} (r_{ij}) \,[
  * \vec{s}_i \cdot \vec{s}_j-1 ]" and "this offset only affects the calculation
@@ -57,8 +56,12 @@ import { libm } from '../../libm';
  * can overlay.
  */
 
-/** Planck constant in metal units (eV ps), measured as described above. */
-export const SPIN_HBAR = 6.5821191e-4;
+/**
+ * hbar in metal units (eV ps). As native LAMMPS does (src/SPIN/pair_spin.cpp and fix_precession_spin.cpp at b332f28:
+ * hbar = force->hplanck/MY_2PI, with the metal hplanck 4.135667403e-3 eV ps of src/update.cpp): 6.582119101714715e-4.
+ * The rounded 6.5821191e-4 used before was 2.6e-10 too small; min_style spin/lbfgs in a GNEB amplified that to 1e-4.
+ */
+export const SPIN_HBAR = 4.135667403e-3 / (2 * Math.PI);
 
 /** J(r) of spin/exchange and its derivative with respect to r (pair_spin_exchange.html). */
 export const exchangeJ = (a: number, b: number, d: number, r: number): { j: number; dj: number } => {

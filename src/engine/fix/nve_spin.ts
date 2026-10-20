@@ -25,7 +25,7 @@ import { FixPrecessionSpin } from './precession_spin';
  * Measured with native LAMMPS (black box, two atoms, lattice frozen, dt 0.001, one step):
  * the spins equal two forward and backward sweeps of dt/4 each (four sweeps in all, the
  * order fwd, bwd, fwd, bwd) to about 1e-11, with the precession vector from
- * SPIN_HBAR = 6.5821191e-4 eV ps. After the step, compute property/atom fmx fmy fmz
+ * SPIN_HBAR (hplanck / 2 pi in metal units). After the step, compute property/atom fmx fmy fmz
  * shows the precession vector of the new spins.
  *
  * Frozen lattice: all four sweeps run in initial_integrate (native order; see initialIntegrate), so the

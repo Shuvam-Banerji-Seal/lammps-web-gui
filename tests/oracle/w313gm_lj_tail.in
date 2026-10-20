@@ -1,0 +1,30 @@
+# oracle: w313gm_lj_tail — w246gm_lj_gibbs (T 1.2, 3 translations, 1 exchange, 3 volume moves per cycle) with pair_modify tail yes: the tail correction is the pair style's from its last init or reinit (an insertion and an accepted deletion leave it at the old counts, a rejected exchange recomputes it), and pressure is printed for the tail pressure
+# oracle-partitions: 2
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.9e-14, atoms 1.3e-14. The exchanges accepted at steps 36 and 44 leave the tail correction at the old atom count in the printed pe and press (with a tail recomputed after every change, step 44 differs from native by 4e-2).
+variable temp index 2.0
+variable ntranslate index 3
+variable nexchange index 1
+variable nvolume index 3
+variable displace index 0.5
+variable max_dlogvolratio index 0.5
+variable nsteps index 60
+units lj
+atom_style atomic
+variable rho world 0.05 0.6
+variable ncell world 1 2
+lattice fcc ${rho}
+region box block 0 ${ncell} 0 ${ncell} 0 ${ncell}
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+pair_modify tail yes
+neighbor 0.3 bin
+neigh_modify every 1 delay 5 check yes
+fix 2 all gemc 1 ${ntranslate} ${nexchange} ${nvolume} ${temp} ${displace} ${max_dlogvolratio} 29494
+thermo 1
+thermo_style custom step pe press vol atoms
+thermo_modify format float %.15g
+run ${nsteps}

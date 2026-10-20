@@ -30,9 +30,14 @@
  * random_universe; each box is rescaled toward its lower corner, and the move is accepted with Metropolis on the total
  * energy change of both boxes (Frenkel & Smit, 3rd Ed., Eq. (6.6.10)).
  *
- * Not supported (named StyleErrors): molecules (native refuses them too), triclinic boxes, rigid bodies, pair_modify
- * tail yes (native reinitialises the tail correction on each rejected exchange), an exchange from an empty box, and
- * nevery below 1.
+ * With pair_modify tail yes, the tail correction is the one the pair style computed at its last init or reinit, as in
+ * native: an insertion and an accepted deletion leave it at the old atom counts, and a rejected exchange recomputes it
+ * from the counts the box returns to (attempt_atomic_exchange_full: if (force->pair->tail_flag) force->pair->reinit()).
+ * The engine recomputes the tail at each force-field init and atom change unless it is held (ForceField.tailHold), so
+ * each box holds it while the fix runs and refreshes it where native reinits.
+ *
+ * Not supported (named StyleErrors): molecules (native refuses them too), triclinic boxes, rigid bodies, an exchange
+ * from an empty box, and nevery below 1.
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
@@ -156,9 +161,6 @@ export class FixGEMC extends Fix {
       throw new StyleError('fix gemc with rigid bodies is not supported by the browser engine yet');
     }
     if (s.box.tilt.some((t) => t !== 0)) throw new StyleError('fix gemc with a triclinic box is not supported by the browser engine yet');
-    if (this.sys.ff.pair?.tail) {
-      throw new StyleError('fix gemc with pair_modify tail yes is not supported by the browser engine yet (native reinitialises the tail correction on each rejected exchange)');
-    }
     this.sys.compute('thermo_pe');
     this.boltz = s.units.boltz;
     this.mvv2e = s.units.mvv2e;
@@ -236,6 +238,8 @@ export class FixGEMC extends Fix {
 
     const fs = this.peers();
     for (const f of fs) {
+      // the tail correction stays at the pair style's last init or reinit (native) while the moves change the atoms
+      f.holdTail();
       f.updateGasAtoms();
       f.energyStored = f.energyFull();
     }
@@ -264,6 +268,21 @@ export class FixGEMC extends Fix {
   private boxVolume(): number {
     const b = this.sys.state.box;
     return (b.hi[0] - b.lo[0]) * (b.hi[1] - b.lo[1]) * (b.hi[2] - b.lo[2]);
+  }
+
+  /** Holds the tail correction at its current value (the pair style's last init or reinit), if it is not held yet. */
+  holdTail(): void {
+    const ff = this.sys.ff;
+    if (ff.pair?.tail && !ff.tailHold) ff.tailHold = { etail: ff.etailV, ptail: ff.ptailV };
+  }
+
+  /** force->pair->reinit() when the pair has a tail correction: recomputed from the current atom counts, then held. */
+  reinitTail(): void {
+    const ff = this.sys.ff;
+    if (!ff.pair?.tail) return;
+    ff.tailHold = null;
+    ff.updateTail(this.sys.state);
+    ff.tailHold = { etail: ff.etailV, ptail: ff.ptailV };
   }
 
   /** compute_scalar of thermo_pe after energy_full (pbc, neighbour build, forces) on this box. */
@@ -441,6 +460,7 @@ export class FixGEMC extends Fix {
       s.v[3 * m] = rcv.randomProc.gaussian() * rcv.sigma;
       s.v[3 * m + 1] = rcv.randomProc.gaussian() * rcv.sigma;
       s.v[3 * m + 2] = rcv.randomProc.gaussian() * rcv.sigma;
+      // the insertion does not reinit the pair style: the tail correction keeps the old atom counts (held)
       rcv.sys.atomsChanged();
     }
 
@@ -471,21 +491,25 @@ export class FixGEMC extends Fix {
           f.nexchangeSuccesses += 1.0;
           const flags = new Uint8Array(f.sys.state.n);
           flags[iatom] = 1;
-          // avec->copy(nlocal-1, iatom) and nlocal--: the last atom takes the deleted atom's slot
+          // avec->copy(nlocal-1, iatom) and nlocal--: the last atom takes the deleted atom's slot (no pair reinit, so the
+          // tail correction keeps the old atom counts: held)
           f.sys.deleteAtoms(flags);
           f.energyStored = eAfter[w];
         } else {
           f.sys.state.mask[iatom] = tmpMask;
           if (charged) f.sys.state.q[iatom] = qTmp;
+          // force->pair->reinit(): the tail correction of the current atom counts
+          f.reinitTail();
         }
       } else if (success[w]) {
         f.nexchangeSuccesses += 1.0;
         f.energyStored = eAfter[w];
       } else {
-        // the appended atom is the last one: remove it again (natoms--, nlocal--)
+        // the appended atom is the last one: remove it again (natoms--, nlocal--), then force->pair->reinit()
         const flags = new Uint8Array(f.sys.state.n);
         flags[f.sys.state.n - 1] = 1;
         f.sys.deleteAtoms(flags);
+        f.reinitTail();
         f.energyStored = eBefore[w];
       }
     });

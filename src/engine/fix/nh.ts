@@ -93,8 +93,8 @@ import { gplHook } from '../gplHooks';
  *   - tilts: the xy-only barostat is exact (xy += ly * omega_xy); with the
  *     diagonal and tilt couplings together, the box is within ~3e-8 of the
  *     exact flow at dt = 0.02 (not reproduced; see the w7nh_npt_tri notes).
- * Not implemented (StyleError): box flips (flip yes stops with an error when a tilt passes 0.6 of the box
- * length); update dipole is for the /sphere variants (nh_sphere.ts).
+ * Box flips: with flip yes, a tilt past 0.6 of its box length is flipped on a neighbor rebuild step (preExchange,
+ * System.flipBox). update dipole is for the /sphere variants (nh_sphere.ts).
  */
 
 
@@ -206,6 +206,7 @@ export class FixNH extends Fix {
     this.scalarFlag = true;
     this.extscalar = 1;
     this.dilateBit = sys.groupBit('all');
+    let flipflag = true;
     for (let k = 0; k < args.length;) {
       const key = args[k];
       const n = (j: number, what: string) => {
@@ -273,6 +274,7 @@ export class FixNH extends Fix {
         }
         case 'flip':
           if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError('flip must be yes or no');
+          flipflag = args[k + 1] === 'yes';
           k += 2;
           break;
         case 'fixedpoint': this.fixedpoint = [n(1, 'x'), n(2, 'y'), n(3, 'z')]; k += 4; break;
@@ -333,7 +335,41 @@ export class FixNH extends Fix {
       this.pressId = `${id}_press`;
       this.pressCompute = ownCompute(sys, this.pressId, 'all', 'pressure', [this.tempId]);
       this.virialGlobal = false;
+      // As native LAMMPS does (src/fix_nh.cpp constructor at b332f28): "pre_exchange only required if flips can occur
+      // due to shape changes", a tilt barostat or a tilted box with flip yes
+      const g = sys.geom;
+      // the hook is set only then, so that a fix without flips keeps the runs that take no pre_exchange (run/accel.ts);
+      // a subclass with its own pre_exchange (fix nvt/npt/uef) keeps it, as native's overrides FixNH's
+      if (flipflag && typeof this.preExchange !== 'function' && (this.pFlag[3] || this.pFlag[4] || this.pFlag[5] || g.yz !== 0 || g.xz !== 0 || g.xy !== 0)) {
+        this.preExchange = () => this.flipIfNeeded();
+      }
     }
+  }
+
+  /**
+   * As native LAMMPS does (src/fix_nh.cpp pre_exchange at b332f28), on the steps the neighbor lists are rebuilt: a
+   * tilt past (0.5 + 0.1) of its box length flips the box ("flip is only triggered when tilt exceeds 0.5 by
+   * DELTAFLIP"): yz first, by one y length (which moves xz by xy), then xz and xy by one x length, along the periodic
+   * dimensions only. fix_nh.html: "the tilt factors xy, xz, yz ... the box is flipped to an equivalent shape".
+   */
+  private flipIfNeeded(): void {
+    const s = this.sys.state;
+    const g = this.sys.geom;
+    const xprd = g.lx, yprd = g.ly;
+    const xtiltmax = (0.5 + 0.1) * xprd, ytiltmax = (0.5 + 0.1) * yprd;
+    let xy = g.xy, xz = g.xz, yz = g.yz;
+    let m = 0, n = 0, p = 0;
+    if (s.box.periodic[1]) {
+      if (yz < -ytiltmax) { yz += yprd; xz += xy; p = 1; }
+      else if (yz >= ytiltmax) { yz -= yprd; xz -= xy; p = -1; }
+    }
+    if (s.box.periodic[0]) {
+      if (xz < -xtiltmax) { xz += xprd; n = 1; }
+      else if (xz >= xtiltmax) { xz -= xprd; n = -1; }
+      if (xy < -xtiltmax) { xy += xprd; m = 1; }
+      else if (xy >= xtiltmax) { xy -= xprd; m = -1; }
+    }
+    if (m || n || p) this.sys.flipBox([xy, xz, yz], m, n, p, this);
   }
 
   private setP(d: Dim, ps: number, pe: number, pd: number): void {
@@ -1151,12 +1187,12 @@ export class FixNH extends Fix {
     b.tilt[0] = h[5];
     b.tilt[1] = h[4];
     b.tilt[2] = h[3];
-    const nl = [b.hi[0] - b.lo[0], b.hi[1] - b.lo[1], b.hi[2] - b.lo[2]];
-    for (let t = 0; t < 3; t++) {
-      const len = t === 0 ? nl[0] : t === 1 ? nl[0] : nl[1];
-      if (Math.abs(b.tilt[t]) > 0.6 * len && b.triclinic) {
-        throw new StyleError(`fix ${this.style}: a tilt factor exceeded 0.6 of the box length; box flips are not supported by the browser engine`);
-      }
+    // As native LAMMPS does (src/fix_nh.cpp remap at b332f28): "tilt factor to cell length ratio can not exceed TILTMAX
+    // in one step" (TILTMAX 1.5, against the lengths before this remap); larger tilts are flipped in preExchange
+    const TILTMAX = 1.5;
+    if (h[3] < -TILTMAX * h[1] || h[3] > TILTMAX * h[1] || h[4] < -TILTMAX * h[0] || h[4] > TILTMAX * h[0] ||
+      h[5] < -TILTMAX * h[0] || h[5] > TILTMAX * h[0]) {
+      throw new StyleError(`Fix ${this.style} has tilted box too far in one step - periodic cell is too far from equilibrium state`);
     }
     b.minLo = [...b.lo]; b.minHi = [...b.hi];
     g.update();

@@ -265,15 +265,37 @@ describe('fix deform tilt styles', () => {
     expect(errText(zero.error)).toContain('trate');
   });
 
-  it('flip yes reports a tilt factor beyond half the parallel box length', async () => {
-    const { error } = await runScript(`
+  it('flip yes flips the box when the tilt passes half the parallel box length (oracle w372flip_deform_xy checks the numbers)', async () => {
+    const { error, thermo: rows } = await runScript(`
       ${box(true)}
       timestep 0.1
       fix 1 all nve
       fix 2 all deform 1 xy erate 2.0 units box
+      thermo_style custom step lx xy
+      thermo 1
       run 20
     `);
-    expect(errText(error)).toContain('flip');
+    expect(error).toBeNull();
+    // the tilt stays within half of lx, and it jumped by one lx at a flip
+    let jumped = false;
+    for (let r = 0; r < rows.length; r++) {
+      expect(Math.abs(rows[r].xy as number)).toBeLessThanOrEqual(0.5 * (rows[r].lx as number) + 2.0 * 0.1 * 10);
+      if (r > 0 && (rows[r].xy as number) < (rows[r - 1].xy as number)) jumped = true;
+    }
+    expect(jumped).toBe(true);
+  });
+});
+
+describe('fix deform flips of yz with a changing xy', () => {
+  it('stops a yz that will flip while xy changes, with native text, unless flip is no', async () => {
+    const base = `
+      ${box(true)}
+      fix 1 all nve
+    `;
+    const bad = await runScript(`${base}fix 2 all deform 1 xy erate 0.1 yz erate 2.0 units box\nrun 200\n`);
+    expect(errText(bad.error)).toContain('Fix deform is changing yz too much with xy. This can be accounted for by setting xz style to erate/rescale.');
+    const ok = await runScript(`${base}fix 2 all deform 1 xy erate 0.1 yz erate 2.0 units box flip no\nrun 2\n`);
+    expect(ok.error).toBeNull();
   });
 });
 

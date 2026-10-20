@@ -156,6 +156,11 @@ export class FixDeform extends Fix {
   private accShift = new Float64Array(0);
   private accImg = new Int32Array(0);
   private lam: number[] = [0, 0, 0];
+  /**
+   * A box flip decided by the last box update (native flip, tilt_flip and flipxy/flipxz/flipyz): the step whose
+   * pre_exchange performs it, the flipped tilts (xy, xz, yz) and the box vectors added (m for xy, n for xz, p for yz).
+   */
+  private flipPending: { step: number; tilt: number[]; m: number; n: number; p: number } | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -331,8 +336,44 @@ export class FixDeform extends Fix {
         throw new StyleError(`fix deform: the initial tilt factor must be non-zero to use the trate option (${sp.name} is 0)`);
       }
     }
+    this.checkYzFlips();
     this.captured = true;
     this.deform(false); // rates at elapsed = 0, for compute temp/deform before the first end_of_step
+  }
+
+  /**
+   * As native LAMMPS does (src/fix_deform.cpp init at b332f28): "if yz [3] changes and will cause box flip, then xy [5]
+   * cannot be changing unless xz [4] style is ERATERS ... b/c the flips would induce continuous changes in xz". With
+   * flip yes, a changing yz whose final value (its range for wiggle) passes half the y length at the start or at the
+   * end of the run stops the run when xy changes too.
+   */
+  private checkYzFlips(): void {
+    const yz = this.specs.find((sp) => sp.tilt && sp.dim === 2);
+    const xy = this.specs.find((sp) => sp.tilt && sp.dim === 0);
+    const xz = this.specs.find((sp) => sp.tilt && sp.dim === 1);
+    if (!yz || !xy || xz?.rescale || !this.flip) return;
+    if (yz.style === 'variable') throw new StyleError('Fix deform cannot use yz variable with box flips and a defined xy unless xz is erate/rescale');
+    if (yz.rescale) throw new StyleError('Fix deform cannot use yz erate/rescale with box flips and a defined xy unless xz is erate/rescale');
+    const sys = this.sys;
+    const span = (sys.run.endStep - sys.run.beginStep) * sys.state.dt;
+    const T0 = this.tilt0[2];
+    let lo: number, hi: number;
+    if (yz.style === 'wiggle') { lo = T0 - yz.amp!; hi = T0 + yz.amp!; }
+    else {
+      const stop = yz.style === 'final' ? yz.lo! : yz.style === 'delta' ? T0 + yz.dlo! : yz.style === 'vel' ? T0 + yz.v! * span
+        : yz.style === 'erate' ? T0 + this.perp0[2] * yz.rate! * span : yz.style === 'trate' ? T0 * libm.exp(yz.rate! * span) : T0;
+      lo = hi = stop;
+    }
+    const L0 = this.len0[1];
+    let flag = lo / L0 < -0.5 || hi / L0 > 0.5;
+    const y = this.specs.find((sp) => !sp.tilt && sp.dim === 1);
+    if (y) {
+      const L1 = y.style === 'final' ? y.hi! - y.lo! : y.style === 'delta' ? this.hi0[1] + y.dhi! - (this.lo0[1] + y.dlo!)
+        : y.style === 'scale' ? y.factor! * L0 : y.style === 'vel' ? L0 + y.v! * span : y.style === 'erate' ? L0 * (1 + y.rate! * span)
+          : y.style === 'trate' ? L0 * libm.exp(y.rate! * span) : L0;
+      if (lo / L1 < -0.5 || hi / L1 > 0.5) flag = true;
+    }
+    if (flag) throw new StyleError('Fix deform is changing yz too much with xy. This can be accounted for by setting xz style to erate/rescale.');
   }
 
   setup(): void {
@@ -503,21 +544,9 @@ export class FixDeform extends Fix {
       }
       tilt[t] = T;
       tiltD[t] = TD;
-      // flip = yes enforces |tilt| <= half the parallel box length by flipping
-      // the box; the engine does not flip and reports the situation instead
-      if (this.flip) {
-        const p = t === 2 ? 1 : 0; // parallel dim: x for xy/xz, y for yz
-        // "The one exception to this rule is if the first dimension in the
-        // tilt factor (x for xy) is non-periodic.  In that case, the limits
-        // on the tilt factor are not enforced"
-        if (s.box.periodic[p]) {
-          const bound = 0.5 * (p === 0 ? len[0] : len[1]);
-          if (Math.abs(T) > bound) {
-            throw new StyleError(`fix deform: the ${sp.name} tilt factor reached ${T}, beyond half the parallel box length (${bound}); box flips (flip yes) are not supported by the browser engine (use flip no to tilt past the bound without flipping)`);
-          }
-        }
-      }
     }
+
+    if (apply && s.box.triclinic) this.tiltTargets(lo, hi, tilt);
 
     if (!apply) {
       this.lenDot = lenD;
@@ -559,6 +588,69 @@ export class FixDeform extends Fix {
       rate: [this.lenDot[0], this.lenDot[1], this.lenDot[2], this.tiltDot[2], this.tiltDot[1], this.tiltDot[0]],
       ratelo: [this.loDot[0], this.loDot[1], this.loDot[2]],
     };
+  }
+
+  /**
+   * As native LAMMPS does (src/fix_deform.cpp update_domain and update_box at b332f28), for a triclinic box: each tilt
+   * target (xy, then yz, then xz) is moved by whole box lengths (x for xy and xz, y for yz; the target lengths of this
+   * update) to the value closest to the current tilt, which after a box flip differs from the style's value by those
+   * lengths (moving yz by one y length moves xz by xy, the B vector's x component). The tilts the fix does not set
+   * keep their current values in the box. With flip yes, a target beyond half its box length decides a flip (yz first,
+   * as it changes xz): it is made on the next step (on this step for N = 0) in pre_exchange, before the neighbor
+   * lists are rebuilt, and not along a non-periodic x or y. fix_deform.html: "If the *flip* value is set to *yes*, the
+   * bound is enforced by flipping the box when it is exceeded."
+   */
+  private tiltTargets(lo: number[], hi: number[], tilt: number[]): void {
+    const s = this.sys.state;
+    const g = this.sys.geom;
+    const h = [g.lx, g.ly, g.lz, g.yz, g.xz, g.xy];
+    const target = [tilt[0], tilt[1], tilt[2]];
+    // Voigt index 5 (xy), 3 (yz), 4 (xz) to the engine's tilt index (xy 0, xz 1, yz 2)
+    for (const i of [5, 3, 4]) {
+      const ti = i === 5 ? 0 : i === 4 ? 1 : 2;
+      const idenom = i === 3 ? 1 : 0;
+      const denom = hi[idenom] - lo[idenom];
+      const denomInv = 1.0 / denom;
+      const current = h[i] / h[idenom];
+      while (target[ti] * denomInv - current > 0.0) {
+        target[ti] -= denom;
+        if (i === 3) target[1] -= target[0];
+      }
+      while (target[ti] * denomInv - current < 0.0) {
+        target[ti] += denom;
+        if (i === 3) target[1] += target[0];
+      }
+      if (Math.abs(target[ti] * denomInv - 1.0 - current) < Math.abs(target[ti] * denomInv - current)) {
+        target[ti] -= denom;
+        if (i === 3) target[1] -= target[0];
+      }
+    }
+    if (this.flip) {
+      const xprd = hi[0] - lo[0], yprd = hi[1] - lo[1];
+      const xprdinv = 1.0 / xprd, yprdinv = 1.0 / yprd;
+      if (target[2] * yprdinv < -0.5 || target[2] * yprdinv > 0.5 || target[1] * xprdinv < -0.5 ||
+        target[1] * xprdinv > 0.5 || target[0] * xprdinv < -0.5 || target[0] * xprdinv > 0.5) {
+        const fl = [target[0], target[1], target[2]];
+        let m = 0, n = 0, p = 0;
+        if (s.box.periodic[1]) {
+          if (fl[2] * yprdinv < -0.5) { fl[2] += yprd; fl[1] += fl[0]; p = 1; }
+          else if (fl[2] * yprdinv > 0.5) { fl[2] -= yprd; fl[1] -= fl[0]; p = -1; }
+        }
+        if (s.box.periodic[0]) {
+          if (fl[1] * xprdinv < -0.5) { fl[1] += xprd; n = 1; }
+          if (fl[1] * xprdinv > 0.5) { fl[1] -= xprd; n = -1; }
+          if (fl[0] * xprdinv < -0.5) { fl[0] += xprd; m = 1; }
+          if (fl[0] * xprdinv > 0.5) { fl[0] -= xprd; m = -1; }
+        }
+        if (m || n || p) this.flipPending = { step: s.step + (this.nevery > 0 ? 1 : 0), tilt: fl, m, n, p };
+      }
+    }
+    for (const sp of this.specs) if (sp.tilt) tilt[sp.dim] = target[sp.dim];
+  }
+
+  /** The neighbor lists are rebuilt on the step of a pending box flip (native next_reneighbor). */
+  reneighborDue(step: number): boolean {
+    return this.flipPending !== null && this.flipPending.step === step;
   }
 
   /**
@@ -624,8 +716,21 @@ export class FixDeform extends Fix {
    * the box they used), which restores exactly native's state.
    */
   preExchange(): void {
-    if (this.remapMode !== 'v') return;
     const s = this.sys.state;
+    const fp = this.flipPending;
+    if (fp && fp.step === s.step) {
+      // As native LAMMPS does (src/fix_deform.cpp pre_exchange at b332f28): the tilts this fix sets take their
+      // flipped values ("if (dimflag[3]) domain->yz = ... tilt_flip"), then the image flags and the atoms follow
+      this.flipPending = null;
+      const tilt = [s.box.tilt[0], s.box.tilt[1], s.box.tilt[2]];
+      for (const sp of this.specs) if (sp.tilt) tilt[sp.dim] = fp.tilt[sp.dim];
+      this.sys.flipBox(tilt, fp.m, fp.n, fp.p, this);
+      // the flip maps every atom into the new box without a velocity change (Domain::remap), as native does, so
+      // these wraps are not the engine's own and are not undone later
+      this.imgPre = null;
+      return;
+    }
+    if (this.remapMode !== 'v') return;
     this.imgPre = Int32Array.from(s.image.subarray(0, 3 * s.n));
   }
 
@@ -674,8 +779,10 @@ export class FixDeform extends Fix {
       if (nb.check && !nb.movedTooFar(s, g)) return;
     }
     // remap step: undo the engine's earlier no-kick wraps of the group, then
-    // wrap whoever is outside the box now and add the boundary velocity deltas
+    // wrap whoever is outside the box now and add the boundary velocity deltas. On the step of a box flip native's
+    // pre_exchange maps every atom into the flipped box before domain->pbc(), so pbc kicks no one: only the undo runs.
     this.ensureRemapArrays(s.n);
+    const flipNow = this.flipPending !== null && this.flipPending.step === step;
     const v = s.v;
     const dlx = this.lenDot[0], dly = this.lenDot[1], dlz = this.lenDot[2];
     const dxy = this.tiltDot[0], dxz = this.tiltDot[1], dyz = this.tiltDot[2];
@@ -691,6 +798,7 @@ export class FixDeform extends Fix {
         this.accShift[3 * i] = 0; this.accShift[3 * i + 1] = 0; this.accShift[3 * i + 2] = 0;
         this.accImg[3 * i] = 0; this.accImg[3 * i + 1] = 0; this.accImg[3 * i + 2] = 0;
       }
+      if (flipNow) continue;
       const ix = s.image[3 * i], iy = s.image[3 * i + 1], iz = s.image[3 * i + 2];
       g.remap(s.x, s.image, i);
       const kx = s.image[3 * i] - ix, ky = s.image[3 * i + 1] - iy, kz = s.image[3 * i + 2] - iz;

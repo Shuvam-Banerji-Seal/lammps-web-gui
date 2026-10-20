@@ -1,0 +1,20 @@
+# oracle: fix npt with an xy shear target on a liquid: the barostat drives the tilt past 0.6 of lx and native's pre_exchange flips the box on a neighbor rebuild step (xy -= lx, image flags follow), then the tilt keeps growing
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8
+region          box prism 0 3 0 3 0 3 0.0 0.0 0.0
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.5 8721 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.004
+fix             1 all npt temp 1.5 1.5 0.5 x 2.0 2.0 1.0 y 2.0 2.0 1.0 z 2.0 2.0 1.0 xy -40.0 -40.0 0.4
+thermo_style    custom step temp pe press pxy lx ly lz xy vol f_1
+thermo_modify   format float %.15g
+thermo          10
+run             300

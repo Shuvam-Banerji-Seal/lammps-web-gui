@@ -68,9 +68,14 @@ describe('neb/spin refusals', () => {
     expect(error?.message).toMatch(/requires atom\/spin style/);
   });
 
-  it('runs with min_style spin only', async () => {
-    expect((await run('neb/spin 0.0 0.0 2 2 1 final chain.final\n', 3, setup({ minStyle: 'spin/cg' }))).error?.message).toMatch(/min_style spin\/cg is not supported by the browser engine yet/);
-    expect((await run('neb/spin 0.0 0.0 2 2 1 final chain.final\n', 3, setup({ minStyle: 'cg' }))).error?.message).toMatch(/requires a spin minimizer/);
+  it('runs with min_style spin and spin/cg, refuses spin/lbfgs by name and the others with native text', async () => {
+    expect((await run('neb/spin 0.0 0.0 2 2 1 final chain.final\n', 3, setup({ minStyle: 'spin/lbfgs' }))).error?.message).toMatch(/min_style spin\/lbfgs is not supported by the browser engine yet/);
+    for (const minStyle of ['spin', 'spin/cg']) {
+      expect((await run('neb/spin 0.0 0.0 2 2 1 final chain.final\n', 3, setup({ minStyle }))).error, minStyle).toBeNull();
+    }
+    // As native LAMMPS does (src/SPIN/neb_spin.cpp at b332f28): a line-search minimizer, then any non-spin minimizer
+    expect((await run('neb/spin 0.0 0.0 2 2 1 final chain.final\n', 3, setup({ minStyle: 'cg' }))).error?.message).toMatch(/NEBSpin requires damped dynamics minimizer/);
+    expect((await run('neb/spin 0.0 0.0 2 2 1 final chain.final\n', 3, setup({ minStyle: 'fire' }))).error?.message).toMatch(/NEBSpin requires a spin minimizer/);
   });
 
   it('read_data refuses an atom on the upper face of a fixed dimension (native err0016)', async () => {

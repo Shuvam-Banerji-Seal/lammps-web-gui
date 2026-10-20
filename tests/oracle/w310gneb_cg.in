@@ -1,0 +1,26 @@
+# oracle: w310gneb_cg — w194gneb_chain with min_style spin/cg: the multireplica branch of MinSpinCG (the end replicas keep their spins, the Fletcher-Reeves sums run over all replicas, the timestep follows the largest torque of all replicas)
+# oracle-partitions: 4
+# oracle-inputs: w194gneb_chain.data w194gneb_chain.final
+# oracle-compare: rel=1e-8 abs=1e-10 printed=8
+# Measured with native LAMMPS: the 14 table rows agree at the printed precision (8 significant digits); unrounded, the largest difference is 3.2e-8 (RDT of the last row), the printed digits themselves.
+units metal
+dimension 3
+boundary p p p
+atom_style spin
+atom_modify map array
+read_data w194gneb_chain.data
+mass 1 55.845
+pair_style spin/exchange 3.0
+pair_coeff * * exchange 3.0 0.02726 0.2171 1.841
+neighbor 0.1 bin
+neigh_modify every 10 check yes delay 20
+fix 1 all precession/spin zeeman 0.1 0.0 0.0 1.0 anisotropy 0.0001 1.0 0.0 0.0
+fix_modify 1 energy yes
+fix 3 all neb/spin 1.0
+timestep 0.0001
+thermo 10
+thermo_style custom step pe
+thermo_modify format float %.15g
+min_style spin/cg
+min_modify line spin_none discrete_factor 10.0
+neb/spin 0.0 0.0 60 60 10 final w194gneb_chain.final

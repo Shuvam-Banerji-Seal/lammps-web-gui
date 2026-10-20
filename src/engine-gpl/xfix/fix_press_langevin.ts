@@ -13,6 +13,7 @@
  * The restart state (write_restart/restart) is not written by the browser engine.
  */
 import { Fix } from '../../engine/fix/fix';
+import { isDeformFix, type FixDeform } from '../../engine/fix/deform';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
@@ -229,10 +230,11 @@ export class FixPressLangevin extends Fix {
     }
     // ensure no conflict with fix deform (the same component of the stress tensor)
     for (const f of sys.fixes) {
-      if (f.style !== 'deform') continue;
-      const specs = (f as unknown as { specs?: { dim: number; tilt: boolean }[] }).specs ?? [];
-      for (const sp of specs) {
-        if (!sp.tilt && sp.dim < 3 && this.pFlag[sp.dim]) {
+      if (!isDeformFix(f)) continue;
+      const df = f as FixDeform;
+      // p_flag and dimflag in Voigt order: x, y, z, then yz, xz, xy (the deform fix's tilts 2, 1, 0)
+      for (let d = 0; d < 6; d++) {
+        if (this.pFlag[d] && (d < 3 ? df.controlsLength(d) : df.controlsTilt(5 - d))) {
           throw new StyleError('Cannot use fix press/langevin and fix deform on same component of stress tensor');
         }
       }

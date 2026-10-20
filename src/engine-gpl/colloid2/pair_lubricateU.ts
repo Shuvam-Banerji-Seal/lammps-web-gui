@@ -318,7 +318,7 @@ export class PairLubricateU extends Pair {
     }
 
     // fix deform must exist for the volume fraction corrections (no remap check in this style)
-    this.flagdeform = ctx.fixOf?.('deform') ? 1 : 0;
+    this.flagdeform = (ctx.fixOf?.('deform') ?? ctx.fixOf?.('deform/pressure')) ? 1 : 0;
     const walls = findWallFixes(ctx);
     this.flagwall = 0;
     this.wallFix = null;

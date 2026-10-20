@@ -1,0 +1,21 @@
+# oracle: fix deform x erate 0.05 y volume z volume on a 4 x 3 x 5 fcc box: the two volume dimensions keep their start length ratio (native two-from-one), and their box rates (compute temp/deform) are the change of one update over one step
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS: engine vs native thermo 2.9e-13, atoms 3.2e-11. Before, the engine gave both volume dimensions the same length (the cube root rule) and an analytic rate.
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 3 0 5
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.005
+fix             1 all nve
+fix             2 all deform 2 x erate 0.05 y volume z volume
+compute         tdef all temp/deform
+thermo_style    custom step temp c_tdef press lx ly lz vol
+thermo_modify   format float %.15g
+thermo          20
+run             300

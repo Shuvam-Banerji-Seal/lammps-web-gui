@@ -442,4 +442,34 @@ describe('fix deform argument errors', () => {
     const { error } = await runScript(`${box()}\nfix 2 all deform 1 x erate 0.1 x vel 1.0 units box\n`);
     expect(errText(error)).toContain('twice');
   });
+
+  it('links the volume dimensions as native, and allows one fix deform', async () => {
+    // fix_deform.cpp constructor: a volume dimension needs a deformed other dimension; init(): one deform fix only
+    const invalid = await runScript(`${box()}\nfix 2 all deform 1 x volume y volume units box\n`);
+    expect(errText(invalid.error)).toContain('Fix deform volume setting is invalid');
+    const two = await runScript(`${box()}\ncreate_atoms 1 single 1 1 1\nfix 1 all nve\nfix 2 all deform 1 x erate 0.1\nfix 3 all deform/pressure 1 y pressure 0.0 0.1\nrun 1\n`);
+    expect(errText(two.error)).toContain('More than one fix deform');
+  });
+
+  it('checks fix deform/pressure arguments as native fix_deform_pressure.cpp', async () => {
+    const cases: [string, boolean, RegExp][] = [
+      ['x erate/rescale 0.1', false, /Illegal fix deform\/pressure command argument: erate\/rescale/],
+      ['xy volume', true, /Illegal fix deform\/pressure command: volume/],
+      ['xy pressure 0 1', false, /Fix deform\/pressure tilt factors require triclinic box/],
+      ['box final 1', false, /Illegal fix deform\/pressure command argument: final/],
+      ['x pressure 1.0 0.0', false, /Illegal fix deform\/pressure gain constant, must be positive/],
+      ['x volume y volume', false, /Fix deform\/pressure volume setting is invalid/],
+      ['x erate 0.1 y volume vol/balance/p yes', false, /Two dimensions must maintain constant volume to use the vol\/balance\/p option/],
+      ['x pressure/mean 0 1 y volume', false, /Cannot use fix deform\/pressure to assign constant volume and pressure/],
+      ['x final 0 5 box volume', false, /Cannot use fix deform\/pressure box parameter with x, y, or z styles other than vel, erate, trate, pressure, and wiggle/],
+      ['x erate 0.1 max/rate 0.1', false, /Can only assign a maximum strain rate using pressure-controlled dimensions/],
+      ['x pressure 1 1 y erate 0.1 couple xy', false, /Cannot couple non-pressure-controlled dimensions/],
+      ['x pressure 1 1 y pressure 2 1 couple xy', false, /Coupled dimensions must have identical gain parameters/],
+      ['x pressure 1 1 couple bogus', false, /Illegal fix deform\/pressure couple command: bogus/],
+    ];
+    for (const [rest, prism, want] of cases) {
+      const { error } = await runScript(`${box(prism)}\nfix 2 all deform/pressure 1 ${rest} units box\n`);
+      expect(errText(error), rest).toMatch(want);
+    }
+  });
 });

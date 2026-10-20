@@ -1,0 +1,25 @@
+# oracle: 27 FENE dimers (bond_style fene, bond_coeff 1 30 1.5 1 1, special_bonds fene) under fix shake on the bonds: SHAKE holds each bond at the style's equilibrium distance, which native BondFENE gives as 0.97 sigma (not R0); WCA pairs, NVE 20 steps
+# oracle-inputs: w255pw_fene_shake.data
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.7e-12, atoms 3.3e-10. Before the fix (the engine took R0 = 1.5 as the fene equilibrium) the pressure missed native at step 0 (1.98 against 2.53).
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      bond
+boundary        p p p
+read_data       w255pw_fene_shake.data
+bond_style      fene
+bond_coeff      1 30.0 1.5 1.0 1.0
+special_bonds   fene
+pair_style      lj/cut 1.122462048309373
+pair_coeff      1 1 1.0 1.0
+pair_modify     shift yes
+velocity        all create 1.0 4928459 loop geom
+fix             1 all nve
+fix             2 all shake 0.0001 50 0 b 1
+compute         bl all bond/local dist
+compute         bmax all reduce max c_bl inputs local
+compute         bmin all reduce min c_bl inputs local
+timestep        0.002
+thermo_style    custom step temp pe ebond epair press c_bmax c_bmin
+thermo_modify   format float %.15g
+thermo          5
+run             20

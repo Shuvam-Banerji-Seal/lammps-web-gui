@@ -11,6 +11,8 @@ import { COMMANDS as WRITE_COEFF } from '../cmds/write_coeff';
 import { COMMANDS as WRITE_MOLECULE } from '../cmds/write_molecule';
 import { COMMANDS as ANGLE_WRITE } from '../cmds/angle_write';
 import { COMMANDS as DIHEDRAL_WRITE } from '../cmds/dihedral_write';
+import { COMMANDS as PAIR_WRITE } from '../cmds/pair_write';
+import { COMMANDS as BOND_WRITE } from '../cmds/bond_write';
 import { COMMANDS as GROUP2NDX } from '../cmds/group2ndx';
 import { COMMANDS as NDX2GROUP } from '../cmds/ndx2group';
 import { region2vmd } from '../cmds/region2vmd';
@@ -20,6 +22,8 @@ export const COMMANDS: Record<string, Handler> = {
   ...WRITE_MOLECULE,
   ...ANGLE_WRITE,
   ...DIHEDRAL_WRITE,
+  ...PAIR_WRITE,
+  ...BOND_WRITE,
   ...GROUP2NDX,
   ...NDX2GROUP,
   region2vmd,

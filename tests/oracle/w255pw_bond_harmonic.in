@@ -1,0 +1,15 @@
+# oracle: bond_write of bond_style harmonic, bond type 1 (K 100 r0 1.5, N 40 values, inner 0.8, outer 2.5, keyword HARM)
+# oracle-files: w255pw_bond_harmonic.table
+# oracle-compare: thermo=all atoms=none filerel=1e-15
+# Measured max relative error, engine vs native (thermo rows, final atoms): none (no run, no thermo or atoms); the written table agrees with native token by token within filerel 1e-15.
+units           lj
+atom_style      bond
+region          box block -5 5 -5 5 -5 5
+create_box      2 box bond/types 2 extra/bond/per/atom 2 extra/special/per/atom 2
+mass            * 1.0
+pair_style      zero 2.5
+pair_coeff      * *
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+bond_coeff      2 50.0 1.0
+bond_write      1 40 0.8 2.5 w255pw_bond_harmonic.table HARM

@@ -95,7 +95,9 @@ export class BondFene extends SimpleBonded {
     });
   }
 
-  equilibrium(type: number): number { return this.params.p('R0')[type]; }
+  // As native LAMMPS does (src/MOLECULE/bond_fene.cpp at b332f28, equilibrium_distance): 0.97 sigma, the length fix shake
+  // and bond_write take for a fene bond (not R0, the maximum extent)
+  equilibrium(type: number): number { return 0.97 * this.params.p('sigma')[type]; }
 }
 
 /*
@@ -130,7 +132,8 @@ export class BondFeneExpand extends SimpleBonded {
     });
   }
 
-  equilibrium(type: number): number { return this.params.p('R0')[type] + this.params.p('delta')[type]; }
+  // As native LAMMPS does (src/MOLECULE/bond_fene_expand.cpp at b332f28, equilibrium_distance): 0.97 sigma + shift
+  equilibrium(type: number): number { return 0.97 * this.params.p('sigma')[type] + this.params.p('delta')[type]; }
 }
 
 /*

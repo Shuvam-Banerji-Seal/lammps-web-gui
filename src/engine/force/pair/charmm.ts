@@ -430,6 +430,93 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     return { e: pre * erfc, f: pre * (erfc + EWALD_F * grij * ex) / rsq };
   }
 
+  /**
+   * The pair loop of the base class with this class's Coulomb term written inline: the same arithmetic in the same order
+   * as coulombPair and coulTerm (so the same bits), without a result object per pair and with the table looked up once.
+   * A subclass that overrides the Coulomb term (lj/charmm/coul/msm) runs the base loop.
+   */
+  override compute(pc: PairCompute): void {
+    if (Object.getPrototypeOf(this) !== PairLJCharmmCoulLong.prototype) { super.compute(pc); return; }
+    const list = pc.half!;
+    const { x, f, type, q } = pc;
+    const nt = this.ntypes + 1;
+    const { lj1, lj2, lj3, lj4, aL2, bL2, invDL3 } = this;
+    const cutCoulSq = this.cutCoul * this.cutCoul;
+    const sLJ = pc.specialLJ, sC = pc.specialCoul;
+    const qqrd2e = pc.qqrd2e, g = this.gEwald;
+    const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul, this.tabinnerRsq);
+    const tabInner = tab ? tab.inner : Infinity;
+    const tally = pc.eatom !== null || pc.vatom !== null;
+    let evdwl = 0, ecoul = 0;
+    const nb = list.neighbors;
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+      const qi = q[i];
+      const ti = type[i] * nt;
+      let fxi = 0, fyi = 0, fzi = 0;
+      for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
+        const jj = nb[k];
+        const j = jj & NEIGHMASK;
+        const sb = jj >>> SBBITS;
+        const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
+        const rsq = dx * dx + dy * dy + dz * dz;
+        const t = ti + type[j];
+        let fpair = 0, e = 0;
+        if (rsq < bL2) {
+          const factor = sLJ[sb];
+          const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
+          const u = r6inv * (lj3[t] * r6inv - lj4[t]);
+          const fstd = r6inv * (lj1[t] * r6inv - lj2[t]) * r2inv;
+          if (rsq <= aL2) {
+            e = u; fpair = fstd;
+          } else {
+            const s = esw(rsq, aL2, bL2, invDL3);
+            e = u * s;
+            fpair = fstd * s + eswForce(u, rsq, aL2, bL2, invDL3);
+          }
+          e *= factor;
+          fpair *= factor;
+          evdwl += e;
+        }
+        const qj = q[j];
+        if (rsq < cutCoulSq && qi !== 0 && qj !== 0) {
+          // coulombPair, then coulTerm's special-bond correction
+          let ce: number, cf: number;
+          if (tab && rsq > tabInner) {
+            const qq = qqrd2e * qi * qj;
+            ce = qq * tab.energy(rsq);
+            cf = qq * tab.force(rsq) / rsq;
+          } else {
+            const r = Math.sqrt(rsq);
+            const grij = g * r;
+            const ex = libm.exp(-grij * grij);
+            const erfc = erfcPoly(grij, ex);
+            const pre = qqrd2e * qi * qj / r;
+            ce = pre * erfc;
+            cf = pre * (erfc + EWALD_F * grij * ex) / rsq;
+          }
+          const fc = sC[sb];
+          if (fc < 1) {
+            const inv = tab && rsq > tabInner ? tab.coul(rsq) : 1 / Math.sqrt(rsq);
+            const bare = qqrd2e * qi * qj * inv;
+            ce = ce - (1 - fc) * bare;
+            cf = cf - (1 - fc) * bare / rsq;
+          }
+          ecoul += ce;
+          e += ce;
+          fpair += cf;
+        }
+        if (fpair === 0 && e === 0) continue;
+        fxi += dx * fpair; fyi += dy * fpair; fzi += dz * fpair;
+        f[3 * j] -= dx * fpair; f[3 * j + 1] -= dy * fpair; f[3 * j + 2] -= dz * fpair;
+        if (tally) tallyAtom(pc, i, j, e, fpair, dx, dy, dz);
+      }
+      f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
+    }
+    pc.acc.evdwl += evdwl;
+    pc.acc.ecoul += ecoul;
+  }
+
   protected override coulTerm(pc: PairCompute, rsq: number, sb: number, qi: number, qj: number): { e: number; f: number } {
     const c = this.coulombPair(rsq, qi, qj, pc.qqrd2e);
     // special_bonds.html, as cited in coul_long.ts: excluded pairs stay in the

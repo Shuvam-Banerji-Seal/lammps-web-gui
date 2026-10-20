@@ -1,12 +1,14 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
- * Source: src/EXTRA-COMPUTE/compute_born_matrix.cpp at commit b332f28 (see extra_compute/born_matrix.ts). Copyright
- * Sandia Corporation (LAMMPS development team, GNU General Public License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
+ * Source: the style registration of src/EXTRA-COMPUTE/compute_born_matrix.cpp (compute born/matrix) at commit b332f28.
+ * Copyright Sandia Corporation (LAMMPS development team, GNU General Public License). This file is GPL-2.0 (see
+ * src/engine-gpl/LICENSE).
  *
- * The lazy HOOKS entry 'born/matrix' (lazyStyles.ts group gpl_born_matrix): the core compute born/matrix calls it for
- * the numdiff keyword, through the slot in src/engine/compute/bornNumdiffHook.ts.
+ * Loaded through src/engine/lazyStyles.ts (group gpl_born_matrix); the core does not register this name.
  */
-import type { BornNumdiffHook } from '../../engine/compute/born_matrix';
-import { bornMatrixNumdiff } from '../extra_compute/born_matrix';
+import type { ComputeFactory } from '../../engine/styles';
+import { ComputeBornMatrix } from '../extra_compute/compute_born_matrix';
 
-export const HOOKS: Record<string, BornNumdiffHook> = { 'born/matrix': bornMatrixNumdiff };
+export const COMPUTES: Record<string, ComputeFactory> = {
+  'born/matrix': (sys, id, group, args) => new ComputeBornMatrix(sys, id, group, args),
+};

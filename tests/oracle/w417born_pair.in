@@ -1,0 +1,94 @@
+# oracle: compute born/matrix analytic for every pair style with a native born_matrix, each switched in between run 0s (lj/cut, lj/cut/coul/cut and lj/cut/coul/debye with unequal cutoffs, coul/cut, coul/debye, lj/class2, lj/class2/coul/cut, lj96/cut, harmonic/cut, hybrid, hybrid/overlay, hybrid/scaled; buck, buck/coul/cut and born with one atom type), over all atoms and over a group
+# oracle-compare: thermo=all atoms=none
+units           lj
+atom_style      charge
+lattice         sc 0.75
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+displace_atoms  all random 0.08 0.08 0.08 4917
+set             type 1 type/fraction 2 0.5 2207
+set             type 1 charge 0.6
+set             type 2 charge -0.6
+mass            * 1.0
+region          half block 0 2 INF INF INF INF
+group           half region half
+
+pair_style      lj/cut 2.0
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.8 1.1
+pair_coeff      1 2 0.9 1.05 1.7
+compute         ba all born/matrix
+compute         bg half born/matrix pair
+thermo_style    custom step pe c_ba[1] c_ba[2] c_ba[3] c_ba[4] c_ba[5] c_ba[6] c_ba[7] c_ba[8] c_ba[9] c_ba[10] c_ba[11] c_ba[12] c_ba[13] c_ba[14] c_ba[15] c_ba[16] c_ba[17] c_ba[18] c_ba[19] c_ba[20] c_ba[21] c_bg[1] c_bg[2] c_bg[3] c_bg[4] c_bg[7] c_bg[9] c_bg[11] c_bg[14] c_bg[18] c_bg[21]
+thermo_modify   format float %.15g
+run             0
+
+pair_style      lj/cut/coul/cut 1.8 2.3
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.8 1.1 2.1 1.6
+run             0
+
+pair_style      lj/cut/coul/debye 0.7 2.2 1.9
+pair_coeff      * * 1.0 1.0
+run             0
+
+pair_style      coul/cut 2.1
+pair_coeff      * *
+run             0
+
+pair_style      coul/debye 0.9 2.0
+pair_coeff      * *
+run             0
+
+pair_style      lj/class2 2.0
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.7 1.1
+run             0
+
+pair_style      lj/class2/coul/cut 1.9 2.3
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.7 1.1
+run             0
+
+pair_style      lj96/cut 2.0
+pair_coeff      * * 1.0 1.0
+run             0
+
+pair_style      harmonic/cut
+pair_coeff      * * 3.0 1.5
+pair_coeff      1 2 2.0 1.6
+run             0
+
+pair_style      hybrid lj/cut 2.0 lj96/cut 1.9
+pair_coeff      1 1 lj/cut 1.0 1.0
+pair_coeff      2 2 lj/cut 0.8 1.1
+pair_coeff      1 2 lj96/cut 0.9 1.05
+run             0
+
+pair_style      hybrid/overlay lj/cut 2.0 coul/cut 2.2
+pair_coeff      * * lj/cut 1.0 1.0
+pair_coeff      * * coul/cut
+run             0
+
+variable        sc equal 0.3
+pair_style      hybrid/scaled 0.7 lj/cut 2.0 v_sc coul/cut 2.2
+pair_coeff      * * lj/cut 1.0 1.0
+pair_coeff      * * coul/cut
+run             0
+
+# native PairBuck, PairBuckCoulCut and PairBorn init_one never set rho[j][i], so their born_matrix divides by an
+# unset rho for a pair visited with the larger type first (NaN with two types): one atom type from here on
+set             type 2 type 1
+
+pair_style      buck 2.0
+pair_coeff      * * 60.0 0.25 1.5
+run             0
+
+pair_style      buck/coul/cut 2.0 2.4
+pair_coeff      * * 60.0 0.25 1.5
+run             0
+
+pair_style      born 2.0
+pair_coeff      * * 6.0 0.3 0.9 1.2 0.4
+run             0

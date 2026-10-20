@@ -22,8 +22,6 @@ import { KSpaceEwald } from './force/kspace/ewald';
 import { KSpacePPPM, KSpacePPPMCG, type PppmGplHook } from './force/kspace/pppm';
 import { setPppmGplHook } from './force/kspace/pppmHook';
 import { setGplHook } from './gplHooks';
-import { setBornNumdiffHook } from './compute/bornNumdiffHook';
-import type { BornNumdiffHook } from './compute/born_matrix';
 import * as pairSimple from './registry/pair_simple';
 import * as pairLJ from './registry/pair_lj';
 import * as pairLJCoul from './registry/pair_ljcoul';
@@ -248,9 +246,6 @@ export const loadStyleGroup = (g: LazyGroup): Promise<void> => {
       // the native PPPM helper (gpl_pppm) is read by the core PPPM through its slot, not through HOOKS
       const pppmHook = mod.HOOKS?.pppm;
       if (pppmHook) setPppmGplHook(pppmHook as PppmGplHook);
-      // the numdiff helper of compute born/matrix (compute/bornNumdiffHook.ts), read by the core compute through its slot
-      const bornHook = mod.HOOKS?.['born/matrix'];
-      if (bornHook) setBornNumdiffHook(bornHook as BornNumdiffHook);
     });
     loaded.set(g.id, p);
   }

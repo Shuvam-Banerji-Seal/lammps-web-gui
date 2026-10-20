@@ -1,0 +1,35 @@
+# oracle: compute born/matrix pair, bond and angle terms of chains split by the periodic boundaries of a triclinic box, during an nve run
+# oracle-inputs: w418born_bonded.data
+# oracle-compare: thermo=all atoms=none
+units           real
+atom_style      full
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  zero
+read_data       w418born_bonded.data
+set             type 1 charge 0.25
+set             type 2 charge -0.25
+special_bonds   lj 0.0 0.0 0.5 coul 0.0 0.0 0.8333
+pair_style      lj/cut/coul/cut 8.0
+pair_coeff      1 1 0.10 3.2
+pair_coeff      2 2 0.15 3.0
+bond_coeff      1 300.0 1.52
+bond_coeff      2 250.0 1.50
+angle_coeff     1 60.0 110.0
+angle_coeff     2 50.0 115.0
+dihedral_coeff  *
+displace_atoms  all move 13.0 12.5 11.0 units box
+change_box      all triclinic xy final 2.0 xz final -1.5 yz final 1.0 remap units box
+velocity        all create 300.0 4182 loop geom
+neighbor        2.0 bin
+neigh_modify    delay 0 every 1 check yes
+
+compute         ba all born/matrix pair bond angle
+compute         bb all born/matrix bond
+compute         bn all born/matrix angle
+fix             1 all nve
+timestep        0.5
+thermo_style    custom step temp pe c_ba[1] c_ba[2] c_ba[3] c_ba[4] c_ba[5] c_ba[6] c_ba[7] c_ba[8] c_ba[9] c_ba[10] c_ba[11] c_ba[12] c_ba[13] c_ba[14] c_ba[15] c_ba[16] c_ba[17] c_ba[18] c_ba[19] c_ba[20] c_ba[21] c_bb[1] c_bb[2] c_bb[3] c_bb[4] c_bb[7] c_bb[9] c_bb[11] c_bb[14] c_bb[18] c_bb[21] c_bn[1] c_bn[2] c_bn[3] c_bn[4] c_bn[7] c_bn[9] c_bn[11] c_bn[14] c_bn[18] c_bn[21]
+thermo_modify   format float %.15g
+thermo          5
+run             20

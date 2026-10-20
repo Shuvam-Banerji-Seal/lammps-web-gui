@@ -1,0 +1,99 @@
+# oracle: compute born/matrix analytic bond, angle, dihedral and pair terms (special_bonds lj and coul factors) for every bonded style with a native born_matrix, switched in between run 0s, with all terms, each term alone, and over a molecule group
+# oracle-inputs: w418born_bonded.data
+# oracle-compare: thermo=all atoms=none
+units           real
+atom_style      full
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  opls
+read_data       w418born_bonded.data
+set             type 1 charge 0.25
+set             type 2 charge -0.25
+special_bonds   lj 0.0 0.0 0.5 coul 0.0 0.0 0.8333
+pair_style      lj/cut/coul/cut 8.0
+pair_coeff      1 1 0.10 3.2
+pair_coeff      2 2 0.15 3.0
+bond_coeff      1 300.0 1.52
+bond_coeff      2 250.0 1.50
+angle_coeff     1 60.0 110.0
+angle_coeff     2 50.0 115.0
+dihedral_coeff  1 1.3 -0.05 0.2 0.1
+group           first molecule 1:3
+
+compute         ba all born/matrix
+compute         bb all born/matrix bond
+compute         bn all born/matrix angle
+compute         bd all born/matrix dihedral
+compute         bp all born/matrix pair
+compute         bg first born/matrix
+thermo_style    custom step pe c_ba[1] c_ba[2] c_ba[3] c_ba[4] c_ba[5] c_ba[6] c_ba[7] c_ba[8] c_ba[9] c_ba[10] c_ba[11] c_ba[12] c_ba[13] c_ba[14] c_ba[15] c_ba[16] c_ba[17] c_ba[18] c_ba[19] c_ba[20] c_ba[21] c_bb[1] c_bb[2] c_bb[3] c_bb[4] c_bb[7] c_bb[9] c_bb[11] c_bb[14] c_bb[18] c_bb[21] c_bn[1] c_bn[2] c_bn[3] c_bn[4] c_bn[7] c_bn[9] c_bn[11] c_bn[14] c_bn[18] c_bn[21] c_bd[1] c_bd[2] c_bd[3] c_bd[4] c_bd[7] c_bd[9] c_bd[11] c_bd[14] c_bd[18] c_bd[21] c_bp[1] c_bp[2] c_bp[3] c_bp[4] c_bp[7] c_bp[9] c_bp[11] c_bp[14] c_bp[18] c_bp[21] c_bg[1] c_bg[2] c_bg[3] c_bg[4] c_bg[7] c_bg[9] c_bg[11] c_bg[14] c_bg[18] c_bg[21]
+thermo_modify   format float %.15g
+run             0
+
+bond_style      fene
+bond_coeff      * 30.0 3.0 0.2 1.4
+angle_style     cosine
+angle_coeff     * 20.0
+dihedral_style  multi/harmonic
+dihedral_coeff  * 1.0 -0.5 0.3 0.2 -0.1
+run             0
+
+bond_style      morse
+bond_coeff      * 80.0 2.0 1.5
+angle_style     cosine/squared
+angle_coeff     1 40.0 112.0
+angle_coeff     2 30.0 108.0
+dihedral_style  nharmonic
+dihedral_coeff  * 4 1.0 -0.5 0.3 0.2
+run             0
+
+bond_style      class2
+bond_coeff      * 1.5 300.0 -500.0 700.0
+angle_style     cosine/periodic
+angle_coeff     1 12.0 -1 2
+angle_coeff     2 8.0 1 3
+dihedral_style  quadratic
+dihedral_coeff  * 2.0 60.0
+run             0
+
+bond_style      gromos
+bond_coeff      * 1000.0 1.5
+angle_style     cosine/delta
+angle_coeff     * 40.0 112.0
+dihedral_style  helix
+dihedral_coeff  * 1.0 0.5 0.7
+run             0
+
+bond_style      harmonic/shift
+bond_coeff      * 10.0 1.5 2.5
+angle_style     cosine/squared/restricted
+angle_coeff     * 40.0 112.0
+dihedral_style  cosine/squared/restricted
+dihedral_coeff  * 2.0 120.0
+run             0
+
+bond_style      harmonic/shift/cut
+bond_coeff      * 10.0 1.5 1.56
+angle_style     fourier
+angle_coeff     * 30.0 0.3 0.4 0.2
+dihedral_style  opls
+dihedral_coeff  * 0.7 0.3 -0.4 0.15
+run             0
+
+bond_style      nonlinear
+bond_coeff      * 50.0 1.5 0.5
+angle_style     fourier/simple
+angle_coeff     * 20.0 -1.0 3.0
+run             0
+
+bond_style      gaussian
+bond_coeff      * 300.0 2 0.8 0.1 1.5 0.4 0.15 1.56
+angle_style     quartic
+angle_coeff     * 112.0 50.0 -20.0 10.0
+run             0
+
+bond_style      harmonic
+bond_coeff      * 280.0 1.53
+angle_style     mm3
+angle_coeff     * 60.0 110.0
+run             0

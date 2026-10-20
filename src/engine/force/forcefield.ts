@@ -115,6 +115,8 @@ export class ForceField {
   tailHold: { etail: number; ptail: number } | null = null;
   ptailV = 0;
   private specialList: SpecialList | null = null;
+  /** The 1-2/1-3/1-4 partners of the last init (null without bonds or with a many-body pair style). */
+  get specialPartners(): SpecialList | null { return this.specialList; }
   /**
    * The 1-2/1-3/1-4 lists are stale: a delete_bonds without its special keyword removed bonds and kept the old lists
    * (native: "special" rebuilds them only when asked, src/delete_bonds.cpp at b332f28). They are kept until a normal

@@ -1,0 +1,17 @@
+# oracle: fix gcmc full_energy with dimer molecules and pair_modify tail yes: the tail correction changes only at native's pair reinit (insertion trials, and deletion trials while the molecule is only masked out), so after an accepted deletion it still counts the deleted atoms until the next reinit
+# oracle-inputs: w32gcmc_dimer.mol
+# oracle-compare: thermo=all atoms=all rel=1e-8
+units lj
+atom_style molecular
+pair_style lj/cut 2.5
+pair_modify tail yes
+region box block 0 6 0 6 0 6
+create_box 1 box
+pair_coeff * * 1.0 1.0
+mass 1 1.0
+molecule dimer w32gcmc_dimer.mol
+fix mygcmc all gcmc 1 4 6 0 7791 1.2 0.5 0.6 mol dimer mcmoves 0 1 0 full_energy
+thermo_style custom step atoms pe f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6]
+thermo 10
+thermo_modify format float %.15g
+run 150

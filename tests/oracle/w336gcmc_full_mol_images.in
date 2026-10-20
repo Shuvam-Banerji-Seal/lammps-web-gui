@@ -1,0 +1,17 @@
+# oracle: fix gcmc full_energy with dimer molecules (insertions, deletions and molecule translations) in units lj: native keeps the deleted molecule's own pair energy in the energy after a trial deletion (its exclusion masks keep intramolecular pairs) and carries energy_stored from move to move; a rejected molecule translation subtracts the displacement from the wrapped coordinates and keeps the image flags of the wrap
+# oracle-inputs: w32gcmc_dimer.mol
+# oracle-compare: thermo=all atoms=all rel=1e-8
+units lj
+atom_style molecular
+pair_style lj/cut 2.5
+pair_modify tail no
+region box block 0 6 0 6 0 6
+create_box 1 box
+pair_coeff * * 1.0 1.0
+mass 1 1.0
+molecule dimer w32gcmc_dimer.mol
+fix mygcmc all gcmc 1 4 6 0 7791 1.2 0.5 0.6 mol dimer mcmoves 0 1 0 full_energy
+thermo_style custom step atoms pe f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6]
+thermo 10
+thermo_modify format float %.15g
+run 150

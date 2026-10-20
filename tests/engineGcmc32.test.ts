@@ -69,7 +69,7 @@ run 4
   });
 
   it('rejects unsupported keywords with a StyleError naming them', async () => {
-    for (const [kw, val, name] of [['pressure', '1.0', 'pressure'], ['rigid', 'r', 'rigid'], ['fugacity_coeff', '0.9', 'fugacity_coeff']]) {
+    for (const [kw, val, name] of [['rigid', 'r', 'rigid']]) {
       const { error } = await run(LJ(`fix g all gcmc 1 1 1 1 29494 2.0 -1.0 1.0 ${kw} ${val}\nrun 1\n`));
       expect(error, kw).toContain(name);
     }

@@ -1,0 +1,21 @@
+# oracle: fix press/langevin flips the box: the yz keyword's piston (driven by Pxy, moving xy) with a target of -60 on an LJ liquid whose xy tilt starts at 2.9 (0.58 of the x length), plus x and y pistons; xy passes 0.6 of the x length and the box flips on a neighbor rebuild step
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS: engine vs native thermo 1.0e-12, atoms 2.6e-12; xy goes from 3.01 at step 90 to -2.00 at step 100 in both.
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box prism 0 3 0 3 0 3 0.0 0.0 0.0
+create_box      1 box
+create_atoms    1 box
+change_box      all xy final 2.9 remap units box
+mass            1 1.0
+velocity        all create 1.0 87287 loop all
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+timestep        0.002
+fix             1 all nve
+fix             2 all press/langevin x 0.5 0.5 1.0 y 0.5 0.5 1.0 yz -60.0 -60.0 0.2 temp 1.0 1.0 4321 flip yes
+thermo_style    custom step temp pe press pxy lx ly lz xy xz yz
+thermo_modify   format float %.15g
+thermo          10
+run             160

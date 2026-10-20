@@ -251,15 +251,47 @@ variable e equal 2.0
     expect(r.message).toMatch(/unknown attribute or keyword 'frob'/);
   });
 
+  it('kspace attribute is an unsupported option (StyleError naming it)', async () => {
+    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 kspace v_e\n`);
+    expect(r.message).toMatch(/attribute kspace is not supported/);
+  });
+
+  // bonded attributes: native's texts (src/fix_adapt.cpp at b332f28); numerical parity is in w345-w347adapt_bonded*
+  const MOL = `
+units           lj
+atom_style      molecular
+lattice         sc 1.0
+region          box block 0 2 0 2 0 2
+create_box      1 box bond/types 1 angle/types 1 dihedral/types 1 improper/types 1 extra/bond/per/atom 2
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 1.1
+pair_coeff      * * 1.0 1.0
+bond_style      harmonic
+bond_coeff      1 10.0 1.0
+angle_style     harmonic
+angle_coeff     1 10.0 90.0
+dihedral_style  charmm
+dihedral_coeff  1 1.0 2 180 0.0
+improper_style  harmonic
+improper_coeff  1 1.0 0.0
+variable        e equal 2.0
+`;
   it.each([
-    ['bond', 'bond harmonic k 1 v_e'],
-    ['angle', 'angle harmonic k 1 v_e'],
-    ['dihedral', 'dihedral quadratic k 1 v_e'],
-    ['improper', 'improper harmonic k 1 v_e'],
-    ['kspace', 'kspace v_e'],
-  ])('%s attribute is an unsupported option (StyleError naming it)', async (name, attr) => {
-    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 ${attr}\n`);
-    expect(r.message).toMatch(new RegExp(`attribute ${name} is not supported`));
+    ['bond morse d0 1 v_e', /Fix adapt bond style morse does not exist/],
+    ['bond harmonic r1 1 v_e', /Fix adapt bond style parameter r1 not supported/],
+    ['angle harmonic theta 1 v_e', /Fix adapt angle style parameter theta not supported/],
+    // native writes doubles through the integer multiplicity array: refused, as the doc table lists only k
+    ['dihedral charmm n 1 v_e', /Fix adapt dihedral style parameter n not supported/],
+    ['improper harmonic k 1 2.0', /Argument must be variable not 2.0/],
+  ])('bonded attribute errors: %s', async (attr, msg) => {
+    const r = await runScript(`${MOL}fix 1 all adapt 1 ${attr}\nrun 0\n`);
+    expect(r.message).toMatch(msg);
+  });
+
+  it('a bonded hybrid style is refused by name', async () => {
+    const r = await runScript(`${MOL.replace('bond_style      harmonic\nbond_coeff      1 10.0 1.0', 'bond_style      hybrid harmonic morse\nbond_coeff      1 harmonic 10.0 1.0')}fix 1 all adapt 1 bond harmonic k 1 v_e\nrun 0\n`);
+    expect(r.message).toMatch(/bond with bond_style hybrid is not supported/);
   });
 
   it('the variable must exist', async () => {

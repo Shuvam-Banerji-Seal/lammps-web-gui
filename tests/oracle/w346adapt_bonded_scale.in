@@ -1,0 +1,30 @@
+# oracle: fix adapt with scale yes and reset yes over two runs (bond class2 k2 and r0, angle cosine/squared k, dihedral multi/harmonic a2, improper inversion/harmonic k: native stores K/3): scale multiplies the values each run started with and reset restores them after the run
+# oracle-inputs: mol_chains.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+units           lj
+atom_style      molecular
+bond_style      class2
+angle_style     cosine/squared
+dihedral_style  multi/harmonic
+improper_style  inversion/harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+special_bonds   lj 0.0 0.5 0.8
+bond_coeff      * 1.05 100.0 -50.0 20.0
+angle_coeff     * 30.0 115.0
+dihedral_coeff  1 0.5 1.0 -0.3 0.2 0.1
+improper_coeff  1 8.0 10.0
+variable        f equal 1.0+0.01*step
+fix             ad all adapt 3 bond class2 k2 * v_f bond class2 r0 2 v_f angle cosine/squared k * v_f dihedral multi/harmonic a2 1 v_f improper inversion/harmonic k 1 v_f scale yes reset yes
+velocity        all create 1.0 4928459 mom no rot no
+timestep        0.002
+fix             1 all nve
+thermo_style    custom step pe ebond eangle edihed eimp etotal
+thermo_modify   format float %.15g norm no
+thermo          5
+run             15
+run             15
+unfix           ad
+run             5

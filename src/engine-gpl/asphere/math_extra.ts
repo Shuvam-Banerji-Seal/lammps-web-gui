@@ -275,7 +275,7 @@ const vecquat = (a: Float64Array, b0: number, b1: number, b2: number, b3: number
 };
 
 /** math_extra.cpp mq_to_omega: quat_to_mat, transpose_matvec, divide by the moments (0 for a zero moment), matvec. */
-const mqToOmega = (m0: number, m1: number, m2: number, q0: number, q1: number, q2: number, q3: number, moments: ArrayLike<number>, w: Float64Array): void => {
+export const mqToOmega = (m0: number, m1: number, m2: number, q0: number, q1: number, q2: number, q3: number, moments: ArrayLike<number>, w: Float64Array): void => {
   // quat_to_mat (row-major rot[3 * r + c] = mat[r][c])
   const w2 = q0 * q0, i2 = q1 * q1, j2 = q2 * q2, k2 = q3 * q3;
   const twoij = 2.0 * q1 * q2, twoik = 2.0 * q1 * q3, twojk = 2.0 * q2 * q3;

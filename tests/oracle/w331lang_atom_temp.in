@@ -1,0 +1,24 @@
+# oracle: fix langevin with an atom-style variable target temperature (per-atom T from the x coordinate), per-type masses with scale on type 2, tally yes, fix nve; the tally energy and the trajectory are compared
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+atom_modify     map array sort 0 0.0
+lattice         sc 0.8
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+group           two id 2:64:3
+set             group two type 2
+mass            1 1.0
+mass            2 2.5
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+velocity        all create 1.0 4928 loop all
+timestep        0.005
+variable        tt atom 0.5+0.25*x
+fix             1 all langevin v_tt 1.0 2.0 9182 tally yes scale 2 1.5
+fix             2 all nve
+thermo_style    custom step temp pe etotal f_1 ecouple
+thermo_modify   format float %.15g
+thermo          10
+run             60

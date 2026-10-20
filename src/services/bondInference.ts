@@ -61,6 +61,16 @@ class SpatialGrid {
 const covalentRadius = (atomicNumber: number): number =>
   COVALENT_RADII[atomicNumber] ?? DEFAULT_COVALENT_RADIUS;
 
+/** The longest bond inferBonds can accept among these atoms: twice the largest covalent radius times the tolerance. */
+export const maxBondDistance = (atoms: readonly Atom[], tolerance = 1.2): number => {
+  let largest = DEFAULT_COVALENT_RADIUS;
+  for (const a of atoms) {
+    const r = covalentRadius(a.type);
+    if (r > largest) largest = r;
+  }
+  return 2 * largest * tolerance;
+};
+
 /**
  * Noble gases (He, Ne, Ar, Kr, Xe, Rn, Og). Closed-shell atoms do not form
  * covalent bonds in any structure this viewer renders — they interact only

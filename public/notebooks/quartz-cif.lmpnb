@@ -1,0 +1,33 @@
+{
+ "format": "lammps-web-notebook",
+ "version": 1,
+ "name": "alpha-quartz from a CIF file (BKS)",
+ "created": "2026-10-20T00:00:00.000Z",
+ "modified": "2026-10-20T00:00:00.000Z",
+ "cells": [
+  {
+   "id": "c1",
+   "kind": "markdown",
+   "text": "# A crystal from a CIF file: alpha-quartz\n\n`quartz.cif` is a crystallographic information file: the hexagonal cell, the space group P3\u208221 with its six symmetry\noperations, and the two atoms of the asymmetric unit (Si and O). LAMMPS does not read CIF files, so the notebook\nconverts it: **Import structure\u2026 \u2192 quartz.cif** opens the import dialog, which expands the symmetry operations (3 Si and\n6 O per cell), makes the restricted triclinic LAMMPS box from the cell (`xy` tilt), and writes `quartz.data`\n(*Output: LAMMPS data file*, *Atom style: charge*). That converted file is already in *Input files*; import the CIF\nagain to see the dialog.\n\nThe charges are not part of a CIF, so `set type ... charge` gives them; `replicate` builds a 3\u00d73\u00d73 supercell."
+  },
+  {
+   "id": "c2",
+   "kind": "code",
+   "text": "units           metal\natom_style      charge\nboundary        p p p\nread_data       quartz.data\nreplicate       3 3 3\nset             type 1 charge 2.4\nset             type 2 charge -1.2"
+  },
+  {
+   "id": "c3",
+   "kind": "markdown",
+   "text": "## BKS potential and NPT dynamics\n\nThe van Beest-Kramer-van Santen potential: Buckingham terms for Si-O and O-O plus Coulomb with charges +2.4 e and\n-1.2 e (PPPM). `npt ... tri` lets all six cell parameters relax at 300 K and 1 bar; the cell starts at the experimental\ndensity, 2.649 g/cm\u00b3. BKS turns attractive at very short distances, which is harmless at room temperature."
+  },
+  {
+   "id": "c4",
+   "kind": "code",
+   "text": "pair_style      buck/coul/long 10.0\npair_coeff      1 1 0.0 1.0 0.0\npair_coeff      1 2 18003.7572 0.205205 133.5381\npair_coeff      2 2 1388.7730 0.362319 175.0000\nkspace_style    pppm 1.0e-4\nvelocity        all create 300.0 49104 mom yes rot yes dist gaussian\nfix             npt all npt temp 300.0 300.0 0.1 tri 1.0 1.0 1.0\ntimestep        0.001\nthermo_style    custom step temp pe press lx ly lz density\nthermo          100\nrun             1000"
+  }
+ ],
+ "inputFiles": {
+  "quartz.cif": "# alpha-quartz (SiO2), space group P 32 2 1 (No. 154), room temperature.\n# Cell and positions: a = 4.9134, c = 5.4052 Angstrom; Si (0.4697, 0, 0), O (0.4135, 0.2669, 0.1191)\n# (Levien, Prewitt and Weidner, Am. Mineral. 65, 920 (1980)). Written for the LAMMPS Web GUI examples.\ndata_alpha_quartz\n_chemical_formula_sum            'O2 Si'\n_cell_length_a                   4.9134\n_cell_length_b                   4.9134\n_cell_length_c                   5.4052\n_cell_angle_alpha                90.0\n_cell_angle_beta                 90.0\n_cell_angle_gamma                120.0\n_symmetry_space_group_name_H-M   'P 32 2 1'\n_symmetry_Int_Tables_number      154\n\nloop_\n_symmetry_equiv_pos_as_xyz\n'x, y, z'\n'-y, x-y, z+2/3'\n'-x+y, -x, z+1/3'\n'y, x, -z+2/3'\n'x-y, -y, -z'\n'-x, -x+y, -z+1/3'\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1 Si 0.4697 0.0000 0.0000\nO1  O  0.4135 0.2669 0.1191\n",
+  "quartz.data": "Converted from quartz.cif by the LAMMPS workbench\n\n9 atoms\n2 atom types\n\n0.000000 4.913400 xlo xhi\n0.000000 4.255129 ylo yhi\n0.000000 5.405200 zlo zhi\n-2.456700 0.000000 0.000000 xy xz yz\n\nMasses\n\n1 28.085 # Si\n2 15.999 # O\n\nAtoms # charge\n\n1 1 0 2.307824 0.000000 0.000000 0 0 0 # Si\n2 1 0 -1.153912 1.998634 3.603467 0 0 0 # Si\n3 1 0 1.302788 2.256495 1.801733 0 0 0 # Si\n4 2 0 1.375998 1.135694 0.643759 0 0 0 # O\n5 2 0 3.241861 0.623802 4.247226 0 0 0 # O\n6 2 0 2.752241 2.495633 2.445493 0 0 0 # O\n7 2 0 0.295541 1.759496 2.959707 0 0 0 # O\n8 2 0 -1.080702 3.119435 4.761441 0 0 0 # O\n9 2 0 0.785161 3.631327 1.157974 0 0 0 # O\n"
+ }
+}

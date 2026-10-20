@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { Session } from '../src/engine/interpreter';
 import { parseFile } from '../src/services/fileParser';
 import { ELEMENT_DATA } from '../src/constants';
@@ -194,7 +195,8 @@ describe('PDB with a cell and CONECT records', () => {
     const atoms = atomsSection(res.text);
     expect(res.text).toContain('Atoms # full');
     expect(atoms).toHaveLength(6);
-    expect(atoms[0].split(/\s+/)).toEqual(['1', '1', '1', '0', '1.000000', '1.000000', '1.000000']);
+    // a structure with a cell: every atom line ends with the image flags that keep its molecule whole
+    expect(atoms[0].split(/\s+/)).toEqual(['1', '1', '1', '0', '1.000000', '1.000000', '1.000000', '0', '0', '0']);
     const bonds = res.text.split('\nBonds\n\n')[1].trim().split('\n');
     // bond types by element pair, numbered in order of first appearance: C-C 1, C-H 2, C-O 3
     expect(bonds).toEqual(['1 1 1 2', '2 2 1 4', '3 2 1 5', '4 3 2 3', '5 2 2 6']);
@@ -214,7 +216,7 @@ describe('PDB with a cell and CONECT records', () => {
       expect(s.system!.n).toBe(6);
       expect(Array.from(s.system!.massByType).slice(1, 4)).toEqual([massOf('C'), massOf('O'), massOf('H')]);
       const lines = atomsSection(r.text);
-      expect(lines[0].split(/\s+/)).toHaveLength(style === 'atomic' ? 5 : style === 'charge' ? 6 : 7);
+      expect(lines[0].split(/\s+/)).toHaveLength(style === 'atomic' ? 8 : style === 'charge' ? 9 : 10);
     }
   });
 
@@ -358,5 +360,96 @@ describe('refusals', () => {
     const mol = pdbMol(PDB_NOCELL);
     const atoms = Array.from({ length: MAX_ATOMS + 1 }, (_, i) => ({ ...mol.atoms[0], id: i + 1 }));
     expect(() => convertStructure({ ...mol, atoms, bonds: [] }, opts({ bonds: false }))).toThrow(/above the limit/);
+  });
+});
+
+describe('periodic structures: bonds through the cell and whole molecules', () => {
+  /** The atoms of a data file unwrapped by their image flags (full style: id mol type q x y z ix iy iz), by atom ID. */
+  const unwrapped = (text: string, box: NonNullable<ConvertResult['box']>): Map<number, [number, number, number]> => {
+    const lx = box.xhi - box.xlo, ly = box.yhi - box.ylo, lz = box.zhi - box.zlo;
+    const xy = box.xy ?? 0, xz = box.xz ?? 0, yz = box.yz ?? 0;
+    const out = new Map<number, [number, number, number]>();
+    for (const line of atomsSection(text)) {
+      const w = line.split(/\s+/).map(Number);
+      const [x, y, z, ix, iy, iz] = w.slice(-6);
+      out.set(w[0], [x + ix * lx + iy * xy + iz * xz, y + iy * ly + iz * yz, z + iz * lz]);
+    }
+    return out;
+  };
+  const bondsOf = (text: string): [number, number][] =>
+    (text.split('\nBonds\n\n')[1] ?? '').trim().split('\n').filter(Boolean).map((l) => {
+      const w = l.trim().split(/\s+/).map(Number);
+      return [w[2], w[3]];
+    });
+
+  // a CO molecule cut by the x face of a 5 A cubic cell: C at x = 4.6, O at x = 0.73 (1.13 A away through the face)
+  const CO_CUT = `data_co
+_cell_length_a 5.0
+_cell_length_b 5.0
+_cell_length_c 5.0
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+C1 C 0.920 0.5 0.5
+O1 O 0.146 0.5 0.5
+`;
+
+  it('finds the bond of a molecule cut by a cell face and keeps the molecule whole with image flags', () => {
+    const mol = parseFile(CO_CUT, 'cif');
+    const res = convertStructure(mol, opts({ box: mol.box, fileName: 'co.data' }));
+    expect(res.nbonds).toBe(1);
+    expect(res.warnings.join(' ')).toMatch(/through the periodic cell/);
+    const pts = unwrapped(res.text, res.box!);
+    const [c, o] = [pts.get(1)!, pts.get(2)!];
+    expect(Math.hypot(c[0] - o[0], c[1] - o[1], c[2] - o[2])).toBeCloseTo(1.13, 6);
+    // the O atom sits in the cell at x = 0.73 and in the image +1 along x
+    expect(atomsSection(res.text)[1].split(/\s+/).slice(-3)).toEqual(['1', '0', '0']);
+  });
+
+  it('writes a molecule template of a cut molecule with whole coordinates', () => {
+    const mol = parseFile(CO_CUT, 'cif');
+    const res = convertStructure(mol, opts({ target: 'molecule', box: mol.box, fileName: 'co.mol' }));
+    const coords = res.text.split('\nCoords\n\n')[1].split('\n\n')[0].trim().split('\n').map((l) => l.trim().split(/\s+/).slice(1).map(Number));
+    expect(Math.hypot(coords[0][0] - coords[1][0], coords[0][1] - coords[1][1], coords[0][2] - coords[1][2])).toBeCloseTo(1.13, 6);
+  });
+
+  it('urea (P-421m): both molecules whole, 7 bonds each, every bond between 1.0 and 1.35 A', () => {
+    const mol = parseFile(readFileSync('public/examples/urea.cif', 'utf8'), 'cif');
+    expect(mol.atoms).toHaveLength(16);
+    const res = convertStructure(mol, opts({ box: mol.box, fileName: 'urea.data' }));
+    expect(res.nbonds).toBe(14);
+    const ids = new Set(atomsSection(res.text).map((l) => l.split(/\s+/)[1]));
+    expect(ids).toEqual(new Set(['1', '2']));
+    const pts = unwrapped(res.text, res.box!);
+    for (const [a, b] of bondsOf(res.text)) {
+      const p = pts.get(a)!, q = pts.get(b)!;
+      const d = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+      expect(d).toBeGreaterThan(1.0);
+      expect(d).toBeLessThan(1.35);
+    }
+  });
+
+  it('a network bonded through the cell (quartz) keeps zero image flags and says so', () => {
+    const mol = parseFile(readFileSync('public/examples/quartz.cif', 'utf8'), 'cif');
+    expect(mol.atoms).toHaveLength(9);
+    const res = convertStructure(mol, opts({ box: mol.box, fileName: 'quartz.data' }));
+    expect(res.nbonds).toBe(12);
+    expect(res.warnings.join(' ')).toMatch(/1 bonded network runs through the periodic cell/);
+    expect(atomsSection(res.text).every((l) => l.endsWith(' 0 0 0'))).toBe(true);
+  });
+
+  it('keeps explicit bonds (PDB CONECT) and gives them the nearest images', () => {
+    const mol = parseFile(CO_CUT, 'cif');
+    const explicit: MoleculeData = { ...mol, bonds: [{ id: 1, type: 1, atom1Id: 1, atom2Id: 2 }], bondsInferred: false };
+    const res = convertStructure(explicit, opts({ box: mol.box, fileName: 'co.data' }));
+    expect(res.nbonds).toBe(1);
+    expect(res.warnings.join(' ')).not.toMatch(/inferred/);
+    expect(atomsSection(res.text)[1].split(/\s+/).slice(-3)).toEqual(['1', '0', '0']);
   });
 });

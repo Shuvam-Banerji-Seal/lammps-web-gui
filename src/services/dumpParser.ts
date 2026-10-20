@@ -331,6 +331,7 @@ export const parseDumpFile = (data: string): MoleculeData => {
   return {
     atoms: first.atoms,
     bonds,
+    bondsInferred: true,
     atomTypes,
     min: { x: minX, y: minY, z: minZ },
     max: { x: maxX, y: maxY, z: maxZ },

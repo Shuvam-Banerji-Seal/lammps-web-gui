@@ -66,6 +66,12 @@ The notebook's engine is written in TypeScript for the browser. Its results are 
 
 <p align="center"><img src="docs/screenshots/notebook-monitor.png" width="360" alt="Device and performance panel: cores, memory, shared-memory threads, the engine Auto chose, steps per second and atom-steps per second"><br><em>Device and performance panel: what Auto chose and why, steps/s, ms/step and atom-steps/s.</em></p>
 
+**Example notebooks** (notebook menu → *Open an example…*) show how to load external molecules, each with its input
+files: an SPC/E water box from a LAMMPS data file, CO2 and n-butane placed from molecule templates with
+`create_atoms ... mol`, and crystals imported from CIF files with **Import structure…**: alpha-quartz (BKS potential),
+proton-ordered ice Ih (rigid SPC/E water) and urea, whose molecules cross the cell faces. The import infers bonds
+through the periodic cell and writes image flags, so every molecule stays whole.
+
 ### Script Builder — LAMMPS input scripts as a flowchart
 
 | Starter template with the generated script | Concept branching — one flowchart, several ideas |

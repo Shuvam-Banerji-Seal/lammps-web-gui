@@ -1,0 +1,56 @@
+{
+ "notebooks": [
+  {
+   "file": "water-spce-data.lmpnb",
+   "name": "Water box from a data file (SPC/E)",
+   "summary": "read_data of 216 SPC/E water molecules (atoms, bonds, angles, charges, velocities), SHAKE, PPPM, the O-O RDF and the MSD.",
+   "files": [
+    "water_spce.data",
+    "water_spce.mol"
+   ]
+  },
+  {
+   "file": "co2-molecule-template.lmpnb",
+   "name": "CO2 from a molecule template (TraPPE, rigid)",
+   "summary": "molecule command + create_atoms random: 200 rigid TraPPE CO2 molecules placed without overlaps, fix rigid/small with a Langevin thermostat.",
+   "files": [
+    "co2_trappe.mol"
+   ]
+  },
+  {
+   "file": "butane-trappe.lmpnb",
+   "name": "Liquid n-butane from a molecule template (TraPPE-UA)",
+   "summary": "create_atoms box mol on a lattice with random orientations, a flexible united-atom model (bonds, angles, OPLS dihedral), minimize, NVT, and the dihedral angle distribution.",
+   "files": [
+    "butane_trappe.mol"
+   ]
+  },
+  {
+   "file": "quartz-cif.lmpnb",
+   "name": "alpha-quartz from a CIF file (BKS)",
+   "summary": "A CIF crystal structure (P3221, symmetry expanded) converted to a triclinic data file with the import dialog, replicated, charges set, and run with the BKS potential under NPT.",
+   "files": [
+    "quartz.cif",
+    "quartz.data"
+   ]
+  },
+  {
+   "file": "ice-cif.lmpnb",
+   "name": "Ice Ih from a CIF file (rigid SPC/E water)",
+   "summary": "A molecular crystal from a CIF: bonds inferred through the periodic cell, molecules kept whole by image flags, rigid SPC/E water with fix rigid/nvt/small at 200 K.",
+   "files": [
+    "ice_ih.cif",
+    "ice_ih.data"
+   ]
+  },
+  {
+   "file": "urea-cif.lmpnb",
+   "name": "Urea crystal from a CIF file (structure check)",
+   "summary": "Symmetry expansion of a molecular CIF (P-421m) whose molecules cross the cell faces: the import keeps all 7 bonds of every molecule; replicate and count molecules and bond lengths.",
+   "files": [
+    "urea.cif",
+    "urea.data"
+   ]
+  }
+ ]
+}

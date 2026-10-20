@@ -467,6 +467,7 @@ export const parseCIFFile = (data: string): MoleculeData => {
   return {
     atoms,
     bonds,
+    bondsInferred: true,
     atomTypes,
     min: { x: minX, y: minY, z: minZ },
     max: { x: maxX, y: maxY, z: maxZ },

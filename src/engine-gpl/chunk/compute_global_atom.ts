@@ -9,12 +9,14 @@
  * value at element index of the input. Atoms outside the group get 0. One value gives a per-atom vector, several a
  * per-atom array with one column per value.
  *
- * Refused (named StyleError): wildcard value arguments. Native init() tests the fix index reference the wrong way round
+ * Wildcard values (c_ID[*], f_ID[m*n]) expand to the columns of a global array, as native's utils::expand_args does
+ * in mode 1. Native init() tests the fix index reference the wrong way round
  * ("if (reference.val.f) error->all(... does not exist)"), so a f_ID index fails at the start of a run whenever the fix
  * exists; this port reproduces that refusal in init().
  */
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
+import { expandWildcards } from '../../engine/refs';
 import type { System } from '../../engine/system';
 
 const ERR20 = '\nFor more information see https://docs.lammps.org/err0020';
@@ -41,10 +43,7 @@ export class ComputeGlobalAtom extends Compute {
     super(sys, id, group, args);
     if (args.length < 2) throw new StyleError('Illegal compute global/atom command: missing argument(s)');
     this.reference = parseSrc(args[0], `Illegal compute global/atom index property: ${args[0]}`);
-    this.values = args.slice(1).map((w) => {
-      if (w.includes('*')) throw new StyleError(`compute global/atom: wildcard value ${w} is not supported by the engine yet`);
-      return parseSrc(w, `Illegal compute global/atom global property: ${w}`);
-    });
+    this.values = expandWildcards(sys, args.slice(1), 'vector').map((w) => parseSrc(w, `Illegal compute global/atom global property: ${w}`));
     const r = this.reference;
     if (r.kind === 'c') {
       const c = sys.computes.find((x) => x.id === r.id);

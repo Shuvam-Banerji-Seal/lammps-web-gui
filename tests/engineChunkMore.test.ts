@@ -123,15 +123,19 @@ run             0
     expect(r.error).toMatch(/must be a multiple of Nskip/);
   });
 
-  it('global/atom refuses wildcard values', async () => {
+  it('global/atom expands wildcard values to the columns of a global array', async () => {
     const r = await runScript(`${SETUP}
 compute         cm all chunk/atom type
 compute         vcm all vcm/chunk cm
 compute         mid all property/atom type
 compute         gat all global/atom c_mid c_vcm[*]
+compute         gs all reduce sum c_gat[3]
+thermo_style    custom step c_gs
 run             0
 `);
-    expect(r.error).toMatch(/wildcard value c_vcm\[\*\] is not supported/);
+    // the index c_mid, then one per-atom column for each of the three columns of c_vcm
+    expect(r.error).toBeNull();
+    expect(r.thermo.length).toBe(1);
   });
 
   it('momentum/chunk rejects an unknown keyword with the native message', async () => {

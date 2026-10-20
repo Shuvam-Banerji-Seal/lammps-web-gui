@@ -9,8 +9,9 @@
  * divided by the chunk mass and multiplied by the atom's mass, and it acts on every atom with a chunk ID (no group).
  * The energy of the springs is the scalar output, which fix_modify energy yes adds to the potential energy.
  *
- * The centres of mass come from a compute com/chunk with the same chunk/atom compute (comID); its wrap yes option is
- * refused. Native's chunk lock (the reference COMs keep the chunk IDs from changing) is not modelled.
+ * The centres of mass come from a compute com/chunk with the same chunk/atom compute (comID); with its wrap yes the
+ * centres are mapped back into the periodic box (Domain::remap) before the springs are evaluated, as native reads the
+ * compute's array. Native's chunk lock (the reference COMs keep the chunk IDs from changing) is not modelled.
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
@@ -55,9 +56,6 @@ export class FixSpringChunk extends Fix {
     if (comChunk !== this.cchunk) {
       throw new StyleError(`Fix spring/chunk chunk ID ${this.idChunk} not the same as compute com/chunk chunk ID ${comChunk.id}`);
     }
-    if ((c as unknown as { wrap: boolean }).wrap) {
-      throw new StyleError('fix spring/chunk with compute com/chunk wrap yes is not supported by the engine yet');
-    }
     this.ccom = c;
   }
 
@@ -70,8 +68,15 @@ export class FixSpringChunk extends Fix {
     const sums = comSums(sys, this.ccom!.groupBit, ichunk, N);
     const masstotal = sums.masstotal;
     const com = new Float64Array(3 * N);
+    const wrap = (this.ccom as unknown as { wrap: boolean }).wrap;
+    const p = [0, 0, 0];
     for (let m = 0; m < N; m++) {
       for (let d = 0; d < 3; d++) com[3 * m + d] = masstotal[m] > 0.0 ? sums.sum[3 * m + d] / masstotal[m] : 0.0;
+      if (wrap && masstotal[m] > 0.0) {
+        p[0] = com[3 * m]; p[1] = com[3 * m + 1]; p[2] = com[3 * m + 2];
+        sys.geom.remapPoint(p);
+        com[3 * m] = p[0]; com[3 * m + 1] = p[1]; com[3 * m + 2] = p[2];
+      }
     }
     if (this.com0 === null) {
       // native: the reference COMs are stored the first time the fix is evaluated

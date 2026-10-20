@@ -1,4 +1,5 @@
 import { Compute } from './compute';
+import { ComputeOrientorderAtom } from './orientorder';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
@@ -555,8 +556,18 @@ const parseTypeRange = (id: string, w: string, ntypes: number): readonly [number
  * *typeN* keywords are specified, this compute calculates a per-atom
  * array, with :math:`N` columns."  Default: "group = all".
  *
- * The orientorder cstyle needs compute orientorder/atom, which this engine
- * does not have: StyleError, never a silent no-op.  Neighbors are counted
+ * The orientorder cstyle — the docs: "The *orientorder* cstyle calculates
+ * the number of "connected" neighbor atoms J around each central atom I.
+ * For this *cstyle*, connected is defined by the orientational order
+ * parameter calculated by the compute orientorder/atom command. This
+ * *cstyle* thus allows one to apply the ten Wolde's criterion to identify
+ * crystal-like atoms in a system". As native LAMMPS does
+ * (src/compute_coord_atom.cpp at b332f28): a neighbor J of any type or group
+ * within the orientorder compute's cutoff is connected when the dot product
+ * of the two atoms' normalized q_l component vectors (the components
+ * columns) exceeds the threshold; native reads those columns from the
+ * column after the q_l values, so with wl or wl/hat it reads those columns
+ * instead, and so does the engine.  Neighbors are counted
  * with minimum-image distances (geom.minimumImage), valid for any cutoff
  * smaller than half the box.  Like LAMMPS's neighbor-list-based tally, the
  * count is over pairs closer than the cutoff; with special_bonds settings
@@ -570,6 +581,8 @@ export class ComputeCoordAtom extends Compute {
   private readonly cutoff: number;
   private readonly group2Bit: number = ALL_GROUP_BIT; // "Default setting is group 'all.'"
   private readonly ranges: readonly (readonly [number, number])[];
+  /** cstyle orientorder: the orientorder/atom compute and the threshold. */
+  private readonly orient: { id: string; threshold: number } | null = null;
   private counts = new Float64Array(0);
   private readonly d = [0, 0, 0];
 
@@ -578,7 +591,18 @@ export class ComputeCoordAtom extends Compute {
     if (args.length < 1) throw new StyleError(`usage: compute ${id} group-ID coord/atom cutoff cutoff [group group2-ID] typeN ...`);
     const cstyle = args[0];
     if (cstyle === 'orientorder') {
-      throw new StyleError(`compute ${id} (coord/atom): cstyle 'orientorder' is not supported by the browser engine (it needs compute orientorder/atom)`);
+      // native's checks and texts (compute_coord_atom.cpp constructor)
+      if (args.length !== 3) throw new StyleError('Illegal compute coord/atom command');
+      const c = sys.computes.find((x) => x.id === args[1]);
+      if (!c) throw new StyleError(`Could not find compute coord/atom compute ID ${args[1]}`);
+      if (!(c instanceof ComputeOrientorderAtom)) throw new StyleError(`Compute coord/atom compute ID ${args[1]} is not orientorder/atom`);
+      const threshold = Number(args[2]);
+      if (!Number.isFinite(threshold)) throw new StyleError(`Expected floating point parameter instead of '${args[2]}' in input script or data file`);
+      if (threshold <= -1.0 || threshold >= 1.0) throw new StyleError('Compute coord/atom threshold not between -1 and 1');
+      this.orient = { id: args[1], threshold };
+      this.cutoff = 0;
+      this.ranges = [[1, sys.state.ntypes]];
+      return;
     }
     if (cstyle !== 'cutoff') throw new StyleError(`unknown compute coord/atom cstyle '${cstyle}' (use cutoff or orientorder)`);
     if (args.length < 2) throw new StyleError(`compute ${id} (coord/atom): the cutoff cstyle needs a cutoff distance`);
@@ -601,7 +625,55 @@ export class ComputeCoordAtom extends Compute {
     if (this.ranges.length > 1) this.sizePeratomCols = this.ranges.length; // else per-atom vector
   }
 
+  init(): void {
+    if (!this.orient) return;
+    const c = this.sys.computes.find((x) => x.id === this.orient!.id);
+    if (!(c instanceof ComputeOrientorderAtom)) throw new StyleError(`Could not find compute coord/atom compute ID ${this.orient.id}`);
+    if (c.qlcomp === null) throw new StyleError('Compute coord/atom requires components option in compute orientorder/atom');
+  }
+
+  /** cstyle orientorder: the connected neighbors of each group atom (any type or group), see the header. */
+  private computeOrient(): void {
+    const s = this.sys.state;
+    const g = this.sys.geom;
+    const n = s.n;
+    const c = this.sys.computes.find((x) => x.id === this.orient!.id) as ComputeOrientorderAtom;
+    const l = c.qlcomp!;
+    const normv = c.peratomValues();
+    const ncol = c.sizePeratomCols;
+    const off = c.nqlist;
+    const nc = 2 * (2 * l + 1);
+    const cut = c.resolveCutoff();
+    const cut2 = cut * cut;
+    const threshold = this.orient!.threshold;
+    const out = (this.vectorAtom = new Float64Array(n));
+    const three = s.dimension === 3;
+    const xc = three ? s.x : Float64Array.from({ length: 3 * n }, (_, q) => (q % 3 === 2 ? 0 : s.x[q]));
+    const cells = new CellList(xc, n, g.triclinic ? 0 : cut, { length: [g.lx, g.ly, g.lz], periodic: g.periodic });
+    const d = this.d;
+    for (let i = 0; i < n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      const xi = s.x[3 * i], yi = s.x[3 * i + 1], zi = s.x[3 * i + 2];
+      const cand = cells.candidates(xi, yi, three ? zi : 0);
+      let count = 0;
+      for (let q = 0; q < cand.length; q++) {
+        const j = cand[q];
+        if (j === i) continue;
+        d[0] = xi - s.x[3 * j];
+        d[1] = yi - s.x[3 * j + 1];
+        d[2] = three ? zi - s.x[3 * j + 2] : 0;
+        g.minimumImage(d);
+        if (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] >= cut2) continue;
+        let dot = 0.0;
+        for (let m = 0; m < nc; m++) dot += normv[i * ncol + off + m] * normv[j * ncol + off + m];
+        if (dot > threshold) count++;
+      }
+      out[i] = count;
+    }
+  }
+
   protected computePeratom(): void {
+    if (this.orient) { this.computeOrient(); return; }
     const s = this.sys.state;
     const g = this.sys.geom;
     const n = s.n;

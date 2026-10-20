@@ -1,0 +1,36 @@
+# oracle: compute bond/local, angle/local and dihedral/local with v_name values and the set keyword: the internal-style variable (created when missing, or defined first) takes the bond distance, the angle and the dihedral in radians, and an equal-style variable of it is evaluated per row; the local values are summed into thermo with compute reduce
+# oracle-inputs: mol_chains.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+units           lj
+atom_style      molecular
+bond_style      class2
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+bond_coeff      1 1.05 100.0 -50.0 20.0
+bond_coeff      2 1.1 90.0 -40.0 15.0
+angle_coeff     1 40.0 109.5
+angle_coeff     2 25.0 120.0
+dihedral_coeff  1 1.5 -1 3
+improper_coeff  1 12.0 20.0
+special_bonds   lj 0.0 0.5 0.8
+velocity        all create 1.0 4928459 mom no rot no
+fix             1 all nve
+variable        t internal 0.0
+variable        bsq equal v_d*v_d
+variable        cth equal cos(v_t)
+variable        sph equal sin(v_p)+0.5*v_p
+compute         bl all bond/local dist v_bsq set dist d
+compute         al all angle/local theta v_cth eng set theta t
+compute         dl all dihedral/local v_sph phi set phi p
+compute         rb all reduce sum c_bl[1] c_bl[2] inputs local
+compute         ra all reduce sum c_al[1] c_al[2] c_al[3] inputs local
+compute         rd all reduce sum c_dl[1] c_dl[2] inputs local
+thermo_style    custom step pe c_rb[1] c_rb[2] c_ra[1] c_ra[2] c_ra[3] c_rd[1] c_rd[2] v_t
+thermo_modify   format float %.15g norm no
+thermo          10
+run             20

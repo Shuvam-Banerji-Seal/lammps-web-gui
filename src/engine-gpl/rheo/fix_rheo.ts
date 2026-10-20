@@ -8,13 +8,14 @@
  * Docs (docs.lammps.org/fix_rheo.html): "fix ID group-ID rheo cut kstyle zmin keyword values..." and "kstyle = quintic
  * or RK0 or RK1 or RK2" (and wendland/c4, compute_rheo_kernel.cpp). The browser engine supports every kernel with the
  * shift, density, speed/sound, thermal (energy gradient for fix rheo/thermal), surface/detection (coordination and
- * divergence) and rho/sum keywords, and refuses interface/reconstruct by name.
+ * divergence), interface/reconstruct and rho/sum keywords.
  *
  * Integration (native order): initial_integrate kicks v by dt/2 F/m, computes the gradients, drifts x by dt v, evolves
  * rho by dt/2 (drho - rho div v) on fluid atoms, then applies the shift (x, v, rho) of the previous force evaluation;
  * pre_force computes the gradients and the shift velocity and clears the temporary status options; final_integrate
  * kicks v by dt/2 F/m and evolves rho the same way. Solid atoms (status bits of PHASECHECK) keep their density.
  */
+import { computeRheoInterface, rheoFpStore, storeRheoForces } from './compute_rheo_interface';
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { StyleError, typeBounds } from '../../engine/force/types';
@@ -72,7 +73,13 @@ export class FixRHEO extends Fix {
             for (let t = lo; t <= hi; t++) shiftType[t] = 0;
             iarg += 2;
           } else if (args[iarg + 1] === 'scale/cross/type') {
-            throw new StyleError('fix rheo shift scale/cross/type is not supported by the browser engine yet');
+            // fix_rheo.cpp: "scale/cross/type scale cmin rmin"
+            if (iarg + 4 >= args.length) throw new StyleError('Illegal fix rheo shift scale/cross/type command: missing argument(s)');
+            this.model.shiftCrossType = true;
+            this.model.shiftScale = parseNum(args[iarg + 2], 'shift scale');
+            this.model.shiftCmin = parseNum(args[iarg + 3], 'shift cmin');
+            this.model.shiftRmin = parseNum(args[iarg + 4], 'shift rmin');
+            iarg += 4;
           } else {
             break;
           }
@@ -103,7 +110,10 @@ export class FixRHEO extends Fix {
         // fix_rheo.cpp: "thermal" sets thermal_flag (energy gradients, and fix rheo/thermal is required in setup)
         this.model.thermalFlag = true;
       } else if (w === 'interface/reconstruct') {
-        throw new StyleError(`fix rheo keyword ${w} is not supported by the browser engine yet`);
+        // fix_rheo.cpp: "interface/reconstruct" sets interface_flag; its compute rheo/interface creates the per-atom
+        // property fp_store when fix rheo is defined (fix property/atom d2_fp_store 3), unless one exists already
+        this.model.interfaceFlag = true;
+        rheoFpStore(sys.state);
       } else if (w === 'density') {
         if (iarg + n >= args.length) throw new StyleError('Illegal fix rheo density: missing values');
         for (let t = 1; t <= n; t++) {
@@ -142,7 +152,12 @@ export class FixRHEO extends Fix {
   }
 
   /** fix_rheo.cpp setup_pre_force(): the pre_force evaluation of the RHEO state. */
-  setupPreForce(): void { this.preForce(); }
+  setupPreForce(): void {
+    // compute_rheo_interface.cpp init(): the reconstruction needs fix rheo/pressure's inverse equation of state
+    const eos = this.model.pressureEos;
+    if (this.model.interfaceFlag && eos && !eos.invertible) throw new StyleError('RHEO interface reconstruction incompatible with pressure equation of state');
+    this.preForce();
+  }
 
   /**
    * fix_rheo.cpp setup(): "Missing fix rheo/viscosity" and "Missing fix rheo/pressure" when an accessory fix is not
@@ -169,6 +184,11 @@ export class FixRHEO extends Fix {
       if (!(mask[i] & bit)) continue;
       const dtfm = dtf / massOf(s, i);
       for (let a = 0; a < 3; a++) v[3 * i + a] += dtfm * f[3 * i + a];
+    }
+    // interface/reconstruct: the non-pressure accelerations of the last step, then chi and the solid densities
+    if (m.interfaceFlag) {
+      storeRheoForces(s, this.sys.fixes);
+      computeRheoInterface(s, this.sys.nb, m, this.sys.geom);
     }
     // gradients of the current velocities and densities (the positions of the neighbor list are the old ones)
     computeRheoGrad(s, this.sys.nb, m, this.sys.geom);
@@ -215,6 +235,7 @@ export class FixRHEO extends Fix {
     if (m.correctionOrder >= 0 || m.surfaceFlag) computeRheoCoordination(s, this.sys.nb, m);
     if (m.rhosumFlag) computeRheoRhoSum(s, this.sys.nb, m);
     if (m.rk1) computeRheoCorrections(s, this.sys.nb, m);
+    if (m.interfaceFlag) computeRheoInterface(s, this.sys.nb, m, this.sys.geom);
     computeRheoGrad(s, this.sys.nb, m, this.sys.geom);
     if (m.shiftFlag) computeRheoVShift(s, this.sys.nb, m, this.groupBit, this.sys.geom);
     const status = rheoProp(s, RHEO_STATUS);

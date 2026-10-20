@@ -9,8 +9,7 @@
  * coordination, pressure, cv, shift/v/a, grad/v/ab, stress/v/ab, stress/t/ab, energy, nbond/shell and the per-atom
  * properties of the atom style (rho, drho, viscosity, and temperature, esph, heatflow, conductivity on rheo/thermal).
  * A vector or tensor attribute ending in * gives all its components (dim or dim*dim columns). The surface values are
- * 1 for a surface atom, 2 for a splash atom and 0 otherwise. chi needs fix rheo interface/reconstruct, which the
- * browser engine refuses, so it stops with native's error for a fix rheo without that option.
+ * 1 for a surface atom, 2 for a splash atom and 0 otherwise. chi needs fix rheo interface/reconstruct.
  */
 import { PHASECHECK, rheoModelOf } from './model';
 import { Compute } from '../../engine/compute/compute';
@@ -141,7 +140,7 @@ export class ComputeRHEOPropertyAtom extends Compute {
   init(): void {
     const model = rheoModelOf(this.sys.state);
     if (!model || !this.sys.fixes.some((f) => f.style === 'rheo')) throw new StyleError('Need to define fix rheo to use compute rheo/property/atom');
-    if (this.interfaceFlag) throw new StyleError('Cannot request interfacial property without corresponding option in fix rheo');
+    if (this.interfaceFlag && !model.interfaceFlag) throw new StyleError('Cannot request interfacial property without corresponding option in fix rheo');
     if (this.surfaceFlag && !model.surfaceFlag) throw new StyleError('Cannot request surface property without corresponding option in fix rheo');
     if (this.shiftFlag && !model.shiftFlag) throw new StyleError('Cannot request velocity shifting property without corresponding option in fix rheo');
     if (this.thermalFlag && !(model.thermalFlag && this.sys.fixes.some((f) => f.style === 'rheo/thermal'))) throw new StyleError('Cannot request thermal property without fix rheo/thermal');
@@ -204,7 +203,8 @@ export class ComputeRHEOPropertyAtom extends Compute {
             // pack_nbond_shell: the formed shell bonds (the internal per-atom property of bond rheo/shell)
             case 'nbond/shell': val = shellNbond(s)[i]; break;
             case 'avec': val = data![i]; break;
-            case 'chi': break;
+            // pack_chi: compute rheo/interface's chi
+            case 'chi': val = model.chi[i]; break;
           }
         }
         if (nv > 1) out[nv * i + k] = val;

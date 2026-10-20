@@ -1,0 +1,62 @@
+# oracle: RHEO Poiseuille flow (cut down, 400 steps, a body force of 0.01) with fix rheo interface/reconstruct: chi, the solid wall densities reconstructed from the fluid pressures (tait/water for the wall type, linear for the fluid), the corrected wall velocities and densities in pair rheo, the gradients and the shift, and fix setforce on the walls (store_forces); chi and the wall densities reduced in thermo
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-13
+# fp_store is defined first with ghost yes, which compute rheo/interface then uses: the property it creates itself (fix property/atom d2_fp_store 3) has no ghost communication, so on a neighbor rebuild step native's ghosts keep the values of the slot's previous ghost until the next forward communication. Measured with native LAMMPS: without this line the run differs from step 49 (the first rebuild that changes the ghosts near x = 0; the wall densities there by 1e-3), and with it engine and native agree through step 49 to 1e-12; the engine reads the owner's value either way.
+# Measured with native LAMMPS: engine vs native thermo 7.4e-10, atoms 5.8e-10.
+units        lj
+atom_style   rheo
+dimension    2
+boundary     p p p
+comm_modify  vel yes
+
+region       box block 0 12 -6 6 -0.01 0.01
+create_box   2 box
+lattice      sq 1.0
+
+region       inner   block INF INF -4.5 4.5 INF INF units box
+region       walls   block INF INF -4.5 4.5 INF INF units box side out
+
+create_atoms 2 region walls
+create_atoms 1 region inner
+
+group        fluid type 1
+group        rig type 2
+
+displace_atoms fluid random 0.1 0.1 0 135414 units box
+
+variable     rho0 equal 1.0
+variable     cs equal 1.0
+variable     mp equal ${rho0}/1.0
+variable     zeta equal 1.0
+variable     fext equal 1e-4/1.0
+variable     dt_max equal  0.1*3.0/${cs}/3
+variable     Dr equal 0.05*3.0*${cs}
+variable     eta equal 0.1
+
+mass         * ${mp}
+set          group all rheo/rho ${rho0}
+set          group all rheo/status 0
+set          group rig rheo/status 1
+
+timestep     ${dt_max}
+
+pair_style   rheo 3.0 artificial/visc ${zeta} rho/damp ${Dr}
+pair_coeff   * *
+
+fix          fp all property/atom d2_fp_store 3 ghost yes
+fix          1 all rheo 3.0 quintic 0 shift interface/reconstruct
+fix          2 all rheo/viscosity * constant ${eta}
+fix          3 all rheo/pressure 1 linear 2 tait/water
+fix          4 rig setforce 0.0 0.0 0.0
+fix          5 fluid addforce 0.01 0.0 0.0
+fix          6 all enforce2d
+
+compute      rho all rheo/property/atom rho
+compute      ch all rheo/property/atom chi rho
+compute      chr rig reduce sum c_ch[1] c_ch[2]
+compute      chf fluid reduce sum c_ch[1]
+
+thermo       50
+thermo_style custom step time ke press c_chr[*] c_chf
+thermo_modify format float %.15g
+
+run          400

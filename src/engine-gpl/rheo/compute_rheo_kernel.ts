@@ -22,8 +22,8 @@
 import type { SimState } from '../../engine/types';
 import type { Neighbor } from '../../engine/neighbor';
 import { NEIGHMASK } from '../../engine/neighbor';
-import { massOf, RHEO_RHO } from '../../engine/atoms';
-import { rheoProp, type RheoModel } from './model';
+import { massOf, RHEO_RHO, RHEO_STATUS } from '../../engine/atoms';
+import { PHASECHECK, rheoProp, type RheoModel } from './model';
 
 /** Grows the per-atom arrays of the corrected kernels to n owned atoms (C: 1 + dim rows of Mdim per atom). */
 const ensureArrays = (m: RheoModel, n: number): void => {
@@ -68,7 +68,7 @@ export const computeRheoCorrections = (s: SimState, nb: Neighbor, m: RheoModel):
   const full = nb.full;
   if (!full) throw new Error('rheo kernel needs a full neighbor list');
   const x = nb.xall, owner = nb.owner, nbr = full.neighbors;
-  const rho = rheoProp(s, RHEO_RHO);
+  const rho = rheoProp(s, RHEO_RHO), status = rheoProp(s, RHEO_STATUS);
   const M = new Float64Array(N * N);
   const U = new Float64Array(N * N);
   const Ui = new Float64Array(N * N);
@@ -86,7 +86,10 @@ export const computeRheoCorrections = (s: SimState, nb: Neighbor, m: RheoModel):
       const r = Math.sqrt(rsq);
       const w = m.wQuintic(r);
       const oj = owner[j];
-      const vj = massOf(s, oj) / rho[oj];
+      // compute_rheo_kernel.cpp: with interface/reconstruct, a non-fluid neighbor takes correct_rho
+      let rhoj = rho[oj];
+      if (m.interfaceFlag && (status[oj] & PHASECHECK)) rhoj = m.correctRho(rhoj, s.type[oj]);
+      const vj = massOf(s, oj) / rhoj;
       const H = m.basis(dx, dy, dz);
       for (let a = 0; a < N; a++) {
         for (let b = a; b < N; b++) M[a * N + b] += H[a] * H[b] * w * vj;

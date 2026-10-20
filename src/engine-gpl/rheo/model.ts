@@ -82,6 +82,43 @@ export class RheoModel {
   shiftType: Uint8Array | null = null;
   /** fix rheo shift: the shifting velocity is on. */
   shiftFlag = false;
+  /**
+   * fix rheo shift scale/cross/type scale cmin rmin (native shift_cross_type_flag, shift_scale, shift_cmin,
+   * shift_rmin): the shift normal to an interface between atom types is scaled by scale for atoms whose cross-type
+   * colour ct reaches cmin, and an atom whose same-type kernel-weighted distance sum is below rmin does not shift.
+   */
+  shiftCrossType = false;
+  shiftScale = 0;
+  shiftCmin = 0;
+  shiftRmin = 0;
+  /**
+   * fix rheo interface/reconstruct (compute_rheo_interface.cpp): chi per owned atom is the kernel-weighted fraction of
+   * neighbors in its own phase (fluid or not); the densities of non-fluid atoms are reconstructed from their fluid
+   * neighbors' pressures (compute_rheo_interface.ts), and fluid-solid pairs use the corrected solid velocity and density.
+   */
+  interfaceFlag = false;
+  chi = new Float64Array(0);
+  /** fix rheo/pressure's equation of state, set by that fix: the pressure of a density, its inverse, and whether it has one. */
+  pressureEos: { calcPressure(rho: number, i: number): number; calcRho(p: number, i: number): number; invertible: boolean } | null = null;
+
+  /**
+   * compute_rheo_interface.cpp correct_v: the solid end's velocity becomes (v_solid - v_fluid) times the wall prefactor
+   * max(2 cut (chi_solid - 0.5), 0) / max(2 cut (chi_fluid - 0.5), sqrt(3) cut / 12); the indices are owned atoms.
+   */
+  correctV(vSolid: number[], vFluid: number[], iSolid: number, iFluid: number): void {
+    const wallMax = Math.sqrt(3.0) / 12.0 * this.cut;
+    const wallNumer = Math.max(2.0 * this.cut * (this.chi[iSolid] - 0.5), 0.0);
+    const wallDenom = Math.max(2.0 * this.cut * (this.chi[iFluid] - 0.5), wallMax);
+    const wallPrefactor = wallNumer / wallDenom;
+    vSolid[0] = (vSolid[0] - vFluid[0]) * wallPrefactor;
+    vSolid[1] = (vSolid[1] - vFluid[1]) * wallPrefactor;
+    vSolid[2] = (vSolid[2] - vFluid[2]) * wallPrefactor;
+  }
+
+  /** compute_rheo_interface.cpp correct_rho: a solid end's density is at least the equilibrium density of its type. */
+  correctRho(rhoSolid: number, typeSolid: number): number {
+    return Math.max(this.rho0[typeSolid], rhoSolid);
+  }
   /** gradv (dim*dim per atom, uxx uxy ... row-major), gradr (dim per atom), vshift (dim per atom). */
   gradv = new Float64Array(0);
   gradr = new Float64Array(0);
@@ -296,6 +333,12 @@ export class RheoModel {
    * dW_a = w * sum_b C[o][1+a][b] H[b] over the basis H of the order. The native code leaves dWij unchanged for an
    * uncorrected atom (it reads the value of the previous pair); the port uses the quintic derivative there.
    */
+  /**
+   * calc_dw of one end: the gradient of the corrected kernel (RK1, RK2) for an atom with corrections, else of the
+   * quintic (wendland/c4) kernel. fix_rheo.html: a particle with fewer neighbors "will revert to a non-reproducing
+   * quintic kernel until it gains more neighbors". Native calc_dw (compute_rheo_kernel.cpp at b332f28) leaves its member
+   * dWij or dWji unset for such an end, so it keeps the previous call's gradient; the engine follows the doc.
+   */
   calcDw(o: number, delx: number, dely: number, delz: number, r: number, out: Float64Array): number {
     if (this.kernelStyle === 'wendland/c4') {
       const wp = this.dwWendland(r);
@@ -358,6 +401,18 @@ export const rheoHalfPairs = (s: SimState, nb: Neighbor, geom: Geometry): Int32A
 };
 
 /**
+ * The densities of a pair with interface/reconstruct ("Add corrections for walls" of the RHEO computes): a solid end
+ * next to a fluid one takes correct_rho, two solid ends their equilibrium densities.
+ */
+export const interfaceRho = (m: RheoModel, type: Int32Array, fluidi: boolean, fluidj: boolean, rhoi: number, rhoj: number,
+  i: number, oj: number): [number, number] => {
+  if (fluidi && !fluidj) return [rhoi, m.correctRho(rhoj, type[oj])];
+  if (!fluidi && fluidj) return [m.correctRho(rhoi, type[i]), rhoj];
+  if (!fluidi && !fluidj) return [m.rho0[type[i]], m.rho0[type[oj]]];
+  return [rhoi, rhoj];
+};
+
+/**
  * compute_rheo_grad.cpp compute_peratom(): gradv_i,ab = -sum_j (v_i - v_j)_a Vj dW_ij,b and gradr_i,a =
  * -sum_j (rho_i - rho_j) Vj dW_ij,a, with Vj = m_j / rho_j. The native half list (REQ_DEFAULT, newton off) visits each
  * owned pair once: the owned end i takes -(...) Vj dWij, and an owned partner j takes +(...) Vi dWji. Ghost neighbors
@@ -379,7 +434,8 @@ export const computeRheoGrad = (s: SimState, nb: Neighbor, m: RheoModel, geom: G
   const v = s.v, rho = rheoProp(s, RHEO_RHO);
   const energy = energyGrad ? rheoProp(s, RHEO_ESPH) : null;
   const pairs = rheoHalfPairs(s, nb, geom);
-  const vij = [0, 0, 0];
+  const status = rheoProp(s, RHEO_STATUS), type = s.type;
+  const vij = [0, 0, 0], vi = [0, 0, 0], vj = [0, 0, 0];
   for (let p = 0; p < pairs.length; p += 2) {
     const i = pairs[p];
     const j = pairs[p + 1] & NEIGHMASK;
@@ -387,9 +443,24 @@ export const computeRheoGrad = (s: SimState, nb: Neighbor, m: RheoModel, geom: G
     const rsq = delx * delx + dely * dely + delz * delz;
     if (rsq >= m.cutsq) continue;
     const oj = owner[j];
-    const rhoi = rho[i], rhoj = rho[oj];
+    let rhoi = rho[i], rhoj = rho[oj];
+    for (let a = 0; a < 3; a++) { vi[a] = v[3 * i + a]; vj[a] = v[3 * oj + a]; }
+    // compute_rheo_grad.cpp: "Add corrections for walls" (interface/reconstruct)
+    if (m.interfaceFlag) {
+      const fluidi = !(status[i] & PHASECHECK), fluidj = !(status[oj] & PHASECHECK);
+      if (fluidi && !fluidj) {
+        m.correctV(vj, vi, oj, i);
+        rhoj = m.correctRho(rhoj, type[oj]);
+      } else if (!fluidi && fluidj) {
+        m.correctV(vi, vj, i, oj);
+        rhoi = m.correctRho(rhoi, type[i]);
+      } else if (!fluidi && !fluidj) {
+        rhoi = m.rho0[type[i]];
+        rhoj = m.rho0[type[oj]];
+      }
+    }
     const Voli = massOf(s, i) / rhoi, Volj = massOf(s, oj) / rhoj;
-    for (let a = 0; a < dim; a++) vij[a] = v[3 * i + a] - v[3 * oj + a];
+    for (let a = 0; a < dim; a++) vij[a] = vi[a] - vj[a];
     const drho = rhoi - rhoj;
     const de = energy ? energy[i] - energy[oj] : 0;
     const r = Math.sqrt(rsq);
@@ -439,9 +510,12 @@ export const computeRheoVShift = (s: SimState, nb: Neighbor, m: RheoModel, group
     if (rsq >= m.cutsq) continue;
     const r = Math.sqrt(rsq);
     const rinv = 1 / r;
-    const rhoi = rho[i];
+    // compute_rheo_vshift.cpp: "Add corrections for walls" (interface/reconstruct; the corrected solid velocity is not
+    // read here, as only a fluid end shifts)
+    let rhoi = rho[i], rhoj = rho[oj];
+    if (m.interfaceFlag) [rhoi, rhoj] = interfaceRho(m, s.type, fluidi, fluidj, rhoi, rhoj, i, oj);
     const voli = massOf(s, i) / rhoi;
-    const volj = massOf(s, oj) / rho[oj];
+    const volj = massOf(s, oj) / rhoj;
     const wp = m.calcDw(i, dx, dy, dz, r, m.dW);
     const w = m.calcW(r);
     const w0 = m.calcW(cutthird);
@@ -471,6 +545,83 @@ export const computeRheoVShift = (s: SimState, nb: Neighbor, m: RheoModel, group
     for (let i = 0; i < n; i++) {
       if (!m.shiftType[s.type[i]]) for (let a = 0; a < dim; a++) vshift[i * dim + a] = 0.0;
     }
+  }
+  if (m.shiftCrossType) correctRheoTypeInterface(s, nb, m, pairs);
+};
+
+/**
+ * compute_rheo_vshift.cpp correct_type_interface() (fix rheo shift scale/cross/type), after Yang, Rakhsha, Hu and
+ * Negrut 2022: over the same half pairs (rsq <= cutsq here), the cross-type colour ct_i = sum_j [t_i != t_j] V_j W_ij,
+ * its gradient cgradt_i = -sum_j [t_i != t_j] V_j dW_ij (V_i from the per-type mass, as native), and the same-type sum
+ * rsame_i = sum_j [t_i == t_j] W_ij r_ij. Then for every owned atom: rsame below rmin removes the shift; ct of at least
+ * cmin removes (1 - scale) of the shift's component along the unit colour gradient.
+ */
+const correctRheoTypeInterface = (s: SimState, nb: Neighbor, m: RheoModel, pairs: Int32Array): void => {
+  const n = s.n, dim = m.dim;
+  const x = nb.xall, owner = nb.owner, type = s.type;
+  const rho = rheoProp(s, RHEO_RHO), status = rheoProp(s, RHEO_STATUS);
+  const vshift = m.vshift;
+  const ct = new Float64Array(n), rsame = new Float64Array(n), cgradt = new Float64Array(3 * n);
+  // colour function
+  for (let p = 0; p < pairs.length; p += 2) {
+    const i = pairs[p];
+    const j = pairs[p + 1] & NEIGHMASK;
+    const oj = owner[j];
+    const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
+    const rsq = dx * dx + dy * dy + dz * dz;
+    if (rsq > m.cutsq) continue;
+    const r = Math.sqrt(rsq);
+    let rhoi = rho[i], rhoj = rho[oj];
+    if (m.interfaceFlag) [rhoi, rhoj] = interfaceRho(m, type, !(status[i] & PHASECHECK), !(status[oj] & PHASECHECK), rhoi, rhoj, i, oj);
+    const voli = massOf(s, i) / rhoi;
+    const volj = massOf(s, oj) / rhoj;
+    const w = m.calcW(r);
+    const ctmp = type[i] !== type[oj] ? 1 : 0;
+    ct[i] += ctmp * volj * w;
+    if (j < n) ct[j] += ctmp * voli * w;
+  }
+  // colour gradient and the same-type distance sum
+  for (let p = 0; p < pairs.length; p += 2) {
+    const i = pairs[p];
+    const j = pairs[p + 1] & NEIGHMASK;
+    const oj = owner[j];
+    const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
+    const rsq = dx * dx + dy * dy + dz * dz;
+    if (rsq > m.cutsq) continue;
+    const r = Math.sqrt(rsq);
+    let rhoi = rho[i], rhoj = rho[oj];
+    if (m.interfaceFlag) [rhoi, rhoj] = interfaceRho(m, type, !(status[i] & PHASECHECK), !(status[oj] & PHASECHECK), rhoi, rhoj, i, oj);
+    const voli = massOf(s, i) / rhoi;
+    const volj = massOf(s, oj) / rhoj;
+    const w = m.calcW(r);
+    m.calcDw(i, dx, dy, dz, r, m.dW);
+    m.calcDw(oj, -dx, -dy, -dz, r, m.dWj);
+    const ctmp = type[i] !== type[oj] ? 1 : 0;
+    for (let a = 0; a < dim; a++) {
+      cgradt[3 * i + a] -= ctmp * volj * m.dW[a];
+      if (j < n) cgradt[3 * j + a] -= ctmp * voli * m.dWj[a];
+    }
+    if (type[i] === type[oj]) {
+      rsame[i] += w * r;
+      if (j < n) rsame[j] += w * r;
+    }
+  }
+  // remove the normal shifting component of the interfacial atoms
+  const ntmp = [0, 0, 0];
+  for (let i = 0; i < n; i++) {
+    // if isolated, just don't shift
+    if (rsame[i] < m.shiftRmin) {
+      for (let a = 0; a < dim; a++) vshift[i * dim + a] = 0.0;
+      continue;
+    }
+    if (ct[i] < m.shiftCmin) continue;
+    let minv = 0;
+    for (let a = 0; a < dim; a++) minv += cgradt[3 * i + a] * cgradt[3 * i + a];
+    if (minv !== 0) minv = 1 / Math.sqrt(minv);
+    for (let a = 0; a < dim; a++) ntmp[a] = cgradt[3 * i + a] * minv;
+    let dot = 0.0;
+    for (let a = 0; a < dim; a++) dot += ntmp[a] * vshift[i * dim + a];
+    for (let a = 0; a < dim; a++) vshift[i * dim + a] -= (1.0 - m.shiftScale) * ntmp[a] * dot;
   }
 };
 

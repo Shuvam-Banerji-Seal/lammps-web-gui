@@ -22,7 +22,7 @@ import type { Neighbor } from '../../engine/neighbor';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { massOf, RHEO_RHO, RHEO_STATUS } from '../../engine/atoms';
 import type { Geometry } from '../../engine/domain';
-import { PHASECHECK, STATUS_SPLASH, STATUS_SURFACE, rheoHalfPairs, rheoProp, type RheoModel } from './model';
+import { PHASECHECK, STATUS_SPLASH, STATUS_SURFACE, interfaceRho, rheoHalfPairs, rheoProp, type RheoModel } from './model';
 
 export const STATUS_BULK = 1 << 2;
 export const STATUS_LAYER = 1 << 3;
@@ -106,14 +106,17 @@ export const computeRheoSurface = (s: SimState, nb: Neighbor, m: RheoModel, grou
     dW[1] = dy * wprinv;
     dW[2] = dz * wprinv;
     const o = owner[j];
-    const Volj = massOf(s, o) / rho[o];
+    // compute_rheo_surface.cpp: "Add corrections for walls" (interface/reconstruct)
+    let rhoi = rho[i], rhoj = rho[o];
+    if (m.interfaceFlag) [rhoi, rhoj] = interfaceRho(m, s.type, !(status[i] & PHASECHECK), !(status[o] & PHASECHECK), rhoi, rhoj, i, o);
+    const Volj = massOf(s, o) / rhoj;
     const del = [dx, dy, dz];
     for (let a = 0; a < dim; a++) {
       divr[i] -= dW[a] * del[a] * Volj;
       gradC[i * dim + a] += dW[a] * Volj;
     }
     if (j < n) {
-      const Voli = massOf(s, i) / rho[i];
+      const Voli = massOf(s, i) / rhoi;
       for (let a = 0; a < dim; a++) {
         divr[j] += -dW[a] * del[a] * Voli;
         gradC[j * dim + a] += -dW[a] * Voli;

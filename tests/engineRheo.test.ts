@@ -69,16 +69,24 @@ write_data rheo.data
     expect(data).toMatch(/2 1 1 2\.5 2 1 0/);
   });
 
-  it('refuses fix rheo interface/reconstruct and an unsupported keyword by name', async () => {
+  it('stops interface/reconstruct with a pressure equation that has no inverse, and an unsupported keyword by name', async () => {
+    // compute_rheo_interface.cpp init(): "RHEO interface reconstruction incompatible with pressure equation of state"
     await expect(run(`
 units lj
 dimension 2
 atom_style rheo
+comm_modify vel yes
 region box block 0 4 0 4 -0.01 0.01
 create_box 1 box
 create_atoms 1 single 1.0 1.0 0
+mass * 1.0
+pair_style rheo 3.0
+pair_coeff * *
 fix 1 all rheo 3.0 quintic 0 interface/reconstruct
-`)).rejects.toThrow(/interface\/reconstruct/);
+fix 2 all rheo/viscosity * constant 0.05
+fix 3 all rheo/pressure * cubic 1.0
+run 0
+`)).rejects.toThrow(/RHEO interface reconstruction incompatible with pressure equation of state/);
     await expect(run(`
 units lj
 dimension 2

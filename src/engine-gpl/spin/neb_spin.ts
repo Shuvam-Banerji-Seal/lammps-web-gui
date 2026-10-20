@@ -15,12 +15,12 @@
  * timestep (min_spin.cpp evaluate_dt takes the largest precession frequency over all replicas), then evaluates every
  * replica's forces and energies, then applies the nudging of every replica.
  *
- * Supported: file-style final, each and none; the verbose keyword (the extra per-replica columns); min_style spin and
- * spin/cg (its multireplica branch: the end replicas keep their spins, the sums of the conjugate direction run over all
- * replicas, and the timestep follows the largest torque of all replicas; with several replicas native never uses its
- * line search); fix neb/spin with its kspring. Refused with a StyleError: min_style spin/lbfgs (its multireplica
- * iteration is written below but does not yet match native, see the check), any other minimizer, atoms without spins,
- * units other than metal, a single replica, and other trailing words.
+ * Supported: file-style final, each and none; the verbose keyword (the extra per-replica columns); min_style spin,
+ * spin/cg and spin/lbfgs (their multireplica branches: the end replicas keep their spins, the sums of the conjugate
+ * direction and of the L-BFGS recursion run over all replicas, and spin/cg's timestep follows the largest torque of all
+ * replicas; with several replicas native never uses their line search); fix neb/spin with its kspring. Refused with
+ * a StyleError: any other minimizer, atoms without spins, units other than metal, a single replica, and other
+ * trailing words.
  */
 import type { NebHost } from '../../engine/commands/neb';
 import { num, int, type RunApi } from '../../engine/commands/args';
@@ -192,12 +192,6 @@ export const runNebSpin = async (host: NebHost, run: Pick<RunApi, 'ensureThermoC
     // neb_spin.cpp: a line-search minimizer, then a minimizer whose style does not start with spin, are refused
     if (sys.minStyle === 'cg' || sys.minStyle === 'sd' || sys.minStyle === 'hftn') throw new StyleError('NEBSpin requires damped dynamics minimizer');
     if (sys.minStyle !== 'spin' && sys.minStyle !== 'spin/cg' && sys.minStyle !== 'spin/lbfgs') throw new StyleError('NEBSpin requires a spin minimizer');
-    // the multireplica L-BFGS below follows min_spin_lbfgs.cpp, but on tests/oracle/w194gneb_chain.in it leaves native's
-    // table from iteration 59 on (1.4e-7 in RD2, 1e-4 by iteration 120), which neither the replica sum order nor rounding
-    // explains (measured with native LAMMPS); until that is found, it is refused by name
-    if (sys.minStyle === 'spin/lbfgs') {
-      throw new StyleError('neb/spin with min_style spin/lbfgs is not supported by the browser engine yet (its multi-replica iteration does not yet match native LAMMPS); use min_style spin or spin/cg');
-    }
     const nebs = sys.fixes.filter((f): f is FixNEBSpin => f instanceof FixNEBSpin);
     if (nebs.length !== 1) throw new StyleError('NEBSpin requires use of exactly one fix neb/spin instance');
     fixes.push(nebs[0]);

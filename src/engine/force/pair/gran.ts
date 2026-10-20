@@ -95,6 +95,9 @@ export interface GranSingleHook {
 /** Native single_extra of the gran styles (pair_gran_hooke_history.cpp constructor: single_extra = 10). */
 const GRAN_SINGLE_EXTRA = 10;
 
+/** The shear-history key of the atom-ID pair (lo, hi): lo * 2^26 + hi, exact while hi < 2^26, else the string "lo:hi". */
+const pairKey = (lo: number, hi: number): number | string => (hi < 67108864 ? lo * 67108864 + hi : `${lo}:${hi}`);
+
 export class PairGran extends Pair {
   readonly name: GranKind;
   virialFdotr = true;
@@ -103,8 +106,10 @@ export class PairGran extends Pair {
   private readonly history: boolean;
   private readonly hertz: boolean;
   private set = new Uint8Array(0);
-  /** Contact shear displacement per atom-ID pair "lo:hi", oriented as seen from the lower ID. */
-  private shear = new Map<string, Float64Array>();
+  /** Contact shear displacement per atom-ID pair (lo, hi), oriented as seen from the lower ID (key: pairKey). */
+  private shear = new Map<number | string, Float64Array>();
+  /** Torque scratch of compute (3 per atom including ghosts), reused between calls. */
+  private tq = new Float64Array(0);
 
   constructor(kind: GranKind) {
     super();
@@ -188,7 +193,7 @@ export class PairGran extends Pair {
     const shear: [number, number, number] = [0, 0, 0];
     if (this.history) {
       const flip = id[i] > id[j];
-      const sh = this.shear.get(flip ? `${id[j]}:${id[i]}` : `${id[i]}:${id[j]}`);
+      const sh = this.shear.get(flip ? pairKey(id[j], id[i]) : pairKey(id[i], id[j]));
       if (sh) { const sg = flip ? -1 : 1; shear[0] = sg * sh[0]; shear[1] = sg * sh[1]; shear[2] = sg * sh[2]; }
     }
     const inp: GranSingleInput = {
@@ -233,8 +238,10 @@ export class PairGran extends Pair {
     const radius = s.radius!, rmass = contactMassArray(s), omega = s.omega!, v = s.v, id = s.id;
     const dt = s.dt;
     const update = pc.historyUpdate === true;
-    const tq = new Float64Array(3 * nall);
-    const seen = this.history ? new Set<string>() : null;
+    if (this.tq.length < 3 * nall) this.tq = new Float64Array(3 * nall);
+    const tq = this.tq;
+    tq.fill(0, 0, 3 * nall);
+    const seen = this.history ? new Set<number | string>() : null;
     const { kn, kt, gn, gt, xmu } = this;
     for (let i = 0; i < list.inum; i++) {
       const oi = owner[i];
@@ -248,15 +255,13 @@ export class PairGran extends Pair {
         const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
         const radsum = ri + rj;
-        let key = '', flip = false;
+        // a pair out of contact keeps no shear: its entry is not seen this call and goes after the loop
+        if (rsq >= radsum * radsum) continue;
+        let key: number | string = 0, flip = false;
         if (this.history) {
           const a = id[oi], b = id[oj];
           flip = a > b;
-          key = flip ? `${b}:${a}` : `${a}:${b}`;
-        }
-        if (rsq >= radsum * radsum) {
-          if (this.history) this.shear.delete(key);
-          continue;
+          key = flip ? pairKey(b, a) : pairKey(a, b);
         }
         // special_bonds.html: "The LJ factors are applied to the remaining terms that the potential calculates, whether
         // they represent LJ interactions or not." A 1-2 partner with lj weight 0 (bpm bonds: special_bonds lj 0 1 1) gets no

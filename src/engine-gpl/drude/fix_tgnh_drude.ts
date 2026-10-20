@@ -10,8 +10,8 @@
  * pair. Syntax: fix ID group tgnvt/drude temp Tstart Tstop Tperiod Tdrude Tdrude_period, and for fix tgnpt/drude the
  * barostat keywords of fix nh (iso, aniso, tri, x, y, z, xy, yz, xz, couple, tchain, pchain, mtk, tloop, ploop, nreset,
  * scalexy, scalexz, scaleyz, flip, fixedpoint). The deviatoric terms of the x ... xz keywords are the ones of fix nh
- * (compute_sigma, compute_deviatoric and compute_strain_energy are the same code; ../fix/nh_deviatoric.ts). A box flip
- * (flip yes, a tilt past 0.6 of the box length) is refused, as the engine has no box flips.
+ * (compute_sigma, compute_deviatoric and compute_strain_energy are the same code; ../fix/nh_deviatoric.ts). With flip
+ * yes, a tilt past 0.6 of its box length flips the box on a neighbor rebuild step (pre_exchange, through sys.flipBox).
  */
 import { Fix } from '../../engine/fix/fix';
 import { ownCompute, ramp, removeCompute } from '../../engine/fix/util';
@@ -66,7 +66,7 @@ export class FixTGNHDrude extends Fix {
   private deviatoric = false;
   private nresetH0 = 0;
   private scalexy = false; private scalexz = false; private scaleyz = false;
-  /** flip yes with a tilt barostat or a tilted box (native pre_exchange_flag): a flip is refused when needed */
+  /** flip yes with a tilt barostat or a tilted box (native pre_exchange_flag): the box flips when a tilt needs it */
   private flipCheck = false;
   /** the reference volume and cell (vol0, h0_inv), taken at the first init or by nreset */
   private vol0 = 0;
@@ -250,6 +250,8 @@ export class FixTGNHDrude extends Fix {
       if (flipflag && (f[3] || f[4] || f[5])) this.flipCheck = true;
       if (flipflag && (g0.yz !== 0 || g0.xz !== 0 || g0.xy !== 0)) this.flipCheck = true;
     }
+    // pre_exchange only when flips can occur (a fix without it keeps the runs that take no pre_exchange)
+    if (this.flipCheck) this.preExchange = () => this.flipIfNeeded();
     this.tstat = tstat;
     this.pstat = pstat;
     // fix_tgnvt_drude.cpp and fix_tgnpt_drude.cpp
@@ -790,7 +792,7 @@ export class FixTGNHDrude extends Fix {
   /**
    * remap: the box over dt/2 (h_dot = omega_dot h, the tilts swept before and after the diagonal scaling about the
    * fixed point, with the tilt scale flags) and all atoms in fractional coordinates. A tilt past TILTMAX of its box
-   * length in one step is an error, and a tilt that would need a box flip is refused.
+   * length in one step is an error.
    */
   private remap(): void {
     const sys = this.sys;
@@ -855,19 +857,32 @@ export class FixTGNHDrude extends Fix {
       s.x[3 * i] = tmp[0]; s.x[3 * i + 1] = tmp[1]; s.x[3 * i + 2] = tmp[2];
     }
     for (const fx of sys.fixes) if (fx !== this) fx.boxChanged?.();
-    if (this.flipCheck) this.refuseFlip();
   }
 
   /**
-   * pre_exchange of fix_tgnh_drude.cpp flips the box when a tilt passes (0.5 + DELTAFLIP) of its box length (yz of
-   * yprd with y periodic, xz and xy of xprd with x periodic); the engine has no box flips, so that state is refused.
+   * pre_exchange of fix_tgnh_drude.cpp, on the steps the neighbor lists are rebuilt: a tilt past (0.5 + DELTAFLIP) of
+   * its box length flips the box ("flip is only triggered when tilt exceeds 0.5 by DELTAFLIP"), yz first by one y
+   * length (which moves xz by xy), then xz and xy by one x length, along the periodic dimensions only; the image flags
+   * and the atoms follow (Domain::image_flip, remap).
    */
-  private refuseFlip(): void {
+  private flipIfNeeded(): void {
+    const s = this.sys.state;
     const g = this.sys.geom;
-    const per = this.sys.state.box.periodic;
-    const xt = (0.5 + DELTAFLIP) * g.lx, yt = (0.5 + DELTAFLIP) * g.ly;
-    const flip = (per[1] && (g.yz < -yt || g.yz >= yt)) || (per[0] && (g.xz < -xt || g.xz >= xt || g.xy < -xt || g.xy >= xt));
-    if (flip) throw new StyleError(`fix ${this.style}: the box needs a flip (a tilt passed ${0.5 + DELTAFLIP} of its box length); box flips are not supported by the browser engine (use flip no)`);
+    const xprd = g.lx, yprd = g.ly;
+    const xtiltmax = (0.5 + DELTAFLIP) * xprd, ytiltmax = (0.5 + DELTAFLIP) * yprd;
+    let xy = g.xy, xz = g.xz, yz = g.yz;
+    let flipxy = 0, flipxz = 0, flipyz = 0;
+    if (s.box.periodic[1]) {
+      if (yz < -ytiltmax) { yz += yprd; xz += xy; flipyz = 1; }
+      else if (yz >= ytiltmax) { yz -= yprd; xz -= xy; flipyz = -1; }
+    }
+    if (s.box.periodic[0]) {
+      if (xz < -xtiltmax) { xz += xprd; flipxz = 1; }
+      else if (xz >= xtiltmax) { xz -= xprd; flipxz = -1; }
+      if (xy < -xtiltmax) { xy += xprd; flipxy = 1; }
+      else if (xy >= xtiltmax) { xy -= xprd; flipxy = -1; }
+    }
+    if (flipxy || flipxz || flipyz) this.sys.flipBox([xy, xz, yz], flipxy, flipxz, flipyz, this);
   }
 
   override ecouple(): number { return this.energyChain(); }

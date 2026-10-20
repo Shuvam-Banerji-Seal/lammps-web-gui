@@ -86,4 +86,14 @@ describe('xfix ports: argument errors and refusals', () => {
     expect(r.error).toBeNull();
     expect(r.thermo).toBeGreaterThan(0);
   });
+
+  it('fix press/langevin tilt pistons need a triclinic box and 3d, as native', async () => {
+    // fix_press_langevin.cpp constructor checks
+    const ortho = await runText(`${HEAD}fix 1 all nve\nfix 2 all press/langevin xy 0 0 1.0`);
+    expect(ortho.error).toContain('Can not specify Pxy/Pxz/Pyz in fix press/langevin with non-triclinic box');
+    const flat = await runText(`units lj\ndimension 2\nregion box prism 0 4 0 4 -0.5 0.5 0 0 0\ncreate_box 1 box\nfix 2 all press/langevin xz 0 0 1.0`);
+    expect(flat.error).toContain('Fix press/langevin zz option not allowed for a 2d simulation');
+    const damp = await runText(`units lj\nregion box prism 0 4 0 4 0 4 0 0 0\ncreate_box 1 box\nfix 2 all press/langevin yz 0 0 0.0`);
+    expect(damp.error).toContain('Fix press/langevin damping parameters must be > 0.0');
+  });
 });

@@ -7,10 +7,12 @@
  *
  * Langevin barostat of docs.lammps.org/fix_press_langevin.html, with the equations of motion of Gronbech-Jensen and
  * Farago, J. Chem. Phys. 141, 194108 (2014). The fix moves only the box and the atoms' fractional coordinates; the
- * atoms are integrated by a separate time integration fix, as the doc requires. Supported keywords: iso, aniso, x, y,
- * z, couple, friction, dilate, temp, flip (no effect on an orthogonal box, as native) and fix_modify press.
- * Refused with a StyleError: tri, xy, xz, yz and triclinic boxes (tilt barostats and box flips are not implemented).
- * The restart state (write_restart/restart) is not written by the browser engine.
+ * atoms are integrated by a separate time integration fix, as the doc requires. Supported keywords: iso, aniso, tri, x,
+ * y, z, yz, xz, xy, couple, friction, dilate, temp, flip and fix_modify press. The tilt pistons keep native's indices:
+ * piston 3 (the yz keyword) is driven by Pxy and moves xy, piston 4 (xz) by Pxz and moves xz, piston 5 (xy) by Pyz and
+ * moves yz (couple_pressure takes the pressure tensor's xy, xz, yz in that order, and remap adds dilation[3] to xy and
+ * dilation[5] to yz). With flip yes, a tilt past 0.6 of its box length flips the box on a neighbor rebuild step
+ * (pre_exchange). The restart state (write_restart/restart) is not written by the browser engine.
  */
 import { Fix } from '../../engine/fix/fix';
 import { isDeformFix, type FixDeform } from '../../engine/fix/deform';
@@ -40,14 +42,17 @@ function inumeric(w: string | undefined): number {
 
 const INVALID_SETTINGS = 'Invalid fix press/langevin pressure settings';
 const NON_PERIODIC = 'Cannot use fix press/langevin on a non-periodic dimension';
+/** fix_press_langevin.cpp: a tilt over TILTMAX of its box length in one step is an error; a flip needs 0.5 + DELTAFLIP. */
+const TILTMAX = 1.5;
+const DELTAFLIP = 0.1;
 
 export class FixPressLangevin extends Fix {
   readonly style = 'press/langevin';
   private readonly dimension: 2 | 3;
   private pcouple: Couple = 'none';
-  private pstyle: 'iso' | 'aniso' = 'aniso';
+  private pstyle: 'iso' | 'aniso' | 'tri' = 'aniso';
   private allremap = true;
-  /** 1 if the pressure is controlled in this dimension (x, y, z, yz, xz, xy); only 0..2 can be set here. */
+  /** 1 if the pressure is controlled in this dimension (x, y, z, yz, xz, xy). */
   private readonly pFlag: boolean[] = [false, false, false, false, false, false];
   private readonly tStart: number;
   private readonly tStop: number;
@@ -82,13 +87,11 @@ export class FixPressLangevin extends Fix {
     const dim = this.dimension;
     const pStart = this.pStart, pStop = this.pStop, pPeriod = this.pPeriod, pFlag = this.pFlag;
     let tStart = 0, tStop = 0, seed = 111111, pLtime = 0;
+    let flipflag = true;
 
     // keyword values: iso/aniso/x/y/z take Pstart Pstop Pdamp; the native check is "iarg + 4 > narg"
     const need = (k: number, key: string): void => {
       if (k + 4 > args.length) throw new StyleError(`Illegal fix press/langevin ${key} command: missing argument(s)`);
-    };
-    const tilt = (key: string): never => {
-      throw new StyleError(`fix ${id} press/langevin ${key}: tilt (triclinic) barostats are not supported by the browser engine`);
     };
     const setDim = (d: number, k: number): void => {
       pStart[d] = numeric(args[k + 1]);
@@ -107,7 +110,18 @@ export class FixPressLangevin extends Fix {
         if (dim === 2) { pStart[2] = pStop[2] = pPeriod[2] = 0.0; pFlag[2] = false; }
         k += 4;
       } else if (key === 'tri') {
-        tilt(key);
+        need(k, key);
+        this.pcouple = 'none';
+        for (const d of [0, 1, 2]) setDim(d, k);
+        for (const d of [3, 4, 5]) {
+          pStart[d] = pStop[d] = 0.0;
+          pPeriod[d] = numeric(args[k + 3]);
+          pFlag[d] = true;
+        }
+        if (dim === 2) {
+          for (const d of [2, 3, 4]) { pStart[d] = pStop[d] = pPeriod[d] = 0.0; pFlag[d] = false; }
+        }
+        k += 4;
       } else if (key === 'x' || key === 'y' || key === 'z') {
         need(k, key);
         const d = key === 'x' ? 0 : key === 'y' ? 1 : 2;
@@ -115,13 +129,17 @@ export class FixPressLangevin extends Fix {
         k += 4;
         if (key === 'z' && dim === 2) throw new StyleError('Fix press/langevin z option not allowed for a 2d simulation');
       } else if (key === 'yz' || key === 'xz' || key === 'xy') {
-        tilt(key);
+        need(k, key);
+        setDim(key === 'yz' ? 3 : key === 'xz' ? 4 : 5, k);
+        k += 4;
+        // native's message for xz says "zz"
+        if (dim === 2 && key !== 'xy') throw new StyleError(`Fix press/langevin ${key === 'yz' ? 'yz' : 'zz'} option not allowed for a 2d simulation`);
       } else if (key === 'flip') {
         if (k + 2 > args.length) throw new StyleError('Illegal fix press/langevin flip command: missing argument(s)');
         const w = args[k + 1];
-        if (!['yes', 'on', 'true', '1', 'no', 'off', 'false', '0'].includes(w)) {
-          throw new StyleError(`Expected boolean parameter instead of '${w}' in input script or data file`);
-        }
+        if (['yes', 'on', 'true', '1'].includes(w)) flipflag = true;
+        else if (['no', 'off', 'false', '0'].includes(w)) flipflag = false;
+        else throw new StyleError(`Expected boolean parameter instead of '${w}' in input script or data file`);
         k += 2;
       } else if (key === 'couple') {
         if (k + 2 > args.length) throw new StyleError('Illegal fix press/langevin couple command: missing argument(s)');
@@ -174,6 +192,13 @@ export class FixPressLangevin extends Fix {
     for (let d = 0; d < 3; d++) {
       if (pFlag[d] && !box.periodic[d]) throw new StyleError(NON_PERIODIC);
     }
+    // require periodicity in 2nd dim of off-diagonal tilt component
+    if (pFlag[3] && !box.periodic[2]) throw new StyleError('Cannot use fix press/langevin on a 2nd non-periodic dimension');
+    if (pFlag[4] && !box.periodic[2]) throw new StyleError('Cannot use fix press/langevin on a 2nd non-periodic dimension');
+    if (pFlag[5] && !box.periodic[1]) throw new StyleError('Cannot use fix press/langevin on a 2nd non-periodic dimension');
+    if (!box.triclinic && (pFlag[3] || pFlag[4] || pFlag[5])) {
+      throw new StyleError('Can not specify Pxy/Pxz/Pyz in fix press/langevin with non-triclinic box');
+    }
     if (pc === 'xyz' && dim === 3 &&
       (pStart[0] !== pStart[1] || pStart[0] !== pStart[2] || pStop[0] !== pStop[1] || pStop[0] !== pStop[2] ||
         pPeriod[0] !== pPeriod[1] || pPeriod[0] !== pPeriod[2])) throw new StyleError(INVALID_SETTINGS);
@@ -189,12 +214,20 @@ export class FixPressLangevin extends Fix {
       throw new StyleError(INVALID_SETTINGS);
     }
     if (tStart < 0.0 || tStop < 0.0) throw new StyleError('Fix press/langevin temperature parameters must be >= 0.0');
-    for (let d = 0; d < 3; d++) {
+    for (let d = 0; d < 6; d++) {
       if (pFlag[d] && pPeriod[d] <= 0.0) throw new StyleError('Fix press/langevin damping parameters must be > 0.0');
     }
 
-    // pstyle = ISO if XYZ coupling or XY coupling in 2d (one degree of freedom), else ANISO
-    this.pstyle = pc === 'xyz' || (dim === 2 && pc === 'xy') ? 'iso' : 'aniso';
+    // pstyle = TRICLINIC with a tilt piston, else ISO if XYZ coupling or XY coupling in 2d (one degree of freedom),
+    // else ANISO
+    if (pFlag[3] || pFlag[4] || pFlag[5]) this.pstyle = 'tri';
+    else this.pstyle = pc === 'xyz' || (dim === 2 && pc === 'xy') ? 'iso' : 'aniso';
+
+    // pre_exchange only when flips can occur due to shape changes (a fix without it keeps the runs that take none)
+    const g0 = sys.geom;
+    if (flipflag && (pFlag[3] || pFlag[4] || pFlag[5] || g0.yz !== 0 || g0.xz !== 0 || g0.xy !== 0)) {
+      this.preExchange = () => this.flipIfNeeded();
+    }
 
     // the pressure compute: virial only, the kinetic term is added by couple_kinetic (native "pressure NULL virial")
     this.ownPressId = `${id}_press`;
@@ -224,10 +257,6 @@ export class FixPressLangevin extends Fix {
 
   init(): void {
     const sys = this.sys;
-    const box = sys.state.box;
-    if (box.triclinic) {
-      throw new StyleError(`fix ${this.id} press/langevin: triclinic boxes are not supported by the browser engine`);
-    }
     // ensure no conflict with fix deform (the same component of the stress tensor)
     for (const f of sys.fixes) {
       if (!isDeformFix(f)) continue;
@@ -294,9 +323,45 @@ export class FixPressLangevin extends Fix {
       lo[i] = (oldlo - ctr) * this.dilation[i] + ctr;
       hi[i] = (oldhi - ctr) * this.dilation[i] + ctr;
     }
+    // the tilt pistons as native's remap adds them: dilation[3] to xy, [4] to xz, [5] to yz
     const tilt = [b.tilt[0], b.tilt[1], b.tilt[2]];
+    if (this.pFlag[3]) tilt[0] += this.dilation[3];
+    if (this.pFlag[4]) tilt[1] += this.dilation[4];
+    if (this.pFlag[5]) tilt[2] += this.dilation[5];
+    // against the box lengths before this remap (native's domain->xprd and yprd are reset after the check)
+    const xprd = b.hi[0] - b.lo[0], yprd = b.hi[1] - b.lo[1];
+    if (tilt[2] < -TILTMAX * yprd || tilt[2] > TILTMAX * yprd || tilt[1] < -TILTMAX * xprd || tilt[1] > TILTMAX * xprd ||
+      tilt[0] < -TILTMAX * xprd || tilt[0] > TILTMAX * xprd) {
+      throw new StyleError('Fix press/langevin has tilted box too far in one step - periodic cell is too far from equilibrium state');
+    }
     const remapBit = this.allremap ? sys.groupBit('all') : this.groupBit;
     sys.setBox(lo, hi, tilt, remapBit, this);
+  }
+
+  /**
+   * pre_exchange (fix_press_langevin.cpp), on the steps the neighbor lists are rebuilt: a tilt past (0.5 + DELTAFLIP)
+   * of its box length flips the box ("flip is only triggered when tilt exceeds 0.5 by DELTAFLIP"), yz first by one y
+   * length (which moves xz by xy), then xz and xy by one x length, along the periodic dimensions only; the image flags
+   * and the atoms follow (Domain::image_flip, remap).
+   */
+  private flipIfNeeded(): void {
+    const s = this.sys.state;
+    const g = this.sys.geom;
+    const xprd = g.lx, yprd = g.ly;
+    const xtiltmax = (0.5 + DELTAFLIP) * xprd, ytiltmax = (0.5 + DELTAFLIP) * yprd;
+    let xy = g.xy, xz = g.xz, yz = g.yz;
+    let flipxy = 0, flipxz = 0, flipyz = 0;
+    if (s.box.periodic[1]) {
+      if (yz < -ytiltmax) { yz += yprd; xz += xy; flipyz = 1; }
+      else if (yz >= ytiltmax) { yz -= yprd; xz -= xy; flipyz = -1; }
+    }
+    if (s.box.periodic[0]) {
+      if (xz < -xtiltmax) { xz += xprd; flipxz = 1; }
+      else if (xz >= xtiltmax) { xz -= xprd; flipxz = -1; }
+      if (xy < -xtiltmax) { xy += xprd; flipxy = 1; }
+      else if (xy >= xtiltmax) { xy -= xprd; flipxy = -1; }
+    }
+    if (flipxy || flipxz || flipyz) this.sys.flipBox([xy, xz, yz], flipxy, flipxz, flipyz, this);
   }
 
   /** post_force: the instantaneous pressure (virial plus kinetic term) and the piston force. */

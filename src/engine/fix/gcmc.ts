@@ -90,6 +90,14 @@ import { libm } from '../libm';
  * simply set to unity." h is the style's Planck constant (units.ts hplanck),
  * m the exchanged particle's mass (atom mass, or the molecule's total mass).
  *
+ * pressure and fugacity_coeff — docs.lammps.org/fix_gcmc.html: "*pressure* value = pressure of the gas
+ * reservoir (pressure units)", "*fugacity_coeff* value = fugacity coefficient of the gas reservoir
+ * (unitless)"; "the ideal gas reservoir can be defined by its pressure *P* using the *pressure* keyword, in
+ * which case the user-specified chemical potential is ignored. The user may also specify the fugacity
+ * coefficient phi using the *fugacity_coeff* keyword, which defaults to unity." As native LAMMPS does
+ * (src/MC/fix_gcmc.cpp at b332f28), exp(beta mu) / Lambda^3 in the tests above is then replaced by
+ * P phi beta / nktv2p (no Lambda), and fugacity_coeff has no effect without pressure.
+ *
  * Random streams and event order (fix_gcmc.cpp pre_exchange, b332f28; the first version of this engine was measured
  * against native LAMMPS, black box). Two Park-Miller generators are seeded with the fix's seed: random_equal (here
  * rng) and random_unequal (here accRng). Each event runs ncycles = X + M cycles. A cycle draws
@@ -220,6 +228,9 @@ export class FixGcmc extends Fix {
   readonly type: number;
   readonly T: number;
   private readonly mu: number;
+  /** pressure keyword (null: the chemical potential mu is used) and fugacity_coeff. */
+  private pressure: number | null = null;
+  private fugacity = 1.0;
   private readonly displace: number;
   private readonly rng: RanPark;
   /** Second stream with the same seed: acceptance numbers and inserted velocities (see header). */
@@ -322,9 +333,9 @@ export class FixGcmc extends Fix {
       else if (key === 'grouptype') { this.groupTypes.push({ type: nonNegInt(v(1), 'grouptype type'), group: v(2) }); i += 3; }
       else if (key === 'shake') { shakeId = v(1); i += 2; }
       else if (key === 'rigid') { rigidId = v(1); i += 2; }
-      else if (key === 'pressure' || key === 'fugacity_coeff') {
-        throw new StyleError(`fix gcmc keyword '${key}' is not supported by the browser engine`);
-      } else throw new StyleError(`fix gcmc: unknown keyword '${key}'`);
+      else if (key === 'pressure') { this.pressure = num(v(1), 'pressure'); i += 2; }
+      else if (key === 'fugacity_coeff') { this.fugacity = num(v(1), 'fugacity_coeff'); i += 2; }
+      else throw new StyleError(`fix gcmc: unknown keyword '${key}'`);
     }
     if (shakeId) {
       if (!molTemplateId) throw new StyleError('fix gcmc: Cannot use fix gcmc shake and not molecule (shake needs the mol keyword)');
@@ -762,6 +773,13 @@ export class FixGcmc extends Fix {
     return Math.sqrt((u.hplanck * u.hplanck) / (2 * Math.PI * mass * u.boltz * this.T * u.mvv2e));
   }
 
+  /** zz of native with the pressure keyword: P phi beta / nktv2p, beta = 1 / (k_B T), summed in native's order. */
+  private pressureActivity(): number {
+    const u = this.sys.state.units;
+    const beta = 1.0 / (u.boltz * this.T);
+    return (this.pressure! * this.fugacity * beta) / u.nktv2p;
+  }
+
   private extraMask(): number {
     let m = this.groupBit;
     if (this.groupId) m |= this.sys.groups.bit(this.groupId);
@@ -813,7 +831,9 @@ export class FixGcmc extends Fix {
     dU -= this.intraEnergy;
     const overlap = this.overlapCutoff > 0 && this.hasOverlap(snap.n, this.overlapCutoff);
     const l3 = this.deBroglie(mass) ** 3;
-    const exponent = (this.mu - dU) / kT + libm.log(this.volume / ((nPart + 1) * l3));
+    const exponent = this.pressure !== null
+      ? -dU / kT + libm.log((this.pressureActivity() * this.volume) / (nPart + 1))
+      : (this.mu - dU) / kT + libm.log(this.volume / ((nPart + 1) * l3));
     if (!overlap && this.accept(this.acceptStream(), exponent)) {
       this.ninsSucc++;
       // the trial's bonds are kept; a partial-energy insertion draws its velocities after the acceptance
@@ -872,7 +892,9 @@ export class FixGcmc extends Fix {
     dU -= this.intraEnergy;
     const kT = s.units.boltz * this.T;
     const l3 = this.deBroglie(mass) ** 3;
-    const exponent = -(this.mu + dU) / kT + libm.log((nPart * l3) / this.volume);
+    const exponent = this.pressure !== null
+      ? -dU / kT + libm.log(nPart / (this.pressureActivity() * this.volume))
+      : -(this.mu + dU) / kT + libm.log((nPart * l3) / this.volume);
     if (this.accept(this.acceptStream(), exponent)) {
       this.ndelSucc++;
     } else {
@@ -926,7 +948,9 @@ export class FixGcmc extends Fix {
     }
     const dU = e - this.intraEnergy;
     const l3 = this.deBroglie(mass) ** 3;
-    const exponent = (this.mu - dU) / kT + libm.log(this.volume / ((nPart + 1) * l3));
+    const exponent = this.pressure !== null
+      ? -dU / kT + libm.log((this.pressureActivity() * this.volume) / (nPart + 1))
+      : (this.mu - dU) / kT + libm.log(this.volume / ((nPart + 1) * l3));
     // native: insertion_energy < MAXENERGYTEST && random_unequal->uniform() < ... (no draw after an overlap)
     if (overlap || !this.accept(this.acceptStream(), exponent)) return;
     this.ninsSucc++;
@@ -969,7 +993,9 @@ export class FixGcmc extends Fix {
     }
     const dU = -e - this.intraEnergy;
     const l3 = this.deBroglie(mass) ** 3;
-    const exponent = -(this.mu + dU) / kT + libm.log((nPart * l3) / this.volume);
+    const exponent = this.pressure !== null
+      ? -dU / kT + libm.log(nPart / (this.pressureActivity() * this.volume))
+      : -(this.mu + dU) / kT + libm.log((nPart * l3) / this.volume);
     if (!this.accept(this.acceptStream(), exponent)) return;
     this.ndelSucc++;
     const delIds = idx.map((i) => s.id[i]);

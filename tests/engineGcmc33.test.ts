@@ -85,10 +85,30 @@ describe('fix gcmc in physical units', () => {
   });
 
   it('still rejects unsupported keywords naming them', async () => {
-    for (const kw of ['pressure', 'rigid', 'shake', 'fugacity_coeff']) {
+    for (const kw of ['rigid', 'shake']) {
       const { error } = await run(box('real', 1.0, 0.0, 1, 1).replace('fix mygcmc gcmcgroup gcmc 1 1 0 1 29494 300 0 1.0', `fix mygcmc gcmcgroup gcmc 1 1 0 1 29494 300 0 1.0 ${kw} 1.0`));
       expect(error, kw).toContain(kw);
     }
+  });
+
+  it('with pressure, follows the dilute ideal-gas limit N/V = P phi / (k_B T nktv2p), whatever mu', async () => {
+    // V = 125 A^3, T = 300 K: P phi = 8 k_B T nktv2p / V gives N = 8 on average (pressure in atm)
+    const u = UNIT_SYSTEMS.real;
+    const pPhi = (8 * u.boltz * 300 * u.nktv2p) / 125;
+    const meanP = async (mu: number, extra: string) => {
+      const { error, rows } = await run(box('real', 1.0, mu, 50, 400).replace(`29494 300 ${mu} 1.0`, `29494 300 ${mu} 1.0 ${extra}`));
+      expect(error).toBeNull();
+      const tail = rows.filter((r) => r.step >= 200).map((r) => r.atoms);
+      return tail.reduce((a, b) => a + b, 0) / tail.length;
+    };
+    const n1 = await meanP(0, `pressure ${pPhi}`);
+    expect(n1).toBeGreaterThan(5.5);
+    expect(n1).toBeLessThan(10.5);
+    // the chemical potential is ignored, and a fugacity coefficient of 0.5 halves the reservoir activity
+    expect(await meanP(-50, `pressure ${pPhi}`)).toBe(n1);
+    const nHalf = await meanP(0, `pressure ${pPhi} fugacity_coeff 0.5`);
+    expect(nHalf).toBeGreaterThan(2.5);
+    expect(nHalf).toBeLessThan(5.5);
   });
 
   it('follows the dilute ideal-gas limit N/V = exp(beta mu) / Lambda^3 in units real', async () => {

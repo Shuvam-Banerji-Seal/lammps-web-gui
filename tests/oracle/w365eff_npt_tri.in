@@ -1,0 +1,19 @@
+# oracle: eFF H2 under fix npt/eff tri 5.0 5.0 1.0 (the fix page's example) on a box made triclinic: six barostat dimensions with the electron radial terms, 10 steps
+# oracle-inputs: w63eff_h2.data
+# oracle-compare: thermo=all atoms=all
+units           electron
+newton          on
+boundary        p p p
+atom_style      electron
+read_data       w63eff_h2.data
+change_box      all triclinic
+pair_style      eff/cut 6.447968 pressure/evirials
+pair_coeff      * *
+comm_modify     vel yes
+thermo          2
+velocity        all create 300.0 4928459 dist gaussian rot yes mom yes
+timestep        0.0005
+fix             1 all npt/eff temp 300.0 300.0 0.1 tri 5.0 5.0 1.0
+thermo_style    custom step pe ke temp press vol lx ly lz xy xz yz f_1
+thermo_modify   format float %.15g
+run             10

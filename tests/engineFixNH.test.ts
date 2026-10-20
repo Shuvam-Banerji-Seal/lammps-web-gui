@@ -35,13 +35,13 @@ const errorOf = async (fix: string, extra = ''): Promise<string | null> => {
 
 describe('fix nvt / npt / nph keywords', () => {
   it('npt needs both temp and a pressure keyword', async () => {
-    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5')).toMatch(/needs both temp and pressure/);
-    expect(await errorOf('fix 1 all npt iso 1.0 1.0 1.0')).toMatch(/needs both temp and pressure/);
+    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5')).toMatch(/Pressure control must be used with fix npt/);
+    expect(await errorOf('fix 1 all npt iso 1.0 1.0 1.0')).toMatch(/Temperature control must be used with fix npt/);
   });
 
   it('nvt rejects pressure keywords and nph rejects temp', async () => {
-    expect(await errorOf('fix 1 all nvt temp 1.0 1.0 0.5 iso 1.0 1.0 1.0')).toMatch(/no pressure keywords/);
-    expect(await errorOf('fix 1 all nph iso 1.0 1.0 1.0 temp 1.0 1.0 0.5')).toMatch(/no temp keyword/);
+    expect(await errorOf('fix 1 all nvt temp 1.0 1.0 0.5 iso 1.0 1.0 1.0')).toMatch(/Pressure control can not be used with fix nvt/);
+    expect(await errorOf('fix 1 all nph iso 1.0 1.0 1.0 temp 1.0 1.0 0.5')).toMatch(/Temperature control can not be used with fix nph/);
   });
 
   it('Pdamp and Tdamp must be positive', async () => {

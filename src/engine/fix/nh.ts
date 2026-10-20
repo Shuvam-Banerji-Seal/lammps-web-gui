@@ -142,6 +142,8 @@ export interface NHRestart {
 
 export class FixNH extends Fix {
   readonly style: string;
+  /** The fix style as written (nvt/eff, npt/sphere ...), for native's messages. */
+  private readonly styleName: string;
   // thermostat
   private tstat = false;
   protected tStart = 0; protected tStop = 0; private tPeriod = 0;
@@ -199,9 +201,14 @@ export class FixNH extends Fix {
   private ecoupleCum = 0;
   protected scaleTilt = [true, true, true];   // yz xz xy with their second dimension
 
-  constructor(sys: System, id: string, group: string, args: string[], style: 'nvt' | 'npt' | 'nph' | 'nphug' | 'npt/cauchy') {
+  /**
+   * style is the family whose rules apply (nvt, npt, nph, nphug, npt/cauchy); name is the fix style the messages name
+   * (nvt/sphere, npt/eff, ...), the family by default.
+   */
+  constructor(sys: System, id: string, group: string, args: string[], style: 'nvt' | 'npt' | 'nph' | 'nphug' | 'npt/cauchy', name: string = style) {
     super(sys, id, group, args);
     this.style = style;
+    this.styleName = name;
     this.timeIntegrate = true;
     this.scalarFlag = true;
     this.extscalar = 1;
@@ -211,7 +218,7 @@ export class FixNH extends Fix {
       const key = args[k];
       const n = (j: number, what: string) => {
         const v = Number(args[k + j]);
-        if (args[k + j] === undefined || !Number.isFinite(v)) throw new StyleError(`fix ${style} ${key}: expected a number for ${what}`);
+        if (args[k + j] === undefined || !Number.isFinite(v)) throw new StyleError(`fix ${name} ${key}: expected a number for ${what}`);
         return v;
       };
       switch (key) {
@@ -220,7 +227,7 @@ export class FixNH extends Fix {
           this.tStart = n(1, 'Tstart'); this.tStop = n(2, 'Tstop'); this.tPeriod = n(3, 'Tdamp');
           // fix_nh.cpp constructor: "t_target = t_start" (what extract("t_target") gives before the first setup)
           this.tTarget = this.tStart;
-          if (!(this.tPeriod > 0)) throw new StyleError(`fix ${style}: Tdamp must be > 0`);
+          if (!(this.tPeriod > 0)) throw new StyleError(`fix ${name}: Tdamp must be > 0`);
           k += 4;
           break;
         case 'iso': case 'aniso': case 'tri': {
@@ -236,7 +243,7 @@ export class FixNH extends Fix {
         }
         case 'x': case 'y': case 'z': case 'xy': case 'yz': case 'xz': {
           const d = KEYS.indexOf(key) as Dim;
-          if (sys.dimension === 2 && (key === 'z' || key === 'yz' || key === 'xz')) throw new StyleError(`fix ${style} ${key} is invalid for a 2d simulation`);
+          if (sys.dimension === 2 && (key === 'z' || key === 'yz' || key === 'xz')) throw new StyleError(`fix ${name} ${key} is invalid for a 2d simulation`);
           this.setP(d, n(1, 'Pstart'), n(2, 'Pstop'), n(3, 'Pdamp'));
           // As native LAMMPS does (src/fix_nh.cpp at b332f28): each of these keywords sets deviatoric_flag
           this.deviatoric = true;
@@ -244,12 +251,12 @@ export class FixNH extends Fix {
           break;
         }
         case 'couple':
-          if (!['none', 'xyz', 'xy', 'yz', 'xz'].includes(args[k + 1])) throw new StyleError(`fix ${style} couple must be none, xyz, xy, yz or xz`);
+          if (!['none', 'xyz', 'xy', 'yz', 'xz'].includes(args[k + 1])) throw new StyleError(`fix ${name} couple must be none, xyz, xy, yz or xz`);
           this.couple = args[k + 1] as FixNH['couple'];
           k += 2;
           break;
-        case 'tchain': this.tchain = Math.trunc(n(1, 'tchain')); if (this.tchain < 1) throw new StyleError(`Invalid fix ${style} tchain argument: ${this.tchain}`); k += 2; break;
-        case 'pchain': this.pchain = Math.trunc(n(1, 'pchain')); if (this.pchain < 0) throw new StyleError(`Invalid fix ${style} pchain argument: ${this.pchain}`); k += 2; break;
+        case 'tchain': this.tchain = Math.trunc(n(1, 'tchain')); if (this.tchain < 1) throw new StyleError(`Invalid fix ${name} tchain argument: ${this.tchain}`); k += 2; break;
+        case 'pchain': this.pchain = Math.trunc(n(1, 'pchain')); if (this.pchain < 0) throw new StyleError(`Invalid fix ${name} pchain argument: ${this.pchain}`); k += 2; break;
         case 'tloop': this.tloop = Math.trunc(n(1, 'tloop')); k += 2; break;
         case 'ploop': this.ploop = Math.trunc(n(1, 'ploop')); k += 2; break;
         case 'mtk':
@@ -259,10 +266,10 @@ export class FixNH extends Fix {
           break;
         case 'nreset':
           this.nresetH0 = Math.trunc(n(1, 'nreset'));
-          if (this.nresetH0 < 0) throw new StyleError(`Invalid fix ${style} nreset argument: ${this.nresetH0}`);
+          if (this.nresetH0 < 0) throw new StyleError(`Invalid fix ${name} nreset argument: ${this.nresetH0}`);
           k += 2;
           break;
-        case 'drag': this.drag = n(1, 'drag'); if (this.drag < 0) throw new StyleError(`Invalid fix ${style} drag argument: ${this.drag}`); k += 2; break;
+        case 'drag': this.drag = n(1, 'drag'); if (this.drag < 0) throw new StyleError(`Invalid fix ${name} drag argument: ${this.drag}`); k += 2; break;
         case 'ptemp': this.ptemp = n(1, 'ptemp'); k += 2; break;
         case 'dilate': this.dilateBit = sys.groupBit(args[k + 1] ?? ''); k += 2; break;
         case 'scalexy': case 'scaleyz': case 'scalexz': {
@@ -282,14 +289,16 @@ export class FixNH extends Fix {
           // As native LAMMPS does (src/fix_nh.cpp at b332f28): the dipole update is only for the /sphere variants
           // (nh_sphere.ts strips the keyword before it reaches here).
           if (args[k + 1] === 'dipole' || args[k + 1] === 'dipole/dlm') throw new StyleError("Must use a '/sphere' Nose-Hoover fix style for updating dipoles");
-          throw new StyleError(`Invalid fix ${style} update argument: ${args[k + 1] ?? ''}`.trim());
-        case 'disc': throw new StyleError(`fix ${style} disc needs finite-size particles`);
-        default: throw new StyleError(`unknown fix ${style} keyword '${key}'`);
+          throw new StyleError(`Invalid fix ${name} update argument: ${args[k + 1] ?? ''}`.trim());
+        case 'disc': throw new StyleError(`fix ${name} disc needs finite-size particles`);
+        default: throw new StyleError(`unknown fix ${name} keyword '${key}'`);
       }
     }
-    if (style === 'nvt' && (!this.tstat || this.pstat)) throw new StyleError('fix nvt needs the temp keyword and no pressure keywords');
-    if (style === 'npt' && (!this.tstat || !this.pstat)) throw new StyleError('fix npt needs both temp and pressure (iso, aniso, tri, x, ...) keywords');
-    if (style === 'nph' && (this.tstat || !this.pstat)) throw new StyleError('fix nph needs pressure keywords and no temp keyword');
+    // As native LAMMPS does (src/fix_nvt.cpp, fix_npt.cpp, fix_nph.cpp and their variants at b332f28)
+    if ((style === 'nvt' || style === 'npt') && !this.tstat) throw new StyleError(`Temperature control must be used with fix ${name}`);
+    if (style === 'nph' && this.tstat) throw new StyleError(`Temperature control can not be used with fix ${name}`);
+    if (style === 'nvt' && this.pstat) throw new StyleError(`Pressure control can not be used with fix ${name}`);
+    if ((style === 'npt' || style === 'nph') && !this.pstat) throw new StyleError(`Pressure control must be used with fix ${name}`);
     // fix_nphug.cpp: "Temperature control must be used with fix nphug" and "Pressure control must be used with fix nphug"
     if (style === 'nphug' && !this.tstat) throw new StyleError('Temperature control must be used with fix nphug');
     if (style === 'nphug' && !this.pstat) throw new StyleError('Pressure control must be used with fix nphug');
@@ -298,13 +307,13 @@ export class FixNH extends Fix {
     if (style === 'npt/cauchy' && !this.pstat) throw new StyleError('Pressure control must be used with fix npt/cauchy');
     if (this.pstat) {
       const s = sys.state;
-      for (const d of [0, 1, 2]) if (this.pFlag[d] && !s.box.periodic[d]) throw new StyleError(`fix ${style}: cannot barostat a non-periodic dimension (${KEYS[d]})`);
-      if ((this.pFlag[3] || this.pFlag[4] || this.pFlag[5]) && !s.box.triclinic) throw new StyleError(`fix ${style}: tilt keywords need a triclinic box`);
+      for (const d of [0, 1, 2]) if (this.pFlag[d] && !s.box.periodic[d]) throw new StyleError(`fix ${name}: cannot barostat a non-periodic dimension (${KEYS[d]})`);
+      if ((this.pFlag[3] || this.pFlag[4] || this.pFlag[5]) && !s.box.triclinic) throw new StyleError(`fix ${name}: tilt keywords need a triclinic box`);
       // "Pstart, Pstop, Pdamp parameters for any coupled dimensions must be identical"
       const coupled = this.coupledDims();
       for (const d of coupled.slice(1)) {
         if (this.pStart[d] !== this.pStart[coupled[0]] || this.pStop[d] !== this.pStop[coupled[0]] || this.pPeriod[d] !== this.pPeriod[coupled[0]]) {
-          throw new StyleError(`fix ${style}: coupled dimensions must have identical Pstart, Pstop and Pdamp`);
+          throw new StyleError(`fix ${name}: coupled dimensions must have identical Pstart, Pstop and Pdamp`);
         }
       }
       // tilt scaling default: "yes if periodic in second dimension and not coupled to barostat"
@@ -884,6 +893,11 @@ export class FixNH extends Fix {
     return pc.vectorValues();
   }
 
+  /** The iso barostat's pressure: the compute's scalar (fix bocs reads its corrected tensor instead). */
+  protected isoPressure(pc: ComputePressure): number {
+    return pc.scalarValue();
+  }
+
   protected computePressTarget(): void {
     for (let d = 0; d < 6; d++) {
       if (this.pFlag[d]) this.pTarget[d] = ramp(this.sys, this.pStart[d], this.pStop[d]);
@@ -978,7 +992,14 @@ export class FixNH extends Fix {
     // tensor Voigt order of compute pressure: xx yy zz xy xz yz -> ours x y z yz xz xy
     const cur = [v[0], v[1], v[2], v[5], v[4], v[3]];
     const coupled = this.coupledDims();
-    if (coupled.length) {
+    if (this.ndofDims().length === 1 && !kt) {
+      // As native LAMMPS does (src/fix_nh.cpp couple at b332f28): the iso barostat (pstyle ISO) reads the pressure
+      // compute's scalar, whose kinetic term is dof k_B T of the temperature compute. It differs from the mean of the
+      // tensor's diagonal when the temperature's tensor does not split its scalar evenly (compute temp/eff adds the
+      // electron radial energy to every diagonal entry).
+      const p = this.isoPressure(pc);
+      for (const d of coupled) cur[d] = p;
+    } else if (coupled.length) {
       let avg = 0;
       for (const d of coupled) avg += cur[d];
       avg /= coupled.length;
@@ -1192,7 +1213,7 @@ export class FixNH extends Fix {
     const TILTMAX = 1.5;
     if (h[3] < -TILTMAX * h[1] || h[3] > TILTMAX * h[1] || h[4] < -TILTMAX * h[0] || h[4] > TILTMAX * h[0] ||
       h[5] < -TILTMAX * h[0] || h[5] > TILTMAX * h[0]) {
-      throw new StyleError(`Fix ${this.style} has tilted box too far in one step - periodic cell is too far from equilibrium state`);
+      throw new StyleError(`Fix ${this.styleName} has tilted box too far in one step - periodic cell is too far from equilibrium state`);
     }
     b.minLo = [...b.lo]; b.minHi = [...b.hi];
     g.update();

@@ -77,8 +77,8 @@ describe('fix nvt/sllod', () => {
 
   it('still needs the temp keyword and rejects pressure keywords (fix nvt rules)', async () => {
     const noTemp = await runScript(`${BOX}\nfix 1 all nvt/sllod psllod yes\nfix 2 all deform 1 xy erate 0.05 remap v\nrun 1\n`);
-    expect(noTemp.error).toMatch(/needs the temp keyword/);
+    expect(noTemp.error).toMatch(/Temperature control must be used with fix nvt\/sllod/);
     const withP = await runScript(`${BOX}\nfix 1 all nvt/sllod temp 1.0 1.0 0.1 iso 0.0 0.0 1.0\nfix 2 all deform 1 xy erate 0.05 remap v\nrun 1\n`);
-    expect(withP.error).toMatch(/pressure keywords/);
+    expect(withP.error).toMatch(/Pressure control can not be used with fix nvt\/sllod/);
   });
 });

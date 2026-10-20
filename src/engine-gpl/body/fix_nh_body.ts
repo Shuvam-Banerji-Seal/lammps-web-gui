@@ -42,7 +42,7 @@ export class FixNHBody extends FixNH {
     if (!sys.state.quat || !sys.state.angmom || !sys.state.torque || !sys.state.custom.has(BODY_RECORD)) {
       throw new StyleError(`Fix ${name} requires atom style body`);
     }
-    super(sys, id, group, args, variant);
+    super(sys, id, group, args, variant, name);
     this.style = name;
 
     // compute fix-ID_temp group-ID temp/body (nvt) or compute fix-ID_temp all temp/body (npt, nph)

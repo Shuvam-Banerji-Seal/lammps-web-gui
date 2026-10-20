@@ -359,6 +359,39 @@ export class System {
     this.bump();
   }
 
+  /**
+   * A box flip (fix deform, and fix nh and its variants with flip yes): the tilts become xy, xz, yz (tilt), with the
+   * box vectors added given by m (xy), n (xz) and p (yz), each +1, -1 or 0. As native LAMMPS does (src/domain.cpp
+   * image_flip and remap, src/fix_deform.cpp pre_exchange at b332f28): the new edge vectors are B' = B + m A and
+   * C' = C + p B + n A, so the image counts that describe the same unwrapped positions change as ybox -= p zbox,
+   * then xbox -= m ybox + n zbox (with the new ybox); every atom is then mapped into the new box (Domain::remap,
+   * velocities untouched) and taken to fractional coordinates and back (native's x2lamda and lamda2x around the
+   * migration of atoms). The neighbor lists must be rebuilt on this step (the caller's reneighborDue).
+   */
+  flipBox(tilt: readonly number[], m: number, n: number, p: number, from?: Fix): void {
+    const s = this.state;
+    const g = this.geom;
+    const b = s.box;
+    for (let d = 0; d < 3; d++) b.tilt[d] = tilt[d];
+    g.update();
+    const img = s.image;
+    for (let i = 0; i < s.n; i++) {
+      const zbox = img[3 * i + 2];
+      const ybox = img[3 * i + 1] - p * zbox;
+      img[3 * i + 1] = ybox;
+      img[3 * i] -= m * ybox + n * zbox;
+    }
+    const tmp = [0, 0, 0];
+    for (let i = 0; i < s.n; i++) g.remap(s.x, s.image, i);
+    for (let i = 0; i < s.n; i++) {
+      g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], tmp);
+      g.fromLamda(tmp[0], tmp[1], tmp[2], tmp);
+      s.x[3 * i] = tmp[0]; s.x[3 * i + 1] = tmp[1]; s.x[3 * i + 2] = tmp[2];
+    }
+    for (const f of this.fixes) if (f !== from) f.boxChanged?.();
+    this.bump();
+  }
+
   pbc(): void {
     const s = this.state;
     const g = this.geom;

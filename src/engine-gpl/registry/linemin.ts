@@ -8,12 +8,13 @@
  * commands hyper, prd, tad and neb run the same minimizers (their quench, neb's damped dynamics over the replicas), so
  * their words load the group too; neb also reads the nudged forces of fix neb (nebForces) from it.
  */
-import { lineminQuadratic } from '../min/linemin';
+import { lineminForcezero, lineminQuadratic } from '../min/linemin';
 import { MinFire, type FireParams, type FireReplica } from '../min/min_fire';
 import { nebForces } from '../replica/fix_neb';
 
 const helper = {
   quadratic: lineminQuadratic,
+  forcezero: lineminForcezero,
   fire: (p: FireParams, reps: FireReplica[], evaluateAll: () => number[], multireplica: boolean) => new MinFire(p, reps, evaluateAll, multireplica),
   nebForces,
 };

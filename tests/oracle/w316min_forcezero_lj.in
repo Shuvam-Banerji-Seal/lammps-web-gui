@@ -1,0 +1,20 @@
+# oracle: w316min_forcezero_lj — sd and cg on the perturbed lj crystal of w47qm_lj with min_modify line forcezero, lj units (thermo norm on: the energies and f.h are per atom in the line search), every thermo row
+# oracle-inputs: w47qm_lj.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.1e-4 in a value near zero at convergence (within abs 1e-10), atoms 6.8e-14.
+units           lj
+atom_style      atomic
+read_data       w47qm_lj.data
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+min_style       sd
+min_modify      line forcezero
+timestep        0.005
+thermo_style    custom step pe fnorm fmax press
+thermo_modify   format float %.15g
+thermo          1
+minimize        0 0 15 1000
+min_style       cg
+min_modify      line forcezero dmax 0.05
+minimize        0 0 25 1000

@@ -9,7 +9,8 @@
  * = sdstyle limit limit/splash ... sdstyle = coordination or divergence ... limit = threshold for surface particles ...
  * limit/splash = threshold for splash particles (unitless)", and "rho/sum density evolution performed by a kernel
  * summation ... optional args = self/mass ... self/mass values = none, a particle uses its own mass in summation".
- * Only the coordination style is supported by the browser engine (divergence is refused by name in fix rheo).
+ * Both styles are supported: coordination tests the neighbor count against limit, divergence the position divergence
+ * divr (compute_rheo_surface.cpp threshold_style DIVR); the splash test is the coordination one in both.
  *
  * The native sums run over the newton-off half list (REQ_DEFAULT; newton off, so no reverse communication of the ghost
  * contributions). The color gradient and the layer test follow that list in native's pair order (rheoHalfPairs), so the
@@ -36,6 +37,7 @@ const ensure = (m: RheoModel, n: number): void => {
   if (m.nsurface.length < n * dim) m.nsurface = new Float64Array(n * dim);
   if (m.gradC.length < n * dim) m.gradC = new Float64Array(n * dim);
   if (m.rsurface.length < n) m.rsurface = new Float64Array(n);
+  if (m.divr.length < n) m.divr = new Float64Array(n);
 };
 
 /**
@@ -48,7 +50,8 @@ export const computeRheoRhoSum = (s: SimState, nb: Neighbor, m: RheoModel): void
   if (!full) throw new Error('rheo rho/sum needs a full neighbor list');
   const x = nb.xall, owner = nb.owner, nbr = full.neighbors;
   const rho = rheoProp(s, RHEO_RHO);
-  const wself = m.wQuintic(0);
+  // compute_rheo_rho_sum.cpp: calc_w_self() and calc_w() (the wendland/c4 kernel, else the quintic one)
+  const wself = m.calcW(0);
   for (let i = 0; i < n; i++) {
     const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
     rho[i] = wself * massOf(s, i);
@@ -58,7 +61,7 @@ export const computeRheoRhoSum = (s: SimState, nb: Neighbor, m: RheoModel): void
       const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
       const rsq = dx * dx + dy * dy + dz * dz;
       if (!(rsq < m.cutsq)) continue;
-      const w = m.wQuintic(Math.sqrt(rsq));
+      const w = m.calcW(Math.sqrt(rsq));
       const o = owner[j];
       rho[i] += m.rhosumSelfMass ? w * massOf(s, i) : w * massOf(s, o);
     }
@@ -66,10 +69,12 @@ export const computeRheoRhoSum = (s: SimState, nb: Neighbor, m: RheoModel): void
 };
 
 /**
- * compute_rheo_surface.cpp compute_peratom() for the coordination style. The color gradient gradC_i = sum_j dW_ij V_j of
- * each owned atom gives the normal nsurface = -gradC / |gradC| (group atoms). Each group atom is a surface atom when its
- * coordination is below zmin_surface, a splash atom below zmin_splash, and bulk otherwise; a non-fluid atom is bulk. A
- * bulk fluid atom with a surface neighbor becomes a layer atom. Normals of atoms that are not surface atoms are zero.
+ * compute_rheo_surface.cpp compute_peratom(). The color gradient gradC_i = sum_j dW_ij V_j of each owned atom gives the
+ * normal nsurface = -gradC / |gradC| (group atoms), and the position divergence divr_i = -sum_j dW_ij . r_ij V_j. Each
+ * group atom is a surface atom when its coordination is below zmin_surface (coordination style), or its divergence below
+ * divr_surface (divergence style); then a splash atom when its coordination is below zmin_splash, and bulk otherwise; a
+ * non-fluid atom is bulk. A bulk fluid atom with a surface neighbor becomes a layer atom. Normals of atoms that are not
+ * surface atoms are zero.
  */
 export const computeRheoSurface = (s: SimState, nb: Neighbor, m: RheoModel, groupBit: number, geom: Geometry): void => {
   const n = s.n, dim = m.dim;
@@ -80,8 +85,9 @@ export const computeRheoSurface = (s: SimState, nb: Neighbor, m: RheoModel, grou
   const x = nb.xall, owner = nb.owner, nbr = full.neighbors;
   const rho = rheoProp(s, RHEO_RHO), status = rheoProp(s, RHEO_STATUS);
   const mask = s.mask;
-  const gradC = m.gradC, nsurface = m.nsurface;
+  const gradC = m.gradC, nsurface = m.nsurface, divr = m.divr;
   gradC.fill(0, 0, n * dim);
+  divr.fill(0, 0, n);
   const dW = [0, 0, 0];
   // the color gradient in native order: the half pairs of newton off (each owned pair once, from its lower native
   // index, every ghost image of the owned atom), each pair adding dWij Volj to i and, for an owned j, -dWij Voli to j
@@ -101,10 +107,17 @@ export const computeRheoSurface = (s: SimState, nb: Neighbor, m: RheoModel, grou
     dW[2] = dz * wprinv;
     const o = owner[j];
     const Volj = massOf(s, o) / rho[o];
-    for (let a = 0; a < dim; a++) gradC[i * dim + a] += dW[a] * Volj;
+    const del = [dx, dy, dz];
+    for (let a = 0; a < dim; a++) {
+      divr[i] -= dW[a] * del[a] * Volj;
+      gradC[i * dim + a] += dW[a] * Volj;
+    }
     if (j < n) {
       const Voli = massOf(s, i) / rho[i];
-      for (let a = 0; a < dim; a++) gradC[j * dim + a] += -dW[a] * Voli;
+      for (let a = 0; a < dim; a++) {
+        divr[j] += -dW[a] * del[a] * Voli;
+        gradC[j * dim + a] += -dW[a] * Voli;
+      }
     }
   }
   // normals of the group atoms
@@ -120,7 +133,7 @@ export const computeRheoSurface = (s: SimState, nb: Neighbor, m: RheoModel, grou
   for (let i = 0; i < n; i++) {
     status[i] = (status[i] & SURFACEMASK) >>> 0;
     if (!(mask[i] & groupBit)) continue;
-    let test = coord[i] < m.zminSurface;
+    let test = m.surfaceDivr ? divr[i] < m.divrSurface : coord[i] < m.zminSurface;
     if (status[i] & PHASECHECK) test = false;
     if (test) {
       status[i] = (status[i] | (coord[i] < m.zminSplash ? STATUS_SPLASH : STATUS_SURFACE)) >>> 0;

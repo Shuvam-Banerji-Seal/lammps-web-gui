@@ -69,7 +69,7 @@ write_data rheo.data
     expect(data).toMatch(/2 1 1 2\.5 2 1 0/);
   });
 
-  it('refuses an unsupported kernel and an unsupported keyword by name', async () => {
+  it('refuses fix rheo interface/reconstruct and an unsupported keyword by name', async () => {
     await expect(run(`
 units lj
 dimension 2
@@ -77,8 +77,8 @@ atom_style rheo
 region box block 0 4 0 4 -0.01 0.01
 create_box 1 box
 create_atoms 1 single 1.0 1.0 0
-fix 1 all rheo 3.0 wendland/c4 0
-`)).rejects.toThrow(/wendland\/c4/);
+fix 1 all rheo 3.0 quintic 0 interface/reconstruct
+`)).rejects.toThrow(/interface\/reconstruct/);
     await expect(run(`
 units lj
 dimension 2
@@ -238,5 +238,49 @@ fix 4 all rheo/thermal conductivity * constant 0.1 specific/heat * constant 1.0
     await expect(run(`${HEAD}bond_style rheo/shell\nbond_coeff 1 0.2 0.2 0.1\n`)).rejects.toThrow(/requires the t\/form keyword/);
     await expect(run(`${HEAD}compute n all rheo/property/atom nbond/shell\nrun 1\n`)).rejects.toThrow(/Cannot request nbond\/shell without fix rheo\/oxidation/);
     await expect(run(`${HEAD}fix 5 all add/heat linear v_t 0.5\nrun 1\n`)).rejects.toThrow(/variable values/);
+  });
+
+  it('checks the rheo/property/atom attributes as native: components, 2d, and the fix rheo options they need', async () => {
+    const HEAD = `
+units lj
+dimension 2
+atom_style rheo
+region box block 0 4 0 4 -0.01 0.01
+create_box 1 box
+create_atoms 1 single 1.0 1.0 0
+create_atoms 1 single 2.0 1.5 0
+comm_modify vel yes
+mass * 1.0
+set group all rheo/rho 1.0
+pair_style rheo 3.0
+pair_coeff * *
+fix 1 all rheo 3.0 quintic 0
+fix 2 all rheo/viscosity * constant 0.05
+fix 3 all rheo/pressure * linear
+`;
+    // compute_rheo_property_atom.cpp add_tensor_component, add_vector_component and init()
+    await expect(run(`${HEAD}compute p all rheo/property/atom grad/v/xz\n`)).rejects.toThrow(/Invalid compute rheo\/property\/atom property grad\/v\/xz in 2D/);
+    await expect(run(`${HEAD}compute p all rheo/property/atom shift/v/z\n`)).rejects.toThrow(/Invalid compute rheo\/property\/atom property shift\/v\/z in 2D/);
+    await expect(run(`${HEAD}compute p all rheo/property/atom stress/v/ab\n`)).rejects.toThrow(/Invalid compute rheo\/property\/atom property stress\/v\/ab/);
+    await expect(run(`${HEAD}compute p all rheo/property/atom energy\n`)).rejects.toThrow(/Invalid keyword energy for atom style rheo/);
+    await expect(run(`${HEAD}compute p all rheo/property/atom chi\nrun 0\n`)).rejects.toThrow(/Cannot request interfacial property without corresponding option in fix rheo/);
+    await expect(run(`${HEAD}compute p all rheo/property/atom surface/divr\nrun 0\n`)).rejects.toThrow(/Cannot request surface property without corresponding option in fix rheo/);
+    await expect(run(`${HEAD}compute p all rheo/property/atom shift/v/*\nrun 0\n`)).rejects.toThrow(/Cannot request velocity shifting property without corresponding option in fix rheo/);
+    // grad/v/* is dim*dim columns; stress/v is visc (gradv_ab + gradv_ba); stress/t adds the pressure on the diagonal
+    const { rows } = await run(`${HEAD}set atom 1 vx 0.1
+set atom 2 vy 0.2
+compute p all rheo/property/atom grad/v/* stress/v/xx stress/t/xx stress/v/xy stress/t/yx pressure
+compute r all reduce sum c_p[*]
+thermo_style custom step c_r[*]
+thermo_modify norm no
+run 0
+`);
+    const r = (k: number) => Number(rows[0][`c_r[${k}]`]);
+    expect(r(1)).not.toBe(0);
+    expect(r(2) + r(3)).not.toBe(0);
+    expect(r(5)).toBeCloseTo(0.05 * 2 * r(1), 14);
+    expect(r(6)).toBeCloseTo(r(5) + r(9), 14);
+    expect(r(7)).toBeCloseTo(0.05 * (r(2) + r(3)), 14);
+    expect(r(8)).toBe(r(7));
   });
 });

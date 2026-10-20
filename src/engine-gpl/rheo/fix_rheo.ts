@@ -6,9 +6,9 @@
  * GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * Docs (docs.lammps.org/fix_rheo.html): "fix ID group-ID rheo cut kstyle zmin keyword values..." and "kstyle = quintic
- * or RK0 or RK1 or RK2". The browser engine supports the quintic and RK1 kernels with the shift, density, speed/sound,
- * thermal (energy gradient for fix rheo/thermal), surface/detection and rho/sum keywords and refuses the others by name
- * (RK0, RK2; interface/reconstruct).
+ * or RK0 or RK1 or RK2" (and wendland/c4, compute_rheo_kernel.cpp). The browser engine supports every kernel with the
+ * shift, density, speed/sound, thermal (energy gradient for fix rheo/thermal), surface/detection (coordination and
+ * divergence) and rho/sum keywords, and refuses interface/reconstruct by name.
  *
  * Integration (native order): initial_integrate kicks v by dt/2 F/m, computes the gradients, drifts x by dt v, evolves
  * rho by dt/2 (drho - rho div v) on fluid atoms, then applies the shift (x, v, rho) of the previous force evaluation;
@@ -48,10 +48,7 @@ export class FixRHEO extends Fix {
     const n = s.ntypes;
     const cut = parseNum(args[0], 'cutoff');
     const kernel = args[1];
-    if (kernel !== 'quintic' && kernel !== 'RK1') {
-      if (['RK0', 'RK2'].includes(kernel)) {
-        throw new StyleError(`fix rheo kernel ${kernel} is not supported by the browser engine yet (quintic and RK1 only)`);
-      }
+    if (kernel !== 'quintic' && kernel !== 'wendland/c4' && kernel !== 'RK0' && kernel !== 'RK1' && kernel !== 'RK2') {
       throw new StyleError(`Unknown kernel style ${kernel} in fix rheo`);
     }
     // zmin is the coordination threshold of the corrected kernels (fix_rheo.cpp: utils::inumeric); the quintic kernel
@@ -59,7 +56,7 @@ export class FixRHEO extends Fix {
     if (!Number.isInteger(Number(args[2]))) throw new StyleError(`Expected integer parameter in fix rheo: ${args[2]}`);
     const dim = s.dimension;
     this.model = new RheoModel(dim, cut, n);
-    this.model.rk1 = kernel === 'RK1';
+    this.model.setKernel(kernel);
     this.model.zmin = Number(args[2]);
     let shiftFlag = false;
     const shiftType = new Uint8Array(n + 1).fill(1);
@@ -81,16 +78,18 @@ export class FixRHEO extends Fix {
           }
         }
       } else if (w === 'surface/detection') {
-        // fix_rheo.cpp: "surface/detection coordination zmin_surface zmin_splash" (divergence is refused by name)
+        // fix_rheo.cpp: "surface/detection coordination zmin_surface zmin_splash" or "divergence divr_surface zmin_splash"
         if (iarg + 3 >= args.length) throw new StyleError('Illegal fix rheo surface/detection: missing values');
-        if (args[iarg + 1] !== 'coordination') {
-          throw new StyleError(`fix rheo surface/detection ${args[iarg + 1]} is not supported by the browser engine yet (coordination only)`);
-        }
-        if (!Number.isInteger(Number(args[iarg + 2])) || !Number.isInteger(Number(args[iarg + 3]))) {
+        const sstyle = args[iarg + 1];
+        if (sstyle !== 'coordination' && sstyle !== 'divergence') throw new StyleError(`Illegal surface/detection option in fix rheo, ${sstyle}`);
+        if ((sstyle === 'coordination' && !Number.isInteger(Number(args[iarg + 2]))) || !Number.isInteger(Number(args[iarg + 3]))) {
           throw new StyleError('Expected integer parameter in fix rheo surface/detection');
         }
         this.model.surfaceFlag = true;
-        this.model.zminSurface = Number(args[iarg + 2]);
+        if (sstyle === 'divergence') {
+          this.model.surfaceDivr = true;
+          this.model.divrSurface = parseNum(args[iarg + 2], 'divr_surface');
+        } else this.model.zminSurface = Number(args[iarg + 2]);
         this.model.zminSplash = Number(args[iarg + 3]);
         iarg += 3;
       } else if (w === 'rho/sum') {
@@ -212,7 +211,8 @@ export class FixRHEO extends Fix {
     const s = this.sys.state;
     const m = this.model;
     // coordination (kernel corrections and surface detection), density by summation, then the corrections
-    if (m.rk1 || m.surfaceFlag) computeRheoCoordination(s, this.sys.nb, m);
+    // fix_rheo.cpp: coordination_flag is set by the corrected kernels (correction order 0, 1 or 2) and surface detection
+    if (m.correctionOrder >= 0 || m.surfaceFlag) computeRheoCoordination(s, this.sys.nb, m);
     if (m.rhosumFlag) computeRheoRhoSum(s, this.sys.nb, m);
     if (m.rk1) computeRheoCorrections(s, this.sys.nb, m);
     computeRheoGrad(s, this.sys.nb, m, this.sys.geom);

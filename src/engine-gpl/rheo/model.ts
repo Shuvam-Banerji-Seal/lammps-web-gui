@@ -56,14 +56,25 @@ export interface RheoThermal {
 }
 
 /** Shared RHEO state for one simulation (one fix rheo). */
+/** math_const.h THIRD */
+const THIRD = 1.0 / 3.0;
+
 export class RheoModel {
   readonly dim: 2 | 3;
   /** fix rheo cutoff and the derived kernel constants (compute_rheo_kernel.cpp init()). */
   readonly cut: number;
   readonly cutsq: number;
   readonly cutinv: number;
-  readonly preW: number;
-  readonly preWp: number;
+  preW: number;
+  preWp: number;
+  /** fix rheo kernel style (compute_rheo_kernel.cpp kernel_style). */
+  kernelStyle: 'quintic' | 'wendland/c4' | 'RK0' | 'RK1' | 'RK2' = 'quintic';
+  /**
+   * The reproducing-kernel correction order: -1 for quintic and wendland/c4, 0 for RK0, 1 for RK1, 2 for RK2. RK0's
+   * correction changes only the kernel values that no caller reads, so it behaves as the quintic kernel; RK1 and RK2
+   * correct the kernel gradients (their moment matrices have Mdim = 1 + dim and 1 + dim + dim (dim + 1) / 2 rows).
+   */
+  correctionOrder = -1;
   /** Equilibrium density and squared sound speed per type (index 0 unused). */
   readonly rho0: Float64Array;
   readonly csq: Float64Array;
@@ -87,7 +98,13 @@ export class RheoModel {
    * each of Mdim = 1 + dim entries, row-major); corrOK is 1 when the atom's coefficients are set (enough neighbors and
    * a positive-definite moment matrix). An atom without them uses the quintic kernel.
    */
-  rk1 = false;
+  /** The kernel gradients are corrected (RK1 or RK2): pair rheo also takes laplacian_order 1 or 2. */
+  get rk1(): boolean { return this.correctionOrder >= 1; }
+  /** The size of the polynomial basis of the corrections (Mdim). */
+  get mdim(): number {
+    const d = this.dim;
+    return this.correctionOrder === 2 ? 1 + d + (d * (d + 1)) / 2 : 1 + d;
+  }
   zmin = 0;
   /**
    * Surface detection by coordination (fix rheo surface/detection coordination zmin splash): the thresholds, the
@@ -96,6 +113,11 @@ export class RheoModel {
   surfaceFlag = false;
   zminSurface = 0;
   zminSplash = 0;
+  /** surface/detection divergence: the threshold of the position divergence divr (below it an atom is at the surface). */
+  surfaceDivr = false;
+  divrSurface = 0;
+  /** divr_i = -sum_j dW_ij . r_ij V_j of each owned atom (compute_rheo_surface.cpp), set by the surface detection. */
+  divr = new Float64Array(0);
   nsurface = new Float64Array(0);
   gradC = new Float64Array(0);
   /**
@@ -141,6 +163,80 @@ export class RheoModel {
     this.preWp = this.preW * 3.0 * this.cutinv;
     this.rho0 = new Float64Array(ntypes + 1).fill(1.0);
     this.csq = new Float64Array(ntypes + 1).fill(1.0);
+  }
+
+  /**
+   * fix rheo's kernel style: the wendland/c4 pre-factors (compute_rheo_kernel.cpp init(): "pre_w = 495.0 / (32.0 * MY_PI *
+   * cutsq * cut)" in 3d, "pre_w = 9.0 / (MY_PI * cutsq)" in 2d, "pre_wp = pre_w * cutinv"), and the correction order.
+   */
+  setKernel(style: 'quintic' | 'wendland/c4' | 'RK0' | 'RK1' | 'RK2'): void {
+    this.kernelStyle = style;
+    this.correctionOrder = style === 'RK0' ? 0 : style === 'RK1' ? 1 : style === 'RK2' ? 2 : -1;
+    if (style === 'wendland/c4') {
+      if (this.dim === 3) this.preW = 495.0 / (32.0 * Math.PI * this.cutsq * this.cut);
+      else this.preW = 9.0 / (Math.PI * this.cutsq);
+      this.preWp = this.preW * this.cutinv;
+    }
+  }
+
+  /** compute_rheo_kernel.cpp calc_w (its return value) and calc_w_self: the wendland/c4 kernel, else the quintic one. */
+  calcW(r: number): number {
+    return this.kernelStyle === 'wendland/c4' ? this.wWendland(r) : this.wQuintic(r);
+  }
+
+  /** compute_rheo_kernel.cpp calc_w_wendlandc4(r). */
+  wWendland(r: number): number {
+    const s = r * this.cutinv;
+    let w: number;
+    if (s > 1.0) w = 0.0;
+    else {
+      let tmp6 = (1.0 - s) * (1.0 - s);
+      tmp6 *= tmp6 * tmp6;
+      w = tmp6 * (1.0 + 6.0 * s + 35.0 * THIRD * s * s);
+    }
+    return w * this.preW;
+  }
+
+  /** compute_rheo_kernel.cpp calc_dw_wendlandc4: the scalar derivative (pre-factor included). */
+  dwWendland(r: number): number {
+    const s = r * this.cutinv;
+    let wp: number;
+    if (s > 1.0) wp = 0.0;
+    else {
+      const tmp1 = 1.0 - s;
+      let tmp5 = tmp1 * tmp1;
+      tmp5 = tmp5 * tmp5 * tmp1;
+      const tmp6 = tmp5 * tmp1;
+      wp = tmp6 * (6.0 + 70.0 * THIRD * s);
+      wp -= 6 * tmp5 * (1.0 + 6.0 * s + 35.0 * THIRD * s * s);
+    }
+    return wp * this.preWp;
+  }
+
+  /** The correction basis H of a pair (calc_dw_rk1, calc_dw_rk2): 1, del/cut, and for RK2 the quadratic terms. */
+  basis(delx: number, dely: number, delz: number): Float64Array {
+    const H = this.H, ci = this.cutinv, c2 = ci * ci;
+    H[0] = 1.0;
+    H[1] = delx * ci;
+    H[2] = dely * ci;
+    if (this.dim === 2) {
+      if (this.correctionOrder === 2) {
+        H[3] = 0.5 * delx * delx * c2;
+        H[4] = 0.5 * dely * dely * c2;
+        H[5] = delx * dely * c2;
+      }
+    } else {
+      H[3] = delz * ci;
+      if (this.correctionOrder === 2) {
+        H[4] = 0.5 * delx * delx * c2;
+        H[5] = 0.5 * dely * dely * c2;
+        H[6] = 0.5 * delz * delz * c2;
+        H[7] = delx * dely * c2;
+        H[8] = delx * delz * c2;
+        H[9] = dely * delz * c2;
+      }
+    }
+    return H;
   }
 
   /** compute_rheo_kernel.cpp calc_w_quintic(r): the quintic spline W(r) (pre-factor included). */
@@ -194,23 +290,25 @@ export class RheoModel {
   }
 
   /**
-   * compute_rheo_kernel.cpp calc_dw(): the scalar derivative wp (returned, quintic; pre-factor included) and the vector
-   * derivative of the pair into out: dWij of the owned atom o for del = x_o - x_j. With the RK1 correction of o
-   * (corrOK), calc_dw_rk1(): dW_a = w * sum_b C[o][1+a][b] H[b], with H = (1, del/cut); otherwise the quintic
-   * derivative dW = del wp / r (calc_dw_quintic). The native code leaves dWij unchanged for an uncorrected atom (it
-   * reads the value of the previous pair); the port uses the quintic derivative there.
+   * compute_rheo_kernel.cpp calc_dw(): the scalar derivative wp (returned; pre-factor included) and the vector derivative
+   * of the pair into out: dWij of the owned atom o for del = x_o - x_j. wendland/c4: its derivative; quintic and RK0:
+   * the quintic one (calc_dw_quintic). RK1 and RK2 with the corrections of o (corrOK), calc_dw_rk1 / calc_dw_rk2:
+   * dW_a = w * sum_b C[o][1+a][b] H[b] over the basis H of the order. The native code leaves dWij unchanged for an
+   * uncorrected atom (it reads the value of the previous pair); the port uses the quintic derivative there.
    */
   calcDw(o: number, delx: number, dely: number, delz: number, r: number, out: Float64Array): number {
+    if (this.kernelStyle === 'wendland/c4') {
+      const wp = this.dwWendland(r);
+      const wprinv = wp / r;
+      out[0] = delx * wprinv; out[1] = dely * wprinv; out[2] = delz * wprinv;
+      return wp;
+    }
     const wp = this.dwScalar(r);
     if (this.rk1 && this.corrOK[o]) {
-      const dim = this.dim, Mdim = dim + 1;
-      const H = this.H;
-      H[0] = 1.0;
-      H[1] = delx * this.cutinv;
-      H[2] = dely * this.cutinv;
-      if (dim === 3) H[3] = delz * this.cutinv;
+      const dim = this.dim, Mdim = this.mdim;
+      const H = this.basis(delx, dely, delz);
       const w = this.wQuintic(r);
-      const base = o * Mdim * Mdim;
+      const base = o * (1 + dim) * Mdim;
       for (let a = 0; a < dim; a++) {
         let acc = 0;
         for (let b = 0; b < Mdim; b++) acc += this.C[base + (1 + a) * Mdim + b] * H[b];
@@ -226,8 +324,8 @@ export class RheoModel {
     return wp;
   }
 
-  /** Scratch of the RK1 correction basis H (1, x/cut, y/cut, (z/cut)). */
-  readonly H = new Float64Array(4);
+  /** Scratch of the correction basis H (at most 10 entries, RK2 in 3d). */
+  readonly H = new Float64Array(10);
 }
 
 /*
@@ -345,8 +443,8 @@ export const computeRheoVShift = (s: SimState, nb: Neighbor, m: RheoModel, group
     const voli = massOf(s, i) / rhoi;
     const volj = massOf(s, oj) / rho[oj];
     const wp = m.calcDw(i, dx, dy, dz, r, m.dW);
-    const w = m.wQuintic(r);
-    const w0 = m.wQuintic(cutthird);
+    const w = m.calcW(r);
+    const w0 = m.calcW(cutthird);
     const w4 = w * w * w * w / (w0 * w0 * w0 * w0);
     const dr = -2 * cutthird * (1 + 0.2 * w4) * wp * rinv;
     if ((mask[i] & groupBit) && fluidi) {

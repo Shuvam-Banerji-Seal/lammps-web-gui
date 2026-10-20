@@ -8,11 +8,14 @@
  * generate a reproducing kernel, a particle must have sufficient neighbors inside the kernel cutoff distance (a
  * coordination number) to accurately calculate moments. This threshold is set by zmin. If reproducing kernels are
  * requested but a particle has fewer neighbors, then it will revert to a non-reproducing quintic kernel until it gains
- * more neighbors." Only RK1 is ported here; RK0 and RK2 are refused by name in fix rheo.
+ * more neighbors." The RK1 and RK2 corrections are ported here; RK0's (C0 = 1 / sum_j W_j V_j) scales only the kernel
+ * values Wij and Wji that no caller reads, so it is not computed.
  *
- * The RK1 correction: the moment matrix M = sum_j H_j H_j^T W_j V_j over the neighbors (H = (1, x/cut, y/cut, (z/cut))
- * and V_j = m_j / rho_j) is factored by a Cholesky decomposition, inverted, and its inverse columns give the coefficients
- * C of the corrected kernel W_ij = (C_i . H_ij) W_ij^quintic and dW_ij = (C_i,grad . H_ij) W_ij^quintic. Native uses
+ * The RK1 and RK2 corrections: the moment matrix M = sum_j H_j H_j^T W_j V_j over the neighbors (H = (1, x/cut, y/cut,
+ * (z/cut)), and for RK2 also x^2/2, y^2/2, (z^2/2), xy, (xz, yz) over cut^2, and V_j = m_j / rho_j) is factored by a
+ * Cholesky decomposition, inverted, and its inverse columns give the coefficients C of the corrected kernel
+ * W_ij = (C_i . H_ij) W_ij^quintic and dW_ij = (C_i,grad . H_ij) W_ij^quintic (the second-derivative coefficients of
+ * RK2 are not read by any caller, so only the value and gradient rows are kept). Native uses
  * LAPACK dpotrf and dpotri (upper triangle); the port does the same factorization and inversion in plain loops, so the
  * values agree to rounding.
  */
@@ -22,12 +25,12 @@ import { NEIGHMASK } from '../../engine/neighbor';
 import { massOf, RHEO_RHO } from '../../engine/atoms';
 import { rheoProp, type RheoModel } from './model';
 
-/** Grows the per-atom arrays of the RK1 kernel to n owned atoms. */
+/** Grows the per-atom arrays of the corrected kernels to n owned atoms (C: 1 + dim rows of Mdim per atom). */
 const ensureArrays = (m: RheoModel, n: number): void => {
-  const mdim = m.dim + 1;
+  const rows = (m.dim + 1) * m.mdim;
   if (m.coord.length < n) m.coord = new Int32Array(n);
   if (m.corrOK.length < n) m.corrOK = new Uint8Array(n);
-  if (m.C.length < n * mdim * mdim) m.C = new Float64Array(n * mdim * mdim);
+  if (m.C.length < n * rows) m.C = new Float64Array(n * rows);
 };
 
 /**
@@ -60,13 +63,12 @@ export const computeRheoCoordination = (s: SimState, nb: Neighbor, m: RheoModel)
  * corrOK = 0 and uses the quintic kernel (native: "Revert to uncorrected SPH for this particle").
  */
 export const computeRheoCorrections = (s: SimState, nb: Neighbor, m: RheoModel): void => {
-  const n = s.n, dim = m.dim, N = dim + 1;
+  const n = s.n, dim = m.dim, N = m.mdim;
   ensureArrays(m, n);
   const full = nb.full;
   if (!full) throw new Error('rheo kernel needs a full neighbor list');
   const x = nb.xall, owner = nb.owner, nbr = full.neighbors;
   const rho = rheoProp(s, RHEO_RHO);
-  const H = [0, 0, 0, 0];
   const M = new Float64Array(N * N);
   const U = new Float64Array(N * N);
   const Ui = new Float64Array(N * N);
@@ -85,10 +87,7 @@ export const computeRheoCorrections = (s: SimState, nb: Neighbor, m: RheoModel):
       const w = m.wQuintic(r);
       const oj = owner[j];
       const vj = massOf(s, oj) / rho[oj];
-      H[0] = 1.0;
-      H[1] = dx * m.cutinv;
-      H[2] = dy * m.cutinv;
-      if (dim === 3) H[3] = dz * m.cutinv;
+      const H = m.basis(dx, dy, dz);
       for (let a = 0; a < N; a++) {
         for (let b = a; b < N; b++) M[a * N + b] += H[a] * H[b] * w * vj;
       }
@@ -133,7 +132,7 @@ export const computeRheoCorrections = (s: SimState, nb: Neighbor, m: RheoModel):
     }
     // Pack the correction coefficients (compute_rheo_kernel.cpp: C[i][0][a] = M[a][0];
     // C[i][1 + b][a] = -M[a][b + 1] * cutinv)
-    const base = i * N * N;
+    const base = i * (dim + 1) * N;
     for (let a = 0; a < N; a++) {
       m.C[base + a] = Minv[a * N + 0];
       for (let b = 0; b < dim; b++) m.C[base + (1 + b) * N + a] = -Minv[a * N + b + 1] * m.cutinv;

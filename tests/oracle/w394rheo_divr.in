@@ -1,0 +1,88 @@
+# oracle: RHEO 2d dam break (the cut-down w96rheo_dam_break) with fix rheo surface/detection divergence 1.5 8 and shift, and compute rheo/property/atom surface/divr, coordination, grad/v/*, stress/v/xy, stress/t/*, shift/v/*, drho and status reduced in thermo
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-13
+# Measured with native LAMMPS: engine vs native thermo 1.6e-14, atoms exact, with 49 surface atoms at step 0. reduce sumabs is not used here: with more than one input, native compute_vector() never fills the sumabs vector (its MPI_Allreduce branch lists SUM, SUMSQ and AVEABS; compute_reduce.cpp at b332f28), so those thermo columns print uninitialized memory.
+# ------ 2D dam break ------ #
+
+dimension          2
+units              lj
+atom_style         rheo
+boundary           f s p
+comm_modify        vel yes
+newton             off
+
+# ------ Create simulation box ------ #
+
+variable           n equal 1.0
+variable           cut equal 2.2
+variable           dx equal 3.0
+
+region             box block -1 50 -1 40 -0.1 0.1 units box
+create_box         2 box
+lattice            hex ${n}
+
+region             fluid block $(xlo+v_dx+1.0) $(xlo+15.0) $(ylo+v_dx+1.0) $(yhi-10.0) EDGE EDGE units box
+region             walls1 block $(xlo+v_dx) $(xhi-v_dx) $(ylo+v_dx) $(yhi-v_dx) EDGE EDGE side out units box
+region             walls2 block EDGE EDGE EDGE $(yhi-v_dx) EDGE EDGE side in units box
+region             walls intersect 2 walls1 walls2
+
+create_atoms       1 region fluid
+create_atoms       2 region walls
+
+group              fluid type 1
+group              rig type 2
+
+# ------ Model parameters ------ #
+
+variable           rho0 equal 1.0
+variable           mp equal ${rho0}/${n}
+variable           cs equal 1.0
+variable           zeta equal 0.1
+variable           dt_max equal  0.1*${cut}/${cs}/3
+variable           eta equal 0.1
+variable           Dr equal 0.1
+
+mass               1 ${mp}
+mass               2 $(2*v_mp)
+set                group all rheo/rho ${rho0}
+
+set                group all rheo/status 0
+set                group rig rheo/status 1
+
+timestep           ${dt_max}
+
+pair_style         rheo ${cut} artificial/visc ${zeta} #rho/damp ${Dr}
+pair_coeff         * *
+
+# ------ Fixes & computes ------ #
+
+fix                1 all rheo ${cut} quintic 10 shift &
+                              surface/detection divergence 1.5 8
+fix                2 all rheo/viscosity * constant ${eta}
+fix                3 all rheo/pressure * linear
+fix                4 all gravity 1e-3 vector 0 -1 0
+fix                5 rig setforce 0.0 0.0 0.0
+fix                6 all enforce2d
+
+compute            rho all rheo/property/atom rho
+compute            surf all rheo/property/atom surface
+compute            sn all rheo/property/atom surface/n/x surface/n/y
+compute            nsf all reduce sum c_surf
+compute            rsum all reduce sum c_rho
+compute            dv all rheo/property/atom surface/divr coordination drho status
+compute            gv all rheo/property/atom grad/v/* stress/v/xy stress/t/*
+compute            sv all rheo/property/atom shift/v/*
+compute            dvr all reduce sum c_dv[1] c_dv[2] c_dv[3] c_dv[4]
+compute            dvm all reduce min c_dv[1]
+compute            gvs all reduce sum c_gv[*]
+compute            gva all reduce sumsq c_gv[*]
+compute            svs all reduce sumsq c_sv[*]
+
+# ------ Output & Run ------ #
+
+thermo             30
+thermo_style       custom step time ke press c_nsf c_rsum c_dvr[*] c_dvm c_gvs[*] c_gva[*] c_svs[*]
+
+#dump               1 all custom 200 atomDump id type x y vx vy fx fy c_rho c_surf c_p c_sn[*]
+
+thermo_modify    format float %.15g
+run                300

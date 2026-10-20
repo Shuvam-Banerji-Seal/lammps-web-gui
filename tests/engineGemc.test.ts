@@ -65,9 +65,18 @@ describe('fix gemc refusals', () => {
     expect((await run(setup({ style: 'bond' }))).error?.message).toMatch(/Using fix gemc with molecules not \(yet\) supported/);
   });
 
-  it('refuses nevery below 1 and a pair tail correction, naming them', async () => {
+  it('refuses nevery below 1, naming it', async () => {
     expect((await run(setup({ fix: 'fix 2 all gemc 0 5 10 5 0.9 0.5 0.5 31' }))).error?.message).toMatch(/N must be a positive integer/);
-    expect((await run(setup({ extra: 'pair_modify tail yes\n' }))).error?.message).toMatch(/pair_modify tail yes is not supported/);
+  });
+
+  it('runs with pair_modify tail yes and holds the tail correction until the next run (native compared in w313gm_lj_tail)', async () => {
+    const { error } = await run(setup({ extra: 'pair_modify tail yes\n' }), 2, 20);
+    expect(error).toBeNull();
+    // the hold lasts only for the run: the next run's init recomputes the tail correction (Pair::init)
+    const events: EngineEvent[] = [];
+    const session = new Session({ emit: (e) => events.push(e), writeFile: () => undefined }, undefined, 0, 2);
+    await session.execute(`${setup({ extra: 'pair_modify tail yes\n' })}run 20\nunfix 2\nrun 0\n`);
+    for (const sys of session.replicaSystems) expect(sys.ff.tailHold).toBeNull();
   });
 
   it('refuses a seed that RanPark cannot use', async () => {

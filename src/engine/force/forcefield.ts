@@ -107,6 +107,12 @@ export class ForceField {
   cvatomTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
   /** Tail corrections: energy = etailV / V, pressure term = ptailV / V^2 (in energy/volume). */
   etailV = 0;
+  /**
+   * Tail corrections held at the values of the pair style's last init or reinit (set by fix gemc, cleared by every run's
+   * init): while it is set, updateTail keeps these values, as native LAMMPS keeps force->pair->etail and ptail from
+   * Pair::init or Pair::reinit when atoms are inserted or deleted without a reinit.
+   */
+  tailHold: { etail: number; ptail: number } | null = null;
   ptailV = 0;
   private specialList: SpecialList | null = null;
   /**
@@ -229,6 +235,11 @@ export class ForceField {
 
   /** Tail corrections depend on the number of atoms of each type. */
   updateTail(s: SimState): void {
+    if (this.tailHold) {
+      this.etailV = this.tailHold.etail;
+      this.ptailV = this.tailHold.ptail;
+      return;
+    }
     this.etailV = 0;
     this.ptailV = 0;
     if (!this.pair || !this.pair.tail) return;

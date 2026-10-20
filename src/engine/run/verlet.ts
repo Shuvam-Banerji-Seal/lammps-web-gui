@@ -55,6 +55,9 @@ export const computeSetup = (sys: System): void => {
 /** Fix and compute initialization shared by run and minimize. */
 export const initRun = (sys: System): void => {
   const s = sys.state;
+  // a run's init computes the pair style's tail correction from the current atom counts (Pair::init), so a value held
+  // since an earlier exchange (fix gemc) no longer applies
+  sys.ff.tailHold = null;
   if (!s.rmass) {
     for (let t = 1; t <= s.ntypes; t++) {
       if (!(s.massByType[t] > 0)) throw new StyleError(`not all per-type masses are set (type ${t}); use the mass command`);

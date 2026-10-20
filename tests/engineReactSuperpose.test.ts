@@ -23,5 +23,22 @@ describe('superposition for created atoms', () => {
     const fit = superpose(frozen, mobile);
     for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) expect(fit.R[a][b]).toBeCloseTo(R0[a][b], 9);
     for (let a = 0; a < 3; a++) expect(fit.T[a]).toBeCloseTo(T0[a], 9);
+    expect(fit.rmsd).toBeLessThan(1e-7);
+  });
+
+  it('returns the RMSD of the best fit (the rmsd constraint of fix bond/react)', () => {
+    const mobile = [[0, 0, 0], [1.2, 0.1, -0.3], [0.2, 1.4, 0.5], [-0.7, 0.4, 1.1], [0.9, -0.8, 0.6]];
+    // a distorted copy: the fit cannot be exact, and its RMSD is that of the fitted points
+    const frozen = mobile.map((p, i) => [p[0] + 0.1 * i, p[1] - 0.05 * i * i, p[2] + 2]);
+    const fit = superpose(frozen, mobile);
+    let sum = 0;
+    for (let k = 0; k < mobile.length; k++) {
+      for (let a = 0; a < 3; a++) {
+        const q = fit.R[a][0] * mobile[k][0] + fit.R[a][1] * mobile[k][1] + fit.R[a][2] * mobile[k][2] + fit.T[a];
+        sum += (q - frozen[k][a]) ** 2;
+      }
+    }
+    expect(fit.rmsd).toBeGreaterThan(0.01);
+    expect(fit.rmsd).toBeCloseTo(Math.sqrt(sum / mobile.length), 10);
   });
 });

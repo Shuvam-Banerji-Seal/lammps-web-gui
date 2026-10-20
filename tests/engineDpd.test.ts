@@ -46,11 +46,11 @@ describe('DPD-BASIC styles ported from LAMMPS (engine-gpl/dpd)', () => {
     expect(r.errors.join(' ')).toMatch(/newton pair off is not supported/);
   });
 
-  it('refuses a temperature ramp in dpd/tstat and dpd/ext/tstat', async () => {
+  it('runs a temperature ramp in dpd/tstat and dpd/ext/tstat (native parity: tests/oracle/w318dpd_tstat_ramp.in, w319dpd_ext_tstat_ramp.in)', async () => {
     const a = await run(`${BOX}pair_style dpd/tstat 1.0 2.0 1.0 1234\npair_coeff * * 4.5\nrun 0\n`);
-    expect(a.errors.join(' ')).toMatch(/t_start != t_stop/);
+    expect(a.errors).toEqual([]);
     const b = await run(`${BOX}pair_style dpd/ext/tstat 1.0 2.0 1.0 1234\npair_coeff * * 4.5 4.5 0.5 0.5\nrun 0\n`);
-    expect(b.errors.join(' ')).toMatch(/t_start != t_stop/);
+    expect(b.errors).toEqual([]);
   });
 
   it('needs a positive seed and every pair coefficient', async () => {

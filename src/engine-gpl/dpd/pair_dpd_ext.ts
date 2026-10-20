@@ -34,6 +34,8 @@ export class PairDPDExt extends Pair {
   private rng: RanMars | null = null;
   private boltz = 1;
   private sigma = new Float64Array(0);
+  /** the run's begin and end steps (StyleContext.runSteps), read for the dpd/ext/tstat ramp */
+  private runSteps: (() => { begin: number; end: number }) | null = null;
   private sigmaT = new Float64Array(0);
   private nt = 0;
   private readonly order = new NativePairOrder();
@@ -51,7 +53,6 @@ export class PairDPDExt extends Pair {
       if (args.length !== 4) throw new StyleError('Illegal pair_style command (dpd/ext/tstat t_start t_stop cutoff seed)');
       this.tStart = parseNum(args[0], 't_start');
       this.tStop = parseNum(args[1], 't_stop');
-      if (this.tStart !== this.tStop) throw new StyleError('pair_style dpd/ext/tstat with t_start != t_stop (a temperature ramp) is not supported by the browser engine yet');
       this.temperature = this.tStart;
       this.cutGlobal = parseNum(args[2], 'cutoff');
       this.seed = parseNum(args[3], 'seed');
@@ -89,6 +90,7 @@ export class PairDPDExt extends Pair {
     // the random deviates follow native's pair order for orthogonal boxes (nativeOrder.ts); triclinic boxes keep the
     // engine's list order, so with T > 0 they match native LAMMPS only statistically (warned once in compute)
     this.logFn = (text) => ctx.log(text);
+    this.runSteps = ctx.runSteps ?? null;
     // pair_dpd_ext.cpp init_style() inherits pair_dpd: ghost velocities are required
     if (ctx.ghostVelocity !== true) throw new StyleError(`Pair ${this.name} requires ghost atoms store velocity (use comm_modify vel yes)`);
     if (ctx.newtonPair === false) throw new StyleError(`pair_style ${this.name} with newton pair off is not supported by the browser engine`);
@@ -110,9 +112,25 @@ export class PairDPDExt extends Pair {
     return p.get('cut', i, j);
   }
 
+  /** pair_dpd_ext_tstat.cpp compute(): "adjust sigma if target T is changing" (sigma and sigmaT). */
+  private ramp(step: number): void {
+    const rs = this.runSteps?.() ?? { begin: step, end: step };
+    let delta = step - rs.begin;
+    if (delta !== 0.0) delta /= rs.end - rs.begin;
+    this.temperature = this.tStart + delta * (this.tStop - this.tStart);
+    const nt = this.nt;
+    for (let i = 1; i <= this.ntypes; i++) {
+      for (let j = i; j <= this.ntypes; j++) {
+        this.sigma[i * nt + j] = this.sigma[j * nt + i] = Math.sqrt(2.0 * this.boltz * this.temperature * this.p.get('gamma', i, j));
+        this.sigmaT[i * nt + j] = this.sigmaT[j * nt + i] = Math.sqrt(2.0 * this.boltz * this.temperature * this.p.get('gammaT', i, j));
+      }
+    }
+  }
+
   compute(pc: PairCompute): void {
     const rng = this.rng;
     if (!rng) throw new StyleError(`pair ${this.name} used before pair_style`);
+    if (this.tstat && this.tStart !== this.tStop) this.ramp(pc.s.step);
     if (pc.geom.triclinic && this.temperature > 0 && !this.triWarned) {
       this.triWarned = true;
       this.logFn?.('WARNING: pair_style ' + this.name + ': triclinic box: random forces are drawn in the browser engine\'s pair order (native\'s enumeration is not ported for triclinic boxes); with T > 0 the run matches native LAMMPS only statistically');

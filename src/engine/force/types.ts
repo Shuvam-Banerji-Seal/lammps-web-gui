@@ -298,6 +298,11 @@ export interface StyleContext {
    * set_initial_box at b332f28), and a style that reads the box at init (kspace_style msm) sees those lengths.
    */
   initialBoxExpansion?: readonly [number, number, number] | null;
+  /**
+   * The begin and end steps of the current run (native update->beginstep and endstep: the run's start and stop values),
+   * for styles that ramp a value over a run (pair_style dpd/tstat with t_start != t_stop).
+   */
+  runSteps?(): { begin: number; end: number };
 }
 
 /** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */

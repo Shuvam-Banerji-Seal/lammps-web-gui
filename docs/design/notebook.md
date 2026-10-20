@@ -21,21 +21,24 @@ thermo output — no install, no server, no account.
 
 - **It is not LAMMPS.** It is an independent engine that runs a documented,
   growing subset of LAMMPS input. Every unsupported command or style is an
-  error that names it and lists what is supported — never a silent no-op.
-  Commands that cannot exist in a browser (`python`, `kim`, `mdi`,
-  `plugin`, `geturl`, `package`) are errors that say why. `shell` is refused
-  except `shell rm [-f]` and `shell mv`, which work on the in-browser file
-  store (the docs say LAMMPS handles these built-ins itself; quoted in
-  `commands/misc.ts`).
-- **It contains no LAMMPS source code.** LAMMPS is GPL-2.0; this project is
-  under its own source-available licence, so porting LAMMPS code would be a
-  licence violation. The engine is written from textbook physics (Allen &
-  Tildesley; Frenkel & Smit; Hockney & Eastwood; Deserno & Holm) and from the
-  *documented semantics* on docs.lammps.org, quoted in code comments — never
-  from the LAMMPS source tree. Where the documentation is silent, behaviour
-  is **measured** by running the native binary on small inputs, and the
-  measurement is written next to the code (e.g. the PPPM alias-image count,
-  Ewald's cutoff sphere, `2/sqrt(pi)` to 8 digits in the real-space force).
+  error that names it — never a silent no-op. Commands and styles that need
+  a host process or an external library (`python`, `kim`, `mdi`, `plugin`,
+  `fix plumed`, `fix colvars`, `pair_style quip`, `hdnnp`, `runner`, `mbx`,
+  `kspace_style scafacos`) are errors that say why. `shell` runs only its
+  built-ins (`cd`, `mkdir`, `mv`, `rm [-f]`, `rmdir`, `putenv`) on the
+  in-browser file store; any other shell command is an error, since a
+  browser has no operating-system shell (`commands/misc.ts`).
+- **Its core contains no LAMMPS source code.** The core engine
+  (`src/engine/`) is written from textbook physics (Allen & Tildesley;
+  Frenkel & Smit; Hockney & Eastwood; Deserno & Holm) and from the
+  *documented semantics* on docs.lammps.org, quoted in code comments. Where
+  the documentation is silent, the behaviour is read from the LAMMPS source
+  and checked against the native binary, and the code says which
+  ("As native LAMMPS does (src/X.cpp at b332f28)", "Measured with native
+  LAMMPS: ..."). Styles ported from the LAMMPS C++ source are kept in the
+  separate GPL-2.0 module [`src/engine-gpl`](../../src/engine-gpl/README.md),
+  which carries its own `LICENSE` and is reached only through the lazy style
+  registries (`src/engine/lazyStyles.ts`).
 - It is not for production science or large systems. The target is
   ≤ ~20 000 atoms, short runs, teaching.
 
@@ -95,9 +98,9 @@ The block below is checked against the engine's registries by
 Native binary restart files (written by LAMMPS b332f28, serial, one file) are read by `read_restart` for the
 styles named in `src/engine-gpl/restart/nativeRestart.ts`; any other style, a multi-file (`%`) restart, or fix state
 the engine does not hold is an error that names it. `write_restart` writes the engine's own format only. Not supported
-(an error names each): `atom_style` other than
-atomic / charge / bond / angle / molecular / full / sphere, `pppm/disp`, `msm`,
-`run_style`, atom-style `hybrid/scaled` factors.
+(an error names each): `atom_style hybrid` with a `body` or `line` sub-style or with `apip conservative`,
+`fix tune/kspace` (it picks the kspace settings from timed runs on the host), and the styles that need an external
+library or process (listed above).
 
 ## Architecture
 

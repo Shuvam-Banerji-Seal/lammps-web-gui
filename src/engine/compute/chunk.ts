@@ -21,7 +21,7 @@ import { parseRef, peratomValues, type Ref } from '../refs';
  *   a value of 0."
  * Styles: bin/1d, bin/2d, bin/3d, bin/sphere, bin/cylinder, type, molecule,
  * c_ID, c_ID[I], f_ID, f_ID[I], v_name.
- * Keywords: region, nchunk, limit, ids (once|every), compress, discard,
+ * Keywords: region, nchunk, limit, ids, compress, discard,
  * bound, pbc ("The *pbc* keyword only applies to the *bin/sphere* and
  * *bin/cylinder* styles."), units.
  *
@@ -143,7 +143,7 @@ export class ComputeChunkAtom extends Compute {
   private readonly valueRef: Ref | null;
   private readonly regionId: string | null;
   private readonly postOps: PostOp[];
-  private readonly idsOnce: boolean;
+  private readonly idsMode: 'once' | 'nfreq' | 'every';
   private readonly compress: boolean;
   private readonly discard: Discard;
   private readonly units: Units;
@@ -152,6 +152,12 @@ export class ComputeChunkAtom extends Compute {
   private heldN: number | null = null;
   private heldKmin: number[] | null = null;
   private heldKmax: number[] | null = null;
+  /** The fix holding Nchunk constant for a window of steps (lock()), the window's first step and its last (-1: no end). */
+  private lockOwner: object | null = null;
+  private lockStart = 0;
+  private lockStop = 0;
+  /** ids nfreq: the step on which the window's IDs were last kept. */
+  private restoredStep = -1;
   private haveIds = false;
   private lastEpoch = -1;
 
@@ -170,7 +176,7 @@ export class ComputeChunkAtom extends Compute {
     let k = 1;
     let discard: Discard = 'yes';
     let units: Units = 'lattice';
-    let idsOnce = false;
+    let idsMode: 'once' | 'nfreq' | 'every' = 'every';
     let compress = false;
     let nchunkMode: 'once' | 'every' | null = null;
     const ops: PostOp[] = [];
@@ -264,9 +270,8 @@ export class ComputeChunkAtom extends Compute {
         }
         case 'ids': {
           const v = need(1)[0];
-          if (v === 'nfreq') throw new StyleError(`${what}: ids nfreq is not supported by the engine yet`);
-          if (v !== 'once' && v !== 'every') throw new StyleError(`${what}: ids must be once, nfreq or every, got '${v}'`);
-          idsOnce = v === 'once';
+          if (v !== 'once' && v !== 'nfreq' && v !== 'every') throw new StyleError(`${what}: ids must be once, nfreq or every, got '${v}'`);
+          idsMode = v;
           k += 2;
           break;
         }
@@ -359,7 +364,7 @@ export class ComputeChunkAtom extends Compute {
     this.valueRef = valueRef;
     this.regionId = regionId;
     this.postOps = ops;
-    this.idsOnce = idsOnce;
+    this.idsMode = idsMode;
     this.compress = compress;
     this.discard = discard;
     this.units = units;
@@ -387,11 +392,62 @@ export class ComputeChunkAtom extends Compute {
     return this.radial ? (this.radial.shape === 'sphere' ? 1 : 2) : this.bins.length;
   }
 
-  /** Recomputes chunk IDs when the state changed (computed once for ids once). */
+  /**
+   * fix ave/chunk holds Nchunk constant for a window of steps (stop = -1: to the end). The docs: "if *ave* =
+   * *one*, then for each span of *Nfreq* timesteps, *Nchunk* is held constant between the first timestep when
+   * averaging is done (within the Nfreq-length window), and the last timestep when averaging is done"; "the time
+   * windows they induce for holding *Nchunk* constant must be identical, else an error will be generated". As
+   * native LAMMPS does (src/compute_chunk_atom.cpp at b332f28): the last fix to lock holds the lock, and the bins
+   * and Nchunk of the window's first step are kept until it unlocks.
+   */
+  lock(owner: object, start: number, stop: number): void {
+    if (this.lockOwner === null) {
+      this.lockOwner = owner;
+      this.lockStart = start;
+      this.lockStop = stop;
+      // the window's chunks are set up on its first step, also if they were computed earlier on this step
+      this.lastEpoch = -1;
+      if (!this.held) this.radGeo = null;
+      return;
+    }
+    if (start !== this.lockStart || stop !== this.lockStop) {
+      throw new StyleError('Two fix commands using same compute chunk/atom command in incompatible ways');
+    }
+    this.lockOwner = owner;
+  }
+
+  /** Ends the window; only the fix holding the lock can. */
+  unlock(owner: object): void {
+    if (owner !== this.lockOwner) return;
+    this.lockOwner = null;
+    if (!this.held) {
+      this.heldN = null;
+      this.heldKmin = null;
+      this.heldKmax = null;
+    }
+  }
+
+  /** Nchunk and the bins stay as they are: nchunk once, a hold, or a fix's lock. */
+  private get frozen(): boolean {
+    return this.held || this.lockOwner !== null;
+  }
+
+  /**
+   * Recomputes chunk IDs when the state changed (computed once for ids once). ids nfreq — the docs: "in each
+   * of the *Nchunk* = constant time windows (discussed above), the chunk ID's assigned to atoms on the first
+   * step of the time window will persist until the end of the time window."
+   */
   ensure(): void {
     const n = this.sys.state.n;
     if (this.haveIds && this.ids.length === n) {
-      if (this.idsOnce || this.lastEpoch === this.sys.epoch) return;
+      if (this.idsMode === 'once' || this.lastEpoch === this.sys.epoch) return;
+      // restored IDs are this step's IDs (native sets invoked_ichunk to the step), also for a use after the window
+      // ends on this step
+      const step = this.sys.state.step;
+      if (this.idsMode === 'nfreq' && (this.restoredStep === step || (this.lockOwner !== null && step > this.lockStart))) {
+        this.restoredStep = step;
+        return;
+      }
     }
     this.compute();
     this.lastEpoch = this.sys.epoch;
@@ -430,7 +486,7 @@ export class ComputeChunkAtom extends Compute {
 
   /** The radial bins in box units: set up again at each chunk setup (refresh) unless Nchunk is held. */
   private radialGeom(refresh = false): RadialGeom {
-    if (this.radGeo && !(refresh && !this.held)) return this.radGeo;
+    if (this.radGeo && !(refresh && !this.frozen)) return this.radGeo;
     const r = this.radial!;
     const b = this.sys.state.box;
     let origin: number[];
@@ -589,7 +645,7 @@ export class ComputeChunkAtom extends Compute {
     let nch: number;
 
     if (this.kind === 'bin') {
-      if (this.held && this.heldKmin === null) {
+      if (this.frozen && this.heldKmin === null) {
         const g0 = this.binGeom();
         this.heldKmin = g0.map((g) => g.kmin);
         this.heldKmax = g0.map((g) => g.kmax);
@@ -655,8 +711,8 @@ export class ComputeChunkAtom extends Compute {
 
     // Nchunk held constant: the first value is kept (bins: kmin/kmax above)
     if (this.kind !== 'bin') {
-      if (this.held && this.heldN !== null) nch = this.heldN;
-      else if (this.held) this.heldN = nch;
+      if (this.frozen && this.heldN !== null) nch = this.heldN;
+      else if (this.frozen) this.heldN = nch;
     }
 
     // IDs above Nchunk: discard yes/mixed -> 0, discard no -> Nchunk

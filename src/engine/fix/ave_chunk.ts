@@ -292,6 +292,14 @@ export class FixAveChunk extends Fix {
 
   setup(): void { this.endOfStep(); }
 
+  /**
+   * unfix: as native LAMMPS does (src/fix_ave_chunk.cpp at b332f28, the destructor), the lock of ave running and
+   * window is released; an ave one window cut short by unfix keeps its lock.
+   */
+  destroy(): void {
+    if (this.aveMode !== 'one') this.chunk.unlock(this);
+  }
+
   /** Step of the last end-of-step call: a run that starts where the previous one ended must not sample it again. */
   private lastEndStep = -1;
 
@@ -305,13 +313,26 @@ export class FixAveChunk extends Fix {
     if (step < nextOut - (this.nRepeat - 1) * this.nEvery) return; // not in the next output's window
     this.sample();
     if (step % this.nFreq !== 0) return;
+    if (this.nRepeat > 1 && this.aveMode === 'one') this.chunk.unlock(this);
     if (this.nSample === this.nRepeat) this.produce(step);
     else this.clearWindow();
   }
 
+  /** ave running / window: the chunk/atom was locked for good on the first sample. */
+  private lockedForever = false;
+
   /** One sample: per-chunk sums over the group atoms at this step. */
   private sample(): void {
     const s = this.sys.state;
+    if (this.nSample === 0) {
+      // As native LAMMPS does (src/fix_ave_chunk.cpp at b332f28): the first sample of a window locks the
+      // chunk/atom until the window's last sample (Nrepeat > 1, ave one), or for good (ave running / window)
+      if (this.nRepeat > 1 && this.aveMode === 'one') this.chunk.lock(this, s.step, s.step + (this.nRepeat - 1) * this.nEvery);
+      else if (this.aveMode !== 'one' && !this.lockedForever) {
+        this.chunk.lock(this, s.step, -1);
+        this.lockedForever = true;
+      }
+    }
     this.chunk.ensure();
     const N = this.chunk.nchunk;
     const ids = this.chunk.ids;

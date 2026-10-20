@@ -11,6 +11,7 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
     'pace/extrapolation', // engine-gpl/registry/pace.ts: ACE extrapolation grades are not ported yet
   ],
   FIXES: [
+    'tune/kspace', // registry/fix_hyper49.ts: its choice comes from timed test runs on the host
   ],
   COMPUTES: [
   ],

@@ -205,7 +205,6 @@ const dipoleMode = (style: string, words: string[]): 'mass' | 'geometry' => {
   if (words.length > 1) throw new StyleError(`compute ${style}: too many arguments (${words.join(' ')})`);
   const w = words[0];
   if (w === 'mass' || w === 'geometry') return w;
-  if (w.startsWith('tip4p')) throw new StyleError(`compute ${style}: style dipole/tip4p is not supported by the engine yet`);
   throw new StyleError(`compute ${style}: unknown argument '${w}', expected mass or geometry`);
 };
 

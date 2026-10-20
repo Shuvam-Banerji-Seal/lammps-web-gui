@@ -133,6 +133,8 @@ export class FixRHEOPressure extends Fix {
   private readonly pbackground: Float64Array;
   private backgroundFlag = false;
   private variableCsq = false;
+  /** fix_rheo_pressure.cpp invertible_pressure: every style but cubic has calc_rho (interface reconstruction needs it). */
+  invertible = true;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -162,7 +164,7 @@ export class FixRHEOPressure extends Fix {
         iarg += 1;
         for (let t = lo; t <= hi; t++) {
           if (st === 'tait/general') { this.pstyle[t] = TAITGENERAL; this.tpower[t] = v; }
-          else if (st === 'cubic') { this.pstyle[t] = CUBIC; this.cCubic[t] = v; }
+          else if (st === 'cubic') { this.pstyle[t] = CUBIC; this.cCubic[t] = v; this.invertible = false; }
           else if (st === 'ideal/gas') { this.pstyle[t] = IDEAL; this.gamma[t] = v; }
           else this.pbackground[t] = v;
         }
@@ -180,6 +182,8 @@ export class FixRHEOPressure extends Fix {
       if (!this.pstyle[t]) throw new StyleError(`Must specify pressure for atom type ${t} in fix/rheo/pressure`);
     }
     this.model = needModel(sys, this.style);
+    // the equation of state that fix rheo interface/reconstruct inverts (compute_rheo_interface.cpp fix_pressure)
+    this.model.pressureEos = this;
   }
 
   init(): void {
@@ -189,6 +193,7 @@ export class FixRHEOPressure extends Fix {
 
   destroy(): void {
     if (this.model.variableCsq) this.model.variableCsq = null;
+    if (this.model.pressureEos === this) this.model.pressureEos = null;
   }
 
   setupPreForce(): void { this.preForce(); }
@@ -217,6 +222,34 @@ export class FixRHEOPressure extends Fix {
     }
     if (this.backgroundFlag) p += this.pbackground[t];
     return p;
+  }
+
+  /** fix_rheo_pressure.cpp calc_rho: the density of atom i at pressure p (the inverse of calc_pressure). */
+  calcRho(p: number, i: number): number {
+    const s = this.sys.state;
+    const m = this.model;
+    const t = s.type[i];
+    let rho = 0.0;
+    if (this.backgroundFlag) p -= this.pbackground[t];
+    if (this.pstyle[t] === LINEAR) {
+      rho = (1.0 / m.csq[t]) * p + m.rho0[t];
+    } else if (this.pstyle[t] === CUBIC) {
+      throw new StyleError('Rho calculation from pressure not yet supported for cubic pressure equation');
+    } else if (this.pstyle[t] === TAITWATER) {
+      const tmp = 7.0 * p + m.csq[t] * m.rho0[t];
+      rho = libmPow(Math.max(0.0, tmp), SEVENTH);
+      rho *= libmPow(m.rho0[t], 6.0 * SEVENTH);
+      rho *= libmPow(m.csq[t], -SEVENTH);
+    } else if (this.pstyle[t] === TAITGENERAL) {
+      const tmp = this.tpower[t] * p + m.csq[t] * m.rho0[t];
+      rho = libmPow(Math.max(0.0, tmp), 1.0 / this.tpower[t]);
+      rho *= libmPow(m.rho0[t], 1.0 - 1.0 / this.tpower[t]);
+      rho *= libmPow(m.csq[t], -1.0 / this.tpower[t]);
+    } else if (this.pstyle[t] === IDEAL) {
+      const imass = s.rmass ? s.rmass[i] : s.massByType[t];
+      rho = p * imass / ((this.gamma[t] - 1.0) * rheoProp(s, RHEO_ESPH)[i]);
+    }
+    return rho;
   }
 
   /** fix_rheo_pressure.cpp calc_csq: the per-type csq, or (gamma - 1) esph / mass[type] for ideal/gas. */

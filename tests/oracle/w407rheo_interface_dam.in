@@ -1,0 +1,85 @@
+# oracle: RHEO 2d dam break (the cut-down w96rheo_dam_break) with surface/detection and interface/reconstruct: the wall densities reconstructed from the fluid (linear pressure), chi, the repulsion from walls with chi > 0.9 within half the cutoff, and the corrected wall velocities in the gradients, shift-free; chi and the wall densities reduced in thermo
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-13
+# Not RK1 here: for an atom below zmin, native calc_dw (compute_rheo_kernel.cpp at b332f28) does not set dWij or dWji, so that end keeps the gradient of the previous calc_dw call, while fix_rheo.html says such a particle "will revert to a non-reproducing quintic kernel", which the engine does. Measured with native LAMMPS: with RK1 10 the two differ from step 1 on the under-coordinated corner atoms (their pressure force by up to a factor 2.5).
+# Measured with native LAMMPS: engine vs native thermo 4.7e-15, atoms exact.
+# ------ 2D dam break ------ #
+
+dimension          2
+units              lj
+atom_style         rheo
+boundary           f s p
+comm_modify        vel yes
+newton             off
+
+# ------ Create simulation box ------ #
+
+variable           n equal 1.0
+variable           cut equal 2.2
+variable           dx equal 3.0
+
+region             box block -1 50 -1 40 -0.1 0.1 units box
+create_box         2 box
+lattice            hex ${n}
+
+region             fluid block $(xlo+v_dx+1.0) $(xlo+15.0) $(ylo+v_dx+1.0) $(yhi-10.0) EDGE EDGE units box
+region             walls1 block $(xlo+v_dx) $(xhi-v_dx) $(ylo+v_dx) $(yhi-v_dx) EDGE EDGE side out units box
+region             walls2 block EDGE EDGE EDGE $(yhi-v_dx) EDGE EDGE side in units box
+region             walls intersect 2 walls1 walls2
+
+create_atoms       1 region fluid
+create_atoms       2 region walls
+
+group              fluid type 1
+group              rig type 2
+
+# ------ Model parameters ------ #
+
+variable           rho0 equal 1.0
+variable           mp equal ${rho0}/${n}
+variable           cs equal 1.0
+variable           zeta equal 0.1
+variable           dt_max equal  0.1*${cut}/${cs}/3
+variable           eta equal 0.1
+variable           Dr equal 0.1
+
+mass               1 ${mp}
+mass               2 $(2*v_mp)
+set                group all rheo/rho ${rho0}
+
+set                group all rheo/status 0
+set                group rig rheo/status 1
+
+timestep           ${dt_max}
+
+pair_style         rheo ${cut} artificial/visc ${zeta} #rho/damp ${Dr}
+pair_coeff         * *
+
+# ------ Fixes & computes ------ #
+
+fix                1 all rheo ${cut} quintic 10 &
+                              surface/detection coordination 22 8 &
+                              interface/reconstruct
+fix                2 all rheo/viscosity * constant ${eta}
+fix                3 all rheo/pressure * linear
+fix                4 all gravity 1e-3 vector 0 -1 0
+fix                5 rig setforce 0.0 0.0 0.0
+fix                6 all enforce2d
+
+compute            rho all rheo/property/atom rho
+compute            surf all rheo/property/atom surface
+compute            sn all rheo/property/atom surface/n/x surface/n/y
+compute            nsf all reduce sum c_surf
+compute            rsum all reduce sum c_rho
+compute            ch all rheo/property/atom chi
+compute            chs all reduce sum c_ch
+compute            rrig rig reduce sum c_rho
+
+# ------ Output & Run ------ #
+
+thermo             30
+thermo_style       custom step time ke press c_nsf c_rsum c_chs c_rrig
+
+#dump               1 all custom 200 atomDump id type x y vx vy fx fy c_rho c_surf c_p c_sn[*]
+
+thermo_modify    format float %.15g
+run                300

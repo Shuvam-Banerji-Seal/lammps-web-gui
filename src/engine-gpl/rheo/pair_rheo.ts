@@ -20,6 +20,7 @@
  * their owner's pressure, velocity, density and viscosity. The density rate drho is accumulated on the owners (native
  * reverse-communicates it).
  */
+import { rheoFpStore } from './compute_rheo_interface';
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { massOf, nativeOrder, RHEO_COND, RHEO_DRHO, RHEO_HEATFLOW, RHEO_PRESSURE, RHEO_RHO, RHEO_TEMP, RHEO_VISC, RHEO_STATUS } from '../../engine/atoms';
@@ -143,6 +144,14 @@ export class PairRHEO extends Pair {
     const heatflow = m.thermalFlag ? rheoProp(s, RHEO_HEATFLOW) : null;
     if (heatflow) heatflow.fill(0, 0, nlocal);
     const pairs = this.pairList(pc, cutksq);
+    // interface/reconstruct: chi of compute rheo/interface, and fp_store, zeroed here and given the pressure forces
+    const iface = m.interfaceFlag;
+    const chi = m.chi;
+    const fpStore = iface ? rheoFpStore(s) : null;
+    if (fpStore) fpStore.fill(0);
+    const eos = m.pressureEos;
+    if (iface && !eos) throw new StyleError('Missing fix rheo/pressure');
+    const vi = [0, 0, 0], vj = [0, 0, 0], fsolid = [0, 0, 0];
     // native local order (the atom sort): rank[i] is the position of owned atom i
     const rank = new Int32Array(nlocal);
     if (!this.newtonPair) { const ord = nativeOrder(s); for (let p = 0; p < nlocal; p++) rank[ord[p]] = p; }
@@ -169,18 +178,43 @@ export class PairRHEO extends Pair {
       const fluidj = !(status[oj] & PHASECHECK);
       // pair_rheo.cpp: cs = sqrt(csq) per type, or fix rheo/pressure's calc_csq of each end (variable_csq)
       const vcsq = m.variableCsq;
-      const csAve = vcsq ? 0.5 * (Math.sqrt(vcsq(i)) + Math.sqrt(vcsq(oj))) : 0.5 * (Math.sqrt(csq[itype]) + Math.sqrt(csq[jtype]));
-      // pair_force_flag: a fluid end; pair_rho_flag: both fluid (no interface, so the artificial viscosity follows the force)
+      let csAve = vcsq ? 0.5 * (Math.sqrt(vcsq(i)) + Math.sqrt(vcsq(oj))) : 0.5 * (Math.sqrt(csq[itype]) + Math.sqrt(csq[jtype]));
+      // pair_force_flag: a fluid end; pair_rho_flag: both fluid; the artificial viscosity follows the force without
+      // interface/reconstruct, and needs two fluid ends with it
       const pairForce = fluidi || fluidj;
-      const pairAvisc = pairForce;
+      const pairAvisc = (pairForce && !iface) || (fluidi && fluidj);
       const pairRho = fluidi && fluidj;
       // dWij of the owned end, dWji of the other end (the owner of a ghost); dWji = -dWij without the RK1 corrections
       const wp = m.calcDw(i, dx[0], dx[1], dx[2], r, m.dW);
       m.calcDw(oj, -dx[0], -dx[1], -dx[2], r, m.dWj);
       const dWij = m.dW, dWji = m.dWj;
-      const rhoi = rho[i], rhoj = rho[oj];
+      for (let a = 0; a < dim; a++) { vi[a] = v[3 * i + a]; vj[a] = v[3 * oj + a]; }
+      // pair_rheo.cpp: "Add corrections for walls" (interface/reconstruct): the solid end's velocity, density and pressure,
+      // and a repulsion from a solid end well inside the solid (chi > 0.9) closer than half the cutoff
+      let rhoi = rho[i], rhoj = rho[oj];
       const rho0i = rho0[itype], rho0j = rho0[jtype];
-      const Pi = pressure[i], Pj = pressure[oj];
+      let Pi = pressure[i], Pj = pressure[oj];
+      let fmag = 0;
+      if (iface) {
+        if (fluidi && !fluidj) {
+          m.correctV(vj, vi, oj, i);
+          rhoj = m.correctRho(rhoj, jtype);
+          Pj = eos!.calcPressure(rhoj, oj);
+          if ((chi[oj] > 0.9) && (r < (this.cutk * 0.5))) fmag = (chi[oj] - 0.9) * (this.cutk * 0.5 - r) * rho0j * csAve * csAve * this.cutk * rinv;
+        } else if (!fluidi && fluidj) {
+          m.correctV(vi, vj, i, oj);
+          rhoi = m.correctRho(rhoi, itype);
+          Pi = eos!.calcPressure(rhoi, i);
+          if (chi[i] > 0.9 && r < (this.cutk * 0.5)) fmag = (chi[i] - 0.9) * (this.cutk * 0.5 - r) * rho0i * csAve * csAve * this.cutk * rinv;
+        } else if (!fluidi && !fluidj) {
+          rhoi = rho0i;
+          rhoj = rho0j;
+        }
+        // recalculate speed of sound, if necessary
+        if (vcsq && (!fluidi || !fluidj)) csAve = 0.5 * (Math.sqrt(vcsq(i)) + Math.sqrt(vcsq(oj)));
+      }
+      for (let a = 0; a < 3; a++) fsolid[a] = fmag * dx[a];
+      // volumes after reconstructing
       const voli = imass / rhoi;
       const volj = jmass / rhoj;
       if (thermal && temp && cond && heatflow) {
@@ -203,7 +237,7 @@ export class PairRHEO extends Pair {
       if (pairForce) {
         // hydrostatic pressure, then the artificial pressure of the approaching pair
         let fpPrefactor = Pj + Pi;
-        for (let a = 0; a < dim; a++) dv[a] = v[3 * i + a] - v[3 * oj + a];
+        for (let a = 0; a < dim; a++) dv[a] = vi[a] - vj[a];
         // pair_rheo.cpp: "eta_ave = 2.0 * etai * etaj / (etai + etaj)" with harmonic/means, else the mean
         const etaAve = this.harmonicMeans ? 2.0 * etai * etaj / (etai + etaj) : 0.5 * (etai + etaj);
         if (this.artificialFlag && pairAvisc) {
@@ -216,7 +250,7 @@ export class PairRHEO extends Pair {
           mu /= (rsq * cutkinv3 * cutkinv3 + EPSILON);
           mu = Math.min(0.0, mu);
           const q = av * (-2.0 * csAve * mu + mu * mu);
-          fpPrefactor += q * (rho[oj] + rhoi);
+          fpPrefactor += q * (rhoj + rhoi);
         }
         // -Grad[P + Q]
         const sc = -fpPrefactor * volj;
@@ -228,10 +262,11 @@ export class PairRHEO extends Pair {
           fv[a] = acc;
           fv[a] *= 2.0 * etaAve * volj * rinvsq;
         }
-        for (let a = 0; a < 3; a++) ft[a] = (a < dim ? fv[a] + dfp[a] : 0);
+        for (let a = 0; a < 3; a++) ft[a] = (a < dim ? fv[a] + dfp[a] : 0) + fsolid[a];
         f[3 * i] += ft[0];
         f[3 * i + 1] += ft[1];
         f[3 * i + 2] += ft[2];
+        if (fpStore) for (let a = 0; a < dim; a++) fpStore[3 * i + a] += dfp[a];
         if (!this.newtonPair) this.tallyVirialOff(pc, dx, ft, j < nlocal, role);
         if (tally) {
           if (this.newtonPair) tallyXYZ(pc, i, j, 0, ft[0], ft[1], ft[2], dx[0], dx[1], dx[2]);
@@ -248,10 +283,11 @@ export class PairRHEO extends Pair {
         }
         const sj = fpPrefactor * voli;
         for (let a = 0; a < dim; a++) dfp[a] = sj * dWji[a];
-        for (let a = 0; a < 3; a++) ft[a] = (a < dim ? fv[a] + dfp[a] : 0);
+        for (let a = 0; a < 3; a++) ft[a] = (a < dim ? fv[a] + dfp[a] : 0) + fsolid[a];
         f[3 * j] -= ft[0];
         f[3 * j + 1] -= ft[1];
         f[3 * j + 2] -= ft[2];
+        if (fpStore) for (let a = 0; a < dim; a++) fpStore[3 * oj + a] -= dfp[a];
         if (tally) {
           if (this.newtonPair) tallyXYZ(pc, i, j, 0, ft[0], ft[1], ft[2], -dx[0], -dx[1], -dx[2]);
           else this.tallyAtomOff(pc, i, j, [-dx[0], -dx[1], -dx[2]], ft, true, role);

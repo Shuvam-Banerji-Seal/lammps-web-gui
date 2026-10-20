@@ -1,0 +1,31 @@
+# oracle: fix nvt/sphere update dipole/dlm in units real (the DLM rotation angle is dtf / ftm2v w, with ftm2v not 1) on half the dipoles and fix nve/sphere update dipole/dlm on the other half, with pair lj/cut/dipole/cut torques; a dipole along +z and one of zero length in the thermostatted group
+# oracle-files: w354dlm_nvt_sphere_real_rot.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      hybrid sphere dipole
+boundary        p p p
+lattice         sc 4.0
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+set             group all diameter 3.5
+set             group all density 1.5
+set             group all dipole/random 3391 1.2
+set             atom 1 dipole 0 0 1.2
+set             atom 2 dipole 0 0 0
+set             group all omega 0.01 0.02 -0.015
+group           a id 1:32
+group           b id 33:64
+pair_style      lj/cut/dipole/cut 9.0
+pair_coeff      * * 0.2 3.5
+neighbor        2.0 bin
+neigh_modify    delay 0
+velocity        all create 300.0 8821 mom yes rot yes dist gaussian
+fix             1 a nvt/sphere temp 300.0 300.0 100.0 update dipole/dlm
+fix             2 b nve/sphere update dipole/dlm
+timestep        2.0
+thermo_style    custom step temp pe ke etotal press
+thermo_modify   format float %.15g norm no
+thermo          10
+run             50
+write_dump      all custom w354dlm_nvt_sphere_real_rot.dump id mux muy muz omegax omegay omegaz modify format float %.15g sort id

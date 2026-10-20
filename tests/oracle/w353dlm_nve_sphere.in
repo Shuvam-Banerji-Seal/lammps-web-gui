@@ -1,0 +1,36 @@
+# oracle: fix nve/sphere update dipole/dlm (the Dullweber-Leimkuhler-McLachlan orientation update) on half the dipoles and update dipole on the other half, with pair lj/cut/dipole/cut torques; dipoles along +z and -z (the parallel branch of the body frame) and a zero-length dipole in each group, which both updates leave alone
+# oracle-files: w353dlm_nve_sphere_rot.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      hybrid sphere dipole
+boundary        p p p
+lattice         fcc 0.5
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+set             group all diameter 1.0
+set             group all density 1.0
+set             group all dipole/random 7215 0.8
+set             atom 1 dipole 0 0 0.8
+set             atom 2 dipole 0 0 -0.8
+set             atom 3 dipole 0 0 0
+set             atom 60 dipole 0 0 -1.1
+set             atom 61 dipole 0 0 0
+set             group all omega 0.3 -0.2 0.5
+group           dlm id 1:54
+group           plain id 55:108
+pair_style      lj/cut/dipole/cut 2.5
+pair_coeff      * * 1.0 1.0
+neighbor        0.3 bin
+neigh_modify    delay 0
+velocity        all create 0.6 4417 mom yes rot yes dist gaussian
+fix             1 dlm nve/sphere update dipole/dlm
+fix             2 plain nve/sphere update dipole
+compute         rot all erotate/sphere
+timestep        0.004
+thermo_style    custom step pe ke c_rot etotal press
+thermo_modify   format float %.15g norm no
+thermo          10
+run             60
+write_dump      all custom w353dlm_nve_sphere_rot.dump id mux muy muz omegax omegay omegaz modify format float %.15g sort id

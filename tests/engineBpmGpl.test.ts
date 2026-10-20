@@ -73,9 +73,11 @@ describe('bpm styles ported from LAMMPS (engine-gpl)', () => {
     expect(p.errors.join(' ')).toMatch(/invalid argument foo/);
   });
 
-  it('refuses the dipole/dlm integrator of fix nve/bpm/sphere, by name', async () => {
-    const r = await run(`${DIMER}fix 1 all nve/bpm/sphere update dipole/dlm\nrun 0\n`);
-    expect(r.errors.join(' ')).toMatch(/dipole\/dlm is not supported/);
+  it('refuses an unknown update value of fix nve/bpm/sphere, and update dipole/dlm without a dipole, by name', async () => {
+    const r = await run(`${DIMER}fix 1 all nve/bpm/sphere update quat\nrun 0\n`);
+    expect(r.errors.join(' ')).toMatch(/Unknown keyword in fix nve\/bpm\/sphere update command: quat/);
+    const d = await run(`${DIMER}fix 1 all nve/bpm/sphere update dipole/dlm\nrun 0\n`);
+    expect(d.errors.join(' ')).toMatch(/update dipole requires atom attribute mu/);
   });
 
   it('breaks a bpm/zero bond stretched beyond ecrit, after the setup run, and reports it gone', async () => {

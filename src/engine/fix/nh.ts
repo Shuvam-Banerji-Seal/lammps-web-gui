@@ -250,7 +250,11 @@ export class FixNH extends Fix {
           k += 2;
           break;
         case 'fixedpoint': this.fixedpoint = [n(1, 'x'), n(2, 'y'), n(3, 'z')]; k += 4; break;
-        case 'update': throw new StyleError(`fix ${style} update ${args[k + 1] ?? ''} needs dipoles, which the browser engine does not support`);
+        case 'update':
+          // As native LAMMPS does (src/fix_nh.cpp at b332f28): the dipole update is only for the /sphere variants
+          // (nh_sphere.ts strips the keyword before it reaches here).
+          if (args[k + 1] === 'dipole' || args[k + 1] === 'dipole/dlm') throw new StyleError("Must use a '/sphere' Nose-Hoover fix style for updating dipoles");
+          throw new StyleError(`Invalid fix ${style} update argument: ${args[k + 1] ?? ''}`.trim());
         case 'disc': throw new StyleError(`fix ${style} disc needs finite-size particles`);
         default: throw new StyleError(`unknown fix ${style} keyword '${key}'`);
       }

@@ -211,7 +211,7 @@ run 0`);
       ['fix f all ave/chunk 1 1 1 c', 'usage: fix f group-ID ave/chunk'],
       ['fix f all ave/chunk 1 1 1 c file x.txt', 'no input values'],
       ['fix f all ave/chunk 1 1 1 c vx norm bogus', 'norm must be all, sample or none'],
-      ['fix f all ave/chunk 1 1 1 c vx bias t', 'bias keyword is not supported'],
+      ['fix f all ave/chunk 1 1 1 c vx bias t', 'Could not find compute ID t for temperature bias'],
       ['fix f all ave/chunk 1 1 1 c vx overwrite', 'overwrite keyword can only be used with the ave running setting'],
       ['fix f all ave/chunk 1 1 1 c vx file a.txt append b.txt', 'file and append cannot both be used'],
       ['fix f all ave/chunk 1 1 1 c vx format bogus', "invalid numeric format string 'bogus'"],

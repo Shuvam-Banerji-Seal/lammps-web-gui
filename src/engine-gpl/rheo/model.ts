@@ -106,6 +106,11 @@ export class RheoModel {
   rsurface = new Float64Array(0);
   /** fix rheo/oxidation settings (bond cutoff, bond type, surface distance), null without the fix. */
   oxidation: { cut: number; btype: number; rsurf: number } | null = null;
+  /**
+   * fix rheo/pressure's sound speed of an atom when it depends on the state (variable_csq, the ideal/gas style):
+   * pair rheo then uses calc_csq(rho, i) instead of the per-type csq. null when every type has a constant csq.
+   */
+  variableCsq: ((i: number) => number) | null = null;
   /** fix rheo rho/sum: density by kernel summation; selfMass uses the own mass in the sum (self/mass). */
   rhosumFlag = false;
   rhosumSelfMass = false;

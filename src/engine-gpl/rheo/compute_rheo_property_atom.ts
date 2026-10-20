@@ -65,6 +65,13 @@ export class ComputeRHEOPropertyAtom extends Compute {
     if (this.names.includes('nbond/shell') && !(model && model.oxidation)) throw new StyleError('Cannot request nbond/shell without fix rheo/oxidation');
   }
 
+  /** The fix rheo/pressure whose equation of state gives the pressure (compute_rheo_property_atom.cpp fix_pressure). */
+  private pressureFix(): { calcPressure(rho: number, i: number): number } {
+    const f = this.sys.fixes.find((x) => x.style === 'rheo/pressure');
+    if (!f) throw new StyleError('Cannot request pressure without fix rheo/pressure');
+    return f as unknown as { calcPressure(rho: number, i: number): number };
+  }
+
   protected computePeratom(): void {
     const s = this.sys.state;
     const m = this.names.length;
@@ -102,6 +109,9 @@ export class ComputeRHEOPropertyAtom extends Compute {
             val = model!.coord[i];
           } else if (typeof name === 'number') {
             val = model!.nsurface[i * model!.dim + name];
+          } else if (name === RHEO_PRESSURE) {
+            // pack_pressure: "fix_pressure->calc_pressure(rho[i], i)", from the density at the time of the output
+            val = this.pressureFix().calcPressure(s.custom.get(RHEO_RHO)!.data[i], i);
           } else {
             val = s.custom.get(name)!.data[i];
           }

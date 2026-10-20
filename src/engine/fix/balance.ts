@@ -2,6 +2,48 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { CustomProp } from '../types';
+import { formatNumber } from '../cformat';
+
+/**
+ * The out file of balance and fix balance (balance.html: "The *out* keyword writes text to the specified filename
+ * with the results of each rebalancing operation."), in the layout of native's Balance::dumpout (src/balance.cpp at
+ * b332f28): a Pizza.py mdump snapshot of the nodes of every processor's sub-domain, then one square (2d) or cube (3d)
+ * per processor. The engine is one process, so its sub-domain is the whole box (the corners of the tilted box for a
+ * triclinic one); numbers are written with %g.
+ */
+export function balanceDump(sys: System, step: number): string {
+  const s = sys.state;
+  const g = sys.geom;
+  const b = s.box;
+  const dim = s.dimension;
+  const f = (v: number): string => formatNumber(v, '%g');
+  const lines: string[] = ['ITEM: TIMESTEP', String(step), 'ITEM: NUMBER OF NODES', String(dim === 2 ? 4 : 8), 'ITEM: BOX BOUNDS'];
+  for (let d = 0; d < 3; d++) lines.push(`${f(b.lo[d])} ${f(b.hi[d])}`);
+  lines.push('ITEM: NODES');
+  // the corners in native's order: (lo,lo,lo), (hi,lo,lo), (hi,hi,lo), (lo,hi,lo), then the same at z hi for an
+  // orthogonal box; Domain::lamda_box_corners' order (x fastest, then y, then z) for a triclinic one
+  const corner = (l0: number, l1: number, l2: number): number[] => {
+    const out = [0, 0, 0];
+    g.fromLamda(l0, l1, l2, out);
+    return out;
+  };
+  const pts: number[][] = [];
+  if (!b.triclinic) {
+    const lo = b.lo, hi = b.hi;
+    const z0 = dim === 2 ? 0 : lo[2];
+    pts.push([lo[0], lo[1], z0], [hi[0], lo[1], z0], [hi[0], hi[1], z0], [lo[0], hi[1], z0]);
+    if (dim === 3) pts.push([lo[0], lo[1], hi[2]], [hi[0], lo[1], hi[2]], [hi[0], hi[1], hi[2]], [lo[0], hi[1], hi[2]]);
+  } else {
+    for (const l2 of dim === 2 ? [0] : [0, 1]) {
+      for (const l1 of [0, 1]) for (const l0 of [0, 1]) pts.push(corner(l0, l1, l2));
+    }
+    if (dim === 2) for (const p of pts) p[2] = 0;
+  }
+  pts.forEach((p, k) => lines.push(`${k + 1} 1 ${f(p[0])} ${f(p[1])} ${f(p[2])}`));
+  lines.push('ITEM: TIMESTEP', String(step), dim === 2 ? 'ITEM: NUMBER OF SQUARES' : 'ITEM: NUMBER OF CUBES', '1', dim === 2 ? 'ITEM: SQUARES' : 'ITEM: CUBES');
+  lines.push(dim === 2 ? '1 1 1 2 3 4' : '1 1 1 2 3 4 5 6 7 8');
+  return lines.join('\n') + '\n';
+}
 
 /*
  * fix ID group-ID balance Nfreq thresh style args keyword args ... —
@@ -182,6 +224,9 @@ export class FixBalance extends Fix {
   private nfreq = 1;
   private actions: BalanceWeightAction[] = [];
   private result = { scalar: 0, vec: [0, 0, 0] };
+  /** The out file (balance.cpp options: opened for writing when the fix is defined), and the step last written. */
+  private outFile: string | null = null;
+  private lastOut = -1;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -214,7 +259,11 @@ export class FixBalance extends Fix {
         if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError('fix balance sort must be yes or no');
         k += 2;
       } else if (key === 'out') {
-        throw new StyleError('fix balance out (writing subdomain files) is not supported by the browser engine');
+        const name = args[k + 1];
+        if (name === undefined) throw new StyleError('Illegal fix balance out command: missing file name');
+        this.outFile = name;
+        this.sys.writeFile(name, '', false);
+        k += 2;
       } else throw new StyleError(`fix balance: unknown keyword '${key}'`);
     }
   }
@@ -227,6 +276,11 @@ export class FixBalance extends Fix {
     for (let i = 0; i < s.n; i++) total += w[i];
     const forced = 1 > this.thresh;
     this.result = forced ? { scalar: 1, vec: [total, this.iterations, 1] } : { scalar: 0, vec: [total, 0, 0] };
+    // As native LAMMPS does (src/fix_balance.cpp rebalance at b332f28): each rebalancing writes the out file
+    if (forced && this.outFile && s.step !== this.lastOut) {
+      this.lastOut = s.step;
+      this.sys.writeFile(this.outFile, balanceDump(this.sys, s.step), true);
+    }
   }
 
   private updateWeights(): void {

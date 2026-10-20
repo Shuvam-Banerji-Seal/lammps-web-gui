@@ -27,7 +27,7 @@ import { ComputeTemp } from '../compute/temp';
 import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
 import { bitOfIndex, type DynamicGroup } from '../group';
-import { parseBalanceWeight, applyBalanceWeights, balanceNeighFactor, balanceUsesNeigh, type BalanceWeightAction } from '../fix/balance';
+import { parseBalanceWeight, applyBalanceWeights, balanceNeighFactor, balanceUsesNeigh, balanceDump, type BalanceWeightAction } from '../fix/balance';
 import { parseMoleculeFile, geometricCenter, orientationMatrix, templateDipoles, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
 import { libm } from '../libm';
 
@@ -306,16 +306,26 @@ const balanceCommand: Handler = ({ sys }, a) => {
     }
   } else throw new StyleError(`balance: unknown style '${style ?? ''}' (x, y, z, shift or rcb)`);
   const actions: BalanceWeightAction[] = [];
+  let outFile: string | null = null;
   while (k < a.length) {
     const key = a[k];
     if (key === 'weight') k = parseBalanceWeight(sys, a, k, actions);
     else if (key === 'sort') {
       if (a[k + 1] !== 'yes' && a[k + 1] !== 'no') throw new StyleError('balance sort must be yes or no');
       k += 2;
-    } else if (key === 'out') throw new StyleError('balance out (writing subdomain files) is not supported by the browser engine');
-    else throw new StyleError(`balance: unknown keyword '${key}'`);
+    } else if (key === 'out') {
+      if (a[k + 1] === undefined) throw new StyleError('Illegal balance out command: missing file name');
+      outFile = a[k + 1];
+      k += 2;
+    } else throw new StyleError(`balance: unknown keyword '${key}'`);
   }
   applyBalanceWeights(sys, actions, balanceUsesNeigh(actions) ? balanceNeighFactor(sys) : null);
+  // As native LAMMPS does (src/balance.cpp at b332f28): the out file is opened by the options, and the result is
+  // written unless the imbalance (1 on the engine's one process) is below the threshold ("imbinit < thresh) return")
+  if (outFile !== null) {
+    sys.writeFile(outFile, '', false);
+    if (!(1 < thresh)) sys.writeFile(outFile, balanceDump(sys, sys.state.step), true);
+  }
   sys.log('balance: accepted (the browser engine runs one process; subdomains are unchanged; stored weights are written)');
 };
 

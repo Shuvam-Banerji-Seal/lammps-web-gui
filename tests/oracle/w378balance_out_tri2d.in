@@ -1,0 +1,17 @@
+# oracle: balance out on a 2d triclinic box: the four nodes are the corners of the tilted box (native's lamda_box_corners), with z written as 0, and one square
+# oracle-files: w378balance_out.txt
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       2
+atom_style      atomic
+lattice         sq 0.7
+region          box prism 0 6 0 5 -0.5 0.5 1.7 0 0
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+balance         1.0 shift xy 5 1.1 out w378balance_out.txt
+thermo_style    custom step pe xy
+thermo_modify   format float %.15g
+run             0

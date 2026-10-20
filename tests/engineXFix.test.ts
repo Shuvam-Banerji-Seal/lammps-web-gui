@@ -64,9 +64,16 @@ describe('xfix ports: argument errors and refusals', () => {
     expect(r.error).toContain('Fix ave/correlate/long: nlen must be divisible by ncount');
   });
 
-  it('fix nonaffine/displacement refuses the d2min style by name', async () => {
+  it('fix nonaffine/displacement d2min runs, and gives native texts for its argument errors', async () => {
     const r = await runText(`${HEAD}fix 1 all nonaffine/displacement 5 d2min type fixed 0\nrun 1`);
-    expect(r.error).toContain('d2min');
+    expect(r.error).toBeFalsy();
+    // native advances one word past the intensive/d2min value, so the value is read as a keyword
+    const i = await runText(`${HEAD}fix 1 all nonaffine/displacement 5 d2min type fixed 0 intensive/d2min no\nrun 1`);
+    expect(i.error).toContain('Illegal keyword no in fix nonaffine/displacement');
+    const c = await runText(`${HEAD}fix 1 all nonaffine/displacement 5 d2min custom -1 fixed 0\nrun 1`);
+    expect(c.error).toContain('Illegal custom cutoff length -1');
+    const g = await runText(`${HEAD}fix 1 all nonaffine/displacement 5 d2min custom 9.0 fixed 0\nrun 1`);
+    expect(g.error).toContain('cutoff exceeds ghost atom range');
   });
 
   it('fix nonaffine/displacement rejects a non-positive nevery', async () => {

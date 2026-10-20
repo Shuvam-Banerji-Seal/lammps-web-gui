@@ -294,8 +294,12 @@ export class ComputeOrientorderAtom extends Compute {
     }
   }
 
+  /** The components degree (null without the components keyword) and the number of degrees (native qlcomp, nqlist). */
+  get qlcomp(): number | null { return this.componentsDeg; }
+  get nqlist(): number { return this.degrees.length; }
+
   /** Effective distance cutoff: keyword value or the pair style cutoff (the maximum allowable value). */
-  private resolveCutoff(): number {
+  resolveCutoff(): number {
     const pair = this.sys.ff.pair;
     let maxCut = 0;
     if (pair) {

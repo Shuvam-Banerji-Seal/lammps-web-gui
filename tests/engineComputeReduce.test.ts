@@ -269,8 +269,13 @@ describe('compute coord/atom', () => {
     expect(t[1]).toBe(0);
   });
 
-  it('rejects unsupported cstyles, bad cutoffs and bad types', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom orientorder 2 0.5`)).rejects.toThrow("'orientorder' is not supported");
+  it('rejects unknown cstyles, bad orientorder arguments, bad cutoffs and bad types', async () => {
+    // cstyle orientorder: native's texts (src/compute_coord_atom.cpp at b332f28)
+    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom orientorder 2 0.5`)).rejects.toThrow('Could not find compute coord/atom compute ID 2');
+    await expect(runScript(`${TWO_ATOMS}\ncompute k all ke/atom\ncompute c all coord/atom orientorder k 0.5`)).rejects.toThrow('Compute coord/atom compute ID k is not orientorder/atom');
+    await expect(runScript(`${TWO_ATOMS}\ncompute q all orientorder/atom components 6\ncompute c all coord/atom orientorder q 1.0`)).rejects.toThrow('Compute coord/atom threshold not between -1 and 1');
+    await expect(runScript(`${TWO_ATOMS}\ncompute q all orientorder/atom components 6\ncompute c all coord/atom orientorder q 0.5 extra`)).rejects.toThrow('Illegal compute coord/atom command');
+    await expect(runScript(`${TWO_ATOMS}\ncompute q all orientorder/atom\ncompute c all coord/atom orientorder q 0.5\nthermo_style custom step c_c[1]\nrun 0`)).rejects.toThrow('requires components option');
     await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom weird 1.0`)).rejects.toThrow("unknown compute coord/atom cstyle 'weird'");
     await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff`)).rejects.toThrow('needs a cutoff distance');
     await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff -1.0`)).rejects.toThrow('must be a positive number');

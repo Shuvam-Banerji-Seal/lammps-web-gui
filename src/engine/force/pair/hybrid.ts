@@ -85,6 +85,8 @@ interface Sub {
   evdwl: number;
   ecoul: number;
   evaluated: boolean;
+  /** With perSubVirial: the global virial of this sub-style alone (unscaled), from its last evaluation. */
+  virial: Float64Array;
 }
 
 /**
@@ -107,6 +109,18 @@ export class PairHybrid extends Pair {
   private lastFull: NeighList | null = null;
   /** Some sub-style tallies its virial explicitly (TIP4P), so the hybrid tallies every virial itself. */
   private mixedVirial = false;
+  /**
+   * compute pressure ... pair/hybrid: as native LAMMPS does (src/compute_pressure.cpp at b332f28 sets the hybrid's
+   * no_virial_fdotr_compute), every sub-style tallies its own global virial (Sub.virial) and the hybrid's virial is
+   * their sum, in place of one x.f sum over all forces. Here each sub-style runs on its own force array and its
+   * virial is x.f over that array (or its own tally for an explicit one). Set for good once such a compute exists.
+   */
+  perSubVirial = false;
+
+  enablePerSubVirial(): void {
+    this.perSubVirial = true;
+    this.virialFdotr = false;
+  }
   /** Equal-style variable evaluation for hybrid/scaled factors. */
   private evalVar: ((name: string) => number) | null = null;
 
@@ -162,7 +176,7 @@ export class PairHybrid extends Pair {
         throw new StyleError(`pair_style ${this.mode}: sub-style ${name} ${subArgs.join(' ')}: ${err.message}.${hint}`);
       }
       const instance = subs.filter((s) => s.name === name).length + 1;
-      subs.push({ style, name, instance, scale, specialLJ: null, specialCoul: null, used: false, half: null, full: null, evdwl: 0, ecoul: 0, evaluated: false });
+      subs.push({ style, name, instance, scale, specialLJ: null, specialCoul: null, used: false, half: null, full: null, evdwl: 0, ecoul: 0, evaluated: false, virial: new Float64Array(6) });
       k = e;
     }
     if (this.mode === 'hybrid/molecular') {
@@ -341,7 +355,7 @@ export class PairHybrid extends Pair {
     // a style whose pair-by-pair virial is not x.f over its forces tallies pair by pair as native does there
     if (anyExplicit) for (const q of this.subs) if (q.style.explicitInHybrid) q.style.explicitVirial = true;
     this.mixedVirial = anyExplicit && this.subs.some((q) => !explicitSub(q.style));
-    this.virialFdotr = !anyExplicit;
+    this.virialFdotr = !anyExplicit && !this.perSubVirial;
     // one list serves every sub-style, so it is a size list only when each sub-style asks for one (after their initStyle)
     this.sizeList = this.subs.every((q) => q.style.sizeList);
     this.listsBuilt = -1;
@@ -434,7 +448,8 @@ export class PairHybrid extends Pair {
       };
       // a sub-style that tallies its own virial (TIP4P) or any unscaled sub-style of an all-fdotr hybrid
       // runs directly on the shared accumulators; the fast path is unchanged
-      const direct = !scaled && !(this.mixedVirial && !explicitSub(s.style));
+      const ownFdotr = (this.mixedVirial || this.perSubVirial) && !explicitSub(s.style);
+      const direct = !scaled && !ownFdotr && !this.perSubVirial;
       if (direct) {
         // the sub-style's own energy is the change of the shared accumulator over its call
         const e0 = pc.acc.evdwl, c0 = pc.acc.ecoul;
@@ -459,7 +474,7 @@ export class PairHybrid extends Pair {
       for (let q = 0; q < fbuf.length; q++) pc.f[q] += f * fbuf[q];
       pc.acc.evdwl += f * acc.evdwl;
       pc.acc.ecoul += f * acc.ecoul;
-      if (this.mixedVirial && !explicitSub(s.style)) {
+      if (ownFdotr) {
         // as force-field fdotr: sum_k x_k . f_k over owned and ghost atoms (forcefield.ts), for this sub-style's forces
         const xa = pc.x, v = pc.acc.virial;
         let v0 = 0, v1 = 0, v2 = 0, v3 = 0, v4 = 0, v5 = 0;
@@ -469,8 +484,10 @@ export class PairHybrid extends Pair {
           v0 += x * fx; v1 += y * fy; v2 += z * fz; v3 += x * fy; v4 += x * fz; v5 += y * fz;
         }
         v[0] += f * v0; v[1] += f * v1; v[2] += f * v2; v[3] += f * v3; v[4] += f * v4; v[5] += f * v5;
+        if (this.perSubVirial) s.virial.set([v0, v1, v2, v3, v4, v5]);
       } else {
         for (let c = 0; c < 6; c++) pc.acc.virial[c] += f * acc.virial[c];
+        if (this.perSubVirial) s.virial.set(acc.virial);
       }
       if (eatom) for (let q = 0; q < eatom.length; q++) pc.eatom![q] += f * eatom[q];
       if (vatom) for (let q = 0; q < vatom.length; q++) pc.vatom![q] += f * vatom[q];

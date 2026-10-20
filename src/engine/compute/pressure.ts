@@ -1,6 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
+import { PairHybrid } from '../force/pair/hybrid';
 
 /*
  * compute ID all pressure temp-ID [ke pair bond angle dihedral improper
@@ -16,6 +17,13 @@ import type { System } from '../system';
  * except the kinetic energy ke." "temp-ID = ID of compute that calculates
  * temperature, can be NULL if not needed". Tail corrections
  * (pair_modify tail yes) add to the pressure (pair_modify.html).
+ *
+ * pair/hybrid style — the docs: "The *pair/hybrid* keyword means to only include contribution from a sub-style in
+ * a *hybrid* or *hybrid/overlay* pair style." As native LAMMPS does (src/compute_pressure.cpp at b332f28): the named
+ * sub-style's own virial is summed (the hybrid switches to per-sub-style virials, PairHybrid.perSubVirial), with no
+ * tail term; a name that matches no sub-style, or several without an index, stops with "Unrecognized pair style X in
+ * compute pressure command". Native reads no sub-style index here: its test for one looks at the style name, so a
+ * number after the name is an unknown keyword.
  */
 
 const KEYS = ['ke', 'pair', 'bond', 'angle', 'dihedral', 'improper', 'kspace', 'fix', 'virial'] as const;
@@ -30,14 +38,27 @@ export class ComputePressure extends Compute {
   keOverride: Float64Array | null = null;
   private terms: Set<string>;
   private w = new Float64Array(6);
+  /** pair/hybrid: the sub-style name, and its entry in the hybrid (found at init). */
+  private hybridStyle: string | null = null;
+  private hybridSub: { virial: Float64Array } | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (group !== 'all') throw new StyleError('compute pressure must use group all');
     if (args.length < 1) throw new StyleError('usage: compute ID all pressure temp-ID [keywords]');
     this.tempId = args[0] === 'NULL' ? null : args[0];
-    const rest = args.slice(1);
-    for (const a of rest) if (!(KEYS as readonly string[]).includes(a)) throw new StyleError(`unknown compute pressure keyword '${a}'`);
+    const rest: string[] = [];
+    for (let k = 1; k < args.length; k++) {
+      const a = args[k];
+      if (a === 'pair/hybrid') {
+        if (k + 1 >= args.length) throw new StyleError('compute pressure pair/hybrid needs a pair sub-style name');
+        this.hybridStyle = args[++k];
+        rest.push('pair/hybrid');
+        continue;
+      }
+      if (!(KEYS as readonly string[]).includes(a)) throw new StyleError(`Unknown compute pressure keyword ${a}`);
+      rest.push(a);
+    }
     if (rest.includes('virial')) rest.push('pair', 'bond', 'angle', 'dihedral', 'improper', 'kspace', 'fix');
     this.terms = new Set(rest.length ? rest : KEYS);
     if (this.terms.has('ke') && !this.tempId) throw new StyleError('compute pressure with temp-ID NULL cannot include the ke term');
@@ -51,6 +72,19 @@ export class ComputePressure extends Compute {
   }
 
   init(): void {
+    if (this.hybridStyle !== null) {
+      const pair = this.sys.ff.pair;
+      const name = this.hybridStyle;
+      const subs = pair instanceof PairHybrid ? pair.subs.filter((q) => q.name === name) : [];
+      if (subs.length !== 1) {
+        if (pair && !(pair instanceof PairHybrid) && pair.name === name) {
+          throw new StyleError(`compute pressure pair/hybrid ${name}: the pair style is not hybrid (native LAMMPS fails here)`);
+        }
+        throw new StyleError(`Unrecognized pair style ${name} in compute pressure command`);
+      }
+      (pair as PairHybrid).enablePerSubVirial();
+      this.hybridSub = subs[0];
+    }
     if (this.tempId) {
       const c = this.sys.compute(this.tempId);
       if (!c.tempFlag) throw new StyleError(`compute pressure: compute ${this.tempId} does not compute a temperature`);
@@ -67,6 +101,7 @@ export class ComputePressure extends Compute {
     const w = this.w;
     w.fill(0);
     const add = (v: Float64Array) => { for (let c = 0; c < 6; c++) w[c] += v[c]; };
+    if (this.hybridSub) add(this.hybridSub.virial);
     if (this.terms.has('pair')) add(a.virial);
     if (this.terms.has('bond')) add(a.vbond);
     if (this.terms.has('angle')) add(a.vangle);

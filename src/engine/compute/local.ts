@@ -52,8 +52,16 @@ import { libm } from '../libm';
  * atom, an angle, dihedral or improper by its second atom (the central atom); the rows walk
  * the atoms in native storage order.
  *
- * Not implemented (throw StyleError): the set keyword, v_name values, bN style quantities and
- * omega. compute pair/local is at the end of this file.
+ * v_name values with the set keyword (bond, angle and dihedral) — compute_bond_local.html: "The value *v_name* can be
+ * used together with the *set* keyword to compute a user-specified function of the bond distance. ... the
+ * internal-style variable specified by the *set* keyword. It is an internal-style variable, because this command
+ * resets its value directly." As native LAMMPS does (src/compute_bond_local.cpp, compute_angle_local.cpp and
+ * compute_dihedral_local.cpp at b332f28): the set variable is created as an internal-style variable when it does not
+ * exist; for each row it is set to the bond distance, or to the angle theta or dihedral phi in radians (the theta and
+ * phi values are printed in degrees), and then each v_name is evaluated as an equal-style variable, with native's
+ * error texts.
+ *
+ * Not implemented (throw StyleError): omega. compute pair/local is at the end of this file.
  */
 
 export type TermKind = 'bond' | 'angle' | 'dihedral' | 'improper';
@@ -155,16 +163,37 @@ interface BondExtraProvider {
 export class ComputeTermLocal extends Compute {
   readonly style: string;
   private readonly values: string[];
+  /** The set keyword's internal-style variable (null without set). */
+  private readonly setVar: string | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[], private readonly kind: TermKind) {
     super(sys, id, group, args);
     this.style = `${kind}/local`;
     if (!args.length) throw new StyleError(`compute ${id} ${this.style} needs at least one value`);
     const values: string[] = [];
+    const SET_ARG: Partial<Record<TermKind, string>> = { bond: 'dist', angle: 'theta', dihedral: 'phi' };
+    let setVar: string | null = null;
+    let setSeen = false;
     for (let a = 0; a < args.length; a++) {
       const w = args[a];
-      if (w === 'set') throw new StyleError(`compute ${id} ${this.style}: the set keyword is not supported by the browser engine`);
-      if (w.startsWith('v_')) throw new StyleError(`compute ${id} ${this.style}: v_name values are not supported by the browser engine`);
+      if (w === 'set' && SET_ARG[kind]) {
+        // native: the keyword loop after the values; "set dist name" (bond), "set theta name", "set phi name"
+        setSeen = true;
+        if (a + 2 >= args.length) {
+          throw new StyleError(kind === 'bond' ? 'Illegal compute bond/local set command: missing argument(s)' : `Illegal compute ${kind}/local command`);
+        }
+        if (args[a + 1] !== SET_ARG[kind]) {
+          throw new StyleError(kind === 'bond' ? `Unknown compute bond/local set keyword: ${args[a + 2]}` : `Illegal compute ${kind}/local command`);
+        }
+        setVar = args[a + 2];
+        a += 2;
+        continue;
+      }
+      if (setSeen) throw new StyleError(kind === 'bond' ? `Unknown compute bond/local keyword: ${w}` : `Illegal compute ${kind}/local command`);
+      if (w.startsWith('v_') && SET_ARG[kind]) {
+        values.push(w);
+        continue;
+      }
       // compute bond/local: "bN" = the Nth extra output of the bond style's single() (compute_bond_local.cpp at b332f28)
       if (kind === 'bond' && /^b\d+$/.test(w)) {
         if (Number(w.slice(1)) < 1) throw new StyleError(`compute ${id} ${this.style}: Invalid keyword ${w} in compute bond/local command`);
@@ -178,8 +207,35 @@ export class ComputeTermLocal extends Compute {
       values.push(w);
     }
     this.values = values;
+    // native's error checks (constructor): the variables must exist and be equal-style; the set variable is created
+    const vnames = values.filter((v) => v.startsWith('v_')).map((v) => v.slice(2));
+    const what = `compute ${kind}/local`;
+    if (vnames.length) {
+      if (!setSeen) throw new StyleError(`Compute ${kind}/local variable requires a set variable`);
+      for (const name of vnames) {
+        const v = sys.vars.get(name);
+        const named = kind === 'bond' ? ` ${name}` : '';
+        if (!v) throw new StyleError(`Variable name${named} for ${what} does not exist`);
+        if (v.style !== 'equal') throw new StyleError(`Variable${named} for ${what} is invalid style`);
+      }
+      if (setVar !== null) {
+        const sv = sys.vars.get(setVar);
+        if (!sv) sys.vars.setInternal(setVar, 0.0);
+        else if (sv.style !== 'internal') throw new StyleError(`Variable for ${what} is invalid style`);
+      }
+    } else if (setSeen) {
+      throw new StyleError(kind === 'bond' ? 'Compute bond/local set used with without a variable' : `Compute ${kind}/local set with no variable`);
+    }
+    this.setVar = setVar;
     this.localFlag = true;
     this.sizeLocalCols = values.length > 1 ? values.length : 0;
+  }
+
+  /** The v_name values of a row: the set variable takes value, then each variable is evaluated in order. */
+  private variableValues(vals: Record<string, number>, value: number): void {
+    if (this.setVar === null) return;
+    this.sys.vars.setInternal(this.setVar, value);
+    for (const v of this.values) if (v.startsWith('v_')) vals[v] = this.sys.equalVariable(v.slice(2));
   }
 
   protected computeLocal(): Float64Array<ArrayBuffer> {
@@ -223,6 +279,7 @@ export class ComputeTermLocal extends Compute {
         if (needEnergy) for (const a of [i, j]) for (let c = 0; c < 3; c++) scratch[3 * a + c] = 0;
         const force = dist > 0 ? (fi[0] * d[0] + fi[1] * d[1] + fi[2] * d[2]) / dist : 0;
         vals.dist = dist; vals.dx = d[0]; vals.dy = d[1]; vals.dz = d[2];
+        this.variableValues(vals, dist);
         if (bNames.length) {
           const extra = extraStyle!.bondExtra!(bc, list.atoms[2 * k], list.atoms[2 * k + 1], list.type[k]);
           for (const name of bNames) {
@@ -255,13 +312,16 @@ export class ComputeTermLocal extends Compute {
         const r1 = norm(d1), r3 = norm(d3);
         const c = r1 > 0 && r3 > 0 ? Math.max(-1, Math.min(1, (d1[0] * d3[0] + d1[1] * d3[1] + d1[2] * d3[2]) / (r1 * r3))) : 1;
         vals.theta = libm.acos(c) * RAD2DEG;
+        this.variableValues(vals, libm.acos(c));
         if (need('eng')) {
           vals.eng = list.type[k] > 0 ? termEnergy(s, geom, nb.bondedCopies(), kind, style!, list, k, map, scratch) : 0;
           for (const a of idx) for (let q = 0; q < 3; q++) scratch[3 * a + q] = 0;
         }
       } else if (kind === 'dihedral') {
         const grad = new Array(12).fill(0), rel = new Array(12).fill(0);
-        vals.phi = dihedralGeometry(bc, idx[0], idx[1], idx[2], idx[3], grad, rel) * RAD2DEG;
+        const phi = dihedralGeometry(bc, idx[0], idx[1], idx[2], idx[3], grad, rel);
+        vals.phi = phi * RAD2DEG;
+        this.variableValues(vals, phi);
       } else {
         const grad = new Array(12).fill(0), rel = new Array(12).fill(0);
         vals.chi = Math.abs(dihedralGeometry(bc, idx[0], idx[1], idx[2], idx[3], grad, rel)) * RAD2DEG;

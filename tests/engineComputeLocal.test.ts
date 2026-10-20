@@ -75,10 +75,18 @@ const molecule = async (extra: string) => {
 };
 
 describe('local computes: argument errors', () => {
-  it('rejects unknown values, set, v_ names, invalid bN and omega', async () => {
+  it('rejects unknown values, v_name and set misuse with the native texts, invalid bN and omega', async () => {
     await expect(molecule('compute c all bond/local bogus')).rejects.toThrow(/unknown value 'bogus'/);
-    await expect(molecule('compute c all bond/local dist set dist d')).rejects.toThrow(/set keyword/);
-    await expect(molecule('compute c all bond/local v_d')).rejects.toThrow(/v_name/);
+    // src/compute_bond_local.cpp, compute_angle_local.cpp, compute_dihedral_local.cpp at b332f28
+    await expect(molecule('compute c all bond/local dist set dist d')).rejects.toThrow(/Compute bond\/local set used with without a variable/);
+    await expect(molecule('compute c all bond/local v_d')).rejects.toThrow(/Compute bond\/local variable requires a set variable/);
+    await expect(molecule('compute c all bond/local v_nope set dist d')).rejects.toThrow(/Variable name nope for compute bond\/local does not exist/);
+    await expect(molecule('variable s string x\ncompute c all bond/local v_s set dist d')).rejects.toThrow(/Variable s for compute bond\/local is invalid style/);
+    await expect(molecule('variable e equal 1\nvariable d equal 2\ncompute c all bond/local v_e set dist d')).rejects.toThrow(/Variable for compute bond\/local is invalid style/);
+    await expect(molecule('variable e equal 1\ncompute c all bond/local v_e set theta d')).rejects.toThrow(/Unknown compute bond\/local set keyword: d/);
+    await expect(molecule('variable e equal 1\ncompute c all angle/local v_e set phi t')).rejects.toThrow(/Illegal compute angle\/local command/);
+    await expect(molecule('compute c all dihedral/local phi set phi p')).rejects.toThrow(/Compute dihedral\/local set with no variable/);
+    await expect(molecule('compute c all improper/local v_e')).rejects.toThrow(/unknown value 'v_e'/);
     // bN is a bond-style extra output (compute bond/local): b0 is an invalid keyword, b1 on angles is an unknown value
     await expect(molecule('compute c all bond/local b0')).rejects.toThrow(/Invalid keyword b0/);
     await expect(molecule('compute c all angle/local b1')).rejects.toThrow(/unknown value 'b1'/);

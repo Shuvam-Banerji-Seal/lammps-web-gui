@@ -1,0 +1,27 @@
+# oracle: compute coord/atom orientorder (ten Wolde's connected neighbors): the dot product of the normalized q6 component vectors of neighbors within the orientorder cutoff against a threshold, on a perturbed fcc crystal; a second orientorder compute with wl yes shows that native reads the component columns right after the q_l values (here the wl columns)
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        dx atom 0.12*sin(2.3*x+1.7*y)
+variable        dy atom 0.12*cos(1.9*y-2.1*z)
+variable        dz atom 0.12*sin(2.7*z+1.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+velocity        all create 0.8 87287 loop geom
+fix             1 all nve
+compute         q all orientorder/atom degrees 2 4 6 components 6 nnn NULL cutoff 1.5
+compute         qw all orientorder/atom degrees 2 4 6 wl yes components 6 nnn 12 cutoff 1.6
+compute         c1 all coord/atom orientorder q 0.5
+compute         c2 all coord/atom orientorder q 0.8
+compute         c3 all coord/atom orientorder qw 0.1
+compute         r all reduce sum c_c1 c_c2 c_c3
+compute         m all reduce max c_c1
+thermo_style    custom step temp pe c_r[1] c_r[2] c_r[3] c_m
+thermo_modify   norm no format float %.15g
+thermo          10
+run             30

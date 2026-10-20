@@ -17,7 +17,7 @@
  */
 import type { Atom, Bond, BoxBounds, MoleculeData } from '../types';
 import { ELEMENT_DATA } from '../constants';
-import { inferBonds } from '../services/bondInference';
+import { inferBonds, maxBondDistance } from '../services/bondInference';
 import { cifCellToBoxBounds, type CifCell } from '../services/cifParser';
 
 /** Above this many atoms the notebook warns: the engine runs in the browser. */
@@ -136,20 +136,113 @@ export const pdbAtomNames = (text: string, atoms: Atom[]): string[] | undefined 
   return names;
 };
 
-/** Wraps a point into the periodic restricted triclinic box (fractional coordinates in [0, 1)). */
-const wrapInto = (x: number, y: number, z: number, box: BoxBounds): [number, number, number] => {
+type Vec3 = [number, number, number];
+
+/** Fractional coordinates of a point in the restricted triclinic box (read_data.html: a = (lx,0,0), b = (xy,ly,0), c = (xz,yz,lz)). */
+const toFrac = (x: number, y: number, z: number, box: BoxBounds): Vec3 => {
   const lx = box.xhi - box.xlo, ly = box.yhi - box.ylo, lz = box.zhi - box.zlo;
   const xy = box.xy ?? 0, xz = box.xz ?? 0, yz = box.yz ?? 0;
-  const dz = z - box.zlo;
-  const u = dz / lz;
+  const u = (z - box.zlo) / lz;
   const t = (y - box.ylo - u * yz) / ly;
   const s = (x - box.xlo - t * xy - u * xz) / lx;
-  const fs = s - Math.floor(s), ft = t - Math.floor(t), fu = u - Math.floor(u);
-  return [
-    box.xlo + fs * lx + ft * xy + fu * xz,
-    box.ylo + ft * ly + fu * yz,
-    box.zlo + fu * lz,
-  ];
+  return [s, t, u];
+};
+
+/** The point of fractional coordinates f in the box. */
+const fromFrac = (f: Vec3, box: BoxBounds): Vec3 => {
+  const lx = box.xhi - box.xlo, ly = box.yhi - box.ylo, lz = box.zhi - box.zlo;
+  const xy = box.xy ?? 0, xz = box.xz ?? 0, yz = box.yz ?? 0;
+  return [box.xlo + f[0] * lx + f[1] * xy + f[2] * xz, box.ylo + f[1] * ly + f[2] * yz, box.zlo + f[2] * lz];
+};
+
+/** A bond between atoms a and b (0-based) where b's partner is its periodic image shifted by `shift` cells. */
+interface PeriodicBond { a: number; b: number; shift: Vec3 }
+
+/**
+ * Bonds through the periodic cell, from covalent radii: the atoms (wrapped into the cell, fractional coordinates `frac`)
+ * and their periodic images that lie within the longest possible bond of a cell face go through inferBonds; a bond to
+ * an image keeps that image's cell shift. Each bond is listed once.
+ */
+const inferPeriodicBonds = (atoms: readonly Atom[], frac: readonly Vec3[], box: BoxBounds): PeriodicBond[] => {
+  const lx = box.xhi - box.xlo, ly = box.yhi - box.ylo, lz = box.zhi - box.zlo;
+  const xy = box.xy ?? 0, xz = box.xz ?? 0, yz = box.yz ?? 0;
+  // the perpendicular widths of the cell: volume over the area of each pair of faces
+  const vol = lx * ly * lz;
+  const width: Vec3 = [vol / Math.hypot(ly * lz, xy * lz, xy * yz - ly * xz), vol / (lx * Math.hypot(lz, yz)), lz];
+  const dmax = maxBondDistance(atoms);
+  const delta = width.map((w) => dmax / w);
+  const ext: Atom[] = [];
+  const origin: { i: number; s: Vec3 }[] = [];
+  const add = (i: number, s: Vec3): void => {
+    const f = frac[i];
+    const p = fromFrac([f[0] + s[0], f[1] + s[1], f[2] + s[2]], box);
+    ext.push({ ...atoms[i], id: ext.length + 1, x: p[0], y: p[1], z: p[2] });
+    origin.push({ i, s });
+  };
+  for (let i = 0; i < atoms.length; i++) add(i, [0, 0, 0]);
+  for (let i = 0; i < atoms.length; i++) {
+    const f = frac[i];
+    for (let sx = -1; sx <= 1; sx++) for (let sy = -1; sy <= 1; sy++) for (let sz = -1; sz <= 1; sz++) {
+      if (sx === 0 && sy === 0 && sz === 0) continue;
+      const g = [f[0] + sx, f[1] + sy, f[2] + sz];
+      if (g.every((v, k) => v >= -delta[k] && v <= 1 + delta[k])) add(i, [sx, sy, sz]);
+    }
+  }
+  const out: PeriodicBond[] = [];
+  const seen = new Set<string>();
+  for (const bd of inferBonds(ext)) {
+    const p = origin[bd.atom1Id - 1], q = origin[bd.atom2Id - 1];
+    let a = p.i, b = q.i;
+    let shift: Vec3 = [q.s[0] - p.s[0], q.s[1] - p.s[1], q.s[2] - p.s[2]];
+    // one listing per bond: the lower atom first (for a bond to the atom's own image, the shift that is positive first)
+    const flip = a > b || (a === b && (shift[0] < 0 || (shift[0] === 0 && (shift[1] < 0 || (shift[1] === 0 && shift[2] < 0)))));
+    if (flip) { [a, b] = [b, a]; shift = [-shift[0], -shift[1], -shift[2]]; }
+    const key = `${a},${b},${shift.join(',')}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ a, b, shift });
+  }
+  return out;
+};
+
+/**
+ * The image flags that keep every bonded molecule whole: a walk over the bonds from the first atom of each molecule
+ * gives each atom the image of its bonded neighbour plus the bond's shift. A molecule whose walk comes back to an atom
+ * with another image (a framework or covalent crystal bonded through the cell) keeps zero flags; `spanning` counts them.
+ */
+const wholeMoleculeImages = (n: number, bonds: readonly PeriodicBond[]): { img: Int32Array; spanning: number } => {
+  const adj: { to: number; s: Vec3 }[][] = Array.from({ length: n }, () => []);
+  for (const b of bonds) {
+    adj[b.a].push({ to: b.b, s: b.shift });
+    adj[b.b].push({ to: b.a, s: [-b.shift[0], -b.shift[1], -b.shift[2]] });
+  }
+  const img = new Int32Array(3 * n);
+  const done = new Uint8Array(n);
+  let spanning = 0;
+  for (let root = 0; root < n; root++) {
+    if (done[root]) continue;
+    done[root] = 1;
+    const members = [root];
+    let whole = true;
+    for (let k = 0; k < members.length; k++) {
+      const u = members[k];
+      for (const { to, s } of adj[u]) {
+        const want = [img[3 * u] + s[0], img[3 * u + 1] + s[1], img[3 * u + 2] + s[2]];
+        if (!done[to]) {
+          done[to] = 1;
+          img[3 * to] = want[0]; img[3 * to + 1] = want[1]; img[3 * to + 2] = want[2];
+          members.push(to);
+        } else if (img[3 * to] !== want[0] || img[3 * to + 1] !== want[1] || img[3 * to + 2] !== want[2]) {
+          whole = false;
+        }
+      }
+    }
+    if (!whole) {
+      spanning++;
+      for (const m of members) img[3 * m] = img[3 * m + 1] = img[3 * m + 2] = 0;
+    }
+  }
+  return { img, spanning };
 };
 
 /** Union-find over atoms (1-based index) for molecule IDs from bonds. */
@@ -254,17 +347,49 @@ export const convertStructure = (mol: MoleculeData, opts: ConvertOptions): Conve
   let rawBonds: Bond[] = [];
   let nbondTypes = 0;
   const bondTypeRows = new Map<string, number>();
+  // A periodic structure (a cell, element types): the atoms are wrapped into the cell, the guessed bonds are inferred
+  // again through the periodic cell, and molecules cut by the cell faces are kept whole by image flags (read_data.html:
+  // "the image flags ... which indicate which image of the periodic box the atom is in"; molecule templates get whole
+  // coordinates).
+  const periodicCell = opts.source === 'elements' && opts.box ? opts.box : undefined;
+  const frac: Vec3[] = [];
+  const shiftOf = new Map<Bond, Vec3>();
+  if (periodicCell) {
+    for (const a of mol.atoms) {
+      const f = toFrac(a.x, a.y, a.z, periodicCell);
+      frac.push([f[0] - Math.floor(f[0]), f[1] - Math.floor(f[1]), f[2] - Math.floor(f[2])]);
+    }
+  }
   if (writeBonds) {
-    rawBonds = mol.bonds.length > 0 ? mol.bonds : (opts.source === 'elements' ? inferBonds(mol.atoms) : []);
-    if (opts.source === 'elements' && mol.bonds.length === 0 && rawBonds.length > 0 && opts.box) {
-      warnings.push('Bonds are inferred from covalent radii (the file has no CONECT records). Bonds across the periodic boundary are not added.');
+    const guessed = mol.bonds.length === 0 || mol.bonds.length > 0 && mol.bondsInferred === true;
+    if (periodicCell && guessed && opts.source === 'elements') {
+      for (const pb of inferPeriodicBonds(mol.atoms, frac, periodicCell)) {
+        const bd: Bond = { id: rawBonds.length + 1, type: 1, atom1Id: mol.atoms[pb.a].id, atom2Id: mol.atoms[pb.b].id };
+        rawBonds.push(bd);
+        shiftOf.set(bd, pb.shift);
+      }
+      if (rawBonds.length > 0) warnings.push('Bonds are inferred from covalent radii through the periodic cell (the file lists none); molecules cut by the cell faces are kept whole.');
+    } else {
+      rawBonds = mol.bonds.length > 0 ? mol.bonds : (opts.source === 'elements' ? inferBonds(mol.atoms) : []);
+      if (opts.source === 'elements' && mol.bonds.length === 0 && rawBonds.length > 0) {
+        warnings.push('Bonds are inferred from covalent radii (the file has no CONECT records).');
+      }
     }
   }
   const bondPairs: [number, number][] = [];
   const bondLines: { type: number; a: number; b: number }[] = [];
+  /** the bonds with their cell shifts, for the whole-molecule image flags of a periodic structure */
+  const shifted: PeriodicBond[] = [];
   for (const b of rawBonds) {
     const ia = index.get(b.atom1Id), ib = index.get(b.atom2Id);
-    if (ia === undefined || ib === undefined || ia === ib) continue;
+    if (ia === undefined || ib === undefined) continue;
+    if (periodicCell) {
+      // a bond read from the file joins the nearest images of its atoms
+      const fa = frac[ia - 1], fb = frac[ib - 1];
+      const shift = shiftOf.get(b) ?? [Math.round(fa[0] - fb[0]), Math.round(fa[1] - fb[1]), Math.round(fa[2] - fb[2])];
+      shifted.push({ a: ia - 1, b: ib - 1, shift });
+    }
+    if (ia === ib) continue;
     bondPairs.push([ia, ib]);
     let type: number;
     if (opts.source === 'lammps') {
@@ -279,6 +404,15 @@ export const convertStructure = (mol: MoleculeData, opts: ConvertOptions): Conve
       type = t;
     }
     bondLines.push({ type, a: ia, b: ib });
+  }
+  // image flags that keep the molecules whole; a bonded network that runs through the cell keeps zero flags
+  let img: Int32Array | null = null;
+  if (periodicCell) {
+    const whole = wholeMoleculeImages(n, shifted);
+    img = whole.img;
+    if (whole.spanning > 0) {
+      warnings.push(`${whole.spanning} bonded network${whole.spanning === 1 ? ' runs' : 's run'} through the periodic cell (a framework or covalent crystal): ${whole.spanning === 1 ? 'its' : 'their'} atoms are written wrapped into the cell.`);
+    }
   }
   if (opts.source === 'lammps') {
     nbondTypes = bondLines.reduce((m, b) => Math.max(m, b.type), 0);
@@ -297,7 +431,7 @@ export const convertStructure = (mol: MoleculeData, opts: ConvertOptions): Conve
       if (!box) throw new StructureConvertError('The data file has no box bounds.');
     } else if (opts.box) {
       box = opts.box;
-      for (let i = 0; i < n; i++) pts[i] = wrapInto(pts[i][0], pts[i][1], pts[i][2], box);
+      for (let i = 0; i < n; i++) pts[i] = fromFrac(frac[i], box);
     } else {
       let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
       for (const p of pts) {
@@ -317,6 +451,13 @@ export const convertStructure = (mol: MoleculeData, opts: ConvertOptions): Conve
   }
 
   const periodic = opts.target === 'data' && !!opts.box && opts.source === 'elements';
+  // a molecule template from a periodic structure: the whole molecules (the cell's wrapped atoms moved by their images)
+  if (opts.target === 'molecule' && periodicCell && img) {
+    for (let i = 0; i < n; i++) {
+      const f = frac[i];
+      pts[i] = fromFrac([f[0] + img[3 * i], f[1] + img[3 * i + 1], f[2] + img[3 * i + 2]], periodicCell);
+    }
+  }
 
   let text: string;
   let suggestion: string;
@@ -344,6 +485,7 @@ export const convertStructure = (mol: MoleculeData, opts: ConvertOptions): Conve
       cols.push(String(typeOf[i]));
       if (style !== 'atomic') cols.push(String(mol.atoms[i].charge));
       cols.push(fmt(pts[i][0]), fmt(pts[i][1]), fmt(pts[i][2]));
+      if (img) cols.push(String(img[3 * i]), String(img[3 * i + 1]), String(img[3 * i + 2]));
       out.push(`${cols.join(' ')} # ${labelOf[i]}`);
     }
     if (nbonds > 0 && writeBonds) {
@@ -395,7 +537,8 @@ export const convertStructure = (mol: MoleculeData, opts: ConvertOptions): Conve
       maxDeg[a]++;
       maxDeg[c]++;
     }
-    const extra = Math.max(1, ...maxDeg);
+    let extra = 1;
+    for (const d of maxDeg) if (d > extra) extra = d;
     const bondKw = nbonds > 0 && writeBonds ? ` bond/types ${nbondTypes} extra/bond/per/atom ${extra}` : '';
     suggestion = [
       'units real',

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Copy, Download, FilePlus, FolderOpen, Pencil, Power, Save, Search, Trash2, Upload, X } from 'lucide-react';
+import { BookOpen, ChevronDown, Copy, Download, FilePlus, FolderOpen, Pencil, Power, Save, Search, Trash2, Upload, X } from 'lucide-react';
 import { getThemeTokens } from '../../../theme';
 import { getFileStore } from '../../../services/fileStore';
 import type { NotebookSession } from './useNotebookSession';
@@ -22,6 +22,7 @@ type ExportFormat = 'lmpnb' | 'lammps' | 'markdown';
 
 type Dialog =
   | { kind: 'open' }
+  | { kind: 'examples' }
   /** `back`: Rename opened from the library list, which is shown again afterwards. */
   | { kind: 'name'; mode: 'saveAs' | 'rename'; id: string | null; back?: boolean }
   | { kind: 'export' }
@@ -70,10 +71,18 @@ const isBlank = (cells: readonly Cell[]): boolean => cells.every((c) => c.text.t
 const inputsMessage = (names: readonly string[]): string =>
   `Added ${names.length} input file${names.length === 1 ? '' : 's'}: ${names.join(', ')}.`;
 
+/** An example notebook of public/notebooks/index.json. */
+interface ExampleEntry { file: string; name: string; summary: string }
+
+/** The example notebooks shipped with the site (fetched on demand, not bundled). */
+const examplesUrl = (file: string): string => `${import.meta.env.BASE_URL}notebooks/${file}`;
+
 const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputFiles, busy, onStop, runs, onStructure }) => {
   const ct = getThemeTokens(theme);
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  /** The example list: null while it loads, a message when it could not be fetched. */
+  const [examples, setExamples] = useState<ExampleEntry[] | string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -237,6 +246,32 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
     // importFile reads the session and the guard through closures; re-register when they change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, busy, inputFiles]);
+
+  const showExamples = () => {
+    setOpen(false);
+    setDialog({ kind: 'examples' });
+    if (Array.isArray(examples)) return;
+    setExamples(null);
+    fetch(examplesUrl('index.json'))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((j: { notebooks?: ExampleEntry[] }) => setExamples(Array.isArray(j.notebooks) ? j.notebooks : 'The example list is empty.'))
+      .catch((e) => setExamples(`The example list could not be loaded (${e instanceof Error ? e.message : String(e)}).`));
+  };
+
+  /** Opens an example as a new library notebook with its input files, as an imported .lmpnb file. */
+  const openExample = async (ex: ExampleEntry) => {
+    let imp: ImportResult;
+    try {
+      const r = await fetch(examplesUrl(ex.file));
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      imp = importNotebookFile(ex.file, await r.text());
+    } catch (e) {
+      setDialog({ kind: 'message', title: `Could not open ${ex.name}`, lines: [e instanceof Error ? e.message : String(e)], error: true });
+      return;
+    }
+    setDialog(null);
+    act(() => void doImport(imp));
+  };
 
   /** Imports a file picked with the Import button: parse first (a bad file never touches the notebook), then replace it as a new library notebook. */
   const importFile = async (file: File) => {
@@ -455,6 +490,34 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
             </div>
           </>
         );
+      case 'examples':
+        return (
+          <>
+            <h3 className="mb-2 text-sm font-semibold">Example notebooks</h3>
+            <p className={`mb-2 text-xs ${ct.muted}`}>
+              Each opens as a new notebook with its input files: data files, molecule templates and CIF structures, and how to load
+              them.
+            </p>
+            {examples === null && <p className={`text-xs ${ct.muted}`} role="status">Loading…</p>}
+            {typeof examples === 'string' && <p className="text-xs text-red-600" role="alert">{examples}</p>}
+            {Array.isArray(examples) && (
+              <ul className="space-y-1" aria-label="Example notebooks">
+                {examples.map((ex) => (
+                  <li key={ex.file} className={`rounded border p-2 ${ct.divider}`}>
+                    <button className="text-left text-sm font-medium underline-offset-2 hover:underline" onClick={() => void openExample(ex)}
+                      aria-label={`Open the example ${ex.name}`}>
+                      {ex.name}
+                    </button>
+                    <p className={`mt-0.5 text-[11px] ${ct.muted}`}>{ex.summary}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-3 flex justify-end">
+              <button className={`${btn} ${ct.button}`} onClick={closeDialog}>Close</button>
+            </div>
+          </>
+        );
       case 'name': {
         const rename = dialog.mode === 'rename';
         return (
@@ -590,7 +653,7 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
   const dialogNode = dialog && typeof document !== 'undefined' ? createPortal(
     <div className="fixed inset-0 z-40 bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget && dialog.kind !== 'unsaved') closeDialog(); }}
       onKeyDown={(e) => { if (e.key === 'Escape' && dialog.kind !== 'unsaved') closeDialog(); }}>
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" data-nb-dialog="" aria-label={dialog.kind === 'open' ? 'Open a notebook' : 'Notebook dialog'}
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" data-nb-dialog="" aria-label={dialog.kind === 'open' ? 'Open a notebook' : dialog.kind === 'examples' ? 'Example notebooks' : 'Notebook dialog'}
         className={`${dialogCls} outline-none`} onMouseDown={(e) => e.stopPropagation()} onKeyDown={trapTab}>
         {dialog.kind === 'name' && (
           <button className="absolute right-2 top-2 rounded p-1" aria-label="Close" onClick={closeDialog}><X size={14} aria-hidden="true" /></button>
@@ -645,6 +708,9 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
           </button>
           <button role="menuitem" className={itemCls} onClick={() => { setOpen(false); setDialog({ kind: 'open' }); }}>
             <FolderOpen size={13} aria-hidden="true" />Open… <span className={`ml-auto text-[10px] ${ct.muted}`}>Ctrl+O</span>
+          </button>
+          <button role="menuitem" className={itemCls} onClick={showExamples}>
+            <BookOpen size={13} aria-hidden="true" />Open an example…
           </button>
           <button role="menuitem" className={itemCls} onClick={() => void doSave()}>
             <Save size={13} aria-hidden="true" />Save <span className={`ml-auto text-[10px] ${ct.muted}`}>Ctrl+S</span>

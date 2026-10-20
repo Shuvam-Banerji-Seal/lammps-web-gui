@@ -1,0 +1,37 @@
+{
+ "format": "lammps-web-notebook",
+ "version": 1,
+ "name": "CO2 from a molecule template (TraPPE, rigid)",
+ "created": "2026-10-20T00:00:00.000Z",
+ "modified": "2026-10-20T00:00:00.000Z",
+ "cells": [
+  {
+   "id": "c1",
+   "kind": "markdown",
+   "text": "# Filling a box with molecules from a molecule template\n\nA **molecule template** (`co2_trappe.mol`, in *Input files*) describes one molecule: its atoms (`Coords`, `Types`,\n`Charges`) and its topology (`Bonds`, `Angles`). The `molecule` command reads it, and `create_atoms ... mol` puts\ncopies into the box: here 200 molecules at random positions and orientations, each kept at least 3 \u00c5 from the others\n(`overlap 3.0`). The molecule's bonds and angles need room in the box, so `create_box` reserves it\n(`bond/types`, `extra/bond/per/atom`, ...).\n\n**Your own molecule:** write a template by hand, or open a PDB, XYZ or CIF file with **Import structure\u2026**: the dialog\nconverts it into a molecule template (*Output: Molecule template (molecule)*) and suggests the `molecule` and\n`create_atoms` lines."
+  },
+  {
+   "id": "c2",
+   "kind": "code",
+   "text": "units           real\natom_style      full\nboundary        p p p\nregion          box block 0 40 0 40 0 40\ncreate_box      2 box bond/types 1 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 2\nmass            1 12.011\nmass            2 15.999\nmolecule        co2 co2_trappe.mol\ncreate_atoms    0 random 200 37284 NULL mol co2 68213 overlap 3.0 maxtry 100"
+  },
+  {
+   "id": "c3",
+   "kind": "markdown",
+   "text": "## TraPPE CO2\n\nLennard-Jones sites on every atom (C: \u03b5/k = 27 K, \u03c3 = 2.80 \u00c5; O: \u03b5/k = 79 K, \u03c3 = 3.05 \u00c5, Lorentz-Berthelot mixing),\ncharges +0.70 e and -0.35 e, and a rigid linear molecule. `bond_style zero` and `angle_style zero` keep the topology\nwithout forces, `special_bonds 0 0 0` removes the interactions inside a molecule, and `fix rigid/small molecule`\nmoves each molecule as a rigid body. At 300 K and 0.23 g/cm\u00b3 this is supercritical CO2."
+  },
+  {
+   "id": "c4",
+   "kind": "code",
+   "text": "pair_style      lj/cut/coul/long 12.0\npair_modify     mix arithmetic tail yes\nkspace_style    pppm 1.0e-4\npair_coeff      1 1 0.053654 2.80\npair_coeff      2 2 0.156989 3.05\nbond_style      zero\nbond_coeff      1 1.16\nangle_style     zero\nangle_coeff     1 180.0\nspecial_bonds   lj/coul 0.0 0.0 0.0"
+  },
+  {
+   "id": "c5",
+   "kind": "code",
+   "text": "velocity        all create 300.0 87287 mom yes rot yes dist gaussian\nfix             co2 all rigid/small molecule langevin 300.0 300.0 100.0 28473\ntimestep        2.0\nthermo_style    custom step temp pe press density\nthermo          100\nrun             1000"
+  }
+ ],
+ "inputFiles": {
+  "co2_trappe.mol": "# CO2, TraPPE model (Potoff and Siepmann, AIChE J. 47, 1676 (2001)): rigid and linear, C=O 1.16 A,\n# charges C +0.70 e and O -0.35 e. The bonds and the angle only record the topology (bond_style zero,\n# angle_style zero); the molecule is kept rigid by fix rigid/small.\n\n3 atoms\n2 bonds\n1 angles\n\nCoords\n\n1    0.00   0.00   0.00\n2   -1.16   0.00   0.00\n3    1.16   0.00   0.00\n\nTypes\n\n1    1\n2    2\n3    2\n\nCharges\n\n1    0.70\n2   -0.35\n3   -0.35\n\nBonds\n\n1    1    1    2\n2    1    1    3\n\nAngles\n\n1    1    2    1    3\n"
+ }
+}

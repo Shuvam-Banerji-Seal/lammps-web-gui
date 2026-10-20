@@ -60,6 +60,8 @@ export interface MoleculeData {
   center: { x: number; y: number; z: number };
   /** Simulation box parsed from LAMMPS box bounds / PDB CRYST1 / CIF cell. Optional for backward compat. */
   box?: BoxBounds;
+  /** True when `bonds` were guessed from distances by the parser (CIF, XYZ, dump), not read from the file. */
+  bondsInferred?: boolean;
   /** All frames of a trajectory (XYZ). Absent/length-1 for static structures. */
   frames?: TrajectoryFrame[];
 }

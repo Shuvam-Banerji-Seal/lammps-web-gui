@@ -1,0 +1,32 @@
+# SPC/E water (Berendsen, Grigera and Straatsma, J. Phys. Chem. 91, 6269 (1987)): O-H 1.0 A, H-O-H 109.47 deg
+
+3 atoms
+2 bonds
+1 angles
+
+Coords
+
+1    0.000000   0.000000   0.000000
+2    0.816497   0.577350   0.000000
+3   -0.816497   0.577350   0.000000
+
+Types
+
+1    1
+2    2
+3    2
+
+Charges
+
+1   -0.8476
+2    0.4238
+3    0.4238
+
+Bonds
+
+1    1    1    2
+2    1    1    3
+
+Angles
+
+1    1    2    1    3

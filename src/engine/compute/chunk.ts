@@ -1,16 +1,17 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
+import { parseInt_, parseNum } from '../force/util';
 import type { System } from '../system';
 import { massOf } from '../atoms';
 import { parseRef, peratomValues, type Ref } from '../refs';
 
 /*
  * compute chunk/atom, com/chunk and msd/chunk — implemented from the cited
- * docs.lammps.org pages only (never from LAMMPS source). Quotations below are
- * copied character for character from plans/lammps-docs/compute_chunk_atom.rst,
- * compute_com_chunk.rst and compute_msd_chunk.rst. Behaviour the pages leave
- * open was measured with native LAMMPS (black box; probes under /tmp/haiku-chunk).
+ * docs.lammps.org pages. Quotations below are copied character for character
+ * from plans/lammps-docs/compute_chunk_atom.rst, compute_com_chunk.rst and
+ * compute_msd_chunk.rst. Behaviour the pages leave open was measured with
+ * native LAMMPS (black box; probes under /tmp/haiku-chunk) or checked against
+ * its source where cited.
  *
  * compute chunk/atom — docs.lammps.org/compute_chunk_atom.html:
  *   "Define a computation that calculates an integer chunk ID from 1 to
@@ -18,11 +19,11 @@ import { parseRef, peratomValues, type Ref } from '../refs';
  *   "Chunk IDs range from 1 to *Nchunk* inclusive; some chunks may have no
  *   atoms assigned to them. Atoms that do not belong to any chunk are assigned
  *   a value of 0."
- * Styles: bin/1d, bin/2d, bin/3d, type, molecule, c_ID, c_ID[I], f_ID,
- * f_ID[I], v_name. bin/sphere and bin/cylinder throw a StyleError.
+ * Styles: bin/1d, bin/2d, bin/3d, bin/sphere, bin/cylinder, type, molecule,
+ * c_ID, c_ID[I], f_ID, f_ID[I], v_name.
  * Keywords: region, nchunk, limit, ids (once|every), compress, discard,
- * bound, pbc (only no: "The *pbc* keyword only applies to the *bin/sphere*
- * and *bin/cylinder* styles."), units.
+ * bound, pbc ("The *pbc* keyword only applies to the *bin/sphere* and
+ * *bin/cylinder* styles."), units.
  *
  * Measured with native LAMMPS (black box): with box 0..10 and bin/1d delta 3,
  * origin lower gives 4 bins [0,3) .. [9,12); origin center (5) gives bins
@@ -63,6 +64,59 @@ interface DimGeom {
   boxL: number;
 }
 
+/*
+ * bin/sphere and bin/cylinder — docs.lammps.org/compute_chunk_atom.html:
+ *   "*bin/sphere* args = xorig yorig zorig rmin rmax nsbin"
+ *   "*bin/cylinder* args = dim origin delta c1 c2 rmin rmax ncbin"
+ *   "The *bin/sphere* style defines a set of spherical shell bins around
+ *   the origin (\ *xorig*,\ *yorig*,\ *zorig*\ ), using *nsbin* bins with radii
+ *   equally spaced between *srmin* and *srmax*\ ."
+ *   "For *bin/cylinder*, the numbering varies faster in the dimension
+ *   along the cylinder axis and slower in the radial direction."
+ *   "If the distance of the atom from the origin is less than *rmin*, it will
+ *   be assigned to the first bin.  If the distance of the atom from the origin
+ *   is greater than *rmax*, it will be assigned to the last bin."
+ *   "Note that for the *bin/sphere* style, the radii *srmin* and *srmax* are
+ *   scaled by the lattice spacing or reduced value of the *x* dimension."
+ *   "Note that for the *bin/cylinder* style, the radii *crmin* and *crmax*
+ *   are scaled by the lattice spacing or reduced value of the first
+ *   dimension perpendicular to the cylinder axis"
+ * As native LAMMPS does (src/compute_chunk_atom.cpp at b332f28): a reduced
+ * centre is taken to box coordinates (x = h lamda + lo) and the reduced radii
+ * are multiplied by the box length of that first radial dimension; an atom's
+ * coordinates are wrapped into the periodic box before its distance is taken
+ * (repeatedly for a sphere, once for a cylinder), and pbc yes folds each
+ * periodic component of the distance in the same way; bin = trunc((r - rmin)
+ * nbin / (rmax - rmin)), one lower below rmin; the coordinate of a radial bin
+ * is the midpoint of its radii, in box units; the density volume of a sphere
+ * shell is 4/3 pi (rhi^3 - rlo^3), and of a cylinder bin pi (rhi^2 - rlo^2)
+ * times the axial bin width. With pbc yes the sphere's rmax must be at most
+ * half of each periodic box length ("Compute chunk/atom bin/sphere radius is
+ * too large for periodic box"). Measured with native LAMMPS: bin/cylinder with
+ * pbc yes and an outer radius above half the box runs without that error.
+ */
+interface RadialSpec {
+  shape: 'sphere' | 'cylinder';
+  /** Sphere centre, or the cylinder axis position in its radial dimensions (the axis entry is 0). */
+  origin: [number, number, number];
+  rmin: number;
+  rmax: number;
+  nbin: number;
+  /** Dimensions the distance is taken in: x y z for a sphere, the two others than the axis for a cylinder. */
+  rdims: number[];
+}
+
+/** Radial bins in box units, set up from the box at chunk setup. */
+interface RadialGeom {
+  origin: number[];
+  rmin: number;
+  rmax: number;
+  inv: number;
+}
+
+/** Logical values of the pbc keyword (utils::logical). */
+const LOGICAL: Record<string, boolean> = { yes: true, on: true, true: true, '1': true, no: false, off: false, false: false, '0': false };
+
 /** limit / compress, applied in keyword order after the raw chunk IDs are known. */
 type PostOp = { op: 'limit'; mode: 'max' | 'exact'; nc: number } | { op: 'compress' };
 
@@ -82,6 +136,10 @@ export class ComputeChunkAtom extends Compute {
   readonly style = 'chunk/atom';
   readonly kind: 'bin' | 'type' | 'molecule' | 'value';
   private readonly bins: BinSpec[];
+  /** bin/sphere and bin/cylinder (a cylinder's axis bins are bins[0]). */
+  private readonly radial: RadialSpec | null;
+  private readonly pbc: boolean;
+  private radGeo: RadialGeom | null = null;
   private readonly valueRef: Ref | null;
   private readonly regionId: string | null;
   private readonly postOps: PostOp[];
@@ -120,6 +178,8 @@ export class ComputeChunkAtom extends Compute {
     const bounds = new Map<number, { lo: 'lower' | number; hi: 'upper' | number }>();
     let regionId: string | null = null;
     let valueRef: Ref | null = null;
+    let radial: RadialSpec | null = null;
+    let pbc = false;
     let kind: 'bin' | 'type' | 'molecule' | 'value';
 
     if (style === 'bin/1d' || style === 'bin/2d' || style === 'bin/3d') {
@@ -131,8 +191,38 @@ export class ComputeChunkAtom extends Compute {
         k = next;
       }
       discard = 'mixed';
-    } else if (style === 'bin/sphere' || style === 'bin/cylinder') {
-      throw new StyleError(`compute chunk/atom style ${style} is not supported by the engine yet`);
+    } else if (style === 'bin/sphere') {
+      kind = 'bin';
+      if (k + 6 > args.length) throw new StyleError(`${what}: bin/sphere needs xorig yorig zorig rmin rmax nsbin`);
+      const o = [0, 1, 2].map((d) => parseNum(args[k + d], `${what}: bin/sphere origin`));
+      radial = {
+        shape: 'sphere', origin: [o[0], o[1], o[2]],
+        rmin: parseNum(args[k + 3], `${what}: bin/sphere rmin`),
+        rmax: parseNum(args[k + 4], `${what}: bin/sphere rmax`),
+        nbin: parseInt_(args[k + 5], `${what}: bin/sphere nsbin`),
+        rdims: [0, 1, 2],
+      };
+      k += 6;
+      discard = 'mixed';
+    } else if (style === 'bin/cylinder') {
+      kind = 'bin';
+      const { spec, next } = parseBinTriple(args, k, what);
+      bins.push(spec);
+      k = next;
+      if (k + 5 > args.length) throw new StyleError(`${what}: bin/cylinder needs dim origin delta c1 c2 rmin rmax ncbin`);
+      const rdims = [0, 1, 2].filter((d) => d !== spec.dim);
+      const origin: [number, number, number] = [0, 0, 0];
+      origin[rdims[0]] = parseNum(args[k], `${what}: bin/cylinder c1`);
+      origin[rdims[1]] = parseNum(args[k + 1], `${what}: bin/cylinder c2`);
+      radial = {
+        shape: 'cylinder', origin,
+        rmin: parseNum(args[k + 2], `${what}: bin/cylinder rmin`),
+        rmax: parseNum(args[k + 3], `${what}: bin/cylinder rmax`),
+        nbin: parseInt_(args[k + 4], `${what}: bin/cylinder ncbin`),
+        rdims,
+      };
+      k += 5;
+      discard = 'mixed';
     } else if (style === 'type') {
       kind = 'type';
     } else if (style === 'molecule') {
@@ -209,8 +299,8 @@ export class ComputeChunkAtom extends Compute {
         }
         case 'pbc': {
           const v = need(1)[0];
-          if (v === 'yes') throw new StyleError(`${what}: pbc yes applies only to bin/sphere and bin/cylinder, which are not supported`);
-          if (v !== 'no') throw new StyleError(`${what}: pbc must be yes or no, got '${v}'`);
+          if (!(v in LOGICAL)) throw new StyleError(`${what}: pbc must be yes or no, got '${v}'`);
+          pbc = LOGICAL[v];
           k += 2;
           break;
         }
@@ -228,6 +318,9 @@ export class ComputeChunkAtom extends Compute {
     if (kind! === 'bin') {
       for (const [d, b] of bounds) {
         const s = bins.find((x) => x.dim === d);
+        // docs: "The *bound* keyword only applies to the *bin/1d*, *bin/2d*, *bin/3d* styles and to the
+        // axis dimension of the *bin/cylinder* style; otherwise it is ignored."
+        if (!s && radial) continue;
         if (!s) throw new StyleError(`${what}: bound given for a dimension with no bins`);
         s.lo = b.lo;
         s.hi = b.hi;
@@ -235,7 +328,34 @@ export class ComputeChunkAtom extends Compute {
     } else if (bounds.size) {
       throw new StyleError(`${what}: the bound keyword only applies to the binning styles`);
     }
+    if (radial) {
+      // As native LAMMPS does (src/compute_chunk_atom.cpp at b332f28), with its error texts
+      if (radial.shape === 'sphere' && sys.dimension === 2 && radial.origin[2] !== 0) {
+        throw new StyleError('Compute chunk/atom sphere z origin must be 0.0 for 2d');
+      }
+      if (radial.shape === 'cylinder' && sys.dimension === 2 && bins[0].dim !== 2) {
+        throw new StyleError('Compute chunk/atom cylinder axis must be z for 2d');
+      }
+      if (radial.rmin < 0 || radial.rmin >= radial.rmax || radial.nbin < 1) {
+        throw new StyleError(`Illegal compute chunk/atom ${style} command`);
+      }
+      // the lattice spacings apply once, here: the centre per dimension, the radii by x. Measured with native
+      // LAMMPS: bin/cylinder takes c1, c2 and its radii as box units with units lattice (the lattice scaling
+      // of src/compute_chunk_atom.cpp at b332f28 never reaches its cylinder branch); its axis bins are scaled.
+      if (units === 'lattice' && radial.shape === 'sphere') {
+        const sp = sys.lattice?.spacing ?? [1, 1, 1];
+        for (const d of radial.rdims) radial.origin[d] *= sp[d];
+        radial.rmin *= sp[radial.rdims[0]];
+        radial.rmax *= sp[radial.rdims[0]];
+      }
+    }
+    // docs: "For non-orthogonal (triclinic) simulation boxes, only the *reduced* option may be used."
+    if (kind! === 'bin' && sys.state.box.triclinic && units !== 'reduced') {
+      throw new StyleError('Compute chunk/atom for triclinic boxes requires units reduced');
+    }
     this.bins = bins;
+    this.radial = radial;
+    this.pbc = pbc;
     this.valueRef = valueRef;
     this.regionId = regionId;
     this.postOps = ops;
@@ -244,9 +364,10 @@ export class ComputeChunkAtom extends Compute {
     this.discard = discard;
     this.units = units;
     this.kind = kind!;
-    // docs defaults: nchunk = once for type; for mol style if region is none
-    const defaultOnce = kind! === 'type' || (kind! === 'molecule' && regionId === null);
-    this.held = nchunkMode === 'once' || (nchunkMode === null && defaultOnce);
+    // docs defaults: "nchunk = every, if compress is yes, overriding other defaults listed here";
+    // once for type; for mol style if region is none; for binning style if ... units = reduced
+    const defaultOnce = kind! === 'type' || (kind! === 'molecule' && regionId === null) || (kind! === 'bin' && units === 'reduced');
+    this.held = nchunkMode === 'once' || (nchunkMode === null && !compress && defaultOnce);
     this.scalarFlag = true;
     this.peratomFlag = true;
   }
@@ -260,9 +381,10 @@ export class ComputeChunkAtom extends Compute {
     this.lastEpoch = -1;
   }
 
-  /** Number of bin dimensions (0 for the non-binning styles). */
+  /** Number of coordinates per chunk: the bin dimensions, 1 for bin/sphere, 2 for bin/cylinder (0 for the non-binning styles). */
   get binDims(): number {
-    return this.kind === 'bin' ? this.bins.length : 0;
+    if (this.kind !== 'bin') return 0;
+    return this.radial ? (this.radial.shape === 'sphere' ? 1 : 2) : this.bins.length;
   }
 
   /** Recomputes chunk IDs when the state changed (computed once for ids once). */
@@ -288,10 +410,12 @@ export class ComputeChunkAtom extends Compute {
       const sHi = reduced ? 1 : s.box.hi[d];
       const f = this.units === 'lattice' ? (this.sys.lattice?.spacing[d] ?? 1) : 1;
       const num = (v: number) => (reduced ? v : v * f);
-      const origin = spec.origin === 'lower' ? sLo : spec.origin === 'upper' ? sHi : spec.origin === 'center' ? (sLo + sHi) / 2 : num(spec.origin);
       const delta = num(spec.delta);
       const loB = spec.lo === 'lower' ? sLo : num(spec.lo);
       const hiB = spec.hi === 'upper' ? sHi : num(spec.hi);
+      // As native LAMMPS does (src/compute_chunk_atom.cpp at b332f28): lower, center and upper are taken
+      // from the bin bounds, which are the box faces unless the bound keyword sets them.
+      const origin = spec.origin === 'lower' ? loB : spec.origin === 'upper' ? hiB : spec.origin === 'center' ? 0.5 * (loB + hiB) : num(spec.origin);
       const kmin = this.heldKmin ? this.heldKmin[j] : Math.floor((loB - origin) / delta);
       const kmax = this.heldKmax ? this.heldKmax[j] : Math.ceil((hiB - origin) / delta) - 1;
       if (kmax < kmin) throw new StyleError(`compute ${this.id} (chunk/atom): no bins in dimension ${'xyz'[d]}`);
@@ -304,13 +428,104 @@ export class ComputeChunkAtom extends Compute {
     });
   }
 
+  /** The radial bins in box units: set up again at each chunk setup (refresh) unless Nchunk is held. */
+  private radialGeom(refresh = false): RadialGeom {
+    if (this.radGeo && !(refresh && !this.held)) return this.radGeo;
+    const r = this.radial!;
+    const b = this.sys.state.box;
+    let origin: number[];
+    let rmin = r.rmin;
+    let rmax = r.rmax;
+    if (this.units === 'reduced') {
+      const l = r.origin;
+      const [xy, xz, yz] = b.tilt;
+      const lx = b.hi[0] - b.lo[0], ly = b.hi[1] - b.lo[1], lz = b.hi[2] - b.lo[2];
+      // x = h lamda + lo, summed in this order
+      origin = [lx * l[0] + xy * l[1] + xz * l[2] + b.lo[0], ly * l[1] + yz * l[2] + b.lo[1], lz * l[2] + b.lo[2]];
+      const L = b.hi[r.rdims[0]] - b.lo[r.rdims[0]];
+      rmin *= L;
+      rmax *= L;
+    } else {
+      origin = [...r.origin];
+    }
+    if (this.pbc && r.shape === 'sphere') {
+      for (let d = 0; d < this.sys.dimension; d++) {
+        if (b.periodic[d] && rmax > 0.5 * (b.hi[d] - b.lo[d])) {
+          throw new StyleError('Compute chunk/atom bin/sphere radius is too large for periodic box');
+        }
+      }
+    }
+    this.radGeo = { origin, rmin, rmax, inv: r.nbin / (rmax - rmin) };
+    return this.radGeo;
+  }
+
+  /** Inner and outer radius of radial bin i (0-based); the last bin ends at rmax exactly. */
+  private radialEdges(i: number): [number, number] {
+    const r = this.radial!;
+    const g = this.radialGeom();
+    const rlo = g.rmin + (i * (g.rmax - g.rmin)) / r.nbin;
+    const rhi = i === r.nbin - 1 ? g.rmax : g.rmin + ((i + 1) * (g.rmax - g.rmin)) / r.nbin;
+    return [rlo, rhi];
+  }
+
+  /** Radial bin (0-based) of atom i, or -1 when discard yes drops it. */
+  private radialBin(x: Float64Array, i: number, g: RadialGeom): number {
+    const r = this.radial!;
+    const b = this.sys.state.box;
+    const sphere = r.shape === 'sphere';
+    let sum = 0;
+    for (const d of r.rdims) {
+      const lo = b.lo[d], hi = b.hi[d], prd = hi - lo;
+      let v = x[3 * i + d];
+      if (b.periodic[d]) {
+        if (sphere) {
+          while (v < lo) v += prd;
+          while (v >= hi) v -= prd;
+        } else {
+          if (v < lo) v += prd;
+          if (v >= hi) v -= prd;
+        }
+      }
+      let dd = v - g.origin[d];
+      if (this.pbc && b.periodic[d]) {
+        const half = 0.5 * prd;
+        if (sphere) while (Math.abs(dd) > half) dd += dd < 0 ? prd : -prd;
+        else if (Math.abs(dd) > half) dd += dd < 0 ? prd : -prd;
+      }
+      sum += dd * dd;
+    }
+    const rad = Math.sqrt(sum);
+    let ib = Math.trunc((rad - g.rmin) * g.inv);
+    if (rad < g.rmin) ib--;
+    if (this.discard === 'yes') return ib < 0 || ib >= r.nbin ? -1 : ib;
+    return Math.min(Math.max(ib, 0), r.nbin - 1);
+  }
+
   /** Coordinates of chunk c (1-based): bin centres in box units (box, lattice) or reduced units. */
   coordsOf(c: number): number[] {
+    return this.coordsOfBin(this.origIds ? this.origIds[c - 1] : c);
+  }
+
+  /**
+   * Coordinates of bin b (1-based, before compression). A radial bin's coordinate is the
+   * midpoint of its radii in box units; a cylinder bin has that and its axial bin centre.
+   */
+  coordsOfBin(b: number): number[] {
     if (this.kind !== 'bin') return [];
     const geo = this.binGeom();
+    if (this.radial) {
+      const mid = (i: number) => {
+        const [lo, hi] = this.radialEdges(i);
+        return 0.5 * (lo + hi);
+      };
+      if (this.radial.shape === 'sphere') return [mid(b - 1)];
+      const g = geo[0];
+      const nplane = g.kmax - g.kmin + 1;
+      return [mid(Math.floor((b - 1) / nplane)), g.origin + (g.kmin + ((b - 1) % nplane) + 0.5) * g.delta];
+    }
     const nb = geo.map((g) => g.kmax - g.kmin + 1);
     const idx = new Array<number>(nb.length).fill(0);
-    let rem = (this.origIds ? this.origIds[c - 1] : c) - 1;
+    let rem = b - 1;
     for (let d = nb.length - 1; d >= 0; d--) {
       idx[d] = rem % nb[d];
       rem = Math.floor(rem / nb[d]);
@@ -321,6 +536,31 @@ export class ComputeChunkAtom extends Compute {
   /** Original (pre-compression) chunk value of chunk c, or c itself without compress. */
   origOf(c: number): number {
     return this.origIds ? this.origIds[c - 1] : c;
+  }
+
+  /**
+   * Density volume of chunk m (0-based): the same for all xyz bins, per bin for the radial styles.
+   * As native LAMMPS does (src/fix_ave_chunk.cpp at b332f28), with compress yes the radial
+   * volumes are still taken by the compressed chunk index.
+   */
+  chunkVolumes(): (m: number) => number {
+    if (!this.radial) {
+      const v = this.binVolume();
+      return () => v;
+    }
+    if (this.radial.shape === 'sphere') {
+      return (m) => {
+        const [rlo, rhi] = this.radialEdges(m);
+        return 4.0 / 3.0 * Math.PI * rhi * rhi * rhi - 4.0 / 3.0 * Math.PI * rlo * rlo * rlo;
+      };
+    }
+    const g = this.binGeom()[0];
+    const nplane = g.kmax - g.kmin + 1;
+    const slab = (g.boxL * g.delta) / (this.units === 'reduced' ? 1 : g.boxL);
+    return (m) => {
+      const [rlo, rhi] = this.radialEdges(Math.floor(m / nplane));
+      return (Math.PI * rhi * rhi - Math.PI * rlo * rlo) * slab;
+    };
   }
 
   /** Volume of one bin for density values: bin widths times the box in the other dimensions. */
@@ -356,17 +596,20 @@ export class ComputeChunkAtom extends Compute {
       }
       const geo = this.binGeom();
       const nb = geo.map((g) => g.kmax - g.kmin + 1);
-      nch = nb.reduce((a, b) => a * b, 1);
+      const rad = this.radial;
+      const rg = rad ? this.radialGeom(true) : null;
+      nch = nb.reduce((a, b) => a * b, 1) * (rad ? rad.nbin : 1);
       const idx = new Array<number>(geo.length);
       const reduced = this.units === 'reduced';
+      const lam = [0, 0, 0];
       for (let i = 0; i < n; i++) {
         raw[i] = 0;
         if (!sel(i)) continue;
+        if (reduced) sys.geom.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
         let inside = true;
         for (let j = 0; j < geo.length && inside; j++) {
           const g = geo[j];
-          let v = s.x[3 * i + this.bins[j].dim];
-          if (reduced) v = (v - g.boxLo) / g.boxL;
+          let v = reduced ? lam[this.bins[j].dim] : s.x[3 * i + this.bins[j].dim];
           if (g.periodic) {
             const m = g.sHi - g.sLo;
             v = g.sLo + ((((v - g.sLo) % m) + m) % m);
@@ -384,6 +627,12 @@ export class ComputeChunkAtom extends Compute {
         if (!inside) continue;
         let r = 0;
         for (let j = 0; j < geo.length; j++) r = r * nb[j] + idx[j];
+        if (rad) {
+          // the axial bin varies fastest: radial bin times the number of axial bins plus the axial bin
+          const rb = this.radialBin(s.x, i, rg!);
+          if (rb < 0) continue;
+          r += rb * (rad.shape === 'sphere' ? 1 : nb[0]);
+        }
         raw[i] = r + 1;
       }
     } else if (this.kind === 'type') {

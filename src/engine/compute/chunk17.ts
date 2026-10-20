@@ -827,11 +827,11 @@ export class ComputePropertyChunk extends Compute {
       if (!origIds) throw new StyleError(`compute ${this.id} (property/chunk): attribute id needs compress yes in compute ${this.chunk.id}`);
       for (let c = 0; c < mem.N; c++) out[K * c + k] = origIds[c];
     });
-    // coordN: the bin centre of each chunk (compute chunk/atom coord array; row c is chunk c + 1)
+    // coordN: the centre of bin c + 1 (compute chunk/atom coord array, row c; with compress yes too)
     this.attrs.forEach((a, k) => {
       const m = /^coord([123])$/.exec(a);
       if (!m) return;
-      for (let c = 0; c < mem.N; c++) out[K * c + k] = this.chunk.coordsOf(c + 1)[Number(m[1]) - 1];
+      for (let c = 0; c < mem.N; c++) out[K * c + k] = this.chunk.coordsOfBin(c + 1)[Number(m[1]) - 1];
     });
     for (let j = 0; j < mem.n; j++) {
       const c = mem.chunk[j];

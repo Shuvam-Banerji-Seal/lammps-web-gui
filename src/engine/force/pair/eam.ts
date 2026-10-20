@@ -158,24 +158,24 @@ class Spline {
     }
   }
 
-  /** Interval index and local coordinate p in [0, 1]. */
-  private at(x: number): [number, number] {
+  // the interval index k and the local coordinate p in [0, 1], written inline in eval and deriv (no array per call)
+  eval(x: number): number {
     let p = x / this.dx;
     let k = Math.floor(p);
     if (k < 0) k = 0;
     else if (k > this.n - 2) k = this.n - 2;
     p -= k;
     if (p > 1) p = 1;
-    return [k, p];
-  }
-
-  eval(x: number): number {
-    const [k, p] = this.at(x);
     return ((this.c3[k] * p + this.c2[k]) * p + this.s[k]) * p + this.y[k];
   }
 
   deriv(x: number): number {
-    const [k, p] = this.at(x);
+    let p = x / this.dx;
+    let k = Math.floor(p);
+    if (k < 0) k = 0;
+    else if (k > this.n - 2) k = this.n - 2;
+    p -= k;
+    if (p > 1) p = 1;
     return ((3 * this.c3[k] * p + 2 * this.c2[k]) * p + this.s[k]) / this.dx;
   }
 

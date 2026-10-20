@@ -2,8 +2,10 @@
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/SPIN/neb_spin.cpp and src/SPIN/neb_spin.h
  * (NEBSpin, the neb/spin command: the file-style initial spins with Rodrigues' rotation between the end states,
  * the regular and climbing stages, and the print_status table), with the iteration of src/SPIN/min_spin.cpp
- * (MinSpin::iterate, evaluate_dt, advance_spins) run for every replica in lockstep. Contributing author (from
- * neb_spin.cpp): Julien Tranchida (SNL). LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU
+ * (MinSpin::iterate, evaluate_dt, advance_spins), src/SPIN/min_spin_cg.cpp (MinSpinCG::iterate, calc_gradient,
+ * calc_search_direction, evaluate_dt) and src/SPIN/min_spin_lbfgs.cpp (MinSpinLBFGS::iterate, calc_gradient,
+ * calc_search_direction, maximum_rotation) run for every replica in lockstep. Contributing authors (from neb_spin.cpp
+ * and min_spin_cg.cpp / min_spin_lbfgs.cpp): Julien Tranchida (SNL), Aleksei Ivanov (University of Iceland). LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU
  * General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * Quotes, docs.lammps.org/neb_spin.html: "Perform a geodesic nudged elastic band (GNEB) calculation using multiple
@@ -13,10 +15,12 @@
  * timestep (min_spin.cpp evaluate_dt takes the largest precession frequency over all replicas), then evaluates every
  * replica's forces and energies, then applies the nudging of every replica.
  *
- * Supported: file-style final, each and none; the verbose keyword (the extra per-replica columns); min_style spin;
- * fix neb/spin with its kspring. Refused with a StyleError: min_style spin/cg and spin/lbfgs (native accepts them, with
- * the multireplica branches of min_spin_cg.cpp and min_spin_lbfgs.cpp, which are not ported here), any other
- * minimizer, atoms without spins, units other than metal, a single replica, and other trailing words.
+ * Supported: file-style final, each and none; the verbose keyword (the extra per-replica columns); min_style spin and
+ * spin/cg (its multireplica branch: the end replicas keep their spins, the sums of the conjugate direction run over all
+ * replicas, and the timestep follows the largest torque of all replicas; with several replicas native never uses its
+ * line search); fix neb/spin with its kspring. Refused with a StyleError: min_style spin/lbfgs (its multireplica
+ * iteration is written below but does not yet match native, see the check), any other minimizer, atoms without spins,
+ * units other than metal, a single replica, and other trailing words.
  */
 import type { NebHost } from '../../engine/commands/neb';
 import { num, int, type RunApi } from '../../engine/commands/args';
@@ -25,6 +29,7 @@ import type { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { FixNEBSpin, type NebSpinRound } from './fix_neb_spin';
 import { advanceSpins, minSpinTorqueNorm, spinMinSettings } from './min_spin';
+import { rodrigues, applyRot } from './min_spin_cg';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { acos as libmAcos } from '../libm/acos';
 
@@ -184,10 +189,15 @@ export const runNebSpin = async (host: NebHost, run: Pick<RunApi, 'ensureThermoC
     if (!sys.hasBox) throw new StyleError('NEBSpin command before simulation box is defined');
     if (!sys.state.sp || !sys.state.fm) throw new StyleError('neb/spin requires atom/spin style');
     if (sys.units.style !== 'metal') throw new StyleError('neb/spin simulation requires metal unit style');
-    if (sys.minStyle === 'spin/cg' || sys.minStyle === 'spin/lbfgs') {
-      throw new StyleError(`neb/spin with min_style ${sys.minStyle} is not supported by the browser engine yet (its multi-replica iteration is not ported); use min_style spin`);
+    // neb_spin.cpp: a line-search minimizer, then a minimizer whose style does not start with spin, are refused
+    if (sys.minStyle === 'cg' || sys.minStyle === 'sd' || sys.minStyle === 'hftn') throw new StyleError('NEBSpin requires damped dynamics minimizer');
+    if (sys.minStyle !== 'spin' && sys.minStyle !== 'spin/cg' && sys.minStyle !== 'spin/lbfgs') throw new StyleError('NEBSpin requires a spin minimizer');
+    // the multireplica L-BFGS below follows min_spin_lbfgs.cpp, but on tests/oracle/w194gneb_chain.in it leaves native's
+    // table from iteration 59 on (1.4e-7 in RD2, 1e-4 by iteration 120), which neither the replica sum order nor rounding
+    // explains (measured with native LAMMPS); until that is found, it is refused by name
+    if (sys.minStyle === 'spin/lbfgs') {
+      throw new StyleError('neb/spin with min_style spin/lbfgs is not supported by the browser engine yet (its multi-replica iteration does not yet match native LAMMPS); use min_style spin or spin/cg');
     }
-    if (sys.minStyle !== 'spin') throw new StyleError(`NEBSpin requires a spin minimizer (min_style spin); min_style is ${sys.minStyle}`);
     const nebs = sys.fixes.filter((f): f is FixNEBSpin => f instanceof FixNEBSpin);
     if (nebs.length !== 1) throw new StyleError('NEBSpin requires use of exactly one fix neb/spin instance');
     fixes.push(nebs[0]);
@@ -336,30 +346,187 @@ export const runNebSpin = async (host: NebHost, run: Pick<RunApi, 'ensureThermoC
 
   const header = (): void => host.emit({ kind: 'thermo-header', keywords: cols, labels: cols, units });
 
-  /** The minimizer of one stage (MinSpin::iterate with the multireplica tests): stops on the energy or torque criteria. */
+  /**
+   * The minimizer of one stage (the multireplica branches of MinSpin, MinSpinCG and MinSpinLBFGS::iterate): stops on the
+   * energy or torque criteria, which every replica must meet.
+   */
   let niter = 0;
   let lastNegative = 0;
+  const minStyle = reps[0].minStyle;
+  const n = reps[0].state.n;
+  const len = 3 * n;
+  /** the end replicas keep their spins: their search direction is multiplied by 0 (calc_search_direction) */
+  const keep = reps.map((_, r) => (r === 0 || r === nRep - 1 ? 0.0 : 1.0));
+  const gCur = reps.map(() => new Float64Array(len));
+  const gOld = reps.map(() => new Float64Array(len));
+  const pS = reps.map(() => new Float64Array(len));
+  /** min_spin_lbfgs.cpp: num_mem = 3 and the memory of each replica */
+  const NUM_MEM = 3;
+  const ds = reps.map(() => Array.from({ length: NUM_MEM }, () => new Float64Array(len)));
+  const dy = reps.map(() => Array.from({ length: NUM_MEM }, () => new Float64Array(len)));
+  const rho = new Float64Array(NUM_MEM);
+  const hbar = reps[0].state.units.hplanck / (2 * Math.PI);
+  // min_spin_lbfgs.cpp modify_param: maxepsrot = MY_2PI / (10 * discrete_factor)
+  const maxepsrot = (2 * Math.PI) / (10 * discrete);
+  const rot = new Float64Array(9);
+  /** local_iter of MinSpinCG / MinSpinLBFGS: 0 at each stage's init, the same on every replica */
+  let localIter = 0;
+
+  /** evaluate_dt with multireplica: the spin timestep of the largest precession frequency over all replicas */
+  const evaluateDt = (): number => {
+    let fmaxsq = 0;
+    for (const sys of reps) {
+      const fm = sys.state.fm!;
+      for (let i = 0; i < sys.state.n; i++) {
+        const q = fm[3 * i] * fm[3 * i] + fm[3 * i + 1] * fm[3 * i + 1] + fm[3 * i + 2] * fm[3 * i + 2];
+        if (q > fmaxsq) fmaxsq = q;
+      }
+    }
+    if (fmaxsq === 0) throw new StyleError('Incorrect fmaxsqall calculation');
+    return (2 * Math.PI) / (discrete * Math.sqrt(fmaxsq));
+  };
+
+  /** calc_gradient of every replica: g_i = (fm_i x s_i) times factor (the timestep for spin/cg, hbar for spin/lbfgs). */
+  const calcGradient = (factor: number): void => {
+    reps.forEach((sys, r) => {
+      const fm = sys.state.fm!, sp = sys.state.sp!, g = gCur[r];
+      for (let i = 0; i < n; i++) {
+        const fx = fm[3 * i], fy = fm[3 * i + 1], fz = fm[3 * i + 2];
+        const sx = sp[4 * i], sy = sp[4 * i + 1], sz = sp[4 * i + 2];
+        g[3 * i] = (fx * sy - fy * sx) * factor;
+        g[3 * i + 1] = -(fz * sx - fx * sz) * factor;
+        g[3 * i + 2] = (fy * sz - fz * sy) * factor;
+      }
+    });
+  };
+
+  /** A sum over the replicas of each replica's value times its factor (the uworld Allreduce of the source). */
+  const replicaSum = (f: (r: number) => number): number => {
+    let t = 0;
+    for (let r = 0; r < nRep; r++) t += f(r) * keep[r];
+    return t;
+  };
+
+  /** MinSpinCG::calc_search_direction with nreplica > 1 (Fletcher-Reeves, steepest descent every fifth iteration). */
+  const cgDirection = (): void => {
+    if (localIter === 0 || localIter % 5 === 0) {
+      for (let r = 0; r < nRep; r++) {
+        for (let i = 0; i < len; i++) { pS[r][i] = -gCur[r][i] * keep[r]; gOld[r][i] = gCur[r][i] * keep[r]; }
+      }
+    } else {
+      const dot = (u: Float64Array, v: Float64Array) => { let t = 0; for (let i = 0; i < len; i++) t += u[i] * v[i]; return t; };
+      const g2 = replicaSum((r) => dot(gCur[r], gCur[r]));
+      const g2old = replicaSum((r) => dot(gOld[r], gOld[r]));
+      const beta = Math.abs(g2) < 1.0e-60 ? 0.0 : g2 / g2old;
+      for (let r = 0; r < nRep; r++) {
+        for (let i = 0; i < len; i++) { pS[r][i] = (beta * pS[r][i] - gCur[r][i]) * keep[r]; gOld[r][i] = gCur[r][i] * keep[r]; }
+      }
+    }
+    localIter++;
+  };
+
+  /** maximum_rotation with nreplica > 1: the norm and the spin count over all replicas (the end replicas included). */
+  const maximumRotation = (v: Float64Array[]): number => {
+    let norm2 = 0;
+    for (let r = 0; r < nRep; r++) { let t = 0; for (let i = 0; i < len; i++) t += v[r][i] * v[r][i]; norm2 += t; }
+    const scaling = maxepsrot * Math.sqrt((n * nRep) / norm2);
+    return scaling < 1.0 ? scaling : 1.0;
+  };
+
+  /** MinSpinLBFGS::calc_search_direction with nreplica > 1 (the two-loop recursion with sums over the replicas). */
+  const lbfgsDirection = (): void => {
+    if (localIter === 0) {
+      const scaling = maximumRotation(gCur);
+      for (let r = 0; r < nRep; r++) {
+        for (let i = 0; i < len; i++) {
+          pS[r][i] = -gCur[r][i] * keep[r] * scaling;
+          gOld[r][i] = gCur[r][i] * keep[r];
+          for (let k = 0; k < NUM_MEM; k++) { ds[r][k][i] = 0.0; dy[r][k][i] = 0.0; }
+        }
+      }
+      rho.fill(0);
+    } else {
+      const m = localIter % NUM_MEM;
+      const dyds = replicaSum((r) => {
+        let t = 0;
+        for (let i = 0; i < len; i++) {
+          ds[r][m][i] = pS[r][i];
+          dy[r][m][i] = gCur[r][i] - gOld[r][i];
+          t += ds[r][m][i] * dy[r][m][i];
+        }
+        return t;
+      });
+      rho[m] = Math.abs(dyds) > 1.0e-60 ? 1.0 / dyds : 1.0e60;
+      if (rho[m] < 0.0) {
+        localIter = 0;
+        lbfgsDirection();
+        return;
+      }
+      const q = gCur.map((g) => Float64Array.from(g));
+      const alpha = new Float64Array(NUM_MEM);
+      for (let k = NUM_MEM - 1; k > -1; k--) {
+        const c = (k + m + 1) % NUM_MEM;
+        const sq = replicaSum((r) => { let t = 0; for (let i = 0; i < len; i++) t += ds[r][c][i] * q[r][i]; return t; });
+        alpha[c] = rho[c] * sq;
+        for (let r = 0; r < nRep; r++) for (let i = 0; i < len; i++) q[r][i] -= alpha[c] * dy[r][c][i];
+      }
+      const yy = replicaSum((r) => { let t = 0; for (let i = 0; i < len; i++) t += dy[r][m][i] * dy[r][m][i]; return t; });
+      const devis = rho[m] * yy;
+      for (let r = 0; r < nRep; r++) {
+        if (Math.abs(devis) > 1.0e-60) for (let i = 0; i < len; i++) pS[r][i] = keep[r] * q[r][i] / devis;
+        else for (let i = 0; i < len; i++) pS[r][i] = keep[r] * q[r][i] * 1.0e60;
+      }
+      for (let k = 0; k < NUM_MEM; k++) {
+        const c = localIter < NUM_MEM ? k : (k + m + 1) % NUM_MEM;
+        const yr = replicaSum((r) => { let t = 0; for (let i = 0; i < len; i++) t += dy[r][c][i] * pS[r][i]; return t; });
+        const beta = rho[c] * yr;
+        for (let r = 0; r < nRep; r++) for (let i = 0; i < len; i++) pS[r][i] += ds[r][c][i] * (alpha[c] - beta);
+      }
+      const scaling = maximumRotation(pS);
+      for (let r = 0; r < nRep; r++) {
+        for (let i = 0; i < len; i++) { pS[r][i] = -keep[r] * pS[r][i] * scaling; gOld[r][i] = gCur[r][i] * keep[r]; }
+      }
+    }
+    localIter++;
+  };
+
+  /** advance_spins of spin/cg and spin/lbfgs: every spin rotates about its search direction (Rodrigues' formula). */
+  const rotateSpins = (): void => {
+    reps.forEach((sys, r) => {
+      const sp = sys.state.sp!;
+      for (let i = 0; i < n; i++) {
+        rodrigues(pS[r], 3 * i, rot);
+        applyRot(rot, sp, 4 * i);
+      }
+    });
+  };
+
   const iterateStage = (maxiter: number): boolean => {
     for (let it = 0; it < maxiter; it++) {
       niter++;
       for (const sys of reps) sys.state.step++;
       const stepNow = reps[0].state.step;
-      // the timestep follows the largest precession frequency over all replicas (evaluate_dt with multireplica)
-      let fmaxsq = 0;
-      for (const sys of reps) {
-        const fm = sys.state.fm!;
-        for (let i = 0; i < sys.state.n; i++) {
-          const q = fm[3 * i] * fm[3 * i] + fm[3 * i + 1] * fm[3 * i + 1] + fm[3 * i + 2] * fm[3 * i + 2];
-          if (q > fmaxsq) fmaxsq = q;
-        }
-      }
-      if (fmaxsq === 0) throw new StyleError('Incorrect fmaxsqall calculation');
-      const dts = (2 * Math.PI) / (discrete * Math.sqrt(fmaxsq));
-      for (const sys of reps) advanceSpins(sys, alpha, dts);
       // min_spin.cpp compares ecurrent and eprevious, which Min::energy_force divides by the atom count under
       // thermo_modify norm yes: the energy test uses the normalized energies (as print_status does)
       const ePrev = normalized();
-      evaluate(false);
+      if (minStyle === 'spin') {
+        // the timestep follows the largest precession frequency over all replicas (evaluate_dt with multireplica)
+        const dts = evaluateDt();
+        for (const sys of reps) advanceSpins(sys, alpha, dts);
+        evaluate(false);
+      } else if (minStyle === 'spin/cg') {
+        // MinSpinCG::iterate without a line search: gradient, direction, rotation, then energy and forces
+        calcGradient(evaluateDt());
+        cgDirection();
+        rotateSpins();
+        evaluate(false);
+      } else {
+        // MinSpinLBFGS::iterate without a line search: energy and forces first, then gradient, direction and rotation
+        evaluate(false);
+        calcGradient(hbar);
+        lbfgsDirection();
+        rotateSpins();
+      }
       const eNow = normalized();
       // the energy test after DELAYSTEP iterations and the torque test: every replica must meet them
       if (etol > 0 && stepNow - lastNegative > DELAYSTEP) {
@@ -393,6 +560,7 @@ export const runNebSpin = async (host: NebHost, run: Pick<RunApi, 'ensureThermoC
     printRow(reps[0].state.step);
     niter = 0;
     lastNegative = reps[0].state.step;
+    localIter = 0;
     while (niter < N1) {
       const stop = iterateStage(nevery);
       printRow(reps[0].state.step);
@@ -411,6 +579,7 @@ export const runNebSpin = async (host: NebHost, run: Pick<RunApi, 'ensureThermoC
     printRow(reps[0].state.step);
     niter = 0;
     lastNegative = reps[0].state.step;
+    localIter = 0;
     while (niter < N2) {
       const stop = iterateStage(nevery);
       printRow(reps[0].state.step);

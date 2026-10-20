@@ -139,6 +139,29 @@ const termEnergy = (s: SimState, geom: Geometry, copies: BondedCopies | null, ki
   return acc[ENERGY[kind]];
 };
 
+/**
+ * The forces one bonded term puts on its atoms, from the style's own compute() on a topology holding only that term
+ * (the term of row k of the kind's list): the owned indices of its atoms in topology order and 3 forces per atom.
+ * Used by the stress profile computes for the bonded contributions.
+ */
+export const termForces = (sys: System, kind: TermKind, k: number): { idx: number[]; f: number[] } => {
+  const s = sys.state;
+  const style = sys.ff[STYLE_FIELD[kind]];
+  if (!style) throw new StyleError(`no ${kind}_style is defined`);
+  const list: TopoList = s.topo[FIELD[kind]];
+  const map = buildAtomMap(s);
+  const w = WIDTH[kind];
+  const scratch = new Float64Array(3 * s.n);
+  termEnergy(s, sys.geom, sys.nb.bondedCopies(), kind, style, list, k, map, scratch);
+  const idx: number[] = [], f: number[] = [];
+  for (let m = 0; m < w; m++) {
+    const a = map[list.atoms[w * k + m]];
+    idx.push(a);
+    f.push(scratch[3 * a], scratch[3 * a + 1], scratch[3 * a + 2]);
+  }
+  return { idx, f };
+};
+
 /** r_a - r_b for a bond (owner a), the copy of b nearest to a (bonded_util bondDelta). */
 const bondVec = (bc: BondedCompute, a: number, b: number): number[] => {
   const d = [0, 0, 0];

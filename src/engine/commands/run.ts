@@ -636,10 +636,25 @@ const minModify: Handler = ({ sys }, a) => {
         k += 2;
         break;
       case 'integrator': case 'tmax': case 'tmin': case 'delaystep': case 'dtgrow': case 'dtshrink': case 'alpha0': case 'alphashrink':
-      case 'halfstepback': case 'initialdelay': case 'vdfmax': case 'abcfire': case 'discrete_factor': case 'alpha_damp':
-        sys.minSettings.fire[key] = v ?? '';
+      case 'halfstepback': case 'initialdelay': case 'vdfmax': case 'abcfire': case 'discrete_factor': case 'alpha_damp': {
+        // As native LAMMPS does (src/min.cpp modify_params at b332f28): each value is read when given, an integer
+        // (delaystep, vdfmax), a number, a boolean (halfstepback, initialdelay, abcfire) or an integrator name
+        if (v === undefined) throw new StyleError('Illegal min_modify command');
+        if (key === 'delaystep' || key === 'vdfmax') {
+          if (!/^[+-]?\d+$/.test(v)) throw new StyleError(`Expected integer parameter instead of '${v}' in input script or data file`);
+        } else if (key === 'halfstepback' || key === 'initialdelay' || key === 'abcfire') {
+          if (!['yes', 'no', 'on', 'off', 'true', 'false', '1', '0'].includes(v.toLowerCase())) {
+            throw new StyleError(`Expected boolean parameter instead of '${v}' in input script or data file`);
+          }
+        } else if (key === 'integrator') {
+          if (!['eulerimplicit', 'verlet', 'leapfrog', 'eulerexplicit'].includes(v)) throw new StyleError('Illegal min_modify command');
+        } else if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v)) {
+          throw new StyleError(`Expected floating point parameter instead of '${v}' in input script or data file`);
+        }
+        sys.minSettings.fire[key] = v;
         k += 2;
         break;
+      }
       default: throw new StyleError(`unknown min_modify keyword '${key}'`);
     }
   }

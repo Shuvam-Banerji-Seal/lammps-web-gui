@@ -229,19 +229,21 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
         return;
       }
       if (partitions > 1) {
-        // NEB table rows are the thermo rows that carry the RD and PE columns; the minimize rows before them do not
+        // NEB table rows are the thermo rows that carry the RDT column; the minimize rows before them do not
         const nebRows: ThermoRow[] = [];
         const climbing: { replica: number; row: number }[] = [];
         for (const e of events) {
-          if (e.kind === 'thermo' && 'RD1' in e.row) nebRows.push(e.row);
+          if (e.kind === 'thermo' && 'RDT' in e.row) nebRows.push(e.row);
           if (e.kind !== 'log') continue;
           const m = /^Climbing replica = (\d+)$/.exec(e.text);
           if (m) climbing.push({ replica: Number(m[1]), row: nebRows.length });
         }
         expect(nebRows.length, 'NEB table rows').toBe(fx.neb!.length);
         for (let r = 0; r < fx.neb!.length; r++) {
-          for (const [k, v] of Object.entries(fx.neb![r])) {
+          for (const [k, v0] of Object.entries(fx.neb![r])) {
             if (o.skip.has(k)) continue;
+            // a nan of the native table (verbose path angles of the end replicas) is null in the fixture's JSON
+            const v = v0 === null ? NaN : v0;
             const raw = nebRows[r][k];
             // the native table prints each value with 8 significant digits (print_status, "%12.8g"): compare what it prints
             const g = o.printed !== undefined && Number.isFinite(raw) ? Number(raw.toPrecision(o.printed)) : raw;

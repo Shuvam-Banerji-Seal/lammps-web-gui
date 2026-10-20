@@ -7,6 +7,9 @@ import { massOf } from '../atoms';
 import { initRun } from '../run/verlet';
 import { FixNeb } from '../fix/neb';
 import { ensureThermoComputes } from './run';
+import { fireSettings, type FireRunner, type LineminHook } from '../run/min';
+import { gplHook } from '../gplHooks';
+import { libm } from '../libm';
 
 /*
  * neb etol ftol N1 N2 Nevery file-style [arg] [verbosity default] —
@@ -44,10 +47,12 @@ import { ensureThermoComputes } from './run';
  * cites Henkelman and Jonsson 2000 for it). The end replicas get no nudging
  * unless the end keyword is given.
  *
- * Supported here: file-style final and none; fix neb parallel neigh and ideal;
- * min_style quickmin. Refused with a StyleError: file-style each, verbosity
- * verbose and terse, fix neb perp and end, parallel equal, and min_style
- * fire.
+ * Supported here: file-style final, each and none; verbosity default, terse and
+ * verbose; every fix neb keyword (parallel neigh, ideal and equal, perp, end),
+ * whose forces are the GPL port of native FixNEB::min_post_force
+ * (src/engine-gpl/replica/fix_neb.ts, through gplHook('neb')); min_style
+ * quickmin and fire (the GPL port of native MinFire run over all replicas, as
+ * native's multireplica minimization).
  */
 
 /** What the neb command needs from its session (Session implements it). */
@@ -64,14 +69,41 @@ export interface NebHost {
   replicaThermo?(sys: System, setup: boolean): void;
 }
 
-const USAGE = 'usage: neb etol ftol N1 N2 Nevery file-style [arg] [verbosity default]';
+const USAGE = 'usage: neb etol ftol N1 N2 Nevery file-style [arg] [verbosity default|terse|verbose]';
 
-/** The NEB table columns: the step, the force maxima, the gradients and barriers, then RD and PE per replica (1-based). */
-const tableKeywords = (n: number): string[] => {
+type Verbosity = 'default' | 'terse' | 'verbose';
+
+/**
+ * The NEB table columns: the step, the force maxima, the gradients and barriers, then RD and PE per replica (1-based),
+ * and with verbosity verbose six more per replica. neb.rst: "If verbosity = terse the PE and RD of each replica are not
+ * output; if verbosity = verbose the angles and gradients of each replica are output in addition".
+ */
+const tableKeywords = (n: number, verbosity: Verbosity): string[] => {
   const k = ['Step', 'MaxReplicaForce', 'MaxAtomForce', 'GradV0', 'GradV1', 'GradVc', 'EBF', 'EBR', 'RDT'];
-  for (let r = 1; r <= n; r++) k.push(`RD${r}`, `PE${r}`);
+  if (verbosity !== 'terse') for (let r = 1; r <= n; r++) k.push(`RD${r}`, `PE${r}`);
+  if (verbosity === 'verbose') {
+    for (let r = 1; r <= n; r++) k.push(`pathangle${r}`, `angletangrad${r}`, `anglegrad${r}`, `gradV${r}`, `RepForce${r}`, `MaxAtomForce${r}`);
+  }
   return k;
 };
+
+/** One replica's FixNEB values after the nudging (src/engine-gpl/replica/fix_neb.ts). */
+interface NebOutput { veng: number; plen: number; nlen: number; gradlen: number; dotpath: number; dottangrad: number; dotgrad: number }
+
+/** The GPL port of FixNEB::min_post_force, reached through gplHook('neb') (lazy group gpl_linemin). */
+interface NebForceHook {
+  nebForces(
+    reps: { X: Float64Array; F: Float64Array; E: number }[],
+    p: {
+      kspring: number; kspringPerp: number; mode: 'neigh' | 'ideal' | 'equal'; freeEndIni: boolean; freeEndFinal: boolean;
+      freeEndFinalWithRespToEIni: boolean; finalAndInterWithRespToEIni: boolean; kspringIni: number; kspringFinal: number;
+    },
+    ends: { eIniIni: number; eFinalIni: number },
+    rclimber: number,
+    ntimestep: number,
+    box: { prd: [number, number, number]; periodic: [boolean, boolean, boolean]; triclinic: boolean; tilt: [number, number, number] },
+  ): NebOutput[];
+}
 
 /** Coordinates of one NEB file: "ID x y z" lines after the atom count (neb.rst). */
 const parseCoords = (text: string): Map<number, [number, number, number]> => {
@@ -119,8 +151,8 @@ const nebAtoms = (sys: System, bit: number): number[] => {
   return idx.sort((a, b) => s.id[a] - s.id[b]);
 };
 
-/** The factor thermo applies to an extensive energy: 1 / N with thermo norm on (lj units), else 1. */
-const perAtom = (sys: System): number => (sys.thermo.norm && sys.state.n > 0 ? 1 / sys.state.n : 1);
+/** An extensive energy as thermo prints it: divided by the atom count with thermo norm on (lj units). */
+const perAtom = (sys: System, e: number): number => (sys.thermo.norm && sys.state.n > 0 ? e / sys.state.n : e);
 
 /** One force evaluation of a replica: the same steps as the minimizer's evaluation (run/min.ts), without the box DOF. */
 const evaluate = (sys: System, first: boolean): number => {
@@ -220,9 +252,10 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
     }
     k = 7;
   } else if (fileStyle !== 'none') throw new StyleError(`neb file-style must be final, each or none (got '${fileStyle}')`);
+  let verbosity: Verbosity = 'default';
   while (k < a.length) {
-    if (a[k] === 'verbosity' && a[k + 1] === 'default') { k += 2; continue; }
-    if (a[k] === 'verbosity') throw new StyleError(`neb verbosity ${a[k + 1] ?? ''} is not supported by the browser engine yet (only default)`);
+    const v = a[k + 1];
+    if (a[k] === 'verbosity' && (v === 'default' || v === 'terse' || v === 'verbose')) { verbosity = v; k += 2; continue; }
     throw new StyleError(`illegal neb keyword '${a[k]}'`);
   }
 
@@ -230,26 +263,27 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
   const fixes: FixNeb[] = [];
   for (const sys of reps) {
     if (!sys.hasBox) throw new StyleError('neb needs a simulation box in every replica');
-    if (sys.minStyle !== 'quickmin') throw new StyleError(`neb needs min_style quickmin (a damped dynamics minimizer); min_style is ${sys.minStyle}, and the browser engine supports quickmin for neb`);
+    // As native LAMMPS does (src/REPLICA/neb.cpp at b332f28): a line-search minimizer is refused
+    if (sys.minStyle === 'cg' || sys.minStyle === 'sd' || sys.minStyle === 'hftn') throw new StyleError('NEB requires a damped dynamics minimizer');
+    if (sys.minStyle !== 'quickmin' && sys.minStyle !== 'fire') throw new StyleError(`neb needs min_style quickmin or fire; min_style is ${sys.minStyle}`);
     const nebs = sys.fixes.filter((f): f is FixNeb => f instanceof FixNeb);
     if (nebs.length !== 1) throw new StyleError('neb needs exactly one fix neb in every replica');
     fixes.push(nebs[0]);
   }
   const fix0 = fixes[0];
-  for (const f of fixes) {
-    if (f.kspring2 !== 0) throw new StyleError('fix neb perp is not supported by the browser engine yet');
-    if (f.ends.length) throw new StyleError('fix neb end is not supported by the browser engine yet');
-    if (f.parallel === 'equal') throw new StyleError('fix neb parallel equal is not supported by the browser engine yet');
-  }
   const nReps = reps.length;
   const n0 = reps[0].state.n;
   for (const sys of reps) if (sys.state.n !== n0) throw new StyleError('neb needs the same number of atoms in every replica');
   const dims = reps[0].state.dimension;
-  const boxLen = [0, 1, 2].map((d) => reps[0].state.box.hi[d] - reps[0].state.box.lo[d]);
-  const periodic = reps[0].state.box.periodic;
   const nebBit = fix0.groupBit;
-  const kspring = fix0.kspring;
-  const parallel = fix0.parallel;
+  const nebHook = gplHook<LineminHook & NebForceHook>('neb');
+  const settings = {
+    kspring: fix0.kspring, kspringPerp: fix0.kspringPerp, mode: fix0.parallel, freeEndIni: fix0.freeEndIni, freeEndFinal: fix0.freeEndFinal,
+    freeEndFinalWithRespToEIni: fix0.freeEndFinalWithRespToEIni, finalAndInterWithRespToEIni: fix0.finalAndInterWithRespToEIni,
+    kspringIni: fix0.kspringIni, kspringFinal: fix0.kspringFinal,
+  };
+  // native: each partition's own fix keeps its target energy (EIniIni in the first replica's, EFinalIni in the last's)
+  const firstFix = fixes[0], lastFix = fixes[fixes.length - 1];
 
   // the replicas start like a minimization: thermo computes, run state, fix setup, and the quickmin velocities at zero
   // (MinQuickMin::setup_style at b332f28, src/min_quickmin.cpp: v = 0 for every atom; a dynamics before the NEB leaves velocities)
@@ -303,11 +337,11 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
   const saved = reps.map((sys) => ({ every: sys.nb.every, delay: sys.nb.delay, check: sys.nb.check }));
   for (const sys of reps) { sys.nb.every = 1; sys.nb.delay = 0; sys.nb.check = true; }
   const stepBase = reps[0].state.step;
-  const cols = tableKeywords(nReps);
+  const cols = tableKeywords(nReps, verbosity);
   const units = reps[0].units.style;
   let climb = -1;
-  /** cumulative distances along the path (RD before normalization), from the last nudging */
-  let stageCum: number[] = [0];
+  /** every replica's FixNEB values from the last nudging (what native print_status reads) */
+  let nebOut: NebOutput[] = [];
 
   const snapshot = (sys: System, E: number): Snap => {
     const s = sys.state;
@@ -328,125 +362,87 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
   };
 
   // the nudging forces of every replica (fix_neb.rst), from the positions and raw forces of all replicas
-  const applyNudging = (): number[] => {
-    const m = snaps[0].idx.length;
-    // fix_neb.cpp: the differences between neighbouring replicas are minimum images (domain->minimum_image on
-    // xprev/xnext minus x, at b332f28), so an atom that a periodic boundary wrapped in one replica is not a long step
-    const sep = (a: number, j: number): number => minImage(a, boxLen[j % 3], periodic[j % 3]);
-    const dist = (r1: number, r2: number): number => {
-      let t = 0;
-      for (let j = 0; j < 3 * m; j++) { const d = sep(snaps[r1].X[j] - snaps[r2].X[j], j); t += d * d; }
-      return Math.sqrt(t);
-    };
-    const cum: number[] = [0];
-    for (let r = 1; r < nReps; r++) cum.push(cum[r - 1] + dist(r, r - 1));
-    const E = energies;
+  const applyNudging = (): void => {
+    const g = reps[0].geom;
+    const box = { prd: [g.lx, g.ly, g.lz] as [number, number, number], periodic: g.periodic, triclinic: g.triclinic, tilt: [g.xy, g.xz, g.yz] as [number, number, number] };
+    const inputs = snaps.map((sn) => {
+      const F = new Float64Array(3 * sn.idx.length);
+      sn.idx.forEach((li, j) => { for (let d = 0; d < 3; d++) F[3 * j + d] = sn.raw[3 * li + d]; });
+      return { X: sn.X, F, E: sn.E };
+    });
+    const ends = { eIniIni: firstFix.endEnergies.eIniIni, eFinalIni: lastFix.endEnergies.eFinalIni };
+    nebOut = nebHook.nebForces(inputs, settings, ends, climb, reps[0].state.step, box);
+    firstFix.endEnergies.eIniIni = ends.eIniIni;
+    lastFix.endEnergies.eFinalIni = ends.eFinalIni;
     for (let r = 0; r < nReps; r++) {
       const s = reps[r].state;
       const sn = snaps[r];
-      // raw forces first, then the NEB atoms get the modified force
+      // raw forces first, then the NEB atoms get the nudged force
       s.f.set(sn.raw.subarray(0, 3 * s.n));
-      // the end replicas keep their own forces: even the climbing replica is left alone when it is an end
-      // (measured with native LAMMPS, black box: the verbose RepForce of the last replica equals its gradV
-      // throughout the climbing stage of tests/oracle/w46neb_tiny.in)
-      if (r === 0 || r === nReps - 1) continue;
-      // tangent T' (Henkelman and Jonsson 2000, the improved tangent with energy weights)
-      const tau = new Float64Array(3 * m);
-      if (r === 0) for (let j = 0; j < 3 * m; j++) tau[j] = sep(snaps[1].X[j] - snaps[0].X[j], j);
-      else if (r === nReps - 1) for (let j = 0; j < 3 * m; j++) tau[j] = sep(snaps[r].X[j] - snaps[r - 1].X[j], j);
-      else {
-        const Ep = E[r + 1], Ei = E[r], Em = E[r - 1];
-        const wp = Ep - Ei, wm = Em - Ei;
-        const dVmax = Math.max(Math.abs(wp), Math.abs(wm));
-        const dVmin = Math.min(Math.abs(wp), Math.abs(wm));
-        let a1 = 0, a2 = 0;
-        if (Ep > Ei && Ei > Em) { a1 = 1; a2 = 0; }
-        else if (Ep < Ei && Ei < Em) { a1 = 0; a2 = 1; }
-        else if (Ep > Em) { a1 = dVmax; a2 = dVmin; }
-        else { a1 = dVmin; a2 = dVmax; }
-        for (let j = 0; j < 3 * m; j++) {
-          const dRp = sep(snaps[r + 1].X[j] - snaps[r].X[j], j);
-          const dRm = sep(snaps[r].X[j] - snaps[r - 1].X[j], j);
-          tau[j] = a1 * dRp + a2 * dRm;
-        }
-      }
-      const tn = norm(tau);
-      if (!(tn > 0)) continue;
-      for (let j = 0; j < 3 * m; j++) tau[j] /= tn;
-      // force of the NEB atoms (raw), its component along the tangent
-      const f = new Float64Array(3 * m);
-      sn.idx.forEach((li, j) => { for (let d = 0; d < 3; d++) f[3 * j + d] = sn.raw[3 * li + d]; });
-      let fT = 0;
-      for (let j = 0; j < 3 * m; j++) fT += f[j] * tau[j];
-      let out: Float64Array;
-      if (r === climb) {
-        // climbing image: the tangential force is inverted (fix_neb.rst: 2 (\nabla V \cdot T') T')
-        out = new Float64Array(3 * m);
-        for (let j = 0; j < 3 * m; j++) out[j] = f[j] - 2 * fT * tau[j];
-      } else {
-        let fPar = 0;
-        if (parallel === 'neigh') fPar = kspring * (dist(r + 1, r) - dist(r, r - 1));
-        else {
-          // ideal: the ideal RD of replica r is (r - first) * meanDist of its side of the climbing replica.
-          // fix_neb.rst gives the rule that with a climbing replica the ideal RD and the mean distance are
-          // computed separately on each side of the climbing image; without a climbing replica the side is the
-          // whole band
-          const lo = climb >= 0 && r > climb ? climb : 0;
-          const hi2 = climb >= 0 && r < climb ? climb : nReps - 1;
-          const md = (cum[hi2] - cum[lo]) / (hi2 - lo);
-          fPar = -kspring * (cum[r] - (cum[lo] + (r - lo) * md)) / (2 * md);
-        }
-        out = new Float64Array(3 * m);
-        for (let j = 0; j < 3 * m; j++) out[j] = f[j] - fT * tau[j] + fPar * tau[j];
-      }
-      sn.idx.forEach((li, j) => { for (let d = 0; d < 3; d++) s.f[3 * li + d] = out[3 * j + d]; });
+      const F = inputs[r].F;
+      sn.idx.forEach((li, j) => { for (let d = 0; d < 3; d++) s.f[3 * li + d] = F[3 * j + d]; });
       if (dims === 2) for (let i = 0; i < s.n; i++) s.f[3 * i + 2] = 0;
     }
-    return cum;
   };
 
   const printRow = (step: number): void => {
-    const cum = stageCum;
-    const RDT = cum[nReps - 1];
-    let maxRep = 0, maxAtom = 0;
-    const repForce: number[] = [], gradV: number[] = [];
+    // As native LAMMPS does (src/REPLICA/neb.cpp print_status at b332f28): the reaction coordinate sums each replica's
+    // distance to the previous one, and the total ends with the next-to-last replica's distance to the last
+    const rdist = [0];
+    for (let r = 1; r < nReps; r++) rdist.push(rdist[r - 1] + nebOut[r].plen);
+    const RDT = rdist[nReps - 1] = rdist[nReps - 2] + nebOut[nReps - 2].nlen;
+    let maxRep = 0, maxAtom2 = 0;
+    const repForce: number[] = [], repMax2: number[] = [];
     for (let r = 0; r < nReps; r++) {
       const s = reps[r].state;
       repForce.push(norm(s.f, 0, 3 * s.n));
-      for (let i = 0; i < 3 * s.n; i++) maxAtom = Math.max(maxAtom, Math.abs(s.f[i]));
-      // gradV is the norm of the force of the NEB atoms only, before the nudging (measured with native LAMMPS,
-      // black box: the step-0 GradV0 0.082169072 of the hop1 replica is the norm over the 21 atoms of the fix
-      // neb group; over all 420 atoms the same replica has 0.338709)
-      let g2 = 0;
-      for (const li of snaps[r].idx) for (let d = 0; d < 3; d++) g2 += snaps[r].raw[3 * li + d] ** 2;
-      gradV.push(Math.sqrt(g2));
+      // printed as the square of the largest force component (Min::fnorm_inf is the largest f[i]*f[i])
+      let m2 = 0;
+      for (let i = 0; i < 3 * s.n; i++) m2 = Math.max(m2, s.f[i] * s.f[i]);
+      repMax2.push(m2);
+      maxAtom2 = Math.max(maxAtom2, m2);
       maxRep = Math.max(maxRep, repForce[r]);
     }
+    // gradV is the norm of the force of the NEB atoms only, before the nudging (FixNEB gradlen)
+    const gradV = nebOut.map((o) => o.gradlen);
+    // in the climbing stage the barriers and GradVc are those of the climbing replica (irep = fneb->rclimber), even when
+    // another replica is higher at that step; before it, of the highest replica
     let hi = 0;
     for (let r = 1; r < nReps; r++) if (energies[r] > energies[hi]) hi = r;
-    ebfRaw = energies[hi] - energies[0];
+    const top = climb >= 0 ? climb : hi;
+    ebfRaw = energies[top] - energies[0];
+    // the energies are printed as thermo prints pe: divided by the atom count when thermo norm is on
+    // (lj units; docs.lammps.org/thermo_modify.html "norm")
+    const pe = reps.map((sys, r) => perAtom(sys, energies[r]));
     const row: Record<string, number> = {
       Step: step,
       MaxReplicaForce: maxRep,
-      // printed as the square of the largest force component (measured with native LAMMPS, black box: the
-      // step-0 value 4.3110561 is 2.0763083 squared, the largest component after the nudging)
-      MaxAtomForce: maxAtom * maxAtom,
+      MaxAtomForce: maxAtom2,
       GradV0: gradV[0],
       GradV1: gradV[nReps - 1],
-      GradVc: gradV[climb >= 0 ? climb : hi],
-      EBF: 0,
-      EBR: 0,
+      GradVc: gradV[top],
+      EBF: pe[top] - pe[0],
+      EBR: pe[top] - pe[nReps - 1],
       RDT,
     };
-    // the energies are printed as thermo prints pe: divided by the atom count when thermo norm is on
-    // (lj units; docs.lammps.org/thermo_modify.html "norm"). Measured with native LAMMPS (black box):
-    // the lj/cut NEB table's PE1 is one third of the total of its 3-atom replica.
-    const pe = reps.map((sys, r) => energies[r] * perAtom(reps[r]));
-    row.EBF = (pe[hi] - pe[0]);
-    row.EBR = (pe[hi] - pe[nReps - 1]);
-    for (let r = 0; r < nReps; r++) {
-      row[`RD${r + 1}`] = RDT > 0 ? cum[r] / RDT : 0;
-      row[`PE${r + 1}`] = pe[r];
+    if (verbosity !== 'terse') {
+      for (let r = 0; r < nReps; r++) {
+        row[`RD${r + 1}`] = r > 0 ? rdist[r] / RDT : 0;
+        row[`PE${r + 1}`] = pe[r];
+      }
+    }
+    if (verbosity === 'verbose') {
+      // the angles in degrees: 180 - acos(cosine); the end replicas have no path angle, the last no gradient angle
+      const deg = (c: number): number => 180 - libm.acos(c) * (180 / Math.PI);
+      for (let r = 0; r < nReps; r++) {
+        const o = nebOut[r];
+        row[`pathangle${r + 1}`] = r === 0 || r === nReps - 1 ? NaN : deg(o.dotpath);
+        row[`angletangrad${r + 1}`] = deg(o.dottangrad);
+        row[`anglegrad${r + 1}`] = r === nReps - 1 ? NaN : deg(o.dotgrad);
+        row[`gradV${r + 1}`] = o.gradlen;
+        row[`RepForce${r + 1}`] = repForce[r];
+        row[`MaxAtomForce${r + 1}`] = repMax2[r];
+      }
     }
     host.emit({ kind: 'thermo', row });
   };
@@ -459,7 +455,7 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
   try {
     // the initial replicas: forces, nudging, then the first row
     evaluateAll(true);
-    stageCum = applyNudging();
+    applyNudging();
     header();
     printRow(stepBase);
 
@@ -476,8 +472,29 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
       }
       return ftol > 0 && forceMax() < ftol;
     };
+    /**
+     * fire over all replicas (native multireplica minimization): FireRunner of the GPL port, initialized at the start of
+     * each stage (Min::init and setup), its timestep put back at the end of the stage (Min::cleanup)
+     */
+    const fire = reps[0].minStyle === 'fire';
+    let fireRunner: FireRunner | null = null;
+    const fireStart = (): void => {
+      if (!fire) return;
+      if (!fireRunner) {
+        fireRunner = nebHook.fire(fireSettings(reps[0], etol, ftol),
+          reps.map((sys) => ({ s: sys.state, mass: (i: number) => massOf(sys.state, i) })),
+          () => { evaluateAll(false); applyNudging(); return energies.slice(); }, true);
+      }
+      fireRunner.init(reps[0].state.dt, reps[0].state.step);
+      fireRunner.setupStyle();
+      fireRunner.setEnergies(energies.slice());
+    };
+    const dtinit = reps[0].state.dt;
+    const fireEnd = (): void => { if (fire) for (const sys of reps) sys.state.dt = dtinit; };
+    const ftm2v = reps[0].state.units.ftm2v;
+
     /** Up to n iterations of one stage; a converged step is printed and ends the stage (native prints it too). */
-    const stage = (n: number): void => {
+    const stage = async (n: number): Promise<void> => {
       // Nevery counts from the start of the stage: measured with native LAMMPS (black box, hop1 cut down: the
       // climbing stage that starts at step 87 prints at 107 and 124, its convergence step)
       const start = reps[0].state.step;
@@ -490,11 +507,37 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
       let lastThermo = -1;
       const replicaRows = (setup: boolean): void => { for (const sys of reps) host.replicaThermo?.(sys, setup); };
       if (host.replicaThermo) { replicaRows(true); lastThermo = start; }
+      if (fireRunner) {
+        // native NEB::run: while (niter < N) { minimize->run(nevery); print_status(); if (stop_condition) break; }
+        const runner: FireRunner = fireRunner;
+        while (runner.niter < n) {
+          const before = runner.niter;
+          const stop = await runner.iterate(nevery, {
+            advance: () => { for (const sys of reps) sys.state.step++; return reps[0].state.step; },
+            afterIteration: async (step) => {
+              if (host.replicaThermo && step === nextThermo) {
+                replicaRows(false);
+                lastThermo = step;
+                nextThermo = every > 0 ? Math.min(nextThermo + every, stageLast) : stageLast;
+              }
+            },
+            cancelled: () => false,
+          }, ftm2v);
+          stepsDone += runner.niter - before;
+          const step = reps[0].state.step;
+          printRow(step);
+          if (stop !== 'max iterations') {
+            if (host.replicaThermo && lastThermo !== step) { replicaRows(false); lastThermo = step; }
+            return;
+          }
+        }
+        return;
+      }
       for (let it = 0; it < n; it++) {
         quickminStep(reps);
         for (const sys of reps) sys.state.step++;
         evaluateAll(false);
-        stageCum = applyNudging();
+        applyNudging();
         stepsDone++;
         const step = reps[0].state.step;
         const conv = converged();
@@ -514,18 +557,22 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
     };
 
     // stage 1 (N1 iterations or convergence), then stage 2 with the climbing replica (N2 more), as in neb.rst
-    stage(N1);
+    fireStart();
+    await stage(N1);
+    fireEnd();
     // the highest replica climbs (fix_neb.rst: the climbing replica's inter-replica force is converted)
     let hi = 0;
     for (let r = 1; r < nReps; r++) if (energies[r] > energies[hi]) hi = r;
     climb = hi;
     host.emit({ kind: 'log', text: `Climbing replica = ${climb + 1}` });
     for (const sys of reps) sys.state.v.fill(0);
-    stageCum = applyNudging();
+    applyNudging();
     header();
     printRow(reps[0].state.step);
     prevE = energies.slice();
-    stage(N2);
+    fireStart();
+    await stage(N2);
+    fireEnd();
   } finally {
     for (const f of fixes) f.active = false;
     reps.forEach((sys, r) => { sys.nb.every = saved[r].every; sys.nb.delay = saved[r].delay; sys.nb.check = saved[r].check; });

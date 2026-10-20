@@ -1,0 +1,16 @@
+# oracle: min_style fire with integrator verlet on a perturbed lj crystal (src/min_fire.cpp: the integrator, abcfire and vdfmax of min_modify; thermo dt shows the timestep fire grows and shrinks)
+# oracle-inputs: w47qm_lj.data
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.1e-13, atoms 8.0e-14.
+units           lj
+atom_style      atomic
+read_data       w47qm_lj.data
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+min_style       fire
+timestep        0.03
+min_modify      dmax 0.02 integrator verlet alpha0 0.10
+thermo_style    custom step pe fnorm fmax press dt
+thermo_modify   format float %.15g
+thermo          2
+minimize        0 0 60 1000

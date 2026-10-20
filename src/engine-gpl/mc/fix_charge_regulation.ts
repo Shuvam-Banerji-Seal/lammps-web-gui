@@ -253,6 +253,7 @@ export class FixChargeRegulation extends Fix {
       else { this.backwardIons(); this.nsaltAtt++; }
     }
     this.sys.atomsChanged();
+    this.sys.ff.reinitTail(this.sys.state);
     this.sys.setupNeighbors();
     if (kspace) kspace.paramsFrozen = false;
   }
@@ -332,6 +333,9 @@ export class FixChargeRegulation extends Fix {
   private energyFull(): number {
     const sys = this.sys;
     sys.atomsChanged();
+    // native reinits the pair (force->pair->reinit()) with the tail at each insertion and deletion trial; the tail is
+    // recounted at each energy evaluation here (an accepted deletion's stale count until the next reinit is not kept)
+    sys.ff.reinitTail(sys.state);
     const a = sys.forces();
     for (const f of sys.fixes) f.postForce?.();
     return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp;

@@ -72,11 +72,18 @@ describe('fix gemc refusals', () => {
   it('runs with pair_modify tail yes and holds the tail correction until the next run (native compared in w313gm_lj_tail)', async () => {
     const { error } = await run(setup({ extra: 'pair_modify tail yes\n' }), 2, 20);
     expect(error).toBeNull();
-    // the hold lasts only for the run: the next run's init recomputes the tail correction (Pair::init)
+    // the next run's init recomputes the tail correction from the current atom counts (Pair::init) and holds it
     const events: EngineEvent[] = [];
     const session = new Session({ emit: (e) => events.push(e), writeFile: () => undefined }, undefined, 0, 2);
     await session.execute(`${setup({ extra: 'pair_modify tail yes\n' })}run 20\nunfix 2\nrun 0\n`);
-    for (const sys of session.replicaSystems) expect(sys.ff.tailHold).toBeNull();
+    for (const sys of session.replicaSystems) {
+      const held = sys.ff.tailHold!;
+      expect(held).not.toBeNull();
+      sys.ff.tailHold = null;
+      sys.ff.updateTail(sys.state);
+      expect(held.etail).toBe(sys.ff.etailV);
+      expect(held.ptail).toBe(sys.ff.ptailV);
+    }
   });
 
   it('refuses a seed that RanPark cannot use', async () => {

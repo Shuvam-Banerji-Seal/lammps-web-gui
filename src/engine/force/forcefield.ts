@@ -108,11 +108,16 @@ export class ForceField {
   /** Tail corrections: energy = etailV / V, pressure term = ptailV / V^2 (in energy/volume). */
   etailV = 0;
   /**
-   * Tail corrections held at the values of the pair style's last init or reinit (set by fix gemc, cleared by every run's
-   * init): while it is set, updateTail keeps these values, as native LAMMPS keeps force->pair->etail and ptail from
-   * Pair::init or Pair::reinit when atoms are inserted or deleted without a reinit.
+   * Tail corrections held at the values of the pair style's last init or reinit: while it is set, updateTail keeps
+   * these values, as native LAMMPS keeps force->pair->etail and ptail from Pair::init (each run's setup) or
+   * Pair::reinit when atoms are inserted, deleted or change type without a reinit (fix deposit, evaporate, pour,
+   * atom/swap, bond/react, ...: src/*.cpp at b332f28 call force->pair->reinit() only in fix adapt, adapt/fep, gcmc,
+   * gemc, widom, charge/regulation and compute fep). Every run's init clears it and the run's first force-field init
+   * sets it (holdTailAtInit); reinitTail() is a native reinit.
    */
   tailHold: { etail: number; ptail: number } | null = null;
+  /** Set by a run's init: the next init() holds the tail it computes. */
+  holdTailAtInit = false;
   ptailV = 0;
   private specialList: SpecialList | null = null;
   /** The 1-2/1-3/1-4 partners of the last init (null without bonds or with a many-body pair style). */
@@ -233,6 +238,18 @@ export class ForceField {
     }
     if (this.pair) this.pair.version++;
     this.updateTail(s);
+    if (this.holdTailAtInit) {
+      this.holdTailAtInit = false;
+      this.tailHold = { etail: this.etailV, ptail: this.ptailV };
+    }
+  }
+
+  /** force->pair->reinit(): the tail from the current atom counts, held again if it was held. */
+  reinitTail(s: SimState): void {
+    const held = this.tailHold !== null;
+    this.tailHold = null;
+    this.updateTail(s);
+    if (held) this.tailHold = { etail: this.etailV, ptail: this.ptailV };
   }
 
   /** Tail corrections depend on the number of atoms of each type. */

@@ -81,7 +81,7 @@ export const hasTail = (p: Pair): boolean => {
 /** After a table changed: re-initializes the defined pair style (it re-derives its tables), updates the tail. */
 export const reinitPair = (sys: System, owner: Pair): void => {
   owner.init(sys.styleContext());
-  if (hasTail(owner)) sys.ff.updateTail(sys.state);
+  if (hasTail(owner)) sys.ff.reinitTail(sys.state);
   owner.version++;
 };
 

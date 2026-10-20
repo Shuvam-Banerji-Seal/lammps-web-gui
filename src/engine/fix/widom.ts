@@ -446,12 +446,16 @@ export class FixWidom extends Fix {
       }
       appendMolecule(sys, t, 0, coords, [0, 0, 0], maxMoleculeId(s) + 1, this.groupBit, undefined, rot);
       sys.atomsChanged();
+      // As native LAMMPS does (src/MC/fix_widom.cpp at b332f28): force->pair->reinit() after adding the trial and
+      // after removing it, so the tail counts the trial atoms
+      sys.ff.reinitTail(s);
       dU = this.potentialEnergy() - eBefore;
       if (!this.fullEnergy) dU -= this.intraMolEnergy;
     } else {
       const xa = Float64Array.from(p);
       appendAtoms(s, { x: xa, type: this.type, q: this.charge ?? undefined, mask: this.groupBit });
       sys.atomsChanged();
+      sys.ff.reinitTail(s);
       dU = this.potentialEnergy() - eBefore;
     }
     dU -= this.intraEnergy;
@@ -459,6 +463,7 @@ export class FixWidom extends Fix {
     for (let k = n0; k < s.n; k++) del[k] = 1;
     deleteAtoms(s, del);
     sys.atomsChanged();
+    sys.ff.reinitTail(s);
     s.x.set(xSave); s.image.set(imageSave); s.f.set(fSave); s.order.set(orderSave);
     if (torqueSave && s.torque) s.torque.set(torqueSave);
     return dU;

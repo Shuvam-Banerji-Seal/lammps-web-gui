@@ -382,7 +382,7 @@ export class FixAdapt extends Fix {
       for (const t of this.pairs) if (t.reinit) reinit.add(t.owner);
       for (const owner of reinit) {
         owner.init(this.sys.styleContext());
-        if (hasTail(owner)) this.sys.ff.updateTail(s);
+        if (hasTail(owner)) this.sys.ff.reinitTail(s);
       }
     }
     for (const owner of owners) owner.version++;

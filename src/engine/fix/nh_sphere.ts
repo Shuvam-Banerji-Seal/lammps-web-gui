@@ -2,6 +2,7 @@ import { FixNH } from './nh';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { ownCompute } from './util';
+import { updateDipoles } from './nve_sphere';
 
 /*
  * fix nvt/sphere, npt/sphere, nph/sphere — docs.lammps.org/fix_nvt_sphere.html,
@@ -36,9 +37,8 @@ import { ownCompute } from './util';
  *      sphere and 1/2 m r^2 for a disc (textbook moments of inertia, as in
  *      nve/sphere, see src/engine/fix/nve_sphere.ts).
  * The barostat's strain-rate scaling is left to fix nh, i.e. omega is not
- * scaled by the barostat. This is NOT yet verified: the npt/nph oracle cases
- * differ from native LAMMPS by a small drift that the point-particle fix
- * npt shows too (see the report accompanying this file).
+ * scaled by the barostat; the oracle cases w7nhs_nph and w356dlm_npt_sphere
+ * match native LAMMPS with it.
  *
  * "This fix requires that atoms store torque and angular velocity (omega)
  * and a radius as defined by the :doc:`atom_style sphere <atom_style>`
@@ -48,17 +48,20 @@ import { ownCompute } from './util';
  * "The only difference between discs and spheres in this context is their
  * moment of inertia, as used in the time integration."
  *
- * update dipole / dipole/dlm: the docs list "update" as a keyword of these
- * fixes (dipole related keyword/value pairs from fix nh). The engine's
- * atom_style sphere has no dipole, so these are rejected with a StyleError
- * naming the keyword. Measured with native LAMMPS (black box): update dipole
- * without a dipole attribute errors with "requires atom attribute mu"; disc
- * in 3d errors with "disc option requires 2d simulation"; point particles in
- * the group error with "requires extended particles".
+ * update dipole / dipole/dlm (fix_nh.html): "dipole = update dipole orientation (only for sphere
+ * variants)", "dipole/dlm = use DLM integrator to update dipole orientation (only for sphere
+ * variants)"; "If the *update* keyword is used with the *dipole* value, then the orientation of the
+ * dipole moment of each particle is also updated during the time integration." As native LAMMPS does
+ * (src/fix_nh_sphere.cpp nve_x at b332f28), the dipoles turn right after the position update, between
+ * the two box remaps of a barostat, with the rule of fix nve/sphere (updateDipoles in nve_sphere.ts).
+ * Measured with native LAMMPS (black box): update dipole without a dipole attribute errors with
+ * "requires atom attribute mu"; disc in 3d errors with "disc option requires 2d simulation"; point
+ * particles in the group error with "requires extended particles".
  */
 
 type Hooks = {
   kick(): void;
+  drift(): void;
   scaleVelocities(factor: number | number[]): void;
 };
 
@@ -74,6 +77,7 @@ export class FixNHSphere extends FixNH {
     // keywords of this variant are stripped; everything else goes to fix nh
     const rest: string[] = [];
     let disc = false;
+    let dipole = false, dlm = false;
     for (let k = 0; k < args.length;) {
       if (args[k] === 'disc') {
         if (sys.dimension !== 2) throw new StyleError(`Fix ${name} disc option requires 2d simulation`);
@@ -81,10 +85,11 @@ export class FixNHSphere extends FixNH {
         k++;
       } else if (args[k] === 'update') {
         const w = args[k + 1];
-        if (w === 'dipole' || w === 'dipole/dlm') {
-          throw new StyleError(`Using update dipole flag requires atom attribute mu (fix ${name} update ${w}; atom_style sphere has no dipole)`);
-        }
-        throw new StyleError(`Illegal fix ${name} update value '${w ?? ''}'`);
+        if (w !== 'dipole' && w !== 'dipole/dlm') throw new StyleError(`Invalid fix ${name} update argument: ${w ?? ''}`.trim());
+        if (!sys.state.mu) throw new StyleError(`Using update dipole flag requires atom attribute mu (fix ${name} update ${w})`);
+        dipole = true;
+        dlm = w === 'dipole/dlm';
+        k += 2;
       } else {
         rest.push(args[k]);
         k++;
@@ -105,7 +110,14 @@ export class FixNHSphere extends FixNH {
     // places and order as the point-particle ones.
     const base = FixNH.prototype as unknown as Hooks;
     const self = this as unknown as Hooks;
-    const baseKick = base.kick, baseScale = base.scaleVelocities;
+    const baseKick = base.kick, baseDrift = base.drift, baseScale = base.scaleVelocities;
+    if (dipole) {
+      self.drift = () => {
+        baseDrift.call(this);
+        const s = this.sys.state;
+        updateDipoles(this.sys, this.groupBit, dlm, s.dt, 0.5 * s.dt * s.units.ftm2v);
+      };
+    }
     self.kick = () => {
       baseKick.call(this);
       this.kickOmega();

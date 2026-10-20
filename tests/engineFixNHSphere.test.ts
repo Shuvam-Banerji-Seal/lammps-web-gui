@@ -57,6 +57,13 @@ describe('fix nvt/npt/nph sphere argument rules', () => {
     expect(e2).toMatch(/dipole\/dlm/);
   });
 
+  it('rejects an unknown update value, and update dipole on a fix nvt without /sphere, with the native texts', async () => {
+    const e1 = await run(`${head(3)}\nfix 1 all nvt/sphere temp 1 1 0.5 update quat\nrun 1\n`);
+    expect(e1).toMatch(/Invalid fix nvt\/sphere update argument: quat/);
+    const e2 = await run(`${head(3)}\nfix 1 all nvt temp 1 1 0.5 update dipole/dlm\nrun 1\n`);
+    expect(e2).toMatch(/Must use a '\/sphere' Nose-Hoover fix style for updating dipoles/);
+  });
+
   it('rejects unknown keywords by name', async () => {
     const err = await run(`${head(3)}\nfix 1 all nvt/sphere temp 1 1 0.5 bogus\nrun 1\n`);
     expect(err).toMatch(/bogus/);

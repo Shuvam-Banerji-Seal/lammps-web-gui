@@ -175,6 +175,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'pair_reaxff', names: { PAIRS: ['reaxff'], FIXES: ['qeq/reaxff', 'qeq/reax', 'acks2/reaxff', 'acks2/reax', 'qtpie/reaxff', 'qeq/rel/reaxff', 'reaxff/bonds', 'reaxff/species'], COMPUTES: ['reaxff/atom'] }, load: () => import('../engine-gpl/registry/reaxff') as Promise<StyleModule> },
   { id: 'gpl_extrafix', names: { FIXES: ['gle', 'grem', 'electron/stopping/fit', 'npt/cauchy'] }, load: () => import('../engine-gpl/registry/extrafix') as Promise<StyleModule> },
   { id: 'gpl_mc', names: { FIXES: ['charge/regulation', 'gemc'] }, load: () => import('../engine-gpl/registry/mc') as Promise<StyleModule> },
+  { id: 'gpl_dipole_dlm', names: { HOOKS: ['dipole/dlm'] }, load: () => import('../engine-gpl/registry/dipole_dlm') as Promise<StyleModule> },
   { id: 'gpl_langevin_angmom', names: { HOOKS: ['angmom'] }, load: () => import('../engine-gpl/registry/langevin_angmom') as Promise<StyleModule> },
   { id: 'gpl_ctip', names: { PAIRS: ['coul/ctip'], FIXES: ['qeq/ctip'] }, load: () => import('../engine-gpl/registry/ctip') as Promise<StyleModule> },
   { id: 'gpl_group_omega', names: { HOOKS: ['velocity', 'momentum', 'omega'] }, load: () => import('../engine-gpl/registry/group_omega') as Promise<StyleModule> },

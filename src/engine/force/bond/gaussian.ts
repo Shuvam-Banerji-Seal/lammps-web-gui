@@ -37,6 +37,9 @@ export class BondGaussian extends Bonded {
     if (args.length) throw new StyleError(`bond_style gaussian takes no arguments (got '${args[0]}')`);
   }
 
+  // As native LAMMPS does (src/EXTRA-MOLECULE/bond_gaussian.cpp at b332f28, equilibrium_distance): the r0 of the first term
+  equilibrium(type: number): number { return this.terms[type]?.[0]?.r0 ?? Number.NaN; }
+
   allocate(ntypes: number): void {
     super.allocate(ntypes);
     this.T = new Float64Array(ntypes + 1);

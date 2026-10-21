@@ -7,6 +7,7 @@ import { checkMinHalt } from './halt';
 import { computeSetup } from './verlet';
 import { MINIMIZERS } from './minimizers';
 import { gplHook } from '../gplHooks';
+import { runLabelCheck } from '../labelcheck';
 
 /*
  * Energy minimization — docs.lammps.org/minimize.html, min_style.html,
@@ -227,6 +228,8 @@ export const minimize = async (
 
   computeSetup(sys);
   for (const f of sys.fixes) f.minSetup?.();
+  // labelmap check_labels: once, at the end of the setup (native Modify::setup, called by Min::setup)
+  runLabelCheck(sys);
   const boxFixes = sys.fixes.filter((f) => (f as unknown as { boxDof?: BoxDof }).boxDof);
   if (boxFixes.length > 1) throw new StyleError('only one fix box/relax may be defined');
   if (boxFixes.length) {

@@ -38,7 +38,7 @@ import type { CustomProp, TopoList } from '../../engine/types';
 import type { FixFactory } from '../../engine/styles';
 import { RanMars } from '../random_mars';
 import { MinstdRand, shuffleMinstd } from './minstd';
-import { inferAngleType, inferBondType, inferDihedralType, inferImproperType } from '../../engine/labelmap';
+import { inferAngleType, inferBondType, inferDihedralType, inferImproperType, improperSymmatoms } from '../../engine/labelmap';
 import { evaluateScalar } from '../../engine/formula';
 import { termRows } from '../../engine/compute/local';
 import { acos as libmAcos } from '../libm/acos';
@@ -2236,16 +2236,9 @@ export class FixBondReact extends Fix {
     return { ty: Math.abs(r.type), at: r.type > 0 ? at : r.iorder.map((k) => at[k]) };
   }
 
-  /**
-   * The symmatoms of the improper style (improper_class2.html, Symmetry convention: "the second atom in the
-   * quadruplet is the atom of symmetry; all other atoms are considered interchangeable"). No improper style
-   * gives no symmetry, as in native (improper_style none).
-   */
-  private improperSymmetry(): number[] {
-    const name = this.sys.ff.improper?.name;
-    if (name === undefined) return [0, 0, 0, 0];
-    if (name === 'class2') return [0, 1, 0, 0];
-    throw new StyleError(`fix bond/react: wildcard impropers need the symmetry of improper style ${name}, which the browser engine does not provide`);
+  /** The symmatoms of the improper style (Improper::symmatoms; labelmap.ts improperSymmatoms). */
+  private improperSymmetry(): readonly number[] {
+    return improperSymmatoms(this.sys.ff.improper?.name);
   }
 
   /**

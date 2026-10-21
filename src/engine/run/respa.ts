@@ -7,6 +7,7 @@ import { clearAccum, newAccum, StyleError, type Accum } from '../force/types';
 import { computeSetup, yieldNow, type RunHooks } from './verlet';
 import { restartDue } from '../commands/restart';
 import { haltRequested } from './halt';
+import { runLabelCheck } from '../labelcheck';
 
 /*
  * run_style respa (rRESPA, Tuckerman, Berne and Martyna, J Chem Phys 97, 1990 (1992)).
@@ -349,6 +350,8 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
   sys.assignDynamicGroups(true);
   computeSetup(sys);
   for (const f of sys.fixes) f.setup();
+  // labelmap check_labels: once, at the end of the setup (native Modify::setup)
+  runLabelCheck(sys);
   sys.refreshComputes();
   hooks.afterSetup();
 

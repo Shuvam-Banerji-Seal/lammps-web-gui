@@ -101,11 +101,8 @@ export interface MoleculeOptions {
   auto?: string;
   /** the system's unit style, checked against a JSON file's "units" entry */
   units?: string;
-  /**
-   * The symmetry of the system's improper style (symmatoms of the style, see inferImproperType), or null when
-   * the style does not provide one. Undefined means no improper style is defined.
-   */
-  improperSymmatoms?: readonly number[] | null;
+  /** The symmetry of the system's improper style (labelmap.ts improperSymmatoms, see inferImproperType). */
+  improperSymmatoms?: readonly number[];
 }
 
 const HEADER: Record<string, number> = { atoms: 1, bonds: 1, angles: 1, dihedrals: 1, impropers: 1, fragments: 1, body: 2, mass: 1, com: 3, inertia: 6, lines: 1, triangles: 1 };
@@ -573,7 +570,7 @@ const typeOfJson = (id: string, v: unknown, kind: LabelKind, off: number, labels
  * The generated entries replace the ones in the file (native: "Generating angles will overwrite angle data from
  * molecule template.").
  */
-const autoGenerate = (t: MoleculeTemplate, auto: string, labels: LabelMap | undefined, impSym: readonly number[] | null | undefined): void => {
+const autoGenerate = (t: MoleculeTemplate, auto: string, labels: LabelMap | undefined, impSym: readonly number[] | undefined): void => {
   if (t.bonds.length === 0) throw new StyleError(`molecule ${t.id}: Unable to generate angles without special bonds.`);
   const map = labels ?? new LabelMap();
   const sp = specialFromBonds(t).map((s) => s[0]);
@@ -613,15 +610,20 @@ const autoGenerate = (t: MoleculeTemplate, auto: string, labels: LabelMap | unde
   }
   if (auto.includes('i')) {
     t.impropers = [];
-    if (impSym === null) throw new StyleError(`molecule ${t.id}: auto impropers need the symmetry of the improper style, which the browser engine does not provide for this style`);
     const sym = impSym ?? [0, 0, 0, 0];
     for (let b = 1; b <= n; b++) {
       const nb = sp[b - 1];
       if (nb.length !== 3) continue;
       const [a1, a3, a4] = nb;
-      const r = inferImproperType(map, [type(a1), type(b), type(a3), type(a4)], sym);
+      // As native LAMMPS does (src/molecule.cpp at b332f28, the auto impropers): the central atom takes the place of the
+      // improper style's atom of symmetry (symmatoms 1), the atom there takes the second place
+      const found = [a1, b, a3, a4];
+      const tags = [...found];
+      for (let k = 0; k < 4; k++) {
+        if (impSym !== undefined && sym[k] === 1) { tags[k] = found[1]; tags[1] = found[k]; }
+      }
+      const r = inferImproperType(map, [type(tags[0]), type(tags[1]), type(tags[2]), type(tags[3])], sym);
       if (!r.type) throw new StyleError(`molecule ${t.id}: Unable to infer improper type from bonds.`);
-      const tags = [a1, b, a3, a4];
       const ord = r.type < 0 ? r.iorder.map((k) => tags[k]) : tags;
       t.impropers.push([Math.abs(r.type), ord[0], ord[1], ord[2], ord[3]]);
     }

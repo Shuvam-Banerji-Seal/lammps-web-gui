@@ -4,6 +4,7 @@ import { StyleError } from '../force/types';
 import { restartDue } from '../commands/restart';
 import { haltRequested } from './halt';
 import { yieldNow } from './verlet';
+import { runLabelCheck } from '../labelcheck';
 
 /*
  * The lockstep velocity-Verlet loop for coupled replicas (partitions). A path-integral fix (fix pimd, ported in
@@ -53,6 +54,8 @@ export const runVerletCoupled = async (systems: readonly System[], nsteps: numbe
   fixPhase(systems, (f) => f.setupPreReverse?.());
   fixPhase(systems, (f) => f.setup());
   for (const sys of systems) {
+    // labelmap check_labels: once, at the end of the setup (native Modify::setup)
+    runLabelCheck(sys);
     sys.refreshComputes();
     hooks.afterSetup(sys);
   }

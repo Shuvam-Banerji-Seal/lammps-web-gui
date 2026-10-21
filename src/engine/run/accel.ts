@@ -7,6 +7,7 @@ import { isResident, MAX_CHUNK, type ResidentBackend } from '../md';
 import { computeSetup, yieldNow } from './verlet';
 import { haltRequested } from './halt';
 import { CpuForceBackend } from '../cpu/forces';
+import { runLabelCheck } from '../labelcheck';
 
 /*
  * Accelerated force paths for the notebook's CPU-threads and WebGPU choices
@@ -107,6 +108,8 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
   store(sys, await a.backend.compute(s, a.table));
   computeSetup(sys);
   for (const f of sys.fixes) f.setup();
+  // labelmap check_labels: once, at the end of the setup (native Modify::setup)
+  runLabelCheck(sys);
   sys.refreshComputes();
   hooks.afterSetup();
   const end = s.step + n;

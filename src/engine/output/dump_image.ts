@@ -124,7 +124,18 @@ const AXES_SHIFT: Record<2 | 3, Record<AxesLocation, [number, number, number]>> 
   2: { center: [1, 1, 1], lowerleft: [-1, -1, -1], lowerright: [8, -1, -1], upperleft: [-1, 8, -1], upperright: [8, 8, -1] },
 };
 const cross = (a: number[], b: number[]): number[] => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const normalize = (a: number[]): number[] => { const n = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / n, a[1] / n, a[2] / n]; };
+/**
+ * MathExtra::norm3 (src/math_extra.h at b332f28), which Image::view_params applies to the up, camRight and camUp
+ * vectors: each component times 1 / sqrt(sum of squares), the vector unchanged when the sum is 0. (Math.hypot and a
+ * division round differently: camRight came out one ulp off native, and a wall corner then projected to
+ * xf = 15.999999999999998 instead of 16.)
+ */
+const normalize = (a: number[]): number[] => {
+  const val = a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
+  if (!(val > 0)) return [a[0], a[1], a[2]];
+  const scale = 1.0 / Math.sqrt(val);
+  return [a[0] * scale, a[1] * scale, a[2] * scale];
+};
 /** Image::view_params' EPSILON (image.cpp at b332f28: constexpr double EPSILON = 1.0e-6). */
 const VIEW_EPSILON = 1.0e-6;
 /**

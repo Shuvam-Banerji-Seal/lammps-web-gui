@@ -12,10 +12,9 @@ import { Session } from '../src/engine/interpreter';
  * Fixtures (tests/fixtures/image_cyl): <case>.in is the input (the dump line is the case's subject) and <case>.ppm is
  * native's output: /home/roy/.local/bin/lmp, b332f28, run 0, written as PPM. Every case is 64x64 to 200x200 px.
  *
- * Pinned differences (count of bytes that differ, largest difference) against native. Every case is byte-exact except
- * axes_b: 16 bytes, each by up to 47 levels, all in the blue (z) arrow's head on the image column that carries the
- * origin's projection (x = 80 of 160). The cause is not identified yet (the arrow head is draw_trinorm, image.cpp, and the
- * column is the sampling line of the axis). Those values are pinned, not loosened, so any change in them shows up here.
+ * Every case is byte-exact with native. (axes_b differed in 16 bytes of the blue arrow's head on the image column of
+ * the origin's projection until the camera basis vectors were normalised as MathExtra::norm3 does, in dump_image.ts.)
+ * The values are pinned, so any change in them shows up here.
  */
 
 const DIR = join(process.cwd(), 'tests', 'fixtures', 'image_cyl');
@@ -27,7 +26,7 @@ const EXPECTED: Record<string, { count: number; max: number }> = {
   box_d3: { count: 0, max: 0 },
   box_tri: { count: 0, max: 0 },
   axes_a: { count: 0, max: 0 },
-  axes_b: { count: 16, max: 47 },
+  axes_b: { count: 0, max: 0 },
   axes_c: { count: 0, max: 0 },
   axes_t: { count: 0, max: 0 },
   acolor_a: { count: 0, max: 0 },

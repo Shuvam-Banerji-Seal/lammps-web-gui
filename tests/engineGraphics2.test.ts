@@ -210,8 +210,10 @@ describe('fix graphics/labels (src/GRAPHICS/fix_graphics_labels.cpp)', () => {
     expect(p.scale).toBe(1);
   });
 
-  it('colorscale is a pixmap of the map range: map grid is refused by name; $-references substitute only when present', () => {
-    expect(() => parseLabelArgs(['colorscale', 'd', 'lbl', '0', '0', '0', 'map', 'grid'], noImage)).toThrow(/not supported/);
+  it('colorscale is a pixmap of the map range: map takes atom, grid or bond; $-references substitute only when present', () => {
+    // As native LAMMPS does (src/GRAPHICS/fix_graphics_labels.cpp at b332f28): "Unknown fix graphics/labels colorscale map value: {}"
+    expect(() => parseLabelArgs(['colorscale', 'd', 'lbl', '0', '0', '0', 'map', 'grid'], noImage)).not.toThrow();
+    expect(() => parseLabelArgs(['colorscale', 'd', 'lbl', '0', '0', '0', 'map', 'cell'], noImage)).toThrow('Unknown fix graphics/labels colorscale map value: cell');
     const colorOf = (name: string): [number, number, number] | null => (name === 'blue' ? [0, 0, 1] : name === 'red' ? [1, 0, 0] : null);
     const map = ColorMap.parse(['0', '3', 'cf', '0.0', '2', 'min', 'blue', 'max', 'red'], colorOf).map;
     const objs = new FixGraphicsLabels(parseLabelArgs(['colorscale', 'd', 'Range', '0.5', '2.5', '0', 'length', '60'], noImage))

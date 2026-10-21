@@ -125,6 +125,26 @@ export interface ImageShading {
   postProcess(f: RasterFrame, o: PostProcessOptions): void;
   /** ComputeChunkAtom::compute_image: the walls of the bins of a bin/1d, bin/2d or bin/3d compute (chunk_bins.ts). */
   chunkBinObjects(spec: ChunkBinImageSpec): ImageObject[];
+  /** dump image grid: the cells of a per-grid quantity, coloured by the grid colour map (grid_cells.ts). */
+  drawGridCells(f: RasterFrame, g: GridCellsSpec): void;
+}
+
+/** What dump image's grid cells read: the grid, its values in grid-ID order (x fastest), their colours and the box. */
+export interface GridCellsSpec {
+  dimension: 2 | 3;
+  /** Nx Ny Nz (Nz = 1 in 2d). */
+  size: [number, number, number];
+  values: Float64Array;
+  /** The grid colour map's colour (0..1) of a value. */
+  colorOf: (v: number) => Vec3;
+  /** dump_modify gtrans. */
+  opacity: number;
+  triclinic: boolean;
+  boxlo: Vec3;
+  /** Box lengths (Domain prd). */
+  prd: Vec3;
+  /** Domain::lamda2x (triclinic boxes). */
+  lamda2x: (p: Vec3) => Vec3;
 }
 
 /**

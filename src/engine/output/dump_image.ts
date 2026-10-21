@@ -11,6 +11,7 @@ import { ColorMap } from './image_colormap';
 import { type AtomObjectsHook, type AutoBondList, type BodyAtom, type EllipsoidAtom, type ImageObject, type ImageShading, type LineAtom, type ObjectStyle, type RasterFrame, type RegionConeSpec, type RegionHook, type Rgb255, type TriAtom, type Vec3 } from './image_objects';
 import { gplHook } from '../gplHooks';
 import { NEIGHMASK } from '../neighbor';
+import { gridColumn, gridSourceOf, resolveGridRef, type GridRef } from '../grid';
 import { BlockRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, SphereRegion } from '../region';
 import { libm } from '../libm';
 
@@ -229,6 +230,19 @@ export class ImageDump {
   /** dump_modify amap (colour map of an atom colour value); null = the dump_image.html default. */
   private amap: ColorMap | null = null;
   private readonly defaultMap = ColorMap.default();
+  /** dump image grid: the per-grid quantity that colours the cells (null = no grid), dump_modify gmap and gtrans. */
+  private grid: GridRef | null = null;
+  private gmap: ColorMap | null = null;
+  private readonly defaultGridMap = ColorMap.default();
+  private gridOpacity = 1;
+  /** The grid colour map before the current frame (fix graphics/labels colorscale map grid reads it). */
+  private priorGridMap: ColorMap | null = null;
+  /** The grid colour map as fix graphics/labels colorscale map grid sees it: the previous output's (ColorMap::info). */
+  gridColorScaleMap(): ColorMap {
+    return this.priorGridMap ?? (this.gmap ?? this.defaultGridMap).snapshot();
+  }
+  /** The once-per-dump note that native does not load a per-grid array column in 3d (drawGrid). */
+  private gridArrayWarned = false;
   /** dump image shiny (specular intensity; the highlight hardness is 16 * shiny), fsaa, and ssao (seed, intensity). */
   private shiny = 1;
   private fsaa = false;
@@ -269,7 +283,11 @@ export class ImageDump {
    * character for the timestep. That is not the case for the write_dump command; no wildcard "*" character is
    * necessary." (As native LAMMPS does, src/write_dump.cpp at b332f28: dump->multifile_override = 1 for image.)
    */
-  constructor(private sys: System, readonly id: string, readonly group: string, file: string, args: string[], multifileOverride = false) {
+  /** The dump's output frequency N (a grid fix's data is valid on multiples of its frequency). */
+  private readonly nevery: number;
+
+  constructor(private sys: System, readonly id: string, readonly group: string, file: string, args: string[], multifileOverride = false, nevery = 0) {
+    this.nevery = nevery;
     if (!multifileOverride && !file.includes('*')) throw new StyleError(`dump ${id}: dump image requires a file name with '*' requesting one snapshot per file`);
     const s = sys.state;
     const color = args[0];
@@ -630,8 +648,15 @@ export class ImageDump {
           break;
         }
         // ellipsoid draws ellipsoids (and superellipsoids, atom_style ellipsoid superellipsoid): no renderer here
-        case 'grid':
-          throw new StyleError(`dump ${this.id}: dump image keyword '${key}' is not supported by the browser engine`);
+        case 'grid': {
+          // dump_image.html: "grid value = per-grid quantity to use for coloring grid cells" (c_ID:gname:dname or
+          // f_ID:gname:dname, with [I] for a column of a per-grid array). As native LAMMPS does (src/GRAPHICS/dump_image.cpp
+          // at b332f28): utils::check_grid_reference with the errors of "Dump image" and the dump's frequency
+          if (a[k + 1] === undefined) throw new StyleError('Illegal dump image grid command: missing argument(s)');
+          this.grid = resolveGridRef(this.sys, 'Dump image', a[k + 1], this.nevery);
+          k += 2;
+          break;
+        }
         default:
           // As native LAMMPS does (src/GRAPHICS/dump_image.cpp at b332f28): "Unknown dump image keyword {}"
           throw new StyleError(`Unknown dump image keyword ${key}`);
@@ -820,7 +845,22 @@ export class ImageDump {
         for (const f of objs) f.opacity = v;
         return 3;
       }
-      case 'gmap': case 'bitrate': case 'framerate':
+      case 'gmap': {
+        // dump_modify gmap: the grid colour map, "identical to amap args" (dump_image.html)
+        const { map, used } = ColorMap.parse(a.slice(k + 1), (c) => this.namedColor(c));
+        this.gmap = map;
+        return used + 1;
+      }
+      case 'gtrans': {
+        // dump_modify gtrans: the opacity of the grid cells. As native LAMMPS does (src/GRAPHICS/dump_image.cpp at
+        // b332f28): ignored when no grid is drawn, else "Invalid gtrans opacity in dump_modify command" outside 0..1
+        if (!this.grid) return 2;
+        const v = this.num(a[k + 1], 'gtrans');
+        if (v < 0 || v > 1) throw new StyleError('Invalid gtrans opacity in dump_modify command');
+        this.gridOpacity = v;
+        return 2;
+      }
+      case 'bitrate': case 'framerate':
         throw new StyleError(`dump ${this.id}: dump_modify keyword '${key}' is not supported for dump image by the browser engine`);
       default:
         return 0;
@@ -1045,6 +1085,7 @@ export class ImageDump {
         ctx.shading.drawSphere(frame, [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]], base, diam, opacity);
       }
     }
+    if (this.grid) this.drawGrid(s, ctx);
     if (this.lineOn || this.triOn) this.drawParticles(s, ctx, colorVals, cmap);
     if (this.ellipsoidOn) this.drawEllipsoids(s, ctx, colorVals, cmap);
     if (this.bodyOn) this.drawBodies(s, ctx, colorVals, cmap);
@@ -1664,6 +1705,48 @@ export class ImageDump {
    * two-halves drawing are the GPL autobond loop (engine-gpl/graphics/autobond.ts); the core gives it the list, the atoms,
    * their colours and the rules.
    */
+  /**
+   * dump image grid (dump_image.cpp, create_image at b332f28): the cell values of the per-grid quantity, the grid colour
+   * map bounded by their range when it is dynamic ("Invalid grid color map min/max values" when it is empty), and the
+   * cells drawn by the GPL port (engine-gpl/graphics/grid_cells.ts).
+   */
+  private drawGrid(s: SimState, ctx: DrawCtx): void {
+    const ref = this.grid!;
+    const size = gridSourceOf(this.sys, ref).gridSize(ref.igrid);
+    // native LAMMPS (src/GRAPHICS/dump_image.cpp at b332f28, create_image "load gbuf") never copies a column of a per-grid
+    // array (c_ID:gname:dname[I]) in 3d: that branch sits outside the dimension == 3 block, so the cells are coloured from
+    // the buffer as allocated. Measured with native LAMMPS: all 0 for a compute property/grid column, the lower half of the
+    // cells at the map's maximum for a fix ave/grid column, so its image is not defined. The engine draws the column and
+    // says once that native differs here.
+    if (s.dimension === 3 && ref.index > 0 && !this.gridArrayWarned) {
+      this.gridArrayWarned = true;
+      this.sys.warn(`Dump image ${this.id} grid: native LAMMPS (b332f28) does not load a per-grid array column in 3d and colours the cells from an uninitialized buffer; the browser engine draws the column's values`);
+    }
+    const values = gridColumn(this.sys, ref);
+    let lo = 1.0e20, hi = -1.0e20;
+    for (let k = 0; k < values.length; k++) {
+      lo = Math.min(lo, values[k]);
+      hi = Math.max(hi, values[k]);
+    }
+    const map = this.gmap ?? this.defaultGridMap;
+    this.priorGridMap = map.snapshot();
+    map.bounds(lo, hi);
+    const g = this.sys.geom;
+    const b = s.box;
+    ctx.shading.drawGridCells(ctx.frame, {
+      dimension: s.dimension === 2 ? 2 : 3,
+      size,
+      values,
+      colorOf: (v) => map.color(v),
+      opacity: this.gridOpacity,
+      triclinic: g.triclinic,
+      boxlo: [b.lo[0], b.lo[1], b.lo[2]],
+      prd: [b.hi[0] - b.lo[0], b.hi[1] - b.lo[1], b.hi[2] - b.lo[2]],
+      // As native LAMMPS does (src/domain.cpp at b332f28, Domain::lamda2x): h lambda first, then boxlo
+      lamda2x: (p) => [g.lx * p[0] + g.xy * p[1] + g.xz * p[2] + g.lo[0], g.ly * p[1] + g.yz * p[2] + g.lo[1], g.lz * p[2] + g.lo[2]],
+    });
+  }
+
   /** Whether the "autobond cutoff > minimum neighbor cutoff" warning was given (native gives it at each init; once here). */
   private autobondWarned = false;
 

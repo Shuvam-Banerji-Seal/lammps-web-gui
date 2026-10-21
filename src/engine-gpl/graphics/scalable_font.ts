@@ -774,7 +774,9 @@ export function createColorscale(font: ScalableFont, text: string, horizontal: b
 
   if (minwidth > first.width) {
     const wextra = Math.trunc(Math.trunc((minwidth - first.width) / xfill) / 4);
-    newtext = `${formatGeneral3(lo)} ${'<'.repeat(wextra)} ${text} ${'>'.repeat(wextra)} ${formatGeneral3(hi)}`;
+    // fmt "{:<<{}}" of the character '<' with width wextra: the character padded to wextra, so one at least (also for 0)
+    const pad = Math.max(1, wextra);
+    newtext = `${formatGeneral3(lo)} ${'<'.repeat(pad)} ${text} ${'>'.repeat(pad)} ${formatGeneral3(hi)}`;
   }
   // re-do the dry run for the padded text
   const second = dryRun(font, glyphChars(newtext));

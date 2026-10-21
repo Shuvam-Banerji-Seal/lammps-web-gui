@@ -218,9 +218,9 @@ export class Dump {
   private cfgStyle: DumpCfgStyle | null = null;
 
   /** The atom colour map of a dump image as the previous output left it (fix graphics/labels colorscale); null for other styles. */
-  colorScaleMap(which: 'atom' | 'bond' = 'atom'): ColorMap | null {
+  colorScaleMap(which: 'atom' | 'grid' | 'bond' = 'atom'): ColorMap | null {
     if (!this.imageDump) return null;
-    return which === 'bond' ? this.imageDump.bondColorScaleMap() : this.imageDump.colorScaleMap();
+    return which === 'bond' ? this.imageDump.bondColorScaleMap() : which === 'grid' ? this.imageDump.gridColorScaleMap() : this.imageDump.colorScaleMap();
   }
   readonly columns: string[];
 
@@ -266,7 +266,7 @@ export class Dump {
     // default."
     this.sort = style === 'xyz' || style === 'extxyz' || style === 'grid/vtk' ? 'id' : 'off';
     if (style === 'image') {
-      this.imageDump = new ImageDump(sys, id, group, file, cols, multifileOverride);
+      this.imageDump = new ImageDump(sys, id, group, file, cols, multifileOverride, typeof every === 'number' ? every : 0);
       this.columns = [];
     } else if (style === 'atom') {
       if (cols.length) throw new StyleError('dump atom takes no attributes (use dump custom)');

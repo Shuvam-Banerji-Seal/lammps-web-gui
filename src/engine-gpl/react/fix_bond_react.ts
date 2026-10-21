@@ -1538,22 +1538,36 @@ export class FixBondReact extends Fix {
     };
     const ok = (k: number): boolean => (s.mask[k] & g) !== 0 && this.lim.data[k] === 0;
     if (rxn.closeneigh < 0) {
-      // far partners: every pair of group atoms of the right types within the cutoff window
+      // far partners: every pair of group atoms of the right types within the cutoff window. The candidates j of an
+      // atom come from the bins around it (bins at least Rmax wide), visited in local order as before, so the first
+      // atom at the smallest distance is still the partner.
+      const rank = new Int32Array(s.n);
+      for (let k = 0; k < order.length; k++) rank[order[k]] = k;
+      const bins = this.partnerBins(Math.sqrt(rxn.rmaxsq));
+      const stamp = new Int32Array(s.n).fill(-1);
+      const cand: number[] = [];
       for (let oi = 0; oi < order.length; oi++) {
         const i = order[oi];
         if (!ok(i)) continue;
         const ti = s.type[i];
+        if (ti !== rxn.iatomtype && ti !== rxn.jatomtype) continue;
         const sp = sim.get(s.id[i])!;
-        for (let oj = 0; oj < order.length; oj++) {
-          const j = order[oj];
+        cand.length = 0;
+        bins.around(i, (j) => {
+          if (stamp[j] === i) return;
+          stamp[j] = i;
+          cand.push(j);
+        });
+        cand.sort((x, y) => rank[x] - rank[y]);
+        for (const j of cand) {
           if (j === i || !ok(j)) continue;
           if (!okPair(i, j)) continue;
           const tj = s.type[j];
           const possible = (ti === rxn.iatomtype && tj === rxn.jatomtype) || (ti === rxn.jatomtype && tj === rxn.iatomtype);
           if (!possible) continue;
-          if (sp.flat.slice(0, sp.c[2]).includes(s.id[j])) continue;
           const rsq = dsq(i, j);
           if (rsq >= rxn.rmaxsq || rsq <= rxn.rminsq) continue;
+          if (sp.flat.slice(0, sp.c[2]).includes(s.id[j])) continue;
           if (rsq < (d1.get(s.id[i]) ?? BIG)) { out.set(s.id[i], s.id[j]); d1.set(s.id[i], rsq); }
         }
       }
@@ -1583,6 +1597,58 @@ export class FixBondReact extends Fix {
       }
     }
     return out;
+  }
+
+  /**
+   * The owned atoms in bins at least w wide (one bin per dimension when the box is narrower than 3 w); around(i, f)
+   * calls f for every atom of the 27 bins around atom i, periodic dimensions wrapped (an atom may come more than once).
+   */
+  private partnerBins(w: number): { around(i: number, f: (j: number) => void): void } {
+    const s = this.sys.state;
+    const box = s.box;
+    // a triclinic box keeps one bin (every atom is a candidate, as the pair loop was)
+    const tri = this.sys.geom.triclinic;
+    const nb = [0, 1, 2].map((d) => {
+      const L = box.hi[d] - box.lo[d];
+      return !tri && w > 0 && L / w >= 3 ? Math.floor(L / w) : 1;
+    });
+    const binOf = (i: number, d: number): number => {
+      const L = box.hi[d] - box.lo[d];
+      const b = Math.floor(((s.x[3 * i + d] - box.lo[d]) / L) * nb[d]);
+      return Math.min(nb[d] - 1, Math.max(0, b));
+    };
+    const head = new Int32Array(nb[0] * nb[1] * nb[2]).fill(-1);
+    const next = new Int32Array(s.n);
+    const home = new Int32Array(3 * s.n);
+    for (let i = s.n - 1; i >= 0; i--) {
+      const bx = binOf(i, 0), by = binOf(i, 1), bz = binOf(i, 2);
+      home[3 * i] = bx; home[3 * i + 1] = by; home[3 * i + 2] = bz;
+      const c = (bz * nb[1] + by) * nb[0] + bx;
+      next[i] = head[c];
+      head[c] = i;
+    }
+    const wrap = (b: number, d: number): number => {
+      if (b >= 0 && b < nb[d]) return b;
+      if (!box.periodic[d]) return -1;
+      return (b + nb[d]) % nb[d];
+    };
+    return {
+      around: (i, f) => {
+        for (let dz = -1; dz <= 1; dz++) {
+          const bz = wrap(home[3 * i + 2] + dz, 2);
+          if (bz < 0) continue;
+          for (let dy = -1; dy <= 1; dy++) {
+            const by = wrap(home[3 * i + 1] + dy, 1);
+            if (by < 0) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              const bx = wrap(home[3 * i] + dx, 0);
+              if (bx < 0) continue;
+              for (let j = head[(bz * nb[1] + by) * nb[0] + bx]; j >= 0; j = next[j]) f(j);
+            }
+          }
+        }
+      },
+    };
   }
 
   private superimposeAndUpdate(sim: Map<number, Special>): void {

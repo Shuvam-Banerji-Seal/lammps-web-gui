@@ -420,7 +420,6 @@ export class FixNH extends Fix {
    */
   resetTarget(tNew: number): void {
     // the barostat chain keeps its setup-time masses (native etap_mass_flag = 0), see baroMassTemp
-    if (this.pstat && this.pchain > 0 && this.baroMassTemp === null) this.baroMassTemp = this.baroSetupTemp;
     this.tStart = tNew; this.tStop = tNew; this.tTarget = tNew;
   }
 
@@ -576,12 +575,19 @@ export class FixNH extends Fix {
   protected chainMassTemp: number | null = null;
 
   /**
-   * Temperature the barostat chain's masses were built from at setup, once a tempering swap has reset the target
-   * (resetTarget). Native fix_nh.cpp keeps etap_mass fixed from setup (etap_mass_flag = 0, b332f28) while the
-   * thermostat masses follow the target (eta_mass_flag = 1), so after a reset the barostat chain uses these masses and
-   * its stored inner accelerations. null until a reset: the chain then follows the current target as before.
+   * Temperature the barostat chain's masses were built from at setup. As native LAMMPS does (src/fix_nh.cpp at
+   * b332f28): etap_mass is set in setup() from the setup target and kept (etap_mass_flag = 0), while the thermostat
+   * masses follow the target (eta_mass_flag = 1); the chain's forces use the current target (kt and lkt_press of
+   * nhc_press_integrate), and its inner accelerations are the stored etap_dotdot. With a ramped thermostat target
+   * (temp Tstart Tstop) the two temperatures differ. null without a barostat chain.
    */
   private baroMassTemp: number | null = null;
+  /**
+   * dof k_B T of the temperature compute at setup. As native LAMMPS does (src/fix_nh.cpp setup and nh_omega_dot at
+   * b332f28): the first step's iso MTK term is tdof boltz t_current with the setup values (t_current scaled by the
+   * thermostat's own factors), not a temperature computed again after the other fixes' initial integration.
+   */
+  private keSetup: number | null = null;
   /** The barostat temperature at setup (the masses' temperature, see baroMassTemp). */
   private baroSetupTemp = 0;
 
@@ -598,6 +604,7 @@ export class FixNH extends Fix {
 
   setup(): void {
     this.tSetup = this.currentTemp();
+    this.keSetup = this.tempCompute.dof * this.sys.state.units.boltz * this.tSetup;
     this.trackKE = null;
     if (this.tstat) {
       this.tTarget = this.setupTargetTemp();
@@ -618,6 +625,7 @@ export class FixNH extends Fix {
       // As native LAMMPS does (src/fix_nh.cpp setup() at b332f28): the barostat chain's inner accelerations at setup,
       // etap_dotdot[k] = (etap_mass[k-1] etap_dot[k-1]^2 - k_B T) / etap_mass[k], masses from the setup temperature
       this.baroSetupTemp = this.baroTemp();
+      this.baroMassTemp = this.pchain > 0 ? this.baroSetupTemp : null;
       if (this.pchain > 0) {
         const kt = this.sys.state.units.boltz * this.baroTemp();
         const pf = this.pfreqMax();
@@ -636,8 +644,7 @@ export class FixNH extends Fix {
 
   initialIntegrate(): void {
     // As native LAMMPS does (src/fix_nh.cpp initial_integrate at b332f28): the barostat chain runs before the thermostat
-    // target is updated, so it sees the previous step's target. Only the subclasses that fix the masses (chainMassTemp,
-    // fix nphug) move their target each step, so only they take this order; the others are unchanged.
+    // target is updated, so it sees the previous step's target (a ramped target, or fix nphug's Hugoniot target).
     const chainFirst = this.barostatChainFirst() && this.pstat && this.pchain > 0;
     if (chainFirst) this.nhcPress();
     if (this.tstat) {
@@ -837,8 +844,8 @@ export class FixNH extends Fix {
     }
     const pfreqMax = this.pfreqMax();
     const ndims = this.chainDims();
-    // masses fixed at setup and inner accelerations stored between updates when a subclass sets chainMassTemp (native
-    // etap_mass_flag = 0 and etap_dotdot, fix_nphug.cpp); otherwise the masses follow the current temperature
+    // masses fixed at setup (native etap_mass_flag = 0; fix nphug's chainMassTemp, fix_nphug.cpp) and inner
+    // accelerations stored between updates (etap_dotdot)
     const massT = this.chainMassTemp ?? this.baroMassTemp;
     const stored = massT !== null;
     const qT = stored ? kB * massT! : kt;
@@ -1028,8 +1035,10 @@ export class FixNH extends Fix {
         if (this.couple === 'xyz') {
           // isotropic barostat: the temperature compute's full dof * kT (rotational dof included)
           const { dof, kT } = this.dofKT();
-          // the first update of a step: the tracked kinetic energy, after the chain's own scaling
-          const ke2 = initial && this.trackKE !== null ? this.trackKE * this.nhcScale2 : dof * kT;
+          // the first update of a step: the tracked kinetic energy (the setup value in the first step), after the
+          // chain's own scaling
+          const tracked = this.trackKE ?? this.keSetup;
+          const ke2 = initial && tracked !== null ? tracked * this.nhcScale2 : dof * kT;
           if (dof > 0) mtkTerm1 = ke2 / (nb * s.n);
         } else {
           mtkTerm1 = this.keBaro(!initial && this.staleKineticFinal()) / (nb * s.n);
@@ -1306,7 +1315,9 @@ export class FixNH extends Fix {
       if (this.deviatoric) e += this.strainEnergyValue();
       if (this.pchain > 0) {
         const kt = kB * this.baroTemp();
-        const kM = this.chainMassTemp !== null ? kB * this.chainMassTemp : kt;
+        // etap_mass: fixed at setup (baroMassTemp, or fix nphug's chainMassTemp)
+        const massT = this.chainMassTemp ?? this.baroMassTemp;
+        const kM = massT !== null ? kB * massT : kt;
         const q0 = kM / (pfreqMax * pfreqMax), qk = kM / (pfreqMax * pfreqMax);
         // the scalar's potential term of the first barostat chain element counts the barostatted dimensions
         e += nflag * kt * this.etap[0] + 0.5 * q0 * this.etapDot[0] * this.etapDot[0];
@@ -1385,7 +1396,8 @@ export class FixNH extends Fix {
     const qT = (k: number) => (k === 0 ? dof * kt / (tfreq * tfreq) : kt / (tfreq * tfreq));
     let pfreq = 0;
     for (const d of dims) if (this.pFlag[d]) pfreq = Math.max(pfreq, 1 / this.pPeriod[d]);
-    const qP = () => ktP / (pfreq * pfreq);
+    const massTP = this.chainMassTemp ?? this.baroMassTemp;
+    const qP = () => (massTP !== null ? kB * massTP : ktP) / (pfreq * pfreq);
     return [
       { n: nT, value: (k) => this.eta[k] },
       { n: nT, value: (k) => this.etaDot[k] },

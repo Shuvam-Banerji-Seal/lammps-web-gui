@@ -1,0 +1,30 @@
+# oracle: fixes nve/bpm/sphere and heat/flow on dynamic groups (the atoms moving up and the atoms moving down,
+# re-evaluated every 3 steps), with nve/sphere on the other group and add/heat on all atoms
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      bpm/sphere
+lattice         fcc 0.7
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+velocity        all create 1.0 51297 loop geom
+set             group all omega 0.2 -0.1 0.3
+fix             0 all property/atom temperature heatflow
+set             group all temperature 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+variable        up atom vz>0.0
+variable        down atom vz<=0.0
+group           dyn dynamic all var up every 3
+group           dyn2 dynamic all var down every 3
+fix             1 dyn nve/bpm/sphere
+fix             2 dyn2 nve/sphere
+fix             3 dyn2 heat/flow constant 2.0
+fix             4 all add/heat linear 3.0 0.5
+compute         om all property/atom omegax omegay omegaz quatw quati quatj quatk temperature heatflow
+compute         rs all reduce sum c_om[*]
+variable        ndyn equal count(dyn)
+thermo_style    custom step temp pe c_rs[*] v_ndyn
+thermo_modify   format float %.15g
+thermo          5
+run             60

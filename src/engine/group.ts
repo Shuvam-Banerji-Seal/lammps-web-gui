@@ -66,16 +66,18 @@ export const DYNAMIC_GROUP_FIXES = new Set([
   'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'viscous/sphere', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',
   'wall/lj93', 'wall/morse', 'wall/reflect', 'wall/reflect/stochastic', 'wall/region',
   'wall/harmonic/outside', 'wall/harmonic/returned', 'wall/lepton', 'addtorque', 'spring/rg', 'oneway',
+  'addtorque/atom', 'settorque/atom', 'viscous/nonlinear', 'damping/cundall', 'nve/bpm/sphere', 'heat/flow',
+  'nve/asphere', 'nvt/asphere', 'nph/asphere', 'npt/asphere',
 ]);
 export const DYNAMIC_GROUP_UNVERIFIED = new Set([
-  'adapt', 'adapt/fep', 'addtorque/atom', 'atom/swap', 'bocs', 'bond/create',
-  'bond/create/angle', 'damping/cundall', 'efield/tip4p', 'gcmc', 'graphics/isosurface', 'heat/flow',
-  'langevin/eff', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'neighbor/swap', 'nph/asphere',
-  'nph/body', 'nph/eff', 'nphug', 'npt/asphere', 'npt/body', 'npt/eff',
-  'npt/uef', 'nve/asphere', 'nve/body', 'nve/bpm/sphere', 'nve/dot', 'nve/dotc/langevin',
-  'nve/line', 'nve/manifold/rattle', 'nve/tri', 'nvk', 'nvt/asphere', 'nvt/body',
+  'adapt', 'adapt/fep', 'atom/swap', 'bocs', 'bond/create',
+  'bond/create/angle', 'efield/tip4p', 'gcmc', 'graphics/isosurface',
+  'langevin/eff', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'neighbor/swap',
+  'nph/body', 'nph/eff', 'nphug', 'npt/body', 'npt/eff',
+  'npt/uef', 'nve/body', 'nve/dot', 'nve/dotc/langevin',
+  'nve/line', 'nve/manifold/rattle', 'nve/tri', 'nvk', 'nvt/body',
   'nvt/eff', 'nvt/manifold/rattle', 'nvt/sllod/eff', 'nvt/uef', 'precession/spin', 'reaxff/bonds',
-  'reaxff/species', 'setforce/spin', 'settorque/atom', 'smd/setvel', 'viscous/nonlinear', 'wall/flow',
+  'reaxff/species', 'setforce/spin', 'smd/setvel', 'wall/flow',
   'wall/table', 'widom',
 ]);
 

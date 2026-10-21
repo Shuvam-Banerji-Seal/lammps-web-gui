@@ -14,8 +14,7 @@ import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { StyleError } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
-import { RHEO_HEATFLOW, RHEO_TEMP } from '../../engine/atoms';
-import { rheoProp } from './model';
+import { thermalKeys } from '../../engine/atoms';
 
 const ADD = 0, LINEAR = 1, QUARTIC = 2;
 
@@ -68,9 +67,11 @@ export class FixAddHeat extends Fix {
 
   init(): void {
     const s = this.sys.state;
-    // "Fix add/heat requires atom style with temperature property" and "... with heatflow property"
-    if (!s.custom.get(RHEO_TEMP)) throw new StyleError('Fix add/heat requires atom style with temperature property');
-    if (!s.custom.get(RHEO_HEATFLOW)) throw new StyleError('Fix add/heat requires atom style with heatflow property');
+    // "Fix add/heat requires atom style with temperature property" and "... with heatflow property": atom->temperature
+    // and atom->heatflow, of atom_style rheo/thermal or of fix property/atom temperature heatflow
+    const [tk, fk] = thermalKeys(s);
+    if (!s.custom.get(tk)) throw new StyleError('Fix add/heat requires atom style with temperature property');
+    if (!s.custom.get(fk)) throw new StyleError('Fix add/heat requires atom style with heatflow property');
   }
 
   /**
@@ -81,7 +82,8 @@ export class FixAddHeat extends Fix {
 
   postForce(): void {
     const s = this.sys.state;
-    const heatflow = rheoProp(s, RHEO_HEATFLOW), temperature = rheoProp(s, RHEO_TEMP);
+    const [tk, fk] = thermalKeys(s);
+    const heatflow = s.custom.get(fk)!.data, temperature = s.custom.get(tk)!.data;
     if (this.overwrite) {
       for (let i = 0; i < s.n; i++) if (s.mask[i] & this.groupBit) heatflow[i] = 0.0;
     }

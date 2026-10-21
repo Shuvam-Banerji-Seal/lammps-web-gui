@@ -1,0 +1,25 @@
+# oracle: fix npt with a ramped thermostat target (the barostat chain keeps its setup masses and runs before the target
+# update) and fix nph on a group whose other atoms another fix integrates first (the first step's MTK term uses the
+# setup temperature), point particles with lj/cut; the fixes' scalar and vector in thermo (fix 1 is the last fix of
+# the second run, after fix 2)
+# oracle-compare: thermo=all atoms=all
+units           lj
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.2 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+group           lower id 1:128
+group           upper subtract all lower
+fix             1 all npt temp 1.2 0.8 0.1 iso 0.5 1.5 1.0
+thermo_style    custom step temp pe press vol f_1 f_1[1] f_1[2] f_1[3] f_1[4] f_1[7] f_1[8] f_1[9] f_1[12]
+thermo_modify   format float %.15g
+thermo          10
+run             100
+unfix           1
+fix             2 upper nve
+fix             1 lower nph iso 1.0 1.0 1.0
+run             100

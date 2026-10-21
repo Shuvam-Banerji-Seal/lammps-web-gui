@@ -358,6 +358,14 @@ export const RHEO_TEMP = '#rheotemp';
 export const RHEO_HEATFLOW = '#rheoheatflow';
 export const RHEO_COND = '#rheocond';
 export const RHEO_THERMAL_DEFAULTS: Record<string, number> = { [RHEO_ESPH]: 0, [RHEO_TEMP]: 0, [RHEO_HEATFLOW]: 0, [RHEO_COND]: 0 };
+/**
+ * The keys of the per-atom temperature and heat flow: those of atom_style rheo/thermal, else those of fix property/atom
+ * temperature heatflow. Native has one array of each, which either of the two defines (fix_property_atom.html: "For
+ * finite-size particles, an internal temperature and heat flow can be used to model heat conduction as in the GRANULAR
+ * package.").
+ */
+export const thermalKeys = (s: SimState): [temperature: string, heatflow: string] =>
+  (s.custom.has(RHEO_TEMP) ? [RHEO_TEMP, RHEO_HEATFLOW] : [HEAT_TEMPERATURE, HEAT_FLOW]);
 /** Styles with the RHEO per-atom fields (atom_style rheo or rheo/thermal). */
 export const isRheoStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'rheo' || x === 'rheo/thermal');
 /** atom_style rheo/thermal: the RHEO fields plus energy, temperature, heat flow and conductivity. */

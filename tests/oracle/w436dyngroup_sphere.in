@@ -1,0 +1,31 @@
+# oracle: fixes addtorque/atom, viscous/nonlinear, damping/cundall and settorque/atom on dynamic groups (a group of
+# the atoms moving up, re-evaluated every 3 steps, and a region group every 4), finite-size spheres with nve/sphere
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      sphere
+lattice         fcc 0.7
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+velocity        all create 1.0 51297 loop geom
+set             group all omega 0.2 -0.1 0.3
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+variable        up atom vz>0.0
+region          upper block INF INF INF INF 2.0 INF
+group           dyn dynamic all var up every 3
+group           dyn2 dynamic all region upper every 4
+fix             1 all nve/sphere
+fix             2 dyn addtorque/atom 0.1 v_tq -0.05
+fix             3 dyn viscous/nonlinear 0.5 1.5
+fix             4 dyn damping/cundall 0.3 0.2
+fix             5 dyn2 settorque/atom 0.0 NULL 0.0
+variable        tq atom 0.02*x
+compute         om all property/atom omegax omegay omegaz
+compute         rs all reduce sum c_om[*]
+variable        ndyn equal count(dyn)
+variable        ndyn2 equal count(dyn2)
+thermo_style    custom step temp pe c_rs[1] c_rs[2] c_rs[3] f_2[1] f_2[2] f_2[3] f_5[1] f_5[2] f_5[3] v_ndyn v_ndyn2
+thermo_modify   format float %.15g
+thermo          5
+run             60

@@ -427,13 +427,14 @@ export class ComputeSnaAtom extends Compute {
     };
     let a = 0.1, b = cutPair;
     const tol = 1e-8;
+    // S(a) changes only when a moves to the midpoint, so it is kept from the step that moved it
+    let fa = f(a);
     for (;;) {
       const m = (a + b) / 2;
       const d = Math.abs(b - a);
-      const fa = f(a);
       const fm = f(m);
       if (fm === 0) return m;
-      if (fm * fa > 0) a = m;
+      if (fm * fa > 0) { a = m; fa = fm; }
       else b = m;
       if (!(d > tol)) break;
     }
@@ -485,6 +486,8 @@ export class ComputeSnaAtom extends Compute {
     const rc = this.rcutfac;
     const rfac0 = this.rfac0;
     const rmin0 = this.rmin0;
+    // the Wigner matrices of every neighbour, by the allocation-free recursion of the other SNAP styles
+    const WT = new WignerTables(tj);
     for (let i = 0; i < n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
       const ti = ta[i];
@@ -523,12 +526,13 @@ export class ComputeSnaAtom extends Compute {
         // Cayley-Klein parameters of the point on the 3-sphere
         const ar = sg * libm.cos(theta0), ai = dz / r0, br = dy / r0, bi = dx / r0;
         const e = this.chemflag ? this.elemMap[ta[k] - 1] : 0;
+        WT.compute(ar, ai, br, bi, false);
         for (let J = 0; J <= tj; J++) {
-          const U = wignerU(J, ar, ai, br, bi);
+          const ur = WT.ur[J], ui = WT.ui[J];
           const uj = ue[e][J];
-          for (let q = 0; q < U.re.length; q++) {
-            uj.re[q] += sc * U.re[q];
-            uj.im[q] += sc * U.im[q];
+          for (let q = 0; q < ur.length; q++) {
+            uj.re[q] += sc * ur[q];
+            uj.im[q] += sc * ui[q];
           }
         }
       }

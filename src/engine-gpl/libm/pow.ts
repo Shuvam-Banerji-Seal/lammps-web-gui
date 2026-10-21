@@ -370,22 +370,11 @@ const powFast = (ax: number, ixHi: number, ixLo: number, y: number, signBias: nu
   // fma(kd, NegLn2loN, ehi + kd NegLn2hiN): the inner sum is exact (kd NegLn2hiN is exact, within a factor 2 of ehi)
   const a4 = kd, b4 = L_NegLn2loN, c4 = ehi + kd * L_NegLn2hiN;
   const p4 = a4 * b4;
-  let s4 = SPLIT * a4;
-  const ah4 = s4 - (s4 - a4), al4 = a4 - ah4;
-  const bh4 = L_SLO, bl4 = SLO_L;
-  const ul4 = ((ah4 * bh4 - p4) + ah4 * bl4 + al4 * bh4) + al4 * bl4;
-  const th4 = c4 + p4;
-  const bb4 = th4 - c4;
-  const tl4 = (c4 - (th4 - bb4)) + (p4 - bb4);
-  const v4 = tl4 + ul4;
-  const vb4 = v4 - tl4;
-  const e4 = (tl4 - (v4 - vb4)) + (ul4 - vb4);
-  let rt = th4 + v4;
-  if (e4 !== 0) {
-    const rb4 = rt - th4;
-    const d4 = (th4 - (rt - rb4)) + (v4 - rb4);
-    if (d4 !== 0 && (rt + 2 * d4) - rt === 2 * d4) rt = fma(a4, b4, c4);
-  }
+  let rt = c4 + p4;
+  const bb4 = rt - c4;
+  const tl4 = (c4 - (rt - bb4)) + (p4 - bb4);
+  const u4 = Math.abs(p4) * 4.440892098500626e-16 + 1e-300;
+  if (rt + (tl4 + u4) !== rt || rt + (tl4 - u4) !== rt) rt = fma(a4, b4, c4);
   // er = RN(elo + rt) is libm's unless elo + rt lies within eloDev of a rounding boundary
   const er = elo + rt;
   const erb = er - elo;
@@ -396,99 +385,41 @@ const powFast = (ax: number, ixHi: number, ixLo: number, y: number, signBias: nu
   const r2 = er * er;
   const a5 = er, b5 = L_C3, c5 = L_C2;
   const p5 = a5 * b5;
-  let s5 = SPLIT * a5;
-  const ah5 = s5 - (s5 - a5), al5 = a5 - ah5;
-  const bh5 = L_SC2, bl5 = SC2_L;
-  const ul5 = ((ah5 * bh5 - p5) + ah5 * bl5 + al5 * bh5) + al5 * bl5;
-  const th5 = c5 + p5;
-  const bb5 = th5 - c5;
-  const tl5 = (c5 - (th5 - bb5)) + (p5 - bb5);
-  const v5 = tl5 + ul5;
-  const vb5 = v5 - tl5;
-  const e5 = (tl5 - (v5 - vb5)) + (ul5 - vb5);
-  let c32 = th5 + v5;
-  if (e5 !== 0) {
-    const rb5 = c32 - th5;
-    const d5 = (th5 - (c32 - rb5)) + (v5 - rb5);
-    if (d5 !== 0 && (c32 + 2 * d5) - c32 === 2 * d5) c32 = fma(a5, b5, c5);
-  }
+  let c32 = c5 + p5;
+  const bb5 = c32 - c5;
+  const tl5 = (c5 - (c32 - bb5)) + (p5 - bb5);
+  const u5 = Math.abs(p5) * 4.440892098500626e-16 + 1e-300;
+  if (c32 + (tl5 + u5) !== c32 || c32 + (tl5 - u5) !== c32) c32 = fma(a5, b5, c5);
   const a6 = c32, b6 = r2, c6 = L_TAILD[i] + er;
   const p6 = a6 * b6;
-  let s6 = SPLIT * a6;
-  const ah6 = s6 - (s6 - a6), al6 = a6 - ah6;
-  s6 = SPLIT * b6;
-  const bh6 = s6 - (s6 - b6), bl6 = b6 - bh6;
-  const ul6 = ((ah6 * bh6 - p6) + ah6 * bl6 + al6 * bh6) + al6 * bl6;
-  const th6 = c6 + p6;
-  const bb6 = th6 - c6;
-  const tl6 = (c6 - (th6 - bb6)) + (p6 - bb6);
-  const v6 = tl6 + ul6;
-  const vb6 = v6 - tl6;
-  const e6 = (tl6 - (v6 - vb6)) + (ul6 - vb6);
-  let pp = th6 + v6;
-  if (e6 !== 0) {
-    const rb6 = pp - th6;
-    const d6 = (th6 - (pp - rb6)) + (v6 - rb6);
-    if (d6 !== 0 && (pp + 2 * d6) - pp === 2 * d6) pp = fma(a6, b6, c6);
-  }
+  let pp = c6 + p6;
+  const bb6 = pp - c6;
+  const tl6 = (c6 - (pp - bb6)) + (p6 - bb6);
+  const u6 = Math.abs(p6) * 4.440892098500626e-16 + 1e-300;
+  if (pp + (tl6 + u6) !== pp || pp + (tl6 - u6) !== pp) pp = fma(a6, b6, c6);
   const a7 = er, b7 = L_C5, c7 = L_C4;
   const p7 = a7 * b7;
-  let s7 = SPLIT * a7;
-  const ah7 = s7 - (s7 - a7), al7 = a7 - ah7;
-  const bh7 = L_SC4, bl7 = SC4_L;
-  const ul7 = ((ah7 * bh7 - p7) + ah7 * bl7 + al7 * bh7) + al7 * bl7;
-  const th7 = c7 + p7;
-  const bb7 = th7 - c7;
-  const tl7 = (c7 - (th7 - bb7)) + (p7 - bb7);
-  const v7 = tl7 + ul7;
-  const vb7 = v7 - tl7;
-  const e7 = (tl7 - (v7 - vb7)) + (ul7 - vb7);
-  let c54 = th7 + v7;
-  if (e7 !== 0) {
-    const rb7 = c54 - th7;
-    const d7 = (th7 - (c54 - rb7)) + (v7 - rb7);
-    if (d7 !== 0 && (c54 + 2 * d7) - c54 === 2 * d7) c54 = fma(a7, b7, c7);
-  }
+  let c54 = c7 + p7;
+  const bb7 = c54 - c7;
+  const tl7 = (c7 - (c54 - bb7)) + (p7 - bb7);
+  const u7 = Math.abs(p7) * 4.440892098500626e-16 + 1e-300;
+  if (c54 + (tl7 + u7) !== c54 || c54 + (tl7 - u7) !== c54) c54 = fma(a7, b7, c7);
   const a8 = c54, b8 = r2 * r2, c8 = pp;
   const p8 = a8 * b8;
-  let s8 = SPLIT * a8;
-  const ah8 = s8 - (s8 - a8), al8 = a8 - ah8;
-  s8 = SPLIT * b8;
-  const bh8 = s8 - (s8 - b8), bl8 = b8 - bh8;
-  const ul8 = ((ah8 * bh8 - p8) + ah8 * bl8 + al8 * bh8) + al8 * bl8;
-  const th8 = c8 + p8;
-  const bb8 = th8 - c8;
-  const tl8 = (c8 - (th8 - bb8)) + (p8 - bb8);
-  const v8 = tl8 + ul8;
-  const vb8 = v8 - tl8;
-  const e8 = (tl8 - (v8 - vb8)) + (ul8 - vb8);
-  let tmp = th8 + v8;
-  if (e8 !== 0) {
-    const rb8 = tmp - th8;
-    const d8 = (th8 - (tmp - rb8)) + (v8 - rb8);
-    if (d8 !== 0 && (tmp + 2 * d8) - tmp === 2 * d8) tmp = fma(a8, b8, c8);
-  }
+  let tmp = c8 + p8;
+  const bb8 = tmp - c8;
+  const tl8 = (c8 - (tmp - bb8)) + (p8 - bb8);
+  const u8 = Math.abs(p8) * 4.440892098500626e-16 + 1e-300;
+  if (tmp + (tl8 + u8) !== tmp || tmp + (tl8 - u8) !== tmp) tmp = fma(a8, b8, c8);
   let scale = L_SCALE2[i] * L_POW2[(kd - i) / 128 + L_POW2_OFF];
   if (signBias) scale = -scale;
   const a9 = tmp, b9 = scale, c9 = scale;
   const p9 = a9 * b9;
-  let s9 = SPLIT * a9;
-  const ah9 = s9 - (s9 - a9), al9 = a9 - ah9;
-  s9 = SPLIT * b9;
-  const bh9 = s9 - (s9 - b9), bl9 = b9 - bh9;
-  const ul9 = ((ah9 * bh9 - p9) + ah9 * bl9 + al9 * bh9) + al9 * bl9;
-  const th9 = c9 + p9;
-  const bb9 = th9 - c9;
-  const tl9 = (c9 - (th9 - bb9)) + (p9 - bb9);
-  const v9 = tl9 + ul9;
-  const vb9 = v9 - tl9;
-  const e9 = (tl9 - (v9 - vb9)) + (ul9 - vb9);
-  let res = th9 + v9;
-  if (e9 !== 0) {
-    const rb9 = res - th9;
-    const d9 = (th9 - (res - rb9)) + (v9 - rb9);
-    if (d9 !== 0 && (res + 2 * d9) - res === 2 * d9) res = fma(a9, b9, c9);
-  }
+  let res = c9 + p9;
+  const bb9 = res - c9;
+  const tl9 = (c9 - (res - bb9)) + (p9 - bb9);
+  const u9 = Math.abs(p9) * 4.440892098500626e-16 + 1e-300;
+  if (res + (tl9 + u9) !== res || res + (tl9 - u9) !== res) res = fma(a9, b9, c9);
   return res;
 };
 
@@ -526,6 +457,41 @@ const pow15 = (x: number): number => {
   return Math.abs((hi - d) + lo) <= margin * ulp ? d : NaN;
 };
 
+/** 1/3 = THIRD_HI + THIRD_LO (the low part to double precision). */
+const THIRD_HI = 0.3333333333333333, THIRD_LO = 1.850371707708594e-17;
+
+/**
+ * pow(x, y) for y within 2^-40 of 1/3 (ReaxFF's shielded Coulomb term takes 0.33333333333333 and its QEq 1.0 / 3.0)
+ * when its value is certain without the libm computation, else NaN: the test of pow15 on a double-double value of
+ * x^y = cbrt(x) x^(y - 1/3). c = Math.cbrt(x) is refined by one Newton step with the exact residual x - c^3 (c^3 as a
+ * double-double from Dekker products; x - c3h is exact, c3h being within a factor 2 of x), leaving an error of order
+ * (x - c^3)^2 / c^5, about 2^-104 relative. x^(y - 1/3) = 1 + u + u^2/2 + O(u^3) with u = (y - 1/3) ln x, |u| below
+ * 2^-31 for x in (1e-150, 1e150), so the cubic term, the error of Math.log (an ulp of ln x, times |y - 1/3|) and the
+ * rounding of c (u + u^2/2) are below 2^-80 relative. Together far inside the 0.005 ulp kept free of the bound.
+ */
+const powThird = (x: number, y: number): number => {
+  const c = Math.cbrt(x);
+  let t = SPLIT * c;
+  const ch = t - (t - c), cl = c - ch;
+  const c2h = c * c;
+  const c2l = ((ch * ch - c2h) + 2 * ch * cl) + cl * cl;
+  const c3h = c2h * c;
+  t = SPLIT * c2h;
+  const ah = t - (t - c2h), al = c2h - ah;
+  const c3l = (((ah * ch - c3h) + ah * cl + al * ch) + al * cl) + c2l * c;
+  const dc = ((x - c3h) - c3l) / (3 * c2h);
+  const u = ((y - THIRD_HI) - THIRD_LO) * Math.log(x);
+  const lo = dc + c * (u + 0.5 * u * u);
+  const d = c + lo;
+  F[0] = d;
+  const top = U[1] & 0x7ff00000;
+  if ((U[1] & 0x000fffff) === 0 && U[0] === 0) return NaN;
+  const ulp = asDouble((top - 0x03400000) >>> 0, 0); // 2^(e - 52)
+  const lnd = (Math.abs((top >>> 20) - 1023) + 1) * 0.6931471805599453;
+  const margin = 1 - (0.509 + lnd * 3.96728515625e-5) - 0.005;
+  return Math.abs((c - d) + lo) <= margin * ulp ? d : NaN;
+};
+
 /** The last argument pair and its result (powCached); x = 0 is never kept (pow(+0, y) and pow(-0, y) can differ). */
 let lastX = NaN, lastY = NaN, lastR = NaN;
 
@@ -539,6 +505,11 @@ export const pow = (x: number, y: number): number => {
   // y = 1.5 (eFF's Pauli overlap per electron pair): the double-double value when it decides libm's rounding
   if (y === 1.5 && x > 1e-150 && x < 1e150) {
     const v = pow15(x);
+    if (v === v) return v;
+  }
+  // y near 1/3 (ReaxFF's Coulomb shielding): the double-double value when it decides libm's rounding
+  if (Math.abs(y - THIRD_HI) < 9.094947017729282e-13 && x > 1e-150 && x < 1e150) {
+    const v = powThird(x, y);
     if (v === v) return v;
   }
   const r = powUncached(x, y);

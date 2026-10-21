@@ -1,0 +1,24 @@
+# oracle: fix rigid molecule of finite dipolar particles (examples/rigid/in.rigid.dipoles, cut down to 27 cells):
+# each body's point dipoles rotate with the body (set_xv) and receive the dipole torques of lj/cut/dipole/cut, so pe,
+# f_1 and c_erot depend on the dipole orientations. Native: installed lmp (b332f28, DIPOLE and RIGID packages).
+# oracle-inputs: w148rg_dipole3.mol
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      hybrid sphere dipole
+atom_modify     map array
+lattice         sc 0.05
+region          box block 0 3 0 3 0 3
+create_box      1 box
+fix             prop all property/atom mol ghost yes
+molecule        mymol w148rg_dipole3.mol
+create_atoms    0 region box mol mymol 71328
+pair_style      lj/cut/dipole/cut 2.5
+pair_coeff      1 1 1.0 1.0
+neigh_modify    exclude molecule/intra all
+fix             1 all rigid molecule
+compute         erot all erotate/sphere
+thermo_style    custom step pe f_1 c_erot
+thermo_modify   format float %.15g
+thermo          50
+timestep        0.002
+run             200

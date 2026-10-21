@@ -116,12 +116,12 @@ describe('native error messages and refusals', () => {
   });
 
   it('compute rigid/local needs a fix rigid/small (compute_rigid_local.cpp init)', async () => {
-    const errs = await run(`${BOX_LJ}fix f all rigid molecule\ncompute c all rigid/local f x\nthermo_style custom step c_c\nrun 0\n`);
+    const errs = await run(`${BOX_LJ}fix pm all property/atom mol\nfix f all rigid molecule\ncompute c all rigid/local f x\nthermo_style custom step c_c\nrun 0\n`);
     expect(errs.join('\n')).toContain('does not point to fix rigid/small');
   });
 
   it('compute rigid/local rejects unknown keywords', async () => {
-    const errs = await run(`${BOX_LJ}fix f all rigid/small molecule\ncompute c all rigid/local f bogus\nthermo_style custom step c_c\nrun 0\n`);
+    const errs = await run(`${BOX_LJ}fix pm all property/atom mol\nfix f all rigid/small molecule\ncompute c all rigid/local f bogus\nthermo_style custom step c_c\nrun 0\n`);
     expect(errs.join('\n')).toContain('Invalid keyword in compute rigid/local command');
   });
 

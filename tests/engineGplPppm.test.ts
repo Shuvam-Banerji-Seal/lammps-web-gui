@@ -86,9 +86,10 @@ describe('kspace_modify diff ad (src/engine-gpl/pppm)', () => {
     expect(errors.join('\n')).toMatch(/Cannot \(yet\) use PPPM with triclinic box and kspace_modify diff ad/);
   });
 
-  it('diff ad is refused for the styles the port does not build (ewald, pppm/cg)', async () => {
+  it('diff ad is read and ignored by ewald (as native), and refused for pppm/cg, which the port does not build', async () => {
+    // src/kspace.cpp modify_params at b332f28 sets differentiation_flag for every style; ewald.cpp never reads it
     const ew = await runCase(caseText('w101pppm_ad_auto_a').replace('kspace_style    pppm 1.0e-4', 'kspace_style    ewald 1.0e-4'));
-    expect(ew.errors.join('\n')).toMatch(/diff ad is not supported by kspace_style ewald/);
+    expect(ew.errors).toEqual([]);
     const cg = await runCase(caseText('w101pppm_ad_auto_a').replace('kspace_style    pppm 1.0e-4', 'kspace_style    pppm/cg 1.0e-4'));
     expect(cg.errors.join('\n')).toMatch(/diff ad is not supported by kspace_style pppm\/cg/);
   });

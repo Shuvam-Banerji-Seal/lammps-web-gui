@@ -115,9 +115,9 @@ export class KSpacePPPMAd extends KSpacePPPM {
     if (s.box.triclinic || geom.xy !== 0 || geom.xz !== 0 || geom.yz !== 0) {
       throw new StyleError('Cannot (yet) use PPPM with triclinic box and kspace_modify diff ad');
     }
-    if (this.minorder > this.order) throw new StyleError(`PPPM order < minimum allowed order (kspace_modify minorder ${this.minorder} > order ${this.order})`);
     this.cutCoul = cutCoul;
     this.setupCharges(s, geom, ctx);
+    this.checkOrder();
     if (this.qsqsum === 0 && this.gewaldUser <= 0) throw new StyleError("Must use 'kspace_modify gewald' for uncharged system");
     const r = nativePppmGrid({
       lx: geom.lx, ly: geom.ly, lz: geom.lz, xy: 0, xz: 0, yz: 0, natoms: this.natoms,

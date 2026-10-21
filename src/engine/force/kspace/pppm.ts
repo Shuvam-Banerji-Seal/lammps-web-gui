@@ -1,8 +1,8 @@
 import { StyleError, type KSpaceCompute, type StyleContext } from '../types';
 import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
-import { parseNum } from '../util';
-import { KSpaceBase, invertUpper } from './ewald';
+import { inumeric, parseNum } from '../util';
+import { KSpaceBase, invertUpper, ignoredKeyword } from './ewald';
 import { fft3d, isFFTSize } from '../fft';
 import { pppmGplHook } from './pppmHook';
 import { libm } from '../../libm';
@@ -290,6 +290,18 @@ export function selectPppmAuto(inp: PppmAutoInput): PppmAutoResult {
 }
 
 export class KSpacePPPM extends KSpaceBase {
+  protected override readonly kspaceLabel: string = 'PPPM';
+
+  /**
+   * As native LAMMPS does (src/KSPACE/pppm.cpp init at b332f28): after the boundary checks, the stencil order must lie
+   * in 2..7 (MAXORDER). kspace_modify minorder: the order may not be reduced below M, so M above the order is refused
+   * (measured: order 5 with minorder 6 stops with PPPM order < minimum allowed order; order 7 with minorder 7 runs).
+   */
+  protected checkOrder(): void {
+    if (this.order < 2 || this.order > 7) throw new StyleError(`${this.kspaceLabel} order cannot be < 2 or > 7`);
+    if (this.minorder > this.order) throw new StyleError(`PPPM order < minimum allowed order (kspace_modify minorder ${this.minorder} > order ${this.order})`);
+  }
+
   readonly name: string = 'pppm';
   meshUser: [number, number, number] | null = null;
   order = 5;
@@ -301,32 +313,29 @@ export class KSpacePPPM extends KSpaceBase {
   modify(key: string, values: string[]): number {
     switch (key) {
       case 'mesh': {
-        const m = [0, 1, 2].map((d) => parseNum(values[d], 'mesh'));
+        // As native LAMMPS does (src/kspace.cpp modify_params at b332f28): all zero (automatic) or all positive
+        const m = [inumeric(values[0]), inumeric(values[1]), inumeric(values[2])];
         if (m.every((v) => v === 0)) { this.meshUser = null; return 3; }
+        if (m.some((v) => v <= 0)) throw new StyleError('Kspace_modify mesh parameters must be all zero or all positive');
         if (m.some((v) => !isFFTSize(v))) throw new StyleError('kspace_modify mesh: each dimension must factor into 2, 3 and 5');
         this.meshUser = m as [number, number, number];
         return 3;
       }
-      case 'order': {
-        const o = parseNum(values[0], 'order');
-        if (!Number.isInteger(o) || o < 2 || o > 7) throw new StyleError('kspace_modify order for pppm must be an integer from 2 to 7');
-        this.order = o;
-        return 1;
-      }
+      // any integer; init checks the range, as native's PPPM::init does
+      case 'order': this.order = inumeric(values[0]); return 1;
+      // diff ad is built by the kspace_modify handler through pppmGplHook; the handler checks the flag
       case 'diff':
-        if (values[0] !== 'ik') throw new StyleError(`kspace_modify diff ${values[0]} is not supported here (diff ad is built by the kspace_modify handler through pppmGplHook)`);
+        if (values[0] !== 'ik') throw new StyleError(`kspace_modify diff ${values[0]} is not supported by kspace_style ${this.name}`);
         return 1;
-      case 'kmax/ewald': throw new StyleError('kspace_modify kmax/ewald applies to ewald, not pppm');
-      default: return super.modify(key, values);
+      case 'wire': return this.wireNoCorrection(values);
+      default: return super.modify(key, values) || ignoredKeyword(key, values, 'pppm');
     }
   }
 
   init(s: SimState, geom: Geometry, cutCoul: number, qqrd2e: number, ctx: StyleContext): void {
-    // kspace_modify minorder: the order may not be reduced below M, so M above the order is refused (measured:
-    // order 5 with minorder 6 stops with PPPM order < minimum allowed order; order 7 with minorder 7 runs).
-    if (this.minorder > this.order) throw new StyleError(`PPPM order < minimum allowed order (kspace_modify minorder ${this.minorder} > order ${this.order})`);
     this.cutCoul = cutCoul;
     this.setupCharges(s, geom, ctx);
+    this.checkOrder();
     const ortho = !s.box.triclinic && geom.xy === 0 && geom.xz === 0 && geom.yz === 0;
     if (ortho && this.qsqsum > 0 && this.natoms > 0) {
       const r = selectPppmAuto({

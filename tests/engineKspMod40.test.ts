@@ -190,7 +190,7 @@ describe('neigh_modify bin/hash', () => {
     expect((await run(nb('neigh_modify bin/hash no'))).error).toBeNull();
   });
   it('refuses a value other than yes or no', async () => {
-    expect((await run(nb('neighbor 2.0 multi\nneigh_modify bin/hash maybe'))).error?.message).toMatch(/must be yes or no/);
+    expect((await run(nb('neighbor 2.0 multi\nneigh_modify bin/hash maybe'))).error?.message).toMatch(/Expected boolean parameter instead of 'maybe'/);
   });
 });
 

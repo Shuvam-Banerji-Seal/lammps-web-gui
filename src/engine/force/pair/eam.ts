@@ -392,10 +392,6 @@ export abstract class PairEAMBase extends Pair {
     if (args.length !== 0) throw new StyleError(`usage: pair_style ${this.name} (no arguments)`);
   }
 
-  override modify(key: string, _values: string[]): number {
-    throw new StyleError(`pair_modify ${key} is not supported for pair style ${this.name}`);
-  }
-
   override initStyle(ctx: StyleContext): void {
     this.noTermLog(ctx, 'shift');
     this.noTermLog(ctx, 'tail');

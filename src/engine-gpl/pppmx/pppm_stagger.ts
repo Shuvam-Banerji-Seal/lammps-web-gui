@@ -137,6 +137,8 @@ const gfDenom2 = (order: number, x: number, y: number, z: number): number => {
  */
 export class KSpacePPPMStagger extends KSpaceBase {
   override readonly name: string = 'pppm/stagger';
+  // PPPMStagger::init calls PPPM::init, whose messages name PPPM
+  protected override readonly kspaceLabel: string = 'PPPM';
   /** kspace_modify order (pppm: 2 to 7) and mesh (null when automatic). */
   order = 5;
   meshUser: [number, number, number] | null = null;

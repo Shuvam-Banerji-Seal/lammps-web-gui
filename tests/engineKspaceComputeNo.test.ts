@@ -64,6 +64,6 @@ describe('kspace_modify compute', () => {
 
   it('refuses a keyword value that is not yes or no', async () => {
     const r = await run('kspace_modify compute maybe\n');
-    expect(r.errors.join('\n')).toMatch(/compute/);
+    expect(r.errors.join('\n')).toMatch(/Expected boolean parameter instead of 'maybe'/);
   });
 });

@@ -151,12 +151,12 @@ ${kspace}
 run             0
 `;
   const cases: [string, string, string, RegExp][] = [
-    ['p p f', 'coul/long 4.0', 'kspace_style pppm 1e-4', /fully periodic box/],
-    ['p p f', 'coul/long 4.0', 'kspace_style ewald 1e-4\nkspace_modify slab 0.5', /slab volfactor must be >= 1.0/],
+    ['p p f', 'coul/long 4.0', 'kspace_style pppm 1e-4', /Cannot use non-periodic boundaries with PPPM/],
+    ['p p f', 'coul/long 4.0', 'kspace_style ewald 1e-4\nkspace_modify slab 0.5', /Bad kspace_modify slab parameter/],
     ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify mesh 7 8 8', /factor into 2, 3 and 5/],
-    ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify order 8', /from 2 to 7/],
-    ['p p p', 'coul/long 4.0', 'kspace_style ewald 1e-4\nkspace_modify mesh 8 8 8', /applies to pppm/],
-    ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify kmax/ewald 4 4 4', /applies to ewald/],
+    ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify order 8', /PPPM order cannot be < 2 or > 7/],
+    ['p p p', 'coul/long 4.0', 'kspace_style ewald 1e-4\nkspace_modify amat onestep', /'amat' available for pppm\/conp, only/],
+    ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify kmax/ewald 4 -1 4', /Bad kspace_modify kmax\/ewald parameter/],
     ['p p p', 'coul/long 4.0', '', /needs a kspace style/],
     // Measured with native LAMMPS: KSpace style ewald is incompatible with Pair style lj/cut (src/kspace.cpp pair_check)
     ['p p p', 'lj/cut 4.0', 'kspace_style ewald 1e-4', /KSpace style ewald is incompatible with Pair style lj\/cut/],

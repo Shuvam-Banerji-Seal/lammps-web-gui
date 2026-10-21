@@ -59,14 +59,18 @@ export const fma = (a: number, b: number, c: number): number => {
  */
 export const fmaF = (a: number, b: number, c: number): number => {
   const p = a * b;
+  const th = c + p;
+  const bb = th - c;
+  const tl = (c - (th - bb)) + (p - bb);
+  // |ul| <= |p| 2^-53 (plus 2^-1075 when the product underflows): th is the correct rounding when th + tl +- 4 times
+  // that bound both round to th (rounding is monotonic; the factor covers the roundings of tl +- u)
+  const u = Math.abs(p) * 4.440892098500626e-16 + 1e-300;
+  if (th + (tl + u) === th && th + (tl - u) === th) return th;
   let t = SPLIT * a;
   const ah = t - (t - a), al = a - ah;
   t = SPLIT * b;
   const bh = t - (t - b), bl = b - bh;
   const ul = ((ah * bh - p) + ah * bl + al * bh) + al * bl;
-  const th = c + p;
-  const bb = th - c;
-  const tl = (c - (th - bb)) + (p - bb);
   const v = tl + ul;
   const vb = v - tl;
   const e2 = (tl - (v - vb)) + (ul - vb);

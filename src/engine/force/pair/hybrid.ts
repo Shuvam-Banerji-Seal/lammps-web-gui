@@ -378,7 +378,7 @@ export class PairHybrid extends Pair {
   }
 
   /** The sub-style's current scale factor (1 except for hybrid/scaled). */
-  private scaleOf(s: Sub): number {
+  scaleOf(s: Sub): number {
     if (typeof s.scale === 'number') return s.scale;
     if (!this.evalVar) throw new StyleError(`pair_style hybrid/scaled: cannot evaluate variable ${s.scale} here`);
     return this.evalVar(s.scale);

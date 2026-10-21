@@ -2746,6 +2746,9 @@ const changeBox: Handler = ({ sys }, a) => {
   if (ui >= 0) { unitsW = ops[ui + 1]; ops.splice(ui, 2); }
   const sc = latticeScale(sys, unitsW, 'change_box');
   const b = s.box;
+  // As native LAMMPS does (src/change_box.cpp at b332f28): a triclinic box first takes every atom to lamda
+  // coordinates, wraps it (pbc) and back, before the box state is saved for remap
+  if (sys.geom.triclinic) for (let i = 0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
   let saved = cloneBox(b);
   const geomOf = (box: SimState['box']) => new Geometry(box);
   for (let k = 0; k < ops.length;) {
@@ -2785,14 +2788,16 @@ const changeBox: Handler = ({ sys }, a) => {
       b.triclinic = false;
       k++;
     } else if (p === 'triclinic') { b.triclinic = true; k++; } else if (p === 'set') { saved = cloneBox(b); k++; } else if (p === 'remap') {
-      // map group atoms from the saved box to the current one, in fractional coordinates
+      // map group atoms from the saved box to the current one, in fractional coordinates: native x2lamda with the
+      // saved boxlo and h_inv, then lamda2x, which adds boxlo last (change_box.cpp REMAP at b332f28)
       const g0 = geomOf(saved), g1 = geomOf(b);
-      const lam = [0, 0, 0], out = [0, 0, 0];
+      const lam = [0, 0, 0];
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & bit)) continue;
         g0.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
-        g1.fromLamda(lam[0], lam[1], lam[2], out);
-        s.x[3 * i] = out[0]; s.x[3 * i + 1] = out[1]; s.x[3 * i + 2] = out[2];
+        s.x[3 * i] = g1.lx * lam[0] + g1.xy * lam[1] + g1.xz * lam[2] + g1.lo[0];
+        s.x[3 * i + 1] = g1.ly * lam[1] + g1.yz * lam[2] + g1.lo[1];
+        s.x[3 * i + 2] = g1.lz * lam[2] + g1.lo[2];
       }
       saved = cloneBox(b);
       k++;
@@ -2800,6 +2805,11 @@ const changeBox: Handler = ({ sys }, a) => {
   }
   b.minLo = [...b.lo]; b.minHi = [...b.hi];
   sys.geom.update();
+  // As native LAMMPS does (src/change_box.cpp at b332f28): every atom is remapped into the new box, and in a triclinic
+  // box all coordinates then go to lamda and back once more (around the atom migration), which can change their last
+  // bits; velocity loop geom hashes those bits
+  for (let i = 0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
+  if (sys.geom.triclinic) for (let i = 0; i < s.n; i++) sys.geom.lamdaRoundTrip(s.x, i);
   sys.checkLostBoxChange();
   for (const f of sys.fixes) f.boxChanged?.();
   sys.nb.lastBuild = -1;

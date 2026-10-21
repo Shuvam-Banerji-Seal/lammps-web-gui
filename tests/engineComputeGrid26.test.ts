@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Session } from '../src/engine/session';
 import { ComputePropertyGrid } from '../src/engine/compute/property_grid';
-import { ComputeBornMatrix } from '../src/engine/compute/born_matrix';
 
 /*
  * Wave-26 grid computes: compute property/grid (docs.lammps.org/compute_property_grid.html)
@@ -129,7 +128,7 @@ describe('compute born/matrix', () => {
 
   it('analytic lj/cut matches native LAMMPS', async () => {
     const s = await run(INPUT);
-    const ba = s.sys.compute('ba') as ComputeBornMatrix;
+    const ba = s.sys.compute('ba');
     const v = ba.vectorValues();
     expect(v.length).toBe(21);
     for (let i = 0; i < 21; i++) {
@@ -139,8 +138,8 @@ describe('compute born/matrix', () => {
 
   it('numdiff finite differences match the analytic Born matrix', async () => {
     const s = await run(INPUT);
-    const bm = s.sys.compute('bm') as ComputeBornMatrix;
-    const ba = s.sys.compute('ba') as ComputeBornMatrix;
+    const bm = s.sys.compute('bm');
+    const ba = s.sys.compute('ba');
     const vm = bm.vectorValues();
     const va = ba.vectorValues();
     for (let i = 0; i < 21; i++) {
@@ -153,25 +152,19 @@ describe('compute born/matrix', () => {
     }
   });
 
-  it('rejects unknown keywords, numdiff combinations and non-lj/cut analytic styles', async () => {
-    await expect(run(`${INPUT.replace('compute         ba all born/matrix', 'compute ba all born/matrix bogus')}`)).rejects.toThrow(/unknown keyword 'bogus'/);
-    await expect(run(`${INPUT.replace('compute         ba all born/matrix', 'compute ba all born/matrix numdiff 1.0e-6 myvirial bond')}`)).rejects.toThrow(/numdiff needs exactly two arguments/);
-    await expect(run(`${INPUT.replace('compute         ba all born/matrix', 'compute ba all born/matrix bond')}`)).rejects.toThrow(/'bond' term is not supported/);
-    await expect(run(`units lj
-atom_style atomic
-region box block 0 4 0 4 0 4
-create_box 1 box
-create_atoms 1 single 1 1 1
-mass 1 1.0
-pair_style lj/cut/coul/cut 2.5 2.5
-pair_coeff 1 1 1.0 1.0 2.5
-compute ba all born/matrix
-thermo_style custom step c_ba[1]
-run 0
-`)).rejects.toThrow(/only implemented for pair style lj\/cut/);
+  it('native argument rules: unknown words, the word after numdiff, and terms without a style', async () => {
+    await expect(run(`${INPUT.replace('compute         ba all born/matrix', 'compute ba all born/matrix bogus')}`)).rejects.toThrow(/Illegal compute born\/matrix command/);
+    await expect(run(`${INPUT.replace('compute         ba all born/matrix', 'compute ba all born/matrix pair numdiff 1.0e-6 myvirial')}`)).rejects.toThrow(/cannot mix numflag and other flags/);
+    // compute_born_matrix.cpp skips the word after numdiff's three, and a term without a style is left out
+    const s = await run(`${INPUT.replace('compute         ba all born/matrix', 'compute ba all born/matrix numdiff 1.0e-6 myvirial bond\ncompute bb all born/matrix bond angle')}`);
+    const bm = s.sys.compute('bm').vectorValues(), ba = s.sys.compute('ba').vectorValues();
+    for (let i = 0; i < 21; i++) expect(ba[i]).toBeCloseTo(bm[i], 12);
+    expect(Array.from(s.sys.compute('bb').vectorValues())).toEqual(new Array(21).fill(0));
+    await expect(run(`${INPUT.replace('compute         ba all born/matrix', 'kspace_style ewald 1e-4\ncompute ba all born/matrix')}`)).rejects.toThrow(/KSpace contribution not supported by compute born\/matrix/);
+    await expect(run(`${INPUT.replace('pair_style      lj/cut 2.5', 'pair_style      lj/smooth/linear 2.5').replace('pair_coeff      1 1 1.0 1.0 2.5', 'pair_coeff 1 1 1.0 1.0')}`)).rejects.toThrow(/Pair style lj\/smooth\/linear does not support compute born\/matrix/);
   });
 
   it('rejects a numdiff virial-ID that is not a pressure compute', async () => {
-    await expect(run(`${INPUT.replace('compute         myvirial all pressure NULL virial', 'compute myvirial all pe')}`)).rejects.toThrow(/is not a pressure compute/);
+    await expect(run(`${INPUT.replace('compute         myvirial all pressure NULL virial', 'compute myvirial all pe')}`)).rejects.toThrow(/Compute born\/matrix pressure ID myvirial does not compute pressure/);
   });
 });

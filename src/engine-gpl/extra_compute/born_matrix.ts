@@ -4,8 +4,7 @@
  * compute_numdiff, displace_atoms, restore_atoms, update_virial, virial_addon) at commit b332f28. Copyright Sandia
  * Corporation (LAMMPS development team, GNU General Public License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
- * The numdiff method of compute born/matrix (the core compute reaches it through the lazy HOOKS entry 'born/matrix',
- * lazyStyles.ts group gpl_born_matrix). For each of the six strain directions the cell is strained by +delta and
+ * The numdiff method of compute born/matrix (compute_born_matrix.ts calls it for the numdiff keyword). For each of the six strain directions the cell is strained by +delta and
  * -delta about its centre; the atoms follow the same affine map (native displaces the owned and ghost atoms of its
  * fixed box, which is the same geometry as the strained periodic cell), the full force field is evaluated, and the
  * pressure of the virial-ID compute is read. The difference divided by -2 delta gives the second derivatives. The
@@ -15,7 +14,9 @@
 import type { System } from '../../engine/system';
 import { ComputePressure } from '../../engine/compute/pressure';
 import { StyleError } from '../../engine/force/types';
-import type { BornNumdiffHook } from '../../engine/compute/born_matrix';
+
+/** The 21 values of the Born matrix in energy units, for delta and the pressure compute virialId. */
+export type BornNumdiffHook = (sys: System, id: string, delta: number, virialId: string) => Float64Array;
 
 /** Native dirlist: the (k, l) index pair of each Voigt strain direction (xx yy zz yz xz xy). */
 const DIRLIST: readonly (readonly [number, number])[] = [[0, 0], [1, 1], [2, 2], [1, 2], [0, 2], [0, 1]];

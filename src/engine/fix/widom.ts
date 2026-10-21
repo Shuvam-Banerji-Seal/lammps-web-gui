@@ -369,8 +369,13 @@ export class FixWidom extends Fix {
     return e;
   }
 
-  /** One event at the first step and every N steps after (measured, see the header). */
-  postForce(): void {
+  /**
+   * One event at the first step and every N steps after (measured, see the header). As native LAMMPS does
+   * (src/MC/fix_widom.cpp at b332f28, setmask PRE_EXCHANGE): the event runs before the forces of its step, here after
+   * the step's integration (as fix gcmc), so the fixes that its energy evaluations run (energy_full: pre_force and
+   * post_force) see the same order as native.
+   */
+  postIntegrate(): void {
     if (this.sys.state.step !== this.nextStep) return;
     this.event();
     this.nextStep += this.N;
@@ -380,6 +385,9 @@ export class FixWidom extends Fix {
     const sys = this.sys;
     const s = sys.state;
     const kT = s.units.boltz * this.T;
+    // the event runs after the step's integration moved the atoms (the run loop marks the new positions after the
+    // post_integrate fixes): energy_full evaluates them, not the forces of the previous step
+    sys.bump();
     const eBefore = this.potentialEnergy();
     // decided here, after the energy call has set up the pair style's cutoffs (empty during init)
     this.probeFast = this.canProbeFast();
@@ -481,12 +489,18 @@ export class FixWidom extends Fix {
     return rotationMatrix(theta, ax, ay, az);
   }
 
+  /**
+   * As native LAMMPS does (src/MC/fix_widom.cpp energy_full at b332f28): modify->pre_force, the forces,
+   * modify->post_force (a dynamic group's post_force_group fix first, then every post_force fix), and compute pe, with
+   * the energies of the fixes that fix_modify energy yes adds.
+   */
   private potentialEnergy(): number {
-    const a: Accum = this.sys.forces();
-    // As native LAMMPS does (src/MC/fix_widom.cpp energy_full at b332f28): modify->post_force reassigns a dynamic group
-    // (its post_force_group fix) on the steps that are a multiple of its every
-    this.sys.assignDynamicGroups(false);
-    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp;
+    const sys = this.sys;
+    for (const f of sys.fixes) f.preForce?.();
+    const a: Accum = sys.forces();
+    sys.assignDynamicGroups(false);
+    for (const f of sys.fixes) f.postForce?.();
+    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp + sys.fixEnergy();
   }
 
   /**

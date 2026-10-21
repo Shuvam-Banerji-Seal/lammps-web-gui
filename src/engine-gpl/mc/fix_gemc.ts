@@ -289,10 +289,15 @@ export class FixGEMC extends Fix {
 
   /** compute_scalar of thermo_pe after energy_full (pbc, neighbour build, forces) on this box. */
   energyFull(): number {
-    this.sys.bump();
-    // modify->post_force reassigns a dynamic group (FixGroup is a post_force_group fix) before compute pe
-    this.sys.assignDynamicGroups(false);
-    return this.sys.compute('thermo_pe').scalarValue();
+    const sys = this.sys;
+    sys.bump();
+    // modify->pre_force, the forces, modify->post_force (its post_force_group fixes first: a dynamic group is
+    // reassigned; then every post_force fix), and compute pe with the fix energies of that call
+    for (const f of sys.fixes) f.preForce?.();
+    sys.forces();
+    sys.assignDynamicGroups(false);
+    for (const f of sys.fixes) f.postForce?.();
+    return sys.compute('thermo_pe').scalarValue();
   }
 
   /** remap of Domain::remap for a point (orthogonal boxes; periodic dimensions wrap). */

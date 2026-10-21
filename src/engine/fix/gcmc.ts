@@ -490,6 +490,9 @@ export class FixGcmc extends Fix {
       // the tail of the last run init or reinit is kept through the event (see reinitTail)
       const ff = this.sys.ff;
       if (this.fullEnergy && ff.pair?.tail && !ff.tailHold) ff.tailHold = { etail: ff.etailV, ptail: ff.ptailV };
+      // the event runs after the step's integration moved the atoms (the run loop marks the new positions after the
+      // post_integrate fixes): energy_full evaluates them, not the forces of the previous step
+      this.sys.bump();
       this.energyStored = this.potentialEnergy();
     }
     const before = this.successCount();
@@ -698,12 +701,19 @@ export class FixGcmc extends Fix {
     });
   }
 
+  /**
+   * As native LAMMPS does (src/MC/fix_gcmc.cpp energy_full at b332f28): modify->pre_force, the forces, modify->post_force
+   * (its post_force_group fixes first, which reassign a dynamic group on the steps that are a multiple of its every; then
+   * every post_force fix, e.g. fix langevin's random forces), and compute pe, with the energies of the fixes that
+   * fix_modify energy yes adds.
+   */
   private potentialEnergy(): number {
-    const a = this.sys.forces();
-    // As native LAMMPS does (src/MC/fix_gcmc.cpp energy_full at b332f28): modify->post_force runs after the forces, and
-    // its post_force_group fixes reassign a dynamic group on the steps that are a multiple of its every
-    this.sys.assignDynamicGroups(false);
-    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp;
+    const sys = this.sys;
+    for (const f of sys.fixes) f.preForce?.();
+    const a = sys.forces();
+    sys.assignDynamicGroups(false);
+    for (const f of sys.fixes) f.postForce?.();
+    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp + sys.fixEnergy();
   }
 
   /**

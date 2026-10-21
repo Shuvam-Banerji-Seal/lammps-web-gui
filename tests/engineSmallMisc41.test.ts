@@ -198,8 +198,10 @@ run 0`);
 });
 
 describe('rigid bodies with point dipoles', () => {
-  // fix rigid/small carries point dipoles with the body since w148rg (fix_rigid_small.cpp DIPOLE); fix rigid still refuses
-  it('fix rigid refuses a body whose atoms carry dipoles', async () => {
+  // fix rigid and rigid/small carry point dipoles with the body (oracle cases w148rg_dipole, w475rigid_dipole); a
+  // molecule body still needs the molecule attribute
+  it('fix rigid molecule needs the molecule attribute', async () => {
+    // Measured with native LAMMPS: ERROR: Fix rigid molecule requires atom attribute molecule (src/RIGID/fix_rigid.cpp:173)
     const { error } = await runScript(`units lj
 atom_style hybrid sphere dipole
 region box block 0 10 0 10 0 10 units box
@@ -209,6 +211,6 @@ create_atoms 0 single 2 2 2 mol dm 1 units box
 fix 1 all rigid molecule
 run 0`, { 'dipoles.txt': DIPOLE_MOL });
     expect(error).not.toBeNull();
-    expect(error!.message).toMatch(/point dipole/);
+    expect(error!.message).toMatch(/Fix rigid molecule requires atom attribute molecule/);
   });
 });

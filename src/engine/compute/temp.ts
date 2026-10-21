@@ -41,16 +41,22 @@ export class ComputeTemp extends Compute {
     return (this.sys.state.mask[i] & this.groupBit) !== 0;
   }
 
+  /** The atoms the last dofCompute counted (natoms_temp). */
+  protected natomsTemp = 0;
+
   dofCompute(): void {
     const s = this.sys.state;
     let n = 0;
     for (let i = 0; i < s.n; i++) if (this.counted(i)) n++;
     const d = this.sys.dimension;
+    this.natomsTemp = n;
     this.dof = d * n - this.extraDof - this.sys.dofRemoved(this.groupBit);
   }
 
   protected computeScalar(): number {
     if (this.dynamicDof) this.dofCompute();
+    // As native LAMMPS does (src/compute_temp.cpp at b332f28, compute_scalar)
+    if (this.dof < 0 && this.natomsTemp > 0) throw new StyleError(`Temperature compute ${this.id} degrees of freedom < 0`);
     const s = this.sys.state;
     const { v, type } = s;
     let t = 0;

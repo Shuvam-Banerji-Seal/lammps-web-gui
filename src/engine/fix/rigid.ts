@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import type { System } from '../system';
-import { isEllipsoid, isLineAtom, isSuperEllipsoidStyle, isTriAtom, LINE_BONUS, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { hasMolecule, isEllipsoid, isLineAtom, isSuperEllipsoidStyle, isTriAtom, LINE_BONUS, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { ellipsoidInertia, quatToMatrix } from '../compute/asphere';
 import { RanMars } from '../rng';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
@@ -373,7 +373,10 @@ export class FixRigid extends Fix {
     if (this.bodystyle === 'single') {
       if (small) throw new StyleError(`fix ${style}: bodystyle single is only allowed for the rigid styles, not rigid/small`);
     } else if (this.bodystyle === 'molecule') {
-      /* ok */
+      // As native LAMMPS does (src/RIGID/fix_rigid.cpp and fix_rigid_small.cpp at b332f28): the molecule ID is needed
+      if (!hasMolecule(sys.state)) {
+        throw new StyleError(small ? `Fix ${style} requires atom attribute molecule` : `Fix ${style} molecule requires atom attribute molecule`);
+      }
     } else if (this.bodystyle === 'group') {
       if (small) throw new StyleError(`fix ${style}: bodystyle group is only allowed for the rigid styles`);
       const n = Number(args[1]);
@@ -618,12 +621,15 @@ export class FixRigid extends Fix {
       } else if (isTriAtom(s, i)) {
         // fix_rigid.cpp setup_bodies_static (TRIANGLE): inertia_triangle(inertia, quat_atom, mass) is the triangle's own
         // inertia in the space frame (its moments are the triangle bonus, mass included); setup_bodies_dynamic adds the
-        // atom's own angular momentum to the body (eflags ANGMOM). The triangle is a point for the dof count (not nsph).
+        // atom's own angular momentum to the body (eflags ANGMOM). As native's dof() counts it (eflags TRIANGLE is not
+        // POINT, DIPOLE or TORQUE), the triangle is a finite-size particle for the dof count (nsph): w79rigid_tri needs
+        // compute_modify extra/dof -6 natively, since two bodies of two triangles otherwise have dof 12 - 3 - 12 < 0.
         if (sys.dimension !== 2) {
           const moments = [0, 1, 2].map((k) => s.custom.get(TRI_BONUS)!.data[TRI_BONUS_COLS * i + 9 + k]);
           const Ii = triInertiaSpace([s.quat![4 * i], s.quat![4 * i + 1], s.quat![4 * i + 2], s.quat![4 * i + 3]], moments);
           for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) I[a][b] += Ii[a][b];
           for (let d = 0; d < 3; d++) angmom[d] += s.angmom![3 * i + d];
+          nsph++;
         } else throw new StyleError(`fix ${this.style}: triangle atom ${s.id[i]} in rigid body ${key} needs a 3d simulation`);
       } else if (rad > 0) {
         // docs.lammps.org/fix_rigid.html: "Finite-size particles contribute differently to the moment of
@@ -705,20 +711,16 @@ export class FixRigid extends Fix {
   }
 
   /**
-   * Particles this fix cannot yet integrate as finite-size bodies are refused, never treated as points.
-   * rigid/small integrates ellipsoids (constructBody, setXV) and point dipoles; the other rigid styles still refuse
-   * them, since their orientation and dipole vectors are not implemented there.
+   * Ellipsoids and point dipoles are integrated by every style of this fix (constructBody, setXV); superellipsoids are
+   * refused. As native LAMMPS does (src/RIGID/fix_rigid.cpp and fix_rigid_small.cpp at b332f28, init: "Superellipsoids
+   * not supported in fix rigid" and "... in fix rigid/small").
    */
   private refuseUnsupportedParticle(key: string, i: number): void {
+    void key; void i;
     const s = this.sys.state;
-    const id = s.id[i];
-    // fix rigid/small: ellipsoids and point dipoles are integrated (see constructBody and setXV)
-    if (this.style.includes('small')) {
-      if (isSuperEllipsoidStyle(s.atomStyle)) throw new StyleError(`fix ${this.style}: Superellipsoids not supported in fix rigid/small`);
-      return;
+    if (isSuperEllipsoidStyle(s.atomStyle)) {
+      throw new StyleError(`fix ${this.style}: Superellipsoids not supported in fix ${this.style.includes('small') ? 'rigid/small' : 'rigid'}`);
     }
-    if (s.shape && s.shape[3 * i] > 0) throw new StyleError(`fix ${this.style}: finite-size ellipsoid atom ${id} in rigid body ${key} is not supported by the browser engine (ellipsoidal particles in rigid bodies need their orientation to follow the body)`);
-    if (s.mu && s.mu[4 * i + 3] !== 0) throw new StyleError(`fix ${this.style}: point dipole atom ${id} in rigid body ${key} is not supported by the browser engine (dipole vectors must rotate with the body and feel dipole torques)`);
   }
 
   /** The mol template-ID of this fix (null without the mol keyword); fix gcmc rigid must name the same one. */

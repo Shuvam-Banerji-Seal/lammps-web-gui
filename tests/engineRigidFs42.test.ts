@@ -62,25 +62,35 @@ describe('fix rigid with finite-size particles', () => {
     expect(rows[0].ke).toBeCloseTo(0.000283838621976119, 12);
   });
 
-  it('refuses ellipsoidal particles in a rigid body, naming them', async () => {
+  // Every finite-size particle of a body (sphere, ellipsoid, line, triangle; a point dipole is a point) adds 6 dof to
+  // the 3N + 6M - 6 a 3d body removes (src/RIGID/fix_rigid.cpp at b332f28, dof()), so bodies of a few finite-size
+  // particles leave the thermo temperature with fewer than zero dof.
+  it('removes 6 dof per ellipsoid of a body: three ellipsoids leave thermo_temp with dof < 0', async () => {
+    // Measured with native LAMMPS: ERROR: Temperature compute thermo_temp degrees of freedom < 0 (src/compute_temp.cpp:98)
     const { error } = await run(`units lj
 atom_style ellipsoid
 region box block 0 10 0 10 0 10 units box
 create_box 1 box
 create_atoms 1 single 5 5 5
 create_atoms 1 single 6 5 5
-set type 1 diameter 1.0 density 1.0
 set atom 1 shape 0.5 0.5 0.5
 set atom 2 shape 0.5 0.5 0.5
+set type 1 mass 1.0
+set atom 1 quat 1 0 0 30
+create_atoms 1 single 5 6 5
+set atom 3 shape 0.3 0.6 0.4
+set atom 3 mass 1.0
 pair_style zero 2.5
 pair_coeff * *
 fix 1 all rigid single
+velocity all create 0.5 4928 loop geom
 run 0
 `);
-    expect(error?.message ?? '').toMatch(/ellipsoid/);
+    expect(error?.message ?? '').toContain('Temperature compute thermo_temp degrees of freedom < 0');
   });
 
-  it('refuses point dipoles in a rigid body, naming them', async () => {
+  it('removes 6 dof per dipolar sphere of a body: two leave thermo_temp with dof < 0', async () => {
+    // Measured with native LAMMPS: ERROR: Temperature compute thermo_temp degrees of freedom < 0 (src/compute_temp.cpp:98)
     const { error } = await run(`units lj
 atom_style hybrid sphere dipole
 region box block 0 10 0 10 0 10 units box
@@ -95,10 +105,11 @@ pair_coeff * *
 fix 1 all rigid single
 run 0
 `);
-    expect(error?.message ?? '').toMatch(/dipole/);
+    expect(error?.message ?? '').toContain('Temperature compute thermo_temp degrees of freedom < 0');
   });
 
-  it('accepts finite-size spheres in 2d bodies (oracle cases w92rig2d_*)', async () => {
+  it('accepts finite-size spheres in 2d bodies (oracle cases w92rig2d_*): a 2-sphere body removes 2N + 3M - 3 dof', async () => {
+    // Measured with native LAMMPS: ERROR: Temperature compute thermo_temp degrees of freedom < 0 (4 - 2 - 3)
     const { error } = await run(`dimension 2
 units lj
 atom_style sphere
@@ -112,6 +123,6 @@ pair_coeff * *
 fix 1 all rigid single
 run 0
 `);
-    expect(error).toBeNull();
+    expect(error?.message ?? '').toContain('Temperature compute thermo_temp degrees of freedom < 0');
   });
 });

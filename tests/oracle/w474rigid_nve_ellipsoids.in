@@ -1,0 +1,21 @@
+# oracle: fix rigid/nve molecule of ellipsoids (examples/rigid/in.rigid.ellipsoids, cut down to 200 steps): each
+# ellipsoid's orientation quaternion and angular momentum follow the body (set_xv/set_v), and the body inertia
+# includes the ellipsoids' own inertia. Native: installed lmp (b332f28, ASPHERE and RIGID packages).
+# oracle-inputs: w148rg_rigid.ell
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      ellipsoid
+atom_modify     map array
+fix             prop all property/atom mol ghost yes
+read_data       w148rg_rigid.ell fix prop NULL Molecules
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+neigh_modify    exclude molecule/intra all
+velocity        all create 0.8 12345 mom yes rot yes
+fix             1 all rigid/nve molecule
+compute         erot all erotate/asphere
+thermo_style    custom step pe f_1 c_erot
+thermo_modify   format float %.15g
+thermo          50
+timestep        0.002
+run             200

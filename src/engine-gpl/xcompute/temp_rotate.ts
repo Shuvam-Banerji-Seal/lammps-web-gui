@@ -22,7 +22,6 @@ export class ComputeTempRotate extends ComputeTemp {
   private vbias = new Float64Array(0);
   private biasReady = false;
   private biasOn = new Uint8Array(0);
-  private natomsTemp = 0;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);

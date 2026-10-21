@@ -75,22 +75,26 @@ export const DYNAMIC_GROUP_FIXES = new Set([
   'nve/dot', 'nve/dotc/langevin', 'wall/table', 'wall/flow', 'nvt/uef', 'npt/uef',
   // nvk sets dynamic_group_allow but its constructor takes only group all (src/EXTRA-FIX/fix_nvk.cpp at b332f28)
   'nvk',
+  'precession/spin', 'setforce/spin', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'efield/tip4p', 'nvt/sllod/eff', 'nphug', 'bocs',
+  // adapt and adapt/fep refuse the atom attribute on a dynamic group in their init (fix_adapt.cpp, fix_adapt_fep.cpp)
+  'adapt', 'adapt/fep',
+  // reaxff/species allows one only with Nrepeat 1 (its dynamicGroupAllow, fix_reaxff_species.cpp)
+  'reaxff/bonds', 'reaxff/species',
 ]);
 export const DYNAMIC_GROUP_UNVERIFIED = new Set([
-  'adapt', 'adapt/fep', 'atom/swap', 'bocs', 'bond/create', 'bond/create/angle', 'efield/tip4p', 'gcmc',
-  'graphics/isosurface', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'neighbor/swap', 'nphug', 'nve/manifold/rattle',
-  'nvt/manifold/rattle', 'nvt/sllod/eff', 'precession/spin', 'reaxff/bonds', 'reaxff/species', 'setforce/spin',
-  'smd/setvel', 'widom',
+  'atom/swap', 'bond/create', 'bond/create/angle', 'gcmc', 'graphics/isosurface', 'neighbor/swap',
+  'nve/manifold/rattle', 'nvt/manifold/rattle', 'smd/setvel', 'widom',
 ]);
 
 /** The style named by the fix command that created each fix (internal fixes have none and are not checked). */
 export const FIX_COMMAND_STYLE = new WeakMap<object, string>();
 
 /** The dynamic group check of Modify::init over the fixes the input created (see the comment above). */
-export const checkDynamicGroupFixes = (groups: Groups, fixes: readonly { groupBit: number }[]): void => {
+export const checkDynamicGroupFixes = (groups: Groups, fixes: readonly { groupBit: number; dynamicGroupAllow?: boolean }[]): void => {
   for (const f of fixes) {
     const style = FIX_COMMAND_STYLE.get(f);
     if (style === undefined || !groups.isDynamic(f.groupBit)) continue;
+    if (f.dynamicGroupAllow === false) throw new StyleError(`Fix ${style} does not allow use with a dynamic group`);
     if (DYNAMIC_GROUP_UNVERIFIED.has(style)) throw new StyleError(`fix ${style} with a dynamic group is not supported by the browser engine`);
     if (!DYNAMIC_GROUP_FIXES.has(style)) throw new StyleError(`Fix ${style} does not allow use with a dynamic group`);
   }

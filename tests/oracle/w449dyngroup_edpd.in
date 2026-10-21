@@ -1,0 +1,36 @@
+# oracle: fix mvv/edpd on two dynamic groups (the particles whose scaled |vx| has a fractional part above 0.5 and the
+# others, re-evaluated every 2 steps) with edpd/source heating, pair edpd (examples/PACKAGES/dpd-meso/edpd cut down)
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       3
+boundary        p p p
+neighbor        0.2 bin
+neigh_modify    every 1 delay 0 check yes
+atom_style      edpd
+comm_modify     vel yes
+region          edpd block -3 3 -3 3 -3 3 units box
+create_box      1 edpd
+create_atoms    1 random 600 276438 NULL
+mass            1 1.0
+set             atom * edpd/temp 1.0
+set             atom * edpd/cv 1.0E5
+pair_style      edpd 1.58 9872598
+pair_coeff      1 1 18.75 4.5 0.41 1.58 1.41E-5 2.0 1.58 &
+                power 10.54 -3.66 3.44 -4.10 &
+                kappa -0.44 -3.21 5.04  0.00
+velocity        all create 1.0 432982 loop local dist gaussian
+variable        up atom (abs(vx)*1e2-floor(abs(vx)*1e2))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+fix             1 dyn mvv/edpd 0.5
+fix             2 dyn2 mvv/edpd 0.5
+fix             3 all edpd/source cuboid 0.0 1.5 0.0 6.0 3.0 6.0 0.01
+compute         t all edpd/temp/atom
+compute         ts all reduce sum c_t
+thermo_style    custom step temp pe ke etotal press c_ts v_ndyn
+thermo_modify   format float %.15g
+thermo          10
+timestep        0.01
+run             40

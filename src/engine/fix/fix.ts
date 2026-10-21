@@ -28,6 +28,11 @@ export abstract class Fix {
   /** Fix moves atoms by time integration (nve, nvt, ...). */
   timeIntegrate = false;
   /**
+   * Whether this fix allows a dynamic group, when it depends on the arguments (native dynamic_group_allow set under a
+   * condition, e.g. fix reaxff/species with Nrepeat 1); undefined: the style's entry in group.ts decides.
+   */
+  dynamicGroupAllow?: boolean;
+  /**
    * Coupled to the same fix on the other replicas (fix pimd: the beads of a path integral): the session runs the
    * replicas in lockstep (run/coupled.ts) and the fix reads them through System.replicaPeers.
    */

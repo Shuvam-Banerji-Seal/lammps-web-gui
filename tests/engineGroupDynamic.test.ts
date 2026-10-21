@@ -66,6 +66,10 @@ describe('group dynamic: argument errors (native texts)', () => {
     // the constructor's own check comes first: fix nvk sets dynamic_group_allow but takes only group all
     // (src/EXTRA-FIX/fix_nvk.cpp at b332f28)
     ['group a dynamic all region left\nfix 1 a nvk', 'Fix nvk only supports group all'],
+    // the atom attribute of fix adapt and adapt/fep is refused on a dynamic group by the fixes' init (fix_adapt.cpp,
+    // FEP/fix_adapt_fep.cpp at b332f28); measured with native LAMMPS: these texts, for atom_style atomic too
+    ['group a dynamic all region left\nvariable d equal 1.0\nfix 1 a adapt 1 atom charge v_d\nrun 0', 'Cannot use dynamic group a with fix adapt atom'],
+    ['group a dynamic all region left\nvariable d equal 1.0\nfix 1 a adapt/fep 1 atom charge * v_d\nrun 0', 'Cannot use dynamic group with fix adapt/fep atom'],
     ['group a dynamic all region left\ncompute 1 a msd', 'Compute msd is not compatible with dynamic groups'],
   ];
   for (const [text, msg] of cases) {

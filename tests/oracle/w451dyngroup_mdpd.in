@@ -1,0 +1,32 @@
+# oracle: fix mvv/dpd on two dynamic groups (the particles whose scaled |vx| has a fractional part above 0.5 and the
+# others, re-evaluated every 2 steps), many-body DPD film (examples/PACKAGES/dpd-meso/mdpd cut down)
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       3
+boundary        p p p
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+atom_style      mdpd
+comm_modify     vel yes
+region          mdpd block -8 8 -6 6 -6 6 units box
+create_box      1 mdpd
+lattice         fcc 6
+region          film block -4 4 -3 3 -2 2 units box
+create_atoms    1 region film
+pair_style      hybrid/overlay mdpd/rhosum mdpd 1.0 1.0 9872598
+pair_coeff      1 1 mdpd/rhosum  0.75
+pair_coeff      1 1 mdpd         -40 25 18.0 1.0 0.75
+mass            1 1.0
+velocity        all create 1.0 38497 loop local dist gaussian
+variable        up atom (abs(vx)*1e2-floor(abs(vx)*1e2))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+fix             1 dyn mvv/dpd
+fix             2 dyn2 mvv/dpd 0.6
+thermo_style    custom step temp pe ke etotal press v_ndyn
+thermo_modify   format float %.15g
+thermo          10
+timestep        0.01
+run             60

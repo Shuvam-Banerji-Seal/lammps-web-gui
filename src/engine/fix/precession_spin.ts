@@ -35,6 +35,10 @@ const unit = (v: number[], what: string): number[] => {
 export class FixPrecessionSpin extends Fix {
   readonly style: string = 'precession/spin';
   energyGlobal = true;
+  // fix_precession_spin.cpp at b332f28: scalar_flag = 1, extscalar = 1; compute_scalar is the energy fix_modify energy
+  // adds (eprec)
+  scalarFlag = true;
+  extscalar = 1;
   private zee: { h: number; n: number[] } | null = null;
   private aniso: { k: number; n: number[] } | null = null;
   private cubic: { k1: number; k2: number; n1: number[]; n2: number[]; n3: number[] } | null = null;
@@ -85,6 +89,11 @@ export class FixPrecessionSpin extends Fix {
     return e;
   }
 
+  /** Global scalar (thermo f_ID): the precession energy, as for fix_modify energy. */
+  computeScalar(): number {
+    return this.energy();
+  }
+
   /** Adds this fix's precession vector of atom i (spin sp[4i..4i+3]) to out; returns the energy of atom i. */
   private term(i: number, sp: Float64Array, out: number[] | Float64Array | null): number {
     const sx = sp[4 * i], sy = sp[4 * i + 1], sz = sp[4 * i + 2];
@@ -124,10 +133,13 @@ export class FixPrecessionSpin extends Fix {
     return e;
   }
 
-  /** Precession vector of atom i from this fix (zero outside the group). */
+  /**
+   * Precession vector of atom i from this fix (zero outside the group). As native LAMMPS does
+   * (src/SPIN/fix_precession_spin.cpp compute_single_precession at b332f28): only an atom of the group gets the terms.
+   */
   omegaOf(i: number, sp: Float64Array, out: Float64Array | number[]): void {
     out[0] = 0; out[1] = 0; out[2] = 0;
-    this.term(i, sp, out);
+    if (this.sys.state.mask[i] & this.groupBit) this.term(i, sp, out);
   }
 
   /** The minimizers apply the fix after each force evaluation too (native min_post_force). */

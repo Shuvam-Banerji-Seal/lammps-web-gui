@@ -1,0 +1,30 @@
+# oracle: fix efield/tip4p (energy yes) on a dynamic group (the atoms whose scaled |vx| has a fractional part above
+# 0.5, re-evaluated every 2 steps, so a water's oxygen and hydrogens can be in or out of the group separately), TIP4P
+# water with lj/cut/tip4p/cut and fix nve on all atoms
+# oracle-inputs: w229xf_efield_tip4p.data
+# oracle-compare: thermo=all atoms=all
+units           real
+atom_style      full
+boundary        p p p
+read_data       w229xf_efield_tip4p.data
+pair_style      lj/cut/tip4p/cut 1 2 1 1 0.1546 4.5
+pair_coeff      1 1 0.1852 3.1589
+pair_coeff      1 2 0.0 1.0
+pair_coeff      2 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+variable        up atom (abs(vx)*1e4-floor(abs(vx)*1e4))>0.5
+group           dyn dynamic all var up every 2
+variable        ndyn equal count(dyn)
+timestep        0.5
+fix             1 all nve
+fix             3 dyn efield/tip4p 0.3 -0.2 0.5
+fix_modify      3 energy yes
+thermo_style    custom step temp pe press f_3 f_3[1] f_3[2] f_3[3] v_ndyn
+thermo_modify   format float %.15g
+thermo          10
+run             50

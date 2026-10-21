@@ -13,9 +13,10 @@
  * multi-reaction limits). Wildcard atoms take their bonded types from the type labels (inferBondType and the
  * other labelmap inferences in src/engine/labelmap.ts). The site fit of created atoms is superpose() (a port of
  * Superpose3D with the Jacobi eigen-solver). Constraints (distance, angle, dihedral, arrhenius, rmsd, custom with
- * rxnsum, rxnave and rxnbond, combined by their logic) and ChiralIDs are checked as check_constraints does. Refused
- * by name: custom_charges, v_ variables,
- * file, vizsteps, reset_mol_ids molmap, and created atoms with a per-atom mass style.
+ * rxnsum, rxnave and rxnbond, combined by their logic) and ChiralIDs are checked as check_constraints does. Nevery,
+ * Rmin, Rmax and prob may be v_name (evaluated during the run as native does), and custom_charges recharges one
+ * fragment. rate_limit takes a number for Nlimit: native counts a v_name after it as one more reaction name.
+ * Refused by name: file, vizsteps, reset_mol_ids molmap, and created atoms with a per-atom mass style.
  *
  * Engine representation: topology lists are global (by atom ID) instead of per-atom storage, so the
  * bond, angle, dihedral and improper updates are written as set operations (remove the entries that touch a
@@ -85,6 +86,12 @@ interface Rxn {
   fraction: number;
   /** prob v_name: the equal-style variable whose value is the probability (native v_prob); null for a number. */
   probVar: string | null;
+  /** Nevery, Rmin and Rmax given as v_name (native v_nevery, v_rmin, v_rmax), evaluated during the run; else null. */
+  neveryVar: string | null;
+  rminVar: string | null;
+  rmaxVar: string | null;
+  /** custom_charges: the pre-reaction fragment whose atoms are recharged (native custom_charges_fragid), or -1. */
+  customChargesFrag: number;
   seed: number;
   random: RanMars;
   limitDuration: number;
@@ -1029,17 +1036,32 @@ class Superimposer {
 }
 
 /** Builds the arguments of one `react` block and the options that follow it (fix_bond_react.cpp constructor). */
-interface ReactArgs { name: string; group: string; nevery: number; rmin: number; rmax: number; pre: string; post: string; map: string; opts: string[] }
+interface ReactArgs {
+  name: string; group: string; nevery: number; rmin: number; rmax: number; pre: string; post: string; map: string; opts: string[];
+  neveryVar: string | null; rminVar: string | null; rmaxVar: string | null;
+}
 
-const parseReactBlock = (a: string[], i: number): { r: ReactArgs; next: number } => {
+/** validate_variable_keyword: a v_name argument must name an equal-style variable. */
+const validateVariable = (sys: System, name: string): void => {
+  const v = sys.vars.get(name);
+  if (!v) throw new StyleError(`Fix bond/react: Variable name ${name} does not exist`);
+  if (v.style !== 'equal' && v.style !== 'internal' && v.style !== 'timer') throw new StyleError(`Fix bond/react: Variable ${name} is not equal-style`);
+};
+
+const parseReactBlock = (sys: System, a: string[], i: number): { r: ReactArgs; next: number } => {
   if (i + 6 > a.length) throw new StyleError('Illegal fix bond/react command: \'react\' has too few arguments');
-  const v = (x: string, what: string) => {
-    if (x.startsWith('v_')) throw new StyleError(`fix bond/react: variable ${x} for ${what} is not supported by the browser engine`);
-    return x;
+  // Nevery, Rmin and Rmax may be v_name: Nevery is evaluated in each post_integrate, Rmin and Rmax now and in each
+  // partner search
+  const varOf = (x: string): string | null => {
+    if (!x.startsWith('v_')) return null;
+    validateVariable(sys, x.slice(2));
+    return x.slice(2);
   };
+  const neveryVar = varOf(a[i + 3]), rminVar = varOf(a[i + 4]), rmaxVar = varOf(a[i + 5]);
   const r: ReactArgs = {
-    name: a[i + 1], group: a[i + 2], nevery: Number(v(a[i + 3], 'Nevery')), rmin: Number(v(a[i + 4], 'Rmin')),
-    rmax: Number(v(a[i + 5], 'Rmax')), pre: a[i + 6], post: a[i + 7] ?? '', map: a[i + 8] ?? '', opts: [],
+    name: a[i + 1], group: a[i + 2], nevery: neveryVar ? 1 : Number(a[i + 3]),
+    rmin: rminVar ? sys.equalVariable(rminVar) : Number(a[i + 4]), rmax: rmaxVar ? sys.equalVariable(rmaxVar) : Number(a[i + 5]),
+    pre: a[i + 6], post: a[i + 7] ?? '', map: a[i + 8] ?? '', opts: [], neveryVar, rminVar, rmaxVar,
   };
   if (!Number.isFinite(r.nevery) || r.nevery <= 0 || !Number.isInteger(r.nevery)) throw new StyleError("Illegal fix bond/react command: 'Nevery' must be a positive integer");
   if (!(r.rmin >= 0)) throw new StyleError("Illegal fix bond/react command: 'Rmin' cannot be negative");
@@ -1062,7 +1084,7 @@ const buildReaction = (sys: System, id: number, r: ReactArgs, stabilization: boo
   const rxn: Rxn = {
     ID: id, name: r.name, reactant, product, groupbit: groupBit, nevery: r.nevery,
     rminsq: r.rmin * r.rmin, rmaxsq: r.rmax * r.rmax, ibonding: 0, jbonding: 0, iatomtype: 0, jatomtype: 0,
-    closeneigh: -1, fraction: 1.0, probVar: null, seed: 12345, random: new RanMars(12345), limitDuration: 60,
+    closeneigh: -1, fraction: 1.0, probVar: null, neveryVar: r.neveryVar, rminVar: r.rminVar, rmaxVar: r.rmaxVar, customChargesFrag: -1, seed: 12345, random: new RanMars(12345), limitDuration: 60,
     rescaleFlag: false, rescaleCount: 0, molTotalCharge: 0, moleculeKeyword: 'off', atoms: [], attempts: [],
     localCount: 0, nlocalkeep: Number.MAX_SAFE_INTEGER, reactionCountTotal: 0,
     createFlag: false, overlapsq: 0, fitFragment: -1, constraints: [], constraintStr: '', chiral: [],
@@ -1075,11 +1097,9 @@ const buildReaction = (sys: System, id: number, r: ReactArgs, stabilization: boo
       if (f === undefined || sd === undefined) throw new StyleError("Illegal fix bond/react command: 'prob' keyword has too few arguments");
       if (f.startsWith('v_')) {
         // native (src/REACTION/fix_bond_react.cpp at b332f28): "validate_variable_keyword": the variable must exist and be
-        // equal-style; the fraction is its value now and again at each run's init (see setup())
+        // equal-style; the fraction is its value now and again in each post_integrate
         const name = f.slice(2);
-        const v = sys.vars.get(name);
-        if (!v) throw new StyleError(`Fix bond/react: Variable ${name} does not exist`);
-        if (v.style !== 'equal') throw new StyleError(`Fix bond/react: Variable ${name} is not equal-style`);
+        validateVariable(sys, name);
         rxn.probVar = name;
         rxn.fraction = sys.equalVariable(name);
       } else rxn.fraction = Number(f);
@@ -1106,7 +1126,12 @@ const buildReaction = (sys: System, id: number, r: ReactArgs, stabilization: boo
       rxn.moleculeKeyword = w;
       k += 2;
     } else if (key === 'custom_charges') {
-      if (o[k + 1] !== 'no') throw new StyleError('fix bond/react custom_charges (fragments) is not supported by the browser engine');
+      if (o[k + 1] === undefined) throw new StyleError("Illegal fix bond/react command: 'custom_charges' has too few arguments");
+      if (o[k + 1] === 'no') rxn.customChargesFrag = -1;
+      else {
+        rxn.customChargesFrag = reactant.t.fragments.findIndex((f) => f.name === o[k + 1]);
+        if (rxn.customChargesFrag < 0) throw new StyleError("Fix bond/react: Molecule fragment for 'custom_charges' keyword does not exist");
+      }
       k += 2;
     } else if (key === 'modify_create') {
       // modify_create (fix_bond_react.cpp): sub-keywords fit (all or a fragment name) and overlap R, until another keyword
@@ -1200,12 +1225,18 @@ export class FixBondReact extends Fix {
       } else if (key === 'rate_limit') {
         const names: string[] = [];
         let j = i + 1;
-        while (j < args.length && /^[A-Za-z]/.test(args[j]) && args[j] !== 'react') names.push(args[j++]);
+        // native counts every following word that starts with a letter as a reaction name (a v_name too, so its
+        // variable branch for Nlimit is never reached)
+        while (j < args.length && /^[A-Za-z]/.test(args[j])) names.push(args[j++]);
         if (!names.length) throw new StyleError("Illegal fix bond/react command: at least one rxn-ID should be listed directly after the 'rate_limit' keyword");
-        const nl = args[j] ?? '';
-        if (nl.startsWith('v_')) throw new StyleError('fix bond/react rate_limit with a variable is not supported by the browser engine');
-        const nlimit = Number.parseInt(nl, 10);
-        const nsteps = Number.parseInt(args[j + 1] ?? '', 10);
+        if (j + 2 > args.length) throw new StyleError('Illegal fix bond/react rate_limit command: missing argument(s)');
+        // utils::inumeric on Nlimit and Nsteps
+        const inumeric = (w: string): number => {
+          if (!/^[-+]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}' in input script or data file`);
+          return Number.parseInt(w, 10);
+        };
+        const nlimit = inumeric(args[j]);
+        const nsteps = inumeric(args[j + 1]);
         if (!(nsteps > 0)) throw new StyleError('Illegal fix bond/react rate_limit: Nsteps must be positive');
         this.rateLimits.push({ names, ids: [], nlimit, nsteps, store: new Array(nsteps).fill(-1) });
         i = j + 2;
@@ -1221,7 +1252,7 @@ export class FixBondReact extends Fix {
     const blocks: ReactArgs[] = [];
     while (i < args.length) {
       if (args[i] !== 'react') throw new StyleError("Illegal fix bond/react command: 'react' or 'stabilization' has incorrect arguments");
-      const { r, next } = parseReactBlock(args, i);
+      const { r, next } = parseReactBlock(sys, args, i);
       blocks.push(r);
       i = next;
     }
@@ -1252,6 +1283,11 @@ export class FixBondReact extends Fix {
       rxn.iatomtype = rxn.reactant.t.type[rxn.ibonding - 1];
       rxn.jatomtype = rxn.reactant.t.type[rxn.jbonding - 1];
       findLandlocked(rxn);
+      // CustomCharges: only the atoms of the fragment get the post-reaction charges
+      if (rxn.customChargesFrag >= 0) {
+        const members = rxn.reactant.t.fragments[rxn.customChargesFrag].atoms;
+        for (let i = 0; i < rxn.reactant.n; i++) rxn.atoms[i].recharged = members.includes(i + 1) ? 1 : 0;
+      }
     }
     // customvarnames: the variables named by rxnsum and rxnave in custom constraints
     for (const rxn of this.rxns) {
@@ -1357,13 +1393,17 @@ export class FixBondReact extends Fix {
       rl.store.unshift(sum);
       rl.store.pop();
     }
+    // a v_name Nevery is evaluated until the first reaction due on this step (native breaks out of that loop)
     let due = false;
     for (const rxn of this.rxns) {
+      if (rxn.neveryVar !== null) rxn.nevery = Math.ceil(this.sys.equalVariable(rxn.neveryVar));
+      if (rxn.nevery <= 0) throw new StyleError("Illegal fix bond/react command: 'Nevery' must be a positive integer");
       if (step % rxn.nevery === 0) { due = true; break; }
     }
     for (const rxn of this.rxns) {
       rxn.localCount = 0;
       rxn.nlocalkeep = Number.MAX_SAFE_INTEGER;
+      if (rxn.probVar !== null) rxn.fraction = this.sys.equalVariable(rxn.probVar);
     }
     if (!due) { this.unlimit(); return; }
     // reset the attempt lists of every reaction
@@ -1463,6 +1503,10 @@ export class FixBondReact extends Fix {
   /** find_partners for one reaction: each atom's nearest eligible partner (far_partner or close_partner). */
   private findPartners(rxn: Rxn, sim: Map<number, Special>): Map<number, number> {
     const s = this.sys.state;
+    // far_partner and close_partner: a v_name Rmin or Rmax takes the variable's value of this step (native evaluates
+    // it for each pair it tests, with the same result within a step)
+    if (rxn.rminVar !== null) { const c = this.sys.equalVariable(rxn.rminVar); rxn.rminsq = c * c; }
+    if (rxn.rmaxVar !== null) { const c = this.sys.equalVariable(rxn.rmaxVar); rxn.rmaxsq = c * c; }
     const out = new Map<number, number>();
     const d0 = new Map<number, number>(), d1 = new Map<number, number>();
     const order = nativeOrder(s);
@@ -2166,8 +2210,6 @@ export class FixBondReact extends Fix {
   /** Run setup: the kspace charge sums follow the charges again (the setup refresh) until a reaction freezes them. */
   setup(): void {
     if (this.sys.ff.kspace) this.sys.ff.kspace.chargeSumsFrozen = false;
-    // native init(): "if (rxn.v_prob > -1) rxn.fraction = input->variable->compute_equal(rxn.v_prob);"
-    for (const rxn of this.rxns) if (rxn.probVar !== null) rxn.fraction = this.sys.equalVariable(rxn.probVar);
     super.setup();
   }
 

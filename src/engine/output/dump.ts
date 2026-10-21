@@ -599,7 +599,12 @@ export class Dump {
     if (this.imageDump) {
       const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
       const name = this.file.includes('*') ? fillWildcard(this.file, stepText) : this.file;
-      this.imageDump.write(s, name, this);
+      // dump_image.cpp create_image: the drawn atoms are DumpCustom::count()'s choice (group, dump_modify region and
+      // thresh), which also bounds a dynamic colour map and selects both atoms of a drawn bond
+      if (this.thresh.length) sys.forces();
+      const chosen = new Uint8Array(s.n);
+      for (const i of this.chooseRows()) chosen[i] = 1;
+      this.imageDump.write(s, name, this, chosen);
       return;
     }
     if (this.vtkStyle) {
@@ -622,37 +627,8 @@ export class Dump {
       if (!s.box.general) throw new StyleError(`dump ${this.id}: dump_modify triclinic/general yes needs a general triclinic box (create_box NULL, or a general triclinic data file)`);
       if (this.style !== 'atom' && this.style !== 'custom') throw new StyleError(`dump ${this.id}: dump_modify triclinic/general applies only to the atom and custom styles`);
     }
-    // atoms to write
-    const reg = this.region ? sys.region(this.region) : null;
-    const rows: number[] = [];
-    // unsorted dumps list atoms in native LAMMPS's storage order (SimState.order)
-    for (const i of nativeOrder(s)) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      if (reg && !reg.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2])) continue;
-      rows.push(i);
-    }
+    const keep = this.chooseRows();
     const values = this.columns.map((c) => this.columnValues(c));
-    let keep = rows;
-    for (const t of this.thresh) {
-      const col = this.columnValues(t.col);
-      keep = keep.filter((i) => {
-        const ref = t.value === 'LAST' ? (t.last?.get(s.id[i]) ?? col[i]) : t.value;
-        const x = col[i];
-        switch (t.op) {
-          case '<': return x < ref;
-          case '<=': return x <= ref;
-          case '>': return x > ref;
-          case '>=': return x >= ref;
-          case '==': return x === ref;
-          case '!=': return x !== ref;
-          default: return (x !== 0) !== (ref !== 0);
-        }
-      });
-      if (t.value === 'LAST') {
-        t.last = new Map();
-        for (const i of keep) t.last.set(s.id[i], col[i]);
-      }
-    }
     if (this.sort === 'id') keep.sort((a, b) => s.id[a] - s.id[b]);
     else if (this.sort !== 'off') {
       const { col, desc } = this.sort;
@@ -792,6 +768,47 @@ export class Dump {
 
   private isInt(c: string): boolean {
     return INT_COLS.has(c) || /^i2?_/.test(c);
+  }
+
+  /**
+   * The atoms a snapshot writes, in native storage order: the dump group, then dump_modify region, then each
+   * dump_modify thresh in turn (DumpCustom::count).
+   */
+  private chooseRows(): number[] {
+    const sys = this.sys;
+    const s = sys.state;
+    const reg = this.region ? sys.region(this.region) : null;
+    const rows: number[] = [];
+    // unsorted dumps list atoms in native LAMMPS's storage order (SimState.order)
+    for (const i of nativeOrder(s)) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      if (reg && !reg.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2])) continue;
+      rows.push(i);
+    }
+    let keep = rows;
+    for (const t of this.thresh) {
+      const col = this.columnValues(t.col);
+      keep = keep.filter((i) => {
+        const ref = t.value === 'LAST' ? (t.last?.get(s.id[i]) ?? col[i]) : t.value;
+        const x = col[i];
+        switch (t.op) {
+          case '<': return x < ref;
+          case '<=': return x <= ref;
+          case '>': return x > ref;
+          case '>=': return x >= ref;
+          case '==': return x === ref;
+          case '!=': return x !== ref;
+          default: return (x !== 0) !== (ref !== 0);
+        }
+      });
+      // As native LAMMPS does (src/dump_custom.cpp at b332f28, DumpCustom::count): the LAST values are stored for every
+      // atom after each comparison, chosen or not
+      if (t.value === 'LAST') {
+        t.last = new Map();
+        for (let i = 0; i < s.n; i++) t.last.set(s.id[i], col[i]);
+      }
+    }
+    return keep;
   }
 
   /** Values of one column for every atom index (length n). */

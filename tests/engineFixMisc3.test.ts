@@ -225,7 +225,9 @@ region uni union 2 sph sph_out units box
       ['fix 2 all wall/region sph lj93 1 1', /takes 2 parameters and a cutoff/],
       ['fix 2 all wall/region sph lj93 1 1 0', /cutoff must be a number > 0/],
       ['fix 2 all wall/region sph morse 1 1 2.5', /takes 3 parameters/],
-      ['fix 2 all wall/region sph colloid 1 1 2.5', /colloid is not supported/],
+      // style colloid needs finite-size particles (fix_wall_region.cpp init at b332f28; measured with native LAMMPS: this
+      // text for atom_style atomic)
+      ['fix 2 all wall/region sph colloid 1 1 2.5', /Fix wall\/region colloid requires atom attribute radius/],
       ['fix 2 all wall/region nowhere lj93 1 1 2.5', /region ID 'nowhere' does not exist/],
       ['fix 2 all wall/region uni lj93 1 1 2.5', /region style union is not supported/],
       ['fix 2 all wall/region sph lj93 v_x 1 2.5', /must be a number/],
@@ -234,6 +236,27 @@ region uni union 2 sph sph_out units box
       const r = await runScript(`${atom}${line}\nrun 0`);
       expect(message(r.error), line).toMatch(re);
     }
+  });
+
+  it('style colloid: only extended particles, and a contact closer than the radius is an error (native texts)', async () => {
+    const sphere = (dia: number, x: number) => `units lj
+atom_style sphere
+boundary f f f
+region box block -8 8 -8 8 -8 8 units box
+create_box 1 box
+region ball sphere 0 0 0 6.5 side in units box
+create_atoms 1 single ${x} 0 0 units box
+set type 1 diameter ${dia}
+pair_style zero 1.0
+pair_coeff * *
+fix 2 all wall/region ball colloid 1.0 1.0 2.5
+run 0`;
+    const zero = await runScript(sphere(0.0, 0));
+    expect(message(zero.error)).toMatch(/Fix wall\/region colloid requires only extended particles/);
+    // measured with native LAMMPS: a diameter 1 particle at 0.5 from the surface stops the run with this text
+    const close = await runScript(sphere(1.0, 6.0));
+    expect(message(close.error)).toMatch(/Particle outside surface of region used in fix wall\/region/);
+    expect((await runScript(sphere(1.0, 5.5))).error).toBeNull();
   });
 
   it('a particle outside a side-in region is an error', async () => {

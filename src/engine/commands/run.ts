@@ -9,7 +9,7 @@ import { initRun, runVerlet } from '../run/verlet';
 import { runVerletCoupled } from '../run/coupled';
 import { parseRunStyleRespa, runRespa } from '../run/respa';
 import { RunCancelled } from '../errors';
-import { DYNAMIC_GROUP_FIXES, NO_DYNAMIC_GROUP_FIXES } from '../group';
+import { DYNAMIC_GROUP_FIXES, DYNAMIC_GROUP_UNVERIFIED } from '../group';
 import type { System } from '../system';
 import type { EngineEvent } from '../types';
 import { hasCharge, massOf } from '../atoms';
@@ -56,8 +56,8 @@ const fix: Handler = ({ sys }, a) => {
   if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError(`replacing fix ${id} with a different style (${sys.fixes[k].style} -> ${style}) is not allowed; unfix it first`);
   ensureThermoComputes(sys);
   if (sys.groups.isDynamic(sys.groupBit(group))) {
-    if (NO_DYNAMIC_GROUP_FIXES.has(style)) throw new StyleError(`Fix ${style} does not allow use with a dynamic group`);
-    if (!DYNAMIC_GROUP_FIXES.has(style)) throw new StyleError(`fix ${style} with a dynamic group is not supported by the browser engine`);
+    if (DYNAMIC_GROUP_UNVERIFIED.has(style)) throw new StyleError(`fix ${style} with a dynamic group is not supported by the browser engine`);
+    if (!DYNAMIC_GROUP_FIXES.has(style)) throw new StyleError(`Fix ${style} does not allow use with a dynamic group`);
   }
   if (k >= 0) sys.fixes[k].destroy?.();
   const f = make(sys, id, group, a.slice(3));

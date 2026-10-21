@@ -33,10 +33,12 @@ import { parseNumOrVar, valueOf, type NumOrVar } from './util';
  * Global outputs. The doc: "The scalar is the potential energy discussed above.
  * The vector is the total torque on the group of atoms before the forces on
  * individual atoms are changed by the fix." The engine stores unnormalised values: the vector is
- * the torque of the forces present before the fix about the group centre of mass; the scalar is
- * omega . I . omega. Measured with native LAMMPS (black box): printed values are these divided by
- * the total atom count, because thermo_modify norm defaults to yes for lj units (the same division
- * applies to pe). At step 0 the scalar agrees with native to 1e-15.
+ * the torque of the forces present before the fix about the group centre of mass; the scalar is, as native LAMMPS
+ * computes it (src/EXTRA-FIX/fix_addtorque_group.cpp post_force at b332f28: "potential energy = - x dot f"),
+ * -sum x_i . f_i of the added forces with the stored, wrapped positions. With unwrapped positions that sum is
+ * omega . I . omega (the added forces sum to zero and alpha x r is normal to r); an atom across a periodic boundary
+ * adds the term of its image shift. Measured with native LAMMPS (black box): printed values are these divided by
+ * the total atom count, because thermo_modify norm defaults to yes for lj units (the same division applies to pe).
  *
  * fix_modify energy: the doc says this fix supports the energy option, which adds the potential
  * energy inferred by the added torques to the global potential energy of the system. Measured with
@@ -47,8 +49,8 @@ import { parseNumOrVar, valueOf, type NumOrVar } from './util';
  * invoked by the minimize command." The engine applies the same forces in min_post_force.
  *
  * Units: the stored forces are LAMMPS forces, and the integrators turn them into velocity changes with ftm2v. The
- * kinematic torque is ftm2v T, the accelerations are a = ftm2v F / m, so a fix force is m a / ftm2v; the energy
- * omega . I . omega is converted to LAMMPS energy with mvv2e. In lj units both factors are 1 (the oracle metal cases
+ * kinematic torque is ftm2v T, the accelerations are a = ftm2v F / m, so a fix force is m a / ftm2v. In lj units
+ * the factor is 1 (the oracle metal cases
  * w48fb_metal_addtorque cover the conversions).
  *
  * Variables: Tx, Ty, Tz may be v_name equal-style variables, evaluated each step.
@@ -105,15 +107,17 @@ export const pinvSym3 = (a: number[]): number[] => {
   return out;
 };
 
+/** fix addtorque and fix addtorque/group: one style (src/EXTRA-FIX/fix_addtorque_group.h at b332f28 registers both names). */
 export class FixAddTorqueGroup extends Fix {
-  readonly style = 'addtorque/group';
+  readonly style: string;
   private readonly torque: [NumOrVar, NumOrVar, NumOrVar];
   private etot = 0;
   private vec = new Float64Array(3);
 
-  constructor(sys: System, id: string, group: string, args: string[]) {
+  constructor(sys: System, id: string, group: string, args: string[], style = 'addtorque/group') {
     super(sys, id, group, args);
-    if (args.length !== 3) throw new StyleError('fix addtorque/group: usage: fix ID group-ID addtorque/group Tx Ty Tz');
+    this.style = style;
+    if (args.length !== 3) throw new StyleError(`fix ${style}: usage: fix ID group-ID ${style} Tx Ty Tz`);
     this.torque = [parseNumOrVar(args[0], 'Tx'), parseNumOrVar(args[1], 'Ty'), parseNumOrVar(args[2], 'Tz')];
     this.scalarFlag = true;
     this.vectorFlag = true;
@@ -193,15 +197,15 @@ export class FixAddTorqueGroup extends Fix {
       const wr = [omega[1] * r[2] - omega[2] * r[1], omega[2] * r[0] - omega[0] * r[2], omega[0] * r[1] - omega[1] * r[0]];
       const cen = [omega[1] * wr[2] - omega[2] * wr[1], omega[2] * wr[0] - omega[0] * wr[2], omega[0] * wr[1] - omega[1] * wr[0]];
       // acceleration a = ar + cen (kinematic units); the LAMMPS force is m a / ftm2v, since a = ftm2v F / m
-      f[3 * fi] += (m * (ar[0] + cen[0])) * invF;
-      f[3 * fi + 1] += (m * (ar[1] + cen[1])) * invF;
-      f[3 * fi + 2] += (m * (ar[2] + cen[2])) * invF;
+      const fax = (m * (ar[0] + cen[0])) * invF;
+      const fay = (m * (ar[1] + cen[1])) * invF;
+      const faz = (m * (ar[2] + cen[2])) * invF;
+      // the scalar: "potential energy = - x dot f" of the added forces with the stored (wrapped) positions
+      this.etot -= fax * x[3 * fi] + fay * x[3 * fi + 1] + faz * x[3 * fi + 2];
+      f[3 * fi] += fax;
+      f[3 * fi + 1] += fay;
+      f[3 * fi + 2] += faz;
     }
-    // scalar: the fictitious energy omega . I . omega (omega = I^+ L)
-    let oIo = 0;
-    for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) oIo += omega[a] * I[3 * a + b] * omega[b];
-    // energy in LAMMPS energy units (mass v^2 times mvv2e)
-    this.etot = oIo * s.units.mvv2e;
   }
 
   minPostForce(): void { this.postForce(); }

@@ -178,6 +178,7 @@ export class FixDeposit extends Fix {
   private readonly idNext: boolean;
   private nextId: number;
   private globalRange: [number, number] | null = null;
+  /** local lo hi delta: the height range and delta^2 (deltasq, scaled by the x lattice spacing squared). */
   private localRange: [number, number, number] | null = null;
   private near = 0;
   private attempt = 10;
@@ -201,11 +202,8 @@ export class FixDeposit extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    // fix_deposit.cpp: "dimension == 2" inserts in the y direction (the rate offset and the lateral placement) with
-    // a z coordinate drawn but unused, and a molecule rotates about z (the global and local ranges are 3d only)
-    if (sys.dimension === 2 && (args.includes('global') || args.includes('local'))) {
-      throw new StyleError('fix deposit global and local are not supported by the browser engine in 2d');
-    }
+    // fix_deposit.cpp: "dimension == 2" inserts in the y direction (the rate offset, the lateral placement and the
+    // global and local heights) with a z coordinate drawn but unused, and a molecule rotates about z
     if (args.length < 4) throw new StyleError('usage: fix ID group-ID deposit N type M seed keyword values ...');
     this.N = posInt(args[0], 'N');
     this.M = posInt(args[2], 'M');
@@ -271,15 +269,20 @@ export class FixDeposit extends Fix {
     // default is units lattice.
     const sc = latticeScale(sys, units ?? 'lattice', 'deposit');
     this.near *= sc[0];
-    if (this.globalRange) this.globalRange = [this.globalRange[0] * sc[2], this.globalRange[1] * sc[2]];
-    if (this.localRange) this.localRange = [this.localRange[0] * sc[2], this.localRange[1] * sc[2], this.localRange[2] * sc[0]];
+    // As native LAMMPS does (src/fix_deposit.cpp at b332f28): lo and hi scale with the lattice spacing of the vertical
+    // dimension (y in 2d, z in 3d), and deltasq = delta * delta with the x spacing squared
+    const sv = sys.dimension === 2 ? sc[1] : sc[2];
+    if (this.globalRange) this.globalRange = [this.globalRange[0] * sv, this.globalRange[1] * sv];
+    if (this.localRange) {
+      const d = this.localRange[2];
+      this.localRange = [this.localRange[0] * sv, this.localRange[1] * sv, d * d * (sc[0] * sc[0])];
+    }
     if (this.target) this.target = [this.target[0] * sc[0], this.target[1] * sc[1], this.target[2] * sc[2]];
     this.vx = [this.vx[0] * sc[0], this.vx[1] * sc[0]];
     this.vy = [this.vy[0] * sc[1], this.vy[1] * sc[1]];
     this.vz = [this.vz[0] * sc[2], this.vz[1] * sc[2]];
     if (this.globalRange && this.localRange) throw new StyleError('fix deposit: global and local cannot both be used');
     if (this.globalRange && !(this.globalRange[1] >= this.globalRange[0])) throw new StyleError('fix deposit: global needs lo <= hi');
-    if (molTemplateId && (this.globalRange || this.localRange)) throw new StyleError('fix deposit: global and local with mol are not supported by the browser engine');
     if (orient && !molTemplateId) throw new StyleError('fix deposit: orient requires the mol keyword');
     if (rigidId && !molTemplateId) throw new StyleError('fix deposit: rigid requires the mol keyword');
     if (shakeId && !molTemplateId) throw new StyleError('fix deposit: shake requires the mol keyword');
@@ -402,12 +405,14 @@ export class FixDeposit extends Fix {
       } while (!region.match(x, y, z));
       y += yOff;
       z += zOff;
-      if (this.globalRange) {
-        const top = this.highestZ(null);
-        z = top + this.globalRange[0] + this.rng.uniform() * (this.globalRange[1] - this.globalRange[0]);
-      } else if (this.localRange) {
-        const top = this.highestZ([x, y]);
-        z = top + this.localRange[0] + this.rng.uniform() * (this.localRange[1] - this.localRange[0]);
+      // global and local: the vertical coordinate lo..hi above the highest atom (nearby, for local), the point or the
+      // molecule centre
+      const range = this.globalRange ?? this.localRange;
+      if (range) {
+        const top = this.highestAtom(this.localRange ? [x, y] : null);
+        const h = top + range[0] + this.rng.uniform() * (range[1] - range[0]);
+        if (twod) y = h;
+        else z = h;
       }
       let atoms: Float64Array | null = null;
       let rot0: number[][] | null = null;
@@ -477,22 +482,25 @@ export class FixDeposit extends Fix {
     return out;
   }
 
-  /** Highest z of the atoms (within delta laterally of (x, y) when given); the box bottom if none. */
-  private highestZ(lateral: [number, number] | null): number {
+  /**
+   * The highest vertical coordinate (y in 2d, z in 3d) of the atoms, starting from the box bottom; with a lateral
+   * point only the atoms with rsq <= deltasq (minimum image; x alone in 2d, x and y in 3d) count, as fix_deposit.cpp
+   * does.
+   */
+  private highestAtom(lateral: [number, number] | null): number {
     const s = this.sys.state;
-    const delta = this.localRange ? this.localRange[2] : 0;
-    let top = s.box.lo[2];
-    let any = false;
+    const dim = s.dimension === 2 ? 1 : 2;
+    const deltasq = this.localRange ? this.localRange[2] : 0;
+    let max = s.box.lo[dim];
     for (let i = 0; i < s.n; i++) {
       if (lateral) {
         const [dx, dy] = separation(this.sys, lateral[0] - s.x[3 * i], lateral[1] - s.x[3 * i + 1], 0);
-        if (Math.sqrt(dx * dx + dy * dy) >= delta) continue;
+        const rsq = dim === 1 ? dx * dx : dx * dx + dy * dy;
+        if (rsq > deltasq) continue;
       }
-      const z = s.x[3 * i + 2];
-      if (!any || z > top) top = z;
-      any = true;
+      if (s.x[3 * i + dim] > max) max = s.x[3 * i + dim];
     }
-    return top;
+    return max;
   }
 
   /**

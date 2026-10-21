@@ -1,0 +1,30 @@
+# oracle: fix mol/swap with dynamics: swaps every 3 steps at the scheduled step's exchange stage (before its forces),
+# Metropolis at T = 1.5 with fix langevin and fix efield (energy yes) run by each energy evaluation (energy_full:
+# pre_force and post_force), molecules of four atoms of an lj/cut fcc liquid with charges
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      full
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+variable        m atom 1+floor((id-1)/4)
+set             atom * mol v_m
+set             type 1 type/fraction 2 0.4 4242
+set             type 1 charge 0.1
+set             type 2 charge 0.1
+mass            * 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+pair_coeff      1 2 0.6 1.0
+pair_coeff      2 2 1.4 1.0
+velocity        all create 1.0 87287 loop geom
+fix             integ all nve
+fix             lan all langevin 1.0 1.0 0.5 48279
+fix             ef all efield 0.2 0.0 0.0
+fix_modify      ef energy yes
+fix             swap all mol/swap 3 5 1 2 482794 1.5
+thermo_style    custom step pe ke temp f_swap[1] f_swap[2] f_ef
+thermo_modify   format float %.15g
+thermo          3
+run             30

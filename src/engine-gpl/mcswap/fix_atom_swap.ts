@@ -348,16 +348,20 @@ export class FixAtomSwap extends Fix {
   }
 
   /**
-   * energy_full: the force evaluation of the current state and the potential energy (compute pe: pair, bond, angle,
-   * dihedral, improper, kspace, then the fix energies). The neighbour lists are rebuilt for the new types.
+   * energy_full: modify->pre_force, the force evaluation of the current state, modify->post_force, and the potential
+   * energy (compute pe: pair, bond, angle, dihedral, improper, kspace, then the fix energies). The neighbour lists are
+   * rebuilt for the new types. Every pre_force and post_force fix runs in each call, as in the step (fix langevin draws
+   * its random forces, the fix energies are those of this call).
    */
   private energyFull(): number {
     const sys = this.sys;
     sys.bump();
+    for (const f of sys.fixes) f.preForce?.();
     const a = sys.forces();
     // modify->post_force runs the post_force_group fixes first: a dynamic group (FixGroup::post_force) is reassigned
     // on the steps that are a multiple of its every, so the swap lists of the step see the new members
     sys.assignDynamicGroups(false);
+    for (const f of sys.fixes) f.postForce?.();
     return a.evdwl + a.ecoul + a.ebond + a.eangle + a.edihed + a.eimp + a.elong + sys.fixEnergy();
   }
 

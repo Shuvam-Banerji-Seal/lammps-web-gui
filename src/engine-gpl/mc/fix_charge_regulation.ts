@@ -384,9 +384,14 @@ export class FixChargeRegulation extends Fix {
     // native reinits the pair (force->pair->reinit()) with the tail at each insertion and deletion trial; the tail is
     // recounted at each energy evaluation here (an accepted deletion's stale count until the next reinit is not kept)
     sys.ff.reinitTail(sys.state);
+    // energy_full: modify->pre_force, the forces, modify->pre_reverse, modify->post_force (a dynamic group's
+    // post_force_group fix first, then every post_force fix), and compute pe with the fix_modify energy contributions
+    for (const f of sys.fixes) f.preForce?.();
     const a = sys.forces();
+    for (const f of sys.fixes) f.preReverse?.();
+    sys.assignDynamicGroups(false);
     for (const f of sys.fixes) f.postForce?.();
-    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp;
+    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp + sys.fixEnergy();
   }
 
   /** Native acceptance: energy_after < MAXENERGYTEST && random_equal->uniform() < ratio * exp(beta * (before - after)). */

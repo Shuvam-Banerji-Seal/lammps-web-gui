@@ -1,0 +1,28 @@
+# oracle: fix rigid/npt/small with molecule bodies of one Gay-Berne ellipsoid and three point particles (plain temperature degrees of freedom stay positive) (atom_style hybrid ellipsoid molecular): the ellipsoids add their inertia_ellipsoid to the body and their angular momentum, their Gay-Berne torques act on the bodies, and their quaternions and angular momenta follow the bodies under the barostat
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      hybrid ellipsoid molecular
+lattice         sc 0.25
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    2 box
+group           ell id 1:64:4
+set             group ell type 1
+set             type * mass 1.0
+set             type 1 shape 1.5 1.0 1.0
+set             type 1 quat/random 18238
+variable        mol atom 1+floor((id-1)/4)
+set             group all mol v_mol
+velocity        all create 1.5 5521 loop geom
+pair_style      gayberne 1.0 3.0 1.0 4.0
+pair_coeff      1 1 1.0 1.0 1.0 0.5 0.2 1.0 0.5 0.2
+pair_coeff      1 2 1.0 1.0 1.0 0.5 0.2 1.0 1.0 1.0
+pair_coeff      2 2 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0
+neigh_modify    exclude molecule/intra all
+fix             1 all rigid/npt/small molecule temp 1.5 1.5 1.0 iso 1.0 1.0 5.0
+compute         q all property/atom quatw quati quatj quatk angmomx angmomy angmomz
+compute         rs all reduce sum c_q[*]
+thermo_style    custom step temp pe press vol c_rs[1] c_rs[2] c_rs[5] c_rs[6] c_rs[7]
+thermo_modify   format float %.15g
+thermo          10
+run             50

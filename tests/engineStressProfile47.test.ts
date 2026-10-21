@@ -238,10 +238,28 @@ describe('refusals', () => {
     await expect(runScript(`${TWO}\ncompute c all stress/spherical 0 0 0 0.25 10\nrun 0`)).resolves.toBeDefined();
   });
 
-  it('the bond keyword is refused by stress/cartesian and stress/mop', async () => {
-    await expect(runScript(`${TWO}\ncompute c all stress/cartesian x 1.0 NULL 0 bond\nrun 0`)).rejects.toThrow(/bond/);
-    await expect(runScript(`${TWO}\ncompute c all stress/mop x 5.0 bond\nrun 0`)).rejects.toThrow(/bond/);
-    await expect(runScript(`${TWO}\ncompute c all stress/mop/profile x 0.0 1.0 angle\nrun 0`)).rejects.toThrow(/angle/);
+  it('stress/mop stops for an angle style without native born_matrix (compute_stress_mop.cpp init)', async () => {
+    await expect(runScript(`units lj
+atom_style molecular
+region box block 0 10 0 10 0 10
+create_box 1 box bond/types 1 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 4
+create_atoms 1 single 4.2 5.0 5.0
+create_atoms 1 single 5.4 5.0 5.0
+create_atoms 1 single 5.9 6.0 5.0
+mass 1 1.0
+create_bonds single/bond 1 1 2
+create_bonds single/bond 1 2 3
+create_bonds single/angle 1 1 2 3
+bond_style harmonic
+bond_coeff 1 100.0 1.2
+angle_style class2
+angle_coeff 1 110.0 10.0 0.0 0.0
+angle_coeff 1 bb 0.0 1.2 1.2
+angle_coeff 1 ba 0.0 0.0 1.2 1.2
+pair_style lj/cut 2.5
+pair_coeff * * 1.0 1.0
+compute c all stress/mop x 5.0 angle
+run 0`)).rejects.toThrow(/compute stress\/mop does not account for the selected angle potential/);
   });
 
   it('unknown keywords and dimensions are rejected', async () => {
@@ -254,8 +272,8 @@ describe('refusals', () => {
     await expect(runScript(`${TWO}\ncompute c all stress/cartesian x 20.0 NULL 0\nrun 0`)).rejects.toThrow(/larger than the box/);
   });
 
-  it('the default keyword set of stress/cartesian is refused on a system with bonds', async () => {
-    await expect(runScript(`units lj
+  it('stress/cartesian bond: a stretched bond is split between the bins it crosses (and is in the default keywords)', async () => {
+    const BOND = `units lj
 atom_style bond
 region box block 0 10 0 10 0 10
 create_box 1 box bond/types 1 extra/bond/per/atom 1
@@ -264,10 +282,20 @@ create_atoms 1 single 5.7 5.0 5.0
 mass 1 1.0
 create_bonds single/bond 1 1 2
 bond_style harmonic
-bond_coeff 1 100.0 1.5
-pair_style lj/cut 2.5
-pair_coeff * * 1.0 1.0
-compute c all stress/cartesian x 1.0 NULL 0
-run 0`)).rejects.toThrow(/default keywords include bond/);
+bond_coeff 1 100.0 1.2
+pair_style lj/cut 1.0
+pair_coeff * * 1.0 1.0 1.0
+`;
+    // F = 2 K (r - r0) = 60 pulls atom 1 (x = 4.2) toward atom 2: W_xx = (x1 - x2) F_1x = -1.5 * 60 = -90, spread as
+    // 0.8 / 1.5 over [4, 5) and 0.7 / 1.5 over [5, 6), over the bin volume 1 * 10 * 10
+    for (const kw of ['bond', '']) {
+      const s = await runScript(`${BOND}compute c all stress/cartesian x 1.0 NULL 0 ${kw}
+run 0`);
+      const a = s.sys.compute('c').arrayValues();
+      // columns: coordinate, density, kinetic xx yy zz, virial xx yy zz
+      expect(a[8 * 4 + 5]).toBeCloseTo(-90 * 0.8 / 1.5 / 100, 12);
+      expect(a[8 * 5 + 5]).toBeCloseTo(-90 * 0.7 / 1.5 / 100, 12);
+      expect(a[8 * 3 + 5]).toBe(0);
+    }
   });
 });

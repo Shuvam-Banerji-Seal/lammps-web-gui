@@ -2,6 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import { massOf } from '../atoms';
 import type { System } from '../system';
+import { termForces, termRows } from './local';
 
 /*
  * Spatial stress profiles: compute stress/cartesian, stress/mop, stress/mop/profile (implemented here).
@@ -13,9 +14,9 @@ import type { System } from '../system';
  * tests/oracle/w47sp_*.in.
  *
  * compute stress/cartesian: the docs say "This compute only supports pair and bond (no angle,
- * dihedral, improper, or kspace) forces." This engine implements the pair and ke parts. The bond
- * keyword, the default keyword set (which contains bond) on a system with bonds, and kspace styles
- * are EngineErrors, as is a pair style without single().
+ * dihedral, improper, or kspace) forces." This engine implements the ke, pair and bond parts (a bond is a segment
+ * like a pair, with the force of the bond style). kspace styles are EngineErrors, as is a pair style without
+ * single().
  *   Output: the bin centres in one or two dimensions, the number density, the three diagonal kinetic
  *   and the three diagonal virial components; "There are 8 columns when one dimension is specified
  *   and 9 columns when two dimensions are specified."
@@ -47,8 +48,8 @@ import type { System } from '../system';
  *   Planes (profile): origin + k * delta for every integer k that keeps the plane in [lo, hi] (origin 0,
  *   delta 2.5 in -5..5 gives -5, -2.5, 0, 2.5, 5). lower, center and upper are the box bounds and the
  *   mid-point.
- *   Keywords: kin, conf, total (kin + conf), pair (the pair part of conf). The bond, angle and dihedral
- *   keywords, and conf on a system with bonded terms, are EngineErrors.
+ *   Keywords: kin, conf, total (kin + conf), pair (the pair part of conf), bond, angle, dihedral (the bonded parts
+ *   of conf; see mopBonded).
  *   Setup row: the evaluation at the setup of a run (step 0) is reproduced. Native counts an atom that lies exactly on
  *   the plane at setup (a lattice site at the plane): the kinetic test uses the closed interval tau in [0, 1] with the
  *   atom folded to the plane image nearest the plane (Domain::minimum_image, compute_stress_mop.cpp compute_pairs()),
@@ -169,17 +170,136 @@ function planeValue(sys: System, d: number, spec: string): number {
   return v;
 }
 
-const CONF_TERMS_BONDED = ['bond', 'angle', 'dihedral'] as const;
+/**
+ * The angle and dihedral styles whose terms compute stress/mop accounts for: native needs their born_matrix (the
+ * styles with born_matrix_enable at b332f28; a hybrid style has none) and stops otherwise.
+ */
+const MOP_ANGLE_STYLES = new Set(['harmonic', 'cosine', 'cosine/squared', 'cosine/squared/restricted', 'cosine/periodic', 'cosine/delta', 'fourier', 'fourier/simple', 'quartic', 'mwlc', 'mm3']);
+const MOP_DIHEDRAL_STYLES = new Set(['opls', 'multi/harmonic', 'nharmonic', 'quadratic', 'helix', 'cosine/squared/restricted']);
 
-/** Refuses the bonded and kspace contributions that this engine does not implement. */
+/** The style name without an accelerator suffix (the /omp, /kk ... aliases are the same styles). */
+const baseStyle = (name: string): string => name.replace(/\/(omp|kk|gpu|intel|opt)$/, '');
+
+/** The bonded kinds of a stress/mop keyword list (native bondflag, angleflag, dihedralflag) whose styles exist. */
+function mopBondedKinds(sys: System, kws: readonly string[]): { bond: boolean; angle: boolean; dihedral: boolean } {
+  const all = kws.includes('conf') || kws.includes('total');
+  return {
+    bond: (all || kws.includes('bond')) && !!sys.ff.bond,
+    angle: (all || kws.includes('angle')) && !!sys.ff.angle,
+    dihedral: (all || kws.includes('dihedral')) && !!sys.ff.dihedral,
+  };
+}
+
+/** Refuses the contributions that this engine does not implement, and native's init errors of stress/mop. */
 function refuseStress(sys: System, id: string, style: string, kws: readonly string[]): void {
-  for (const w of CONF_TERMS_BONDED) {
-    if (kws.includes(w)) throw new StyleError(`compute ${id} ${style}: the ${w} keyword is not implemented in the browser engine`);
-  }
-  if (kws.includes('conf') && (sys.ff.bond || sys.ff.angle || sys.ff.dihedral || sys.ff.improper)) {
-    throw new StyleError(`compute ${id} ${style}: the conf keyword includes the bonded terms, which are not implemented in the browser engine (use the pair keyword)`);
-  }
+  // compute_stress_mop.cpp init(): an angle or dihedral style without born_matrix (other than zero or none) stops
+  const k = mopBondedKinds(sys, kws);
+  const an = sys.ff.angle ? baseStyle(sys.ff.angle.name) : '';
+  if (k.angle && !MOP_ANGLE_STYLES.has(an) && an !== 'zero' && an !== 'none') throw new StyleError('compute stress/mop does not account for the selected angle potential');
+  const dn = sys.ff.dihedral ? baseStyle(sys.ff.dihedral.name) : '';
+  if (k.dihedral && !MOP_DIHEDRAL_STYLES.has(dn) && dn !== 'zero' && dn !== 'none') throw new StyleError('compute stress/mop does not account for the selected dihedral potentials');
   if (sys.ff.kspace) throw new StyleError(`compute ${id} ${style}: kspace contributions are not in this compute (the engine refuses rather than omit them)`);
+}
+
+/** One bonded term of a stress/mop computation: its kind, atom indices and the forces of the style on them. */
+interface BondedTerm { kind: 'bond' | 'angle' | 'dihedral'; idx: number[]; f: number[] }
+
+/** The bonded terms whose atoms are all in the group (the rows of the local computes, native order), with forces. */
+function mopTerms(sys: System, groupBit: number, kinds: { bond: boolean; angle: boolean; dihedral: boolean }): BondedTerm[] {
+  const out: BondedTerm[] = [];
+  for (const kind of ['bond', 'angle', 'dihedral'] as const) {
+    if (!kinds[kind]) continue;
+    for (const row of termRows(sys, kind, groupBit)) {
+      const { idx, f } = termForces(sys, kind, row.k);
+      out.push({ kind, idx, f });
+    }
+  }
+  return out;
+}
+
+/**
+ * The bonded part of the configurational stress at one plane, per kind: [bond_x, bond_y, bond_z, angle_x, ...]. As
+ * native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_mop.cpp compute_bonds, compute_angles, compute_dihedrals at
+ * b332f28): the term's first atom is taken at the image nearest the plane and each next atom at the image nearest the
+ * previous one; a bond crosses the plane when tau = (x_a - pos) / (x_a - x_b) lies in [0, 1]. A term with a crossing
+ * bond adds the force it exerts on the atoms of one side of the plane, signed by that side (native's case table:
+ * sgn(x_1) F_1 for a bond; for an angle 1-2-3, sgn(x_3) F_3, sgn(x_1) F_1, or sgn(x_2) F_2 when both bonds cross; for a
+ * dihedral the same rule over its three bonds), over the plane area, in pressure units. The forces are those of the
+ * style's own evaluation of the term. Native takes a dihedral's derivative from born_matrix(i, ...), whose type comes
+ * from neighbor->dihedrallist[i] while i is the atom's own dihedral index, and from the atoms' stored coordinates (no
+ * minimum image in the opls form): with one dihedral type and the term's atoms not split by a periodic boundary the two
+ * agree, otherwise native's value is that of another type or geometry.
+ */
+function mopBonded(sys: System, d: number, p: number, terms: readonly BondedTerm[]): number[] {
+  const s = sys.state, g = sys.geom;
+  const out = new Array<number>(9).fill(0);
+  const area = [0, 1, 2].filter((x) => x !== d).reduce((q, x) => q * (s.box.hi[x] - s.box.lo[x]), 1);
+  const nkt = s.units.nktv2p;
+  const sgnOf = (v: number): number => (v < 0 || Object.is(v, -0) ? -1 : 1);
+  const tauIn = (a: number, b: number): boolean => {
+    const tau = (a - p) / (a - b);
+    return tau >= 0 && tau <= 1;
+  };
+  for (const t of terms) {
+    // the chain of images: the first atom at the image nearest the plane, the next ones nearest the previous
+    const xs: number[][] = [];
+    const first = [s.x[3 * t.idx[0]], s.x[3 * t.idx[0] + 1], s.x[3 * t.idx[0] + 2]];
+    first[d] -= p;
+    g.minimumImage(first);
+    first[d] += p;
+    xs.push(first);
+    for (let m = 1; m < t.idx.length; m++) {
+      const prev = xs[m - 1], a = t.idx[m];
+      const dd = [s.x[3 * a] - prev[0], s.x[3 * a + 1] - prev[1], s.x[3 * a + 2] - prev[2]];
+      g.minimumImage(dd);
+      xs.push([prev[0] + dd[0], prev[1] + dd[1], prev[2] + dd[2]]);
+    }
+    const F = (m: number, b: number): number => t.f[3 * m + b];
+    const df = [0, 0, 0];
+    if (t.kind === 'bond') {
+      if (!tauIn(xs[0][d], xs[1][d])) continue;
+      const sg = sgnOf(xs[0][d] - p);
+      for (let b = 0; b < 3; b++) df[b] = sg * F(0, b);
+    } else if (t.kind === 'angle') {
+      const right = tauIn(xs[2][d], xs[1][d]), left = tauIn(xs[1][d], xs[0][d]);
+      if (!right && !left) continue;
+      const lone = right && !left ? 2 : !right && left ? 0 : 1;
+      const sg = sgnOf(xs[lone][d] - p);
+      for (let b = 0; b < 3; b++) df[b] = sg * F(lone, b);
+    } else {
+      // dihedral 1-2-3-4: native's right, middle and left bonds are 1-2, 2-3 and 3-4
+      const r = tauIn(xs[1][d], xs[0][d]), mid = tauIn(xs[2][d], xs[1][d]), l = tauIn(xs[3][d], xs[2][d]);
+      if (!r && !mid && !l) continue;
+      // the atoms on the side of the reference atom whose sign native takes, for each crossing pattern
+      let ref: number, side: number[];
+      if (r && !mid && !l) { ref = 0; side = [0]; }
+      else if (!r && mid && !l) { ref = 1; side = [1, 0]; }
+      else if (!r && !mid && l) { ref = 3; side = [3]; }
+      else if (r && mid && !l) { ref = 1; side = [1]; }
+      else if (r && !mid && l) { ref = 0; side = [0, 3]; }
+      else if (!r && mid && l) { ref = 2; side = [2]; }
+      else { ref = 0; side = [0, 2]; }
+      const sg = sgnOf(xs[ref][d] - p);
+      for (let b = 0; b < 3; b++) {
+        let sum = 0;
+        for (const m of side) sum += F(m, b);
+        df[b] = sg * sum;
+      }
+    }
+    const o = t.kind === 'bond' ? 0 : t.kind === 'angle' ? 3 : 6;
+    for (let b = 0; b < 3; b++) out[o + b] += df[b] / area * nkt;
+  }
+  return out;
+}
+
+/** The bonded part of one keyword's three components: conf and total take every kind, bond/angle/dihedral their own. */
+function mopBondedOf(kw: string, val: readonly number[]): number[] {
+  const out = [0, 0, 0];
+  const take = (o: number): void => { for (let b = 0; b < 3; b++) out[b] += val[o + b]; };
+  if (kw === 'conf' || kw === 'total' || kw === 'bond') take(0);
+  if (kw === 'conf' || kw === 'total' || kw === 'angle') take(3);
+  if (kw === 'conf' || kw === 'total' || kw === 'dihedral') take(6);
+  return out;
 }
 
 /**
@@ -278,11 +398,15 @@ export class ComputeStressMop extends Compute {
     refuseStress(sys, this.id, 'stress/mop', this.kws);
     const p = planeValue(sys, this.d, this.pos);
     const pairs = collectPairs(sys, this.groupBit, 'either');
+    const terms = mopTerms(sys, this.groupBit, mopBondedKinds(sys, this.kws));
+    const bonded = mopBonded(sys, this.d, p, terms);
     this.vector.fill(0);
     for (let k = 0; k < this.kws.length; k++) {
       const f = mopFlags(this.kws[k]);
       const val = mopPlane(sys, this.d, p, pairs, this.groupBit, f.kin, f.conf);
-      for (let b = 0; b < 3; b++) this.vector[3 * k + b] = (f.kin ? val[b] : 0) + (f.conf ? val[3 + b] : 0);
+      const bv = mopBondedOf(this.kws[k], bonded);
+      // native: vector = pair part (kin and the pair conf) + bond + angle + dihedral
+      for (let b = 0; b < 3; b++) this.vector[3 * k + b] = (f.kin ? val[b] : 0) + (f.conf ? val[3 + b] : 0) + bv[b];
     }
   }
 }
@@ -335,15 +459,18 @@ export class ComputeStressMopProfile extends Compute {
     refuseStress(sys, this.id, 'stress/mop/profile', this.kws);
     const planes = this.planes();
     const pairs = collectPairs(sys, this.groupBit, 'either');
+    const terms = mopTerms(sys, this.groupBit, mopBondedKinds(sys, this.kws));
     const ncol = this.sizeArrayCols;
     this.sizeArrayRows = planes.length;
     this.array = new Float64Array(planes.length * ncol);
     for (let r = 0; r < planes.length; r++) {
       this.array[r * ncol] = planes[r];
+      const bonded = mopBonded(sys, this.d, planes[r], terms);
       for (let k = 0; k < this.kws.length; k++) {
         const f = mopFlags(this.kws[k]);
         const val = mopPlane(sys, this.d, planes[r], pairs, this.groupBit, f.kin, f.conf);
-        for (let b = 0; b < 3; b++) this.array[r * ncol + 1 + 3 * k + b] = (f.kin ? val[b] : 0) + (f.conf ? val[3 + b] : 0);
+        const bv = mopBondedOf(this.kws[k], bonded);
+        for (let b = 0; b < 3; b++) this.array[r * ncol + 1 + 3 * k + b] = (f.kin ? val[b] : 0) + (f.conf ? val[3 + b] : 0) + bv[b];
       }
     }
   }
@@ -359,6 +486,7 @@ export class ComputeStressCartesian extends Compute {
   private axes: Axis[] = [];
   private readonly withKe: boolean;
   private readonly withPair: boolean;
+  private readonly withBond: boolean;
   private readonly explicit: boolean;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
@@ -379,10 +507,10 @@ export class ComputeStressCartesian extends Compute {
     for (const w of kw) {
       if (!['ke', 'pair', 'bond'].includes(w)) throw new StyleError(`compute ${id} stress/cartesian: unknown keyword '${w}' (use ke, pair, bond)`);
     }
-    if (kw.includes('bond')) throw new StyleError(`compute ${id} stress/cartesian: the bond keyword is not implemented in the browser engine`);
     this.explicit = kw.length > 0;
     this.withKe = !this.explicit || kw.includes('ke');
     this.withPair = !this.explicit || kw.includes('pair');
+    this.withBond = !this.explicit || kw.includes('bond');
     this.arrayFlag = true;
     this.sizeArrayCols = this.dims.length === 1 ? 8 : 9;
     if (sys.hasBox) this.resolve();
@@ -404,9 +532,6 @@ export class ComputeStressCartesian extends Compute {
   init(): void {
     this.resolve();
     if (this.sys.ff.kspace) throw new StyleError(`compute ${this.id} stress/cartesian: kspace contributions are not in this compute (the engine refuses rather than omit them)`);
-    if (!this.explicit && this.sys.ff.bond) {
-      throw new StyleError(`compute ${this.id} stress/cartesian: the default keywords include bond, which is not implemented in the browser engine (give the ke or pair keyword)`);
-    }
   }
 
   protected computeArray(): void {
@@ -453,6 +578,26 @@ export class ComputeStressCartesian extends Compute {
           const r = dat[o + a] - dat[o + 3 + a];
           for (let b = 0; b < 3; b++) W[3 * a + b] = r * dat[o + 6 + b] * nkt;
         }
+        splitSegment(axes, xj, xi, (bin, dt) => {
+          for (let q = 0; q < 9; q++) pv[bin * 9 + q] += W[q] * dt;
+        });
+      }
+    }
+    if (this.withBond && sys.ff.bond) {
+      // compute_stress_cartesian.cpp: the bonds of the group (both atoms in it), each a segment from atom 1 to the
+      // image of atom 2 nearest it, with the bond force (bond->single) split between bins as a pair's is
+      const W = new Float64Array(9);
+      const xi = [0, 0, 0], xj = [0, 0, 0];
+      for (const row of termRows(sys, 'bond', this.groupBit)) {
+        const { idx, f } = termForces(sys, 'bond', row.k);
+        const a = idx[0], b = idx[1];
+        const dd = [s.x[3 * b] - s.x[3 * a], s.x[3 * b + 1] - s.x[3 * a + 1], s.x[3 * b + 2] - s.x[3 * a + 2]];
+        sys.geom.minimumImage(dd);
+        for (let q = 0; q < 3; q++) {
+          xi[q] = s.x[3 * a + q];
+          xj[q] = xi[q] + dd[q];
+        }
+        for (let q = 0; q < 3; q++) for (let c = 0; c < 3; c++) W[3 * q + c] = (xi[q] - xj[q]) * f[c] * nkt;
         splitSegment(axes, xj, xi, (bin, dt) => {
           for (let q = 0; q < 9; q++) pv[bin * 9 + q] += W[q] * dt;
         });

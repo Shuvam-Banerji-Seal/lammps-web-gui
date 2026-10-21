@@ -2,6 +2,7 @@ import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { appendAtoms, buildAtomMap, hasCharge } from '../atoms';
 import type { SimState } from '../types';
+import { SHRINK_PAD, shrinkWrap } from '../domain';
 
 /*
  * read_dump and the snapshot selection of rerun (Haiku wave 9).
@@ -290,14 +291,6 @@ export const readDumpSnapshot = (
   if (snap.triclinic !== s.box.triclinic) {
     throw new StyleError(`read_dump: snapshot ${file.name} @${snap.step} is ${snap.triclinic ? 'triclinic' : 'orthogonal'} but the simulation box is ${s.box.triclinic ? 'triclinic' : 'orthogonal'}`);
   }
-  for (let d = 0; d < 3; d++) {
-    for (const side of [0, 1] as const) {
-      const b = s.box.boundary[d][side];
-      if (b === 's' || b === 'm' || b === 'f') {
-        throw new StyleError(`read_dump: ${b === 'f' ? 'fixed' : 'shrink-wrapped'} boundaries are not supported by the browser engine (boundary ${s.box.boundary.map((x) => x.join('')).join(' ')})`);
-      }
-    }
-  }
   const plan = planColumns(sys, file, snap, spec);
   if (spec.fields.some((f) => f === 'q') && !hasCharge(s)) {
     throw new StyleError('read_dump: field q needs per-atom charges (use an atom style with charge, or fix property/atom q)');
@@ -312,8 +305,14 @@ export const readDumpSnapshot = (
     return v;
   };
   // ---- the box and timestep come first: positions are remapped into the new box
-  if (spec.box) sys.setBox(snap.lo, snap.hi, snap.tilt, 0);
+  if (spec.box) {
+    sys.setBox(snap.lo, snap.hi, snap.tilt, 0);
+    // As native LAMMPS does (src/read_dump.cpp header at b332f28, Domain::set_initial_box): the shrink-wrap margin is
+    // a small fraction of the snapshot box (minimum bounds of an m face are the snapshot's, set by setBox)
+    sys.geom.pad = [0, 1, 2].map((d) => SHRINK_PAD * (snap.hi[d] - snap.lo[d])) as [number, number, number];
+  }
   if (spec.timestep) {
+    sys.checkTimestepReset();
     s.time = s.time + (s.step - s.timeStep) * s.dt;
     s.step = snap.step;
     s.timeStep = snap.step;
@@ -374,7 +373,6 @@ export const readDumpSnapshot = (
         else if (f === 'q') st.q[idx] = fieldVal(r, f);
         else if (f === 'fx' || f === 'fy' || f === 'fz') st.f[3 * idx + (f.charCodeAt(1) - 120)] = fieldVal(r, f);
       }
-      sys.geom.remap(st.x, st.image, idx);
     } else if (spec.add !== 'no') {
       newRows.push(r);
     }
@@ -395,15 +393,20 @@ export const readDumpSnapshot = (
       type[k] = t;
       keepIds[k] = ids[r];
     });
-    const n0 = st.n;
     appendAtoms(st, {
       x, v, image, type, q: hasCharge(st) ? q : undefined,
       id: spec.add === 'keep' ? keepIds : undefined,
     });
-    // "image flags for new atoms are set to default values" unless ix/iy/iz were read (above)
-    for (let i = n0; i < st.n; i++) sys.geom.remap(st.x, st.image, i);
     added = m;
   }
+  // As native LAMMPS does (src/read_dump.cpp migrate_atoms_by_coords at b332f28): every atom is remapped into the box
+  // (periodic dimensions; image flags follow), a triclinic box takes the atoms through lamda coordinates once more
+  // around the migration, and shrink-wrapped faces are reset to the atoms (reset_box). Atoms outside a fixed face stay
+  // where they are, to be lost at the next run.
+  const fin: SimState = sys.state;
+  for (let i = 0; i < fin.n; i++) sys.geom.remap(fin.x, fin.image, i);
+  if (sys.geom.triclinic) for (let i = 0; i < fin.n; i++) sys.geom.lamdaRoundTrip(fin.x, i);
+  shrinkWrap(fin, sys.geom);
   if (trimmed || added) sys.atomsChanged();
   sys.bump();
   sys.log(`read_dump ${file.name} @${snap.step}: ${replaced} atoms replaced, ${added} added, ${trimmed} trimmed`);

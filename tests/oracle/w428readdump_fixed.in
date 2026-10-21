@@ -1,0 +1,25 @@
+# oracle: read_dump with fixed boundaries (f f p), replacing positions and velocities with box yes and then positions with box no, each followed by a run (Measured with native LAMMPS: delete_atoms followed by read_dump add keep in this box does not return)
+# oracle-compare: thermo=all atoms=all
+units           lj
+boundary        f f p
+lattice         sc 0.7
+region          box block 0 5 0 5 0 4
+create_box      1 box
+region          inner block 0.5 4.5 0.5 4.5 INF INF
+create_atoms    1 region inner
+mass            1 1.0
+velocity        all create 0.6 9128 loop geom
+pair_style      lj/cut 2.0
+pair_coeff      1 1 1.0 1.0
+fix             1 all nve
+dump            1 all custom 10 rdf.dump id type x y z vx vy vz
+dump_modify     1 format float %.17g
+thermo_style    custom step atoms temp pe press
+thermo_modify   format float %.15g
+thermo          10
+run             20
+undump          1
+read_dump       rdf.dump 10 x y z vx vy vz box yes
+run             10
+read_dump       rdf.dump 20 x y z box no
+run             10

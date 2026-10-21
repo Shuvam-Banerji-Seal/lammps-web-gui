@@ -2765,7 +2765,7 @@ const replicate: Handler = ({ sys }, a) => {
   sys.log(`Replicated to ${s.n} atoms`);
 };
 
-/** change_box group-ID parameter args ... [units] — change_box.html (a subset: x/y/z final/delta/scale, xy/xz/yz, boundary, ortho, triclinic, remap). */
+/** change_box group-ID parameter args ... [units] — change_box.html (x/y/z final/delta/scale/volume, xy/xz/yz, boundary, ortho, triclinic, set, remap). */
 const changeBox: Handler = ({ sys }, a) => {
   const s = sys.state;
   const bit = sys.groupBit(a[0] ?? '');
@@ -2786,13 +2786,37 @@ const changeBox: Handler = ({ sys }, a) => {
     if (p === 'x' || p === 'y' || p === 'z') {
       const d = 'xyz'.indexOf(p);
       const st = ops[k + 1];
+      // the box volume before this operation (native domain->xprd * yprd (* zprd))
+      const oldvol = (b.hi[0] - b.lo[0]) * (b.hi[1] - b.lo[1]) * (sys.dimension === 2 ? 1 : b.hi[2] - b.lo[2]);
+      // native scales about the middle as mid + factor * (bound - mid)
+      const scaleDim = (dd: number, f: number): void => {
+        const mid = 0.5 * (b.lo[dd] + b.hi[dd]);
+        b.lo[dd] = mid + f * (b.lo[dd] - mid);
+        b.hi[dd] = mid + f * (b.hi[dd] - mid);
+      };
       if (st === 'final') { b.lo[d] = num(ops[k + 2], 'lo') * sc[d]; b.hi[d] = num(ops[k + 3], 'hi') * sc[d]; k += 4; } else if (st === 'delta') { b.lo[d] += num(ops[k + 2], 'dlo') * sc[d]; b.hi[d] += num(ops[k + 3], 'dhi') * sc[d]; k += 4; } else if (st === 'scale') {
-        const f = num(ops[k + 2], 'factor');
-        const mid = 0.5 * (b.lo[d] + b.hi[d]), half = 0.5 * (b.hi[d] - b.lo[d]) * f;
-        b.lo[d] = mid - half; b.hi[d] = mid + half;
+        scaleDim(d, num(ops[k + 2], 'factor'));
         k += 3;
-      } else if (st === 'volume') throw new StyleError('change_box volume is not supported');
-      else throw new StyleError(`change_box ${p}: style must be final, delta or scale`);
+      } else if (st === 'volume') throw new StyleError('Change_box volume used incorrectly');
+      else throw new StyleError(`change_box ${p}: style must be final, delta, scale or volume`);
+      // As native LAMMPS does (src/change_box.cpp at b332f28, volume_preserve): x, y or z "volume" right after an x, y
+      // or z operation names a dimension (at most two, not the operation's own) rescaled about its middle so that the box
+      // volume is the one before the operation; with two, both are scaled by the square root of the factor.
+      // change_box.html: "The volume style changes the specified dimension in such a way that the overall box volume
+      // remains constant with respect to the operation performed by the preceding keyword."
+      const vdims: number[] = [];
+      while ((ops[k] === 'x' || ops[k] === 'y' || ops[k] === 'z') && ops[k + 1] === 'volume') {
+        const d2 = 'xyz'.indexOf(ops[k]);
+        if (d2 === d || vdims.length >= 2) throw new StyleError('Change_box volume used incorrectly');
+        vdims.push(d2);
+        k += 2;
+      }
+      if (vdims.length) {
+        const newvol = (b.hi[0] - b.lo[0]) * (b.hi[1] - b.lo[1]) * (sys.dimension === 2 ? 1 : b.hi[2] - b.lo[2]);
+        const factor = oldvol / newvol;
+        if (vdims.length === 1) scaleDim(vdims[0], factor);
+        else { scaleDim(vdims[0], Math.sqrt(factor)); scaleDim(vdims[1], Math.sqrt(factor)); }
+      }
     } else if (p === 'xy' || p === 'xz' || p === 'yz') {
       if (!b.triclinic) throw new StyleError(`change_box ${p} needs a triclinic box (use change_box all triclinic first)`);
       const t = ['xy', 'xz', 'yz'].indexOf(p);

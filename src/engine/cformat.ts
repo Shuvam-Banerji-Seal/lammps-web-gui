@@ -314,3 +314,32 @@ export const formatNumber = (value: number, format: string): string =>
 /** An integer value in a C format ("%d", "%5i"). */
 export const formatInteger = (value: number, format: string): string =>
   compileCFormat(format, 'int', 'Invalid format')(value);
+
+/**
+ * Shortest decimal form that reads back as x, as the {fmt} library's "{}" prints a double (single: a float) in LAMMPS
+ * messages: the shortest round-trip digits, exponent notation outside [-4, 16) with at least two exponent digits.
+ */
+export const fmtShortest = (x: number, single: boolean): string => {
+  if (Number.isNaN(x)) return 'nan';
+  if (!Number.isFinite(x)) return x > 0 ? 'inf' : '-inf';
+  if (x === 0) return Object.is(x, -0) ? '-0' : '0';
+  const sign = x < 0 ? '-' : '';
+  const a = Math.abs(x);
+  let s = '';
+  for (let p = 1; p <= (single ? 9 : 17); p++) {
+    s = a.toExponential(p - 1);
+    const back = Number(s);
+    if (single ? Math.fround(back) === a : back === a) break;
+  }
+  const ePos = s.indexOf('e');
+  const digits = s.slice(0, ePos).replace('.', '').replace(/0+$/, '') || '0';
+  const exp = Number(s.slice(ePos + 1));
+  // fmt general format: exponent notation outside [-4, 16)
+  if (exp < -4 || exp >= 16) {
+    const mant = digits.length > 1 ? `${digits[0]}.${digits.slice(1)}` : digits;
+    return `${sign}${mant}e${exp < 0 ? '-' : '+'}${String(Math.abs(exp)).padStart(2, '0')}`;
+  }
+  if (exp < 0) return `${sign}0.${'0'.repeat(-exp - 1)}${digits}`;
+  if (digits.length > exp + 1) return `${sign}${digits.slice(0, exp + 1)}.${digits.slice(exp + 1)}`;
+  return `${sign}${digits.padEnd(exp + 1, '0')}`;
+};

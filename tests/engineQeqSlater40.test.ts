@@ -115,8 +115,9 @@ describe('fix qeq/slater: parsing and refusals', () => {
     await expect(newSession().execute(cluster(WOLF, 'fix 1 all qeq/slater 1 12.0 1.0e-6 100 coul/streitz dsf 0.0'))).rejects.toThrow(/dsf/);
   });
 
-  it('refuses a non-positive alpha', async () => {
-    await expect(newSession().execute(cluster(WOLF, 'fix 1 all qeq/slater 1 12.0 1.0e-6 100 coul/streitz alpha 0'))).rejects.toThrow(/alpha/);
+  it('takes alpha without a range check, as native does (src/QEQ/fix_qeq_slater.cpp at b332f28: utils::numeric alone)', async () => {
+    await expect(newSession().execute(cluster(WOLF, 'fix 1 all qeq/slater 1 12.0 1.0e-6 100 coul/streitz alpha 0'))).resolves.toBeUndefined();
+    await expect(newSession().execute(cluster(WOLF, 'fix 1 all qeq/slater 1 12.0 1.0e-6 100 coul/streitz alpha'))).rejects.toThrow('Illegal fix qeq/slater alpha command: missing argument(s)');
   });
 
   it('qfile coul/streitz needs an active coul/streitz pair style', async () => {

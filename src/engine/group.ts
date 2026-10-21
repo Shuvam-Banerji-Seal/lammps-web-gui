@@ -46,13 +46,13 @@ export interface DynamicGroup {
 }
 
 /*
- * Measured with native LAMMPS (black box, a dynamic group whose membership
- * changes during the run): given a dynamic group, the fix styles in
- * NO_DYNAMIC_GROUP_FIXES stop with the error Fix <style> does not allow use
- * with a dynamic group, and compute msd with Compute msd is not compatible
- * with dynamic groups. The fixes in
- * DYNAMIC_GROUP_FIXES accept one; every other compute style registered here
- * accepts one too. A fix style in neither list has not been measured.
+ * Fixes on a dynamic group. As native LAMMPS does (src/modify.cpp Modify::init at b332f28): a fix whose
+ * dynamic_group_allow is 0 (the Fix base class default; a style sets it to 1 in its constructor, or inherits it) stops
+ * with Fix <style> does not allow use with a dynamic group. DYNAMIC_GROUP_FIXES are the styles that set it and whose
+ * engine implementation re-reads the group at every step (checked against native on a dynamic group, e.g. the oracle
+ * w435dyngroup_fixes); DYNAMIC_GROUP_UNVERIFIED are the styles that set it in native but whose engine implementation
+ * has not been checked with a dynamic group, refused by name until it is. Measured with native LAMMPS (black box):
+ * compute msd stops with Compute msd is not compatible with dynamic groups; every other compute style accepts one.
  */
 // add/heat: src/GRANULAR/fix_add_heat.cpp (b332f28) sets dynamic_group_allow = 1 in its constructor.
 // graphics/arrows, graphics/objects, graphics/periodic, graphics/replica, graphics/chunk, graphics/labels:
@@ -65,13 +65,18 @@ export const DYNAMIC_GROUP_FIXES = new Set([
   'nvt/sllod', 'nvt/sphere', 'planeforce', 'recenter', 'setforce', 'spring', 'temp/berendsen',
   'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'viscous/sphere', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',
   'wall/lj93', 'wall/morse', 'wall/reflect', 'wall/reflect/stochastic', 'wall/region',
+  'wall/harmonic/outside', 'wall/harmonic/returned', 'wall/lepton', 'addtorque', 'spring/rg', 'oneway',
 ]);
-export const NO_DYNAMIC_GROUP_FIXES = new Set([
-  'ave/atom', 'ave/chunk', 'balance', 'deform', 'deposit', 'ehex', 'electron/stopping', 'enforce2d', 'freeze', 'heat', 'indent',
-  'graphics/lines', // fix_graphics_lines.cpp (b332f28) sets dynamic_group_allow = 0
-  'nve/noforce', 'pour', 'print',
-  'property/atom', 'rattle', 'rigid', 'rigid/nph', 'rigid/nph/small', 'rigid/npt', 'rigid/npt/small', 'rigid/nve', 'rigid/nve/small', 'rigid/nvt', 'rigid/nvt/small',
-  'rigid/small', 'shake', 'spring/self', 'vector', 'wall/ees', 'wall/region/ees', 'wall/gran', 'wall/gran/region', 'flow/gauss', 'orient/eco',
+export const DYNAMIC_GROUP_UNVERIFIED = new Set([
+  'adapt', 'adapt/fep', 'addtorque/atom', 'atom/swap', 'bocs', 'bond/create',
+  'bond/create/angle', 'damping/cundall', 'efield/tip4p', 'gcmc', 'graphics/isosurface', 'heat/flow',
+  'langevin/eff', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'neighbor/swap', 'nph/asphere',
+  'nph/body', 'nph/eff', 'nphug', 'npt/asphere', 'npt/body', 'npt/eff',
+  'npt/uef', 'nve/asphere', 'nve/body', 'nve/bpm/sphere', 'nve/dot', 'nve/dotc/langevin',
+  'nve/line', 'nve/manifold/rattle', 'nve/tri', 'nvk', 'nvt/asphere', 'nvt/body',
+  'nvt/eff', 'nvt/manifold/rattle', 'nvt/sllod/eff', 'nvt/uef', 'precession/spin', 'reaxff/bonds',
+  'reaxff/species', 'setforce/spin', 'settorque/atom', 'smd/setvel', 'viscous/nonlinear', 'wall/flow',
+  'wall/table', 'widom',
 ]);
 
 export class Groups {

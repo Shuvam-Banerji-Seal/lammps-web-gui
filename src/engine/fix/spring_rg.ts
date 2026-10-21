@@ -24,7 +24,11 @@ import { massOf } from '../atoms';
  * periodic boundary conditions").
  *
  * "If R_{G0} is specified as NULL, then the RG of the group is computed at the
- * time the fix is specified, and that value is used as the target."
+ * time the fix is specified, and that value is used as the target." As native LAMMPS does
+ * (src/EXTRA-FIX/fix_spring_rg.cpp init and post_force at b332f28), the NULL target is the RG at the first
+ * init (the first run), 0 for a group without mass (a dynamic group is empty before its first update), and
+ * the group mass is that of every init, recomputed at every step for a dynamic group. RG and the force follow
+ * Group::xcm and Group::gyration: rg^2 = sum (dx^2 + dy^2 + dz^2) m / M, F_i -= 2K (1 - rg0/rg) dx (m_i / M).
  *
  * "This fix is not invoked during" energy minimization (so there is no minPostForce).
  *
@@ -43,6 +47,10 @@ export class FixSpringRG extends Fix {
   readonly style = 'spring/rg';
   private readonly k: number;
   private rg0: number;
+  /** RG0 NULL: the target is taken at the first init. */
+  private rg0Pending: boolean;
+  /** Group mass of the last init (Group::mass at init; every step for a dynamic group). */
+  private masstotal = 0;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -51,69 +59,76 @@ export class FixSpringRG extends Fix {
     this.scalarFlag = true;
     this.extscalar = 0;
     this.energyGlobal = false;
-    if (args[1] === 'NULL') {
-      const rg = this.radiusOfGyration();
-      if (rg === null) throw new StyleError('fix spring/rg: group has no atoms (RG0 NULL)');
-      this.rg0 = rg;
-    } else {
-      this.rg0 = num(args[1], 'RG0');
-    }
+    this.rg0Pending = args[1] === 'NULL';
+    this.rg0 = this.rg0Pending ? 0 : num(args[1], 'RG0');
     // fix_spring_rg.cpp restart(): the reference rg0 of the run that wrote the file
     const saved = takeFixRecord(sys, id, this.style)?.state as { rg0: number } | undefined;
-    if (saved) this.rg0 = saved.rg0;
+    if (saved) { this.rg0 = saved.rg0; this.rg0Pending = false; }
+  }
+
+  init(): void {
+    this.masstotal = this.groupMass();
+    if (this.rg0Pending) {
+      this.rg0 = this.gyration(this.masstotal);
+      this.rg0Pending = false;
+    }
+  }
+
+  private groupMass(): number {
+    const s = this.sys.state;
+    let M = 0;
+    for (let i = 0; i < s.n; i++) if (s.mask[i] & this.groupBit) M += massOf(s, i);
+    return M;
+  }
+
+  /** Group::xcm with the given mass: sum x_unwrapped m / M (0 when M is 0). */
+  private xcm(M: number): number[] {
+    const s = this.sys.state;
+    const u = [0, 0, 0];
+    const c = [0, 0, 0];
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      const m = massOf(s, i);
+      this.sys.geom.unwrap(s.x, s.image, i, u);
+      for (let d = 0; d < 3; d++) c[d] += u[d] * m;
+    }
+    if (M > 0.0) for (let d = 0; d < 3; d++) c[d] /= M;
+    return c;
+  }
+
+  /** Group::gyration about the group's xcm with the given mass (0 when M is 0). */
+  private gyration(M: number): number {
+    const s = this.sys.state;
+    const c = this.xcm(M);
+    const u = [0, 0, 0];
+    let rg = 0.0;
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      this.sys.geom.unwrap(s.x, s.image, i, u);
+      const dx = u[0] - c[0], dy = u[1] - c[1], dz = u[2] - c[2];
+      rg += (dx * dx + dy * dy + dz * dz) * massOf(s, i);
+    }
+    return M > 0.0 ? Math.sqrt(rg / M) : 0.0;
   }
 
   /** fix_spring_rg.cpp write_restart: rg0. */
   restartState(): { rg0: number } { return { rg0: this.rg0 }; }
 
-  /** Radius of gyration of the group about its centre of mass (unwrapped coordinates). */
-  private radiusOfGyration(): number | null {
-    const s = this.sys.state;
-    const u = [0, 0, 0];
-    let M = 0;
-    const c = [0, 0, 0];
-    for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      const m = massOf(s, i);
-      this.sys.geom.unwrap(s.x, s.image, i, u);
-      M += m;
-      for (let d = 0; d < 3; d++) c[d] += m * u[d];
-    }
-    if (M === 0) return null;
-    for (let d = 0; d < 3; d++) c[d] /= M;
-    let r2 = 0;
-    for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      const m = massOf(s, i);
-      this.sys.geom.unwrap(s.x, s.image, i, u);
-      for (let d = 0; d < 3; d++) r2 += m * (u[d] - c[d]) * (u[d] - c[d]);
-    }
-    return Math.sqrt(r2 / M);
-  }
-
   postForce(): void {
     const s = this.sys.state;
+    if (this.sys.groups.isDynamic(this.groupBit)) this.masstotal = this.groupMass();
+    const M = this.masstotal;
+    const c = this.xcm(M);
+    const rg = this.gyration(M);
+    // rg == 0: no atoms in the group, or all of them on top of each other
+    if (rg === 0.0 || M === 0.0) return;
+    const term1 = 2.0 * this.k * (1.0 - this.rg0 / rg);
     const u = [0, 0, 0];
-    let M = 0;
-    const c = [0, 0, 0];
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      const m = massOf(s, i);
       this.sys.geom.unwrap(s.x, s.image, i, u);
-      M += m;
-      for (let d = 0; d < 3; d++) c[d] += m * u[d];
-    }
-    if (M === 0) return;
-    for (let d = 0; d < 3; d++) c[d] /= M;
-    const rg = this.radiusOfGyration();
-    if (rg === null || rg === 0) return;
-    // E = K (rg - rg0)^2; dE/dx_i = 2K (1 - rg0/rg) (m_i/M)(x_i - c); F = -dE/dx_i
-    const pref = -2 * this.k * (1 - this.rg0 / rg);
-    for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      const w = (pref * massOf(s, i)) / M;
-      this.sys.geom.unwrap(s.x, s.image, i, u);
-      for (let d = 0; d < 3; d++) s.f[3 * i + d] += w * (u[d] - c[d]);
+      const massfrac = massOf(s, i) / M;
+      for (let d = 0; d < 3; d++) s.f[3 * i + d] -= term1 * (u[d] - c[d]) * massfrac;
     }
   }
 

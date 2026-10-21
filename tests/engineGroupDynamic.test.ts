@@ -59,6 +59,9 @@ describe('group dynamic: argument errors (native texts)', () => {
     ['variable v equal 1\ngroup a dynamic all var v\nrun 0', "Variable 'v' for dynamic group a is of incompatible style"],
     ['group a dynamic all region left\nfix 1 a spring/self 1', 'Fix spring/self does not allow use with a dynamic group'],
     ['group a dynamic all region left\nfix 1 a rigid single', 'Fix rigid does not allow use with a dynamic group'],
+    // dynamic_group_allow stays 0 (the Fix default) for drag and momentum/chunk (src/modify.cpp Modify::init)
+    ['group a dynamic all region left\nfix 1 a drag 0 0 0 1 0.1', 'Fix drag does not allow use with a dynamic group'],
+    ['group a dynamic all region left\ncompute c all chunk/atom bin/1d x lower 0.5\nfix 1 a momentum/chunk 1 c', 'Fix momentum/chunk does not allow use with a dynamic group'],
     ['group a dynamic all region left\ncompute 1 a msd', 'Compute msd is not compatible with dynamic groups'],
   ];
   for (const [text, msg] of cases) {

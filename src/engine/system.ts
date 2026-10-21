@@ -392,6 +392,18 @@ export class System {
     this.bump();
   }
 
+  /**
+   * As native LAMMPS does (src/output.cpp Output::reset_timestep at b332f28): outside a run the timestep cannot be reset
+   * while a single-file dump that has already written a snapshot is defined ("Cannot reset timestep with active dump -
+   * must undump first").
+   */
+  checkTimestepReset(): void {
+    if (this.run.inRun) return;
+    if (this.dumps.some((d) => d.lastStep >= 0 && !d.file.includes('*'))) {
+      throw new StyleError('Cannot reset timestep with active dump - must undump first');
+    }
+  }
+
   pbc(): void {
     const s = this.state;
     const g = this.geom;

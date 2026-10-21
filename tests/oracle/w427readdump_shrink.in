@@ -1,0 +1,24 @@
+# oracle: read_dump into a box with shrink-wrapped (s and m) boundaries: box yes takes the snapshot box and re-fits the shrink-wrapped faces to the atoms, box no keeps the box, then the runs continue
+# oracle-compare: thermo=all atoms=all
+units           lj
+boundary        p s m
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.5 26381 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+fix             1 all nve
+dump            1 all custom 10 rd.dump id type x y z vx vy vz
+dump_modify     1 format float %.17g
+thermo_style    custom step temp pe press lx ly lz xlo xhi ylo yhi zlo zhi
+thermo_modify   format float %.15g
+thermo          5
+run             20
+undump          1
+read_dump       rd.dump 10 x y z vx vy vz box yes
+run             10
+read_dump       rd.dump 20 x y z box no
+run             10

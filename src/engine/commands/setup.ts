@@ -1269,6 +1269,7 @@ const resetTimestep: Handler = ({ sys }, a) => {
   let t: number | null = null;
   if (a[1] === 'time') t = num(a[2], 'time');
   else if (a.length > 1) throw new StyleError('usage: reset_timestep N [time T]');
+  sys.checkTimestepReset();
   // reset_timestep.html: "The optional time keyword allows to also set the accumulated simulation time." Without the
   // time keyword the clock is not restarted
   // unless the step goes down: measured with native LAMMPS (black box, LJ 32 atoms, dt 0.005): after run 2

@@ -19,7 +19,7 @@ import type { BoundaryStyle, SimBox, SimState } from './types';
  * 0.001 and 0.1, unchanged by later shrinking) — see SHRINK_PAD.
  */
 
-const SHRINK_PAD = 1e-4;
+export const SHRINK_PAD = 1e-4;
 
 export interface BoxInit {
   lo: [number, number, number];

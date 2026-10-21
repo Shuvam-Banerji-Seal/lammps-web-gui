@@ -461,14 +461,16 @@ export class Thermo {
     for (let k = 0; k < args.length;) {
       const key = args[k];
       const val = args[k + 1];
+      // As native LAMMPS does (src/thermo.cpp at b332f28, modify_params, utils::missing_cmd_args)
       const need = (w: string | undefined) => {
-        if (w === undefined) throw new StyleError(`thermo_modify ${key} needs a value`);
+        if (w === undefined) throw new StyleError(`Illegal thermo_modify ${key} command: missing argument(s)`);
         return w;
       };
       switch (key) {
         case 'norm': this.normUser = yesno(need(val), key); k += 2; break;
         case 'temp': {
-          const c = this.sys.compute(need(val));
+          if (!this.sys.computes.some((x) => x.id === need(val))) throw new StyleError(`Could not find thermo_modify temperature compute ${val}`);
+          const c = this.sys.compute(val!);
           if (!c.tempFlag) throw new StyleError(`thermo_modify temp: compute ${val} does not compute a temperature`);
           this.tempId = val!;
           // "a pressure compute defines its own temperature compute as an argument when it is
@@ -480,7 +482,8 @@ export class Thermo {
           break;
         }
         case 'press': {
-          const c = this.sys.compute(need(val));
+          if (!this.sys.computes.some((x) => x.id === need(val))) throw new StyleError(`Could not find thermo_modify pressure compute ${val}`);
+          const c = this.sys.compute(val!);
           if (!c.pressFlag) throw new StyleError(`thermo_modify press: compute ${val} does not compute a pressure`);
           this.pressId = val!;
           k += 2;
@@ -488,7 +491,7 @@ export class Thermo {
         }
         case 'lost': case 'lost/bond': {
           const v = need(val);
-          if (v !== 'error' && v !== 'warn' && v !== 'ignore') throw new StyleError(`thermo_modify ${key} must be error, warn or ignore`);
+          if (v !== 'error' && v !== 'warn' && v !== 'ignore') throw new StyleError(`Unknown thermo_modify ${key} argument: ${v}`);
           if (key === 'lost') this.lost = v; else this.lostBond = v;
           k += 2;
           break;
@@ -500,15 +503,19 @@ export class Thermo {
           // reset and the limit set to 100." Measured with native LAMMPS (black box): warn foo stops with
           // "Expected integer parameter instead of 'foo'"; warn 2 prints two warnings and then
           // "Too many warnings: 3 vs 2. All future warnings will be suppressed"; warn ignore prints none.
+          // As native LAMMPS does (src/thermo.cpp and error.cpp at b332f28): ignore and a negative number suppress every
+          // warning (maxwarn < 0), always and 0 print every one (maxwarn 0), a positive number is the limit
           const w = need(val);
           const sys = this.sys;
           if (w === 'ignore') sys.warnOff = true;
+          else if (w === 'always') { sys.warnLimit = Infinity; sys.warnOff = false; }
           else if (w === 'reset') { sys.warnCount = 0; sys.warnOff = false; }
           else if (w === 'default') { sys.warnCount = 0; sys.warnLimit = 100; sys.warnOff = false; }
           else {
-            if (!/^\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}' in input script or data file`);
-            sys.warnLimit = Number(w);
-            sys.warnOff = false;
+            if (!/^[-+]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}' in input script or data file`);
+            const m = Number(w);
+            if (m < 0) sys.warnOff = true;
+            else { sys.warnLimit = m === 0 ? Infinity : m; sys.warnOff = false; }
           }
           k += 2;
           break;
@@ -516,7 +523,7 @@ export class Thermo {
         case 'flush': this.flush = yesno(need(val), key); k += 2; break;
         case 'line': {
           const v = need(val);
-          if (v !== 'one' && v !== 'multi' && v !== 'yaml') throw new StyleError('thermo_modify line must be one, multi or yaml');
+          if (v !== 'one' && v !== 'multi' && v !== 'yaml') throw new StyleError(`Unknown thermo_modify line argument: ${v}`);
           this.lineStyle = v;
           k += 2;
           break;
@@ -560,7 +567,7 @@ export class Thermo {
         }
         case 'every': {
           // thermo_modify every was removed upstream; accept v_name like the thermo command
-          throw new StyleError("thermo_modify every is not a LAMMPS keyword; use 'thermo v_name'");
+          throw new StyleError('Unknown thermo_modify keyword: every');
         }
         case 'triclinic/general':
           // thermo_modify.html: "The *triclinic/general* keyword can only be used with a value of *yes*" (the simulation box
@@ -569,14 +576,14 @@ export class Thermo {
           // if simulation box is not general triclinic
           if (yesno(need(val), key)) {
             if (!this.sys.hasBox || !this.sys.state.box.general) {
-              throw new StyleError('thermo_modify triclinic/general cannot be used if simulation box is not general triclinic');
+              throw new StyleError('Thermo_modify triclinic/general cannot be used if simulation box is not general triclinic');
             }
             this.triclinicGeneral = true;
           } else this.triclinicGeneral = false;
           k += 2;
           break;
         default:
-          throw new StyleError(`unknown thermo_modify keyword '${key}'`);
+          throw new StyleError(`Unknown thermo_modify keyword: ${key}`);
       }
     }
   }
@@ -642,9 +649,12 @@ export class Thermo {
   }
 }
 
+/** utils::logical (src/utils.cpp at b332f28): yes, on, true and 1, or no, off, false and 0. */
 const yesno = (w: string, key: string): boolean => {
-  if (w !== 'yes' && w !== 'no') throw new StyleError(`thermo_modify ${key} must be yes or no`);
-  return w === 'yes';
+  void key;
+  if (w === 'yes' || w === 'on' || w === 'true' || w === '1') return true;
+  if (w === 'no' || w === 'off' || w === 'false' || w === '0') return false;
+  throw new StyleError(`Expected boolean parameter instead of '${w}' in input script or data file`);
 };
 
 /** Thermo keywords whose value is an integer (the thermo_style keyword list; measured with native LAMMPS: a "%g" format on these is an error). */

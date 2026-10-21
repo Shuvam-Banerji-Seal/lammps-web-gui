@@ -51,10 +51,9 @@ export interface DynamicGroup {
  * sets it to 1 in its constructor, or inherits it) stops with Fix <style> does not allow use with a dynamic group. The
  * fix command itself does not check it, so the fix's own argument errors come first and a fix removed before the run
  * is never checked (checkDynamicGroupFixes, called by initRun; FIX_COMMAND_STYLE holds the style each fix command
- * named). DYNAMIC_GROUP_FIXES are the styles that set it and whose
- * engine implementation re-reads the group at every step (checked against native on a dynamic group, e.g. the oracle
- * w435dyngroup_fixes); DYNAMIC_GROUP_UNVERIFIED are the styles that set it in native but whose engine implementation
- * has not been checked with a dynamic group, refused by name until it is. Measured with native LAMMPS (black box):
+ * named). DYNAMIC_GROUP_FIXES are the engine's styles that set it (each checked against native on a dynamic group, the
+ * oracle cases w435 to w463); a fix whose answer depends on its arguments sets Fix.dynamicGroupAllow. Measured with
+ * native LAMMPS (black box):
  * compute msd stops with Compute msd is not compatible with dynamic groups; every other compute style accepts one.
  */
 // add/heat: src/GRANULAR/fix_add_heat.cpp (b332f28) sets dynamic_group_allow = 1 in its constructor.
@@ -80,10 +79,8 @@ export const DYNAMIC_GROUP_FIXES = new Set([
   'adapt', 'adapt/fep',
   // reaxff/species allows one only with Nrepeat 1 (its dynamicGroupAllow, fix_reaxff_species.cpp)
   'reaxff/bonds', 'reaxff/species',
-]);
-export const DYNAMIC_GROUP_UNVERIFIED = new Set([
-  'atom/swap', 'bond/create', 'bond/create/angle', 'gcmc', 'graphics/isosurface', 'neighbor/swap',
-  'nve/manifold/rattle', 'nvt/manifold/rattle', 'smd/setvel', 'widom',
+  'atom/swap', 'bond/create', 'bond/create/angle', 'gcmc', 'graphics/isosurface', 'neighbor/swap', 'nve/manifold/rattle',
+  'nvt/manifold/rattle', 'smd/setvel', 'widom',
 ]);
 
 /** The style named by the fix command that created each fix (internal fixes have none and are not checked). */
@@ -94,9 +91,8 @@ export const checkDynamicGroupFixes = (groups: Groups, fixes: readonly { groupBi
   for (const f of fixes) {
     const style = FIX_COMMAND_STYLE.get(f);
     if (style === undefined || !groups.isDynamic(f.groupBit)) continue;
-    if (f.dynamicGroupAllow === false) throw new StyleError(`Fix ${style} does not allow use with a dynamic group`);
-    if (DYNAMIC_GROUP_UNVERIFIED.has(style)) throw new StyleError(`fix ${style} with a dynamic group is not supported by the browser engine`);
-    if (!DYNAMIC_GROUP_FIXES.has(style)) throw new StyleError(`Fix ${style} does not allow use with a dynamic group`);
+    const allow = f.dynamicGroupAllow ?? DYNAMIC_GROUP_FIXES.has(style);
+    if (!allow) throw new StyleError(`Fix ${style} does not allow use with a dynamic group`);
   }
 };
 

@@ -1,0 +1,25 @@
+# oracle: fixes nve/manifold/rattle and nvt/manifold/rattle on two dynamic groups (the particles whose scaled |vx| has a
+# fractional part above 0.5 and the others, re-evaluated every 2 steps) on a sphere of radius 10, 500 LJ particles of
+# examples/PACKAGES/manifold/energy/sphere.data
+# Native reference: LAMMPS b332f28 built with PKG_MANIFOLD (/store/shuvam/software/lammps-build-manifold/lmp; the installed binary has no MANIFOLD)
+# oracle-examples: PACKAGES/manifold/energy/sphere.data
+# oracle-compare: thermo=all atoms=all
+units           lj
+boundary        f f f
+read_data       sphere.data
+pair_style      lj/smooth/linear 2.5
+pair_coeff      * * 1.0 1.0
+pair_modify     shift yes
+timestep        0.001
+velocity        all create 0.8 87287 dist gaussian
+variable        up atom (abs(vx)*1e2-floor(abs(vx)*1e2))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+fix             1 dyn nve/manifold/rattle 1e-8 20 sphere 10.0
+fix             2 dyn2 nvt/manifold/rattle 1e-8 20 sphere 10.0 temp 1.0 1.2 0.1 tchain 4
+thermo_style    custom step temp pe ke etotal v_ndyn
+thermo_modify   format float %.15g
+thermo          25
+run             200

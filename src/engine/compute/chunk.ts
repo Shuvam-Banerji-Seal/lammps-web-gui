@@ -4,6 +4,8 @@ import { parseInt_, parseNum } from '../force/util';
 import type { System } from '../system';
 import { massOf } from '../atoms';
 import { parseRef, peratomValues, type Ref } from '../refs';
+import { gplHook } from '../gplHooks';
+import type { ImageObject, ImageShading } from '../output/image_objects';
 
 /*
  * compute chunk/atom, com/chunk and msd/chunk — implemented from the cited
@@ -464,6 +466,44 @@ export class ComputeChunkAtom extends Compute {
     this.compute();
     this.lastEpoch = this.sys.epoch;
     this.haveIds = true;
+  }
+
+  /**
+   * The graphics objects of dump image's "compute" keyword: the walls of the bin/1d, bin/2d and bin/3d bins (the GPL
+   * port of ComputeChunkAtom::compute_image, engine-gpl/graphics/chunk_bins.ts); the other styles have none.
+   */
+  imageObjects(): ImageObject[] {
+    if (!this.bins.length || this.radial) return [];
+    const s = this.sys.state;
+    const reduced = this.units === 'reduced';
+    const g = this.sys.geom;
+    const binlo: [number, number, number] = reduced ? [0, 0, 0] : [s.box.lo[0], s.box.lo[1], s.box.lo[2]];
+    const binhi: [number, number, number] = reduced ? [1, 1, 1] : [s.box.hi[0], s.box.hi[1], s.box.hi[2]];
+    const f = (d: number): number => (this.units === 'lattice' ? (this.sys.lattice?.spacing[d] ?? 1) : 1);
+    const num = (v: number, d: number): number => (reduced ? v : v * f(d));
+    for (const b of this.bins) {
+      if (b.lo !== 'lower') binlo[b.dim] = num(b.lo, b.dim);
+      if (b.hi !== 'upper') binhi[b.dim] = num(b.hi, b.dim);
+    }
+    const bins = this.bins.map((b) => {
+      const d = b.dim;
+      const origin = b.origin === 'lower' ? binlo[d] : b.origin === 'upper' ? binhi[d] : b.origin === 'center' ? 0.5 * (binlo[d] + binhi[d]) : num(b.origin, d);
+      return { dim: d, origin, delta: num(b.delta, d) };
+    });
+    return gplHook<ImageShading>('image').chunkBinObjects({
+      dimension: s.dimension === 2 ? 2 : 3,
+      ndim: this.bins.length as 1 | 2 | 3,
+      bins,
+      binlo,
+      binhi,
+      reduced,
+      // As native LAMMPS does (src/domain.cpp at b332f28, Domain::lamda2x): h lambda first, then boxlo
+      lamda2x: (p) => [
+        g.lx * p[0] + g.xy * p[1] + g.xz * p[2] + g.lo[0],
+        g.ly * p[1] + g.yz * p[2] + g.lo[1],
+        g.lz * p[2] + g.lo[2],
+      ],
+    });
   }
 
   /** Per-dimension geometry of the bins from the current box; kmin/kmax are fixed once held. */

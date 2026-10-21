@@ -219,7 +219,7 @@ export function drawAxes(f: RasterFrame, axes: Vec3[], diameter: number, opacity
     [a[2][0] + radius, a[2][1] + DIROFFS * (a[2][1] - a[0][1]), a[2][2] + radius],
     [a[3][0] + radius, a[3][1] + radius, a[3][2] + DIROFFS * (a[3][2] - a[0][2])],
   ];
-  drawPixmapBox(f, shifted[0], 32, 32, xpmToPixmap(LETTER_X, fontcolor, backcolor), trans, scale);
-  drawPixmapBox(f, shifted[1], 32, 32, xpmToPixmap(LETTER_Y, fontcolor, backcolor), trans, scale);
-  if (dimension === 3) drawPixmapBox(f, shifted[2], 32, 32, xpmToPixmap(LETTER_Z, fontcolor, backcolor), trans, scale);
+  drawPixmapBox(f, shifted[0], 32, 32, xpmToPixmap(LETTER_X, fontcolor, backcolor), trans, scale, opacity);
+  drawPixmapBox(f, shifted[1], 32, 32, xpmToPixmap(LETTER_Y, fontcolor, backcolor), trans, scale, opacity);
+  if (dimension === 3) drawPixmapBox(f, shifted[2], 32, 32, xpmToPixmap(LETTER_Z, fontcolor, backcolor), trans, scale, opacity);
 }

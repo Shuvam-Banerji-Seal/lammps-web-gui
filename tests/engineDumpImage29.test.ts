@@ -300,9 +300,9 @@ run 0
     expect(equal).toBe(total);
   });
 
-  it('names an unsupported keyword instead of ignoring it', async () => {
-    await expect(run(base('dump im all image 1 out.*.ppm type type persp 0.5'))).rejects.toThrow(/persp/);
-    await expect(run(base('dump im all image 1 out.*.ppm type type subbox yes 0.5'))).rejects.toThrow(/subbox/);
+  it('names an unknown keyword instead of ignoring it', async () => {
+    // Measured with native LAMMPS: ERROR: Unknown dump image keyword persp (src/GRAPHICS/dump_image.cpp:674)
+    await expect(run(base('dump im all image 1 out.*.ppm type type persp 0.5'))).rejects.toThrow('Unknown dump image keyword persp');
   });
 
   it('requires a wildcard in the file name', async () => {

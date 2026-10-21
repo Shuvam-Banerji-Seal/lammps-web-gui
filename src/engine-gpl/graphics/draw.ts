@@ -377,8 +377,8 @@ export function scalePixmap(ow: number, oh: number, opix: Uint8Array, nw: number
  * `scale`, centred on (xc, yc), and each pixel that is not the transparent colour is drawn with the normal (0, 0, 1)
  * so that the light shades it. `dist` is the depth of every pixel.
  */
-function drawPixmapAt(f: RasterFrame, xc0: number, yc0: number, pwidth0: number, pheight0: number, pixmap: Uint8Array, trans: V, sc: number, dist: number): void {
-  if (pwidth0 === 0 || pheight0 === 0 || sc <= 0) return;
+function drawPixmapAt(f: RasterFrame, xc0: number, yc0: number, pwidth0: number, pheight0: number, pixmap: Uint8Array, trans: V, sc: number, dist: number, opacity: number): void {
+  if (pwidth0 === 0 || pheight0 === 0 || sc <= 0 || opacity <= 0) return;
   let pix = pixmap;
   let pwidth = pwidth0, pheight = pheight0;
   if (sc !== 1) {
@@ -393,6 +393,8 @@ function drawPixmapAt(f: RasterFrame, xc0: number, yc0: number, pwidth0: number,
       const iy = yc0 + j - trunc(pheight / 2);
       const ix = xc0 + i - trunc(pwidth / 2);
       if (iy < 0 || iy >= f.h || ix < 0 || ix >= f.w) continue;
+      // Image::draw_pixmap: a transparent pixmap skips the pixels whose threshold is above its opacity
+      if (transparentAt(opacity, ix, iy)) continue;
       const o = 3 * j * pwidth + 3 * i;
       const pc: V = [pix[o] / 255, pix[o + 1] / 255, pix[o + 2] / 255];
       if (Math.abs(pc[0] - trans[0]) < TRANS_DELTA && Math.abs(pc[1] - trans[1]) < TRANS_DELTA && Math.abs(pc[2] - trans[2]) < TRANS_DELTA) continue;
@@ -405,8 +407,8 @@ function drawPixmapAt(f: RasterFrame, xc0: number, yc0: number, pwidth0: number,
 const transOf = (t: Rgb | null): V => (t ? [t[0] / 255, t[1] / 255, t[2] / 255] : [-1, -1, -1]);
 
 /** Image::draw_pixmap with box coordinates (the default coordinate mode of dump image's fix pixmaps). */
-export function drawPixmapBox(f: RasterFrame, x: V, pwidth: number, pheight: number, pixmap: Uint8Array, trans: Rgb | null, sc: number): void {
-  if (pwidth === 0 || pheight === 0 || sc <= 0) return;
+export function drawPixmapBox(f: RasterFrame, x: V, pwidth: number, pheight: number, pixmap: Uint8Array, trans: Rgb | null, sc: number, opacity = 1): void {
+  if (pwidth === 0 || pheight === 0 || sc <= 0 || opacity <= 0) return;
   const p = project(f, x);
   let xc = trunc(p.xf) + trunc(f.w / 2);
   let yc = trunc(p.yf) + trunc(f.h / 2);
@@ -418,18 +420,18 @@ export function drawPixmapBox(f: RasterFrame, x: V, pwidth: number, pheight: num
     yc = 2 * trunc(yc / 2);
     s *= 2;
   }
-  drawPixmapAt(f, xc, yc, pwidth, pheight, pixmap, transOf(trans), s, p.dist);
+  drawPixmapAt(f, xc, yc, pwidth, pheight, pixmap, transOf(trans), s, p.dist, opacity);
 }
 
 /**
  * Image::draw_pixmap with image coordinates (dump image flag1 != 0): the pixmap is centred on the native pixel (xc, yc)
  * and its depth is 0 (the default of the overload), so it is drawn in front of the objects.
  */
-export function drawPixmapImage(f: RasterFrame, xc: number, yc: number, pwidth: number, pheight: number, pixmap: Uint8Array, trans: Rgb | null, sc: number): void {
+export function drawPixmapImage(f: RasterFrame, xc: number, yc: number, pwidth: number, pheight: number, pixmap: Uint8Array, trans: Rgb | null, sc: number, opacity = 1): void {
   if (pwidth === 0 || pheight === 0 || sc <= 0) return;
   // image.cpp draw_pixmap (int overload): with fsaa the centre and the scale are doubled
   const fs = f.fsaa ? 2 : 1;
-  drawPixmapAt(f, trunc(xc) * fs, trunc(yc) * fs, pwidth, pheight, pixmap, transOf(trans), sc * fs, 0);
+  drawPixmapAt(f, trunc(xc) * fs, trunc(yc) * fs, pwidth, pheight, pixmap, transOf(trans), sc * fs, 0, opacity);
 }
 
 /**
@@ -480,13 +482,14 @@ export function drawGraphicsObject(f: RasterFrame, st: ObjectStyle, o: GraphicsO
       return;
     }
     case 'pixmap': {
-      drawPixmapObject(f, o, flag1);
+      drawPixmapObject(f, o, flag1, st.opacity);
       return;
     }
   }
 }
 
-function drawPixmapObject(f: RasterFrame, p: PixmapObject, flag1: number): void {
-  if (flag1 === 0) drawPixmapBox(f, p.pos, p.width, p.height, p.rgb, p.transcolor, p.scale);
-  else drawPixmapImage(f, p.pos[0], p.pos[1], p.width, p.height, p.rgb, p.transcolor, p.scale);
+function drawPixmapObject(f: RasterFrame, p: PixmapObject, flag1: number, opacity: number): void {
+  // dump_image.cpp passes the object's opacity (dump_modify ftrans or ctrans) to both draw_pixmap overloads
+  if (flag1 === 0) drawPixmapBox(f, p.pos, p.width, p.height, p.rgb, p.transcolor, p.scale, opacity);
+  else drawPixmapImage(f, p.pos[0], p.pos[1], p.width, p.height, p.rgb, p.transcolor, p.scale, opacity);
 }

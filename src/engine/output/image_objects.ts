@@ -123,6 +123,25 @@ export interface ImageShading {
   element2diam(name: string): number;
   /** Image::merge's composite passes after SSAO: outline, depthcue, defocus (in place, rows from the top). */
   postProcess(f: RasterFrame, o: PostProcessOptions): void;
+  /** ComputeChunkAtom::compute_image: the walls of the bins of a bin/1d, bin/2d or bin/3d compute (chunk_bins.ts). */
+  chunkBinObjects(spec: ChunkBinImageSpec): ImageObject[];
+}
+
+/**
+ * What compute chunk/atom's image objects read (ComputeChunkAtom::compute_image): the binned dimensions with their
+ * resolved origin and bin width, the bin bounds of every dimension (box faces, or 0..1 in reduced units, unless the bound
+ * keyword sets them) and the conversion of reduced points to box coordinates.
+ */
+export interface ChunkBinImageSpec {
+  dimension: 2 | 3;
+  /** bin/1d, bin/2d or bin/3d (the number of binned dimensions). */
+  ndim: 1 | 2 | 3;
+  bins: { dim: 0 | 1 | 2; origin: number; delta: number }[];
+  binlo: Vec3;
+  binhi: Vec3;
+  reduced: boolean;
+  /** Domain::lamda2x of a reduced point (used when `reduced`). */
+  lamda2x: (p: Vec3) => Vec3;
 }
 
 /** What dump image's "fix ID style flag1 flag2" keyword gives a graphics object (dump_image.html). */

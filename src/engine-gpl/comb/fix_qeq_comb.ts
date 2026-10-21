@@ -17,6 +17,9 @@ import type { System } from '../../engine/system';
 export interface ChargeForcePair {
   /** Charge forces of the group into qf (length nall); returns the group's total (enegtot). */
   chargeForces(qf: Float64Array, isGroup: (i: number) => boolean): number;
+  /** Optional: the iterations of one equilibration start / end (the positions do not change in between). */
+  chargeIterationsBegin?(): void;
+  chargeIterationsEnd?(): void;
 }
 
 const isChargeForcePair = (p: unknown): p is ChargeForcePair =>
@@ -102,32 +105,38 @@ export class FixQeqComb extends Fix {
     for (let i = 0; i < n; i++) if (inGroup(i)) { q1[i] = 0; q2[i] = 0; }
     let iloop = 0;
     let enegchkLast = 0;
-    for (; iloop < loopmax; iloop++) {
-      for (let i = 0; i < n; i++) {
-        if (inGroup(i)) {
-          q1[i] += qf[i] * dtq2 - heatpq * q1[i];
-          s.q[i] += q1[i];
+    // the positions do not change during the iterations: the pair style may keep its position-only terms
+    pair.chargeIterationsBegin?.();
+    try {
+      for (; iloop < loopmax; iloop++) {
+        for (let i = 0; i < n; i++) {
+          if (inGroup(i)) {
+            q1[i] += qf[i] * dtq2 - heatpq * q1[i];
+            s.q[i] += q1[i];
+          }
+        }
+        nb.refreshCharges(s); // comm->forward_comm: ghost charges follow the owners
+        let enegtot = pair.chargeForces(qf, inGroup);
+        enegtot /= ngroup;
+        let enegchk = 0.0, enegmax = 0.0;
+        for (let i = 0; i < n; i++) {
+          if (inGroup(i)) {
+            q2[i] = enegtot - qf[i];
+            enegmax = Math.max(enegmax, Math.abs(q2[i]));
+            enegchk += Math.abs(q2[i]);
+            qf[i] = q2[i];
+          }
+        }
+        enegchk = enegchk / ngroup;
+        enegchkLast = enegchk;
+        if (enegchk <= this.precision && enegmax <= 100.0 * this.precision) break;
+        log(`  iteration: ${iloop}, enegtot ${g6(enegtot)}, enegmax ${g6(enegmax)}, fq deviation: ${g6(enegchk)}\n`);
+        for (let i = 0; i < n; i++) {
+          if (inGroup(i)) q1[i] += qf[i] * dtq2 - heatpq * q1[i];
         }
       }
-      nb.refreshCharges(s); // comm->forward_comm: ghost charges follow the owners
-      let enegtot = pair.chargeForces(qf, inGroup);
-      enegtot /= ngroup;
-      let enegchk = 0.0, enegmax = 0.0;
-      for (let i = 0; i < n; i++) {
-        if (inGroup(i)) {
-          q2[i] = enegtot - qf[i];
-          enegmax = Math.max(enegmax, Math.abs(q2[i]));
-          enegchk += Math.abs(q2[i]);
-          qf[i] = q2[i];
-        }
-      }
-      enegchk = enegchk / ngroup;
-      enegchkLast = enegchk;
-      if (enegchk <= this.precision && enegmax <= 100.0 * this.precision) break;
-      log(`  iteration: ${iloop}, enegtot ${g6(enegtot)}, enegmax ${g6(enegmax)}, fq deviation: ${g6(enegchk)}\n`);
-      for (let i = 0; i < n; i++) {
-        if (inGroup(i)) q1[i] += qf[i] * dtq2 - heatpq * q1[i];
-      }
+    } finally {
+      pair.chargeIterationsEnd?.();
     }
     if (iloop === loopmax) log(`Charges did not converge in ${iloop} iterations\n`);
     else log(`Charges converged in ${iloop} iterations to ${formatNumber(enegchkLast, '%.10f')} tolerance\n`);

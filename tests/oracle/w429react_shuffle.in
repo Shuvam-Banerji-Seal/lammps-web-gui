@@ -1,0 +1,29 @@
+# oracle: fix bond/react limits over two reactions: rate_limit rxn1 rxn2 and max_rxn rxn1 rxn2, whose overstep native spreads over the step's reactions with std::shuffle and std::minstd_rand seeded by shuffle_seed (27 replicated tiny nylon pairs, rxn1 with a probability so that the two reactions overlap)
+# oracle-inputs: w408react_tiny_nylon.data w408react_rxn1_stp1_unreacted.molecule_template w408react_rxn1_stp1_reacted.molecule_template w408react_rxn1_stp2_unreacted.molecule_template w408react_rxn1_stp2_reacted.molecule_template w408react_rxn1_stp1_map w408react_rxn1_stp2_map
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-6
+# Measured with native LAMMPS: shuffle_seed 77, 30000 and 1000000 give three reaction histories from step 67 on.
+units           real
+boundary        p p p
+atom_style      full
+pair_style      lj/class2/coul/cut 8.5
+angle_style     class2
+bond_style      class2
+dihedral_style  class2
+improper_style  class2
+special_bonds   lj/coul 0 0 1
+pair_modify     mix sixthpower
+read_data       w408react_tiny_nylon.data extra/bond/per/atom 5 extra/angle/per/atom 15 extra/dihedral/per/atom 15 extra/improper/per/atom 25 extra/special/per/atom 25
+replicate       3 3 3
+velocity        all create 300.0 4928459 dist gaussian
+molecule        mol1 w408react_rxn1_stp1_unreacted.molecule_template
+molecule        mol2 w408react_rxn1_stp1_reacted.molecule_template
+molecule        mol3 w408react_rxn1_stp2_unreacted.molecule_template
+molecule        mol4 w408react_rxn1_stp2_reacted.molecule_template
+fix             myrxns all bond/react stabilization no rate_limit rxn1 rxn2 1 2 max_rxn rxn1 rxn2 22 shuffle_seed 30000 &
+                react rxn1 all 1 0.0 5.0 mol1 mol2 w408react_rxn1_stp1_map prob 0.03 1234 &
+                react rxn2 all 1 0.0 8.0 mol3 mol4 w408react_rxn1_stp2_map
+fix             1 all nve/limit .03
+thermo_style    custom step temp press f_myrxns[1] f_myrxns[2]
+thermo_modify   format float %.15g
+thermo          5
+run             110

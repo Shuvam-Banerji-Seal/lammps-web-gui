@@ -43,6 +43,31 @@ export const compressExtension = (file: string): string => {
  */
 
 const INT_COLS = new Set(['id', 'mol', 'proc', 'procp1', 'type', 'ix', 'iy', 'iz']);
+/**
+ * Which dump_modify keywords each dump style takes, as native LAMMPS splits them (b332f28): Dump::modify_params
+ * (src/dump.cpp) takes the base list for every style, then the style's modify_param takes its own: DumpAtom image, scale
+ * and triclinic/general; DumpCustom (custom, cfg, image, yaml) element, format N|int|float, refresh, region, thresh and
+ * triclinic/general, DumpYAML thermo too; DumpXYZ (xyz, extxyz) element and types; DumpLocal format N|int|float and
+ * label; the compressed styles compression_level. Any other keyword stops with "Unknown dump_modify keyword: X".
+ */
+const BASE_KEYWORDS = new Set(['append', 'balance', 'buffer', 'colname', 'delay', 'every', 'every/time', 'fileper', 'first', 'flush',
+  'format', 'header', 'maxfiles', 'nfile', 'pad', 'pbc', 'skip', 'sort', 'time', 'units']);
+const STYLE_KEYWORDS: Record<string, ReadonlySet<string>> = {
+  atom: new Set(['image', 'scale', 'triclinic/general']),
+  custom: new Set(['element', 'refresh', 'region', 'thresh', 'triclinic/general']),
+  cfg: new Set(['element', 'refresh', 'region', 'thresh', 'triclinic/general']),
+  image: new Set(['element', 'refresh', 'region', 'thresh', 'triclinic/general']),
+  yaml: new Set(['element', 'refresh', 'region', 'thresh', 'triclinic/general', 'thermo']),
+  xyz: new Set(['element', 'types']),
+  extxyz: new Set(['element', 'types']),
+  local: new Set(['label']),
+};
+/** DumpExtXYZ::init_style without element names or type labels (native's spelling). */
+const EXTXYZ_NO_NAMES = 'Must use either type lables or dump_modify element with dump style extxyz';
+
+/** The styles whose modify_param takes the column formats (format N, int, float): DumpCustom, DumpLocal and DumpGrid. */
+const COLUMN_FORMAT_STYLES = new Set(['custom', 'cfg', 'image', 'yaml', 'local', 'grid', 'grid/vtk']);
+
 /** The dump styles of native's DumpCustom family (custom, cfg, image, yaml and their compressed forms): dump_modify region and thresh. */
 const THRESH_STYLES = new Set<string>(['custom', 'cfg', 'image', 'yaml']);
 /** The per-atom attributes a dump_modify thresh can test (src/dump_custom.cpp at b332f28, modify_param "thresh"). */
@@ -214,6 +239,10 @@ export class Dump {
   lastStep = -1;
   /** dump_modify maxfiles Fmax: with a "*" file name, the number of snapshot files kept (0 keeps all). */
   maxfiles = 0;
+  /** dump_modify skip v_name: the equal-style variable that skips a snapshot when it is not 0 (null = none). */
+  private skipVar: string | null = null;
+  /** dump_modify refresh c_ID: the compute refreshed after each snapshot (null = none). */
+  private refreshId: string | null = null;
   private written: string[] = [];
   private opened = false;
   /** The file is written gzipped (a .gz name, or a COMPRESS /gz style). */
@@ -249,6 +278,8 @@ export class Dump {
     // As native LAMMPS does (src/dump_cfg.cpp init_style at b332f28): "Dump cfg requires one snapshot per file" unless
     // the name has a "*" (write_dump sets multifile_override)
     if (this.cfgStyle && !this.file.includes('*') && !this.multifileOverride) throw new StyleError('Dump cfg requires one snapshot per file');
+    // As native LAMMPS does (src/EXTRA-DUMP/dump_extxyz.cpp at b332f28, init_style, at the init of a run)
+    if (this.style === 'extxyz' && !this.element.length) throw new StyleError(EXTXYZ_NO_NAMES);
     if (!this.file.includes('*') && this.singleKey === null) this.singleKey = this.sys.resolveFile(this.file);
   }
 
@@ -414,6 +445,10 @@ export class Dump {
         const n = this.imageDump.modifyKeyword(args, k);
         if (n > 0) { k += n; continue; }
       }
+      if (!this.vtkStyle && !this.gridStyle && !BASE_KEYWORDS.has(key) && !STYLE_KEYWORDS[this.style]?.has(key)
+        && !(key === 'compression_level' && this.gzStyle)) {
+        throw new StyleError(`Unknown dump_modify keyword: ${key}`);
+      }
       switch (key) {
         case 'append': this.append = yesno(v, key); k += 2; break;
         case 'first': this.first = yesno(v, key); k += 2; break;
@@ -451,10 +486,16 @@ export class Dump {
         }
         case 'sort': {
           if (v === 'off') this.sort = 'off';
-          else if (v === 'id') this.sort = 'id';
+          else if (v === 'id') {
+            // As native LAMMPS does (src/dump_local.cpp at b332f28, init_style)
+            if (this.style === 'local') throw new StyleError('Dump local cannot sort by atom ID');
+            this.sort = 'id';
+          }
           else {
             const n = intArg(v, key);
-            if (n === 0 || Math.abs(n) > this.columns.length) throw new StyleError('dump_modify sort column out of range');
+            if (n === 0) throw new StyleError('dump_modify sort column out of range');
+            // As native LAMMPS does (src/dump.cpp at b332f28, Dump::init)
+            if (Math.abs(n) > this.columns.length) throw new StyleError(`Dump sort column index ${Math.abs(n)} is invalid`);
             this.sort = { col: Math.abs(n) - 1, desc: n < 0 };
           }
           k += 2;
@@ -472,6 +513,8 @@ export class Dump {
           if (v === 'none') { this.formatLine = null; this.formatInt = null; this.formatFloat = null; this.formatCol.clear(); k += 2; break; }
           const f = args[k + 2];
           if (f === undefined) throw new StyleError('dump_modify format needs a format string');
+          // the column formats are DumpCustom's and DumpLocal's (Dump::modify_params hands them to modify_param)
+          if (v !== 'line' && !COLUMN_FORMAT_STYLES.has(this.style)) throw new StyleError(`Unknown dump_modify format keyword: ${v ?? ''}`);
           if (v === 'line') this.formatLine = f;
           else if (v === 'int') { checkCFormat(f, 'int', 'Invalid dump_modify int format'); this.formatInt = f; }
           else if (v === 'float') { checkCFormat(f, 'float', 'Invalid dump_modify float format'); this.formatFloat = f; }
@@ -490,6 +533,8 @@ export class Dump {
           if (v === 'default') { this.colnames.clear(); k += 2; break; }
           const name = args[k + 2];
           if (name === undefined) throw new StyleError('dump_modify colname needs a column and a name');
+          // As native LAMMPS does (src/dump.cpp at b332f28): xyz and extxyz have no column names to change
+          if (this.style === 'xyz' || this.style === 'extxyz') throw new StyleError(`Incorrect dump_modify arguments: colname ${v} ${name}`);
           this.colnames.set(this.columnIndex(v ?? ''), name);
           k += 3;
           break;
@@ -538,7 +583,37 @@ export class Dump {
         case 'precision': case 'sfactor': case 'tfactor': case 'at':
           throw new StyleError(`Unknown dump_modify keyword: ${key}`);
         case 'triclinic/general': this.triclinicGeneral = yesno(v, key); k += 2; break;
-        case 'types': if (v !== 'numeric') throw new StyleError('dump_modify types labels needs type labels (not supported)'); k += 2; break;
+        case 'types': {
+          // As native LAMMPS does (src/dump_xyz.cpp at b332f28, modify_param): numeric drops the type names (element or
+          // labels), labels takes them from the label map
+          if (v === undefined) throw new StyleError('Illegal dump_modify types command: missing argument(s)');
+          if (v === 'numeric') this.element = [];
+          else if (v === 'labels') {
+            const lm = this.sys.labels;
+            if (!lm.defined) throw new StyleError("Label map must be defined when using 'types labels'");
+            const n = this.sys.state.ntypes;
+            this.element = Array.from({ length: n }, (_, t) => lm.labelOf('atom', t + 1) ?? '');
+          } else throw new StyleError(`Unknown option ${v} for dump_modify 'types' keyword`);
+          k += 2;
+          break;
+        }
+        case 'skip': {
+          // dump_modify.html: "skip arg = v_name"; Dump::write skips the snapshot when the equal-style variable is not 0
+          if (v === undefined || !v.startsWith('v_')) throw new StyleError('Illegal dump_modify command');
+          this.skipVar = v.slice(2);
+          k += 2;
+          break;
+        }
+        case 'refresh': {
+          // dump_modify.html: "refresh arg = c_ID = compute ID that supports a refresh operation"; called after each
+          // snapshot is written (Dump::write). As native: one refresh per dump, a c_ID without index.
+          if (v === undefined) throw new StyleError('Illegal dump_modify refresh command: missing argument(s)');
+          if (!/^c_[^[\]]+$/.test(v)) throw new StyleError('Illegal dump_modify command');
+          if (this.refreshId !== null) throw new StyleError('Dump_modify can only have one refresh');
+          this.refreshId = v.slice(2);
+          k += 2;
+          break;
+        }
         default:
           throw new StyleError(`unsupported dump_modify keyword '${key}'`);
       }
@@ -613,7 +688,32 @@ export class Dump {
     return step % this.every === 0;
   }
 
+  /**
+   * dump_modify skip (src/dump.cpp at b332f28, Dump::init and Dump::write): the variable must exist and be equal-style,
+   * and a snapshot is not written when it evaluates to non-zero (after the atoms are chosen, before any file is opened).
+   */
+  private skipSnapshot(): boolean {
+    if (this.skipVar === null) return false;
+    const v = this.sys.vars.get(this.skipVar);
+    if (!v) throw new StyleError(`Dump skip variable ${this.skipVar} not found`);
+    if (v.style !== 'equal' && v.style !== 'internal' && v.style !== 'timer') throw new StyleError(`Variable ${this.skipVar} for dump skip is invalid style`);
+    return this.sys.equalVariable(this.skipVar) !== 0;
+  }
+
+  /** dump_modify refresh (Dump::write): the compute's refresh after a snapshot ("Dump could not find refresh compute ID"). */
+  private refreshAfter(): void {
+    if (this.refreshId === null) return;
+    const c = this.sys.computes.find((x) => x.id === this.refreshId) as { refresh?: () => void } | undefined;
+    if (!c) throw new StyleError(`Dump could not find refresh compute ID ${this.refreshId}`);
+    c.refresh?.();
+  }
+
   write(): void {
+    if (this.writeSnapshot_()) this.refreshAfter();
+  }
+
+  /** One snapshot; false when dump_modify skip skipped it. */
+  private writeSnapshot_(): boolean {
     const sys = this.sys;
     const s = sys.state;
     const step = s.step;
@@ -627,21 +727,25 @@ export class Dump {
       if (this.thresh.length) sys.forces();
       const chosen = new Uint8Array(s.n);
       for (const i of this.chooseRows()) chosen[i] = 1;
+      if (this.skipSnapshot()) return false;
       this.imageDump.write(s, name, this, chosen);
-      return;
+      return true;
     }
     if (this.vtkStyle) {
+      if (this.skipSnapshot()) return false;
       this.vtkStyle.write(step);
-      return;
+      return true;
     }
     if (this.gridStyle) {
+      if (this.skipSnapshot()) return false;
       this.gridStyle.write(step);
-      return;
+      return true;
     }
     sys.forces();
     if (this.style === 'local') {
+      if (this.skipSnapshot()) return false;
       this.writeLocal(step);
-      return;
+      return true;
     }
     const g = sys.geom;
     // dump_modify.html: "It can only be used with a value of *yes* if the" simulation box was created as a general
@@ -651,6 +755,7 @@ export class Dump {
       if (this.style !== 'atom' && this.style !== 'custom') throw new StyleError(`dump ${this.id}: dump_modify triclinic/general applies only to the atom and custom styles`);
     }
     const keep = this.chooseRows();
+    if (this.skipSnapshot()) return false;
     const values = this.columns.map((c) => this.columnValues(c));
     if (this.sort === 'id') keep.sort((a, b) => s.id[a] - s.id[b]);
     else if (this.sort !== 'off') {
@@ -666,11 +771,12 @@ export class Dump {
       const name = this.sys.resolveFile(multi ? fillWildcard(this.file, stepText) : this.file);
       this.writeSnapshot(name, text, false);
       this.opened = true;
-      return;
+      return true;
     }
     const lines: string[] = [];
     const time = s.time + (s.step - s.timeStep) * s.dt;
     if (this.style === 'xyz' || this.style === 'extxyz') {
+      if (this.style === 'extxyz' && !this.element.length) throw new StyleError(EXTXYZ_NO_NAMES);
       lines.push(String(keep.length));
       if (this.style === 'extxyz') {
         lines.push(`Lattice="${g.lx} 0 0 ${g.xy} ${g.ly} 0 ${g.xz} ${g.yz} ${g.lz}" Origin="${s.box.lo.join(' ')}" Properties=species:S:1:pos:R:3 Timestep=${step}${this.time ? ` Time=${time}` : ''}`);
@@ -722,7 +828,9 @@ export class Dump {
     const appendNow = multi ? false : this.opened || (this.append && !this.gz);
     this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;
+    return true;
   }
+
 
   /** One snapshot of a text dump (dump grid) into the dump's file: a "*" name per snapshot, else the single file. */
   private writeText(text: string): void {

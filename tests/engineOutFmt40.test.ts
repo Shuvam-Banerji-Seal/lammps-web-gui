@@ -403,7 +403,9 @@ describe('gzip writer (gzip.ts, write_data.rst 11Feb2026)', () => {
     expect(unzip(gz.files.get('d.atom.gz')!)).toBe(plain.files.get('d.atom'));
     expect(await errorOf(`${LJ}\ndump 1 all custom/gz 1 d.dump id x\nrun 0\n`)).toContain('Dump custom/gz only writes compressed files');
     expect(await errorOf(`${LJ}\ndump 1 all custom/gz 1 d.gz id x\ndump_modify 1 compression_level 10\n`)).toContain('Compression level must in the range of [-1, 9]');
-    expect(await errorOf(`${LJ}\ndump 1 all custom 1 d.gz id x\ndump_modify 1 compression_level 5\n`)).toContain("unsupported dump_modify keyword 'compression_level'");
+    // Measured with native LAMMPS: ERROR: Unknown dump_modify keyword: compression_level (src/dump.cpp:1364) for a style
+    // that is not a /gz one
+    expect(await errorOf(`${LJ}\ndump 1 all custom 1 d.gz id x\ndump_modify 1 compression_level 5\n`)).toContain('Unknown dump_modify keyword: compression_level');
     expect(await errorOf(`${LJ}\ndump 1 all custom/zstd 1 d.zst id x\n`)).toContain('Zstandard compression is not available');
     expect(await errorOf(`${LJ}\ndump 1 all custom 1 d.dump.bz2 id x\n`)).toContain('compressed (.bz2) custom dump file is not supported');
   });

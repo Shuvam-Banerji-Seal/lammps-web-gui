@@ -1,0 +1,28 @@
+# oracle: fix nve/tri on two dynamic groups of the triangles (a dynamic group's parent group is the triangles; the
+# triangles whose scaled |vx| has a fractional part above 0.5 and the others, re-evaluated every 2 steps), pair tri/lj
+# oracle-inputs: w61tri_pair.data
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       3
+atom_style      tri
+read_data       w61tri_pair.data
+pair_style      tri/lj 4.0
+pair_coeff      * * 1.0 0.3 4.0
+group           pts id 4 5
+group           tri3 id 1 2 3
+neighbor        0.3 bin
+timestep        0.002
+variable        up atom (abs(vx)*1e3-floor(abs(vx)*1e3))>0.5
+variable        down atom !v_up
+group           dyn dynamic tri3 var up every 2
+group           dyn2 dynamic tri3 var down every 2
+variable        ndyn equal count(dyn)
+fix             1 dyn nve/tri
+fix             2 dyn2 nve/tri
+fix             3 pts nve
+compute         am all property/atom angmomx angmomy angmomz
+compute         ams all reduce sum c_am[*]
+thermo_style    custom step pe ke c_ams[*] v_ndyn
+thermo_modify   format float %.15g
+thermo          10
+run             100

@@ -46,9 +46,12 @@ export interface DynamicGroup {
 }
 
 /*
- * Fixes on a dynamic group. As native LAMMPS does (src/modify.cpp Modify::init at b332f28): a fix whose
- * dynamic_group_allow is 0 (the Fix base class default; a style sets it to 1 in its constructor, or inherits it) stops
- * with Fix <style> does not allow use with a dynamic group. DYNAMIC_GROUP_FIXES are the styles that set it and whose
+ * Fixes on a dynamic group. As native LAMMPS does (src/modify.cpp Modify::init at b332f28): at the init of a run or
+ * minimization, after the fixes' own init, a fix whose dynamic_group_allow is 0 (the Fix base class default; a style
+ * sets it to 1 in its constructor, or inherits it) stops with Fix <style> does not allow use with a dynamic group. The
+ * fix command itself does not check it, so the fix's own argument errors come first and a fix removed before the run
+ * is never checked (checkDynamicGroupFixes, called by initRun; FIX_COMMAND_STYLE holds the style each fix command
+ * named). DYNAMIC_GROUP_FIXES are the styles that set it and whose
  * engine implementation re-reads the group at every step (checked against native on a dynamic group, e.g. the oracle
  * w435dyngroup_fixes); DYNAMIC_GROUP_UNVERIFIED are the styles that set it in native but whose engine implementation
  * has not been checked with a dynamic group, refused by name until it is. Measured with native LAMMPS (black box):
@@ -68,18 +71,30 @@ export const DYNAMIC_GROUP_FIXES = new Set([
   'wall/harmonic/outside', 'wall/harmonic/returned', 'wall/lepton', 'addtorque', 'spring/rg', 'oneway',
   'addtorque/atom', 'settorque/atom', 'viscous/nonlinear', 'damping/cundall', 'nve/bpm/sphere', 'heat/flow',
   'nve/asphere', 'nvt/asphere', 'nph/asphere', 'npt/asphere',
+  'nvt/eff', 'nph/eff', 'npt/eff', 'langevin/eff', 'nve/body', 'nvt/body', 'nph/body', 'npt/body', 'nve/line', 'nve/tri',
+  'nve/dot', 'nve/dotc/langevin', 'wall/table', 'wall/flow', 'nvt/uef', 'npt/uef',
+  // nvk sets dynamic_group_allow but its constructor takes only group all (src/EXTRA-FIX/fix_nvk.cpp at b332f28)
+  'nvk',
 ]);
 export const DYNAMIC_GROUP_UNVERIFIED = new Set([
-  'adapt', 'adapt/fep', 'atom/swap', 'bocs', 'bond/create',
-  'bond/create/angle', 'efield/tip4p', 'gcmc', 'graphics/isosurface',
-  'langevin/eff', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'neighbor/swap',
-  'nph/body', 'nph/eff', 'nphug', 'npt/body', 'npt/eff',
-  'npt/uef', 'nve/body', 'nve/dot', 'nve/dotc/langevin',
-  'nve/line', 'nve/manifold/rattle', 'nve/tri', 'nvk', 'nvt/body',
-  'nvt/eff', 'nvt/manifold/rattle', 'nvt/sllod/eff', 'nvt/uef', 'precession/spin', 'reaxff/bonds',
-  'reaxff/species', 'setforce/spin', 'smd/setvel', 'wall/flow',
-  'wall/table', 'widom',
+  'adapt', 'adapt/fep', 'atom/swap', 'bocs', 'bond/create', 'bond/create/angle', 'efield/tip4p', 'gcmc',
+  'graphics/isosurface', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'neighbor/swap', 'nphug', 'nve/manifold/rattle',
+  'nvt/manifold/rattle', 'nvt/sllod/eff', 'precession/spin', 'reaxff/bonds', 'reaxff/species', 'setforce/spin',
+  'smd/setvel', 'widom',
 ]);
+
+/** The style named by the fix command that created each fix (internal fixes have none and are not checked). */
+export const FIX_COMMAND_STYLE = new WeakMap<object, string>();
+
+/** The dynamic group check of Modify::init over the fixes the input created (see the comment above). */
+export const checkDynamicGroupFixes = (groups: Groups, fixes: readonly { groupBit: number }[]): void => {
+  for (const f of fixes) {
+    const style = FIX_COMMAND_STYLE.get(f);
+    if (style === undefined || !groups.isDynamic(f.groupBit)) continue;
+    if (DYNAMIC_GROUP_UNVERIFIED.has(style)) throw new StyleError(`fix ${style} with a dynamic group is not supported by the browser engine`);
+    if (!DYNAMIC_GROUP_FIXES.has(style)) throw new StyleError(`Fix ${style} does not allow use with a dynamic group`);
+  }
+};
 
 export class Groups {
   /** Name per bit index (null = free); index 0 is 'all'. */

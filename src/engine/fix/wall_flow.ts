@@ -52,10 +52,13 @@ import { libm } from '../libm';
  *     With neigh_modify every 20 check no, native wraps atoms into the box only
  *     on its reneighbor steps, and the wrap is counted as one more crossing: the
  *     same atom is reassigned at step 80 (a wrap from 10.067 to 0.067), so one
- *     crossing above the edge can be counted twice. The engine keeps the native
- *     raw coordinate (rebuilt on its own neighbor-list builds, which follow the
- *     same neigh_modify rules) and counts a straddle of the edge or a wall in the
- *     raw coordinate, or a wrap on a build step, as one crossing.
+ *     crossing above the edge can be counted twice. As native LAMMPS does
+ *     (src/EXTRA-FIX/fix_wall_flow.cpp at b332f28): each atom has a segment
+ *     between box lo, the walls and box hi (-1 outside the box), set for every
+ *     atom at each run's init and updated for the group's atoms at the end of
+ *     each step; a changed segment draws a new velocity. The engine rebuilds the
+ *     native coordinate from the image each atom had at the last remap (its own
+ *     neighbor-list builds follow the same neigh_modify rules, see kRemap).
  *   - At most one reassignment per atom per step: an atom that passes two walls
  *     in one step (walls 3.001 and 3.003, atom from 2.99 to 3.005) draws once.
  *   - Atoms are processed in their storage order; with three atoms crossing in
@@ -184,10 +187,19 @@ export class FixWallFlow extends Fix {
   private readonly rng: RanMars;
   private unitsMode: 'lattice' | 'box' = 'lattice';
   /**
-   * Per group atom (by id): the flow-axis coordinate as native LAMMPS holds it, raw = u - k L, and
-   * the periodic image k it was last wrapped with. Native wraps atoms only on its reneighbor steps.
+   * Per atom (by id): the periodic image it had at the last native remap. Native wraps atoms into the box only on its
+   * reneighbor steps and at a run's setup, so its flow-axis coordinate is raw = x + (image - k) L with the engine's
+   * coordinate x, which is wrapped every step.
    */
-  private readonly raw = new Map<number, { raw: number; k: number }>();
+  private readonly kRemap = new Map<number, number>();
+  /**
+   * Per atom (by id): the segment of the flow axis it was last seen in. As native LAMMPS does
+   * (src/EXTRA-FIX/fix_wall_flow.cpp at b332f28): init() sets current_segment for every atom, end_of_step() updates it
+   * for the atoms of the group and draws a velocity when it changed. The segments are those between box lo, the walls
+   * and box hi (pos >= walls[r] && pos < walls[r + 1]), and -1 outside the box. With a dynamic group an atom that enters
+   * the group is compared with the segment it had when it was last updated (or at init).
+   */
+  private readonly segment = new Map<number, number>();
   /** Neighbor-list build counter seen at the last end of step (a build = a native reneighbor step). */
   private lastBuildSeen = -2;
   private checked = false;
@@ -244,16 +256,21 @@ export class FixWallFlow extends Fix {
     this.rng.uniform(); // warm-up draw made when the fix is created (measured with native LAMMPS)
   }
 
-  /** Wall positions in box units, checked against the box (strictly inside, ascending). */
+  /** The walls in box units (checked once), and the segment of every atom (native init, at every run). */
   init(): void {
     const s = this.sys.state;
-    const g = this.sys.geom;
-    const d = this.dim;
-    if (!s.box.periodic[d]) {
+    if (!s.box.periodic[this.dim]) {
       throw new StyleError('Fix wall/flow cannot be used with a non-periodic boundary along the flow axis');
     }
-    if (this.checked) return;
+    if (!this.checked) this.scaleWalls();
+    this.seedSegments();
+  }
+
+  /** The wall positions in box units, checked against the box once (strictly inside, ascending). */
+  private scaleWalls(): void {
     this.checked = true;
+    const g = this.sys.geom;
+    const d = this.dim;
     const sp = this.unitsMode === 'lattice' ? latticeSpacing(this.sys)[d] : 1;
     const lo = g.lo[d];
     const hi = g.hi[d];
@@ -269,72 +286,64 @@ export class FixWallFlow extends Fix {
     }
   }
 
-  /** Remember the positions at the start of each run (native wraps atoms when it sets up a run). */
+  /** init() of every run: the segment of every atom from its native coordinate (fix_wall_flow.cpp init). */
+  private seedSegments(): void {
+    const s = this.sys.state;
+    this.segment.clear();
+    for (let i = 0; i < s.n; i++) this.segment.set(s.id[i], this.segmentOf(this.rawCoord(i)));
+  }
+
+  /** Native wraps every atom into the box when it sets up a run (Verlet::setup, domain->pbc). */
   setup(): void {
-    this.refresh();
+    this.remapped();
   }
 
   private boxLength(): number {
     return this.sys.geom.hi[this.dim] - this.sys.geom.lo[this.dim];
   }
 
-  /** Unwrapped flow-axis coordinate of atom i (positions are wrapped every step; image flags are exact). */
-  private unwrapped(i: number): number {
-    const s = this.sys.state;
-    return s.x[3 * i + this.dim] + s.image[3 * i + this.dim] * this.boxLength();
-  }
-
-  private refresh(): void {
+  /** The flow-axis coordinate of atom i as native holds it (see kRemap). */
+  private rawCoord(i: number): number {
     const s = this.sys.state;
     const d = this.dim;
-    this.raw.clear();
-    for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      this.raw.set(s.id[i], { raw: s.x[3 * i + d], k: s.image[3 * i + d] });
-    }
+    const k = this.kRemap.get(s.id[i]) ?? s.image[3 * i + d];
+    return s.x[3 * i + d] + (s.image[3 * i + d] - k) * this.boxLength();
+  }
+
+  /** A native remap of every atom (a reneighbor step or a run's setup): the current images. */
+  private remapped(): void {
+    const s = this.sys.state;
+    const d = this.dim;
+    for (let i = 0; i < s.n; i++) this.kRemap.set(s.id[i], s.image[3 * i + d]);
     this.lastBuildSeen = this.sys.nb.lastBuild;
   }
 
-  /** A boundary (box edge lo or hi, or a wall) lies in (min, max] between the two raw positions. */
-  private straddles(a: number, b: number): boolean {
-    const mn = Math.min(a, b);
-    const mx = Math.max(a, b);
+  /** fix_wall_flow.cpp compute_current_segment: the segment between box lo, the walls and box hi, -1 outside. */
+  private segmentOf(pos: number): number {
     const lo = this.sys.geom.lo[this.dim];
     const hi = this.sys.geom.hi[this.dim];
-    if ((mn < lo && lo <= mx) || (mn < hi && hi <= mx)) return true;
-    for (const w of this.walls) if (mn < w && w <= mx) return true;
-    return false;
+    const n = this.walls.length;
+    for (let r = 0; r <= n; r++) {
+      const a = r === 0 ? lo : this.walls[r - 1];
+      const b = r === n ? hi : this.walls[r];
+      if (pos >= a && pos < b) return r;
+    }
+    return -1;
   }
 
   endOfStep(): void {
     const s = this.sys.state;
     const d = this.dim;
     const { v, mask, id } = s;
-    const L = this.boxLength();
-    const lo = this.sys.geom.lo[d];
-    // native remaps atoms into the box on its reneighbor steps only; the engine wraps every step, so the
-    // native raw coordinate (and its image) is rebuilt here from the unwrapped one at those steps
-    const remapped = this.sys.nb.lastBuild !== this.lastBuildSeen;
-    this.lastBuildSeen = this.sys.nb.lastBuild;
+    // native remaps every atom into the box on its reneighbor steps (before the forces, so before this end of step)
+    if (this.sys.nb.lastBuild !== this.lastBuildSeen) this.remapped();
     for (const i of nativeOrder(s)) {
       if (!(mask[i] & this.groupBit)) continue;
-      const u = this.unwrapped(i);
-      const key = id[i];
-      const st = this.raw.get(key);
-      if (st === undefined) {
-        this.raw.set(key, { raw: s.x[3 * i + d], k: s.image[3 * i + d] });
-        continue;
-      }
-      let k = st.k;
-      let wrapped = false;
-      if (remapped) {
-        const nk = Math.floor((u - lo) / L);
-        if (nk !== k) { wrapped = true; k = nk; }
-      }
-      const raw = u - k * L;
-      const crossed = this.straddles(st.raw, raw) || wrapped;
-      this.raw.set(key, { raw, k });
-      if (!crossed) continue;
+      const prev = this.segment.get(id[i]);
+      const cur = this.segmentOf(this.rawCoord(i));
+      this.segment.set(id[i], cur);
+      // an atom created after the run's init has no segment yet (native: the uninitialized slot of a grown array)
+      if (prev === undefined || prev === cur) continue;
       // one reassignment per atom per step, however many boundaries it passed
       const m = massOf(s, i);
       const sig = Math.sqrt((s.units.boltz * this.temp) / (s.units.mvv2e * m));

@@ -154,7 +154,7 @@ describe('fix ave/grid', () => {
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx ave window 0`)).rejects.toThrow('ave window M must be an integer >= 1');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx discard maybe`)).rejects.toThrow('discard must be yes or no');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx foo 1`)).rejects.toThrow("invalid input value 'foo'");
-    await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 c_nope:grid:data`)).rejects.toThrow('per-grid input');
+    await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 c_nope:grid:data`)).rejects.toThrow('Fix ave/grid compute ID nope not found');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx`)).resolves.toBeDefined();
   });
 

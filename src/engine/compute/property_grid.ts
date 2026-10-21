@@ -49,9 +49,12 @@ import type { System } from '../system';
  * corner is (ix-1)/Nx and the scaled center is (ix-0.5)/Nx; the grid id is
  * ix + Nx*(iy-1) + Nx*Ny*(iz-1).
  *
- * The engine has no dump grid, so the per-grid data is exposed through
- * gridValue(cell, col) / gridVector() / gridArray(); gridValue uses the cell
- * index 0..Nx*Ny*Nz-1 in the same x-fastest order as the grid id.
+ * The per-grid data is read by dump grid and fix ave/grid as c_ID:grid:data (grid.ts), and here through
+ * gridValue(cell, col) / gridVector(), with the cell index 0..Nx*Ny*Nz-1 in the same x-fastest order as the grid id.
+ * As native LAMMPS does (src/compute_property_grid.cpp compute_pergrid and pack_coords at b332f28): the values are
+ * filled at every invocation (the box may have changed); an unscaled coordinate of an orthogonal box is
+ * boxlo + i * (prd / N) (the center (i + 0.5) times that spacing), a scaled one i * (1 / N), and a triclinic
+ * unscaled one maps the scaled point through h (h x lamda, then boxlo added last).
  */
 
 /** Every attribute the page documents, in the syntax order. */
@@ -97,8 +100,18 @@ export class ComputePropertyGrid extends Compute {
     }
     this.attrs = attrs;
     this.data = new Float64Array(this.ncell * attrs.length);
+    this.pergridFlag = true;
     this.fill();
   }
+
+  /** "the name of the single grid produced by this command is "grid". The name of its per-grid data is "data"." */
+  gridByName(name: string): number { return name === 'grid' ? 0 : -1; }
+  gridSize(_igrid: number): [number, number, number] { return [this.nx, this.ny, this.nz]; }
+  griddataByName(igrid: number, name: string): { index: number; ncol: number } | null {
+    return igrid === 0 && name === 'data' ? { index: 0, ncol: this.attrs.length === 1 ? 0 : this.attrs.length } : null;
+  }
+  griddata(_index: number): Float64Array { return this.data; }
+  protected computePergrid(): void { this.fill(); }
 
   /** Number of per-grid columns (1 = per-grid vector, >1 = per-grid array). */
   get ncols(): number { return this.attrs.length; }
@@ -122,38 +135,51 @@ export class ComputePropertyGrid extends Compute {
 
   private fill(): void {
     const sys = this.sys;
-    const geom = sys.geom;
+    const g = sys.geom;
     const { nx, ny, nz } = this;
-    const corner: number[] = [0, 0, 0];
-    const center: number[] = [0, 0, 0];
+    const n = [nx, ny, nz];
+    const tri = g.triclinic;
+    const prd = [g.lx, g.ly, g.lz];
+    const lo = sys.state.box.lo;
+    const idx = [0, 0, 0];
+    const lamLow = [0, 0, 0], lamCtr = [0, 0, 0];
     for (let c = 0; c < this.ncell; c++) {
-      const ix = c % nx;
-      const iy = Math.floor(c / nx) % ny;
-      const iz = Math.floor(c / (nx * ny));
-      const lx = ix / nx, ly = iy / ny, lz = iz / nz;
-      geom.fromLamda(lx, ly, lz, corner);
-      geom.fromLamda((ix + 0.5) / nx, (iy + 0.5) / ny, (iz + 0.5) / nz, center);
+      idx[0] = c % nx;
+      idx[1] = Math.floor(c / nx) % ny;
+      idx[2] = Math.floor(c / (nx * ny));
+      for (let d = 0; d < 3; d++) {
+        const dl = 1.0 / n[d];
+        lamLow[d] = idx[d] * dl;
+        lamCtr[d] = (idx[d] + 0.5) * dl;
+      }
+      // an unscaled coordinate: orthogonal boxlo + i * delta, triclinic h x lamda + boxlo
+      const coord = (lam: number[], ctr: boolean, d: number): number => {
+        if (!tri) return lo[d] + (idx[d] + (ctr ? 0.5 : 0)) * (prd[d] / n[d]);
+        if (d === 0) return g.lx * lam[0] + g.xy * lam[1] + g.xz * lam[2] + lo[0];
+        if (d === 1) return g.ly * lam[1] + g.yz * lam[2] + lo[1];
+        return g.lz * lam[2] + lo[2];
+      };
       for (let j = 0; j < this.attrs.length; j++) {
         const a = this.attrs[j];
         let v: number;
         switch (a) {
           case 'id': v = c + 1; break;
           case 'proc': v = 0; break;
-          case 'ix': v = ix + 1; break;
-          case 'iy': v = iy + 1; break;
-          case 'iz': v = iz + 1; break;
-          case 'x': v = corner[0]; break;
-          case 'y': v = corner[1]; break;
-          case 'z': v = corner[2]; break;
-          case 'xc': v = center[0]; break;
-          case 'yc': v = center[1]; break;
-          case 'zc': v = center[2]; break;
-          case 'xs': v = lx; break;
-          case 'ys': v = ly; break;
-          case 'zs': v = lz; break;
-          case 'xsc': v = (ix + 0.5) / nx; break;
-          case 'ysc': v = (iy + 0.5) / ny; break;
-          case 'zsc': v = (iz + 0.5) / nz; break;
+          case 'ix': v = idx[0] + 1; break;
+          case 'iy': v = idx[1] + 1; break;
+          case 'iz': v = idx[2] + 1; break;
+          case 'x': v = coord(lamLow, false, 0); break;
+          case 'y': v = coord(lamLow, false, 1); break;
+          case 'z': v = coord(lamLow, false, 2); break;
+          case 'xc': v = coord(lamCtr, true, 0); break;
+          case 'yc': v = coord(lamCtr, true, 1); break;
+          case 'zc': v = coord(lamCtr, true, 2); break;
+          case 'xs': v = lamLow[0]; break;
+          case 'ys': v = lamLow[1]; break;
+          case 'zs': v = lamLow[2]; break;
+          case 'xsc': v = lamCtr[0]; break;
+          case 'ysc': v = lamCtr[1]; break;
+          case 'zsc': v = lamCtr[2]; break;
         }
         this.data[c * this.attrs.length + j] = v;
       }

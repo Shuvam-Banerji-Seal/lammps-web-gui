@@ -65,6 +65,16 @@ export abstract class Fix {
   localValues(): Float64Array<ArrayBuffer> {
     throw new StyleError(`fix ${this.id} does not calculate local values`);
   }
+  /**
+   * Per-grid data (grid.ts GridSource): the grids and data sets other commands read as f_ID:gname:dname, valid on
+   * multiples of pergridFreq. A fix that sets pergridFlag overrides the four accessors.
+   */
+  pergridFlag = false;
+  pergridFreq = 1;
+  gridByName(_name: string): number { return -1; }
+  gridSize(_igrid: number): [number, number, number] { return [0, 0, 0]; }
+  griddataByName(_igrid: number, _name: string): { index: number; ncol: number } | null { return null; }
+  griddata(_index: number): Float64Array { throw new StyleError(`fix ${this.id} does not compute per-grid info`); }
   /** Steps between end_of_step calls (and output validity for averaging fixes). */
   nevery = 1;
   /** Steps on which the global output is valid (0: any step); thermo output must use compatible steps. */

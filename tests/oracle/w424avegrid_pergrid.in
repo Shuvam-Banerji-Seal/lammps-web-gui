@@ -1,0 +1,34 @@
+# oracle: fix ave/grid on per-grid inputs: the electron temperatures of fix ttm/grid (ave one and running), a compute property/grid column, and the output of another fix ave/grid (f_ID:grid:data[I], on its Nfreq steps), written by dump grid
+# oracle-inputs: w14ttm_grid.init
+# oracle-files: avg.dump
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      atomic
+lattice         sc 3.0
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 10.0
+displace_atoms  all move 0.5 0.5 0.5 units box
+variable        vx atom 3.0*sin(0.9*x+0.4*y)
+variable        vy atom 2.5*cos(0.7*y-0.5*z)
+variable        vz atom 2.0*sin(1.1*z+0.3*x)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 3.0
+pair_coeff      1 1 0.0 2.0
+fix             1 all nve
+fix             2 all ttm/grid 777 0.001 1.0 0.01 20.0 0.0 2.0 2 2 2 infile w14ttm_grid.init
+timestep        0.05
+neigh_modify    delay 0 every 1 check yes
+compute         pg all property/grid 2 2 2 xsc ysc
+fix             te all ave/grid 1 3 3 2 2 2 f_2:grid:data c_pg:grid:data[2]
+fix             ter all ave/grid 1 2 2 2 2 2 f_2:grid:data ave running
+fix             va all ave/grid 1 2 2 2 2 2 vx vy
+fix             vv all ave/grid 2 2 4 2 2 2 f_va:grid:data[*]
+dump            1 all grid 12 avg.dump f_te:grid:data[*] f_ter:grid:data f_vv:grid:data[*]
+dump_modify     1 format float %.12g
+thermo_style    custom step temp pe f_2[1]
+thermo_modify   format float %.15g
+thermo          6
+run             24

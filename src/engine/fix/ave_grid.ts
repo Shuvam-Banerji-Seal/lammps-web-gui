@@ -4,6 +4,7 @@ import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
 import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
 import { massOf } from '../atoms';
+import { expandGridRefs, gridColumn, resolveGridRef, type GridRef } from '../grid';
 
 /*
  * fix ave/grid — per-atom mode, implemented from docs.lammps.org/fix_ave_grid.html
@@ -53,15 +54,22 @@ import { massOf } from '../atoms';
  * will be ignored." Periodic dimensions wrap the atom position into the box.
  *
  * Output access: "For access by other commands, the name of the single grid
- * produced by this fix is" grid. The per-grid data is read by dump grid in
- * native LAMMPS; the browser engine has no grid dump yet, so the values are read
- * with gridValue() / gridCount(). This fix has no global scalar, vector or array,
+ * produced by this fix is" grid. The per-grid data is read by dump grid as f_ID:grid:data (and f_ID:grid:count,
+ * the atom counts), valid on multiples of Nfreq (grid.ts), and here with gridValue() / gridCount(). This fix has no
+ * global scalar, vector or array,
  * so f_ID and f_ID[i][j] are refused, as native LAMMPS refuses them (measured:
  * the thermo keyword f_ag[1][1] fails with the message: fix ag does not compute an array).
  *
- * Not supported (StyleError): per-grid inputs c_ID:gname:dname (no engine compute
- * or fix defines a grid yet), bias (the temperature bias needs bias computes), and
- * triclinic boxes.
+ * Per-grid inputs: "If a value begins with "c_" or "f_" and is followed by a colon-separated grid and data name,
+ * it is a per-grid quantity" (c_ID:gname:dname, c_ID:gname:dname[I], f_... ; grid.ts), and then "all of the input
+ * values must be per-grid". Each sample adds the referenced per-grid values cell by cell; on an Nfreq step the sum
+ * is multiplied by 1/Nrepeat (the norm keyword does not apply) and ave one / running / window follow as for
+ * per-atom values; there is no count data set. As native LAMMPS does (src/fix_ave_grid.cpp at b332f28), a mix of
+ * per-atom and per-grid values stops ("Fix ave/grid cannot operate on per-atom and per-grid values together"), and
+ * so does a referenced grid of another size ("Fix ave/grid value grid sizes do not match").
+ *
+ * Not supported (StyleError): bias (the temperature bias needs bias computes), and triclinic boxes for per-atom
+ * values.
  */
 
 type AttrName = 'vx' | 'vy' | 'vz' | 'fx' | 'fy' | 'fz' | 'mass';
@@ -69,7 +77,8 @@ type Column =
   | { t: 'attr'; name: AttrName; text: string }
   | { t: 'ref'; ref: Ref; text: string }
   | { t: 'dens'; mass: boolean; text: string }
-  | { t: 'temp'; text: string };
+  | { t: 'temp'; text: string }
+  | { t: 'grid'; ref: GridRef; text: string };
 
 const ATTRS: AttrName[] = ['vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'mass'];
 const KEYWORDS = new Set(['discard', 'norm', 'ave', 'bias', 'adof', 'cdof']);
@@ -117,6 +126,8 @@ export class FixAveGrid extends Fix {
   private accSum: Float64Array[] = [];
   private accSamp: Float64Array[] = [];
   private lastStep = -1;
+  /** The values are per-grid references (else per-atom values). */
+  private modeGrid = false;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -142,7 +153,17 @@ export class FixAveGrid extends Fix {
     const values: string[] = [];
     while (k < args.length && !KEYWORDS.has(args[k])) values.push(args[k++]);
     if (values.length === 0) throw new StyleError(`${what}: at least one input value is required`);
-    for (const w of expandWildcards(sys, values, 'peratom')) this.cols.push(this.column(w, what));
+    for (const w of expandWildcards(sys, expandGridRefs(sys, values), 'peratom')) {
+      this.cols.push(this.column(w, what));
+    }
+    this.modeGrid = this.cols.some((c) => c.t === 'grid');
+    if (this.modeGrid && this.cols.some((c) => c.t !== 'grid')) throw new StyleError('Fix ave/grid cannot operate on per-atom and per-grid values together');
+    for (const c of this.cols) {
+      if (c.t !== 'grid') continue;
+      const src = c.ref.kind === 'c' ? sys.compute(c.ref.id) : sys.fix(c.ref.id);
+      const [gx, gy, gz] = src.gridSize(c.ref.igrid);
+      if (gx !== this.nx || gy !== this.ny || (sys.dimension === 3 && gz !== this.nz)) throw new StyleError('Fix ave/grid value grid sizes do not match');
+    }
 
     while (k < args.length) {
       const key = args[k];
@@ -173,6 +194,8 @@ export class FixAveGrid extends Fix {
     const ncol = this.cols.length;
     this.data = new Float64Array(this.ncell * ncol);
     this.count = new Float64Array(this.ncell);
+    this.pergridFlag = true;
+    this.pergridFreq = this.nFreq;
     this.accCnt = new Float64Array(this.ncell);
     this.accCntSamp = new Float64Array(this.ncell);
     this.accMass = new Float64Array(this.ncell);
@@ -190,10 +213,22 @@ export class FixAveGrid extends Fix {
     if ((ATTRS as string[]).includes(w)) return { t: 'attr', name: w as AttrName, text: w };
     if (w === 'temp') return { t: 'temp', text: w };
     if (w === 'density/number' || w === 'density/mass') return { t: 'dens', mass: w === 'density/mass', text: w };
-    if (w.includes(':')) throw new StyleError(`${what}: per-grid input ${w} is not supported by the browser engine (no compute or fix defines a grid yet)`);
+    if (/^[cf]_/.test(w) && w.includes(':')) return { t: 'grid', ref: resolveGridRef(this.sys, 'Fix ave/grid', w, this.nEvery), text: w };
     if (/^[cfv]_/.test(w)) return { t: 'ref', ref: parseRef(w), text: w };
     throw new StyleError(`${what}: invalid input value '${w}': expected vx, vy, vz, fx, fy, fz, mass, density/number, density/mass, temp, c_ID, c_ID[I], f_ID, f_ID[I] or v_name`);
   }
+
+  /** The grid "grid": data set "data" (the values) and "count" (the atoms per cell, atom mode). */
+  gridByName(name: string): number { return name === 'grid' ? 0 : -1; }
+  gridSize(_igrid: number): [number, number, number] { return [this.nx, this.ny, this.nz]; }
+  griddataByName(igrid: number, name: string): { index: number; ncol: number } | null {
+    if (igrid !== 0) return null;
+    if (name === 'data') return { index: 0, ncol: this.cols.length === 1 ? 0 : this.cols.length };
+    // count is only produced for per-atom values (FixAveGrid::get_griddata_by_name)
+    if (name === 'count' && !this.modeGrid) return { index: 1, ncol: 0 };
+    return null;
+  }
+  griddata(index: number): Float64Array { return index === 0 ? this.data : this.count; }
 
   /** Output for one grid cell (cell index x fastest) and column (0-based). */
   gridValue(cell: number, col: number): number {
@@ -245,6 +280,17 @@ export class FixAveGrid extends Fix {
   /** One sample: per-cell sums of the group atoms at this step. */
   private sample(): void {
     const s = this.sys.state;
+    if (this.modeGrid) {
+      // grid2grid: the referenced per-grid values added cell by cell
+      this.cols.forEach((col, j) => {
+        if (col.t !== 'grid') return;
+        const vals = gridColumn(this.sys, col.ref);
+        const acc = this.accSum[j];
+        for (let c = 0; c < this.ncell; c++) acc[c] += vals[c];
+      });
+      this.nSample++;
+      return;
+    }
     if (s.box.triclinic) throw new StyleError(`fix ${this.id} ave/grid: triclinic boxes are not supported by the browser engine`);
     const ncell = this.ncell;
     const ncol = this.cols.length;
@@ -331,6 +377,13 @@ export class FixAveGrid extends Fix {
     const cellVol = this.boxVolume() / ncell;
     const data = new Float64Array(ncell * ncol);
     const count = new Float64Array(ncell);
+    if (this.modeGrid) {
+      // normalize_grid: the sum of the samples times 1/Nrepeat
+      const invrepeat = 1.0 / nr;
+      for (let c = 0; c < ncell; c++) for (let j = 0; j < ncol; j++) data[c * ncol + j] = this.accSum[j][c] * invrepeat;
+      this.publish(data, count);
+      return;
+    }
     for (let c = 0; c < ncell; c++) {
       count[c] = this.accCnt[c] / nr;
       for (let j = 0; j < ncol; j++) {

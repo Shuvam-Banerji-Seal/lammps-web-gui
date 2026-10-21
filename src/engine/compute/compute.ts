@@ -61,6 +61,16 @@ export abstract class Compute {
   /** Needs the per-atom centroid virial of the bonded terms (compute centroid/stress/atom). */
   needsCvatom = false;
 
+  /**
+   * Per-grid data (grid.ts GridSource): the grids and data sets other commands read as c_ID:gname:dname. A compute
+   * that sets pergridFlag overrides the four accessors and computePergrid().
+   */
+  pergridFlag = false;
+  gridByName(_name: string): number { return -1; }
+  gridSize(_igrid: number): [number, number, number] { return [0, 0, 0]; }
+  griddataByName(_igrid: number, _name: string): { index: number; ncol: number } | null { return null; }
+  griddata(_index: number): Float64Array { throw new StyleError(`compute ${this.id} does not compute per-grid info`); }
+
   scalar = 0;
   vector = new Float64Array(0);
   array = new Float64Array(0);
@@ -71,6 +81,7 @@ export abstract class Compute {
   private epochArray = -1;
   private epochPeratom = -1;
   private epochLocal = -1;
+  private epochPergrid = -1;
   private localData: Float64Array<ArrayBuffer> = new Float64Array(0);
 
   // temperature computes
@@ -141,9 +152,18 @@ export abstract class Compute {
     return this.localData;
   }
 
+  /** Brings the per-grid data up to date (computePergrid), cached per state epoch like the other values. */
+  pergridValues(): void {
+    if (!this.pergridFlag) throw new StyleError(`compute ${this.id} does not compute per-grid info`);
+    if (this.epochPergrid !== this.sys.epoch) {
+      this.computePergrid();
+      this.epochPergrid = this.sys.epoch;
+    }
+  }
+
   /** Forget cached values (the state changed without an epoch bump). */
   invalidate(): void {
-    this.epochScalar = this.epochVector = this.epochArray = this.epochPeratom = this.epochLocal = -1;
+    this.epochScalar = this.epochVector = this.epochArray = this.epochPeratom = this.epochLocal = this.epochPergrid = -1;
   }
 
   protected computeScalar(): number { throw new StyleError(`compute ${this.id} has no scalar`); }
@@ -152,6 +172,7 @@ export abstract class Compute {
   protected computePeratom(): void { throw new StyleError(`compute ${this.id} has no per-atom values`); }
   /** Returns the row-major local data and sets localRows. */
   protected computeLocal(): Float64Array<ArrayBuffer> { throw new StyleError(`compute ${this.id} has no local values`); }
+  protected computePergrid(): void { throw new StyleError(`compute ${this.id} does not compute per-grid info`); }
   /**
    * The graphics objects of dump image's "compute" keyword (compute_image of native computes; image_objects.ts). Only the
    * computes that provide them (compute hbond/local) override this.

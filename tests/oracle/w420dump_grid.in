@@ -1,0 +1,31 @@
+# oracle: dump grid of compute property/grid (array columns through a wildcard, a vector) and fix ave/grid (data columns and count) during an nve run, with dump_modify format float, format of one column, colname and sort by a column; dump grid/vtk of three ave/grid columns in the XML rectilinear, image and legacy formats
+# oracle-files: grid.dump grid_vec.dump g.0.vtr g.20.vtr g.0.vti g.20.vti g.0.vtk g.20.vtk
+# oracle-compare: thermo=all atoms=all
+units           lj
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.5 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+neighbor        0.3 bin
+fix             1 all nve
+
+compute         pg all property/grid 2 3 2 id ix iy iz xc yc zc xs
+compute         pgv all property/grid 2 3 2 zsc
+fix             ag all ave/grid 5 2 10 2 3 2 vx vy vz density/number temp
+dump            1 all grid 10 grid.dump c_pg:grid:data[*] f_ag:grid:data[1] f_ag:grid:data[5] f_ag:grid:count
+dump_modify     1 format float %.10g format 2 %6.2f colname 1 cell
+dump            2 all grid 20 grid_vec.dump c_pgv:grid:data f_ag:grid:data[4]
+dump_modify     2 sort -2
+dump            3 all grid/vtk 20 g.*.vtr f_ag:grid:data[1] f_ag:grid:data[2] f_ag:grid:data[3]
+dump            4 all grid/vtk 20 g.*.vti f_ag:grid:data[4]
+dump            5 all grid/vtk 20 g.*.vtk f_ag:grid:data[1] f_ag:grid:data[2] f_ag:grid:data[3]
+dump_modify     5 double yes
+
+thermo_style    custom step temp pe
+thermo_modify   format float %.15g
+thermo          10
+run             20

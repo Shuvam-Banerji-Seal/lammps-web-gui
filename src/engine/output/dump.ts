@@ -9,6 +9,7 @@ import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRma
 import { ImageDump } from './dump_image';
 import type { ColorMap } from './image_colormap';
 import { gplHook } from '../gplHooks';
+import { expandGridRefs } from '../grid';
 import { gzipText } from '../gzip';
 
 /**
@@ -68,7 +69,7 @@ const DIPOLE_COLS = new Set(['mux', 'muy', 'muz', 'mu']);
  */
 export const fmt = (f: string): ((v: number) => string) => compileCFormat(f, 'float', 'Invalid dump format');
 
-export type DumpStyle = 'atom' | 'custom' | 'cfg' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk';
+export type DumpStyle = 'atom' | 'custom' | 'cfg' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk' | 'grid' | 'grid/vtk';
 
 /**
  * The core side of the lazily loaded dump vtk helper (engine-gpl/dump/dump_vtk.ts, HOOKS 'vtk' of group gpl_dump_vtk):
@@ -123,6 +124,45 @@ export interface DumpCfgStyle {
 
 export type DumpCfgFactory = (sys: System, columns: string[]) => DumpCfgStyle;
 
+/**
+ * The core side of the lazily loaded dump grid and grid/vtk helper (engine-gpl/dump/dump_grid.ts, HOOKS 'grid' and
+ * 'grid/vtk' of group gpl_dump_grid): the helper resolves the per-grid references (grid.ts) and writes the snapshots;
+ * the core keeps the schedule, the files and the dump_modify keywords it shares with the other styles. "dump grid" is
+ * documented at docs.lammps.org/dump.html: "The grid styles output one or more values per grid cell, which are
+ * produced by other commands which overlay the simulation domain with a regular grid."
+ */
+export interface DumpGridHost {
+  readonly sys: System;
+  readonly id: string;
+  readonly file: string;
+  /** dump every N: a fix's per-grid data must be valid on those steps. */
+  readonly every: number;
+  readonly pad: number;
+  readonly units: boolean;
+  readonly time: boolean;
+  readonly header: boolean;
+  readonly sort: 'off' | 'id' | { col: number; desc: boolean };
+  readonly colnames: Map<number, string>;
+  /** The file has been written to (ITEM: UNITS goes into the first snapshot only). */
+  readonly opened: boolean;
+  /** One formatter per field, from dump_modify format (every field is a double, default %g). */
+  formatters(): ((v: number) => string)[];
+  fillWildcard(file: string, text: string): string;
+  /** Writes one snapshot of a text dump with the core's file rules ("*" names, append, gz, maxfiles). */
+  writeText(text: string): void;
+}
+
+export interface DumpGridStyle {
+  /** dump_modify keywords of this style: the words taken, 0 for the core's. */
+  modify(args: string[], k: number): number;
+  write(step: number): void;
+}
+
+export type DumpGridFactory = (host: DumpGridHost, fields: string[]) => DumpGridStyle;
+
+/** The dump_modify keywords of every dump style (the base list of Dump::modify_params, src/dump.cpp at b332f28). */
+const GRID_DUMP_KEYWORDS = new Set(['append', 'balance', 'buffer', 'colname', 'delay', 'every', 'every/time', 'fileper', 'first', 'flush', 'format', 'header', 'maxfiles', 'nfile', 'pad', 'pbc', 'skip', 'sort', 'time', 'units']);
+
 /** The image-count offset of the native image field (src/lmptype.h at b332f28, the default smallbig build: IMGMAX 512). */
 const IMGMAX = 512;
 
@@ -172,6 +212,8 @@ export class Dump {
   private imageDump: ImageDump | null = null;
   /** dump vtk: the lazily loaded helper (null for every other style). */
   private vtkStyle: DumpVtkStyle | null = null;
+  /** dump grid and grid/vtk: the lazily loaded helper (null for every other style). */
+  private gridStyle: DumpGridStyle | null = null;
   /** dump cfg: the lazily loaded helper (null for every other style). */
   private cfgStyle: DumpCfgStyle | null = null;
 
@@ -212,15 +254,17 @@ export class Dump {
       if (!ext) throw new StyleError(`Dump ${gzStyle} only writes compressed files`);
       this.gz = true;
     } else if (ext) {
-      if (style === 'image' || style === 'vtk' || ext !== 'gz') {
-        throw new StyleError(`dump ${id}: a compressed (.${ext}) ${style} dump file is not supported by the browser engine; ${style === 'image' || style === 'vtk' ? 'use a plain file name' : 'use .gz or a plain file name'}`);
+      if (style === 'image' || style === 'vtk' || style === 'grid/vtk' || ext !== 'gz') {
+        throw new StyleError(`dump ${id}: a compressed (.${ext}) ${style} dump file is not supported by the browser engine; ${style === 'image' || style === 'vtk' || style === 'grid/vtk' ? 'use a plain file name' : 'use .gz or a plain file name'}`);
       }
       this.gz = true;
     }
     this.groupBit = sys.groupBit(group);
     if (typeof every === 'string') this.everyVar = every;
     this.every = typeof every === 'number' ? every : 0;
-    this.sort = style === 'xyz' || style === 'extxyz' ? 'id' : 'off';
+    // dump.html: "For the dcd, extxyz, grid/vtk, xtc, xyz, and molfile styles, sorting by atom ID or grid ID is on by
+    // default."
+    this.sort = style === 'xyz' || style === 'extxyz' || style === 'grid/vtk' ? 'id' : 'off';
     if (style === 'image') {
       this.imageDump = new ImageDump(sys, id, group, file, cols, multifileOverride);
       this.columns = [];
@@ -232,6 +276,28 @@ export class Dump {
       this.columns = ['type', 'x', 'y', 'z'];
     } else if (style === 'local') {
       this.columns = localDumpColumns(sys, id, cols);
+    } else if (style === 'grid' || style === 'grid/vtk') {
+      // dump grid: the fields are per-grid references (c_ID:gname:dname[I] with wildcards, grid.ts), resolved by the
+      // helper; N must be an integer (a fix's per-grid data is valid on multiples of its frequency)
+      if (typeof every !== 'number') throw new StyleError(`Expected integer parameter instead of 'v_${every}' in input script or data file`);
+      this.columns = expandGridRefs(sys, cols);
+      const dump = this;
+      this.gridStyle = gplHook<DumpGridFactory>(style)({
+        sys,
+        id,
+        file,
+        every,
+        get pad() { return dump.pad; },
+        get units() { return dump.units; },
+        get time() { return dump.time; },
+        get header() { return dump.header; },
+        get sort() { return dump.sort; },
+        get colnames() { return dump.colnames; },
+        get opened() { return dump.opened; },
+        formatters: () => this.columnFormatters(),
+        fillWildcard,
+        writeText: (text) => this.writeText(text),
+      }, this.columns);
     } else if (style === 'vtk') {
       // dump vtk: the attributes are parsed by the helper, which reads the live pad and the core's column access
       this.columns = [];
@@ -321,6 +387,13 @@ export class Dump {
       if (this.vtkStyle) {
         const n = this.vtkStyle.modify(args, k);
         if (n > 0) { k += n; continue; }
+      }
+      // dump grid and grid/vtk: the helper's keywords, then only the keywords every dump style takes (the base
+      // Dump::modify_params list of src/dump.cpp at b332f28)
+      if (this.gridStyle) {
+        const n = this.gridStyle.modify(args, k);
+        if (n > 0) { k += n; continue; }
+        if (!GRID_DUMP_KEYWORDS.has(key)) throw new StyleError('Illegal dump_modify command');
       }
       // dump image/movie-only dump_modify keywords (dump_image.html, "dump_modify options for dump
       // image/movie"): acolor, adiam, bcolor, bdiam, backcolor, boxcolor, color.
@@ -456,6 +529,8 @@ export class Dump {
 
   /** Kind of a dump column for format checks: integer columns take an integer conversion. */
   private kindOfCol(c: string): ValueKind {
+    // the per-grid fields of dump grid are doubles (DumpGrid::parse_fields: vtype = Dump::DOUBLE)
+    if (this.gridStyle) return 'float';
     const isInt = this.style === 'local' ? c === 'index' : this.isInt(c);
     return isInt ? 'int' : 'float';
   }
@@ -527,6 +602,10 @@ export class Dump {
     }
     if (this.vtkStyle) {
       this.vtkStyle.write(step);
+      return;
+    }
+    if (this.gridStyle) {
+      this.gridStyle.write(step);
       return;
     }
     sys.forces();
@@ -641,6 +720,17 @@ export class Dump {
     const name = multi ? this.sys.resolveFile(fillWildcard(this.file, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.file));
     const appendNow = multi ? false : this.opened || (this.append && !this.gz);
     this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
+    this.opened = true;
+  }
+
+  /** One snapshot of a text dump (dump grid) into the dump's file: a "*" name per snapshot, else the single file. */
+  private writeText(text: string): void {
+    const step = this.sys.state.step;
+    const multi = this.file.includes('*');
+    const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
+    const name = multi ? this.sys.resolveFile(fillWildcard(this.file, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.file));
+    const appendNow = multi ? false : this.opened || (this.append && !this.gz);
+    this.writeSnapshot(name, text, appendNow);
     this.opened = true;
   }
 

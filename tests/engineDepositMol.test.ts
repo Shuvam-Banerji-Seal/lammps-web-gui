@@ -131,7 +131,7 @@ run 1
     expect(error).toMatch(/type offset 1 plus template type 3 is larger than ntypes 3/);
   });
 
-  it('rejects global/local with mol and a multi-molecule template', async () => {
+  it('takes global with mol and rejects a multi-molecule template', async () => {
     const multi = `# two molecules
 4 atoms
 2 bonds
@@ -179,7 +179,8 @@ Molecules
     const glob = await run(`${base}fix 1 all deposit 1 0 1 12345 region slab mol dimer global 1.0 2.0 units box
 run 1
 `);
-    expect(glob.error).toMatch(/global and local with mol are not supported/);
+    // global and local place the molecule centre (oracle w434deposit_mol_local)
+    expect(glob.error).toBeNull();
     const many = await run(`${base}molecule multi multi
 fix 1 all deposit 1 0 1 12345 region slab mol multi units box
 run 1

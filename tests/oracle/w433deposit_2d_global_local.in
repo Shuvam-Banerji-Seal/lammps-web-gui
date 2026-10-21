@@ -1,0 +1,27 @@
+# oracle: fix deposit in 2d with global and local: the inserted atom goes lo..hi above the highest atom in y (local: only atoms within delta in x), with lattice units scaling lo and hi by the y spacing and delta by the x spacing
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       2
+atom_style      atomic
+atom_modify     map array
+boundary        p f p
+lattice         sq 0.7
+region          box block 0 12 0 12 -0.5 0.5
+create_box      1 box
+region          bed block 0 12 0 2 -0.5 0.5
+create_atoms    1 region bed
+mass            1 1.0
+region          ra block 0 5 6 8 -0.5 0.5
+region          rb block 6 11 6 8 -0.5 0.5
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+timestep        0.005
+fix             1 all nve
+fix             2 all enforce2d
+fix             w all wall/reflect ylo EDGE yhi EDGE
+fix             3 all deposit 5 1 3 4242 region ra global 0.6 1.2 vy -0.5 -0.5 id next
+fix             4 all deposit 5 1 3 9187 region rb local 0.4 1.4 1.5 vy -0.5 -0.5 id next
+thermo_style    custom step atoms pe ke
+thermo_modify   format float %.15g
+thermo          3
+run             18

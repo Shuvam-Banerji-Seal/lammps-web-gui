@@ -48,6 +48,23 @@ interface Tables {
 interface TriPoint { mr1: number; mr2: number; mr3: number; sr1: number; sr2: number; sr3: number }
 
 /** PairComb: charge-optimized many-body (COMB) potential. */
+/** PairComb.buildQeqCache: the position-only terms of chargeForces for one charge equilibration. */
+interface QeqCombCache {
+  potal: number;
+  atoms: Int32Array;
+  selfP: Int32Array;
+  twoStart: Int32Array;
+  twoJ: Int32Array;
+  twoP: Int32Array;
+  twoFq0: Float64Array;
+  twoRf5: Float64Array;
+  threeStart: Int32Array;
+  threeJ: Int32Array;
+  threeP: Int32Array;
+  threeRep: Float64Array;
+  threeAtt: Float64Array;
+}
+
 export class PairComb extends Pair {
   readonly name = 'comb';
   manybody = true;
@@ -80,6 +97,16 @@ export class PairComb extends Pair {
   protected dOut = { pot: 0, pd: 0 };
   protected fOut = { v: 0, f: 0 };
   protected qfOut = { fqij: 0, fqjj: 0 };
+  /**
+   * The parts of the charge forces that depend on the positions only, kept for the iterations of one fix qeq/comb charge
+   * equilibration (the positions and the bond orders of the last compute do not change between them): null outside.
+   */
+  private qcache: QeqCombCache | null = null;
+  private qcacheOn = false;
+
+  /** fix qeq/comb starts its iterations: chargeForces may keep its position-only terms until chargeIterationsEnd. */
+  chargeIterationsBegin(): void { this.qcacheOn = true; this.qcache = null; }
+  chargeIterationsEnd(): void { this.qcacheOn = false; this.qcache = null; }
   /** Short-range (cutmin) neighbor list of the owned atoms (Short_neigh). */
   protected shtStart = new Int32Array(0);
   protected shtList = new Int32Array(0);
@@ -829,6 +856,10 @@ export class PairComb extends Pair {
     const list = pc.full;
     const elemOf = this.map;
     qf.fill(0);
+    if (this.qcacheOn) {
+      this.qcache ??= this.buildQeqCache(isGroup);
+      return this.chargeForcesCached(qf, this.qcache);
+    }
     const { potal, fac11e } = this.potalCalc(this.esucon);
     for (let i = 0; i < nlocal; i++) {
       if (!isGroup(i)) continue;
@@ -896,6 +927,132 @@ export class PairComb extends Pair {
     return eneg;
   }
 
+  /**
+   * The position-only terms of chargeForces for its loops, in its order: the group atoms, their two-body partners (the
+   * half rule and the long-range cutoff) with qfo_direct's value and qfo_field's rf5, and their three-body partners
+   * (the short cutoff) with qfo_short's geometric products.
+   */
+  private buildQeqCache(isGroup: (i: number) => boolean): QeqCombCache {
+    const nmask = NEIGHMASK;
+    const pc = this.lastPc!;
+    const tb = this.tables!;
+    const nb = pc.nb;
+    const x = pc.x, type = pc.type;
+    const nlocal = pc.nlocal;
+    const owner = nb.owner;
+    const ids = pc.s.id;
+    const list = pc.full!;
+    const elemOf = this.map;
+    const { potal, fac11e } = this.potalCalc(this.esucon);
+    const atoms: number[] = [], selfP: number[] = [];
+    const twoStart: number[] = [0], twoJ: number[] = [], twoP: number[] = [], twoFq0: number[] = [], twoRf5: number[] = [];
+    const threeStart: number[] = [0], threeJ: number[] = [], threeP: number[] = [], threeRep: number[] = [], threeAtt: number[] = [];
+    for (let i = 0; i < nlocal; i++) {
+      if (!isGroup(i)) continue;
+      const itag = ids[i];
+      const xtmp = x[3 * i], ytmp = x[3 * i + 1], ztmp = x[3 * i + 2];
+      const itype = elemOf[type[i]];
+      atoms.push(i);
+      selfP.push(this.p3(itype, itype, itype));
+      const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
+      for (let kk = k0; kk < k1; kk++) {
+        const j = list.neighbors[kk] & nmask;
+        const jtag = ids[owner[j]];
+        if (itag > jtag) {
+          if ((itag + jtag) % 2 === 0) continue;
+        } else if (itag < jtag) {
+          if ((itag + jtag) % 2 === 1) continue;
+        } else {
+          if (x[3 * j + 2] < x[3 * i + 2]) continue;
+          if (x[3 * j + 2] === ztmp && x[3 * j + 1] < ytmp) continue;
+          if (x[3 * j + 2] === ztmp && x[3 * j + 1] === ytmp && x[3 * j] < xtmp) continue;
+        }
+        const jtype = elemOf[type[j]];
+        const delx = x[3 * j] - xtmp, dely = x[3 * j + 1] - ytmp, delz = x[3 * j + 2] - ztmp;
+        const rsq1 = delx * delx + dely * dely + delz * delz;
+        const ip = this.p3(itype, jtype, jtype);
+        const pIJ = this.params[ip];
+        if (rsq1 > pIJ.lcutsq) continue;
+        const inty = tb.intype[itype * this.ntypes + jtype];
+        const tp = this.triPoint(rsq1);
+        twoJ.push(j);
+        twoP.push(ip);
+        twoFq0.push(this.qfoDirect(inty, tp, rsq1, fac11e));
+        // qfo_field's rf5, as qfoField computes it
+        const r = Math.sqrt(rsq1);
+        const r5 = r * r * r * r * r;
+        const rc = pIJ.lcut;
+        const rc5 = rc * rc * rc * rc * rc;
+        const rc6 = rc5 * rc;
+        twoRf5.push(1.0 / r5 - 1.0 / rc5 + 5.0 * (r - rc) / rc6);
+      }
+      twoStart.push(twoJ.length);
+      let nj = 0;
+      for (let kk = k0; kk < k1; kk++) {
+        const j = list.neighbors[kk] & nmask;
+        const jtype = elemOf[type[j]];
+        const delx = x[3 * j] - xtmp, dely = x[3 * j + 1] - ytmp, delz = x[3 * j + 2] - ztmp;
+        const rsq1 = delx * delx + dely * dely + delz * delz;
+        const ip = this.p3(itype, jtype, jtype);
+        const pIJ = this.params[ip];
+        if (rsq1 > pIJ.cutsq) continue;
+        nj++;
+        const [rep, att] = this.qfoShortGeom(pIJ, i, nj, rsq1);
+        threeJ.push(j);
+        threeP.push(ip);
+        threeRep.push(rep);
+        threeAtt.push(att);
+      }
+      threeStart.push(threeJ.length);
+    }
+    return {
+      potal,
+      atoms: Int32Array.from(atoms), selfP: Int32Array.from(selfP),
+      twoStart: Int32Array.from(twoStart), twoJ: Int32Array.from(twoJ), twoP: Int32Array.from(twoP),
+      twoFq0: Float64Array.from(twoFq0), twoRf5: Float64Array.from(twoRf5),
+      threeStart: Int32Array.from(threeStart), threeJ: Int32Array.from(threeJ), threeP: Int32Array.from(threeP),
+      threeRep: Float64Array.from(threeRep), threeAtt: Float64Array.from(threeAtt),
+    };
+  }
+
+  /** chargeForces from the kept position-only terms: the same sums in the same order with the current charges. */
+  private chargeForcesCached(qf: Float64Array, c: QeqCombCache): number {
+    const pc = this.lastPc!;
+    const nb = pc.nb;
+    const q = nb.qall;
+    const nlocal = pc.nlocal;
+    const owner = nb.owner;
+    const params = this.params;
+    for (let a = 0; a < c.atoms.length; a++) {
+      const i = c.atoms[a];
+      const iq = q[i];
+      let fqi = this.qfoSelf(params[c.selfP[a]], iq, c.potal);
+      for (let e = c.twoStart[a]; e < c.twoStart[a + 1]; e++) {
+        const j = c.twoJ[e];
+        const jq = q[j];
+        const fqij0 = c.twoFq0[e];
+        fqi += jq * fqij0;
+        qf[j] += iq * fqij0;
+        // qfo_field
+        const p = params[c.twoP[e]];
+        const rf5 = c.twoRf5[e];
+        fqi += 1.0 * rf5 * (p.cml1 + 2.0 * iq * p.cml2);
+        qf[j] += 1.0 * rf5 * (p.cmn1 + 2.0 * jq * p.cmn2);
+      }
+      for (let e = c.threeStart[a]; e < c.threeStart[a + 1]; e++) {
+        const j = c.threeJ[e];
+        const sh = this.qfoShortCharge(params[c.threeP[e]], iq, q[j], c.threeRep[e], c.threeAtt[e]);
+        fqi += sh.fqij;
+        qf[j] += sh.fqjj;
+      }
+      qf[i] += fqi;
+    }
+    for (let k = nlocal; k < nb.nall; k++) qf[owner[k]] += qf[k];
+    let eneg = 0.0;
+    for (let a = 0; a < c.atoms.length; a++) eneg += qf[c.atoms[a]];
+    return eneg;
+  }
+
   /** qfo_self: derivative of the self energy with respect to the charge. */
   protected qfoSelf(p: CombParam, qi: number, selfpot: number): number {
     const s1 = p.chi, s2 = p.dj, s3 = p.dk, s4 = p.dl, s5 = p.dm;
@@ -939,9 +1096,17 @@ export class PairComb extends Pair {
 
   /** qfo_short: charge derivatives of the attractive (bond-order) term; bbij[i][nj] from compute. */
   protected qfoShort(p: CombParam, i: number, nj: number, rsq: number, iq: number, jq: number): { fqij: number; fqjj: number } {
+    const [rep, att] = this.qfoShortGeom(p, i, nj, rsq);
+    return this.qfoShortCharge(p, iq, jq, rep, att);
+  }
+
+  /**
+   * The parts of qfo_short that depend on the positions only: cfqr * exp(-rlm1 r) and cfqs * exp(-rlm2 r) (the
+   * products the charge terms multiply, in native's order).
+   */
+  protected qfoShortGeom(p: CombParam, i: number, nj: number, rsq: number): [number, number] {
     const r = Math.sqrt(rsq);
     const romi = p.addrep, rrcs = p.bigr + p.bigd;
-    const romie = p.romiga, romib = p.romigb;
     const tmpFc = combFc(r, p);
     const tmpExp1 = libmExp(-p.rlm1 * r);
     const tmpExp2 = libmExp(-p.rlm2 * r);
@@ -959,6 +1124,14 @@ export class PairComb extends Pair {
         vrcs = fc2j * fc3j * romi * (50.0 * rslp4 - 30.0 * rslp2 + 4.50) / 8.0;
       }
     }
+    const cfqr = 0.50 * tmpFc * (1.0 + vrcs); // 0.5 b/c full atom loop
+    const cfqs = -0.50 * tmpFc * bij;
+    return [cfqr * tmpExp1, cfqs * tmpExp2];
+  }
+
+  /** The charge parts of qfo_short: rep = cfqr exp(-rlm1 r) and att = cfqs exp(-rlm2 r) from qfoShortGeom. */
+  protected qfoShortCharge(p: CombParam, iq: number, jq: number, rep: number, att: number): { fqij: number; fqjj: number } {
+    const romie = p.romiga, romib = p.romigb;
     const Di = combDi(p, iq), Dj = combDj(p, jq);
     const Asi = p.biga1 * libmExp(p.lam11 * Di);
     const Asj = p.biga2 * libmExp(p.lam12 * Dj);
@@ -979,16 +1152,14 @@ export class PairComb extends Pair {
       : Bsj * p.lam22 * YYDjqp - p.bigb2 * libmExp(p.lam22 * Dj) * 10.0 * QOchj * p.bB2 * powint(Math.abs(QOchj), (10 - 2));
     const caj = Asi > 0.0 && Asj > 0.0 ? 1.0 / (2.0 * Math.sqrt(Asi * Asj)) * romie : 0.0;
     const cbj = Bsi > 0.0 && Bsj > 0.0 ? 1.0 / (2.0 * Math.sqrt(Bsi * Bsj)) * romib : 0.0;
-    const cfqr = 0.50 * tmpFc * (1.0 + vrcs); // 0.5 b/c full atom loop
-    const cfqs = -0.50 * tmpFc * bij;
     const ca1 = Asj * caj * YYAsiqp;
     const ca2 = Bsj * cbj * YYBsiqp;
     const ca3 = Asi * caj * YYAsjqp;
     const ca4 = Bsi * cbj * YYBsjqp;
-    let fqij = cfqr * tmpExp1 * ca1;
-    fqij += cfqs * tmpExp2 * ca2;
-    let fqjj = cfqr * tmpExp1 * ca3;
-    fqjj += cfqs * tmpExp2 * ca4;
+    let fqij = rep * ca1;
+    fqij += att * ca2;
+    let fqjj = rep * ca3;
+    fqjj += att * ca4;
     const out = this.qfOut;
     out.fqij = fqij;
     out.fqjj = fqjj;

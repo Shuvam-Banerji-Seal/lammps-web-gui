@@ -130,7 +130,13 @@ const directPair = (
   if (param.vdwType === 1 || param.vdwType === 3) {
     // shielding
     const powr_vdW1 = libmPow(r_ij, p_vdW1);
-    const powgi_vdW1 = libmPow(1.0 / twbp.gamma_w, p_vdW1);
+    // a constant of the type pair: computed once (the same arguments give the same bits)
+    if (twbp.powgiP !== p_vdW1 || twbp.powgiG !== twbp.gamma_w) {
+      twbp.powgi = libmPow(1.0 / twbp.gamma_w, p_vdW1);
+      twbp.powgiP = p_vdW1;
+      twbp.powgiG = twbp.gamma_w;
+    }
+    const powgi_vdW1 = twbp.powgi;
     const fn13 = libmPow(powr_vdW1 + powgi_vdW1, p_vdW1i);
     const exp1 = libmExp(twbp.alpha * (1.0 - fn13 / twbp.r_vdW));
     const exp2 = libmExp(0.5 * twbp.alpha * (1.0 - fn13 / twbp.r_vdW));

@@ -1,0 +1,27 @@
+# oracle: pair_style vashishta/table over several runs (change_box between them, a new pair_coeff mapping before the last)
+# oracle-potentials: InP.vashishta
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           metal
+boundary        p p p
+lattice         diamond 5.9
+region          box prism 0 1 0 1 0 1 0 0 0
+create_box      2 box
+create_atoms    1 box basis 5 2 basis 6 2 basis 7 2 basis 8 2
+mass            1 114.76
+mass            2 30.98
+displace_atoms  all random 0.1 0.1 0.1 48211 units box
+pair_style      vashishta/table 2000 0.2
+pair_coeff      * * InP.vashishta In P
+neighbor        1.0 nsq
+neigh_modify    once no every 1 delay 0 check yes
+thermo_style    custom step temp pe press vol
+thermo_modify   format float %.15g
+run             0
+change_box      all x scale 1.01 y scale 1.01 z scale 1.01 remap
+run             0
+change_box      all x scale 1.01 y scale 1.01 z scale 1.01 remap
+run             0
+pair_coeff      * * InP.vashishta P In
+run             0
+pair_coeff      * * InP.vashishta In P
+run             0

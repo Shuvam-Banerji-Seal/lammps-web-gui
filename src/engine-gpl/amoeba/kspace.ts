@@ -553,23 +553,28 @@ export const gatherUind = (c: Float64Array, n: number, fill: PmeFill, g: PmeGrid
   const wrap = (v: number, nf: number): number => ((v % nf) + nf) % nf;
   const th = fill.theta, ig = fill.igrid;
   const phi1 = new Float64Array(10 * n), phi2 = new Float64Array(10 * n), sum = new Float64Array(20 * n);
+  // scratch reused for every atom (zeroed where native starts its sums): the sums and the wrapped grid columns
+  const tuv = new Float64Array(20), tuv1 = new Float64Array(10), tuv2 = new Float64Array(10);
+  const a1 = new Float64Array(6), a2 = new Float64Array(6), tt = new Float64Array(10);
+  const wx = new Int32Array(order);
   for (let m = 0; m < n; m++) {
-    const tuv = new Float64Array(20);
-    const tuv1 = new Float64Array(10), tuv2 = new Float64Array(10);
+    tuv.fill(0); tuv1.fill(0); tuv2.fill(0);
+    for (let ib = 0; ib < order; ib++) wx[ib] = wrap(ig[3 * m] - nlpts + ib, nfft1);
     let kz = ig[3 * m + 2] - nlpts;
     for (let kb = 0; kb < order; kb++) {
       const v0 = th[2][m * order * 4 + kb * 4], v1 = th[2][m * order * 4 + kb * 4 + 1];
       const v2 = th[2][m * order * 4 + kb * 4 + 2], v3 = th[2][m * order * 4 + kb * 4 + 3];
       // channel 1 (uind): tu00_1, tu01_1, tu10_1, tu20_1, tu11_1, tu02_1; channel 2 (uinp): the same with _2; total: all ten
-      const a1 = new Float64Array(6), a2 = new Float64Array(6), tt = new Float64Array(10);
+      a1.fill(0); a2.fill(0); tt.fill(0);
+      const wz = wrap(kz, nfft3);
       let jy = ig[3 * m + 1] - nlpts;
       for (let jb = 0; jb < order; jb++) {
         const u0 = th[1][m * order * 4 + jb * 4], u1 = th[1][m * order * 4 + jb * 4 + 1];
         const u2 = th[1][m * order * 4 + jb * 4 + 2], u3 = th[1][m * order * 4 + jb * 4 + 3];
         let t0_1 = 0.0, t1_1 = 0.0, t2_1 = 0.0, t0_2 = 0.0, t1_2 = 0.0, t2_2 = 0.0, t3 = 0.0;
-        let ix = ig[3 * m] - nlpts;
+        const row = (wz * nfft2 + wrap(jy, nfft2)) * nfft1;
         for (let ib = 0; ib < order; ib++) {
-          const idx = (wrap(kz, nfft3) * nfft2 + wrap(jy, nfft2)) * nfft1 + wrap(ix, nfft1);
+          const idx = row + wx[ib];
           const tq1 = c[2 * idx], tq2 = c[2 * idx + 1];
           const b0 = th[0][m * order * 4 + ib * 4], b1 = th[0][m * order * 4 + ib * 4 + 1];
           const b2 = th[0][m * order * 4 + ib * 4 + 2], b3 = th[0][m * order * 4 + ib * 4 + 3];
@@ -580,7 +585,6 @@ export const gatherUind = (c: Float64Array, n: number, fill: PmeFill, g: PmeGrid
           t1_2 += tq2 * b1;
           t2_2 += tq2 * b2;
           t3 += (tq1 + tq2) * b3;
-          ix++;
         }
         // channel 1: tu00_1 tu10_1 tu01_1 tu20_1 tu11_1 tu02_1 = a1[0..5]; channel 2 likewise in a2
         a1[0] += t0_1 * u0;

@@ -105,6 +105,12 @@ export class PairVashishtaTable extends Pair {
   private on = new Uint8Array(0);
   private tabE = new Float64Array(0);
   private tabF = new Float64Array(0);
+  /**
+   * The ordered type pairs whose table rows hold the current parameters. As native LAMMPS does
+   * (src/MANYBODY/pair_vashishta_table.cpp at b332f28, setup_params): the tables are created with the parameters
+   * (pair_style, pair_coeff), not at every run's init, so a later run reuses them; settings, coeff and allocate clear it.
+   */
+  private built = new Set<number>();
 
   override settings(args: string[], ctx: StyleContext): void {
     if (args.length !== 2) {
@@ -120,16 +126,19 @@ export class PairVashishtaTable extends Pair {
     }
     this.nTable = n;
     this.cutInner = cin;
+    this.built.clear();
     this.base.settings([], ctx);
   }
 
   override allocate(ntypes: number): void {
     super.allocate(ntypes);
     this.base.allocate(ntypes);
+    this.built.clear();
   }
 
   override coeff(args: string[], ctx: StyleContext): void {
     this.base.coeff(args, ctx);
+    this.built.clear();
   }
 
   override initStyle(ctx: StyleContext): void {
@@ -147,8 +156,11 @@ export class PairVashishtaTable extends Pair {
     this.dr2 = new Float64Array(nt * nt);
     this.invDr2 = new Float64Array(nt * nt);
     this.on = new Uint8Array(nt * nt);
-    this.tabE = new Float64Array(nt * nt * this.nTable);
-    this.tabF = new Float64Array(nt * nt * this.nTable);
+    if (this.built.size === 0 || this.tabE.length !== nt * nt * this.nTable) {
+      this.built.clear();
+      this.tabE = new Float64Array(nt * nt * this.nTable);
+      this.tabF = new Float64Array(nt * nt * this.nTable);
+    }
   }
 
   /** Analytic shifted two-body energy of ordered type pair t at distance r (vashishta.ts phi2s). */
@@ -223,6 +235,8 @@ export class PairVashishtaTable extends Pair {
       this.dr2[t] = dr2;
       this.invDr2[t] = 1 / dr2;
       this.on[t] = 1;
+      if (this.built.has(t)) continue;
+      this.built.add(t);
       for (let k = 0; k < N; k++) {
         const s = k === N - 1 ? range * range : c2 + k * dr2;
         const r = Math.sqrt(s);

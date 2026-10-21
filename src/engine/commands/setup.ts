@@ -2907,6 +2907,75 @@ const changeBox: Handler = ({ sys }, a) => {
  * the limit of bonds per atom set by extra/bond/per/atom (native errors when it is exceeded;
  * create_box and read_data do not keep that value, so it is not enforced here).
  */
+/**
+ * create_bonds many: for the atom of rank u (atoms in ID order, `order`), the ranks v > u of the atoms that can lie
+ * within `rmax` of it under some periodic image, in increasing order. With rmax > 0 (orthogonal box) the atoms of the
+ * groups (`bits`) are binned into cells at least rmax wide (positions wrapped into periodic dimensions, the atoms' extent
+ * in the others), so a pair within rmax at any image is in two neighboring cells; with rmax = 0 every later rank is a
+ * candidate. The caller tests every image of each candidate, so the bonds and their order are those of the all-pairs loop.
+ */
+const cellCandidates = (s: SimState, order: number[], periodic: boolean[], rmax: number, L: number[], bits: number): ((u: number) => Iterable<number>) => {
+  const n = order.length;
+  if (!(rmax > 0)) {
+    return function* (u: number) { for (let v = u + 1; v < n; v++) yield v; };
+  }
+  const lo = [0, 0, 0], size = [1, 1, 1], nb = [1, 1, 1];
+  for (let d = 0; d < 3; d++) {
+    let mn = Infinity, mx = -Infinity;
+    if (periodic[d]) { mn = s.box.lo[d]; mx = mn + L[d]; } else {
+      for (let k = 0; k < n; k++) {
+        const i = order[k];
+        if (!(s.mask[i] & bits)) continue;
+        const v = s.x[3 * i + d];
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+      }
+      if (!(mx >= mn)) { mn = 0; mx = 0; }
+    }
+    const ext = mx - mn;
+    // a cell a little wider than rmax, so that rounding in the cell index cannot put two atoms rmax apart two cells apart
+    nb[d] = Math.max(1, Math.min(256, Math.floor(ext / (rmax * (1 + 1e-9)))));
+    lo[d] = mn;
+    size[d] = ext > 0 ? ext / nb[d] : 1;
+  }
+  const cellOf = (i: number, d: number): number => {
+    let v = s.x[3 * i + d] - lo[d];
+    if (periodic[d]) { v %= L[d]; if (v < 0) v += L[d]; }
+    return Math.min(nb[d] - 1, Math.max(0, Math.floor(v / size[d])));
+  };
+  const cells = new Map<number, number[]>();
+  const key = (cx: number, cy: number, cz: number): number => (cz * nb[1] + cy) * nb[0] + cx;
+  const cell = new Int32Array(3 * n);
+  for (let k = 0; k < n; k++) {
+    const i = order[k];
+    if (!(s.mask[i] & bits)) continue;
+    for (let d = 0; d < 3; d++) cell[3 * k + d] = cellOf(i, d);
+    const c = key(cell[3 * k], cell[3 * k + 1], cell[3 * k + 2]);
+    let list = cells.get(c);
+    if (!list) cells.set(c, (list = []));
+    list.push(k);
+  }
+  // the distinct neighboring cell coordinates of c along dimension d (periodic dimensions wrap)
+  const around = (c: number, d: number): number[] => {
+    const out: number[] = [];
+    for (let o = -1; o <= 1; o++) {
+      let w = c + o;
+      if (periodic[d]) w = ((w % nb[d]) + nb[d]) % nb[d];
+      else if (w < 0 || w >= nb[d]) continue;
+      if (!out.includes(w)) out.push(w);
+    }
+    return out;
+  };
+  return (u: number) => {
+    const out: number[] = [];
+    if (!(s.mask[order[u]] & bits)) return out;
+    for (const cz of around(cell[3 * u + 2], 2)) for (const cy of around(cell[3 * u + 1], 1)) for (const cx of around(cell[3 * u], 0)) {
+      for (const v of cells.get(key(cx, cy, cz)) ?? []) if (v > u) out.push(v);
+    }
+    return out.sort((a, b) => a - b);
+  };
+};
+
 const createBondsMany = (sys: System, a: string[]): void => {
   const s = sys.state;
   if (a.length !== 6) throw new StyleError('usage: create_bonds many group1 group2 btype rmin rmax (create_bonds many takes no keywords)');
@@ -2957,12 +3026,19 @@ const createBondsMany = (sys: System, a: string[]): void => {
   const lj = ff.special.lj;
   const order = Array.from({ length: s.n }, (_, i) => i).sort((p, q) => s.id[p] - s.id[q]);
   const newBonds: [number, number][] = [];
+  const minimumImage = (ex: number, ey: number, ez: number): boolean =>
+    !((g.periodic[0] && Math.abs(ex) > 0.5 * L[0]) || (g.periodic[1] && Math.abs(ey) > 0.5 * L[1]) || (g.periodic[2] && Math.abs(ez) > 0.5 * L[2]));
+  const range = (periodic: boolean, base: number, len: number): [number, number] =>
+    (periodic ? [Math.ceil((-rmax - base) / len), Math.floor((rmax - base) / len)] : [0, 0]);
+  // the later atoms (by ID) that can lie within rmax of the atom of rank u, in ID order: every atom for a triclinic box,
+  // else the atoms of the 27 neighboring cells of a grid whose cells are at least rmax wide (periodic dimensions wrap)
+  const candidates = cellCandidates(s, order, per, g.triclinic ? 0 : rmax, L, bit1 | bit2);
   for (let u = 0; u < order.length; u++) {
     const ia = order[u];
     const ma = s.mask[ia];
     const inA1 = (ma & bit1) !== 0, inA2 = (ma & bit2) !== 0;
     if (!inA1 && !inA2) continue;
-    for (let v = u + 1; v < order.length; v++) {
+    for (const v of candidates(u)) {
       const ib = order[v];
       const mb = s.mask[ib];
       if (!((inA1 && (mb & bit2) !== 0) || (inA2 && (mb & bit1) !== 0))) continue;
@@ -2973,12 +3049,8 @@ const createBondsMany = (sys: System, a: string[]): void => {
       // other images as plain neighbors
       const h = hops.get(s.id[ia])?.get(s.id[ib]);
       const special = h !== undefined && lj[h - 1] === 0;
-      const minimumImage = (ex: number, ey: number, ez: number): boolean =>
-        !((g.periodic[0] && Math.abs(ex) > 0.5 * L[0]) || (g.periodic[1] && Math.abs(ey) > 0.5 * L[1]) || (g.periodic[2] && Math.abs(ez) > 0.5 * L[2]));
       const dx = s.x[3 * ib] - s.x[3 * ia], dy = s.x[3 * ib + 1] - s.x[3 * ia + 1], dz = s.x[3 * ib + 2] - s.x[3 * ia + 2];
       // the images within rmax: z first, then y (shifted by the yz tilt), then x (shifted by the xy and xz tilts)
-      const range = (periodic: boolean, base: number, len: number): [number, number] =>
-        (periodic ? [Math.ceil((-rmax - base) / len), Math.floor((rmax - base) / len)] : [0, 0]);
       const [kzlo, kzhi] = range(per[2], dz, L[2]);
       for (let kz = kzlo; kz <= kzhi; kz++) {
         const ez = dz + (per[2] ? kz * L[2] : 0);

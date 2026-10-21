@@ -93,19 +93,22 @@ export const atmTriple = (p: ArrayLike<number>, nu: number, grad: Float64Array |
     // dE/dv = nu [ -3 W^-5/2 N v - 3 d_pq (p d_qv + q d_vp) W^-5/2 + 15 stu N v W^-7/2 ]
     // with N = |p|^2 |q|^2 (the two other edges), p, q the other edges, d_pq the dot of p and q.
     // edge vectors v (a, b, c) with the other two edges p, q, d_pq = p.q, d_vp = v.p, d_qv = q.v
-    const edgeGrad = (v: number[], pp: number[], qq: number[], dpq: number, dvp: number, dqv: number, N: number): number[] =>
-      [0, 1, 2].map((k) => nu * (
-        -3 * W52 * N * v[k]
-        - 3 * dpq * (pp[k] * dqv + qq[k] * dvp) * W52
-        + 15 * stu * N * v[k] * W72
-      ));
-    const gA = edgeGrad([ax, ay, az], [bx, by, bz], [cx, cy, cz], t, s, u, B * C);
-    const gB = edgeGrad([bx, by, bz], [cx, cy, cz], [ax, ay, az], u, t, s, C * A);
-    const gC = edgeGrad([cx, cy, cz], [ax, ay, az], [bx, by, bz], s, u, t, A * B);
+    // one component of the gradient of edge v (component vk) with the other edges' components pk, qk
+    const edgeGrad = (vk: number, pk: number, qk: number, dpq: number, dvp: number, dqv: number, N: number): number =>
+      nu * (
+        -3 * W52 * N * vk
+        - 3 * dpq * (pk * dqv + qk * dvp) * W52
+        + 15 * stu * N * vk * W72
+      );
+    const NA = B * C, NB = C * A, NC = A * B;
+    const av = [ax, ay, az], bv = [bx, by, bz], cv = [cx, cy, cz];
     for (let k = 0; k < 3; k++) {
-      grad[k] = -gA[k] + gC[k];       // dE/dx1 (a = x2 - x1, c = x1 - x3)
-      grad[3 + k] = gA[k] - gB[k];    // dE/dx2 (b = x3 - x2)
-      grad[6 + k] = gB[k] - gC[k];    // dE/dx3
+      const gA = edgeGrad(av[k], bv[k], cv[k], t, s, u, NA);
+      const gB = edgeGrad(bv[k], cv[k], av[k], u, t, s, NB);
+      const gC = edgeGrad(cv[k], av[k], bv[k], s, u, t, NC);
+      grad[k] = -gA + gC;       // dE/dx1 (a = x2 - x1, c = x1 - x3)
+      grad[3 + k] = gA - gB;    // dE/dx2 (b = x3 - x2)
+      grad[6 + k] = gB - gC;    // dE/dx3
     }
   }
   return E;
@@ -263,8 +266,12 @@ export class PairATM extends Pair {
       for (let p1 = 0; p1 < m; p1++) {
         const j = gIdx[p1];
         const tj = type[j];
+        // each periodic triplet is counted once: from the member with the smallest (owner, image offset) key; the
+        // center is an owned atom with offset 0. Tested first, before the distances: the triplets kept are the same.
+        if (!keyLess(i, owner[j], gim, 3 * j)) continue;
         for (let p2 = p1 + 1; p2 < m; p2++) {
           const k = gIdx[p2];
+          if (!keyLess(i, owner[k], gim, 3 * k)) continue;
           const tk = type[k];
           // edge j-k: both positions are images in the same unwrapped frame
           const ex = x[3 * k] - x[3 * j], ey = x[3 * k + 1] - x[3 * j + 1], ez = x[3 * k + 2] - x[3 * j + 2];
@@ -274,9 +281,6 @@ export class PairATM extends Pair {
           if (rij * rik * rjk >= cubeT) continue;
           const val = nu[(ti * nt + tj) * nt + tk];
           if (val === 0) continue;
-          // each periodic triplet is counted once: from the member with the smallest
-          // (owner, image offset) key; the center is an owned atom with offset 0
-          if (!(keyLess(i, owner[j], gim, 3 * j) && keyLess(i, owner[k], gim, 3 * k))) continue;
           p[0] = x[3 * i]; p[1] = x[3 * i + 1]; p[2] = x[3 * i + 2];
           p[3] = x[3 * j]; p[4] = x[3 * j + 1]; p[5] = x[3 * j + 2];
           p[6] = x[3 * k]; p[7] = x[3 * k + 1]; p[8] = x[3 * k + 2];

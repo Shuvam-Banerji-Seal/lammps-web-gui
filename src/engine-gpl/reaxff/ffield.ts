@@ -35,6 +35,13 @@ export interface TwoBody {
   lgcij: number; lgre: number;
   gamma: number;
   v13cor: number; ovc: number;
+  /**
+   * pow(1/gamma_w, p_vdW1) for the p_vdW1 in `powgiP` and the gamma_w in `powgiG` (nonbonded.ts directPair: the same
+   * for every pair of the types; NaN until the first use).
+   */
+  powgi: number;
+  powgiP: number;
+  powgiG: number;
 }
 
 export interface ThreeBodyPrm {
@@ -87,7 +94,7 @@ const newTwo = (): TwoBody => ({
   p_bo1: 0, p_bo2: 0, p_bo3: 0, p_bo4: 0, p_bo5: 0, p_bo6: 0, r_s: 0, r_p: 0, r_pp: 0,
   p_boc3: 0, p_boc4: 0, p_boc5: 0, p_be1: 0, p_be2: 0, De_s: 0, De_p: 0, De_pp: 0, p_ovun1: 0,
   D: 0, alpha: 0, r_vdW: 0, gamma_w: 0, rcore: 0, ecore: 0, acore: 0, lgcij: 0, lgre: 0,
-  gamma: 0, v13cor: 0, ovc: 0,
+  gamma: 0, v13cor: 0, ovc: 0, powgi: NaN, powgiP: NaN, powgiG: NaN,
 });
 
 const newThree = (): ThreeBodyPrm => ({ theta_00: 0, p_val1: 0, p_val2: 0, p_val4: 0, p_val7: 0, p_pen1: 0, p_coa1: 0 });

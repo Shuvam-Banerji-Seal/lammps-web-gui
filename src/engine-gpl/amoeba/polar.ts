@@ -287,16 +287,15 @@ const mutualField = (
     const i = a.pi[p], j = a.pj[p];
     const I = a.own[i], J = a.own[j];
     const t = 6 * q;
-    const T = (v: Float64Array, k: number, m: number): number => (m === 0
-      ? tdip[t] * v[3 * k] + tdip[t + 1] * v[3 * k + 1] + tdip[t + 2] * v[3 * k + 2]
-      : m === 1
-        ? tdip[t + 1] * v[3 * k] + tdip[t + 3] * v[3 * k + 1] + tdip[t + 4] * v[3 * k + 2]
-        : tdip[t + 2] * v[3 * k] + tdip[t + 4] * v[3 * k + 1] + tdip[t + 5] * v[3 * k + 2]);
+    // row m of the symmetric 3x3 tensor (xx xy xz yy yz zz) times the other atom's dipole, in the order m = 0, 1, 2
     for (let m = 0; m < 3; m++) {
-      field[3 * I + m] += T(uind, J, m);
-      field[3 * J + m] += T(uind, I, m);
-      fieldp[3 * I + m] += T(uinp, J, m);
-      fieldp[3 * J + m] += T(uinp, I, m);
+      const c0 = tdip[t + (m === 0 ? 0 : m === 1 ? 1 : 2)];
+      const c1 = tdip[t + (m === 0 ? 1 : m === 1 ? 3 : 4)];
+      const c2 = tdip[t + (m === 0 ? 2 : m === 1 ? 4 : 5)];
+      field[3 * I + m] += c0 * uind[3 * J] + c1 * uind[3 * J + 1] + c2 * uind[3 * J + 2];
+      field[3 * J + m] += c0 * uind[3 * I] + c1 * uind[3 * I + 1] + c2 * uind[3 * I + 2];
+      fieldp[3 * I + m] += c0 * uinp[3 * J] + c1 * uinp[3 * J + 1] + c2 * uinp[3 * J + 2];
+      fieldp[3 * J + m] += c0 * uinp[3 * I] + c1 * uinp[3 * I + 1] + c2 * uinp[3 * I + 2];
     }
   }
   // reciprocal-space mutual field (ufield0c: umutual1 after umutual2b)

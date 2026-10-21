@@ -158,7 +158,11 @@ interface Params {
 
 /** Matrix terms of qeq/point and qeq/shielded (see matrixTerms). */
 interface MatrixTerms {
-  pairs: { a: number; b: number; h: number }[];
+  /** The pair terms in visit order: rows a and b and the value h (the first `npairs` entries). */
+  pairA: Int32Array;
+  pairB: Int32Array;
+  pairH: Float64Array;
+  npairs: number;
   selfDiag: Float64Array;
   fixedTerm: Float64Array;
 }
@@ -701,47 +705,70 @@ export class FixQeq extends Fix {
           for (let nz = -nmax[2]; nz <= nmax[2]; nz++)
             triShifts.push([nx * ax[0] + ny * bx[0] + nz * cx[0], nx * ax[1] + ny * bx[1] + nz * cx[1], nx * ax[2] + ny * bx[2] + nz * cx[2]]);
     }
-    const pairs: { a: number; b: number; h: number }[] = [];
+    let pairA = new Int32Array(1024), pairB = new Int32Array(1024), pairH = new Float64Array(1024);
+    let npairs = 0;
     const selfDiag = new Float64Array(ng);
     const fixedTerm = new Float64Array(ng);
     const dv = [0, 0, 0];
-    const range = (dd: number, lo: number[], hi: number[]): void => {
-      if (!geom.periodic[dd]) { lo[dd] = 0; hi[dd] = 0; return; }
-      lo[dd] = Math.floor((dv[dd] - rc) / Ld[dd]);
-      hi[dd] = Math.ceil((dv[dd] + rc) / Ld[dd]);
-    };
     const lo = [0, 0, 0], hi = [0, 0, 0];
+    const x = s.x;
+    // one image of the pair (i, v) at separation r2 (r2 > 0 and within the cutoff): its term
+    const add = (a: number, i: number, v: number, vg: boolean, r2: number): void => {
+      const f = this.interaction(s, p, i, v, Math.sqrt(r2), shielded);
+      if (!vg) { fixedTerm[a] += 0.5 * f * s.q[v]; return; }
+      if (v === i) { selfDiag[a] += f; return; }
+      if (npairs === pairA.length) {
+        const m = 2 * npairs;
+        const na = new Int32Array(m), nb = new Int32Array(m), nh = new Float64Array(m);
+        na.set(pairA); nb.set(pairB); nh.set(pairH);
+        pairA = na; pairB = nb; pairH = nh;
+      }
+      pairA[npairs] = a; pairB[npairs] = row[v]; pairH[npairs] = f;
+      npairs++;
+    };
     for (let a = 0; a < ng; a++) {
       const i = idx[a];
       for (let v = 0; v < s.n; v++) {
         const vg = (s.mask[v] & bit) !== 0;
         if (vg && row[v] < a) continue; // a group pair is one term: counted from its lower row
-        dv[0] = s.x[3 * i] - s.x[3 * v];
-        dv[1] = s.x[3 * i + 1] - s.x[3 * v + 1];
-        dv[2] = s.x[3 * i + 2] - s.x[3 * v + 2];
-        const visit = (dx: number, dy: number, dz: number): void => {
-          const r2 = dx * dx + dy * dy + dz * dz;
-          if (!(r2 > 0) || r2 > cut2) return;
-          const f = this.interaction(s, p, i, v, Math.sqrt(r2), shielded);
-          if (vg) {
-            if (v === i) selfDiag[a] += f;
-            else pairs.push({ a, b: row[v], h: f });
-          } else fixedTerm[a] += 0.5 * f * s.q[v];
-        };
+        dv[0] = x[3 * i] - x[3 * v];
+        dv[1] = x[3 * i + 1] - x[3 * v + 1];
+        dv[2] = x[3 * i + 2] - x[3 * v + 2];
         if (ortho) {
-          range(0, lo, hi); range(1, lo, hi); range(2, lo, hi);
-          for (let nx = lo[0]; nx <= hi[0]; nx++)
-            for (let ny = lo[1]; ny <= hi[1]; ny++)
+          for (let dd = 0; dd < 3; dd++) {
+            if (!geom.periodic[dd]) { lo[dd] = 0; hi[dd] = 0; continue; }
+            lo[dd] = Math.floor((dv[dd] - rc) / Ld[dd]);
+            hi[dd] = Math.ceil((dv[dd] + rc) / Ld[dd]);
+          }
+          // the images in x, y, z order; an image whose partial sum of squares is already past the cutoff is past it in
+          // full (the sum dx*dx + dy*dy + dz*dz only grows), so it is skipped before the inner loops
+          for (let nx = lo[0]; nx <= hi[0]; nx++) {
+            const dx = dv[0] - nx * Ld[0];
+            const dx2 = dx * dx;
+            if (dx2 > cut2) continue;
+            for (let ny = lo[1]; ny <= hi[1]; ny++) {
+              const dy = dv[1] - ny * Ld[1];
+              const dxy = dx2 + dy * dy;
+              if (dxy > cut2) continue;
               for (let nz = lo[2]; nz <= hi[2]; nz++) {
-                const dx = dv[0] - nx * Ld[0], dy = dv[1] - ny * Ld[1], dz = dv[2] - nz * Ld[2];
-                visit(dx, dy, dz);
+                const dz = dv[2] - nz * Ld[2];
+                const r2 = dxy + dz * dz;
+                if (!(r2 > 0) || r2 > cut2) continue;
+                add(a, i, v, vg, r2);
               }
+            }
+          }
         } else {
-          for (const sh of triShifts) visit(dv[0] - sh[0], dv[1] - sh[1], dv[2] - sh[2]);
+          for (const sh of triShifts) {
+            const dx = dv[0] - sh[0], dy = dv[1] - sh[1], dz = dv[2] - sh[2];
+            const r2 = dx * dx + dy * dy + dz * dz;
+            if (!(r2 > 0) || r2 > cut2) continue;
+            add(a, i, v, vg, r2);
+          }
         }
       }
     }
-    return { pairs, selfDiag, fixedTerm };
+    return { pairA, pairB, pairH, npairs, selfDiag, fixedTerm };
   }
 
   /**
@@ -758,9 +785,9 @@ export class FixQeq extends Fix {
     }
     const sys: QeqLinearSystem = {
       ng, diag, precond, bS, fixed: mt.fixedTerm,
-      pairA: Int32Array.from(mt.pairs, (e) => e.a),
-      pairB: Int32Array.from(mt.pairs, (e) => e.b),
-      pairH: Float64Array.from(mt.pairs, (e) => e.h),
+      pairA: mt.pairA.subarray(0, mt.npairs),
+      pairB: mt.pairB.subarray(0, mt.npairs),
+      pairH: mt.pairH.subarray(0, mt.npairs),
     };
     return this.runSolver(s, idx, sys);
   }

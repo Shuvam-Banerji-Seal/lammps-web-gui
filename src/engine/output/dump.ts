@@ -43,6 +43,17 @@ export const compressExtension = (file: string): string => {
  */
 
 const INT_COLS = new Set(['id', 'mol', 'proc', 'procp1', 'type', 'ix', 'iy', 'iz']);
+/** The dump styles of native's DumpCustom family (custom, cfg, image, yaml and their compressed forms): dump_modify region and thresh. */
+const THRESH_STYLES = new Set<string>(['custom', 'cfg', 'image', 'yaml']);
+/** The per-atom attributes a dump_modify thresh can test (src/dump_custom.cpp at b332f28, modify_param "thresh"). */
+const THRESH_ATTRS = new Set([
+  'id', 'mol', 'proc', 'procp1', 'type', 'mass', 'x', 'y', 'z', 'xs', 'ys', 'zs', 'xu', 'yu', 'zu', 'xsu', 'ysu', 'zsu',
+  'ix', 'iy', 'iz', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'q', 'mux', 'muy', 'muz', 'mu', 'radius', 'diameter',
+  'omegax', 'omegay', 'omegaz', 'angmomx', 'angmomy', 'angmomz', 'tqx', 'tqy', 'tqz',
+]);
+/** ... or a compute, fix, variable, or custom per-atom vector/array reference (ArgInfo COMPUTE FIX VARIABLE DNAME INAME). */
+const THRESH_REF = /^(?:[cfv]|[di]2?)_[A-Za-z0-9_]+(?:\[\d+\])?$/;
+
 const ATOM_COLS = new Set([
   'id', 'mol', 'proc', 'procp1', 'type', 'element', 'mass', 'x', 'y', 'z', 'xs', 'ys', 'zs', 'xu', 'yu', 'zu',
   'xsu', 'ysu', 'zsu', 'ix', 'iy', 'iz', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'q',
@@ -483,11 +494,23 @@ export class Dump {
           k += 3;
           break;
         }
-        case 'region': this.region = v === 'none' ? null : (this.sys.region(v ?? ''), v!); k += 2; break;
+        case 'region': {
+          // As native LAMMPS does (src/dump_custom.cpp at b332f28, modify_param): region and thresh belong to the custom
+          // dump family; the other styles reach Dump::modify_params, which does not know them
+          if (!THRESH_STYLES.has(this.style)) throw new StyleError(`Unknown dump_modify keyword: ${key}`);
+          if (v === undefined) throw new StyleError('Illegal dump_modify region command: missing argument(s)');
+          if (v !== 'none' && !this.sys.regions.has(v)) throw new StyleError(`Dump_modify region ${v} does not exist`);
+          this.region = v === 'none' ? null : v;
+          k += 2;
+          break;
+        }
         case 'thresh': {
+          if (!THRESH_STYLES.has(this.style)) throw new StyleError(`Unknown dump_modify keyword: ${key}`);
           if (v === 'none') { this.thresh = []; k += 2; break; }
+          if (args.length < k + 4) throw new StyleError('Illegal dump_modify thresh command: missing argument(s)');
+          if (!THRESH_ATTRS.has(v!) && !THRESH_REF.test(v!)) throw new StyleError(`Invalid dump_modify thresh attribute: ${v}`);
           const op = args[k + 2], val = args[k + 3];
-          if (!['<', '<=', '>', '>=', '==', '!=', '|^'].includes(op ?? '')) throw new StyleError(`dump_modify thresh: invalid operator '${op ?? ''}'`);
+          if (!['<', '<=', '>', '>=', '==', '!=', '|^'].includes(op ?? '')) throw new StyleError('Invalid dump_modify thresh operator');
           this.thresh.push({ col: v!, op: op!, value: val === 'LAST' ? 'LAST' : numArg(val, key) });
           k += 4;
           break;

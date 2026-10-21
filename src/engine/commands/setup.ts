@@ -26,6 +26,7 @@ import { gzipText } from '../gzip';
 import { ComputeTemp } from '../compute/temp';
 import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
+import type { Fix } from '../fix/fix';
 import { bitOfIndex, type DynamicGroup } from '../group';
 import { parseBalanceWeight, applyBalanceWeights, balanceNeighFactor, balanceUsesNeigh, balanceDump, type BalanceWeightAction } from '../fix/balance';
 import { parseMoleculeFile, geometricCenter, orientationMatrix, templateDipoles, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
@@ -2121,7 +2122,28 @@ const velocity: Handler = ({ sys }, a) => {
   const bias = kw.has('bias') ? yesno(kw.get('bias')![0], 'bias') : false;
   const loop = kw.get('loop')?.[0] ?? 'all';
   if (!['all', 'local', 'geom'].includes(loop)) throw new StyleError('velocity loop must be all, local or geom');
-  if (kw.has('rigid')) throw new StyleError('velocity rigid is not supported by the browser engine');
+  // velocity.html: "If the rigid option is specified, then the zeroing is performed on individual rigid bodies, as
+  // defined by the fix rigid or fix rigid/small commands." As native LAMMPS does (src/velocity.cpp at b332f28): the
+  // fix must exist ("Fix ID {} for velocity does not exist"); only the zero style uses it
+  let rigidFix: Fix | null = null;
+  if (kw.has('rigid')) {
+    const fid = kw.get('rigid')![0];
+    rigidFix = sys.fixes.find((f) => f.id === fid) ?? null;
+    if (!rigidFix) throw new StyleError(`Fix ID ${fid} for velocity does not exist`);
+  }
+  // Modify::check_rigid_group_overlap: a warning when the group has atoms of set-up rigid bodies (the first rigid fix
+  // whose bodies are not set up yet ends the check), unless the zeroing is done on the bodies themselves
+  if (!(style === 'zero' && rigidFix)) {
+    let overlap = false;
+    for (const f of sys.fixes) {
+      if (!/^rigid/.test(f.style)) continue;
+      const ids = f.bodyAtomIds?.() ?? null;
+      if (!ids) break;
+      for (let i = 0; i < s.n && !overlap; i++) if ((s.mask[i] & bit) && ids.has(s.id[i])) overlap = true;
+      if (overlap) break;
+    }
+    if (overlap) sys.warn('Changing velocities of atoms in rigid bodies. This has no effect unless rigid bodies are rebuilt');
+  }
   const unitsW = kw.get('units')?.[0] ?? 'lattice';
   for (let t = 1; t <= s.ntypes; t++) {
     if (!s.rmass && !(s.massByType[t] > 0)) throw new StyleError(`velocity: the mass of atom type ${t} is not set`);
@@ -2287,9 +2309,16 @@ const velocity: Handler = ({ sys }, a) => {
       break;
     }
     case 'zero':
-      if (args[0] === 'linear') zeroMomentum(sys, members);
-      else if (args[0] === 'angular') zeroRotation(sys, members);
-      else throw new StyleError('usage: velocity group zero linear|angular');
+      if (args[0] !== 'linear' && args[0] !== 'angular') throw new StyleError('usage: velocity group zero linear|angular');
+      if (rigidFix) {
+        // zero_momentum / zero_rotation of the rigid fix (the /small styles set up their bodies first)
+        if (!/^rigid/.test(rigidFix.style) || !rigidFix.zeroMomentum || !rigidFix.zeroRotation) {
+          throw new StyleError(`Velocity rigid used with non-rigid fix-ID ${rigidFix.id}`);
+        }
+        if (args[0] === 'linear') rigidFix.zeroMomentum();
+        else rigidFix.zeroRotation();
+      } else if (args[0] === 'linear') zeroMomentum(sys, members);
+      else zeroRotation(sys, members);
       break;
   }
   // velocity.html says sum "is used by all styles, except zero", but native's scale (measured with native LAMMPS,

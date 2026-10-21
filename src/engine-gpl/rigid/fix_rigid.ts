@@ -683,6 +683,43 @@ export abstract class FixRigidBase extends Fix {
     for (let k = 0; k < this.vAtom.length && k < out.length; k++) out[k] += this.vAtom[k];
   }
 
+  /**
+   * zero_momentum and zero_rotation (velocity ... zero linear|angular rigid fix-ID): the bodies are built from the atoms
+   * if no run has built them (setup_bodies_early; the /small styles rebuild them with reinit or remap their centres
+   * as setup_pre_neighbor does), vcm (or angmom and omega) set to 0, and the atom velocities follow (set_v, no virial).
+   */
+  zeroMomentum(): void {
+    this.bodiesEarly();
+    for (const b of this.bodies) b.vcm = [0, 0, 0];
+    this.setXV(false, 0);
+  }
+
+  zeroRotation(): void {
+    this.bodiesEarly();
+    for (const b of this.bodies) {
+      b.angmom = [0, 0, 0];
+      b.omega = [0, 0, 0];
+    }
+    this.setXV(false, 0);
+  }
+
+  /** The IDs of the atoms in bodies once the bodies are set up, else null (FixRigid::extract("body")). */
+  bodyAtomIds(): Set<number> | null {
+    return this.setupFlag ? new Set(this.bodies.flatMap((b) => b.atoms)) : null;
+  }
+
+  private bodiesEarly(): void {
+    if (this.small) {
+      if (this.reinitFlag || !this.setupFlag) this.buildBodies();
+      else this.preNeighbor();
+      this.setupFlag = true;
+    } else if (!this.setupFlag) {
+      this.buildBodies();
+      this.setupFlag = true;
+      for (const b of this.bodies) angmomToOmega(b.angmom, b.ex, b.ey, b.ez, b.inertia, b.omega);
+    }
+  }
+
   /** pre_neighbor: remap each body's centre of mass into the periodic box (domain->remap with imagebody). */
   preNeighbor(): void {
     for (const b of this.bodies) this.remapBody(b);

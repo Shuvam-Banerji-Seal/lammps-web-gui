@@ -1,0 +1,19 @@
+# image_trans fixture: native b332f28 (/home/roy/.local/bin/lmp), dump image PPM, run 0.
+units lj
+atom_style bond
+boundary p p p
+lattice sc 1.0
+region box block 0 4 0 4 0 4
+create_box 2 box bond/types 1 extra/bond/per/atom 6
+create_atoms 1 box
+group third id 1:64:3
+set group third type 2
+mass * 1.0
+pair_style lj/cut 1.5
+pair_coeff * * 1.0 1.0
+bond_style harmonic
+bond_coeff 1 100.0 1.0
+create_bonds many all all 1 0.9 1.1
+dump d all image 1 img.*.ppm type type size 128 128 view 60 30 box yes 0.02 subbox yes 0.06 bond atom 0.2
+dump_modify d pad 0 adiam * 0.4 subboxtrans 0.4 boxtrans 0.7
+run 0

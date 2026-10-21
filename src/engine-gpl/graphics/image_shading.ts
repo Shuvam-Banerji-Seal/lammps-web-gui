@@ -17,6 +17,7 @@ import { postProcess } from './image_postprocess';
 import { drawCylinder, drawSphere } from './draw';
 import { drawArrowObj, drawAxes } from './axes';
 import { drawAutoBonds } from './autobond';
+import { chunkBinObjects } from './chunk_bins';
 import { color2rgb, defaultTypeColor, element2color, element2diam } from './colors';
 import type { ImageSpecular } from '../../engine/output/image_objects';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -231,6 +232,7 @@ export interface ImageShadingHook {
   defaultTypeColor: typeof defaultTypeColor;
   element2color: typeof element2color;
   element2diam: typeof element2diam;
+  chunkBinObjects: typeof chunkBinObjects;
 }
 
-export const imageShadingHook: ImageShadingHook = { shadeSurface, applySsao, postProcess, drawSphere, drawCylinder, drawAxes, drawArrow: drawArrowObj, drawAutoBonds, color2rgb, defaultTypeColor, element2color, element2diam };
+export const imageShadingHook: ImageShadingHook = { shadeSurface, applySsao, postProcess, drawSphere, drawCylinder, drawAxes, drawArrow: drawArrowObj, drawAutoBonds, color2rgb, defaultTypeColor, element2color, element2diam, chunkBinObjects };

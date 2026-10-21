@@ -185,6 +185,13 @@ export class ImageDump {
   private atomOn = true;
   private boxOn = true;
   private boxDiam = 0.02;
+  /** dump image subbox (on, diameter as a fraction of the shortest box length; native default off). */
+  private subboxOn = false;
+  private subboxDiam = 0;
+  /** dump_modify boxtrans, subboxtrans and axestrans: the opacities of the box, subbox and axes (native default 1). */
+  private boxOpacity = 1;
+  private subboxOpacity = 1;
+  private axesOpacity = 1;
   private adiamAll: number | null = null;
   private acolorByType = new Map<number, Col>();
   private adiamByType = new Map<number, number>();
@@ -290,7 +297,7 @@ export class ImageDump {
   private logical(w: string | undefined): boolean {
     if (w === 'yes' || w === 'on' || w === 'true' || w === '1') return true;
     if (w === 'no' || w === 'off' || w === 'false' || w === '0') return false;
-    throw new StyleError(`dump ${this.id}: expected boolean parameter instead of '${w ?? ''}' in dump image`);
+    throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' in input script or data file`);
   }
 
   /**
@@ -376,10 +383,20 @@ export class ImageDump {
           break;
         }
         case 'box': {
-          const v = a[k + 1];
-          if (v !== 'yes' && v !== 'no') throw new StyleError(`dump ${this.id}: dump image box must be yes or no`);
-          this.boxOn = v === 'yes';
+          // As native LAMMPS does (src/GRAPHICS/dump_image.cpp at b332f28): a logical, then a diameter of at least 0
+          this.boxOn = this.logical(a[k + 1]);
           this.boxDiam = this.num(a[k + 2], 'box');
+          if (this.boxDiam < 0) throw new StyleError(`Invalid dump image box diameter ${this.boxDiam}`);
+          k += 3;
+          break;
+        }
+        case 'subbox': {
+          // dump_image.html: "subbox values = yes/no diam"; native draws the processor sub-domain outline in the box
+          // colour, with a diameter as a fraction of the shortest box length like the box (dump_image.cpp at b332f28).
+          // The browser engine is one process, so the sub-domain is the whole box.
+          this.subboxOn = this.logical(a[k + 1]);
+          this.subboxDiam = this.num(a[k + 2], 'subbox');
+          if (this.subboxDiam < 0) throw new StyleError(`Invalid dump image subbox diameter ${this.subboxDiam}`);
           k += 3;
           break;
         }
@@ -614,10 +631,10 @@ export class ImageDump {
         }
         // ellipsoid draws ellipsoids (and superellipsoids, atom_style ellipsoid superellipsoid): no renderer here
         case 'grid':
-        case 'subbox': case 'persp':
           throw new StyleError(`dump ${this.id}: dump image keyword '${key}' is not supported by the browser engine`);
         default:
-          throw new StyleError(`dump ${this.id}: unknown dump image keyword '${key}'`);
+          // As native LAMMPS does (src/GRAPHICS/dump_image.cpp at b332f28): "Unknown dump image keyword {}"
+          throw new StyleError(`Unknown dump image keyword ${key}`);
       }
     }
   }
@@ -781,6 +798,27 @@ export class ImageDump {
         const { map, used } = ColorMap.parse(a.slice(k + 1), (c) => this.namedColor(c));
         this.bmap = map;
         return used + 1;
+      }
+      case 'boxtrans': case 'subboxtrans': case 'axestrans': {
+        // dump_modify boxtrans, subboxtrans, axestrans: the opacity of the box, subbox or axes outline. As native
+        // LAMMPS does (src/GRAPHICS/dump_image.cpp at b332f28, modify_param): a value outside 0..1 stops with
+        // "Invalid <keyword> opacity in dump_modify command"
+        const v = this.num(a[k + 1], key);
+        if (v < 0 || v > 1) throw new StyleError(`Invalid ${key} opacity in dump_modify command`);
+        if (key === 'boxtrans') this.boxOpacity = v;
+        else if (key === 'subboxtrans') this.subboxOpacity = v;
+        else this.axesOpacity = v;
+        return 2;
+      }
+      case 'ctrans': {
+        // dump_modify ctrans: "computeID transparency", the opacity of the objects of a dump image compute (native:
+        // "Illegal transparency {} for dump_modify ctrans", "Compute ID {} is not included in dump {}")
+        const v = this.num(a[k + 2], 'ctrans');
+        if (v < 0 || v > 1) throw new StyleError(`Illegal transparency ${a[k + 2]} for dump_modify ctrans`);
+        const objs = this.fixObjects.filter((x) => x.id === a[k + 1] && x.source === 'compute');
+        if (!objs.length) throw new StyleError(`Compute ID ${a[k + 1] ?? ''} is not included in dump ${this.id}`);
+        for (const f of objs) f.opacity = v;
+        return 3;
       }
       case 'gmap': case 'bitrate': case 'framerate':
         throw new StyleError(`dump ${this.id}: dump_modify keyword '${key}' is not supported for dump image by the browser engine`);
@@ -985,10 +1023,8 @@ export class ImageDump {
     const cmap = this.atomColorMap(colorVals, s);
     const diamVals = this.attr.diameter !== 'type' && this.attr.diameter !== 'element' ? this.attributeValues(this.attr.diameter, s) : null;
 
-    if (this.boxOn) this.drawBox(s, ctx, this.boxDiam);
-    if (this.bond) this.drawBonds(s, ctx, diamVals);
-    if (this.autobond) this.drawAutoBonds(s, ctx, this.autobond);
-
+    // the order of DumpImage::create_image (dump_image.cpp at b332f28): atoms, lines and triangles, ellipsoids, bodies,
+    // bonds, autobonds, compute and fix objects, regions, subbox, box, axes (transparent pieces blend in that order)
     if (this.atomOn) {
       for (let i = 0; i < s.n; i++) {
         if (!this.chosen[i]) continue;
@@ -1012,12 +1048,17 @@ export class ImageDump {
     if (this.lineOn || this.triOn) this.drawParticles(s, ctx, colorVals, cmap);
     if (this.ellipsoidOn) this.drawEllipsoids(s, ctx, colorVals, cmap);
     if (this.bodyOn) this.drawBodies(s, ctx, colorVals, cmap);
+    if (this.bond) this.drawBonds(s, ctx, diamVals);
+    if (this.autobond) this.drawAutoBonds(s, ctx, this.autobond);
     if (this.fixObjects.length) this.drawFixObjects(s, ctx);
     if (this.regions.length) this.drawRegions(s, ctx);
+    // one process: the subbox is the box (Domain sublo/subhi), drawn with its own diameter and opacity
+    if (this.subboxOn) this.drawBox(s, ctx, this.subboxDiam, this.subboxOpacity);
+    if (this.boxOn) this.drawBox(s, ctx, this.boxDiam, this.boxOpacity);
     if (this.axes) {
       // Image::draw_axes (GPL axes.ts) with the points dump_image.cpp sets up (axesPoints)
       const { axes, diameter } = this.axesPoints(s);
-      ctx.shading.drawAxes(frame, axes, diameter, 1, this.backcolor, this.fsaa, s.dimension === 2 ? 2 : 3);
+      ctx.shading.drawAxes(frame, axes, diameter, this.axesOpacity, this.backcolor, this.fsaa, s.dimension === 2 ? 2 : 3);
     }
     // Image::compute_SSAO runs on the finished image, before the fsaa reduction (Image::merge)
     if (this.ssao) ctx.shading.applySsao(frame, maxdel * 0.05 * this.ssaoInt, this.ssaoSamples > 0 ? this.ssaoSamples : Math.trunc(8 + 32 * this.ssaoInt), this.ssaoSeed);
@@ -1494,13 +1535,14 @@ export class ImageDump {
    * GPL drawCylinder. The corners follow Domain::lamda_box_corners (x changing fastest); an orthogonal box uses the
    * bounds themselves, a triclinic one lamda2x (x = h0 l0 + h5 l1 + h4 l2 + lo).
    */
-  private drawBox(s: SimState, ctx: DrawCtx, boxDiam: number): void {
+  private drawBox(s: SimState, ctx: DrawCtx, boxDiam: number, opacity: number): void {
     const b = s.box;
     const lens = [b.hi[0] - b.lo[0], b.hi[1] - b.lo[1], b.hi[2] - b.lo[2]];
     let diameter = Math.min(lens[0], lens[1]);
     if (s.dimension === 3) diameter = Math.min(diameter, lens[2]);
     diameter *= boxDiam;
-    if (!(diameter > 0)) return;
+    // Image::draw_box: "if ((diameter <= 0.0) || (opacity <= 0.0)) return"
+    if (!(diameter > 0) || !(opacity > 0)) return;
     const tri = b.tilt.some((t) => t !== 0);
     const corners: Vec3[] = [];
     for (let k = 0; k < 2; k++) for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) {
@@ -1513,7 +1555,7 @@ export class ImageDump {
     }
     // Image::draw_box: the edges between corners (index bit 0 = x, bit 1 = y, bit 2 = z)
     const edges: [number, number][] = [[0, 1], [2, 3], [0, 2], [1, 3], [0, 4], [1, 5], [2, 6], [3, 7], [4, 5], [6, 7], [4, 6], [5, 7]];
-    for (const [a, c] of edges) ctx.shading.drawCylinder(ctx.frame, corners[a], corners[c], this.boxcolor, diameter, 3, 1);
+    for (const [a, c] of edges) ctx.shading.drawCylinder(ctx.frame, corners[a], corners[c], this.boxcolor, diameter, 3, opacity);
   }
 
   /**

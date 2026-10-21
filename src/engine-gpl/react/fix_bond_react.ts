@@ -9,8 +9,10 @@
  * Scope of this port (everything else is a StyleError naming the keyword): react blocks with map files that
  * have InitiatorIDs, EdgeIDs, Equivalences, DeleteIDs, CreateIDs and Wildcards sections; keywords stabilization,
  * stabilize_steps, prob, rescale_charges, molecule (off/inter/intra), modify_create (fit with a fragment or all,
- * overlap), max_rxn and rate_limit with one reaction, reset_mol_ids yes/no, shuffle_seed (used only with
- * multi-reaction limits). Wildcard atoms take their bonded types from the type labels (inferBondType and the
+ * overlap), max_rxn and rate_limit (over one reaction or several: the overstep of a limit over several reactions
+ * is spread over them by std::shuffle with std::minstd_rand seeded with shuffle_seed at every step, as libstdc++ 11
+ * computes it, ./minstd.ts; shuffle_seed 0, the default, seeds it at random as native's std::random_device does),
+ * reset_mol_ids yes/no. Wildcard atoms take their bonded types from the type labels (inferBondType and the
  * other labelmap inferences in src/engine/labelmap.ts). The site fit of created atoms is superpose() (a port of
  * Superpose3D with the Jacobi eigen-solver). Constraints (distance, angle, dihedral, arrhenius, rmsd, custom with
  * rxnsum, rxnave and rxnbond, combined by their logic) and ChiralIDs are checked as check_constraints does. Nevery,
@@ -35,6 +37,7 @@ import { FixNVELimit } from '../../engine/fix/motion';
 import type { CustomProp, TopoList } from '../../engine/types';
 import type { FixFactory } from '../../engine/styles';
 import { RanMars } from '../random_mars';
+import { MinstdRand, shuffleMinstd } from './minstd';
 import { inferAngleType, inferBondType, inferDihedralType, inferImproperType } from '../../engine/labelmap';
 import { evaluateScalar } from '../../engine/formula';
 import { termRows } from '../../engine/compute/local';
@@ -1172,6 +1175,8 @@ export class FixBondReact extends Fix {
   private resetMolIds = true;
   private maxRxn: { names: string[]; ids: number[]; max: number }[] = [];
   private rateLimits: { names: string[]; ids: number[]; nlimit: number; nsteps: number; store: number[] }[] = [];
+  /** shuffle_seed: the seed of the overstep shuffle (0: a random seed at every step). */
+  private shuffleSeed = 0;
   private readonly lim: CustomProp;
   private readonly react: CustomProp;
   private readonly inst: CustomProp;
@@ -1241,8 +1246,9 @@ export class FixBondReact extends Fix {
         this.rateLimits.push({ names, ids: [], nlimit, nsteps, store: new Array(nsteps).fill(-1) });
         i = j + 2;
       } else if (key === 'shuffle_seed') {
-        // the seed drives the shuffled overstep, which is not ported (see the multi-reaction errors below)
-        if (!Number.isFinite(Number.parseInt(args[i + 1] ?? '', 10))) throw new StyleError('Illegal fix bond/react shuffle_seed');
+        if (args[i + 1] === undefined) throw new StyleError('Illegal fix bond/react command: missing argument(s) for shuffle_seed');
+        if (!/^[-+]?\d+$/.test(args[i + 1])) throw new StyleError(`Expected integer parameter instead of '${args[i + 1]}' in input script or data file`);
+        this.shuffleSeed = Number.parseInt(args[i + 1], 10);
         i += 2;
       } else {
         throw new StyleError(`fix bond/react ${key} is not supported by the browser engine`);
@@ -1620,13 +1626,25 @@ export class FixBondReact extends Fix {
     for (const m of kept) delta[m.rxn]++;
     if (!kept.length) return;
     const oversteps = this.rxns.map(() => 0);
+    // std::minstd_rand park_rng seeded at every call (std::random_device when shuffle_seed is 0)
+    const parkRng = new MinstdRand(this.shuffleSeed === 0 ? 1 + Math.floor(Math.random() * 2147483646) : this.shuffleSeed);
+    // a limit over several reactions: the overstep goes to the first entries of the shuffled list of the step's
+    // reactions (one entry per reaction instance)
+    const spread = (ids: number[], over: number): void => {
+      const list: number[] = [];
+      for (const id of ids) for (let j = 0; j < delta[id]; j++) list.push(id);
+      shuffleMinstd(list, parkRng);
+      const per = this.rxns.map(() => 0);
+      for (let k = 0; k < over; k++) per[list[k]]++;
+      for (const rxn of this.rxns) oversteps[rxn.ID] = Math.max(oversteps[rxn.ID], per[rxn.ID]);
+    };
     for (const ml of this.maxRxn) {
       let sum = 0, dsum = 0;
       for (const id of ml.ids) { sum += this.rxns[id].reactionCountTotal; dsum += delta[id]; }
       const over = sum + dsum - ml.max;
       if (over > 0) {
-        if (ml.ids.length !== 1) throw new StyleError('fix bond/react max_rxn with several reactions needs the shuffled overstep, which the browser engine does not support yet');
-        oversteps[ml.ids[0]] = Math.max(oversteps[ml.ids[0]], over);
+        if (ml.ids.length === 1) oversteps[ml.ids[0]] = Math.max(oversteps[ml.ids[0]], over);
+        else spread(ml.ids, over);
       }
     }
     for (const rl of this.rateLimits) {
@@ -1636,8 +1654,8 @@ export class FixBondReact extends Fix {
       for (const id of rl.ids) { sum += this.rxns[id].reactionCountTotal; dsum += delta[id]; }
       const over = sum + dsum - myCount - rl.nlimit;
       if (over > 0) {
-        if (rl.ids.length !== 1) throw new StyleError('fix bond/react rate_limit with several reactions needs the shuffled overstep, which the browser engine does not support yet');
-        oversteps[rl.ids[0]] = Math.max(oversteps[rl.ids[0]], over);
+        if (rl.ids.length === 1) oversteps[rl.ids[0]] = Math.max(oversteps[rl.ids[0]], over);
+        else spread(rl.ids, over);
       }
     }
     for (const rxn of this.rxns) {

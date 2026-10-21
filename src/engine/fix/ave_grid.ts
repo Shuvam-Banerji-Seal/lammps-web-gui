@@ -49,9 +49,17 @@ import { expandGridRefs, gridColumn, resolveGridRef, type GridRef } from '../gri
  * values if they are not available." (the running and window averages of count
  * are taken the same way; not measured).
  *
- * discard: "yes (the default), then the atom will be assigned to the closest grid
- * cell (lowest or highest) in that dimension. If discard is set to no the atom
- * will be ignored." Periodic dimensions wrap the atom position into the box.
+ * Binning: as native LAMMPS does (src/fix_ave_grid.cpp atom2grid at b332f28), the cell index along a dimension is
+ * int((x - boxlo) * N / prd + OFFSET) - OFFSET with OFFSET = 16384, in lamda coordinates (boxlo 0, prd 1) for a
+ * triclinic box. In a periodic dimension an atom just outside the box lands in a ghost cell, which is summed into its
+ * periodic image. discard: the keyword list says "yes = discard an atom outside grid in a non-periodic dimension"
+ * and "no = assign an atom outside the grid to the closest grid cell", and native does so (yes, the default, skips
+ * the atom; no puts it in the first or last cell); the paragraph that says the opposite is not followed.
+ *
+ * bias ID: "compute ID of a temperature compute that removes a velocity bias"; as native does, the bias is removed
+ * for the temp value only (remove_bias_all and restore_bias_all around its kinetic energies), with the compute's
+ * checks: "Could not find compute ID {} for temperature bias", "Bias compute ID {} does not calculate temperature"
+ * and "... does not calculate a velocity bias".
  *
  * Output access: "For access by other commands, the name of the single grid
  * produced by this fix is" grid. The per-grid data is read by dump grid as f_ID:grid:data (and f_ID:grid:count,
@@ -68,8 +76,6 @@ import { expandGridRefs, gridColumn, resolveGridRef, type GridRef } from '../gri
  * per-atom and per-grid values stops ("Fix ave/grid cannot operate on per-atom and per-grid values together"), and
  * so does a referenced grid of another size ("Fix ave/grid value grid sizes do not match").
  *
- * Not supported (StyleError): bias (the temperature bias needs bias computes), and triclinic boxes for per-atom
- * values.
  */
 
 type AttrName = 'vx' | 'vy' | 'vz' | 'fx' | 'fy' | 'fz' | 'mass';
@@ -82,6 +88,8 @@ type Column =
 
 const ATTRS: AttrName[] = ['vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'mass'];
 const KEYWORDS = new Set(['discard', 'norm', 'ave', 'bias', 'adof', 'cdof']);
+/** Keeps an atom just outside the box from rounding toward cell 0 (fix_ave_grid.cpp OFFSET). */
+const OFFSET = 16384;
 
 const parseInt1 = (w: string | undefined, what: string, min: number): number => {
   const v = parseNum(w, what);
@@ -128,6 +136,8 @@ export class FixAveGrid extends Fix {
   private lastStep = -1;
   /** The values are per-grid references (else per-atom values). */
   private modeGrid = false;
+  /** bias: the temperature compute whose velocity bias the temp value leaves out. */
+  private biasId: string | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -184,7 +194,11 @@ export class FixAveGrid extends Fix {
           k++;
         } else throw new StyleError(`${what}: ave must be one, running or window, got '${val}'`);
       } else if (key === 'bias') {
-        throw new StyleError(`${what}: keyword bias is not supported by the browser engine`);
+        const c = sys.computes.find((x) => x.id === val);
+        if (!c) throw new StyleError(`Could not find compute ID ${val} for temperature bias`);
+        if (!c.tempFlag) throw new StyleError(`Bias compute ID ${val} does not calculate temperature`);
+        if (!c.hasBias()) throw new StyleError(`Bias compute ID ${val} does not calculate a velocity bias`);
+        this.biasId = val;
       } else if (key === 'adof') {
         this.adof = parseNum(val, `${what} adof`);
       } else if (key === 'cdof') {
@@ -265,16 +279,16 @@ export class FixAveGrid extends Fix {
     return v;
   }
 
-  /** Cell index along one dimension for a position, or -1 if the atom is dropped (discard no). */
-  private cellIndex(x: number, lo: number, len: number, periodic: boolean, n: number): number {
-    let f = (x - lo) / len;
-    if (periodic) {
-      f -= Math.floor(f);
-    } else if (f < 0 || f >= 1) {
-      if (!this.discard) return -1;
-      f = f < 0 ? 0 : 1 - 1e-12;
-    }
-    return Math.min(n - 1, Math.max(0, Math.floor(f * n)));
+  /**
+   * The cell along one dimension for the bin index k = int((x - boxlo) * dxinv + OFFSET) - OFFSET (atom2grid): a periodic
+   * dimension folds the ghost cells onto their images, a non-periodic one skips an atom outside the grid (-1) unless
+   * discard no, which puts it in the first or last cell.
+   */
+  private cellIndexOf(k: number, periodic: boolean, n: number): number {
+    if (k >= 0 && k < n) return k;
+    if (periodic) return ((k % n) + n) % n;
+    if (this.discard) return -1;
+    return k < 0 ? 0 : n - 1;
   }
 
   /** One sample: per-cell sums of the group atoms at this step. */
@@ -291,7 +305,21 @@ export class FixAveGrid extends Fix {
       this.nSample++;
       return;
     }
-    if (s.box.triclinic) throw new StyleError(`fix ${this.id} ave/grid: triclinic boxes are not supported by the browser engine`);
+    const g = this.sys.geom;
+    const tri = s.box.triclinic;
+    const lam = [0, 0, 0];
+    // dxinv = N / prd (in lamda coordinates boxlo is 0 and prd is 1)
+    const ns = [this.nx, this.ny, this.nz];
+    const inv = [0, 1, 2].map((d) => ns[d] / (tri ? 1.0 : s.box.hi[d] - s.box.lo[d]));
+    // bias: the kinetic energies of the temp value without the velocity bias
+    let vT = s.v;
+    if (this.biasId && this.cols.some((c) => c.t === 'temp')) {
+      const t = this.sys.compute(this.biasId);
+      t.computeBias();
+      t.removeBiasAll();
+      vT = Float64Array.from(s.v.subarray(0, 3 * s.n));
+      t.restoreBiasAll();
+    }
     const ncell = this.ncell;
     const ncol = this.cols.length;
     const vol = this.boxVolume();
@@ -304,16 +332,22 @@ export class FixAveGrid extends Fix {
     const mvv2e = s.units.mvv2e;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      const ix = this.cellIndex(s.x[3 * i], s.box.lo[0], s.box.hi[0] - s.box.lo[0], s.box.periodic[0], this.nx);
-      const iy = this.cellIndex(s.x[3 * i + 1], s.box.lo[1], s.box.hi[1] - s.box.lo[1], s.box.periodic[1], this.ny);
-      const iz = this.sys.dimension === 2 ? 0 : this.cellIndex(s.x[3 * i + 2], s.box.lo[2], s.box.hi[2] - s.box.lo[2], s.box.periodic[2], this.nz);
+      if (tri) g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
+      const off = (d: number): number => (tri ? lam[d] : s.x[3 * i + d] - s.box.lo[d]);
+      const bin = (d: number, n: number): number => {
+        return this.cellIndexOf(Math.trunc(off(d) * inv[d] + OFFSET) - OFFSET, s.box.periodic[d], n);
+      };
+      const ix = bin(0, this.nx);
+      const iy = bin(1, this.ny);
+      const iz = this.sys.dimension === 2 ? 0 : bin(2, this.nz);
       if (ix < 0 || iy < 0 || iz < 0) continue;
       const c = ix + this.nx * (iy + this.ny * iz);
       const m = massOf(s, i);
       cnt[c] += 1;
       mass[c] += m;
       const vx = s.v[3 * i], vy = s.v[3 * i + 1], vz = s.v[3 * i + 2];
-      ke[c] += 0.5 * mvv2e * m * (vx * vx + vy * vy + vz * vz);
+      const tx = vT[3 * i], ty = vT[3 * i + 1], tz = vT[3 * i + 2];
+      ke[c] += 0.5 * mvv2e * m * (tx * tx + ty * ty + tz * tz);
       for (let j = 0; j < ncol; j++) {
         const col = this.cols[j];
         let val = 0;

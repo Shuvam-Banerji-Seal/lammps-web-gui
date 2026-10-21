@@ -2,7 +2,9 @@
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/RIGID/fix_rigid.cpp and
  * src/RIGID/fix_rigid.h (class FixRigid: the body setup of setup_bodies_static and setup_bodies_dynamic, init,
  * setup, set_xv, set_v, compute_forces_and_torques, pre_neighbor, dof, compute_scalar, compute_array), for the
- * bodystyles single, molecule and group with point particles in 3d.
+ * bodystyles single, molecule and group in 3d, with point particles, finite-size spheres, ellipsoids and point or
+ * finite-size dipoles (the extended particles of the source: their inertia, torque, rotation, orientation and dipole
+ * follow the body; line and triangle particles are refused by name).
  * LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU General Public License, version 2
  * (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE). The source carries no contributing-author line.
  *
@@ -16,8 +18,8 @@
 import { Fix } from '../../engine/fix/fix';
 import { StyleError, typeBounds } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { massOf } from '../../engine/atoms';
-import { exyzToQ, transposeMatvec, matvec, angmomToOmega, jacobi3, quatToMat, type V3, type Q4 } from './math_extra';
+import { isLineAtom, isTriAtom, massOf } from '../../engine/atoms';
+import { exyzToQ, transposeMatvec, matvec, angmomToOmega, omegaToAngmom, jacobi3, quatToMat, qToExyz, qconjugate, quatquat, qnormalize, snormalize3, inertiaEllipsoid, type V3, type Q4 } from './math_extra';
 
 /** rigid_const.h: EPSILON = 1.0e-7 */
 export const EPSILON = 1.0e-7;
@@ -47,7 +49,19 @@ export interface Body {
   tflag: number[];
   /** Nose-Hoover conjugate quaternion momentum (fix rigid/nvt and the other NH styles) */
   conjqm: Q4;
+  /** extended flags of each member (rigid_const.h POINT, SPHERE, ELLIPSOID, DIPOLE, OMEGA, ANGMOM, TORQUE) */
+  eflags: number[];
+  /** orientation of an ellipsoid member relative to the body (orient), else null */
+  orient: (Q4 | null)[];
+  /** dipole direction of a dipole member in the body frame, of its length (dorient), else null */
+  dorient: (V3 | null)[];
 }
+
+/** rigid_const.h extended flags. */
+const POINT = 1 << 0, SPHERE = 1 << 1, ELLIPSOID = 1 << 2, DIPOLE = 1 << 5, OMEGA = 1 << 6, ANGMOM = 1 << 7, TORQUE = 1 << 8;
+/** rigid_const.h: moments of inertia of a sphere (0.4 m r^2) and an ellipsoid (0.2 m (b^2 + c^2) ...). */
+const SINERTIA = 0.4;
+const EINERTIA = 0.2;
 
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -324,10 +338,6 @@ export abstract class FixRigidBase extends Fix {
     for (const key of keys) {
       if (members.get(key)!.length < 2) throw new StyleError(`fix ${this.style}: "Each rigid body must have two or more atoms." (body ${key})`);
     }
-    for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      if (s.radius && s.radius[i] > 0) throw new StyleError(`fix ${this.style}: finite-size particles are not supported by the browser engine's native-parity ${this.style}`);
-    }
     this.bodies = keys.map((key) => this.staticBody(members.get(key)!));
     const nb = this.bodies.length;
     this.nbody = nb;
@@ -344,11 +354,19 @@ export abstract class FixRigidBase extends Fix {
    */
   private staticBody(idx: number[]): Body {
     const s = this.sys.state;
-    // the NH port has no finite-size ellipsoid or point dipole bodies: refused by name, never treated as points
-    for (const i of idx) {
-      if (s.shape && s.shape[3 * i] > 0) throw new StyleError(`fix ${this.style}: finite-size ellipsoid atom ${s.id[i]} is not supported by the browser engine's native-parity ${this.style}`);
-      if (s.mu && s.mu[4 * i + 3] > 0) throw new StyleError(`fix ${this.style}: point dipole atom ${s.id[i]} is not supported by the browser engine's native-parity ${this.style}`);
-    }
+    // setup_bodies_static: the extended flags (bonus data before the radius, as the source checks them)
+    const eflags = idx.map((i) => {
+      if (isLineAtom(s, i) || isTriAtom(s, i)) throw new StyleError(`fix ${this.style}: line or triangle atom ${s.id[i]} is not supported by the browser engine's native-parity ${this.style}`);
+      let f = 0;
+      if (s.shape && s.shape[3 * i] > 0) f |= ELLIPSOID | ANGMOM | TORQUE;
+      else if (s.radius && s.radius[i] > 0.0) f |= SPHERE | OMEGA | TORQUE;
+      else f |= POINT;
+      if (s.mu && s.mu[4 * i + 3] > 0.0) {
+        f |= DIPOLE;
+        if (s.torque) f |= TORQUE;
+      }
+      return f;
+    });
     const box = s.box;
     const xcm: V3 = [0, 0, 0];
     let M = 0;
@@ -380,6 +398,9 @@ export abstract class FixRigidBase extends Fix {
       fflag: [1, 1, 1],
       tflag: [1, 1, 1],
       conjqm: [0, 0, 0, 0],
+      eflags,
+      orient: idx.map(() => null),
+      dorient: idx.map(() => null),
     };
     this.remapBody(body);
     // offsets of the atoms from the centre of mass, unwrapped relative to the body image
@@ -399,6 +420,22 @@ export abstract class FixRigidBase extends Fix {
       tensor[1][2] -= m * dy * dz;
       tensor[0][2] -= m * dx * dz;
       tensor[0][1] -= m * dx * dy;
+    });
+    // extended particles add their own inertia (a sphere 0.4 m r^2, an ellipsoid inertia_ellipsoid of its quaternion)
+    idx.forEach((i, n) => {
+      const m = massOf(s, i);
+      if (eflags[n] & SPHERE) {
+        const r = s.radius![i];
+        for (let d = 0; d < 3; d++) tensor[d][d] += SINERTIA * m * r * r;
+      } else if (eflags[n] & ELLIPSOID) {
+        const iv = inertiaEllipsoid([s.shape![3 * i], s.shape![3 * i + 1], s.shape![3 * i + 2]], this.atomQuat(i), m);
+        tensor[0][0] += iv[0];
+        tensor[1][1] += iv[1];
+        tensor[2][2] += iv[2];
+        tensor[1][2] += iv[3];
+        tensor[0][2] += iv[4];
+        tensor[0][1] += iv[5];
+      }
     });
     tensor[2][1] = tensor[1][2];
     tensor[2][0] = tensor[0][2];
@@ -421,6 +458,20 @@ export abstract class FixRigidBase extends Fix {
       const out: V3 = [0, 0, 0];
       transposeMatvec(ex, ey, ez, dl, out);
       return out;
+    });
+    // the orientation of an ellipsoid relative to the body, and a dipole in the body frame
+    idx.forEach((i, n) => {
+      if (eflags[n] & ELLIPSOID) {
+        const o = quatquat(qconjugate(body.quat), this.atomQuat(i));
+        qnormalize(o);
+        body.orient[n] = o;
+      }
+      if (eflags[n] & DIPOLE) {
+        const d: V3 = [0, 0, 0];
+        transposeMatvec(ex, ey, ez, [s.mu![4 * i], s.mu![4 * i + 1], s.mu![4 * i + 2]], d);
+        snormalize3(s.mu![4 * i + 3], d, d);
+        body.dorient[n] = d;
+      }
     });
     this.dynamicBody(body, idx);
     return body;
@@ -456,6 +507,15 @@ export abstract class FixRigidBase extends Fix {
       angmom[0] += dy * m * vz - dz * m * vy;
       angmom[1] += dz * m * vx - dx * m * vz;
       angmom[2] += dx * m * vy - dy * m * vx;
+    });
+    // extended particles add their rotation: a sphere 0.4 m r^2 omega, an ellipsoid its angular momentum
+    idx.forEach((i, n) => {
+      const f = b.eflags[n];
+      if ((f & OMEGA) && (f & SPHERE)) {
+        const r = s.radius![i], m = massOf(s, i);
+        for (let d = 0; d < 3; d++) angmom[d] += SINERTIA * m * r * r * s.omega![3 * i + d];
+      }
+      if (f & ANGMOM) for (let d = 0; d < 3; d++) angmom[d] += s.angmom![3 * i + d];
     });
     for (let d = 0; d < 3; d++) b.vcm[d] = vcm[d] / b.mass;
     b.angmom = angmom;
@@ -505,6 +565,12 @@ export abstract class FixRigidBase extends Fix {
         T[1] += dz * fx - dx * fz;
         T[2] += dx * fy - dy * fx;
       }
+      // extended particles add their torque
+      b.atoms.forEach((id, n) => {
+        if (!(b.eflags[n] & TORQUE)) return;
+        const i = idx[id];
+        T[0] += s.torque![3 * i]; T[1] += s.torque![3 * i + 1]; T[2] += s.torque![3 * i + 2];
+      });
       b.fcm = F;
       b.torque = T;
     }
@@ -556,6 +622,42 @@ export abstract class FixRigidBase extends Fix {
         }
       });
     }
+    // set_xv / set_v: the orientation, omega, angular momentum and dipole of the extended particles
+    for (const b of this.bodies) {
+      b.atoms.forEach((id, n) => {
+        const f = b.eflags[n];
+        const i = idx[id];
+        if (f & SPHERE) {
+          for (let d = 0; d < 3; d++) s.omega![3 * i + d] = b.omega[d];
+        } else if (f & ELLIPSOID) {
+          if (setX) {
+            const q = quatquat(b.quat, b.orient[n]!);
+            qnormalize(q);
+            for (let k = 0; k < 4; k++) s.quat![4 * i + k] = q[k];
+          }
+          const sh = [s.shape![3 * i], s.shape![3 * i + 1], s.shape![3 * i + 2]];
+          const m = massOf(s, i);
+          const ione: V3 = [EINERTIA * m * (sh[1] * sh[1] + sh[2] * sh[2]), EINERTIA * m * (sh[0] * sh[0] + sh[2] * sh[2]), EINERTIA * m * (sh[0] * sh[0] + sh[1] * sh[1])];
+          const { ex, ey, ez } = qToExyz(this.atomQuat(i));
+          const am: V3 = [0, 0, 0];
+          omegaToAngmom(b.omega, ex, ey, ez, ione, am);
+          for (let d = 0; d < 3; d++) s.angmom![3 * i + d] = am[d];
+        }
+        if (setX && (f & DIPOLE)) {
+          const p = quatToMat(b.quat);
+          const dr = b.dorient[n]!;
+          const mu = [0, 1, 2].map((r) => p[r][0] * dr[0] + p[r][1] * dr[1] + p[r][2] * dr[2]);
+          snormalize3(s.mu![4 * i + 3], mu, mu);
+          for (let d = 0; d < 3; d++) s.mu![4 * i + d] = mu[d];
+        }
+      });
+    }
+  }
+
+  /** The orientation quaternion of an ellipsoid atom. */
+  private atomQuat(i: number): Q4 {
+    const q = this.sys.state.quat!;
+    return [q[4 * i], q[4 * i + 1], q[4 * i + 2], q[4 * i + 3]];
   }
 
   /** FixRigid::setup: forces and torques, angmom -> omega, set_v, and the virial (set_v at factor 1/2, doubled). */
@@ -598,7 +700,9 @@ export abstract class FixRigidBase extends Fix {
     this.nlinear = 0;
     for (const b of this.bodies) {
       if (!b.atoms.every((id) => (s.mask[idx[id]] & groupBit) !== 0)) continue;
-      n += 3 * b.atoms.length - 6;
+      // N point particles and M finite-size ones (point dipoles count as points): remove (3N + 6M) - 6
+      const mall = b.eflags.filter((f) => (f & ~(POINT | DIPOLE | TORQUE)) !== 0).length;
+      n += 3 * (b.atoms.length - mall) + 6 * mall - 6;
       if (b.inertia[0] === 0.0 || b.inertia[1] === 0.0 || b.inertia[2] === 0.0) { n++; this.nlinear++; }
     }
     return n;

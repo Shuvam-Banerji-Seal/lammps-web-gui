@@ -65,9 +65,49 @@ export const omegaToAngmom = (w: V3, ex: V3, ey: V3, ez: V3, idiag: V3, m: V3): 
   m[2] = mb[0] * ex[2] + mb[1] * ey[2] + mb[2] * ez[2];
 };
 
-const qnormalize = (q: Q4): void => {
+export const qnormalize = (q: Q4): void => {
   const norm = 1.0 / Math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
   for (let k = 0; k < 4; k++) q[k] *= norm;
+};
+
+/** Conjugate of a unit quaternion (qconjugate). */
+export const qconjugate = (q: Q4): Q4 => [q[0], -q[1], -q[2], -q[3]];
+
+/** Quaternion product c = a * b (quatquat). */
+export const quatquat = (a: Q4, b: Q4): Q4 => [
+  a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+  a[0] * b[1] + b[0] * a[1] + a[2] * b[3] - a[3] * b[2],
+  a[0] * b[2] + b[0] * a[2] + a[3] * b[1] - a[1] * b[3],
+  a[0] * b[3] + b[0] * a[3] + a[1] * b[2] - a[2] * b[1],
+];
+
+/** v scaled to the given length, in place of ans (snormalize3; unchanged when v is zero). */
+export const snormalize3 = (length: number, v: readonly number[], ans: number[]): void => {
+  const val = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+  if (val > 0.0) {
+    const scale = length / Math.sqrt(val);
+    ans[0] = v[0] * scale;
+    ans[1] = v[1] * scale;
+    ans[2] = v[2] * scale;
+  }
+};
+
+/**
+ * Space-frame inertia tensor of a uniform ellipsoid of half-axes shape and orientation quat (inertia_ellipsoid):
+ * P diag(I) P^T with I = 0.2 m (b^2 + c^2) ..., as [xx, yy, zz, yz, xz, xy].
+ */
+export const inertiaEllipsoid = (shape: readonly number[], quat: Q4, mass: number): number[] => {
+  const p = quatToMat(quat);
+  const idiag = [
+    0.2 * mass * (shape[1] * shape[1] + shape[2] * shape[2]),
+    0.2 * mass * (shape[0] * shape[0] + shape[2] * shape[2]),
+    0.2 * mass * (shape[0] * shape[0] + shape[1] * shape[1]),
+  ];
+  // diag_times3(idiag, ptrans): row r of P^T scaled by idiag[r]; ptrans[r][c] = p[c][r]
+  const itemp = [0, 1, 2].map((r) => [0, 1, 2].map((c) => idiag[r] * p[c][r]));
+  // times3(p, itemp)
+  const t = [0, 1, 2].map((r) => [0, 1, 2].map((c) => p[r][0] * itemp[0][c] + p[r][1] * itemp[1][c] + p[r][2] * itemp[2][c]));
+  return [t[0][0], t[1][1], t[2][2], t[1][2], t[0][2], t[0][1]];
 };
 
 /** Unit quaternion from the columns ex, ey, ez of a rotation matrix (exyz_to_q). */

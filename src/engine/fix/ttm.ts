@@ -295,6 +295,10 @@ export class FixTTM extends Fix {
     } else if (this.kw.setT !== null) {
       this.Te.fill(this.kw.setT);
     }
+    // fix_ttm.html: "The fix ttm/grid and fix ttm/cascade commands also output a per-grid vector which stores the
+    // electron temperature for each grid cell" ... "the name of the single grid produced by fix ttm/grid is "grid".
+    // The name of its per-grid data is "data"." (grid.ts); it is valid on every step
+    if (style === 'ttm/grid' || style === 'ttm/cascade') this.pergridFlag = true;
     // Measured with native LAMMPS (black box): the first draw of the generator is discarded at creation.
     this.rng = new RanMars(this.p.seed);
     this.rng.uniform();
@@ -375,6 +379,13 @@ export class FixTTM extends Fix {
    * of that atom). So setup adds the stored per-slot force, not a fresh draw and not the force of the
    * atom itself.
    */
+  gridByName(name: string): number { return this.pergridFlag && name === 'grid' ? 0 : -1; }
+  gridSize(_igrid: number): [number, number, number] { return [this.p.nx, this.p.ny, this.p.nz]; }
+  griddataByName(igrid: number, name: string): { index: number; ncol: number } | null {
+    return this.pergridFlag && igrid === 0 && name === 'data' ? { index: 0, ncol: 0 } : null;
+  }
+  griddata(_index: number): Float64Array { return this.Te; }
+
   setup(): void {
     if (this.fl.length === 0) return;
     const s = this.sys.state;

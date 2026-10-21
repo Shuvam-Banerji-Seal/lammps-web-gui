@@ -1,0 +1,18 @@
+# oracle: compute property/grid coordinates (lower corner, center, scaled) of a tilted box written by dump grid (the triclinic BOX BOUNDS header), and after change_box changes the box
+# oracle-files: tri.dump
+# oracle-compare: thermo=all atoms=none
+units           lj
+region          box prism 0 5 0 4 0 3 1.5 -0.8 0.6
+create_box      1 box
+create_atoms    1 single 1.0 1.0 1.0
+mass            1 1.0
+pair_style      zero 1.0
+pair_coeff      * *
+compute         pg all property/grid 3 2 2 id x y z xc yc zc xs ys zs xsc ysc zsc
+dump            1 all grid 1 tri.dump c_pg:grid:data[*]
+dump_modify     1 format float %.15g
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+change_box      all x final -1 6 xy final 2.2 yz final -0.4 remap units box
+run             0

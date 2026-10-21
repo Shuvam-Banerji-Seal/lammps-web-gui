@@ -1,0 +1,31 @@
+# oracle: dump grid of the electron temperatures of fix ttm/grid (f_ID:grid:data) during two runs, with dump_modify units, time and header no
+# oracle-inputs: w14ttm_grid.init
+# oracle-files: ttm.dump ttm_bare.dump
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      atomic
+lattice         sc 3.0
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 10.0
+displace_atoms  all move 0.5 0.5 0.5 units box
+variable        vx atom 3.0*sin(0.9*x+0.4*y)
+variable        vy atom 2.5*cos(0.7*y-0.5*z)
+variable        vz atom 2.0*sin(1.1*z+0.3*x)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 3.0
+pair_coeff      1 1 0.0 2.0
+fix             1 all nve
+fix             2 all ttm/grid 777 0.001 1.0 0.01 20.0 0.0 2.0 2 2 2 infile w14ttm_grid.init
+timestep        0.2
+dump            1 all grid 1 ttm.dump f_2:grid:data
+dump_modify     1 units yes time yes format float %.12g
+dump            2 all grid 2 ttm_bare.dump f_2:grid:data
+dump_modify     2 header no
+thermo_style    custom step temp pe f_2[1] f_2[2]
+thermo_modify   format float %.15g
+thermo          1
+run             3
+run             2

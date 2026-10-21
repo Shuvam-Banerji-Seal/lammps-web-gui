@@ -1,0 +1,25 @@
+# oracle: dump grid in 2d (DIMENSION 2, Nz = 1) of compute property/grid and fix ave/grid with ave running, sorted by grid ID, and dump grid/vtk of a 2d vector field
+# oracle-files: g2d.dump v2d.0.vtr v2d.40.vtr
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       2
+atom_style      atomic
+lattice         sq 0.8
+region          box block 0 8 0 6 -0.5 0.5
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 5512 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+fix             1 all nve
+fix             2 all enforce2d
+compute         pg all property/grid 4 3 1 id ix iy xc ysc
+fix             ag all ave/grid 2 5 20 4 3 1 vx vy density/mass ave running
+dump            1 all grid 20 g2d.dump c_pg:grid:data[1] c_pg:grid:data[4] c_pg:grid:data[5] f_ag:grid:data[*] f_ag:grid:count
+dump_modify     1 sort id format float %.12g
+dump            2 all grid/vtk 40 v2d.*.vtr f_ag:grid:data[1] f_ag:grid:data[2] f_ag:grid:data[3]
+thermo_style    custom step temp pe
+thermo_modify   format float %.15g
+thermo          20
+run             40

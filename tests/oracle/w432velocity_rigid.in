@@ -1,0 +1,44 @@
+# oracle: velocity zero linear and zero angular with the rigid keyword on fix rigid, rigid/small and rigid/nvt bodies, before the first run (the bodies are set up from the atoms) and between runs, next to free atoms
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      molecular
+lattice         sc 0.6
+region          box block 0 6 0 6 0 6
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+region          r1 block 0 1.9 0 1.9 0 1.9
+region          r2 block 3 4.9 0 1.9 0 1.9
+region          r3 block 0 1.9 3 4.9 3 4.9
+region          r4 block 3 4.9 3 4.9 0 1.9
+region          r5 block 0 1.9 0 1.9 3 4.9
+group           a1 region r1
+group           a2 region r2
+group           s3 region r3
+group           s4 region r4
+group           n5 region r5
+group           rg union a1 a2
+group           sm union s3 s4
+group           nh union n5
+group           free subtract all rg sm nh
+set             group s3 mol 3
+set             group s4 mol 4
+velocity        all create 1.4 30981 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+neigh_modify    exclude group a1 a1 exclude group a2 a2 exclude group s3 s3 exclude group s4 s4 exclude group n5 n5
+fix             1 rg rigid group 2 a1 a2
+fix             2 sm rigid/small molecule
+fix             3 nh rigid/nvt single temp 1.0 1.0 1.0
+fix             4 free nve
+velocity        rg zero linear rigid 1
+velocity        sm zero angular rigid 2
+velocity        nh zero linear rigid 3
+velocity        nh zero angular rigid 3
+thermo_style    custom step temp pe f_1[1][4] f_1[1][5] f_1[2][6] f_3
+thermo_modify   format float %.15g
+thermo          10
+run             30
+velocity        rg zero angular rigid 1
+velocity        sm zero linear rigid 2
+run             30

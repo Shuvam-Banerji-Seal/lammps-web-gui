@@ -795,6 +795,46 @@ export class FixRigid extends Fix {
     this.setXV(false, virialFactor);
   }
 
+  /**
+   * velocity ... zero linear|angular rigid fix-ID (velocity.html: "the rigid keyword ... the linear or angular momentum
+   * of each rigid body defined by the fix is zeroed"). As native LAMMPS does (src/velocity.cpp zero and
+   * src/RIGID/fix_rigid.cpp zero_momentum, zero_rotation, setup_bodies_early at b332f28): the bodies are built from the
+   * atoms if no run has built them (the /small styles rebuild them with reinit, as their setup_pre_neighbor does, or
+   * wrap their centres of mass), the centre-of-mass velocity (or angular momentum and angular velocity) of every body
+   * is set to 0, and the atom velocities follow the bodies without a virial.
+   */
+  zeroMomentum(): void {
+    this.bodiesEarly();
+    for (const b of this.bodies) b.vcm = [0, 0, 0];
+    this.setXV(false, 0);
+  }
+
+  zeroRotation(): void {
+    this.bodiesEarly();
+    for (const b of this.bodies) {
+      b.angmom = [0, 0, 0];
+      b.omega = [0, 0, 0];
+    }
+    this.setXV(false, 0);
+  }
+
+  /** The IDs of the atoms in bodies once the bodies are built, else null (FixRigid::extract("body")). */
+  bodyAtomIds(): Set<number> | null {
+    return this.built ? new Set(this.bodies.flatMap((b) => b.atoms)) : null;
+  }
+
+  private bodiesEarly(): void {
+    if (this.style.includes('small')) {
+      if (this.reinit || !this.built) {
+        this.buildBodies();
+        this.built = true;
+      } else for (const b of this.bodies) this.wrapCom(b);
+    } else if (!this.built) {
+      this.buildBodies();
+      this.built = true;
+    }
+  }
+
   /** Copies of the body list, to undo a rejected deletion (see removeMolecule). */
   snapshotBodies(): Body[] { return this.bodies.map(cloneBody); }
 

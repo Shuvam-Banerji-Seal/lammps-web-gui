@@ -156,6 +156,11 @@ export abstract class Fix {
   computeArray(_i: number, _j: number): number { throw new StyleError(`fix ${this.id} does not compute a global array`); }
   /** Degrees of freedom this fix removes from atoms in the given group (shake, rigid). */
   dofRemoved(_groupBit: number): number { return 0; }
+  /** Rigid-body fixes: zero the linear or angular momentum of every body (velocity ... zero ... rigid fix-ID). */
+  zeroMomentum?(): void;
+  zeroRotation?(): void;
+  /** Rigid-body fixes: the IDs of the atoms in bodies once the bodies are set up, else null. */
+  bodyAtomIds?(): Set<number> | null;
 
   /** fix_modify; returns values consumed (0 = keyword not handled). */
   modify(key: string, values: string[]): number {

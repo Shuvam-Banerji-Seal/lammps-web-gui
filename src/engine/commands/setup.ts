@@ -8,7 +8,8 @@ import { APIP_LAMBDA, isApipStyle, DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TD
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { parseStl } from '../stl';
-import { typeWord, parseLabelPairs, labelmapText, isLabelKind, type LabelKind } from '../labelmap';
+import { typeWord, parseLabelPairs, labelmapText, isLabelKind, parseCheckWhich, improperSymmatoms, type LabelKind, type CheckWhich } from '../labelmap';
+import { moleculeLabelCheck } from '../labelcheck';
 
 /** group.html and set.html logical operators of the type / id / molecule styles (not type labels) */
 const LOGICAL_OPS = ['<', '<=', '>', '>=', '==', '!=', '<>'];
@@ -1050,17 +1051,6 @@ const createAtoms: Handler = ({ sys }, a) => {
 };
 
 /**
- * The symmetry of an improper style for the auto keyword and the bond/react type inference (the symmatoms of the
- * style, improper_class2.html "Symmetry convention": "the second atom in the quadruplet is the atom of symmetry").
- * No improper style gives no symmetry; a style without a known convention gives null.
- */
-const improperSymmatoms = (style: string | undefined): readonly number[] | null | undefined => {
-  if (style === undefined) return undefined;
-  if (style === 'class2') return [0, 1, 0, 0];
-  return null;
-};
-
-/**
  * molecule ID file1 keyword values ... file2 ... — molecule.html: "zero or
  * more keyword/value pairs may be appended after each file"; "keyword =
  * offset or toff or boff or aoff or doff or ioff or scale". The ID "can only
@@ -1078,6 +1068,7 @@ const molecule: Handler = ({ sys }, a) => {
       toff: 0, boff: 0, aoff: 0, doff: 0, ioff: 0, scale: 1, units: sys.units.style,
       improperSymmatoms: improperSymmatoms(sys.ff.improper?.name),
     };
+    let checkWhich: CheckWhich | null = null;
     while (k < a.length && ['offset', 'toff', 'boff', 'aoff', 'doff', 'ioff', 'scale', 'auto', 'check_labels'].includes(a[k])) {
       const key = a[k];
       if (key === 'offset') {
@@ -1091,11 +1082,16 @@ const molecule: Handler = ({ sys }, a) => {
         o.auto = v;
         k += 2;
       } else if (key === 'check_labels') {
-        throw new StyleError('molecule check_labels is not supported by the browser engine (it only warns)');
+        // As native LAMMPS does (src/molecule.cpp at b332f28): the letters b, a, d, i; the template's type labels are
+        // checked once it is read (labelcheck.ts moleculeLabelCheck)
+        if (a[k + 1] === undefined) throw new StyleError('Illegal check_labels command: missing argument(s)');
+        checkWhich = parseCheckWhich(a[k + 1], (c) => `Illegal check_labels option ${c}`);
+        k += 2;
       } else { o[key as 'toff'] = int(a[k + 1], key); k += 2; }
     }
     // molecule.html: type words may be type labels, resolved through the label map at read time
     const t = parseMoleculeFile(id, file, sys.readFile(file), o, sys.labels);
+    if (checkWhich) moleculeLabelCheck(sys, sys.labels, checkWhich, id, t);
     // molecule.cpp (read_molecule): "Molecule file with lines must be for 2d simulation" and "... with triangles must be for 3d simulation"
     if (t.lines && sys.dimension !== 2) throw new StyleError('Molecule file with lines must be for 2d simulation');
     if (t.tris && sys.dimension !== 3) throw new StyleError('Molecule file with triangles must be for 3d simulation');
@@ -1198,7 +1194,13 @@ const labelmapCmd: Handler = ({ sys }, a) => {
     sys.writeFile(a[1], labelmapText(sys.labels), false);
     return;
   }
-  if (opt === 'check_labels') throw new StyleError('labelmap check_labels is not supported by the browser engine (it only warns about inconsistent type labels)');
+  if (opt === 'check_labels') {
+    // As native LAMMPS does (src/label_map.cpp at b332f28): one option word of the letters b, a, d, i; the check runs at
+    // the setup of the next run or minimization (labelcheck.ts runLabelCheck)
+    if (a.length !== 2) throw new StyleError('Incorrect number of arguments for labelmap check_labels command');
+    sys.labels.checkWhich = parseCheckWhich(a[1], (c) => `Labelmap command: Illegal check_labels option ${c}`);
+    return;
+  }
   if (!isLabelKind(opt)) throw new StyleError(`Unknown labelmap keyword ${opt}`);
   if (!sys.hasBox) throw new StyleError('Labelmap command before simulation box is defined');
   const s = sys.state;

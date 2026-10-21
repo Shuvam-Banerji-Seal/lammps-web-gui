@@ -192,8 +192,9 @@ labelmap clear
     expect(await errorOf(`${BOX}labelmap clear extra`)).toBe('Incorrect number of arguments for labelmap clear command');
   });
 
-  it('refuses check_labels by name', async () => {
-    expect(await errorOf(`${BOX}labelmap check_labels ba`)).toMatch(/^labelmap check_labels is not supported/);
+  it('check_labels argument errors (native texts)', async () => {
+    expect(await errorOf(`${BOX}labelmap check_labels`)).toBe('Incorrect number of arguments for labelmap check_labels command');
+    expect(await errorOf(`${BOX}labelmap check_labels bx`)).toBe('Labelmap command: Illegal check_labels option x');
   });
 
   it('label2type() and is_typelabel() read the map in variables', async () => {

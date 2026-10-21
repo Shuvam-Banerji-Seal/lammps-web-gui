@@ -56,6 +56,11 @@ export const isNumericTypeWord = (w: string): boolean => w === '' || /^-?[\d*]/.
 export class LabelMap {
   /** true once a labelmap command or a Type Labels section has defined a map (native: "Cannot use label2type() function without a labelmap") */
   defined = false;
+  /**
+   * labelmap check_labels: the kinds (bond, angle, dihedral, improper) to check at the next run's setup, or null (native
+   * LabelMap::checkflag and check_which_labels; the check runs once, then the flag is cleared).
+   */
+  checkWhich: CheckWhich | null = null;
   private readonly byType = new Map<LabelKind, Map<number, string>>();
   private readonly byLabel = new Map<LabelKind, Map<string, number>>();
 
@@ -262,4 +267,88 @@ export const inferImproperType = (
     if (navail === 0) out = -ty;
   }
   return { type: out, iorder };
+};
+
+/** The kinds a check_labels option selects: bonds, angles, dihedrals, impropers (letters b, a, d, i). */
+export type CheckWhich = [boolean, boolean, boolean, boolean];
+
+/**
+ * The letters of a check_labels option (molecule.html and labelmap.html: "b" bonds, "a" angles, "d" dihedrals, "i"
+ * impropers). As native LAMMPS does (src/molecule.cpp and src/label_map.cpp at b332f28), another letter is an error,
+ * reported by bad(letter).
+ */
+export const parseCheckWhich = (word: string, bad: (c: string) => string): CheckWhich => {
+  const out: CheckWhich = [false, false, false, false];
+  for (const c of word) {
+    const k = 'badi'.indexOf(c);
+    if (k < 0) throw new StyleError(bad(c));
+    out[k] = true;
+  }
+  return out;
+};
+
+/**
+ * The atoms of symmetry of an improper style (native Improper::symmatoms: 1 marks the atom whose type label must match
+ * in place; the others may be permuted when a type is inferred from labels). As native LAMMPS does (src/improper.cpp
+ * sets all four to 0; the styles below set theirs in their constructors at b332f28: MOLECULE/improper_harmonic.cpp,
+ * improper_cvff.cpp, improper_umbrella.cpp, EXTRA-MOLECULE/improper_cossq.cpp, improper_distance.cpp,
+ * improper_fourier.cpp, improper_ring.cpp, MOFFF/improper_inversion_harmonic.cpp, CLASS2/improper_class2.cpp,
+ * AMOEBA/improper_amoeba.cpp, YAFF/improper_distharm.cpp, improper_sqdistharm.cpp). No improper style gives no
+ * symmetry (improper_style none); an accelerator suffix keeps the style's symmetry.
+ */
+export const improperSymmatoms = (style: string | undefined): readonly number[] => {
+  if (style === undefined) return [0, 0, 0, 0];
+  const base = style.replace(/\/(omp|kk|gpu|intel|opt)$/, '');
+  const table: Record<string, readonly number[]> = {
+    harmonic: [1, 0, 0, 0], cvff: [1, 0, 0, 0], umbrella: [1, 0, 0, 2], cossq: [1, 0, 0, 0], distance: [1, 0, 0, 0],
+    fourier: [1, 0, 0, 2], 'inversion/harmonic': [1, 0, 0, 0], ring: [0, 1, 0, 0], class2: [0, 1, 0, 0],
+    amoeba: [0, 1, 0, 0], distharm: [0, 0, 0, 1], sqdistharm: [0, 0, 0, 1],
+  };
+  return table[base] ?? [0, 0, 0, 0];
+};
+
+/** One topology entry for a check: its type, its atoms (IDs or template indices) and their atom types. */
+export interface CheckEntry { type: number; atoms: number[]; types: number[] }
+
+const KIND_NAMES = ['bond', 'angle', 'dihedral', 'improper'] as const;
+
+/**
+ * The warnings and log lines of a check_labels pass over the entries of each selected kind, in the order given. As
+ * native LAMMPS does (src/label_map.cpp check_labels and src/molecule.cpp check_labels at b332f28): an entry whose
+ * inferred type differs from its type warns, with the "reverse order" (or, for impropers, "different order") text when
+ * the inferred type is its negative; a kind with no such entry logs that its labels are self-consistent. Bonds are
+ * checked only with newton_bond on. The molecule check (template set) prefixes "In molecule template 'ID', the ...".
+ */
+export const checkLabelsReport = (
+  map: LabelMap, which: CheckWhich, entries: CheckEntry[][], newtonBond: boolean, symmatoms: readonly number[],
+  template: string | null,
+): { warnings: string[]; logs: string[] } => {
+  const warnings: string[] = [], logs: string[] = [];
+  const lab = (t: number): string => map.labelOf('atom', t) ?? '';
+  for (let k = 0; k < 4; k++) {
+    if (!which[k] || (k === 0 && !newtonBond)) continue;
+    const kind = KIND_NAMES[k];
+    let perfect = true;
+    for (const e of entries[k]) {
+      const t = e.types;
+      const inferred = k === 0 ? inferBondType(map, t[0], t[1])
+        : k === 1 ? inferAngleType(map, t[0], t[1], t[2])
+        : k === 2 ? inferDihedralType(map, t[0], t[1], t[2], t[3])
+        : inferImproperType(map, [t[0], t[1], t[2], t[3]], symmatoms).type;
+      if (inferred === e.type) continue;
+      perfect = false;
+      const ids = e.atoms.join(', ');
+      const labels = t.map(lab).join(', ');
+      const own = map.labelOf(kind, e.type) ?? '';
+      const reversed = inferred === -e.type;
+      let text: string;
+      if (k === 0) text = `${template ? 'the bond' : 'Bond'} between atoms ${ids} has constituent atom types (${labels}) ${reversed ? 'in reverse order compared to its bond type label' : 'that do not match its type label'} (${own})`;
+      else if (k === 1) text = `${template ? 'the angle' : 'Angle'} between atoms ${ids} has constituent atom types (${labels}) ${reversed ? 'in reverse order compared to its angle type label' : template ? 'that do not match its type label' : 'that do not match its type label'} (${own})`;
+      else if (k === 2) text = `${template ? 'the dihedral' : 'Dihedral'} between atoms ${ids} has constituent atom types (${labels}) ${reversed ? 'in reverse order compared to its dihedral type label' : 'that do not match its dihedral label'} (${own})`;
+      else text = `${template ? 'the improper' : 'Improper'} containing atoms ${ids} has constituent atom types (${labels}) ${reversed ? 'in a different order compared to its improper type label' : 'that do not match its improper label'} (${own})`;
+      warnings.push(template ? `In molecule template '${template}', ${text}` : text);
+    }
+    if (perfect) logs.push(template ? `All ${kind}s in molecule '${template}' have self-consistent type labels` : `All ${kind}s in the simulation have self-consistent type labels`);
+  }
+  return { warnings, logs };
 };

@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import { restartDue } from '../commands/restart';
 import { haltRequested } from './halt';
 import { checkDynamicGroupFixes } from '../group';
+import { runLabelCheck } from '../labelcheck';
 
 /*
  * The velocity-Verlet run loop — docs.lammps.org/Developer_flow.html:
@@ -97,6 +98,8 @@ export const setupRun = (sys: System): void => {
   for (const f of sys.fixes) f.setupPreReverse?.();
   computeSetup(sys);
   for (const f of sys.fixes) f.setup();
+  // labelmap check_labels: once, at the end of the setup (native Modify::setup)
+  runLabelCheck(sys);
   sys.refreshComputes();
 };
 

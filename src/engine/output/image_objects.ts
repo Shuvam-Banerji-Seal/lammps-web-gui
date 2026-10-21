@@ -153,25 +153,61 @@ export type ImageObject =
   | { kind: 'arrow'; type: number; center: Vec3; dir: Vec3; length: number; diameter: number; ratio: number };
 
 /**
- * What dump image's autobond loop reads from the atoms (autobond.ts, dump_image.cpp AUTO branch): the dump group, positions,
- * the hydrogen-rule masses, the minimum image and the atom colours.
+ * The neighbor list dump image autobond walks (dump_image.cpp AUTO branch, Neighbor::get_best_pair_list): the engine's
+ * last build (neighbor.ts), its owned and ghost atoms and what native's list build would have read.
+ */
+export interface AutoBondList {
+  /** Per owned atom: the count and the start of its neighbors in `neighbors`. */
+  numneigh: Int32Array;
+  firstneigh: Int32Array;
+  /** Neighbor entries: an index into the owned+ghost atoms in the bits of `mask` (special bits above). */
+  neighbors: Int32Array;
+  mask: number;
+  /** A full list (every pair from both sides); otherwise a half list. */
+  full: boolean;
+  /** For every owned+ghost atom: the owned atom it is an image of, and its image offsets (3 per atom). */
+  owner: Int32Array;
+  image: Int32Array;
+  /** Owned and ghost positions at the build, and the box bounds of the build. */
+  xBuilt: Float64Array;
+  boxLo: Vec3;
+  boxHi: Vec3;
+  /** The largest neighbor cutoff (force cutoff plus skin) and neigh_modify binsize (0 = the default). */
+  cutneighmax: number;
+  binsize: number;
+  /** The neighbor style (autobond refuses multi). */
+  style: 'bin' | 'nsq';
+  triclinic: boolean;
+  dimension: 2 | 3;
+}
+
+/**
+ * What dump image's autobond loop reads from the atoms (autobond.ts, dump_image.cpp AUTO branch): the neighbor list, the
+ * chosen atoms, positions, the hydrogen-rule masses, the minimum image and the atom colours.
  */
 export interface AutoBondSpec {
-  /** Number of atoms. */
-  n: number;
-  /** Positions, 3 per atom. */
+  /** Number of owned atoms. */
+  nlocal: number;
+  /** Owned positions now, 3 per atom. */
   x: Float64Array;
-  /** Whether atom i is in the dump group. */
+  /** The owned atoms in native storage order (SimState.order). */
+  order: Int32Array;
+  /** Atom IDs of the owned atoms. */
+  tag: Int32Array;
+  /** The position now of owned atom i's periodic image (ix, iy, iz), as ghost atoms are placed (Neighbor.forwardComm). */
+  imagePosition: (i: number, ix: number, iy: number, iz: number, out: Vec3) => void;
+  /** newton command, pair setting. */
+  newtonPair: boolean;
+  /** units style (force->angstrom sets the tolerance of a triclinic list build). */
+  units: string;
+  /** The list; null when there is none, which draws no bonds (native warns). */
+  list: AutoBondList | null;
+  /** Whether atom i is chosen by the dump (group, region, thresh). */
   selected: (i: number) => boolean;
   /** Mass of atom i for the hydrogen rule (metal and real units); null for the other unit styles. */
   mass: ((i: number) => number) | null;
   /** Domain::minimum_image on a separation vector, in place. */
   minimumImage: (d: Vec3) => void;
-  /**
-   * Whether the pair is absent from the neighbor list: a special pair whose special_bonds weights are both 0 (native's
-   * neighbor list drops it, so autobond never sees it). Undefined when no pair is dropped.
-   */
-  excluded?: (i: number, j: number) => boolean;
   /** Colour (0..1 per channel) of atom i as the atom colour of the dump gives it. */
   colorOf: (i: number) => Vec3;
   /** Opacity of atom i (dump_modify atrans of its type): the half of a bond at atom i is drawn with it. */

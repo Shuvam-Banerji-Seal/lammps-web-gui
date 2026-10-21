@@ -1,0 +1,13 @@
+# image_autobond fixture: native b332f28 (/home/roy/.local/bin/lmp), dump image PPM, run 0.
+units metal
+atom_style atomic
+lattice diamond 5.431
+region box block 0 2 0 2 0 2
+create_box 1 box
+create_atoms 1 box
+mass 1 28.06
+pair_style sw
+pair_coeff * * Si.sw Si
+dump d all image 1 img.*.ppm type type size 128 128 view 60 30 zoom 0.9 box yes 0.02 autobond 2.6 0.3
+dump_modify d pad 0 adiam * 0.8
+run 0

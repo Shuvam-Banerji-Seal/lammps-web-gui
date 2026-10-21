@@ -1,15 +1,16 @@
 import type { System } from '../system';
 import type { SimState } from '../types';
 import { StyleError } from '../force/types';
-import { buildAtomMap, buildSpecial, isEllipsoid, isLineAtom, isTriAtom, massOf, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { buildAtomMap, isEllipsoid, isLineAtom, isTriAtom, massOf, nativeOrder, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { termRows } from '../compute/local';
 import { SUPER_BLOCK } from '../superellipsoid';
 import { BODY_RECORD, bodyRecordOffset, parseBodyStyle, POLY_OFF } from '../bodies';
 import { encodePng } from './png';
 import { encodeJpeg } from './jpeg';
 import { ColorMap } from './image_colormap';
-import { type AtomObjectsHook, type BodyAtom, type EllipsoidAtom, type ImageObject, type ImageShading, type LineAtom, type ObjectStyle, type RasterFrame, type RegionConeSpec, type RegionHook, type Rgb255, type TriAtom, type Vec3 } from './image_objects';
+import { type AtomObjectsHook, type AutoBondList, type BodyAtom, type EllipsoidAtom, type ImageObject, type ImageShading, type LineAtom, type ObjectStyle, type RasterFrame, type RegionConeSpec, type RegionHook, type Rgb255, type TriAtom, type Vec3 } from './image_objects';
 import { gplHook } from '../gplHooks';
+import { NEIGHMASK } from '../neighbor';
 import { BlockRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, SphereRegion } from '../region';
 import { libm } from '../libm';
 
@@ -1617,43 +1618,83 @@ export class ImageDump {
   }
 
   /**
-   * dump image autobond (dump_image.cpp, the AUTO branch of create_image): the pair search and the two-halves drawing are
-   * the GPL autobond loop (engine-gpl/graphics/autobond.ts); the core gives it the atoms, their colours and the rules.
+   * dump image autobond (dump_image.cpp, the AUTO branch of create_image): the walk over the neighbor list and the
+   * two-halves drawing are the GPL autobond loop (engine-gpl/graphics/autobond.ts); the core gives it the list, the atoms,
+   * their colours and the rules.
    */
+  /** Whether the "autobond cutoff > minimum neighbor cutoff" warning was given (native gives it at each init; once here). */
+  private autobondWarned = false;
+
   private drawAutoBonds(s: SimState, ctx: DrawCtx, ab: { cutoff: number; width: number }): void {
     const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
     const cmap = this.atomColorMap(colorVals, s);
     // Domain::minimum_image; the hydrogen rule (both masses below 3) applies to units metal and real only
     const g = this.sys.geom;
     const hydrogenRule = s.units.style === 'metal' || s.units.style === 'real';
-    // native's search runs over the neighbor list, which drops the special pairs whose lj and coul weights are both 0
-    // (neighbor.ts encode; keepExcluded when a kspace or coul/long style needs them). The special lists are the ones
-    // the force field builds from the bonds.
-    const ff = this.sys.ff;
-    const sp = s.topo.bonds.n > 0 ? buildSpecial(s, { angle: ff.special.angle, dihedral: ff.special.dihedral }) : null;
-    const keepExcluded = !!ff.kspace || !!ff.pair?.coulLong || !!ff.pair?.keepExcluded;
-    const ljw = [1, ...ff.special.lj], clw = [1, ...ff.special.coul];
-    const excluded = sp && !keepExcluded ? (i: number, j: number): boolean => {
-      for (let k = sp.offset[i]; k < sp.offset[i + 1]; k++) {
-        if (sp.partner[k] !== s.id[j]) continue;
-        const o = sp.order[k];
-        return ljw[o] === 0 && clw[o] === 0;
-      }
-      return false;
-    } : undefined;
+    // the pair list native walks (Neighbor::get_best_pair_list: a half list, else a full list). Its pairs leave out the
+    // special pairs whose lj and coul weights are both 0 and the neigh_modify exclusions, as the engine's lists do. A list
+    // built for other atoms than the current ones (atoms added or deleted since) is not used.
+    const nb = this.sys.nb;
+    // As native LAMMPS does (src/GRAPHICS/dump_image.cpp at b332f28, DumpImage::init_style): the checks of the autobond
+    // keyword against the neighbor settings and the box (native makes them at init, before the first snapshot)
+    if (nb.multiStyle) throw new StyleError("Dump image autobond requires neighbor style 'bin' or 'nsq'");
+    if (!this.sys.ff.pair) throw new StyleError('Dump image autobond requires a pair style to be defined');
+    if (ab.cutoff > nb.cutneighmax) throw new StyleError('Dump image autobond cutoff > neighbor cutoff');
+    if (ab.cutoff > nb.cutneighmin && !this.autobondWarned) {
+      this.autobondWarned = true;
+      this.sys.warn('Dump image autobond cutoff > minimum neighbor cutoff');
+    }
+    if ((g.periodic[0] && ab.cutoff > g.lx) || (g.periodic[1] && ab.cutoff > g.ly) || (s.dimension === 3 && g.periodic[2] && ab.cutoff > g.lz)) {
+      throw new StyleError('Dump image autobond cutoff is larger than periodic domain');
+    }
+    const nl = nb.half ?? nb.full;
+    let list: AutoBondList | null = null;
+    if (nl && nb.nlocal === s.n) {
+      list = {
+        numneigh: nl.numneigh,
+        firstneigh: nl.firstneigh,
+        neighbors: nl.neighbors,
+        mask: NEIGHMASK,
+        full: !nb.half,
+        owner: nb.owner,
+        image: nb.gimage,
+        xBuilt: nb.xBuilt,
+        boxLo: nb.loBuilt,
+        boxHi: nb.hiBuilt,
+        cutneighmax: nb.cutneighmax,
+        binsize: nb.binsize,
+        style: nb.nsqStyle ? 'nsq' : 'bin',
+        triclinic: g.triclinic,
+        dimension: s.dimension === 2 ? 2 : 3,
+      };
+    } else {
+      // As native LAMMPS does (src/GRAPHICS/dump_image.cpp at b332f28, create_image): no list, no bonds, a warning
+      this.sys.warn('No suitable existing neighbor list for dump image autobond found');
+    }
     ctx.shading.drawAutoBonds(ctx.frame, {
-      n: s.n,
+      nlocal: s.n,
       x: s.x,
+      order: nativeOrder(s),
+      tag: s.id,
+      // the ghost placement of Neighbor.forwardComm
+      imagePosition: (i, ix, iy, iz, out) => {
+        out[0] = s.x[3 * i] + ix * g.lx + iy * g.xy + iz * g.xz;
+        out[1] = s.x[3 * i + 1] + iy * g.ly + iz * g.yz;
+        out[2] = s.x[3 * i + 2] + iz * g.lz;
+      },
+      newtonPair: this.sys.newtonPair,
+      units: s.units.style,
+      list,
       selected: (i) => this.chosen[i] === 1,
       mass: hydrogenRule ? (i) => massOf(s, i) : null,
       minimumImage: (d) => g.minimumImage(d),
-      excluded,
       colorOf: (i) => this.atomColor(s, i, colorVals, cmap),
       opacityOf: (i) => this.atomOpacity(s.type[i]),
       cutoff: ab.cutoff,
       width: ab.width,
     });
   }
+
 
   private drawLine(rgb: Uint8Array, depth: Float64Array, p1: [number, number, number], p2: [number, number, number], color: RGB, width: number): void {
     const w = this.w, h = this.h;

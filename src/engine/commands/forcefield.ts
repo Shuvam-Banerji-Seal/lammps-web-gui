@@ -326,6 +326,7 @@ const neighbor: Handler = ({ sys }, a) => {
   if (!['bin', 'nsq', 'multi', 'multi/old'].includes(a[1] ?? '')) throw new StyleError('usage: neighbor skin bin|nsq|multi');
   sys.nb.skin = skin;
   sys.nb.multiStyle = a[1] === 'multi';
+  sys.nb.nsqStyle = a[1] === 'nsq';
   sys.nb.lastBuild = -1;
   sys.bump();
 };

@@ -68,6 +68,18 @@ export const ewaldcof = (cutoff: number): number => {
   return x;
 };
 
+/** PairAmoeba.buildPerBuild: what one neighbor build fixes. */
+interface PerBuild {
+  list: NonNullable<PairCompute['half']>;
+  nbuild: number;
+  n: number;
+  oneTwo: Map<number, number[]>;
+  pairsArr: { pi: Int32Array; pj: Int32Array; ps: Int8Array };
+  npairs: number;
+  /** 0 .. npairs-1, the pair order of the polarization loops. */
+  index: Int32Array;
+}
+
 export class PairAmoeba extends Pair {
   readonly name: string;
   /** pair hippo (native PairHippo is PairAmoeba with amoeba == false): no hal, HIPPO repulsion, dispersion, charge
@@ -97,6 +109,10 @@ export class PairAmoeba extends Pair {
   /** Copy choices of the current neighbor build (closest images), and the build they belong to. */
   private memo = new Map<string, number>();
   private memoBuild = -1;
+  /** The topology and pair data of the current neighbor build (buildPerBuild); null before the first compute. */
+  private perBuild: PerBuild | null = null;
+  /** The polarization data of the atoms (polarizationTerm), kept for the same build as perBuild. */
+  private polarStatic: { pb: PerBuild; types: Int32Array; alpha: Float64Array; pdamp: Float64Array; thole: Float64Array; group: Int32Array } | null = null;
   /** Ewald coefficients of the current step: aeew for the permanent multipoles, apew for the induced dipoles (0 without key ewald). */
   private aeew = 0;
   private apew = 0;
@@ -299,17 +315,15 @@ export class PairAmoeba extends Pair {
       this.memo.set(memoKey, best);
       return best;
     };
-    // 1-2 partners by ID (the bonds of the topology)
-    const bonds = s.topo.bonds;
-    const oneTwo = new Map<number, number[]>();
-    for (let e = 0; e < bonds.n; e++) {
-      if (bonds.type[e] === 0) continue;
-      const a = bonds.atoms[2 * e], b = bonds.atoms[2 * e + 1];
-      if (!oneTwo.has(a)) oneTwo.set(a, []);
-      if (!oneTwo.has(b)) oneTwo.set(b, []);
-      if (!oneTwo.get(a)!.includes(b)) oneTwo.get(a)!.push(b);
-      if (!oneTwo.get(b)!.includes(a)) oneTwo.get(b)!.push(a);
+    // the topology and pair data of this neighbor build (the bonds, the 1-5 sets and the pairs of the half list change
+    // only with a build; the per-build memo above keys on it the same way)
+    const list = pc.half;
+    if (!list) throw new StyleError('pair amoeba needs a half neighbor list');
+    if (!this.perBuild || this.perBuild.list !== list || this.perBuild.nbuild !== pc.nb.nbuild || this.perBuild.n !== n) {
+      this.perBuild = this.buildPerBuild(s, list, n, idOf);
+      this.perBuild.nbuild = pc.nb.nbuild;
     }
+    const { oneTwo, pairsArr, npairs } = this.perBuild;
     // hydrogen reduction (find_hydrogen_neighbors): a copy with kred > 0 and one 1-2 partner is reduced toward the
     // copy of that partner nearest to it (native red2local = domain->closest_image(i, map(id)))
     const red2 = new Int32Array(nall);
@@ -344,36 +358,10 @@ export class PairAmoeba extends Pair {
         xred[3 * k + d] = v;
       }
     }
-    // 1-5 neighbours by ID (special.cpp onefive); the list codes them as special 4
-    const fifth = buildOneFive(s);
-    const fifthOf = new Map<number, Set<number>>();
-    for (let i = 0; i < n; i++) {
-      const set = new Set<number>();
-      for (let k = fifth.offset[i]; k < fifth.offset[i + 1]; k++) set.add(fifth.partner[k]);
-      fifthOf.set(i, set);
-    }
-    // pairs from the half list; special codes 1..3 come from the list, 4 from the 1-5 set
-    const list = pc.half;
-    if (!list) throw new StyleError('pair amoeba needs a half neighbor list');
-    const pi: number[] = [], pj: number[] = [], ps: number[] = [];
-    for (let ii = list.ilo ?? 0; ii < list.inum; ii++) {
-      const i = ii;
-      const start = list.firstneigh[i];
-      for (let k = 0; k < list.numneigh[i]; k++) {
-        const enc = list.neighbors[start + k];
-        const j = enc & NEIGHMASK;
-        let sb = sbOf(enc);
-        if (sb === 0 && fifthOf.get(i)?.has(idOf(j))) sb = 4;
-        pi.push(i);
-        pj.push(j);
-        ps.push(sb);
-      }
-    }
-    const pairsArr = { pi: Int32Array.from(pi), pj: Int32Array.from(pj), ps: Int8Array.from(ps) };
     const inp: HalInput = {
       xred, cls, red2local: red2,
       pi: pairsArr.pi, pj: pairsArr.pj, pspecial: pairsArr.ps,
-      npairs: pi.length,
+      npairs,
     };
     this.pvec.fill(0);
     if (!this.hippo) {
@@ -386,7 +374,7 @@ export class PairAmoeba extends Pair {
     if (!needSites) return;
     const sites = this.mpoleSites(pc, prm, oneTwo, idIndex, amtype, n, closest);
     if (this.hippo) {
-      this.hippoTerms(pc, prm, sites, { pi: pairsArr.pi, pj: pairsArr.pj, ps: pairsArr.ps, npairs: pi.length }, own, cls, amtype, n);
+      this.hippoTerms(pc, prm, sites, { pi: pairsArr.pi, pj: pairsArr.pj, ps: pairsArr.ps, npairs }, own, cls, amtype, n);
     }
     if (prm.hasMultipoles || this.hippo) {
       // HIPPO always has the charge-penetration term (the core charges interact even with zero permanent multipoles)
@@ -536,6 +524,52 @@ export class PairAmoeba extends Pair {
    * (amoeba_induce.cpp induce()), the polarization energy (polar_energy) and the real-space forces and torques (polar_real).
    * The energy goes to ecoul, as native eng_coul = erepulse + empole + epolar + eqxfer.
    */
+  /**
+   * The data of one neighbor build: the 1-2 partners by ID (the bonds), and the pairs of the half list with their
+   * special codes (1..3 from the list, 4 for the 1-5 partners of special.cpp onefive), with the identity index of the
+   * pairs that the polarization loops take.
+   */
+  private buildPerBuild(s: PairCompute['s'], list: NonNullable<PairCompute['half']>, n: number, idOf: (k: number) => number): PerBuild {
+    const bonds = s.topo.bonds;
+    const oneTwo = new Map<number, number[]>();
+    for (let e = 0; e < bonds.n; e++) {
+      if (bonds.type[e] === 0) continue;
+      const a = bonds.atoms[2 * e], b = bonds.atoms[2 * e + 1];
+      if (!oneTwo.has(a)) oneTwo.set(a, []);
+      if (!oneTwo.has(b)) oneTwo.set(b, []);
+      if (!oneTwo.get(a)!.includes(b)) oneTwo.get(a)!.push(b);
+      if (!oneTwo.get(b)!.includes(a)) oneTwo.get(b)!.push(a);
+    }
+    const fifth = buildOneFive(s);
+    const fifthOf = new Map<number, Set<number>>();
+    for (let i = 0; i < n; i++) {
+      const set = new Set<number>();
+      for (let k = fifth.offset[i]; k < fifth.offset[i + 1]; k++) set.add(fifth.partner[k]);
+      fifthOf.set(i, set);
+    }
+    const pi: number[] = [], pj: number[] = [], ps: number[] = [];
+    for (let ii = list.ilo ?? 0; ii < list.inum; ii++) {
+      const i = ii;
+      const start = list.firstneigh[i];
+      for (let k = 0; k < list.numneigh[i]; k++) {
+        const enc = list.neighbors[start + k];
+        const j = enc & NEIGHMASK;
+        let sb = sbOf(enc);
+        if (sb === 0 && fifthOf.get(i)?.has(idOf(j))) sb = 4;
+        pi.push(i);
+        pj.push(j);
+        ps.push(sb);
+      }
+    }
+    const index = new Int32Array(pi.length);
+    for (let k = 0; k < pi.length; k++) index[k] = k;
+    return {
+      list, nbuild: -1, n, oneTwo,
+      pairsArr: { pi: Int32Array.from(pi), pj: Int32Array.from(pj), ps: Int8Array.from(ps) },
+      npairs: pi.length, index,
+    };
+  }
+
   private polarizationTerm(
     pc: PairCompute, prm: AmoebaPrm, sites: MpoleSites,
     pairsArr: { pi: Int32Array; pj: Int32Array; ps: Int8Array },
@@ -543,22 +577,28 @@ export class PairAmoeba extends Pair {
     own: Int32Array,
   ): number {
     const key = this.key!;
-    const types = new Int32Array(n);
-    for (let i = 0; i < n; i++) types[i] = amtype.data[i];
-    const alpha = new Float64Array(n), pdamp = new Float64Array(n), thole = new Float64Array(n);
-    for (let i = 0; i < n; i++) {
-      const pol = prm.polar.get(types[i]);
-      if (!pol) continue;
-      alpha[i] = pol.alpha;
-      pdamp[i] = libmPow(pol.alpha, 1.0 / 6.0);
-      thole[i] = pol.thole;
+    // the atoms' polarizabilities, damping and polar groups (assign_groups in pair_amoeba.cpp): fixed for a build
+    const pb = this.perBuild!;
+    if (!this.polarStatic || this.polarStatic.pb !== pb) {
+      const types = new Int32Array(n);
+      for (let i = 0; i < n; i++) types[i] = amtype.data[i];
+      const alpha = new Float64Array(n), pdamp = new Float64Array(n), thole = new Float64Array(n);
+      for (let i = 0; i < n; i++) {
+        const pol = prm.polar.get(types[i]);
+        if (!pol) continue;
+        alpha[i] = pol.alpha;
+        pdamp[i] = libmPow(pol.alpha, 1.0 / 6.0);
+        thole[i] = pol.thole;
+      }
+      // 1-2 partners as local indices (polar groups, assign_groups in pair_amoeba.cpp)
+      const oneTwoLocal: number[][] = [];
+      for (let i = 0; i < n; i++) {
+        oneTwoLocal.push((oneTwo.get(pc.s.id[i]) ?? []).map((id) => idIndex.get(id) ?? -1));
+      }
+      const group = assignPolarGroups(n, oneTwoLocal, types, (t) => prm.polar.get(t)?.group ?? []);
+      this.polarStatic = { pb, types, alpha, pdamp, thole, group };
     }
-    // 1-2 partners as local indices (polar groups, assign_groups in pair_amoeba.cpp)
-    const oneTwoLocal: number[][] = [];
-    for (let i = 0; i < n; i++) {
-      oneTwoLocal.push((oneTwo.get(pc.s.id[i]) ?? []).map((id) => idIndex.get(id) ?? -1));
-    }
-    const group = assignPolarGroups(n, oneTwoLocal, types, (t) => prm.polar.get(t)?.group ?? []);
+    const { types, alpha, pdamp, thole, group } = this.polarStatic;
     // HIPPO (pair hippo): core charge, damping exponent and valence charge of each copy (pcore, palpha of its class;
     // pval = pole - pcore of the owner, the same as the charge-penetration term)
     let hippo: HippoPolarAtoms | undefined;
@@ -607,7 +647,7 @@ export class PairAmoeba extends Pair {
     }
     const pre: PrecondPairs = settings.pcgprec ? this.precond! : { pi: new Int32Array(0), pj: new Int32Array(0), ps: new Int8Array(0) };
     const tens = settings.pcgprec ? buildPrecondTensors(atoms, pre, settings) : new Float64Array(0);
-    const pairs = Array.from({ length: pairsArr.pi.length }, (_, k) => k);
+    const pairs = this.perBuild!.index;
     const ind = induceDipoles(atoms, settings, pairs, pre, tens);
     const e = polarEnergy(atoms, settings, ind);
     const vir = polarReal(atoms, settings, sites, ind, pc.f, pairs).virial;

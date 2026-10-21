@@ -96,7 +96,7 @@ const hippoPScale = (a: PolarAtoms, s: PolarSettings, sb: number, I: number, J: 
  * dipole-dipole tensors of the mutual field (wscale) for each pair in range. Without Ewald the bn[m] are the reciprocal
  * distance terms rr(2m+1) (aewald = 0 is required; pair_amoeba.ts refuses HIPPO with Ewald).
  */
-export const hippoDirectField = (a: PolarAtoms, h: HippoPolarAtoms, s: PolarSettings, pairs: readonly number[], off2: number) => {
+export const hippoDirectField = (a: PolarAtoms, h: HippoPolarAtoms, s: PolarSettings, pairs: ArrayLike<number>, off2: number) => {
   const n = a.n;
   const field = new Float64Array(3 * n), fieldp = new Float64Array(3 * n);
   // dfield0c: the reciprocal permanent field starts both fields (udirect1), then the real-space pairs add to them
@@ -269,7 +269,7 @@ export const hippoPrecondTensors = (
  */
 export const hippoPolarReal = (
   a: PolarAtoms, h: HippoPolarAtoms, s: PolarSettings, sites: MpoleSites, ind: InducedDipoles, f: Float64Array,
-  pairs: readonly number[], polarSiteTorques: (a: PolarAtoms, s: PolarSettings, sites: MpoleSites, ind: InducedDipoles,
+  pairs: ArrayLike<number>, polarSiteTorques: (a: PolarAtoms, s: PolarSettings, sites: MpoleSites, ind: InducedDipoles,
     ufld: Float64Array, dufld: Float64Array, f: Float64Array, vir: Float64Array) => void,
 ): PolarResult => {
   const n = a.n;
@@ -280,7 +280,8 @@ export const hippoPolarReal = (
   const dufld = new Float64Array(6 * n);
   const vir = new Float64Array(6);
   const dmpi = new Float64Array(9), dmpk = new Float64Array(9), dmpik = new Float64Array(9);
-  for (const p of pairs) {
+  for (let q = 0; q < pairs.length; q++) {
+    const p = pairs[q];
     const i = a.pi[p], j = a.pj[p];
     const I = a.own[i], J = a.own[j];
     const xr = x[3 * j] - x[3 * i], yr = x[3 * j + 1] - x[3 * i + 1], zr = x[3 * j + 2] - x[3 * i + 2];

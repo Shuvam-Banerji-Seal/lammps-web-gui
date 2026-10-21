@@ -135,7 +135,7 @@ const tholeDamp = (a: PolarAtoms, i: number, j: number, r: number): number => {
  * dipole-dipole tensors of the mutual field for each pair within the polar cutoff. `fieldD` is the field of the direct
  * scaling (dscale), `fieldP` of the preconditioner-free p-scaling (pscale).
  */
-const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], off2: number) => {
+const directField = (a: PolarAtoms, s: PolarSettings, pairs: ArrayLike<number>, off2: number) => {
   const n = a.n;
   const field = new Float64Array(3 * n), fieldp = new Float64Array(3 * n);
   // dfield0c: the reciprocal permanent field starts both fields, then the real-space pairs add to them
@@ -277,7 +277,7 @@ const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], 
  * Each pair adds T.u of the other atom to both atoms (the half list).
  */
 const mutualField = (
-  a: PolarAtoms, aewald: number, recip: PolarSettings['recipMutual'], pairs: readonly number[], tdip: Float64Array, inRange: readonly boolean[],
+  a: PolarAtoms, aewald: number, recip: PolarSettings['recipMutual'], pairs: ArrayLike<number>, tdip: Float64Array, inRange: readonly boolean[],
   uind: Float64Array, uinp: Float64Array,
 ): { field: Float64Array; fieldp: Float64Array } => {
   const field = new Float64Array(3 * a.n), fieldp = new Float64Array(3 * a.n);
@@ -417,7 +417,7 @@ const dot = (u: Float64Array, v: Float64Array): number => {
  * eps = DEBYE sqrt(max(epsd, epsp) / natoms) < polar-eps, the iteration limit polar-iter and the peek step.
  */
 export const induceDipoles = (
-  a: PolarAtoms, s: PolarSettings, pairs: readonly number[], pre: PrecondPairs, tens: Float64Array,
+  a: PolarAtoms, s: PolarSettings, pairs: ArrayLike<number>, pre: PrecondPairs, tens: Float64Array,
 ): InducedDipoles => {
   const n = a.n;
   const off2 = s.ewaldcut * s.ewaldcut;
@@ -601,7 +601,7 @@ export interface PolarResult {
  */
 export const polarReal = (
   a: PolarAtoms, s: PolarSettings, sites: MpoleSites, ind: InducedDipoles, f: Float64Array,
-  pairs: readonly number[],
+  pairs: ArrayLike<number>,
 ): PolarResult => {
   if (s.hippo) return hippoPolarReal(a, requireHippo(a), s, sites, ind, f, pairs, polarSiteTorques);
   const n = a.n;
@@ -611,7 +611,8 @@ export const polarReal = (
   const ufld = new Float64Array(3 * n);
   const dufld = new Float64Array(6 * n);
   const vir = new Float64Array(6);
-  for (const p of pairs) {
+  for (let q = 0; q < pairs.length; q++) {
+    const p = pairs[q];
     const i = a.pi[p], j = a.pj[p];
     const I = a.own[i], J = a.own[j];
     const xr = x[3 * j] - x[3 * i], yr = x[3 * j + 1] - x[3 * i + 1], zr = x[3 * j + 2] - x[3 * i + 2];

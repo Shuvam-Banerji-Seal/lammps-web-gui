@@ -45,6 +45,10 @@ export const SBBITS = 30;
 export const NEIGHMASK = (1 << SBBITS) - 1;
 export const sbOf = (j: number): number => j >>> SBBITS;
 
+/** One neigh_modify exclude entry (type pair, group pair, or the molecule/intra and molecule/inter group tests). */
+export type Exclusion = { kind: 'type'; a: number; b: number } | { kind: 'group'; a: number; b: number }
+  | { kind: 'molecule/intra' | 'molecule/inter'; a: number };
+
 export interface NeighList {
   /** Number of owned atoms with lists (a kernel loops over atoms [ilo, inum)). */
   inum: number;
@@ -135,8 +139,7 @@ export class Neighbor {
    * "molecule/inter group-ID = exclude if both atoms are in different
    * molecules and in group".
    */
-  excludes: ({ kind: 'type'; a: number; b: number } | { kind: 'group'; a: number; b: number }
-    | { kind: 'molecule/intra' | 'molecule/inter'; a: number })[] = [];
+  excludes: Exclusion[] = [];
   /** neigh_modify include group-ID: only atoms of this group get pair neighbors (bit, 0 = all). */
   includeBit = 0;
 
@@ -469,15 +472,23 @@ export class Neighbor {
 
   private excludeFn(s: SimState): ((i: number, j: number) => boolean) | null {
     if (!this.excludes.length) return null;
-    const ex = this.excludes;
+    // the type exclusions as a table over type pairs (both orders), the others tested in turn: the same predicate, an
+    // OR of every exclusion, without a loop over the type entries for each candidate pair
+    const nt = s.ntypes + 1;
+    const typeTab = new Uint8Array(nt * nt);
+    let anyType = false;
+    const others: Exclusion[] = [];
+    for (const e of this.excludes) {
+      if (e.kind !== 'type') { others.push(e); continue; }
+      anyType = true;
+      if (e.a >= 1 && e.a < nt && e.b >= 1 && e.b < nt) { typeTab[e.a * nt + e.b] = 1; typeTab[e.b * nt + e.a] = 1; }
+    }
+    const byType = (i: number, j: number): boolean => typeTab[s.type[i] * nt + s.type[j]] === 1;
+    if (!others.length) return byType;
     return (i, j) => {
-      for (const e of ex) {
+      if (anyType && byType(i, j)) return true;
+      for (const e of others) {
         switch (e.kind) {
-          case 'type': {
-            const ti = s.type[i], tj = s.type[j];
-            if ((ti === e.a && tj === e.b) || (ti === e.b && tj === e.a)) return true;
-            break;
-          }
           case 'group': {
             const mi = s.mask[i], mj = s.mask[j];
             if (((mi & e.a) && (mj & e.b)) || ((mi & e.b) && (mj & e.a))) return true;
@@ -535,6 +546,16 @@ export class Neighbor {
       if (c > 0) { cutsq[k] = (c + skin) * (c + skin); if (c + skin > cmax) cmax = c + skin; }
     }
     if (cmax <= 0) return emptyList(nlocal);
+    // neigh_modify exclude type M N (when this list takes the neigh_modify exclusions): the type pair's cutoff is set
+    // below any distance, so its pairs are dropped at the distance test instead of after it, as native's npair build
+    // tests the exclusion before the distance. The bins (from cmax) and the order of the other pairs are unchanged.
+    if (!needs.exclude) {
+      for (const e of this.excludes) {
+        if (e.kind !== 'type' || e.a < 1 || e.a >= nt || e.b < 1 || e.b >= nt) continue;
+        cutsq[e.a * nt + e.b] = -1;
+        cutsq[e.b * nt + e.a] = -1;
+      }
+    }
     // bins over the bounding box of all atoms; the stencil reaches past the box, so every
     // stencil row stays inside the padded bin grid
     const binsize = this.binsize > 0 ? this.binsize : 0.5 * cmax;
@@ -696,6 +717,7 @@ export class Neighbor {
             }
             for (let q = qs; q < lB; q++) {
               const kq = lk[q], tq = lt[q];
+              if (cutsq[tp * nt + tq] < 0) continue; // an excluded type pair (both orders)
               const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
               let r2 = dx * dx + dy * dy + dz * dz;
               // a size list keeps the pair only within radsum + skin (Pair.sizeList); NaN fails every test below
@@ -727,6 +749,7 @@ export class Neighbor {
             }
             for (let q = gA; q < gB; q++) {
               const kq = gk[q], tq = gt[q];
+              if (cutsq[tp * nt + tq] < 0) continue;
               const dx = gxs[3 * q] - px, dy = gxs[3 * q + 1] - py, dz = gxs[3 * q + 2] - pz;
               let r2 = dx * dx + dy * dy + dz * dz;
               if (lr) { const rc = lr[p] + gr![q] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
@@ -750,6 +773,7 @@ export class Neighbor {
             }
             for (let q = lA; q < lB; q++) {
               const kq = lk[q], tq = lt[q];
+              if (cutsq[tq * nt + tp] < 0) continue;
               const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
               let r2 = dx * dx + dy * dy + dz * dz;
               if (lr) { const rc = lr[q] + gr![p] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }

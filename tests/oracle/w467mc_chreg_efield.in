@@ -1,0 +1,30 @@
+# oracle: fix charge/regulation with fix efield (energy yes) and fix langevin: each energy evaluation (energy_full)
+# runs pre_force and post_force, and compute pe adds the efield energy of that call; the chreg-polymer example cut to
+# 60 steps
+# oracle-inputs: data.chreg-polymer
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      full
+neighbor        3.0 bin
+read_data       data.chreg-polymer
+bond_style      harmonic
+bond_coeff      1 100 1.122462
+velocity        all create 1.0 8008 loop geom
+pair_style      lj/cut/coul/long/soft 2 0.5 10.0  1.122462 20
+pair_coeff      * *  1.0 1.0 1.122462
+kspace_style    pppm 1.0e-3
+pair_modify     shift yes
+dielectric      1.0
+fix             fnve all nve
+compute         dtemp all temp
+compute_modify  dtemp dynamic/dof yes
+fix             fT all langevin 1.0 1.0 1.0 123
+fix_modify      fT temp dtemp
+fix             ef all efield 0.05 0.0 0.0
+fix_modify      ef energy yes
+fix chareg1 all charge/regulation 2 3 acid_type 1 pH 7.0 pKa 6.5 pIp 3.0 pIm 3.0 temp 1.0 nmc 40 seed 2345
+thermo          10
+thermo_style    custom step pe c_dtemp f_chareg1[3] f_chareg1[4] f_chareg1[7] f_chareg1[8] f_ef
+thermo_modify   format float %.15g
+timestep        0.005
+run             60

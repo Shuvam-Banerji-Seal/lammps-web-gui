@@ -65,10 +65,14 @@ import { libm } from '../libm';
  *
  * Unsupported: every keyword except ke, itype == jtype, and T <= 0 are
  * StyleErrors (native rejects them as an illegal fix mol/swap command).
+ *
+ * As native LAMMPS does (src/MC/fix_mol_swap.cpp at b332f28): the molecule range and the swapped charges come from
+ * the fix group's atoms in molecules (init); the event runs at the exchange stage of its step (pre_exchange, after
+ * the step's integration and before its forces); energy_full (pre_force, the forces, post_force, compute pe) runs once
+ * at the event start and once per attempt, an accepted swap keeping its energy; the velocity factors are those of the
+ * per-type masses (sqrt(m_i / m_j) and its inverse, ke off for equal masses), and a rejected swap is undone by swapping
+ * back with the inverse factors.
  */
-
-/** Saved per-atom values so a rejected attempt restores exactly. */
-interface Saved { i: number; type: number; q: number; vx: number; vy: number; vz: number; }
 
 /** The state fix mol/swap keeps in a restart file (fix_mol_swap.cpp write_restart). */
 export interface MolSwapRestart { seed: number; nextStep: number; attempts: number; accepts: number; step: number }
@@ -86,6 +90,10 @@ export class FixMolSwap extends Fix {
   private hiMol = 0;
   /** Charges of itype and jtype when every such atom shares one value, else null. */
   private qSwap: [number, number] | null = null;
+  /** Velocity factors of a swap i -> j and j -> i (fix_mol_swap.cpp i2j_vscale, j2i_vscale); null: ke off. */
+  private vscale: [number, number] | null = null;
+  /** Energy of the current state (energy_stored), set at the event start and by each accepted swap. */
+  private energyStored = 0;
   private nextStep: number;
   private attempts = 0;
   private accepts = 0;
@@ -150,10 +158,12 @@ export class FixMolSwap extends Fix {
 
   init(): void {
     const s = this.sys.state;
-    // loID/hiID over the molecule IDs that contain any itype or jtype atom; molecule 0 is not a molecule.
+    // loID/hiID over the molecule IDs that contain any itype or jtype atom of the fix group; molecule 0 is not a
+    // molecule
     let lo = Number.POSITIVE_INFINITY;
     let hi = 0;
     for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
       if (s.type[i] !== this.itype && s.type[i] !== this.jtype) continue;
       const m = s.molecule[i];
       if (m <= 0) continue;
@@ -162,6 +172,9 @@ export class FixMolSwap extends Fix {
     }
     this.loMol = hi >= 1 ? lo : 1;
     this.hiMol = hi;
+    // ke yes: the factors of the per-type masses, ke off when they are equal (fix_mol_swap.cpp init)
+    const mi = s.massByType[this.itype], mj = s.massByType[this.jtype];
+    this.vscale = this.ke && !s.rmass && mi !== mj ? [Math.sqrt(mi / mj), Math.sqrt(mj / mi)] : null;
     this.chargeValues();
   }
 
@@ -175,14 +188,20 @@ export class FixMolSwap extends Fix {
   private chargeValues(): void {
     const s = this.sys.state;
     if (!hasCharge(s)) { this.qSwap = null; return; }
-    const q = [Number.NaN, Number.NaN];
+    // fix_mol_swap.cpp init: the charge of the last itype (jtype) atom of the group in a molecule (-BIG without one),
+    // then every such atom must have it
+    const BIG = 1.0e20;
+    const q = [-BIG, -BIG];
+    const counted = (i: number) => s.molecule[i] !== 0 && (s.mask[i] & this.groupBit) !== 0;
+    for (let i = 0; i < s.n; i++) {
+      if (!counted(i)) continue;
+      if (s.type[i] === this.itype) q[0] = s.q[i];
+      if (s.type[i] === this.jtype) q[1] = s.q[i];
+    }
     let bad = false;
     for (let i = 0; i < s.n; i++) {
-      const t = s.type[i];
-      const k = t === this.itype ? 0 : t === this.jtype ? 1 : -1;
-      if (k < 0) continue;
-      if (Number.isNaN(q[k])) q[k] = s.q[i];
-      else if (q[k] !== s.q[i]) bad = true;
+      if (!counted(i)) continue;
+      if ((s.type[i] === this.itype && s.q[i] !== q[0]) || (s.type[i] === this.jtype && s.q[i] !== q[1])) bad = true;
     }
     if (bad) {
       this.sys.warn('Cannot swap charges in fix mol/swap');
@@ -192,63 +211,78 @@ export class FixMolSwap extends Fix {
     }
   }
 
-  /** endOfStep runs every step (nevery = 1); the fix keeps its own N-step schedule. */
-  endOfStep(): void {
+  /**
+   * The scheduled step is a reneighbor step (fix_mol_swap.cpp: force_reneighbor, next_reneighbor), so the run loop
+   * calls preExchange and rebuilds the lists, with the swapped types, before the step's forces.
+   */
+  reneighborDue(step: number): boolean {
+    return step === this.nextStep;
+  }
+
+  /** The event of the scheduled step (fix_mol_swap.cpp pre_exchange): after the step's integration, before its forces. */
+  preExchange(): void {
     const s = this.sys.state;
     if (s.step !== this.nextStep) return;
+    this.sys.bump();
+    this.energyStored = this.potentialEnergy();
     for (let x = 0; x < this.X; x++) this.attempt();
     this.nextStep += this.N;
   }
 
-  /** One MC swap attempt: pick a molecule, flip its itype/jtype atoms, Metropolis test. */
+  /** One MC swap attempt (fix_mol_swap.cpp attempt_swap): pick a molecule, swap its itype/jtype atoms, Metropolis test. */
   private attempt(): void {
     const s = this.sys.state;
     this.attempts++;
+    const energyBefore = this.energyStored;
     const span = this.hiMol - this.loMol + 1;
     let mol = this.loMol + Math.floor(this.rng.uniform() * span);
     if (mol > this.hiMol) mol = this.hiMol;
-    const idx: number[] = [];
+    this.swapMolecule(mol);
+    this.sys.bump();
+    const energyAfter = this.potentialEnergy();
+    if (this.rng.uniform() < libm.exp((energyBefore - energyAfter) / (s.units.boltz * this.T))) {
+      this.accepts++;
+      this.energyStored = energyAfter;
+      return;
+    }
+    // rejected: swap the same atoms back, with the inverse velocity factors
+    this.swapMolecule(mol);
+    this.sys.bump();
+  }
+
+  /** Swaps every itype and jtype atom of the group in molecule mol (type, charge, and the ke yes velocity factor). */
+  private swapMolecule(mol: number): void {
+    const s = this.sys.state;
     for (let i = 0; i < s.n; i++) {
       if (s.molecule[i] !== mol || (s.mask[i] & this.groupBit) === 0) continue;
-      if (s.type[i] === this.itype || s.type[i] === this.jtype) idx.push(i);
-    }
-    const e0 = this.potentialEnergy();
-    const saved: Saved[] = idx.map((i) => ({ i, type: s.type[i], q: s.q[i], vx: s.v[3 * i], vy: s.v[3 * i + 1], vz: s.v[3 * i + 2] }));
-    for (const i of idx) this.setType(i, s.type[i] === this.itype ? this.jtype : this.itype);
-    const dE = this.potentialEnergy() - e0;
-    const u = this.rng.uniform();
-    const accept = dE <= 0 || u < libm.exp(-dE / (s.units.boltz * this.T));
-    if (accept) this.accepts++;
-    else {
-      for (const p of saved) {
-        s.type[p.i] = p.type;
-        s.q[p.i] = p.q;
-        s.v[3 * p.i] = p.vx; s.v[3 * p.i + 1] = p.vy; s.v[3 * p.i + 2] = p.vz;
-      }
+      if (s.type[i] === this.itype) this.setType(i, this.jtype);
+      else if (s.type[i] === this.jtype) this.setType(i, this.itype);
     }
   }
 
   /** Changes one atom's type, its charge and (ke yes) its velocity, conserving kinetic energy. */
   private setType(i: number, newType: number): void {
     const s = this.sys.state;
-    const oldType = s.type[i];
-    const mOld = s.rmass ? s.rmass[i] : s.massByType[oldType];
     s.type[i] = newType;
     if (this.qSwap) s.q[i] = newType === this.itype ? this.qSwap[0] : this.qSwap[1];
-    if (this.ke) {
-      const mNew = s.rmass ? s.rmass[i] : s.massByType[newType];
-      if (mNew !== mOld && mNew > 0 && mOld > 0) {
-        const f = Math.sqrt(mOld / mNew);
-        s.v[3 * i] *= f; s.v[3 * i + 1] *= f; s.v[3 * i + 2] *= f;
-      }
+    if (this.vscale) {
+      // i2j_vscale for an itype atom becoming jtype, j2i_vscale for the reverse (per-atom masses do not change with
+      // the type, so they keep the velocity)
+      const f = newType === this.jtype ? this.vscale[0] : this.vscale[1];
+      s.v[3 * i] *= f; s.v[3 * i + 1] *= f; s.v[3 * i + 2] *= f;
     }
   }
 
-  /** Potential energy of the whole system, including fix contributions (fix_modify energy yes). */
+  /**
+   * energy_full (fix_mol_swap.cpp): modify->pre_force, the forces, modify->post_force (a dynamic group's
+   * post_force_group fix first, then every post_force fix), and compute pe with the fix_modify energy contributions.
+   */
   private potentialEnergy(): number {
     const sys = this.sys;
-    sys.bump();
+    for (const f of sys.fixes) f.preForce?.();
     const a = sys.forces();
+    sys.assignDynamicGroups(false);
+    for (const f of sys.fixes) f.postForce?.();
     return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp + sys.fixEnergy();
   }
 

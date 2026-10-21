@@ -109,6 +109,8 @@ export class Neighbor {
   once = false;
   /** neighbor style multi (neighbor.html); neigh_modify bin/hash needs it. */
   multiStyle = false;
+  /** neighbor style nsq (neighbor.html); dump image autobond reads it to place a periodic pair as native's list does. */
+  nsqStyle = false;
   /** neigh_modify binsize (0 = half the largest neighbor cutoff). */
   binsize = 0;
   /** comm_modify cutoff: ghost cutoff at least this large. */
@@ -155,11 +157,20 @@ export class Neighbor {
   qall = new Float64Array(0);
   half: NeighList | null = null;
   full: NeighList | null = null;
+  /** Owned and ghost positions and the box bounds at the last list build (dump image autobond, autobond.ts). */
+  xBuilt = new Float64Array(0);
+  loBuilt: [number, number, number] = [0, 0, 0];
+  hiBuilt: [number, number, number] = [0, 0, 0];
 
   lastBuild = -1;
   nbuild = 0;
   ndanger = 0;
   cutneighmax = 0;
+  /**
+   * The smallest neighbor cutoff over the type pairs (a pair without interaction counts as 0), as native's
+   * Neighbor::init sets cutneighmin (src/neighbor.cpp at b332f28); dump image autobond warns past it.
+   */
+  cutneighmin = 0;
   cutghost = 0;
   private xhold = new Float64Array(0);
   private boxhold: number[] = [];
@@ -187,6 +198,14 @@ export class Neighbor {
     let mx = 0;
     for (let k = 0; k < needs.cutoff.length; k++) if (needs.cutoff[k] > mx) mx = needs.cutoff[k];
     this.cutneighmax = mx > 0 ? mx + this.skin : 0;
+    let mn = Infinity;
+    for (let i = 1; i <= needs.ntypes; i++) {
+      for (let j = 1; j <= needs.ntypes; j++) {
+        const c = needs.cutoff[i * (needs.ntypes + 1) + j];
+        mn = Math.min(mn, c > 0 ? c + this.skin : 0);
+      }
+    }
+    this.cutneighmin = mn === Infinity ? 0 : mn;
     this.cutghost = Math.max(this.cutneighmax, this.commCutoff);
   }
 
@@ -286,6 +305,9 @@ export class Neighbor {
       this.half = needs.half ? emptyList(s.n) : null;
       this.full = needs.full ? emptyList(s.n) : null;
     }
+    this.xBuilt = this.xall.slice(0, 3 * this.nall);
+    this.loBuilt = [g.lo[0], g.lo[1], g.lo[2]];
+    this.hiBuilt = [g.hi[0], g.hi[1], g.hi[2]];
     if (!this.forcedDecision || this.xhold.length !== 3 * s.n) {
       this.xhold = Float64Array.from(s.x.subarray(0, 3 * s.n));
       this.boxhold = [g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2], g.xy, g.xz, g.yz];

@@ -6,7 +6,6 @@ import type { System } from '../system';
 import type { MixRule, Pair } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
 import { atomSubStyles, isMolecularStyle } from '../atoms';
-import { KSpaceBase } from '../force/kspace/ewald';
 import { typeWord } from '../labelmap';
 import { KSpacePPPM } from '../force/kspace/pppm';
 import { pppmGplHook } from '../force/kspace/pppmHook';
@@ -308,7 +307,7 @@ const kspaceModify: Handler = ({ sys }, a) => {
     }
     if (key === 'compute') {
       // kspace_modify.html: "The compute keyword allows Kspace computations to be turned off, even though a kspace_style is defined."
-      if (!(k instanceof KSpaceBase)) throw new StyleError(`kspace_modify compute is not supported by kspace_style ${k.name}`);
+      // native KSpace::modify_params (src/kspace.cpp at b332f28) sets compute_flag for every kspace style
       k.computeOn = yesno(a[i + 1], 'compute');
       i += 2;
       continue;

@@ -2765,7 +2765,7 @@ const replicate: Handler = ({ sys }, a) => {
   sys.log(`Replicated to ${s.n} atoms`);
 };
 
-/** change_box group-ID parameter args ... [units] — change_box.html (a subset: x/y/z final/delta/scale, xy/xz/yz, boundary, ortho, triclinic, remap). */
+/** change_box group-ID parameter args ... [units] — change_box.html (x/y/z final/delta/scale/volume, xy/xz/yz, boundary, ortho, triclinic, set, remap). */
 const changeBox: Handler = ({ sys }, a) => {
   const s = sys.state;
   const bit = sys.groupBit(a[0] ?? '');
@@ -2786,13 +2786,37 @@ const changeBox: Handler = ({ sys }, a) => {
     if (p === 'x' || p === 'y' || p === 'z') {
       const d = 'xyz'.indexOf(p);
       const st = ops[k + 1];
+      // the box volume before this operation (native domain->xprd * yprd (* zprd))
+      const oldvol = (b.hi[0] - b.lo[0]) * (b.hi[1] - b.lo[1]) * (sys.dimension === 2 ? 1 : b.hi[2] - b.lo[2]);
+      // native scales about the middle as mid + factor * (bound - mid)
+      const scaleDim = (dd: number, f: number): void => {
+        const mid = 0.5 * (b.lo[dd] + b.hi[dd]);
+        b.lo[dd] = mid + f * (b.lo[dd] - mid);
+        b.hi[dd] = mid + f * (b.hi[dd] - mid);
+      };
       if (st === 'final') { b.lo[d] = num(ops[k + 2], 'lo') * sc[d]; b.hi[d] = num(ops[k + 3], 'hi') * sc[d]; k += 4; } else if (st === 'delta') { b.lo[d] += num(ops[k + 2], 'dlo') * sc[d]; b.hi[d] += num(ops[k + 3], 'dhi') * sc[d]; k += 4; } else if (st === 'scale') {
-        const f = num(ops[k + 2], 'factor');
-        const mid = 0.5 * (b.lo[d] + b.hi[d]), half = 0.5 * (b.hi[d] - b.lo[d]) * f;
-        b.lo[d] = mid - half; b.hi[d] = mid + half;
+        scaleDim(d, num(ops[k + 2], 'factor'));
         k += 3;
-      } else if (st === 'volume') throw new StyleError('change_box volume is not supported');
-      else throw new StyleError(`change_box ${p}: style must be final, delta or scale`);
+      } else if (st === 'volume') throw new StyleError('Change_box volume used incorrectly');
+      else throw new StyleError(`change_box ${p}: style must be final, delta, scale or volume`);
+      // As native LAMMPS does (src/change_box.cpp at b332f28, volume_preserve): x, y or z "volume" right after an x, y
+      // or z operation names a dimension (at most two, not the operation's own) rescaled about its middle so that the box
+      // volume is the one before the operation; with two, both are scaled by the square root of the factor.
+      // change_box.html: "The volume style changes the specified dimension in such a way that the overall box volume
+      // remains constant with respect to the operation performed by the preceding keyword."
+      const vdims: number[] = [];
+      while ((ops[k] === 'x' || ops[k] === 'y' || ops[k] === 'z') && ops[k + 1] === 'volume') {
+        const d2 = 'xyz'.indexOf(ops[k]);
+        if (d2 === d || vdims.length >= 2) throw new StyleError('Change_box volume used incorrectly');
+        vdims.push(d2);
+        k += 2;
+      }
+      if (vdims.length) {
+        const newvol = (b.hi[0] - b.lo[0]) * (b.hi[1] - b.lo[1]) * (sys.dimension === 2 ? 1 : b.hi[2] - b.lo[2]);
+        const factor = oldvol / newvol;
+        if (vdims.length === 1) scaleDim(vdims[0], factor);
+        else { scaleDim(vdims[0], Math.sqrt(factor)); scaleDim(vdims[1], Math.sqrt(factor)); }
+      }
     } else if (p === 'xy' || p === 'xz' || p === 'yz') {
       if (!b.triclinic) throw new StyleError(`change_box ${p} needs a triclinic box (use change_box all triclinic first)`);
       const t = ['xy', 'xz', 'yz'].indexOf(p);
@@ -2899,8 +2923,9 @@ const createBondsMany = (sys: System, a: string[]): void => {
   const cutneigh = sys.nb.cutneighmax;
   if (rmax > cutneigh) throw new StyleError(`create_bonds many: rmax ${rmax} exceeds the neighbor cutoff ${cutneigh} (largest pair cutoff plus neighbor skin)`);
   const g = sys.geom;
-  if (g.triclinic) throw new StyleError('create_bonds many is not supported for triclinic boxes');
   const L = [g.hi[0] - g.lo[0], g.hi[1] - g.lo[1], g.hi[2] - g.lo[2]];
+  // the periodic image shifts are the box vectors a = (lx, 0, 0), b = (xy, ly, 0), c = (xz, yz, lz)
+  const xy = g.triclinic ? g.xy : 0, xz = g.triclinic ? g.xz : 0, yz = g.triclinic ? g.yz : 0;
   // measured with native LAMMPS (black box): in 2d the z extent is not checked (rmax 1.5 with a 1.17-thick box adds the bonds)
   for (let d = 0; d < (sys.dimension === 2 ? 2 : 3); d++) if (g.periodic[d] && rmax > L[d]) throw new StyleError(`create_bonds many: rmax ${rmax} is larger than the periodic box length ${L[d]} in ${'xyz'[d]}`);
   // relation of two atoms by bond hops (1, 2 or 3); beyond three hops there is no special weight
@@ -2939,21 +2964,31 @@ const createBondsMany = (sys: System, a: string[]): void => {
       const ib = order[v];
       const mb = s.mask[ib];
       if (!((inA1 && (mb & bit2) !== 0) || (inA2 && (mb & bit1) !== 0))) continue;
-      // a special pair (weight 0) is skipped at its closest image: a second image of a bonded pair
-      // is bonded again (measured: a second many all all added the far image of an existing NN bond)
+      // a special pair (weight 0) is skipped at its minimum images only: a second image of a bonded pair
+      // is bonded again (measured: a second many all all added the far image of an existing NN bond). As native
+      // LAMMPS does (src/npair.cpp and Domain::minimum_image_check at b332f28): the neighbor build drops an excluded
+      // special pair when every periodic component of the separation is at most half the box length, and keeps the
+      // other images as plain neighbors
       const h = hops.get(s.id[ia])?.get(s.id[ib]);
       const special = h !== undefined && lj[h - 1] === 0;
+      const minimumImage = (ex: number, ey: number, ez: number): boolean =>
+        !((g.periodic[0] && Math.abs(ex) > 0.5 * L[0]) || (g.periodic[1] && Math.abs(ey) > 0.5 * L[1]) || (g.periodic[2] && Math.abs(ez) > 0.5 * L[2]));
       const dx = s.x[3 * ib] - s.x[3 * ia], dy = s.x[3 * ib + 1] - s.x[3 * ia + 1], dz = s.x[3 * ib + 2] - s.x[3 * ia + 2];
-      const dv = [dx, dy, dz];
-      const kr = [0, 1, 2].map((d) => (per[d]
-        ? [Math.ceil((-rmax - dv[d]) / L[d]), Math.floor((rmax - dv[d]) / L[d])]
-        : [0, 0]));
-      const closest = [0, 1, 2].map((d) => (per[d] ? -Math.round(dv[d] / L[d]) : 0));
-      for (let kx = kr[0][0]; kx <= kr[0][1]; kx++) {
-        for (let ky = kr[1][0]; ky <= kr[1][1]; ky++) {
-          for (let kz = kr[2][0]; kz <= kr[2][1]; kz++) {
-            if (special && kx === closest[0] && ky === closest[1] && kz === closest[2]) continue;
-            const ex = dx + kx * (per[0] ? L[0] : 0), ey = dy + ky * (per[1] ? L[1] : 0), ez = dz + kz * (per[2] ? L[2] : 0);
+      // the images within rmax: z first, then y (shifted by the yz tilt), then x (shifted by the xy and xz tilts)
+      const range = (periodic: boolean, base: number, len: number): [number, number] =>
+        (periodic ? [Math.ceil((-rmax - base) / len), Math.floor((rmax - base) / len)] : [0, 0]);
+      const [kzlo, kzhi] = range(per[2], dz, L[2]);
+      for (let kz = kzlo; kz <= kzhi; kz++) {
+        const ez = dz + (per[2] ? kz * L[2] : 0);
+        const by = dy + (per[2] ? kz * yz : 0);
+        const [kylo, kyhi] = range(per[1], by, L[1]);
+        for (let ky = kylo; ky <= kyhi; ky++) {
+          const ey = by + (per[1] ? ky * L[1] : 0);
+          const bx = dx + (per[1] ? ky * xy : 0) + (per[2] ? kz * xz : 0);
+          const [kxlo, kxhi] = range(per[0], bx, L[0]);
+          for (let kx = kxlo; kx <= kxhi; kx++) {
+            const ex = bx + (per[0] ? kx * L[0] : 0);
+            if (special && minimumImage(ex, ey, ez)) continue;
             const d = Math.sqrt(ex * ex + ey * ey + ez * ez);
             if (d >= rmin && d <= rmax) newBonds.push([s.id[ia], s.id[ib]]);
           }

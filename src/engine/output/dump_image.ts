@@ -781,7 +781,7 @@ export class ImageDump {
         this.bmap = map;
         return used + 1;
       }
-      case 'gmap': case 'bitrate': case 'framerate': case 'region': case 'thresh':
+      case 'gmap': case 'bitrate': case 'framerate':
         throw new StyleError(`dump ${this.id}: dump_modify keyword '${key}' is not supported for dump image by the browser engine`);
       default:
         return 0;
@@ -882,20 +882,30 @@ export class ImageDump {
     return out;
   }
 
+  /**
+   * The dynamic range of the chosen atoms' values. As native LAMMPS does (src/GRAPHICS/dump_image.cpp at b332f28,
+   * create_image): the minimum and maximum start at BIG = 1e20 and -BIG, so with no atom chosen the range is empty.
+   */
   private rangeOf(vals: Float64Array, s: SimState): [number, number] {
-    let lo = Infinity, hi = -Infinity;
-    const g = this.sys.groupBit(this.group);
+    let lo = 1.0e20, hi = -1.0e20;
     for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & g)) continue;
+      if (!this.chosen[i]) continue;
       lo = Math.min(lo, vals[i]);
       hi = Math.max(hi, vals[i]);
     }
-    return lo <= hi ? [lo, hi] : [0, 0];
+    return [lo, hi];
   }
 
-  /** Render one snapshot and store it under `name` as a data: URL. */
-  write(s: SimState, name: string, owner: ImageOwner): void {
+  /** The atoms the current snapshot draws (set by write). */
+  private chosen: Uint8Array = new Uint8Array(0);
+
+  /**
+   * Render one snapshot and store it under `name` as a data: URL. `chosen` flags the atoms to draw: the dump group,
+   * dump_modify region and thresh (Dump.chooseRows).
+   */
+  write(s: SimState, name: string, owner: ImageOwner, chosen: Uint8Array): void {
     this.ownerElement = owner.element;
+    this.chosen = chosen;
     const rgb = this.fsaa ? this.renderSupersampled(s) : this.render(s);
     const lower = name.toLowerCase();
     let url: string;
@@ -980,7 +990,7 @@ export class ImageDump {
 
     if (this.atomOn) {
       for (let i = 0; i < s.n; i++) {
-        if (!(s.mask[i] & this.sys.groupBit(this.group))) continue;
+        if (!this.chosen[i]) continue;
         // dump_image.cpp: an atom of a line or tri particle is not drawn as a sphere while those keywords are on
         if (this.lineOn && isLineAtom(s, i)) continue;
         if (this.triOn && isTriAtom(s, i)) continue;
@@ -1162,7 +1172,6 @@ export class ImageDump {
   private drawEllipsoids(s: SimState, ctx: DrawCtx, colorVals: Float64Array | null, cmap: ColorMap | null): void {
     const e = this.ellipsoidOn!;
     const hook = gplHook<AtomObjectsHook>('atoms');
-    const bit = this.sys.groupBit(this.group);
     const sh = s.shape!, q = s.quat!;
     const block = s.custom.get(SUPER_BLOCK)?.data ?? null;
     const atoms: EllipsoidAtom[] = [];
@@ -1170,7 +1179,7 @@ export class ImageDump {
     for (let i = 0; i < s.n; i++) {
       if (!isEllipsoid(s, i)) continue;
       const o = ord++;
-      if (!(s.mask[i] & bit)) continue;
+      if (!this.chosen[i]) continue;
       atoms.push({
         center: [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]],
         shape: [sh[3 * i], sh[3 * i + 1], sh[3 * i + 2]],
@@ -1191,7 +1200,6 @@ export class ImageDump {
   private drawBodies(s: SimState, ctx: DrawCtx, colorVals: Float64Array | null, cmap: ColorMap | null): void {
     const b = this.bodyOn!;
     const hook = gplHook<AtomObjectsHook>('atoms');
-    const bit = this.sys.groupBit(this.group);
     const rec = s.custom.get(BODY_RECORD);
     if (!rec || !s.quat) return;
     const bstyle = parseBodyStyle(s.atomStyle)!.bstyle as BodyAtom['style'];
@@ -1199,7 +1207,7 @@ export class ImageDump {
     let ord = 0;
     for (let i = 0; i < s.n; i++) {
       const o = ord++;
-      if (!(s.mask[i] & bit)) continue;
+      if (!this.chosen[i]) continue;
       const base = rec.cols * i;
       const nsub = rec.data[base];
       // a point particle (no body) draws nothing (dump_image.cpp: "if (body[j] < 0) continue")
@@ -1245,7 +1253,6 @@ export class ImageDump {
    */
   private drawParticles(s: SimState, ctx: DrawCtx, colorVals: Float64Array | null, cmap: ColorMap | null): void {
     const hook = gplHook<AtomObjectsHook>('atoms');
-    const bit = this.sys.groupBit(this.group);
     const colorOf = (i: number, mode: 'type' | 'atom' | 'index', ordinal: number): Col => this.particleRGB(s, i, mode, ordinal, colorVals, cmap);
     const lb = this.lineOn ? s.custom.get(LINE_BONUS)?.data : undefined;
     const tb = this.triOn ? s.custom.get(TRI_BONUS)?.data : undefined;
@@ -1253,7 +1260,7 @@ export class ImageDump {
     const tris: TriAtom[] = [];
     let nl = 0, nt = 0;
     for (let i = 0; i < s.n; i++) {
-      const inGroup = (s.mask[i] & bit) !== 0;
+      const inGroup = this.chosen[i] === 1;
       if (this.lineOn && isLineAtom(s, i)) {
         const ord = nl++;
         if (inGroup) lines.push({ x: s.x[3 * i], y: s.x[3 * i + 1], length: lb![2 * i], theta: lb![2 * i + 1], color: colorOf(i, this.lineOn.color, ord), opacity: this.atomOpacity(s.type[i]) });
@@ -1557,10 +1564,12 @@ export class ImageDump {
       bmapOf = this.bmap ?? this.defaultBondMap;
       bmapOf.bounds(bv.lo, bv.hi);
     }
+    let rendered = 0;
     for (let bi = 0; bi < bonds.n; bi++) {
       const i1 = map[bonds.atoms[2 * bi]], i2 = map[bonds.atoms[2 * bi + 1]];
       if (i1 < 0 || i2 < 0) continue;
-      if (!(s.mask[i1] & this.sys.groupBit(this.group)) || !(s.mask[i2] & this.sys.groupBit(this.group))) continue;
+      if (!this.chosen[i1] || !this.chosen[i2]) continue;
+      rendered++;
       let width: number;
       if (bond.width === 'none') continue;
       if (bond.width === 'atom') width = Math.min(this.diameter(s, i1, diamVals), this.diameter(s, i2, diamVals));
@@ -1600,6 +1609,11 @@ export class ImageDump {
       ctx.shading.drawCylinder(ctx.frame, x1, mid1, col, width, 3, op1);
       ctx.shading.drawCylinder(ctx.frame, mid2, x2, col2, width, 3, op2);
     }
+    // As native LAMMPS does (src/GRAPHICS/dump_image.cpp at b332f28, create_image): the bond compute gives one value per
+    // drawn bond, so a dump selection (group, region, thresh) that draws a different number of bonds stops the run
+    if (bvals && rendered !== bvals.size) {
+      throw new StyleError(`Dump image bond compute ${this.bondCompute!.id} produced ${bvals.size} values but ${rendered} bonds were rendered; its group must select the same bonds as the dump`);
+    }
   }
 
   /**
@@ -1607,7 +1621,6 @@ export class ImageDump {
    * the GPL autobond loop (engine-gpl/graphics/autobond.ts); the core gives it the atoms, their colours and the rules.
    */
   private drawAutoBonds(s: SimState, ctx: DrawCtx, ab: { cutoff: number; width: number }): void {
-    const group = this.sys.groupBit(this.group);
     const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
     const cmap = this.atomColorMap(colorVals, s);
     // Domain::minimum_image; the hydrogen rule (both masses below 3) applies to units metal and real only
@@ -1631,7 +1644,7 @@ export class ImageDump {
     ctx.shading.drawAutoBonds(ctx.frame, {
       n: s.n,
       x: s.x,
-      selected: (i) => (s.mask[i] & group) !== 0,
+      selected: (i) => this.chosen[i] === 1,
       mass: hydrogenRule ? (i) => massOf(s, i) : null,
       minimumImage: (d) => g.minimumImage(d),
       excluded,

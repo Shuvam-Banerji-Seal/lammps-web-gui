@@ -1,0 +1,23 @@
+# oracle: fix ave/grid per-atom values in a tilted box (bins in lamda coordinates) and the temperature with the velocity bias of compute temp/partial removed (bias keyword), written by dump grid
+# oracle-files: tri.dump
+# oracle-compare: thermo=all atoms=all
+units           lj
+lattice         fcc 0.8442
+region          box prism 0 4 0 4 0 4 1.0 0.5 -0.6
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 2.0 4928 loop geom
+velocity        all set 0.5 NULL NULL sum yes
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+fix             1 all nve
+compute         tp all temp/partial 0 1 1
+fix             ag all ave/grid 2 3 6 2 2 3 vx vy temp density/number bias tp
+fix             ag2 all ave/grid 2 3 6 2 2 3 temp
+dump            1 all grid 6 tri.dump f_ag:grid:data[*] f_ag2:grid:data f_ag:grid:count
+dump_modify     1 format float %.12g
+thermo_style    custom step temp pe c_tp
+thermo_modify   format float %.15g
+thermo          6
+run             24

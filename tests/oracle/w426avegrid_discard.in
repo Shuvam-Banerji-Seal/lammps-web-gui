@@ -1,0 +1,24 @@
+# oracle: fix ave/grid with shrink-wrapped boundaries, where atoms leave the grid between reneighborings: discard yes (the default) skips them, discard no counts them in the first or last cell
+# oracle-files: disc.dump
+# oracle-compare: thermo=all atoms=all
+units           lj
+boundary        p s s
+lattice         fcc 0.8442
+region          box block 0 4 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 3.0 7741 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+neighbor        0.8 bin
+neigh_modify    delay 0 every 10 check no
+fix             1 all nve
+fix             ad all ave/grid 1 1 1 2 3 3 density/number vx
+fix             ak all ave/grid 1 1 1 2 3 3 density/number vx discard no
+dump            1 all grid 3 disc.dump f_ad:grid:count f_ak:grid:count f_ad:grid:data[2] f_ak:grid:data[2]
+dump_modify     1 format float %.12g
+thermo_style    custom step temp pe
+thermo_modify   format float %.15g
+thermo          3
+run             18

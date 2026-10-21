@@ -15,12 +15,9 @@ import { Session } from '../src/engine/interpreter';
  * Fixtures (tests/fixtures/image_trans): <case>.in is the input and <case>.ppm is native's output:
  * /home/roy/.local/bin/lmp, b332f28, run 0, one process (the subbox is the box), written as PPM. 128x128 px.
  *
- * Pinned differences (count of bytes that differ, largest difference) against native. Every case is byte-exact except
- * chunk_2d_reduced: 3 bytes (one pixel) on the edge of a y wall. The same walls without the reduced units and bound
- * keyword differ in one column of 11 pixels at the edge where two walls meet in the image: the engine's corner of the
- * y = 2 wall projects to xf = 15.999999999999998 (camRight x = -0.49999999999999994, the sincos value native also uses)
- * and its raster stops one column short of native's. The cause is not identified yet; the values are pinned, not
- * loosened, so any change in them shows up here.
+ * Every case is byte-exact. (chunk_2d_reduced differed in one wall-edge pixel until the camera basis vectors were
+ * normalised as MathExtra::norm3 does, in dump_image.ts: camRight x was -0.49999999999999994 and a wall corner projected
+ * to xf = 15.999999999999998.)
  */
 
 const DIR = join(process.cwd(), 'tests', 'fixtures', 'image_trans');
@@ -33,7 +30,7 @@ const EXPECTED: Record<string, { count: number; max: number }> = {
   axestrans: { count: 0, max: 0 },
   ctrans: { count: 0, max: 0 },
   chunk_1d: { count: 0, max: 0 },
-  chunk_2d_reduced: { count: 3, max: 141 },
+  chunk_2d_reduced: { count: 0, max: 0 },
   chunk_3d_bound: { count: 0, max: 0 },
   chunk_2d_dim2: { count: 0, max: 0 },
 };

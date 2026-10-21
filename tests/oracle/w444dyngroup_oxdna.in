@@ -1,0 +1,38 @@
+# oracle: fixes nve/dot and nve/dotc/langevin on dynamic groups (the nucleotides whose scaled |vx| has a fractional part
+# above 0.5 and the others, re-evaluated every 2 steps) on the oxDNA duplex1 example compressed to 0.85, with the
+# excluded volume and FENE bond; two runs
+# oracle-inputs: w57oxdna_duplex1.data
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       3
+newton          on
+boundary        p p p
+atom_style      hybrid bond ellipsoid oxdna
+atom_modify     sort 0 1.0
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+read_data       w57oxdna_duplex1.data
+set             atom * mass 3.1575
+change_box      all x scale 0.85 y scale 0.85 z scale 0.85 remap
+bond_style      oxdna/fene
+bond_coeff      * 2.0 0.25 0.7525
+special_bonds   lj 0 1 1
+pair_style      oxdna/excv
+pair_coeff      * * 2.0 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32
+variable        up atom (abs(vx)*1e3-floor(abs(vx)*1e3))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+compute         am all property/atom angmomx angmomy angmomz
+compute         ams all reduce sum c_am[*]
+timestep        1e-4
+thermo_style    custom step temp pe ebond evdwl ke etotal c_ams[*] v_ndyn
+thermo_modify   format float %.15g
+thermo          20
+fix             1 dyn nve/dot
+fix             2 dyn2 nve/dot
+run             100
+unfix           1
+fix             1 dyn nve/dotc/langevin 0.1 0.1 2.5 457145 angmom 10
+run             100

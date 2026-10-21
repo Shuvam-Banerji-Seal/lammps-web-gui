@@ -1,0 +1,25 @@
+# oracle: fix nvt/uef on a dynamic group (the atoms whose scaled |vx| has a fractional part above 0.5,
+# re-evaluated every 2 steps) with fix nve on the other atoms' dynamic group, uniaxial extensional flow of the WCA liquid
+# of the UEF examples
+# oracle-inputs: w129uef_data.wca
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+pair_style      lj/cut 1.122562
+read_data       w129uef_data.wca
+pair_coeff      1 1 1.0 1.0
+pair_modify     shift yes
+neighbor        0.5 bin
+neigh_modify    delay 0
+change_box      all triclinic
+variable        up atom (abs(vx)*1e2-floor(abs(vx)*1e2))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+fix             1 dyn nvt/uef temp 0.722 0.8 0.5 erate -0.05 -0.05
+fix             2 dyn2 nve
+thermo_style    custom step temp pe press lx ly lz xy xz yz f_1 v_ndyn
+thermo_modify   format float %.15g
+thermo          10
+run             60

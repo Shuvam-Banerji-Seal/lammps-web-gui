@@ -28,6 +28,19 @@ export class FixSetForceSpin extends Fix {
     });
   }
 
+  /**
+   * The value the spin integrator gives the precession vector of atom i once every other term is in (native
+   * src/SPIN/fix_setforce_spin.cpp single_setforce_spin, called last by fix nve/spin's ComputeInteractionsSpin at
+   * b332f28): the set components replace those of w for an atom of the group.
+   */
+  single(i: number, w: Float64Array | number[]): void {
+    if (!(this.sys.state.mask[i] & this.groupBit)) return;
+    for (let k = 0; k < 3; k++) {
+      const c = this.comp[k];
+      if (c !== null) w[k] = c;
+    }
+  }
+
   /** The minimizers apply the fix after each force evaluation too (native min_post_force). */
   minPostForce(): void { this.postForce(); }
 

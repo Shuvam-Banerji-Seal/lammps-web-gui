@@ -1,0 +1,27 @@
+# oracle: fix nvt/sllod/eff on two dynamic groups (the particles whose scaled |vz| has a fractional part above 0.5 and
+# the others, re-evaluated every 2 steps) under fix deform x erate with remap v, eFF H2
+# oracle-inputs: w63eff_h2.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+units           electron
+newton          on
+boundary        p p p
+atom_style      electron
+read_data       w63eff_h2.data
+pair_style      eff/cut 6.447968 pressure/evirials
+pair_coeff      * *
+comm_modify     vel yes
+velocity        all create 300.0 4928459 dist gaussian rot yes mom yes
+timestep        0.0005
+variable        up atom (abs(vz)*1e5-floor(abs(vz)*1e5))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+fix             0 all deform 1 x erate 0.01 remap v
+fix             1 dyn nvt/sllod/eff temp 300.0 350.0 0.5
+fix             2 dyn2 nvt/sllod/eff temp 300.0 300.0 0.3
+compute         effTemp all temp/eff
+thermo_style    custom step pe ke temp press vol c_effTemp f_1 f_2 v_ndyn
+thermo_modify   format float %.15g
+thermo          2
+run             20

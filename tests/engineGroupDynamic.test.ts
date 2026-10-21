@@ -57,11 +57,19 @@ describe('group dynamic: argument errors (native texts)', () => {
     ['group b clear', 'Could not find group clear group ID b'],
     ['group a dynamic all region left\ngroup b dynamic a region left\nrun 0', 'Dynamic group parent group a cannot be dynamic'],
     ['variable v equal 1\ngroup a dynamic all var v\nrun 0', "Variable 'v' for dynamic group a is of incompatible style"],
-    ['group a dynamic all region left\nfix 1 a spring/self 1', 'Fix spring/self does not allow use with a dynamic group'],
-    ['group a dynamic all region left\nfix 1 a rigid single', 'Fix rigid does not allow use with a dynamic group'],
+    // checked at the run's init, after the fixes' own init (src/modify.cpp Modify::init)
+    ['group a dynamic all region left\nfix 1 a spring/self 1\nrun 0', 'Fix spring/self does not allow use with a dynamic group'],
+    ['group a dynamic all region left\nfix 1 a rigid single\nrun 0', 'Fix rigid does not allow use with a dynamic group'],
     // dynamic_group_allow stays 0 (the Fix default) for drag and momentum/chunk (src/modify.cpp Modify::init)
-    ['group a dynamic all region left\nfix 1 a drag 0 0 0 1 0.1', 'Fix drag does not allow use with a dynamic group'],
-    ['group a dynamic all region left\ncompute c all chunk/atom bin/1d x lower 0.5\nfix 1 a momentum/chunk 1 c', 'Fix momentum/chunk does not allow use with a dynamic group'],
+    ['group a dynamic all region left\nfix 1 a drag 0 0 0 1 0.1\nrun 0', 'Fix drag does not allow use with a dynamic group'],
+    ['group a dynamic all region left\ncompute c all chunk/atom bin/1d x lower 0.5\nfix 1 a momentum/chunk 1 c linear 1 1 1\nrun 0', 'Fix momentum/chunk does not allow use with a dynamic group'],
+    // the constructor's own check comes first: fix nvk sets dynamic_group_allow but takes only group all
+    // (src/EXTRA-FIX/fix_nvk.cpp at b332f28)
+    ['group a dynamic all region left\nfix 1 a nvk', 'Fix nvk only supports group all'],
+    // the atom attribute of fix adapt and adapt/fep is refused on a dynamic group by the fixes' init (fix_adapt.cpp,
+    // FEP/fix_adapt_fep.cpp at b332f28); measured with native LAMMPS: these texts, for atom_style atomic too
+    ['group a dynamic all region left\nvariable d equal 1.0\nfix 1 a adapt 1 atom charge v_d\nrun 0', 'Cannot use dynamic group a with fix adapt atom'],
+    ['group a dynamic all region left\nvariable d equal 1.0\nfix 1 a adapt/fep 1 atom charge * v_d\nrun 0', 'Cannot use dynamic group with fix adapt/fep atom'],
     ['group a dynamic all region left\ncompute 1 a msd', 'Compute msd is not compatible with dynamic groups'],
   ];
   for (const [text, msg] of cases) {
@@ -70,6 +78,18 @@ describe('group dynamic: argument errors (native texts)', () => {
       expect(r.error).toContain(msg);
     });
   }
+});
+
+describe('group dynamic: fixes are checked at the run', () => {
+  it('a refused fix removed before the run stops nothing (Modify::init checks the fixes of the run)', async () => {
+    const r = await run('group a dynamic all region left\nfix 1 a spring/self 1\nunfix 1\nrun 0');
+    expect(r.error).toBeNull();
+  });
+  it('the error is raised by the run, not by the fix command', async () => {
+    const r = await run('group a dynamic all region left\nfix 1 a spring/self 1\nprint "after fix"\nrun 0');
+    expect(r.logs).toContain('after fix');
+    expect(r.error).toContain('Fix spring/self does not allow use with a dynamic group');
+  });
 });
 
 describe('group dynamic: assignment', () => {

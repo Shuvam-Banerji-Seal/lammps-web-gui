@@ -1,0 +1,34 @@
+# oracle: fixes adapt and adapt/fep on a dynamic group (the atoms whose scaled |vx| has a fractional part above 0.5,
+# re-evaluated every 2 steps) with pair attributes, which native allows on a dynamic group (only the atom attribute
+# is refused); lj/cut epsilon ramps, reset yes and no
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          b block 0 3 0 3 0 3
+create_box      2 b
+create_atoms    1 box
+group           odd id 1:108:2
+set             group odd type 2
+mass            * 1.0
+velocity        all create 1.0 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+timestep        0.002
+variable        up atom (abs(vx)*1e2-floor(abs(vx)*1e2))>0.5
+group           dyn dynamic all var up every 2
+variable        ndyn equal count(dyn)
+variable        e equal ramp(1.0,1.5)
+variable        e2 equal ramp(1.0,0.7)
+fix             2 all nve
+thermo_style    custom step temp pe ke press v_ndyn
+thermo_modify   format float %.15g
+thermo          10
+fix             1 dyn adapt 1 pair lj/cut epsilon 1 2 v_e reset yes
+run             40
+unfix           1
+run             10
+fix             1 dyn adapt/fep 2 pair lj/cut epsilon 2 2 v_e2 reset no
+run             40
+unfix           1
+run             10

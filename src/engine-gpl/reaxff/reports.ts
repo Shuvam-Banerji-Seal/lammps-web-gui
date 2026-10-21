@@ -170,6 +170,8 @@ export class FixReaxFFSpecies extends Fix {
     if (/\.(gz|bz2|zst|lz4|xz)$/.test(this.file)) throw new StyleError('fix reaxff/species with a compressed file name is not supported');
     if (this.nevery <= 0) throw new StyleError(`Invalid fix reaxff/species nevery value ${this.nevery}`);
     if (this.nrepeat <= 0) throw new StyleError(`Invalid fix reaxff/species nrepeat value ${this.nrepeat}`);
+    // fix_reaxff_species.cpp: "if (nrepeat == 1) dynamic_group_allow = 1;"
+    this.dynamicGroupAllow = this.nrepeat === 1;
     if (this.nfreq <= 0) throw new StyleError(`Invalid fix reaxff/species nfreq value ${this.nfreq}`);
     if ((this.nfreq % this.nevery) !== 0 || this.nrepeat * this.nevery > this.nfreq) {
       throw new StyleError('Incompatible fix reaxff/species nevery/nrepeat/nfreq settings');

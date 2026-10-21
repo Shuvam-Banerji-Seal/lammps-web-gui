@@ -6,6 +6,7 @@ import type { SpinPairStyle } from '../force/spin_book';
 import { FixLangevinSpin } from './langevin_spin';
 import { massOf, nativeOrder } from '../atoms';
 import { FixPrecessionSpin } from './precession_spin';
+import { FixSetForceSpin } from './setforce_spin';
 
 /*
  * fix ID group-ID nve/spin keyword values — docs.lammps.org/fix_nve_spin.html:
@@ -58,6 +59,8 @@ export class FixNVESpin extends Fix {
   private wbuf = new Float64Array(3);
   private fields: FixPrecessionSpin[] = [];
   private damping: FixLangevinSpin[] = [];
+  /** The last fix setforce/spin (native locksetforcespin = get_fix_by_style("^setforce/spin").back()). */
+  private setforce: FixSetForceSpin | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -82,6 +85,8 @@ export class FixNVESpin extends Fix {
     this.pairs = findSpinPairs(this.sys.ff.pair);
     this.fields = this.sys.fixes.filter((f): f is FixPrecessionSpin => f instanceof FixPrecessionSpin);
     this.damping = this.sys.fixes.filter((f): f is FixLangevinSpin => f instanceof FixLangevinSpin);
+    const sf = this.sys.fixes.filter((f): f is FixSetForceSpin => f instanceof FixSetForceSpin);
+    this.setforce = sf.length ? sf[sf.length - 1] : null;
     this.sys.state.spinLattice = this.lattice === 'moving';
   }
 
@@ -119,6 +124,9 @@ export class FixNVESpin extends Fix {
       for (const d of this.damping) d.torque(i, w, sp);
       this.w[0] = w[0]; this.w[1] = w[1]; this.w[2] = w[2];
     }
+    // As native LAMMPS does (src/SPIN/fix_nve_spin.cpp ComputeInteractionsSpin at b332f28): fix setforce/spin is applied
+    // last, after the pair, precession and damping terms, in the sweeps as in the precession vector fm
+    this.setforce?.single(i, this.w);
   }
 
   /** One sweep over the owned atoms of the group in the given order, each spin updated with dt. */

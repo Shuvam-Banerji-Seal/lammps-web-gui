@@ -192,6 +192,8 @@ export class FixNeighborSwap extends Fix {
     sys.atomsChanged();
     for (const f of sys.fixes) f.preForce?.();
     const a = sys.forces();
+    // modify->post_force: the post_force_group fixes (a dynamic group's FixGroup) before the post_force fixes
+    sys.assignDynamicGroups(false);
     for (const f of sys.fixes) f.postForce?.();
     return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp;
   }

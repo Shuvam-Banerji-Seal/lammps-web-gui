@@ -123,7 +123,7 @@ write_dump all custom p.dump id c_p[*] angmomz modify sort id format float %.15g
     expect(rows[2][7]).toBeCloseTo(0.5, 14);
   });
 
-  it('dump custom angmom* needs atom_style ellipsoid', async () => {
+  it('dump custom angmom* needs an atom style with angular momentum', async () => {
     const { session } = newSession();
     await expect(session.execute(`units lj
 lattice sc 1.0
@@ -132,7 +132,7 @@ create_box 1 box
 create_atoms 1 box
 mass 1 1.0
 write_dump all custom p.dump id angmomx
-`)).rejects.toThrow(/angmomx needs atom_style ellipsoid/);
+`)).rejects.toThrow(/angmomx needs an atom style with angular momentum/);
   });
 
   it('write_restart / read_restart keeps shape, quaternion, angular momentum and per-atom mass', async () => {

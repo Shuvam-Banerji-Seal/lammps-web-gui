@@ -483,6 +483,9 @@ export class FixWidom extends Fix {
 
   private potentialEnergy(): number {
     const a: Accum = this.sys.forces();
+    // As native LAMMPS does (src/MC/fix_widom.cpp energy_full at b332f28): modify->post_force reassigns a dynamic group
+    // (its post_force_group fix) on the steps that are a multiple of its every
+    this.sys.assignDynamicGroups(false);
     return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp;
   }
 

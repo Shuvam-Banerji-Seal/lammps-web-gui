@@ -1,0 +1,35 @@
+# oracle: fix mvv/tdpd on two dynamic groups (the particles whose scaled |vx| has a fractional part above 0.5 and the
+# others, re-evaluated every 2 steps) with tdpd/source, pair tdpd with two species (examples/PACKAGES/dpd-meso/tdpd cut
+# down)
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       3
+boundary        p p p
+neighbor        0.2 bin
+neigh_modify    every 1 delay 0 check yes
+atom_style      tdpd 2
+comm_modify     vel yes
+region          tdpd block -3 3 -3 3 -3 3 units box
+create_box      1 tdpd
+create_atoms    1 random 600 276438 NULL
+mass            1 1.0
+set             atom * cc 1 1.0
+set             atom * cc 2 1.0
+pair_style      tdpd 1.0 1.58 9872598
+pair_coeff      1 1 18.75 4.5 0.41 1.58 1.58 1.0 1.0E-5 2.0 3.0 1.0E-5 2.0
+velocity        all create 1.0 432982 loop local dist gaussian
+variable        up atom (abs(vx)*1e2-floor(abs(vx)*1e2))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+fix             1 dyn mvv/tdpd 0.5
+fix             2 dyn2 mvv/tdpd 0.5
+fix             3 all tdpd/source 1 cuboid 0.0 1.5 0.0 6.0 3.0 6.0 0.01
+compute         c all tdpd/cc/atom 1
+compute         cs all reduce sum c_c
+thermo_style    custom step temp pe ke etotal press c_cs v_ndyn
+thermo_modify   format float %.15g
+thermo          10
+timestep        0.01
+run             40

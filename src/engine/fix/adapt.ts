@@ -416,6 +416,9 @@ export class FixAdapt extends Fix {
 
   /** Stores the original values (run start) and applies the variables for this run's setup. */
   init(): void {
+    // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::init at b332f28): "allow a dynamic group only if ATOM attribute
+    // not used"
+    if (this.atoms.length && this.sys.groups.isDynamic(this.groupBit)) throw new StyleError(`Cannot use dynamic group ${this.group} with fix adapt atom`);
     this.resolve();
     const s = this.sys.state;
     for (const t of this.pairs) {

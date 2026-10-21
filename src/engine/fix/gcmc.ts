@@ -700,6 +700,9 @@ export class FixGcmc extends Fix {
 
   private potentialEnergy(): number {
     const a = this.sys.forces();
+    // As native LAMMPS does (src/MC/fix_gcmc.cpp energy_full at b332f28): modify->post_force runs after the forces, and
+    // its post_force_group fixes reassign a dynamic group on the steps that are a multiple of its every
+    this.sys.assignDynamicGroups(false);
     return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp;
   }
 

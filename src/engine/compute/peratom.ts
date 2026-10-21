@@ -479,9 +479,13 @@ export const peratomAttrProblem = (sys: System, a: string): string | null => {
   if (TRI_CORNER.test(a) && !isTriStyle(sys.atomStyle)) return 'requires atom style tri';
   if (SPHERE_ATTRS.has(a) && !sys.state.radius) return 'needs atom_style sphere';
   if (TORQUE_ATTRS.has(a) && !sys.state.torque) return 'needs atom_style sphere or ellipsoid';
+  // As native LAMMPS does (src/compute_property_atom.cpp at b332f28): angmomx, angmomy and angmomz need
+  // atom->angmom_flag, which the styles with an angular momentum set (ellipsoid, body and tri; atoms.ts allocates
+  // state.angmom for the same styles)
+  if (/^angmom[xyz]$/.test(a)) return sys.state.angmom ? null : 'needs an atom style with angular momentum (ellipsoid, body or tri)';
   // atom_style bpm/sphere stores a quaternion (atoms.ts isBpmSphereStyle) but no shape
-  // atom_style body stores the orientation and the angular momentum of each body (bodies.ts, compute_property_atom.html: "quaternion ... for aspherical or body particles")
-  const bodyQuatOrAngmom = parseBodyStyle(sys.atomStyle) !== null && (/^quat[wijk]$/.test(a) || /^angmom[xyz]$/.test(a));
+  // atom_style body stores the orientation of each body (bodies.ts, compute_property_atom.html: "quaternion ... for aspherical or body particles")
+  const bodyQuatOrAngmom = parseBodyStyle(sys.atomStyle) !== null && /^quat[wijk]$/.test(a);
   if (ELLIPSOID_ATTRS.has(a) && !sys.state.shape && !bodyQuatOrAngmom && !(isBpmSphereStyle(sys.atomStyle) && /^quat[wijk]$/.test(a))) return 'needs atom_style ellipsoid';
   if (SUPER_ATTRS.has(a) && !isSuperEllipsoidStyle(sys.atomStyle)) return 'requires atom style ellipsoid superellipsoid';
   if (DIPOLE_ATTRS.has(a) && !sys.state.mu) return 'needs atom_style dipole';

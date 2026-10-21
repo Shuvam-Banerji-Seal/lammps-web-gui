@@ -130,6 +130,8 @@ export class FixAdaptFEP extends Fix {
    */
   init(): void {
     const s = this.sys.state;
+    // fix_adapt_fep.cpp init: a dynamic group only without the atom attribute
+    if (this.atoms.length && this.sys.groups.isDynamic(this.groupBit)) throw new StyleError('Cannot use dynamic group with fix adapt/fep atom');
     if (this.kspaces.length && !this.sys.ff.kspace) throw new StyleError('Fix adapt/fep kspace style does not exist');
     if (this.hasDiameter && !s.radius) throw new StyleError('Fix adapt/fep requires atom attribute diameter');
     // AtomVecSphere::init (src/atom_vec_sphere.cpp at b332f28): changing diameters needs atom_style sphere 1

@@ -355,6 +355,9 @@ export class FixAtomSwap extends Fix {
     const sys = this.sys;
     sys.bump();
     const a = sys.forces();
+    // modify->post_force runs the post_force_group fixes first: a dynamic group (FixGroup::post_force) is reassigned
+    // on the steps that are a multiple of its every, so the swap lists of the step see the new members
+    sys.assignDynamicGroups(false);
     return a.evdwl + a.ecoul + a.ebond + a.eangle + a.edihed + a.eimp + a.elong + sys.fixEnergy();
   }
 

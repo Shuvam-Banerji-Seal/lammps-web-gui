@@ -1,0 +1,42 @@
+# oracle: fixes nve/body, nvt/body, nph/body and npt/body on dynamic groups (the bodies whose scaled |vx| has a
+# fractional part above 0.5 and the others, re-evaluated every 2 steps), pair body/rounded/polygon on the 2x2 squares of
+# examples/body/in.squares; three runs
+# oracle-inputs: w111body_squares.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       2
+atom_style      body rounded/polygon 1 6
+atom_modify     map array
+read_data       w111body_squares.data
+replicate       2 2 1
+velocity        all create 0.5 980411 dist gaussian mom yes rot yes
+pair_style      body/rounded/polygon 1 1 0.1 0.5 0.5
+pair_coeff      * * 100 2
+comm_modify     vel yes
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.001
+variable        up atom (abs(vx)*1e3-floor(abs(vx)*1e3))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+compute         am all property/atom angmomz
+compute         ams all reduce sum c_am
+thermo_style    custom step pe ke etotal press pxx pyy vol c_ams v_ndyn
+thermo_modify   format float %.15g
+thermo          10
+fix             0 all enforce2d
+fix             1 dyn nvt/body temp 0.5 0.6 1.0
+fix             2 dyn2 nvt/body temp 0.5 0.5 0.5
+run             60
+unfix           1
+unfix           2
+fix             1 dyn2 nve/body
+fix             2 dyn nph/body x 0.001 0.1 1.0 y 0.001 0.1 1.0
+run             60
+unfix           1
+unfix           2
+fix             1 dyn nve/body
+fix             2 dyn2 npt/body temp 0.5 0.4 1.0 iso 0.001 0.1 1.0
+run             60

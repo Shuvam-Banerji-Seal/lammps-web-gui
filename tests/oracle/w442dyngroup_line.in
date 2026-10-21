@@ -1,0 +1,28 @@
+# oracle: fix nve/line on two dynamic groups of the line segments (a dynamic group's parent group is the segments; the
+# segments whose scaled |vx| has a fractional part above 0.5 and the others, re-evaluated every 2 steps), pair line/lj
+# oracle-inputs: w61line_pair.data
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       2
+atom_style      line
+read_data       w61line_pair.data
+pair_style      line/lj 3.0
+pair_coeff      * * 0.25 0.3 1.0 0.3 2.2
+group           lns id 1 2 3 5
+group           pts id 4 6
+neighbor        0.3 bin
+timestep        0.001
+variable        up atom (abs(vx)*1e3-floor(abs(vx)*1e3))>0.5
+variable        down atom !v_up
+group           dyn dynamic lns var up every 2
+group           dyn2 dynamic lns var down every 2
+variable        ndyn equal count(dyn)
+fix             1 dyn nve/line
+fix             2 dyn2 nve/line
+fix             3 pts nve
+compute         om all property/atom omegaz
+compute         oms all reduce sum c_om
+thermo_style    custom step pe ke c_oms v_ndyn
+thermo_modify   format float %.15g
+thermo          20
+run             200

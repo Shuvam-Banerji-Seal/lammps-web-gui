@@ -1,0 +1,34 @@
+# oracle: fixes wall/table (zlo and zhi, energy and virial) and wall/flow (three walls across x) on dynamic groups (the
+# atoms whose scaled |vx| has a fractional part above 0.5 and the others, re-evaluated every 2 steps), fix nve on all
+# atoms, lj/cut fcc liquid between z walls
+# oracle-inputs: w16walltable.dat
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+boundary        p p f
+lattice         fcc 0.8442
+region          box block 0 6 0 3 -1 4
+create_box      1 box
+region          atoms block 0 6 0 3 0 3.0
+create_atoms    1 region atoms
+mass            1 1.0
+velocity        all create 1.0 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    delay 0 every 1 check yes
+variable        up atom (abs(vx)*1e2-floor(abs(vx)*1e2))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+fix             1 all nve
+fix             2 dyn wall/table linear 201 zlo EDGE w16walltable.dat HARMONIC 2.5 zhi EDGE w16walltable.dat LJ126 2.5
+fix_modify      2 energy yes virial yes
+fix             3 dyn2 wall/flow x 0.5 1.0 4321 3 2 4 5 units lattice
+compute         vx all reduce ave vx
+thermo_style    custom step temp pe press pzz f_2 f_2[1] f_2[2] c_vx v_ndyn
+thermo_modify   format float %.15g
+timestep        0.004
+thermo          20
+run             200

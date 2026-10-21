@@ -9,7 +9,7 @@ import { initRun, runVerlet } from '../run/verlet';
 import { runVerletCoupled } from '../run/coupled';
 import { parseRunStyleRespa, runRespa } from '../run/respa';
 import { RunCancelled } from '../errors';
-import { DYNAMIC_GROUP_FIXES, DYNAMIC_GROUP_UNVERIFIED } from '../group';
+import { FIX_COMMAND_STYLE } from '../group';
 import type { System } from '../system';
 import type { EngineEvent } from '../types';
 import { hasCharge, massOf } from '../atoms';
@@ -55,12 +55,10 @@ const fix: Handler = ({ sys }, a) => {
   const k = sys.fixes.findIndex((f) => f.id === id);
   if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError(`replacing fix ${id} with a different style (${sys.fixes[k].style} -> ${style}) is not allowed; unfix it first`);
   ensureThermoComputes(sys);
-  if (sys.groups.isDynamic(sys.groupBit(group))) {
-    if (DYNAMIC_GROUP_UNVERIFIED.has(style)) throw new StyleError(`fix ${style} with a dynamic group is not supported by the browser engine`);
-    if (!DYNAMIC_GROUP_FIXES.has(style)) throw new StyleError(`Fix ${style} does not allow use with a dynamic group`);
-  }
   if (k >= 0) sys.fixes[k].destroy?.();
   const f = make(sys, id, group, a.slice(3));
+  // a fix on a dynamic group is checked at the run's init (checkDynamicGroupFixes, src/modify.cpp Modify::init)
+  FIX_COMMAND_STYLE.set(f, style);
   if (k >= 0) sys.fixes[k] = f; else sys.fixes.push(f);
   sys.refreshComputes();
 };

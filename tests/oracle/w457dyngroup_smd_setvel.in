@@ -1,0 +1,91 @@
+# oracle: fix smd/setvel on dynamic groups (the particles above y = 9 - 0.004 step and below y = -9.1 + 0.004 step,
+# re-evaluated every 10 steps) pulling the aluminum strip of examples/PACKAGES/machdyn/aluminum_strip_pull (cut to 500
+# steps); the pulled groups grow
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-8
+
+variable        E equal 70.0  # Young's modulus
+variable        nu equal 0.3  # Poisson ratio
+variable        rho equal 1   # initial mass density
+variable        q1 equal 0.56 # standard artificial viscosity linear coefficient
+variable        q2 equal 0.0  # standard artificial viscosity quadratic coefficient
+variable        hg equal 10.0 # hourglass control coefficient
+variable        cp equal 1.0  # heat capacity of material -- not used here
+
+variable        JC_A equal 0.3241 # Johnson Cook parameters
+variable        JC_B equal 0.1138
+variable        JC_N equal 0.42
+variable        JC_C equal 0 #0.002
+variable        JC_M equal 1.34
+variable        JC_epsdot0 equal 1.0e-3 # 1/s = 1/(1000 ms)
+variable        Troom equal 298.15
+variable        Tmelt equal 500.15
+
+variable        eosC0 equal 0.0 # Polynomial EOS parameters
+variable        eosC1 equal 74.2
+variable        eosC2 equal 60.5
+variable        eosC3 equal 36.5
+variable        eosC4 equal 1.96
+variable        eosC5 equal 0.0
+variable        eosC6 equal 0.0
+
+dimension       2
+units           si
+boundary        sm sm p # simulation box boundaries
+atom_style      smd
+atom_modify     map array
+comm_modify     vel yes
+neigh_modify    every 10 delay 0 check yes # re-build neighbor list every 10 steps
+newton          off
+
+variable        l0 equal 1.0 # lattice spacing for creating particles
+lattice         sq ${l0}
+region          box block -10 10 -10 10 -0.1 0.1 units box
+create_box      1 box
+create_atoms    1 box
+group           tlsph type 1
+
+variable        h equal 2.01*${l0} # SPH smoothing kernel radius
+variable        vol_one equal ${l0}^2 # volume of one particle -- assuming unit thickness
+variable        skin equal ${h} # Verlet list range
+neighbor        ${skin} bin
+set             group all volume ${vol_one}
+set             group all smd/mass/density ${rho}
+set             group all diameter ${h} # set SPH kernel radius
+
+variable        vel0 equal 0.02 # pull velocity
+variable        ytop equal 9.0-0.004*step
+variable        ybot equal -9.1+0.004*step
+variable        intop atom y>v_ytop
+variable        inbot atom y<v_ybot
+group           top dynamic all var intop every 10
+group           bot dynamic all var inbot every 10
+variable        ntop equal count(top)
+variable        vel_up equal ${vel0}*(1.0-exp(-0.01*time))
+variable        vel_down equal -v_vel_up
+fix             veltop_fix top smd/setvel 0 v_vel_up 0
+fix             velbot_fix bot smd/setvel 0 v_vel_down 0
+
+pair_style      smd/tlsph
+pair_coeff      1 1 *COMMON ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
+                *EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
+                *JOHNSON_COOK ${JC_A} ${JC_B}  ${JC_N} ${JC_C} ${JC_epsdot0} ${Troom} ${Tmelt} ${JC_M} &
+                *FAILURE_MAX_PLASTIC_STRAIN 1.2 &
+                *END
+
+fix             dtfix tlsph smd/adjust_dt 0.1 # dynamically adjust time increment every step
+fix             integration_fix tlsph smd/integrate_tlsph
+
+compute         dt_atom all smd/tlsph/dt
+compute         p all smd/plastic/strain
+compute         epsdot all smd/plastic/strain/rate
+compute         S all smd/tlsph/stress # Cauchy stress tensor
+compute         D all smd/tlsph/strain/rate
+compute         E all smd/tlsph/strain
+compute         nn all smd/tlsph/num/neighs # number of neighbors for each particle
+compute         shape all smd/tlsph/shape
+compute         damage all smd/damage
+variable        stress equal 0.5*(f_velbot_fix[2]-f_veltop_fix[2])/20
+thermo          50
+thermo_style    custom step dt f_dtfix time f_veltop_fix[2] f_velbot_fix[2] v_ntop
+thermo_modify   format float %.15g
+run             500

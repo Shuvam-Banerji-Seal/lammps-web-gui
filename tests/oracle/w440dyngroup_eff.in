@@ -1,0 +1,38 @@
+# oracle: fixes nvt/eff, nph/eff, npt/eff and langevin/eff on a dynamic group (the particles whose scaled |vz| has a fractional part above 0.5, re-evaluated
+# every 2 steps) on the eFF H2 system, with nvt/eff on the other particles' dynamic group, then langevin/eff on the
+# group with nve/eff on all particles
+# oracle-inputs: w63eff_h2.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+units           electron
+newton          on
+boundary        p p p
+atom_style      electron
+read_data       w63eff_h2.data
+pair_style      eff/cut 6.447968 pressure/evirials
+pair_coeff      * *
+comm_modify     vel yes
+velocity        all create 300.0 4928459 dist gaussian rot yes mom yes
+timestep        0.0005
+variable        up atom (abs(vz)*1e5-floor(abs(vz)*1e5))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+compute         effTemp all temp/eff
+thermo_style    custom step pe ke temp press vol c_effTemp v_ndyn
+thermo_modify   format float %.15g
+thermo          2
+fix             1 dyn nvt/eff temp 300.0 350.0 0.5
+fix             2 dyn2 nvt/eff temp 300.0 300.0 0.3
+run             10
+unfix           1
+fix             1 dyn nph/eff iso 0.0 0.0 1.0
+run             10
+unfix           1
+fix             1 dyn npt/eff temp 300.0 250.0 0.5 iso 0.0 0.0 1.0
+run             10
+unfix           1
+unfix           2
+fix             1 all nve/eff
+fix             2 dyn langevin/eff 300.0 300.0 0.5 4321 tally yes
+run             10

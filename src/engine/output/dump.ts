@@ -5,7 +5,7 @@ import { compileCFormat, checkCFormat, formatNumber, type ValueKind } from '../c
 import { localDumpColumns, localColumnSource, localOutputOf } from '../compute/local_dump';
 import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
 import { fillWildcard } from '../commands/restart';
-import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, isEllipsoidStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
+import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, hasQuatStyle, isTriStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 import { ImageDump } from './dump_image';
 import type { ColorMap } from './image_colormap';
 import { gplHook } from '../gplHooks';
@@ -351,7 +351,9 @@ export class Dump {
       // atom_style.html, smd: "atomic + molecule, radius, rmass + smd data", so radius is allocated for it
       if (SPHERE_COLS.has(c) && !isSphereStyle(st) && !(c === 'radius' && isSmdStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere)`);
       if (TORQUE_COLS.has(c) && !hasRmassStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere or ellipsoid)`);
-      if (ANGMOM_COLS.has(c) && !isEllipsoidStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style ellipsoid)`);
+      // As native LAMMPS does (src/dump_custom.cpp at b332f28): angmomx, angmomy and angmomz need atom->angmom_flag, set
+      // by the styles with an angular momentum (ellipsoid, body and tri)
+      if (ANGMOM_COLS.has(c) && !(sh ? sh.angmom : hasQuatStyle(st) || isTriStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs an atom style with angular momentum: ellipsoid, body or tri)`);
       if (DIPOLE_COLS.has(c) && !hasDipoleStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style dipole)`);
       if (c === 'mol' && !(sh ? hasMolecule(sh) : isMolecularStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (mol needs a molecular atom_style)`);
       return;

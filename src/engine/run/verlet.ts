@@ -2,6 +2,7 @@ import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { restartDue } from '../commands/restart';
 import { haltRequested } from './halt';
+import { checkDynamicGroupFixes } from '../group';
 
 /*
  * The velocity-Verlet run loop — docs.lammps.org/Developer_flow.html:
@@ -68,6 +69,7 @@ export const initRun = (sys: System): void => {
   for (const c of sys.computes) c.init();
   sys.checkDynamicGroups();
   for (const f of sys.fixes) f.init?.();
+  checkDynamicGroupFixes(sys.groups, sys.fixes);
   // native LAMMPS: "WARNING: One or more atoms are time integrated more than once"
   const integ = sys.fixes.filter((f) => f.timeIntegrate);
   if (integ.length > 1) {

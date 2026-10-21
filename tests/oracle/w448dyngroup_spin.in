@@ -1,0 +1,34 @@
+# oracle: fixes precession/spin (zeeman and anisotropy, energy) and setforce/spin on dynamic groups (the atoms whose
+# scaled |vx| has a fractional part above 0.5 and the others, re-evaluated every 2 steps), bcc iron spins with
+# spin/exchange and a moving lattice under fix nve/spin
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      spin
+boundary        p p p
+atom_modify     map array
+lattice         bcc 2.8665
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+set             group all spin/atom/random 31 2.2
+velocity        all create 200 4928459 rot yes dist gaussian
+pair_style      spin/exchange 3.5
+pair_coeff      * * exchange 3.4 0.02726 0.2171 1.841
+neighbor        0.1 bin
+neigh_modify    every 10 check yes delay 20
+variable        up atom (abs(vx)*1e2-floor(abs(vx)*1e2))>0.5
+variable        down atom !v_up
+group           dyn dynamic all var up every 2
+group           dyn2 dynamic all var down every 2
+variable        ndyn equal count(dyn)
+fix             1 dyn precession/spin zeeman 10.0 0.1 0.2 1.0 anisotropy 0.001 0.0 0.0 1.0
+fix_modify      1 energy yes
+fix             2 dyn2 setforce/spin 0.0 NULL 0.0
+fix             3 all nve/spin lattice moving
+timestep        0.0001
+compute         s all spin
+thermo_style    custom step pe ke c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] f_1 v_ndyn
+thermo_modify   format float %.15g
+thermo          10
+run             100

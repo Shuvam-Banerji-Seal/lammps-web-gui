@@ -1,0 +1,26 @@
+# oracle: fixes bond/create and bond/create/angle on dynamic groups (the atoms whose scaled |vx| has a fractional part
+# above 0.5, re-evaluated every 2 steps): only atoms of the group are bonded; two runs on bead chains with fix nve
+# oracle-inputs: w224mc_bondcreateangle_chains.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      angle
+read_data       w224mc_bondcreateangle_chains.data extra/bond/per/atom 6 extra/angle/per/atom 6 extra/special/per/atom 8
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.5 0.8
+bond_style      harmonic
+bond_coeff      1 30.0 1.0
+angle_style     harmonic
+angle_coeff     1 10.0 120.0
+velocity        all create 0.1 4928459 loop geom
+variable        up atom (abs(vx)*1e3-floor(abs(vx)*1e3))>0.5
+group           dyn dynamic all var up every 2
+variable        ndyn equal count(dyn)
+fix             integ all nve
+thermo_style    custom step pe ke bonds angles v_ndyn
+thermo_modify   format float %.15g
+thermo          2
+fix             bc dyn bond/create 2 1 1 1.6 1 prob 0.7 4321
+run             16
+unfix           bc
+fix             bc dyn bond/create/angle 2 1 1 2.0 1 aconstrain 100 180 prob 0.8 12345
+run             16

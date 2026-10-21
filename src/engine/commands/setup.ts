@@ -2420,10 +2420,16 @@ const deleteAtomsCmd: Handler = ({ sys }, a) => {
       // of group 2 lies within the cutoff, unless J is an owned atom that is already deleted; a periodic image of J is
       // never checked against the deletions (single processor: the image is the ghost of the owned atom)
       const raw = [0, 0, 0];
+      // the atoms J that can lie within the cutoff of I: the cells of a grid at least `cut` wide (all atoms in a
+      // triclinic box). Whether I is deleted depends only on the set of such J, so the result is that of the all-pairs loop.
+      const ident = Array.from({ length: s.n }, (_, k) => k);
+      const L = [g.hi[0] - g.lo[0], g.hi[1] - g.lo[1], g.hi[2] - g.lo[2]];
+      const per = [g.periodic[0], g.periodic[1], g.periodic[2] && sys.dimension === 3];
+      const near = cellCandidates(s, ident, per, g.triclinic ? 0 : cut, L, b2, false, b1);
       for (let i = 0; i < s.n; i++) {
         if (del[i] || !(s.mask[i] & b1)) continue;
-        for (let j = 0; j < s.n; j++) {
-          if (j === i || !(s.mask[j] & b2)) continue;
+        for (const j of near(i)) {
+          if (!(s.mask[j] & b2)) continue;
           raw[0] = s.x[3 * i] - s.x[3 * j]; raw[1] = s.x[3 * i + 1] - s.x[3 * j + 1]; raw[2] = s.x[3 * i + 2] - s.x[3 * j + 2];
           d[0] = raw[0]; d[1] = raw[1]; d[2] = raw[2];
           g.minimumImage(d);
@@ -2908,16 +2914,19 @@ const changeBox: Handler = ({ sys }, a) => {
  * create_box and read_data do not keep that value, so it is not enforced here).
  */
 /**
- * create_bonds many: for the atom of rank u (atoms in ID order, `order`), the ranks v > u of the atoms that can lie
- * within `rmax` of it under some periodic image, in increasing order. With rmax > 0 (orthogonal box) the atoms of the
+ * create_bonds many (and delete_atoms overlap, with `later` false): for the atom of rank u (atoms in the order
+ * `order`, u in the groups `queryBits`), the ranks v > u (with `later` false: every v other than u) of the atoms of the
+ * groups `bits` that can lie within `rmax` of it under some periodic image, in increasing order. With rmax > 0 (orthogonal box) the atoms of the
  * groups (`bits`) are binned into cells at least rmax wide (positions wrapped into periodic dimensions, the atoms' extent
  * in the others), so a pair within rmax at any image is in two neighboring cells; with rmax = 0 every later rank is a
  * candidate. The caller tests every image of each candidate, so the bonds and their order are those of the all-pairs loop.
  */
-const cellCandidates = (s: SimState, order: number[], periodic: boolean[], rmax: number, L: number[], bits: number): ((u: number) => Iterable<number>) => {
+const cellCandidates = (s: SimState, order: number[], periodic: boolean[], rmax: number, L: number[], bits: number, later = true, queryBits = bits): ((u: number) => Iterable<number>) => {
   const n = order.length;
   if (!(rmax > 0)) {
-    return function* (u: number) { for (let v = u + 1; v < n; v++) yield v; };
+    return later
+      ? function* (u: number) { for (let v = u + 1; v < n; v++) yield v; }
+      : function* (u: number) { for (let v = 0; v < n; v++) if (v !== u) yield v; };
   }
   const lo = [0, 0, 0], size = [1, 1, 1], nb = [1, 1, 1];
   for (let d = 0; d < 3; d++) {
@@ -2968,9 +2977,12 @@ const cellCandidates = (s: SimState, order: number[], periodic: boolean[], rmax:
   };
   return (u: number) => {
     const out: number[] = [];
-    if (!(s.mask[order[u]] & bits)) return out;
-    for (const cz of around(cell[3 * u + 2], 2)) for (const cy of around(cell[3 * u + 1], 1)) for (const cx of around(cell[3 * u], 0)) {
-      for (const v of cells.get(key(cx, cy, cz)) ?? []) if (v > u) out.push(v);
+    const iu = order[u];
+    if (!(s.mask[iu] & queryBits)) return out;
+    // the cell of u (an atom outside the binned atoms' extent of a non-periodic dimension takes the edge cell, whose
+    // neighbors still hold every binned atom within rmax of it)
+    for (const cz of around(cellOf(iu, 2), 2)) for (const cy of around(cellOf(iu, 1), 1)) for (const cx of around(cellOf(iu, 0), 0)) {
+      for (const v of cells.get(key(cx, cy, cz)) ?? []) if (later ? v > u : v !== u) out.push(v);
     }
     return out.sort((a, b) => a - b);
   };

@@ -6,6 +6,7 @@ import { BlockRegion, ConeRegion, SphereRegion, type Region, type SurfaceContact
 import { massOf, nativeOrder } from '../atoms';
 import { RanMars } from '../rng';
 import { libm } from '../libm';
+import { gplHook } from '../gplHooks';
 
 /*
  * Fixes of the misc3 wave: fix vector, fix wall/region, fix wall/reflect/stochastic.
@@ -227,12 +228,24 @@ export class FixVector extends Fix {
  */
 const WR_STYLES = ['lj93', 'lj126', 'lj1043', 'colloid', 'harmonic', 'morse'];
 
+/**
+ * Style colloid (src/engine-gpl/wall/fix_wall_region_colloid.ts, the port of fix_wall_region.cpp, hook word colloid):
+ * the coefficients of epsilon, sigma and the cutoff, and the force magnitude and shifted energy at distance r for a
+ * particle of radius rad.
+ */
+interface ColloidWallHook {
+  colloidWall(epsilon: number, sigma: number, cutoff: number): object;
+  colloidWallForce(w: object, r: number, rad: number): { fwall: number; eng: number };
+}
+
 export class FixWallRegion extends Fix {
   readonly style = 'wall/region';
   readonly regionId: string;
   readonly wallStyle: string;
   private readonly params: number[];
   private readonly rc: number;
+  /** Style colloid: the hook and its coefficients (set by init). */
+  private colloid: { hook: ColloidWallHook; w: object } | null = null;
   /** Energy and per-wall-force tallies of the last application. */
   private wallEnergy = 0;
   private wallForce = new Float64Array(3);
@@ -245,9 +258,6 @@ export class FixWallRegion extends Fix {
     this.wallStyle = args[1];
     if (!WR_STYLES.includes(this.wallStyle)) {
       throw new StyleError(`fix ${id} (wall/region): unknown style '${this.wallStyle}' (lj93, lj126, lj1043, colloid, harmonic or morse)`);
-    }
-    if (this.wallStyle === 'colloid') {
-      throw new StyleError(`fix ${id} (wall/region): style colloid is not supported (the measured native values do not match the doc formula yet)`);
     }
     const nParams = this.wallStyle === 'morse' ? 3 : 2;
     if (args.length !== 2 + nParams + 1) {
@@ -289,6 +299,21 @@ export class FixWallRegion extends Fix {
       throw new StyleError(`fix ${this.id} (wall/region): region style ${r.style} is not supported (a side-out sub-region is not supported)`);
     }
     return r;
+  }
+
+  /**
+   * As native LAMMPS does (src/fix_wall_region.cpp init at b332f28): style colloid needs atom attribute radius and only
+   * extended particles in the group, and sets its coefficients.
+   */
+  init(): void {
+    if (this.wallStyle !== 'colloid') return;
+    const s = this.sys.state;
+    if (!s.radius) throw new StyleError('Fix wall/region colloid requires atom attribute radius');
+    for (let i = 0; i < s.n; i++) {
+      if (this.inGroup(i) && s.radius[i] === 0.0) throw new StyleError('Fix wall/region colloid requires only extended particles');
+    }
+    const hook = gplHook<ColloidWallHook>('colloid');
+    this.colloid = { hook, w: hook.colloidWall(this.params[0], this.params[1], this.rc) };
   }
 
   /** Region parameter value (number or equal-style variable with scale). */
@@ -340,12 +365,22 @@ export class FixWallRegion extends Fix {
   /** One contribution of a surface point: distance d and unit direction u from the surface to the atom. */
   private contribute(i: number, d: number, ux: number, uy: number, uz: number): void {
     if (!(d < this.rc)) return;
-    const f = this.forceAt(d);
     const s = this.sys.state;
+    let f: number, e: number;
+    if (this.colloid) {
+      // fix_wall_region.cpp post_force: for style colloid a contact at r <= radius is an error
+      if (d <= s.radius![i]) throw new StyleError('Particle outside surface of region used in fix wall/region');
+      const c = this.colloid.hook.colloidWallForce(this.colloid.w, d, s.radius![i]);
+      f = c.fwall;
+      e = c.eng;
+    } else {
+      f = this.forceAt(d);
+      e = this.shifted(d);
+    }
     s.f[3 * i] += f * ux;
     s.f[3 * i + 1] += f * uy;
     s.f[3 * i + 2] += f * uz;
-    this.wallEnergy += this.shifted(d);
+    this.wallEnergy += e;
     this.wallForce[0] -= f * ux;
     this.wallForce[1] -= f * uy;
     this.wallForce[2] -= f * uz;
@@ -355,7 +390,7 @@ export class FixWallRegion extends Fix {
   private applyAtom(i: number, r: Region, x: number, y: number, z: number): void {
     // Region.match is true for particles that belong to the region (side in or out)
     if (!r.match(x, y, z)) {
-      throw new StyleError(`Particle outside surface of region used in fix ${this.id} wall/region`);
+      throw new StyleError('Particle outside surface of region used in fix wall/region');
     }
     if (r.interior) {
       // side in: every face of the region within the cutoff exerts a force on the
@@ -365,7 +400,8 @@ export class FixWallRegion extends Fix {
       const cs: SurfaceContact[] = [];
       r.contacts(x, y, z, cs);
       for (const c of cs) {
-        if (c.dist <= 0) throw new StyleError(`Particle on or inside fix ${this.id} wall/region surface`);
+        // fix_wall_region.cpp post_force: a contact at r = 0 (on the surface) is the same error
+        if (c.dist <= 0) throw new StyleError('Particle outside surface of region used in fix wall/region');
         this.contribute(i, c.dist, c.nx, c.ny, c.nz);
       }
       return;
@@ -405,7 +441,7 @@ export class FixWallRegion extends Fix {
     const [lx, ly, lz] = r.labPoint(sx, sy, sz);
     const dx = x - lx, dy = y - ly, dz = z - lz;
     const d = Math.hypot(dx, dy, dz);
-    if (!(d > 0)) throw new StyleError(`Particle on or inside fix ${this.id} wall/region surface`);
+    if (!(d > 0)) throw new StyleError('Particle outside surface of region used in fix wall/region');
     this.contribute(i, d, dx / d, dy / d, dz / d);
   }
 

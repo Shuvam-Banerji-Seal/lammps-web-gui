@@ -1,0 +1,28 @@
+# oracle: fix move variable with equal-style variables: a slab oscillated in x (displacement and velocity variables), driven in z by a velocity variable only, y integrated as fix nve
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+region          slab block INF INF INF INF 0 1
+group           slab region slab
+group           rest subtract all slab
+variable        w equal 2*PI/0.5
+variable        dx equal 0.3*sin(v_w*elapsed*dt)
+variable        vx equal 0.3*v_w*cos(v_w*elapsed*dt)
+variable        vz equal 0.8
+fix             1 slab move variable v_dx NULL NULL v_vx NULL v_vz
+fix             2 rest nve
+compute         s slab reduce sum f_1[1] f_1[3]
+thermo_style    custom step temp pe ke press c_s[1] c_s[2]
+thermo_modify   format float %.15g
+thermo          50
+run             300

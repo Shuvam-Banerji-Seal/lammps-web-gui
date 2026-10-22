@@ -206,18 +206,19 @@ ${VDUMP}
 
 describe('fix move errors (fix_move.html)', () => {
   const base = `${box(1)}\ncreate_atoms 1 single 5 5 5 units box\nmass 1 1.0\nvelocity all set 0 0 0\n`;
-  it('throws StyleError naming variable; transrot refuses NULL translation components', async () => {
-    expect(errText((await runScript(`${base}fix 1 all move variable v_x NULL NULL NULL NULL NULL\nrun 1\n`)).error)).toMatch(/variable/);
-    expect(errText((await runScript(`${base}fix 1 all move transrot NULL 0 0 0 0 0 0 0 1 5\nrun 1\n`)).error)).toMatch(/transrot: velocity components must be a number/);
-    expect(errText((await runScript(`${base}fix 1 all move rotate 0 0 0 0 0 0 5\nrun 1\n`)).error)).toMatch(/zero length rotation vector/);
+  it('names a missing variable of the variable style; transrot refuses NULL translation components', async () => {
+    // the messages of native LAMMPS (src/fix_move.cpp at b332f28)
+    expect(errText((await runScript(`${base}fix 1 all move variable v_x NULL NULL NULL NULL NULL\nrun 1\n`)).error)).toMatch(/Variable name x for fix move does not exist/);
+    expect(errText((await runScript(`${base}fix 1 all move transrot NULL 0 0 0 0 0 0 0 1 5\nrun 1\n`)).error)).toMatch(/Expected floating point parameter instead of 'NULL'/);
+    expect(errText((await runScript(`${base}fix 1 all move rotate 0 0 0 0 0 0 5\nrun 1\n`)).error)).toMatch(/Zero length rotation vector with fix move/);
   });
 
   it('rejects bad arguments and keywords', async () => {
-    expect(errText((await runScript(`${base}fix 1 all move linear 1 0\nrun 1\n`)).error)).toMatch(/usage/);
-    expect(errText((await runScript(`${base}fix 1 all move linear 1 bogus 0\nrun 1\n`)).error)).toMatch(/velocity components must be a number/);
-    expect(errText((await runScript(`${base}fix 1 all move linear 1 0 0 units parsecs\nrun 1\n`)).error)).toMatch(/box or lattice/);
-    expect(errText((await runScript(`${base}fix 1 all move linear 1 0 0 bogus\nrun 1\n`)).error)).toMatch(/unknown keyword/);
-    expect(errText((await runScript(`${base}fix 1 all move linear 1 0 0 units box update dipole\nrun 1\n`)).error)).toMatch(/rotate or transrot/);
-    expect(errText((await runScript(`${base}fix 1 all move wiggle 1 0 0 -2\nrun 1\n`)).error)).toMatch(/period/);
+    expect(errText((await runScript(`${base}fix 1 all move linear 1 0\nrun 1\n`)).error)).toMatch(/Illegal fix move linear command: missing argument\(s\)/);
+    expect(errText((await runScript(`${base}fix 1 all move linear 1 bogus 0\nrun 1\n`)).error)).toMatch(/Expected floating point parameter instead of 'bogus'/);
+    expect(errText((await runScript(`${base}fix 1 all move linear 1 0 0 units parsecs\nrun 1\n`)).error)).toMatch(/Unknown fix move units setting parsecs/);
+    expect(errText((await runScript(`${base}fix 1 all move linear 1 0 0 bogus\nrun 1\n`)).error)).toMatch(/Unknown fix move keyword bogus/);
+    expect(errText((await runScript(`${base}fix 1 all move linear 1 0 0 units box update dipole\nrun 1\n`)).error)).toMatch(/requires style rotate or transrot/);
+    expect(errText((await runScript(`${base}fix 1 all move wiggle 1 0 0 -2\nrun 1\n`)).error)).toMatch(/Illegal fix move wiggle period -2/);
   });
 });

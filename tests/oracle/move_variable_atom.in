@@ -1,0 +1,28 @@
+# oracle: fix move variable with atom-style variables of the original coordinates (f_ID columns): a displacement that grows past the periodic box (remapped near the old position), and atom-style velocities
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+region          slab block INF INF INF INF 0 1.5
+group           slab region slab
+group           rest subtract all slab
+variable        t equal elapsed*dt
+variable        dx atom 12.0*v_t*(1+0.1*sin(f_1[2]))
+variable        vx atom 12.0*(1+0.1*sin(f_1[2]))
+variable        dy atom 0.05*sin(6*v_t)*cos(f_1[1])
+fix             1 slab move variable v_dx v_dy NULL v_vx NULL NULL
+fix             2 rest nve
+compute         s slab reduce sum f_1[1] f_1[2] f_1[3]
+thermo_style    custom step temp pe ke press c_s[1] c_s[2] c_s[3]
+thermo_modify   format float %.15g
+thermo          25
+run             150

@@ -196,6 +196,8 @@ export class ComputeTempAsphere extends ComputeTemp {
         this.rotateOnly = val === 'rotate';
       } else throw new StyleError(`Unknown compute temp/asphere keyword ${key}`);
     }
+    // native: dof rotate counts no extra degrees of freedom unless compute_modify extra/dof sets them
+    if (this.rotateOnly) this.extraDof = 0;
   }
 
   init(): void {
@@ -220,7 +222,17 @@ export class ComputeTempAsphere extends ComputeTemp {
     // docs.lammps.org/compute_temp_asphere.html: "For 2d finite-size particles, each has three degrees of freedom (two translational, one rotational)." Measured with native LAMMPS (black box):
     // dof all in 2d is 3N - 2 (the default extra/dof is the dimension), dof rotate is N.
     const d = this.sys.dimension, rot = d === 3 ? 3 : 1;
-    this.dof = this.rotateOnly ? rot * n : (d + rot) * n - this.extraDof - this.sys.dofRemoved(this.groupBit);
+    // As native LAMMPS does (src/ASPHERE/compute_temp_asphere.cpp dof_compute at b332f28): nper per atom, a bias's
+    // dof_remove (per atom for temp/region), then extra/dof and the fixes' share, in both modes
+    const nper = this.rotateOnly ? rot : d + rot;
+    let dof = nper * n;
+    const bc = this.biasCompute;
+    if (bc && bc.style === 'temp/region') {
+      for (let i = 0; i < s.n; i++) if (this.counted(i) && bc.dofRemove(i)) dof -= nper;
+    } else if (bc && !this.rotateOnly) {
+      dof -= bc.dofRemove(-1) * n;
+    }
+    this.dof = dof - this.extraDof - this.sys.dofRemoved(this.groupBit);
   }
 
   /**
@@ -254,7 +266,8 @@ export class ComputeTempAsphere extends ComputeTemp {
   }
 
   protected computeScalar(): number {
-    if (this.dynamicDof) this.dofCompute();
+    // native recomputes the dof on every call with a temp/region bias (tempbias 2)
+    if (this.dynamicDof || this.biasCompute?.style === 'temp/region') this.dofCompute();
     const s = this.sys.state;
     return this.withBias(() => {
       const t = this.tensor();

@@ -63,6 +63,8 @@ export class ComputeERotateSphere extends Compute {
 export class ComputeTempSphere extends ComputeTemp {
   readonly style: string = 'temp/sphere';
   private rotateOnly = false;
+  private biasId: string | null = null;
+  private biasCompute: Compute | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
@@ -74,24 +76,74 @@ export class ComputeTempSphere extends ComputeTemp {
         this.rotateOnly = args[k + 1] === 'rotate';
       } else if (args[k] === 'bias') {
         if (k + 2 > args.length) throw missingArgs('compute temp/sphere bias');
-        throw new StyleError('compute temp/sphere bias is not supported by the browser engine');
+        this.biasId = args[k + 1];
       } else throw new StyleError(`Unknown compute temp/sphere keyword ${args[k]}`);
     }
+    // native: dof rotate counts no extra degrees of freedom unless compute_modify extra/dof sets them
+    if (this.rotateOnly) this.extraDof = 0;
     if (!sys.state.omega) throw new StyleError('Compute temp/sphere requires atom attribute omega');
     if (!sys.state.radius) throw new StyleError('Compute temp/sphere requires atom attribute radius');
   }
 
+  /**
+   * As native LAMMPS does (src/compute_temp_sphere.cpp init at b332f28): the bias compute must exist, compute a
+   * temperature with a velocity bias, and have this compute's group.
+   */
+  override init(): void {
+    this.biasCompute = null;
+    if (this.biasId !== null) {
+      const bc = this.sys.computes.find((c) => c.id === this.biasId);
+      if (!bc) throw new StyleError(`Could not find compute ${this.biasId} for temperature bias`);
+      if (!bc.tempFlag) throw new StyleError('Bias compute does not calculate temperature');
+      if (!bc.hasBias()) throw new StyleError('Bias compute does not calculate a velocity bias');
+      if (bc.groupBit !== this.groupBit) throw new StyleError('Bias compute group does not match compute group');
+      this.biasCompute = bc;
+    }
+    super.init();
+  }
+
+  /**
+   * As native LAMMPS does (src/compute_temp_sphere.cpp dof_compute at b332f28): 3 translational and 3 rotational degrees
+   * of freedom per extended particle in 3d (2 and 1 in 2d), point particles translational only, dof rotate counting the
+   * rotational ones; a bias takes its dof_remove (per atom for temp/region), then extra/dof and the fixes' share.
+   */
   dofCompute(): void {
     const s = this.sys.state;
-    const d = this.sys.dimension, rot = d === 3 ? 3 : 1;
-    let n = 0, ext = 0;
+    const three = this.sys.dimension === 3;
+    const all = !this.rotateOnly;
+    const perAtom = (i: number): number => (s.radius![i] === 0 ? (all ? (three ? 3 : 2) : 0) : all ? (three ? 6 : 3) : three ? 3 : 1);
+    let count = 0, natoms = 0;
     for (let i = 0; i < s.n; i++) {
       if (!this.counted(i)) continue;
-      n++;
-      if (s.radius![i] > 0) ext++;
+      natoms++;
+      count += perAtom(i);
     }
-    this.dof = this.rotateOnly ? rot * ext : d * n + rot * ext - this.extraDof - this.sys.dofRemoved(this.groupBit);
+    let dof = count;
+    const bc = this.biasCompute;
+    if (bc && bc.style === 'temp/region') {
+      for (let i = 0; i < s.n; i++) if (this.counted(i) && bc.dofRemove(i)) dof -= perAtom(i);
+    } else if (bc && all) {
+      dof -= bc.dofRemove(-1) * natoms;
+    }
+    this.dof = dof - this.extraDof - this.sys.dofRemoved(this.groupBit);
   }
+
+  /** Runs f with the bias velocity removed from the group (native remove_bias_all / restore_bias_all). */
+  private withBias<T>(f: () => T): T {
+    const bc = this.biasCompute;
+    if (!bc) return f();
+    bc.computeBias();
+    bc.removeBiasAll();
+    try { return f(); } finally { bc.restoreBiasAll(); }
+  }
+
+  /** A thermostat using this compute removes the bias compute's bias (native remove_bias delegates to it). */
+  override hasBias(): boolean { return this.biasCompute !== null; }
+  override computeBias(): void { this.biasCompute?.computeBias(); }
+  override removeBiasAll(): void { this.biasCompute?.removeBiasAll(); }
+  override restoreBiasAll(): void { this.biasCompute?.restoreBiasAll(); }
+  override removeBias(i: number): void { this.biasCompute?.removeBias(i); }
+  override restoreBias(i: number): void { this.biasCompute?.restoreBias(i); }
 
   /** m v_a v_b (unless dof rotate) + I w_a w_b, components xx yy zz xy xz yz. */
   private tensor(): number[] {
@@ -115,15 +167,16 @@ export class ComputeTempSphere extends ComputeTemp {
   }
 
   protected computeScalar(): number {
-    if (this.dynamicDof) this.dofCompute();
+    // native recomputes the dof on every call with a temp/region bias (tempbias 2)
+    if (this.dynamicDof || this.biasCompute?.style === 'temp/region') this.dofCompute();
     const s = this.sys.state;
-    const t = this.tensor();
+    const t = this.withBias(() => this.tensor());
     const tfactor = this.dof > 0 ? s.units.mvv2e / (this.dof * s.units.boltz) : 0;
     return (t[0] + t[1] + t[2]) * tfactor;
   }
 
   protected computeVector(): void {
-    const t = this.tensor();
+    const t = this.withBias(() => this.tensor());
     for (let c = 0; c < 6; c++) this.vector[c] = t[c] * this.sys.state.units.mvv2e;
   }
 }

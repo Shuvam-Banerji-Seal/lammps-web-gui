@@ -6,7 +6,8 @@
  * Contributing author (from the source): Trung Dac Nguyen (ndactrung@gmail.com).
  *
  * docs.lammps.org/compute_temp_body.html: "compute ID group-ID temp/body keyword value ..." with the keywords "dof"
- * ("rotate" or "all") and "bias". This port supports dof only; bias is refused by name (StyleError).
+ * ("rotate" or "all") and "bias": the velocity bias of another temperature compute is removed while the sums are taken,
+ * and its dof_remove is subtracted (per body for temp/region).
  *
  * The native code: the translational term is m v^2, the rotational term is sum_k I_k w_k^2 with w = R^T L / I in the
  * body frame, where I are the principal moments of the body (atom_style body record, bodies.ts) and R its orientation.
@@ -14,6 +15,7 @@
  * dof_compute, nper). The dof removed by the fixes and extra_dof are subtracted as for the other temperature computes.
  */
 import { ComputeTemp } from '../../engine/compute/temp';
+import type { Compute } from '../../engine/compute/compute';
 import { quatToMatrix, rotateTransposeVec } from '../../engine/compute/asphere';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
@@ -23,6 +25,8 @@ import { BODY_RECORD } from '../../engine/bodies';
 export class ComputeTempBody extends ComputeTemp {
   readonly style: string = 'temp/body';
   private rotateOnly = false;
+  private biasId: string | null = null;
+  private biasCompute: Compute | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
@@ -34,7 +38,7 @@ export class ComputeTempBody extends ComputeTemp {
         if (val !== 'all' && val !== 'rotate') throw new StyleError(`Unknown compute temp/body dof keyword ${val}`);
         this.rotateOnly = val === 'rotate';
       } else if (key === 'bias') {
-        throw new StyleError('Compute temp/body bias is not supported by the browser engine');
+        this.biasId = val;
       } else throw new StyleError(`Unknown compute temp/body keyword ${key}`);
     }
   }
@@ -47,8 +51,35 @@ export class ComputeTempBody extends ComputeTemp {
       if (!(s.mask[i] & this.groupBit)) continue;
       if (rec.data[rec.cols * i] === 0) throw new StyleError('Compute temp/body requires bodies');
     }
+    // compute_temp_body.cpp init: the bias compute and its checks
+    this.biasCompute = null;
+    if (this.biasId !== null) {
+      const bc = this.sys.computes.find((c) => c.id === this.biasId);
+      if (!bc) throw new StyleError(`Could not find compute ${this.biasId} for temperature bias`);
+      if (!bc.tempFlag) throw new StyleError(`Bias compute ${this.biasId} does not calculate temperature`);
+      if (!bc.hasBias()) throw new StyleError(`Bias compute ${this.biasId} does not calculate a velocity bias`);
+      if (bc.groupBit !== this.groupBit) throw new StyleError('Bias compute group does not match compute group');
+      this.biasCompute = bc;
+    }
     this.dofCompute();
   }
+
+  /** Runs f with the bias velocity removed from the group (remove_bias_all / restore_bias_all). */
+  private withBias<T>(f: () => T): T {
+    const bc = this.biasCompute;
+    if (!bc) return f();
+    bc.computeBias();
+    bc.removeBiasAll();
+    try { return f(); } finally { bc.restoreBiasAll(); }
+  }
+
+  /** remove_bias and restore_bias delegate to the bias compute. */
+  override hasBias(): boolean { return this.biasCompute !== null; }
+  override computeBias(): void { this.biasCompute?.computeBias(); }
+  override removeBiasAll(): void { this.biasCompute?.removeBiasAll(); }
+  override restoreBiasAll(): void { this.biasCompute?.restoreBiasAll(); }
+  override removeBias(i: number): void { this.biasCompute?.removeBias(i); }
+  override restoreBias(i: number): void { this.biasCompute?.restoreBias(i); }
 
   dofCompute(): void {
     const s = this.sys.state;
@@ -56,7 +87,15 @@ export class ComputeTempBody extends ComputeTemp {
     for (let i = 0; i < s.n; i++) if (this.counted(i)) n++;
     const d = this.sys.dimension;
     const nper = d === 3 ? (this.rotateOnly ? 3 : 6) : (this.rotateOnly ? 1 : 3);
-    this.dof = nper * n - this.extraDof - this.sys.dofRemoved(this.groupBit);
+    let dof = nper * n;
+    // a bias's dof_remove: per atom for temp/region (tempbias 2), else per atom alike in mode all (tempbias 1)
+    const bc = this.biasCompute;
+    if (bc && bc.style === 'temp/region') {
+      for (let i = 0; i < s.n; i++) if (this.counted(i) && bc.dofRemove(i)) dof -= nper;
+    } else if (bc && !this.rotateOnly) {
+      dof -= bc.dofRemove(-1) * n;
+    }
+    this.dof = dof - this.extraDof - this.sys.dofRemoved(this.groupBit);
   }
 
   /** Translational m v^2 tensor and the body-frame rotational tensor of the counted bodies (native compute_vector). */
@@ -84,9 +123,9 @@ export class ComputeTempBody extends ComputeTemp {
   }
 
   protected computeScalar(): number {
-    if (this.dynamicDof) this.dofCompute();
+    if (this.dynamicDof || this.biasCompute?.style === 'temp/region') this.dofCompute();
     const s = this.sys.state;
-    const t = this.tensor();
+    const t = this.withBias(() => this.tensor());
     const sum = (this.rotateOnly ? 0 : t.trans[0] + t.trans[1] + t.trans[2]) + t.rot[0] + t.rot[1] + t.rot[2];
     const tfactor = this.dof > 0 ? s.units.mvv2e / (this.dof * s.units.boltz) : 0;
     return sum * tfactor;
@@ -94,7 +133,7 @@ export class ComputeTempBody extends ComputeTemp {
 
   protected computeVector(): void {
     const s = this.sys.state;
-    const t = this.tensor();
+    const t = this.withBias(() => this.tensor());
     for (let c = 0; c < 6; c++) this.vector[c] = ((this.rotateOnly ? 0 : t.trans[c]) + t.rot[c]) * s.units.mvv2e;
   }
 }

@@ -102,8 +102,9 @@ describe('local computes: argument errors', () => {
     await expect(molecule('compute c all pair/local dist p0')).rejects.toThrow(/invalid keyword p0/);
     // cutoff type is the default and is accepted (the rows are checked in tests/oracle/w172pl_ljcut.in)
     await expect(molecule('compute c all pair/local dist cutoff type\ndump d all local 1 pl.txt c_c')).resolves.toBeDefined();
-    await expect(molecule('compute c all property/local patom1 patom2')).rejects.toThrow(/not supported/);
-    await expect(molecule('compute c all property/local batom1 aatom1')).rejects.toThrow(/cannot be mixed/);
+    // pair attributes are supported (tests/oracle/propl_*.in); kinds cannot be mixed (native's message)
+    await expect(molecule('compute c all property/local patom1 patom2')).resolves.toBeDefined();
+    await expect(molecule('compute c all property/local batom1 aatom1')).rejects.toThrow(/Compute property\/local cannot use these inputs together/);
   });
 
   it('pair granular: p1-p12 are the contact values, p13 (the mdr contact area) is refused without the mdr model', async () => {

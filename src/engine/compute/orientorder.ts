@@ -286,7 +286,20 @@ export class ComputeOrientorderAtom extends Compute {
   }
 
   /** The components degree (null without the components keyword) and the number of degrees (native qlcomp, nqlist). */
+  /**
+   * As native LAMMPS does (src/compute_orientorder_atom.cpp ComputeOrientOrderAtom::init at b332f28): a pair style,
+   * and a cutoff keyword no longer than its largest cutoff (without the keyword the pair's cutoff is used).
+   */
+  init(): void {
+    if (!this.sys.ff.pair) throw new StyleError('Compute orientorder/atom requires a pair style be defined');
+    const c = this.cutoffArg;
+    if (c !== null && Math.sqrt(c * c) > this.sys.ff.cutforce) throw new StyleError('Compute orientorder/atom cutoff is longer than pairwise cutoff');
+    if (this.sys.computes.filter((x) => x.style === 'orientorder/atom').length > 1) this.sys.warn('More than one instance of compute orientorder/atom');
+  }
+
   get qlcomp(): number | null { return this.componentsDeg; }
+  /** The cutoff keyword's value (null: the pair style's cutoff). */
+  get cutoffKeyword(): number | null { return this.cutoffArg; }
   get nqlist(): number { return this.degrees.length; }
 
   /** Effective distance cutoff: keyword value or the pair style cutoff (the maximum allowable value). */

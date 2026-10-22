@@ -83,6 +83,7 @@ export const reinitPair = (sys: System, owner: Pair): void => {
   owner.init(sys.styleContext());
   if (hasTail(owner)) sys.ff.reinitTail(sys.state);
   owner.version++;
+  sys.ff.pairStale = true;
 };
 
 /**

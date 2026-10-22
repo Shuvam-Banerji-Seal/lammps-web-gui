@@ -197,6 +197,8 @@ variable A equal 30.0
 fix 1 all adapt 0 pair buck a 1 2 v_A
 run 0
 `);
-    expect(r.message).toContain('not set by pair_coeff');
+    // Measured with native LAMMPS: the pair style's init (force->init, before the fixes' init) stops first, with
+    // All pair coeffs are not set. Status:
+    expect(r.message).toMatch(/all pair coeffs are not set/i);
   });
 });

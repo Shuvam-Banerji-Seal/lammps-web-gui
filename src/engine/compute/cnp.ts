@@ -45,6 +45,16 @@ export class ComputeCnpAtom extends Compute {
     this.cut = v;
   }
 
+  /** As native LAMMPS does (src/EXTRA-COMPUTE/compute_cnp_atom.cpp ComputeCNPAtom::init at b332f28). */
+  init(): void {
+    if (!this.sys.ff.pair) throw new StyleError('Compute cnp/atom requires a pair style be defined');
+    if (Math.sqrt(this.cut * this.cut) > this.sys.ff.cutforce) throw new StyleError('Compute cnp/atom cutoff is longer than pairwise cutoff');
+    if (2 * Math.sqrt(this.cut * this.cut) > this.sys.ff.cutforce + this.sys.nb.skin) {
+      this.sys.warn('Compute cnp/atom cutoff may be too large to find ghost atom neighbors');
+    }
+    if (this.sys.computes.filter((x) => x.style === 'cnp/atom').length > 1) this.sys.warn('More than one compute cnp/atom');
+  }
+
   protected computePeratom(): void {
     const sys = this.sys;
     sys.forces();

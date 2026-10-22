@@ -642,10 +642,17 @@ export class ComputeCoordAtom extends Compute {
   }
 
   init(): void {
-    if (!this.orient) return;
-    const c = this.sys.computes.find((x) => x.id === this.orient!.id);
-    if (!(c instanceof ComputeOrientorderAtom)) throw new StyleError(`Could not find compute coord/atom compute ID ${this.orient.id}`);
-    if (c.qlcomp === null) throw new StyleError('Compute coord/atom requires components option in compute orientorder/atom');
+    // As native LAMMPS does (src/compute_coord_atom.cpp ComputeCoordAtom::init at b332f28): the orientorder/atom
+    // compute's cutoff (cstyle orientorder), then a pair style and a cutoff no longer than its largest cutoff
+    let cut = this.cutoff;
+    if (this.orient) {
+      const c = this.sys.computes.find((x) => x.id === this.orient!.id);
+      if (!(c instanceof ComputeOrientorderAtom)) throw new StyleError(`Could not find compute coord/atom compute ID ${this.orient.id}`);
+      if (c.qlcomp === null) throw new StyleError('Compute coord/atom requires components option in compute orientorder/atom');
+      cut = c.cutoffKeyword ?? this.sys.ff.cutforce;
+    }
+    if (!this.sys.ff.pair) throw new StyleError('Compute coord/atom requires a pair style be defined');
+    if (Math.sqrt(cut * cut) > this.sys.ff.cutforce) throw new StyleError('Compute coord/atom cutoff is longer than pairwise cutoff');
   }
 
   /** cstyle orientorder: the connected neighbors of each group atom (any type or group), see the header. */

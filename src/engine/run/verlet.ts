@@ -64,6 +64,8 @@ export const initRun = (sys: System, opts: { verlet?: boolean } = {}): void => {
   // until a pair reinit or the next run (ForceField.tailHold)
   sys.ff.tailHold = null;
   sys.ff.holdTailAtInit = true;
+  // force->init comes before atom->init (the per-type masses) and modify->init (computes, then fixes)
+  sys.initPair();
   if (!s.rmass) {
     for (let t = 1; t <= s.ntypes; t++) {
       if (!(s.massByType[t] > 0)) throw new StyleError(`not all per-type masses are set (type ${t}); use the mass command`);

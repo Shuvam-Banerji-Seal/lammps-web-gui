@@ -4,6 +4,8 @@ import type { System } from '../system';
 import { inumeric, logical, missingArgs, parseNum, parseInt_ } from '../force/util';
 import { CellList } from '../cellList';
 import { libm } from '../libm';
+import { fmtShortest } from '../cformat';
+import { atomSubStyles, isMolecularStyle } from '../atoms';
 
 /*
  * Wave-11 per-atom structure computes (compute_struct):
@@ -19,7 +21,8 @@ import { libm } from '../libm';
  * Neighbours are taken directly from the engine's periodic environment
  * (nb.xall: owned + ghost images), so a neighbour is an image position and
  * distances between two neighbours of one atom are plain differences of
- * xall positions. No LAMMPS source was read for this file.
+ * xall positions. The algorithms were written without the LAMMPS source; the init checks (a pair style, a cutoff
+ * within its cutoff) and their messages follow the native sources named at longerThanPair.
  */
 
 /** Tolerance on cutoff comparisons (ghost shell). */
@@ -34,6 +37,21 @@ const pairMaxCut = (sys: System): number => {
     for (let k = 0; k < cut.length; k++) if (cut[k] > maxCut) maxCut = cut[k];
   }
   return maxCut;
+};
+
+/**
+ * A compute cutoff longer than the pair style's largest cutoff (force->pair->cutforce, compared as sqrt(cutsq)). As
+ * native LAMMPS does at the computes' init (src/compute_cna_atom.cpp, compute_cluster_atom.cpp and
+ * compute_aggregate_atom.cpp ComputeX::init, src/EXTRA-COMPUTE/compute_hexorder_atom.cpp at b332f28), after the pair
+ * style's init has set its cutoffs (ForceField.initPair).
+ */
+const longerThanPair = (sys: System, cut: number): boolean => Math.sqrt(cut * cut) > sys.ff.cutforce;
+
+/** The init warning of a compute defined more than once (native's get_compute_by_style count). */
+const warnIfMany = (sys: System, style: string, text = `More than one compute ${style}`): void => {
+  let n = 0;
+  for (const c of sys.computes) if (c.style === style) n++;
+  if (n > 1) sys.warn(text);
 };
 
 /** The neighbour cutoff must lie inside the ghost shell (force cutoff + skin), as in orientorder/atom. */
@@ -294,6 +312,15 @@ export class ComputeCnaAtom extends Compute {
     this.cutoffArg = parseCutoff(args[0], id, 'cna/atom');
   }
 
+  init(): void {
+    if (!this.sys.ff.pair) throw new StyleError('Compute cna/atom requires a pair style be defined');
+    if (longerThanPair(this.sys, this.cutoffArg)) throw new StyleError('Compute cna/atom cutoff is longer than pairwise cutoff');
+    if (2 * Math.sqrt(this.cutoffArg * this.cutoffArg) > this.sys.ff.cutforce + this.sys.nb.skin) {
+      this.sys.warn('Compute cna/atom cutoff may be too large to find ghost atom neighbors');
+    }
+    warnIfMany(this.sys, 'cna/atom');
+  }
+
   protected computePeratom(): void {
     const cut = this.cutoffArg;
     const { s, nb } = prepare(this.sys, this.id, 'cna/atom', cut);
@@ -390,6 +417,15 @@ export class ComputeClusterAtom extends Compute {
     super(sys, id, group, args);
     if (args.length !== 1) throw new StyleError(`compute ${id} (cluster/atom): usage: compute ID group-ID cluster/atom cutoff`);
     this.cutoffArg = parseCutoff(args[0], id, 'cluster/atom');
+  }
+
+  init(): void {
+    if (!this.sys.ff.pair) throw new StyleError('Compute cluster/atom requires a pair style to be defined');
+    if (longerThanPair(this.sys, this.cutoffArg)) {
+      const c = Math.sqrt(this.cutoffArg * this.cutoffArg);
+      throw new StyleError(`Compute cluster/atom cutoff ${fmtShortest(c, false)} is longer than pairwise cutoff ${fmtShortest(this.sys.ff.cutforce, false)}`);
+    }
+    warnIfMany(this.sys, 'cluster/atom');
   }
 
   protected computePeratom(): void {
@@ -499,12 +535,18 @@ export class ComputeAggregateAtom extends Compute {
     super(sys, id, group, args);
     if (args.length !== 1) throw new StyleError(`compute ${id} (aggregate/atom): usage: compute ID group-ID aggregate/atom cutoff`);
     this.cutoffArg = parseCutoff(args[0], id, 'aggregate/atom');
-    // Measured with native LAMMPS (black box): aggregate/atom under atom_style atomic fails with
-    // native error text: Compute aggregate/atom used when bonds are not allowed
+    // As native LAMMPS does (src/compute_aggregate_atom.cpp at b332f28): the atom style must allow bonds
+    // (atom->avec->bonds_allow: the bonded styles, template, bpm/sphere and oxdna)
     const st = sys.atomStyle;
-    if (st === 'atomic' || st === 'charge' || st === 'sphere') {
-      throw new StyleError(`compute ${id} (aggregate/atom): bonds are not allowed by atom_style ${st}; use a bonded atom_style`);
-    }
+    if (!isMolecularStyle(st) && !atomSubStyles(st).includes('oxdna')) throw new StyleError('Compute aggregate/atom used when bonds are not allowed');
+  }
+
+  /** ComputeAggregateAtom::init: a bond style, then the pair checks worded as cluster/atom's. */
+  init(): void {
+    if (!this.sys.ff.bond) throw new StyleError('Compute aggregate/atom requires a bond style to be defined');
+    if (!this.sys.ff.pair) throw new StyleError('Compute cluster/atom requires a pair style to be defined');
+    if (longerThanPair(this.sys, this.cutoffArg)) throw new StyleError('Compute cluster/atom cutoff is longer than pairwise cutoff');
+    warnIfMany(this.sys, 'aggregate/atom');
   }
 
   protected computePeratom(): void {
@@ -598,14 +640,15 @@ export class ComputeHexorderAtom extends Compute {
   }
 
   init(): void {
-    // compute_hexorder_atom.cpp init (the cutoff is compared with the pair cutoff when the values are computed: the
-    // engine sets the pair cutoffs after the computes' init)
+    // compute_hexorder_atom.cpp init: a pair style, and a cutoff keyword no longer than its cutoff (without the
+    // keyword the pair's cutoff is used)
     if (!this.sys.ff.pair) throw new StyleError('Compute hexorder/atom requires a pair style be defined');
+    if (this.cutoffArg !== null && longerThanPair(this.sys, this.cutoffArg)) throw new StyleError('Compute hexorder/atom cutoff is longer than pairwise cutoff');
+    warnIfMany(this.sys, 'hexorder/atom');
   }
 
   protected computePeratom(): void {
     const pairCut = pairMaxCut(this.sys);
-    if (this.cutoffArg !== null && this.cutoffArg > pairCut) throw new StyleError('Compute hexorder/atom cutoff is longer than pairwise cutoff');
     const cut = this.cutoffArg ?? pairCut;
     if (!(cut > 0)) throw new StyleError(`compute ${this.id} (hexorder/atom): no pair style cutoff is defined; define a pair style or use the cutoff keyword`);
     const { s, nb } = prepare(this.sys, this.id, 'hexorder/atom', cut);

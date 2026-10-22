@@ -5,6 +5,7 @@ import { parseNum, parseInt_ } from '../force/util';
 import { buildTriples, rawBispectrum, adjointBispectrum, WignerTables, snaBinCut, type Triple, type Cmat, type Grad } from './sna';
 import { CellList } from '../cellList';
 import { libm } from '../libm';
+import { fmtShortest } from '../cformat';
 
 /*
  * compute ID group-ID snap rcutfac rfac0 twojmax R_1 ... R_N w_1 ... w_N keyword values ...
@@ -248,6 +249,15 @@ export class ComputeSnap extends Compute {
     this.dgrad = o.dgrad;
     this.arrayFlag = true;
     this.sizeArrayCols = this.dgrad ? this.p.K + 3 : sys.state.ntypes * this.p.blk + 1;
+  }
+
+  /** As native LAMMPS does (src/ML-SNAP/compute_snap.cpp ComputeSnap::init at b332f28). */
+  init(): void {
+    if (!this.sys.ff.pair) throw new StyleError('Compute snap requires a pair style be defined');
+    const cutmax = 2 * this.p.rcutfac * maxRadius(this.p);
+    const cutforce = this.sys.ff.cutforce;
+    if (cutmax > cutforce) throw new StyleError(`Compute snap cutoff ${fmtShortest(cutmax, false)} is longer than pairwise cutoff ${fmtShortest(cutforce, false)}`);
+    if (this.sys.computes.filter((x) => x.style === 'snap').length > 1) this.sys.warn('More than one compute snap');
   }
 
   protected computeArray(): void {

@@ -16,7 +16,7 @@ import { ATOM_VECTORS, FormulaError, errorUrl, evaluateScalar, resolveIndex, typ
 import { substituteVariables } from './script';
 import { formatNumber } from './cformat';
 import type { Lattice } from './lattice';
-import { Rng } from './rng';
+import { RanMars } from './rng';
 import { Thermo } from './output/thermo';
 import type { Dump } from './output/dump';
 import type { Handler } from './commands/args';
@@ -59,6 +59,32 @@ export interface RunInfo {
   ranOnce: boolean;
   /** The step whose energy was last tallied (native update->eflag_global): a thermo output's step; -1 before any. */
   eflagStep: number;
+}
+
+/**
+ * The generator of random() and normal() in formulas: native's RanMars (Variable::math_function at b332f28 makes one
+ * per variable store), whose gaussian() returns the first of a Marsaglia polar pair and keeps the second for the next
+ * call (RanMars::gaussian, random_mars.cpp at b332f28).
+ */
+class FormulaRandom {
+  private readonly mars: RanMars;
+  private second: number | null = null;
+  constructor(seed: number) {
+    this.mars = new RanMars(seed);
+    // native's RanMars constructor ends with one uniform() (random_mars.cpp at b332f28)
+    this.mars.uniform();
+  }
+  uniform(): number { return this.mars.uniform(); }
+  gaussian(): number {
+    if (this.second !== null) {
+      const g = this.second;
+      this.second = null;
+      return g;
+    }
+    const [first, second] = this.mars.polarPair();
+    this.second = second;
+    return first;
+  }
 }
 
 export class System {
@@ -137,8 +163,8 @@ export class System {
   stateVersion = 0;
   private forcesVersion = -1;
   private flagsUsed: ComputeFlags = {};
-  private rngEqual: Rng | null = null;
-  private rngAtom: Rng | null = null;
+  private rngEqual: FormulaRandom | null = null;
+  private rngAtom: FormulaRandom | null = null;
 
   constructor(readonly io: SessionIO) {
     this.nb = new Neighbor(this.units.skin);
@@ -1070,19 +1096,21 @@ export class System {
   }
 
   private randomValue(a: number, b: number, seed: number, mode: Mode, gauss: boolean): Value {
-    const draw = (r: Rng) => (gauss ? a + b * r.gaussian() : a + (b - a) * r.uniform());
+    const draw = (r: FormulaRandom) => (gauss ? a + b * r.gaussian() : a + (b - a) * r.uniform());
     // As native LAMMPS does (Variable::math_function and collapse_tree at b332f28): the seed, read as an int, makes the
-    // generator at the first call and must be positive then
+    // generator at the first call and must be positive then; the per-atom generator takes the seed plus the process rank
+    // (0 here, one process)
     const make = (offset: number) => {
       const s = Math.trunc(seed);
       if (s <= 0) throw mode === 'equal' ? new FormulaError('Invalid math function in variable formula') : new StyleError('Invalid math function in variable formula');
-      return new Rng(s + offset);
+      if (s + offset > 900000000) throw new StyleError(`Invalid seed ${s + offset} for the Marsaglia random # generator`);
+      return new FormulaRandom(s + offset);
     };
     if (mode !== 'atom') {
       this.rngEqual ??= make(0);
       return draw(this.rngEqual);
     }
-    this.rngAtom ??= make(1);
+    this.rngAtom ??= make(0);
     const n = this.state.n;
     const out = new Float64Array(n);
     for (let i = 0; i < n; i++) out[i] = draw(this.rngAtom);

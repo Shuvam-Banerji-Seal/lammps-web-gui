@@ -364,11 +364,11 @@ const cround = (x: number) => {
  */
 const ints = (a: number[]) => a.map((v) => Math.trunc(v));
 
-/** The value of stride() and stride2() past their last timestep: the largest 64-bit integer of LAMMPS (measured with native LAMMPS, black box: 9.223372e+18). */
-const NO_MORE_STEPS = 9223372036854775807;
-
-/** ceil() of a point of a step sequence, with a tolerance for a product that is an integer up to rounding. */
-const ceilPoint = (v: number) => Math.ceil(v - 1e-9);
+/**
+ * The value of stride() and stride2() past their last timestep: native's MAXBIGINT_DOUBLE, the largest 64-bit integer
+ * less 512 as a double (src/variable.cpp at b332f28), which prints as 9.2233720368547748e+18.
+ */
+const NO_MORE_STEPS = 9223372036854774784;
 
 export const evaluate = (src: string, env: FormulaEnv, mode: Mode): Value => evalNode(parseFormula(src), env, mode, src);
 
@@ -538,40 +538,45 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
     }
     case 'logfreq2': {
       // variable.html: "a single logarithmic interval is divided into y equally-spaced timesteps and all of them are
-      // output". The points of an interval [lower, z*lower) are ceil(lower + k*delta), k = 1..y, with
-      // delta = (z-1)*lower/y; the next value is the first point above the step. Measured with native LAMMPS
-      // (black box), logfreq2(1,3,2) at steps 0..16: 1 2 3 4 6 6 7 8 11 11 11 14 14 14 16 (ceil, not round).
-      // As native LAMMPS does (math_function, variable.cpp at b332f28) x, y and z must be positive; with z = 1 native's
-      // interval never grows and its loop does not end once the step reaches x, which the engine refuses as well
+      // output". As native LAMMPS does (math_function, variable.cpp at b332f28): from x the points advance by
+      // delta = x*(z-1)/y, delta grows by z after every y points, and the value is the ceiling of the first point above
+      // the step, the points summed one by one (in floating point, as native adds them). x, y and z must be positive;
+      // with z = 1 native's interval never grows and its loop does not end once the step reaches x, which the engine
+      // refuses as well.
       const [x, y, z] = ints(a);
       if (!(x > 0 && y > 0 && z > 1)) throw arith(MATH_FN, mode);
       if (step < x) return x;
-      let lower = x;
-      while (step >= z * lower) lower *= z;
-      const delta = (z - 1) * lower / y;
-      for (let k = 1; k <= y; k++) {
-        const p = ceilPoint(lower + k * delta);
-        if (p > step) return p;
+      let value = x;
+      let delta = x * (z - 1) / y;
+      for (let count = 1; step >= value; count++) {
+        value += delta;
+        if (count % y === 0) delta *= z;
       }
-      return ceilPoint(z * lower);
+      return Math.ceil(value);
     }
     case 'logfreq3': {
       // variable.html: "generates y points between x and z (inclusive), that are separated by a multiplicative ratio:
-      // (z/x)^(1/(y-1))". Each point is ceil(x*ratio^k); variable.html's example logfreq3(10,25,1000) lists
-      // 10, 13, 15, 18, 22, 27, 32, ... 1000, which these ceilings reproduce. Measured with native LAMMPS (black box):
-      // logfreq3(1,3,10) at steps 0..9 gives 1 4 4 4 10 10 10 10 10 10. At step z native gives a value that is not on
-      // the documented sequence (29 for logfreq3(1,3,10)); this engine returns z there. Past z native stops with
-      // "Calls to variable exceeded limit" (measured: the error is raised when the variable is evaluated at step 11).
+      // (z/x)^(1/(y-1))", e.g. "10, 13, 15, 18, 22, 27, 32,...384, 465, 563, 682, 826, 1000". As native LAMMPS does
+      // (math_function, variable.cpp at b332f28): the k-th point after x is k + x when that is above x*ratio^k, else
+      // c - floor((c - 1)/z) with c = ceil(x*ratio^k), the products taken one by one; the value is the first point above
+      // the step. Native gives a point past z at step z (29 for logfreq3(1,3,10), measured with native LAMMPS), and past
+      // step z it stops with "Calls to variable exceeded limit".
       const [x, y, z] = ints(a);
       if (!(x > 0 && z > 0 && y > 1 && z - x >= y - 1)) throw arith(MATH_FN, mode);
-      if (step < x) return x;
-      if (step > z) throw new StyleError('Calls to variable exceeded limit');
-      const r = Math.pow(z / x, 1 / (y - 1));
-      for (let k = 0; k < y - 1; k++) {
-        const p = ceilPoint(x * Math.pow(r, k));
-        if (p > step) return p;
+      let value = x;
+      if (step >= x) {
+        const factor = Math.pow(z / x, 1 / (y - 1));
+        let logsp = x;
+        let linsp = x;
+        while (step >= value) {
+          logsp *= factor;
+          linsp++;
+          const c = Math.ceil(logsp);
+          value = linsp > logsp ? linsp : c - Math.trunc((c - 1) / z);
+        }
       }
-      return z;
+      if (step > z) throw new StyleError('Calls to variable exceeded limit');
+      return value;
     }
     case 'stride': {
       const [x, y, z] = ints(a);

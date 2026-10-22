@@ -69,6 +69,8 @@ export class FixNonaffineDisplacement extends Fix {
     // native narg counts "fix ID group nonaffine/displacement": narg < 4 is fewer than one argument
     if (args.length < 1) throw new StyleError('Illegal fix nonaffine/displacement command: missing arguments');
     this.nevery = inumeric(args[0]);
+    // peratom_freq = nevery (the source's constructor)
+    this.peratomFreq = this.nevery;
     if (this.nevery <= 0) throw new StyleError(`Illegal nevery value ${this.nevery} in fix nonaffine/displacement`);
     let iarg = 1;
     if (args[iarg] === 'integrated') {

@@ -132,13 +132,14 @@ describe('argument errors', () => {
   const bad = (script: string, msg: RegExp) => expect(run(script + "run 0\n")).rejects.toThrow(msg);
 
   it('ave/correlate rejects invalid arguments', async () => {
-    await bad('fix JJ all ave/correlate 0 3 5 v_s\n', /positive integer/);
-    await bad('fix JJ all ave/correlate 2 3 5 v_s\n', /multiple of Nevery/);
-    await bad('fix JJ all ave/correlate 1 7 5 v_s\n', /Nfreq must be >= \(Nrepeat-1\)\*Nevery/);
-    await bad('fix JJ all ave/correlate 1 3 5 v_s overwrite\n', /overwrite keyword can only be used with the ave running/);
-    await bad('fix JJ all ave/correlate 1 3 5 v_s type sideways\n', /type must be one of/);
-    await bad('fix JJ all ave/correlate 1 3 5 v_s bogus 1\n', /invalid input value 'bogus'/);
-    await bad('fix JJ all ave/correlate 1 3 5\n', /usage: fix JJ/);
+    // native LAMMPS's messages (src/fix_ave_correlate.cpp at b332f28; tests/engineAveFixArgsNative.test.ts measures them)
+    await bad('fix JJ all ave/correlate 0 3 5 v_s\n', /Illegal fix ave\/correlate nevery value: 0/);
+    await bad('fix JJ all ave/correlate 2 3 5 v_s\n', /Inconsistent fix ave\/correlate nevery\/nrepeat\/nfreq values/);
+    await bad('fix JJ all ave/correlate 1 7 5 v_s\n', /Inconsistent fix ave\/correlate nevery\/nrepeat\/nfreq values/);
+    await bad('fix JJ all ave/correlate 1 3 5 v_s overwrite\n', /Fix ave\/correlate overwrite keyword requires ave running setting/);
+    await bad('fix JJ all ave/correlate 1 3 5 v_s type sideways\n', /Unknown fix ave\/correlate type: sideways/);
+    await bad('fix JJ all ave/correlate 1 3 5 v_s bogus 1\n', /Unkown fix ave\/correlate keyword: bogus/);
+    await bad('fix JJ all ave/correlate 1 3 5\n', /Illegal fix ave\/correlate command: missing argument\(s\)/);
   });
 
   it('viscosity and thermal/conductivity reject bad layer counts and keywords', async () => {

@@ -162,6 +162,8 @@ export class FixNumdiff extends FixNumdiffBase {
     super(sys, id, group, args, 'numdiff');
     this.peratomFlag = true;
     this.sizePeratomCols = 3;
+    // native fix_numdiff.cpp: peratom_freq = nevery
+    this.peratomFreq = this.nevery;
   }
 
   postForce(): void {

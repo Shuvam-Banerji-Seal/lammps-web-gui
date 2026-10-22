@@ -2,9 +2,12 @@ import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { localOutputOf } from '../compute/local_dump';
-import { expandWildcards, globalScalar, globalVector, parseRef, peratomValues, type Ref } from '../refs';
+import { globalScalar, globalVector, peratomValues, type Ref } from '../refs';
 import { formatNumber } from '../script';
 import { aveNextValid } from './util';
+import { inumeric, missingArgs, numeric } from '../force/util';
+import { argInfo, EQUAL_STYLES, expandArgs } from '../argInfo';
+import { errorUrl } from '../formula';
 
 /*
  * fix ave/atom and fix ave/histo — implemented only from the cited
@@ -151,12 +154,6 @@ import { aveNextValid } from './util';
  * the start/stop keywords of the run command".
  */
 
-const posInt = (w: string | undefined, what: string): number => {
-  if (w === undefined) throw new StyleError(`missing ${what}`);
-  const n = Number(w);
-  if (!Number.isInteger(n) || n < 1) throw new StyleError(`${what} must be a positive integer, got '${w}'`);
-  return n;
-};
 
 const fmtG = (v: number): string => formatNumber(v, '%g');
 // min and max of ave/histo are written with 17 significant digits (measured with native LAMMPS, black box: the file
@@ -177,56 +174,60 @@ export class FixAveAtom extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const what = `fix ${id} (ave/atom)`;
-    if (args.length < 4) {
-      throw new StyleError(`usage: fix ${id} group-ID ave/atom Nevery Nrepeat Nfreq value1 value2 ...`);
+    // As native LAMMPS does (src/fix_ave_atom.cpp constructor at b332f28): the values (expanded first) are atom
+    // attributes or c_, f_ and v_ references, then the step counts and the sources are checked
+    if (args.length < 4) throw missingArgs('fix ave/atom');
+    const nevery = inumeric(args[0]);
+    const nrepeat = inumeric(args[1]);
+    const nfreq = inumeric(args[2]);
+    const words = expandArgs(sys, args.slice(3), 1).words;
+    this.inputs = words.map((w): Ref => {
+      if (ATOM_WORDS.has(w)) return { kind: 'attr', id: w, index: null, text: w };
+      const a = argInfo(w);
+      if (a.which === 'unknown' || a.which === 'none' || a.dim > 1) throw new StyleError(`Invalid fix ave/atom argument: ${w}`);
+      if (a.index1 < 0) throw new StyleError(`fix ave/atom: index ${a.index1} in ${w} is refused: native LAMMPS reads outside the array for it`);
+      return { kind: a.which as 'c' | 'f' | 'v', id: a.name, index: a.index1 === 0 ? null : a.index1, text: w };
+    });
+    if (nevery <= 0) throw new StyleError(`Illegal fix ave/atom nevery value: ${nevery}`);
+    if (nrepeat <= 0) throw new StyleError(`Illegal fix ave/atom nrepeat value: ${nrepeat}`);
+    if (nfreq <= 0) throw new StyleError(`Illegal fix ave/atom nfreq value: ${nfreq}`);
+    if (nfreq % nevery || nrepeat * nevery > nfreq) throw new StyleError('Inconsistent fix ave/atom nevery/nrepeat/nfreq values');
+    this.nEvery = nevery;
+    this.nRepeat = nrepeat;
+    this.nFreq = nfreq;
+    this.nevery = nevery;
+    this.peratomFreq = nfreq;
+    for (const r of this.inputs) {
+      if (r.kind === 'c' || r.kind === 'f') {
+        const what = r.kind === 'c' ? 'compute' : 'fix';
+        const o = r.kind === 'c' ? sys.computes.find((x) => x.id === r.id) : sys.fixes.find((x) => x.id === r.id);
+        if (!o) throw new StyleError(`${r.kind === 'c' ? 'Compute' : 'Fix'} ID ${r.id} for fix ave/atom does not exist`);
+        if (!o.peratomFlag) throw new StyleError(`Fix ave/atom ${what} ${r.id} does not calculate per-atom values`);
+        if (r.index === null && o.sizePeratomCols !== 0) throw new StyleError(`Fix ave/atom ${what} ${r.id} does not calculate a per-atom vector`);
+        if (r.index !== null && o.sizePeratomCols === 0) throw new StyleError(`Fix ave/atom ${what} ${r.id} does not calculate a per-atom array`);
+        if (r.index !== null && r.index > o.sizePeratomCols) throw new StyleError(`Fix ave/atom ${what} ${r.id} array is accessed out-of-range${errorUrl(20)}`);
+        if (r.kind === 'f' && (o as Fix).peratomFreq > 0 && nevery % (o as Fix).peratomFreq) {
+          throw new StyleError(`Fix ${r.id} for fix ave/atom not computed at compatible time${errorUrl(7)}`);
+        }
+      } else if (r.kind === 'v') {
+        const v = sys.vars.get(r.id);
+        if (!v) throw new StyleError(`Variable name ${r.id} for fix ave/atom does not exist`);
+        if (v.style !== 'atom') throw new StyleError(`Fix ave/atom variable ${r.id} is not atom-style variable`);
+      }
     }
-    this.nEvery = posInt(args[0], `${what}: Nevery`);
-    this.nRepeat = posInt(args[1], `${what}: Nrepeat`);
-    this.nFreq = posInt(args[2], `${what}: Nfreq`);
-    this.nevery = this.nEvery;
-    if (this.nFreq % this.nEvery !== 0) {
-      throw new StyleError(`${what}: Nfreq must be a multiple of Nevery`);
-    }
-    if (this.nRepeat * this.nEvery > this.nFreq) {
-      throw new StyleError(`${what}: Nrepeat x Nevery cannot exceed Nfreq (the time steps contributing to the average cannot overlap)`);
-    }
-    const words = expandWildcards(sys, args.slice(3), 'peratom');
-    this.inputs = words.map((w) => this.parseInput(w));
     this.nvals = this.inputs.length;
     this.sizePeratomCols = this.nvals === 1 ? 0 : this.nvals;
     this.alloc();
     this.nvalid = aveNextValid(sys.state.step, this.nEvery, this.nRepeat, this.nFreq);
   }
 
-  /** One input: must be a per-atom producer ("not a global quantity or local quantity"). */
-  private parseInput(w: string): Ref {
-    const r = parseRef(w, true);
-    const what = `fix ${this.id} (ave/atom)`;
-    if (r.kind === 'v') {
-      const v = this.sys.vars.get(r.id);
-      if (!v) throw new StyleError(`${what}: variable ${r.id} does not exist`);
-      if (v.style !== 'atom') {
-        throw new StyleError(`${what}: variable ${r.id} must be atom-style (is ${v.style}-style); "Variables of style atom are the only ones that can be used with this fix"`);
-      }
-      if (r.index !== null) throw new StyleError(`${what}: ${w}: an atom-style variable has no columns`);
-      return r;
+  /** The sources must still exist (native init). */
+  private checkSources(): void {
+    for (const r of this.inputs) {
+      if (r.kind === 'c' && !this.sys.computes.some((x) => x.id === r.id)) throw new StyleError(`Compute ID ${r.id} for fix ave/atom does not exist`);
+      if (r.kind === 'f' && !this.sys.fixes.some((x) => x.id === r.id)) throw new StyleError(`Fix ID ${r.id} for fix ave/atom does not exist`);
+      if (r.kind === 'v' && !this.sys.vars.has(r.id)) throw new StyleError(`Variable name ${r.id} for fix ave/atom does not exist`);
     }
-    if (r.kind === 'c' || r.kind === 'f') {
-      const obj = r.kind === 'c' ? this.sys.compute(r.id) : this.sys.fix(r.id);
-      const kind = r.kind === 'c' ? 'compute' : 'fix';
-      if (!obj.peratomFlag) {
-        throw new StyleError(`${what}: ${w}: ${kind} ${r.id} does not calculate per-atom values ("must produce a per-atom vector, not a global quantity or local quantity")`);
-      }
-      if (r.index === null) {
-        if (obj.sizePeratomCols !== 0) throw new StyleError(`${what}: ${w}: it calculates a per-atom array; give a column, e.g. ${w}[1]`);
-      } else {
-        if (obj.sizePeratomCols === 0) throw new StyleError(`${what}: ${w}: it calculates a per-atom vector, which has no columns`);
-        if (r.index > obj.sizePeratomCols) throw new StyleError(`${what}: ${w}: column out of range 1..${obj.sizePeratomCols}`);
-      }
-      return r;
-    }
-    return r;
   }
 
   /**
@@ -246,6 +247,7 @@ export class FixAveAtom extends Fix {
 
   /** As native LAMMPS does (src/fix_ave_atom.cpp init at b332f28): a minimization past the next sample step restarts the window. */
   init(): void {
+    this.checkSources();
     this.alloc();
     const step = this.sys.state.step;
     if (this.nvalid < step) {
@@ -288,16 +290,15 @@ export class FixAveAtom extends Fix {
   }
 }
 
+/** The per-atom attributes fix ave/histo takes as values. */
+const ATOM_WORDS = new Set(['x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz']);
+
 interface HistoInput {
   ref: Ref;
   peratom: boolean;
   /** Local values of a compute (every row, or one column, is tallied). */
   local?: boolean;
 }
-
-const HISTO_KEYWORDS = new Set([
-  'mode', 'kind', 'file', 'append', 'ave', 'start', 'beyond', 'overwrite', 'title1', 'title2', 'title3',
-]);
 
 export class FixAveHisto extends Fix {
   // typed as string: the weighted variant (src/engine-gpl, fix ave/histo/weight) is a subclass
@@ -320,9 +321,9 @@ export class FixAveHisto extends Fix {
   private readonly fileName: string | null;
   private readonly fileAppend: boolean;
   private readonly overwriteFile: boolean;
-  private readonly title1: string | undefined;
-  private readonly title2: string | undefined;
-  private readonly title3: string | undefined;
+  private title1: string | undefined;
+  private title2: string | undefined;
+  private title3: string | undefined;
   protected readonly inputs: HistoInput[];
   private readonly bins: Float64Array;
   private readonly runBins: Float64Array;
@@ -349,127 +350,146 @@ export class FixAveHisto extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const what = `fix ${id} (ave/histo)`;
-    if (args.length < 6) {
-      throw new StyleError(`usage: fix ${id} group-ID ave/histo Nevery Nrepeat Nfreq lo hi Nbin value1 value2 ... [keyword args ...]`);
-    }
-    this.nEvery = posInt(args[0], `${what}: Nevery`);
-    this.nRepeat = posInt(args[1], `${what}: Nrepeat`);
-    this.nFreq = posInt(args[2], `${what}: Nfreq`);
-    // fix_ave_histo.cpp: global_freq = nfreq
-    this.globalFreq = this.nFreq;
-    this.nevery = this.nEvery;
-    if (this.nFreq % this.nEvery !== 0) {
-      throw new StyleError(`${what}: Nfreq must be a multiple of Nevery`);
-    }
-    if (this.nRepeat * this.nEvery > this.nFreq) {
-      throw new StyleError(`${what}: Nrepeat x Nevery cannot exceed Nfreq (the time steps contributing to the histogram cannot overlap)`);
-    }
-    this.lo = Number(args[3]);
-    this.hi = Number(args[4]);
-    if (!Number.isFinite(this.lo) || !Number.isFinite(this.hi) || !(this.hi > this.lo)) {
-      throw new StyleError(`${what}: lo and hi must be numbers with hi > lo, got '${args[3]}' and '${args[4]}'`);
-    }
-    this.nBins = posInt(args[5], `${what}: Nbin`);
-    this.delta = (this.hi - this.lo) / this.nBins;
-    this.mode = 'scalar';
-    this.aveMode = 'one';
-    this.windowM = 1;
-    this.startStep = 0;
-    this.beyond = 'ignore';
-    this.fileName = null;
-    this.fileAppend = false;
-    this.overwriteFile = false;
-    let kindFlag: 'global' | 'peratom' | 'local' | null = null;
-    let file: string | null = null;
-    let append: string | null = null;
-    const words: string[] = [];
+    // As native LAMMPS does (src/fix_ave_histo.cpp constructor and options at b332f28); the weighted subclass names
+    // its own style in the messages
+    const style = (new.target as unknown as { histoStyle?: string }).histoStyle ?? 'ave/histo';
+    const cmd = `fix ${style}`;
+    if (args.length < 7) throw missingArgs(cmd);
+    const nevery = inumeric(args[0]);
+    const nrepeat = inumeric(args[1]);
+    const nfreq = inumeric(args[2]);
+    this.globalFreq = nfreq;
+    this.lo = numeric(args[3]);
+    this.hi = numeric(args[4]);
+    const nbins = inumeric(args[5]);
     let k = 6;
-    while (k < args.length && !HISTO_KEYWORDS.has(args[k])) { words.push(args[k]); k++; }
-    if (!words.length) throw new StyleError(`${what}: no input values were given`);
-    for (; k < args.length;) {
+    while (k < args.length && (ATOM_WORDS.has(args[k]) || /^[cfv]_/.test(args[k]))) k++;
+    const valueWords = args.slice(6, k);
+    if (!valueWords.length) throw new StyleError(`No values in from computes, fixes, or variables used in ${cmd} command`);
+    // options (native's messages name ave/histo for the keyword values, and its missing-argument messages for the
+    // title keywords have two blanks)
+    let kind: 'default' | 'global' | 'peratom' | 'local' = 'default';
+    let aveMode: 'one' | 'running' | 'window' = 'one';
+    let windowM = 1;
+    let startStep = 0;
+    let mode: 'scalar' | 'vector' = 'scalar';
+    let beyond: 'ignore' | 'end' | 'extra' = 'ignore';
+    let overwrite = false;
+    let fileName: string | null = null;
+    let fileAppend = false;
+    const need = (n: number, what: string): void => { if (k + n > args.length) throw missingArgs(what); };
+    while (k < args.length) {
       const key = args[k];
-      const val = args[k + 1];
-      const need = (): string => {
-        if (val === undefined) throw new StyleError(`${what}: keyword ${key} needs a value`);
-        return val;
-      };
-      switch (key) {
-        case 'mode': {
-          const v = need();
-          if (v !== 'scalar' && v !== 'vector') throw new StyleError(`${what}: mode must be scalar or vector, got '${v}'`);
-          this.mode = v;
-          k += 2;
-          break;
+      const v = args[k + 1];
+      if (key === 'file' || key === 'append') {
+        need(2, `${cmd} ${key}`);
+        fileName = v;
+        fileAppend = key === 'append';
+        k += 2;
+      } else if (key === 'kind') {
+        need(2, `${cmd} kind`);
+        if (v !== 'global' && v !== 'peratom' && v !== 'local') throw new StyleError(`Unknown fix ave/histo kind option: ${v}`);
+        kind = v;
+        k += 2;
+      } else if (key === 'ave') {
+        need(2, `${cmd} ave`);
+        if (v !== 'one' && v !== 'running' && v !== 'window') throw new StyleError(`Unknown fix ave/histo ave option: ${v}`);
+        aveMode = v;
+        if (aveMode === 'window') {
+          need(3, `${cmd} ave window`);
+          windowM = inumeric(args[k + 2]);
+          if (windowM <= 0) throw new StyleError(`Illegal fix ave/histo ave window size: ${windowM}`);
         }
-        case 'kind': {
-          const v = need();
-          if (v !== 'global' && v !== 'peratom' && v !== 'local') {
-            throw new StyleError(`${what}: kind must be global, peratom or local, got '${v}'`);
-          }
-          kindFlag = v;
-          k += 2;
-          break;
-        }
-        case 'ave': {
-          const v = need();
-          if (v === 'one' || v === 'running') { this.aveMode = v; k += 2; break; }
-          if (v === 'window') {
-            this.aveMode = 'window';
-            this.windowM = posInt(args[k + 2], `${what}: window M`);
-            k += 3;
-            break;
-          }
-          throw new StyleError(`${what}: ave must be one, running or window M, got '${v}'`);
-        }
-        case 'start': {
-          const n = Number(need());
-          if (!Number.isInteger(n) || n < 0) throw new StyleError(`${what}: start must be a timestep >= 0, got '${val}'`);
-          this.startStep = n;
-          k += 2;
-          break;
-        }
-        case 'beyond': {
-          const v = need();
-          if (v === 'ignore' || v === 'end') { this.beyond = v; k += 2; break; }
-          // the Description spells the extra-bins setting "extend"; the keyword list says "extra"
-          if (v === 'extra' || v === 'extend') { this.beyond = 'extra'; k += 2; break; }
-          throw new StyleError(`${what}: beyond must be ignore, end or extra, got '${v}'`);
-        }
-        case 'overwrite':
-          this.overwriteFile = true;
-          k += 1;
-          break;
-        case 'file':
-          if (file !== null || append !== null) throw new StyleError(`${what}: file and append cannot both be used`);
-          file = need();
-          k += 2;
-          break;
-        case 'append':
-          if (file !== null || append !== null) throw new StyleError(`${what}: file and append cannot both be used`);
-          append = need();
-          k += 2;
-          break;
-        case 'title1': this.title1 = need(); k += 2; break;
-        case 'title2': this.title2 = need(); k += 2; break;
-        case 'title3': this.title3 = need(); k += 2; break;
-        default:
-          throw new StyleError(`${what}: unknown keyword '${key}'`);
+        k += aveMode === 'window' ? 3 : 2;
+      } else if (key === 'start') {
+        need(2, `${cmd} start`);
+        startStep = inumeric(v);
+        k += 2;
+      } else if (key === 'mode') {
+        need(2, `${cmd} mode`);
+        if (v !== 'scalar' && v !== 'vector') throw new StyleError(`Unknown fix ave/histo mode option: ${v}`);
+        mode = v;
+        k += 2;
+      } else if (key === 'beyond') {
+        need(2, `${cmd} beyond`);
+        if (v !== 'ignore' && v !== 'end' && v !== 'extra') throw new StyleError(`Unknown fix ave/histo beyond option: ${v}`);
+        beyond = v;
+        k += 2;
+      } else if (key === 'overwrite') {
+        overwrite = true;
+        k += 1;
+      } else if (key === 'title1' || key === 'title2' || key === 'title3') {
+        need(2, `${cmd}  ${key}`);
+        if (key === 'title1') this.title1 = v;
+        else if (key === 'title2') this.title2 = v;
+        else this.title3 = v;
+        k += 2;
+      } else throw new StyleError(`Unknown ${cmd} option: ${key}`);
+    }
+    this.mode = mode;
+    this.aveMode = aveMode;
+    this.windowM = windowM;
+    this.startStep = startStep;
+    this.beyond = beyond;
+    this.fileName = fileName;
+    this.fileAppend = fileAppend;
+    this.overwriteFile = overwrite;
+    // the values: atom attributes, then c_, f_ and v_ references (expanded first); a word that is no reference ends them
+    const words = expandArgs(sys, valueWords, mode === 'vector' ? 1 : 0).words;
+    const refs: Ref[] = [];
+    for (const w of words) {
+      if (ATOM_WORDS.has(w)) { refs.push({ kind: 'attr', id: w, index: null, text: w }); continue; }
+      const a = argInfo(w);
+      if (a.which === 'none') break;
+      if (a.which === 'unknown' || a.dim > 1) throw new StyleError(`Invalid ${cmd} argument: ${w}`);
+      if (a.index1 < 0) throw new StyleError(`${cmd}: index ${a.index1} in ${w} is refused: native LAMMPS reads outside the vector for it`);
+      refs.push({ kind: a.which as 'c' | 'f' | 'v', id: a.name, index: a.index1 === 0 ? null : a.index1, text: w });
+    }
+    if (refs.length !== words.length) throw new StyleError(`Could not parse value data consistently for ${cmd}`);
+    if (nevery <= 0) throw new StyleError(`Illegal ${cmd} nevery value: ${nevery}`);
+    if (nrepeat <= 0) throw new StyleError(`Illegal ${cmd} nrepeat value: ${nrepeat}`);
+    if (nfreq <= 0) throw new StyleError(`Illegal ${cmd} nfreq value: ${nfreq}`);
+    if (nfreq % nevery || nrepeat * nevery > nfreq) throw new StyleError(`Inconsistent ${cmd} nevery/nrepeat/nfreq values`);
+    if (aveMode !== 'running' && overwrite) throw new StyleError(`${cmd} overwrite keyword requires ave running setting`);
+    this.nEvery = nevery;
+    this.nRepeat = nrepeat;
+    this.nFreq = nfreq;
+    this.nevery = nevery;
+    // the kind of the values: given, or what the first value produces; every value must produce it
+    for (const r of refs) {
+      let g = false, pa = false, lc = false;
+      if (r.kind === 'attr') pa = true;
+      else if (r.kind === 'c' || r.kind === 'f') {
+        const o = r.kind === 'c' ? sys.computes.find((x) => x.id === r.id) : sys.fixes.find((x) => x.id === r.id);
+        if (!o) throw new StyleError(`${r.kind === 'c' ? 'Compute' : 'Fix'} ID ${r.id} for ${cmd} does not exist`);
+        g = o.scalarFlag || o.vectorFlag || o.arrayFlag;
+        pa = o.peratomFlag;
+        lc = o.localFlag;
+      } else {
+        const v = sys.vars.get(r.id);
+        if (!v) throw new StyleError(`Variable name ${r.id} for ${cmd} does not exist`);
+        if (EQUAL_STYLES.has(v.style) || v.style === 'vector') g = true;
+        else if (v.style === 'atom') pa = true;
+        else throw new StyleError(`${cmd} variable ${r.id} is incompatible style`);
       }
+      if (kind === 'default') {
+        if (Number(g) + Number(pa) + Number(lc) > 1) throw new StyleError(`${cmd} input kind is ambiguous`);
+        if (g) kind = 'global';
+        if (pa) kind = 'peratom';
+        if (lc) kind = 'local';
+      } else if (kind === 'global' && !g) throw new StyleError(`${cmd} input kind is not global`);
+      else if (kind === 'peratom' && !pa) throw new StyleError(`${cmd} input kind is not peratom`);
+      else if (kind === 'local' && !lc) throw new StyleError(`${cmd} input kind is not local`);
     }
-    this.fileName = file ?? append;
-    this.fileAppend = append !== null;
-    if (this.overwriteFile && this.aveMode !== 'running') {
-      throw new StyleError(`${what}: the overwrite keyword can only be used with the ave running setting`);
-    }
-    const expanded = expandWildcards(sys, words, this.mode === 'vector' ? 'vector' : 'scalar');
-    this.inputs = expanded.map((w) => this.resolveInput(w, kindFlag));
-    if (this.inputs.length > 1) {
-      const first = this.inputs[0].peratom;
-      if (this.inputs.some((inp) => inp.peratom !== first)) {
-        throw new StyleError(`${what}: "Inputs of different kinds (e.g. global and per-atom) cannot be mixed"`);
-      }
-    }
+    if (kind === 'peratom' && mode === 'scalar') throw new StyleError(`${cmd} cannot process per-atom values in scalar mode`);
+    if (kind === 'local' && mode === 'scalar') throw new StyleError(`${cmd} cannot process local values in scalar mode`);
+    for (const r of refs) this.checkInput(cmd, r, kind);
+    this.inputs = refs.map((ref) => ({ ref, peratom: kind === 'peratom', local: kind === 'local' }));
+    // only a positive bin count and distinct bounds bin anything (native writes outside its histogram for the others)
+    if (nbins <= 0) throw new StyleError(`${cmd}: Nbin ${nbins} is refused: native LAMMPS writes outside its histogram for it`);
+    if (this.hi === this.lo) throw new StyleError(`${cmd}: lo = hi is refused: native LAMMPS bins with an infinite inverse width for it`);
+    this.nBins = nbins;
+    this.delta = (this.hi - this.lo) / this.nBins;
     const len = this.beyond === 'extra' ? this.nBins + 2 : this.nBins;
     // fix_ave_histo.html: "The global array has Nbins rows and three columns" (Nbins + 2 with beyond extra)
     this.sizeArrayRows = len;
@@ -480,106 +500,67 @@ export class FixAveHisto extends Fix {
     this.nvalid = aveNextValid(sys.state.step, this.nEvery, this.nRepeat, this.nFreq, this.startStep);
   }
 
-  /** Resolves one input word to a global or per-atom source, per the mode/kind rules. */
-  private resolveInput(w: string, kindFlag: 'global' | 'peratom' | 'local' | null): HistoInput {
-    const what = `fix ${this.id} (ave/histo)`;
-    const r = parseRef(w, true);
-    if (kindFlag === 'local' && r.kind !== 'c' && r.kind !== 'f') throw new StyleError(`${what}: ${w}: kind local needs a compute or fix input (c_ID or f_ID)`);
-    if (r.kind === 'attr') return { ref: r, peratom: true };
-    if (r.kind === 'v') {
-      const v = this.sys.vars.get(r.id);
-      if (!v) throw new StyleError(`${what}: variable ${r.id} does not exist`);
-      if (v.style === 'atom') {
-        if (r.index !== null) throw new StyleError(`${what}: ${w}: an atom-style variable has no columns`);
-        return { ref: r, peratom: true };
+  /** One value's source, checked as native's constructor does for the kind and the mode. */
+  private checkInput(cmd: string, r: Ref, kind: string): void {
+    const sys = this.sys;
+    const vector = this.mode === 'vector';
+    if (r.kind === 'c' || r.kind === 'f') {
+      const what = r.kind === 'c' ? 'compute' : 'fix';
+      const o = r.kind === 'c' ? sys.computes.find((x) => x.id === r.id)! : sys.fixes.find((x) => x.id === r.id)!;
+      const j = r.index ?? 0;
+      const url = r.kind === 'f' ? errorUrl(20) : '';
+      if (kind === 'global' && !vector) {
+        if (j === 0 && !o.scalarFlag) throw new StyleError(`${cmd} ${what} ${r.id} does not calculate a global scalar`);
+        if (j && !o.vectorFlag) throw new StyleError(`${cmd} ${what} ${r.id} does not calculate a global vector`);
+        // an engine compute that sizes its vector when it is first computed reports 0 here
+        if (j && o.sizeVector > 0 && j > o.sizeVector) throw new StyleError(`${cmd} ${what} ${r.id} vector is accessed out-of-range${url}`);
+      } else if (kind === 'global') {
+        if (j === 0 && !o.vectorFlag) throw new StyleError(`${cmd} ${what} ${r.id} does not calculate a global vector`);
+        if (j && !o.arrayFlag) throw new StyleError(`${cmd} ${what} ${r.id} does not calculate a global array`);
+        if (j && j > o.sizeArrayCols) throw new StyleError(`${cmd} ${what} ${r.id} array is accessed out-of-range${url}`);
+      } else if (kind === 'peratom') {
+        if (!o.peratomFlag) throw new StyleError(`${cmd} ${what} ${r.id} does not calculate per-atom values`);
+        // native's fix message starts with a blank here
+        if (j === 0 && o.sizePeratomCols !== 0) throw new StyleError(`${r.kind === 'f' ? ' ' : ''}${cmd} ${what} ${r.id} does not calculate a per-atom vector`);
+        if (j && o.sizePeratomCols === 0) throw new StyleError(`${cmd} ${what} ${r.id} does not calculate a per-atom array`);
+        if (j && j > o.sizePeratomCols) throw new StyleError(`${cmd} ${what} ${r.id} array is accessed out-of-range${url}`);
+      } else {
+        if (!o.localFlag) throw new StyleError(`${cmd} ${what} ${r.id} does not calculate local values`);
+        if (j === 0 && o.sizeLocalCols !== 0) throw new StyleError(`${cmd} ${what} ${r.id} does not calculate a local vector`);
+        // native's fix message has no ID here
+        if (j && o.sizeLocalCols === 0) throw new StyleError(r.kind === 'f' ? `${cmd} fix does not calculate a local array` : `${cmd} compute ${r.id} does not calculate a local array`);
+        if (j && j > o.sizeLocalCols) throw new StyleError(`${cmd} ${what} ${r.id} array is accessed out-of-range${errorUrl(20)}`);
       }
-      if (v.style === 'equal') {
-        if (r.index !== null) throw new StyleError(`${what}: ${w}: an equal-style variable has no elements`);
-        return { ref: r, peratom: false };
+      // native compares Nevery with a fix's global frequency for every kind
+      if (r.kind === 'f' && (o as Fix).globalFreq > 0 && this.nEvery % (o as Fix).globalFreq) {
+        throw new StyleError(`Fix ${r.id} for ${cmd} not computed at compatible time${errorUrl(7)}`);
       }
-      if (v.style === 'vector') {
-        if (this.mode === 'scalar' && r.index === null) {
-          throw new StyleError(`${what}: ${w}: "a vector-style variable requires a bracketed term to specify the Ith element of the vector" in mode scalar`);
-        }
-        if (this.mode === 'vector' && r.index !== null) {
-          throw new StyleError(`${what}: ${w}: "The vector-style variable must be used without a bracketed term" in mode vector`);
-        }
-        return { ref: r, peratom: false };
+    } else if (r.kind === 'v') {
+      const v = sys.vars.get(r.id)!;
+      if (kind === 'global' && !vector) {
+        if (r.index === null && !EQUAL_STYLES.has(v.style)) throw new StyleError(`${cmd} variable ${r.id} is not equal-style variable`);
+        if (r.index !== null && v.style !== 'vector') throw new StyleError(`${cmd} variable ${r.id} is not vector-style variable`);
+      } else if (kind === 'global') {
+        if (r.index === null && v.style !== 'vector') throw new StyleError(`${cmd} variable ${r.id} is not vector-style variable`);
+        if (r.index !== null) throw new StyleError(`${cmd} variable ${r.id} cannot be indexed`);
+      } else if (kind === 'peratom') {
+        if (r.index === null && v.style !== 'atom') throw new StyleError(`${cmd} variable ${r.id} is not atom-style variable`);
+        if (r.index !== null) throw new StyleError(`${cmd} variable ${r.id} cannot be indexed`);
       }
-      throw new StyleError(`${what}: ${w}: variable ${r.id} must be equal-style, vector-style or atom-style (is ${v.style}-style)`);
     }
-    const obj = r.kind === 'c' ? this.sys.compute(r.id) : this.sys.fix(r.id);
-    const kind = r.kind === 'c' ? 'compute' : 'fix';
-    // local values (fix_ave_histo.html: "*kind* arg = *global* or *peratom* or *local*"): a compute's
-    // local vector or array column, in mode vector
-    if (r.kind === 'c' && (kindFlag === 'local' || (kindFlag === null && this.sys.compute(r.id).localFlag))) {
-      const comp = this.sys.compute(r.id);
-      if (!comp.localFlag) throw new StyleError(`${what}: ${w}: compute ${r.id} does not calculate local values`);
-      if (this.mode !== 'vector') throw new StyleError(`${what}: ${w}: local values can only be histogrammed in mode vector`);
-      const cols = comp.sizeLocalCols;
-      if (r.index === null && cols !== 0) throw new StyleError(`${what}: ${w}: it calculates a local array; give a column, e.g. ${w}[1]`);
-      if (r.index !== null && (cols === 0 || r.index > cols)) throw new StyleError(`${what}: ${w}: column out of range 1..${cols}`);
-      return { ref: r, peratom: false, local: true };
-    }
-    if (r.kind === 'f' && (kindFlag === 'local' || (kindFlag === null && obj.localFlag))) {
-      // local values of a fix (f_ID, e.g. fix STORE/LOCAL); the same column rules as a compute's
-      if (!obj.localFlag) throw new StyleError(`${what}: ${w}: fix ${r.id} does not calculate local values`);
-      if (this.mode !== 'vector') throw new StyleError(`${what}: ${w}: local values can only be histogrammed in mode vector`);
-      const cols = obj.sizeLocalCols;
-      if (r.index === null && cols !== 0) throw new StyleError(`${what}: ${w}: it calculates a local array; give a column, e.g. ${w}[1]`);
-      if (r.index !== null && (cols === 0 || r.index > cols)) throw new StyleError(`${what}: ${w}: column out of range 1..${cols}`);
-      return { ref: r, peratom: false, local: true };
-    }
-    if (kindFlag === 'local') throw new StyleError(`${what}: ${w}: kind local needs a compute or fix input (c_ID or f_ID)`);
-    let peratom: boolean;
-    if (kindFlag === 'peratom') peratom = true;
-    else if (kindFlag === 'global') peratom = false;
-    else if (this.mode === 'scalar') {
-      // "If mode = scalar, then if no bracketed term is appended, the global scalar
-      // calculated by the compute is used.  If a bracketed term is appended, the Ith
-      // element of the global vector calculated by the compute is used."
-      peratom = false;
-    } else if (r.index === null) {
-      // "If mode = vector, then if no bracketed term is appended, the global or
-      // per-atom or local vector calculated by the compute is used."
-      const g = obj.vectorFlag;
-      const p = obj.peratomFlag && obj.sizePeratomCols === 0;
-      if (g && p) throw new StyleError(`${what}: ${w}: ${kind} ${r.id} produces both global and per-atom vectors; use the kind keyword`);
-      if (!g && !p) throw new StyleError(`${what}: ${w}: ${kind} ${r.id} does not calculate a global or per-atom vector`);
-      peratom = p;
-    } else {
-      const g = obj.arrayFlag;
-      const p = obj.peratomFlag && obj.sizePeratomCols > 0;
-      if (g && p) throw new StyleError(`${what}: ${w}: ${kind} ${r.id} produces both a global array and per-atom values; use the kind keyword`);
-      if (!g && !p) throw new StyleError(`${what}: ${w}: ${kind} ${r.id} does not calculate a global array or a per-atom array column`);
-      peratom = p;
-    }
-    if (peratom) {
-      if (!obj.peratomFlag) throw new StyleError(`${what}: ${w}: ${kind} ${r.id} does not calculate per-atom values`);
-      if (r.index === null) {
-        if (obj.sizePeratomCols !== 0) throw new StyleError(`${what}: ${w}: it calculates a per-atom array; give a column, e.g. ${w}[1]`);
-      } else if (obj.sizePeratomCols === 0) {
-        throw new StyleError(`${what}: ${w}: it calculates a per-atom vector, which has no columns`);
-      } else if (r.index > obj.sizePeratomCols) {
-        throw new StyleError(`${what}: ${w}: column out of range 1..${obj.sizePeratomCols}`);
-      }
-    } else if (this.mode === 'scalar') {
-      if (r.index === null) {
-        if (!obj.scalarFlag) throw new StyleError(`${what}: ${w}: ${kind} ${r.id} does not calculate a global scalar`);
-      } else if (!obj.vectorFlag) {
-        throw new StyleError(`${what}: ${w}: ${kind} ${r.id} does not calculate a global vector (the bracketed term selects a vector element in mode scalar)`);
-      }
-    } else if (r.index === null) {
-      if (!obj.vectorFlag) throw new StyleError(`${what}: ${w}: ${kind} ${r.id} does not calculate a global vector`);
-    } else {
-      if (!obj.arrayFlag) throw new StyleError(`${what}: ${w}: ${kind} ${r.id} does not calculate a global array`);
-      if (r.index > obj.sizeArrayCols) throw new StyleError(`${what}: ${w}: column out of range 1..${obj.sizeArrayCols}`);
-    }
-    return { ref: r, peratom };
   }
 
-  /** As native LAMMPS does (src/fix_ave_histo.cpp init at b332f28): a minimization past the next sample step restarts the window. */
+  /**
+   * As native LAMMPS does (src/fix_ave_histo.cpp init at b332f28): the sources must still exist, and a minimization
+   * past the next sample step restarts the window.
+   */
   init(): void {
+    const style = (this.constructor as unknown as { histoStyle?: string }).histoStyle ?? 'ave/histo';
+    for (const { ref: r } of this.inputs) {
+      if (r.kind === 'c' && !this.sys.computes.some((x) => x.id === r.id)) throw new StyleError(`Compute ID ${r.id} for fix ${style} does not exist`);
+      if (r.kind === 'f' && !this.sys.fixes.some((x) => x.id === r.id)) throw new StyleError(`Fix ID ${r.id} for fix ${style} does not exist`);
+      if (r.kind === 'v' && !this.sys.vars.has(r.id)) throw new StyleError(`Variable name ${r.id} for fix ${style} does not exist`);
+    }
     const step = this.sys.state.step;
     if (this.nvalid < step) {
       this.irepeat = 0;
@@ -669,8 +650,8 @@ export class FixAveHisto extends Fix {
     // hi 1.5: -1.0 -> bin 2, -0.5 -> bin 3), and v = hi goes to the last bin. Native multiplies by the
     // inverse width: lo 0, hi 1, 10 bins: 0.3 -> bin 4 (0.3/0.1 = 2.9999999999999996 would give bin 3),
     // 0.6 -> bin 7, 0.7 -> bin 8, 0.9 -> bin 10. So idx = floor((v - lo) * nBins / (hi - lo)).
-    let idx = Math.floor((v - this.lo) * (this.nBins / (this.hi - this.lo)));
-    if (idx < 0) idx = 0;
+    // As native LAMMPS does (src/fix_ave_histo.cpp bin_one at b332f28): the inverse of the bin width, truncated
+    let idx = Math.trunc((v - this.lo) * (1.0 / this.delta));
     if (idx >= this.nBins) idx = this.nBins - 1;
     this.bins[this.beyond === 'extra' ? idx + 1 : idx] += w;
   }

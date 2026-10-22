@@ -1,11 +1,14 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
-import { formatNumber } from '../script';
+import { peratomValues, type Ref } from '../refs';
 import { massOf } from '../atoms';
+import { inumeric, missingArgs, numeric } from '../force/util';
+import { argInfo, expandArgs } from '../argInfo';
+import { checkCFormat, compileCFormat } from '../cformat';
+import { errorUrl } from '../formula';
 import { aveNextValid } from './util';
-import { chunkCompute, type ComputeChunkAtom } from '../compute/chunk';
+import { ComputeChunkAtom } from '../compute/chunk';
 import type { Compute } from '../compute/compute';
 
 /*
@@ -42,7 +45,12 @@ import type { Compute } from '../compute/compute';
  *   - an empty chunk outputs 0 for every value.
  */
 
-const KEYWORDS = new Set(['norm', 'ave', 'bias', 'adof', 'cdof', 'file', 'append', 'overwrite', 'format', 'title1', 'title2', 'title3']);
+/** The values of fix ave/chunk that are not references (native's V, F, MASS, DENSITY and TEMPERATURE kinds). */
+const CHUNK_VALUES: Record<string, Val | undefined> = {
+  vx: { t: 'vel', d: 0 }, vy: { t: 'vel', d: 1 }, vz: { t: 'vel', d: 2 },
+  fx: { t: 'frc', d: 0 }, fy: { t: 'frc', d: 1 }, fz: { t: 'frc', d: 2 },
+  mass: { t: 'mass' }, 'density/number': { t: 'dnum' }, 'density/mass': { t: 'dmass' }, temp: { t: 'temp' },
+};
 
 type Val =
   | { t: 'vel'; d: number }
@@ -54,20 +62,6 @@ type Val =
   | { t: 'ref'; ref: Ref };
 
 type Norm = 'all' | 'sample' | 'none';
-
-const posInt = (w: string | undefined, what: string): number => {
-  if (w === undefined) throw new StyleError(`missing ${what}`);
-  const n = Number(w);
-  if (!Number.isInteger(n) || n < 1) throw new StyleError(`${what} must be a positive integer, got '${w}'`);
-  return n;
-};
-
-/** Applies a file format like " %g" / "%20.16g": leading spaces kept, then one C conversion. */
-const fmtValue = (v: number, fmt: string, what: string): string => {
-  const m = /^(\s*)(%[-+ 0#]*\d*(?:\.\d+)?[feEgGdi])$/.exec(fmt);
-  if (!m) throw new StyleError(`${what}: invalid numeric format string '${fmt}'`);
-  return m[1] + formatNumber(v, m[2]);
-};
 
 /** Grows a per-chunk accumulator to n entries (zero-filled). */
 const grow = (a: Float64Array, n: number): Float64Array<ArrayBuffer> => {
@@ -83,7 +77,6 @@ export class FixAveChunk extends Fix {
   private readonly nRepeat: number;
   private readonly nFreq: number;
   private readonly chunkId: string;
-  private readonly valueWords: string[];
   private norm: Norm = 'all';
   private aveMode: 'one' | 'running' | 'window' = 'one';
   private windowM = 1;
@@ -137,128 +130,143 @@ export class FixAveChunk extends Fix {
     super(sys, id, group, args);
     // the global array (rows = chunks) is available as f_ID[i][j] once output exists
     this.arrayFlag = true;
-    const what = `fix ${id} (ave/chunk)`;
-    if (args.length < 5) throw new StyleError(`usage: fix ${id} group-ID ave/chunk Nevery Nrepeat Nfreq chunkID value1 ... [keyword args ...]`);
-    this.nEvery = posInt(args[0], `${what}: Nevery`);
-    this.nRepeat = posInt(args[1], `${what}: Nrepeat`);
-    this.nFreq = posInt(args[2], `${what}: Nfreq`);
-    // fix_ave_chunk.cpp: global_freq = nfreq, and the number of rows (chunks) varies (size_array_rows_variable)
-    this.globalFreq = this.nFreq;
-    this.sizeArrayRowsVariable = true;
-    this.nevery = this.nEvery;
-    if (this.nFreq % this.nEvery !== 0) throw new StyleError(`${what}: Nfreq must be a multiple of Nevery`);
-    if (this.nRepeat * this.nEvery > this.nFreq) {
-      throw new StyleError(`${what}: Nrepeat x Nevery cannot exceed Nfreq (the time steps contributing to the average cannot overlap)`);
-    }
+    // As native LAMMPS does (src/fix_ave_chunk.cpp constructor at b332f28): the words after the chunk ID are expanded,
+    // the values are read up to the first word that is none, then the keywords, then the step counts and the sources
+    // are checked
+    if (args.length < 4) throw missingArgs('fix ave/chunk');
+    const nevery = inumeric(args[0]);
+    const nrepeat = inumeric(args[1]);
+    const nfreq = inumeric(args[2]);
     this.chunkId = args[3];
-    const words: string[] = [];
-    let k = 4;
-    while (k < args.length && !KEYWORDS.has(args[k])) words.push(args[k++]);
-    if (!words.length) throw new StyleError(`${what}: no input values were given`);
-    this.valueWords = words;
-    for (; k < args.length;) {
-      const key = args[k];
-      const val = args[k + 1];
-      const need = (): string => {
-        if (val === undefined) throw new StyleError(`${what}: keyword ${key} needs a value`);
-        return val;
-      };
-      switch (key) {
-        case 'norm': {
-          const v = need();
-          if (v !== 'all' && v !== 'sample' && v !== 'none') throw new StyleError(`${what}: norm must be all, sample or none, got '${v}'`);
-          this.norm = v;
-          k += 2;
-          break;
-        }
-        case 'ave': {
-          const v = need();
-          if (v === 'one' || v === 'running') { this.aveMode = v; k += 2; break; }
-          if (v === 'window') {
-            this.aveMode = 'window';
-            this.windowM = posInt(args[k + 2], `${what}: window M`);
-            k += 3;
-            break;
-          }
-          throw new StyleError(`${what}: ave must be one, running or window M, got '${v}'`);
-        }
-        case 'bias':
-          this.biasId = need();
-          k += 2;
-          break;
-        case 'adof':
-          this.adof = Number(need());
-          if (!Number.isFinite(this.adof)) throw new StyleError(`${what}: adof must be a number`);
-          k += 2;
-          break;
-        case 'cdof':
-          this.cdof = Number(need());
-          if (!Number.isFinite(this.cdof)) throw new StyleError(`${what}: cdof must be a number`);
-          k += 2;
-          break;
-        case 'file':
-        case 'append':
-          if (this.fileName !== null) throw new StyleError(`${what}: file and append cannot both be used`);
-          this.fileName = need();
-          this.fileAppend = key === 'append';
-          k += 2;
-          break;
-        case 'overwrite':
-          this.overwriteFile = true;
-          k += 1;
-          break;
-        case 'format':
-          this.fmt = need();
-          fmtValue(0, this.fmt, what);
-          k += 2;
-          break;
-        case 'title1': this.title1 = need(); k += 2; break;
-        case 'title2': this.title2 = need(); k += 2; break;
-        case 'title3': this.title3 = need(); k += 2; break;
-        default:
-          throw new StyleError(`${what}: unknown keyword '${key}'`);
-      }
+    // fix_ave_chunk.cpp: global_freq = nfreq, and the number of rows (chunks) varies (size_array_rows_variable)
+    this.globalFreq = nfreq;
+    this.sizeArrayRowsVariable = true;
+    const words = expandArgs(sys, args.slice(4), 1).words;
+    let k = 0;
+    for (; k < words.length; k++) {
+      const w = words[k];
+      const fixed = CHUNK_VALUES[w];
+      if (fixed) { this.vals.push(fixed); continue; }
+      const a = argInfo(w);
+      if (a.which === 'none') break;
+      if (a.which === 'unknown' || a.dim > 1) throw new StyleError(`Unknown fix ave/chunk data value: ${w}`);
+      if (a.index1 < 0) throw new StyleError(`fix ave/chunk: index ${a.index1} in ${w} is refused: native LAMMPS reads outside the array for it`);
+      this.vals.push({ t: 'ref', ref: { kind: a.which as 'c' | 'f' | 'v', id: a.name, index: a.index1 === 0 ? null : a.index1, text: w } });
     }
-    if (this.overwriteFile && this.aveMode !== 'running') {
-      throw new StyleError(`${what}: the overwrite keyword can only be used with the ave running setting`);
-    }
-    this.nvalid = aveNextValid(sys.state.step, this.nEvery, this.nRepeat, this.nFreq);
-  }
-
-  /** Resolves the chunk compute and the value list (wildcards need the referenced computes). */
-  init(): void {
-    const what = `fix ${this.id} (ave/chunk)`;
-    this.chunk = chunkCompute(this.sys, this.chunkId, what);
-    this.words = expandWildcards(this.sys, this.valueWords, 'peratom');
-    this.vals = this.words.map((w): Val => {
-      switch (w) {
-        case 'vx': return { t: 'vel', d: 0 };
-        case 'vy': return { t: 'vel', d: 1 };
-        case 'vz': return { t: 'vel', d: 2 };
-        case 'fx': return { t: 'frc', d: 0 };
-        case 'fy': return { t: 'frc', d: 1 };
-        case 'fz': return { t: 'frc', d: 2 };
-        case 'mass': return { t: 'mass' };
-        case 'density/number': return { t: 'dnum' };
-        case 'density/mass': return { t: 'dmass' };
-        case 'temp': return { t: 'temp' };
-        default: {
-          const r = parseRef(w);
-          if (r.kind === 'attr') throw new StyleError(`${what}: unknown value '${w}'`);
-          return { t: 'ref', ref: r };
+    this.words = words.slice(0, k);
+    if (!this.vals.length) throw new StyleError('No values from computes, fixes, or variables used in fix ave/chunk command');
+    const need = (n: number, what: string): void => { if (k + n > words.length) throw missingArgs(what); };
+    while (k < words.length) {
+      const key = words[k];
+      const v = words[k + 1];
+      if (key === 'norm') {
+        need(2, 'fix ave/chunk norm');
+        if (v !== 'all' && v !== 'sample' && v !== 'none') throw new StyleError(`Unknown fix ave/chunk norm mode: ${v}`);
+        this.norm = v;
+        k += 2;
+      } else if (key === 'ave') {
+        need(2, 'fix ave/chunk ave');
+        if (v !== 'one' && v !== 'running' && v !== 'window') throw new StyleError(`Unknown fix ave/chunk ave mode: ${v}`);
+        this.aveMode = v;
+        if (v === 'window') {
+          need(3, 'fix ave/chunk ave window');
+          this.windowM = inumeric(words[k + 2]);
+          if (this.windowM <= 0) throw new StyleError(`Illegal fix ave/chunk number of windows: ${this.windowM}`);
         }
-      }
-    });
-    this.wantTemp = this.vals.some((v) => v.t === 'temp');
-    // As native LAMMPS does (src/fix_ave_chunk.cpp FixAveChunk::init at b332f28): the bias compute must exist, compute a
-    // temperature and remove a velocity bias
-    this.bias = null;
+        k += this.aveMode === 'window' ? 3 : 2;
+      } else if (key === 'bias') {
+        need(2, 'fix ave/chunk bias');
+        this.biasId = v;
+        k += 2;
+      } else if (key === 'adof') {
+        need(2, 'fix ave/chunk adof');
+        this.adof = numeric(v);
+        k += 2;
+      } else if (key === 'cdof') {
+        need(2, 'fix ave/chunk cdof');
+        this.cdof = numeric(v);
+        k += 2;
+      } else if (key === 'file' || key === 'append') {
+        need(2, `fix ave/chunk ${key}`);
+        this.fileName = v;
+        this.fileAppend = key === 'append';
+        k += 2;
+      } else if (key === 'overwrite') {
+        this.overwriteFile = true;
+        k += 1;
+      } else if (key === 'format') {
+        need(2, 'fix ave/chunk format');
+        checkCFormat(v, 'float', 'Invalid fix ave/chunk format argument');
+        this.fmt = v;
+        k += 2;
+      } else if (key === 'title1' || key === 'title2' || key === 'title3') {
+        need(2, `fix ave/chunk ${key}`);
+        if (key === 'title1') this.title1 = v;
+        else if (key === 'title2') this.title2 = v;
+        else this.title3 = v;
+        k += 2;
+      } else throw new StyleError(`Unknown fix ave/chunk keyword: ${key}`);
+    }
+    if (nevery <= 0) throw new StyleError(`Illegal fix ave/chunk nevery value: ${nevery}`);
+    if (nrepeat <= 0) throw new StyleError(`Illegal fix ave/chunk nrepeat value: ${nrepeat}`);
+    if (nfreq <= 0) throw new StyleError(`Illegal fix ave/chunk nfreq value: ${nfreq}`);
+    if (nfreq % nevery || nrepeat * nevery > nfreq) throw new StyleError('Inconsistent fix ave/chunk nevery/nrepeat/nfreq values');
+    if (this.aveMode !== 'running' && this.overwriteFile) throw new StyleError('Fix ave/chunk overwrite keyword requires ave running setting');
+    this.nEvery = nevery;
+    this.nRepeat = nrepeat;
+    this.nFreq = nfreq;
+    this.nevery = nevery;
     if (this.biasId !== null) {
-      const c = this.sys.computes.find((x) => x.id === this.biasId);
+      const c = sys.computes.find((x) => x.id === this.biasId);
       if (!c) throw new StyleError(`Could not find compute ID ${this.biasId} for temperature bias`);
       if (!c.tempFlag) throw new StyleError(`Bias compute ${this.biasId} does not calculate temperature`);
       if (!c.hasBias()) throw new StyleError(`Bias compute ${this.biasId} does not calculate a velocity bias`);
-      this.bias = c;
+    }
+    for (const v of this.vals) {
+      if (v.t !== 'ref') continue;
+      const r = v.ref;
+      if (r.kind === 'c' || r.kind === 'f') {
+        const what = r.kind === 'c' ? 'compute' : 'fix';
+        const o = r.kind === 'c' ? sys.computes.find((x) => x.id === r.id) : sys.fixes.find((x) => x.id === r.id);
+        if (!o) throw new StyleError(`${r.kind === 'c' ? 'Compute' : 'Fix'} ID ${r.id} for fix ave/chunk does not exist`);
+        if (!o.peratomFlag) throw new StyleError(`Fix ave/chunk ${what} ${r.id} does not calculate per-atom values`);
+        if (r.index === null && o.sizePeratomCols !== 0) throw new StyleError(`Fix ave/chunk ${what} ${r.id} does not calculate a per-atom vector`);
+        if (r.index !== null && o.sizePeratomCols === 0) throw new StyleError(`Fix ave/chunk ${what} ${r.id} does not calculate a per-atom array`);
+        if (r.index !== null && r.index > o.sizePeratomCols) throw new StyleError(`Fix ave/chunk ${what} ${r.id} vector is accessed out-of-range${errorUrl(20)}`);
+      } else {
+        const vv = sys.vars.get(r.id);
+        if (!vv) throw new StyleError(`Variable name ${r.id} for fix ave/chunk does not exist`);
+        if (vv.style !== 'atom') throw new StyleError(`Fix ave/chunk variable ${r.id} is not atom-style variable`);
+      }
+    }
+    if (!(sys.computes.find((x) => x.id === this.chunkId) instanceof ComputeChunkAtom)) {
+      throw new StyleError(`Chunk/atom compute ${this.chunkId} does not exist or is incorrect style for fix ave/chunk`);
+    }
+    this.wantTemp = this.vals.some((v) => v.t === 'temp');
+    this.nvalid = aveNextValid(sys.state.step, this.nEvery, this.nRepeat, this.nFreq);
+  }
+
+  /** The chunk compute and the sources must still exist (native init); the bias compute is resolved. */
+  init(): void {
+    const c = this.sys.computes.find((x) => x.id === this.chunkId);
+    if (!(c instanceof ComputeChunkAtom)) throw new StyleError(`Chunk/atom compute ${this.chunkId} does not exist or is incorrect style for fix ave/chunk`);
+    this.chunk = c;
+    this.bias = null;
+    if (this.biasId !== null) {
+      const b = this.sys.computes.find((x) => x.id === this.biasId);
+      if (!b) throw new StyleError(`Could not find compute ID ${this.biasId} for temperature bias`);
+      this.bias = b;
+    }
+    for (const v of this.vals) {
+      if (v.t !== 'ref') continue;
+      const r = v.ref;
+      if (r.kind === 'c' && !this.sys.computes.some((x) => x.id === r.id)) throw new StyleError(`Compute ID ${r.id} for fix ave/chunk does not exist`);
+      if (r.kind === 'f') {
+        const f = this.sys.fixes.find((x) => x.id === r.id);
+        if (!f) throw new StyleError(`Fix ID ${r.id} for fix ave/chunk does not exist`);
+        if (f.peratomFreq > 0 && this.nEvery % f.peratomFreq) throw new StyleError(`Fix ${r.id} for fix ave/chunk not computed at compatible time${errorUrl(7)}`);
+      }
+      if (r.kind === 'v' && !this.sys.vars.has(r.id)) throw new StyleError(`Variable name ${r.id} for fix ave/chunk does not exist`);
     }
     // fix_ave_chunk.cpp: size_array_cols = colextra + 1 + nvalues (the compressed chunk ID, the bin coordinates, the
     // count, then the values), known before the first output
@@ -528,7 +536,6 @@ export class FixAveChunk extends Fix {
   private writeSection(step: number, total: number): void {
     if (this.header === null) this.header = this.buildHeader();
     const sec: string[] = [`${step} ${this.table.length} ${total}`];
-    const what = `fix ${this.id} (ave/chunk)`;
     // measured with native LAMMPS: the OrigID column is an integer, the coordinates and
     // the Ncount column are always printed with " %g", and only the value columns use *format*
     const fixed = this.nFixed;
@@ -537,8 +544,8 @@ export class FixAveChunk extends Fix {
       let line = String(c + 1);
       row.forEach((x, k) => {
         if (k < origN) line += ` ${x}`;
-        else if (k <= fixed) line += fmtValue(x, ' %g', what); // coordinates, then Ncount
-        else line += fmtValue(x, this.fmt, what);
+        else if (k <= fixed) line += compileCFormat(' %g', 'float')(x); // coordinates, then Ncount
+        else line += compileCFormat(this.fmt, 'float', 'Invalid fix ave/chunk format argument')(x);
       });
       sec.push(line);
     });

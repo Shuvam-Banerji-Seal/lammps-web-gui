@@ -13,7 +13,7 @@
  * Per-atom energy and per-atom virial (compute stress/atom) are tallied as the native ev_tally and v_tally3 calls do
  * (the global virial stays the fdotr sum, as in the engine's other styles).
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import {
   combBijD, combBij, combBsi, combDi, combDj, combFc, combFc2, combFc2D, combFc3, combFc3D, combFcD,
@@ -134,7 +134,7 @@ export class PairComb extends Pair {
       if (e < 0) { e = elements.length; elements.push(name); }
       map[t] = e;
     }
-    const entries = readCombEntries(ctx.readFile(filename), elements);
+    const entries = readCombEntries(ctx.readFile(filename, potentialFile('comb')), elements);
     const sp = setupCombParams(entries, elements);
     this.fileName = filename;
     this.fileRead = true;

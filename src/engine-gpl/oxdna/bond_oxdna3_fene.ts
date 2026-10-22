@@ -9,7 +9,7 @@
  * Copyright (2003) Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0); this
  * file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { StyleError, typeBounds, type StyleContext } from '../../engine/force/types';
+import { StyleError, typeBounds, type StyleContext, potentialFile } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { BondOxdnaFene, type Pair2 } from './bond_fene';
 import { backboneOxdna2, tetIndex, tetramerTable, type OxdnaConstants, potentialLines } from './common';
@@ -38,7 +38,7 @@ export class BondOxdna3Fene extends BondOxdnaFene {
     const n = ctx?.s?.ntypes ?? 0;
     if (n > 4) throw new StyleError('bond oxdna3/fene does not support more than 4 atom types for A, C, G and T');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
-    const text = ctx?.readFile(args[1]) ?? '';
+    const text = ctx?.readFile(args[1], potentialFile('oxdna3 potential')) ?? '';
     const m4 = libmPow(n, 4);
     let found: number[] | null = null;
     for (const w of potentialLines(text, [args[0]], 'fene')) {

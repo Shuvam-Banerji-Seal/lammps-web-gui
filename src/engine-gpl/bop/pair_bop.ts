@@ -15,7 +15,7 @@
  * can be ghosts. The sums run in native order; forces are accumulated into the owned+ghost array and folded back
  * by the force field.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { checkOneCoeffArgs, mapElementsToTypes } from '../manybody2/common';
 import { pow as libmPow } from '../libm/pow';
@@ -162,7 +162,7 @@ export class PairBOP extends Pair {
   override coeff(args: string[], ctx: StyleContext): void {
     checkOneCoeffArgs(args, this.ntypes, this.name);
     const { elements, map } = mapElementsToTypes(args.slice(3), this.ntypes);
-    const pot = parseBopPotential(ctx.readFile(args[2]), args[2], ctx);
+    const pot = parseBopPotential(ctx.readFile(args[2], potentialFile('BOP')), args[2], ctx);
     // replace element indices in the map with the potential file's indices (native coeff, on rank 0)
     for (let i = 1; i <= this.ntypes; i++) {
       if (map[i] < 0) continue;

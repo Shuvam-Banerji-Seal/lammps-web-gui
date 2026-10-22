@@ -81,12 +81,7 @@ export class PairList extends Pair {
         throw new StyleError(`Unknown pair style list keyword: ${args[iarg]}`);
       }
     }
-    let text: string;
-    try {
-      text = ctx.readFile(file);
-    } catch (e) {
-      throw new StyleError(`Error opening pair list coeffs file ${file}: ${(e as Error).message}`);
-    }
+    const text = ctx.readFile(file, (n, reason) => `Error opening pair list coeffs file ${n}: ${reason}`);
     const out: ListParam[] = [];
     let nharm = 0, nmorse = 0, nlj126 = 0, nquartic = 0, nskipped = 0;
     for (const raw of text.split(/\r?\n/)) {

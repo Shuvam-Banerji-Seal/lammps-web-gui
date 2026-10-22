@@ -13,7 +13,7 @@
  * (src/engine-gpl/qeq/fix_qeq_ctip.ts) through typeParams(). The shared constants and the parameter file reader are
  * exported for that fix.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { parseNum } from '../../engine/force/util';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
@@ -115,7 +115,7 @@ export class PairCoulCtip extends Pair {
       throw new StyleError(`pair_coeff for style coul/ctip needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
     }
     if (!this.fileRead) {
-      this.entries = parseCtipFile(ctx.readFile(filename), filename);
+      this.entries = parseCtipFile(ctx.readFile(filename, potentialFile('coul/ctip')), filename);
       this.fileName = filename;
       this.fileRead = true;
     } else if (filename !== this.fileName) {

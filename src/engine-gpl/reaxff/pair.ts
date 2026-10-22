@@ -151,7 +151,7 @@ export class PairReaxFF extends Pair {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
     if (args.length !== 3 + this.ntypes) throw new StyleError('Incorrect args for pair coefficients');
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError('the first 2 arguments of pair_coeff for style reaxff must be * *');
-    const { param, control } = readForceField(ctx.readFile(args[2]), args[2], this.ctrl.lgflag);
+    const { param, control } = readForceField(ctx.readFile(args[2], (n, reason) => `The ReaxFF parameter file ${n} cannot be opened: ${reason}`), args[2], this.ctrl.lgflag);
     this.param = param;
     Object.assign(this.ctrl, control);
     const map = new Int32Array(this.ntypes + 1).fill(-1);

@@ -10,7 +10,7 @@
  * The stacking term runs over the FENE backbone bonds (the bond list), not over the pair list: the 3' side of a
  * bond is the atom whose 5' partner is the other atom (pair_oxdna_stk.cpp, compute).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { OXDNA_5P, OXDNA_3P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, halfVirial, lrfOf, oxdnaConstants, stackingSiteOxdna1, backboneSite, type StackRule, potentialLines } from './common';
@@ -114,7 +114,7 @@ export class PairOxdnaStk extends Pair {
     if (args.length === 24) {
       v = args.slice(4).map((w, k) => parseNum(w, STK_NAMES[k]));
     } else {
-      const text = ctx?.readFile(args[4]) ?? '';
+      const text = ctx?.readFile(args[4], potentialFile('oxdna potential')) ?? '';
       let found: number[] | null = null;
       for (const w of potentialLines(text, [args[0], args[1]], 'stk')) {
         if (w.length < 3) continue;

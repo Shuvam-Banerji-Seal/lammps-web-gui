@@ -18,7 +18,7 @@
  * pair_coeff * * FILE end-type...: the potential file (its tables are read at pair_coeff, native read_file) and the
  * atom types that end a chain. The keyword "topology" (bond topology instead of atom IDs for the chains) is refused.
  */
-import { Pair, PairCompute, StyleError, type StyleContext } from '../../engine/force/types';
+import { Pair, PairCompute, StyleError, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { ANGSTROM } from '../../engine/force/kspace/ewald';
 import { parseNum } from '../../engine/force/util';
@@ -168,7 +168,7 @@ export class PairMesoCNT extends Pair {
     if (style === undefined) throw new StyleError('pair_style mesocnt needs the box and units before pair_coeff');
     const eunit = eunitOf(style, `Pair style ${this.name}`);
     const ang = ANGSTROM[style];
-    this.tables = readMesocntFile(ctx.readFile(file));
+    this.tables = readMesocntFile(ctx.readFile(file, potentialFile('mesocnt')));
     this.endTypes = endWords.map((w) => Math.trunc(parseNum(w, 'end type')));
     this.consts = mesoConst(this.tables, ang, eunit, (text) => ctx.log(`WARNING: ${text}`));
     this.topoBuild = -1;

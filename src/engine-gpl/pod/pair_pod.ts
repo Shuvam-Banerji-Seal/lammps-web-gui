@@ -48,8 +48,10 @@ export class PairPOD extends Pair {
       throw new StyleError(`pair_coeff for style pod needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
     }
     if (elems.includes('NULL')) throw new StyleError('pair style pod: NULL atom types are not supported');
-    const params = parsePODParams(ctx.readFile(args[2]));
-    const coeffFile = parsePODCoeffFile(ctx.readFile(args[3]));
+    // EAPOD's messages (src/ML-POD/eapod.cpp): the parameter file is named a coefficient file, and neither
+    // message has a slot for the system's reason
+    const params = parsePODParams(ctx.readFile(args[2], (n) => `Cannot open POD coefficient file ${n}: `));
+    const coeffFile = parsePODCoeffFile(ctx.readFile(args[3], (n) => `Cannot open model coefficient file ${n}: `));
     // element indices follow the order of first appearance, as native map_element2type
     const names = [...new Set(elems)];
     if (names.length !== params.species.length) {

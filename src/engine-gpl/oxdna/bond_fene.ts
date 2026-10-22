@@ -9,7 +9,7 @@
  * The C++ looks up Delta and r0 per tetramer type (a 3' neighbour, a, b, b's 5' neighbour); coeff() writes the
  * same value to every entry, so one value per bond type is kept here (the same numbers, the same arithmetic).
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError, potentialFile } from '../../engine/force/types';
 import { atomIndex, delta as nearestCopy } from '../../engine/force/bonded_util';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
@@ -66,7 +66,7 @@ export class BondOxdnaFene extends Bonded {
       r0 = parseNum(args[3], 'r0');
     } else {
       // bond_oxdna_fene.cpp: "No corresponding fene potential found in file {} for bond type {}"
-      const text = ctx?.readFile(args[1]) ?? '';
+      const text = ctx?.readFile(args[1], potentialFile('oxdna potential')) ?? '';
       let found: number[] | null = null;
       for (const w of potentialLines(text, [args[0]], 'fene')) {
         if (w.length < 2) continue;

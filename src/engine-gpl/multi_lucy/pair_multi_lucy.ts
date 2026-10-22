@@ -10,7 +10,7 @@
  * indexed by the squared density (lookup or linear table styles). Tables are read with the native table file
  * format (keyword section, "N n R|RSQ lo hi" parameter line, then index r E F lines).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type PairConstructorWhere, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type PairConstructorWhere, type StyleContext, potentialFile } from '../../engine/force/types';
 import { atomHasFlag } from '../atom_flags';
 import { parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
@@ -168,7 +168,8 @@ export class PairMultiLucy extends Pair {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the atom types first');
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
-    const tb = this.readTable(ctx.readFile(args[2]), args[3], args[2]);
+    // RxTableFileReader opens the file as a "<style> table"
+    const tb = this.readTable(ctx.readFile(args[2], potentialFile(`${this.name} table`)), args[3], args[2]);
     if (args.length === 5) tb.cut = parseNum(args[4], 'cutoff');
     else if (tb.rflag) tb.cut = tb.rhi;
     else tb.cut = tb.rfile[tb.ninput - 1];

@@ -12,7 +12,7 @@
  * is left out here. The force of the first and fourth angles is not in the C++ force part (only in the torques);
  * this port keeps that.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
@@ -68,7 +68,7 @@ export class PairOxdna2Coaxstk extends Pair {
     if (args.length === 21) {
       v = args.slice(2).map((w, k) => parseNum(w, CX2_NAMES[k]));
     } else {
-      const text = ctx?.readFile(args[2]) ?? '';
+      const text = ctx?.readFile(args[2], potentialFile('oxdna potential')) ?? '';
       let found: number[] | null = null;
       for (const w of potentialLines(text, [args[0], args[1]], 'coaxstk')) {
         if (w.length < 3) continue;

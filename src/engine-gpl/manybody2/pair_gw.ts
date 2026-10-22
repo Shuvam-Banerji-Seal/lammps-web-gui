@@ -10,7 +10,7 @@
  * The loops are those of PairGW::compute over the full neighbor list (atom IDs decide which of two atoms owns a
  * two-body term), with the same operation order; forces on ghost atoms are folded into their owners by the force field.
  */
-import { Pair, StyleError, type PairCompute, type PairConstructorWhere, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type PairConstructorWhere, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
@@ -99,7 +99,7 @@ export class PairGW extends Pair {
 
   /** PairGW::read_file: entries whose three elements are all mapped, parameters checked (native text). */
   protected readFile(fileName: string, ctx: StyleContext): void {
-    const text = ctx.readFile(fileName);
+    const text = ctx.readFile(fileName, potentialFile(this.fileType));
     this.unitFactor = potentialUnitFactor(text, this.fileType, fileName, ctx);
     const reader = new PotentialEntryReader(text.split(/\r?\n/), this.fileType);
     const params: GWParam[] = [];

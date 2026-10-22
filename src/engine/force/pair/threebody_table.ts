@@ -1,4 +1,4 @@
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
@@ -248,7 +248,7 @@ export class PairThreebodyTable extends Pair {
       throw new StyleError(`pair_coeff for style threebody/table needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
     }
     if (this.fileRead) throw new StyleError('pair_coeff for style threebody/table can only be given once (one .3b file)');
-    const entries = parse3B(ctx.readFile(filename), filename);
+    const entries = parse3B(ctx.readFile(filename, potentialFile('threebody')), filename);
     this.fileRead = true;
     for (const e of entries) {
       this.fileElems.add(e.e1);
@@ -304,7 +304,7 @@ export class PairThreebodyTable extends Pair {
           const tkey = `${e.filename}\u0000${e.keyword}\u0000${n2 === n3 ? 's' : 'g'}`;
           let tab = this.tableCache.get(tkey);
           if (!tab) {
-            tab = buildTable(ctx.readFile(e.filename), e, n2 === n3);
+            tab = buildTable(ctx.readFile(e.filename, potentialFile('threebodytable table')), e, n2 === n3);
             this.tableCache.set(tkey, tab);
           }
           this.tabOf[t3] = tab;

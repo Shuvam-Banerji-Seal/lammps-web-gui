@@ -9,7 +9,7 @@
  * 2011). LAMMPS is Copyright (2003) Sandia Corporation, distributed under the GNU General Public License, version 2
  * (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { StyleError, typeBounds, type StyleContext } from '../../engine/force/types';
+import { StyleError, typeBounds, type StyleContext, potentialFile } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { PairOxdnaHbond } from './pair_hbond';
 import { stackingDerived } from './pair_stk';
@@ -44,7 +44,7 @@ export class PairOxdna3Hbond extends PairOxdnaHbond {
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     if (ihi > 4 || jhi > 4) throw new StyleError('pair oxdna3/hbond does not support more than 4 atom types for A, C, G and T');
-    const text = ctx?.readFile(args[2]) ?? '';
+    const text = ctx?.readFile(args[2], potentialFile('oxdna3 potential')) ?? '';
     let found: number[] | null = null;
     for (const w of potentialLines(text, [args[0], args[1]], 'hbond')) {
       if (w.length < 3) continue;

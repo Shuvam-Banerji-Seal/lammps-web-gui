@@ -10,7 +10,7 @@
  * entry (i, j, j) of the atom whose neighbor list visits it, decided by atom IDs on the full list (threebody on) or
  * by the half list (threebody off), as native LAMMPS does.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { NativeFullOrder } from '../neighbor/nativeOrder';
 import { exp as libmExp } from '../libm/exp';
@@ -172,7 +172,7 @@ export class PairSW extends Pair {
    * conversion; threebody off zeroes lambda; negative parameters are an error.
    */
   private readFile(fileName: string, ctx: StyleContext): void {
-    const text = ctx.readFile(fileName);
+    const text = ctx.readFile(fileName, potentialFile('sw'));
     this.fileName = fileName;
     if (!this.threebody) ctx.log('  disabling sw potential three-body terms');
     this.unitFactor = potentialUnitFactor(text, 'sw', fileName, ctx);

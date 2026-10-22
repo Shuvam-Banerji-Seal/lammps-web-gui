@@ -11,7 +11,7 @@
  * is refused by name. The per-type coefficients are symmetrised in initOne
  * (pair_oxdna_hbond.cpp init_one writes the j,i entries), as in the C++.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
@@ -80,7 +80,7 @@ export class PairOxdnaHbond extends Pair {
     if (args.length === 27) {
       v = args.slice(3).map((w, k) => parseNum(w, HB_NAMES[k]));
     } else {
-      const text = ctx?.readFile(args[3]) ?? '';
+      const text = ctx?.readFile(args[3], potentialFile('oxdna potential')) ?? '';
       let found: number[] | null = null;
       for (const w of potentialLines(text, [args[0], args[1]], 'hbond')) {
         if (w.length < 3) continue;

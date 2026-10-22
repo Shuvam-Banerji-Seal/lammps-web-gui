@@ -470,7 +470,8 @@ export class PairEIM extends Pair {
     // read_file(arg[2 + nelements]): the file follows the distinct names
     const fileName = args[2 + names.length];
     if (fileName === undefined) throw new StyleError('Incorrect args for pair coefficients');
-    const text = ctx.readFile(fileName);
+    // EIMPotentialFileReader: the name only, no reason
+    const text = ctx.readFile(fileName, (n) => `cannot open eim potential file ${n}`);
     const conversion = eimUnitFactor(text, fileName, ctx);
     const file = parseEimFile(text, conversion);
     const setfl = buildSetfl(file, names);

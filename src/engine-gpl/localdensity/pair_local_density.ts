@@ -15,7 +15,7 @@
  * done through the owner index (nb.owner), which gives the same totals. The half neighbour list is used as the
  * source does (newton on).
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { tallyXYZ } from '../dpd/pair_dpd';
 
@@ -183,7 +183,7 @@ export class PairLocalDensity extends Pair {
   coeff(args: string[], ctx: StyleContext): void {
     if (args.length !== 3) throw new StyleError('Incorrect args for pair coefficients');
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError('Incorrect args for pair coefficients');
-    const t = parseLocalDensityFile(ctx.readFile(args[2]), this.ntypes);
+    const t = parseLocalDensityFile(ctx.readFile(args[2], potentialFile('local/density')), this.ntypes);
     if (t.nLD !== this.ntypes * this.ntypes) ctx.log(`WARNING: Expected ${this.ntypes * this.ntypes} local density potentials but got ${t.nLD}`);
     this.ldTable = t;
     this.nlocalCache = -1;

@@ -108,7 +108,7 @@ export class PairMliap extends Pair {
         if (style === 'linear' || style === 'quadratic' || style === 'nn') {
           if (k + 3 > n) throw missingArgs(`pair_style mliap model ${style}`);
           kind = style; mfile = args[k + 2];
-          modelText = ctx.readFile(mfile);
+          modelText = ctx.readFile(mfile, 'Cannot open MLIAPModel coeff file');
           k += 3;
         } else if (style === 'mliappy') {
           throw new StyleError('Using pair_style mliap model mliappy requires ML-IAP with python support');
@@ -122,7 +122,7 @@ export class PairMliap extends Pair {
         if (!DESCRIPTOR_STYLES.includes(style)) throw new StyleError('Illegal pair_style mliap command');
         if (k + 3 > n) throw style === 'ace' ? new StyleError('Illegal pair_style mliap command') : missingArgs(`pair_style mliap descriptor ${style}`);
         dstyle = style; dfile = args[k + 2];
-        descText = ctx.readFile(dfile);
+        descText = ctx.readFile(dfile, style === 'sna' ? 'Cannot open SNAP parameter file' : style === 'so3' ? 'Cannot open SO3 parameter file' : undefined);
         k += 3;
       } else if (kw === 'unified') {
         throw new StyleError('Using pair_style mliap unified requires ML-IAP with python support');

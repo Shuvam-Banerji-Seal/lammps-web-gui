@@ -19,7 +19,7 @@
  * (the owner's list is complete within the cutoff), so Nt/Nd of a ghost is taken from its owner.
  * virialFdotr: the global virial is the dot product of positions and forces (ghosts included), as in the force field.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { sinFma as libmSin, cosFma as libmCos } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
@@ -113,7 +113,7 @@ export class PairExTeP extends Pair {
       if (e < 0) { e = elements.length; elements.push(name); }
       map[t] = e;
     }
-    const text = ctx.readFile(filename);
+    const text = ctx.readFile(filename, potentialFile('ExTeP'));
     const lines = text.split(/\r?\n/);
     const nel = elements.length;
     const params: Param[] = [];

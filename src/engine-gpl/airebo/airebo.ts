@@ -13,7 +13,7 @@
  * Copyright (2003) Sandia Corporation (GNU General Public License).
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { newRef, TOL, type ReboCore } from './rebo';
 import { bondorder } from './bondorder';
@@ -215,7 +215,9 @@ export class PairAIREBO extends Pair {
       }
     }
     const fileName = args[2];
-    const { params, tables } = readAireboFile(ctx.readFile(fileName), fileName, this.variant, this.morseflag === 1);
+    // PairAIREBO::read_file names the file by variant (airebo/bc reads as airebo)
+    const potName = this.variant === 'rebo' ? 'rebo' : this.variant === 'airebo/morse' ? 'airebo/morse' : 'airebo';
+    const { params, tables } = readAireboFile(ctx.readFile(fileName, potentialFile(potName)), fileName, this.variant, this.morseflag === 1);
     const K = newKnots();
     splineInit(K, tables);
     if (this.variant === 'rebo') splineInitRebo(K, tables);

@@ -8,7 +8,7 @@
  */
 import { hasMolecule } from '../../engine/atoms';
 import { NEIGHMASK } from '../../engine/neighbor';
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { joinPotentialEntries, parseNum } from '../../engine/force/util';
 import { energyScale, stripComment } from './zbase';
 import { CellList } from '../../engine/cellList';
@@ -154,7 +154,7 @@ export class PairDRIP extends Pair {
 
   /** Reads the DRIP file: 15 words per entry (two element names, 13 numbers); entries of other elements are skipped. */
   private readFile(fileName: string, ctx: StyleContext): void {
-    const lines = ctx.readFile(fileName).split('\n');
+    const lines = ctx.readFile(fileName, potentialFile('drip')).split('\n');
     const m = /UNITS:\s*(\S+)/.exec(lines[0] ?? '');
     const scale = energyScale(m ? m[1] : null, ctx, this.name, fileName);
     const out: DripParam[] = [];

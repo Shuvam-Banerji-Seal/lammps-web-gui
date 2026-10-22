@@ -9,7 +9,7 @@
  * Phys 2011) and Snodin et al. LAMMPS is Copyright (2003) Sandia Corporation, distributed under the GNU General
  * Public License, version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { StyleError, typeBounds, type StyleContext } from '../../engine/force/types';
+import { StyleError, typeBounds, type StyleContext, potentialFile } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { derived } from './pair_excv';
 import { PairOxdna2Excv } from './variants';
@@ -33,7 +33,7 @@ export class PairOxdna3Excv extends PairOxdna2Excv {
     if (ihi > 4) throw new StyleError('pair oxdna3/excv does not support more than 4 atom types for A, C, G and T');
     const n = ihi;
     const m4 = libmPow(n, 4);
-    const text = ctx?.readFile(args[2]) ?? '';
+    const text = ctx?.readFile(args[2], potentialFile('oxdna3 potential')) ?? '';
     let found: number[] | null = null;
     for (const w of potentialLines(text, [args[0], args[1]], 'excv')) {
       if (w.length < 3) continue;

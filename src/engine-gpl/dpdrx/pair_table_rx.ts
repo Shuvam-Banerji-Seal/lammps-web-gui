@@ -14,7 +14,7 @@
  * Refused by name: the bitmap style and the ewald, pppm, msm, dispersion and tip4p keywords (the core table refuses them).
  * The per-pair single() is not available (its weights need the owned atoms' mixing weights of this step).
  */
-import { StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { PairTable, readSection } from '../../engine/force/pair/table';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { DPD_UCG, DPD_UCGNEW } from '../../engine/atoms';
@@ -68,7 +68,7 @@ export class PairTableRX extends PairTable {
     const isite1 = this.siteOf(args[4], 'Site1');
     const isite2 = this.siteOf(args[5], 'Site2');
     // "Invalid pair table cutoff" when the table starts at r <= 0 (pair_table_rx.cpp coeff, rlo <= 0)
-    const sec = readSection(ctx.readFile(args[2]), args[2], args[3]);
+    const sec = readSection(ctx.readFile(args[2], potentialFile('pair table')), args[2], args[3]);
     const rlo = sec.spacing === 'none' ? sec.r[0] : sec.rlo;
     if (rlo <= 0.0) throw new StyleError('Invalid pair table cutoff');
     super.coeff([args[0], args[1], args[2], args[3], ...(args.length === 7 ? [args[6]] : [])], ctx);

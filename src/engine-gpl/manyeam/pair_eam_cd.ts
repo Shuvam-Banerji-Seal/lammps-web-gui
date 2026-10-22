@@ -37,6 +37,11 @@ export class PairEAMCD extends EamFamilyBase {
     return readSetfl(text, filename, ctx);
   }
 
+  /** PairEAMCD reads its setfl file through PairEAMAlloy, as "eam/alloy". */
+  protected override get potentialName(): string {
+    return 'eam/alloy';
+  }
+
   coeff(args: string[], ctx: StyleContext): void {
     const file = this.mapCoeff(args, ctx, this.name);
     if (file.nelements < 2) {

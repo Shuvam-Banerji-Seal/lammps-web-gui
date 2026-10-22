@@ -16,7 +16,7 @@
  * is what native's forward communication gives it. The 'exp(value)' guard (native DBL_MIN_EXP) and the 10*DBL_EPSILON
  * tolerance are as native's.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { numeric } from '../../engine/force/util';
 import { DPD_UCG, DPD_UCGNEW } from '../../engine/atoms';
@@ -142,7 +142,7 @@ export class PairExp6rx extends Pair {
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     this.nspecies = fx.nspecies;
     if (this.nspecies === 0) throw new StyleError('There are no rx species specified.');
-    this.readFile(ctx.readFile(args[2]), args[2], fx);
+    this.readFile(ctx.readFile(args[2], potentialFile('exp6/rx')), args[2], fx);
     this.isite1 = this.siteOf(args[3], 'Site1', args[2]);
     this.isite2 = this.siteOf(args[4], 'Site2', args[2]);
     this.setup();
@@ -154,7 +154,7 @@ export class PairExp6rx extends Pair {
       if (args.length === 9) cutOne = numArg(args[8]);
     } else if (args[5] === 'polynomial') {
       this.scaling = 'polynomial';
-      this.readFile2(ctx.readFile(args[6]), args[6]);
+      this.readFile2(ctx.readFile(args[6], potentialFile('exp6/rx')), args[6]);
       if (args.length > 8) throw new StyleError('Incorrect args for pair coefficients');
       if (args.length === 8) cutOne = numArg(args[7]);
     } else if (args[5] === 'none') {

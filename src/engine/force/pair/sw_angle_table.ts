@@ -1,4 +1,4 @@
-import { StyleError, type StyleContext } from '../types';
+import { StyleError, type StyleContext, potentialFile } from '../types';
 import { PairSWBase } from './sw';
 import { AngleTable, readAngleSection } from '../angleTable49';
 import { libm } from '../../libm';
@@ -74,7 +74,7 @@ export class PairSWAngleTable extends PairSWBase {
           const key = `${tab.filename}\u0000${tab.keyword}\u0000${tab.style}\u0000${tab.n}`;
           let built = this.tables.get(key);
           if (!built) {
-            const sec = readAngleSection(ctx.readFile(tab.filename), tab.filename, tab.keyword);
+            const sec = readAngleSection(ctx.readFile(tab.filename, potentialFile('angletable table')), tab.filename, tab.keyword);
             built = AngleTable.build(sec, tab.n, tab.style, `pair_style sw/angle/table (${tab.filename} ${tab.keyword})`);
             this.tables.set(key, built);
           }

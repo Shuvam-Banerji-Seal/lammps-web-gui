@@ -1,7 +1,7 @@
 import { SimpleBonded, atomIndex } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { angleTerm } from './harmonic';
-import { StyleError, type BondedCompute, bondedCoeffArgs } from '../types';
+import { type BondedCompute, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*

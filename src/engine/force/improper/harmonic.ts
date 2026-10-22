@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral, delta, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
-import { StyleError, type BondedCompute, bondedCoeffArgs } from '../types';
+import { type BondedCompute, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*

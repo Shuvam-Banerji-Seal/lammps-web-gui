@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, delta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
-import { StyleError, addCentroid, type BondedCompute, bondedCoeffArgs } from '../types';
+import { addCentroid, type BondedCompute, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*

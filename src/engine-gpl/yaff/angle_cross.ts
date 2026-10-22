@@ -18,7 +18,7 @@
  */
 import { SimpleBonded, atomIndex, delta } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
-import { StyleError, type BondedCompute, bondedCoeffArgs } from '../../engine/force/types';
+import { type BondedCompute, bondedCoeffArgs } from '../../engine/force/types';
 import { acos as libmAcos } from '../libm/acos';
 import { tallyAngle } from '../../engine/force/angle/harmonic';
 

@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, delta, termDelta } from '../bonded_util';
 import { parseNum } from '../util';
-import { bondedVirial, StyleError, type BondedCompute, bondedCoeffArgs } from '../types';
+import { bondedVirial, type BondedCompute, bondedCoeffArgs } from '../types';
 
 /*
  * improper_style distharm and sqdistharm (wave 18).

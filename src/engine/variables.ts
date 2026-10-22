@@ -406,7 +406,12 @@ export class Variables {
       if (mode !== 'vector') throw named(`Vector-style variable in ${formula}-style variable formula`);
       return this.evalVector(name, env);
     }
-    return this.scalar(name, env);
+    if (v.style === 'internal') return v.num!;
+    // native reads the variable's text (Variable::retrieve: an equal- or timer-style value printed as %.15g, a format-style
+    // one with its format) and then the number in it, so a referenced value keeps 15 significant digits
+    const text = this.text(name, env);
+    if (!IS_DOUBLE.test(text)) throw named('Non-numeric variable value in variable formula');
+    return Number(text);
   }
 
   /**

@@ -595,26 +595,20 @@ export class FixNH extends Fix {
     return null;
   }
 
-  /** As native LAMMPS does (src/fix_nh.cpp FixNH::modify_param at b332f28). */
   modify(key: string, values: string[]): number {
     if (key === 'temp') {
-      if (values.length < 1) throw new StyleError('Illegal fix_modify command');
-      const c = this.sys.computes.find((x) => x.id === values[0]);
-      if (!c) throw new StyleError(`Could not find fix_modify temperature ID ${values[0]}`);
-      if (!c.tempFlag) throw new StyleError(`Fix_modify temperature ID ${values[0]} does not compute temperature`);
-      if (c.group !== 'all') this.sys.warn('Temperature for fix modify is not for group all');
+      const c = this.sys.compute(values[0] ?? '');
+      if (!c.tempFlag) throw new StyleError(`fix_modify temp: compute ${values[0]} does not compute a temperature`);
       this.tempId = values[0];
       this.tempCompute = c;
-      // "reset id_temp of pressure to new temperature ID"
+      // the fix's pressure compute uses the new temperature too
       if (this.pressCompute) (this.pressCompute as unknown as { tempId: string }).tempId = values[0];
       return 1;
     }
     if (key === 'press') {
-      if (values.length < 1) throw new StyleError('Illegal fix_modify press command: missing argument(s)');
-      if (!this.pstat) throw new StyleError('Fix_modify press command without a barostat');
-      const c = this.sys.computes.find((x) => x.id === values[0]);
-      if (!c) throw new StyleError(`Could not find fix_modify pressure ID ${values[0]}`);
-      if (!c.pressFlag) throw new StyleError(`Fix_modify pressure ID ${values[0]} does not compute pressure`);
+      if (!this.pstat) throw new StyleError(`fix_modify press: fix ${this.id} has no barostat`);
+      const c = this.sys.compute(values[0] ?? '');
+      if (!c.pressFlag) throw new StyleError(`fix_modify press: compute ${values[0]} does not compute a pressure`);
       this.pressId = values[0];
       this.pressCompute = c;
       return 1;

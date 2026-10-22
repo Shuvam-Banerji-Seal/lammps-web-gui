@@ -1,7 +1,10 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { expandWildcards, globalScalar, parseRef, type Ref } from '../refs';
+import { globalScalar, type Ref } from '../refs';
+import { inumeric, missingArgs } from '../force/util';
+import { argInfo, EQUAL_STYLES, expandArgs } from '../argInfo';
+import { errorUrl } from '../formula';
 
 /*
  * fix ave/moments — docs.lammps.org/fix_ave_moments.html.
@@ -76,7 +79,6 @@ export class FixAveMoments extends Fix {
   private readonly nRepeat: number;
   private readonly startStep: number;
   private readonly nrecent: number;
-  private readonly valueWords: string[];
   private readonly momentWords: Moment[];
   private inputs: Ref[] = [];
   /** The ring of samples, one array per input (native window_list), the next entry and whether it has wrapped. */
@@ -92,55 +94,75 @@ export class FixAveMoments extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const what = `fix ${id} (ave/moments)`;
-    if (args.length < 4) throw new StyleError(`usage: fix ${id} group-ID ave/moments Nevery Nrepeat Nfreq value1 ... moment1 ... [start N] [history N]`);
-    const posInt = (w: string, name: string): number => {
-      const v = Number(w);
-      if (!Number.isInteger(v) || v < 1) throw new StyleError(`${what}: ${name} must be a positive integer, got '${w}'`);
-      return v;
-    };
-    this.nevery = posInt(args[0], 'Nevery');
-    this.nRepeat = posInt(args[1], 'Nrepeat');
-    const nFreq = posInt(args[2], 'Nfreq');
-    this.nFreq = nFreq;
-    const isValue = (w: string) => /^[cfv]_/.test(w);
-    const isMoment = (w: string) => (MOMENTS as readonly string[]).includes(w);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_ave_moments.cpp constructor at b332f28): the values (words that start
+    // with c_, f_ or v_), the moments, the keywords; then the values are expanded and their sources checked. Native
+    // does not compare Nevery, Nrepeat and Nfreq with each other.
+    if (args.length < 5) throw missingArgs('fix ave/moments');
+    const nevery = inumeric(args[0]);
+    const nrepeat = inumeric(args[1]);
+    const nfreq = inumeric(args[2]);
     let k = 3;
-    const values: string[] = [];
-    while (k < args.length && isValue(args[k])) values.push(args[k++]);
-    if (!values.length) throw new StyleError(`${what}: no input values (c_ID, f_ID or v_name) were given`);
+    while (k < args.length && /^[cfv]_/.test(args[k])) k++;
+    const values = args.slice(3, k);
+    const noValues = 'No values from computes, fixes, or variables used in fix ave/moments command';
+    if (!values.length) throw new StyleError(noValues);
     const moments: Moment[] = [];
-    while (k < args.length && isMoment(args[k])) moments.push(args[k++] as Moment);
-    if (!moments.length) throw new StyleError(`${what}: no moments were given (${MOMENTS.join(', ')})`);
-    this.valueWords = values;
-    this.momentWords = moments;
+    while (k < args.length && (MOMENTS as readonly string[]).includes(args[k])) moments.push(args[k++] as Moment);
+    if (!moments.length) throw new StyleError(noValues);
     let startStep = 0;
     let nrecent = 1;
     while (k < args.length) {
       const key = args[k];
-      const value = args[k + 1];
-      if (value === undefined) throw new StyleError(`${what}: keyword '${key}' needs a value`);
-      if (key === 'start') {
-        const v = Number(value);
-        if (!Number.isInteger(v) || v < 0) throw new StyleError(`${what}: start must be an integer >= 0, got '${value}'`);
-        startStep = v;
-      } else if (key === 'history') {
-        nrecent = posInt(value, 'history');
-      } else {
-        throw new StyleError(`${what}: unknown keyword '${key}'`);
-      }
+      if (key === 'history') {
+        if (k + 2 > args.length) throw missingArgs('fix ave/moments history');
+        nrecent = inumeric(args[k + 1]);
+        if (nrecent <= 0) throw new StyleError(`Illegal ave/moments history argument ${nrecent}; must be > 0`);
+      } else if (key === 'start') {
+        if (k + 2 > args.length) throw missingArgs('fix ave/moments start');
+        startStep = inumeric(args[k + 1]);
+      } else throw new StyleError(`Unknown fix ave/moments keyword ${key}`);
       k += 2;
     }
+    this.inputs = expandArgs(sys, values, 0).words.map((w): Ref => {
+      const a = argInfo(w);
+      if (a.which === 'none' || a.which === 'unknown' || a.dim > 1) throw new StyleError(`Invalid fix ave/moments argument: ${w}`);
+      if (a.index1 < 0) throw new StyleError(`fix ave/moments: index ${a.index1} in ${w} is refused: native LAMMPS reads outside the vector for it`);
+      return { kind: a.which as 'c' | 'f' | 'v', id: a.name, index: a.index1 === 0 ? null : a.index1, text: w };
+    });
+    if (nevery <= 0) throw new StyleError(`Illegal fix ave/moments nevery value: ${nevery}`);
+    if (nrepeat <= 0) throw new StyleError(`Illegal fix ave/moments nrepeat value: ${nrepeat}`);
+    if (nfreq <= 0) throw new StyleError(`Illegal fix ave/moments nfreq value: ${nfreq}`);
+    this.nevery = nevery;
+    this.nRepeat = nrepeat;
+    this.nFreq = nfreq;
+    for (const r of this.inputs) {
+      if (r.kind === 'c' || r.kind === 'f') {
+        const what = r.kind === 'c' ? 'compute' : 'fix';
+        const o = r.kind === 'c' ? sys.computes.find((x) => x.id === r.id) : sys.fixes.find((x) => x.id === r.id);
+        if (!o) throw new StyleError(`${r.kind === 'c' ? 'Compute' : 'Fix'} ID ${r.id} for fix ave/moments does not exist`);
+        if (r.index === null && !o.scalarFlag) throw new StyleError(`Fix ave/moments ${what} ${r.id} does not calculate a scalar`);
+        if (r.index !== null && !o.vectorFlag) throw new StyleError(`Fix ave/moments ${what} ${r.id} does not calculate a vector`);
+        if (r.kind === 'f' && r.index !== null && (o as Fix).sizeVectorVariable) throw new StyleError(`Fix ave/moments fix ${r.id} vector cannot be variable length`);
+        // an engine compute that sizes its vector when it is first computed reports 0 here
+        if (r.index !== null && o.sizeVector > 0 && r.index > o.sizeVector) {
+          throw new StyleError(`Fix ave/moments ${what} ${r.id} vector is accessed out-of-range${errorUrl(20)}`);
+        }
+        if (r.kind === 'f' && (o as Fix).globalFreq > 0 && nevery % (o as Fix).globalFreq) {
+          throw new StyleError(`Fix ${r.id} for fix ave/moments not computed at compatible time${errorUrl(7)}`);
+        }
+      } else {
+        const v = sys.vars.get(r.id);
+        if (!v) throw new StyleError(`Variable name ${r.id} for fix ave/moments does not exist`);
+        if (r.index === null && !EQUAL_STYLES.has(v.style)) throw new StyleError(`Fix ave/moments variable ${r.id} is not equal-style variable`);
+        if (r.index !== null && v.style !== 'vector') throw new StyleError(`Fix ave/moments variable ${r.id} is not vector-style variable`);
+      }
+    }
+    this.momentWords = moments;
     this.startStep = startStep;
     this.nrecent = nrecent;
     this.vectorFlag = true;
     this.arrayFlag = true;
-    // thermo f_ID[*] expands before init(): without wildcards the sizes are known now
-    if (!values.some((w) => w.includes('*'))) {
-      this.sizeVector = values.length * moments.length;
-      this.sizeArrayRows = this.sizeVector;
-      this.sizeArrayCols = nrecent;
-    }
+    this.setShape();
     this.setNextValid();
   }
 
@@ -163,9 +185,20 @@ export class FixAveMoments extends Fix {
   /** Nfreq is the output interval (multiples of Nfreq compute the moments). */
   readonly nFreq: number;
 
-  /** Resolves wildcards and sets the output sizes (computes must exist by now). */
+  /** The sources must still exist (native init); the output sizes and flags are set again. */
   init(): void {
-    this.inputs = expandWildcards(this.sys, this.valueWords, 'scalar').map((w) => parseRef(w));
+    for (const r of this.inputs) {
+      if (r.kind === 'c' && !this.sys.computes.some((x) => x.id === r.id)) throw new StyleError(`Compute ID ${r.id} for fix ave/moments does not exist`);
+      if (r.kind === 'f' && !this.sys.fixes.some((x) => x.id === r.id)) throw new StyleError(`Fix ID ${r.id} for fix ave/moments does not exist`);
+      if (r.kind === 'v' && !this.sys.vars.has(r.id)) throw new StyleError(`Variable name ${r.id} for fix ave/moments does not exist`);
+    }
+    this.setShape();
+    // a minimization past the next sample step: the schedule starts again from this step (native init)
+    if (this.nvalid < this.sys.state.step) this.setNextValid();
+  }
+
+  /** The output sizes and intensive/extensive flags, and the window and result storage when their size changes. */
+  private setShape(): void {
     const size = this.inputs.length * this.momentWords.length;
     // As native LAMMPS does (src/EXTRA-FIX/fix_ave_moments.cpp at b332f28): every moment of a value takes that value's
     // flag (the vector's per-element list), and the array takes the one flag all values share, else it is an error
@@ -178,7 +211,7 @@ export class FixAveMoments extends Fix {
         e = r.index === null ? src.extscalar : src.extlist ? src.extlist[r.index - 1] ?? 0 : src.extvector;
       }
       if (ext > -2 && e !== ext) {
-        throw new StyleError(`fix ${this.id} (ave/moments): Fix ave/moments cannot set output array intensive/extensive from these inputs`);
+        throw new StyleError('Fix ave/moments cannot set output array intensive/extensive from these inputs');
       }
       ext = e;
       for (let m = 0; m < this.momentWords.length; m++) list.push(e);
@@ -198,8 +231,6 @@ export class FixAveMoments extends Fix {
       this.results = Array.from({ length: this.nrecent }, () => new Float64Array(size));
       this.iresult = 0;
     }
-    // a minimization past the next sample step: the schedule starts again from this step (native init)
-    if (this.nvalid < this.sys.state.step) this.setNextValid();
   }
 
   setup(): void { this.endOfStep(); }

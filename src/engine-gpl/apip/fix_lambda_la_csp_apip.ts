@@ -74,7 +74,7 @@ export class FixLambdaLACSPAPIP extends Fix {
   private readonly cspCutsq: number = 25;
   private readonly calculateForcesFlag: boolean = true;
   private readonly lambdaNonGroup: number = 1;
-  private readonly peratomFreq: number = 0;
+  peratomFreq = 0;
   private readonly storeStats: boolean = false;
   private readonly cutsqCombined: number;
   private tagsStored = false;

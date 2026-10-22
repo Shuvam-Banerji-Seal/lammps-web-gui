@@ -36,9 +36,10 @@ fix             1 all nve
 
 describe('fix argument and compatibility errors (WP5)', () => {
   it('fix ave/time: a malformed value is an error of the fix line, before any run', async () => {
-    // native: "ERROR: Illegal fix ave/time command" at the fix line (the wording here names the value)
+    // As native LAMMPS does (src/fix_ave_time.cpp at b332f28): the values end at the first word that is not a
+    // reference, which is then read as a keyword
     const { error } = await runScript(`${SYS}\ncompute t all temp\nfix a all ave/time 1 1 5 c_t bogus\n`);
-    expect(error?.message).toContain("invalid input value 'bogus'");
+    expect(error?.message).toContain('Unknown fix ave/time keyword bogus');
     expect(error?.message).toMatch(/^line \d+:/);
   });
 

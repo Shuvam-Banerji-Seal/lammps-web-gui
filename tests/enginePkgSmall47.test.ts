@@ -234,12 +234,13 @@ variable s equal step
 `;
 
   it('refuses malformed arguments', async () => {
-    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s\n')).rejects.toThrow(/no moments/);
-    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s median\n')).rejects.toThrow(/no moments|median/);
-    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 mean\n')).rejects.toThrow(/no input values/);
-    await expect(session().s.execute(base + 'fix 2 all ave/moments 0 4 4 v_s mean\n')).rejects.toThrow(/Nevery/);
-    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s mean history 0\n')).rejects.toThrow(/history/);
-    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s mean foo 1\n')).rejects.toThrow(/unknown keyword 'foo'/);
+    // native LAMMPS's messages (src/EXTRA-FIX/fix_ave_moments.cpp at b332f28; tests/engineAveFixArgsNative.test.ts)
+    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s\n')).rejects.toThrow(/Illegal fix ave\/moments command: missing argument/);
+    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s median\n')).rejects.toThrow(/No values from computes, fixes, or variables used in fix ave\/moments command/);
+    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 mean\n')).rejects.toThrow(/Illegal fix ave\/moments command: missing argument/);
+    await expect(session().s.execute(base + 'fix 2 all ave/moments 0 4 4 v_s mean\n')).rejects.toThrow(/Illegal fix ave\/moments nevery value: 0/);
+    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s mean history 0\n')).rejects.toThrow(/Illegal ave\/moments history argument 0; must be > 0/);
+    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s mean foo 1\n')).rejects.toThrow(/Unknown fix ave\/moments keyword foo/);
     // Nevery 1 with Nrepeat > Nfreq follows native's schedule (tests/engineAveScheduleNative.test.ts), no refusal
     await expect(session().s.execute(base + 'fix 2 all ave/moments 1 5 4 v_s mean\nrun 8\n')).resolves.toBeUndefined();
   });

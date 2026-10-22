@@ -29,7 +29,6 @@ export class FixLambdaThermostatAPIP extends Fix {
   private dtf = 0;
   private updateStats = false;
   private readonly rescalingN: number = 200;
-  private readonly peratomFreq: number = -1;
   private readonly random: Mt19937;
   private energyChangeAtom = new Float64Array(0);
   private energyChangePot = 0;

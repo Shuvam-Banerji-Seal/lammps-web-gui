@@ -131,6 +131,8 @@ export abstract class Fix {
   nevery = 1;
   /** Steps on which the global output is valid (0: any step); thermo output must use compatible steps. */
   globalFreq = 0;
+  /** Steps on which the per-atom output is valid (native peratom_freq; -1: not set, any step). */
+  peratomFreq = -1;
   /** Virial contribution (xx yy zz xy xz yz) when thermoVirial is on. */
   virial = new Float64Array(6);
   /** Ramp parameters use the current run's start and stop. */

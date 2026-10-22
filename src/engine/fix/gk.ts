@@ -1,7 +1,10 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { expandWildcards, globalScalar, parseRef, type Ref } from '../refs';
+import { globalScalar, type Ref } from '../refs';
+import { inumeric, missingArgs, numeric } from '../force/util';
+import { argInfo, EQUAL_STYLES, expandArgs } from '../argInfo';
+import { errorUrl } from '../formula';
 import { formatNumber } from '../script';
 
 /*
@@ -83,7 +86,6 @@ import { formatNumber } from '../script';
 export const CORR_TYPES = ['auto', 'upper', 'lower', 'auto/upper', 'auto/lower', 'full', 'first'] as const;
 export type CorrType = (typeof CORR_TYPES)[number];
 
-const CORR_KEYWORDS = new Set(['type', 'ave', 'start', 'prefactor', 'file', 'overwrite', 'title1', 'title2', 'title3']);
 
 /** Pairs [I, J] (0-based) in output column order for a type and N inputs. */
 export const correlationPairs = (type: CorrType, n: number): [number, number][] => {
@@ -120,7 +122,6 @@ export class FixAveCorrelate extends Fix {
   private fileName: string | null;
   private overwrite: boolean;
   private readonly titles: (string | undefined)[];
-  private readonly valueWords: string[];
   private inputs: Ref[] = [];
   private inputWords: string[] = [];
   private pairs: [number, number][] = [];
@@ -139,27 +140,23 @@ export class FixAveCorrelate extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const what = `fix ${id} (ave/correlate)`;
-    if (args.length < 4) throw new StyleError(`usage: fix ${id} group-ID ave/correlate Nevery Nrepeat Nfreq value1 ... [keyword args ...]`);
-    const pos = (w: string, name: string): number => {
-      const n = Number(w);
-      if (!Number.isInteger(n) || n < 1) throw new StyleError(`${what}: ${name} must be a positive integer, got '${w}'`);
-      return n;
-    };
-    this.nEvery = pos(args[0], 'Nevery');
-    this.nRepeat = pos(args[1], 'Nrepeat');
-    this.nFreq = pos(args[2], 'Nfreq');
-    this.nevery = this.nEvery;
-    // fix_ave_correlate.cpp: global_freq = nfreq
-    this.globalFreq = this.nFreq;
-    const words: string[] = [];
-    let k = 3;
-    while (k < args.length && !CORR_KEYWORDS.has(args[k])) { words.push(args[k]); k++; }
-    if (!words.length) throw new StyleError(`${what}: no input values were given`);
-    if (this.nFreq % this.nEvery !== 0) {
-      throw new StyleError(`${what}: Nfreq must be a multiple of Nevery`);
+    // As native LAMMPS does (src/fix_ave_correlate.cpp constructor at b332f28): the words are expanded, the values
+    // read up to the first word that is none (there may be none), then the keywords, the step counts and the sources
+    if (args.length < 4) throw missingArgs('fix ave/correlate');
+    const nevery = inumeric(args[0]);
+    const nrepeat = inumeric(args[1]);
+    const nfreq = inumeric(args[2]);
+    this.globalFreq = nfreq;
+    const words = expandArgs(sys, args.slice(3), 0).words;
+    let k = 0;
+    for (; k < words.length; k++) {
+      const a = argInfo(words[k]);
+      if (a.which === 'none') break;
+      if (a.which === 'unknown' || a.dim > 1) throw new StyleError(`Unknown fix ave/correlate data type: ${words[k]}`);
+      if (a.index1 < 0) throw new StyleError(`fix ave/correlate: index ${a.index1} in ${words[k]} is refused: native LAMMPS reads outside the vector for it`);
+      this.inputs.push({ kind: a.which as 'c' | 'f' | 'v', id: a.name, index: a.index1 === 0 ? null : a.index1, text: words[k] });
     }
-    this.valueWords = words;
+    this.inputWords = words.slice(0, k);
     this.type = 'auto';
     this.running = false;
     this.startStep = 0;
@@ -167,63 +164,70 @@ export class FixAveCorrelate extends Fix {
     this.fileName = null;
     this.overwrite = false;
     this.titles = [undefined, undefined, undefined];
-    while (k < args.length) {
-      const key = args[k];
-      const val = args[k + 1];
-      const need = (): string => {
-        if (val === undefined) throw new StyleError(`${what}: keyword ${key} needs a value`);
-        return val;
-      };
-      switch (key) {
-        case 'type': {
-          const v = need();
-          if (!(CORR_TYPES as readonly string[]).includes(v)) throw new StyleError(`${what}: type must be one of ${CORR_TYPES.join(' ')}, got '${v}'`);
-          this.type = v as CorrType;
-          k += 2;
-          break;
+    const need = (what: string): void => { if (k + 2 > words.length) throw missingArgs(what); };
+    while (k < words.length) {
+      const key = words[k];
+      const v = words[k + 1];
+      if (key === 'type') {
+        need('fix ave/correlate type');
+        if (!(CORR_TYPES as readonly string[]).includes(v)) throw new StyleError(`Unknown fix ave/correlate type: ${v}`);
+        this.type = v as CorrType;
+        k += 2;
+      } else if (key === 'ave') {
+        need('fix ave/correlate ave');
+        if (v !== 'one' && v !== 'running') throw new StyleError(`Unknown fix ave/correlate ave mode: ${v}`);
+        this.running = v === 'running';
+        k += 2;
+      } else if (key === 'start') {
+        need('fix ave/correlate start');
+        this.startStep = inumeric(v);
+        k += 2;
+      } else if (key === 'prefactor') {
+        need('fix ave/correlate prefactor');
+        this.prefactor = numeric(v);
+        k += 2;
+      } else if (key === 'file') {
+        need('fix ave/correlate file');
+        this.fileName = v;
+        k += 2;
+      } else if (key === 'overwrite') {
+        this.overwrite = true;
+        k += 1;
+      } else if (key === 'title1' || key === 'title2' || key === 'title3') {
+        need(`fix ave/correlate ${key}`);
+        this.titles[Number(key[5]) - 1] = v;
+        k += 2;
+      } else throw new StyleError(`Unkown fix ave/correlate keyword: ${key}`);
+    }
+    if (nevery <= 0) throw new StyleError(`Illegal fix ave/correlate nevery value: ${nevery}`);
+    if (nrepeat <= 0) throw new StyleError(`Illegal fix ave/correlate nrepeat value: ${nrepeat}`);
+    if (nfreq <= 0) throw new StyleError(`Illegal fix ave/correlate nfreq value: ${nfreq}`);
+    if (nfreq % nevery || nrepeat * nevery > nfreq) throw new StyleError('Inconsistent fix ave/correlate nevery/nrepeat/nfreq values');
+    if (!this.running && this.overwrite) throw new StyleError('Fix ave/correlate overwrite keyword requires ave running setting');
+    this.nEvery = nevery;
+    this.nRepeat = nrepeat;
+    this.nFreq = nfreq;
+    this.nevery = nevery;
+    for (const r of this.inputs) {
+      if (r.kind === 'c' || r.kind === 'f') {
+        const what = r.kind === 'c' ? 'compute' : 'fix';
+        const o = r.kind === 'c' ? sys.computes.find((x) => x.id === r.id) : sys.fixes.find((x) => x.id === r.id);
+        if (!o) throw new StyleError(`${r.kind === 'c' ? 'Compute' : 'Fix'} ID ${r.id} for fix ave/correlate does not exist`);
+        if (r.index === null && !o.scalarFlag) throw new StyleError(`Fix ave/correlate ${what} ${r.id} does not calculate a scalar`);
+        if (r.index !== null && !o.vectorFlag) throw new StyleError(`Fix ave/correlate ${what} ${r.id} does not calculate a vector`);
+        // an engine compute that sizes its vector when it is first computed reports 0 here
+        if (r.index !== null && o.sizeVector > 0 && r.index > o.sizeVector) {
+          throw new StyleError(`Fix ave/correlate ${what} ${r.id} vector is accessed out-of-range${errorUrl(20)}`);
         }
-        case 'ave': {
-          const v = need();
-          if (v !== 'one' && v !== 'running') throw new StyleError(`${what}: ave must be one or running, got '${v}'`);
-          this.running = v === 'running';
-          k += 2;
-          break;
+        if (r.kind === 'f' && (o as Fix).globalFreq > 0 && nevery % (o as Fix).globalFreq) {
+          throw new StyleError(`Fix ${r.id} for fix ave/correlate not computed at compatible time${errorUrl(7)}`);
         }
-        case 'start': {
-          const n = Number(need());
-          if (!Number.isInteger(n) || n < 0) throw new StyleError(`${what}: start must be a timestep >= 0, got '${val}'`);
-          this.startStep = n;
-          k += 2;
-          break;
-        }
-        case 'prefactor': {
-          const x = Number(need());
-          if (!Number.isFinite(x)) throw new StyleError(`${what}: prefactor must be a number, got '${val}'`);
-          this.prefactor = x;
-          k += 2;
-          break;
-        }
-        case 'file':
-          this.fileName = need();
-          k += 2;
-          break;
-        case 'overwrite':
-          this.overwrite = true;
-          k += 1;
-          break;
-        case 'title1': case 'title2': case 'title3':
-          this.titles[Number(key[5]) - 1] = need();
-          k += 2;
-          break;
-        default:
-          throw new StyleError(`${what}: unknown keyword '${key}'`);
+      } else {
+        const vv = sys.vars.get(r.id);
+        if (!vv) throw new StyleError(`Variable name ${r.id} for fix ave/correlate does not exist`);
+        if (r.index === null && !EQUAL_STYLES.has(vv.style)) throw new StyleError(`Fix ave/correlate variable ${r.id} is not equal-style variable`);
+        if (r.index !== null && vv.style !== 'vector') throw new StyleError(`Fix ave/correlate variable ${r.id} is not vector-style variable`);
       }
-    }
-    if (this.overwrite && !this.running) {
-      throw new StyleError(`${what}: the overwrite keyword can only be used with the ave running setting`);
-    }
-    if (!this.running && this.nFreq < (this.nRepeat - 1) * this.nEvery) {
-      throw new StyleError(`${what}: with ave one, Nfreq must be >= (Nrepeat-1)*Nevery`);
     }
     this.nvalid = this.nextValid();
   }
@@ -237,8 +241,12 @@ export class FixAveCorrelate extends Fix {
 
 
   init(): void {
-    this.inputWords = expandWildcards(this.sys, this.valueWords, 'scalar');
-    this.inputs = this.inputWords.map((w) => parseRef(w));
+    // the sources must still exist (native init)
+    for (const r of this.inputs) {
+      if (r.kind === 'c' && !this.sys.computes.some((x) => x.id === r.id)) throw new StyleError(`Compute ID ${r.id} for fix ave/correlate does not exist`);
+      if (r.kind === 'f' && !this.sys.fixes.some((x) => x.id === r.id)) throw new StyleError(`Fix ID ${r.id} for fix ave/correlate does not exist`);
+      if (r.kind === 'v' && !this.sys.vars.has(r.id)) throw new StyleError(`Variable name ${r.id} for fix ave/correlate does not exist`);
+    }
     this.pairs = correlationPairs(this.type, this.inputs.length);
     const npair = this.pairs.length;
     this.arrayFlag = true;

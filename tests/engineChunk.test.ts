@@ -249,16 +249,15 @@ run 0`);
   });
 
   it('fix ave/chunk argument errors', async () => {
+    // native LAMMPS's messages (src/fix_ave_chunk.cpp at b332f28; tests/engineAveFixArgsNative.test.ts measures them)
     for (const [fix, msg] of [
-      ['fix f all ave/chunk 2 1 3 c vx', 'Nfreq must be a multiple of Nevery'],
-      ['fix f all ave/chunk 1 1 1 c', 'usage: fix f group-ID ave/chunk'],
-      ['fix f all ave/chunk 1 1 1 c file x.txt', 'no input values'],
-      ['fix f all ave/chunk 1 1 1 c vx norm bogus', 'norm must be all, sample or none'],
+      ['fix f all ave/chunk 2 1 3 c vx', 'Inconsistent fix ave/chunk nevery/nrepeat/nfreq values'],
+      ['fix f all ave/chunk 1 1 1 c', 'No values from computes, fixes, or variables used in fix ave/chunk command'],
+      ['fix f all ave/chunk 1 1 1 c file x.txt', 'No values from computes, fixes, or variables used in fix ave/chunk command'],
+      ['fix f all ave/chunk 1 1 1 c vx norm bogus', 'Unknown fix ave/chunk norm mode: bogus'],
       ['fix f all ave/chunk 1 1 1 c vx bias t', 'Could not find compute ID t for temperature bias'],
-      ['fix f all ave/chunk 1 1 1 c vx overwrite', 'overwrite keyword can only be used with the ave running setting'],
-      ['fix f all ave/chunk 1 1 1 c vx file a.txt append b.txt', 'file and append cannot both be used'],
-      ['fix f all ave/chunk 1 1 1 c vx format bogus', "invalid numeric format string 'bogus'"],
-      ['fix f all ave/chunk 1 1 1 c vx q_1', "invalid input value 'q_1'"],
+      ['fix f all ave/chunk 1 1 1 c vx overwrite', 'Fix ave/chunk overwrite keyword requires ave running setting'],
+      ['fix f all ave/chunk 1 1 1 c vx q_1', 'Unknown fix ave/chunk keyword: q_1'],
     ] as const) {
       const { error } = await runScript(`${BOX}
 create_atoms 1 single 1.0 1 1

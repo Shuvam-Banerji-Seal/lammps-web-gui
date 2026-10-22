@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { missingArgs, inumeric, bnumeric } from '../force/util';
 import { errorUrl } from '../formula';
+import { argInfo, EQUAL_STYLES } from '../argInfo';
 import { BlockRegion, ConeRegion, SphereRegion, type Region, type SurfaceContact } from '../region';
 import { massOf, nativeOrder } from '../atoms';
 import { RanMars } from '../rng';
@@ -57,33 +58,6 @@ type VectorInput = { which: 'c' | 'f' | 'v'; id: string; argindex: number };
 /** The largest nmax (native MAXSMALLINT). */
 const MAX_SMALL_INT = 2147483647;
 
-/** The variable styles native's Variable::equalstyle accepts (without Python). */
-const EQUAL_STYLES = new Set(['equal', 'timer', 'internal']);
-
-/**
- * A c_ID, f_ID or v_name reference with up to two [I] indices, as native's ArgInfo with computes, fixes and
- * variables allowed reads it: null for a word that is none of these (the end of the values), dim 0 for no brackets,
- * 'unknown' for brackets that do not hold a number.
- */
-const vectorArg = (w: string): { which: 'c' | 'f' | 'v'; id: string; dim: number; index: number } | 'unknown' | null => {
-  const offset = w.length > 3 && w[1] === '2' && w[2] === '_' ? 3 : w.length > 2 && w[1] === '_' ? 2 : 0;
-  if (!offset || !'cfv'.includes(w[0])) return null;
-  const which = w[0] as 'c' | 'f' | 'v';
-  const open = w.indexOf('[', offset);
-  if (open < 0) return { which, id: w.slice(offset), dim: 0, index: 0 };
-  // std::stoi: leading blanks and a sign, then at least one digit; what follows the digits is ignored
-  const stoi = (t: string): number | null => {
-    const m = /^\s*([+-]?\d+)/.exec(t);
-    return m ? Number(m[1]) : null;
-  };
-  const open2 = w.indexOf('[', open + 1);
-  if (open2 >= 0) return 'unknown';
-  if (w[w.length - 1] !== ']' || w.indexOf(']') !== w.length - 1) return 'unknown';
-  const index = stoi(w.slice(open + 1, w.length - 1));
-  if (index === null) return 'unknown';
-  return { which, id: w.slice(offset, open), dim: 1, index };
-};
-
 export class FixVector extends Fix {
   readonly style = 'vector';
   private readonly values: VectorInput[] = [];
@@ -105,12 +79,12 @@ export class FixVector extends Fix {
     let nmaxval = MAX_SMALL_INT;
     let k = 1;
     for (; k < args.length; k++) {
-      const a = vectorArg(args[k]);
-      if (a === null) break;
-      if (a === 'unknown') throw new StyleError(`Invalid fix vector argument: ${args[k]}`);
+      const a = argInfo(args[k]);
+      if (a.which === 'none') break;
+      if (a.which === 'unknown' || a.dim > 1) throw new StyleError(`Invalid fix vector argument: ${args[k]}`);
       // an index below 1 in brackets: native reads the scalar for [0] and outside the vector for a negative index
-      if (a.index < 0) throw new StyleError(`fix vector: index ${a.index} in ${args[k]} is refused: native LAMMPS reads outside the vector for it`);
-      this.values.push({ which: a.which, id: a.id, argindex: a.index });
+      if (a.index1 < 0) throw new StyleError(`fix vector: index ${a.index1} in ${args[k]} is refused: native LAMMPS reads outside the vector for it`);
+      this.values.push({ which: a.which as 'c' | 'f' | 'v', id: a.name, argindex: a.index1 });
     }
     for (; k < args.length; k += 2) {
       if (args[k] !== 'nmax') throw new StyleError(`Unknown fix vector keyword: ${args[k]}`);

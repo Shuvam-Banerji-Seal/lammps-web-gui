@@ -15,6 +15,8 @@ import { globalScalar, globalVector, peratomValues } from '../../engine/refs';
 import type { System } from '../../engine/system';
 
 export class FixAveHistoWeight extends FixAveHisto {
+  /** The style the core constructor names in its messages. */
+  static readonly histoStyle = 'ave/histo/weight';
   readonly style: string = 'ave/histo/weight';
 
   constructor(sys: System, id: string, group: string, args: string[]) {

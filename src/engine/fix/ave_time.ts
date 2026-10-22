@@ -2,8 +2,11 @@ import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { aveNextValid } from './util';
-import { expandWildcards, globalScalar, globalVector, parseRef, type Ref } from '../refs';
-import { evaluateScalar } from '../formula';
+import { globalScalar, globalVector, type Ref } from '../refs';
+import { errorUrl, evaluateScalar } from '../formula';
+import { inumeric, missingArgs } from '../force/util';
+import { argInfo, expandArgs } from '../argInfo';
+import { checkCFormat, compileCFormat } from '../cformat';
 import { formatNumber, substituteVariables } from '../script';
 
 /*
@@ -179,24 +182,6 @@ import { formatNumber, substituteVariables } from '../script';
  * string" "as described above."
  */
 
-const AVE_TIME_KEYWORDS = new Set([
-  'mode', 'ave', 'start', 'off', 'file', 'append', 'overwrite', 'format', 'title1', 'title2', 'title3',
-]);
-
-const posInt = (w: string | undefined, what: string): number => {
-  if (w === undefined) throw new StyleError(`missing ${what}`);
-  const n = Number(w);
-  if (!Number.isInteger(n) || n < 1) throw new StyleError(`${what} must be a positive integer, got '${w}'`);
-  return n;
-};
-
-/** Applies a file format like " %g" / "%20.16g": leading spaces kept, then one C conversion. */
-const fmtValue = (v: number, fmt: string, what: string): string => {
-  const m = /^(\s*)(%[-+ 0#]*\d*(?:\.\d+)?[feEgGdi])$/.exec(fmt);
-  if (!m) throw new StyleError(`${what}: invalid numeric format string '${fmt}'`);
-  return m[1] + formatNumber(v, m[2]);
-};
-
 export class FixAveTime extends Fix {
   readonly style = 'ave/time';
   private readonly nEvery: number;
@@ -211,10 +196,9 @@ export class FixAveTime extends Fix {
   private readonly fileAppend: boolean;
   private readonly overwriteFile: boolean;
   private readonly fmt: string;
-  private readonly title1: string | undefined;
-  private readonly title2: string | undefined;
-  private readonly title3: string | undefined;
-  private readonly valueWords: string[];
+  private title1: string | undefined;
+  private title2: string | undefined;
+  private title3: string | undefined;
 
   private inputs: Ref[] = [];
   private inputWords: string[] = [];
@@ -237,124 +221,174 @@ export class FixAveTime extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const what = `fix ${id} (ave/time)`;
-    if (args.length < 3) {
-      throw new StyleError(`usage: fix ${id} group-ID ave/time Nevery Nrepeat Nfreq value1 ... [keyword args ...]`);
-    }
-    this.nEvery = posInt(args[0], `${what}: Nevery`);
-    this.nRepeat = posInt(args[1], `${what}: Nrepeat`);
-    this.nFreq = posInt(args[2], `${what}: Nfreq`);
-    this.nevery = this.nEvery;
-    if (this.nFreq % this.nEvery !== 0) {
-      throw new StyleError(`${what}: Nfreq must be a multiple of Nevery`);
-    }
-    this.globalFreq = this.nFreq;
-    if (this.nRepeat * this.nEvery > this.nFreq) {
-      throw new StyleError(`${what}: Nrepeat x Nevery cannot exceed Nfreq (the time steps contributing to the average cannot overlap)`);
-    }
-    const words: string[] = [];
+    // As native LAMMPS does (src/fix_ave_time.cpp constructor and options at b332f28): the values are the words that
+    // start with c_, f_ or v_, the keywords follow; wildcards expand before the values are read, and the step counts
+    // are checked after them
+    if (args.length < 4) throw missingArgs('fix ave/time');
+    const nevery = inumeric(args[0]);
+    const nrepeat = inumeric(args[1]);
+    const nfreq = inumeric(args[2]);
+    this.globalFreq = nfreq;
     let k = 3;
-    while (k < args.length && !AVE_TIME_KEYWORDS.has(args[k])) { words.push(args[k]); k++; }
-    if (!words.length) throw new StyleError(`${what}: no input values were given`);
-    // A malformed value word is an error of the fix line (native: "Illegal fix ave/time command"), not of the first run.
-    for (const w of words) {
-      if (w.includes('*')) {
-        if (!/^[cfv]_[A-Za-z0-9_\-/]+\[\d*\*\d*\]$/.test(w)) throw new StyleError(`${what}: illegal value '${w}' (expected c_ID[*], f_ID[*] or v_name)`);
-      } else parseRef(w);
-    }
-    this.valueWords = words;
-    this.mode = 'scalar';
-    this.aveMode = 'one';
-    this.windowM = 1;
-    this.startStep = 0;
-    this.fileName = null;
-    this.fileAppend = false;
-    this.overwriteFile = false;
-    this.fmt = ' %g';
-    for (; k < args.length;) {
+    while (k < args.length && /^[cfv]_/.test(args[k])) k++;
+    const valueWords = args.slice(3, k);
+    if (!valueWords.length) throw new StyleError('No values from computes, fixes, or variables used in fix ave/time command');
+    let mode: 'scalar' | 'vector' = 'scalar';
+    let aveMode: 'one' | 'running' | 'window' = 'one';
+    let windowM = 1;
+    let startStep = 0;
+    let fileName: string | null = null;
+    let fileAppend = false;
+    let overwrite = false;
+    let fmt = ' %g';
+    const off: number[] = [];
+    const need = (n: number, what: string): void => { if (k + n > args.length) throw missingArgs(what); };
+    while (k < args.length) {
       const key = args[k];
-      const val = args[k + 1];
-      const need = (): string => {
-        if (val === undefined) throw new StyleError(`${what}: keyword ${key} needs a value`);
-        return val;
-      };
-      switch (key) {
-        case 'mode': {
-          const v = need();
-          if (v !== 'scalar' && v !== 'vector') throw new StyleError(`${what}: mode must be scalar or vector, got '${v}'`);
-          this.mode = v;
-          k += 2;
-          break;
+      if (key === 'file' || key === 'append') {
+        need(2, `fix ave/time ${key}`);
+        fileName = args[k + 1];
+        fileAppend = key === 'append';
+        k += 2;
+      } else if (key === 'ave') {
+        need(2, 'fix ave/time ave');
+        const v = args[k + 1];
+        if (v !== 'one' && v !== 'running' && v !== 'window') throw new StyleError(`Unknown fix ave/time ave keyword ${v}`);
+        aveMode = v;
+        if (aveMode === 'window') {
+          need(3, 'fix ave/time ave window');
+          windowM = inumeric(args[k + 2]);
+          if (windowM <= 0) throw new StyleError(`Illegal fix ave/time ave window argument ${windowM}; must be > 0`);
         }
-        case 'ave': {
-          const v = need();
-          if (v === 'one' || v === 'running') { this.aveMode = v; k += 2; break; }
-          if (v === 'window') {
-            this.aveMode = 'window';
-            this.windowM = posInt(args[k + 2], `${what}: window M`);
-            k += 3;
-            break;
-          }
-          throw new StyleError(`${what}: ave must be one, running or window M, got '${v}'`);
-        }
-        case 'start': {
-          const n = Number(need());
-          if (!Number.isInteger(n) || n < 0) throw new StyleError(`${what}: start must be a timestep >= 0, got '${val}'`);
-          this.startStep = n;
-          k += 2;
-          break;
-        }
-        case 'off': {
-          const m = posInt(need(), `${what}: off value #`);
-          this.offIdx.add(m - 1); // M is 1-based ("M = value # from 1 to Nvalues")
-          k += 2;
-          break;
-        }
-        case 'file':
-          if (this.fileName) throw new StyleError(`${what}: file and append cannot both be used`);
-          this.fileName = need();
-          k += 2;
-          break;
-        case 'append':
-          if (this.fileName) throw new StyleError(`${what}: file and append cannot both be used`);
-          this.fileName = need();
-          this.fileAppend = true;
-          k += 2;
-          break;
-        case 'overwrite':
-          this.overwriteFile = true;
-          k += 1;
-          break;
-        case 'format':
-          this.fmt = need();
-          fmtValue(0, this.fmt, what);
-          k += 2;
-          break;
-        case 'title1': this.title1 = need(); k += 2; break;
-        case 'title2': this.title2 = need(); k += 2; break;
-        case 'title3': this.title3 = need(); k += 2; break;
-        default:
-          throw new StyleError(`${what}: unknown keyword '${key}'`);
-      }
+        k += aveMode === 'window' ? 3 : 2;
+      } else if (key === 'start') {
+        need(2, 'fix ave/time start');
+        startStep = inumeric(args[k + 1]);
+        k += 2;
+      } else if (key === 'mode') {
+        need(2, 'fix ave/time mode');
+        const v = args[k + 1];
+        if (v !== 'scalar' && v !== 'vector') throw new StyleError(`Unknown fix ave/time mode ${v}`);
+        mode = v;
+        k += 2;
+      } else if (key === 'off') {
+        need(2, 'fix ave/time off');
+        off.push(inumeric(args[k + 1]));
+        k += 2;
+      } else if (key === 'overwrite') {
+        overwrite = true;
+        k += 1;
+      } else if (key === 'format') {
+        need(2, 'fix ave/time format');
+        checkCFormat(args[k + 1], 'float', 'Invalid fix ave/time format argument');
+        fmt = args[k + 1];
+        k += 2;
+      } else if (key === 'title1' || key === 'title2' || key === 'title3') {
+        need(2, `fix ave/time ${key}`);
+        if (key === 'title1') this.title1 = args[k + 1];
+        else if (key === 'title2') this.title2 = args[k + 1];
+        else this.title3 = args[k + 1];
+        k += 2;
+      } else throw new StyleError(`Unknown fix ave/time keyword ${key}`);
     }
-    if (this.overwriteFile && this.aveMode !== 'running') {
-      throw new StyleError(`${what}: the overwrite keyword can only be used with the ave running setting`);
+    this.mode = mode;
+    this.aveMode = aveMode;
+    this.windowM = windowM;
+    this.startStep = startStep;
+    this.fileName = fileName;
+    this.fileAppend = fileAppend;
+    this.overwriteFile = overwrite;
+    this.fmt = fmt;
+    this.inputWords = expandArgs(sys, valueWords, mode === 'vector' ? 1 : 0).words;
+    this.inputs = this.inputWords.map((w) => {
+      const a = argInfo(w);
+      if (a.which === 'none' || a.which === 'unknown' || a.dim > 1) throw new StyleError(`Invalid fix ave/time argument: ${w}`);
+      // an index of 0 reads the scalar (native argindex 0); a negative one would read before the vector
+      if (a.index1 < 0) throw new StyleError(`fix ave/time: index ${a.index1} in ${w} is refused: native LAMMPS reads outside the vector for it`);
+      return { kind: a.which as 'c' | 'f' | 'v', id: a.name, index: a.index1 === 0 ? null : a.index1, text: w };
+    });
+    for (const m of off) {
+      if (m < 1 || m > this.inputs.length) throw new StyleError(`Invalid fix ave/time off column: ${m}`);
+      this.offIdx.add(m - 1);
     }
+    if (nevery <= 0) throw new StyleError(`Illegal fix ave/time nevery value: ${nevery}`);
+    if (nrepeat <= 0) throw new StyleError(`Illegal fix ave/time nrepeat value: ${nrepeat}`);
+    if (nfreq <= 0) throw new StyleError(`Illegal fix ave/time nfreq value: ${nfreq}`);
+    if (nfreq % nevery || nrepeat * nevery > nfreq) throw new StyleError('Inconsistent fix ave/time nevery/nrepeat/nfreq values');
+    if (aveMode !== 'running' && overwrite) throw new StyleError('Fix ave/time overwrite keyword requires ave running setting');
+    this.nEvery = nevery;
+    this.nRepeat = nrepeat;
+    this.nFreq = nfreq;
+    this.nevery = nevery;
+    for (const r of this.inputs) this.checkInput(r);
     // the output shape is known when the fix is defined (native LAMMPS sets scalar_flag, vector_flag and
-    // array_flag and expands the wildcards in the constructor), so thermo_style and variables can use it before
-    // the first run; init() repeats this at each run
+    // array_flag in the constructor), so thermo_style and variables can use it before the first run; init() repeats
+    // this at each run
     this.nvalid = aveNextValid(sys.state.step, this.nEvery, this.nRepeat, this.nFreq, this.startStep);
     this.init();
   }
 
-  /** Resolves wildcards (needs the referenced computes) and sets the output shape. */
-  init(): void {
-    this.inputWords = expandWildcards(this.sys, this.valueWords, this.mode === 'vector' ? 'vector' : 'scalar');
-    this.inputs = this.inputWords.map((w) => parseRef(w));
-    for (const m of this.offIdx) {
-      if (m < 0 || m >= this.inputs.length) {
-        throw new StyleError(`fix ${this.id} (ave/time): off value ${m + 1} is out of range 1..${this.inputs.length}`);
+  /** The source of one value, checked as native's constructor does for the mode. */
+  private checkInput(r: Ref): void {
+    const vector = this.mode === 'vector';
+    if (r.kind === 'c') {
+      const c = this.sys.computes.find((x) => x.id === r.id);
+      if (!c) throw new StyleError(`Compute ID ${r.id} for fix ave/time does not exist`);
+      if (!vector) {
+        if (r.index === null && !c.scalarFlag) throw new StyleError(`Fix ave/time compute ${r.id} does not calculate a scalar`);
+        if (r.index !== null && !c.vectorFlag) throw new StyleError(`Fix ave/time compute ${r.id} does not calculate a vector`);
+        // an engine compute that sizes its vector when it is first computed reports 0 here
+        if (r.index !== null && c.sizeVector > 0 && r.index > c.sizeVector) {
+          throw new StyleError(`Fix ave/time compute ${r.id} vector is accessed out-of-range${errorUrl(20)}`);
+        }
+      } else {
+        if (r.index === null && !c.vectorFlag) throw new StyleError(`Fix ave/time compute ${r.id} does not calculate a vector`);
+        if (r.index !== null && !c.arrayFlag) throw new StyleError(`Fix ave/time compute ${r.id} does not calculate an array`);
+        if (r.index !== null && c.sizeArrayCols > 0 && r.index > c.sizeArrayCols) {
+          throw new StyleError(`Fix ave/time compute ${r.id} array is accessed out-of-range${errorUrl(20)}`);
+        }
       }
+    } else if (r.kind === 'f') {
+      const f = this.sys.fixes.find((x) => x.id === r.id);
+      if (!f) throw new StyleError(`Fix ID ${r.id} for fix ave/time does not exist`);
+      if (!vector) {
+        if (r.index === null && !f.scalarFlag) throw new StyleError(`Fix ave/time fix ${r.id} does not calculate a scalar`);
+        if (r.index !== null && !f.vectorFlag) throw new StyleError(`Fix ave/time fix ${r.id} does not calculate a vector`);
+        if (r.index !== null && f.sizeVectorVariable) throw new StyleError(`Fix ave/time fix ${r.id} vector cannot be variable length`);
+        if (r.index !== null && (f.sizeVector > 0 || f.sizeExact) && r.index > f.sizeVector) {
+          throw new StyleError(`Fix ave/time fix ${r.id} vector is accessed out-of-range${errorUrl(20)}`);
+        }
+      } else {
+        if (r.index === null && !f.vectorFlag) throw new StyleError(`Fix ave/time fix ${r.id} does not calculate a vector`);
+        if (r.index !== null && !f.arrayFlag) throw new StyleError(`Fix ave/time fix ${r.id} does not calculate an array`);
+        if (r.index !== null && f.sizeArrayRowsVariable) throw new StyleError(`Fix ave/time fix ${r.id} array cannot have variable row length`);
+        if (r.index !== null && f.sizeArrayCols > 0 && r.index > f.sizeArrayCols) {
+          throw new StyleError(`Fix ave/time fix ${r.id} array is accessed out-of-range${errorUrl(20)}`);
+        }
+      }
+      if (f.globalFreq > 0 && this.nEvery % f.globalFreq) {
+        throw new StyleError(`Fix ${r.id} for fix ave/time not computed at compatible time${errorUrl(7)}`);
+      }
+    } else {
+      const v = this.sys.vars.get(r.id);
+      if (!v) throw new StyleError(`Variable name ${r.id} for fix ave/time does not exist`);
+      const equal = v.style === 'equal' || v.style === 'timer' || v.style === 'internal';
+      if (!vector) {
+        if (r.index === null && !equal) throw new StyleError(`Fix ave/time variable ${r.id} is not equal-style variable`);
+        if (r.index !== null && v.style !== 'vector') throw new StyleError(`Fix ave/time variable ${r.id} is not vector-style variable`);
+      } else {
+        if (r.index === null && v.style !== 'vector') throw new StyleError(`Fix ave/time variable ${r.id} is not vector-style variable`);
+        if (r.index !== null) throw new StyleError(`Fix ave/time mode vector variable ${r.id} cannot be indexed`);
+      }
+    }
+  }
+
+  /** The inputs must still exist (native init), and the output shape is set from them. */
+  init(): void {
+    for (const r of this.inputs) {
+      if (r.kind === 'c' && !this.sys.computes.some((x) => x.id === r.id)) throw new StyleError(`Compute ID ${r.id} for fix ave/time does not exist`);
+      if (r.kind === 'f' && !this.sys.fixes.some((x) => x.id === r.id)) throw new StyleError(`Fix ID ${r.id} for fix ave/time does not exist`);
+      if (r.kind === 'v' && !this.sys.vars.has(r.id)) throw new StyleError(`Variable name ${r.id} for fix ave/time does not exist`);
     }
     this.scalarFlag = false;
     this.vectorFlag = false;
@@ -583,13 +617,13 @@ export class FixAveTime extends Fix {
     const sec: string[] = [];
     if (this.mode === 'scalar') {
       let line = String(step);
-      for (let k = 0; k < this.inputs.length; k++) line += fmtValue(this.values[k][0], this.fmt, `fix ${this.id} (ave/time)`);
+      for (let k = 0; k < this.inputs.length; k++) line += compileCFormat(this.fmt, 'float', 'Invalid fix ave/time format argument')(this.values[k][0]);
       sec.push(line);
     } else {
       sec.push(`${step} ${this.len}`);
       for (let i = 0; i < this.len; i++) {
         let line = String(i + 1);
-        for (let k = 0; k < this.inputs.length; k++) line += fmtValue(this.values[k][i], this.fmt, `fix ${this.id} (ave/time)`);
+        for (let k = 0; k < this.inputs.length; k++) line += compileCFormat(this.fmt, 'float', 'Invalid fix ave/time format argument')(this.values[k][i]);
         sec.push(line);
       }
     }

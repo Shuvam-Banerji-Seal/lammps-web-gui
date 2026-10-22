@@ -147,18 +147,18 @@ run 6`);
   });
 
   it('rejects bad arguments', async () => {
+    // native LAMMPS's messages (src/fix_ave_time.cpp at b332f28; tests/engineAveFixArgsNative.test.ts measures them)
     for (const [fix, msg] of [
-      ['fix 1 all ave/time 3 2 8 v_s', 'Nfreq must be a multiple of Nevery'],
-      ['fix 1 all ave/time 2 4 6 v_s', 'cannot exceed Nfreq'],
-      ['fix 1 all ave/time 1 1 0 v_s', 'must be a positive integer'],
-      ['fix 1 all ave/time 1 1 5', 'no input values'],
-      ['fix 1 all ave/time 1 1 5 v_s file f.txt bogus 1', "unknown keyword 'bogus'"],
-      ['fix 1 all ave/time 1 1 5 v_s off 2', 'off value 2 is out of range'],
-      ['fix 1 all ave/time 1 1 5 v_s ave window 0', 'window M must be a positive integer'],
-      ['fix 1 all ave/time 1 1 5 v_s mode sideways', 'mode must be scalar or vector'],
-      ['fix 1 all ave/time 1 1 5 v_s overwrite', 'overwrite keyword can only be used with the ave running setting'],
-      ['fix 1 all ave/time 1 1 5 v_s file f.txt append g.txt', 'file and append cannot both be used'],
-      ['fix 1 all ave/time 1 1 5 v_s mode vector', 'is not a vector-style variable'],
+      ['fix 1 all ave/time 3 2 8 v_s', 'Inconsistent fix ave/time nevery/nrepeat/nfreq values'],
+      ['fix 1 all ave/time 2 4 6 v_s', 'Inconsistent fix ave/time nevery/nrepeat/nfreq values'],
+      ['fix 1 all ave/time 1 1 0 v_s', 'Illegal fix ave/time nfreq value: 0'],
+      ['fix 1 all ave/time 1 1 5', 'Illegal fix ave/time command: missing argument(s)'],
+      ['fix 1 all ave/time 1 1 5 v_s file f.txt bogus 1', 'Unknown fix ave/time keyword bogus'],
+      ['fix 1 all ave/time 1 1 5 v_s off 2', 'Invalid fix ave/time off column: 2'],
+      ['fix 1 all ave/time 1 1 5 v_s ave window 0', 'Illegal fix ave/time ave window argument 0; must be > 0'],
+      ['fix 1 all ave/time 1 1 5 v_s mode sideways', 'Unknown fix ave/time mode sideways'],
+      ['fix 1 all ave/time 1 1 5 v_s overwrite', 'Fix ave/time overwrite keyword requires ave running setting'],
+      ['fix 1 all ave/time 1 1 5 v_s mode vector', 'Fix ave/time variable s is not vector-style variable'],
     ] as const) {
       const { error } = await runScript(`${SYS}\nvariable s equal step\n${fix}\nrun 5`);
       expect(error, fix).toBeInstanceOf(Error);

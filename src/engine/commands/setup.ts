@@ -1,6 +1,6 @@
 import type { Handler } from './args';
 import { int, num, yesno, latticeScale, keywords, missingArgs, logical, numeric, inumeric, bnumeric, bounds } from './args';
-import { StyleError, typeBounds } from '../force/types';
+import { StyleError } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, Geometry, cloneBox } from '../domain';
@@ -826,7 +826,150 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
   sys.log(`Created ${added} atoms (${copies} molecules of template ${t.id})`);
 };
 
+/**
+ * The checks native LAMMPS makes on a create_atoms command before it creates any atom (src/create_atoms.cpp
+ * CreateAtoms::command at b332f28): the box and the lattice's dimension, the style and its values, every keyword in
+ * order, then the atom type, the mesh units and the var/set variables.
+ */
+const checkCreateAtomsArgs = (sys: System, a: string[]): void => {
+  if (!sys.hasBox) throw new StyleError('Create_atoms command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
+  if (sys.lattice) checkLatticeDimension(sys.lattice.style, sys.dimension);
+  if (a.length < 2) throw missingArgs('create_atoms');
+  const s = sys.state;
+  const typeOf = (w: string) => inumeric(sys.labels.defined && !isNumericTypeWord(w) ? typeWord(sys.labels, 'atom', w) : w);
+  const ntype = typeOf(a[0]);
+  const style = a[1];
+  let k: number;
+  const region = (w: string) => { if (!sys.regions.has(w)) throw new StyleError(`Create_atoms region ${w} does not exist`); };
+  if (style === 'box') k = 2;
+  else if (style === 'region') {
+    if (a.length < 3) throw missingArgs('create_atoms region');
+    region(a[2]);
+    k = 3;
+  } else if (style === 'single') {
+    if (a.length < 5) throw missingArgs('create_atoms single');
+    const z = [numeric(a[2]), numeric(a[3]), numeric(a[4])][2];
+    if (sys.dimension === 2 && z !== 0) throw new StyleError('Create_atoms single for 2d simulation requires z coord = 0.0');
+    k = 5;
+  } else if (style === 'random') {
+    if (a.length < 5) throw missingArgs('create_atoms random');
+    const n = inumeric(a[2]);
+    if (n < 0) throw new StyleError(`Illegal create_atoms number of random atoms ${n}`);
+    const seed = inumeric(a[3]);
+    if (seed <= 0) throw new StyleError(`Illegal create_atoms random seed ${seed}`);
+    if (a[4] !== 'NULL') region(a[4]);
+    k = 5;
+  } else if (style === 'mesh') {
+    if (a.length < 3) throw missingArgs('create_atoms mesh');
+    k = 3;
+  } else throw new StyleError(`Unknown create_atoms command option ${style}`);
+  let units = 'lattice', mol: string | null = null, vstr: string | null = null;
+  const sets: string[] = [];
+  const need = (n: number, key: string) => { if (k + n > a.length) throw missingArgs(`create_atoms ${key}`); };
+  while (k < a.length) {
+    const key = a[k];
+    switch (key) {
+      case 'basis': {
+        need(3, key);
+        const ib = inumeric(a[k + 1]), it = typeOf(a[k + 2]);
+        const nbasis = sys.lattice?.basis.length ?? 0;
+        if (ib <= 0 || ib > nbasis || it <= 0 || it > s.ntypes) throw new StyleError(`Out of range basis setting '${ib} ${it}' in create_atoms command`);
+        k += 3;
+        break;
+      }
+      case 'remap': need(2, key); logical(a[k + 1]); k += 2; break;
+      case 'mol':
+        need(3, key);
+        if (!sys.molecules.has(a[k + 1])) throw new StyleError(`Molecule template ID ${a[k + 1]} for create_atoms does not exist`);
+        mol = a[k + 1];
+        inumeric(a[k + 2]);
+        k += 3;
+        break;
+      case 'units':
+        need(2, key);
+        if (a[k + 1] !== 'box' && a[k + 1] !== 'lattice') throw new StyleError(`Unknown create_atoms units option ${a[k + 1]}`);
+        units = a[k + 1];
+        k += 2;
+        break;
+      case 'var':
+        if (style === 'single') throw new StyleError("Cannot use 'var' keyword with 'single' style for create_atoms");
+        need(2, key);
+        vstr = a[k + 1];
+        k += 2;
+        break;
+      case 'set':
+        need(3, key);
+        // native names the variable (the third word) when the dimension is unknown
+        if (!['x', 'y', 'z'].includes(a[k + 1])) throw new StyleError(`Unknown create_atoms set option ${a[k + 2]}`);
+        sets.push(a[k + 2]);
+        k += 3;
+        break;
+      case 'rotate': {
+        need(5, key);
+        numeric(a[k + 1]);
+        const ax = [numeric(a[k + 2]), numeric(a[k + 3]), numeric(a[k + 4])];
+        if (ax.every((v) => v === 0)) throw new StyleError('Illegal create_atoms rotate arguments');
+        if (sys.dimension === 2 && (ax[0] !== 0 || ax[1] !== 0)) throw new StyleError('Invalid create_atoms rotation vector for 2d model');
+        k += 5;
+        break;
+      }
+      case 'ratio': {
+        need(3, key);
+        const f = numeric(a[k + 1]), seed = inumeric(a[k + 2]);
+        if (f <= 0 || f > 1 || seed <= 0) throw new StyleError('Illegal create_atoms ratio settings');
+        k += 3;
+        break;
+      }
+      case 'subset': {
+        need(3, key);
+        const n = bnumeric(a[k + 1]), seed = inumeric(a[k + 2]);
+        if (n <= 0 || seed <= 0) throw new StyleError('Illegal create_atoms subset settings');
+        k += 3;
+        break;
+      }
+      case 'group': need(2, key); k += 2; break;
+      case 'overlap':
+        if (style !== 'random') throw new StyleError('Create_atoms overlap can only be used with random style');
+        need(2, key);
+        if (numeric(a[k + 1]) <= 0) throw new StyleError(`Illegal create_atoms overlap value: ${numeric(a[k + 1])}`);
+        k += 2;
+        break;
+      case 'maxtry':
+        if (style !== 'random') throw new StyleError('Create_atoms maxtry can only be used with random style');
+        need(2, key);
+        if (inumeric(a[k + 1]) <= 0) throw new StyleError(`Illegal create_atoms maxtry value ${inumeric(a[k + 1])}`);
+        k += 2;
+        break;
+      case 'meshmode':
+        if (style !== 'mesh') throw new StyleError('Create_atoms meshmode can only be used with mesh style');
+        need(3, key);
+        if (a[k + 1] !== 'bisect' && a[k + 1] !== 'qrand') throw new StyleError(`Unknown create_atoms meshmode ${a[k + 2]}`);
+        numeric(a[k + 2]);
+        k += 3;
+        break;
+      case 'radscale':
+        need(2, key);
+        if (style !== 'mesh') throw new StyleError('Create_atoms radscale can only be used with mesh style');
+        if (!s.radius) throw new StyleError('Must have atom attribute radius to set radscale factor');
+        if (numeric(a[k + 1]) <= 0) throw new StyleError(`Illegal create_atoms radscale value: ${numeric(a[k + 1])}`);
+        k += 2;
+        break;
+      default: throw new StyleError(`Illegal create_atoms command option ${key}`);
+    }
+  }
+  if (!mol && (ntype <= 0 || ntype > s.ntypes)) throw new StyleError('Invalid atom type in create_atoms command');
+  if (style === 'mesh' && mol) throw new StyleError("Create_atoms mesh is not compatible with the 'mol' option");
+  if (style === 'mesh' && units !== 'box') throw new StyleError("Create_atoms mesh must use 'units box' option");
+  if ((vstr === null) !== (sets.length === 0)) throw new StyleError('Incomplete use of variables in create_atoms command');
+  if (vstr !== null) {
+    const v = sys.vars.get(vstr);
+    if (!v) throw new StyleError(`Variable ${vstr} for create_atoms does not exist`);
+    if (v.style !== 'equal' && v.style !== 'timer' && v.style !== 'internal') throw new StyleError(`Variable ${vstr} for create_atoms is invalid style`);
+  }
+};
+
 const createAtoms: Handler = ({ sys }, a) => {
+  checkCreateAtomsArgs(sys, a);
   // atom_style body: a body needs its Bodies entry from read_data (bodies.ts); create_atoms cannot make one
   if (isBodyStyle(sys.atomStyle)) throw new StyleError(`create_atoms is not supported for atom_style ${sys.atomStyle}: body particles come from read_data`);
   const s = sys.state;
@@ -1732,33 +1875,95 @@ const groupDynamic = (sys: System, id: string, args: string[]): void => {
 // ----------------------------------------------------------------- set
 
 /** A type word given as a keyword value (set type, set bond ...): a label becomes its numeric type; a missing word stays missing. */
-const typeLabelWord = (sys: System, kind: LabelKind, w: string | undefined): string => (w === undefined ? '' : typeWord(sys.labels, kind, w));
+const typeLabelWord = (sys: System, kind: LabelKind, w: string | undefined): string => (w === undefined ? '' : w.startsWith('v_') ? w : typeWord(sys.labels, kind, w));
 
-/** Atoms selected by a set style/ID. */
+/**
+ * The atoms a set command selects, as native LAMMPS does (src/set.cpp Set::process_args and selection at b332f28):
+ * atom and mol take a range of IDs (utils::bounds over 1..MAXTAGINT, so IDs no atom has select nothing), type a
+ * range of types or a type label, group and region an existing ID.
+ */
 const selected = (sys: System, style: string, id: string): number[] => {
   const s = sys.state;
   const out: number[] = [];
-  const range = (w: string, max: number) => typeBounds(w.includes('*') || /^\d+$/.test(w) ? w : (() => { throw new StyleError(`invalid set ID '${w}'`); })(), max);
+  const MAXTAGINT = 0x7fffffff;
   if (style === 'atom') {
-    const [lo, hi] = range(id, Math.max(1, maxAtomId(s)));
+    const [lo, hi] = bounds(id, 1, MAXTAGINT);
     for (let i = 0; i < s.n; i++) if (s.id[i] >= lo && s.id[i] <= hi) out.push(i);
+  } else if (style === 'mol') {
+    if (!hasMolecule(s)) throw new StyleError('Cannot use set mol with no molecule IDs defined');
+    const [lo, hi] = bounds(id, 1, MAXTAGINT);
+    for (let i = 0; i < s.n; i++) if (s.molecule[i] >= lo && s.molecule[i] <= hi) out.push(i);
   } else if (style === 'type') {
     // set.html: "for style = type, ID = a range of numeric types or a single type label"
-    const [lo, hi] = typeBounds(typeWord(sys.labels, 'atom', id), s.ntypes);
+    const w = sys.labels.defined && !isNumericTypeWord(id) ? typeWord(sys.labels, 'atom', id) : id;
+    const [lo, hi] = bounds(w, 1, s.ntypes);
     for (let i = 0; i < s.n; i++) if (s.type[i] >= lo && s.type[i] <= hi) out.push(i);
-  } else if (style === 'mol') {
-    let mx = 1;
-    for (let i = 0; i < s.n; i++) mx = Math.max(mx, s.molecule[i]);
-    const [lo, hi] = range(id, mx);
-    for (let i = 0; i < s.n; i++) if (s.molecule[i] >= lo && s.molecule[i] <= hi) out.push(i);
   } else if (style === 'group') {
+    if (sys.groups.find(id) < 0) throw new StyleError(`Could not find set group ID ${id}`);
     const bit = sys.groupBit(id);
     for (let i = 0; i < s.n; i++) if (s.mask[i] & bit) out.push(i);
   } else if (style === 'region') {
+    if (!sys.regions.has(id)) throw new StyleError(`Set region ${id} does not exist`);
     const r = sys.region(id);
     for (let i = 0; i < s.n; i++) if (r.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2])) out.push(i);
-  } else throw new StyleError(`unknown set style '${style}' (atom, type, mol, group or region)`);
+  } else throw new StyleError(`Unknown set or fix set command style: ${style}`);
   return out;
+};
+
+/** The values each set keyword takes (src/set.cpp process_* at b332f28); a custom i_/d_ name takes one. */
+const SET_NVALUES: Record<string, number> = {
+  angle: 1, angmom: 3, 'apip/lambda': 1, block: 2, bond: 1, cc: 2, charge: 1, density: 1, 'density/disc': 1, diameter: 1,
+  dihedral: 1, dipole: 3, 'dipole/random': 2, 'dpd/theta': 1, 'edpd/cv': 1, 'edpd/temp': 1, epsilon: 1, image: 3, improper: 1,
+  length: 1, mass: 1, mol: 1, omega: 3, quat: 4, 'quat/random': 1, 'radius/electron': 1, 'rheo/rho': 1, 'rheo/status': 1,
+  shape: 3, 'smd/contact/radius': 1, 'smd/mass/density': 1, 'sph/cv': 1, 'sph/e': 1, 'sph/rho': 1, 'spin/atom': 4, spin: 4,
+  'spin/atom/random': 2, 'spin/random': 2, 'spin/electron': 1, temperature: 1, theta: 1, 'theta/random': 1, tri: 1, type: 1,
+  'type/fraction': 3, 'type/ratio': 3, 'type/subset': 3, volume: 1, vx: 1, vy: 1, vz: 1, x: 1, y: 1, z: 1,
+};
+
+/**
+ * The checks native LAMMPS makes on a set command's keywords before it changes any atom (src/set.cpp
+ * Set::process_args at b332f28): each keyword is known and has its values, a v_name value is an atom-style variable,
+ * and the type keywords name a valid type, fraction, subset size and seed.
+ */
+const checkSetKeywords = (sys: System, a: string[]): void => {
+  const s = sys.state;
+  const typeArg = (w: string): number => {
+    const t = inumeric(sys.labels.defined && !isNumericTypeWord(w) ? typeWord(sys.labels, 'atom', w) : w);
+    if (t <= 0 || t > s.ntypes) throw new StyleError('Invalid atom type in set command');
+    return t;
+  };
+  // the per-atom attribute a keyword needs, checked before its values as native's process_* functions do
+  const has: Record<string, () => boolean> = {
+    charge: () => hasCharge(s), mass: () => !!s.rmass, density: () => !!s.rmass, 'density/disc': () => !!s.rmass,
+    diameter: () => !!s.radius, dipole: () => !!s.mu, 'dipole/random': () => !!s.mu, omega: () => !!s.omega,
+    angmom: () => !!s.angmom, mol: () => hasMolecule(s), volume: () => !!s.vfrac,
+  };
+  for (let k = 2; k < a.length;) {
+    const key = a[k];
+    const custom = /^[id]2?_/.test(key);
+    const n = custom ? 1 : SET_NVALUES[key];
+    if (n === undefined) throw new StyleError(`Unrecognized set or fix set command keyword ${key}`);
+    if (has[key] && !has[key]()) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
+    if (k + 1 + n > a.length) throw missingArgs(key === 'density/disc' ? 'set density' : custom ? 'set' : `set ${key}`);
+    for (const w of a.slice(k + 1, k + 1 + n)) {
+      if (!w.startsWith('v_')) continue;
+      const v = sys.vars.get(w.slice(2));
+      if (!v) throw new StyleError(`Variable name ${w} for set command does not exist`);
+      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Variable ${w} for set command is invalid style`);
+    }
+    if (key === 'type' && !a[k + 1].startsWith('v_')) typeArg(a[k + 1]);
+    if (key === 'type/fraction' || key === 'type/ratio' || key === 'type/subset') {
+      typeArg(a[k + 1]);
+      if (key === 'type/subset') {
+        if (bnumeric(a[k + 2]) < 0) throw new StyleError('Invalid subset size in set command');
+      } else {
+        const f = numeric(a[k + 2]);
+        if (f < 0 || f > 1) throw new StyleError('Invalid fraction in set command');
+      }
+      if (inumeric(a[k + 3]) <= 0) throw new StyleError('Invalid random number seed in set command');
+    }
+    k += 1 + n;
+  }
 };
 
 /**
@@ -1778,9 +1983,14 @@ const marsagliaSeed = (seed: number): void => {
  * per-atom and subset streams of native LAMMPS (nativeRandom.ts).
  */
 const set: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/set.cpp Set::command at b332f28): the box and atoms, the selection and every keyword are
+  // checked before any atom is changed
+  if (!sys.hasBox) throw new StyleError('Set command before simulation box is defined\nFor more information see https://docs.lammps.org/Errors_details.html');
   const s = sys.state;
-  if (a.length < 4) throw new StyleError('usage: set style ID keyword values ...');
+  if (s.n === 0) throw new StyleError('Set command on system without atoms');
+  if (a.length < 4) throw missingArgs('set');
   const atoms = selected(sys, a[0], a[1]);
+  checkSetKeywords(sys, a);
   const value = (w: string | undefined, what: string): ((i: number) => number) => {
     if (w?.startsWith('v_')) {
       const v = sys.atomVariable(w.slice(2));
@@ -1797,7 +2007,7 @@ const set: Handler = ({ sys }, a) => {
         const v = value(typeLabelWord(sys, 'atom', a[k + 1]), 'type');
         for (const i of atoms) {
           const t = Math.trunc(v(i));
-          if (t < 1 || t > s.ntypes) throw new StyleError(`set type ${t} is outside 1..${s.ntypes}`);
+          if (t < 1 || t > s.ntypes) throw new StyleError('Invalid atom type in set command');
           s.type[i] = t;
         }
         changed = atoms.length;
@@ -1821,7 +2031,7 @@ const set: Handler = ({ sys }, a) => {
           // Measured with native LAMMPS (black box): type/ratio 0.5 on 27 selected atoms changes 13 (the product is
           // truncated); type/subset changes exactly Nsubset.
           const want = key === 'type/ratio' ? Math.trunc(amount * atoms.length) : Math.trunc(amount);
-          if (want > atoms.length) throw new StyleError(`${key}: ${want} is more than the ${atoms.length} selected atoms`);
+          if (want > atoms.length) throw new StyleError('Set type/subset value exceeds eligible atoms');
           const flag = rnd.selectSubset(seed, want, atoms.length);
           for (let e = 0; e < atoms.length; e++) if (flag[e]) s.type[atoms[e]] = t;
           changed = want;
@@ -1838,7 +2048,7 @@ const set: Handler = ({ sys }, a) => {
         break;
       }
       case 'charge': {
-        if (!hasCharge(s)) throw new StyleError(`set charge needs atom_style charge or full, or fix property/atom q (current: ${s.atomStyle})`);
+        if (!hasCharge(s)) throw new StyleError(`Cannot set attribute charge for atom style ${s.atomStyle}`);
         const v = value(a[k + 1], 'charge');
         for (const i of atoms) s.q[i] = v(i);
         // Measured with native LAMMPS (black box), atom_style dielectric: after set epsilon 2.0, set charge 3.0 gives
@@ -1863,7 +2073,9 @@ const set: Handler = ({ sys }, a) => {
         for (let d = 0; d < 3; d++) {
           const w = a[k + 1 + d];
           if (w === 'NULL') continue;
-          if (!s.box.periodic[d] && w !== '0') throw new StyleError('set image: non-zero image flags need a periodic dimension');
+          // As native LAMMPS does (src/set.cpp process_image at b332f28)
+          if (!s.box.periodic[d] && w.startsWith('v_')) throw new StyleError('Cannot set variable image flag for non-periodic dimension');
+          if (!s.box.periodic[d] && !w.startsWith('v_') && inumeric(w) !== 0) throw new StyleError('Cannot set non-zero image flag for non-periodic dimension');
           const v = value(w, 'image');
           for (const i of atoms) s.image[3 * i + d] = Math.trunc(v(i));
         }
@@ -2320,7 +2532,8 @@ const set: Handler = ({ sys }, a) => {
         const m = /^(i|d)(2?)_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(key);
         const cp = m ? s.custom.get(m[3]) : undefined;
         if (!m || !cp || cp.int !== (m[1] === 'i') || (cp.cols > 0) !== (m[2] === '2')) {
-          throw new StyleError(m ? `set ${key}: no fix property/atom defines this property` : `set keyword '${key}' is not supported by the browser engine`);
+          // native's message names the property without its i_/d_ prefix (src/set.cpp process_custom)
+          throw new StyleError(m ? `Set keyword or custom property ${m[3]} does not exist` : `set keyword '${key}' is not supported by the browser engine`);
         }
         const col = m[4] ? Number(m[4]) : 0;
         if (cp.cols > 0 && (col < 1 || col > cp.cols)) throw new StyleError(`set ${key}: column must be 1..${cp.cols}`);
@@ -2649,8 +2862,69 @@ export const zeroRotation = (sys: System, members: number[]): void => {
 
 // ----------------------------------------------------------------- atom edits
 
+/**
+ * The checks native LAMMPS makes on a delete_atoms command before it deletes any atom (src/delete_atoms.cpp
+ * DeleteAtoms::command, the delete_* styles and options at b332f28): the style and its values, then the keywords.
+ */
+const checkDeleteAtomsArgs = (sys: System, a: string[]): void => {
+  if (!sys.hasBox) throw new StyleError('Delete_atoms command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
+  if (a.length < 1) throw missingArgs('delete_atoms');
+  const s = sys.state;
+  const group = (g: string) => { if (sys.groups.find(g) < 0) throw new StyleError(`Group ID ${g} requested by delete_atoms does not exist`); };
+  const style = a[0];
+  let k: number;
+  if (style === 'group') {
+    if (a.length < 2) throw missingArgs('delete_atoms group');
+    group(a[1]);
+    k = 2;
+  } else if (style === 'region') {
+    if (a.length < 2) throw missingArgs('delete_atoms region');
+    if (!sys.regions.has(a[1])) throw new StyleError(`Could not find delete_atoms region ID ${a[1]}`);
+    k = 2;
+  } else if (style === 'overlap') {
+    if (a.length < 4) throw missingArgs('delete_atoms overlap');
+    numeric(a[1]);
+    group(a[2]);
+    group(a[3]);
+    k = 4;
+  } else if (style === 'random') {
+    if (a.length < 7) throw missingArgs('delete_atoms random');
+    if (a[1] === 'fraction') {
+      const f = numeric(a[2]);
+      logical(a[3]);
+      if (f < 0 || f > 1) throw new StyleError(`Delete_atoms random fraction has invalid value: ${f}`);
+    } else if (a[1] === 'count') {
+      const n = bnumeric(a[2]);
+      logical(a[3]);
+      if (n < 0) throw new StyleError(`Delete_atoms random count has invalid value: ${n}`);
+    } else throw new StyleError(`Unknown delete_atoms random style: ${a[1]}`);
+    group(a[4]);
+    if (a[5] !== 'NULL' && !sys.regions.has(a[5])) throw new StyleError(`Could not find delete_atoms random region ID ${a[5]}`);
+    inumeric(a[6]);
+    k = 7;
+  } else if (style === 'porosity') {
+    throw new StyleError("The delete_atoms 'porosity' keyword has been removed.\nPlease use: delete_atoms random fraction frac exact group-ID region-ID seed");
+  } else if (style === 'variable') {
+    if (a.length < 2) throw missingArgs('delete_atoms variable');
+    const v = sys.vars.get(a[1]);
+    if (!v) throw new StyleError(`Variable name ${a[1]} for delete_atoms does not exist`);
+    if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Variable ${a[1]} for delete_atoms is invalid style`);
+    k = 2;
+  } else throw new StyleError(`Unknown delete_atoms sub-command: ${style}`);
+  for (; k < a.length; k += 2) {
+    const key = a[k];
+    if (!['compress', 'condense', 'bond', 'mol'].includes(key)) throw new StyleError(`Unknown delete_atoms option: ${key}`);
+    if (k + 2 > a.length) throw missingArgs(`delete_atoms ${key}`);
+    const on = logical(a[k + 1]);
+    if (key === 'bond' && on && isTemplateStyle(s.atomStyle)) throw new StyleError('Cannot use delete_atoms bond yes with atom_style template');
+    if (key === 'bond' && on && !isMolecularStyle(s.atomStyle)) throw new StyleError('Cannot use delete_atoms bond yes for non-molecular systems');
+    if (key === 'mol' && on && !hasMolecule(s)) throw new StyleError('Delete_atoms mol yes requires atom attribute molecule');
+  }
+};
+
 /** delete_atoms style args [compress/bond/mol] — delete_atoms.html. */
 const deleteAtomsCmd: Handler = ({ sys }, a) => {
+  checkDeleteAtomsArgs(sys, a);
   const s = sys.state;
   const del = new Uint8Array(s.n);
   let rest: string[];
@@ -2958,11 +3232,17 @@ const displaceAtoms: Handler = ({ sys }, a) => {
  * using image flags to keep periodic bonds intact.
  */
 const replicate: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/replicate.cpp Replicate::command at b332f28)
+  if (!sys.hasBox) throw new StyleError('Replicate command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
+  if (a.length < 3 || a.length > 4) throw new StyleError('Illegal number of arguments for replicate command');
   const s = sys.state;
-  const rep = [int(a[0], 'nx'), int(a[1], 'ny'), int(a[2], 'nz')];
-  if (rep.some((r) => r < 1)) throw new StyleError('replicate factors must be >= 1');
-  if (s.dimension === 2 && rep[2] !== 1) throw new StyleError('cannot replicate in z for a 2d simulation');
-  for (const w of a.slice(3)) if (w !== 'bbox' && w !== 'bond/periodic') throw new StyleError(`unknown replicate keyword '${w}'`);
+  const rep = [inumeric(a[0]), inumeric(a[1]), inumeric(a[2])];
+  if (rep.some((r) => r <= 0)) throw new StyleError(`Illegal replication grid ${rep[0]}x${rep[1]}x${rep[2]}. All replications must be > 0`);
+  if (rep[0] * rep[1] * rep[2] > 0x7fffffff) {
+    throw new StyleError(`Total # of replica is too large: ${rep[0]}x${rep[1]}x${rep[2]} = ${rep[0] * rep[1] * rep[2]}. Please use replicate multiple times`);
+  }
+  for (const w of a.slice(3)) if (w !== 'bbox' && w !== 'bond/periodic') throw new StyleError(`Unknown replicate keyword ${w}`);
+  if (s.dimension === 2 && rep[2] !== 1) throw new StyleError('Cannot replicate 2d simulation in z dimension');
   // As native LAMMPS does (src/replicate.cpp at b332f28, bond_flag): without bond/periodic a copy's topology refers to the
   // atoms of the same copy; with it, each partner is taken from the copy whose image is nearest to the first atom.
   const bondPeriodic = a.slice(3).includes('bond/periodic');
@@ -3076,7 +3356,64 @@ const replicate: Handler = ({ sys }, a) => {
 };
 
 /** change_box group-ID parameter args ... [units] — change_box.html (x/y/z final/delta/scale/volume, xy/xz/yz, boundary, ortho, triclinic, set, remap). */
+/**
+ * The checks native LAMMPS makes on a change_box command before it changes the box (src/change_box.cpp
+ * ChangeBox::command and options at b332f28): the group, every operation and its values (x, y, z final, delta, scale
+ * or volume after an x/y/z operation; xy, xz, yz final or delta; boundary; ortho, triclinic, set, remap), then the
+ * units keyword, which ends the operations.
+ */
+const checkChangeBoxArgs = (sys: System, a: string[]): void => {
+  if (!sys.hasBox) throw new StyleError('Change_box command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
+  if (a.length < 2) throw missingArgs('change_box');
+  if (sys.groups.find(a[0]) < 0) throw new StyleError(`Group ID ${a[0]} requested by change_box does not exist`);
+  const two = sys.dimension === 2;
+  let k = 1, nops = 0;
+  // the last operation, for volume: an x/y/z operation, its dimension and the volume dimensions given so far
+  let last: { xyz: boolean; dim: string; nvol: number } | null = null;
+  while (k < a.length) {
+    const p = a[k];
+    if (p === 'x' || p === 'y' || p === 'z') {
+      if (k + 2 > a.length) throw new StyleError(`Illegal change_box ${p} command: missing argument(s)`);
+      if (two && p === 'z') throw new StyleError('Cannot change_box in z dimension for 2d simulation');
+      const st = a[k + 1];
+      if (st === 'final' || st === 'delta') {
+        if (k + 4 > a.length) throw new StyleError(`Illegal change_box ${p} ${st} command: missing argument(s)`);
+        numeric(a[k + 2]); numeric(a[k + 3]);
+        last = { xyz: true, dim: p, nvol: 0 }; nops++; k += 4;
+      } else if (st === 'scale') {
+        if (k + 3 > a.length) throw new StyleError(`Illegal change_box ${p} scale command: missing argument(s)`);
+        numeric(a[k + 2]);
+        last = { xyz: true, dim: p, nvol: 0 }; nops++; k += 3;
+      } else if (st === 'volume') {
+        if (!last || !last.xyz || last.dim === p || last.nvol >= 2) throw new StyleError('Change_box volume used incorrectly');
+        last.nvol++;
+        k += 2;
+      } else throw new StyleError(`Unknown change_box ${p} argument: ${st}`);
+    } else if (p === 'xy' || p === 'xz' || p === 'yz') {
+      if (k + 2 > a.length) throw new StyleError(`Illegal change_box ${p} command: missing argument(s)`);
+      if (two && p !== 'xy') throw new StyleError('Cannot change_box in xz or yz for 2d simulation');
+      const st = a[k + 1];
+      if (st !== 'final' && st !== 'delta') throw new StyleError(`Unknown change_box ${p} argument: ${st}`);
+      if (k + 3 > a.length) throw new StyleError(`Illegal change_box ${p} ${st} command: missing argument(s)`);
+      numeric(a[k + 2]);
+      last = { xyz: false, dim: p, nvol: 0 }; nops++; k += 3;
+    } else if (p === 'boundary') {
+      if (k + 4 > a.length) throw missingArgs('change_box boundary');
+      last = { xyz: false, dim: p, nvol: 0 }; nops++; k += 4;
+    } else if (p === 'ortho' || p === 'triclinic' || p === 'set' || p === 'remap') {
+      last = { xyz: false, dim: p, nvol: 0 }; nops++; k += 1;
+    } else break;
+  }
+  if (nops === 0) throw new StyleError(`Unknown change_box keyword: ${a[k]}`);
+  for (; k < a.length; k += 2) {
+    if (a[k] !== 'units') throw new StyleError(`Unknown change_box keyword: ${a[k]}`);
+    if (k + 2 > a.length) throw missingArgs('change_box units');
+    if (a[k + 1] !== 'box' && a[k + 1] !== 'lattice') throw new StyleError(`Invalid change_box units argument: ${a[k + 1]}`);
+  }
+};
+
 const changeBox: Handler = ({ sys }, a) => {
+  checkChangeBoxArgs(sys, a);
   const s = sys.state;
   const bit = sys.groupBit(a[0] ?? '');
   const ops = a.slice(1);
@@ -3128,7 +3465,8 @@ const changeBox: Handler = ({ sys }, a) => {
         else { scaleDim(vdims[0], Math.sqrt(factor)); scaleDim(vdims[1], Math.sqrt(factor)); }
       }
     } else if (p === 'xy' || p === 'xz' || p === 'yz') {
-      if (!b.triclinic) throw new StyleError(`change_box ${p} needs a triclinic box (use change_box all triclinic first)`);
+      // As native LAMMPS does (src/change_box.cpp at b332f28)
+      if (!b.triclinic) throw new StyleError('Cannot change box tilt factors for orthogonal box');
       const t = ['xy', 'xz', 'yz'].indexOf(p);
       const scale = t === 2 ? sc[1] : sc[0];
       if (ops[k + 1] === 'final') b.tilt[t] = num(ops[k + 2], 'tilt') * scale;
@@ -3137,6 +3475,8 @@ const changeBox: Handler = ({ sys }, a) => {
       k += 3;
     } else if (p === 'boundary') {
       const nb = boundaryWords(ops.slice(k + 1, k + 4), 'change_box');
+      // As native LAMMPS does (src/change_box.cpp at b332f28)
+      if (sys.dimension === 2 && nb[2][0] !== 'p') throw new StyleError('Cannot change box z boundary to non-periodic for a 2d simulation');
       b.boundary = nb as SimState['box']['boundary'];
       b.periodic = [nb[0][0] === 'p', nb[1][0] === 'p', nb[2][0] === 'p'];
       sys.boundary = b.boundary;

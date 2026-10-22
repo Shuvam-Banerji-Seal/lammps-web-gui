@@ -41,7 +41,7 @@ describe('kspace_style esp: parameters', () => {
 
 describe('kspace_style esp: refusals name the unported option', () => {
   it('triclinic boxes', async () => {
-    const msg = await runScript(`${BASE}kspace_style esp 1e-4\nchange_box all xy final 1.0\nrun 0\n`);
+    const msg = await runScript(`${BASE}kspace_style esp 1e-4\nchange_box all triclinic xy final 1.0\nrun 0\n`);
     expect(msg).toMatch(/triclinic/);
   });
 

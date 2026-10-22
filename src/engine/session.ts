@@ -387,11 +387,12 @@ export class Session {
     // all partitions agree that their loop has run out, so the replicas stay on the same command
     switch (cmd) {
       case 'label':
-        if (a.length !== 1) throw new StyleError('usage: label ID');
+        // the messages of native's Input (src/input.cpp at b332f28)
+        if (a.length !== 1) throw new StyleError(`Illegal label command: expected 1 argument but found ${a.length}`);
         return;
       case 'jump': return this.jump(a, frame);
       case 'next':
-        if (!a.length) throw new StyleError('usage: next variable1 [variable2 ...]');
+        if (!a.length) throw new StyleError('Illegal next command: missing argument(s)');
         if (this.replicas.length > 1) {
           const outs = this.replicas.map((sys) => sys.vars.next(a));
           if (outs.some((o) => o !== outs[0])) {
@@ -403,8 +404,8 @@ export class Session {
         if (this.sys.vars.next(a)) this.skipJump = true;
         return;
       case 'include': {
-        if (a.length !== 1) throw new StyleError('usage: include file');
-        const text = this.sys.readFile(a[0]);
+        if (a.length !== 1) throw new StyleError('Illegal include command. Must name one file to include.');
+        const text = this.readScript(a[0]);
         await this.runText(text, 1, a[0]);
         return;
       }
@@ -417,7 +418,8 @@ export class Session {
         this.io.emit({ kind: 'log', text: 'Cleared: atoms, box, settings, fixes and computes reset (variables kept)' });
         return;
       case 'echo':
-        if (!['none', 'screen', 'log', 'both'].includes(a[0] ?? '')) throw new StyleError('usage: echo none|screen|log|both');
+        if (a.length !== 1) throw new StyleError('Echo command expects exactly one argument');
+        if (!['none', 'screen', 'log', 'both'].includes(a[0])) throw new StyleError(`Unknown echo command keyword: ${a[0]}`);
         this.echo = a[0] as Session['echo'];
         return;
     }
@@ -467,13 +469,13 @@ export class Session {
 
   /** jump file [label] */
   private jump(a: string[], frame: Frame | null): void {
-    if (a.length < 1 || a.length > 2) throw new StyleError('usage: jump file [label]');
+    if (a.length < 1 || a.length > 2) throw new StyleError(`Illegal jump command: expected 1 or 2 argument(s) but found ${a.length}`);
     if (this.skipJump) { this.skipJump = false; return; }
     if (!frame) throw new StyleError('jump can only be used in an input script');
     const [file, label] = a;
     if (file !== 'SELF') {
       // "the original file is not returned to": the current stream becomes the new file
-      const text = this.sys.readFile(file);
+      const text = this.readScript(file);
       frame.name = file;
       frame.text = text;
       frame.firstLine = 1;
@@ -486,34 +488,52 @@ export class Session {
       const w = tokenize(frame.cmds[k].text);
       if (w[0] === 'label' && w[1] === label) { frame.pc = k + 1; return; }
     }
-    throw new StyleError(`label ${label} not found in ${file === 'SELF' ? 'this cell' : file}`);
+    throw new StyleError(`Label ${label} wasn't found in input script`);
   }
 
-  /** if Boolean then t1 t2 ... elif Boolean f1 f2 ... else e1 e2 ... */
-  private async ifCommand(a: string[], frame: Frame | null): Promise<void> {
-    if (a.length < 2 || a[1] !== 'then') throw new StyleError('usage: if "Boolean" then "command" ... [elif "Boolean" "command" ...] [else "command" ...]');
-    const branches: { cond: string | null; cmds: string[] }[] = [{ cond: a[0], cmds: [] }];
-    for (let k = 2; k < a.length; k++) {
-      if (a[k] === 'elif') {
-        if (a[k + 1] === undefined) throw new StyleError('if: elif needs a Boolean expression');
-        branches.push({ cond: a[k + 1], cmds: [] });
-        k++;
-      } else if (a[k] === 'else') branches.push({ cond: null, cmds: [] });
-      else branches[branches.length - 1].cmds.push(a[k]);
+  /** An input script for include or jump: native's message when the file is missing, then the engine's hint. */
+  private readScript(file: string): string {
+    try {
+      return this.sys.readFile(file);
+    } catch (e) {
+      if (e instanceof StyleError) throw new StyleError(`Cannot open input script ${file}: No such file or directory (${e.message})`);
+      throw e;
     }
+  }
+
+  /**
+   * if Boolean then t1 t2 ... elif Boolean f1 f2 ... else e1 e2 ... — as native LAMMPS does (src/input.cpp
+   * Input::ifthenelse at b332f28): the first Boolean is evaluated before "then" is checked, and an elif or else branch
+   * is read only when the branches before it were not taken.
+   */
+  private async ifCommand(a: string[], frame: Frame | null): Promise<void> {
+    if (a.length < 3) throw new StyleError('Illegal if command: missing argument(s)');
     // "all variables used will be substituted for before the Boolean expression in evaluated"
     const env = this.sys.formulaEnv;
     const subst = (t: string) => substituteVariables(t, (name) => this.sys.vars.text(name, env),
       (f, fmt) => formatNumber(evaluateScalar(f, env), fmt ?? '%.20g'));
-    for (const b of branches) {
-      if (b.cond === null || evaluateBoolean(subst(b.cond))) {
-        for (const c of b.cmds) {
-          await this.runCommand(c, this.line, frame);
-          // a jump inside the if moves the enclosing stream; stop executing this branch
-          if (frame && /^\s*jump\b/.test(c)) break;
-        }
-        return;
+    let btest = evaluateBoolean(subst(a[0]));
+    if (a[1] !== 'then') throw new StyleError(`Illegal if command: expected "then" but found "${a[1]}"`);
+    const bound = (from: number) => { let k = from; while (k < a.length && a[k] !== 'elif' && a[k] !== 'else') k++; return k; };
+    const run = async (cmds: string[], what: string) => {
+      if (cmds.length <= 0) throw new StyleError(`Illegal ${what} command: missing argument(s)`);
+      if (cmds.some((c) => c === '')) throw new StyleError(`Illegal ${what} command: execute command is empty`);
+      for (const c of cmds) {
+        await this.runCommand(c, this.line, frame);
+        // a jump inside the if moves the enclosing stream; stop executing this branch
+        if (frame && /^\s*jump\b/.test(c)) break;
       }
+    };
+    let iarg = bound(2);
+    if (btest) { await run(a.slice(2, iarg), 'if then'); return; }
+    while (iarg !== a.length) {
+      if (iarg + 2 > a.length) throw new StyleError('Illegal if then command: missing argument(s)');
+      let first: number;
+      if (a[iarg] === 'elif') { btest = evaluateBoolean(subst(a[iarg + 1])); first = iarg + 2; } else { btest = true; first = iarg + 1; }
+      iarg = bound(first);
+      if (!btest) continue;
+      await run(a.slice(first, iarg), 'if elif/else');
+      return;
     }
   }
 }

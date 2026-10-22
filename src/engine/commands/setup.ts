@@ -1,10 +1,11 @@
 import type { Handler } from './args';
 import { int, num, yesno, latticeScale, keywords, missingArgs, logical, numeric, inumeric, bnumeric, bounds, initializing } from './args';
 import { StyleError } from '../force/types';
+import { errorUrl } from '../formula';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, Geometry, cloneBox } from '../domain';
-import { APIP_LAMBDA, isApipStyle, DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
+import { APIP_LAMBDA, isApipStyle, DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH, atomSubStyles, topologyLevel } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { parseStl } from '../stl';
@@ -19,7 +20,10 @@ import {
   BIG, BlockRegion, CompoundRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, SphereRegion,
   type Param, type Region,
 } from '../region';
-import { readData, writeData, defaultReadOptions, type ReadDataOptions } from '../output/data';
+import { readData, writeData, defaultReadOptions, DATA_SECTION_NAMES, type ReadDataOptions } from '../output/data';
+
+/** The largest atom or molecule ID (native MAXTAGINT). */
+const MAXTAGINT = 2147483647;
 import { RanMars, RanPark, Rng } from '../rng';
 import { groupMotionOf } from '../groupMotion';
 import { nativeRandom } from '../styles';
@@ -1455,58 +1459,104 @@ const mass: Handler = ({ sys }, a) => {
   sys.bump();
 };
 
-/** read_data file [keywords] — read_data.html. */
+/** read_data file [keywords] — read_data.html; the keywords as native LAMMPS reads them (src/read_data.cpp command at b332f28). */
 const readDataCmd: Handler = ({ sys }, a) => {
-  if (!a[0]) throw new StyleError('usage: read_data file [keywords]');
-  const text = sys.readFile(a[0]);
+  if (a.length < 1) throw missingArgs('read_data');
   const o: ReadDataOptions = defaultReadOptions();
-  // the keywords that need the add keyword (checked after the loop, since add may come later)
-  const needsAdd: string[] = [];
+  const style = sys.atomStyle;
+  const subs = atomSubStyles(style);
+  const level = topologyLevel(style);
+  const tmpl = subs.includes('template');
+  const allow = [level >= 1 || tmpl || subs.includes('bpm/sphere'), level >= 2 || tmpl, level >= 3 || tmpl, level >= 3 || tmpl];
+  // native atom->molecular == ATOMIC: no style with bonds
+  const atomic = !allow[0];
+  const hasMolecule = isMolecularStyle(style);
+  let offsetflag = false;
+  let shiftflag = false;
+  const need = (k: number, n: number, what: string): void => { if (k + n > a.length) throw missingArgs(`read_data ${what}`); };
+  const kinds = ['bond', 'angle', 'dihedral', 'improper'];
   for (let k = 1; k < a.length;) {
     const key = a[k];
-    if (key === 'offset' || key === 'shift') needsAdd.push(key);
-    switch (key) {
-      case 'add':
-        if (a[k + 1] === 'append') { o.add = 'append'; k += 2; } else if (a[k + 1] === 'merge') { o.add = 'merge'; k += 2; } else {
-          const id = int(a[k + 1], 'IDoffset');
-          const mol = /^\d+$/.test(a[k + 2] ?? '') ? int(a[k + 2], 'MOLoffset') : 0;
-          o.add = { id, mol };
-          k += /^\d+$/.test(a[k + 2] ?? '') ? 3 : 2;
+    const xt = /^extra\/(atom|bond|angle|dihedral|improper)\/types$/.exec(key);
+    const xp = /^extra\/(bond|angle|dihedral|improper|special)\/per\/atom$/.exec(key);
+    if (key === 'add') {
+      need(k, 2, 'add');
+      if (a[k + 1] === 'append') o.add = 'append';
+      else if (a[k + 1] === 'merge') o.add = 'merge';
+      else {
+        if (hasMolecule && k + 3 > a.length) throw missingArgs('read_data add');
+        const id = bnumeric(a[k + 1]);
+        if (id > MAXTAGINT) throw new StyleError(`Read data add IDoffset ${id} is too big`);
+        let mol = 0;
+        if (hasMolecule) {
+          mol = bnumeric(a[k + 2]);
+          if (mol > MAXTAGINT) throw new StyleError(`Read data add MOLoffset ${mol} is too big`);
+          k++;
         }
-        break;
-      case 'offset': o.offset = [1, 2, 3, 4, 5].map((j) => int(a[k + j], 'offset')) as ReadDataOptions['offset']; k += 6; break;
-      case 'shift': o.shift = [1, 2, 3].map((j) => num(a[k + j], 'shift')) as ReadDataOptions['shift']; k += 4; break;
-      case 'extra/atom/types': o.extraTypes[0] = int(a[k + 1], key); k += 2; break;
-      case 'extra/bond/types': o.extraTypes[1] = int(a[k + 1], key); k += 2; break;
-      case 'extra/angle/types': o.extraTypes[2] = int(a[k + 1], key); k += 2; break;
-      case 'extra/dihedral/types': o.extraTypes[3] = int(a[k + 1], key); k += 2; break;
-      case 'extra/improper/types': o.extraTypes[4] = int(a[k + 1], key); k += 2; break;
+        o.add = { id, mol };
+      }
+      k += 2;
+    } else if (key === 'offset') {
+      need(k, 6, 'offset');
+      offsetflag = true;
+      o.offset = [1, 2, 3, 4, 5].map((j) => inumeric(a[k + j])) as ReadDataOptions['offset'];
+      if (o.offset.some((v) => v < 0)) throw new StyleError('Illegal read_data offset value(s)');
+      k += 6;
+    } else if (key === 'shift') {
+      need(k, 4, 'shift');
+      shiftflag = true;
+      o.shift = [1, 2, 3].map((j) => numeric(a[k + j])) as ReadDataOptions['shift'];
+      if (sys.dimension === 2 && o.shift[2] !== 0) throw new StyleError('Non-zero read_data shift z value for 2d simulation not allowed');
+      k += 4;
+    } else if (key === 'nocoeff') {
+      o.nocoeff = true;
+      k += 1;
+    } else if (xt) {
+      need(k, 2, key);
+      const i = ['atom', ...kinds].indexOf(xt[1]);
+      if (i > 0 && !allow[i - 1]) throw new StyleError(`No ${xt[1]}s allowed with atom style ${style}`);
+      const v = inumeric(a[k + 1]);
+      if (v < 0) throw new StyleError(`Illegal read_data ${key} value ${v}`);
+      o.extraTypes[i] = v;
+      k += 2;
+    } else if (xp) {
+      need(k, 2, key);
+      if (atomic) throw new StyleError(xp[1] === 'special' ? `No bonded interactions allowed with atom style ${style}` : `No ${xp[1]}s allowed with atom style ${style}`);
+      const v = inumeric(a[k + 1]);
+      if (v < 0) throw new StyleError(`Illegal read_data ${key} value ${v}`);
       // read_data.html: extra/bond/per/atom sets the bonds per atom the storage holds (bonds only are enforced; the
       // angle, dihedral, improper and special limits are read and not enforced: audit-setup.md RD-1)
-      case 'extra/bond/per/atom': o.extraBondPerAtom = int(a[k + 1], key); k += 2; break;
-      case 'extra/angle/per/atom': case 'extra/dihedral/per/atom':
-      case 'extra/improper/per/atom': case 'extra/special/per/atom': int(a[k + 1], key); k += 2; break;
-      case 'group': o.group = a[k + 1]; k += 2; break;
-      case 'nocoeff': o.nocoeff = true; k += 1; break;
-      case 'fix': {
-        const [fid, header, section] = [a[k + 1], a[k + 2], a[k + 3]];
-        if (!fid || !header || !section) throw new StyleError('usage: read_data file fix fix-ID header-string section-string');
-        if (header !== 'NULL') {
-          // read_data.html: "header lines containing this string will be passed to fix"; only a fix that reads
-          // header lines (fix cmap: "N crossterms") accepts a header-string other than NULL
-          const fx = sys.fix(fid) as unknown as { style: string; readHeader?: unknown };
-          if (typeof fx.readHeader !== 'function') throw new StyleError(`read_data fix ${fid}: header-string must be NULL (fix ${fx.style} reads no header lines)`);
-        }
-        o.fixSections.set(section, { fixId: fid, header });
-        k += 4;
-        break;
+      if (xp[1] === 'bond') o.extraBondPerAtom = v;
+      k += 2;
+    } else if (key === 'group') {
+      need(k, 2, 'group');
+      o.group = a[k + 1];
+      k += 2;
+    } else if (key === 'fix') {
+      need(k, 4, 'fix');
+      const [fid, header, sec] = [a[k + 1], a[k + 2], a[k + 3]];
+      if (DATA_SECTION_NAMES.has(sec)) throw new StyleError(`Custom data section name ${sec} for fix ${fid} collides with existing data section`);
+      if (!sys.fixes.some((f) => f.id === fid)) throw new StyleError(`Fix ID ${fid} for read_data does not exist`);
+      if (header !== 'NULL') {
+        // read_data.html: "header lines containing this string will be passed to fix"; only a fix that reads
+        // header lines (fix cmap: "N crossterms") accepts a header-string other than NULL
+        const fx = sys.fix(fid) as unknown as { style: string; readHeader?: unknown };
+        if (typeof fx.readHeader !== 'function') throw new StyleError(`read_data fix ${fid}: header-string must be NULL (fix ${fx.style} reads no header lines)`);
       }
-      default: throw new StyleError(`unknown read_data keyword '${key}'`);
-    }
+      o.fixSections.set(sec === 'NULL' ? fid : sec, { fixId: fid, header });
+      k += 4;
+    } else throw new StyleError(`Unknown read_data keyword ${key}`);
   }
-  // read_data.html, keywords offset and shift: they need the add keyword. Measured with native LAMMPS (black box):
-  // "Cannot use read_data shift without add keyword" (the same for offset) stops the run.
-  if (o.add === 'none' && needsAdd.length) throw new StyleError(`Cannot use read_data ${needsAdd[0]} without add keyword`);
+  if (sys.dimension === 2 && sys.boundary[2][0] !== 'p') throw new StyleError('Cannot run 2d simulation with nonperiodic Z dimension');
+  if (sys.hasBox && o.add === 'none') throw new StyleError(`Cannot use read_data without add keyword after simulation box is defined${errorUrl(34)}`);
+  if (!sys.hasBox && o.add !== 'none') throw new StyleError(`Cannot use read_data add before simulation box is defined${errorUrl(33)}`);
+  if (offsetflag && o.add === 'none') throw new StyleError('Cannot use read_data offset without add keyword');
+  if (offsetflag && sys.labels.defined) sys.warn('Using read_data offset with a labelmap. Offsets will be only applied to numeric types and not to type labels');
+  if (shiftflag && o.add === 'none') throw new StyleError('Cannot use read_data shift without add keyword');
+  if (o.add !== 'none' && o.extraTypes.some((v) => v)) throw new StyleError('Cannot use any read_data extra/*/types keyword with add keyword');
+  // the group is made when the keyword is read (native group->find_or_create)
+  if (o.group) sys.groups.create(o.group);
+  const text = sys.readFile(a[0]);
   readData(sys, text, o);
   const s = sys.state;
   sys.log(`Read ${s.n} atoms${s.topo.bonds.n ? `, ${s.topo.bonds.n} bonds` : ''}${s.topo.angles.n ? `, ${s.topo.angles.n} angles` : ''}${s.topo.dihedrals.n ? `, ${s.topo.dihedrals.n} dihedrals` : ''}${s.topo.impropers.n ? `, ${s.topo.impropers.n} impropers` : ''} from ${a[0]}`);

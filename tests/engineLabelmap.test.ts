@@ -272,7 +272,7 @@ describe('read_data Type Labels sections', () => {
 
   it('refuses an undefined label, an invalid label, and a label map that is not complete', async () => {
     const undefinedLabel = DATA.replace('1 1 C 0.0', '1 1 Q 0.0');
-    expect(await errorOf('units real\natom_style full\nread_data u.data', { 'u.data': undefinedLabel })).toMatch(/Invalid line in Atoms section of data file: atom type label Q is not defined/);
+    expect(await errorOf('units real\natom_style full\nread_data u.data', { 'u.data': undefinedLabel })).toMatch(/Invalid line in Atoms section of data file: 1 1 Q 0\.0/);
     const invalid = DATA.replace('1 C\n2 H', '1 1C\n2 H');
     expect(await errorOf('units real\natom_style full\nread_data i.data', { 'i.data': invalid })).toMatch(/Invalid type label 1C$/);
     const dup = DATA.replace('2 H\n\nBond', '2 C\n\nBond');

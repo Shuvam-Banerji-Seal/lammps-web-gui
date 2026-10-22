@@ -75,9 +75,9 @@ describe('pair_style hybrid: errors', () => {
     ['overlay mixing needs a single sub-style', 'pair_style hybrid/overlay lj/cut 2.5 lj/cut 2.0\npair_coeff 1 1 lj/cut 1 1.0 1.0\npair_coeff 1 1 lj/cut 2 1.0 1.0\npair_coeff 2 2 lj/cut 1 1.0 1.0', /all pair coeffs are not set \(pair 1 2/],
     ['unused sub-style', 'pair_style hybrid lj/cut 2.5 lj/cut 2.0\npair_coeff * * lj/cut 1 1.0 1.0', /sub-style lj\/cut is not used/],
     ['molecular needs two sub-styles', 'pair_style hybrid/molecular lj/cut 2.5', /only two sub-styles/],
-    ['pair keyword not first', 'pair_style hybrid lj/cut 2.5\npair_coeff * * lj/cut 1.0 1.0\npair_modify shift yes pair lj/cut', /must appear first/],
-    ['special without pair', 'pair_style hybrid lj/cut 2.5\npair_coeff * * lj/cut 1.0 1.0\npair_modify special lj 0 0 0', /directly after the pair keyword/],
-    ['pair keyword on a plain style', 'pair_style lj/cut 2.5\npair_coeff * * 1.0 1.0\npair_modify pair lj/cut shift yes', /only be used with the hybrid/],
+    ['pair keyword not first', 'pair_style hybrid lj/cut 2.5\npair_coeff * * lj/cut 1.0 1.0\npair_modify shift yes pair lj/cut', /Unknown pair_modify keyword: pair/],
+    ['special without pair', 'pair_style hybrid lj/cut 2.5\npair_coeff * * lj/cut 1.0 1.0\npair_modify special lj 0 0 0', /Unknown pair_modify keyword: special/],
+    ['pair keyword on a plain style', 'pair_style lj/cut 2.5\npair_coeff * * 1.0 1.0\npair_modify pair lj/cut shift yes', /Unknown pair_modify keyword: pair/],
     ['shift on one sub-style, tail on another', 'pair_style hybrid lj/cut 2.5 lj/cut 2.0\npair_coeff * * lj/cut 1 1.0 1.0\npair_coeff 2 2 lj/cut 2 1.0 1.0\npair_modify pair lj/cut 1 tail yes\npair_modify pair lj/cut 2 shift yes', /both pair_modify shift and tail/],
     ['special incompatible with the global weights', 'pair_style hybrid lj/cut 2.5\npair_coeff * * lj/cut 1.0 1.0\npair_modify pair lj/cut special lj 0.5 0 0', /special lj 1-2 setting .* incompatible/],
   ];

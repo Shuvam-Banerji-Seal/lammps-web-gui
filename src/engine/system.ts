@@ -592,6 +592,8 @@ export class System {
 
   /** atom_modify map was given (atomic systems have no map by default). */
   atomMapSet = false;
+  /** atom_modify first group-ID (null = all); neigh_modify include and comm_modify group must name the same group. */
+  firstGroup: string | null = null;
 
   /** restart N: periodic restart files, one entry per mode (single file name, or two toggled names). */
   restartOut: { mode: 'single' | 'toggle'; every: number; everyVar: string | null; files: string[]; flip: number; next: number }[] = [];

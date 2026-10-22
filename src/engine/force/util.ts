@@ -55,3 +55,54 @@ export const joinPotentialEntries = (lines: readonly string[], nwords: number): 
   return out;
 };
 
+/**
+ * The argument checks of native LAMMPS's input parser, with its messages, as native LAMMPS does (src/utils.cpp at
+ * b332f28): utils::logical takes yes, on, true or 1 and no, off, false or 0; utils::numeric a decimal number with an
+ * optional exponent; utils::inumeric an optional sign and digits; utils::missing_cmd_args names the command.
+ */
+export const missingArgs = (cmd: string): StyleError => new StyleError(`Illegal ${cmd} command: missing argument(s)`);
+
+export const logical = (w: string | undefined): boolean => {
+  if (!w) throw new StyleError('Expected boolean parameter instead of NULL or empty string in input script or data file');
+  if (w === 'yes' || w === 'on' || w === 'true' || w === '1') return true;
+  if (w === 'no' || w === 'off' || w === 'false' || w === '0') return false;
+  throw new StyleError(`Expected boolean parameter instead of '${w}' in input script or data file`);
+};
+
+const DOUBLE = /^[+-]?(\d+\.?\d*|\d*\.?\d+)([eE][+-]?\d+)?$/;
+
+export const numeric = (w: string | undefined): number => {
+  if (!w) throw new StyleError('Expected floating point parameter instead of NULL or empty string in input script or data file');
+  if (!DOUBLE.test(w)) throw new StyleError(`Expected floating point parameter instead of '${w}' in input script or data file`);
+  return Number(w);
+};
+
+export const inumeric = (w: string | undefined): number => {
+  if (!w) throw new StyleError('Expected integer parameter instead of NULL or empty string in input script or data file');
+  if (!/^[+-]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}' in input script or data file`);
+  const v = Number(w);
+  if (v > 2147483647 || v < -2147483648) throw new StyleError(`Integer ${w} in input script or data file is out of range`);
+  return v;
+};
+
+/**
+ * utils::bounds: a range "N", "*", "*N", "M*" or "M*N" over nmin..nmax, with native's messages (src/utils.cpp at
+ * b332f28; a number is read as std::stol reads it, up to the first character that is not a digit).
+ */
+export const bounds = (str: string, nmin: number, nmax: number): [number, number] => {
+  if (/[^*\-0-9]/.test(str)) throw new StyleError(`Invalid range string: ${str}`);
+  const stol = (t: string): number => { const m = /^[+-]?\d+/.exec(t); return m ? Number(m[0]) : NaN; };
+  const star = str.indexOf('*');
+  let lo: number, hi: number;
+  if (star < 0) lo = hi = stol(str);
+  else if (str.length === 1) { lo = nmin; hi = nmax; }
+  else if (star === 0) { lo = nmin; hi = stol(str.slice(1)); }
+  else if (star === str.length - 1) { lo = stol(str); hi = nmax; }
+  else { lo = stol(str); hi = stol(str.slice(star + 1)); }
+  if (!(lo > 0) || !(hi > 0)) throw new StyleError(`Invalid range string: ${str}`);
+  const url = '\nFor more information see https://docs.lammps.org/err0019';
+  if (lo < nmin) throw new StyleError(`Numeric index ${lo} is out of bounds (${nmin}-${nmax})${url}`);
+  if (hi > nmax) throw new StyleError(`Numeric index ${hi} is out of bounds (${nmin}-${nmax})${url}`);
+  if (lo > hi) throw new StyleError(`Numeric index ${lo} is out of bounds (${nmin}-${hi})${url}`);
+  return [lo, hi];
+};

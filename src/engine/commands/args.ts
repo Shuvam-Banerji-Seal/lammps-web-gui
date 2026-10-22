@@ -60,6 +60,9 @@ export const yesno = (w: string | undefined, what: string): boolean => {
   throw new StyleError(`${what} must be yes or no, got '${w ?? ''}'`);
 };
 
+// the native-text argument checks live with parseNum (force/util.ts), where the styles reach them too
+export { missingArgs, logical, numeric, inumeric, bounds } from '../force/util';
+
 /** A number, or v_name evaluated as an equal-style variable now. */
 export const numOrVar = (sys: System, w: string | undefined, what: string): number => {
   if (w?.startsWith('v_')) return sys.equalVariable(w.slice(2));

@@ -2,8 +2,9 @@ import { hasChargeStyle } from '../../atoms';
 import { KSpace, StyleError, type KSpaceCompute, type StyleContext } from '../types';
 import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
-import { parseNum } from '../util';
+import { parseNum, inumeric, logical, numeric } from '../util';
 import { libm, SQRT_PI } from '../../libm';
+import { formatNumber } from '../../cformat';
 
 /*
  * kspace_style ewald accuracy — docs.lammps.org/kspace_style.html: "The ewald
@@ -116,6 +117,53 @@ export const modifyNoEffect = (key: string, values: string[]): number => {
   }
 };
 
+/**
+ * Keywords that native KSpace::modify_params reads for every kspace style (src/kspace.cpp at b332f28) and that the
+ * plain Coulomb solvers never use (the dispersion settings; kmax/ewald for pppm; mesh, order and diff for ewald; amat,
+ * which only pppm accepts): checked as native checks them, with no effect. Measured with native LAMMPS (black box):
+ * pppm accepts kmax/ewald 4 4 4, mix/disp pair, force/disp/real 1e-4 and mesh/disp 8 8 8. Returns the number of
+ * values used, or 0 for a keyword the solver does not ignore.
+ */
+export const ignoredKeyword = (key: string, values: string[], solver: 'ewald' | 'pppm'): number => {
+  switch (key) {
+    case 'mesh/disp': {
+      const [nx, ny, nz] = [inumeric(values[0]), inumeric(values[1]), inumeric(values[2])];
+      // native tests nz == 0 where nx and ny are tested <= 0
+      if (!(nx === 0 && ny === 0 && nz === 0) && (nx <= 0 || ny <= 0 || nz === 0)) {
+        throw new StyleError('Kspace_modify mesh/disp parameters must be all zero or all positive');
+      }
+      return 3;
+    }
+    case 'order/disp': inumeric(values[0]); return 1;
+    case 'gewald/disp': case 'force/disp/real': case 'force/disp/kspace': numeric(values[0]); return 1;
+    case 'mix/disp':
+      if (values[0] !== 'pair' && values[0] !== 'geom' && values[0] !== 'none') throw new StyleError(`Unknown kspace_modify mix/disp flag ${values[0]}`);
+      return 1;
+    case 'splittol': case 'eigtol':
+      if (numeric(values[0]) >= 1.0) throw new StyleError('Kspace_modify splittol value must be smaller than one');
+      return 1;
+    case 'disp/auto': logical(values[0]); return 1;
+    case 'amat':
+      if (solver !== 'pppm') throw new StyleError("Illegal kspace_modify command 'amat' available for pppm/conp, only");
+      if (values[0] !== 'twostep' && values[0] !== 'onestep') throw new StyleError(`Unknown kspace_modify amat flag ${values[0]}`);
+      return 1;
+    case 'kmax/ewald':
+      if (solver !== 'pppm') return 0;
+      if ([inumeric(values[0]), inumeric(values[1]), inumeric(values[2])].some((v) => v < 0)) throw new StyleError('Bad kspace_modify kmax/ewald parameter');
+      return 3;
+    case 'mesh': {
+      if (solver !== 'ewald') return 0;
+      const m = [inumeric(values[0]), inumeric(values[1]), inumeric(values[2])];
+      if (!m.every((v) => v === 0) && m.some((v) => v <= 0)) throw new StyleError('Kspace_modify mesh parameters must be all zero or all positive');
+      return 3;
+    }
+    case 'order': if (solver !== 'ewald') return 0; inumeric(values[0]); return 1;
+    // the flag itself is checked by the kspace_modify handler
+    case 'diff': return solver === 'ewald' ? 1 : 0;
+    default: return 0;
+  }
+};
+
 export abstract class KSpaceBase extends KSpace {
   /** kspace_modify force: absolute accuracy (force units), or -1. */
   forceAbs = -1;
@@ -130,6 +178,18 @@ export abstract class KSpaceBase extends KSpace {
   protected cutCoul = 0;
   /** kspace_modify minorder (PPPM: the smallest order the grid stencil may be reduced to; 2 by default). */
   minorder = 2;
+  /** kspace_modify slab nozforce or ew2d (native slabflag 2 or 3): refused at init, after native's boundary check. */
+  slabOther: '' | 'nozforce' | 'ew2d' = '';
+  /**
+   * Native warn_nonneutral (src/kspace.cpp at b332f28): kspace_modify wire sets it to 0, which makes a system that is
+   * not charge neutral an error instead of a warning.
+   */
+  protected nonNeutralError = false;
+  /**
+   * The solver's name in native's init messages (Cannot use non-periodic boundaries with PPPM, Incorrect boundaries
+   * with slab Ewald, ...); '' keeps the engine's own messages.
+   */
+  protected readonly kspaceLabel: string = '';
 
   settings(args: string[]): void {
     if (args.length !== 1) throw new StyleError(`usage: kspace_style ${this.name} accuracy`);
@@ -142,13 +202,13 @@ export abstract class KSpaceBase extends KSpace {
       case 'gewald': this.gewaldUser = parseNum(values[0], 'gewald'); return 1;
       case 'force': this.forceAbs = parseNum(values[0], 'force'); return 1;
       case 'slab':
-        if (values[0] === 'nozforce') throw new StyleError('kspace_modify slab nozforce is not supported by the browser engine');
-        if (values[0] === 'auto') { this.slabAuto = true; this.slab = 1; return 1; }
+        if (values[0] === 'nozforce' || values[0] === 'ew2d') { this.slabOther = values[0]; this.slabAuto = false; this.slab = 1; return 1; }
+        if (values[0] === 'auto') { this.slabAuto = true; this.slabOther = ''; this.slab = 1; return 1; }
         this.slabAuto = false;
-        this.slab = parseNum(values[0], 'slab volfactor');
-        if (this.slab < 1) throw new StyleError('kspace_modify slab volfactor must be >= 1.0');
-        // native LAMMPS refuses a volfactor of exactly 1.0 with Bad kspace_modify slab parameter (measured)
-        if (this.slab === 1) throw new StyleError('Bad kspace_modify slab parameter (volfactor 1.0 is refused; omit slab for no slab correction)');
+        this.slabOther = '';
+        // As native LAMMPS does (src/kspace.cpp modify_params at b332f28): a volume factor of 1.0 or less is refused
+        this.slab = numeric(values[0]);
+        if (this.slab <= 1.0) throw new StyleError('Bad kspace_modify slab parameter');
         return 1;
       case 'minorder': this.minorder = minorderValue(values[0]); return 1;
       // src/compute_pressure.cpp compute_vector at b332f28 checks scalar_pressure_flag for every kspace style ("Must
@@ -160,6 +220,16 @@ export abstract class KSpaceBase extends KSpace {
         return 1;
       default: return modifyNoEffect(key, values);
     }
+  }
+
+  /**
+   * kspace_modify wire for the solvers that do not apply the wire correction (plain ewald and pppm): native checks the
+   * value ("Bad kspace_modify wire parameter" for 1.0 or less) and makes a non-neutral system an error.
+   */
+  protected wireNoCorrection(values: string[]): number {
+    if (values[0] !== 'noxyforce' && numeric(values[0]) <= 1.0) throw new StyleError('Bad kspace_modify wire parameter');
+    this.nonNeutralError = true;
+    return 1;
   }
 
   /** Absolute force accuracy: user 'force', or accuracy times the force of two unit charges 1 Angstrom apart. */
@@ -179,22 +249,37 @@ export abstract class KSpaceBase extends KSpace {
     this.qsum = qs;
     this.qsqsum = q2;
     this.natoms = s.n;
-    if (!hasChargeStyle(s.atomStyle)) throw new StyleError(`kspace_style ${this.name} needs charges (atom_style charge or full)`);
+    const label = this.kspaceLabel;
+    if (!hasChargeStyle(s.atomStyle)) throw new StyleError(label ? 'Kspace style requires atom attribute q' : `kspace_style ${this.name} needs charges (atom_style charge or full)`);
     if (q2 === 0) ctx.log(`WARNING: kspace_style ${this.name}: no atoms are charged`);
+    if (Math.abs(qs) > 1e-5 && this.nonNeutralError) {
+      throw new StyleError(`System is not charge neutral, net charge = ${formatNumber(qs, '%.8g')}\nFor more information see https://docs.lammps.org/err0029`);
+    }
     if (Math.abs(qs) > 1e-5) ctx.log(`WARNING: kspace_style ${this.name}: the system is not charge neutral (net charge ${qs}); a uniform neutralizing background is assumed`);
     const p = s.box.periodic;
+    // As native LAMMPS does (src/KSPACE/pppm.cpp and ewald.cpp init at b332f28): without slab every dimension is
+    // periodic; with slab x and y are periodic and both z faces are fixed (kspace_modify.html: "a boundary setting of
+    // "boundary p p f""). Checked before the volume factor is chosen.
+    const slabOn = this.slab > 1 || this.slabAuto || this.slabOther !== '';
+    if (!slabOn && (!p[0] || !p[1] || !p[2])) {
+      throw new StyleError(label ? `Cannot use non-periodic boundaries with ${label}` : `kspace_style ${this.name} needs a fully periodic box (or kspace_modify slab for p p f)`);
+    }
+    const bz = s.box.boundary[2];
+    if (slabOn && (!p[0] || !p[1] || bz[0] !== 'f' || bz[1] !== 'f')) {
+      throw new StyleError(label ? `Incorrect boundaries with slab ${label}` : 'kspace_modify slab needs boundary p p f');
+    }
+    // native nozforce drops the kspace z force of every atom (slabflag 2); ew2d (slabflag 3) is native's flag for the
+    // EW2D correction of the electrode styles, which plain ewald and pppm run without any slab correction
+    if (this.slabOther) throw new StyleError(`kspace_modify slab ${this.slabOther} is not supported by the browser engine`);
     if (this.slabAuto) {
       this.slab = this.autoSlabVolfactor(s, geom);
       ctx.log(`  auto slab volfactor = ${this.slab}\n  auto slab extended z = ${geom.lz * this.slab}`);
     }
     if (this.slab > 1) {
-      if (!p[0] || !p[1] || p[2]) throw new StyleError('kspace_modify slab needs boundary p p f (or p p s/m)');
       // "Because the slab normal must be the Cartesian z axis, only an *xy* tilt is allowed" (kspace_modify.html)
       if (s.box.triclinic && (geom.xz !== 0 || geom.yz !== 0)) {
         throw new StyleError('Triclinic slab (EW3DC) correction requires xz = yz = 0 (the slab normal must be the z axis); xy tilt is allowed');
       }
-    } else if (!p[0] || !p[1] || !p[2]) {
-      throw new StyleError(`kspace_style ${this.name} needs a fully periodic box (or kspace_modify slab for p p f)`);
     }
     this.volume = geom.volume(3) * this.slab;
   }
@@ -317,6 +402,7 @@ export abstract class KSpaceBase extends KSpace {
 
 export class KSpaceEwald extends KSpaceBase {
   readonly name = 'ewald';
+  protected override readonly kspaceLabel: string = 'Ewald';
   kmaxUser: [number, number, number] | null = null;
   private kvecs = new Float64Array(0);   // kx ky kz A(k) per vector (half space)
   private nvec = new Int32Array(0);      // n_x n_y n_z per vector
@@ -324,13 +410,15 @@ export class KSpaceEwald extends KSpaceBase {
 
   modify(key: string, values: string[]): number {
     if (key === 'kmax/ewald') {
-      const k = [0, 1, 2].map((d) => parseNum(values[d], 'kmax/ewald'));
-      if (k.some((v) => !Number.isInteger(v) || v < 0)) throw new StyleError('kmax/ewald values must be integers >= 0');
-      this.kmaxUser = k.every((v) => v === 0) ? null : (k as [number, number, number]);
+      // As native LAMMPS does (src/kspace.cpp modify_params at b332f28): a negative count is refused, and the counts are
+      // used only when all three are positive (otherwise they are chosen from the accuracy)
+      const k = [inumeric(values[0]), inumeric(values[1]), inumeric(values[2])];
+      if (k.some((v) => v < 0)) throw new StyleError('Bad kspace_modify kmax/ewald parameter');
+      this.kmaxUser = k.every((v) => v > 0) ? (k as [number, number, number]) : null;
       return 3;
     }
-    if (key === 'mesh' || key === 'order' || key === 'diff') throw new StyleError(`kspace_modify ${key} applies to pppm, not ewald`);
-    return super.modify(key, values);
+    if (key === 'wire') return this.wireNoCorrection(values);
+    return super.modify(key, values) || ignoredKeyword(key, values, 'ewald');
   }
 
   init(s: SimState, geom: Geometry, cutCoul: number, qqrd2e: number, ctx: StyleContext): void {

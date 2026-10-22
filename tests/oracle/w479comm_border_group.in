@@ -1,0 +1,27 @@
+# oracle: comm_modify group with atom_modify first: only the atoms of the group are sent as ghosts (src/comm_brick.cpp
+# Comm::borders), so the type 2 atoms outside it have no periodic images and their pairs across the boundary are
+# missing (pe -3.058 at step 0 against -3.483 without comm_modify group, measured with native LAMMPS). The 1-2 pairs
+# are excluded, so no pair joins an atom outside the group to the image of a group atom.
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-10
+units lj
+atom_style atomic
+atom_modify first g1
+lattice fcc 0.8442
+region box block 0 4 0 4 0 4
+create_box 2 box
+create_atoms 1 box
+mass * 1.0
+set type 1 type/ratio 2 0.5 12345
+group g1 type 1
+velocity all create 1.0 87287 loop geom
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+pair_coeff 2 2 1.0 1.0 2.5
+pair_coeff 1 2 0.0 1.0 2.5
+neigh_modify exclude type 1 2
+comm_modify group g1
+fix 1 all nve
+thermo_style custom step temp pe ke etotal press pxx pyz
+thermo_modify format float %.15g
+thermo 10
+run 50

@@ -311,6 +311,7 @@ const interpPeratom = (x: Float64Array, i: number, lo: [number, number, number],
 /** kspace_style pppm/disp — see the header of this file for the ported scope. */
 export class KSpacePPPMDisp extends KSpaceBase {
   readonly name: string = 'pppm/disp';
+  protected override readonly kspaceLabel: string = 'PPPMDisp';
   /** kspace_style accuracy (relative), |arg| as native (PPPMDisp::settings). */
   private accuracyRel = 0;
   private accuracyReal6 = -1;

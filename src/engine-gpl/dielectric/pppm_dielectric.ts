@@ -61,9 +61,9 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
   init(s: SimState, geom: Geometry, cutCoul: number, qqrd2e: number, ctx: StyleContext): void {
     if (this.slabAuto) throw new StyleError('kspace_modify slab auto is not supported by kspace_style pppm/dielectric');
     if (s.box.triclinic) throw new StyleError('kspace_style pppm/dielectric is not supported for triclinic boxes by the browser engine');
-    if (this.minorder > this.order) throw new StyleError(`PPPM order < minimum allowed order (kspace_modify minorder ${this.minorder} > order ${this.order})`);
     this.cutCoul = cutCoul;
     this.setupCharges(s, geom, ctx);
+    this.checkOrder();
     const d = dielArrays(s, 'kspace pppm/dielectric');
     let qsqe = 0;
     for (let i = 0; i < s.n; i++) qsqe += (s.q[i] * s.q[i]) / d.epsilon[i];

@@ -311,7 +311,8 @@ mass * 1.0
   nb.skin = pick([0, 0.3, 0.6]);
   nb.binsize = pick([0, 0, 0.7, 1.9]);
   nb.includeBit = rng() < 0.3 ? 2 : 0;
-  nb.excludes = rng() < 0.3 && !exclFn ? [{ kind: 'type', a: 1, b: 2 }] : [];
+  // a type exclusion needs both types (native: Invalid atom type in neighbor exclusion list)
+  nb.excludes = rng() < 0.3 && !exclFn && ntypes >= 2 ? [{ kind: 'type', a: 1, b: 2 }] : [];
   nb.init(needs);
   nb.build(s, g, 0);
   return { nb, s, needs, rng, ntypes };

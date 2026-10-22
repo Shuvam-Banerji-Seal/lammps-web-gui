@@ -455,7 +455,7 @@ export abstract class Pair {
   init(ctx: StyleContext): void {
     // pair_modify.html: "You cannot use shift yes with tail yes, since those are conflicting
     // options. You cannot use tail yes with 2d simulations."
-    if (this.shift && this.tail) throw new StyleError('cannot have both pair_modify shift and tail set to yes');
+    if (this.shift && this.tail) throw new StyleError('Cannot have both pair_modify shift and tail set to yes');
     if (this.tail && ctx.s?.dimension === 2) throw new StyleError('cannot use pair_modify tail yes with 2d simulations');
     this.initStyle(ctx);
     const nt = this.ntypes + 1;
@@ -508,11 +508,6 @@ export abstract class Pair {
   dataCoeffs(): string[] | null { return null; }
   /** Lines of the "PairIJ Coeffs" section, or null. */
   dataCoeffsIJ(): string[] | null { return null; }
-
-  /** pair_modify keywords the style accepts beyond the common ones. */
-  modify(key: string, _values: string[]): number {
-    throw new StyleError(`pair_modify keyword '${key}' is not supported for pair style ${this.name}`);
-  }
 
   /**
    * Energy and force of one pair (for pair_write and compute pair/local); optional. i and j are owned-atom indices

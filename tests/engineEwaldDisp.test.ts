@@ -89,7 +89,7 @@ describe('kspace_style ewald/disp and pair lj/long/coul/long flag_lj long', () =
 
   it('refuses pair_modify table/disp N below 8 bits (native: too few total bits)', async () => {
     const r = await run(FCC.replace('pair_modify table 0 table/disp 0', 'pair_modify table 0 table/disp 4'));
-    expect(r.error).toMatch(/table\/disp 4.*too few/);
+    expect(r.error).toMatch(/Too few total bits for bitmapped Dispersion lookup table/);
   });
 
   it('runs the default dispersion table (table/disp 12) with flag_lj long', async () => {

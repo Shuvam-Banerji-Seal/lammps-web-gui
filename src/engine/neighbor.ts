@@ -1,7 +1,7 @@
 import type { SimState } from './types';
 import type { Geometry } from './domain';
 import type { SpecialList } from './atoms';
-import type { BondedCopies } from './force/types';
+import { StyleError, type BondedCopies } from './force/types';
 
 /*
  * Ghost atoms and Verlet neighbor lists.
@@ -120,6 +120,25 @@ export class Neighbor {
   /** comm_modify cutoff: ghost cutoff at least this large. */
   commCutoff = 0;
   /**
+   * comm_modify mode multi (comm_modify.html: "The *multi* communication mode is only compatible with the *multi*
+   * neighbor style."). The ghost atoms of a single process are those of the largest cutoff/multi value either way.
+   */
+  commMulti = false;
+  /**
+   * neigh_modify page and one (neigh_modify.html: "The option defaults are ... page = 100000, one = 2000"). The engine
+   * stores its lists in growable arrays; the values are kept for native's check of the two at run setup.
+   */
+  pgsize = 100000;
+  oneatom = 2000;
+  /** neigh_modify collection/type or collection/interval: the number of custom collections (0 = one per atom type). */
+  ncollections = 0;
+  /**
+   * comm_modify group (bit, 0 = all): comm_modify.html: "The *group* keyword will limit communication to atoms in the
+   * specified group." As native LAMMPS does (src/comm_brick.cpp Comm::borders at b332f28): only the atoms of the group
+   * (atom_modify first) are sent as ghosts, so the other atoms have no periodic images.
+   */
+  borderBit = 0;
+  /**
    * The step whose neighbor decision is forced by a restart file being written on it (set by the
    * run loop before decide(); -1 = none). restart.html: "Writing a restart file forces a neighbor
    * list rebuild on that timestep" and this "happens regardless of the neigh_modify every, delay,
@@ -197,6 +216,14 @@ export class Neighbor {
 
   /** Records what the force field needs; call before every run (setup). */
   init(needs: NeighborNeeds): void {
+    // As native LAMMPS does (src/neighbor.cpp Neighbor::init at b332f28): the settings are checked at run setup
+    if (this.delay > 0 && this.delay % this.every !== 0) throw new StyleError('Neighbor delay must be 0 or multiple of every setting');
+    if (this.pgsize < 10 * this.oneatom) throw new StyleError('Neighbor page size must be >= 10x the one atom setting');
+    for (const e of this.excludes) {
+      if (e.kind === 'type' && (e.a <= 0 || e.a > needs.ntypes || e.b <= 0 || e.b > needs.ntypes)) {
+        throw new StyleError('Invalid atom type in neighbor exclusion list');
+      }
+    }
     this.needs = needs;
     let mx = 0;
     for (let k = 0; k < needs.cutoff.length; k++) if (needs.cutoff[k] > mx) mx = needs.cutoff[k];
@@ -345,8 +372,10 @@ export class Neighbor {
     const img: number[] = [];
     const lam = [0, 0, 0];
     const gstart = new Int32Array(n + 1);
+    const border = this.borderBit;
     for (let i = 0; i < n; i++) {
       gstart[i] = n + owner.length;
+      if (border !== 0 && (s.mask[i] & border) === 0) continue;
       g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
       const lo = [0, 0, 0], hi = [0, 0, 0];
       for (let d = 0; d < 3; d++) {
@@ -688,6 +717,16 @@ export class Neighbor {
     let pj = this.sPairJ.length >= cap ? this.sPairJ : new Int32Array(cap);
     cap = Math.min(pa.length, pj.length);
     let np = 0;
+    // comm_modify group: an owned atom outside the border group has no ghosts, so its pairs with the ghosts of the
+    // group's atoms have no mirror pair. Native keeps such a pair or not by its bin order (npair_bin.cpp), which this
+    // half list does not reproduce: count them, and refuse below when there are any
+    const accepted = (a: number, j: number): boolean => { const e = encode(a, j); return e === e; };
+    let unmirrored: Uint8Array | null = null;
+    let nUnmirrored = 0;
+    if (this.borderBit !== 0 && !fullList) {
+      unmirrored = new Uint8Array(nlocal);
+      for (let i = 0; i < nlocal; i++) unmirrored[i] = (s.mask[i] & this.borderBit) === 0 ? 1 : 0;
+    }
 
     for (let b = 0; b < nbins; b++) {
       const l0 = bL[b], l1 = bL[b + 1], g0 = bG[b], g1 = bG[b + 1];
@@ -755,6 +794,7 @@ export class Neighbor {
               if (lr) { const rc = lr[p] + gr![q] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
               // ghost q lies "above" the owned atom p when its offset is lex-positive
               const c = r2 < cutsq[tp * nt + tq] && (fullList || keepAbove(dx, dy, dz));
+              if (unmirrored !== null && unmirrored[kp] && r2 < cutsq[tp * nt + tq] && (plain || accepted(kp, kq))) nUnmirrored++;
               if (plain) { pa[np] = kp; pj[np] = kq; np += +c; }
               else if (c) { const e = encode(kp, kq); if (e === e) { pa[np] = kp; pj[np] = e; np++; } }
             }
@@ -779,12 +819,17 @@ export class Neighbor {
               if (lr) { const rc = lr[q] + gr![p] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
               // the owned atom is q: the ghost lies at offset p - q
               const c = r2 < cutsq[tq * nt + tp] && (fullList || keepAbove(-dx, -dy, -dz));
+              if (unmirrored !== null && unmirrored[kq] && r2 < cutsq[tq * nt + tp] && (plain || accepted(kq, kp))) nUnmirrored++;
               if (plain) { pa[np] = kq; pj[np] = kp; np += +c; }
               else if (c) { const e = encode(kq, kp); if (e === e) { pa[np] = kq; pj[np] = e; np++; } }
             }
           }
         }
       }
+    }
+
+    if (nUnmirrored > 0) {
+      throw new StyleError(`comm_modify group: ${nUnmirrored} pair(s) between an atom outside the group and a periodic image of a group atom are within the cutoff; the browser engine does not reproduce which of them native's half neighbor list keeps`);
     }
 
     // counting sort of the entries into per-atom rows

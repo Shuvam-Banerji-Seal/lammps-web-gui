@@ -1,5 +1,5 @@
 import type { Handler } from './args';
-import { int, num, yesno, latticeScale, keywords } from './args';
+import { int, num, yesno, latticeScale, keywords, missingArgs, logical, numeric, inumeric, bounds } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
@@ -203,35 +203,61 @@ const atomStyle: Handler = ({ sys }, a) => {
   sys.atomStyle = a[0] as AtomStyle;
 };
 
-/** atom_modify id/map/first/sort — atom_modify.html; bookkeeping only in a single-process engine. */
+/**
+ * atom_modify id/map/first/sort — atom_modify.html; bookkeeping only in a single-process engine. The keywords are read
+ * in order with native's checks and messages, as native LAMMPS does (src/atom.cpp Atom::modify_params at b332f28).
+ */
 const atomModify: Handler = ({ sys }, a) => {
-  const kw = keywords(a, { id: 1, map: 1, first: 1, sort: 2 }, 'atom_modify');
-  if (kw.get('id') && kw.get('id')![0] !== 'yes') throw new StyleError('atom_modify id no is not supported (atoms always have IDs)');
-  // atom_modify.html: "*first* value = group-ID = group whose atoms will appear first in internal
-  // atom lists" — an ordering for performance; the engine keeps its own storage order (as it
-  // does for the spatial *sort*), so say so instead of reordering
-  if (kw.has('first')) {
-    const g = kw.get('first')![0];
-    sys.log(`atom_modify first ${g}: accepted; the browser engine does not reorder its atom storage (results are unchanged, only the internal order differs)`);
-    // atom_modify.html: "Since sorting is on by default, it will be turned off if the first keyword is used with a
-    // group-ID that is not “all”." and "The first and sort options cannot be used together." Measured with native
-    // LAMMPS (black box): with a first group, dumps before and after run 0 list the atoms in the same order
-    if (g !== 'all') {
-      if (kw.has('sort')) throw new StyleError('Atom_modify sort and first options cannot be used together');
-      sys.sortEvery = 0;
-    }
-  }
-  if (kw.get('map') && !['array', 'hash', 'yes'].includes(kw.get('map')![0])) throw new StyleError('atom_modify map must be array, hash or yes');
-  if (kw.get('map')) sys.atomMapSet = true;
-  // atom_modify.html: "*sort* values = Nfreq binsize"; the order matters for per-atom random draws
-  // and unsorted output (SimState.order, System.sortAtoms)
-  if (kw.has('sort')) {
-    const [nf, bs] = kw.get('sort')!;
-    const nfreq = Number(nf), binsize = Number(bs);
-    if (!Number.isInteger(nfreq) || nfreq < 0) throw new StyleError(`atom_modify sort: Nfreq must be an integer >= 0, got '${nf}'`);
-    if (!Number.isFinite(binsize) || binsize < 0) throw new StyleError(`atom_modify sort: binsize must be a number >= 0, got '${bs}'`);
-    sys.sortEvery = nfreq;
-    sys.sortBinsize = binsize;
+  if (a.length === 0) throw missingArgs('atom_modify');
+  // native error->all(..., utils::errorurl(34)) for id and map after the box exists
+  const afterBox = (key: string) => new StyleError(`Atom_modify ${key} command after simulation box is defined\nFor more information see https://docs.lammps.org/err0034`);
+  for (let k = 0; k < a.length;) {
+    const key = a[k];
+    if (key === 'id') {
+      if (k + 2 > a.length) throw missingArgs('atom_modify id');
+      if (sys.hasBox) throw afterBox('id');
+      if (!logical(a[k + 1])) {
+        // atom_modify.html: "The *id* keyword allows atom IDs to be assigned or not assigned to atoms." A molecular
+        // atom style always builds the atom map, which native refuses without IDs when the box is created (atom.cpp
+        // map_style_set: Cannot create an atom map unless atoms have IDs). The engine keeps an ID on every atom.
+        if (isMolecularStyle(sys.atomStyle)) throw new StyleError('Cannot create an atom map unless atoms have IDs');
+        throw new StyleError('atom_modify id no is not supported by the browser engine (atoms always have IDs)');
+      }
+      k += 2;
+    } else if (key === 'map') {
+      if (k + 2 > a.length) throw missingArgs('atom_modify map');
+      if (sys.hasBox) throw afterBox('map');
+      if (!['array', 'hash', 'yes'].includes(a[k + 1])) throw new StyleError(`Illegal atom_modify map command argument ${a[k + 1]}`);
+      sys.atomMapSet = true;
+      k += 2;
+    } else if (key === 'first') {
+      if (k + 2 > a.length) throw missingArgs('atom_modify first');
+      // atom_modify.html: "*first* value = group-ID = group whose atoms will appear first in internal atom lists" — an
+      // ordering for performance; the engine keeps its own storage order (as it does for the spatial *sort*), so say
+      // so instead of reordering. "Since sorting is on by default, it will be turned off if the first keyword is used
+      // with a group-ID that is not “all”." Measured with native LAMMPS (black box): with a first group, dumps before
+      // and after run 0 list the atoms in the same order
+      const g = a[k + 1];
+      sys.log(`atom_modify first ${g}: accepted; the browser engine does not reorder its atom storage (results are unchanged, only the internal order differs)`);
+      if (g === 'all') sys.firstGroup = null;
+      else {
+        sys.firstGroup = g;
+        sys.sortEvery = 0;
+      }
+      k += 2;
+    } else if (key === 'sort') {
+      // atom_modify.html: "*sort* values = Nfreq binsize"; the order matters for per-atom random draws and unsorted
+      // output (SimState.order, System.sortAtoms). "The first and sort options cannot be used together."
+      if (k + 3 > a.length) throw missingArgs('atom_modify sort');
+      const nfreq = inumeric(a[k + 1]);
+      const binsize = numeric(a[k + 2]);
+      if (nfreq < 0) throw new StyleError(`Illegal atom_modify sort frequency ${nfreq}`);
+      if (binsize < 0) throw new StyleError(`Illegal atom_modify sort bin size ${binsize}`);
+      if (sys.firstGroup !== null) throw new StyleError('Atom_modify sort and first options cannot be used together');
+      sys.sortEvery = nfreq;
+      sys.sortBinsize = binsize;
+      k += 3;
+    } else throw new StyleError(`Illegal atom_modify command argument: ${key}`);
   }
 };
 
@@ -345,10 +371,72 @@ const newton: Handler = ({ sys }, a) => {
   sys.log('newton: accepted (the engine always uses Newton\'s 3rd law within one process; results are the same)');
 };
 
-/** comm_modify cutoff C — sets the ghost cutoff (comm_modify.html "cutoff value = Rcut"). */
+/**
+ * comm_modify keyword value ... — comm_modify.html: "keyword = *mode* or *cutoff* or *cutoff/multi* or *group* or
+ * *reduce/multi* or *vel*". The cutoffs set the ghost cutoff; a single process makes the ghosts of the largest one. The
+ * keywords are read in order with native's checks and messages, as native LAMMPS does (src/comm.cpp
+ * Comm::modify_params at b332f28).
+ */
 const commModify: Handler = ({ sys }, a) => {
+  if (a.length < 1) throw missingArgs('comm_modify');
+  const nb = sys.nb;
   for (let k = 0; k < a.length;) {
-    if (a[k] === 'cutoff') { sys.nb.commCutoff = num(a[k + 1], 'cutoff'); k += 2; } else if (a[k] === 'mode') { k += 2; } else if (a[k] === 'vel') { sys.ghostVelocity = yesno(a[k + 1], 'vel'); k += 2; } else if (a[k] === 'group') { k += 2; } else if (a[k] === 'cutoff/multi' || a[k] === 'reduce/multi') { k += a[k] === 'cutoff/multi' ? 3 : 1; } else throw new StyleError(`unknown comm_modify keyword '${a[k]}'`);
+    const key = a[k];
+    if (key === 'mode') {
+      if (k + 2 > a.length) throw missingArgs('comm_modify mode');
+      const m = a[k + 1];
+      // "The *multi* communication mode is only compatible with the *multi* neighbor style."; switching the mode
+      // resets the cutoff set by the other mode
+      if (m === 'single') {
+        if (nb.commMulti) nb.commCutoff = 0;
+        nb.commMulti = false;
+      } else if (m === 'multi') {
+        if (!nb.multiStyle) throw new StyleError("Cannot use comm mode 'multi' without 'multi' style neighbor lists");
+        if (!nb.commMulti) nb.commCutoff = 0;
+        nb.commMulti = true;
+      } else if (m === 'multi/old') {
+        throw new StyleError("Communication mode 'multi/old' has been removed. Please use mode 'multi' and see the documentation more information about it.");
+      } else throw new StyleError(`Unknown comm_modify mode argument: ${m}`);
+      k += 2;
+    } else if (key === 'group') {
+      if (k + 2 > a.length) throw missingArgs('comm_modify group');
+      const g = a[k + 1];
+      if (sys.groups.find(g) < 0) throw new StyleError(`Invalid comm_modify keyword: group ${g} not found`);
+      if (g !== 'all' && sys.firstGroup !== g) {
+        // native formats the first group's name even when atom_modify first was not used: fmt then stops on the null
+        // name with its own message (measured with native LAMMPS: string pointer is null)
+        throw new StyleError(sys.firstGroup === null ? 'string pointer is null' : `Comm_modify group != atom_modify first group: ${sys.firstGroup}`);
+      }
+      // only the atoms of the group get ghost atoms (Neighbor.borderBit)
+      nb.borderBit = g === 'all' ? 0 : sys.groupBit(g);
+      nb.lastBuild = -1;
+      k += 2;
+    } else if (key === 'cutoff') {
+      if (k + 2 > a.length) throw missingArgs('comm_modify cutoff');
+      if (nb.commMulti) throw new StyleError('Use cutoff/multi keyword to set cutoff in multi mode');
+      const c = numeric(a[k + 1]);
+      if (c < 0) throw new StyleError(`Invalid cutoff ${a[k + 1]} in comm_modify command`);
+      nb.commCutoff = c;
+      k += 2;
+    } else if (key === 'cutoff/multi') {
+      if (!nb.commMulti) throw new StyleError('Use cutoff keyword to set cutoff in single mode');
+      if (!sys.hasBox) throw new StyleError('Cannot set cutoff/multi before simulation box is defined');
+      if (k + 3 > a.length) throw missingArgs('comm_modify cutoff/multi');
+      // "Collections are indexed from 1 to N where N is the total number of collections" (one per atom type unless
+      // neigh_modify collection/type or collection/interval defines them)
+      bounds(a[k + 1], 1, nb.ncollections || sys.state.ntypes);
+      const c = numeric(a[k + 2]);
+      nb.commCutoff = Math.max(nb.commCutoff, c);
+      if (c < 0) throw new StyleError(`Invalid cutoff ${a[k + 2]} in comm_modify command`);
+      k += 3;
+    } else if (key === 'reduce/multi') {
+      if (!nb.commMulti) throw new StyleError('Use reduce/multi in mode multi only');
+      k += 1;
+    } else if (key === 'vel') {
+      if (k + 2 > a.length) throw missingArgs('comm_modify vel');
+      sys.ghostVelocity = logical(a[k + 1]);
+      k += 2;
+    } else throw new StyleError(`Unknown comm_modify keyword: ${key}`);
   }
 };
 

@@ -1,13 +1,14 @@
 import type { Handler } from './args';
-import { int, num, yesno } from './args';
+import { num, yesno, missingArgs, logical, numeric, inumeric, bounds } from './args';
 import { StyleError, type Bonded, type KSpace } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES, KSPACE_STYLES, styleNames } from '../styles';
 import type { System } from '../system';
 import type { MixRule, Pair } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
-import { atomSubStyles, isMolecularStyle } from '../atoms';
+import { atomSubStyles, isMolecularStyle, hasMolecule } from '../atoms';
 import { typeWord } from '../labelmap';
 import { KSpacePPPM } from '../force/kspace/pppm';
+import { KSpaceEwald } from '../force/kspace/ewald';
 import { pppmGplHook } from '../force/kspace/pppmHook';
 import { removedStyleError } from '../deprecated';
 
@@ -55,6 +56,9 @@ const pairCoeff: Handler = ({ sys }, a) => {
   sys.bump();
 };
 
+/** The keywords of native Pair::modify_params (src/pair.cpp at b332f28). */
+const PAIR_MODIFY_KEYS = new Set(['mix', 'shift', 'table', 'table/disp', 'tabinner', 'tabinner/disp', 'tail', 'compute', 'nofdotr', 'neigh/trim']);
+
 /**
  * pair_modify keyword value ... — pair_modify.html (pair, special, mix, shift,
  * tail, table, tabinner, compute). For hybrid styles: "the specified
@@ -67,6 +71,9 @@ const pairCoeff: Handler = ({ sys }, a) => {
 const pairModify: Handler = ({ sys }, a) => {
   const p = sys.ff.pair;
   if (!p) throw new StyleError('pair_modify needs a pair_style first');
+  // As native LAMMPS does (src/pair.cpp Pair::modify_params and src/pair_hybrid.cpp PairHybrid::modify_params at
+  // b332f28): the keywords are read in order with native's checks and messages
+  if (a.length === 0) throw p instanceof PairHybrid ? new StyleError('Illegal pair_modify command') : missingArgs('pair_modify');
   let targets: Pair[] = [p];
   // the sub-style named by the pair keyword: compute and compute/tally apply to it alone
   let only: Pair | null = null;
@@ -98,20 +105,29 @@ const pairModify: Handler = ({ sys }, a) => {
   for (; k < a.length;) {
     const key = a[k];
     const v = a[k + 1];
+    // every keyword but nofdotr takes one value
+    if (key !== 'nofdotr' && PAIR_MODIFY_KEYS.has(key) && k + 2 > a.length) throw missingArgs(`pair_modify ${key}`);
     switch (key) {
       case 'mix':
-        if (!['geometric', 'arithmetic', 'sixthpower'].includes(v ?? '')) throw new StyleError('pair_modify mix must be geometric, arithmetic or sixthpower');
+        if (!['geometric', 'arithmetic', 'sixthpower'].includes(v)) throw new StyleError(`Unknown pair_modify mix argument: ${v}`);
         for (const t of targets) t.mix = v as MixRule;
         k += 2;
         break;
-      case 'shift': { const y = yesno(v, 'shift'); for (const t of targets) t.shift = y; k += 2; break; }
-      case 'tail': { const y = yesno(v, 'tail'); for (const t of targets) t.tail = y; k += 2; break; }
-      case 'table': { const n = int(v, 'table'); for (const t of targets) t.table = n; k += 2; break; }
+      case 'shift': { const y = logical(v); for (const t of targets) t.shift = y; k += 2; break; }
+      case 'tail': { const y = logical(v); for (const t of targets) t.tail = y; k += 2; break; }
+      case 'table': {
+        // 0 is the series only; N must be 8 to 32 bits otherwise (the bits of a float)
+        const n = inumeric(v);
+        if (n > 32) throw new StyleError('Too many total bits for bitmapped Coulomb lookup table');
+        if (n !== 0 && n < 8) throw new StyleError('Too few total bits for bitmapped Coulomb lookup table');
+        for (const t of targets) t.table = n;
+        k += 2;
+        break;
+      }
       case 'table/disp': {
-        // As native LAMMPS does (src/pair.cpp pair_modify at b332f28): 0 is the series only; N must be 8 to 32 bits otherwise
-        const n = int(v, 'table/disp');
-        if (n > 32) throw new StyleError(`pair_modify table/disp ${n}: too many total bits for the bitmapped dispersion lookup table (at most 32)`);
-        if (n !== 0 && n < 8) throw new StyleError(`pair_modify table/disp ${n}: too few total bits for the bitmapped dispersion lookup table (at least 8)`);
+        const n = inumeric(v);
+        if (n > 32) throw new StyleError('Too many total bits for bitmapped Dispersion lookup table');
+        if (n !== 0 && n < 8) throw new StyleError('Too few total bits for bitmapped Dispersion lookup table');
         // only lj/long/coul/long (flag_lj long) has a dispersion table in the engine
         for (const t of targets) {
           if (n > 0 && !('ljLong' in t)) throw new StyleError(`pair_modify table/disp ${n} is not supported for this pair style (only lj/long/coul/long has a dispersion table)`);
@@ -123,7 +139,7 @@ const pairModify: Handler = ({ sys }, a) => {
       case 'tabinner': {
         // pair_modify.html: "The *tabinner* and *tabinner/disp* keywords set an inner cutoff above which the
         // pairwise computation is done by table lookup"; the default is sqrt(2.0). The erfc tables take it from here.
-        const c = num(v, key);
+        const c = numeric(v);
         if (!(c > 0)) throw new StyleError(`pair_modify tabinner must be > 0 (got ${v})`);
         // sqrt(2) squared is 2 exactly (the default table boundary of erfc.ts)
         for (const t of targets) t.tabinnerRsq = Math.abs(c - Math.SQRT2) < 1e-15 ? 2 : c * c;
@@ -134,7 +150,7 @@ const pairModify: Handler = ({ sys }, a) => {
         // pair_modify.html: "The *tabinner* and *tabinner/disp* keywords set an inner cutoff above which the pairwise
         // computation is done by table lookup"; the dispersion table is that of lj/long/coul/long (flag_lj long); the
         // other styles have no dispersion table, so only the default sqrt(2.0) is accepted for them
-        const c = num(v, key);
+        const c = numeric(v);
         if (!(c > 0)) throw new StyleError(`pair_modify ${key} must be > 0 (got ${v})`);
         for (const t of targets) {
           if ('ljLong' in t) (t as Pair & { tabinnerDisp?: number }).tabinnerDisp = c;
@@ -145,7 +161,7 @@ const pairModify: Handler = ({ sys }, a) => {
       }
       case 'compute': {
         // pair_modify.html: "The compute keyword allows pairwise computations to be turned off"
-        const y = yesno(v, 'compute');
+        const y = logical(v);
         for (const t of only ? [only] : targets) t.computeOn = y;
         k += 2;
         break;
@@ -155,14 +171,10 @@ const pairModify: Handler = ({ sys }, a) => {
         // tensor from the total forces ..." The engine's virial is the same sum; only roundoff can differ (no value)
         k += 1;
         break;
-      case 'neigh/trim': yesno(v, key); k += 2; break;
-      case 'pair':
-        throw new StyleError(p instanceof PairHybrid
-          ? 'pair_modify pair must appear first in the list of keywords'
-          : 'pair_modify pair can only be used with the hybrid and hybrid/overlay pair styles');
-      case 'special': case 'compute/tally':
-        throw new StyleError(`pair_modify ${key} can only be used directly after the pair keyword (hybrid pair styles)`);
-      default: k += 1 + targets[0].modify(key, a.slice(k + 1));
+      case 'neigh/trim': logical(v); k += 2; break;
+      // pair, special and compute/tally anywhere else (or with a pair style that is not hybrid) are unknown keywords
+      // to native's Pair::modify_params, as is any other word: no pair style of the engine adds keywords of its own
+      default: throw new StyleError(`Unknown pair_modify keyword: ${key}`);
     }
   }
   sys.bump();
@@ -230,13 +242,19 @@ const bondedCoeff = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) =
   sys.bump();
 }) as Handler;
 
-/** special_bonds keyword values — special_bonds.html ("Each time you use this command it sets all the coefficients to default values and only overrides the one you specify"). */
+/**
+ * special_bonds keyword values — special_bonds.html ("Each time you use this command it sets all the coefficients to
+ * default values and only overrides the one you specify"). As native LAMMPS does (src/force.cpp Force::set_special at
+ * b332f28): a missing value, an unknown keyword, a one/five value other than yes or no and a weight outside 0..1
+ * (checked after the last keyword) all stop with Illegal special_bonds command.
+ */
 const specialBonds: Handler = ({ sys }, a) => {
+  const illegal = () => new StyleError('Illegal special_bonds command');
+  if (a.length === 0) throw illegal();
   const sp = { lj: [0, 0, 0] as [number, number, number], coul: [0, 0, 0] as [number, number, number], angle: false, dihedral: false, one5: false };
-  const w3 = (k: number, what: string): [number, number, number] => {
-    const v = [num(a[k + 1], what), num(a[k + 2], what), num(a[k + 3], what)] as [number, number, number];
-    if (v.some((x) => x < 0 || x > 1)) throw new StyleError('special_bonds weights must be between 0.0 and 1.0');
-    return v;
+  const w3 = (k: number): [number, number, number] => {
+    if (k + 4 > a.length) throw illegal();
+    return [numeric(a[k + 1]), numeric(a[k + 2]), numeric(a[k + 3])];
   };
   for (let k = 0; k < a.length;) {
     switch (a[k]) {
@@ -246,24 +264,26 @@ const specialBonds: Handler = ({ sys }, a) => {
       case 'charmm': sp.lj = [0, 0, 0]; sp.coul = [0, 0, 0]; k++; break;
       case 'dreiding': sp.lj = [0, 0, 1]; sp.coul = [0, 0, 1]; k++; break;
       case 'fene': sp.lj = [0, 1, 1]; sp.coul = [0, 1, 1]; k++; break;
-      case 'lj/coul': sp.lj = w3(k, 'lj/coul'); sp.coul = [...sp.lj]; k += 4; break;
-      case 'lj': sp.lj = w3(k, 'lj'); k += 4; break;
-      case 'coul': sp.coul = w3(k, 'coul'); k += 4; break;
-      case 'angle': sp.angle = yesno(a[k + 1], 'angle'); k += 2; break;
-      case 'dihedral': sp.dihedral = yesno(a[k + 1], 'dihedral'); k += 2; break;
+      case 'lj/coul': sp.lj = w3(k); sp.coul = [...sp.lj]; k += 4; break;
+      case 'lj': sp.lj = w3(k); k += 4; break;
+      case 'coul': sp.coul = w3(k); k += 4; break;
+      case 'angle': if (k + 2 > a.length) throw illegal(); sp.angle = logical(a[k + 1]); k += 2; break;
+      case 'dihedral': if (k + 2 > a.length) throw illegal(); sp.dihedral = logical(a[k + 1]); k += 2; break;
       case 'one/five':
         // special_bonds.html: "required by some pair styles, such as pair_style amoeba and hippo". The 1-5 list
         // is kept only by atom_style amoeba. Measured with native LAMMPS (black box): atom_style full refuses
         // one/five yes ("Cannot set special_bonds one/five if atom style does not support it").
-        if (yesno(a[k + 1], 'one/five') && !atomSubStyles(sys.atomStyle).includes('amoeba')) {
+        if (k + 2 > a.length || (a[k + 1] !== 'yes' && a[k + 1] !== 'no')) throw illegal();
+        sp.one5 = a[k + 1] === 'yes';
+        if (sp.one5 && !atomSubStyles(sys.atomStyle).includes('amoeba')) {
           throw new StyleError('Cannot set special_bonds one/five if atom style does not support it');
         }
-        sp.one5 = yesno(a[k + 1], 'one/five');
         k += 2;
         break;
-      default: throw new StyleError(`unknown special_bonds keyword '${a[k]}'`);
+      default: throw illegal();
     }
   }
+  if ([...sp.lj, ...sp.coul].some((x) => x < 0 || x > 1)) throw illegal();
   sys.ff.special = sp;
   if (sys.hasBox) sys.ff.topologyChanged(sys.state, sys.nb);
   sys.nb.lastBuild = -1;
@@ -291,29 +311,53 @@ const kspaceStyle: Handler = ({ sys }, a) => {
   sys.bump();
 };
 
+/**
+ * The keywords of native KSpace::modify_params (src/kspace.cpp at b332f28) and how many values each takes; any other
+ * word goes to the style's own modify_param, and one it does not take is an illegal kspace_modify command.
+ */
+const KSPACE_MODIFY_KEYS = new Map<string, number>([
+  ['mesh', 3], ['mesh/disp', 3], ['order', 1], ['order/disp', 1], ['minorder', 1], ['overlap', 1], ['force', 1],
+  ['gewald', 1], ['gewald/disp', 1], ['slab', 1], ['wire', 1], ['amat', 1], ['compute', 1], ['fftbench', 1],
+  ['collective', 1], ['collective/self/copy', 1], ['nonblocking', 1], ['diff', 1], ['cutoff/adjust', 1],
+  ['kmax/ewald', 3], ['mix/disp', 1], ['force/disp/real', 1], ['force/disp/kspace', 1], ['splittol', 1], ['eigtol', 1],
+  ['pressure/scalar', 1], ['disp/auto', 1],
+]);
+
 /** kspace_modify keyword value ... — kspace_modify.html. */
 const kspaceModify: Handler = ({ sys }, a) => {
   const first = sys.ff.kspace;
-  if (!first) throw new StyleError('kspace_modify needs a kspace_style first');
+  if (!first) throw new StyleError('Kspace_modify command before kspace_style is defined');
   let k: KSpace = first;
   for (let i = 0; i < a.length;) {
     const key = a[i];
-    if (key === 'diff' && a[i + 1] === 'ad') {
-      // kspace_modify.html: "diff ad" selects analytic differentiation; the native PPPM helper (gpl_pppm) builds that style
-      const ad: KSpace | null = k instanceof KSpacePPPM ? pppmGplHook().promoteAd(k) : null;
-      if (!ad) throw new StyleError(`kspace_modify diff ad is not supported by kspace_style ${k.name}`);
-      k = ad;
-      sys.ff.kspace = ad;
+    const nval = KSPACE_MODIFY_KEYS.get(key);
+    // native names splittol for eigtol too
+    if (nval !== undefined && i + 1 + nval > a.length) throw missingArgs(`kspace_modify ${key === 'eigtol' ? 'splittol' : key}`);
+    if (key === 'diff') {
+      // kspace_modify.html: "diff value = ad or ik = 2 or 4 FFTs for PPPM in smoothed or non-smoothed mode"
+      if (a[i + 1] !== 'ad' && a[i + 1] !== 'ik') throw new StyleError(`Unknown kspace_modify diff flag ${a[i + 1]}`);
+      // ewald reads the flag and never uses it (KSpaceEwald.modify)
+      if (a[i + 1] === 'ad' && !(k instanceof KSpaceEwald)) {
+        // the native PPPM helper (gpl_pppm) builds the analytic-differentiation style
+        const ad: KSpace | null = k instanceof KSpacePPPM ? pppmGplHook().promoteAd(k) : null;
+        if (!ad) throw new StyleError(`kspace_modify diff ad is not supported by kspace_style ${k.name}`);
+        k = ad;
+        sys.ff.kspace = ad;
+      }
     }
     if (key === 'compute') {
       // kspace_modify.html: "The compute keyword allows Kspace computations to be turned off, even though a kspace_style is defined."
       // native KSpace::modify_params (src/kspace.cpp at b332f28) sets compute_flag for every kspace style
-      k.computeOn = yesno(a[i + 1], 'compute');
+      k.computeOn = logical(a[i + 1]);
       i += 2;
       continue;
     }
     const used = k.modify(key, a.slice(i + 1));
-    if (used <= 0) throw new StyleError(`kspace_modify keyword '${key}' is not supported by kspace_style ${k.name}`);
+    if (used <= 0) {
+      throw new StyleError(nval !== undefined
+        ? `kspace_modify ${[key, ...a.slice(i + 1, i + 1 + nval)].join(' ')} is not supported by the browser engine for kspace_style ${k.name}`
+        : `Illegal kspace_modify command for kspace style ${k.name}`);
+    }
     i += 1 + used;
   }
   sys.bump();
@@ -331,44 +375,135 @@ const neighbor: Handler = ({ sys }, a) => {
   sys.bump();
 };
 
-/** neigh_modify keyword values — neigh_modify.html. */
+/**
+ * neigh_modify keyword values — neigh_modify.html. The keywords are read in order with native's checks and messages,
+ * as native LAMMPS does (src/neighbor.cpp Neighbor::modify_params at b332f28); the checks that need the force field
+ * (delay against every, page against one, the exclusion types) are made at run setup (Neighbor.init).
+ */
 const neighModify: Handler = ({ sys }, a) => {
   const nb = sys.nb;
   for (let k = 0; k < a.length;) {
     const key = a[k];
+    const need = (n: number, what = key): void => { if (k + n > a.length) throw missingArgs(`neigh_modify ${what}`); };
     switch (key) {
-      case 'delay': nb.delay = int(a[k + 1], 'delay'); k += 2; break;
-      case 'every': nb.every = int(a[k + 1], 'every'); if (nb.every < 1) throw new StyleError('neigh_modify every must be >= 1'); k += 2; break;
-      case 'check': nb.check = yesno(a[k + 1], 'check'); k += 2; break;
-      case 'once': nb.once = yesno(a[k + 1], 'once'); k += 2; break;
+      case 'every':
+        need(2);
+        nb.every = inumeric(a[k + 1]);
+        if (nb.every <= 0) throw new StyleError(`Invalid neigh_modify every argument: ${nb.every}`);
+        k += 2;
+        break;
+      case 'delay':
+        need(2);
+        nb.delay = inumeric(a[k + 1]);
+        if (nb.delay < 0) throw new StyleError(`Invalid neigh_modify delay argument: ${nb.delay}`);
+        k += 2;
+        break;
+      case 'check': need(2); nb.check = logical(a[k + 1]); k += 2; break;
+      case 'once': need(2); nb.once = logical(a[k + 1]); k += 2; break;
+      case 'page': need(2); nb.pgsize = inumeric(a[k + 1]); k += 2; break;
+      case 'one': need(2); nb.oneatom = inumeric(a[k + 1]); k += 2; break;
+      // "binsize value = size ... 0.0 = use default binsize of 1/2 the neighbor cutoff"; native treats any value <= 0 so
+      case 'binsize': { need(2); const b = numeric(a[k + 1]); nb.binsize = b > 0 ? b : 0; k += 2; break; }
+      case 'cluster': need(2); logical(a[k + 1]); k += 2; break;
+      case 'include': {
+        // "include value = group-ID"; "If the include option is used, the atom_modify first command must be used
+        // with the same group"
+        need(2);
+        const g = a[k + 1];
+        if (sys.groups.find(g) < 0) throw new StyleError(`Invalid include keyword: group ${g} not found`);
+        if (sys.firstGroup === null) throw new StyleError('Invalid include keyword: atom_modify first command must be used');
+        if (g !== sys.firstGroup) throw new StyleError(`Neigh_modify include group != atom_modify first group: ${sys.firstGroup}`);
+        nb.includeBit = sys.groupBit(g);
+        k += 2;
+        break;
+      }
+      case 'exclude': {
+        need(2);
+        const kind = a[k + 1];
+        if (kind === 'type') {
+          // "M,N = exclude if one atom in pair is type M, other is type N (M and N may be type labels)"; the range is
+          // checked at run setup
+          need(4, 'exclude type');
+          const t1 = inumeric(typeWord(sys.labels, 'atom', a[k + 2]));
+          const t2 = inumeric(typeWord(sys.labels, 'atom', a[k + 3]));
+          nb.excludes.push({ kind, a: t1, b: t2 });
+          k += 4;
+        } else if (kind === 'group') {
+          need(4, 'exclude group');
+          for (const g of [a[k + 2], a[k + 3]]) {
+            if (sys.groups.find(g) < 0) throw new StyleError(`Invalid exclude group keyword: group ${g} not found`);
+          }
+          const b1 = sys.groupBit(a[k + 2]), b2 = sys.groupBit(a[k + 3]);
+          if (sys.groups.isDynamic(b1) || sys.groups.isDynamic(b2)) throw new StyleError('Neigh_modify exclude group is not compatible with dynamic groups');
+          nb.excludes.push({ kind, a: b1, b: b2 });
+          k += 4;
+        } else if (kind === 'molecule/intra' || kind === 'molecule/inter') {
+          need(3, 'exclude molecule');
+          if (!(sys.hasBox ? hasMolecule(sys.state) : isMolecularStyle(sys.atomStyle))) {
+            throw new StyleError('Neigh_modify exclude molecule requires atom attribute molecule');
+          }
+          // native's message has no space after the colon
+          if (sys.groups.find(a[k + 2]) < 0) throw new StyleError(`Invalid exclude keyword:group ${a[k + 2]} not found`);
+          nb.excludes.push({ kind, a: sys.groupBit(a[k + 2]) });
+          k += 3;
+        } else if (kind === 'none') {
+          nb.excludes = [];
+          k += 2;
+        } else throw new StyleError(`Unknown neigh_modify exclude keyword: ${kind}`);
+        break;
+      }
+      case 'collection/interval': {
+        // "collection/interval arg = Nc c1 c2 ... cNc"; "This option only applies to the multi neighbor style"
+        if (!nb.multiStyle) throw new StyleError('Cannot use collection/interval command without multi setting');
+        need(2);
+        const n = inumeric(a[k + 1]);
+        if (n < 1) throw new StyleError(`Invalid collection/interval keyword: illegal number of custom collections: ${n}`);
+        if (k + 2 + n > a.length) throw new StyleError(`Invalid collection/interval keyword: expected ${n} separate lists of types`);
+        let prev = -Infinity;
+        for (let c = 0; c < n; c++) {
+          const cut = numeric(a[k + 2 + c]);
+          if (c > 0 && prev >= cut) throw new StyleError('Nonsequential interval cutoffs in collection/interval setting');
+          prev = cut;
+        }
+        nb.ncollections = n;
+        k += 2 + n;
+        break;
+      }
+      case 'collection/type': {
+        // "collection/type arg = Nc types1 types2 ... typesNc"; every atom type in exactly one collection
+        if (!nb.multiStyle) throw new StyleError('Cannot use collection/type command without multi setting');
+        need(2);
+        const n = inumeric(a[k + 1]);
+        if (n < 1) throw new StyleError(`Invalid collection/type keyword: illegal number of custom collections: ${n}`);
+        if (k + 2 + n > a.length) throw new StyleError(`Invalid collection/type keyword: expected ${n} separate lists of types`);
+        const ntypes = sys.state.ntypes;
+        const seen = new Uint8Array(ntypes + 1);
+        for (let c = 0; c < n; c++) {
+          for (const word of a[k + 2 + c].split(',').filter((w) => w !== '')) {
+            const [lo, hi] = bounds(word, 1, ntypes);
+            for (let t = lo; t <= hi; t++) {
+              if (seen[t]) throw new StyleError('Type specified more than once in collection/type command');
+              seen[t] = 1;
+            }
+          }
+        }
+        for (let t = 1; t <= ntypes; t++) if (!seen[t]) throw new StyleError('Type missing in collection/type command');
+        nb.ncollections = n;
+        k += 2 + n;
+        break;
+      }
       case 'bin/hash': {
         // neigh_modify.html: "The *bin/hash* option toggles whether the atoms in a bin are stored in" a linked list
         // (default) or a hash table; "The hash option is only available for the" multi neighbor mode. The engine
         // keeps its own bin storage: the setting is checked and accepted. Native LAMMPS refuses yes without
         // multi (measured) and its result differs from the default only by roundoff (measured, 1.7e-15 relative).
-        const on = yesno(a[k + 1], 'bin/hash');
+        need(2);
+        const on = logical(a[k + 1]);
         if (on && !nb.multiStyle) throw new StyleError('Cannot use bin/hash command without multi setting');
         k += 2;
         break;
       }
-      case 'cluster': yesno(a[k + 1], 'cluster'); k += 2; break;
-      case 'page': case 'one': int(a[k + 1], key); k += 2; break;
-      case 'binsize': nb.binsize = num(a[k + 1], 'binsize'); k += 2; break;
-      case 'include': nb.includeBit = a[k + 1] === 'all' ? 0 : sys.groupBit(a[k + 1] ?? ''); k += 2; break;
-      case 'exclude': {
-        const kind = a[k + 1];
-        if (kind === 'none') { nb.excludes = []; k += 2; break; }
-        if (kind === 'type') { nb.excludes.push({ kind, a: int(a[k + 2], 'type'), b: int(a[k + 3], 'type') }); k += 4; break; }
-        if (kind === 'group') { nb.excludes.push({ kind, a: sys.groupBit(a[k + 2] ?? ''), b: sys.groupBit(a[k + 3] ?? '') }); k += 4; break; }
-        if (kind === 'molecule/intra' || kind === 'molecule/inter') { nb.excludes.push({ kind, a: sys.groupBit(a[k + 2] ?? '') }); k += 3; break; }
-        throw new StyleError(`neigh_modify exclude: unknown style '${kind ?? ''}'`);
-      }
-      case 'collection/type': case 'collection/interval': {
-        const n = int(a[k + 1], key);
-        k += 2 + n;
-        break;
-      }
-      default: throw new StyleError(`unknown neigh_modify keyword '${key}'`);
+      default: throw new StyleError(`Unknown neigh_modify keyword: ${key}`);
     }
   }
   nb.lastBuild = -1;

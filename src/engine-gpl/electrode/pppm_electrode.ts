@@ -24,6 +24,7 @@ import type { ElectrodeKSpace } from './ewald_electrode';
 
 export class KSpacePPPMElectrode extends KSpacePPPM implements ElectrodeKSpace {
   override readonly name = 'pppm/electrode';
+  protected override readonly kspaceLabel: string = 'PPPM/electrode';
   qqrd2e = 0;
   private boundcorr: BoundaryCorrection = new NoBoundaryCorrection();
   /** The box of the last init or compute (the vector routines are called outside compute). */

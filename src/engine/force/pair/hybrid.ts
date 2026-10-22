@@ -300,7 +300,7 @@ export class PairHybrid extends Pair {
   init(ctx: StyleContext): void {
     // pair_modify.html: "You cannot use shift yes with tail yes, since those are conflicting
     // options." — per-sub-style settings also set the hybrid's own flags, as in native LAMMPS
-    if (this.shift && this.tail) throw new StyleError('cannot have both pair_modify shift and tail set to yes');
+    if (this.shift && this.tail) throw new StyleError('Cannot have both pair_modify shift and tail set to yes');
     const unused = this.subs.find((s) => !s.used);
     if (unused) throw new StyleError(`pair_style ${this.mode}: sub-style ${unused.name} is not used in any pair_coeff command`);
     const n = this.ntypes, nt = n + 1;
@@ -321,7 +321,7 @@ export class PairHybrid extends Pair {
     for (let k = 0; k < this.subs.length; k++) {
       const st = this.subs[k].style;
       // pair.html: shift and tail conflict; tail is not defined in 2d (checked per sub-style)
-      if (st.shift && st.tail) throw new StyleError('cannot have both pair_modify shift and tail set to yes');
+      if (st.shift && st.tail) throw new StyleError('Cannot have both pair_modify shift and tail set to yes');
       if (st.tail && ctx.s?.dimension === 2) throw new StyleError('cannot use pair_modify tail yes with 2d simulations');
       st.gEwald = this.gEwald;
       st.initStyle(ctx);
@@ -613,19 +613,5 @@ export class PairHybrid extends Pair {
         }
       }
     }
-  }
-
-  modify(key: string, values: string[]): number {
-    // style-specific keywords go to every sub-style that accepts them
-    let used = -1;
-    for (const s of this.subs) {
-      try {
-        used = Math.max(used, s.style.modify(key, values));
-      } catch (e) {
-        if (!(e instanceof StyleError)) throw e;
-      }
-    }
-    if (used < 0) throw new StyleError(`pair_modify keyword '${key}' is not supported by any sub-style of pair_style ${this.mode}`);
-    return used;
   }
 }

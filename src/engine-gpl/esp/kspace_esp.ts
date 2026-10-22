@@ -71,6 +71,7 @@ const wrap = (i: number, n: number): number => ((i % n) + n) % n;
 /** kspace_style esp, analytic differentiation (ad), one process. */
 export class KSpaceESP extends KSpaceBase {
   readonly name: string = 'esp';
+  protected override readonly kspaceLabel: string = 'ESP';
   /** kspace_style esp accuracy_relative (splitting) and spreading_accuracy (|args| as native settings()). */
   accuracyRelative = 0;
   spreadingAccuracy = 0;

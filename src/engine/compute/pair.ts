@@ -2,6 +2,7 @@ import { Compute } from './compute';
 import { StyleError, type Pair } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
 import type { System } from '../system';
+import { inumeric, missingArgs } from '../force/util';
 
 /*
  * compute ID group-ID pair pstyle [nsub] [evalue] — docs.lammps.org/compute_pair.html:
@@ -67,18 +68,19 @@ export class ComputePair extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
+    // As native LAMMPS does (src/compute_pair.cpp at b332f28): pstyle, nsub (a word starting with a digit, read with
+    // utils::inumeric), evalue; further words are not read
     const w = [...args];
-    if (w.length === 0) throw new StyleError(`compute ${id} pair needs a pair style name`);
+    if (w.length === 0) throw missingArgs('compute pair');
     this.pstyle = w.shift()!;
-    if (w.length && /^\d+$/.test(w[0])) {
-      this.nsub = Number(w.shift());
-      if (this.nsub < 1) throw new StyleError(`compute ${id} pair: nsub must be 1 or more (got ${this.nsub})`);
+    if (w.length && /^\d/.test(w[0])) {
+      this.nsub = inumeric(w.shift());
+      if (this.nsub <= 0) throw new StyleError('Compute pair nsub must be > 0');
     }
     if (w.length) {
-      if (!EVALUES.includes(w[0])) throw new StyleError(`compute ${id} pair: unknown keyword '${w[0]}' (epair, evdwl or ecoul)`);
+      if (!EVALUES.includes(w[0])) throw new StyleError(`Unknown compute pair keyword ${w[0]}`);
       this.evalue = w.shift()!;
     }
-    if (w.length) throw new StyleError(`compute ${id} pair: unexpected argument '${w[0]}' after evalue`);
     this.scalarFlag = true;
     this.extscalar = 1;
     const len = VECTOR_LENGTH[this.pstyle];
@@ -94,21 +96,24 @@ export class ComputePair extends Compute {
    * hybrid for its last evaluation; for the pair style itself rec is null.
    */
   private source(): { style: Pair; rec: { evdwl: number; ecoul: number; evaluated: boolean } | null } {
+    // native Force::pair_match(pstyle, 1, nsub) finds no style: the constructor's message ("Unused"; init says
+    // "Unrecognized" when the style is gone by then)
+    const unused = (): StyleError => new StyleError(`${this.initialized ? 'Unrecognized' : 'Unused'} pair style ${this.pstyle} in compute pair command`);
     const pf = this.sys.ff.pair;
-    if (!pf) throw new StyleError(`compute ${this.id} pair: no pair style is defined`);
+    if (!pf) throw unused();
     if (pf instanceof PairHybrid && pf.name !== this.pstyle) {
       const listings = pf.subs.filter((s) => s.name === this.pstyle).length;
-      if (listings === 0) throw new StyleError(`compute ${this.id} pair: pair style ${this.pstyle} is not a sub-style of pair_style ${pf.name}`);
+      if (listings === 0) throw unused();
       let instance = 1;
       if (listings > 1) {
-        if (this.nsub < 1 || this.nsub > listings) throw new StyleError(`compute ${this.id} pair: sub-style ${this.pstyle} is listed ${listings} times; give its number 1..${listings} as nsub`);
+        if (this.nsub < 1 || this.nsub > listings) throw unused();
         instance = this.nsub;
       }
       const rec = pf.subEnergy(this.pstyle, instance);
       if (!rec) throw new StyleError(`compute ${this.id} pair: sub-style ${this.pstyle} not found`);
       return { style: rec.style, rec };
     }
-    if (pf.name !== this.pstyle) throw new StyleError(`compute ${this.id} pair: pair style ${this.pstyle} is not in use (pair_style ${pf.name})`);
+    if (pf.name !== this.pstyle) throw unused();
     if (pf instanceof PairHybrid && this.nsub) throw new StyleError(`compute ${this.id} pair: nsub is not supported for the total of pair_style ${pf.name}`);
     return { style: pf, rec: null };
   }

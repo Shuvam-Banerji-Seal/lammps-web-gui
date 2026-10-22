@@ -18,29 +18,15 @@ import { ownCompute, ramp, removeCompute } from '../../engine/fix/util';
 import type { Compute } from '../../engine/compute/compute';
 import type { System } from '../../engine/system';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, logical, missingArgs, numeric } from '../../engine/force/util';
 import { massOf } from '../../engine/atoms';
 import { CORE_TYPE, DRUDE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
 import { exp as libmExp } from '../libm/exp';
 import { boxHInv, computeDeviatoric, computeSigma, computeStrainEnergy } from '../fix/nh_deviatoric';
 
-const num = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || w === '' || !Number.isFinite(v)) throw new StyleError(`Illegal fix tgnh/drude ${what}: '${w ?? ''}'`);
-  return v;
-};
-
-const int = (w: string | undefined, what: string): number => {
-  const v = num(w, what);
-  if (!Number.isInteger(v)) throw new StyleError(`Illegal fix tgnh/drude ${what}: '${w ?? ''}'`);
-  return v;
-};
-
-/** utils::logical of LAMMPS: yes/no, on/off, true/false, 1/0. */
-const logical = (w: string | undefined): boolean => {
-  if (w === 'yes' || w === 'on' || w === 'true' || w === '1') return true;
-  if (w === 'no' || w === 'off' || w === 'false' || w === '0') return false;
-  throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' in input script`);
-};
+/** fix_tgnh_drude.cpp reads its numbers with utils::numeric and utils::inumeric (`what` documents the call site). */
+const num = (w: string | undefined, _what: string): number => numeric(w);
+const int = (w: string | undefined, _what: string): number => inumeric(w);
 
 /** fix_tgnh_drude.cpp: a flip is triggered when a tilt exceeds 0.5 + DELTAFLIP of its box length; TILTMAX per step. */
 const DELTAFLIP = 0.1;
@@ -118,14 +104,14 @@ export class FixTGNHDrude extends Fix {
       this.scaleyz = g0.yz !== 0;
       this.scalexz = g0.xz !== 0;
     }
-    if (args.length < 2) throw new StyleError(`Illegal fix ${style} command`);
+    if (args.length < 1) throw new StyleError(`Illegal fix ${style} command`);
     let tdrudeT = 0;
     let tstat = false;
     let tPeriodSet = 0, tdrudePeriodSet = 0;
     let flipflag = true;
     const pPeriod = new Float64Array(6);
     const setP = (d: number, k: number): void => {
-      if (k + 4 > args.length) throw new StyleError(`Illegal fix ${style} ${args[k]}: needs Pstart Pstop Pdamp`);
+      if (k + 4 > args.length) throw missingArgs(`fix ${style} ${args[k]}`);
       this.pStart[d] = num(args[k + 1], 'Pstart');
       this.pStop[d] = num(args[k + 2], 'Pstop');
       pPeriod[d] = num(args[k + 3], 'Pdamp');
@@ -138,7 +124,7 @@ export class FixTGNHDrude extends Fix {
     for (let k = 0; k < args.length;) {
       const key = args[k];
       if (key === 'temp') {
-        if (k + 6 > args.length) throw new StyleError(`Illegal fix ${style} temp: needs Tstart Tstop Tperiod Tdrude Tdrude_period`);
+        if (k + 6 > args.length) throw missingArgs(`fix ${style} temp`);
         tstat = true;
         this.tStart = num(args[k + 1], 'Tstart');
         this.tTarget = this.tStart;
@@ -202,7 +188,7 @@ export class FixTGNHDrude extends Fix {
         flipflag = logical(args[k + 1]);
         k += 2;
       } else if (key === 'fixedpoint') {
-        if (k + 4 > args.length) throw new StyleError(`Illegal fix ${style} fixedpoint: needs three coordinates`);
+        if (k + 4 > args.length) throw missingArgs(`fix ${style} fixedpoint`);
         for (let d = 0; d < 3; d++) this.fixedpoint[d] = num(args[k + 1 + d], 'fixedpoint');
         k += 4;
       } else {

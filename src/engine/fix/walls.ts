@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
+import { logical, numeric } from '../force/util';
 import { libm } from '../libm';
 
 /*
@@ -118,37 +119,36 @@ export abstract class FixWallBase extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[], protected readonly wallStyle: string, nArgs: number) {
     super(sys, id, group, args);
-    if (args.length < 1) {
-      throw new StyleError(`usage: fix ID group-ID ${wallStyle} face args ... [face args ...] [keyword value ...]`);
-    }
+    // As native LAMMPS does (src/fix_wall.cpp FixWall::FixWall at b332f28): faces with their words, then units, fld
+    // and pbc; any other word is "Illegal fix {style} command"; the cutoffs are checked after all the words
+    const illegal = (): StyleError => new StyleError(`Illegal fix ${wallStyle} command`);
     for (let k = 0; k < args.length;) {
       const w = args[k];
       if (isFace(w)) {
+        if (k + 1 + nArgs > args.length) throw new StyleError(`Missing argument for fix ${wallStyle} command`);
         if (this.walls.some((x) => FACES[x.dim * 2 + (x.lo ? 0 : 1)] === w)) {
-          throw new StyleError(`fix ${id} (${wallStyle}): face ${w} is specified more than once`);
+          throw new StyleError(`${w} wall defined twice in fix ${wallStyle} command`);
         }
-        const words = args.slice(k + 1, k + 1 + nArgs);
-        if (words.length < nArgs) {
-          throw new StyleError(`fix ${id} (${wallStyle}): face ${w} needs ${nArgs} arguments (args for this style)`);
-        }
-        this.walls.push(this.parseWall(w, words));
+        this.walls.push(this.parseWall(w, args.slice(k + 1, k + 1 + nArgs)));
         k += 1 + nArgs;
       } else if (w === 'units') {
         const v = args[k + 1];
-        if (v !== 'lattice' && v !== 'box') throw new StyleError(`fix ${id} (${wallStyle}): units must be lattice or box, got '${v ?? ''}'`);
+        if (v !== 'lattice' && v !== 'box') throw illegal();
         this.unitsMode = v;
         k += 2;
-      } else if (w === 'fld') {
-        this.fld = FixWallBase.yesno(id, wallStyle, args[k + 1], 'fld');
-        k += 2;
-      } else if (w === 'pbc') {
-        this.pbcOk = FixWallBase.yesno(id, wallStyle, args[k + 1], 'pbc');
+      } else if (w === 'fld' || w === 'pbc') {
+        if (k + 2 > args.length) throw illegal();
+        if (w === 'fld') this.fld = logical(args[k + 1]);
+        else this.pbcOk = logical(args[k + 1]);
         k += 2;
       } else {
-        throw new StyleError(`fix ${id} (${wallStyle}): unknown argument '${w}' (expected a face xlo..zhi or the keyword units, fld or pbc)`);
+        throw illegal();
       }
     }
-    if (!this.walls.length) throw new StyleError(`fix ${id} (${wallStyle}): no wall face (xlo, xhi, ylo, yhi, zlo or zhi) was specified`);
+    if (!this.walls.length) throw new StyleError(`Illegal fix ${wallStyle} command: no walls defined`);
+    for (const w of this.walls) {
+      if (w.cutoff <= 0) throw new StyleError(`Fix ${wallStyle} cutoff <= 0.0 for ${FACES[w.dim * 2 + (w.lo ? 0 : 1)]} wall`);
+    }
     checkWallBox(sys, wallStyle, this.walls, this.pbcOk);
     this.wallForce = new Float64Array(this.walls.length);
     // "This fix computes a global scalar energy and a global vector of forces"
@@ -161,11 +161,6 @@ export abstract class FixWallBase extends Fix {
     this.virialGlobal = true;
   }
 
-  private static yesno(id: string, style: string, w: string | undefined, key: string): boolean {
-    if (w !== 'yes' && w !== 'no') throw new StyleError(`fix ${id} (${style}): ${key} value must be yes or no, got '${w ?? ''}'`);
-    return w === 'yes';
-  }
-
   /** coord epsilon sigma cutoff (or coord D_0 alpha r_0 cutoff for morse). */
   private parseWall(face: Face, words: string[]): Wall {
     const dim = 'xyz'.indexOf(face[0]) as 0 | 1 | 2;
@@ -176,23 +171,19 @@ export abstract class FixWallBase extends Fix {
       : coordW.startsWith('v_') ? { edge: false, v: { variable: coordW.slice(2) } }
         : { edge: false, v: parseNumOrVar(coordW, `${face} wall coord`) };
     if (!coord.edge && typeof coord.v === 'object') {
-      if (!this.sys.vars.has(coord.v.variable)) throw new StyleError(`fix ${this.id} (${this.wallStyle}): variable ${coord.v.variable} does not exist`);
+      // native's message (fix_wall.cpp init; the engine checks when the fix is defined)
+      if (!this.sys.vars.has(coord.v.variable)) throw new StyleError('Variable name for fix wall does not exist');
     }
     const params: NumOrVar[] = [];
     for (let p = 1; p < words.length - 1; p++) {
       const w = words[p];
       const v = parseNumOrVar(w, `${face} wall parameter ${p}`);
       if (typeof v !== 'number' && !this.sys.vars.has(v.variable)) {
-        throw new StyleError(`fix ${this.id} (${this.wallStyle}): variable ${v.variable} does not exist`);
+        throw new StyleError('Variable name for fix wall does not exist');
       }
       params.push(v);
     }
-    const cutW = words[words.length - 1];
-    const cutoff = Number(cutW);
-    if (cutW.startsWith('v_') || !Number.isFinite(cutoff)) {
-      throw new StyleError(`fix ${this.id} (${this.wallStyle}): cutoff must be a number (distance units), got '${cutW}'`);
-    }
-    if (!(cutoff > 0)) throw new StyleError(`fix ${this.id} (${this.wallStyle}): cutoff must be > 0, got '${cutW}'`);
+    const cutoff = numeric(words[words.length - 1]);
     return { dim, lo, coord, params, cutoff };
   }
 
@@ -522,10 +513,12 @@ export class FixWallMorse extends FixWallBase {
  *   use the messages of the base class.
  */
 export class FixWallHarmonicOutside extends FixWallBase {
-  readonly style = 'wall/harmonic/outside';
+  readonly style: string;
 
-  constructor(sys: System, id: string, group: string, args: string[]) {
-    super(sys, id, group, args, 'wall/harmonic/outside', 4);
+  /** name: wall/harmonic/outside or wall/harmonic/returned (one class registered under both names). */
+  constructor(sys: System, id: string, group: string, args: string[], name = 'wall/harmonic/outside') {
+    super(sys, id, group, args, name, 4);
+    this.style = name;
   }
 
   protected get outside(): boolean { return true; }

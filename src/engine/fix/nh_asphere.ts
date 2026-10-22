@@ -73,9 +73,6 @@ export class FixNHAsphere extends FixNH {
 
   constructor(sys: System, id: string, group: string, args: string[], variant: 'nvt' | 'npt' | 'nph') {
     const name = `${variant}/asphere`;
-    if (!sys.state.shape || !sys.state.quat || !sys.state.angmom || !sys.state.torque) {
-      throw new StyleError(`Fix ${name} requires atom style ellipsoid`);
-    }
     // disc is accepted and changes nothing for ellipsoids in 3d (measured with
     // native LAMMPS, black box: the same thermo rows with and without it over 20
     // steps); it is dropped before fix nh, which would refuse it. The docs' keyword
@@ -116,6 +113,9 @@ export class FixNHAsphere extends FixNH {
 
   init(): void {
     const s = this.sys.state;
+    // the atom style is checked at init (as native LAMMPS does, src/ASPHERE/fix_nh_asphere.cpp at b332f28); the fix's
+    // compute temp/asphere checks it first, as computes are initialized before fixes
+    if (!s.shape || !s.quat || !s.angmom || !s.torque) throw new StyleError(`Fix ${this.style} requires atom style ellipsoid`);
     // the temperature compute's group: the fix group for nvt, all atoms for npt and nph
     const tempBit = this.style === 'nvt/asphere' ? this.groupBit : this.sys.groupBit('all');
     for (let i = 0; i < s.n; i++) {

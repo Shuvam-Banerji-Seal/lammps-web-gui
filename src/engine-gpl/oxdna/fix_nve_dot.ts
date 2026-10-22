@@ -69,8 +69,8 @@ export class FixNVEDot extends FixNVE {
   override readonly style: string = 'nve/dot';
 
   constructor(sys: System, id: string, group: string, args: string[]) {
+    // fix_nve_dot.cpp (a FixNVE): further words are not read
     super(sys, id, group, args);
-    if (args.length) throw new StyleError('fix nve/dot takes no arguments');
   }
 
   override init(): void {

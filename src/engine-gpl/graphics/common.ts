@@ -11,6 +11,7 @@
  */
 import type { System } from '../../engine/system';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 
 /** A number or an equal-style variable name. */
 export type NumOrVar = { num: number } | { variable: string };
@@ -18,21 +19,12 @@ export type NumOrVar = { num: number } | { variable: string };
 export const parseNumOrVar = (w: string | undefined, what: string): NumOrVar => {
   if (w === undefined) throw new StyleError(`${what}: missing value`);
   if (w.startsWith('v_')) return { variable: w.slice(2) };
-  const v = Number(w);
-  if (w === '' || !Number.isFinite(v)) throw new StyleError(`${what}: '${w}' is not a number or v_ variable`);
-  return { num: v };
+  return { num: numeric(w) };
 };
 
 export const evalNumOrVar = (sys: System, x: NumOrVar): number => ('num' in x ? x.num : sys.equalVariable(x.variable));
 
-export const parseInteger = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || !Number.isInteger(v)) throw new StyleError(`${what}: '${w ?? ''}' is not an integer`);
-  return v;
-};
+/** The graphics fixes read their numbers with utils::inumeric and utils::numeric (`what` documents the call site). */
+export const parseInteger = (w: string | undefined, _what: string): number => inumeric(w);
 
-export const parseNumber = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || w === '' || !Number.isFinite(v)) throw new StyleError(`${what}: '${w ?? ''}' is not a number`);
-  return v;
-};
+export const parseNumber = (w: string | undefined, _what: string): number => numeric(w);

@@ -219,6 +219,6 @@ describe('compute temp/region', () => {
 
   it('rejects a missing region-ID and an unknown region', async () => {
     await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/region`)).rejects.toThrow('Illegal compute temp/region command');
-    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/region nowhere\nrun 0`)).rejects.toThrow("region ID 'nowhere' does not exist");
+    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/region nowhere\nrun 0`)).rejects.toThrow('Region nowhere for compute temp/region does not exist');
   });
 });

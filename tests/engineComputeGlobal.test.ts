@@ -142,8 +142,8 @@ describe('compute msd', () => {
   });
 
   it('rejects unknown keywords and bad values', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute m all msd drift yes`)).rejects.toThrow("unknown compute msd keyword 'drift'");
-    await expect(runScript(`${TWO_ATOMS}\ncompute m all msd com maybe`)).rejects.toThrow('compute msd com must be yes or no');
+    await expect(runScript(`${TWO_ATOMS}\ncompute m all msd drift yes`)).rejects.toThrow('Unknown compute msd keyword: drift');
+    await expect(runScript(`${TWO_ATOMS}\ncompute m all msd com maybe`)).rejects.toThrow("Expected boolean parameter instead of 'maybe'");
   });
 });
 

@@ -34,7 +34,7 @@ describe('fix rigid', () => {
   });
 
   it('names what it rejects', async () => {
-    expect((await run('fix 1 all rigid/small single'))?.message).toMatch(/single is only allowed for the rigid styles/);
+    expect((await run('fix 1 all rigid/small single'))?.message).toMatch(/Unknown fix rigid\/small body style single/);
     expect((await run('fix 1 all rigid molecule langevin 1 1 0 4567'))?.message).toMatch(/Tperiod must be > 0/);
     expect((await run('fix 1 all rigid molecule langevin 1 1 1 0'))?.message).toMatch(/seed must be a positive integer/);
     expect((await run('fix 1 all rigid custom v_b'))?.message).toMatch(/variable b does not exist/);

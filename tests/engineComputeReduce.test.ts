@@ -209,7 +209,7 @@ describe('compute displace/atom', () => {
   });
 
   it('rejects unknown keywords and non-atom-style refresh variables', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute d all displace/atom bogus`)).rejects.toThrow("unknown compute displace/atom keyword 'bogus'");
+    await expect(runScript(`${TWO_ATOMS}\ncompute d all displace/atom bogus`)).rejects.toThrow('Illegal compute displace/atom command');
     await expect(runScript(`${TWO_ATOMS}\nvariable f equal 1\ncompute d all displace/atom refresh f\nrun 0`)).rejects.toThrow('must be atom-style');
   });
 });

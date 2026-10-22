@@ -386,7 +386,7 @@ export class FixAmoebaBiTorsion extends Fix {
     super(sys, id, group, args);
     if (group !== 'all') throw new StyleError(`fix amoeba/bitorsion group ${group}: only group all is supported`);
     if (args.length !== 1) throw new StyleError('usage: fix ID group-ID amoeba/bitorsion bitorsion-file');
-    this.grids = parseBitorsionGrids(sys.readFile(args[0]), args[0]);
+    this.grids = parseBitorsionGrids(sys.readFile(args[0], 'Cannot open fix amoeba/bitorsion file'), args[0]);
     this.splines = this.grids.map((g) => createBitorsionSpline(g));
     this.energyGlobal = true;
     this.virialGlobal = true;

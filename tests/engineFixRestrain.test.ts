@@ -165,18 +165,18 @@ describe('fix restrain: closed-form values', () => {
 describe('fix restrain: argument errors', () => {
   const base = `${HEAD}${atoms(PTS)}\n${PAIR}`;
   it('unknown keyword is named', async () => {
-    expect(await errorOf(`${base}fix R all restrain torsion 1 2 3 4 1.0 1.0 0.0\n`)).toMatch(/torsion/);
+    expect(await errorOf(`${base}fix R all restrain torsion 1 2 3 4 1.0 1.0 0.0\n`)).toMatch(/Illegal fix restrain command/);
   });
   it('bond followed by another keyword: the optional r0stop is read (native behaviour)', async () => {
     expect(await errorOf(`${base}fix R all restrain bond 1 2 1.0 1.0 2.0 angle 1 2 3 1.0 1.0 90.0\n`)).toMatch(/'angle'/);
   });
   it('missing arguments', async () => {
-    expect(await errorOf(`${base}fix R all restrain bond 1 2 1.0 1.0\n`)).toMatch(/bond/);
-    expect(await errorOf(`${base}fix R all restrain dihedral 1 2 3 4 1.0 1.0\n`)).toMatch(/dihedral/);
+    expect(await errorOf(`${base}fix R all restrain bond 1 2 1.0 1.0\n`)).toMatch(/Illegal fix restrain command/);
+    expect(await errorOf(`${base}fix R all restrain dihedral 1 2 3 4 1.0 1.0\n`)).toMatch(/Illegal fix restrain command/);
   });
   it('mult must be an integer >= 0', async () => {
-    expect(await errorOf(`${base}fix R all restrain dihedral 1 2 3 4 1.0 1.0 0.0 mult -1\n`)).toMatch(/mult/);
-    expect(await errorOf(`${base}fix R all restrain dihedral 1 2 3 4 1.0 1.0 0.0 mult 1.5\n`)).toMatch(/mult/);
+    expect(await errorOf(`${base}fix R all restrain dihedral 1 2 3 4 1.0 1.0 0.0 mult -1\n`)).toMatch(/Illegal fix restrain command/);
+    expect(await errorOf(`${base}fix R all restrain dihedral 1 2 3 4 1.0 1.0 0.0 mult 1.5\n`)).toMatch(/Expected integer parameter instead of '1.5'/);
   });
   it('no restraint at all, and non-numeric values', async () => {
     expect(await errorOf(`${base}fix R all restrain\n`)).toMatch(/Illegal fix restrain command/);
@@ -287,6 +287,6 @@ describe('compute msd/nongauss (compute_msd_nongauss.html)', () => {
 
   it('keyword errors', async () => {
     expect(await errorOf(`${HEAD}${atoms(PTS)}\ncompute ng all msd/nongauss bogus yes\n`)).toMatch(/bogus/);
-    expect(await errorOf(`${HEAD}${atoms(PTS)}\ncompute ng all msd/nongauss com maybe\n`)).toMatch(/com/);
+    expect(await errorOf(`${HEAD}${atoms(PTS)}\ncompute ng all msd/nongauss com maybe\n`)).toMatch(/Expected boolean parameter instead of 'maybe'/);
   });
 });

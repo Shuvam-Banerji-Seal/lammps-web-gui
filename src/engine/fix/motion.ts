@@ -4,6 +4,7 @@ import type { System } from '../system';
 import type { SimState } from '../types';
 import { massOf } from '../atoms';
 import { groupMotionOf } from '../groupMotion';
+import { inumeric, missingArgs, numeric } from '../force/util';
 
 /*
  * Motion-style fixes written only from the LAMMPS documentation (the
@@ -61,8 +62,9 @@ export class FixMomentum extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const n = Number(args[0]);
-    if (!Number.isInteger(n) || n < 1) throw new StyleError(`fix momentum: N must be a positive integer (adjust the momentum every this many timesteps), got '${args[0] ?? ''}'`);
+    // As native LAMMPS does (src/fix_momentum.cpp at b332f28)
+    const n = inumeric(args[0]);
+    if (n <= 0) throw new StyleError('Fix momentum nevery value must be > 0');
     this.nevery = n;
     let linear: boolean[] | null = null;
     let angular = false;
@@ -70,11 +72,12 @@ export class FixMomentum extends Fix {
     for (let k = 1; k < args.length;) {
       const key = args[k];
       if (key === 'linear') {
+        if (k + 4 > args.length) throw missingArgs('fix momentum linear');
         const flags: boolean[] = [];
         for (let d = 0; d < 3; d++) {
-          const w = args[k + 1 + d];
-          if (w !== '0' && w !== '1') throw new StyleError(`fix momentum linear: xflag,yflag,zflag must be 0/1 to exclude/include each dimension, got '${w ?? ''}'`);
-          flags.push(w === '1');
+          const f = inumeric(args[k + 1 + d]);
+          if (f !== 0 && f !== 1) throw new StyleError('Fix momentum linear flag must be 0 or 1');
+          flags.push(f === 1);
         }
         linear = flags;
         k += 4;
@@ -85,12 +88,10 @@ export class FixMomentum extends Fix {
         rescale = true;
         k += 1;
       } else {
-        throw new StyleError(`fix momentum: unknown keyword '${key}' (keyword = *linear* or *angular* or *rescale*)`);
+        throw new StyleError(`Unknown fix momentum keyword ${key}`);
       }
     }
-    if (!linear && !angular) {
-      throw new StyleError('fix momentum: one (or both) of the *linear* or *angular* keywords must be specified');
-    }
+    if (!linear && !angular) throw new StyleError("Fix momentum command requires 'linear' or 'angular' keyword");
     this.linearFlags = linear;
     this.angular = angular;
     this.rescale = rescale;
@@ -400,10 +401,9 @@ export class FixNVELimit extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 1) throw new StyleError('usage: fix ID group-ID nve/limit xmax');
-    const v = Number(args[0]);
-    if (!Number.isFinite(v) || !(v > 0)) throw new StyleError(`fix nve/limit: xmax must be a positive distance, got '${args[0]}'`);
-    this.xmax = v;
+    // As native LAMMPS does (src/fix_nve_limit.cpp at b332f28): exactly one word, read with utils::numeric
+    if (args.length !== 1) throw missingArgs('fix nve/limit');
+    this.xmax = numeric(args[0]);
     this.timeIntegrate = true;
     this.scalarFlag = true;
     this.extscalar = 1;

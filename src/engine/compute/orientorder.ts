@@ -1,7 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { parseNum, parseInt_ } from '../force/util';
+import { inumeric, logical, numeric } from '../force/util';
 import { CellList } from '../cellList';
 import { libm } from '../libm';
 
@@ -192,58 +192,49 @@ export class ComputeOrientorderAtom extends Compute {
     let wlHat = false;
     let componentsDeg: number | null = null;
     let degrees: number[] | null = null;
-    for (let k = 0; k < args.length; k++) {
+    // As native LAMMPS does (src/compute_orientorder_atom.cpp at b332f28): every bad word is "Illegal compute
+    // orientorder/atom command"; the numbers are read with utils::inumeric and utils::numeric; components must name a
+    // degree of the list as it stands when the keyword is read
+    const illegal = (): StyleError => new StyleError('Illegal compute orientorder/atom command');
+    for (let k = 0; k < args.length; k += 2) {
       const kw = args[k];
-      if (kw === 'cutoff') {
-        const v = parseNum(args[++k], `compute ${id} (orientorder/atom) cutoff`);
-        if (!(v > 0)) throw new StyleError(`compute ${id} (orientorder/atom): cutoff must be > 0 (got ${args[k]})`);
-        cutoffArg = v;
-        continue;
-      }
+      const known = ['nnn', 'degrees', 'wl', 'wl/hat', 'components', 'cutoff', 'chunksize'];
+      if (!known.includes(kw) || k + 2 > args.length) throw illegal();
+      const w = args[k + 1];
       if (kw === 'nnn') {
-        const w = args[++k];
-        if (w === undefined) throw new StyleError(`compute ${id} (orientorder/atom): nnn needs a value or NULL`);
         if (w === 'NULL') nnn = null;
         else {
-          const v = parseInt_(w, `compute ${id} (orientorder/atom) nnn`);
-          if (v < 1) throw new StyleError(`compute ${id} (orientorder/atom): nnn must be a positive integer or NULL (got ${w})`);
-          nnn = v;
+          nnn = inumeric(w);
+          if (nnn <= 0) throw illegal();
         }
-        continue;
-      }
-      if (kw === 'degrees') {
-        const nlv = parseInt_(args[++k], `compute ${id} (orientorder/atom) degrees nlvalues`);
-        if (nlv < 1) throw new StyleError(`compute ${id} (orientorder/atom): degrees nlvalues must be >= 1 (got ${args[k]})`);
+      } else if (kw === 'degrees') {
+        const nlv = inumeric(w);
+        if (nlv <= 0) throw illegal();
+        if (k + 2 + nlv > args.length) throw illegal();
         const list: number[] = [];
         for (let t = 0; t < nlv; t++) {
-          const w = args[++k];
-          if (w === undefined) throw new StyleError(`compute ${id} (orientorder/atom): degrees needs ${nlv} degrees after nlvalues, got ${t}`);
-          const v = parseInt_(w, `compute ${id} (orientorder/atom) degrees l${t + 1}`);
-          if (v < 0) throw new StyleError(`compute ${id} (orientorder/atom): degrees must be non-negative integers (got ${w})`);
+          const v = inumeric(args[k + 2 + t]);
+          if (v < 0) throw illegal();
           list.push(v);
         }
         degrees = list;
-        continue;
-      }
-      if (kw === 'wl' || kw === 'wl/hat') {
-        const w = args[++k];
-        if (w !== 'yes' && w !== 'no') throw new StyleError(`compute ${id} (orientorder/atom): ${kw} must be yes or no (got '${w}')`);
-        if (kw === 'wl') wl = w === 'yes';
-        else wlHat = w === 'yes';
-        continue;
-      }
-      if (kw === 'components') {
-        const v = parseInt_(args[++k], `compute ${id} (orientorder/atom) components ldegree`);
-        if (v < 0) throw new StyleError(`compute ${id} (orientorder/atom): components ldegree must be a non-negative integer (got ${args[k]})`);
+        k += nlv;
+      } else if (kw === 'wl') {
+        wl = logical(w);
+      } else if (kw === 'wl/hat') {
+        wlHat = logical(w);
+      } else if (kw === 'components') {
+        const v = inumeric(w);
+        if (!(degrees ?? [4, 6, 8, 10, 12]).includes(v)) throw illegal();
         componentsDeg = v;
-        continue;
+      } else if (kw === 'cutoff') {
+        const v = numeric(w);
+        if (v <= 0) throw illegal();
+        cutoffArg = v;
+      } else {
+        // chunksize: the KOKKOS pass size, read and ignored outside the KOKKOS package
+        if (inumeric(w) <= 0) throw illegal();
       }
-      if (kw === 'chunksize') {
-        const v = parseInt_(args[++k], `compute ${id} (orientorder/atom) chunksize`);
-        if (v < 1) throw new StyleError(`compute ${id} (orientorder/atom): chunksize must be a positive integer (got ${args[k]})`);
-        continue; // KOKKOS-only pass size, ignored outside the KOKKOS package
-      }
-      throw new StyleError(`compute ${id} (orientorder/atom): unknown keyword '${kw}' (use cutoff, nnn, degrees, wl, wl/hat, components, chunksize)`);
     }
     this.degrees = degrees ?? [4, 6, 8, 10, 12];
     this.nnn = nnn;

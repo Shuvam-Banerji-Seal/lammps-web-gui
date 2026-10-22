@@ -398,7 +398,7 @@ describe('compute temp/deform', () => {
       compute td all temp/deform extra 1
       run 0
     `);
-    expect(errText(args.error)).toContain('no arguments');
+    expect(errText(args.error)).toContain('Unknown compute temp/deform keyword: extra');
   });
 });
 

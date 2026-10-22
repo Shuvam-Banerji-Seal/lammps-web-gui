@@ -4,6 +4,7 @@ import type { System } from '../system';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
 import { massOf, hasChargeStyle } from '../atoms';
 import { libm } from '../libm';
+import { inumeric, numeric } from '../force/util';
 
 /*
  * Force-style fixes from wave "force_ext", written only from the LAMMPS
@@ -43,18 +44,16 @@ export class FixViscous extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 1) throw new StyleError('usage: fix ID group-ID viscous gamma keyword values ...');
-    this.gamma = Number(args[0]);
-    if (args[0].startsWith('v_') || !Number.isFinite(this.gamma)) {
-      throw new StyleError(`fix viscous: gamma must be a number in force/velocity units, got '${args[0]}'`);
-    }
+    // As native LAMMPS does (src/fix_viscous.cpp at b332f28): gamma, then scale type ratio; any bad word is "Illegal
+    // fix viscous command"
+    if (args.length < 1) throw new StyleError('Illegal fix viscous command');
+    this.gamma = numeric(args[0]);
     const s = sys.state;
     this.ratio = new Float64Array(s.ntypes + 1).fill(1);
     for (let k = 1; k < args.length;) {
-      if (args[k] !== 'scale') throw new StyleError(`fix viscous: unknown keyword '${args[k]}' (scale is the only keyword)`);
-      const t = Number(args[k + 1]), r = Number(args[k + 2]);
-      if (!Number.isInteger(t) || t < 1 || t > s.ntypes) throw new StyleError(`fix viscous scale: type must be an atom type (1-${s.ntypes}), got '${args[k + 1]}'`);
-      if (!(r > 0)) throw new StyleError(`fix viscous scale: ratio must be > 0, got '${args[k + 2]}'`);
+      if (args[k] !== 'scale' || k + 3 > args.length) throw new StyleError('Illegal fix viscous command');
+      const t = inumeric(args[k + 1]), r = numeric(args[k + 2]);
+      if (t <= 0 || t > s.ntypes) throw new StyleError('Illegal fix viscous command');
       this.ratio[t] = r;
       k += 3;
     }

@@ -13,6 +13,7 @@
  */
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, logical, missingArgs } from '../../engine/force/util';
 import { nativeOrder } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 import { PairReaxFF } from './pair';
@@ -38,20 +39,20 @@ export class ComputeReaxFFAtom extends Compute {
     let iarg = 0;
     while (iarg < args.length) {
       const w = args[iarg];
+      // compute_reaxff_atom.cpp: pair N (N a word starting with a digit, > 0) and bonds yes|no
       if (w === 'pair') {
-        if (iarg + 1 >= args.length) throw new StyleError(`compute ${id} reaxff/atom: pair needs a value`);
-        const nsub = Number(args[iarg + 1]);
-        if (!Number.isInteger(nsub) || nsub <= 0) throw new StyleError(`compute ${id} reaxff/atom: illegal command (pair N needs N >= 1, got '${args[iarg + 1]}')`);
+        if (iarg + 2 > args.length) throw missingArgs('compute reaxff/atom pair');
+        const v = args[iarg + 1];
+        const nsub = /^\d/.test(v) ? inumeric(v) : 0;
+        if (nsub <= 0) throw new StyleError('Illegal compute reaxff/atom command');
         pairIndex = nsub;
         iarg += 2;
       } else if (w === 'bonds') {
-        if (iarg + 1 >= args.length) throw new StyleError(`compute ${id} reaxff/atom: bonds needs yes or no`);
-        const v = args[iarg + 1];
-        if (v !== 'yes' && v !== 'no' && v !== 'on' && v !== 'off' && v !== 'true' && v !== 'false') throw new StyleError(`compute ${id} reaxff/atom: bonds expects yes or no (got '${v}')`);
-        storeBonds = v === 'yes' || v === 'on' || v === 'true';
+        if (iarg + 2 > args.length) throw missingArgs('compute reaxff/atom bonds');
+        storeBonds = logical(args[iarg + 1]);
         iarg += 2;
       } else {
-        throw new StyleError(`compute ${id} reaxff/atom: illegal command (unknown keyword '${w}'; use pair N or bonds yes|no)`);
+        throw new StyleError('Illegal compute reaxff/atom command');
       }
     }
     this.storeBonds = storeBonds;

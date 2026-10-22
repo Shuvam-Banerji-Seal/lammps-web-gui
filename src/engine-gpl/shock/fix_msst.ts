@@ -16,19 +16,13 @@ import { Fix } from '../../engine/fix/fix';
 import { takeFixRecord } from '../../engine/fix/restartRecord';
 import { ownCompute, removeCompute } from '../../engine/fix/util';
 import { StyleError } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { logical, numeric, parseNum } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
 import { exp as libmExp } from '../libm/exp';
 
-const usage = 'Illegal fix msst command: usage fix ID group msst x|y|z shockvel [q v] [mu v] [p0 v] [v0 v] [e0 v] [tscale v] [dftb yes|no] [beta v]';
-
-/** fix_msst.cpp: "Logical" keywords accept yes or no. */
-const logicalWord = (w: string | undefined): boolean => {
-  if (w === 'yes') return true;
-  if (w === 'no') return false;
-  throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' in fix msst command`);
-};
+/** fix_msst.cpp: every bad word of the command stops with this message. */
+const usage = 'Illegal fix msst command';
 
 /** The fix msst restart record (fix_msst.cpp write_restart). */
 export interface MsstRestart { omega: number; e0: number; v0: number; p0: number }
@@ -69,13 +63,14 @@ export class FixMSST extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 2) throw new StyleError(usage);
+    // fix_msst.cpp: the direction, then shockvel read with utils::numeric (also past the end of the line)
+    if (args.length < 1) throw new StyleError(usage);
     const dir = args[0];
     if (dir === 'x') this.direction = 0;
     else if (dir === 'y') this.direction = 1;
     else if (dir === 'z') this.direction = 2;
     else throw new StyleError(usage);
-    this.velocity = parseNum(args[1], 'fix msst shockvel');
+    this.velocity = numeric(args[1]);
     if (this.velocity < 0) throw new StyleError(usage);
     this.timeIntegrate = true;
     this.scalarFlag = true;
@@ -87,7 +82,7 @@ export class FixMSST extends Fix {
     for (let k = 2; k < args.length;) {
       const key = args[k];
       const val = args[k + 1];
-      if (val === undefined) throw new StyleError(usage);
+      if (!['q', 'mu', 'p0', 'v0', 'e0', 'tscale', 'dftb', 'beta'].includes(key) || val === undefined) throw new StyleError(usage);
       switch (key) {
         case 'q': this.qmass = parseNum(val, 'fix msst q'); break;
         case 'mu': this.mu = parseNum(val, 'fix msst mu'); break;
@@ -99,7 +94,7 @@ export class FixMSST extends Fix {
           if (this.tscale < 0.0 || this.tscale > 1.0) throw new StyleError('Fix msst tscale must satisfy 0 <= tscale < 1');
           break;
         case 'dftb':
-          if (logicalWord(val)) {
+          if (logical(val)) {
             throw new StyleError('fix msst dftb yes needs fix external (the DFTB+ electronic entropy), which the browser engine does not support');
           }
           break;

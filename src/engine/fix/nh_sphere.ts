@@ -71,22 +71,17 @@ export class FixNHSphere extends FixNH {
 
   constructor(sys: System, id: string, group: string, args: string[], variant: 'nvt' | 'npt' | 'nph') {
     const name = `${variant}/sphere`;
-    if (!sys.state.omega || !sys.state.radius || !sys.state.torque) {
-      throw new StyleError(`Fix ${name} requires atom attribute omega`);
-    }
     // keywords of this variant are stripped; everything else goes to fix nh
     const rest: string[] = [];
     let disc = false;
     let dipole = false, dlm = false;
     for (let k = 0; k < args.length;) {
       if (args[k] === 'disc') {
-        if (sys.dimension !== 2) throw new StyleError(`Fix ${name} disc option requires 2d simulation`);
         disc = true;
         k++;
       } else if (args[k] === 'update') {
         const w = args[k + 1];
         if (w !== 'dipole' && w !== 'dipole/dlm') throw new StyleError(`Invalid fix ${name} update argument: ${w ?? ''}`.trim());
-        if (!sys.state.mu) throw new StyleError(`Using update dipole flag requires atom attribute mu (fix ${name} update ${w})`);
         dipole = true;
         dlm = w === 'dipole/dlm';
         k += 2;
@@ -96,6 +91,12 @@ export class FixNHSphere extends FixNH {
       }
     }
     super(sys, id, group, rest, variant, name);
+    // As native LAMMPS does (src/fix_nh.cpp and fix_nh_sphere.cpp at b332f28): after all the keywords, update dipole
+    // needs mu, then the atom attributes omega and radius, then disc needs 2d
+    if (dipole && !sys.state.mu) throw new StyleError(`Using update dipole flag requires atom attribute mu (fix ${name} update ${dlm ? 'dipole/dlm' : 'dipole'})`);
+    if (!sys.state.omega || !sys.state.torque) throw new StyleError(`Fix ${name} requires atom attribute omega`);
+    if (!sys.state.radius) throw new StyleError(`Fix ${name} requires atom attribute radius`);
+    if (disc && sys.dimension !== 2) throw new StyleError(`Fix ${name} disc option requires 2d simulation`);
     this.style = name;
     this.inertia = disc ? 0.5 : 0.4;
 

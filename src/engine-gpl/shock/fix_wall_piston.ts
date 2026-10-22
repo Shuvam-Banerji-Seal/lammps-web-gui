@@ -11,7 +11,7 @@
 import type { System } from '../../engine/system';
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { missingArgs, parseNum } from '../../engine/force/util';
 import { nativeOrder } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -43,7 +43,7 @@ export class FixWallPiston extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 1) throw new StyleError('fix wall/piston needs a face (zlo) and keywords');
+    if (args.length < 1) throw missingArgs('fix wall/piston');
     let k = 0;
     // a keyword's values must follow it (native: iarg + n <= narg)
     const need = (n: number) => { if (k + n >= args.length) throw new StyleError('Illegal fix wall/piston command'); };
@@ -89,12 +89,13 @@ export class FixWallPiston extends Fix {
         else throw new StyleError('Illegal fix wall/piston command');
         k += 2;
       } else {
-        throw new StyleError(`Illegal fix wall/piston command: unknown keyword '${w}' (zlo, vel, pos, temp, rough, ramp, rampNL1..rampNL5, units)`);
+        throw new StyleError('Illegal fix wall/piston command');
       }
     }
-    if (!this.zloflag) throw new StyleError('fix wall/piston needs the zlo face');
     if (this.vzInput < 0) throw new StyleError('Illegal fix wall/piston velocity');
-    if (sys.state.box.boundary[2][0] === 'p') throw new StyleError('Cannot use wall in periodic dimension');
+    if (this.zloflag && sys.state.box.boundary[2][0] === 'p') throw new StyleError('Cannot use wall in periodic dimension');
+    // native accepts a piston without zlo (the fix then moves no wall); the engine needs it
+    if (!this.zloflag) throw new StyleError('fix wall/piston needs the zlo face');
     // units lattice (the default): the velocity, position and rough distance are in lattice spacings
     const zscale = this.scaleflag && sys.lattice ? sys.lattice.spacing[2] : 1;
     this.vz = this.vzInput * zscale;

@@ -2,6 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
+import { logical, missingArgs } from '../force/util';
 
 /*
  * compute msd/nongauss — written from docs.lammps.org/compute_msd_nongauss.html
@@ -31,15 +32,19 @@ export class ComputeMSDNonGauss extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     this.comFlag = false;
-    if (args.length % 2) throw new StyleError('compute msd/nongauss: keyword values must come in pairs');
+    // As native LAMMPS does (src/compute_msd.cpp at b332f28, the base of msd/nongauss): its keywords and messages
     for (let k = 0; k < args.length; k += 2) {
       const key = args[k];
-      if (key !== 'com') throw new StyleError(`unknown compute msd/nongauss keyword '${key}'`);
-      const v = args[k + 1];
-      if (v !== 'yes' && v !== 'no') throw new StyleError(`compute msd/nongauss com must be yes or no (got '${v ?? ''}')`);
-      this.comFlag = v === 'yes';
+      if (key !== 'com' && key !== 'average') throw new StyleError(`Unknown compute msd keyword: ${key}`);
+      if (k + 2 > args.length) throw missingArgs(`compute msd ${key}`);
+      const v = logical(args[k + 1]);
+      if (key === 'average') {
+        if (v) throw new StyleError('compute msd/nongauss average yes is not supported by the browser engine');
+        continue;
+      }
+      this.comFlag = v;
     }
-    if (sys.groups.isDynamic(this.groupBit)) throw new StyleError('compute msd/nongauss cannot be used with a dynamic group');
+    if (sys.groups.isDynamic(this.groupBit)) throw new StyleError('Compute msd/nongauss is not compatible with dynamic groups');
     this.vectorFlag = true;
     this.sizeVector = 3;
     this.extvector = 0;

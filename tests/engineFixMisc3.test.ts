@@ -331,21 +331,22 @@ write_dump all custom stoch.dump id vx vy vz modify format float %.15g sort id`)
 
   it('argument and wall errors', async () => {
     const cases: [string, RegExp][] = [
-      ['fix 2 all wall/reflect/stochastic foo 1 zlo 0 1 0 0 0', /rstyle must be diffusive, maxwell or ccl/],
-      ['fix 2 all wall/reflect/stochastic diffusive 0 zlo 0 1 0 0 0', /seed must be a positive integer/],
-      ['fix 2 all wall/reflect/stochastic maxwell 5 zlo 0 1 0 0 0', /needs 6 arguments after face zlo/],
-      ['fix 2 all wall/reflect/stochastic ccl 5 zlo 0 1 0 0 0 0.5 0.5', /needs 8 arguments/],
+      // native's messages (fix_wall_reflect_stochastic.cpp); the accommodation range is the engine's own check
+      ['fix 2 all wall/reflect/stochastic foo 1 zlo 0 1 0 0 0', /Illegal fix wall\/reflect\/stochastic command/],
+      ['fix 2 all wall/reflect/stochastic diffusive 0 zlo 0 1 0 0 0', /Random seed must be a positive number/],
+      ['fix 2 all wall/reflect/stochastic maxwell 5 zlo 0 1 0 0 0', /Illegal fix wall\/reflect\/stochastic command/],
+      ['fix 2 all wall/reflect/stochastic ccl 5 zlo 0 1 0 0 0 0.5 0.5', /Illegal fix wall\/reflect\/stochastic command/],
       ['fix 2 all wall/reflect/stochastic maxwell 5 zlo 0 1 0 0 0 1.5', /between 0 and 1/],
-      ['fix 2 all wall/reflect/stochastic diffusive 5 zlo 0 1 0 0 1', /wall velocity must lie in the plane/],
-      ['fix 2 all wall/reflect/stochastic diffusive 5 zlo 0 1 0 0 0 units furlong', /units must be lattice or box/],
-      ['fix 2 all wall/reflect/stochastic diffusive 5 qlo 0 1 0 0 0', /unknown argument 'qlo'/],
-      ['fix 2 all wall/reflect/stochastic diffusive 5 zlo v_x 1 0 0 0', /must be a number/],
+      ['fix 2 all wall/reflect/stochastic diffusive 5 zlo 0 1 0 0 1', /The wall velocity must be tangential/],
+      ['fix 2 all wall/reflect/stochastic diffusive 5 zlo 0 1 0 0 0 units furlong', /Illegal fix wall\/reflect\/stochastic command/],
+      ['fix 2 all wall/reflect/stochastic diffusive 5 qlo 0 1 0 0 0', /Illegal fix wall\/reflect\/stochastic command/],
+      ['fix 2 all wall/reflect/stochastic diffusive 5 zlo v_x 1 0 0 0', /Expected floating point parameter instead of 'v_x'/],
     ];
     for (const [line, re] of cases) {
       const r = await runScript(`${atoms(1)}${line}\nrun 0`);
       expect(message(r.error), line).toMatch(re);
     }
     const periodic = await runScript(`${atoms(1).replace('boundary f f f', 'boundary f f p')}fix 2 all wall/reflect/stochastic diffusive 5 zlo 0 1 0 0 0 units box\nrun 0`);
-    expect(message(periodic.error)).toMatch(/non-periodic dimension/);
+    expect(message(periodic.error)).toMatch(/Cannot use fix wall\/reflect\/stochastic in periodic dimension/);
   });
 });

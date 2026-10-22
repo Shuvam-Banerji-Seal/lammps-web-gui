@@ -366,11 +366,12 @@ ${line}
   };
 
   it('wall/reflect: missing argument, bad face, bad units, duplicate face, undefined variable', async () => {
-    expect(await bad('fix 1 all wall/reflect zlo')).toMatch(/usage/);
-    expect(await bad('fix 1 all wall/reflect qlo EDGE')).toMatch(/unknown argument/);
-    expect(await bad('fix 1 all wall/reflect zlo EDGE units both')).toMatch(/units must be/);
-    expect(await bad('fix 1 all wall/reflect zlo EDGE zlo EDGE')).toMatch(/more than once/);
-    expect(await bad('fix 1 all wall/reflect zhi v_novar')).toMatch(/does not exist/);
+    // native's messages (fix_wall_reflect.cpp; the variable is looked up at init)
+    expect(await bad('fix 1 all wall/reflect zlo')).toMatch(/Illegal fix wall\/reflect zlo command: missing argument/);
+    expect(await bad('fix 1 all wall/reflect qlo EDGE')).toMatch(/Unknown fix wall\/reflect keyword: qlo/);
+    expect(await bad('fix 1 all wall/reflect zlo EDGE units both')).toMatch(/Unknown fix wall\/reflect units argument: both/);
+    expect(await bad('fix 1 all wall/reflect zlo EDGE zlo EDGE')).toMatch(/Wall defined twice in fix wall\/reflect command/);
+    expect(await bad('fix 1 all wall/reflect zhi v_novar\nrun 0')).toMatch(/Variable novar for fix wall\/reflect does not exist/);
   });
 
   it('wall/reflect: a wall in a periodic dimension is rejected', async () => {
@@ -381,18 +382,19 @@ region          box block 0 10 0 10 0 10
 create_box      1 box
 mass            1 1.0
 `;
-    expect(await bad('fix 2 all wall/reflect zlo EDGE\nrun 0', per)).toMatch(/non-periodic/);
+    expect(await bad('fix 2 all wall/reflect zlo EDGE\nrun 0', per)).toMatch(/Cannot use fix wall\/reflect in periodic dimension z/);
   });
 
   it('indent: bad gstyle, cone unsupported, K not a number, bad side/keyword/variable', async () => {
-    expect(await bad('fix 1 all indent 10.0 ball 5 5 5 2')).toMatch(/gstyle/);
+    // native's messages (fix_indent.cpp geometry and options)
+    expect(await bad('fix 1 all indent 10.0 ball 5 5 5 2')).toMatch(/Unknown fix indent geometry: ball/);
     expect(await bad('fix 1 all indent 10.0 cone z 5 5 1 2 0 3')).toMatch(/cone/);
-    expect(await bad('variable kk equal 5.0\nfix 1 all indent v_kk sphere 5 5 5 2')).toMatch(/K must be a number/);
-    expect(await bad('fix 1 all indent 10.0 sphere 5 5 5 2 side maybe')).toMatch(/side must be/);
-    expect(await bad('fix 1 all indent 10.0 sphere 5 5 5 2 bogus')).toMatch(/unknown keyword/);
-    expect(await bad('fix 1 all indent 10.0 sphere 5 5 v_novar 2')).toMatch(/does not exist/);
-    expect(await bad('fix 1 all indent 8.0 plane z 0.4 middle')).toMatch(/lo or hi/);
-    expect(await bad('fix 1 all indent 8.0 plane z 0.4 lo side in')).toMatch(/side keyword/);
+    expect(await bad('variable kk equal 5.0\nfix 1 all indent v_kk sphere 5 5 5 2')).toMatch(/Expected floating point parameter instead of 'v_kk'/);
+    expect(await bad('fix 1 all indent -1.0 sphere 5 5 5 2')).toMatch(/Illegal fix indent force constant: -1/);
+    expect(await bad('fix 1 all indent 10.0 sphere 5 5 5 2 side maybe')).toMatch(/Unknown fix indent side argument: maybe/);
+    expect(await bad('fix 1 all indent 10.0 sphere 5 5 5 2 bogus')).toMatch(/Unknown fix indent argument: bogus/);
+    expect(await bad('fix 1 all indent 10.0 sphere 5 5 v_novar 2\nrun 0')).toMatch(/Variable novar for fix indent does not exist/);
+    expect(await bad('fix 1 all indent 8.0 plane z 0.4 middle')).toMatch(/Unknown fix indent plane argument: middle/);
   });
 
   it('indent: fix_modify virial is not supported (only energy is documented)', async () => {

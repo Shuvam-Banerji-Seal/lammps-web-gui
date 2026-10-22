@@ -2,7 +2,7 @@ import { Compute, groupCount } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
-import { parseInt_, parseNum } from '../force/util';
+import { logical, missingArgs, parseInt_, parseNum } from '../force/util';
 import { isNumericTypeWord, typeWord } from '../labelmap';
 
 /*
@@ -159,11 +159,12 @@ export class ComputeMSD extends Compute {
     this.aveFlag = false;
     for (let k = 0; k < args.length; k += 2) {
       const key = args[k];
-      if (key !== 'com' && key !== 'average') throw new StyleError(`unknown compute msd keyword '${key}'`);
-      const v = args[k + 1];
-      if (v !== 'yes' && v !== 'no') throw new StyleError(`compute msd ${key} must be yes or no (got '${v ?? ''}')`);
-      if (key === 'com') this.comFlag = v === 'yes';
-      else this.aveFlag = v === 'yes';
+      // As native LAMMPS does (src/compute_msd.cpp at b332f28)
+      if (key !== 'com' && key !== 'average') throw new StyleError(`Unknown compute msd keyword: ${key}`);
+      if (k + 2 > args.length) throw missingArgs(`compute msd ${key}`);
+      const v = logical(args[k + 1]);
+      if (key === 'com') this.comFlag = v;
+      else this.aveFlag = v;
     }
     this.vectorFlag = true;
     this.sizeVector = 4;

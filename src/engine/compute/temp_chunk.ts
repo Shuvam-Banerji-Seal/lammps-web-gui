@@ -76,7 +76,7 @@ export class ComputeTempChunk extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 1) throw new StyleError(`usage: compute ${id} group-ID temp/chunk chunkID value ... keyword value ...`);
-    this.chunk = chunkCompute(sys, args[0], `compute ${id} (temp/chunk)`);
+    this.chunk = chunkCompute(sys, args[0], 'compute temp/chunk');
     this.adof = sys.dimension;
     const values: Value[] = [];
     let com = false;

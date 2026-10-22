@@ -4,6 +4,7 @@ import { checkWallBox } from './walls';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
+import { logical, missingArgs, numeric } from '../force/util';
 import { compileLepton, fillVrefs, type LeptonProgram } from '../lepton';
 import { parseLepton } from '../lepton/parse';
 import { resolveNames, dependsOn, diff } from '../lepton/resolve';
@@ -67,33 +68,38 @@ export class FixWallLepton extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 1) throw new StyleError(`usage: fix ID group-ID wall/lepton face args ... [face args ...] [keyword value ...]`);
+    // As native LAMMPS does (src/fix_wall.cpp FixWall::FixWall at b332f28): faces with coord expression cutoff, then
+    // units, fld and pbc, any other word "Illegal fix wall/lepton command", the cutoffs and the box after all the
+    // words; the expressions are compiled after that (fix_wall_lepton.cpp post_constructor)
+    const illegal = (): StyleError => new StyleError('Illegal fix wall/lepton command');
+    const faces: { face: Face; words: string[]; cutoff: number }[] = [];
     for (let k = 0; k < args.length;) {
       const w = args[k];
       if (isFace(w)) {
-        if (this.walls.some((x) => FACES[x.dim * 2 + (x.lo ? 0 : 1)] === w)) {
-          throw new StyleError(`fix ${id} (wall/lepton): face ${w} is specified more than once`);
-        }
+        if (k + 4 > args.length) throw new StyleError('Missing argument for fix wall/lepton command');
+        if (faces.some((x) => x.face === w)) throw new StyleError(`${w} wall defined twice in fix wall/lepton command`);
         const words = args.slice(k + 1, k + 4);
-        if (words.length < 3) throw new StyleError(`fix ${id} (wall/lepton): face ${w} needs coord, expression and cutoff`);
-        this.walls.push(this.parseWall(id, w, words));
+        if (words[0] !== 'EDGE' && !words[0].startsWith('v_')) numeric(words[0]);
+        faces.push({ face: w, words, cutoff: numeric(words[2]) });
         k += 4;
       } else if (w === 'units') {
         const v = args[k + 1];
-        if (v !== 'lattice' && v !== 'box') throw new StyleError(`fix ${id} (wall/lepton): units must be lattice or box, got '${v ?? ''}'`);
+        if (v !== 'lattice' && v !== 'box') throw illegal();
         this.unitsMode = v;
         k += 2;
       } else if (w === 'fld' || w === 'pbc') {
-        const v = args[k + 1];
-        if (v !== 'yes' && v !== 'no') throw new StyleError(`fix ${id} (wall/lepton): ${w} value must be yes or no, got '${v ?? ''}'`);
-        if (w === 'fld') this.fld = v === 'yes'; else this.pbcOk = v === 'yes';
+        if (k + 2 > args.length) throw illegal();
+        if (w === 'fld') this.fld = logical(args[k + 1]); else this.pbcOk = logical(args[k + 1]);
         k += 2;
       } else {
-        throw new StyleError(`fix ${id} (wall/lepton): unknown argument '${w}' (expected a face xlo..zhi or the keyword units, fld or pbc)`);
+        throw illegal();
       }
     }
-    if (!this.walls.length) throw new StyleError(`fix ${id} (wall/lepton): no wall face (xlo, xhi, ylo, yhi, zlo or zhi) was specified`);
-    checkWallBox(sys, 'wall/lepton', this.walls, this.pbcOk);
+    if (!faces.length) throw new StyleError('Illegal fix wall/lepton command: no walls defined');
+    for (const f of faces) if (f.cutoff <= 0) throw new StyleError(`Fix wall/lepton cutoff <= 0.0 for ${f.face} wall`);
+    const boxWalls = faces.map((f) => ({ dim: 'xyz'.indexOf(f.face[0]) as 0 | 1 | 2, lo: f.face[1] === 'l' }));
+    checkWallBox(sys, 'wall/lepton', boxWalls, this.pbcOk);
+    for (const f of faces) this.walls.push(this.parseWall(id, f.face, f.words));
     this.wallForce = new Float64Array(this.walls.length);
     this.scalarFlag = true;
     this.vectorFlag = true;
@@ -112,13 +118,9 @@ export class FixWallLepton extends Fix {
       ? { edge: true }
       : { edge: false, v: parseNumOrVar(coordW, `${face} wall coord`) };
     if (!coord.edge && typeof coord.v === 'object' && !this.sys.vars.has(coord.v.variable)) {
-      throw new StyleError(`fix ${id} (wall/lepton): variable ${coord.v.variable} does not exist`);
+      throw new StyleError('Variable name for fix wall does not exist');
     }
-    const cutW = words[2];
-    const cutoff = Number(cutW);
-    if (cutW.startsWith('v_') || !Number.isFinite(cutoff) || !(cutoff > 0)) {
-      throw new StyleError(`fix ${id} (wall/lepton): cutoff must be a number > 0 (distance units), got '${cutW}'`);
-    }
+    const cutoff = Number(words[2]);
     const prog = compileLepton(words[1], { builtins: ['r', 'rc'], wrt: ['r'] });
     for (const name of prog.vrefs) {
       if (!this.sys.vars.has(name)) throw new StyleError(`fix ${id} (wall/lepton): variable ${name} does not exist`);
@@ -224,7 +226,8 @@ const fieldIsNonUniform = (text: string): boolean => {
  */
 export class FixEfieldLepton extends Fix {
   readonly style = 'efield/lepton';
-  private prog: LeptonProgram;
+  private readonly expr: string;
+  private prog!: LeptonProgram;
   private regionId: string | null = null;
   /** step h: the central-difference displacement for the dipole force (distance units). */
   private stepH = 0;
@@ -244,30 +247,27 @@ export class FixEfieldLepton extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     const s = sys.state;
-    if (!hasChargeStyle(s.atomStyle)) {
-      throw new StyleError(`fix efield/lepton requires atoms that store a charge; atom_style ${s.atomStyle} does not`);
-    }
-    if (s.box.triclinic) throw new StyleError(`fix ${id} efield/lepton: triclinic boxes are not supported`);
-    if (args.length < 1) throw new StyleError('usage: fix ID group-ID efield/lepton V [region ID] [step h]');
-    this.prog = compileLepton(args[0], { builtins: ['x', 'y', 'z'], wrt: ['x', 'y', 'z'] });
-    for (const name of this.prog.vrefs) {
-      if (!sys.vars.has(name)) throw new StyleError(`fix ${id} efield/lepton: variable ${name} does not exist`);
-    }
+    // As native LAMMPS does (src/LEPTON/fix_efield_lepton.cpp at b332f28): the keywords, then the expression is parsed;
+    // its names are resolved and the atom attributes checked when the run starts (init)
+    if (args.length < 1) throw missingArgs('fix efield/lepton');
     for (let k = 1; k < args.length; k += 2) {
       const key = args[k];
       const val = args[k + 1];
-      if (val === undefined) throw new StyleError(`fix efield/lepton keyword '${key}' needs a value`);
       if (key === 'region') {
-        sys.region(val);
+        if (val === undefined) throw missingArgs('fix efield/lepton region');
+        if (!sys.regions.has(val)) throw new StyleError(`Region ${val} for fix efield/lepton does not exist`);
         this.regionId = val;
       } else if (key === 'step') {
-        const h = Number(val);
-        if (!(h > 0)) throw new StyleError(`fix efield/lepton: step must be > 0, got '${val}'`);
-        this.stepH = h;
+        // native's message lacks the blank ("fix efield/leptonstep")
+        if (val === undefined) throw missingArgs('fix efield/leptonstep');
+        this.stepH = numeric(val);
       } else {
-        throw new StyleError(`fix efield/lepton: unknown keyword '${key}' (expected region or step)`);
+        throw new StyleError(`Unknown keyword for fix efield/lepton command: ${key}`);
       }
     }
+    parseLepton(args[0], { zbl: false });
+    this.expr = args[0];
+    if (s.box.triclinic) throw new StyleError(`fix ${id} efield/lepton: triclinic boxes are not supported`);
     if (s.mu) {
       // Measured with native LAMMPS (black box): atom_style dipole without the sphere
       // sub-style is rejected (Dipoles must be finite-sized to rotate); hybrid sphere dipole works.
@@ -291,6 +291,19 @@ export class FixEfieldLepton extends Fix {
     this.gx = new Float64Array(s.n);
     this.gy = new Float64Array(s.n);
     this.gz = new Float64Array(s.n);
+    this.envBuf = this.envP = this.envM = new Float64Array(0);
+  }
+
+  init(): void {
+    const s = this.sys.state;
+    if (!s.q && !s.mu) throw new StyleError('Fix efield/lepton requires atom attribute q or mu');
+    if (!hasChargeStyle(s.atomStyle)) {
+      throw new StyleError(`fix efield/lepton requires atoms that store a charge; atom_style ${s.atomStyle} does not`);
+    }
+    this.prog = compileLepton(this.expr, { builtins: ['x', 'y', 'z'], wrt: ['x', 'y', 'z'] });
+    for (const name of this.prog.vrefs) {
+      if (!this.sys.vars.has(name)) throw new StyleError(`fix ${this.id} efield/lepton: variable ${name} does not exist`);
+    }
     const nv = this.prog.builtins.length + this.prog.vrefs.length;
     this.envBuf = new Float64Array(nv);
     this.envP = new Float64Array(nv);

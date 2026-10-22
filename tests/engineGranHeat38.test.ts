@@ -145,9 +145,9 @@ describe('heat conduction: bad input is refused', () => {
   });
 
   it('fix heat/flow refuses a negative cp, a wrong number of type values and unknown styles', async () => {
-    expect((await run(twoSpheres({ fixes: 'fix 2 all heat/flow constant -1.0' }))).error).toMatch(/cp must be >= 0/);
-    expect((await run(twoSpheres({ fixes: 'fix 2 all heat/flow type 1.0' }))).error).toMatch(/values for 2 atom types/);
-    expect((await run(twoSpheres({ fixes: 'fix 2 all heat/flow bogus 1.0' }))).error).toMatch(/unknown style 'bogus'/);
+    expect((await run(twoSpheres({ fixes: 'fix 2 all heat/flow constant -1.0' }))).error).toMatch(/Illegal fix heat\/flow constant command value/);
+    expect((await run(twoSpheres({ fixes: 'fix 2 all heat/flow type 1.0' }))).error).toMatch(/Illegal fix heat\/flow type command/);
+    expect((await run(twoSpheres({ fixes: 'fix 2 all heat/flow bogus 1.0' }))).error).toMatch(/Unknown fix heat\/flow keyword bogus/);
     expect((await run(twoSpheres({ fixes: 'fix 2 all heat/flow constant' }))).error).toMatch(/heat\/flow constant/);
   });
 

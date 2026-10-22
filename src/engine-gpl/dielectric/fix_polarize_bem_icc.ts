@@ -9,7 +9,8 @@
  * once; the sweep is Jacobi-like (all patches use the field of the sweep). Not ported: fix_modify rand is refused.
  */
 import { Fix } from '../../engine/fix/fix';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
+import { isDielectricStyle } from '../../engine/atoms';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { dielArrays, dielectricKSpaceField, keepingVirial, dielectricPairField, epsilon0e2q, fieldAt } from './common';
@@ -33,9 +34,11 @@ export class FixPolarizeBEMICC extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 2) throw new StyleError(`usage: fix ${id} group-ID polarize/bem/icc N tol`);
-    const every = Number(args[0]);
-    if (!Number.isInteger(every) || every < 0) throw new StyleError(`Illegal fix ${id} polarize/bem/icc command: N must be an integer >= 0`);
+    // fix_polarize_bem_icc.cpp constructor: the count, the atom style, then N (utils::inumeric, >= 0) and tol
+    if (args.length < 2) throw new StyleError('Illegal fix polarize/bem/icc command');
+    if (!isDielectricStyle(sys.state.atomStyle)) throw new StyleError('Fix polarize requires atom style dielectric');
+    const every = inumeric(args[0]);
+    if (every < 0) throw new StyleError('Illegal fix polarize/bem/icc command');
     this.every = every;
     this.tol = parseNum(args[1], 'tolerance');
   }

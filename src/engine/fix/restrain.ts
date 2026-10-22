@@ -6,6 +6,7 @@ import { dihedralGeometry } from '../force/bonded_util';
 import type { BondedCompute } from '../force/types';
 import { ramp } from './util';
 import { libm } from '../libm';
+import { bnumeric, inumeric, numeric } from '../force/util';
 
 /*
  * fix restrain — written from docs.lammps.org/fix_restrain.html
@@ -69,12 +70,10 @@ import { libm } from '../libm';
  * measured).
  */
 
-const num = (w: string | undefined, what: string): number => {
-  if (w === undefined || w.trim() === '') throw new StyleError(`fix restrain: missing ${what}`);
-  const v = Number(w);
-  if (!Number.isFinite(v)) throw new StyleError(`fix restrain: expected a floating point parameter for ${what}, got '${w}'`);
-  return v;
-};
+/** fix_restrain.cpp reads atom IDs with utils::tnumeric and the rest with utils::numeric (`what` documents the site). */
+const num = (w: string | undefined, _what: string): number => numeric(w);
+const tag = (w: string | undefined): number => bnumeric(w);
+const ILLEGAL = 'Illegal fix restrain command';
 
 const KEYWORDS = ['bond', 'lbound', 'angle', 'dihedral'] as const;
 type Keyword = (typeof KEYWORDS)[number];
@@ -107,11 +106,12 @@ export class FixRestrain extends Fix {
     let k = 0;
     while (k < args.length) {
       const kw = args[k] as Keyword;
-      if (!KEYWORDS.includes(kw)) throw new StyleError(`fix restrain: unknown keyword '${args[k]}' (bond, lbound, angle or dihedral)`);
+      // As native LAMMPS does (src/fix_restrain.cpp at b332f28): every bad word is "Illegal fix restrain command"
+      if (!KEYWORDS.includes(kw)) throw new StyleError(ILLEGAL);
       k++;
       if (kw === 'bond' || kw === 'lbound') {
-        if (args.length - k < 5) throw new StyleError(`fix restrain ${kw} needs atom1 atom2 Kstart Kstop r0start (r0stop)`);
-        const atoms = [num(args[k], 'atom1'), num(args[k + 1], 'atom2')];
+        if (args.length - k < 5) throw new StyleError(ILLEGAL);
+        const atoms = [tag(args[k]), tag(args[k + 1])];
         const kstart = num(args[k + 2], 'Kstart'), kstop = num(args[k + 3], 'Kstop');
         const r0start = num(args[k + 4], 'r0start');
         k += 5;
@@ -123,29 +123,29 @@ export class FixRestrain extends Fix {
         }
         this.terms.push({ kind: kw, atoms, kstart, kstop, r0start, r0stop, mult: 1 });
       } else if (kw === 'angle') {
-        if (args.length - k < 6) throw new StyleError('fix restrain angle needs atom1 atom2 atom3 Kstart Kstop theta0');
-        const atoms = [num(args[k], 'atom1'), num(args[k + 1], 'atom2'), num(args[k + 2], 'atom3')];
+        if (args.length - k < 6) throw new StyleError(ILLEGAL);
+        const atoms = [tag(args[k]), tag(args[k + 1]), tag(args[k + 2])];
         const kstart = num(args[k + 3], 'Kstart'), kstop = num(args[k + 4], 'Kstop');
         const theta0 = (num(args[k + 5], 'theta0') * Math.PI) / 180;
         k += 6;
         this.terms.push({ kind: kw, atoms, kstart, kstop, r0start: theta0, r0stop: theta0, mult: 1 });
       } else {
-        if (args.length - k < 7) throw new StyleError('fix restrain dihedral needs atom1 atom2 atom3 atom4 Kstart Kstop phi0');
-        const atoms = [0, 1, 2, 3].map((o) => num(args[k + o], `atom${o + 1}`));
+        if (args.length - k < 7) throw new StyleError(ILLEGAL);
+        const atoms = [0, 1, 2, 3].map((o) => tag(args[k + o]));
         const kstart = num(args[k + 4], 'Kstart'), kstop = num(args[k + 5], 'Kstop');
         const phi0 = (num(args[k + 6], 'phi0') * Math.PI) / 180;
         k += 7;
         let mult = 1;
         if (k < args.length && args[k] === 'mult') {
-          if (k + 1 >= args.length) throw new StyleError('fix restrain dihedral: mult needs a value');
-          mult = num(args[k + 1], 'mult');
-          if (!Number.isInteger(mult) || mult < 0) throw new StyleError('fix restrain dihedral: mult must be an integer >= 0');
+          // native checks iarg+1 > narg, so a missing value is read as NULL by utils::inumeric
+          mult = inumeric(args[k + 1]);
+          if (mult < 0) throw new StyleError(ILLEGAL);
           k += 2;
         }
         this.terms.push({ kind: kw, atoms, kstart, kstop, r0start: phi0, r0stop: phi0, mult });
       }
     }
-    if (!this.terms.length) throw new StyleError('fix restrain needs at least one of bond, lbound, angle, dihedral');
+    if (!this.terms.length) throw new StyleError(ILLEGAL);
     for (const t of this.terms) {
       if (t.atoms.some((a) => !Number.isInteger(a) || a <= 0)) throw new StyleError(`fix restrain ${t.kind}: atom IDs must be positive integers`);
       if (t.kind === 'bond' || t.kind === 'lbound') {

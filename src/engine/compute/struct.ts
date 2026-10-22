@@ -1,7 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { parseNum, parseInt_ } from '../force/util';
+import { inumeric, logical, missingArgs, parseNum, parseInt_ } from '../force/util';
 import { CellList } from '../cellList';
 import { libm } from '../libm';
 
@@ -152,27 +152,19 @@ export class ComputeCentroAtom extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 1) throw new StyleError(`compute ${id} (centro/atom): usage: compute ID group-ID centro/atom lattice [axes yes|no]`);
+    // As native LAMMPS does (src/compute_centro_atom.cpp at b332f28, with its message suffixes 3 and 1): the lattice
+    // (fcc, bcc or N read with utils::inumeric), axes (utils::logical), then N must be even and > 0
+    if (args.length < 1 || args.length > 3) throw new StyleError('Illegal compute centro/atom command');
     const lat = args[0];
-    let n: number;
-    if (lat === 'fcc') n = 12;
-    else if (lat === 'bcc') n = 8;
-    else {
-      if (!/^\d+$/.test(lat)) throw new StyleError(`compute ${id} (centro/atom): lattice must be fcc, bcc or N (got '${lat}')`);
-      n = parseInt_(lat, `compute ${id} (centro/atom) lattice`);
-      if (n < 2 || n % 2 !== 0) throw new StyleError(`compute ${id} (centro/atom): N must be a positive even integer or fcc/bcc (got ${lat})`);
-    }
-    this.nNeigh = n;
+    const n = lat === 'fcc' ? 12 : lat === 'bcc' ? 8 : inumeric(lat);
     let axes = false;
-    for (let k = 1; k < args.length; k++) {
-      if (args[k] === 'axes') {
-        const w = args[++k];
-        if (w !== 'yes' && w !== 'no') throw new StyleError(`compute ${id} (centro/atom): axes must be yes or no (got '${w}')`);
-        axes = w === 'yes';
-      } else {
-        throw new StyleError(`compute ${id} (centro/atom): unknown keyword '${args[k]}' (use axes)`);
-      }
+    for (let k = 1; k < args.length; k += 2) {
+      if (args[k] !== 'axes') throw new StyleError('Illegal compute centro/atom command1');
+      if (k + 2 > args.length) throw new StyleError('Illegal compute centro/atom command3');
+      axes = logical(args[k + 1]);
     }
+    if (n <= 0 || n % 2) throw new StyleError('Illegal neighbor value for compute centro/atom command');
+    this.nNeigh = n;
     this.axes = axes;
     if (axes) this.sizePeratomCols = 10;
     this.pairVal = new Float64Array(n * (n - 1) / 2);
@@ -443,13 +435,13 @@ export class ComputeFragmentAtom extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     let single = false;
+    // As native LAMMPS does (src/compute_fragment_atom.cpp at b332f28)
     for (let k = 0; k < args.length; k++) {
       if (args[k] === 'single') {
-        const w = args[++k];
-        if (w !== 'yes' && w !== 'no') throw new StyleError(`compute ${id} (fragment/atom): single must be yes or no (got '${w}')`);
-        single = w === 'yes';
+        if (k + 2 > args.length) throw missingArgs('compute fragment/atom');
+        single = logical(args[++k]);
       } else {
-        throw new StyleError(`compute ${id} (fragment/atom): unknown keyword '${args[k]}' (use single)`);
+        throw new StyleError(`Unknown compute fragment/atom keyword ${args[k]}`);
       }
     }
     this.single = single;

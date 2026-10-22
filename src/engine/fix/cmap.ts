@@ -227,7 +227,7 @@ export class FixCmap extends Fix {
     if (args.length !== 1) throw new StyleError('usage: fix ID group-ID cmap filename');
     const name = args[0];
     const D = derivativeMatrix();
-    this.tables = parseCmapGrids(sys.readFile(name), name).map((G) => buildCmapTable(G, D));
+    this.tables = parseCmapGrids(sys.readFile(name, 'cannot open cmap grid potential file'), name).map((G) => buildCmapTable(G, D));
     // fix_cmap.rst: energy and virial are on by default ("default setting for this fix is")
     this.energyGlobal = true;
     this.virialGlobal = true;

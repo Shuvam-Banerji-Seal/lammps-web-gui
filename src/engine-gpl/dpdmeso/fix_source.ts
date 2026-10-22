@@ -12,7 +12,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { EDPD_CV, EDPD_FLUX, TDPD_CC_FLUX, isEdpdStyle, isTdpdStyle, tdpdSpecies } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 
@@ -105,11 +105,12 @@ export class FixTDPDSource extends FixSourceBase {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
+    // fix_tdpd_source.cpp: the species index (utils::inumeric) before the form
+    const idx = inumeric(args[0]);
     if (args.length < 2) throw new StyleError('Illegal fix tdpd/source command');
     const nsp = tdpdSpecies(sys.state.atomStyle);
     if (!nsp) throw new StyleError('Fix tdpd/source requires atom style tdpd');
-    const idx = Number(args[0]);
-    if (!Number.isInteger(idx) || idx < 1 || idx > nsp) throw new StyleError(`Illegal fix tdpd/source command (cc index ${args[0]} is not a species 1..${nsp})`);
+    if (idx < 1 || idx > nsp) throw new StyleError(`Illegal fix tdpd/source command (cc index ${args[0]} is not a species 1..${nsp})`);
     this.ccIndex = idx;
     this.parseForm(args, 1, 'tdpd/source');
   }

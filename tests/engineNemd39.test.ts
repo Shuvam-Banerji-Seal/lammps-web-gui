@@ -84,7 +84,7 @@ describe('compute temp/deform temp keyword', () => {
     const bad = await runScript(withTemp('profile part'));
     expect(bad.error).toMatch(/Unknown compute temp\/deform keyword: profile/);
     const missing = await runScript(withTemp('temp'));
-    expect(missing.error).toMatch(/keyword temp needs a compute ID/);
+    expect(missing.error).toMatch(/Illegal compute temp\/deform temp command: missing argument/);
   });
 
   it('rejects a missing temperature compute, a non-temperature compute and a group mismatch (native messages)', async () => {

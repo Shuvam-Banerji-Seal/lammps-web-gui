@@ -50,15 +50,15 @@ fix             1 all nve
 describe('fix heat / fix ehex argument checks', () => {
   const cases: [string, RegExp][] = [
     ['fix 2 all heat', /usage|missing|heat/],
-    ['fix 2 all heat 0 0.1', /positive integer/],
-    ['fix 2 all heat 1.5 0.1', /positive integer/],
-    ['fix 2 all heat 1 notanumber', /expected a number for eflux/],
-    ['fix 2 all heat 1 0.1 bogus 3', /unknown keyword 'bogus'/],
-    ['fix 2 all heat 1 0.1 region nosuch', /region ID 'nosuch' does not exist/],
-    ['fix 2 all heat 1 0.1 region', /needs a region-ID/],
+    ['fix 2 all heat 0 0.1', /Illegal fix heat command/],
+    ['fix 2 all heat 1.5 0.1', /Expected integer parameter instead of '1.5'/],
+    ['fix 2 all heat 1 notanumber', /Expected floating point parameter instead of 'notanumber'/],
+    ['fix 2 all heat 1 0.1 bogus 3', /Illegal fix heat command/],
+    ['fix 2 all heat 1 0.1 region nosuch', /Region nosuch for fix heat does not exist/],
+    ['fix 2 all heat 1 0.1 region', /Illegal fix heat command/],
     ['fix 2 all ehex 1', /usage|missing|ehex/],
-    ['fix 2 all ehex 1 notanumber', /expected a number for eflux/],
-    ['fix 2 all ehex 1 0.1 foo', /unknown keyword 'foo'/],
+    ['fix 2 all ehex 1 notanumber', /Expected floating point parameter instead of 'notanumber'/],
+    ['fix 2 all ehex 1 0.1 foo', /Illegal fix ehex keyword/],
     ['fix 2 all ehex 1 0.1 com', /together with the keyword 'constrain'/],
   ];
   for (const [line, re] of cases) {

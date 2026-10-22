@@ -11,7 +11,8 @@
  * of the force evaluation before the charges are set (Verlet::setup), as in LAMMPS.
  */
 import { Fix } from '../../engine/fix/fix';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
+import { isDielectricStyle } from '../../engine/atoms';
 import { StyleError } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
@@ -43,11 +44,13 @@ export class FixPolarizeFunctional extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 1) throw new StyleError(`usage: fix ${id} group-ID polarize/functional N [tol]`);
-    const every = Number(args[0]);
-    if (!Number.isInteger(every) || every < 0) throw new StyleError(`Illegal fix ${id} polarize/functional command: N must be an integer >= 0`);
+    // fix_polarize_functional.cpp constructor: the count, the atom style, then N (utils::inumeric, >= 0) and tol
+    if (args.length < 1) throw new StyleError('Illegal fix polarize/functional command');
+    if (!isDielectricStyle(sys.state.atomStyle)) throw new StyleError('Fix polarize/functional requires atom style dielectric');
+    const every = inumeric(args[0]);
+    if (every < 0) throw new StyleError('Illegal fix polarize/functional command');
     this.every = every;
-    this.tolerance = args.length >= 2 ? parseNum(args[1], 'tolerance') : EPSILON;
+    this.tolerance = args.length === 2 ? parseNum(args[1], 'tolerance') : EPSILON;
   }
 
   /** Atom-ID numbering of the interface (group) and of the ions (the rest), in ID order as LAMMPS' tag2mat. */

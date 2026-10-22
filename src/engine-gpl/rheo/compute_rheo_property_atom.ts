@@ -48,13 +48,15 @@ export class ComputeRHEOPropertyAtom extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (!isRheoStyle(sys.atomStyle)) throw new StyleError('compute rheo/property/atom requires atom_style rheo');
-    if (args.length < 1) throw new StyleError('Illegal compute rheo/property/atom command: missing argument(s)');
+    // compute_rheo_property_atom.cpp constructor: the keywords (the per-atom ones looked up in the atom style), then
+    // the engine's refusal of other atom styles (native needs fix rheo at init, which needs the rheo atom styles)
+    if (args.length < 1) throw new StyleError('Illegal compute property/atom command: missing argument(s)');
+    const rheo = isRheoStyle(sys.atomStyle);
     const dim = sys.state.dimension;
     let interfaceFlag = false, surfaceFlag = false, shiftFlag = false, thermalFlag = false, pressureFlag = false;
     let shellFlag = false, coordinationFlag = false;
     const invalid = (a: string): StyleError =>
-      new StyleError(`Invalid keyword ${a} for atom style ${sys.atomStyle} in compute rheo/property/atom command `);
+      new StyleError(`Invalid keyword ${a} for atom style ${sys.atomStyle.split(' ')[0]} in compute rheo/property/atom command `);
     const one = (pack: Pack, prop = ''): void => { this.cols.push({ pack, index: 0, prop }); };
     for (const a of args) {
       if (a === 'phase') one('phase');
@@ -78,12 +80,13 @@ export class ComputeRHEOPropertyAtom extends Compute {
         one('avec', RHEO_ESPH);
       } else if (a === 'nbond/shell') { shellFlag = true; one('nbond/shell'); }
       else {
-        const prop = AVEC.get(a) ?? (isRheoThermalStyle(sys.atomStyle) ? AVEC_THERMAL.get(a) : undefined);
+        const prop = rheo ? AVEC.get(a) ?? (isRheoThermalStyle(sys.atomStyle) ? AVEC_THERMAL.get(a) : undefined) : undefined;
         if (prop === undefined) throw invalid(a);
         one('avec', prop);
         if (a === 'temperature' || a === 'heatflow' || a === 'conductivity') thermalFlag = true;
       }
     }
+    if (!rheo) throw new StyleError('compute rheo/property/atom requires atom_style rheo');
     this.interfaceFlag = interfaceFlag;
     this.surfaceFlag = surfaceFlag;
     this.shiftFlag = shiftFlag;

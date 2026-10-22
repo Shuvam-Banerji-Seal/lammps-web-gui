@@ -76,7 +76,7 @@ describe('compute pe/atom', () => {
   });
 
   it('rejects an unknown keyword', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute p all pe/atom torsion`)).rejects.toThrow("unknown compute pe/atom keyword 'torsion'");
+    await expect(runScript(`${TWO_ATOMS}\ncompute p all pe/atom torsion`)).rejects.toThrow('Illegal compute pe/atom command');
   });
 });
 
@@ -124,7 +124,7 @@ describe('compute stress/atom', () => {
   });
 
   it('rejects a temp-ID that is not a temperature compute', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute pe all pe\ncompute s all stress/atom pe\nrun 0`)).rejects.toThrow('does not compute a temperature');
+    await expect(runScript(`${TWO_ATOMS}\ncompute pe all pe\ncompute s all stress/atom pe\nrun 0`)).rejects.toThrow('Compute stress/atom compute pe does not compute temperature');
   });
 });
 

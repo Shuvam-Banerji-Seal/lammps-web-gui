@@ -43,7 +43,7 @@ describe('shell rm', () => {
     await session.execute('shell rm gone.restart\n');
     expect(session.sys.files.has('gone.restart')).toBe(false);
 
-    await expect(session.execute('clear\nread_restart gone.restart\n')).rejects.toThrow(/cannot open file gone\.restart/);
+    await expect(session.execute('clear\nread_restart gone.restart\n')).rejects.toThrow(/Cannot open restart file gone\.restart/);
   });
 
   it('warns once per missing file without -f, and continues', async () => {
@@ -84,7 +84,7 @@ describe('shell mv', () => {
     expect(session.sys.state.step).toBe(0);
 
     await session.execute('clear\n');
-    await expect(session.execute('read_restart old.restart\n')).rejects.toThrow(/cannot open file old\.restart/);
+    await expect(session.execute('read_restart old.restart\n')).rejects.toThrow(/Cannot open restart file old\.restart/);
   });
 
   it('overwrites an existing destination, silently', async () => {

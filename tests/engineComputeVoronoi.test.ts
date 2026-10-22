@@ -91,11 +91,12 @@ describe('compute voronoi/atom', () => {
       await expect(runScript(text)).rejects.toThrow(pattern);
     };
     await bad(SC('peratom yes'), /peratom/);
-    await bad(SC('frobnicate 1'), /frobnicate/);
-    await bad(SC('surface nosuchgroup'), /nosuchgroup/);
-    await bad(SC('radius r1'), /radius/);
-    await bad(SC('edge_histo 0'), /edge_histo/);
-    await bad(SC('face_threshold -1'), /face_threshold/);
+    // native's messages (compute_voronoi_atom.cpp); edge_histo 0 and a negative threshold are accepted there
+    await bad(SC('frobnicate 1'), /Illegal compute voronoi\/atom command/);
+    await bad(SC('surface nosuchgroup'), /Could not find compute\/voronoi surface group ID/);
+    await bad(SC('radius r1'), /Illegal compute voronoi\/atom command/);
+    await expect(runScript(SC('edge_histo 0'))).resolves.toBeDefined();
+    await expect(runScript(SC('face_threshold -1'))).resolves.toBeDefined();
     // non-periodic boundaries are supported since wave 31 (walls at the box faces, tests/engineVoronoiNp31.test.ts);
     // a non-periodic triclinic box is still refused
   });

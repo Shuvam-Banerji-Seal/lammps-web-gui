@@ -1,6 +1,7 @@
 import { Compute } from './compute';
 import { ComputeSnap } from './snap_global';
 import { StyleError } from '../force/types';
+import { logical, missingArgs } from '../force/util';
 import type { System } from '../system';
 import { parseMliapSnaDescriptor, type MliapSnaDescriptor } from '../mliap/descriptor';
 
@@ -51,25 +52,30 @@ export class ComputeMliap extends Compute {
     this.ntypes = nt;
     let kind: string | null = null, desc: MliapSnaDescriptor | null = null;
     for (let k = 0; k < args.length; k += 2) {
+      // As native LAMMPS does (src/ML-IAP/compute_mliap.cpp at b332f28): model, descriptor, gradgradflag; the engine
+      // refuses by name the model and descriptor styles it does not have
       const kw = args[k], v = args[k + 1];
-      if (v === undefined) throw new StyleError(`compute ${id} (mliap): keyword '${kw}' needs a value`);
       if (kw === 'model') {
+        if (v === undefined) throw missingArgs('compute mliap model');
         if (v === 'mliappy') throw new StyleError(`compute ${id} (mliap): model mliappy needs the Python module and is not implemented in this engine`);
-        if (!MODEL_STYLES.includes(v)) throw new StyleError(`compute ${id} (mliap): model style '${v}' is not implemented (linear, quadratic)`);
+        if (!MODEL_STYLES.includes(v)) throw new StyleError(`Unknown compute mliap model ${v}`);
         kind = v;
       } else if (kw === 'descriptor') {
+        if (v === undefined) throw missingArgs('compute mliap descriptor');
+        if (v !== 'sna' && v !== 'so3' && v !== 'ace') throw new StyleError(`Unknown compute mliap descriptor ${v}`);
         const file = args[k + 2];
-        if (file === undefined) throw new StyleError(`compute ${id} (mliap): descriptor needs a style and a filename`);
+        if (file === undefined) throw missingArgs(`compute mliap descriptor ${v}`);
         if (v !== 'sna') throw new StyleError(`compute ${id} (mliap): descriptor style '${v}' is not implemented in this engine (sna is)`);
         desc = parseMliapSnaDescriptor(sys.readFile(file), file);
         k += 1;
       } else if (kw === 'gradgradflag') {
-        if (v !== '0' && v !== '1') throw new StyleError(`compute ${id} (mliap): gradgradflag must be 0 or 1 (got '${v}')`);
+        // native checks iarg+1 > narg here, so a missing value is read as NULL by utils::logical
+        logical(v);
       } else {
-        throw new StyleError(`compute ${id} (mliap): unknown keyword '${kw}'`);
+        throw new StyleError(`Unknown compute mliap keyword ${kw}`);
       }
     }
-    if (kind === null || desc === null) throw new StyleError(`compute ${id} (mliap) needs the keywords model and descriptor`);
+    if (kind === null || desc === null) throw new StyleError('Illegal compute_style command');
     if (desc.chem) throw new StyleError(`compute ${id} (mliap): descriptor sna with chemflag 1 is not implemented in this engine (pair_style mliap is)`);
     if (desc.elems.length !== nt) {
       throw new StyleError(`compute ${id} (mliap): nelems ${desc.elems.length} of the descriptor must match the ${nt} atom types`);

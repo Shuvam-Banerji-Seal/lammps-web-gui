@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { missingArgs, inumeric, bnumeric } from '../force/util';
+import { missingArgs, inumeric, bnumeric, numeric } from '../force/util';
 import { errorUrl } from '../formula';
 import { argInfo, EQUAL_STYLES } from '../argInfo';
 import { BlockRegion, ConeRegion, SphereRegion, type Region, type SurfaceContact } from '../region';
@@ -607,66 +607,58 @@ export class FixWallReflectStochastic extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const usage = 'usage: fix ID group-ID wall/reflect/stochastic rstyle seed face args ... [units lattice|box]';
+    // As native LAMMPS does (src/EXTRA-FIX/fix_wall_reflect_stochastic.cpp at b332f28): every bad word is "Illegal fix
+    // wall/reflect/stochastic command"; the periodic and 2d checks follow the words
+    const illegal = (): StyleError => new StyleError('Illegal fix wall/reflect/stochastic command');
+    if (args.length < 5) throw illegal();
+    if (sys.geom.triclinic) throw new StyleError('Fix wall/reflect/stochastic cannot be used with triclinic simulation box');
     const rstyle = args[0];
-    if (rstyle !== 'diffusive' && rstyle !== 'maxwell' && rstyle !== 'ccl') {
-      throw new StyleError(`fix ${id} (wall/reflect/stochastic): rstyle must be diffusive, maxwell or ccl, got '${rstyle ?? ''}' (${usage})`);
-    }
+    if (rstyle !== 'diffusive' && rstyle !== 'maxwell' && rstyle !== 'ccl') throw illegal();
     this.rstyle = rstyle;
-    const seed = Number(args[1]);
-    if (!Number.isInteger(seed) || seed < 1 || seed > 900000000) {
-      throw new StyleError(`fix ${id} (wall/reflect/stochastic): seed must be a positive integer below 900000000, got '${args[1] ?? ''}'`);
-    }
+    const seed = inumeric(args[1]);
+    if (seed <= 0) throw new StyleError('Random seed must be a positive number');
     const nAccom = rstyle === 'diffusive' ? 0 : rstyle === 'maxwell' ? 1 : 3;
     const nArgs = 5 + nAccom;
     for (let k = 2; k < args.length;) {
       const w = args[k];
       if (w === 'units') {
+        if (k + 2 > args.length) throw new StyleError('Illegal wall/reflect/stochastic command');
         const v = args[k + 1];
-        if (v !== 'lattice' && v !== 'box') throw new StyleError(`fix ${id} (wall/reflect/stochastic): units must be lattice or box, got '${v ?? ''}'`);
+        if (v !== 'lattice' && v !== 'box') throw illegal();
         this.unitsMode = v;
         k += 2;
         continue;
       }
       const dim = ['xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi'].indexOf(w);
-      if (dim < 0) throw new StyleError(`fix ${id} (wall/reflect/stochastic): unknown argument '${w}' (expected a face xlo..zhi or units)`);
-      if (this.faces.some((f) => f.face === w)) throw new StyleError(`fix ${id} (wall/reflect/stochastic): face ${w} is specified more than once`);
+      if (dim < 0) throw illegal();
+      if (k + 1 + nArgs > args.length) throw illegal();
+      if (this.faces.some((f) => f.face === w)) throw new StyleError('Fix wall/reflect/stochastic command wall defined twice');
       const a = args.slice(k + 1, k + 1 + nArgs);
-      if (a.length < nArgs) {
-        throw new StyleError(`fix ${id} (wall/reflect/stochastic): ${rstyle} needs ${nArgs} arguments after face ${w} (pos temp velx vely velz${nAccom ? ' accom...' : ''})`);
+      const pos = a[0] === 'EDGE' ? null : numeric(a[0]);
+      const temp = numeric(a[1]);
+      const wv: [number, number, number] = [0, 0, 0];
+      for (let d = 0; d < 3; d++) {
+        wv[d] = numeric(a[2 + d]);
+        if (wv[d] !== 0 && d === dim >> 1) throw new StyleError('The wall velocity must be tangential');
       }
-      const num = (s: string, what: string): number => {
-        const v = Number(s);
-        if (s.startsWith('v_') || !Number.isFinite(v)) throw new StyleError(`fix ${id} (wall/reflect/stochastic): ${what} must be a number, got '${s}'`);
-        return v;
-      };
-      const pos = a[0] === 'EDGE' ? null : num(a[0], `${w} position`);
-      const temp = num(a[1], `${w} temperature`);
+      const accom = a.slice(5).map((s) => numeric(s));
+      // the engine's own limits (native does not check them)
       if (!(temp >= 0)) throw new StyleError(`fix ${id} (wall/reflect/stochastic): ${w} temperature must be >= 0`);
-      const wv: [number, number, number] = [num(a[2], `${w} velx`), num(a[3], `${w} vely`), num(a[4], `${w} velz`)];
-      if (wv[dim >> 1] !== 0) {
-        throw new StyleError(`fix ${id} (wall/reflect/stochastic): the wall velocity must lie in the plane of the ${w} wall (normal component ${wv[dim >> 1]} is not 0)`);
-      }
-      const accom = a.slice(5).map((s, q): number => {
-        const v = num(s, `${w} accommodation coefficient ${q + 1}`);
+      for (const v of accom) {
         if (!(v >= 0 && v <= 1)) throw new StyleError(`fix ${id} (wall/reflect/stochastic): accommodation coefficients must be between 0 and 1, got ${v}`);
-        return v;
-      });
-      this.faces.push({ face: w, dim: (dim >> 1) as 0 | 1 | 2, lo: (dim & 1) === 0, pos, temp, wv: [wv[0], wv[1], wv[2]], accom });
+      }
+      this.faces.push({ face: w, dim: (dim >> 1) as 0 | 1 | 2, lo: (dim & 1) === 0, pos, temp, wv, accom });
       k += 1 + nArgs;
     }
-    if (!this.faces.length) throw new StyleError(`fix ${id} (wall/reflect/stochastic): ${usage} (no face given)`);
+    if (!this.faces.length) throw new StyleError('Illegal fix wall command');
+    for (const f of this.faces) {
+      if (sys.state.box.periodic[f.dim]) throw new StyleError('Cannot use fix wall/reflect/stochastic in periodic dimension');
+    }
+    if (sys.dimension === 2 && this.faces.some((f) => f.dim === 2)) {
+      throw new StyleError('Cannot use fix wall/reflect/stochastic zlo/zhi for a 2d simulation');
+    }
     this.rng = new RanMars(seed);
     this.rng.uniform(); // warm-up draw made when the fix is created (measured with native LAMMPS)
-  }
-
-  init(): void {
-    const s = this.sys.state;
-    for (const f of this.faces) {
-      if (s.box.periodic[f.dim]) {
-        throw new StyleError(`fix ${this.id} (wall/reflect/stochastic): a wall requires a non-periodic dimension (${f.face} is periodic)`);
-      }
-    }
   }
 
   /** native FixWallReflectStochastic inherits FixWallReflect::post_integrate (src/EXTRA-FIX/fix_wall_reflect_stochastic.h at b332f28). */

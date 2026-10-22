@@ -1,8 +1,9 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
-import { parseInt_, parseNum } from '../force/util';
+import { inumeric, logical, missingArgs, numeric } from '../force/util';
 import type { System } from '../system';
-import { massOf } from '../atoms';
+import { hasMolecule, massOf } from '../atoms';
+import { argInfo } from '../argInfo';
 import { parseRef, peratomValues, type Ref } from '../refs';
 import { gplHook } from '../gplHooks';
 import type { ImageObject, ImageShading } from '../output/image_objects';
@@ -116,20 +117,19 @@ interface RadialGeom {
   inv: number;
 }
 
-/** Logical values of the pbc keyword (utils::logical). */
-const LOGICAL: Record<string, boolean> = { yes: true, on: true, true: true, '1': true, no: false, off: false, false: false, '0': false };
 
 /** limit / compress, applied in keyword order after the raw chunk IDs are known. */
 type PostOp = { op: 'limit'; mode: 'max' | 'exact'; nc: number } | { op: 'compress' };
 
-const parseBinTriple = (w: string[], k: number, what: string): { spec: BinSpec; next: number } => {
+/** dim origin delta of a bin style, as native readdim reads them (src/compute_chunk_atom.cpp at b332f28). */
+const parseBinTriple = (w: string[], k: number, dimension: number): { spec: BinSpec; next: number } => {
+  if (w.length < k + 3) throw missingArgs('compute chunk/atom');
   const dim = DIMS[w[k]];
-  if (dim === undefined) throw new StyleError(`${what}: dim must be x, y or z, got '${w[k]}'`);
+  if (dim === undefined) throw new StyleError(`Illegal compute chunk/atom dimension ${w[k]}`);
+  if (dim === 2 && dimension === 2) throw new StyleError('Cannot use compute chunk/atom bin z for 2d model');
   const o = w[k + 1];
-  if (o === undefined) throw new StyleError(`${what}: missing origin`);
-  const origin: Origin = o === 'lower' || o === 'center' || o === 'upper' ? o : parseNum(o, `${what}: origin`);
-  const delta = parseNum(w[k + 2], `${what}: delta`);
-  if (!(delta > 0)) throw new StyleError(`${what}: delta must be > 0, got ${delta}`);
+  const origin: Origin = o === 'lower' || o === 'center' || o === 'upper' ? o : numeric(o);
+  const delta = numeric(w[k + 2]);
   return { spec: { dim, origin, delta, lo: 'lower', hi: 'upper' }, next: k + 3 };
 };
 
@@ -179,8 +179,9 @@ export class ComputeChunkAtom extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const what = `compute ${id} (chunk/atom)`;
-    if (!args.length) throw new StyleError(`usage: compute ${id} group-ID chunk/atom style [args] [keyword value ...]`);
+    // As native LAMMPS does (src/compute_chunk_atom.cpp at b332f28): the style and its words, the keywords, then the
+    // checks of the values
+    if (!args.length) throw missingArgs('compute chunk/atom');
     const style = args[0];
     let k = 1;
     let discard: Discard = 'yes';
@@ -201,39 +202,39 @@ export class ComputeChunkAtom extends Compute {
       kind = 'bin';
       const nd = style === 'bin/1d' ? 1 : style === 'bin/2d' ? 2 : 3;
       for (let d = 0; d < nd; d++) {
-        const { spec, next } = parseBinTriple(args, k, what);
+        const { spec, next } = parseBinTriple(args, k, sys.dimension);
         bins.push(spec);
         k = next;
       }
       discard = 'mixed';
     } else if (style === 'bin/sphere') {
       kind = 'bin';
-      if (k + 6 > args.length) throw new StyleError(`${what}: bin/sphere needs xorig yorig zorig rmin rmax nsbin`);
-      const o = [0, 1, 2].map((d) => parseNum(args[k + d], `${what}: bin/sphere origin`));
+      if (k + 6 > args.length) throw missingArgs('compute chunk/atom bin/sphere');
+      const o = [0, 1, 2].map((d) => numeric(args[k + d]));
       radial = {
         shape: 'sphere', origin: [o[0], o[1], o[2]],
-        rmin: parseNum(args[k + 3], `${what}: bin/sphere rmin`),
-        rmax: parseNum(args[k + 4], `${what}: bin/sphere rmax`),
-        nbin: parseInt_(args[k + 5], `${what}: bin/sphere nsbin`),
+        rmin: numeric(args[k + 3]),
+        rmax: numeric(args[k + 4]),
+        nbin: inumeric(args[k + 5]),
         rdims: [0, 1, 2],
       };
       k += 6;
       discard = 'mixed';
     } else if (style === 'bin/cylinder') {
       kind = 'bin';
-      const { spec, next } = parseBinTriple(args, k, what);
+      const { spec, next } = parseBinTriple(args, k, sys.dimension);
       bins.push(spec);
       k = next;
-      if (k + 5 > args.length) throw new StyleError(`${what}: bin/cylinder needs dim origin delta c1 c2 rmin rmax ncbin`);
+      if (k + 5 > args.length) throw missingArgs('compute chunk/atom bin/cylinder');
       const rdims = [0, 1, 2].filter((d) => d !== spec.dim);
       const origin: [number, number, number] = [0, 0, 0];
-      origin[rdims[0]] = parseNum(args[k], `${what}: bin/cylinder c1`);
-      origin[rdims[1]] = parseNum(args[k + 1], `${what}: bin/cylinder c2`);
+      origin[rdims[0]] = numeric(args[k]);
+      origin[rdims[1]] = numeric(args[k + 1]);
       radial = {
         shape: 'cylinder', origin,
-        rmin: parseNum(args[k + 2], `${what}: bin/cylinder rmin`),
-        rmax: parseNum(args[k + 3], `${what}: bin/cylinder rmax`),
-        nbin: parseInt_(args[k + 4], `${what}: bin/cylinder ncbin`),
+        rmin: numeric(args[k + 2]),
+        rmax: numeric(args[k + 3]),
+        nbin: inumeric(args[k + 4]),
         rdims,
       };
       k += 5;
@@ -242,105 +243,111 @@ export class ComputeChunkAtom extends Compute {
       kind = 'type';
     } else if (style === 'molecule') {
       kind = 'molecule';
-    } else if (/^[cfv]_/.test(style)) {
+    } else {
+      const ai = argInfo(style);
+      if (ai.which === 'none' || ai.which === 'unknown' || ai.dim > 1) throw new StyleError(`Invalid compute chunk/atom argument ${style}`);
       kind = 'value';
       valueRef = parseRef(style);
-    } else {
-      throw new StyleError(`compute ${id}: unknown chunk/atom style '${style}'`);
     }
+    let discardSet = false;
 
     while (k < args.length) {
       const key = args[k];
       const need = (n: number): string[] => {
-        if (k + n >= args.length) throw new StyleError(`${what}: keyword ${key} needs ${n} value(s)`);
+        if (k + n >= args.length) throw missingArgs(`compute chunk/atom ${key}`);
         return args.slice(k + 1, k + 1 + n);
       };
       switch (key) {
         case 'region':
           regionId = need(1)[0];
+          if (!sys.regions.has(regionId)) throw new StyleError(`Region ${regionId} for compute chunk/atom does not exist`);
           k += 2;
           break;
         case 'nchunk': {
           const v = need(1)[0];
-          if (v !== 'once' && v !== 'every') throw new StyleError(`${what}: nchunk must be once or every, got '${v}'`);
+          if (v !== 'once' && v !== 'every') throw new StyleError(`Unknown compute chunk/atom nchunk argument ${v}`);
           nchunkMode = v;
           k += 2;
           break;
         }
         case 'limit': {
-          if (args[k + 1] === '0') { k += 2; break; }
-          const [v, mode] = need(2);
-          const nc = parseNum(v, `${what}: limit Nc`);
-          if (!Number.isInteger(nc) || nc < 1) throw new StyleError(`${what}: limit Nc must be a positive integer, got '${v}'`);
-          if (mode !== 'max' && mode !== 'exact') throw new StyleError(`${what}: limit needs 'max' or 'exact' after Nc, got '${mode}'`);
+          const nc = inumeric(need(1)[0]);
+          if (nc < 0) throw new StyleError(`Illegal compute chunk/atom limit value ${nc}`);
+          k += 2;
+          if (nc === 0) break;
+          if (k >= args.length) throw missingArgs('compute chunk/atom limit');
+          const mode = args[k];
+          if (mode !== 'max' && mode !== 'exact') throw new StyleError(`Unknown compute chunk/atom limit keyword ${mode}`);
           ops.push({ op: 'limit', mode, nc });
-          k += 3;
+          k += 1;
           break;
         }
         case 'ids': {
           const v = need(1)[0];
-          if (v !== 'once' && v !== 'nfreq' && v !== 'every') throw new StyleError(`${what}: ids must be once, nfreq or every, got '${v}'`);
+          if (v !== 'once' && v !== 'nfreq' && v !== 'every') throw new StyleError(`Unknown compute chunk/atom ids argument ${v}`);
           idsMode = v;
           k += 2;
           break;
         }
         case 'compress': {
-          const v = need(1)[0];
-          if (v !== 'yes' && v !== 'no') throw new StyleError(`${what}: compress must be yes or no`);
-          compress = v === 'yes';
+          compress = logical(need(1)[0]);
           if (compress) ops.push({ op: 'compress' });
           k += 2;
           break;
         }
         case 'discard': {
           const v = need(1)[0];
-          if (v !== 'yes' && v !== 'no' && v !== 'mixed') throw new StyleError(`${what}: discard must be yes, no or mixed, got '${v}'`);
-          if (kind! !== 'bin' && v === 'mixed') throw new StyleError(`${what}: discard mixed is only for the binning styles`);
+          if (v !== 'yes' && v !== 'no' && v !== 'mixed') throw new StyleError(`Unknown compute chunk/atom discard argument ${v}`);
           discard = v;
+          discardSet = true;
           k += 2;
           break;
         }
         case 'bound': {
           const [dw, lo, hi] = need(3);
           const d = DIMS[dw];
-          if (d === undefined) throw new StyleError(`${what}: bound dimension must be x, y or z, got '${dw}'`);
+          if (d === undefined) throw new StyleError(`Unknown compute chunk/atom bound argument ${dw}`);
           bounds.set(d, {
-            lo: lo === 'lower' ? 'lower' : parseNum(lo, `${what}: bound lo`),
-            hi: hi === 'upper' ? 'upper' : parseNum(hi, `${what}: bound hi`),
+            lo: lo === 'lower' ? 'lower' : numeric(lo),
+            hi: hi === 'upper' ? 'upper' : numeric(hi),
           });
           k += 4;
           break;
         }
         case 'pbc': {
-          const v = need(1)[0];
-          if (!(v in LOGICAL)) throw new StyleError(`${what}: pbc must be yes or no, got '${v}'`);
-          pbc = LOGICAL[v];
+          pbc = logical(need(1)[0]);
           k += 2;
           break;
         }
         case 'units': {
           const v = need(1)[0];
-          if (v !== 'box' && v !== 'lattice' && v !== 'reduced') throw new StyleError(`${what}: units must be box, lattice or reduced, got '${v}'`);
+          if (v !== 'box' && v !== 'lattice' && v !== 'reduced') throw new StyleError(`Unknown compute chunk/atom units argument ${v}`);
           units = v;
           k += 2;
           break;
         }
         default:
-          throw new StyleError(`${what}: unknown keyword '${key}'`);
+          throw new StyleError(`Unknown compute chunk/atom keyword ${key}`);
       }
     }
+    if (!discardSet) discard = kind! === 'bin' ? 'mixed' : 'yes';
+    if (kind! === 'molecule' && !hasMolecule(sys.state)) throw new StyleError('Compute chunk/atom molecule for non-molecular system');
+    if (kind! !== 'bin' && discard === 'mixed') throw new StyleError('Compute chunk/atom without bins cannot use discard mixed');
+    if (kind! === 'bin' && !radial) {
+      const nd = bins.length;
+      const dimsDiffer = new Set(bins.map((b) => b.dim)).size === nd;
+      if (bins.some((b) => b.delta <= 0) || !dimsDiffer) throw new StyleError(`Illegal compute chunk/atom ${style} command`);
+    }
+    if (radial?.shape === 'cylinder' && bins[0].delta <= 0) throw new StyleError('Illegal compute chunk/atom bin/cylinder command');
+    // docs: "The *bound* keyword only applies to the *bin/1d*, *bin/2d*, *bin/3d* styles and to the axis dimension of
+    // the *bin/cylinder* style; otherwise it is ignored."
     if (kind! === 'bin') {
       for (const [d, b] of bounds) {
         const s = bins.find((x) => x.dim === d);
-        // docs: "The *bound* keyword only applies to the *bin/1d*, *bin/2d*, *bin/3d* styles and to the
-        // axis dimension of the *bin/cylinder* style; otherwise it is ignored."
-        if (!s && radial) continue;
-        if (!s) throw new StyleError(`${what}: bound given for a dimension with no bins`);
+        if (!s) continue;
         s.lo = b.lo;
         s.hi = b.hi;
       }
-    } else if (bounds.size) {
-      throw new StyleError(`${what}: the bound keyword only applies to the binning styles`);
     }
     if (radial) {
       // As native LAMMPS does (src/compute_chunk_atom.cpp at b332f28), with its error texts
@@ -824,9 +831,13 @@ export class ComputeChunkAtom extends Compute {
 }
 
 /** Looks up a compute chunk/atom by ID (per-chunk computes and fix ave/chunk). */
+/**
+ * The compute chunk/atom of a chunk compute or fix; `what` is the command and style ("compute com/chunk"), named in
+ * native's message (src/compute_chunk.cpp ComputeChunk::init at b332f28).
+ */
 export const chunkCompute = (sys: System, id: string, what: string): ComputeChunkAtom => {
-  const c = sys.compute(id);
-  if (!(c instanceof ComputeChunkAtom)) throw new StyleError(`${what}: compute ${id} is not a compute chunk/atom`);
+  const c = sys.computes.find((x) => x.id === id);
+  if (!(c instanceof ComputeChunkAtom)) throw new StyleError(`Chunk/atom compute ${id} does not exist or is incorrect style for ${what}`);
   return c;
 };
 
@@ -902,7 +913,7 @@ export class ComputeComChunk extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (!args.length) throw new StyleError(`usage: compute ${id} group-ID com/chunk chunkID [wrap yes|no]`);
-    this.chunk = chunkCompute(sys, args[0], `compute ${id} (com/chunk)`);
+    this.chunk = chunkCompute(sys, args[0], 'compute com/chunk');
     this.wrap = parseComChunkWrap(id, args.slice(1));
     this.arrayFlag = true;
     this.sizeArrayCols = 3;
@@ -934,7 +945,7 @@ export class ComputeMsdChunk extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length !== 1) throw new StyleError(`usage: compute ${id} group-ID msd/chunk chunkID`);
-    this.chunk = chunkCompute(sys, args[0], `compute ${id} (msd/chunk)`);
+    this.chunk = chunkCompute(sys, args[0], 'compute msd/chunk');
     this.arrayFlag = true;
     this.sizeArrayCols = 4;
   }

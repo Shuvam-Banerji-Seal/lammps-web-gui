@@ -151,7 +151,7 @@ describe('shell putenv', () => {
     // a relative path that does not exist is looked up by its base name
     expect(session.sys.readFile('../../potentials/Cu.eam')).toBe('from b');
     expect(session.sys.readFile('Ni.eam')).toBe('Ni from c');
-    expect(() => session.sys.readFile('Fe.eam')).toThrow(/cannot open file Fe\.eam/);
+    expect(() => session.sys.readFile('Fe.eam')).toThrow(/Cannot open file Fe\.eam/);
   });
 
   it('LAMMPS_POTENTIALS is searched for a file that is not in the working directory', async () => {

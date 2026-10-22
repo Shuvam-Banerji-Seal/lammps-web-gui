@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -71,7 +71,7 @@ export class PairPedone extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 6 || args.length > 7) throw new StyleError('usage: pair_coeff I J D0 alpha r0 C0 [cutoff]');
+    if (args.length < 6 || args.length > 7) throw pairCoeffArgs('usage: pair_coeff I J D0 alpha r0 C0 [cutoff]');
     const vals = args.slice(2, 6).map((w, k) => parseNum(w, ['D0', 'alpha', 'r0', 'C0'][k]));
     const cut = args[6] !== undefined ? parseNum(args[6], 'cutoff') : Number.NaN;
     this.p.setRange(args[0], args[1], [...vals, cut]);

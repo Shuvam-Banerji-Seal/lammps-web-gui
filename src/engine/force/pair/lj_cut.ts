@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { fmtCoeff, parseNum } from '../util';
 
@@ -41,7 +41,7 @@ export class PairLJCut extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 4 || args.length > 5) throw new StyleError('usage: pair_coeff I J epsilon sigma [cutoff]');
+    if (args.length < 4 || args.length > 5) throw pairCoeffArgs('usage: pair_coeff I J epsilon sigma [cutoff]');
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
     const cut = args[4] !== undefined ? parseNum(args[4], 'cutoff') : this.cutGlobal;

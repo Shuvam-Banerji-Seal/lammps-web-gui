@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { parseInt_, parseNum } from '../util';
@@ -333,7 +333,7 @@ export class PairTable extends Pair {
   }
 
   coeff(args: string[], ctx: StyleContext): void {
-    if (args.length < 4 || args.length > 5) throw new StyleError('usage: pair_coeff I J filename keyword [cutoff]');
+    if (args.length < 4 || args.length > 5) throw pairCoeffArgs('usage: pair_coeff I J filename keyword [cutoff]', 'Illegal pair_coeff command', false);
     const filename = args[2], keyword = args[3];
     const sec = readSection(ctx.readFile(filename), filename, keyword);
     // "The cutoff is an optional coefficient.  If not specified, the outer cutoff in the

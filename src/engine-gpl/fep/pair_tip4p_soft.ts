@@ -18,7 +18,7 @@
  *
  * Per-atom energy and virial follow native ev_tally and ev_tally_tip4p (the Coulomb x (x) f virial split by side and site).
  */
-import { PairParams, StyleError, mixDistance, mixEpsilon, type BondedEquilibria, type PairCompute } from '../../engine/force/types';
+import { PairParams, StyleError, mixDistance, mixEpsilon, type BondedEquilibria, type PairCompute, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { erfcPoly, EWALD_F } from '../../engine/force/erfc';
@@ -102,12 +102,12 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
 
   coeff(args: string[]): void {
     if (this.hasLJ) {
-      if (args.length < 5 || args.length > 6) throw new StyleError(`usage: pair_coeff I J epsilon sigma lambda [cutoff] for pair style ${this.name}`);
+      if (args.length < 5 || args.length > 6) throw pairCoeffArgs(`usage: pair_coeff I J epsilon sigma lambda [cutoff] for pair style ${this.name}`);
       const cut = args.length === 6 ? parseNum(args[5], 'cutoff') : this.cutLJGlobal;
       this.p.setRange(args[0], args[1], [parseNum(args[2], 'epsilon'), parseNum(args[3], 'sigma'), parseNum(args[4], 'lambda'), cut]);
       return;
     }
-    if (args.length !== 3) throw new StyleError(`usage: pair_coeff I J lambda for pair style ${this.name}`);
+    if (args.length !== 3) throw pairCoeffArgs(`usage: pair_coeff I J lambda for pair style ${this.name}`);
     this.p.setRange(args[0], args[1], [0, 0, parseNum(args[2], 'lambda'), this.cutCoul]);
   }
 

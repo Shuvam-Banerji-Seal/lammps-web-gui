@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, type Neighbor } from '../../neighbor';
 import { parseNum } from '../util';
 import { PairHybrid } from './hybrid';
@@ -117,7 +117,7 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
     const usage = this.biquadratic
       ? 'usage: pair_coeff I J [biquadratic] R_c a_j b_j d_j a_k b_k d_k [offset yes|no]'
       : 'usage: pair_coeff I J [exchange] R_c a b d [offset yes|no]';
-    if (args.length < k + nv) throw new StyleError(usage);
+    if (args.length < k + nv) throw pairCoeffArgs(usage);
     const names = this.biquadratic ? ['Rc', 'a_j', 'b_j', 'd_j', 'a_k', 'b_k', 'd_k'] : ['Rc', 'a', 'b', 'd'];
     const v = args.slice(k, k + nv).map((w, n) => parseNum(w, names[n]));
     if (!(v[0] > 0)) throw new StyleError(`${this.name}: R_c must be > 0`);

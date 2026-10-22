@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 
@@ -60,7 +60,7 @@ export abstract class PairDipoleBase extends Pair {
       scale = parseNum(words[k + 1], 'scale');
       words.splice(k, 2);
     }
-    if (words.length < 4 || words.length > 6) throw new StyleError(`usage: pair_coeff I J epsilon sigma [cutoff1 [cutoff2]] (${this.name})`);
+    if (words.length < 4 || words.length > 6) throw pairCoeffArgs(`usage: pair_coeff I J epsilon sigma [cutoff1 [cutoff2]] (${this.name})`);
     const eps = parseNum(words[2], 'epsilon');
     const sig = parseNum(words[3], 'sigma');
     let cutLJ = this.cutLJGlobal, cutC = this.cutCGlobal;

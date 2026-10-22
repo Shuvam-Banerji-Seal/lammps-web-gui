@@ -76,7 +76,7 @@ describe('pair_style vashishta/table arguments', () => {
     ['pair_style vashishta/table 1 1.5', /Ntable >= 2/],
     ['pair_style vashishta/table 11 0', /inner cutoff/],
     ['pair_style vashishta/table 11 -1', /inner cutoff/],
-    ['pair_style vashishta/table 11 abc', /number/],
+    ['pair_style vashishta/table 11 abc', /Expected floating point parameter instead of 'abc'/],
   ];
   for (const [line, re] of bad) {
     it(`rejects '${line}'`, async () => {

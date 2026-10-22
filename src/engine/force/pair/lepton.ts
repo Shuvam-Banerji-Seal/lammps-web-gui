@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
@@ -105,7 +105,7 @@ export class PairLepton extends Pair {
 
   coeff(args: string[], ctx?: StyleContext): void {
     if (args.length < 3 || args.length > 4) {
-      throw new StyleError(`usage: pair_coeff I J "expression" [cutoff] (pair style ${this.name})`);
+      throw pairCoeffArgs(`usage: pair_coeff I J "expression" [cutoff] (pair style ${this.name})`, 'Incorrect number of args for pair coefficients');
     }
     if (ctx) this.ctx = ctx as LeptonStyleContext;
     const cut = args[3] !== undefined ? parseNum(args[3], 'cutoff') : this.cutGlobal;

@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, type Neighbor } from '../../neighbor';
 import { parseNum } from '../util';
 import { SPIN_HBAR } from './spin_exchange';
@@ -90,9 +90,9 @@ abstract class PairSpinVector extends Pair implements SpinPairStyle {
     // (dmi / magelec), as in the page examples "pair_coeff * * dmi 2.6 0.001 1.0 0.0 0.0". Native rejects the
     // keyword-less form inside pair hybrid/overlay ("Incorrect args"), so it is refused here too.
     const kw = this.coeffKeyword();
-    if (args[2] !== kw) throw new StyleError(`pair_coeff ${this.name}: the ${kw} keyword is required (usage: pair_coeff I J ${kw} rc magnitude Vx Vy Vz)`);
+    if (args[2] !== kw) throw pairCoeffArgs(`usage: pair_coeff I J ${kw} rc magnitude Vx Vy Vz (the ${kw} keyword is required)`, 'Incorrect args in pair_style command', false);
     const k = 3;
-    if (args.length < k + 5) throw new StyleError(`usage: pair_coeff I J ${kw} rc magnitude Vx Vy Vz`);
+    if (args.length < k + 5) throw pairCoeffArgs(`usage: pair_coeff I J ${kw} rc magnitude Vx Vy Vz`, 'Incorrect args in pair_style command', false);
     const [rc, Vx, Vy, Vz] = vectorCoeff(args.slice(k), this.name);
     this.p.setRange(args[0], args[1], [rc, Vx, Vy, Vz]);
   }

@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral, delta, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
-import { StyleError, type BondedCompute } from '../types';
+import { StyleError, type BondedCompute, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -52,7 +52,7 @@ export class ImproperHarmonic extends SimpleBonded {
   readonly paramNames = ['K', 'chi0'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('improper_coeff harmonic needs K chi0');
+    if (args.length !== 2) throw bondedCoeffArgs('improper', 'improper_coeff harmonic needs K chi0');
     // As native LAMMPS does (src/MOLECULE/improper_harmonic.cpp at b332f28): chi[i] = DEG2RAD * chi_one
     return [parseNum(args[0], 'K'), (Math.PI / 180) * parseNum(args[1], 'chi0')];
   }

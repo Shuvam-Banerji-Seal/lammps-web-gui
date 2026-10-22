@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum, fmtCoeff } from '../util';
 import { tallyAtom } from './lj_cut';
@@ -45,7 +45,7 @@ export class PairBpmSpring extends Pair {
 
   coeff(args: string[], _ctx: StyleContext): void {
     const need = this.anharmonic ? 6 : 5;
-    if (args.length !== need) throw new StyleError(`usage: pair_coeff I J k r_c gamma${this.anharmonic ? ' k_a' : ''}`);
+    if (args.length !== need) throw pairCoeffArgs(`usage: pair_coeff I J k r_c gamma${this.anharmonic ? ' k_a' : ''}`);
     const vals = args.slice(2).map((w, q) => parseNum(w, ['k', 'r_c', 'gamma', 'k_a'][q]));
     if (!(vals[1] > 0)) throw new StyleError('pair bpm/spring: r_c must be > 0');
     const kv = this.anharmonic ? vals : [vals[0], vals[1], vals[2], 0];

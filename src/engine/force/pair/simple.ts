@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -61,7 +61,7 @@ export class PairBuck extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 5 || args.length > 6) throw new StyleError('usage: pair_coeff I J A rho C [cutoff]');
+    if (args.length < 5 || args.length > 6) throw pairCoeffArgs('usage: pair_coeff I J A rho C [cutoff]');
     const a = parseNum(args[2], 'A');
     const rho = parseNum(args[3], 'rho');
     if (!(rho > 0)) throw new StyleError(`Buckingham coefficient rho must be > 0 (got '${args[3]}')`);
@@ -227,7 +227,7 @@ export class PairBuckCoulCut extends PairBuck {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 5 || args.length > 7) throw new StyleError('usage: pair_coeff I J A rho C [cutoff [cutoff2]]');
+    if (args.length < 5 || args.length > 7) throw pairCoeffArgs('usage: pair_coeff I J A rho C [cutoff [cutoff2]]');
     const a = parseNum(args[2], 'A');
     const rho = parseNum(args[3], 'rho');
     if (!(rho > 0)) throw new StyleError(`Buckingham coefficient rho must be > 0 (got '${args[3]}')`);
@@ -386,7 +386,7 @@ export class PairBorn extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 7 || args.length > 8) throw new StyleError('usage: pair_coeff I J A rho sigma C D [cutoff]');
+    if (args.length < 7 || args.length > 8) throw pairCoeffArgs('usage: pair_coeff I J A rho sigma C D [cutoff]');
     const a = parseNum(args[2], 'A');
     const rho = parseNum(args[3], 'rho');
     if (!(rho > 0)) throw new StyleError(`Born-Mayer-Huggins coefficient rho must be > 0 (got '${args[3]}')`);
@@ -560,7 +560,7 @@ export class PairMorse extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 5 || args.length > 6) throw new StyleError('usage: pair_coeff I J D0 alpha r0 [cutoff]');
+    if (args.length < 5 || args.length > 6) throw pairCoeffArgs('usage: pair_coeff I J D0 alpha r0 [cutoff]');
     const d0 = parseNum(args[2], 'D0');
     const alpha = parseNum(args[3], 'alpha');
     const r0 = parseNum(args[4], 'r0');

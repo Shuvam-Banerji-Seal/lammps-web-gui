@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { bondLoop } from './styles';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
 import { libm } from '../../libm';
@@ -48,14 +48,14 @@ export class BondGaussian extends Bonded {
   }
 
   coeff(args: string[], _ctx?: StyleContext): void {
-    if (args.length < 3) throw new StyleError('usage: bond_coeff N T n A1 w1 r1 ...');
+    if (args.length < 3) throw bondedCoeffArgs('bond', 'usage: bond_coeff N T n A1 w1 r1 ...');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const T = parseNum(args[1], 'T');
     const n = parseInt_(args[2], 'n');
     if (n < 1) throw new StyleError(`bond_coeff gaussian: n must be an integer >= 1, got ${n}`);
     const need = 3 + 3 * n;
     if (args.length !== need) {
-      throw new StyleError(`bond_coeff gaussian: expected T n and ${n} (A w r) term(s) = ${need - 1} values after the type, got ${args.length - 1}`);
+      throw bondedCoeffArgs('bond', `bond_coeff gaussian: expected T n and ${n} (A w r) term(s) = ${need - 1} values after the type, got ${args.length - 1}`);
     }
     const terms: GaussTerm[] = [];
     for (let i = 0; i < n; i++) {

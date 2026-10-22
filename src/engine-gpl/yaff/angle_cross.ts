@@ -18,7 +18,7 @@
  */
 import { SimpleBonded, atomIndex, delta } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
-import { StyleError, type BondedCompute } from '../../engine/force/types';
+import { StyleError, type BondedCompute, bondedCoeffArgs } from '../../engine/force/types';
 import { acos as libmAcos } from '../libm/acos';
 import { tallyAngle } from '../../engine/force/angle/harmonic';
 
@@ -31,7 +31,7 @@ export class AngleCross extends SimpleBonded {
   readonly paramNames = ['Kss', 'Kbs0', 'Kbs1', 'r00', 'r01', 'theta0'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 6) throw new StyleError('angle_coeff cross needs Kss Kbs0 Kbs1 r00 r01 theta0');
+    if (args.length !== 6) throw bondedCoeffArgs('angle', 'angle_coeff cross needs Kss Kbs0 Kbs1 r00 r01 theta0');
     const v = args.map((w, k) => parseNum(w, this.paramNames[k]));
     v[5] = (v[5] * Math.PI) / 180;   // theta0 in degrees -> radians (angle_cross.cpp coeff)
     return v;

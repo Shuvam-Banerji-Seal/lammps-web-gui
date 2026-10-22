@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral } from '../bonded_util';
 import { parseNum, parseInt_, fmtCoeff } from '../util';
-import { StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -193,12 +193,12 @@ export class DihedralFourier extends DihedralVarLen {
   readonly kind = 'dihedral' as const;
 
   override coeff(args: string[], _ctx?: StyleContext): void {
-    if (args.length < 2) throw new StyleError('usage: dihedral_coeff N m K1 n1 d1 [K2 n2 d2 ...]');
+    if (args.length < 2) throw bondedCoeffArgs('dihedral', 'usage: dihedral_coeff N m K1 n1 d1 [K2 n2 d2 ...]');
     const m = parseInt_(args[1], 'm');
     if (m < 1) throw new StyleError('dihedral fourier m must be an integer >= 1');
     const vals = args.slice(2);
     if (vals.length !== 3 * m) {
-      throw new StyleError(`dihedral_coeff fourier needs m K n d triplets: m=${m} requires ${3 * m} values, got ${vals.length}`);
+      throw bondedCoeffArgs('dihedral', `dihedral_coeff fourier needs m K n d triplets: m=${m} requires ${3 * m} values, got ${vals.length}`);
     }
     const packed: number[] = [];
     for (let i = 0; i < m; i++) {
@@ -252,7 +252,7 @@ export class DihedralQuadratic extends SimpleBonded {
   readonly paramNames = ['K', 'phi0'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('dihedral_coeff quadratic needs K phi0');
+    if (args.length !== 2) throw bondedCoeffArgs('dihedral', 'dihedral_coeff quadratic needs K phi0');
     // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_quadratic.cpp at b332f28): phi0[i] = phi0_one*MY_PI/180.0
     return [parseNum(args[0], 'K'), (parseNum(args[1], 'phi0') * Math.PI) / 180];
   }
@@ -293,12 +293,12 @@ export class DihedralNHarmonic extends DihedralVarLen {
   readonly kind = 'dihedral' as const;
 
   override coeff(args: string[], _ctx?: StyleContext): void {
-    if (args.length < 2) throw new StyleError('usage: dihedral_coeff N n A1 [A2 ... An]');
+    if (args.length < 2) throw bondedCoeffArgs('dihedral', 'usage: dihedral_coeff N n A1 [A2 ... An]');
     const n = parseInt_(args[1], 'n');
     if (n < 1) throw new StyleError('dihedral nharmonic n must be an integer >= 1');
     const vals = args.slice(2);
     if (vals.length !== n) {
-      throw new StyleError(`dihedral_coeff nharmonic needs n A values: n=${n} requires ${n} values, got ${vals.length}`);
+      throw bondedCoeffArgs('dihedral', `dihedral_coeff nharmonic needs n A values: n=${n} requires ${n} values, got ${vals.length}`);
     }
     this.setCoeffs(args[0], vals.map((w, i) => parseNum(w, `A${i + 1}`)));
   }
@@ -343,7 +343,7 @@ export class DihedralCosineShiftExp extends SimpleBonded {
   readonly paramNames = ['Umin', 'theta0', 'a'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 3) throw new StyleError('dihedral_coeff cosine/shift/exp needs Umin theta0 a');
+    if (args.length !== 3) throw bondedCoeffArgs('dihedral', 'dihedral_coeff cosine/shift/exp needs Umin theta0 a');
     // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_cosine_shift_exp.cpp at b332f28): theta0[i]=theta0_*MY_PI/180.0
     return [parseNum(args[0], 'Umin'), (parseNum(args[1], 'theta0') * Math.PI) / 180, parseNum(args[2], 'a')];
   }
@@ -435,7 +435,7 @@ export class DihedralZero extends SimpleBonded {
   }
 
   override coeff(args: string[], _ctx?: StyleContext): void {
-    if (!args.length) throw new StyleError('usage: dihedral_coeff N');
+    if (!args.length) throw bondedCoeffArgs('dihedral', 'usage: dihedral_coeff N');
     if (!this.nocoeff && args.length > 1) {
       throw new StyleError("dihedral_coeff zero takes no coefficient values (use 'dihedral_style zero nocoeff' to ignore them)");
     }

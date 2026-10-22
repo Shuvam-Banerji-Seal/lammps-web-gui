@@ -1,4 +1,4 @@
-import { PairParams, StyleError, mixDistance, mixEpsilon, type StyleContext } from '../types';
+import { PairParams, StyleError, mixDistance, mixEpsilon, type StyleContext, pairCoeffArgs } from '../types';
 import { fmtCoeff, parseNum } from '../util';
 import { PairLJVariant } from './lj_variants';
 
@@ -169,7 +169,7 @@ export class PairLJRelRes extends PairLJVariant {
   coeff(args: string[], _ctx: StyleContext): void {
     // docs.lammps.org/pair_lj_relres.html: "If this override option is employed, all four
     // arguments must be specified."
-    if (args.length !== 6 && args.length !== 10) throw new StyleError(this.coeffUsage);
+    if (args.length !== 6 && args.length !== 10) throw pairCoeffArgs(this.coeffUsage);
     const eFG = parseNum(args[2], 'epsilon^FG');
     const sFG = parseNum(args[3], 'sigma^FG');
     const eCG = parseNum(args[4], 'epsilon^CG');

@@ -2,7 +2,7 @@ import { SimpleBonded, atomIndex, termDelta } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { PairBuck6dCoulGauss } from '../pair/buck6d_gauss';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
-import { StyleError, addPairCentroid, type BondedCompute, type StyleContext } from '../types';
+import { StyleError, addPairCentroid, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import type { CharmmLink } from '../dihedral/charmm';
 import { libm } from '../../libm';
 
@@ -41,7 +41,7 @@ export class AngleCosineBuck6d extends SimpleBonded {
   }
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 3) throw new StyleError('angle_coeff cosine/buck6d needs K n theta0');
+    if (args.length !== 3) throw bondedCoeffArgs('angle', 'angle_coeff cosine/buck6d needs K n theta0');
     const K = parseNum(args[0], 'K');
     const n = parseInt_(args[1], 'n');
     if (n < 0) throw new StyleError('angle cosine/buck6d n must be an integer >= 0');

@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral } from '../bonded_util';
 import { parseNum } from '../util';
-import { StyleError, type BondedCompute } from '../types';
+import { StyleError, type BondedCompute, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -15,7 +15,7 @@ export class DihedralHarmonic extends SimpleBonded {
   readonly paramNames = ['K', 'd', 'n'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 3) throw new StyleError('dihedral_coeff harmonic needs K d n');
+    if (args.length !== 3) throw bondedCoeffArgs('dihedral', 'dihedral_coeff harmonic needs K d n');
     const K = parseNum(args[0], 'K'), d = parseNum(args[1], 'd'), n = parseNum(args[2], 'n');
     if (d !== 1 && d !== -1) throw new StyleError('dihedral harmonic d must be +1 or -1');
     if (!Number.isInteger(n) || n < 0) throw new StyleError('dihedral harmonic n must be an integer >= 0');

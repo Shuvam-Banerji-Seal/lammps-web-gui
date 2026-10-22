@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
@@ -378,7 +378,7 @@ export abstract class PairSWBase extends Pair {
 
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 3) throw new StyleError(`usage: pair_coeff I J filename elem1 ... elemN (style ${this.name})`);
+    if (args.length < 3) throw pairCoeffArgs(`usage: pair_coeff I J filename elem1 ... elemN (style ${this.name})`);
     const filename = args[2];
     const elems = args.slice(3);
     if (elems.length !== this.ntypes) {

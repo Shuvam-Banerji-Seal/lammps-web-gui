@@ -1,7 +1,7 @@
 import { SimpleBonded, atomIndex } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { angleTerm } from './harmonic';
-import { StyleError, type BondedCompute } from '../types';
+import { StyleError, type BondedCompute, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -40,7 +40,7 @@ export class AngleCosineSquaredRestricted extends SimpleBonded {
   readonly paramNames = ['K', 'theta0'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('angle_coeff cosine/squared/restricted needs K theta0');
+    if (args.length !== 2) throw bondedCoeffArgs('angle', 'angle_coeff cosine/squared/restricted needs K theta0');
     // As native LAMMPS does (src/EXTRA-MOLECULE/angle_cosine_squared_restricted.cpp at b332f28): theta0[i] = DEG2RAD * theta0_one
     return [parseNum(args[0], 'K'), (Math.PI / 180) * parseNum(args[1], 'theta0')];
   }
@@ -115,7 +115,7 @@ export class AngleMm3 extends SimpleBonded {
   readonly paramNames = ['K', 'theta0'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('angle_coeff mm3 needs K theta0');
+    if (args.length !== 2) throw bondedCoeffArgs('angle', 'angle_coeff mm3 needs K theta0');
     // As native LAMMPS does (src/YAFF/angle_mm3.cpp at b332f28): theta0[i] = theta0_one/180.0 * MY_PI
     return [parseNum(args[0], 'K'), (parseNum(args[1], 'theta0') / 180) * Math.PI];
   }

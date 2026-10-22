@@ -1,3 +1,4 @@
+import { bounds } from './util';
 import type { SimState } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, NeighList } from '../neighbor';
@@ -163,25 +164,26 @@ export const evTallyFull = (
   }
 };
 
-/** Parses a type argument: "n", "*", "*n", "n*", "m*n" (docs.lammps.org/pair_coeff.html). */
-export const typeBounds = (word: string, n: number): [number, number] => {
-  const bad = () => new StyleError(`invalid type '${word}' (expected 1..${n}, or a wildcard *, *n, n*, m*n)`);
-  if (word === '*') return [1, n];
-  const star = word.indexOf('*');
-  const num = (w: string) => {
-    if (!/^\d+$/.test(w)) throw bad();
-    return Number(w);
-  };
-  let lo: number, hi: number;
-  if (star < 0) lo = hi = num(word);
-  else {
-    const a = word.slice(0, star), b = word.slice(star + 1);
-    lo = a === '' ? 1 : num(a);
-    hi = b === '' ? n : num(b);
-  }
-  if (lo < 1 || hi > n || lo > hi) throw bad();
-  return [lo, hi];
-};
+/**
+ * Parses a type argument: "n", "*", "*n", "n*", "m*n" (docs.lammps.org/pair_coeff.html), as native LAMMPS does
+ * (utils::bounds at b332f28, with its messages: "Invalid range string: ...", "Numeric index ... is out of bounds").
+ */
+export const typeBounds = (word: string, n: number): [number, number] => bounds(word, 1, n);
+
+/**
+ * A pair_coeff line of the wrong shape, with native LAMMPS's message (by default "Incorrect args for pair coefficients"
+ * and its error page; a few styles have their own `text` without the page); the engine's usage of the style follows
+ * as a hint.
+ */
+/**
+ * A bond_coeff, angle_coeff, dihedral_coeff or improper_coeff line of the wrong shape, with native LAMMPS's message
+ * ("Incorrect args for bond coefficients" and its error page); the engine's usage of the style follows as a hint.
+ */
+export const bondedCoeffArgs = (kind: string, usage?: string): StyleError =>
+  new StyleError(`Incorrect args for ${kind} coefficients\nFor more information see https://docs.lammps.org/err0021${usage ? `\n${usage}` : ''}`);
+
+export const pairCoeffArgs = (usage?: string, text = 'Incorrect args for pair coefficients', page = true): StyleError =>
+  new StyleError(`${text}${page ? '\nFor more information see https://docs.lammps.org/err0021' : ''}${usage ? `\n${usage}` : ''}`);
 
 /**
  * Per type pair parameters, symmetric. "For the asterisk syntax, only type

@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 
@@ -122,7 +122,7 @@ export class PairPeri extends Pair {
   coeff(args: string[], _ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
     const usage = `usage: pair_coeff I J ${this.names.join(' ')}`;
-    if (args.length !== this.names.length + 2) throw new StyleError(usage);
+    if (args.length !== this.names.length + 2) throw pairCoeffArgs(usage);
     const vals = this.names.map((nm, k) => parseNum(args[k + 2], nm));
     const delta = vals[this.names.indexOf('horizon')];
     if (!(delta > 0)) throw new StyleError(`${this.name}: horizon must be > 0`);

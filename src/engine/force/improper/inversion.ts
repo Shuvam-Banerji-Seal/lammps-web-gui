@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, applyDihedral, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
-import { StyleError, type BondedCompute } from '../types';
+import { StyleError, type BondedCompute, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -63,7 +63,7 @@ export class ImproperInversionHarmonic extends SimpleBonded {
   readonly paramNames = ['K', 'omega0'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('improper_coeff inversion/harmonic needs K omega0');
+    if (args.length !== 2) throw bondedCoeffArgs('improper', 'improper_coeff inversion/harmonic needs K omega0');
     // As native LAMMPS does (src/MOFFF/improper_inversion_harmonic.cpp at b332f28): w0[i] = w_one/180.0 * MY_PI
     return [parseNum(args[0], 'K'), (parseNum(args[1], 'omega0') / 180) * Math.PI];
   }

@@ -1,4 +1,4 @@
-import { Bonded, StyleError, termCentroid, typeBounds, type BondedCompute, type StyleContext } from './types';
+import { Bonded, StyleError, bondedCoeffArgs, termCentroid, typeBounds, type BondedCompute, type StyleContext } from './types';
 import { fmtCoeff, parseNum } from './util';
 
 /*
@@ -73,11 +73,11 @@ export abstract class SimpleBonded extends Bonded {
   /** Parsed values (override to convert units, e.g. degrees to radians). */
   protected parse(args: string[]): number[] {
     const n = this.paramNames.length;
-    if (args.length !== n) throw new StyleError(`${this.kind}_coeff ${this.name} needs ${n} coefficient(s): ${this.paramNames.join(' ')}`);
+    if (args.length !== n) throw bondedCoeffArgs(this.kind, `${this.kind}_coeff ${this.name} needs ${n} coefficient(s): ${this.paramNames.join(' ')}`);
     return args.map((w, k) => parseNum(w, this.paramNames[k]));
   }
   coeff(args: string[], _ctx?: StyleContext): void {
-    if (!args.length) throw new StyleError(`usage: ${this.kind}_coeff N coefficients`);
+    if (!args.length) throw bondedCoeffArgs(this.kind, `usage: ${this.kind}_coeff N coefficients`);
     this.params.setRange(args[0], this.parse(args.slice(1)));
   }
   init(_ctx?: StyleContext): void {

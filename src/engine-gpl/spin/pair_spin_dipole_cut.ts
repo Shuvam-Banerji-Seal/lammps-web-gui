@@ -16,7 +16,7 @@
  * metal-unit Planck constant of the engine (units.ts). The source's full list visits each pair twice, and the
  * mechanical force is added to both atoms of every directed pair, as the source does.
  */
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, type Neighbor } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { spinContribute, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../../engine/force/spin_book';
@@ -56,7 +56,7 @@ export class PairSpinDipoleCut extends Pair implements SpinPairStyle {
   }
 
   coeff(args: string[], _ctx?: StyleContext): void {
-    if (args.length !== 3) throw new StyleError('usage: pair_coeff I J cut_long (pair spin/dipole/cut)');
+    if (args.length !== 3) throw pairCoeffArgs('usage: pair_coeff I J cut_long (pair spin/dipole/cut)', 'Incorrect args in pair_style command', false);
     const rc = parseNum(args[2], 'cut_long');
     if (!(rc > 0)) throw new StyleError('spin/dipole/cut: cut_long must be > 0');
     this.p.setRange(args[0], args[1], [rc]);

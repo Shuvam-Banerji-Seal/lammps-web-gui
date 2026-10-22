@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, bondedVirial, type BondedCompute, type StyleContext } from '../types';
+import { Bonded, StyleError, typeBounds, bondedVirial, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { atomIndex, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { libm } from '../../libm';
@@ -68,7 +68,7 @@ export class ImproperClass2 extends Bonded {
     if (!args.length) throw new StyleError(`usage: ${this.kind}_coeff N coefficients`);
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     if (args[1] === 'aa') {
-      if (args.length !== 8) throw new StyleError('improper_coeff class2 aa needs M1 M2 M3 theta1 theta2 theta3');
+      if (args.length !== 8) throw bondedCoeffArgs('improper', 'improper_coeff class2 aa needs M1 M2 M3 theta1 theta2 theta3');
       const M1 = parseNum(args[2], 'M1'), M2 = parseNum(args[3], 'M2'), M3 = parseNum(args[4], 'M3');
       // As native LAMMPS does (src/CLASS2/improper_class2.cpp at b332f28): aa_theta0_1[i] = theta0_1_one/180.0 * MY_PI
       const t1 = (parseNum(args[5], 'theta1') / 180) * Math.PI;
@@ -82,7 +82,7 @@ export class ImproperClass2 extends Bonded {
         this.setAa[t] = 1;
       }
     } else {
-      if (args.length !== 3) throw new StyleError('improper_coeff class2 needs K chi0');
+      if (args.length !== 3) throw bondedCoeffArgs('improper', 'improper_coeff class2 needs K chi0');
       const K = parseNum(args[1], 'K');
       // As native LAMMPS does (src/CLASS2/improper_class2.cpp at b332f28): chi0[i] = chi0_one/180.0 * MY_PI
       const c0 = (parseNum(args[2], 'chi0') / 180) * Math.PI;

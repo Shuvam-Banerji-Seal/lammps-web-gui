@@ -13,7 +13,7 @@
  * per directed pair. The mechanical force (compute_long_mech) is applied only with fix nve/spin lattice moving. The
  * The kspace solver supplies g_ewald (Pair.gEwald, set by the force field after the kspace init).
  */
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, type Neighbor } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { spinContribute, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../../engine/force/spin_book';
@@ -70,7 +70,7 @@ export class PairSpinDipoleLong extends Pair implements SpinPairStyle {
   }
 
   coeff(args: string[], _ctx?: StyleContext): void {
-    if (args.length !== 3) throw new StyleError('usage: pair_coeff I J cutoff (pair spin/dipole/long)');
+    if (args.length !== 3) throw pairCoeffArgs('usage: pair_coeff I J cutoff (pair spin/dipole/long)', 'Incorrect args in pair_style command', false);
     const rc = parseNum(args[2], 'cutoff');
     if (!(rc > 0)) throw new StyleError('spin/dipole/long: cutoff must be > 0');
     this.p.setRange(args[0], args[1], [rc]);

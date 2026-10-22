@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { atomIndex, bondDelta } from '../bonded_util';
 import { parseNum } from '../util';
 import { compileLepton, fillVrefs, type LeptonProgram } from '../../lepton';
@@ -49,7 +49,7 @@ export class BondLepton extends Bonded {
 
   coeff(args: string[], ctx?: StyleContext): void {
     if (ctx) this.ctx = ctx;
-    if (args.length !== 3) throw new StyleError('usage: bond_coeff N r0 "expression"');
+    if (args.length !== 3) throw bondedCoeffArgs('bond', 'usage: bond_coeff N r0 "expression"');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const r0 = parseNum(args[1], 'r0');
     const prog = compileLepton(args[2], { builtins: ['r'], wrt: ['r'] });

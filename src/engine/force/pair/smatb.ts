@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 import { libm } from '../../libm';
@@ -123,7 +123,7 @@ export class PairSMATB extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 9) throw new StyleError(`usage: pair_coeff I J R0 p q A xi Rcs Rc (style ${this.name})`);
+    if (args.length !== 9) throw pairCoeffArgs(`usage: pair_coeff I J R0 p q A xi Rcs Rc (style ${this.name})`);
     const v = args.slice(2).map((w, k) => parseNum(w, ['R0', 'p', 'q', 'A', 'xi', 'Rcs', 'Rc'][k]));
     if (!(v[0] > 0)) throw new StyleError('pair_coeff smatb: R0 must be > 0');
     if (!(v[5] > 0 && v[6] > v[5])) throw new StyleError('pair_coeff smatb: the cutoffs must satisfy 0 < Rcs < Rc');

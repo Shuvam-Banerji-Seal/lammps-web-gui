@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseInt_, parseNum } from '../util';
 
@@ -559,7 +559,7 @@ export class PairEAM extends PairEAMBase {
   }
 
   override coeff(args: string[], ctx: StyleContext): void {
-    if (args.length !== 3) throw new StyleError('usage: pair_coeff I J filename (style eam reads one funcfl file per I,I pair)');
+    if (args.length !== 3) throw pairCoeffArgs('usage: pair_coeff I J filename (style eam reads one funcfl file per I,I pair)');
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);

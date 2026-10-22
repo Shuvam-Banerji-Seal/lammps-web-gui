@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral, termDelta } from '../bonded_util';
 import { parseNum, parseInt_ } from '../util';
-import { StyleError, addPairCentroid, type BondedCompute, type Pair, type StyleContext } from '../types';
+import { StyleError, addPairCentroid, type BondedCompute, type Pair, type StyleContext, bondedCoeffArgs } from '../types';
 import { PairHybrid } from '../pair/hybrid';
 import { libm } from '../../libm';
 
@@ -88,7 +88,7 @@ export class DihedralCharmm extends SimpleBonded {
   }
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 4) throw new StyleError(`dihedral_coeff ${this.name} needs K n d w`);
+    if (args.length !== 4) throw bondedCoeffArgs('dihedral', `dihedral_coeff ${this.name} needs K n d w`);
     const K = parseNum(args[0], 'K');
     const n = parseInt_(args[1], 'n');
     const d = parseInt_(args[2], 'd');

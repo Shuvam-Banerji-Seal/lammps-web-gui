@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -59,7 +59,7 @@ export class PairGaussCut extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 5 || args.length > 6) throw new StyleError('usage: pair_coeff I J H r_mh sigma_h [cutoff]');
+    if (args.length < 5 || args.length > 6) throw pairCoeffArgs('usage: pair_coeff I J H r_mh sigma_h [cutoff]');
     const vals = args.slice(2, 5).map((w, k) => parseNum(w, ['H', 'r_mh', 'sigma_h'][k]));
     if (!(vals[2] > 0)) throw new StyleError('pair gauss/cut: sigma_h must be > 0');
     const cut = args[5] !== undefined ? parseNum(args[5], 'cutoff') : Number.NaN;
@@ -195,7 +195,7 @@ export class PairCoulDiel extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 5) throw new StyleError('usage: pair_coeff I J epsilon r_me sigma_e');
+    if (args.length !== 5) throw pairCoeffArgs('usage: pair_coeff I J epsilon r_me sigma_e');
     const vals = args.slice(2, 5).map((w, k) => parseNum(w, ['epsilon', 'r_me', 'sigma_e'][k]));
     if (!(vals[2] > 0)) throw new StyleError('pair coul/diel: sigma_e must be > 0');
     this.p.setRange(args[0], args[1], vals);

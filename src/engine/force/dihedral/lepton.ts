@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { atomIndex, dihedralGeometry, applyDihedral } from '../bonded_util';
 import { compileLepton, fillVrefs, type LeptonProgram } from '../../lepton';
 
@@ -35,7 +35,7 @@ export class DihedralLepton extends Bonded {
 
   coeff(args: string[], ctx?: StyleContext): void {
     if (ctx) this.ctx = ctx;
-    if (args.length !== 2) throw new StyleError('usage: dihedral_coeff N "expression"');
+    if (args.length !== 2) throw bondedCoeffArgs('dihedral', 'usage: dihedral_coeff N "expression"');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const prog = compileLepton(args[1], { builtins: ['phi'], wrt: ['phi'] });
     for (let t = lo; t <= hi; t++) {

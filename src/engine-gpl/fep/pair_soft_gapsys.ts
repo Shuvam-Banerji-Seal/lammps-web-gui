@@ -23,7 +23,7 @@
  *
  * Measured with native LAMMPS (black box): tests/oracle/w69fep_gapsys_lj.in and w69fep_gapsys_coul.in.
  */
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
@@ -59,7 +59,7 @@ export class PairLJCutSoftGapsys extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 5 || args.length > 6) throw new StyleError('usage: pair_coeff I J epsilon sigma lambda [cutoff] for pair style lj/cut/soft/gapsys');
+    if (args.length < 5 || args.length > 6) throw pairCoeffArgs('usage: pair_coeff I J epsilon sigma lambda [cutoff] for pair style lj/cut/soft/gapsys');
     const eps = parseNum(args[2], 'epsilon'), sig = parseNum(args[3], 'sigma'), lam = parseNum(args[4], 'lambda');
     if (sig <= 0 || eps <= 0) throw new StyleError('Incorrect args for pair coefficients');
     if (lam < 0 || lam > 1) throw new StyleError('Pair style lj/cut/soft/gapsys requires 0 < lambda < 1');
@@ -178,7 +178,7 @@ export class PairCoulCutSoftGapsys extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 3 || args.length > 4) throw new StyleError('usage: pair_coeff I J lambda [cutoff] for pair style coul/cut/soft/gapsys');
+    if (args.length < 3 || args.length > 4) throw pairCoeffArgs('usage: pair_coeff I J lambda [cutoff] for pair style coul/cut/soft/gapsys');
     const cut = args.length === 4 ? parseNum(args[3], 'cutoff') : this.cutGlobal;
     this.p.setRange(args[0], args[1], [parseNum(args[2], 'lambda'), cut]);
   }

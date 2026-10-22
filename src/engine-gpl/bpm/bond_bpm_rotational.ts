@@ -16,7 +16,7 @@
  * displacements are minimum-image displacements.
  */
 import { delta } from '../../engine/force/bonded_util';
-import { StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { StyleError, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../../engine/force/types';
 import { bondKey, BondBPMBase, yesno } from './bond_bpm';
 import { add3, cross3, dot3, len3, normalize3, quatquat, qconjugate, qnormalize, quatrotvec, scale3, sub3, type Quat, type Vec3 } from './quat';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -110,7 +110,7 @@ export class BondBpmRotational extends BondBPMBase {
 
   /** bond_coeff N kr ks kt kb fcr fcs tct tcb gr gs gt gb (the doc's order of the coefficient list). */
   coeff(args: string[], _ctx?: StyleContext): void {
-    if (!args.length) throw new StyleError('usage: bond_coeff N coefficients');
+    if (!args.length) throw bondedCoeffArgs('bond', 'usage: bond_coeff N coefficients');
     const v = this.parse(args.slice(1));
     // no range check on fcr, fcs, tct, tcb: native BondBPMRotational::coeff (bond_bpm_rotational.cpp at b332f28)
     // takes them as given; zero or negative values are used in the breaking sum (see the oracle cases)

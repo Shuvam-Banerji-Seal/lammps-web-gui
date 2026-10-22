@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 import { erfcPoly, EWALD_F } from '../erfc';
@@ -101,17 +101,17 @@ export class PairFepSoft extends Pair {
   settings(args: string[]): void {
     const usage = this.usage();
     if (this.lj === 'none') {
-      if (args.length !== 3) throw new StyleError(usage);
+      if (args.length !== 3) throw pairCoeffArgs(usage);
       this.n = parseNum(args[0], 'n');
       this.alphaC = parseNum(args[1], 'alpha_C');
       this.cutCGlobal = parseNum(args[2], 'cutoff');
     } else if (this.coul === 'none') {
-      if (args.length !== 3) throw new StyleError(usage);
+      if (args.length !== 3) throw pairCoeffArgs(usage);
       this.n = parseNum(args[0], 'n');
       this.alphaLJ = parseNum(args[1], 'alpha_LJ');
       this.cutLJGlobal = parseNum(args[2], 'cutoff');
     } else {
-      if (args.length !== 4 && args.length !== 5) throw new StyleError(usage);
+      if (args.length !== 4 && args.length !== 5) throw pairCoeffArgs(usage);
       this.n = parseNum(args[0], 'n');
       this.alphaLJ = parseNum(args[1], 'alpha_LJ');
       this.alphaC = parseNum(args[2], 'alpha_C');
@@ -143,7 +143,7 @@ export class PairFepSoft extends Pair {
       // Doc: "only lambda and the optional cutoff2 are to be" (for coul/cut/soft and coul/long/soft)
       // Measured with native LAMMPS (black box): coul/long/soft accepts the lambda only (a cutoff is rejected).
       const maxArgs = this.coul === 'long' ? 3 : 4;
-      if (args.length !== 3 && args.length !== maxArgs) throw new StyleError(`usage: pair_coeff I J lambda${maxArgs === 4 ? ' [cutoff]' : ''} for pair style ${this.name}`);
+      if (args.length !== 3 && args.length !== maxArgs) throw pairCoeffArgs(`usage: pair_coeff I J lambda${maxArgs === 4 ? ' [cutoff]' : ''} for pair style ${this.name}`);
       const lam = parseNum(args[2], 'lambda');
       const cut = args[3] !== undefined ? parseNum(args[3], 'cutoff') : this.cutCGlobal;
       this.p.setRange(args[0], args[1], [0, 0, lam, cut, cut]);
@@ -153,7 +153,7 @@ export class PairFepSoft extends Pair {
     // the Coulomb cutoff stays global for them, so 7 arguments are rejected there.
     const maxArgs = this.coul === 'long' ? 6 : 7;
     if (args.length < 5 || args.length > maxArgs) {
-      throw new StyleError(`usage: pair_coeff I J epsilon sigma lambda [cutoff1 [cutoff2]] for pair style ${this.name}`);
+      throw pairCoeffArgs(`usage: pair_coeff I J epsilon sigma lambda [cutoff1 [cutoff2]] for pair style ${this.name}`);
     }
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
@@ -424,7 +424,7 @@ export class PairLJCharmmSoftCoulLong extends PairFepSoft {
   coeff(args: string[]): void {
     // eps14/sigma14 (the 1-4 CHARMM parameters) are not implemented for the soft styles
     if (args.length !== 5) {
-      throw new StyleError(`usage: pair_coeff I J epsilon sigma lambda for pair style ${this.name} (epsilon14/sigma14 are not supported)`);
+      throw pairCoeffArgs(`usage: pair_coeff I J epsilon sigma lambda for pair style ${this.name} (epsilon14/sigma14 are not supported)`);
     }
     super.coeff(args);
   }

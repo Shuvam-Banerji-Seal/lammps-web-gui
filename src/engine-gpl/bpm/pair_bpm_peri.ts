@@ -11,7 +11,7 @@
  * property d_vfrac). Pairs with a special-bond weight of 0 (bonded partners) are skipped, as in the C++ loop.
  * Browser-engine difference: the nodal volume is read from the custom property of the owned atom.
  */
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum, fmtCoeff } from '../../engine/force/util';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
@@ -35,7 +35,7 @@ export class PairBpmPeri extends Pair {
 
   /** pair_coeff I J kspring horizon (pair_bpm_peri.cpp coeff: the horizon is the cutoff). */
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 4) throw new StyleError('usage: pair_coeff I J kspring horizon');
+    if (args.length !== 4) throw pairCoeffArgs('usage: pair_coeff I J kspring horizon');
     const k = parseNum(args[2], 'kspring'), cut = parseNum(args[3], 'horizon');
     if (!(cut > 0)) throw new StyleError(`Invalid horizon value ${cut} for pair style bpm/peri`);
     this.p.setRange(args[0], args[1], [k, cut]);

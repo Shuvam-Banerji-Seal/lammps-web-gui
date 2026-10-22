@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -51,7 +51,7 @@ export class PairMomb extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 7) throw new StyleError('usage: pair_coeff I J D0 alpha r0 C6 Rr');
+    if (args.length !== 7) throw pairCoeffArgs('usage: pair_coeff I J D0 alpha r0 C6 Rr');
     const vals = args.slice(2, 7).map((w, k) => parseNum(w, ['D0', 'alpha', 'r0', 'C6', 'Rr'][k]));
     this.p.setRange(args[0], args[1], vals);
   }

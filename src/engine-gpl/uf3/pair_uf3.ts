@@ -66,7 +66,7 @@ export class PairUF3 extends Pair {
     this.elements = [...new Set(elems)];
     this.elementOfType = [''].concat(elems);
     this.mapOf = [-1].concat(elems.map((e) => this.elements.indexOf(e)));
-    this.pot = readUF3Potential(ctx.readFile(args[2]), this.nbody, this.ntypes, this.elementOfType, this.mapOf, this.elements, args[2]);
+    this.pot = readUF3Potential(ctx.readFile(args[2], 'Cannot open UF3 potential file'), this.nbody, this.ntypes, this.elementOfType, this.mapOf, this.elements, args[2]);
   }
 
   override initStyle(ctx: StyleContext): void {

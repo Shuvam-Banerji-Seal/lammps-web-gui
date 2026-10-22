@@ -21,6 +21,15 @@ import type { Fix } from '../fix/fix';
 /** Errors a style raises for bad input; the interpreter adds the line number. */
 export class StyleError extends Error {}
 
+/**
+ * The first line of the error for a file that cannot be read: a prefix ("{prefix} {name}: {reason}"), or the whole
+ * line from the file name and the system's reason ("No such file or directory").
+ */
+export type FileOpener = string | ((name: string, reason: string) => string);
+
+/** PotentialFileReader's message for a potential file it cannot open (src/potential_file_reader.cpp at b332f28). */
+export const potentialFile = (potentialName: string): string => `cannot open ${potentialName} potential file`;
+
 /** What a pair style's constructor checks: the atom style and the unit style when pair_style makes it. */
 export interface PairConstructorWhere { atomStyle: AtomStyle; units: string }
 
@@ -285,9 +294,10 @@ export interface StyleContext {
   /**
    * Reads a file the notebook has (uploads or files written by the session). A missing file is an error starting
    * "{opener} {name}: No such file or directory" (opener default "Cannot open file"; native's readers name the kind of
-   * file, as TextFileReader's "cannot open ReaxFF control file").
+   * file, as TextFileReader's "cannot open ReaxFF control file"), or with opener(name, reason) when native words it
+   * another way.
    */
-  readFile(name: string, opener?: string): string;
+  readFile(name: string, opener?: FileOpener): string;
   log(text: string): void;
   /** comm_modify vel yes: ghost atoms carry velocities (granular pair styles require it). */
   ghostVelocity?: boolean;

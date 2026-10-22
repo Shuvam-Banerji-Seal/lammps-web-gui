@@ -12,7 +12,7 @@
  * Copyright (2003) Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0); this
  * file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
@@ -71,7 +71,7 @@ export class PairOxdna3Xstk extends Pair {
     const n = ihi;
     const m4 = libmPow(n, 4);
     const need = 1 + 14 * m4 + 17;
-    const text = ctx?.readFile(args[2]) ?? '';
+    const text = ctx?.readFile(args[2], potentialFile('oxdna3 potential')) ?? '';
     let vals: number[] | null = null;
     for (const w of potentialLines(text, [args[0], args[1]], 'xstk')) {
       if (w.length < 3) continue;

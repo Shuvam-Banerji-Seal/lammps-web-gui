@@ -12,7 +12,7 @@
  * is the other atom (pair_oxrna2_stk.cpp, compute). The backbone-site distance uses the oxDNA1 x offset of the
  * backbone site as the C++ does (dx_cbk_oxdna2 is set to get_dx_cbk_oxdna1() there).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { OXDNA_5P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, halfVirial, lrfOf, oxdnaConstants } from './common';
@@ -84,7 +84,7 @@ export class PairOxrna2Stk extends Pair {
     if (args.length === 27) {
       v = args.slice(4).map((w, k) => parseNum(w, OXR_NAMES[k]));
     } else {
-      const text = ctx?.readFile(args[4]) ?? '';
+      const text = ctx?.readFile(args[4], potentialFile('oxdna potential')) ?? '';
       let found: number[] | null = null;
       for (const line of text.split(/\r?\n/)) {
         const w = line.replace(/#.*$/, '').trim().split(/\s+/).filter((x) => x.length);

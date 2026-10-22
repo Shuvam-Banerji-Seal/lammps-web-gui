@@ -9,7 +9,7 @@
  * by Ouldridge, Louis and Doye (J Chem Phys 2011). LAMMPS is Copyright (2003) Sandia Corporation, distributed under
  * the GNU General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { StyleError, typeBounds, type StyleContext } from '../../engine/force/types';
+import { StyleError, typeBounds, type StyleContext, potentialFile } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { PairOxdnaStk, stackingDerived, stackingStrength } from './pair_stk';
 import { type StackRule, stackingSiteOxdna3, tetIndex, tetramerTable, potentialLines } from './common';
@@ -47,7 +47,7 @@ export class PairOxdna3Stk extends PairOxdnaStk {
     const T = parseNum(args[2], 'T');
     const n = ihi;
     const m4 = libmPow(n, 4);
-    const text = ctx?.readFile(args[3]) ?? '';
+    const text = ctx?.readFile(args[3], potentialFile('oxdna3 potential')) ?? '';
     let found: number[] | null = null;
     for (const w of potentialLines(text, [args[0], args[1]], 'stk')) {
       if (w.length < 3) continue;

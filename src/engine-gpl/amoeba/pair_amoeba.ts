@@ -152,8 +152,9 @@ export class PairAmoeba extends Pair {
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
     if (args.length !== 4 || args[0] !== '*' || args[1] !== '*') throw new StyleError('usage: pair_coeff * * file.prm file.key');
-    const prm = parseAmoebaPrm(ctx.readFile(args[2]), this.hippo);
-    const key = parseAmoebaKey(ctx.readFile(args[3]), prm);
+    const kind = this.hippo ? 'HIPPO' : 'AMOEBA';
+    const prm = parseAmoebaPrm(ctx.readFile(args[2], `Cannot open ${kind} PRM file`), this.hippo);
+    const key = parseAmoebaKey(ctx.readFile(args[3], `Cannot open ${kind} key file`), prm);
     this.prm = prm;
     this.key = key;
     this.vdwcut = key.vdwcut;

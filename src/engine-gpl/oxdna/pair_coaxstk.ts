@@ -11,7 +11,7 @@
  * Atoms with both a 3' and a 5' partner (the interior of a strand) take no coaxial stacking; the C++ skips them
  * (the "continue" lines of compute), and so does this port.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
@@ -64,7 +64,7 @@ export class PairOxdnaCoaxstk extends Pair {
     if (args.length === 23) {
       v = args.slice(2).map((w, k) => parseNum(w, CX_NAMES[k]));
     } else {
-      const text = ctx?.readFile(args[2]) ?? '';
+      const text = ctx?.readFile(args[2], potentialFile('oxdna potential')) ?? '';
       let found: number[] | null = null;
       for (const line of text.split(/\r?\n/)) {
         const w = line.replace(/#.*$/, '').trim().split(/\s+/).filter((x) => x.length);

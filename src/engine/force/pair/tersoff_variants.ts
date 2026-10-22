@@ -1,4 +1,4 @@
-import { StyleError, type PairConstructorWhere, type StyleContext } from '../types';
+import { StyleError, type PairConstructorWhere, type StyleContext, potentialFile } from '../types';
 import { parseNum, joinPotentialEntries } from '../util';
 import { PairTersoff, key3, type ParsedFile, type TersoffEntry } from './tersoff';
 import { libm } from '../../libm';
@@ -182,7 +182,7 @@ export class PairTersoffMod extends PairTersoff {
   }
 
   protected override readFile(filename: string, ctx: StyleContext): void {
-    refuseUnitsTag(ctx.readFile(filename), filename, this.name, ctx);
+    refuseUnitsTag(ctx.readFile(filename, potentialFile(this.name)), filename, this.name, ctx);
     super.readFile(filename, ctx);
   }
 
@@ -354,7 +354,7 @@ export class PairTersoffZBL extends PairTersoff {
   }
 
   protected override readFile(filename: string, ctx: StyleContext): void {
-    refuseUnitsTag(ctx.readFile(filename), filename, this.name, ctx);
+    refuseUnitsTag(ctx.readFile(filename, potentialFile(this.name)), filename, this.name, ctx);
     super.readFile(filename, ctx);
   }
 

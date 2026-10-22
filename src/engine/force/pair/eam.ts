@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs, potentialFile } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseInt_, parseNum } from '../util';
 
@@ -577,7 +577,7 @@ export class PairEAM extends PairEAMBase {
   private readFuncfl(filename: string, ctx: StyleContext): EAMFile {
     const cached = this.fileCache.get(filename);
     if (cached) return cached;
-    const file = parseFuncfl(ctx.readFile(filename), filename, ctx);
+    const file = parseFuncfl(ctx.readFile(filename, potentialFile('eam')), filename, ctx);
     this.fileCache.set(filename, file);
     return file;
   }
@@ -651,7 +651,7 @@ export class PairEAMAlloy extends PairEAMBase {
   private readSetfl(filename: string, ctx: StyleContext, fs: boolean): EAMFile {
     const cached = this.fileCache.get(filename);
     if (cached) return cached;
-    const file = parseSetfl(ctx.readFile(filename), filename, ctx, fs);
+    const file = parseSetfl(ctx.readFile(filename, potentialFile(fs ? 'eam/fs' : 'eam/alloy')), filename, ctx, fs);
     this.fileCache.set(filename, file);
     return file;
   }
@@ -707,7 +707,7 @@ export class PairEAMFS extends PairEAMBase {
   private readSetfl(filename: string, ctx: StyleContext): EAMFile {
     const cached = this.fileCache.get(filename);
     if (cached) return cached;
-    const file = parseSetfl(ctx.readFile(filename), filename, ctx, true);
+    const file = parseSetfl(ctx.readFile(filename, potentialFile('eam/fs')), filename, ctx, true);
     this.fileCache.set(filename, file);
     return file;
   }

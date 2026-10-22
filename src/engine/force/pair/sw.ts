@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs, potentialFile } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { logical, missingArgs, numeric, parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
@@ -431,7 +431,8 @@ export abstract class PairSWBase extends Pair {
   }
 
   private readSWFile(filename: string, ctx: StyleContext): void {
-    const text = ctx.readFile(filename);
+    // every sw variant reads its file as "sw" (PairSW::read_file)
+    const text = ctx.readFile(filename, potentialFile('sw'));
     const parsed = parseSWFile(text, filename, this.tabulatedAngle);
     const scale = unitScaleOf(parsed.unitTag, ctx, filename);
     if (scale !== 1) ctx.log(`WARNING: converting SW potential file ${filename} from ${parsed.unitTag} to ${ctx.s?.units.style} units`);

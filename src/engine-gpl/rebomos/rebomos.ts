@@ -7,7 +7,7 @@
  * crystalline molybdenum disulfide, Modelling Simul. Mater. Sci. Eng. 21.
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { rowNeighbors } from '../airebo/neigh';
 import { powint } from '../airebo/splines';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -138,7 +138,7 @@ export class PairREBOMoS extends Pair {
         throw new StyleError(`Incorrect args for pair coefficients: element ${w} is not Mo or S (pair_style rebomos)`);
       }
     }
-    this.readFile(ctx.readFile(args[2]));
+    this.readFile(ctx.readFile(args[2], potentialFile('rebomos')));
     this.map = map;
     this.fileRead = true;
   }

@@ -111,7 +111,7 @@
  * virial comes from virialFdotr; per-atom energy and virial are split evenly
  * over the three atoms.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
@@ -227,7 +227,8 @@ export class PairNB3BHarmonic extends Pair {
     if (elems.length !== this.ntypes) {
       throw new StyleError(`pair_coeff for style ${this.name} needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
     }
-    const entries = parseNB3BFile(ctx.readFile(filename), filename, this.screened ? 7 : 6);
+    // native names the harmonic file "nb3n/harmonic" (src/MANYBODY/pair_nb3b_harmonic.cpp at b332f28)
+    const entries = parseNB3BFile(ctx.readFile(filename, potentialFile(this.screened ? 'nb3b/screened' : 'nb3n/harmonic')), filename, this.screened ? 7 : 6);
     this.fileName = filename;
     const names: string[] = [];
     const nt = this.ntypes + 1;

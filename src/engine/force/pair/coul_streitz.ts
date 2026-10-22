@@ -1,4 +1,4 @@
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
@@ -265,7 +265,7 @@ export class PairCoulStreitz extends Pair {
       throw new StyleError(`pair_coeff for style coul/streitz needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
     }
     if (!this.fileRead) {
-      this.entries = parseStreitzFile(ctx.readFile(filename), filename);
+      this.entries = parseStreitzFile(ctx.readFile(filename, potentialFile('coul/streitz')), filename);
       this.fileName = filename;
       this.fileRead = true;
     } else if (filename !== this.fileName) {

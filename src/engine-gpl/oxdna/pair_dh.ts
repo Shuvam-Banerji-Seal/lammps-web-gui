@@ -11,7 +11,7 @@
  * The per-atom effective charge qeff is an internal per-atom property of atom_style oxdna. pair_coeff sets it
  * on every atom (1, or 0.5 at strand ends with "half_charged_ends yes"), as pair_oxdna2_dh.cpp coeff() does.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, OXDNA_QEFF, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
@@ -64,7 +64,7 @@ export class PairOxdna2Dh extends Pair {
     const rhos = parseNum(args[3], 'rhos');
     let qeffOne: number;
     if (/^[a-zA-Z0-9_]*\.cgdna$/.test(args[4])) {
-      const text = ctx?.readFile(args[4]) ?? '';
+      const text = ctx?.readFile(args[4], potentialFile('oxdna potential')) ?? '';
       let found: number | null = null;
       for (const w of potentialLines(text, [args[0], args[1]], 'dh')) {
         if (w.length < 4) continue;

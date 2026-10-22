@@ -10,7 +10,7 @@
  * pair_style meam (src/MEAM/pair_meam.cpp, meamModel.ts with msmeam false): the same class built with msmeam = false,
  * registered as 'meam' in registry/meam_ms.ts. It is the only pair meam implementation of the engine.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { MeamModel, MAXELT, LibEntry, meamKeywords, toLattice, latticeCode } from './meamModel';
 import { getZij } from './meamMath';
@@ -169,9 +169,12 @@ export class PairMeamMs extends Pair {
 
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 6) throw new StyleError(`Illegal pair_coeff command for pair style ${this.name}: missing arguments`);
+    if (args.length < 6) throw new StyleError(`Illegal pair style ${this.name} coefficients command: missing argument(s)`);
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError(`the first 2 arguments of pair_coeff for style ${this.name} must be * *`);
     const libFile = args[2];
+    // the library file must exist before the parameter file is looked for; native's message prints the path it
+    // resolved, which is empty
+    ctx.readFile(libFile, () => `Cannot open ${this.label} library file `);
     // the parameter file is the first word after the element names that is a file or NULL (pair_meam.cpp coeff)
     let paridx = -1;
     let parFile = '';
@@ -182,7 +185,7 @@ export class PairMeamMs extends Pair {
         break;
       }
       try {
-        parFile = ctx.readFile(args[i]);
+        parFile = ctx.readFile(args[i], potentialFile('MEAM'));
         paridx = i;
         break;
       } catch {

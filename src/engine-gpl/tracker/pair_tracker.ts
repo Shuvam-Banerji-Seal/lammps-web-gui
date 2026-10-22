@@ -10,7 +10,7 @@
  * supported (StyleError).
  */
 import { Pair, StyleError, typeBounds, mixDistance, type PairCompute, type StyleContext } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, numeric, parseNum } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { NativePairOrder } from '../neighbor/nativeOrder';
@@ -55,39 +55,44 @@ export class PairTracker extends Pair {
   private cur: PairCompute | null = null;
 
   settings(args: string[], ctx: StyleContext): void {
-    if (args.length < 2) throw new StyleError('Illegal pair_style tracker command: usage pair_style tracker fixID N keyword values');
+    if (args.length < 2) throw new StyleError('Illegal pair_style command');
     if (!ctx.addFix) throw new StyleError('pair_style tracker needs a system to create its fix');
     this.fixId = args[0];
-    const freq = parseNum(args[1], 'N');
+    const freq = inumeric(args[1]);
     if (!Number.isInteger(freq) || freq <= 0) throw new StyleError(`pair_style tracker: output frequency must be a positive integer (got ${args[1]})`);
     this.freq = freq;
     this.choices = [];
     this.hist.clear();
     this.tmin = -1;
     this.typeFilter = null;
+    // the keywords are read as the source reads them; finite (granular radii) is refused after
+    let finite = false;
     let k = 2;
     while (k < args.length) {
       const w = args[k];
       if (w === 'finite') {
-        throw new StyleError('pair_style tracker keyword finite is not supported by the browser engine (granular radii)');
+        finite = true;
+        k++;
+        continue;
       }
       const c = CHOICES.indexOf(w as (typeof CHOICES)[number]);
       if (c >= 0) {
         this.choices.push(c);
       } else if (w === 'time/min') {
-        if (k + 1 >= args.length) throw new StyleError('Invalid keyword in pair tracker command: time/min needs a value');
-        this.tmin = parseNum(args[k + 1], 'time/min');
+        if (k + 1 >= args.length) throw new StyleError('Invalid keyword in pair tracker command');
+        this.tmin = numeric(args[k + 1]);
         k++;
       } else if (w === 'type/include') {
-        if (k + 2 >= args.length) throw new StyleError('Invalid keyword in pair tracker command: type/include needs two type lists');
+        if (k + 2 >= args.length) throw new StyleError('Invalid keyword in pair tracker command');
         this.typeFilterArgs = [args[k + 1], args[k + 2]];
         k += 2;
       } else {
-        throw new StyleError(`Illegal pair_style tracker command: unknown keyword '${w}'`);
+        throw new StyleError('Illegal pair_style command');
       }
       k++;
     }
     if (this.choices.length === 0) throw new StyleError('Must request at least one value to output');
+    if (finite) throw new StyleError('pair_style tracker keyword finite is not supported by the browser engine (granular radii)');
     // pair_tracker.cpp settings: modify->add_fix("ID all STORE/LOCAL N nvalues")
     const choices = this.choices.length;
     const id = this.fixId;

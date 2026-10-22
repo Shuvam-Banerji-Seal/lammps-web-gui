@@ -10,7 +10,7 @@
  * The compute() follows native order: the two-body U term on half the pairs (by atom IDs), the bond-order zeta from the
  * W-neighbors (eta = 1 uses the self-energy form, otherwise the V-neighbors with the triplet P and G tables).
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import {
   checkOneCoeffArgs, mapElementsToTypes, nextDouble, PotentialEntryReader, potentialUnitFactor, tagOf, tallyPair,
@@ -230,7 +230,7 @@ export class PairPolymorphic extends Pair {
   /** PairPolymorphic::read_file: header, element match, pair parameters, then the tables in native order. */
   protected readFile(fileName: string, ctx: StyleContext): void {
     const nel = this.elements.length;
-    const text = ctx.readFile(fileName);
+    const text = ctx.readFile(fileName, potentialFile('polymorphic'));
     // PotentialFileReader without unit_convert: a units tag other than the unit style is an error (open_potential)
     potentialUnitFactor(text, 'polymorphic', fileName, ctx, false);
     const reader = new PolyReader(text.split(/\r?\n/));

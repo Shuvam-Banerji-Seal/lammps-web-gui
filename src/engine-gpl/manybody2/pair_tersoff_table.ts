@@ -10,7 +10,7 @@
  * Forces, energy and the three-body loops run in the order of the native compute() (a j-loop over the neighbors, with the
  * k loops below and above j), so the floating-point sums agree.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
@@ -103,7 +103,7 @@ export class PairTersoffTable extends Pair {
 
   /** PairTersoffTable::read_file (Tersoff file layout; the Tersoff_2 checks at the end of each entry). */
   protected readFile(fileName: string, ctx: StyleContext): void {
-    const text = ctx.readFile(fileName);
+    const text = ctx.readFile(fileName, potentialFile('tersoff/table'));
     const factor = potentialUnitFactor(text, 'tersoff/table', fileName, ctx);
     const reader = new PotentialEntryReader(text.split(/\r?\n/), 'tersoff/table');
     const params: TTParam[] = [];

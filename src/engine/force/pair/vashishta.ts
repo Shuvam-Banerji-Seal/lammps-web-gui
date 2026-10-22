@@ -1,4 +1,4 @@
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
@@ -249,7 +249,7 @@ export class PairVashishta extends Pair {
     }
     const filename = args[2];
     if (!this.fileRead) {
-      const text = ctx.readFile(filename);
+      const text = ctx.readFile(filename, potentialFile('vashishta'));
       const parsed = parseVFile(text, filename);
       this.entries = parsed.entries;
       this.fileElems = parsed.elems;

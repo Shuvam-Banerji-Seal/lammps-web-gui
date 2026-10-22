@@ -1,4 +1,4 @@
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { numeric, parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
@@ -357,7 +357,7 @@ export class PairTersoff extends Pair {
   }
 
   protected readFile(filename: string, ctx: StyleContext): void {
-    const parsed = this.parseFile(ctx.readFile(filename), filename);
+    const parsed = this.parseFile(ctx.readFile(filename, potentialFile(this.name)), filename);
     const scale = unitScaleOf(parsed.unitTag, ctx, filename);
     if (scale !== 1) ctx.log(`WARNING: converting Tersoff potential file ${filename} from ${parsed.unitTag} to ${ctx.s?.units.style} units`);
     this.entries = parsed.entries;

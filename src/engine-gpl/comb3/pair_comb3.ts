@@ -14,7 +14,7 @@
  * same owner and the image offset of l plus that of the ghost (atoms outside the ghost shell are skipped, as the
  * C++ ghost neighbor list skips them).
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { readComb3Entries, readComb3Lib, setupComb3Params, type Comb3Lib, type Comb3Param } from './params';
 import { comb3Tables, triPoint, vdwaals, type Comb3Tables, type TriPoint } from './tables';
@@ -115,8 +115,8 @@ export class PairComb3 extends Pair {
       map[t] = e;
     }
     // pair_comb3.cpp coeff: the library file is read when an element is C (cflag)
-    this.lib = names.includes('C') ? readComb3Lib(ctx.readFile('lib.comb3')) : null;
-    const entries = readComb3Entries(ctx.readFile(filename), elements);
+    this.lib = names.includes('C') ? readComb3Lib(ctx.readFile('lib.comb3', potentialFile('comb3'))) : null;
+    const entries = readComb3Entries(ctx.readFile(filename, potentialFile('COMB3')), elements);
     const sp = setupComb3Params(entries, elements.length);
     this.fileRead = true;
     this.elements = elements;

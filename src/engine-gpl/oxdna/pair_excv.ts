@@ -10,7 +10,7 @@
  * The C++ computes the local frames of its ghost atoms from the fix OXDNA/LRF (forward communication); here the
  * frame of every ghost is the frame of the owned atom it images. The pair list is the default (half) list.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, OXDNA_3P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
@@ -117,7 +117,7 @@ export class PairOxdnaExcv extends Pair {
     if (args.length === 11) {
       v = args.slice(2).map((w, k) => parseNum(w, `oxdna/excv coefficient ${k + 1}`));
     } else {
-      const text = ctx?.readFile(args[2]) ?? '';
+      const text = ctx?.readFile(args[2], potentialFile('oxdna potential')) ?? '';
       let found: number[] | null = null;
       for (const w of potentialLines(text, [args[0], args[1]], 'excv')) {
         if (w.length < 3) continue;

@@ -8,7 +8,7 @@
  * over the half list, reverse-communicated to the owners, and the embedding derivative fp and the mu and lambda of the
  * owners are forward-communicated to the ghosts before the force loop.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { buildTables, readAdp, type EamFile, type EamTables } from './potential';
 import { forwardCopy, reverseAdd } from './pair_base';
@@ -48,7 +48,7 @@ export class PairADP extends Pair {
     const filename = args[2];
     let file = this.cache.get(filename);
     if (!file) {
-      file = readAdp(ctx.readFile(filename), filename, ctx);
+      file = readAdp(ctx.readFile(filename, potentialFile('adp')), filename, ctx);
       this.cache.set(filename, file);
     }
     this.file = file;

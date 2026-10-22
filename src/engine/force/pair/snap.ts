@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, pairCoeffArgs, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { buildTriples, WignerTables, rawBispectrum, adjointBispectrum, type Triple, type Cmat, type Grad } from '../../compute/sna';
 import { ChemSna } from '../../compute/snapChem';
@@ -215,21 +215,23 @@ export class PairSnap extends Pair {
 
   coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 3) throw new StyleError('usage: pair_coeff * * coefficient-file parameter-file elem1 ... elemN (style snap)');
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError('the first 2 arguments of pair_coeff for style snap must be * *');
+    // As native LAMMPS does (src/ML-SNAP/pair_snap.cpp PairSNAP::coeff and read_files at b332f28): the two files and
+    // one element per type, then the coefficient file is opened before the parameter file (native's coefficient
+    // message has no slot for the system's reason)
+    if (args.length !== 4 + this.ntypes) throw pairCoeffArgs();
     const coefFile = args[2];
     const paramFile = args[3];
-    if (paramFile === undefined) throw new StyleError('pair_coeff for style snap needs a coefficient file and a parameter file');
     const elems = args.slice(4);
-    if (elems.length !== this.ntypes) throw new StyleError(`pair_coeff for style snap needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
-    this.param = parseSnapParam(ctx.readFile(paramFile), paramFile);
+    const coefText = ctx.readFile(coefFile, (n) => `Cannot open SNAP coefficient file ${n}: `);
+    this.param = parseSnapParam(ctx.readFile(paramFile, 'Cannot open SNAP parameter file'), paramFile);
     const p = this.param;
     this.triples = buildTriples(p.twojmax);
     this.K = this.triples.length;
     this.quadratic = p.quadraticflag;
     this.chem = p.chemflag;
     this.wselfall = p.wselfallflag;
-    this.file = parseSnapCoeff(ctx.readFile(coefFile), coefFile, this.K, p.quadraticflag, p.chemflag);
+    this.file = parseSnapCoeff(coefText, coefFile, this.K, p.quadraticflag, p.chemflag);
     const nt = this.ntypes + 1;
     this.elemOf = new Int32Array(nt).fill(-1);
     for (let t = 1; t <= this.ntypes; t++) {

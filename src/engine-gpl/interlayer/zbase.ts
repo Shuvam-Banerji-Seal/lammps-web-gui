@@ -6,7 +6,7 @@
  * Copyright (2003) Sandia Corporation (GNU General Public License). This file is GPL-2.0
  * (see src/engine-gpl/LICENSE).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs, potentialFile } from '../../engine/force/types';
 import { joinPotentialEntries, numeric } from '../../engine/force/util';
 import { pow as libmPow } from '../libm/pow';
 
@@ -119,7 +119,7 @@ export abstract class InterlayerZBase<P> extends Pair {
 
   /** Reads the potential file (entries whose two element names are both in the element list). */
   protected readFile(fileName: string, ctx: StyleContext): void {
-    const text = ctx.readFile(fileName);
+    const text = ctx.readFile(fileName, potentialFile(this.name));
     const lines = text.split('\n');
     const m = /UNITS:\s*(\S+)/.exec(lines[0] ?? '');
     const unitTag = m ? m[1] : null;

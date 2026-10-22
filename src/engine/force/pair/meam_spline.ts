@@ -1,4 +1,4 @@
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 
@@ -328,7 +328,7 @@ abstract class PairMeamSplineBase extends Pair {
       throw new StyleError(`pair_style ${this.name} does not support NULL mappings in this engine (the NULL placeholder of the documentation is refused, not approximated)`);
     }
     if (!this.fileRead) {
-      const text = ctx.readFile(filename);
+      const text = ctx.readFile(filename, potentialFile(this.name));
       this.file = parseMeamSplineFile(text, filename, this.sw);
       this.fileName = filename;
       this.fileRead = true;

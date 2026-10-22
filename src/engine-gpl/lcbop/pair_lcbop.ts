@@ -16,7 +16,7 @@
  * sorted atom order, which this port does not reproduce), so the forces agree with native where those orders agree
  * (oracle w234lc_cl*, w234lc_diamond, w234lc_graphene) and differ for disordered periodic systems (not an oracle case).
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { rowNeighbors } from '../airebo/neigh';
 import { readLcbopFile, splineInit, type LcbopParams, type LcbopTables } from './params';
 import { cmax, cmin, f_c, f_c_LR, F_conj, gSpline, hSpline, type FConjD, type Ref } from './funcs';
@@ -74,7 +74,7 @@ export class PairLCBOP extends Pair {
       throw new StyleError('Incorrect args for pair coefficients\nFor more information see https://docs.lammps.org/err0021');
     }
     const fileName = args[2];
-    const { params, gX, gC, F_data } = readLcbopFile(ctx.readFile(fileName), fileName, ctx);
+    const { params, gX, gC, F_data } = readLcbopFile(ctx.readFile(fileName, potentialFile('LCBOP')), fileName, ctx);
     this.p = params;
     this.T = { gX, gC, F_conj_field: splineInit(F_data) };
     // PairLCBOP::init_one: cut3rebo = 3 SR distances; cutLRsq; r_2_sq

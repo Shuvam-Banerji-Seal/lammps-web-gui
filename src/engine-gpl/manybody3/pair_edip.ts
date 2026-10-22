@@ -9,7 +9,7 @@
  * three-body terms, then the coordination forces. The grids of edip are built as native does (initGrids, GRIDDENSITY
  * 8000 points per unit, linear interpolation); edip/multi evaluates the functions directly.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { exp } from '../libm/exp';
 import { pow } from '../libm/pow';
@@ -249,7 +249,8 @@ abstract class EdipBase extends Pair {
       throw new StyleError('Pair style edip only supports single element potentials');
     }
     const fileName = args[2];
-    const text = ctx.readFile(fileName);
+    // edip and edip/multi both read their file as "edip"
+    const text = ctx.readFile(fileName, potentialFile('edip'));
     const elements = mapping.elements;
     const params = readEdipFile(text, fileName, elements, ctx);
     const { elem3param, cutmax } = setupParams(params, elements);

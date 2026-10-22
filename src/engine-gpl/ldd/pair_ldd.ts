@@ -107,7 +107,7 @@ export class PairLdd extends Pair {
     const nel = this.nel;
     const seen = new Uint8Array(nel * nel);
     const dim = ctx.s!.dimension;
-    for (const raw of ctx.readFile(name).split(/\r?\n/)) {
+    for (const raw of ctx.readFile(name, 'Cannot open ldd potential file').split(/\r?\n/)) {
       const words = raw.replace(/#.*$/, '').trim();
       if (words === '') continue;
       const w = words.split(/\s+/);

@@ -7,7 +7,7 @@
  * Shared pieces of the many-body EAM-family styles: the element-to-type mapping of pair_coeff, the masses set from the
  * potential file, the table set-up, and the ghost reverse and forward communication of per-atom arrays.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { buildTables, type EamFile, type EamTables } from './potential';
 
 /** Ghost reverse communication: adds each ghost's values (stride per atom) into its owner (native reverse_comm). */
@@ -72,6 +72,10 @@ export abstract class EamFamilyBase extends Pair {
 
   /** Reads the file of this style's layout. */
   protected abstract readFile(text: string, filename: string, ctx: StyleContext): EamFile;
+  /** The potential name native's reader gives the file (the style's own name unless a subclass reads another's). */
+  protected get potentialName(): string {
+    return this.name;
+  }
 
   allocate(ntypes: number): void {
     super.allocate(ntypes);
@@ -97,7 +101,7 @@ export abstract class EamFamilyBase extends Pair {
     const filename = args[2];
     let file = this.cache.get(filename);
     if (!file) {
-      file = this.readFile(ctx.readFile(filename), filename, ctx);
+      file = this.readFile(ctx.readFile(filename, potentialFile(this.potentialName)), filename, ctx);
       this.cache.set(filename, file);
     }
     this.file = file;

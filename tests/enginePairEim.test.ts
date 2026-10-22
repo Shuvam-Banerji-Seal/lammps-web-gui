@@ -231,7 +231,7 @@ describe('pair_style eim: pair_coeff and settings rules', () => {
 
   it('reads the file after the distinct element names, as native does (a wrong count names another word as the file)', async () => {
     // pair_eim.cpp coeff: nelements = narg - 3 - ntypes, read_file(arg[2 + nelements])
-    await expect(runEvents(dimer('pair_coeff * * Qa Qb Qc w14eim_two.eim Qa Qb'), { 'w14eim_two.eim': TWO })).rejects.toThrow(/Cannot open file Qc/);
+    await expect(runEvents(dimer('pair_coeff * * Qa Qb Qc w14eim_two.eim Qa Qb'), { 'w14eim_two.eim': TWO })).rejects.toThrow(/cannot open eim potential file Qc/);
   });
 
   it('refuses a missing potential file', async () => {

@@ -491,7 +491,9 @@ export class AngleZero extends Bonded {
   ntypes = 0;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    for (const a of args) if (a !== 'nocoeff') throw new StyleError(`angle_style zero: unknown keyword '${a}'`);
+    // As native LAMMPS does (src/angle_zero.cpp at b332f28)
+    if (args.length > 1) throw new StyleError('Too many angle_style zero keywords');
+    if (args.length === 1 && args[0] !== 'nocoeff') throw new StyleError(`Unknown angle_style zero keyword ${args[0]}`);
     this.nocoeff = args.length > 0;
   }
 

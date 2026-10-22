@@ -115,13 +115,13 @@ describe('TIP4P force projection and Coulomb cutoff', () => {
     }
   });
 
-  it('tip4p/cut takes no cutoff2 and no LJ coefficients: argument errors name the usage', async () => {
+  it('tip4p/cut takes no cutoff2 and no LJ coefficients: argument counts as native LAMMPS', async () => {
     const bad1 = await run('units real\natom_style full\nboundary f f f\nread_data w.data\npair_style tip4p/cut 1 2 1 1 0.15 8.0 9.0', { 'w.data': waterIonData([0, 8, 0]) });
-    expect(bad1.error).toMatch(/usage: pair_style tip4p\/cut/);
+    expect(bad1.error).toMatch(/Illegal pair_style command/);
     const bad2 = await run('units real\natom_style full\nboundary f f f\nread_data w.data\npair_style lj/cut/tip4p/cut 1 2 1 1 0 8.0', { 'w.data': waterIonData([0, 8, 0]) });
     expect(bad2.error).toMatch(/qdist must be > 0/);
     const bad3 = await run('units real\natom_style full\nboundary f f f\nread_data w.data\npair_style lj/cut/tip4p/cut 1 2 1 1 0.15', { 'w.data': waterIonData([0, 8, 0]) });
-    expect(bad3.error).toMatch(/usage: pair_style lj\/cut\/tip4p\/cut/);
+    expect(bad3.error).toMatch(/Illegal pair_style command/);
   });
 
   it('rejects a nonzero water H epsilon on lj/cut/tip4p/long (native: "Water H epsilon must be 0.0 ...")', async () => {

@@ -299,7 +299,8 @@ export class BondZero extends Bonded {
   ntypes = 0;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    for (const a of args) if (a !== 'nocoeff') throw new StyleError(`bond_style zero: unknown keyword '${a}'`);
+    // As native LAMMPS does (src/bond_zero.cpp at b332f28): nothing or nocoeff
+    if (args.length > 1 || (args.length === 1 && args[0] !== 'nocoeff')) throw new StyleError('Illegal bond_style command');
     this.nocoeff = args.length > 0;
   }
 

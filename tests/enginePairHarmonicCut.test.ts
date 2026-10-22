@@ -116,7 +116,7 @@ describe('pair_style harmonic/cut: mixing (measured native behaviour)', () => {
 
 describe('pair_style harmonic/cut: argument checking and pair_modify', () => {
   it('pair_style takes no arguments', async () => {
-    await expect(evaluate(['pair_style harmonic/cut 2.5', 'pair_coeff 1 1 1.0 2.0'], 1.3)).rejects.toThrow(/pair_style harmonic\/cut/);
+    await expect(evaluate(['pair_style harmonic/cut 2.5', 'pair_coeff 1 1 1.0 2.0'], 1.3)).rejects.toThrow(/Illegal pair_style command/);
   });
 
   it('pair_coeff needs exactly I J k r_c', async () => {

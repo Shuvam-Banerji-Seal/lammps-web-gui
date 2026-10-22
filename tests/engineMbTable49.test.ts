@@ -88,7 +88,7 @@ describe('threebody/table file handling and refusals', () => {
 
   it('refuses a pair_style with arguments', async () => {
     const r = await run('pair_style threebody/table 1.0\n', {});
-    expect(r.errors.join(' ')).toMatch(/threebody\/table takes no arguments/);
+    expect(r.errors.join(' ')).toMatch(/Illegal pair_style command/);
   });
 
   it('names a missing element of the potential file', async () => {

@@ -20,7 +20,7 @@
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import type { SimState } from '../../engine/types';
-import { parseNum } from '../../engine/force/util';
+import { numeric, parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { SMD_DAMAGE, SMD_DESPH, SMD_EPS, SMD_EPSRATE, SMD_STRESS, SMD_VEST } from '../../engine/smd';
@@ -179,7 +179,17 @@ export class PairSMDTlsph extends Pair {
   private log: ((text: string) => void) | null = null;
   /** pair_style smd/tlsph arguments: none are accepted in this port (the update keyword is not supported). */
   settings(args: string[], _ctx: StyleContext): void {
-    if (args.length) throw new StyleError(`pair_style smd/tlsph keyword '${args[0]}' is not supported by the browser engine yet (only the default reference configuration)`);
+    // the keywords are read as the source reads them (a number after each); the reference-configuration updates they
+    // select are refused after
+    let update: string | null = null;
+    for (let k = 0; k < args.length; k++) {
+      const kw = args[k];
+      if (kw !== '*UPDATE_CONSTANT' && kw !== '*UPDATE_PAIRWISE') throw new StyleError(`Illegal keyword for smd/integrate_tlsph: ${kw}`);
+      if (++k === args.length) throw new StyleError(`expected number following ${kw} keyword`);
+      numeric(args[k]);
+      update = kw;
+    }
+    if (update) throw new StyleError(`pair_style smd/tlsph keyword '${update}' is not supported by the browser engine yet (only the default reference configuration)`);
   }
 
   allocate(ntypes: number): void {

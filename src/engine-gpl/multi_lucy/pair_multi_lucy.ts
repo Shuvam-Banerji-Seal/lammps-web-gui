@@ -10,7 +10,8 @@
  * indexed by the squared density (lookup or linear table styles). Tables are read with the native table file
  * format (keyword section, "N n R|RSQ lo hi" parameter line, then index r E F lines).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type PairConstructorWhere, type StyleContext } from '../../engine/force/types';
+import { atomHasFlag } from '../atom_flags';
 import { parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 
@@ -137,6 +138,11 @@ export class PairMultiLucy extends Pair {
   protected tables: Table[] = [];
   protected tabindex = new Int32Array(0);
   protected set = new Uint8Array(0);
+
+  /** The constructor's check: the atom style must carry a density (atom->rho_flag). */
+  override constructorCheck(where: PairConstructorWhere): void {
+    if (!atomHasFlag(where.atomStyle, 'rho')) throw new StyleError(`Pair ${this.name} command requires atom_style with density (e.g. dpd, meso)`);
+  }
 
   allocate(ntypes: number): void {
     super.allocate(ntypes);

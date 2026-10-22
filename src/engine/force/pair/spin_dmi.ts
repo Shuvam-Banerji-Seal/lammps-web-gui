@@ -1,8 +1,8 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, type Neighbor } from '../../neighbor';
-import { parseNum } from '../util';
+import { numeric, parseNum } from '../util';
 import { SPIN_HBAR } from './spin_exchange';
-import { spinContribute, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../spin_book';
+import { spinContribute, spinPairSettings, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../spin_book';
 
 /*
  * pair_style spin/dmi cutoff and pair_style spin/magelec cutoff — docs.lammps.org/pair_spin_dmi.html and
@@ -74,9 +74,11 @@ abstract class PairSpinVector extends Pair implements SpinPairStyle {
   /** Mechanical force of one directed pair, added to i and subtracted from j: V, the spins, C = s_i x s_j and r. */
   protected abstract directedForce(V: number[], si: number[], sj: number[], C: number[], r: number): number[];
 
-  settings(args: string[]): void {
-    if (args.length !== 1) throw new StyleError(`usage: pair_style ${this.name} cutoff`);
-    this.cutGlobal = parseNum(args[0], 'cutoff');
+  settings(args: string[], ctx?: StyleContext): void {
+    // a second word is accepted and ignored, as native's settings read only the first
+    if (args.length < 1 || args.length > 2) throw new StyleError('Incorrect number of args in pair_style pair/spin command');
+    spinPairSettings(ctx);
+    this.cutGlobal = numeric(args[0]);
     if (!(this.cutGlobal > 0)) throw new StyleError(`${this.name}: cutoff must be > 0`);
   }
 

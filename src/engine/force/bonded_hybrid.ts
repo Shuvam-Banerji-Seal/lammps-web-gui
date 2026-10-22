@@ -1,4 +1,5 @@
 import { Bonded, newAccum, StyleError, typeBounds, type Accum, type BondedCompute, type Pair, type StyleContext } from './types';
+import { unknownStyleError, type NativeStyleKind } from '../nativeStyles';
 import type { TopoList } from '../types';
 
 /*
@@ -112,7 +113,7 @@ export class BondedHybrid extends Bonded {
       }
       if (current === null) {
         if (i > 0 && !looksLikeStyle(a)) throw new StyleError(`Illegal ${kind}_style hybrid argument: ${a}`);
-        throw new StyleError(`${kind}_style hybrid sub-style '${a}' is not supported by the browser engine`);
+        throw unknownStyleError(kind as NativeStyleKind, a, () => new StyleError(`${kind}_style hybrid sub-style '${a}' is not supported by the browser engine`));
       }
       if (looksLikeStyle(a)) valuesOk = true;
       else if (!valuesOk) throw new StyleError(`Illegal ${kind}_style hybrid argument: ${a}`);
@@ -260,7 +261,9 @@ export class BondedHybrid extends Bonded {
 
   private make(name: string, ctx: StyleContext | null): Bonded {
     const f = this.registry[name];
-    if (!f || name === 'hybrid') throw new StyleError(`${this.kind}_style hybrid sub-style '${name}' is not supported by the browser engine`);
+    if (!f || name === 'hybrid') {
+      throw unknownStyleError(this.kind as NativeStyleKind, name, () => new StyleError(`${this.kind}_style hybrid sub-style '${name}' is not supported by the browser engine`));
+    }
     const st = f();
     st.settings(this.subSettings.get(name) ?? [], ctx ?? NO_CONTEXT);
     return st;

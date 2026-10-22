@@ -1,4 +1,4 @@
-import { Bonded, StyleError, bondedCoeffArgs, termCentroid, typeBounds, type BondedCompute, type StyleContext } from './types';
+import { Bonded, NoSettingsError, StyleError, bondedCoeffArgs, termCentroid, typeBounds, type BondedCompute, type StyleContext } from './types';
 import { fmtCoeff, parseNum } from './util';
 
 /*
@@ -64,7 +64,7 @@ export abstract class SimpleBonded extends Bonded {
   params!: TypeParams;
   abstract readonly paramNames: readonly string[];
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
   allocate(ntypes: number): void {
     super.allocate(ntypes);

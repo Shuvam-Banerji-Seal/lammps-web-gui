@@ -17,7 +17,8 @@ import { tallyAtom } from '../../engine/force/pair/lj_cut';
 
 export class PairSPHIdealGas extends PairSPHBase {
   readonly name = 'sph/idealgas';
-  protected readonly attributesText = 'energy, density, and velocity estimates';
+  protected readonly attributesText = 'attributes energy, density, and velocity estimates';
+  protected readonly attributeFlags = ['esph', 'rho', 'vest'] as const;
   override needsHalf = true;
   /**
    * Artificial viscosity per type pair. pair_sph_idealgas.cpp init_one() mirrors the cutoff only ("cut[j][i] = cut[i][j]"),

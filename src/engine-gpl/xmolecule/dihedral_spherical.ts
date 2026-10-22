@@ -14,7 +14,7 @@
  * stored in radians. The phi, theta1 and theta2 expressions, the vectors and the derivatives are native's, in native's
  * order; the acos, cos and sin calls use the glibc ports of src/engine-gpl/libm.
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { atomIndex } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { cos, sin } from '../libm/sincos';
@@ -61,7 +61,7 @@ export class DihedralSpherical extends Bonded {
   private set!: Uint8Array;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

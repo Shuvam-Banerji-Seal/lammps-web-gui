@@ -113,7 +113,7 @@ describe('AIREBO pair style errors', () => {
 
   it('rejects arguments of pair_style rebo', async () => {
     const { errors } = await run('units metal\npair_style rebo 3.0\n');
-    expect(errors.join('\n')).toMatch(/Illegal pair_style rebo command/);
+    expect(errors.join('\n')).toMatch(/Illegal pair_style command/);
   });
 
   it('airebo/bc needs the bond-centric knots after the standard data', async () => {

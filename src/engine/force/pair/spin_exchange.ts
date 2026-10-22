@@ -1,8 +1,8 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, type Neighbor } from '../../neighbor';
-import { parseNum } from '../util';
+import { numeric, parseNum } from '../util';
 import { PairHybrid } from './hybrid';
-import { spinContribute, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../spin_book';
+import { spinContribute, spinPairSettings, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../spin_book';
 import { libm } from '../../libm';
 
 /*
@@ -95,10 +95,11 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
     if (biquadratic) this.name = 'spin/exchange/biquadratic';
   }
 
-  settings(args: string[]): void {
+  settings(args: string[], ctx?: StyleContext): void {
     const style = this.biquadratic ? 'spin/exchange/biquadratic' : 'spin/exchange';
-    if (args.length !== 1) throw new StyleError(`usage: pair_style ${style} cutoff`);
-    this.cutGlobal = parseNum(args[0], 'cutoff');
+    spinPairSettings(ctx);
+    if (args.length !== 1) throw new StyleError('Illegal pair_style command');
+    this.cutGlobal = numeric(args[0]);
     if (!(this.cutGlobal > 0)) throw new StyleError(`${style}: cutoff must be > 0`);
   }
 

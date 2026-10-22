@@ -191,7 +191,7 @@ run 0
     const extra = await runScript(
       'units metal\natom_style atomic\nregion box block -5 5 -5 5 -5 5\ncreate_box 1 box\npair_style meam/spline 1.0\n', {},
     );
-    expect(extra.errors.join(' ')).toMatch(/takes no arguments/);
+    expect(extra.errors.join(' ')).toMatch(/Illegal pair_style command/);
     const notStar = await coeff('meam/spline', 'Si_1.meam.spline', base(1, 'Si').replace('pair_coeff * *', 'pair_coeff 1 1'));
     expect(notStar.join(' ')).toMatch(/\* \*/);
   });

@@ -45,7 +45,8 @@ export const ljEOS2 = (rho: number, e: number, cv: number): { p: number; c: numb
 
 export class PairSPHLJ extends PairSPHBase {
   readonly name = 'sph/lj';
-  protected readonly attributesText = 'energy, density, specific heat, and velocity estimates';
+  protected readonly attributesText = 'attributes energy, density, specific heat, and velocity estimates';
+  protected readonly attributeFlags = ['esph', 'rho', 'cv', 'vest'] as const;
   override needsHalf = true;
   /** Artificial viscosity per type pair (pair_coeff viscosity). */
   private viscosity = new Float64Array(0);

@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { Bonded, NoSettingsError, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { atomIndex, dihedralGeometry, applyDihedral } from '../bonded_util';
 import { compileLepton, fillVrefs, type LeptonProgram } from '../../lepton';
 
@@ -23,7 +23,7 @@ export class DihedralLepton extends Bonded {
   private ctx: StyleContext | null = null;
 
   settings(args: string[]): void {
-    if (args.length) throw new StyleError('dihedral_style lepton takes no arguments');
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

@@ -14,7 +14,7 @@
  * k = 63.80 r^2.93 eunit ang). A harmonic type sets kb = 0 and thetab = 180 degrees.
  */
 import { atomIndex, delta } from '../../engine/force/bonded_util';
-import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { parseNum, fmtCoeff } from '../../engine/force/util';
 import { ANGSTROM } from '../../engine/force/kspace/ewald';
 import type { CustomProp } from '../../engine/types';
@@ -41,7 +41,7 @@ export class AngleMesoCNT extends Bonded {
   private set!: Uint8Array;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError('angle_style mesocnt takes no arguments');
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

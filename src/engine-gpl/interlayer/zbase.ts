@@ -7,7 +7,7 @@
  * (see src/engine-gpl/LICENSE).
  */
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
-import { joinPotentialEntries, parseNum } from '../../engine/force/util';
+import { joinPotentialEntries, numeric } from '../../engine/force/util';
 import { pow as libmPow } from '../libm/pow';
 
 /** One potential-file entry: element indices (into the style's element list) and its numbers. */
@@ -75,7 +75,9 @@ export abstract class InterlayerZBase<P> extends Pair {
 
   override settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 1) throw new StyleError(`Pair style ${this.name} requires exactly one argument`);
-    this.cutGlobal = parseNum(args[0], 'cutoff');
+    // the pair_style of the command must be hybrid/overlay (strmatch on force->pair_style)
+    if (!this.hybridOverlay) throw new StyleError(`Pair style ${this.name} must be used as hybrid/overlay sub-style`);
+    this.cutGlobal = numeric(args[0]);
   }
 
   override coeff(args: string[], ctx: StyleContext): void {

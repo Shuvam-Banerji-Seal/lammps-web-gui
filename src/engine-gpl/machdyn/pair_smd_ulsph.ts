@@ -75,13 +75,14 @@ export class PairSMDUlsph extends Pair {
   effm = new Float64Array(0);
 
   settings(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 3) throw new StyleError('Illegal number of arguments for pair_style smd/ulsph (expected *DENSITY_CONTINUITY *VELOCITY_GRADIENT *NO_GRADIENT_CORRECTION)');
+    if (args.length !== 3) throw new StyleError('Illegal number of arguments for pair_style ulsph');
+    // native validates the three keywords in order; the options this port does not implement are refused after
+    if (args[0] !== '*DENSITY_SUMMATION' && args[0] !== '*DENSITY_CONTINUITY') throw new StyleError('Illegal settings keyword for first keyword of pair style ulsph. Must be either *DENSITY_SUMMATION or *DENSITY_CONTINUITY');
+    if (args[1] !== '*VELOCITY_GRADIENT' && args[1] !== '*NO_VELOCITY_GRADIENT') throw new StyleError('Illegal settings keyword for first keyword of pair style ulsph. Must be either *VELOCITY_GRADIENT or *NO_VELOCITY_GRADIENT');
+    if (args[2] !== '*GRADIENT_CORRECTION' && args[2] !== '*NO_GRADIENT_CORRECTION') throw new StyleError('Illegal settings keyword for pair style ulsph');
     if (args[0] === '*DENSITY_SUMMATION') throw new StyleError('pair smd/ulsph keyword *DENSITY_SUMMATION is not supported by the browser engine yet (use *DENSITY_CONTINUITY)');
-    if (args[0] !== '*DENSITY_CONTINUITY') throw new StyleError(`Illegal settings keyword for first keyword of pair style smd/ulsph: ${args[0]}`);
     if (args[1] === '*NO_VELOCITY_GRADIENT') throw new StyleError('pair smd/ulsph keyword *NO_VELOCITY_GRADIENT is not supported by the browser engine yet (use *VELOCITY_GRADIENT)');
-    if (args[1] !== '*VELOCITY_GRADIENT') throw new StyleError(`Illegal settings keyword for second keyword of pair style smd/ulsph: ${args[1]}`);
     if (args[2] === '*GRADIENT_CORRECTION') throw new StyleError('pair smd/ulsph keyword *GRADIENT_CORRECTION is not supported by the browser engine yet (use *NO_GRADIENT_CORRECTION)');
-    if (args[2] !== '*NO_GRADIENT_CORRECTION') throw new StyleError(`Illegal settings keyword for third keyword of pair style smd/ulsph: ${args[2]}`);
   }
 
   allocate(ntypes: number): void {

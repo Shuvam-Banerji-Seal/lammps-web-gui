@@ -1,6 +1,6 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
-import { parseNum, joinPotentialEntries } from '../util';
+import { numeric, parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
 
 /*
@@ -271,13 +271,14 @@ export class PairTersoff extends Pair {
   protected kGz = new Float64Array(0);
 
   override settings(args: string[], _ctx: StyleContext): void {
-    for (let k = 0; k < args.length; k++) {
-      const key = args[k];
-      if (key === 'shift') {
-        this.shiftDelta = parseNum(args[++k], 'shift delta');
-      } else {
-        throw new StyleError(`pair_style ${this.name} keyword '${key}' is not supported (keywords: shift)`);
-      }
+    // As native LAMMPS does (src/MANYBODY/pair_tersoff.cpp PairTersoff::settings at b332f28): no shift unless given,
+    // shift delta (utils::numeric); any other word, or shift without its value, is "Illegal pair_style command"
+    this.shiftDelta = 0;
+    let k = 0;
+    while (k < args.length) {
+      if (args[k] !== 'shift' || k + 2 > args.length) throw new StyleError('Illegal pair_style command');
+      this.shiftDelta = numeric(args[k + 1]);
+      k += 2;
     }
   }
 

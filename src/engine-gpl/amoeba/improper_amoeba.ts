@@ -13,7 +13,7 @@
  * Ported as native: the energy and the derivatives are the same expressions, with the angle in degrees in the
  * prefactors. docs.lammps.org/improper_amoeba.html: "improper_coeff N k" (energy coefficient).
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type Pair, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type Pair, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { parseNum } from '../../engine/force/util';
 
@@ -32,7 +32,7 @@ export class ImproperAmoeba extends Bonded {
   private sextic = 0;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

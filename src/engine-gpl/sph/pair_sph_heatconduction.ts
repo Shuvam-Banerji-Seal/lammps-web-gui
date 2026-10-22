@@ -16,7 +16,8 @@ import { LUCY_DERIV_2D, LUCY_DERIV_3D, sphArrays } from './common';
 
 export class PairSPHHeatConduction extends PairSPHBase {
   readonly name = 'sph/heatconduction';
-  protected readonly attributesText = 'energy and density';
+  protected readonly attributesText = 'attributes energy and density';
+  protected readonly attributeFlags = ['esph', 'rho'] as const;
   override needsHalf = true;
   /** Diffusion coefficient per type pair. */
   private alpha = new Float64Array(0);

@@ -70,8 +70,8 @@ async function fdForceX(pairLines: string[], which: number, h = 1e-5): Promise<n
 describe('pair_style vashishta/table arguments', () => {
   const coeff = 'pair_coeff * * pot.vashishta A B';
   const bad: [string, RegExp][] = [
-    ['pair_style vashishta/table 11', /usage: pair_style vashishta\/table Ntable cutinner/],
-    ['pair_style vashishta/table 11 1.5 2', /usage: pair_style vashishta\/table Ntable cutinner/],
+    ['pair_style vashishta/table 11', /Illegal pair_style command/],
+    ['pair_style vashishta/table 11 1.5 2', /Illegal pair_style command/],
     ['pair_style vashishta/table 11.5 1.5', /integer/],
     ['pair_style vashishta/table 1 1.5', /Ntable >= 2/],
     ['pair_style vashishta/table 11 0', /inner cutoff/],

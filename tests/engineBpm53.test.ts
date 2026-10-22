@@ -124,8 +124,8 @@ run 0
 describe('bond_style bpm/rotational', () => {
   it('refuses store/local, unknown keywords and bad values by name', async () => {
     expect((await run(`${DIMER()}bond_style bpm/rotational store/local brk 100 time x/ref\n`)).errors.join(' ')).toMatch(/x\/ref/);
-    expect((await run(`${DIMER()}bond_style bpm/rotational frame sideways\n`)).errors.join(' ')).toMatch(/frame must be/);
-    expect((await run(`${DIMER()}bond_style bpm/rotational foo yes\n`)).errors.join(' ')).toMatch(/illegal bond_style bpm\/rotational keyword 'foo'/);
+    expect((await run(`${DIMER()}bond_style bpm/rotational frame sideways\n`)).errors.join(' ')).toMatch(/Unknown frame style sideways/);
+    expect((await run(`${DIMER()}bond_style bpm/rotational foo yes\n`)).errors.join(' ')).toMatch(/Illegal bond bpm command, invalid argument foo/);
   });
 
   it('refuses break no with smoothing on, as native does, and accepts break no smooth no', async () => {

@@ -88,11 +88,11 @@ export class PairComb3 extends Pair {
   private xco = new Float64Array(0);
 
   settings(args: string[]): void {
-    if (args.length !== 1) throw new StyleError('Illegal pair_style comb3 command: usage pair_style comb3 polar_on|polar_off');
+    if (args.length !== 1) throw new StyleError('Illegal pair_style command');
+    if (args[0] !== 'polar_on' && args[0] !== 'polar_off') throw new StyleError('Illegal pair_style command');
     if (args[0] === 'polar_on') {
       throw new StyleError('pair_style comb3 polar_on (the polarization dipole terms) is not supported by the browser engine yet');
     }
-    if (args[0] !== 'polar_off') throw new StyleError(`Illegal pair_style comb3 command: unknown setting '${args[0]}'`);
     this.polar = false;
   }
 

@@ -121,7 +121,7 @@ describe('pair buck6d/coul/gauss/dsf and /long', () => {
 
 describe('pair gauss/cut', () => {
   it('needs a cutoff, a positive sigma_h and refuses a bad argument count', async () => {
-    expect((await run(`${DIMER}pair_style gauss/cut\nrun 0\n`)).errors[0]).toMatch(/usage: pair_style gauss\/cut cutoff/);
+    expect((await run(`${DIMER}pair_style gauss/cut\nrun 0\n`)).errors[0]).toMatch(/Illegal pair_style command/);
     expect((await run(`${DIMER}pair_style gauss/cut 6.0\npair_coeff 1 1 1.0 3.0\nrun 0\n`)).errors[0]).toMatch(/usage: pair_coeff I J H r_mh sigma_h/);
     expect((await run(`${DIMER}pair_style gauss/cut 6.0\npair_coeff 1 1 1.0 3.0 0.0\nrun 0\n`)).errors[0]).toMatch(/sigma_h must be > 0/);
   });
@@ -199,7 +199,7 @@ describe('pair coul/diel', () => {
 
 describe('pair momb', () => {
   it('parses cutoff s6 d and the five coefficients, and refuses bad counts', async () => {
-    expect((await run(`${DIMER}pair_style momb 12.0 0.75\nrun 0\n`)).errors[0]).toMatch(/usage: pair_style momb cutoff s6 d/);
+    expect((await run(`${DIMER}pair_style momb 12.0 0.75\nrun 0\n`)).errors[0]).toMatch(/Illegal pair_style command/);
     expect((await run(`${DIMER}pair_style momb 12.0 0.75 20.0\npair_coeff * * 0.3 1.2 2.5 10.2847\nrun 0\n`)).errors[0]).toMatch(/usage: pair_coeff I J D0 alpha r0 C6 Rr/);
   });
 

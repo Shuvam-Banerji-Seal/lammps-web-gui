@@ -1,5 +1,5 @@
 import { bounds } from './util';
-import type { SimState } from '../types';
+import type { AtomStyle, SimState } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, NeighList } from '../neighbor';
 import type { System } from '../system';
@@ -20,6 +20,19 @@ import type { Fix } from '../fix/fix';
 
 /** Errors a style raises for bad input; the interpreter adds the line number. */
 export class StyleError extends Error {}
+
+/** What a pair style's constructor checks: the atom style and the unit style when pair_style makes it. */
+export interface PairConstructorWhere { atomStyle: AtomStyle; units: string }
+
+/**
+ * A bond, angle, dihedral or improper style that takes no settings was given some: the style command reports it in
+ * native's words with the style name as given (Bond::settings and friends, src/bond.cpp at b332f28).
+ */
+export class NoSettingsError extends StyleError {
+  constructor(readonly word: string) {
+    super(`Illegal style argument: ${word}`);
+  }
+}
 
 /** A bond style's store/local request: the fix (made by create) that receives its rows. */
 export interface LocalStoreRequest {
@@ -269,8 +282,12 @@ export const mixDistance = (rule: MixRule, s1: number, s2: number): number => {
 export interface StyleContext {
   /** The system, or null when a style is defined before the box exists. */
   s: SimState | null;
-  /** Reads a file the notebook has (uploads or files written by the session). */
-  readFile(name: string): string;
+  /**
+   * Reads a file the notebook has (uploads or files written by the session). A missing file is an error starting
+   * "{opener} {name}: No such file or directory" (opener default "Cannot open file"; native's readers name the kind of
+   * file, as TextFileReader's "cannot open ReaxFF control file").
+   */
+  readFile(name: string, opener?: string): string;
   log(text: string): void;
   /** comm_modify vel yes: ghost atoms carry velocities (granular pair styles require it). */
   ghostVelocity?: boolean;
@@ -280,6 +297,10 @@ export interface StyleContext {
   newtonPair?: boolean;
   /** Value of an equal-style variable (lepton expressions with v_name references). */
   equalVariable?(name: string): number;
+  /** The unit style of the units command (set before the box exists too). */
+  unitStyle?: string;
+  /** An atom type word with a type label replaced by its numeric type (labelmap.html); other words pass through. */
+  atomTypeWord?(word: string): string;
   /** Lattice spacing in x of the lattice command (1 when none is defined): peri styles take half of it as the node radius. */
   xlattice?: number;
   /**
@@ -440,6 +461,11 @@ export abstract class Pair {
   /** Squared inner cutoff of the erfc tables (pair_modify tabinner squared; default sqrt(2)^2 = 2). */
   tabinnerRsq = 2;
 
+  /**
+   * The checks of the native style's constructor, which run before its settings() when pair_style makes the style
+   * (atom attributes, unit style); the pair_style command calls it with the atom style and the unit style.
+   */
+  constructorCheck?(where: PairConstructorWhere): void;
   /** pair_style arguments. */
   abstract settings(args: string[], ctx: StyleContext): void;
   /** pair_coeff arguments including I and J. */

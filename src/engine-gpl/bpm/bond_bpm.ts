@@ -11,6 +11,7 @@
  */
 import { SimpleBonded, atomIndex, delta } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type LocalStoreRequest } from '../../engine/force/types';
+import { logical } from '../../engine/force/util';
 import { FixStoreLocal } from '../tracker/fix_store_local';
 import type { System } from '../../engine/system';
 import { nativeOrder } from '../../engine/atoms';
@@ -18,11 +19,8 @@ import { nativeOrder } from '../../engine/atoms';
 /** Key of a bond by its two atom IDs (IDs stay below 2^26 in the browser engine). */
 export const bondKey = (a: number, b: number): number => (a < b ? a * 0x4000000 + b : b * 0x4000000 + a);
 
-export const yesno = (w: string, cmd: string, key: string): boolean => {
-  if (w === 'yes') return true;
-  if (w === 'no') return false;
-  throw new StyleError(`${cmd} ${key} must be yes or no (got '${w}')`);
-};
+/** A yes/no setting, read with utils::logical as bond_bpm*.cpp reads them (`cmd` and `key` document the call site). */
+export const yesno = (w: string, _cmd: string, _key: string): boolean => logical(w);
 
 /** The value keywords of store/local (bond_bpm.cpp settings); the x/ref, y/ref and z/ref keywords are refused by name. */
 const LOCAL_VALUES = new Set(['id1', 'id2', 'time', 'x', 'y', 'z']);

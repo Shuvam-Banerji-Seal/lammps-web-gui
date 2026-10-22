@@ -10,7 +10,7 @@
  * limit form (doExpansion) instead of the exponential. The trigonometric pieces use the cos and sin of theta0, the
  * clamp s >= 0.001 and the expressions of angle_cosine_shift_exp.cpp compute(), in native order.
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { cos, sin } from '../libm/sincos';
@@ -35,7 +35,7 @@ export class AngleCosineShiftExp extends Bonded {
   private set!: Uint8Array;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

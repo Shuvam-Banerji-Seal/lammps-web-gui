@@ -15,7 +15,7 @@
  * Native writedata = 0: the style writes no Bond Coeffs section (dataCoeffs returns null).
  */
 import { atomIndex, bondDelta } from '../../engine/force/bonded_util';
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { evTallyBond } from './ev';
 
@@ -32,7 +32,7 @@ export class BondHarmonicRestrain extends Bonded {
   private natoms = -1;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

@@ -68,7 +68,7 @@ describe('pair_style hybrid: equivalences from the docs', () => {
 
 describe('pair_style hybrid: errors', () => {
   const cases: [string, string, RegExp][] = [
-    ['unknown sub-style', 'pair_style hybrid lj/bogus 2.5', /sub-style 'lj\/bogus' is not supported/],
+    ['unknown sub-style', 'pair_style hybrid lj/bogus 2.5', /Unrecognized pair style 'lj\/bogus'/],
     ['nested hybrid', 'pair_style hybrid hybrid lj/cut 2.5', /cannot be a sub-style/],
     ['instance number required', 'pair_style hybrid lj/cut 2.5 lj/cut 2.0\npair_coeff * * lj/cut 1.0 1.0', /listed 2 times; give its number/],
     ['unassigned pair, no common sub-style', 'pair_style hybrid lj/cut 2.5 lj/cut 2.0\npair_coeff 1 1 lj/cut 1 1.0 1.0\npair_coeff 2 2 lj/cut 2 1.0 1.0', /all pair coeffs are not set \(pair 1 2/],

@@ -80,6 +80,10 @@ interface PerBuild {
   index: Int32Array;
 }
 
+/** The force-field components pair_style amoeba include|exclude names (PairAmoeba::settings). */
+const AMOEBA_COMPONENTS = ['hal', 'repulse', 'qxfer', 'disp', 'disp/rspace', 'disp/kspace', 'polar', 'polar/rspace', 'polar/kspace', 'mpole',
+  'mpole/rspace', 'mpole/kspace', 'bond', 'angle', 'dihedral', 'improper', 'urey', 'pitorsion', 'bitorsion'];
+
 export class PairAmoeba extends Pair {
   readonly name: string;
   /** pair hippo (native PairHippo is PairAmoeba with amoeba == false): no hal, HIPPO repulsion, dispersion, charge
@@ -128,11 +132,16 @@ export class PairAmoeba extends Pair {
    * settings). Only the reciprocal-space switches are accepted here; the real-space and bonded components are not ported.
    */
   override settings(args: string[], _ctx: StyleContext): void {
+    // PairAmoeba::settings: every component on, then include or exclude and at least one known component; this port
+    // takes exclude of mpole/kspace and polar/kspace only and refuses the other choices after the source's checks
+    this.mpoleKspace = this.polarKspace = true;
     if (args.length === 0) return;
+    if (args[0] !== 'include' && args[0] !== 'exclude') throw new StyleError('Illegal pair_style command');
+    if (args.length < 2) throw new StyleError('Illegal pair_style command');
+    for (const c of args.slice(1)) if (!AMOEBA_COMPONENTS.includes(c)) throw new StyleError('Illegal pair_style command');
     if (args[0] !== 'exclude') {
       throw new StyleError('pair amoeba: only "pair_style amoeba exclude mpole/kspace polar/kspace" is accepted (include and the other components are not ported)');
     }
-    if (args.length === 1) throw new StyleError('pair amoeba: exclude needs a component (mpole/kspace or polar/kspace)');
     for (const c of args.slice(1)) {
       if (c === 'mpole/kspace') this.mpoleKspace = false;
       else if (c === 'polar/kspace') this.polarKspace = false;

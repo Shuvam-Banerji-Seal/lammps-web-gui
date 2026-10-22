@@ -1,7 +1,7 @@
 import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type PairSep, type StyleContext, pairCoeffArgs } from '../types';
 import type { SimState } from '../../types';
 import { NEIGHMASK } from '../../neighbor';
-import { parseNum } from '../util';
+import { numeric, parseNum } from '../util';
 import { gplHook } from '../../gplHooks';
 import { HEAT_FLOW, HEAT_TEMPERATURE } from '../../atoms';
 import { libm } from '../../libm';
@@ -776,8 +776,9 @@ export class PairGranular extends Pair {
   private mdr: MdrApi | null = null;
 
   settings(args: string[]): void {
-    if (args.length > 1) throw new StyleError('usage: pair_style granular [cutoff]');
-    this.globalCut = args.length === 1 ? parseNum(args[0], 'cutoff') : null;
+    // As native LAMMPS does (src/GRANULAR/pair_granular.cpp PairGranular::settings at b332f28): one word is the global
+    // cutoff (utils::numeric); any other count of words leaves the cutoffs to the particle sizes
+    this.globalCut = args.length === 1 ? numeric(args[0]) : null;
     if (this.globalCut !== null && !(this.globalCut > 0)) throw new StyleError('pair_style granular: cutoff must be > 0');
     this.shear.clear();
   }

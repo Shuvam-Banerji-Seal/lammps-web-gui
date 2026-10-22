@@ -87,9 +87,9 @@ describe('pair_style comb commands', () => {
     expect(errorOf(ev)).toMatch(/missing an entry for: Ge Ge Ge/);
   });
 
-  it('refuses a pair_style argument it does not implement, naming it', async () => {
+  it('refuses a pair_style argument as native LAMMPS does', async () => {
     const ev = await run(`${box}pair_style comb foo\n`, { 'ffield.comb': ffield });
-    expect(errorOf(ev)).toMatch(/foo/);
+    expect(errorOf(ev)).toMatch(/Illegal pair_style command/);
   });
 
   it('refuses NULL in pair_coeff, naming it', async () => {

@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, bondedVirial, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { Bonded, NoSettingsError, StyleError, typeBounds, bondedVirial, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { atomIndex, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { libm } from '../../libm';
@@ -46,7 +46,7 @@ export class ImproperClass2 extends Bonded {
   private setAa!: Uint8Array;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

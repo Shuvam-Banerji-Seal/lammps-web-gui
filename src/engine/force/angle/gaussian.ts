@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { Bonded, NoSettingsError, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { atomIndex } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
@@ -36,7 +36,7 @@ export class AngleGaussian extends Bonded {
   private terms: GaussTerm[][] = [];
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`angle_style gaussian takes no arguments (got '${args[0]}')`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

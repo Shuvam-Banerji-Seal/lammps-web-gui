@@ -51,8 +51,8 @@ describe('fix box/relax argument errors', () => {
   it('rejects a box fix with no pressure keyword', async () => {
     expect(await fails(SETUP + 'fix 1 all box/relax couple xyz\n')).toMatch(/no pressure keyword/);
   });
-  it('rejects dilate partial (not implemented)', async () => {
-    expect(await fails(SETUP + 'fix 1 all box/relax iso 0.0 dilate partial\n')).toMatch(/dilate partial is not supported/);
+  it('rejects a dilate value other than all or partial, in native wording', async () => {
+    expect(await fails(SETUP + 'fix 1 all box/relax iso 0.0 dilate some\n')).toMatch(/Illegal fix box\/relax dilate command: some unkown/);
   });
   it('rejects tilt keywords on an orthogonal box', async () => {
     expect(await fails(SETUP + 'fix 1 all box/relax tri 0.0\nminimize 0 1e-8 10 100\n')).toMatch(/triclinic/);

@@ -57,7 +57,7 @@ import type { Compute } from '../compute/compute';
  * "the instantaneous stress will be computed as an average of the corresponding
  * diagonal components".
  *
- * Not supported (StyleError): dilate partial (not implemented). scaleyz/scalexz/
+ * dilate partial remaps only the atoms of the fix group (the others keep their coordinates). scaleyz/scalexz/
  * scalexy are accepted; their effect on the path is not measured.
  */
 
@@ -109,6 +109,8 @@ export class FixBoxRelax extends Fix {
   private pTilt: (number | null)[] = [null, null, null];
   private couple = 'none';
   private vmaxValue = 0.0001;
+  /** dilate all (true) or partial (false: only the fix group's atoms are remapped), native allremap. */
+  private allRemap = true;
   private nresetValue = 0;
   private fixedPoint: number[] | null = null;
   private pc: Compute;
@@ -199,8 +201,10 @@ export class FixBoxRelax extends Fix {
         }
         case 'dilate': {
           const v = need(k + 1, key);
-          if (v === 'partial') throw new StyleError('fix box/relax: dilate partial is not supported by the browser engine');
-          if (v !== 'all') throw new StyleError(`fix box/relax: dilate must be all or partial, got '${v}'`);
+          // As native LAMMPS does (src/fix_box_relax.cpp at b332f28): all or partial (allremap), else its message
+          if (v === 'all') this.allRemap = true;
+          else if (v === 'partial') this.allRemap = false;
+          else throw new StyleError(`Illegal fix box/relax dilate command: ${v} unkown`);
           k += 2; break;
         }
         case 'scaleyz': case 'scalexz': case 'scalexy': {
@@ -331,6 +335,11 @@ export class FixBoxRelax extends Fix {
     const F = mul3(hNew, inv3(this.startH));
     const n = s.n;
     for (let i = 0; i < n; i++) {
+      // dilate partial: the atoms outside the fix group keep their coordinates (remap() converts only the group's)
+      if (!this.allRemap && !(s.mask[i] & this.groupBit)) {
+        xOut[3 * i] = x0[3 * i]; xOut[3 * i + 1] = x0[3 * i + 1]; xOut[3 * i + 2] = x0[3 * i + 2];
+        continue;
+      }
       const x = x0[3 * i] - this.startLo[0], y = x0[3 * i + 1] - this.startLo[1], z = x0[3 * i + 2] - this.startLo[2];
       xOut[3 * i] = lo[0] + F[0][0] * x + F[0][1] * y + F[0][2] * z;
       xOut[3 * i + 1] = lo[1] + F[1][0] * x + F[1][1] * y + F[1][2] * z;

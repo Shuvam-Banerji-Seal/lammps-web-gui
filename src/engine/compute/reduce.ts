@@ -2,7 +2,8 @@ import { Compute } from './compute';
 import { ComputeOrientorderAtom } from './orientorder';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
+import { peratomValues, type Ref } from '../refs';
+import { bounds, inumeric } from '../force/util';
 import { ALL_GROUP_BIT } from '../atoms';
 import { CellList } from '../cellList';
 
@@ -118,42 +119,49 @@ export class ComputeReduce extends Compute {
   constructor(sys: System, id: string, group: string, args: string[], regionId: string | null = null) {
     super(sys, id, group, args);
     this.regionId = regionId;
-    if (regionId !== null) sys.region(regionId); // "region-ID = ID of region to use for choosing atoms"
-    if (args.length < 1) {
-      throw new StyleError(`usage: compute ${id} group-ID ${regionId === null ? 'reduce' : `reduce/region ${regionId}`} mode input1 input2 ... keyword args ...`);
-    }
+    // As native LAMMPS does (src/compute_reduce.cpp ComputeReduce::ComputeReduce at b332f28): the mode, the inputs up to
+    // the first word that is no input, then the keywords, then each input against its compute, fix or variable
+    const style = regionId === null ? 'reduce' : 'reduce/region';
+    if (args.length < 2) throw new StyleError(`Illegal compute ${style} command: missing argument(s)`);
     const mode = args[0];
-    if (!(REDUCE_MODES as readonly string[]).includes(mode)) {
-      throw new StyleError(`unknown reduce mode '${mode}' (use ${REDUCE_MODES.join(', ')})`);
-    }
+    if (!(REDUCE_MODES as readonly string[]).includes(mode)) throw new StyleError(`Unknown compute ${style} mode: ${mode}`);
     this.mode = mode as ReduceMode;
-    const words: string[] = [];
-    for (let k = 1; k < args.length; k++) {
-      const w = args[k];
+    const words = expandArgs(sys, args.slice(1));
+    let k = 0;
+    for (; k < words.length; k++) {
+      const a = argInfo(words[k]);
+      if (a.type === 'unknown' || a.dim > 1) throw new StyleError(`Illegal compute ${style} argument: ${words[k]}`);
+      if (a.type === 'none' && !ATOM_ATTRS.includes(words[k])) break;
+    }
+    const inputWords = words.slice(0, k);
+    const replace = new Array<number>(inputWords.length).fill(-1);
+    for (; k < words.length; k++) {
+      const w = words[k];
       if (w === 'replace') {
-        const v1 = args[k + 1], v2 = args[k + 2];
-        if (v1 === undefined || v2 === undefined) throw new StyleError(`compute ${id} (reduce): the replace keyword needs two input indices (vec1 vec2)`);
-        if (this.mode !== 'min' && this.mode !== 'max') {
-          throw new StyleError(`compute ${id} (reduce): the replace keyword can only be used if the mode is min or max`);
-        }
-        this.replaces.push([parseIndex(v1, id), parseIndex(v2, id)]);
+        if (k + 3 > words.length) throw new StyleError(`Illegal compute ${style} replace command: missing argument(s)`);
+        if (this.mode !== 'min' && this.mode !== 'max') throw new StyleError(`Compute ${style} replace requires min or max mode`);
+        const col1 = inumeric(words[k + 1]) - 1;
+        const col2 = inumeric(words[k + 2]) - 1;
+        if (col1 < 0 || col1 >= inputWords.length) throw new StyleError(`Invalid compute ${style} replace first column index ${col1}`);
+        if (col2 < 0 || col2 >= inputWords.length) throw new StyleError(`Invalid compute ${style} replace second column index ${col2}`);
+        // native's two messages below have no argument for their "{}" and print it as it is
+        if (col1 === col2) throw new StyleError('Compute {} replace columns must be different');
+        if (replace[col1] >= 0 || replace[col2] >= 0) throw new StyleError('Compute {} replace column already used for another replacement');
+        replace[col1] = col2;
+        this.replaces.push([col1 + 1, col2 + 1]);
         k += 2;
       } else if (w === 'inputs') {
-        const v = args[k + 1];
-        if (v === undefined) throw new StyleError(`compute ${id} (reduce): the inputs keyword needs peratom or local`);
-        if (v === 'local') this.localInputs = true;
-        else if (v === 'peratom') this.localInputs = false;
-        else throw new StyleError(`compute ${id} (reduce): the inputs keyword value must be peratom or local, got '${v}'`);
+        if (k + 2 > words.length) throw new StyleError(`Illegal compute ${style} inputs command: missing argument(s)`);
+        if (words[k + 1] === 'peratom') this.localInputs = false;
+        else if (words[k + 1] === 'local') this.localInputs = true;
+        else throw new StyleError(`Unknown compute ${style} inputs argument: ${words[k + 1]}`);
         k += 1;
-      } else {
-        words.push(w);
-      }
+      } else throw new StyleError(`Unknown compute ${style} keyword: ${w}`);
     }
-    if (!words.length) throw new StyleError(`compute ${id} (reduce): at least one input value is required`);
-    // "The compute reduce/region command can only be used with per-atom inputs."
-    if (regionId !== null && this.localInputs) throw new StyleError(`compute ${id} (reduce/region): cannot use local data as input`);
-    this.inputWords = this.localInputs ? expandLocalWildcards(sys, words) : expandWildcards(sys, words, 'peratom');
-    this.inputs = this.inputWords.map((w) => this.parseInput(w));
+    this.inputWords = inputWords;
+    this.inputs = inputWords.map((w) => this.parseInput(w, style));
+    // src/compute_reduce_region.cpp: "Compute reduce/region cannot use local data as input"
+    if (regionId !== null && this.localInputs) throw new StyleError('Compute reduce/region cannot use local data as input');
     const n = this.inputs.length;
     if (n === 1) {
       this.scalarFlag = true;
@@ -163,9 +171,6 @@ export class ComputeReduce extends Compute {
       this.sizeVector = n;
       this.vector = new Float64Array(n);
       this.extvector = EXTENSIVE_MODES.has(this.mode) ? 1 : 0;
-    }
-    for (const [v1, v2] of this.replaces) {
-      if (v1 > n || v2 > n) throw new StyleError(`compute ${id} (reduce): replace index out of range 1..${n} (the number of input values)`);
     }
   }
 
@@ -187,42 +192,51 @@ export class ComputeReduce extends Compute {
     return { vector: names };
   }
 
-  private parseInput(w: string): Ref {
-    const r = parseRef(w, true);
-    if (this.localInputs) {
-      // "all the inputs must be the same kind": with inputs local, only a compute's local data is local.
-      if (r.kind === 'attr' || r.kind === 'v') {
-        throw new StyleError(`compute ${this.id} (reduce): ${w}: inputs local is not supported for per-atom inputs; with inputs local every input must be a local vector or local array column`);
-      }
-      if (r.kind === 'f') {
-        throw new StyleError(`compute ${this.id} (reduce): ${w}: fix ${r.id} does not calculate local values (the browser engine has no fix with local output)`);
-      }
-      const obj = this.sys.compute(r.id);
-      if (!obj.localFlag) throw new StyleError(`compute ${this.id} (reduce): ${w}: compute ${r.id} does not calculate local values`);
-      const cols = obj.sizeLocalCols;
-      if (r.index === null) {
-        if (cols !== 0) throw new StyleError(`compute ${this.id} (reduce): ${w}: it calculates a local array; give a column, e.g. ${w}[1]`);
-      } else if (cols === 0) {
-        throw new StyleError(`compute ${this.id} (reduce): ${w}: it calculates a local vector, which has no columns`);
-      } else if (r.index > cols) {
-        throw new StyleError(`compute ${this.id} (reduce): ${w}: column out of range 1..${cols}`);
-      }
+  /** One input, checked against its compute, fix or variable for the per-atom or local inputs (native's messages). */
+  private parseInput(w: string, style: string): Ref {
+    if (ATOM_ATTRS.includes(w)) {
+      // native's message has no argument for its "{}"
+      if (this.localInputs) throw new StyleError('Compute {} inputs must be all local');
+      return { kind: 'attr', id: w, index: null, text: w };
+    }
+    const a = argInfo(w);
+    const r: Ref = { kind: a.type as 'c' | 'f' | 'v', id: a.name, index: a.index > 0 ? a.index : null, text: w };
+    if (r.kind === 'v') {
+      if (this.localInputs) throw new StyleError('Compute {} inputs must be all local');
+      const v = this.sys.vars.get(r.id);
+      if (!v) throw new StyleError(`Variable name ${r.id} for compute ${style} does not exist`);
+      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Compute ${style} variable ${r.id} is not atom-style variable`);
       return r;
     }
-    if (r.kind === 'attr' || r.kind === 'v') return r;
-    const obj = r.kind === 'c' ? this.sys.compute(r.id) : this.sys.fix(r.id);
     const kind = r.kind === 'c' ? 'compute' : 'fix';
-    if (!obj.peratomFlag) {
-      throw new StyleError(`compute ${this.id} (reduce): ${w}: ${kind} ${r.id} does not calculate per-atom values`);
+    const obj = r.kind === 'c' ? this.sys.computes.find((c) => c.id === r.id) : this.sys.fixes.find((f) => f.id === r.id);
+    if (!obj) throw new StyleError(`${r.kind === 'c' ? 'Compute ID' : 'Fix ID'} ${r.id} for compute ${style} does not exist`);
+    const range = `Compute ${style} ${kind} ${r.id} array is accessed out-of-range\nFor more information see https://docs.lammps.org/err0020`;
+    if (this.localInputs) {
+      const local = (obj as { localFlag?: boolean }).localFlag ?? false;
+      const cols = (obj as { sizeLocalCols?: number }).sizeLocalCols ?? 0;
+      if (!local) throw new StyleError(`Compute ${style} ${kind} ${r.id} does not calculate local values`);
+      if (r.index === null && cols !== 0) throw new StyleError(`Compute ${style} ${kind} ${r.id} does not calculate a local vector`);
+      if (r.index !== null && cols === 0) throw new StyleError(`Compute ${style} ${kind} ${r.id} does not calculate a local array`);
+      if (r.index !== null && r.index > cols) throw new StyleError(range);
+      return r;
     }
-    if (r.index === null) {
-      if (obj.sizePeratomCols !== 0) throw new StyleError(`compute ${this.id} (reduce): ${w}: it calculates a per-atom array; give a column, e.g. ${w}[1]`);
-    } else if (obj.sizePeratomCols === 0) {
-      throw new StyleError(`compute ${this.id} (reduce): ${w}: it calculates a per-atom vector, which has no columns`);
-    } else if (r.index > obj.sizePeratomCols) {
-      throw new StyleError(`compute ${this.id} (reduce): ${w}: column out of range 1..${obj.sizePeratomCols}`);
-    }
+    if (!obj.peratomFlag) throw new StyleError(`Compute ${style} ${kind} ${r.id} does not calculate per-atom values`);
+    if (r.index === null && obj.sizePeratomCols !== 0) throw new StyleError(`Compute ${style} ${kind} ${r.id} does not calculate a per-atom vector`);
+    if (r.index !== null && obj.sizePeratomCols === 0) throw new StyleError(`Compute ${style} ${kind} ${r.id} does not calculate a per-atom array`);
+    if (r.index !== null && r.index > obj.sizePeratomCols) throw new StyleError(range);
     return r;
+  }
+
+  /** As native LAMMPS does (ComputeReduce::init at b332f28): the computes, fixes and variables of the inputs and the region again. */
+  init(): void {
+    const style = this.regionId === null ? 'reduce' : 'reduce/region';
+    for (const r of this.inputs) {
+      if (r.kind === 'c' && !this.sys.computes.some((c) => c.id === r.id)) throw new StyleError(`Compute ID ${r.id} for compute ${style} does not exist`);
+      if (r.kind === 'f' && !this.sys.fixes.some((f) => f.id === r.id)) throw new StyleError(`Fix ID ${r.id} for compute ${style} does not exist`);
+      if (r.kind === 'v' && !this.sys.vars.has(r.id)) throw new StyleError(`Variable name ${r.id} for compute ${style} does not exist`);
+    }
+    if (this.regionId !== null && !this.sys.regions.has(this.regionId)) throw new StyleError(`Region ${this.regionId} for compute reduce/region does not exist`);
   }
 
   /** Atoms that contribute: the compute group, plus (reduce/region) "the atoms must also currently be within the region". */
@@ -370,7 +384,9 @@ export class ComputeReduceRegion extends ComputeReduce {
   readonly style: string = 'reduce/region';
 
   constructor(sys: System, id: string, group: string, args: string[]) {
-    if (args.length < 1) throw new StyleError(`usage: compute ${id} group-ID reduce/region region-ID mode input1 input2 ...`);
+    // src/compute_reduce.cpp: three words at least, and the region must exist
+    if (args.length < 3) throw new StyleError('Illegal compute reduce/region command: missing argument(s)');
+    if (!sys.regions.has(args[0])) throw new StyleError(`Region ${args[0]} for compute reduce/region does not exist`);
     super(sys, id, group, args.slice(1), args[0]);
   }
 }
@@ -716,29 +732,51 @@ export class ComputeCoordAtom extends Compute {
   }
 }
 
-const parseIndex = (w: string, id: string): number => {
-  const v = Number(w);
-  if (!Number.isInteger(v) || v < 1) throw new StyleError(`compute ${id} (reduce): replace index '${w}' must be a positive integer (input values are numbered from 1)`);
-  return v;
+/** The atom attributes compute reduce takes by name (compute_reduce.cpp: x, y, z, vx, vy, vz, fx, fy, fz). */
+const ATOM_ATTRS = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz'];
+
+/**
+ * A c_, f_ or v_ word as native's ArgInfo reads it (src/arg_info.cpp at b332f28): the name up to a bracket, the number of
+ * brackets and the first index (std::stoi of the bracket's text); 'none' for any other word (it ends the inputs) and
+ * 'unknown' for brackets that do not read.
+ */
+const argInfo = (w: string): { type: 'c' | 'f' | 'v' | 'none' | 'unknown'; name: string; dim: number; index: number } => {
+  if (!(w.length > 2 && w[1] === '_' && (w[0] === 'c' || w[0] === 'f' || w[0] === 'v'))) return { type: 'none', name: w, dim: 0, index: 0 };
+  const type = w[0] as 'c' | 'f' | 'v';
+  const open1 = w.indexOf('[', 2);
+  if (open1 < 0) return { type, name: w.slice(2), dim: 0, index: 0 };
+  const name = w.slice(2, open1);
+  const open2 = w.indexOf('[', open1 + 1);
+  const stoi = (t: string): number | null => { const m = /^\s*[+-]?\d+/.exec(t); return m ? Number(m[0]) : null; };
+  if (open2 >= 0) return { type: 'unknown', name, dim: 2, index: 0 };
+  if (w[w.length - 1] !== ']' || w.indexOf(']') !== w.length - 1) return { type: 'unknown', name, dim: 1, index: 0 };
+  const index = stoi(w.slice(open1 + 1, w.length - 1));
+  if (index === null) return { type: 'unknown', name, dim: 1, index: 0 };
+  return { type, name, dim: 1, index };
 };
 
 /*
- * Wildcard expansion of local c_ID[*] inputs, against the local column count (refs.ts
- * expandWildcards expands against the per-atom or global counts): compute_reduce.html
- * "the bracketed index I can be specified using a wildcard asterisk ... This takes the form
- * "*" or "*n" or "m*" or "m*n". If N is ... the number of columns in the array ... then an
- * asterisk with no numeric values means all indices from 1 to N."
+ * Wildcard expansion of c_ID[*] and f_ID[*] inputs. As native LAMMPS does (utils::expand_args with mode 1, src/utils.cpp at
+ * b332f28): the columns of a global array, else of a per-atom array, else of a local array; a word whose compute or fix
+ * has none of them, or does not exist, is kept as written; the range is read by utils::bounds.
  */
-const expandLocalWildcards = (sys: System, words: string[]): string[] => {
+const expandArgs = (sys: System, words: string[]): string[] => {
   const out: string[] = [];
   for (const w of words) {
-    const m = /^c_([A-Za-z0-9_\-/]+)\[(\d*)\*(\d*)\]$/.exec(w);
+    const m = /^([cf])_(\w+)\[(\d*\*\d*)\](.*)$/.exec(w);
     if (!m) { out.push(w); continue; }
-    const [, id, lo, hi] = m;
-    const n = sys.compute(id).sizeLocalCols;
-    if (n < 1) throw new StyleError(`${w}: compute ${id} has no local columns to expand`);
-    const a = lo === '' ? 1 : Number(lo), b = hi === '' ? n : Math.min(Number(hi), n);
-    for (let k = a; k <= b; k++) out.push(`c_${id}[${k}]`);
+    const [, kind, id, wc, tail] = m;
+    const o = (kind === 'c' ? sys.computes.find((c) => c.id === id) : sys.fixes.find((f) => f.id === id)) as
+      { arrayFlag: boolean; sizeArrayCols: number; peratomFlag: boolean; sizePeratomCols: number; localFlag?: boolean; sizeLocalCols?: number } | undefined;
+    let nmax = 0;
+    if (o) {
+      if (o.arrayFlag) nmax = o.sizeArrayCols;
+      else if (o.peratomFlag && o.sizePeratomCols) nmax = o.sizePeratomCols;
+      else if (o.localFlag && o.sizeLocalCols) nmax = o.sizeLocalCols;
+    }
+    if (!nmax) { out.push(w); continue; }
+    const [lo, hi] = bounds(wc, 1, nmax);
+    for (let k = lo; k <= hi; k++) out.push(`${kind}_${id}[${k}]${tail}`);
   }
   return out;
 };

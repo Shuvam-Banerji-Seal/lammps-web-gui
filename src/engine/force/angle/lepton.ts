@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
 import { atomIndex } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { parseNum } from '../util';
@@ -49,7 +49,8 @@ export class AngleLepton extends Bonded {
 
   coeff(args: string[], ctx?: StyleContext): void {
     if (ctx) this.ctx = ctx;
-    if (args.length !== 3) throw bondedCoeffArgs('angle', 'usage: angle_coeff N theta0 "expression"');
+    // As native LAMMPS does (src/LEPTON/angle_lepton.cpp AngleLepton::coeff at b332f28): the count is checked first
+    if (args.length !== 3) throw new StyleError('Incorrect number of args for angle coefficients');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     // As native LAMMPS does (src/LEPTON/angle_lepton.cpp at b332f28): theta0[i] = DEG2RAD * theta0_one
     const th0 = (Math.PI / 180) * parseNum(args[1], 'theta0');

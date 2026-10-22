@@ -151,6 +151,8 @@ export class PairAmoeba extends Pair {
 
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
+    // As native LAMMPS does (src/AMOEBA/pair_amoeba.cpp PairAmoeba::coeff at b332f28): the argument count is 3 or 4 before anything is read.
+    if (args.length < 3 || args.length > 4) throw new StyleError('Incorrect args for pair coefficients');
     if (args.length !== 4 || args[0] !== '*' || args[1] !== '*') throw new StyleError('usage: pair_coeff * * file.prm file.key');
     const kind = this.hippo ? 'HIPPO' : 'AMOEBA';
     const prm = parseAmoebaPrm(ctx.readFile(args[2], `Cannot open ${kind} PRM file`), this.hippo);

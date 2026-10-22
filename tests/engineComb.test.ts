@@ -99,7 +99,7 @@ describe('pair_style comb commands', () => {
 
   it('needs one element per atom type', async () => {
     const ev = await run(`${box}pair_style comb\npair_coeff * * ffield.comb Si Si\n`, { 'ffield.comb': ffield });
-    expect(errorOf(ev)).toMatch(/one element name per atom type/);
+    expect(errorOf(ev)).toMatch(/Number of element to type mappings does not match number of atom types/);
   });
 
   it('refuses pair_style comb3 polar_on by name (the polarization terms are not ported)', async () => {

@@ -95,6 +95,8 @@ abstract class PairSpinVector extends Pair implements SpinPairStyle {
     if (args[2] !== kw) throw pairCoeffArgs(`usage: pair_coeff I J ${kw} rc magnitude Vx Vy Vz (the ${kw} keyword is required)`, 'Incorrect args in pair_style command', false);
     const k = 3;
     if (args.length < k + 5) throw pairCoeffArgs(`usage: pair_coeff I J ${kw} rc magnitude Vx Vy Vz`, 'Incorrect args in pair_style command', false);
+    // As native LAMMPS does (src/SPIN/pair_spin_dmi.cpp PairSpinDmi::coeff and pair_spin_magelec.cpp at b332f28): the argument count must be exactly 8, so an extra word is refused.
+    if (args.length !== 8) throw new StyleError('Incorrect args in pair_style command');
     const [rc, Vx, Vy, Vz] = vectorCoeff(args.slice(k), this.name);
     this.p.setRange(args[0], args[1], [rc, Vx, Vy, Vz]);
   }

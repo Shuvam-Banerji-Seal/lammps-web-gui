@@ -128,7 +128,7 @@ export class PairDRIP extends Pair {
     const nt = this.ntypes + 1;
     const elems = args.slice(3);
     if (elems.length !== this.ntypes) {
-      throw new StyleError(`pair_coeff for style drip needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     this.map = new Int32Array(nt).fill(-1);
     for (let t = 1; t <= this.ntypes; t++) {

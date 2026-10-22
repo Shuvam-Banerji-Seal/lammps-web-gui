@@ -550,7 +550,8 @@ const parseSpec = (a: string[]): { spec: Spec; cutoff: number } => {
       spec.limitDamping = true;
       iarg += 1;
     } else {
-      throw new StyleError(`Illegal pair_coeff command keyword '${w}' for pair granular/superellipsoid`);
+      // As native LAMMPS does (src/ASPHERE/pair_granular_superellipsoid.cpp PairGranularSuperellipsoid::coeff at b332f28): an unknown word stops with "Illegal pair_coeff command {word}".
+      throw new StyleError(`Illegal pair_coeff command ${w}`);
     }
   }
   if (spec.tangential < 0) throw new StyleError('pair_coeff granular/superellipsoid needs the tangential keyword');

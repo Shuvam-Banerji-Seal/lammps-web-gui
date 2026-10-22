@@ -198,9 +198,12 @@ export class DihedralFourier extends DihedralVarLen {
   readonly kind = 'dihedral' as const;
 
   override coeff(args: string[], _ctx?: StyleContext): void {
-    if (args.length < 2) throw bondedCoeffArgs('dihedral', 'usage: dihedral_coeff N m K1 n1 d1 [K2 n2 d2 ...]');
+    // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_fourier.cpp DihedralFourier::coeff at b332f28): fewer than
+    // four words, then m < 1, then more words than m triplets need are each refused before the values are read.
+    if (args.length < 4) throw bondedCoeffArgs('dihedral');
     const m = parseInt_(args[1], 'm');
-    if (m < 1) throw new StyleError('dihedral fourier m must be an integer >= 1');
+    if (m < 1) throw new StyleError('Incorrect number of terms arg for dihedral coefficients');
+    if (2 + 3 * m < args.length) throw new StyleError('Incorrect number of arguments for dihedral coefficients');
     const vals = args.slice(2);
     if (vals.length !== 3 * m) {
       throw bondedCoeffArgs('dihedral', `dihedral_coeff fourier needs m K n d triplets: m=${m} requires ${3 * m} values, got ${vals.length}`);
@@ -440,9 +443,8 @@ export class DihedralZero extends SimpleBonded {
 
   override coeff(args: string[], _ctx?: StyleContext): void {
     if (!args.length) throw bondedCoeffArgs('dihedral', 'usage: dihedral_coeff N');
-    if (!this.nocoeff && args.length > 1) {
-      throw new StyleError("dihedral_coeff zero takes no coefficient values (use 'dihedral_style zero nocoeff' to ignore them)");
-    }
+    // As native LAMMPS does (src/dihedral_zero.cpp at b332f28): with coefficients allowed, more than one word is refused
+    if (!this.nocoeff && args.length > 1) throw bondedCoeffArgs('dihedral');
     this.params.setRange(args[0], []);
   }
 

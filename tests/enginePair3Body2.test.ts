@@ -268,7 +268,7 @@ describe('pair_style nb3b/harmonic', () => {
     expect(() => pair.settings(['2.0'], ctx)).toThrow(/takes no arguments/);
     pair.allocate(3);
     expect(() => pair.coeff(['1', '1', 'pot.nb3b', 'Mg', 'O', 'H'], ctx)).toThrow(/first 2 arguments/);
-    expect(() => pair.coeff(['*', '*', 'pot.nb3b', 'Mg', 'O'], ctx)).toThrow(/one element name per atom type/);
+    expect(() => pair.coeff(['*', '*', 'pot.nb3b', 'Mg', 'O'], ctx)).toThrow(/Number of element to type mappings does not match number of atom types/);
     expect(() => pair.coeff(['*', '*', 'pot.nb3b', 'Mg', 'O', 'Cl'], ctx)).toThrow(/element 'Cl' is not in nb3b potential file/);
     expect(() => pair.coeff(['*', '*', 'short.nb3b', 'Mg', 'O', 'H'], ctx)).toThrow(/expected 'element1 element2 element3 K theta0 cutoff'/);
     const partial = 'Mg O H 1 110 0\nMg O O 0 0 3\n';

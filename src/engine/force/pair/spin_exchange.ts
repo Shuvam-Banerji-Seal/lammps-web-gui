@@ -111,14 +111,17 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
   coeff(args: string[]): void {
     // docs.lammps.org/pair_spin_exchange.html: "R_c (distance units)", "a (energy units)", "b (adim parameter)",
     // "d (distance units)" for spin/exchange; biquadratic adds a second triple (a_k, b_k, d_k) for K(r_ij).
-    // The examples put the keyword exchange or biquadratic first.
+    // As native LAMMPS does (src/SPIN/pair_spin_exchange.cpp and pair_spin_exchange_biquadratic.cpp coeff at b332f28): the
+    // third word must be the keyword exchange or biquadratic.
     const style = this.biquadratic ? 'biquadratic' : 'exchange';
-    const k = args[2] === style ? 3 : 2;
+    const k = 3;
     const nv = this.biquadratic ? 7 : 4;
     const usage = this.biquadratic
-      ? 'usage: pair_coeff I J [biquadratic] R_c a_j b_j d_j a_k b_k d_k [offset yes|no]'
-      : 'usage: pair_coeff I J [exchange] R_c a b d [offset yes|no]';
-    if (args.length < k + nv) throw pairCoeffArgs(usage);
+      ? 'usage: pair_coeff I J biquadratic R_c a_j b_j d_j a_k b_k d_k [offset yes|no]'
+      : 'usage: pair_coeff I J exchange R_c a b d [offset yes|no]';
+    if (args[2] !== style || args.length < k + nv) throw pairCoeffArgs(usage);
+    // As native LAMMPS does (src/SPIN/pair_spin_exchange.cpp and pair_spin_exchange_biquadratic.cpp coeff at b332f28): the total argument count is checked before the keywords are read.
+    if (this.biquadratic ? args.length !== 10 && args.length !== 12 : args.length !== 7 && args.length !== 9) throw new StyleError('Incorrect args for pair coefficients');
     const names = this.biquadratic ? ['Rc', 'a_j', 'b_j', 'd_j', 'a_k', 'b_k', 'd_k'] : ['Rc', 'a', 'b', 'd'];
     const v = args.slice(k, k + nv).map((w, n) => parseNum(w, names[n]));
     if (!(v[0] > 0)) throw new StyleError(`${this.name}: R_c must be > 0`);
@@ -126,7 +129,7 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
     if (this.biquadratic && !(v[6] > 0)) throw new StyleError(`${this.name}: d_k must be > 0`);
     let offset = 0;
     for (let m = k + nv; m < args.length; m += 2) {
-      if (args[m] !== 'offset') throw new StyleError(`pair_coeff ${this.name}: unknown keyword ${args[m]}`);
+      if (args[m] !== 'offset') throw new StyleError('Incorrect args for pair coefficients');
       if (args[m + 1] === 'yes') offset = 1;
       else if (args[m + 1] === 'no') offset = 0;
       else throw new StyleError(`pair_coeff ${this.name}: offset must be yes or no`);

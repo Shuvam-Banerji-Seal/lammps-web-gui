@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
 import { atomIndex, bondDelta } from '../bonded_util';
 import { parseNum } from '../util';
 import { compileLepton, fillVrefs, type LeptonProgram } from '../../lepton';
@@ -49,7 +49,8 @@ export class BondLepton extends Bonded {
 
   coeff(args: string[], ctx?: StyleContext): void {
     if (ctx) this.ctx = ctx;
-    if (args.length !== 3) throw bondedCoeffArgs('bond', 'usage: bond_coeff N r0 "expression"');
+    // As native LAMMPS does (src/LEPTON/bond_lepton.cpp BondLepton::coeff at b332f28): the count is checked first
+    if (args.length !== 3) throw new StyleError('Incorrect number of args for bond coefficients');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const r0 = parseNum(args[1], 'r0');
     const prog = compileLepton(args[2], { builtins: ['r'], wrt: ['r'] });

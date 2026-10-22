@@ -89,7 +89,7 @@ describe('pair_style vashishta/table arguments', () => {
   });
 
   it('rejects a pair_coeff with the wrong number of element names', async () => {
-    await expect(evaluate(['pair_style vashishta/table 11 1.5', 'pair_coeff * * pot.vashishta A'], SYSTEM)).rejects.toThrow(/usage/);
+    await expect(evaluate(['pair_style vashishta/table 11 1.5', 'pair_coeff * * pot.vashishta A'], SYSTEM)).rejects.toThrow('Number of element to type mappings does not match number of atom types');
   });
 
   it('rejects a pair_coeff whose first two arguments are not * *', async () => {

@@ -33,6 +33,8 @@ export class PairSPHHeatConduction extends PairSPHBase {
 
   /** pair_coeff I J diffusion_coefficient cutoff. */
   coeff(args: string[]): void {
+    // As native LAMMPS does (src/SPH/pair_sph_heatconduction.cpp PairSPHHeatConduction::coeff at b332f28): the argument count is checked before the type ranges.
+    if (args.length !== 4) throw new StyleError('Incorrect number of args for pair_style sph/heatconduction coefficients');
     const r = this.coeffRange(args, 2, 'sph/heatconduction');
     const alpha = parseNum(r.values[0], 'diffusion coefficient'), cut = parseNum(r.values[1], 'cutoff');
     this.forPairs(r.ilo, r.ihi, r.jlo, r.jhi, (i, j) => { this.alpha[i * this.nt + j] = alpha; this.h[i * this.nt + j] = cut; });

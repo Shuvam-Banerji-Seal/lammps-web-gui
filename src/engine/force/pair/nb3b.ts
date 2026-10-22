@@ -225,7 +225,7 @@ export class PairNB3BHarmonic extends Pair {
     const filename = args[2];
     const elems = args.slice(3);
     if (elems.length !== this.ntypes) {
-      throw new StyleError(`pair_coeff for style ${this.name} needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     // native names the harmonic file "nb3n/harmonic" (src/MANYBODY/pair_nb3b_harmonic.cpp at b332f28)
     const entries = parseNB3BFile(ctx.readFile(filename, potentialFile(this.screened ? 'nb3b/screened' : 'nb3n/harmonic')), filename, this.screened ? 7 : 6);

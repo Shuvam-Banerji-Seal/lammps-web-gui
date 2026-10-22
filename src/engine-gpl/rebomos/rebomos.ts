@@ -122,7 +122,7 @@ export class PairREBOMoS extends Pair {
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
     if (args.length !== 3 + this.ntypes) {
-      throw new StyleError('Incorrect args for pair coefficients (pair_style rebomos needs * * file and one element per type)');
+      throw new StyleError('Incorrect args for pair coefficients');
     }
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError('Incorrect args for pair coefficients: the first 2 arguments must be * *');
     const map = new Int32Array(this.ntypes + 1).fill(-1);

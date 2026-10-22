@@ -66,7 +66,7 @@ export class PairLCBOP extends Pair {
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError('Incorrect args for pair coefficients');
     const elements = args.slice(3);
     if (elements.length !== this.ntypes) {
-      throw new StyleError('Number of element to type mappings does not match number of types');
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     // only element "C" is allowed (NULL types take no element and are not mapped)
     const names = [...new Set(elements.filter((e) => e !== 'NULL'))];

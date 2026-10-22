@@ -103,7 +103,7 @@ export class PairComb3 extends Pair {
     const filename = args[2];
     const names = args.slice(3);
     if (names.length !== this.ntypes) {
-      throw new StyleError(`pair_coeff for style comb3 needs one element name per atom type (${this.ntypes}), got ${names.length}`);
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     const elements: string[] = [];
     const map = new Int32Array(this.ntypes + 1).fill(-1);

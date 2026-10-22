@@ -62,7 +62,7 @@ export class PairTDPD extends Pair {
     const nsp = tdpdSpecies(ctx.s?.atomStyle ?? 'atomic');
     if (!nsp) throw new StyleError('Pair style tdpd requires atom properties cc/cc_flux (use atom_style tdpd N)');
     // pair_tdpd.cpp coeff(): "if (narg != 7 + 3*cc_species)"
-    if (args.length !== 7 + 3 * nsp) throw new StyleError('Incorrect args for pair coefficients');
+    if (args.length !== 7 + 3 * nsp) throw new StyleError('Incorrect args for pair tdpd coefficients');
     if (!this.p) throw new StyleError('pair_coeff before the box is defined');
     const nt = this.ntypes + 1;
     if (this.nsp !== nsp || this.kappa.length !== nt * nt * nsp) {

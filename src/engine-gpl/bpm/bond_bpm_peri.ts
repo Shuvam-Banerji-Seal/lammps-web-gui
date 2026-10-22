@@ -20,7 +20,8 @@
  * style context (lattice spacing in x). Refused by name: store/local (no break rows are written).
  */
 import { atomIndex, delta } from '../../engine/force/bonded_util';
-import { StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { StyleError, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import { BondBPMBase, bondKey } from './bond_bpm';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
@@ -113,29 +114,29 @@ export class BondBpmPeri extends BondBPMBase {
    * s00 alpha; eps K G yieldstress horizon s00 alpha (bond_bpm_peri.cpp coeff).
    */
   coeff(args: string[], _ctx?: StyleContext): void {
-    if (args.length < 2) throw new StyleError('Incorrect args for bond coefficients (expected: <type> <model> <coefficients>)');
-    const model = MODEL_OF[args[1]];
-    if (model === undefined) {
-      throw new StyleError(`Unknown bond_style bpm/peri model: ${args[1]} (expected pmb, lps, ves or eps)`);
-    }
-    const v = args.slice(2).map((w) => Number(w));
-    if (v.some((x) => !Number.isFinite(x))) throw new StyleError('bond_style bpm/peri: coefficients must be numbers');
+    // As native LAMMPS does (src/BPM/bond_bpm_peri.cpp BondBPMPeri::coeff at b332f28): the type range is read first,
+    // then each model checks its own argument count before utils::numeric reads its values.
+    if (args.length < 2) throw bondedCoeffArgs('bond');
     const [lo, hi] = this.bounds(args[0]);
+    const model = MODEL_OF[args[1]];
+    const num = (k: number): number => numeric(args[k]);
     let c = 0, kbulk = 0, gshear = 0, lamb = 0, tau = 0, yieldS = 0, cut = 0, s00 = 0, alpha = 0;
     if (model === PMB) {
       if (args.length !== 6) throw new StyleError('Incorrect args for bond_style bpm/peri pmb model (expected: <type> pmb c horizon s00 alpha)');
-      [c, cut, s00, alpha] = v;
+      c = num(2); cut = num(3); s00 = num(4); alpha = num(5);
     } else if (model === LPS) {
       if (args.length !== 7) throw new StyleError('Incorrect args for bond_style bpm/peri lps model (expected: <type> lps K G horizon s00 alpha)');
-      [kbulk, gshear, cut, s00, alpha] = v;
+      kbulk = num(2); gshear = num(3); cut = num(4); s00 = num(5); alpha = num(6);
     } else if (model === VES) {
       if (args.length !== 9) throw new StyleError('Incorrect args for bond_style bpm/peri ves model (expected: <type> ves K G lambda tau horizon s00 alpha)');
-      [kbulk, gshear, lamb, tau, cut, s00, alpha] = v;
+      kbulk = num(2); gshear = num(3); lamb = num(4); tau = num(5); cut = num(6); s00 = num(7); alpha = num(8);
       if (!(tau > 0)) throw new StyleError(`Invalid relaxation time ${tau} for bond_style bpm/peri ves`);
-    } else {
+    } else if (model === EPS) {
       if (args.length !== 8) throw new StyleError('Incorrect args for bond_style bpm/peri eps model (expected: <type> eps K G yieldstress horizon s00 alpha)');
-      [kbulk, gshear, yieldS, cut, s00, alpha] = v;
+      kbulk = num(2); gshear = num(3); yieldS = num(4); cut = num(5); s00 = num(6); alpha = num(7);
       if (!(yieldS > 0)) throw new StyleError(`Invalid yield stress ${yieldS} for bond_style bpm/peri eps`);
+    } else {
+      throw new StyleError(`Unknown bond_style bpm/peri model: ${args[1]}`);
     }
     if (!(cut > 0)) throw new StyleError(`Invalid horizon value ${cut} for bond_style bpm/peri`);
     for (let t = lo; t <= hi; t++) {

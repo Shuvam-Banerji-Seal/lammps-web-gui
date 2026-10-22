@@ -17,7 +17,7 @@
  * ID as the C++ does (i1 has the lower tag).
  */
 import { delta } from '../../engine/force/bonded_util';
-import { StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { StyleError, bondedCoeffArgs, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { missingArgs } from '../../engine/force/util';
 import { parseNum } from '../../engine/force/util';
 import { BondBPMBase, bondKey, yesno } from './bond_bpm';
@@ -66,10 +66,10 @@ export class BondBpmSpring extends BondBPMBase {
   coeff(args: string[], _ctx?: StyleContext): void {
     const n = this.volume ? 4 : 3;
     if (args.length !== n + 1) {
-      throw new StyleError(`Incorrect args for bond coefficients (expected: N k ecrit gamma${this.volume ? ' av' : ''})`);
+      throw bondedCoeffArgs('bond');  // As native LAMMPS does (src/BPM/bond_bpm_spring.cpp BondBPMSpring::coeff at b332f28)
     }
-    const v = args.slice(1).map((w, k) => parseNum(w, k === 0 ? 'k' : k === 1 ? 'ecrit' : k === 2 ? 'gamma' : 'av'));
     const [lo, hi] = typeBounds(args[0], this.ntypes);
+    const v = args.slice(1).map((w, k) => parseNum(w, k === 0 ? 'k' : k === 1 ? 'ecrit' : k === 2 ? 'gamma' : 'av'));
     this.params.setRange(args[0], v.slice(0, 3));
     for (let t = lo; t <= hi; t++) this.av[t] = this.volume ? v[3] : 0;
   }

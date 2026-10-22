@@ -198,8 +198,8 @@ export class PairLJCharmmCoulCharmm extends Pair {
     // "The latter 2 coefficients are optional.";
     // "No cutoffs are specified" (pair_charmm.html).
     if (args.length !== 4 && args.length !== 6) {
-      // native: the coul/long variants say "Illegal pair_coeff command" (src/KSPACE/pair_lj_charmm_coul_long.cpp at b332f28)
-      const coulLong = /coul\/long/.test(this.name);
+      // native: the coul/long and coul/msm variants (msm inherits coul/long) say "Illegal pair_coeff command" (src/KSPACE/pair_lj_charmm_coul_long.cpp at b332f28)
+      const coulLong = /coul\/(long|msm)/.test(this.name);
       throw pairCoeffArgs(`usage: pair_coeff I J epsilon sigma [epsilon14 sigma14] for pair style ${this.name}`, coulLong ? 'Illegal pair_coeff command' : undefined, !coulLong);
     }
     const eps = parseNum(args[2], 'epsilon');

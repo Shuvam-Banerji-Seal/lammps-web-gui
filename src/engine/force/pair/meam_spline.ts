@@ -322,7 +322,11 @@ abstract class PairMeamSplineBase extends Pair {
     const filename = args[2];
     const names = args.slice(3);
     if (names.length !== this.ntypes) {
-      throw new StyleError(`pair_coeff for style ${this.name} needs one element name per atom type (${this.ntypes}), got ${names.length}`);
+      throw new StyleError(this.name === 'meam/spline'
+        // As native LAMMPS does (src/MANYBODY/pair_meam_spline.cpp coeff, its own count check; pair_meam_sw_spline.cpp
+        // calls Pair::map_element2type, at b332f28)
+        ? 'Incorrect args for pair coefficients'
+        : 'Number of element to type mappings does not match number of atom types');
     }
     if (names.includes('NULL')) {
       throw new StyleError(`pair_style ${this.name} does not support NULL mappings in this engine (the NULL placeholder of the documentation is refused, not approximated)`);
@@ -339,7 +343,8 @@ abstract class PairMeamSplineBase extends Pair {
     if (file.multi) {
       // "Systems where there would be multiple atom types assigned to the same element are not supported"
       const nel = file.names.length;
-      if (this.ntypes !== nel) throw new StyleError(`pair style ${this.name} requires one atom type per element (${nel} elements, ${this.ntypes} types)`);
+      // native text (src/MANYBODY/pair_meam_spline.cpp coeff at b332f28)
+      if (this.ntypes !== nel) throw new StyleError('Pair style meam/spline requires one atom type per element');
       for (const name of names) {
         if (file.names.indexOf(name) < 0) throw new StyleError(`element '${name}' is not in potential file ${filename} (elements: ${file.names.join(' ')})`);
       }

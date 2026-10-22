@@ -1,4 +1,4 @@
-import { Bonded, NoSettingsError, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { Bonded, NoSettingsError, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
 import { atomIndex, dihedralGeometry, applyDihedral } from '../bonded_util';
 import { compileLepton, fillVrefs, type LeptonProgram } from '../../lepton';
 
@@ -35,7 +35,8 @@ export class DihedralLepton extends Bonded {
 
   coeff(args: string[], ctx?: StyleContext): void {
     if (ctx) this.ctx = ctx;
-    if (args.length !== 2) throw bondedCoeffArgs('dihedral', 'usage: dihedral_coeff N "expression"');
+    // As native LAMMPS does (src/LEPTON/dihedral_lepton.cpp DihedralLepton::coeff at b332f28): the count is checked first
+    if (args.length !== 2) throw new StyleError('Incorrect number of args for dihedral coefficients');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const prog = compileLepton(args[1], { builtins: ['phi'], wrt: ['phi'] });
     for (let t = lo; t <= hi; t++) {

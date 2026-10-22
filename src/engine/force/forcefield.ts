@@ -161,10 +161,6 @@ export class ForceField {
   }
 
   /**
-   * Setup before a run / force evaluation: checks coefficients, mixes, sets
-   * neighbor requirements and the special list.
-   */
-  /**
    * Bond and angle lists without entries that a constraint fix (fix shake)
    * switched off; used while the live lists still have the counts it saw.
    */
@@ -177,10 +173,21 @@ export class ForceField {
   /** Run-log warnings for bonded styles, set at init from the style context. */
   private warn: (text: string) => void = () => {};
 
-  init(s: SimState, nb: Neighbor, geom: Geometry, ctx: StyleContext): void {
+  /**
+   * The pair style's part of native's force->init: the restart check, then the pair style's init, which sets its
+   * cutoffs (cutforce). A run's init calls it first, as native LAMMPS does (src/lammps.cpp LAMMPS::init at b332f28:
+   * force->init, then atom->init and modify->init), so computes compare their cutoffs with the pair's at their init.
+   */
+  /**
+   * A pair parameter changed after the run's initPair (fix adapt writes its values at its init): the run's setup then
+   * initializes the pair style again instead of keeping the init's cutoffs and tables.
+   */
+  pairStale = false;
+
+  initPair(s: SimState, geom: Geometry, ctx: StyleContext): void {
+    this.pairStale = false;
     if (!this.pair && this.pairNotRestarted) throw new StyleError(`Must re-specify non-restarted pair style (${this.pairNotRestarted}) after read_restart`);
     this.warn = (t) => ctx.log(`WARNING: ${t}`);
-    this.checkTopology(s);
     this.pair?.linkKSpace?.(this.kspace);
     // A solver that sets the pair style's Coulomb cutoff (MSM cutoff/adjust) does it before the pair style's init, as
     // native LAMMPS's Force::init does (src/force.cpp at b332f28: "kspace->init(); // kspace must come before pair").
@@ -193,6 +200,23 @@ export class ForceField {
       this.pair.linkBonded?.({ bond: (t) => this.bond?.equilibrium(t) ?? Number.NaN, angle: (t) => this.angle?.equilibriumRadians(t) ?? Number.NaN });
       this.pair.init(ctx);
     }
+  }
+
+  /** The largest pair cutoff (native force->pair->cutforce) as of the last pair init; 0 without a pair style. */
+  get cutforce(): number {
+    let m = 0;
+    const cut = this.pair?.cut;
+    if (cut) for (let k = 0; k < cut.length; k++) if (cut[k] > m) m = cut[k];
+    return m;
+  }
+
+  /**
+   * Setup before a run or a force evaluation: the pair style's init (unless the run's init has just done it: pairDone),
+   * the bonded styles' init, the special list and the neighbor requests, then the kspace style.
+   */
+  init(s: SimState, nb: Neighbor, geom: Geometry, ctx: StyleContext, pairDone = false): void {
+    if (!pairDone) this.initPair(s, geom, ctx);
+    this.checkTopology(s);
     for (const b of [this.bond, this.angle, this.dihedral, this.improper]) b?.linkForceField?.({ pair: this.pair, special: this.special });
     for (const b of [this.bond, this.angle, this.dihedral, this.improper]) b?.init(ctx);
     this.specialLJ = new Float64Array([1, ...this.special.lj]);

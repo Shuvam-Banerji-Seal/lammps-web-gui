@@ -441,6 +441,13 @@ export class ComputeSnaAtom extends Compute {
     return (a + b) / 2;
   }
 
+  /** As native LAMMPS does (src/ML-SNAP/compute_sna_atom.cpp, compute_snad_atom.cpp, compute_snav_atom.cpp init at b332f28). */
+  init(): void {
+    if (!this.sys.ff.pair) throw new StyleError(`Compute ${this.style} requires a pair style be defined`);
+    if (this.maxCutoff() > this.sys.ff.cutforce) throw new StyleError(`Compute ${this.style} cutoff is longer than pairwise cutoff`);
+    if (this.sys.computes.filter((x) => x.style === this.style).length > 1) this.sys.warn(`More than one compute ${this.style}`);
+  }
+
   protected computePeratom(): void {
     this.sys.forces();
     const sys = this.sys;

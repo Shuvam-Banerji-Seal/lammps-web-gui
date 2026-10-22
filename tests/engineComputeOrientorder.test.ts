@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 import { ComputeOrientorderAtom } from '../src/engine/compute/orientorder';
 import { EngineError } from '../src/engine/types';
-import { StyleError } from '../src/engine/force/types';
 import type { EngineEvent } from '../src/engine/types';
 
 /** Relative closeness for checks against documented reference values. */
@@ -185,22 +184,13 @@ describe('compute orientorder/atom', () => {
     }
   });
 
-  it('rejects a cutoff above the pair style cutoff', async () => {
-    let err: unknown;
-    try {
-      const s = await runScript(`${FCC}\ncompute q all orientorder/atom cutoff 3.0\nrun 0\n`);
-      s.sys.compute('q').peratomValues();
-    } catch (e) {
-      err = e;
-    }
-    expect(err).toBeInstanceOf(StyleError);
-    expect((err as Error).message).toMatch(/exceeds the pair style cutoff/);
+  it('rejects a cutoff above the pair style cutoff at init, as native LAMMPS', async () => {
+    // compute_orientorder_atom.cpp init: the cutoff keyword against the pair style's largest cutoff
+    await expect(runScript(`${FCC}\ncompute q all orientorder/atom cutoff 3.0\nrun 0\n`)).rejects.toThrow(/Compute orientorder\/atom cutoff is longer than pairwise cutoff/);
   });
 
-  it('rejects a missing pair cutoff at evaluation', async () => {
-    let err: unknown;
-    try {
-      const s = await runScript(`
+  it('requires a pair style at init, as native LAMMPS', async () => {
+    await expect(runScript(`
         units lj
         atom_style atomic
         lattice sc 1.0
@@ -210,13 +200,7 @@ describe('compute orientorder/atom', () => {
         mass 1 1.0
         compute q all orientorder/atom
         run 0
-      `);
-      s.sys.compute('q').peratomValues();
-    } catch (e) {
-      err = e;
-    }
-    expect(err).toBeInstanceOf(StyleError);
-    expect((err as Error).message).toMatch(/no pair style cutoff is defined/);
+      `)).rejects.toThrow(/Compute orientorder\/atom requires a pair style be defined/);
   });
 
   it('constructs with documented defaults', async () => {

@@ -50,6 +50,8 @@ export class PairRHEO extends Pair {
   private readonly nativeOff = new NativePairOrder(false);
   /** newton pair (pair_rheo.cpp newton_pair): off keeps both images of a ghost pair, each acting on its owned atom only. */
   private newtonPair = true;
+  /** comm_modify vel yes at init (checked at setup). */
+  private ghostVelocity = false;
   /** pair_style rheo harmonic/means: the thermal diffusivity and viscosity means are harmonic. */
   private harmonicMeans = false;
 
@@ -99,8 +101,8 @@ export class PairRHEO extends Pair {
   }
 
   initStyle(ctx: StyleContext): void {
-    // pair_rheo.cpp setup(): "Pair RHEO requires ghost atoms store velocity"
-    if (ctx.ghostVelocity !== true) throw new StyleError('Pair RHEO requires ghost atoms store velocity (use comm_modify vel yes)');
+    // checked at setup (compute), after the fix checks, as pair_rheo.cpp setup() does
+    this.ghostVelocity = ctx.ghostVelocity === true;
     this.newtonPair = ctx.newtonPair !== false;
     // with newton off the global virial is tallied per pair (no fdotr), as the native ev_tally_xyz does
     this.virialFdotr = this.newtonPair;
@@ -118,6 +120,8 @@ export class PairRHEO extends Pair {
     if (!m) throw new StyleError('Need to define fix rheo to use pair rheo');
     // pair_rheo.cpp setup(): "Pair rheo cutoff X does not agree with fix rheo cutoff Y"
     if (this.cutk !== m.cut) throw new StyleError(`Pair rheo cutoff ${this.cutk} does not agree with fix rheo cutoff ${m.cut}`);
+    // pair_rheo.cpp setup(): "Pair RHEO requires ghost atoms store velocity"
+    if (!this.ghostVelocity) throw new StyleError('Pair RHEO requires ghost atoms store velocity (use comm_modify vel yes)');
     // The RK1 pair with newton off gives a global virial that differs from native (the per-atom tallies differ on a
     // 4 x 4 periodic lattice, measured with native LAMMPS, black box); refused by name until that is matched.
     // The newton-off global virial differs from native for some configurations (the RK1 lattice and the dam-break case,

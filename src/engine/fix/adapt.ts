@@ -481,7 +481,10 @@ export class FixAdapt extends Fix {
       });
       pairChanged = true;
     }
-    if (pairChanged) this.refreshPairs(reinitPair);
+    if (pairChanged) {
+      this.refreshPairs(reinitPair);
+      sys.ff.pairStale = true;
+    }
     for (const b of this.bonded) {
       // native: vector[i] = scale ? value * vector_orig[i] : value, in native's stored units (see BONDED_ADAPT)
       const v = sys.equalVariable(b.vname);

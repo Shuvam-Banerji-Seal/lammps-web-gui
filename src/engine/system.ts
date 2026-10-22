@@ -346,6 +346,15 @@ export class System {
 
   // ---------------------------------------------------------------- forces
 
+  /** stateVersion at which a run's init last initialized the pair style (initPair), or -1. */
+  private pairInitVersion = -1;
+
+  /** The pair part of native's force->init, at the start of a run's init (ForceField.initPair). */
+  initPair(): void {
+    this.ff.initPair(this.state, this.geom, this.styleContext());
+    this.pairInitVersion = this.stateVersion;
+  }
+
   /** What per-atom force-field data the defined computes need. */
   computeFlags(): ComputeFlags {
     let eatom = false, vatom = false, cvatom = false;
@@ -360,7 +369,10 @@ export class System {
    */
   setupNeighbors(): void {
     const s = this.state;
-    this.ff.init(s, this.nb, this.geom, this.styleContext());
+    // the run's init has initialized the pair style (initPair) and nothing has changed since
+    const pairDone = this.pairInitVersion === this.stateVersion && !this.ff.pairStale;
+    this.pairInitVersion = -1;
+    this.ff.init(s, this.nb, this.geom, this.styleContext(), pairDone);
     this.pbc();
     this.nb.build(s, this.geom, s.step);
     for (const f of this.fixes) f.afterForceInit?.();

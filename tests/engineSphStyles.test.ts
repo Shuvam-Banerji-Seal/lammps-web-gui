@@ -81,7 +81,8 @@ describe('SPH pair, fix and compute styles', () => {
     const head = 'units lj\natom_style atomic\ndimension 2\nregion box block -5 5 -5 5 -0.5 0.5\ncreate_box 1 box\nlattice sq 1.0\ncreate_atoms 1 box\nmass 1 1\n';
     expect(await errorOf(b.session, b.events, `${head}fix 1 all sph\n`)).toMatch(/Fix sph requires atom style sph/);
     const c = newSession();
-    expect(await errorOf(c.session, c.events, `${TWO_ATOMS('12')}newton off\nrun 0\n`)).toMatch(/newton pair off/);
+    // newton pair off with newton bond unchanged: native refuses a bonded setting change once the box exists
+    expect(await errorOf(c.session, c.events, `${TWO_ATOMS('12')}newton off on\nrun 0\n`)).toMatch(/newton pair off/);
   });
 
   it('compute sph/rho/atom and sph/e/atom report the atoms of the group and 0 elsewhere', async () => {

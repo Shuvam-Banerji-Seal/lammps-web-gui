@@ -132,7 +132,7 @@ run 11
 describe('run start/stop checks and run pre no (run.html)', () => {
   it('rejects a bad start before the setup, so the next run starts clean', async () => {
     const out = await runText(`${LJ}run 10 start 5\n`);
-    expect(out.error).toContain('run start cannot be after the current timestep');
+    expect(out.error).toContain('Run command start value 5 is after start of run at step 0');
     expect(out.session.sys.run.inRun).toBe(false);
   });
 

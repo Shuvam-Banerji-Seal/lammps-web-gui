@@ -1,6 +1,7 @@
 import type { UnitSystem } from './types';
 import { powExact } from './powExact';
 import { StyleError } from './force/types';
+import { inumeric, missingArgs, numeric } from './force/util';
 import { rotationFromEdges, type GeneralLattice, type Mat3 } from './triclinic_general';
 
 /*
@@ -76,65 +77,75 @@ export interface Lattice {
   general?: GeneralLattice;
 }
 
-/** lattice style scale [keywords]; throws StyleError for bad input. */
+/**
+ * The dimension check of a lattice style, before its scale is read (src/lattice.cpp Lattice::Lattice at b332f28):
+ * sc, bcc, fcc, hcp and diamond are 3d, sq, sq2 and hex 2d, custom either.
+ */
+export const checkLatticeDimension = (style: LatticeStyle, dimension: 2 | 3): void => {
+  if (style === 'none' || style === 'custom') return;
+  if (DEFS[style].dim !== dimension) throw new StyleError('Lattice style incompatible with simulation dimension');
+};
+
+/**
+ * lattice style scale [keywords]; throws StyleError for bad input. The keywords and the checks after them are read as
+ * native LAMMPS does (src/lattice.cpp Lattice::Lattice at b332f28), with its messages.
+ */
 export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSystem, dimension: 2 | 3, kw: string[] = []): Lattice => {
-  if (!(scale > 0)) throw new StyleError(`lattice scale must be > 0, got ${scale}`);
+  if (!(scale > 0)) throw new StyleError(`Invalid lattice ${style} argument: ${scale}`);
   if (style === 'none') {
-    if (kw.length) throw new StyleError('lattice none takes no keywords');
+    if (kw.length) throw new StyleError(`Illegal lattice command: expected 2 arguments but found ${2 + kw.length}`);
     const f = scale;
     return {
       style, factor: f, spacing: [f, f, f], a: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], basis: [], origin: [0, 0, 0],
       orient: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], toBox: (p) => [p[0] * f, p[1] * f, p[2] * f], fromBox: (x) => [x[0] / f, x[1] / f, x[2] / f],
     };
   }
+  checkLatticeDimension(style, dimension);
   let a: [V3, V3, V3];
   let basis: V3[];
   if (style === 'custom') { a = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]; basis = []; } else {
     const d = DEFS[style];
-    if (d.dim !== dimension) throw new StyleError(`lattice ${style} is ${d.dim}d but the simulation is ${dimension}d`);
     a = d.a.map((v) => [...v]) as [V3, V3, V3];
     basis = d.basis.map((v) => [...v] as V3);
   }
   let origin: V3 = [0, 0, 0];
   const orient: [V3, V3, V3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
-  let orientGiven = false;
   let spacing: V3 | null = null;
   let general = false;
-  const num = (w: string | undefined, what: string) => {
-    const v = Number(w);
-    if (w === undefined || !Number.isFinite(v)) throw new StyleError(`lattice: expected a number for ${what}, got '${w ?? ''}'`);
-    return v;
-  };
   for (let k = 0; k < kw.length;) {
     const key = kw[k];
-    const v3 = (): V3 => [num(kw[k + 1], key), num(kw[k + 2], key), num(kw[k + 3], key)];
+    const v3 = (): V3 => {
+      if (k + 4 > kw.length) throw missingArgs(`lattice ${key}`);
+      return [numeric(kw[k + 1]), numeric(kw[k + 2]), numeric(kw[k + 3])];
+    };
     switch (key) {
       case 'origin': {
         origin = v3();
-        if (origin.some((o) => o < 0 || o >= 1)) throw new StyleError('lattice origin values must be >= 0 and < 1');
+        for (const o of origin) if (o < 0 || o >= 1) throw new StyleError(`Invalid lattice origin argument: ${o}`);
         k += 4;
         break;
       }
       case 'orient': {
-        const d = 'xyz'.indexOf(kw[k + 1]);
-        if (d < 0) throw new StyleError("lattice orient needs a dimension x, y or z");
-        const v: V3 = [num(kw[k + 2], 'orient'), num(kw[k + 3], 'orient'), num(kw[k + 4], 'orient')];
-        if (v.some((c) => !Number.isInteger(c))) throw new StyleError('lattice orient directions must be integers');
-        orient[d] = v;
-        orientGiven = true;
+        if (k + 5 > kw.length) throw missingArgs('lattice orient');
+        const d = ['x', 'y', 'z'].indexOf(kw[k + 1]);
+        if (d < 0) throw new StyleError(`Unknown lattice orient argument: ${kw[k + 1]}`);
+        orient[d] = [inumeric(kw[k + 2]), inumeric(kw[k + 3]), inumeric(kw[k + 4])];
         k += 5;
         break;
       }
       case 'spacing': spacing = v3(); k += 4; break;
-      case 'a1': case 'a2': case 'a3':
-        if (style !== 'custom') throw new StyleError(`lattice ${key} can only be used with style custom`);
+      case 'a1': case 'a2': case 'a3': {
+        if (k + 4 > kw.length) throw missingArgs(`lattice ${key}`);
+        if (style !== 'custom') throw new StyleError(`Invalid ${key} option in lattice command for non-custom style`);
         a[Number(key[1]) - 1] = v3();
         k += 4;
         break;
+      }
       case 'basis': {
-        if (style !== 'custom') throw new StyleError('lattice basis can only be used with style custom');
+        if (k + 4 > kw.length) throw missingArgs('lattice basis');
+        if (style !== 'custom') throw new StyleError('Invalid basis option in lattice command for non-custom style');
         const b = v3();
-        if (b.some((c) => c < 0 || c >= 1)) throw new StyleError('lattice basis coordinates must be >= 0 and < 1');
+        for (const c of b) if (c < 0 || c >= 1) throw new StyleError(`Invalid lattice basis argument: ${c}`);
         basis.push(b);
         k += 4;
         break;
@@ -144,41 +155,44 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
         k += 1;
         break;
       default:
-        throw new StyleError(`unknown lattice keyword '${key}'`);
+        throw new StyleError(`Unknown lattice keyword: ${key}`);
     }
   }
-  if (style === 'custom' && !basis.length) throw new StyleError('lattice custom needs at least one basis atom');
-  if (general) {
-    // lattice.html: "If this option is specified, a custom lattice style must be used."
-    if (style !== 'custom') throw new StyleError('lattice triclinic/general needs style custom');
-    if (orientGiven) throw new StyleError('lattice triclinic/general cannot be combined with orient');
-    if (dimension === 2) {
-      // lattice.html (2d): a1 and a2 lie in the xy plane and a3 is along z. Checked on the unscaled
-      // vectors, in the order native reports them.
-      // Measured with native LAMMPS (black box): a1 or a2 with a z component, or a3 with x or y
-      // components, stops with Lattice a1/a2/a3 vectors are not compatible with 2d simulation;
-      // a3 = (0 0 2) stops with Lattice triclinic/general a3 vector for a 2d simulation must be (0,0,1);
-      // a lattice scale of 2 with a3 = (0 0 1) is accepted, so the test is on the unscaled a3.
-      if (a[0][2] !== 0 || a[1][2] !== 0 || a[2][0] !== 0 || a[2][1] !== 0) {
-        throw new StyleError('Lattice a1/a2/a3 vectors are not compatible with 2d simulation');
-      }
-      if (a[2][2] !== 1) throw new StyleError('Lattice triclinic/general a3 vector for a 2d simulation must be (0,0,1)');
-    }
-  }
-  if (dimension === 2) {
-    if (origin[2] !== 0) throw new StyleError('lattice origin z must be 0.0 for 2d');
-    if (orient[0][2] !== 0 || orient[1][2] !== 0 || orient[2][0] !== 0 || orient[2][1] !== 0) {
-      throw new StyleError('lattice orient: in 2d the x and y vectors need a 0 third component and z must be 0 0 k');
-    }
-    if (basis.some((b) => b[2] !== 0)) throw new StyleError('lattice basis z must be 0.0 for 2d');
-  }
-  // orthogonality and right-handedness of orient
   const dot = (p: V3, q: V3) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
   const cross = (p: V3, q: V3): V3 => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+  if (!basis.length) throw new StyleError('No basis atoms in lattice');
   if (dot(orient[0], orient[1]) !== 0 || dot(orient[1], orient[2]) !== 0 || dot(orient[0], orient[2]) !== 0) {
-    throw new StyleError('lattice orient vectors are not orthogonal');
+    throw new StyleError('Lattice orient vectors are not orthogonal');
   }
-  if (dot(cross(orient[0], orient[1]), orient[2]) <= 0) throw new StyleError('lattice orient vectors are not right-handed');
+  if (dot(cross(orient[0], orient[1]), orient[2]) <= 0) throw new StyleError('Lattice orient vectors are not right-handed');
+  const zero = (v: V3) => dot(v, v) === 0;
+  if (zero(cross(a[0], a[1])) || zero(cross(a[1], a[2])) || zero(cross(a[0], a[2]))) throw new StyleError('Lattice primitive vectors are collinear');
+  if (dimension === 2) {
+    // lattice.html (2d): a1 and a2 lie in the xy plane and a3 is along z. Measured with native LAMMPS (black box): a1 or
+    // a2 with a z component, or a3 with x or y components, stops with Lattice a1/a2/a3 vectors are not compatible with
+    // 2d simulation
+    if (origin[2] !== 0) throw new StyleError('Lattice origin z coord must be 0.0 for 2d simulation');
+    if (a[0][2] !== 0 || a[1][2] !== 0 || a[2][0] !== 0 || a[2][1] !== 0) {
+      throw new StyleError('Lattice a1/a2/a3 vectors are not compatible with 2d simulation');
+    }
+    if (orient[0][2] !== 0 || orient[1][2] !== 0 || orient[2][0] !== 0 || orient[2][1] !== 0) {
+      throw new StyleError('Lattice orient vectors are not compatible with 2d simulation');
+    }
+    if (basis.some((b) => b[2] !== 0)) throw new StyleError('Lattice basis atom z coords must be zero for 2d simulation');
+  }
+  if (general) {
+    // lattice.html: "If this option is specified, a custom lattice style must be used." Measured with native LAMMPS
+    // (black box): a3 = (0 0 2) in 2d stops with Lattice triclinic/general a3 vector for a 2d simulation must be
+    // (0,0,1); a lattice scale of 2 with a3 = (0 0 1) is accepted, so the test is on the unscaled a3
+    if (style !== 'custom') throw new StyleError('Lattice triclinic/general must be style = CUSTOM');
+    if (origin.some((o) => o !== 0)) throw new StyleError('Lattice triclinic/general must have default origin');
+    if (orient.some((v, d) => v.some((c, e) => c !== (d === e ? 1 : 0)))) throw new StyleError('Lattice triclinic/general must have default orientation');
+    if (dimension === 2 && (a[2][0] !== 0 || a[2][1] !== 0 || a[2][2] !== 1)) {
+      throw new StyleError('Lattice triclinic/general a3 vector for a 2d simulation must be (0,0,1)');
+    }
+    if (dot(cross(a[0], a[1]), a[2]) <= 0) throw new StyleError('Lattice triclinic/general a1,a2,a3 must be right-handed');
+  }
+  if (spacing && spacing.some((v) => v <= 0)) throw new StyleError('Lattice spacings are invalid');
   const R = orient.map((v) => { const n = Math.sqrt(dot(v, v)); return [v[0] / n, v[1] / n, v[2] / n] as V3; });
   // scale factor
   let factor = scale;
@@ -269,7 +283,7 @@ const invert3 = (m: number[][]): number[][] => {
   const [[a, b, c], [d, e, f], [g, h, k]] = m;
   const A = e * k - f * h, B = -(d * k - f * g), C = d * h - e * g;
   const det = a * A + b * B + c * C;
-  if (Math.abs(det) < 1e-300) throw new StyleError('lattice unit cell is degenerate (a1, a2, a3 are not independent)');
+  if (Math.abs(det) < 1e-300) throw new StyleError('Degenerate lattice primitive vectors');
   const s = 1 / det;
   return [
     [A * s, -(b * k - c * h) * s, (b * f - c * e) * s],

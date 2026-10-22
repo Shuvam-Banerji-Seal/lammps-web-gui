@@ -113,8 +113,8 @@ describe('lattice', () => {
       const hi = lat.spacing.map((a) => 3 * a);
       expect(latticePoints(lat, [0, 0, 0], hi, 3).length / 3).toBe(27 * per);
     }
-    expect(() => makeLattice('hex', 1, lj, 3)).toThrow(/2d/);
-    expect(() => makeLattice('fcc', 1, lj, 2)).toThrow(/3d/);
+    expect(() => makeLattice('hex', 1, lj, 3)).toThrow(/Lattice style incompatible with simulation dimension/);
+    expect(() => makeLattice('fcc', 1, lj, 2)).toThrow(/Lattice style incompatible with simulation dimension/);
   });
 
   it('lj density is the requested reduced density for every style', () => {

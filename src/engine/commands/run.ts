@@ -1,5 +1,5 @@
 import type { Ctx, Handler } from './args';
-import { int, num, missingArgs, numeric, inumeric, logical } from './args';
+import { int, num, missingArgs, numeric, inumeric, bnumeric, logical } from './args';
 import { StyleError, type KSpace } from '../force/types';
 import { removedStyleError } from '../deprecated';
 import { checkFixStateNotStored } from '../fix/restartRecord';
@@ -25,6 +25,9 @@ import { clearHaltRequest, haltRequested, softHalted } from '../run/halt';
 
 const RESERVED_COMPUTES = new Set(['thermo_temp', 'thermo_press', 'thermo_pe']);
 
+/** The fix styles native LAMMPS creates before the box exists (src/modify.cpp Modify::add_fix exceptions, at b332f28). */
+const FIX_BEFORE_BOX = new Set(['property/atom', 'cmap', 'cmap3', 'rx', 'deprecated', 'amoeba/pitorsion', 'amoeba/bitorsion', 'DUMMY']);
+
 /** The computes thermo output needs ("compute thermo_temp all temp" etc., thermo_style.html). */
 export const ensureThermoComputes = (sys: System): void => {
   if (sys.computes.some((c) => c.id === 'thermo_temp')) return;
@@ -35,25 +38,26 @@ export const ensureThermoComputes = (sys: System): void => {
 
 /** fix ID group style args — fix.html: "If you specify a fix ID that already exists, it will replace the existing fix" when the style matches. */
 const fix: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/modify.cpp Modify::add_fix and src/fix.cpp Fix::Fix at b332f28): the box (for all but a
+  // few styles), the group, a replaced fix's style, the style itself and then the ID are checked, in that order.
+  // fix_property_atom.html: "This fix is one of a small number that can be defined in an input script before the
+  // simulation box is created or atoms are defined." fix_cmap.html: "To function as expected this fix command must be
+  // issued *before* a read_data command". examples/amoeba/in.ubiquitin defines fix amoeba/pitorsion and fix
+  // amoeba/bitorsion before read_data (their sections are read by that command, like fix cmap). fix rx
+  // (src/DPD-REACT/fix_rx.cpp post_constructor) only adds its species vectors as fix property/atom fixes, so it may
+  // precede create_box (examples/PACKAGES/dpd-react/dpdrx-shardlow does); its per-atom vectors are attached when the box exists
+  if (a.length < 3) throw missingArgs('fix');
   const [id, group, style] = a;
-  if (!id || !group || !style) throw new StyleError('usage: fix ID group-ID style args');
-  if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError(`fix ID '${id}' must be alphanumeric or underscore`);
+  if (!sys.hasBox && !FIX_BEFORE_BOX.has(style)) throw new StyleError(`Fix ${style} command before simulation box is defined`);
+  if (sys.groups.find(group) < 0) throw new StyleError(`Could not find fix group ID ${group}`);
+  const k = sys.fixes.findIndex((f) => f.id === id);
+  if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError('Replacing a fix, but new style != old style');
   const make = FIX_STYLES[style];
   if (!make) {
     throw removedStyleError('fix', style) ?? new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${styleNames().fix.join(', ')}`);
   }
+  if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError('Fix ID must be alphanumeric or underscore characters');
   checkFixStateNotStored(sys, id, style);
-  // the style is checked first, so a fix the engine lacks is named even before the box exists;
-  // fix_property_atom.html: "This fix is one of a small number that can be defined in an input
-  // script before the simulation box is created or atoms are defined." fix_cmap.html: "To function
-  // as expected this fix command must be issued *before* a read_data command".
-  // examples/amoeba/in.ubiquitin defines fix amoeba/pitorsion and fix amoeba/bitorsion before read_data (their sections
-  // are read by that command, like fix cmap), so they are exempt too. fix rx (src/DPD-REACT/fix_rx.cpp post_constructor)
-  // only adds its species vectors as fix property/atom fixes, so it may precede create_box (examples/PACKAGES/dpd-react/
-  // dpdrx-shardlow does); its per-atom vectors are attached when the box exists
-  if (style !== 'property/atom' && style !== 'cmap' && style !== 'amoeba/pitorsion' && style !== 'amoeba/bitorsion' && style !== 'rx') sys.state;
-  const k = sys.fixes.findIndex((f) => f.id === id);
-  if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError(`replacing fix ${id} with a different style (${sys.fixes[k].style} -> ${style}) is not allowed; unfix it first`);
   ensureThermoComputes(sys);
   if (k >= 0) sys.fixes[k].destroy?.();
   const f = make(sys, id, group, a.slice(3));
@@ -64,15 +68,15 @@ const fix: Handler = ({ sys }, a) => {
 };
 
 const unfix: Handler = ({ sys }, a) => {
-  if (a.length !== 1) throw new StyleError('usage: unfix fix-ID');
+  // As native LAMMPS does (src/input.cpp Input::unfix at b332f28)
+  if (a.length !== 1) throw new StyleError('Unfix command expects exactly one argument');
   const k = sys.fixes.findIndex((f) => f.id === a[0]);
-  if (k < 0) throw new StyleError(`could not find unfix ID '${a[0]}'`);
+  if (k < 0) throw new StyleError(`Could not find fix ID ${a[0]} to delete`);
   sys.fixes[k].destroy?.();
   sys.fixes.splice(k, 1);
   sys.refreshComputes();
 };
 
-/** fix_modify fix-ID keyword value ... — fix_modify.html. */
 /**
  * fix_modify fix-ID keyword value ... — fix_modify.html. As native LAMMPS does (src/modify.cpp Modify::modify_fix and
  * src/fix.cpp Fix::modify_params at b332f28): the fix reads its own keywords and then the common ones (Fix.modify), and
@@ -96,25 +100,30 @@ const FIX_MODIFY_COMMON = new Set(['dynamic/dof', 'energy', 'virial', 'respa']);
 
 /** compute ID group style args — compute.html. */
 const compute: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/modify.cpp Modify::add_compute and src/compute.cpp Compute::Compute at b332f28): a reused
+  // ID, the style, the ID's characters and the group, in that order
+  if (a.length < 3) throw missingArgs('compute');
   sys.state;
   const [id, group, style] = a;
-  if (!id || !group || !style) throw new StyleError('usage: compute ID group-ID style args');
-  if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError(`compute ID '${id}' must be alphanumeric or underscore`);
-  if (sys.computes.some((c) => c.id === id)) throw new StyleError(`reuse of compute ID '${id}' (uncompute it first)`);
+  if (sys.computes.some((c) => c.id === id)) throw new StyleError(`Reuse of compute ID '${id}'`);
   const make = COMPUTE_STYLES[style];
   if (!make) {
     throw removedStyleError('compute', style) ?? new StyleError(`compute style '${style}' is not supported by the browser engine; supported: ${styleNames().compute.join(', ')}`);
   }
+  if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError(`Compute ID ${id} must only have alphanumeric or underscore characters`);
+  if (sys.groups.find(group) < 0) throw new StyleError(`Group ID ${group} requested by compute ${style} does not exist`);
   ensureThermoComputes(sys);
   if (style === 'msd' && sys.groups.isDynamic(sys.groupBit(group))) throw new StyleError('Compute msd is not compatible with dynamic groups');
   sys.computes.push(make(sys, id, group, a.slice(3)));
 };
 
 const uncompute: Handler = ({ sys }, a) => {
-  if (a.length !== 1) throw new StyleError('usage: uncompute compute-ID');
-  if (RESERVED_COMPUTES.has(a[0])) throw new StyleError(`compute ${a[0]} is used by thermo output and cannot be deleted`);
+  // As native LAMMPS does (src/input.cpp Input::uncompute at b332f28). Native deletes the thermo computes too and stops
+  // at the next run when they are still referenced; the engine refuses at once
+  if (a.length !== 1) throw new StyleError('Uncompute command expects exactly one argument');
   const k = sys.computes.findIndex((c) => c.id === a[0]);
-  if (k < 0) throw new StyleError(`could not find uncompute ID '${a[0]}'`);
+  if (k < 0) throw new StyleError(`Could not find compute ID ${a[0]} to delete`);
+  if (RESERVED_COMPUTES.has(a[0])) throw new StyleError(`compute ${a[0]} is used by thermo output and cannot be deleted by the browser engine`);
   sys.computes.splice(k, 1);
 };
 
@@ -135,21 +144,24 @@ const computeModify: Handler = ({ sys }, a) => {
 
 /** thermo N | thermo v_name — thermo.html. */
 const thermo: Handler = ({ sys }, a) => {
-  if (a.length !== 1) throw new StyleError('usage: thermo N | thermo v_name');
+  // As native LAMMPS does (src/output.cpp Output::set_thermo at b332f28): a v_name is looked up at run setup
+  if (a.length !== 1) throw new StyleError('Illegal thermo command');
   if (a[0].startsWith('v_')) {
-    if (!sys.vars.has(a[0].slice(2))) throw new StyleError(`thermo: variable ${a[0].slice(2)} is not defined`);
     sys.thermo.everyVar = a[0].slice(2);
     sys.thermo.every = 0;
     return;
   }
-  const n = int(a[0], 'thermo interval');
-  if (n < 0) throw new StyleError('thermo interval must be >= 0');
+  const n = inumeric(a[0]);
+  if (n < 0) throw new StyleError(`Illegal thermo output frequency ${n}`);
   sys.thermo.every = n;
   sys.thermo.everyVar = null;
 };
 
 const thermoStyle: Handler = ({ sys }, a) => {
-  if (sys.hasBox) ensureThermoComputes(sys);
+  // As native LAMMPS does (src/output.cpp Output::create_thermo at b332f28)
+  if (a.length < 1) throw missingArgs('thermo_style');
+  if (!sys.hasBox) throw new StyleError('Thermo_style command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
+  ensureThermoComputes(sys);
   sys.thermo.setStyle(a[0] ?? '', a.slice(1));
 };
 
@@ -350,8 +362,8 @@ const runCoupledSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<numb
   if (opts.every > 0 && opts.every < n) throw new StyleError('run every is not supported with coupled replicas (fix pimd)');
   if (sys.respa) throw new StyleError('run_style respa is not supported with coupled replicas (fix pimd)');
   const first = sys.state.step;
-  if (opts.start !== null && opts.start > first) throw new StyleError('run start cannot be after the current timestep');
-  if (opts.stop !== null && opts.stop < first + n) throw new StyleError('run stop cannot be before the last timestep of the run');
+  if (opts.start !== null && opts.start > first) throw new StyleError(`Run command start value ${opts.start} is after start of run at step ${first}`);
+  if (opts.stop !== null && opts.stop < first + n) throw new StyleError(`Run command stop value ${opts.stop} is before end of run at step ${first + n}`);
   const lastThermo = new Map<System, number>();
   for (const r of group) {
     ensureThermoComputes(r);
@@ -382,7 +394,7 @@ const runCoupledSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<numb
       writeRestarts(r, step);
       const th = r.thermo;
       let due = th.due(step, first, first + n);
-      if (th.everyVar && step >= nextThermoVar.get(r)!) { due = true; nextThermoVar.set(r, th.nextVariableStep()); }
+      if (th.everyVar && step >= nextThermoVar.get(r)!) { due = true; nextThermoVar.set(r, th.nextVariableStep(true)); }
       if (due) emitThermo(r);
       writeDumps(r, false);
     },
@@ -468,8 +480,8 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   const first = s.step;
   // run.html: start and stop are checked before anything changes, so a rejected run leaves the system as it was
   // (measured with native LAMMPS, black box: the checks come before the setup)
-  if (opts.start !== null && opts.start > first) throw new StyleError('run start cannot be after the current timestep');
-  if (opts.stop !== null && opts.stop < first + n) throw new StyleError('run stop cannot be before the last timestep of the run');
+  if (opts.start !== null && opts.start > first) throw new StyleError(`Run command start value ${opts.start} is after start of run at step ${first}`);
+  if (opts.stop !== null && opts.stop < first + n) throw new StyleError(`Run command stop value ${opts.stop} is before end of run at step ${first + n}`);
   // run.html: "if pre is specified as no then the initial setup is skipped, except for printing thermodynamic info.
   // Note that if pre is set to no for the very first run LAMMPS performs, then it is overridden". The run starts from the
   // neighbor lists, forces and energies the previous run left (measured with native LAMMPS, black box: after a
@@ -522,7 +534,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     emitPerf(step);
     writeRestarts(sys, step);
     let due = th.due(step, first, first + n);
-    if (th.everyVar && step >= nextThermoVar) { due = true; nextThermoVar = th.nextVariableStep(); }
+    if (th.everyVar && step >= nextThermoVar) { due = true; nextThermoVar = th.nextVariableStep(true); }
     if (due) emitThermo();
     const dumped = writeDumps(sys, false);
     if (dumped || (frameEvery > 0 && step % frameEvery === 0)) emitFrame(sys);
@@ -582,31 +594,58 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
 const run: Handler = async (ctx, a) => {
   ctx.sys.frameMassSent = null; // the first frame of the run carries the masses again
   const { sys } = ctx;
+  // As native LAMMPS does (src/run.cpp Run::command at b332f28): N is read first, then the keywords in order, then N
+  // (or the upto value), start and stop are checked
+  if (a.length < 1) throw missingArgs('run');
+  if (!sys.hasBox) throw new StyleError('Run command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
   const s = sys.state;
-  let n = int(a[0], 'number of steps');
+  const nIn = bnumeric(a[0]);
+  let upto = false;
   const opts: RunOpts = { start: null, stop: null, pre: true, every: 0, commands: [] };
   for (let k = 1; k < a.length;) {
-    switch (a[k]) {
-      case 'upto': n -= s.step; k++; break;
-      case 'start': opts.start = int(a[k + 1], 'start'); k += 2; break;
-      case 'stop': opts.stop = int(a[k + 1], 'stop'); k += 2; break;
-      case 'pre': case 'post':
-        if (a[k + 1] !== 'yes' && a[k + 1] !== 'no') throw new StyleError(`run ${a[k]} must be yes or no`);
+    const key = a[k];
+    switch (key) {
+      case 'upto': upto = true; k++; break;
+      case 'start': if (k + 2 > a.length) throw missingArgs('run start'); opts.start = bnumeric(a[k + 1]); k += 2; break;
+      case 'stop': if (k + 2 > a.length) throw missingArgs('run stop'); opts.stop = bnumeric(a[k + 1]); k += 2; break;
+      case 'pre': case 'post': {
+        if (k + 2 > a.length) throw missingArgs(`run ${key}`);
         // run.html: "If post is specified as no, the full timing summary is skipped; only a one-line summary timing is
         // printed." The engine prints only the one-line summary, so post is accepted and has no further effect.
-        if (a[k] === 'pre') opts.pre = a[k + 1] === 'yes';
+        const on = logical(a[k + 1]);
+        if (key === 'pre') opts.pre = on;
         k += 2;
         break;
+      }
       case 'every':
-        opts.every = int(a[k + 1], 'every');
+        // "every M c1 c2 ...": all remaining words are the commands, a single NULL meaning none
+        if (k + 3 > a.length) throw missingArgs('run every');
+        opts.every = inumeric(a[k + 1]);
+        if (opts.every <= 0) throw new StyleError(`Invalid run every argument: ${opts.every}`);
         opts.commands = a.slice(k + 2);
         k = a.length;
         if (opts.commands.length === 1 && opts.commands[0] === 'NULL') opts.commands = [];
         break;
-      default: throw new StyleError(`unknown run keyword '${a[k]}'`);
+      default: throw new StyleError(`Unknown run keyword: ${key}`);
     }
   }
-  if (n < 0) throw new StyleError('run needs N >= 0 (with upto: a timestep at or after the current one)');
+  const MAXSMALLINT = 0x7fffffff;
+  let n = nIn;
+  if (!upto) {
+    if (nIn < 0 || nIn > MAXSMALLINT) throw new StyleError(`Invalid run command N value: ${nIn}`);
+  } else {
+    n = nIn - s.step;
+    if (n < 0 || n > MAXSMALLINT) throw new StyleError(`Invalid run command upto value: ${nIn}. Must be >= ${s.step}`);
+  }
+  if (opts.start !== null) {
+    if (opts.start < 0) throw new StyleError(`Invalid run command start value: ${opts.start}`);
+    if (opts.start > s.step) throw new StyleError(`Run command start value ${opts.start} is after start of run at step ${s.step}`);
+  }
+  if (opts.stop !== null) {
+    if (opts.stop < 0) throw new StyleError(`Invalid run command stop value: ${opts.stop}`);
+    if (opts.stop < s.step + n) throw new StyleError(`Run command stop value ${opts.stop} is before end of run at step ${s.step + n}`);
+  }
+  if (!opts.pre && sys.respa) throw new StyleError("Run flag 'pre no' not compatible with r-RESPA");
   if (opts.every <= 0 || opts.every >= n) {
     await runSteps(ctx, n, opts);
     return;

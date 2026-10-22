@@ -44,9 +44,15 @@ export class ComputePressure extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (group !== 'all') throw new StyleError('compute pressure must use group all');
+    if (group !== 'all') throw new StyleError('Compute pressure must use group all');
     if (args.length < 1) throw new StyleError('usage: compute ID all pressure temp-ID [keywords]');
     this.tempId = args[0] === 'NULL' ? null : args[0];
+    // As native LAMMPS does (src/compute_pressure.cpp ComputePressure::ComputePressure at b332f28)
+    if (this.tempId !== null) {
+      const t = sys.computes.find((c) => c.id === this.tempId);
+      if (!t) throw new StyleError(`Could not find compute pressure temperature ID ${this.tempId}`);
+      if (!t.tempFlag) throw new StyleError(`Compute pressure temperature ID ${this.tempId} does not compute temperature`);
+    }
     const rest: string[] = [];
     for (let k = 1; k < args.length; k++) {
       const a = args[k];
@@ -85,9 +91,11 @@ export class ComputePressure extends Compute {
       (pair as PairHybrid).enablePerSubVirial();
       this.hybridSub = subs[0];
     }
+    // ComputePressure::init: the temperature compute may have been deleted since
     if (this.tempId) {
-      const c = this.sys.compute(this.tempId);
-      if (!c.tempFlag) throw new StyleError(`compute pressure: compute ${this.tempId} does not compute a temperature`);
+      const c = this.sys.computes.find((x) => x.id === this.tempId);
+      if (!c) throw new StyleError(`Could not find compute pressure temperature ID ${this.tempId}`);
+      if (!c.tempFlag) throw new StyleError(`Compute pressure temperature ID ${this.tempId} does not compute temperature`);
     }
   }
 

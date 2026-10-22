@@ -180,10 +180,10 @@ describe('Session: errors are explicit and carry the line', () => {
 
   it.each([
     ['a file the notebook does not have', 'read_data system.data', /cannot open file system.data/],
-    ['units after the box', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nunits real', /cannot be used after the simulation box/],
-    ['2d with a non-periodic z', 'dimension 2\nboundary p p f', /z dimension must be periodic/],
+    ['units after the box', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nunits real', /Units command after simulation box is defined/],
+    ['2d with a non-periodic z', 'dimension 2\nboundary p p f\nregion b block 0 2 0 2 -0.5 0.5\ncreate_box 1 b', /Cannot run 2d simulation with nonperiodic Z dimension/],
     ['an unsupported pair style', 'pair_style quip', /pair_style 'quip' is not supported/],
-    ['an undefined group', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nfix 1 mobile nve', /unknown group 'mobile'/],
+    ['an undefined group', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nfix 1 mobile nve', /Could not find fix group ID mobile/],
     ['missing mass before run', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 1 b\ncreate_atoms 1 box\npair_style lj/cut 1.1\npair_coeff * * 1 1\nrun 1', /masses are set \(type 1\)/],
     ['missing pair coeffs', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 2 b\nmass * 1\npair_style lj/cut 1.1\npair_coeff 1 1 1 1\nrun 1', /all pair coeffs are not set/],
     ['2d box not bracketing z = 0', 'dimension 2\nlattice sq 1\nregion b block 0 2 0 2 0 1\ncreate_box 1 b', /bracket zero/],
@@ -352,9 +352,9 @@ describe('IDs and command order measured against native LAMMPS', () => {
     expect(error).toBeNull();
     expect(logs).toContain('N 3');
   });
-  it('an unsupported fix style is named even before the box exists', async () => {
+  it('a fix before the box is refused by its style name, as native does (src/modify.cpp add_fix)', async () => {
     const { error } = await runScript('units real\nfix tt all ttm/bogus 1 2 3\n');
-    expect(error?.message).toMatch(/fix style 'ttm\/bogus' is not supported/);
+    expect(error?.message).toMatch(/Fix ttm\/bogus command before simulation box is defined/);
   });
 
   it('fix property/atom may be defined before the box (fix_property_atom.html)', async () => {

@@ -1,19 +1,19 @@
 import type { Handler } from './args';
-import { int, num, yesno, latticeScale, keywords, missingArgs, logical, numeric, inumeric, bounds } from './args';
+import { int, num, yesno, latticeScale, keywords, missingArgs, logical, numeric, inumeric, bnumeric, bounds } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
-import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
+import { makeBox, Geometry, cloneBox } from '../domain';
 import { APIP_LAMBDA, isApipStyle, DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { parseStl } from '../stl';
-import { typeWord, parseLabelPairs, labelmapText, isLabelKind, parseCheckWhich, improperSymmatoms, type LabelKind, type CheckWhich } from '../labelmap';
+import { typeWord, isNumericTypeWord, parseLabelPairs, labelmapText, isLabelKind, parseCheckWhich, improperSymmatoms, type LabelKind, type CheckWhich } from '../labelmap';
 import { moleculeLabelCheck } from '../labelcheck';
 
 /** group.html and set.html logical operators of the type / id / molecule styles (not type labels) */
 const LOGICAL_OPS = ['<', '<=', '>', '>=', '==', '!=', '<>'];
-import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
+import { isLatticeStyle, makeLattice, checkLatticeDimension, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
 import {
   BIG, BlockRegion, CompoundRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, SphereRegion,
@@ -25,7 +25,7 @@ import { groupMotionOf } from '../groupMotion';
 import { nativeRandom } from '../styles';
 import { gzipText } from '../gzip';
 import { ComputeTemp } from '../compute/temp';
-import type { AtomStyle, SimState } from '../types';
+import type { AtomStyle, BoundaryStyle, SimState } from '../types';
 import type { System } from '../system';
 import type { Fix } from '../fix/fix';
 import type { Compute } from '../compute/compute';
@@ -38,15 +38,16 @@ import { libm } from '../libm';
  * System setup commands. Each handler cites its docs.lammps.org page.
  */
 
+/** As native LAMMPS does (src/input.cpp at b332f28): "Units command after simulation box is defined" and the like. */
 const noBox = (sys: System, cmd: string) => {
-  if (sys.hasBox) throw new StyleError(`${cmd} cannot be used after the simulation box is defined`);
+  if (sys.hasBox) throw new StyleError(`${cmd[0].toUpperCase()}${cmd.slice(1)} command after simulation box is defined\nFor more information see https://docs.lammps.org/err0034`);
 };
 
 /** units style — units.html: "This command cannot be used after the simulation box is defined". */
 const units: Handler = ({ sys }, a) => {
+  if (a.length !== 1) throw new StyleError(`Illegal units command: expected 1 argument but found ${a.length}`);
   noBox(sys, 'units');
-  if (a.length !== 1) throw new StyleError('usage: units lj|real|metal|si|cgs|electron|micro|nano');
-  if (!isUnitStyle(a[0])) throw new StyleError(`unknown units style '${a[0]}'`);
+  if (!isUnitStyle(a[0])) throw new StyleError(`Unknown units style ${a[0]}`);
   sys.units = UNIT_SYSTEMS[a[0]];
   // "The units command also sets the timestep size and neighbor skin distance to default values"
   sys.nb.skin = sys.units.skin;
@@ -55,9 +56,11 @@ const units: Handler = ({ sys }, a) => {
 
 /** dimension N — dimension.html (default 3). */
 const dimension: Handler = ({ sys }, a) => {
+  if (a.length !== 1) throw new StyleError('Dimension command expects exactly one argument');
   noBox(sys, 'dimension');
-  if (a[0] !== '2' && a[0] !== '3') throw new StyleError('usage: dimension 2|3');
-  sys.dimension = a[0] === '2' ? 2 : 3;
+  const d = inumeric(a[0]);
+  if (d !== 2 && d !== 3) throw new StyleError(`Invalid dimension argument: ${a[0]}`);
+  sys.dimension = d;
 };
 
 /**
@@ -69,14 +72,25 @@ const dimension: Handler = ({ sys }, a) => {
  */
 const boundary: Handler = ({ sys }, a) => {
   noBox(sys, 'boundary');
-  if (a.length !== 3) throw new StyleError('usage: boundary x y z (each p, f, s, m, or two of f/s/m)');
+  // a 2d simulation's z is checked when the box is made (create_box, read_data), as native does
+  sys.boundary = boundaryWords(a, 'boundary');
+};
+
+/**
+ * The face styles of the boundary command and of change_box boundary, as native LAMMPS reads them (src/domain.cpp
+ * Domain::set_boundary at b332f28): three words, of which only the first character (both faces) or the first two
+ * (lower, upper face) are read; every face is checked before a dimension with one periodic face is refused.
+ */
+const boundaryWords = (a: string[], cmd: 'boundary' | 'change_box'): SimState['box']['boundary'] => {
+  if (a.length !== 3) throw new StyleError(`Illegal boundary command: expected 3 arguments but found ${a.length}`);
+  const ok = (c: string): c is BoundaryStyle => c === 'p' || c === 'f' || c === 's' || c === 'm';
   const b = a.map((w) => {
-    const r = parseBoundary(w);
-    if (!r) throw new StyleError(`invalid boundary '${w}'`);
-    return r;
-  }) as SimState['box']['boundary'];
-  if (sys.dimension === 2 && b[2][0] !== 'p') throw new StyleError('for 2d simulations the z dimension must be periodic');
-  sys.boundary = b;
+    const lo = w[0], hi = w.length === 1 ? w[0] : w[1];
+    for (const c of [lo, hi]) if (!ok(c)) throw new StyleError(`Unknown ${cmd} keyword: ${c}`);
+    return [lo, hi] as [BoundaryStyle, BoundaryStyle];
+  });
+  for (const [lo, hi] of b) if ((lo === 'p') !== (hi === 'p')) throw new StyleError('Both sides of boundary must be periodic');
+  return b as SimState['box']['boundary'];
 };
 
 const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo', 'rheo/thermal', 'dpd', 'smd', 'amoeba', 'apip'];
@@ -87,8 +101,8 @@ const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular',
  * implied by the individual styles".
  */
 const atomStyle: Handler = ({ sys }, a) => {
+  if (a.length < 1) throw missingArgs('atom_style');
   noBox(sys, 'atom_style');
-  if (a.length < 1) throw new StyleError('usage: atom_style style');
   const known = (w: string) => {
     if (!(ATOM_STYLES as string[]).includes(w)) {
       throw new StyleError(`atom_style '${w}' is not supported by the browser engine; supported: ${ATOM_STYLES.join(', ')}, hybrid`);
@@ -294,6 +308,20 @@ const parallelOnly = (name: string): Handler => (({ sys }, a) => {
   sys.log(`${name}: accepted (the browser engine runs one process; this setting has no effect)`);
 }) as Handler;
 
+/**
+ * processors Px Py Pz [keyword args] — processors.html. As native LAMMPS does (src/input.cpp Input::processors and
+ * src/comm.cpp Comm::set_processors at b332f28): before the box only, and the grid (each count or *) must fit the one
+ * process the engine runs; the keywords choose how processes are mapped and have no effect here.
+ */
+const processors: Handler = ({ sys }, a) => {
+  if (sys.hasBox) throw new StyleError('Processors command after simulation box is defined\nFor more information see https://docs.lammps.org/err0034');
+  if (a.length < 3) throw new StyleError('Illegal processors command');
+  const p = a.slice(0, 3).map((w) => (w === '*' ? 0 : inumeric(w)));
+  if (p.some((v) => v < 0)) throw new StyleError('Illegal processors command');
+  if (p[0] * p[1] * p[2] !== 0 && p[0] * p[1] * p[2] !== 1) throw new StyleError('Specified processors != physical processors');
+  sys.log('processors: accepted (the browser engine runs one process; this setting has no effect)');
+};
+
 /** comm_style brick|tiled — comm_style.html; recorded for fix balance rcb, otherwise no effect in one process. */
 const commStyle: Handler = ({ sys }, a) => {
   if (a.length < 1 || (a[0] !== 'brick' && a[0] !== 'tiled')) throw new StyleError('usage: comm_style brick|tiled');
@@ -365,10 +393,15 @@ const balanceCommand: Handler = ({ sys }, a) => {
 
 /** newton on/off — newton.html; forces are always summed once per pair here, so either setting gives the same result. */
 const newton: Handler = ({ sys }, a) => {
-  if (a.length < 1 || a.length > 2 || a.some((w) => w !== 'on' && w !== 'off')) throw new StyleError('usage: newton on|off [on|off]');
-  sys.newtonPair = a[0] === 'on';
-  // newton.html: "flag = on or off for both pairwise and bonded interactions"; "flag2 = on or off for bonded interactions"
-  sys.newtonBond = (a.length === 2 ? a[1] : a[0]) === 'on';
+  // newton.html: "flag = on or off for both pairwise and bonded interactions"; "flag2 = on or off for bonded
+  // interactions". As native LAMMPS does (src/input.cpp Input::newton at b332f28): the bonded setting cannot change
+  // once the box exists
+  if (a.length < 1 || a.length > 2) throw new StyleError('Illegal newton command');
+  const pair = logical(a[0]);
+  const bond = a.length === 2 ? logical(a[1]) : pair;
+  if (sys.hasBox && bond !== sys.newtonBond) throw new StyleError('Newton bond change after simulation box is defined\nFor more information see https://docs.lammps.org/err0034');
+  sys.newtonPair = pair;
+  sys.newtonBond = bond;
   sys.log('newton: accepted (the engine always uses Newton\'s 3rd law within one process; results are the same)');
 };
 
@@ -443,9 +476,15 @@ const commModify: Handler = ({ sys }, a) => {
 
 /** lattice style scale [keywords] — lattice.html. */
 const lattice: Handler = ({ sys }, a) => {
-  if (a.length < 2) throw new StyleError('usage: lattice style scale [keyword values ...]');
-  if (!isLatticeStyle(a[0])) throw new StyleError(`unknown lattice style '${a[0]}'`);
-  sys.lattice = makeLattice(a[0], num(a[1], 'lattice scale'), sys.units, sys.dimension, a.slice(2));
+  // As native LAMMPS does (src/lattice.cpp Lattice::Lattice at b332f28): the style, its dimension, then the scale
+  if (a.length < 1) throw missingArgs('lattice');
+  if (!isLatticeStyle(a[0])) throw new StyleError(`Unknown lattice keyword: ${a[0]}`);
+  if (a[0] === 'none' && a.length !== 2) throw new StyleError(`Illegal lattice command: expected 2 arguments but found ${a.length}`);
+  checkLatticeDimension(a[0], sys.dimension);
+  if (a.length < 2) throw missingArgs('lattice');
+  const scale = numeric(a[1]);
+  if (scale <= 0) throw new StyleError(`Invalid lattice ${a[0]} argument: ${a[1]}`);
+  sys.lattice = makeLattice(a[0], scale, sys.units, sys.dimension, a.slice(2));
   const sp = sys.lattice.spacing.map((v) => Number(v.toPrecision(8))).join(' ');
   sys.log(`Lattice spacing in x,y,z = ${sp}`);
 };
@@ -460,25 +499,33 @@ const bound = (sys: System, w: string | undefined, scale: number, d: number, sid
     return side === 'lo' ? sys.state.box.lo[d] : sys.state.box.hi[d];
   }
   if (w.startsWith('v_')) return { variable: w.slice(2), scale };
-  return num(w, 'region parameter') * scale;
+  return numeric(w) * scale;
 };
 
 /** region ID style args [side in|out] [units lattice|box] [move ...] [rotate ...] [open N] — region.html. */
 const region: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/domain.cpp Domain::add_region, src/region.cpp Region::options and Region::init, and the
+  // region styles' constructors at b332f28): the ID, the style and its argument count, the keywords, then the
+  // style's own values
+  if (a.length < 2) throw missingArgs('region');
   const [id, style] = a;
-  if (!id || !style) throw new StyleError('usage: region ID style args [keywords]');
   if (style === 'delete') {
-    if (!sys.regions.delete(id)) throw new StyleError(`region ${id} does not exist`);
+    if (!sys.regions.delete(id)) throw new StyleError(`Delete region ${id} does not exist`);
     return;
   }
-  if (sys.regions.has(id)) throw new StyleError(`region ${id} already exists`);
+  if (style === 'none') throw new StyleError("Unrecognized region style 'none'");
+  if (sys.regions.has(id)) throw new StyleError(`Reuse of region ID ${id}`);
   const nargs: Record<string, number> = { block: 6, sphere: 4, cylinder: 6, cone: 7, ellipsoid: 6, plane: 6, prism: 9 };
   let n: number;
-  if (style === 'union' || style === 'intersect') n = 1 + int(a[2], 'number of regions');
-  else if (style in nargs) n = nargs[style];
-  else throw new StyleError(`unknown region style '${style}'`);
+  if (style === 'union' || style === 'intersect') {
+    if (a.length < 5) throw missingArgs(`region ${style}`);
+    const nreg = inumeric(a[2]);
+    if (nreg < 2) throw new StyleError(`Illegal region ${style} n: ${nreg}`);
+    n = 1 + nreg;
+  } else if (Object.prototype.hasOwnProperty.call(nargs, style)) n = nargs[style];
+  else throw new StyleError(`Unrecognized region style '${style}'`);
+  if (a.length < 2 + n) throw missingArgs('region');
   const args = a.slice(2, 2 + n);
-  if (args.length < n) throw new StyleError(`region ${style} needs ${n} arguments`);
   const rest = a.slice(2 + n);
   // keywords first: units affects scaling
   let side = true;
@@ -489,73 +536,122 @@ const region: Handler = ({ sys }, a) => {
   for (let k = 0; k < rest.length;) {
     const key = rest[k];
     if (key === 'side') {
-      if (rest[k + 1] !== 'in' && rest[k + 1] !== 'out') throw new StyleError('region side must be in or out');
+      if (k + 2 > rest.length) throw missingArgs('region side');
+      if (rest[k + 1] !== 'in' && rest[k + 1] !== 'out') throw new StyleError(`Unknown region side setting: ${rest[k + 1]}`);
       side = rest[k + 1] === 'in';
       k += 2;
-    } else if (key === 'units') { unitsW = rest[k + 1]; k += 2; } else if (key === 'move') {
+    } else if (key === 'units') {
+      if (k + 2 > rest.length) throw missingArgs('region units');
+      if (rest[k + 1] !== 'lattice' && rest[k + 1] !== 'box') throw new StyleError(`Unknown region units: ${rest[k + 1]}`);
+      unitsW = rest[k + 1];
+      k += 2;
+    } else if (key === 'move') {
+      if (k + 4 > rest.length) throw missingArgs('region move');
       move = [0, 1, 2].map((d) => {
         const w = rest[k + 1 + d];
         if (w === 'NULL') return null;
-        if (!w?.startsWith('v_')) throw new StyleError('region move needs v_name or NULL for each component');
+        if (!w.startsWith('v_')) throw new StyleError(`Illegal region move ${'xyz'[d]} displacement variable: ${w}`);
         return w.slice(2);
       }) as [string | null, string | null, string | null];
       k += 4;
     } else if (key === 'rotate') {
+      if (k + 8 > rest.length) throw missingArgs('region rotate');
       const th = rest[k + 1];
-      if (!th?.startsWith('v_')) throw new StyleError('region rotate needs v_theta');
-      const p = [num(rest[k + 2], 'Px'), num(rest[k + 3], 'Py'), num(rest[k + 4], 'Pz')];
-      const r = [num(rest[k + 5], 'Rx'), num(rest[k + 6], 'Ry'), num(rest[k + 7], 'Rz')];
+      if (!th.startsWith('v_')) throw new StyleError('Illegal region command');
+      const p = [numeric(rest[k + 2]), numeric(rest[k + 3]), numeric(rest[k + 4])];
+      const r = [numeric(rest[k + 5]), numeric(rest[k + 6]), numeric(rest[k + 7])];
       const len = Math.hypot(r[0], r[1], r[2]);
       if (!(len > 0)) throw new StyleError('region rotate axis must be non-zero');
       rotate = { theta: th.slice(2), p: p as [number, number, number], r: r.map((x) => x / len) as [number, number, number] };
       k += 8;
-    } else if (key === 'open') { open.push(int(rest[k + 1], 'open face')); k += 2; } else throw new StyleError(`unknown region keyword '${key}'`);
+    } else if (key === 'open') {
+      if (k + 2 > rest.length) throw missingArgs('region open');
+      const face = inumeric(rest[k + 1]);
+      if (face < 1 || face > 6) throw new StyleError(`Illegal region open face index: ${face}`);
+      open.push(face);
+      k += 2;
+    } else throw new StyleError(`Unknown region command argument: ${key}`);
+  }
+  if ((style === 'union' || style === 'intersect') && (move || rotate)) throw new StyleError('Region union or intersect cannot be dynamic');
+  // Region::init at creation: the move and rotate variables must be equal-style
+  for (const [k, v] of [move?.[0], move?.[1], move?.[2], rotate?.theta].entries()) {
+    if (!v) continue;
+    const vv = sys.vars.get(v);
+    if (!vv) throw new StyleError(`Variable ${v} for region ${style} ${id} does not exist`);
+    if (vv.style !== 'equal' && vv.style !== 'timer' && vv.style !== 'internal') {
+      throw new StyleError(`Variable ${v} for region ${style} ${id} ${k === 0 ? 'is invalid style' : 'is not equal style'}`);
+    }
   }
   const sc = latticeScale(sys, unitsW, 'region');
   if (rotate) rotate.p = rotate.p.map((v, d) => v * sc[d]) as [number, number, number];
   const env = sys.regionEnv;
   let reg: Region;
   const axis = (w: string) => {
-    const d = 'xyz'.indexOf(w);
-    if (d < 0 || w.length !== 1) throw new StyleError(`region ${style}: axis must be x, y or z`);
+    const d = ['x', 'y', 'z'].indexOf(w);
+    if (d < 0) throw new StyleError(`Illegal region ${style} axis: ${w}`);
     return d as 0 | 1 | 2;
   };
-  const p = (w: string, s: number) => (w.startsWith('v_') ? { variable: w.slice(2), scale: s } : num(w, 'region parameter') * s);
+  const p = (w: string, s: number) => (w.startsWith('v_') ? { variable: w.slice(2), scale: s } : numeric(w) * s);
+  // a value known now (a number, not a variable)
+  const known = (v: Param): v is number => typeof v === 'number';
+  const XYZ = ['x', 'y', 'z'];
   switch (style) {
-    case 'block':
-      reg = new BlockRegion(id, env, [0, 1, 2].flatMap((d) => [bound(sys, args[2 * d], sc[d], d, 'lo'), bound(sys, args[2 * d + 1], sc[d], d, 'hi')]));
-      break;
-    case 'sphere':
-      reg = new SphereRegion(id, env, [0, 1, 2].map((d) => p(args[d], sc[d])), p(args[3], sc[0]));
-      break;
-    case 'ellipsoid':
-      reg = new EllipsoidRegion(id, env, [0, 1, 2].map((d) => p(args[d], sc[d])), [0, 1, 2].map((d) => p(args[3 + d], sc[d])));
-      break;
-    case 'cylinder': case 'cone': {
-      const ax = axis(args[0]);
-      const [d1, d2] = ax === 0 ? [1, 2] : ax === 1 ? [0, 2] : [0, 1];
-      const r1 = p(args[3], sc[d1]);
-      const r2 = style === 'cone' ? p(args[4], sc[d1]) : r1;
-      const lo = style === 'cone' ? args[5] : args[4], hi = style === 'cone' ? args[6] : args[5];
-      reg = new ConeRegion(id, style, env, ax, p(args[1], sc[d1]), p(args[2], sc[d2]), r1, r2,
-        bound(sys, lo, sc[ax], ax, 'lo'), bound(sys, hi, sc[ax], ax, 'hi'));
-      break;
-    }
-    case 'plane':
-      reg = new PlaneRegion(id, env, [0, 1, 2].map((d) => p(args[d], sc[d])), [0, 1, 2].map((d) => p(args[3 + d], sc[d])));
-      break;
-    case 'prism': {
+    case 'block': case 'prism': {
       const b = [0, 1, 2].flatMap((d) => [bound(sys, args[2 * d], sc[d], d, 'lo'), bound(sys, args[2 * d + 1], sc[d], d, 'hi')]);
+      // block refuses lo > hi, prism lo >= hi (both say >=)
+      for (let d = 0; d < 3; d++) {
+        const lo = b[2 * d], hi = b[2 * d + 1];
+        if (known(lo) && known(hi) && (style === 'block' ? lo > hi : lo >= hi)) {
+          throw new StyleError(`Illegal region ${style} ${XYZ[d]}lo: ${lo} >= ${XYZ[d]}hi: ${hi}`);
+        }
+      }
+      if (style === 'block') { reg = new BlockRegion(id, env, b); break; }
       // "The lattice spacing in dimension x is applied to xy and xz, and the spacing in dimension y to yz."
       b.push(p(args[6], sc[0]), p(args[7], sc[0]), p(args[8], sc[1]));
       reg = new PrismRegion(id, env, b);
       break;
     }
+    case 'sphere': {
+      const r = p(args[3], sc[0]);
+      if (known(r) && r < 0) throw new StyleError(`Illegal region sphere radius: ${r}`);
+      reg = new SphereRegion(id, env, [0, 1, 2].map((d) => p(args[d], sc[d])), r);
+      break;
+    }
+    case 'ellipsoid': {
+      const ax = [0, 1, 2].map((d) => p(args[3 + d], sc[d]));
+      ax.forEach((v, d) => { if (known(v) && v < 0) throw new StyleError(`Illegal region ellipsoid ${'abc'[d]}: ${v}`); });
+      reg = new EllipsoidRegion(id, env, [0, 1, 2].map((d) => p(args[d], sc[d])), ax);
+      break;
+    }
+    case 'cylinder': case 'cone': {
+      // a cylinder has 3 faces (the open keyword takes 1 to 3)
+      if (style === 'cylinder') for (const f of open) if (f > 3) throw new StyleError(`Illegal region cylinder open face: ${f}`);
+      const ax = axis(args[0]);
+      const [d1, d2] = ax === 0 ? [1, 2] : ax === 1 ? [0, 2] : [0, 1];
+      const r1 = p(args[3], sc[d1]);
+      const r2 = style === 'cone' ? p(args[4], sc[d1]) : r1;
+      const lo = style === 'cone' ? args[5] : args[4], hi = style === 'cone' ? args[6] : args[5];
+      const blo = bound(sys, lo, sc[ax], ax, 'lo'), bhi = bound(sys, hi, sc[ax], ax, 'hi');
+      if (style === 'cylinder') {
+        if (known(r1) && r1 <= 0) throw new StyleError(`Illegal radius ${r1} in region cylinder command`);
+      } else {
+        if (known(r1) && r1 < 0) throw new StyleError('Illegal lower radius in region cone command');
+        if (known(r2) && r2 < 0) throw new StyleError('Illegal upper radius in region cone command');
+        if (known(r1) && known(r2) && r1 === 0 && r2 === 0) throw new StyleError('Illegal radius in region cone command');
+        if (known(blo) && known(bhi) && bhi <= blo) throw new StyleError('Illegal cone length in region cone command');
+      }
+      reg = new ConeRegion(id, style, env, ax, p(args[1], sc[d1]), p(args[2], sc[d2]), r1, r2, blo, bhi);
+      break;
+    }
+    case 'plane': {
+      const nrm = [0, 1, 2].map((d) => p(args[3 + d], sc[d]));
+      if (nrm.every(known) && nrm.every((v) => v === 0)) throw new StyleError(`Illegal region plane normal vector: ${nrm.join(' ')}`);
+      reg = new PlaneRegion(id, env, [0, 1, 2].map((d) => p(args[d], sc[d])), nrm);
+      break;
+    }
     default: {
       const ids = args.slice(1);
-      if (ids.length < 2) throw new StyleError(`region ${style} needs 2 or more region IDs`);
-      for (const r of ids) if (!sys.regions.has(r)) throw new StyleError(`region ${style}: region ${r} does not exist`);
-      if (move || rotate) throw new StyleError('move/rotate cannot be used with union or intersect regions');
+      for (const r of ids) if (!sys.regions.has(r)) throw new StyleError(`Region ${style} region ${r} does not exist`);
       reg = new CompoundRegion(id, style as 'union' | 'intersect', env, ids);
     }
   }
@@ -573,7 +669,10 @@ const region: Handler = ({ sys }, a) => {
  * boxes straddle z = 0).
  */
 const createBox: Handler = ({ sys }, a) => {
-  if (sys.hasBox) throw new StyleError('a simulation box already exists (use clear to start over)');
+  // As native LAMMPS does (src/create_box.cpp CreateBox::command at b332f28)
+  if (a.length < 2) throw missingArgs('create_box');
+  if (sys.hasBox) throw new StyleError('Cannot create_box after simulation box is defined\nFor more information see https://docs.lammps.org/err0034');
+  if (sys.dimension === 2 && sys.boundary[2][0] !== 'p') throw new StyleError('Cannot run 2d simulation with nonperiodic Z dimension');
   const n = int(a[0], 'number of atom types');
   if (n < 1) throw new StyleError('create_box needs at least 1 atom type');
   const general = a[1] === 'NULL';
@@ -1193,17 +1292,21 @@ const molecule: Handler = ({ sys }, a) => {
 
 /** mass I value — mass.html: "I can be specified ... as a wildcard"; "All masses must be defined before a simulation is run." */
 const mass: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/input.cpp Input::mass and src/atom.cpp Atom::set_mass at b332f28)
+  if (a.length !== 2) throw new StyleError(`Illegal mass command: expected 2 arguments but found ${a.length}`);
+  if (!sys.hasBox) throw new StyleError('Mass command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
   const s = sys.state;
-  if (a.length !== 2) throw new StyleError('usage: mass I value');
   // Measured with native LAMMPS (black box): mass is refused for atom style sphere and for atom style ellipsoid
   // (Cannot set per-type atom mass for atom style sphere, and the same with ellipsoid)
   // Measured with native LAMMPS (black box): mass is refused for atom style peri too (Cannot set per-type atom mass for atom style peri)
   // Measured with native LAMMPS (black box): the same for bpm/sphere (Cannot set per-type atom mass for atom style bpm/sphere)
   if (s.atomStyle === 'sphere' || s.atomStyle === 'bpm/sphere' || s.atomStyle === 'ellipsoid' || s.atomStyle === 'peri' || isBodyStyle(s.atomStyle)) throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
-  const m = num(a[1], 'mass');
-  if (!(m > 0)) throw new StyleError('mass must be > 0');
-  // mass.html: "I can be a type label, which is an alphanumeric string defined by the labelmap command"
-  const [lo, hi] = typeBounds(typeWord(sys.labels, 'atom', a[0] ?? ''), s.ntypes);
+  // mass.html: "I can be a type label, which is an alphanumeric string defined by the labelmap command" (looked up only
+  // when a labelmap is defined); the range is checked before the value
+  const w = sys.labels.defined && !isNumericTypeWord(a[0]) ? typeWord(sys.labels, 'atom', a[0]) : a[0];
+  const [lo, hi] = bounds(w, 1, s.ntypes);
+  const m = numeric(a[1]);
+  if (m <= 0) throw new StyleError(`Invalid atom mass value ${m} for type ${a[0]}`);
   for (let t = lo; t <= hi; t++) s.massByType[t] = m;
   sys.bump();
 };
@@ -1340,11 +1443,10 @@ const writeDataCmd: Handler = ({ sys }, a) => {
 
 /** timestep dt — timestep.html; also keeps the elapsed time ("time") cumulative. */
 const timestep: Handler = ({ sys }, a) => {
-  const dt = num(a[0], 'timestep');
-  // timestep.html sets the time step; "timestep 0" is accepted by native LAMMPS and runs without motion (measured
-  // with native LAMMPS, black box: the script continues after timestep 0 and the run prints its thermo rows).
-  // A negative step is kept as an error here (not measured against native).
-  if (!(dt >= 0)) throw new StyleError('timestep must be >= 0');
+  // As native LAMMPS does (src/input.cpp Input::timestep at b332f28): one number, which is not range-checked (timestep
+  // 0 runs without motion, and a negative step runs backwards; measured with native LAMMPS: both run)
+  if (a.length !== 1) throw new StyleError('Timestep command expects exactly one argument');
+  const dt = numeric(a[0]);
   if (!sys.hasBox) { sys.pendingDt = dt; return; }
   const s = sys.state;
   s.time += (s.step - s.timeStep) * s.dt;
@@ -1355,12 +1457,17 @@ const timestep: Handler = ({ sys }, a) => {
 
 /** reset_timestep N [time T] — reset_timestep.html. */
 const resetTimestep: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/update.cpp Update::reset_timestep at b332f28): the step, then the time keyword
+  if (a.length < 1) throw missingArgs('reset_timestep');
   const s = sys.state;
-  const n = int(a[0], 'timestep');
-  if (n < 0) throw new StyleError('timestep must be >= 0');
+  const n = bnumeric(a[0]);
+  if (n < 0) throw new StyleError('Timestep must be >= 0');
   let t: number | null = null;
-  if (a[1] === 'time') t = num(a[2], 'time');
-  else if (a.length > 1) throw new StyleError('usage: reset_timestep N [time T]');
+  if (a.length > 1) {
+    if (a[1] !== 'time') throw new StyleError(`Unknown reset_timestep option ${a[1]}`);
+    if (a.length < 3) throw missingArgs('reset_timestep time');
+    t = numeric(a[2]);
+  }
   sys.checkTimestepReset();
   // reset_timestep.html: "The optional time keyword allows to also set the accumulated simulation time." Without the
   // time keyword the clock is not restarted
@@ -1378,70 +1485,104 @@ const resetTimestep: Handler = ({ sys }, a) => {
 
 // ----------------------------------------------------------------- groups
 
-/** "A:B:C" sequences / single values. */
+/**
+ * One entry of a group type/id/molecule list, read as native LAMMPS does (src/group.cpp Group::assign at b332f28): a
+ * value, A:B or A:B:C, each an integer ("Incorrect range string 'w': Not a valid integer number: 'x'" or "...: Syntax
+ * error"), with a positive increment.
+ */
 const parseList = (w: string): [number, number, number] => {
-  const p = w.split(':').map((x) => int(x, 'group list entry'));
-  if (p.length === 1) return [p[0], p[0], 1];
-  if (p.length === 2) return [p[0], p[1], 1];
-  if (p.length === 3) return [p[0], p[1], p[2]];
-  throw new StyleError(`invalid group list entry '${w}'`);
+  const bad = (why: string) => new StyleError(`Incorrect range string '${w}': ${why}`);
+  const parts = w.split(':');
+  const int64 = (t: string): number => {
+    // std::stoll of the whole token
+    if (!/^\s*[+-]?\d+$/.test(t)) throw bad(`Not a valid integer number: '${t}'`);
+    return Number(t);
+  };
+  const start = int64(parts[0]);
+  let stop = start, delta = 1;
+  if (/^-?\d+$/.test(w)) stop = start;
+  else if (/^-?\d+:-?\d+$/.test(w)) stop = int64(parts[1]);
+  else if (/^-?\d+:-?\d+:\d+$/.test(w)) { stop = int64(parts[1]); delta = int64(parts[2]); } else throw bad('Syntax error');
+  if (delta < 1) throw new StyleError('Illegal range increment value');
+  return [start, stop, delta];
 };
 
-/** group ID style args — group.html. */
+/** group ID style args — group.html. As native LAMMPS does (src/group.cpp Group::assign at b332f28). */
 const group: Handler = ({ sys }, a) => {
+  if (!sys.hasBox) throw new StyleError('Group command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
+  if (a.length < 2) throw missingArgs('group');
   const [id, style] = a;
-  if (!id || !style) throw new StyleError('usage: group ID style args');
   if (style === 'delete') {
-    if (id === 'all') throw new StyleError('cannot delete group all');
+    if (a.length !== 2) throw new StyleError('Illegal group delete command: too many arguments');
+    const k0 = sys.groups.find(id);
+    if (k0 < 0) throw new StyleError(`Could not find group delete group ID ${id}`);
+    if (k0 === 0) throw new StyleError('Cannot delete group all');
+    // a group in use cannot be deleted (its bit could be given to a new group)
+    const fixUser = sys.fixes.find((f) => f.group === id);
+    if (fixUser) throw new StyleError(`Cannot delete group ${id} currently used by fix ID ${fixUser.id}`);
+    const computeUser = sys.computes.find((c) => c.group === id);
+    if (computeUser) throw new StyleError(`Cannot delete group ${id} currently used by compute ID ${computeUser.id}`);
+    const dumpUser = sys.dumps.find((d) => d.group === id);
+    if (dumpUser) throw new StyleError(`Cannot delete group ${id} currently used by dump ID ${dumpUser.id}`);
+    if (sys.firstGroup === id) throw new StyleError(`Cannot delete group ${id} currently used by atom_modify first`);
     const k = sys.groups.delete(id);
-    if (sys.hasBox) { const s = sys.state; const m = ~bitOfIndex(k); for (let i = 0; i < s.n; i++) s.mask[i] &= m; }
+    const s = sys.state;
+    const m = ~bitOfIndex(k);
+    for (let i = 0; i < s.n; i++) s.mask[i] &= m;
     return;
   }
   const s = sys.state;
   const args = a.slice(2);
+  if (style === 'clear') {
+    // Measured with native LAMMPS (black box): group clear needs an existing group and logs nothing
+    const k0 = sys.groups.find(id);
+    if (k0 < 0) throw new StyleError(`Could not find group clear group ID ${id}`);
+    if (k0 === 0) throw new StyleError('Cannot clear group all');
+    const m = ~bitOfIndex(k0);
+    for (let i = 0; i < s.n; i++) s.mask[i] &= m;
+    sys.refreshComputes();
+    return;
+  }
   if (style === 'dynamic') {
     groupDynamic(sys, id, args);
     return;
   }
-  if (style === 'static') {
-    // Measured with native LAMMPS (black box): group static on a group that is not dynamic only
-    // reports its count, and before any run a new dynamic group has no atoms yet
-    const k0 = sys.groups.find(id);
-    if (k0 < 0) throw new StyleError(`Could not find group static group ID ${id}`);
-    if (args.length) throw new StyleError('usage: group ID static');
-    sys.groups.dynamic.delete(bitOfIndex(k0));
-    let n = 0;
-    for (let i = 0; i < s.n; i++) if (s.mask[i] & bitOfIndex(k0)) n++;
-    sys.log(`${n} atoms in group ${id}`);
-    sys.refreshComputes();
-    return;
-  }
-  // Measured with native LAMMPS (black box): group clear needs an existing group and logs nothing
-  if (style === 'clear' && sys.groups.find(id) < 0) throw new StyleError(`Could not find group clear group ID ${id}`);
+  // native makes the group (if new) before it reads the style's arguments
   const k = sys.groups.create(id);
   const bit = bitOfIndex(k);
   const set = (pred: (i: number) => boolean) => { for (let i = 0; i < s.n; i++) if (pred(i)) s.mask[i] |= bit; };
   switch (style) {
-    case 'clear': {
-      if (id === 'all') throw new StyleError('cannot clear group all');
-      const m = ~bit;
-      for (let i = 0; i < s.n; i++) s.mask[i] &= m;
+    case 'static':
+      // Measured with native LAMMPS (black box): group static on a group that is not dynamic only reports its count
+      if (a.length !== 2) throw new StyleError('Illegal group static command');
+      sys.groups.dynamic.delete(bit);
       break;
-    }
-    case 'empty': break;
+    case 'empty':
+      if (a.length !== 2) throw new StyleError('Illegal group empty command');
+      break;
     case 'region': {
-      const r = sys.region(args[0] ?? '');
+      if (a.length !== 3) throw new StyleError('Illegal group region command');
+      if (!sys.regions.has(args[0])) throw new StyleError(`Region ${args[0]} for group region does not exist`);
+      const r = sys.region(args[0]);
       set((i) => r.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]));
       break;
     }
     case 'type': case 'id': case 'molecule': {
+      if (a.length < 3) throw missingArgs(`group ${style}`);
+      if (style === 'molecule' && !hasMolecule(s)) throw new StyleError('Group molecule command requires atom attribute molecule');
       const val = (i: number) => (style === 'type' ? s.type[i] : style === 'id' ? s.id[i] : s.molecule[i]);
-      // group.html: for style type "type labels are converted into numeric types before being evaluated"
-      const typed = style === 'type' ? args.map((w) => (LOGICAL_OPS.includes(w) ? w : typeWord(sys.labels, 'atom', w))) : args;
-      if (LOGICAL_OPS.includes(typed[0])) {
-        const op = typed[0];
-        const v1 = int(typed[1], 'value');
-        const v2 = op === '<>' ? int(typed[2], 'value2') : 0;
+      // group.html: for style type "type labels are converted into numeric types before being evaluated" (only when a
+      // labelmap is defined; otherwise a word is read as a number)
+      const typeOf = (w: string): string => (style === 'type' && sys.labels.defined && !isNumericTypeWord(w) ? typeWord(sys.labels, 'atom', w) : w);
+      if (a.length > 3 && LOGICAL_OPS.includes(args[0])) {
+        const op = args[0];
+        const bound = (w: string) => (style === 'type' ? inumeric(typeOf(w)) : bnumeric(w));
+        const v1 = bound(args[1]);
+        let v2 = -1;
+        if (op === '<>') {
+          if (a.length !== 5) throw new StyleError('Illegal group command');
+          v2 = bound(args[2]);
+        } else if (a.length !== 4) throw new StyleError('Illegal group command');
         set((i) => {
           const v = val(i);
           switch (op) {
@@ -1450,36 +1591,43 @@ const group: Handler = ({ sys }, a) => {
           }
         });
       } else {
-        if (!typed.length) throw new StyleError(`group ${style} needs a list of values`);
-        const lists = typed.map(parseList);
-        set((i) => {
-          const v = val(i);
-          return lists.some(([lo, hi, st]) => v >= lo && v <= hi && (v - lo) % st === 0);
-        });
+        for (const w of args) {
+          const t = typeOf(w);
+          const [lo, hi, st] = t !== w ? [Number(t), Number(t), 1] : parseList(w);
+          set((i) => { const v = val(i); return v >= lo && v <= hi && (v - lo) % st === 0; });
+        }
       }
       break;
     }
     case 'variable': {
-      const v = sys.atomVariable(args[0] ?? '');
+      const v0 = sys.vars.get(args[0] ?? '');
+      if (!v0) throw new StyleError(`Variable name ${args[0]} for group does not exist`);
+      if (v0.style !== 'atom' && v0.style !== 'atomfile') throw new StyleError(`Variable ${args[0]} for group is invalid style`);
+      const v = sys.atomVariable(args[0]);
       set((i) => v[i] !== 0);
       break;
     }
     case 'include': {
-      if (args[0] !== 'molecule') throw new StyleError('usage: group ID include molecule');
+      if (a.length !== 3) throw new StyleError('Illegal group include command');
+      if (args[0] !== 'molecule') throw new StyleError(`Unknown group include keyword ${args[0]}`);
+      if (!hasMolecule(s)) throw new StyleError('Group include molecule command requires atom attribute molecule');
       const mols = new Set<number>();
       for (let i = 0; i < s.n; i++) if (s.mask[i] & bit && s.molecule[i] !== 0) mols.add(s.molecule[i]);
       set((i) => mols.has(s.molecule[i]));
       break;
     }
     case 'subtract': case 'union': case 'intersect': {
-      if (!args.length) throw new StyleError(`group ${style} needs group IDs`);
-      const bits = args.map((g) => sys.groupBit(g));
-      // Measured with native LAMMPS (black box): a dynamic group cannot be combined
-      if (bits.some((b) => sys.groups.isDynamic(b))) {
-        throw new StyleError(style === 'subtract' ? 'Cannot subtract dynamic groups'
-          : style === 'union' ? 'Cannot union groups from a dynamic group' : 'Cannot intersect groups using a dynamic group');
-      }
-      if (style !== 'union' && bits.length < 2) throw new StyleError(`group ${style} needs 2 or more groups`);
+      if (a.length < (style === 'union' ? 3 : 4)) throw missingArgs(`group ${style}`);
+      const bits = args.map((g) => {
+        if (sys.groups.find(g) < 0) throw new StyleError(`Group ID ${g} does not exist`);
+        const b = sys.groupBit(g);
+        // Measured with native LAMMPS (black box): a dynamic group cannot be combined
+        if (sys.groups.isDynamic(b)) {
+          throw new StyleError(style === 'subtract' ? 'Cannot subtract dynamic groups'
+            : style === 'union' ? 'Cannot union groups from a dynamic group' : 'Cannot intersect groups using a dynamic group');
+        }
+        return b;
+      });
       set((i) => {
         const m = s.mask[i];
         if (style === 'union') return bits.some((b) => (m & b) !== 0);
@@ -1488,10 +1636,9 @@ const group: Handler = ({ sys }, a) => {
       });
       break;
     }
-    default: throw new StyleError(`unknown group style '${style}'`);
+    default: throw new StyleError(`Unknown group command keyword: ${style}`);
   }
   sys.refreshComputes();
-  if (style === 'clear') return;
   // Measured with native LAMMPS (black box): a dynamic group reports "dynamic group ID defined"
   // after any group command instead of its count
   if (sys.groups.isDynamic(bit)) { sys.log(`dynamic group ${id} defined`); return; }
@@ -2677,31 +2824,46 @@ const deleteAtomsCmd: Handler = ({ sys }, a) => {
 
 /** displace_atoms group style args [units] — displace_atoms.html. */
 const displaceAtoms: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/displace_atoms.cpp DisplaceAtoms::command and options at b332f28): the box, the group (its
+  // message says display_atoms), the style, the keywords, then the style's values
+  if (!sys.hasBox) throw new StyleError('Displace_atoms command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
+  if (a.length < 2) throw new StyleError('Illegal displace_atoms command');
   const s = sys.state;
-  const bit = sys.groupBit(a[0] ?? '');
+  if (sys.groups.find(a[0]) < 0) throw new StyleError(`Could not find display_atoms group ${a[0]}`);
+  const bit = sys.groupBit(a[0]);
   const style = a[1];
   const nargs: Record<string, number> = { move: 3, ramp: 6, random: 4, rotate: 7 };
-  if (!style || !(style in nargs)) throw new StyleError('usage: displace_atoms group move|ramp|random|rotate args');
+  if (!Object.prototype.hasOwnProperty.call(nargs, style)) throw new StyleError(`Unknown displace_atoms keyword ${style}`);
+  if (a.length < 2 + nargs[style]) throw missingArgs('displace_atoms');
   const args = a.slice(2, 2 + nargs[style]);
-  const kw = keywords(a.slice(2 + nargs[style]), { units: 1 }, 'displace_atoms');
-  const sc = latticeScale(sys, kw.get('units')?.[0] ?? 'lattice', 'displace_atoms');
+  let unitsW = 'lattice';
+  const opt = a.slice(2 + nargs[style]);
+  for (let k = 0; k < opt.length; k += 2) {
+    if (opt[k] !== 'units') throw new StyleError(`Unknown displace_atoms keyword ${opt[k]}`);
+    if (k + 2 > opt.length) throw missingArgs('displace_atoms units');
+    if (opt[k + 1] !== 'box' && opt[k + 1] !== 'lattice') throw new StyleError(`Unknown displace_atoms units argument ${opt[k + 1]}`);
+    unitsW = opt[k + 1];
+  }
+  const sc = latticeScale(sys, unitsW, 'displace_atoms');
   const members: number[] = [];
   for (let i = 0; i < s.n; i++) if (s.mask[i] & bit) members.push(i);
   switch (style) {
     case 'move': {
       // native LAMMPS evaluates the components in turn, each after the previous one moved the
-      // atoms (atom-style dx=1, dy=x, dz=y on an atom at (1,1,1) gives (2,3,4))
-      for (let d = 0; d < 3; d++) {
+      // atoms (atom-style dx=1, dy=x, dz=y on an atom at (1,1,1) gives (2,3,4)); a 2d system ignores the z value
+      for (let d = 0; d < s.dimension; d++) {
         const w = args[d];
         let comp: (i: number) => number;
         if (w.startsWith('v_')) {
-          const v = sys.vars.get(w.slice(2));
-          if (v?.style === 'atom') { const arr = sys.atomVariable(w.slice(2)); comp = (i) => arr[i] * sc[d]; } else {
-            const x = sys.equalVariable(w.slice(2)) * sc[d];
+          const name = w.slice(2);
+          const v = sys.vars.get(name);
+          if (!v) throw new StyleError(`Variable ${name} for displace_atoms move does not exist`);
+          if (v.style === 'atom' || v.style === 'atomfile') { const arr = sys.atomVariable(name); comp = (i) => arr[i] * sc[d]; } else if (v.style === 'equal' || v.style === 'timer' || v.style === 'internal') {
+            const x = sys.equalVariable(name) * sc[d];
             comp = () => x;
-          }
+          } else throw new StyleError(`Variable ${name} for displace_atoms is invalid style`);
         } else {
-          const x = num(w, 'displacement') * sc[d];
+          const x = numeric(w) * sc[d];
           comp = () => x;
         }
         for (const i of members) s.x[3 * i + d] += comp(i);
@@ -2709,10 +2871,13 @@ const displaceAtoms: Handler = ({ sys }, a) => {
       break;
     }
     case 'ramp': {
-      const dd = 'xyz'.indexOf(args[0]), cd = 'xyz'.indexOf(args[3]);
-      if (dd < 0 || cd < 0) throw new StyleError('usage: displace_atoms group ramp x|y|z dlo dhi x|y|z clo chi');
-      const dlo = num(args[1], 'dlo') * sc[dd], dhi = num(args[2], 'dhi') * sc[dd];
-      const clo = num(args[4], 'clo') * sc[cd], chi = num(args[5], 'chi') * sc[cd];
+      const dd = ['x', 'y', 'z'].indexOf(args[0]);
+      if (dd < 0) throw new StyleError(`Unknown displace_atoms ramp dimension ${args[0]}`);
+      if (s.dimension === 2 && dd === 2) throw new StyleError('Must not displace atoms in z-direction with 2d system');
+      const dlo = numeric(args[1]) * sc[dd], dhi = numeric(args[2]) * sc[dd];
+      const cd = ['x', 'y', 'z'].indexOf(args[3]);
+      if (cd < 0) throw new StyleError(`Unknown displace_atoms ramp dimension ${args[3]}`);
+      const clo = numeric(args[4]) * sc[cd], chi = numeric(args[5]) * sc[cd];
       for (const i of members) {
         const f = Math.max(0, Math.min(1, (s.x[3 * i + cd] - clo) / (chi - clo)));
         s.x[3 * i + dd] += dlo + f * (dhi - dlo);
@@ -2722,8 +2887,8 @@ const displaceAtoms: Handler = ({ sys }, a) => {
     case 'random': {
       // displace_atoms.html: "Random numbers are used in such a way that the displacement of a particular atom is the
       // same, regardless of how many processors are being used." The per-atom streams are native's (nativeRandom.ts).
-      const dx = [0, 1, 2].map((d) => num(args[d], 'magnitude') * sc[d]);
-      const seed = int(args[3], 'seed');
+      const dx = [0, 1, 2].map((d) => numeric(args[d]) * sc[d]);
+      const seed = inumeric(args[3]);
       if (seed <= 0) throw new StyleError(`Illegal displace_atoms random seed ${args[3]}`);
       if (s.dimension === 2 && dx[2] !== 0) throw new StyleError('Must not displace atoms in z-direction with 2d system');
       const rnd = nativeRandom('random');
@@ -2735,12 +2900,14 @@ const displaceAtoms: Handler = ({ sys }, a) => {
       break;
     }
     case 'rotate': {
-      const P = [0, 1, 2].map((d) => num(args[d], 'P') * sc[d]);
-      let R = [num(args[3], 'Rx'), num(args[4], 'Ry'), num(args[5], 'Rz')];
+      const P = [0, 1, 2].map((d) => numeric(args[d]) * sc[d]);
+      let R = [numeric(args[3]), numeric(args[4]), numeric(args[5])];
+      const theta = numeric(args[6]);
+      if (s.dimension === 2 && (R[0] !== 0 || R[1] !== 0)) throw new StyleError('Invalid displace_atoms rotate axis for 2d system');
       const len = Math.hypot(R[0], R[1], R[2]);
-      if (!(len > 0)) throw new StyleError('displace_atoms rotate: zero axis');
+      if (!(len > 0)) throw new StyleError('Zero length rotation vector with displace_atoms');
       R = R.map((x) => x / len);
-      const th = (num(args[6], 'theta') * Math.PI) / 180;
+      const th = (theta * Math.PI) / 180;
       const c = libm.cos(th), sn = libm.sin(th);
       const g = sys.geom;
       for (const i of members) {
@@ -2969,11 +3136,7 @@ const changeBox: Handler = ({ sys }, a) => {
       else throw new StyleError(`change_box ${p}: style must be final or delta`);
       k += 3;
     } else if (p === 'boundary') {
-      const nb = ops.slice(k + 1, k + 4).map((w) => {
-        const r = parseBoundary(w);
-        if (!r) throw new StyleError(`invalid boundary '${w}'`);
-        return r;
-      });
+      const nb = boundaryWords(ops.slice(k + 1, k + 4), 'change_box');
       b.boundary = nb as SimState['box']['boundary'];
       b.periodic = [nb[0][0] === 'p', nb[1][0] === 'p', nb[2][0] === 'p'];
       sys.boundary = b.boundary;
@@ -3332,7 +3495,7 @@ const deleteBonds: Handler = ({ sys }, a) => {
 
 export const SETUP_COMMANDS: Record<string, Handler> = {
   units, dimension, boundary, atom_style: atomStyle, atom_modify: atomModify, newton,
-  processors: parallelOnly('processors'), comm_style: commStyle, package: parallelOnly('package'),
+  processors, comm_style: commStyle, package: parallelOnly('package'),
   suffix: parallelOnly('suffix'), balance: balanceCommand,
   comm_modify: commModify, lattice, region, create_box: createBox, create_atoms: createAtoms, mass, molecule,
   read_data: readDataCmd, write_data: writeDataCmd, timestep, reset_timestep: resetTimestep,

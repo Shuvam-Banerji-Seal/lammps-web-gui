@@ -227,7 +227,7 @@ write_dump all custom pour_check.dump id x y z radius modify format float %.15g 
 
   it('fix deposit refuses a dynamic region', async () => {
     const header = 'units lj\natom_style atomic\nboundary p p p\nregion box block -5 5 -5 5 0 10\ncreate_box 1 box\nmass * 1.0\n';
-    const r = await run(`${header}region m block -3 3 -3 3 0 2 side in move NULL NULL v_zz\nvariable zz equal 0.1\nfix 1 all deposit 5 1 2 99 region m units box\nrun 1\n`);
+    const r = await run(`${header}variable zz equal 0.1\nregion m block -3 3 -3 3 0 2 side in move NULL NULL v_zz\nfix 1 all deposit 5 1 2 99 region m units box\nrun 1\n`);
     expect(r.error).toContain('Fix deposit region cannot be dynamic');
   });
 

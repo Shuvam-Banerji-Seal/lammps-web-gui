@@ -105,9 +105,9 @@ describe('fix heat / fix ehex energy bookkeeping', () => {
     const F = 0.3, N = 2, dt = 0.004;
     const { thermo, error } = await runScript(`${GAS}
 thermo_modify   norm no
+fix             2 all heat ${N} ${F}
 thermo_style    custom step ke f_2
 thermo          1
-fix             2 all heat ${N} ${F}
 run             8
 `);
     expect(error).toBeNull();
@@ -123,9 +123,9 @@ run             8
   it('the heat scalar is sqrt(1 + N F dt / K) with K about the COM (zero COM here) and is 1 before the first application', async () => {
     const { thermo, error } = await runScript(`${GAS.replace('mom no', 'mom yes')}
 thermo_modify   norm no
+fix             2 all heat 1 0.5
 thermo_style    custom step ke f_2
 thermo          1
-fix             2 all heat 1 0.5
 run             2
 `);
     expect(error).toBeNull();
@@ -139,9 +139,9 @@ run             2
 
   it('a negative flux lowers the scalar below one', async () => {
     const { thermo, error } = await runScript(`${GAS}
+fix             2 all heat 1 -0.2
 thermo_style    custom step f_2
 thermo          1
-fix             2 all heat 1 -0.2
 run             1
 `);
     expect(error).toBeNull();
@@ -153,9 +153,9 @@ run             1
     const { thermo, error } = await runScript(`${GAS}
 thermo_modify   norm no
 region          slab block INF INF INF INF 0 0.25 units box
+fix             2 all heat 1 0.4 region slab
 thermo_style    custom step ke f_2
 thermo          1
-fix             2 all heat 1 0.4 region slab
 run             2
 `);
     expect(error).toBeNull();
@@ -167,12 +167,12 @@ run             2
   it('ehex with the hex keyword reproduces fix heat exactly', async () => {
     const body = `${GAS}
 thermo_modify   norm no
-thermo_style    custom step ke f_2
 thermo          1
 run             3
 `;
-    const a = await runScript(body.replace('run             3', `fix 2 all heat 1 0.7\nrun 3`));
-    const b = await runScript(body.replace('run             3', `fix 2 all ehex 1 0.7 hex\nrun 3`));
+    // thermo_style names f_2, so it follows the fix (native reads it when thermo_style is given)
+    const a = await runScript(body.replace('run             3', `fix 2 all heat 1 0.7\nthermo_style custom step ke f_2\nrun 3`));
+    const b = await runScript(body.replace('run             3', `fix 2 all ehex 1 0.7 hex\nthermo_style custom step ke f_2\nrun 3`));
     expect(a.error).toBeNull();
     expect(b.error).toBeNull();
     for (let k = 0; k < a.thermo.length; k++) {

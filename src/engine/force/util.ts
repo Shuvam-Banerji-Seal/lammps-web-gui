@@ -77,6 +77,13 @@ export const numeric = (w: string | undefined): number => {
   return Number(w);
 };
 
+/** utils::bnumeric: as inumeric, for a 64-bit integer (timesteps). */
+export const bnumeric = (w: string | undefined): number => {
+  if (!w) throw new StyleError('Expected integer parameter instead of NULL or empty string in input script or data file');
+  if (!/^[+-]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}' in input script or data file`);
+  return Number(w);
+};
+
 export const inumeric = (w: string | undefined): number => {
   if (!w) throw new StyleError('Expected integer parameter instead of NULL or empty string in input script or data file');
   if (!/^[+-]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}' in input script or data file`);

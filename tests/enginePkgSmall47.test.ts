@@ -247,9 +247,9 @@ variable s equal step
   it('computes the moments of the window with the doc definitions (values measured with native LAMMPS)', async () => {
     // Nevery 1, Nrepeat 8, Nfreq 8: the window at step 8 is the samples of steps 1..8
     const { s, ev } = session();
-    await s.execute(base + 'thermo_style custom step f_2[1] f_2[2] f_2[3] f_2[4] f_2[5]\nthermo_modify format float %.15g\nthermo 8\n'
-      + 'variable q equal "step*step - 3*step + (step % 4)"\n'
-      + 'fix 2 all ave/moments 1 8 8 v_q mean stddev variance skew kurtosis\nrun 8\n');
+    await s.execute(base + 'variable q equal "step*step - 3*step + (step % 4)"\n'
+      + 'fix 2 all ave/moments 1 8 8 v_q mean stddev variance skew kurtosis\n'
+      + 'thermo_style custom step f_2[1] f_2[2] f_2[3] f_2[4] f_2[5]\nthermo_modify format float %.15g\nthermo 8\nrun 8\n');
     const last = thermoRows(ev).pop()!;
     expect(last['f_2[1]']).toBeCloseTo(13.5, 12);
     expect(last['f_2[2]']).toBeCloseTo(15.3529894715748, 9);

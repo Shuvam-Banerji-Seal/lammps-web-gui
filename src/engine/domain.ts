@@ -1,4 +1,4 @@
-import type { BoundaryStyle, SimBox, SimState } from './types';
+import type { SimBox, SimState } from './types';
 
 /*
  * Box geometry: orthogonal and restricted triclinic boxes, periodic wrapping
@@ -52,14 +52,6 @@ export const cloneBox = (b: SimBox): SimBox => ({
   // the general triclinic rotation is part of the box (SimBox.general); a copy keeps it
   ...(b.general ? { general: { Q: b.general.Q.map((r) => [...r]) as NonNullable<SimBox['general']>['Q'] } } : {}),
 });
-
-/** Parses a boundary spec word: 'p', 'f', 's', 'm' or two of f/s/m. */
-export const parseBoundary = (w: string): [BoundaryStyle, BoundaryStyle] | null => {
-  const ok = (c: string): c is BoundaryStyle => c === 'p' || c === 'f' || c === 's' || c === 'm';
-  if (w.length === 1 && ok(w)) return [w, w];
-  if (w.length === 2 && ok(w[0]) && ok(w[1]) && w[0] !== 'p' && w[1] !== 'p') return [w[0], w[1]];
-  return null;
-};
 
 /**
  * Cached geometry of a box: lengths, tilt, inverse h. Rebuild with `update`

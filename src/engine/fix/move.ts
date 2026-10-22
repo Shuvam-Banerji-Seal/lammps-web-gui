@@ -1,5 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { missingArgs, numeric } from '../force/util';
 import type { System } from '../system';
 import { massOf, isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { libm } from '../libm';
@@ -101,12 +102,17 @@ import { libm } from '../libm';
  * particles keep their angular momentum.
  */
 
-type MoveStyle = 'linear' | 'wiggle' | 'rotate' | 'transrot';
+type MoveStyle = 'linear' | 'wiggle' | 'rotate' | 'transrot' | 'variable';
 
-const ARGS: Record<MoveStyle, number> = { linear: 3, wiggle: 4, rotate: 7, transrot: 10 };
-const USAGE: Record<MoveStyle, string> = {
-  linear: 'Vx Vy Vz', wiggle: 'Ax Ay Az period', rotate: 'Px Py Pz Rx Ry Rz period', transrot: 'Vx Vy Vz Px Py Pz Rx Ry Rz period',
-};
+/** The words each style takes after its name, as native counts them (narg checks in fix_move.cpp at b332f28). */
+const ARGS: Record<MoveStyle, number> = { linear: 3, wiggle: 4, rotate: 7, transrot: 10, variable: 6 };
+
+/**
+ * fix_move.html: "The *variable* style allows the position and velocity components of each atom to be set by formulas
+ * specified via the variable command."; "Each variable must be of either the *equal* or *atom* style." The variable of
+ * a component (x, y, z, vx, vy, vz): null for NULL.
+ */
+type MoveVar = { name: string; atom: boolean } | null;
 
 /** Rotation matrix of the unit quaternion q (w i j k), body to space. */
 const quatMatrix = (q: ArrayLike<number>, o: number, m: number[]): void => {
@@ -121,10 +127,11 @@ export class FixMove extends Fix {
   private readonly moveStyle: MoveStyle;
   /** Vx,Vy,Vz (linear, transrot) or Ax,Ay,Az (wiggle); null marks a NULL component. */
   private readonly comp: (number | null)[];
+  /** variable: the variables of x, y, z, vx, vy, vz (null for NULL); atom-style or not is set at init. */
+  private readonly vars: MoveVar[] = [];
   /** rotate/transrot: the point P (scaled) and the unit axis R. */
   private readonly point: number[] = [0, 0, 0];
   private readonly axis: number[] = [0, 0, 1];
-  private readonly period: number;
   private readonly omega: number;
   private readonly unitsMode: 'box' | 'lattice';
   private updateDipole = false;
@@ -143,64 +150,74 @@ export class FixMove extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
+    // As native LAMMPS does (src/fix_move.cpp FixMove::FixMove at b332f28): the style's words, the keywords, the 2d
+    // checks, the lattice scaling and then the rotation axis
+    if (args.length < 1) throw missingArgs('fix move');
     const st = args[0];
-    if (st !== 'linear' && st !== 'wiggle' && st !== 'rotate' && st !== 'transrot') {
-      throw new StyleError(`fix move style '${st ?? ''}' is not supported by the browser engine; supported: linear, wiggle, rotate, transrot (variable is not implemented)`);
-    }
-    this.moveStyle = st;
-    const na = ARGS[st];
-    if (args.length < 1 + na) throw new StyleError(`usage: fix ID group-ID move ${st} ${USAGE[st]} [units box|lattice] [update dipole]`);
-    const number = (w: string | undefined, what: string): number => {
-      const v = Number(w);
-      if (w === undefined || w === 'NULL' || !Number.isFinite(v)) throw new StyleError(`fix move ${st}: ${what} must be a number, got '${w ?? ''}'`);
-      return v;
-    };
+    if (!(st in ARGS)) throw new StyleError(`Unknown fix move mode ${st}`);
+    this.moveStyle = st as MoveStyle;
+    const na = ARGS[this.moveStyle];
+    // native checks transrot against 11 words while it reads 14 (fix_move.cpp); the engine asks for all of them
+    if (args.length < 1 + na) throw missingArgs(`fix move ${st}`);
+    const comp = (w: string) => (w === 'NULL' ? null : numeric(w));
     this.comp = [];
-    if (st !== 'rotate') {
-      for (let d = 0; d < 3; d++) {
-        const w = args[1 + d];
-        if (w === 'NULL' && st !== 'transrot') { this.comp.push(null); continue; }
-        this.comp.push(number(w, st === 'wiggle' ? 'amplitude components' : 'velocity components'));
+    if (st === 'linear' || st === 'wiggle') for (let d = 0; d < 3; d++) this.comp.push(comp(args[1 + d]));
+    if (st === 'transrot') for (let d = 0; d < 3; d++) this.comp.push(numeric(args[1 + d]));
+    if (st === 'variable') {
+      for (let k = 0; k < 6; k++) {
+        const w = args[1 + k];
+        if (w === 'NULL') this.vars.push(null);
+        else if (w.startsWith('v_')) this.vars.push({ name: w.slice(2), atom: false });
+        else throw new StyleError('Argument must be either NULL or variable reference');
       }
     }
+    const axis = [0, 0, 0];
     if (st === 'rotate' || st === 'transrot') {
       const o = st === 'rotate' ? 1 : 4;
-      for (let d = 0; d < 3; d++) this.point[d] = number(args[o + d], 'Px Py Pz');
-      const r = [0, 1, 2].map((d) => number(args[o + 3 + d], 'Rx Ry Rz'));
-      const len = Math.hypot(r[0], r[1], r[2]);
-      if (!(len > 0)) throw new StyleError('fix move: zero length rotation vector');
-      for (let d = 0; d < 3; d++) this.axis[d] = r[d] / len;
+      for (let d = 0; d < 3; d++) this.point[d] = numeric(args[o + d]);
+      for (let d = 0; d < 3; d++) axis[d] = numeric(args[o + 3 + d]);
     }
-    if (st !== 'linear') {
-      const T = Number(args[na]);
-      if (!Number.isFinite(T) || !(T > 0)) throw new StyleError(`fix move ${st} period must be > 0 (time units), got '${args[na] ?? ''}'`);
-      this.period = T;
+    this.omega = 0;
+    if (st === 'wiggle' || st === 'rotate' || st === 'transrot') {
+      const T = numeric(args[na]);
+      // native names rotate for transrot too
+      if (T <= 0) throw new StyleError(`Illegal fix move ${st === 'wiggle' ? 'wiggle' : 'rotate'} period ${T}`);
       this.omega = (2 * Math.PI) / T;
-    } else {
-      this.period = 0;
-      this.omega = 0;
     }
     this.unitsMode = 'lattice';
     for (let k = 1 + na; k < args.length;) {
       const key = args[k];
       if (key === 'units') {
+        if (k + 2 > args.length) throw missingArgs('fix move units');
         const val = args[k + 1];
-        if (val !== 'box' && val !== 'lattice') throw new StyleError(`fix move units must be box or lattice, got '${val ?? ''}'`);
+        if (val !== 'box' && val !== 'lattice') throw new StyleError(`Unknown fix move units setting ${val}`);
         this.unitsMode = val;
         k += 2;
       } else if (key === 'update') {
         // fix_move.html: "If the *update dipole* keyword/value pair is used together with the *rotate* or
         // *transrot* style, then the orientation of the dipole moment of each particle is also updated
-        // appropriately to correspond with the rotation."; measured with native LAMMPS (black box): update
-        // dipole is refused with linear and wiggle.
-        if (args[k + 1] !== 'dipole') throw new StyleError(`fix move: unknown update value '${args[k + 1] ?? ''}'`);
-        if (st !== 'rotate' && st !== 'transrot') throw new StyleError('fix move keyword update dipole requires style rotate or transrot');
-        if (!sys.state.mu) throw new StyleError('fix move update dipole requires atom attribute mu');
+        // appropriately to correspond with the rotation."
+        if (k + 2 > args.length) throw missingArgs('fix move update');
+        // native's text has the typo "Unkown"
+        if (args[k + 1] !== 'dipole') throw new StyleError(`Unkown fix move update argument ${args[k + 1]}`);
+        if (st !== 'rotate' && st !== 'transrot') throw new StyleError('Fix move keyword update dipole requires style rotate or transrot');
+        if (!sys.state.mu) throw new StyleError('Fix move keyword update dipole requires atom attribute mu');
         this.updateDipole = true;
         k += 2;
       } else {
-        throw new StyleError(`fix move: unknown keyword '${key}'`);
+        throw new StyleError(`Unknown fix move keyword ${key}`);
       }
+    }
+    if (sys.dimension === 2) {
+      if ((st === 'linear' || st === 'transrot') && this.comp[2] !== null && this.comp[2] !== 0) throw new StyleError('Fix move cannot set linear z motion for 2d problem');
+      if (st === 'wiggle' && this.comp[2] !== null && this.comp[2] !== 0) throw new StyleError('Fix move cannot set wiggle z motion for 2d problem');
+      if ((st === 'rotate' || st === 'transrot') && (axis[0] !== 0 || axis[1] !== 0)) throw new StyleError('Fix move cannot rotate around non z-axis for 2d problem');
+      if (st === 'variable' && (this.vars[2] || this.vars[5])) throw new StyleError('Fix move cannot define z or vz variable for 2d problem');
+    }
+    if (st === 'rotate' || st === 'transrot') {
+      const len = Math.hypot(axis[0], axis[1], axis[2]);
+      if (len === 0) throw new StyleError('Zero length rotation vector with fix move');
+      for (let d = 0; d < 3; d++) this.axis[d] = axis[d] / len;
     }
     // the rotate origin is in lattice units like the velocities ("and *rotate* origin")
     for (let d = 0; d < 3; d++) this.point[d] *= this.scale(d);
@@ -209,8 +226,14 @@ export class FixMove extends Fix {
     const s = sys.state;
     this.initial = s.step;
     const n = s.n;
-    this.xorig = new Float64Array(3 * n);
+    const xorig = new Float64Array(3 * n);
+    this.xorig = xorig;
     this.captured = new Uint8Array(n);
+    // fix_move.html: "This fix produces a per-atom array which can be accessed by various output commands. The number
+    // of columns for each atom is 3, and the columns store the original unwrapped x,y,z coords of each atom."
+    this.peratomFlag = true;
+    this.sizePeratomCols = 3;
+    this.arrayAtom = xorig;
     const bit = this.groupBit;
     const r = [0, 0, 0];
     for (let i = 0; i < n; i++) {
@@ -230,12 +253,25 @@ export class FixMove extends Fix {
     }
   }
 
-  init(): void { this.resetDt(); }
-
-  resetDt(): void {
+  init(): void {
     const s = this.sys.state;
     this.dtv = s.dt;
     this.dtf = 0.5 * s.dt * s.units.ftm2v;
+    // As native LAMMPS does (FixMove::init at b332f28): each variable exists and is equal-style (equal, timer,
+    // internal) or atom-style (atom, atomfile)
+    for (const mv of this.vars) {
+      if (!mv) continue;
+      const v = this.sys.vars.get(mv.name);
+      if (!v) throw new StyleError(`Variable name ${mv.name} for fix move does not exist`);
+      if (v.style === 'atom' || v.style === 'atomfile') mv.atom = true;
+      else if (v.style === 'equal' || v.style === 'timer' || v.style === 'internal') mv.atom = false;
+      else throw new StyleError(`Variable name ${mv.name} for fix move is invalid style`);
+    }
+  }
+
+  /** As native LAMMPS does (FixMove::reset_dt at b332f28): a timestep command after a run refuses fix move. */
+  resetDt(): void {
+    throw new StyleError('Resetting timestep size is not allowed with fix move');
   }
 
   /** Per-dimension multiplier of a velocity/amplitude/origin ("units box|lattice"). */
@@ -246,6 +282,7 @@ export class FixMove extends Fix {
 
   initialIntegrate(): void {
     if (this.moveStyle === 'rotate' || this.moveStyle === 'transrot') { this.rotateStep(); return; }
+    if (this.moveStyle === 'variable') { this.variableStep(); return; }
     const s = this.sys.state;
     const { x, v, f, mask, image } = s;
     const bit = this.groupBit;
@@ -282,6 +319,90 @@ export class FixMove extends Fix {
         this.sys.geom.remap(x, image, i);
       }
     }
+  }
+
+  /**
+   * variable, fix_move.html: "The first 3 variables (v_dx,v_dy,v_dz) specified for the *variable* style are used to
+   * calculate a displacement from the atom's original position at the time the fix was specified.  The second 3
+   * variables (v_vx,v_vy,v_vz) specified are used to compute a velocity for each atom."; "If both the displacement and
+   * velocity variables for a particular x,y,z component are specified as NULL, then the position and velocity of that
+   * component is time integrated the same as the fix nve command would perform"; "If only the velocity variable for a
+   * component is specified as NULL, then the displacement variable will be used to set the position of the atom, and
+   * its velocity component will not be changed.  If only the displacement variable for a component is specified as
+   * NULL, then the velocity variable will be used to set the velocity of the atom, and the position of the atom will be
+   * time integrated using that velocity." As native LAMMPS does (FixMove::initial_integrate at b332f28): the variables
+   * are evaluated in the order x, y, z, vx, vy, vz each step, and the new position is put in the periodic image nearest
+   * the old one, the image flags kept (Domain::remap_near).
+   */
+  private variableStep(): void {
+    const sys = this.sys;
+    const s = sys.state;
+    const { x, v, f, mask } = s;
+    const bit = this.groupBit;
+    this.checkNewAtoms();
+    const val: (number | Float64Array | null)[] = this.vars.map((mv) => (mv === null ? null : mv.atom ? sys.atomVariable(mv.name) : sys.equalVariable(mv.name)));
+    const at = (q: number | Float64Array, i: number) => (typeof q === 'number' ? q : q[i]);
+    const dtv = this.dtv;
+    const old = [0, 0, 0];
+    for (let i = 0; i < s.n; i++) {
+      if (!this.captured[i] || !(mask[i] & bit)) continue;
+      for (let d = 0; d < 3; d++) old[d] = x[3 * i + d];
+      const c = this.dtf / massOf(s, i);
+      for (let d = 0; d < 3; d++) {
+        const dx = val[d], vv = val[3 + d];
+        if (vv !== null) v[3 * i + d] = at(vv, i);
+        if (dx !== null) x[3 * i + d] = this.xorig[3 * i + d] + at(dx, i);
+        else if (vv !== null) x[3 * i + d] += dtv * v[3 * i + d];
+        else {
+          v[3 * i + d] += c * f[3 * i + d];
+          x[3 * i + d] += dtv * v[3 * i + d];
+        }
+      }
+      this.remapNear(x, i, old);
+    }
+  }
+
+  /** As native LAMMPS does (FixMove::set_arrays at b332f28): an atom of the group added after the fix refuses the variable style. */
+  private checkNewAtoms(): void {
+    const s = this.sys.state;
+    if (s.step === this.initial) return;
+    for (let i = this.captured.length; i < s.n; i++) {
+      if (s.mask[i] & this.groupBit) throw new StyleError('Cannot add atoms with fix move style variable');
+    }
+  }
+
+  /**
+   * The periodic image of atom i's position nearest `old` (native Domain::remap_near): along each periodic edge the
+   * position moves by whole box lengths until it is within half a length of the old one, in box coordinates for an
+   * orthogonal box and in fractional coordinates for a triclinic one.
+   */
+  private remapNear(x: Float64Array, i: number, old: number[]): void {
+    const g = this.sys.geom;
+    const near = (c: number[], o: number[], period: number[]) => {
+      for (let d = 0; d < 3; d++) {
+        if (!g.periodic[d]) continue;
+        const p = period[d], half = 0.5 * p;
+        if (c[d] - o[d] > p) c[d] -= Math.trunc((c[d] - o[d]) / p) * p;
+        while (c[d] - o[d] > half) c[d] -= p;
+        if (o[d] - c[d] > p) c[d] += Math.trunc((o[d] - c[d]) / p) * p;
+        while (o[d] - c[d] > half) c[d] += p;
+      }
+    };
+    if (!g.triclinic) {
+      const c = [x[3 * i], x[3 * i + 1], x[3 * i + 2]];
+      near(c, old, [g.lx, g.ly, g.lz]);
+      x[3 * i] = c[0]; x[3 * i + 1] = c[1]; x[3 * i + 2] = c[2];
+      return;
+    }
+    const lnew = [0, 0, 0], lold = [0, 0, 0];
+    g.toLamda(x[3 * i], x[3 * i + 1], x[3 * i + 2], lnew);
+    g.toLamda(old[0], old[1], old[2], lold);
+    const before = [...lnew];
+    near(lnew, lold, [1, 1, 1]);
+    if (lnew[0] === before[0] && lnew[1] === before[1] && lnew[2] === before[2]) return;
+    const out = [0, 0, 0];
+    g.fromLamda(lnew[0], lnew[1], lnew[2], out);
+    x[3 * i] = out[0]; x[3 * i + 1] = out[1]; x[3 * i + 2] = out[2];
   }
 
   /** rotate / transrot: positions, velocities and orientations of the rigid rotation (see the header). */
@@ -352,6 +473,8 @@ export class FixMove extends Fix {
 
   finalIntegrate(): void {
     if (this.moveStyle === 'rotate' || this.moveStyle === 'transrot') return;
+    // a variable-style component without displacement and velocity variables gets fix nve's second half-kick
+    const free = this.moveStyle === 'variable' ? [0, 1, 2].map((d) => this.vars[d] === null && this.vars[3 + d] === null) : this.comp.map((c) => c === null);
     const s = this.sys.state;
     const { v, f, mask } = s;
     const bit = this.groupBit;
@@ -359,7 +482,7 @@ export class FixMove extends Fix {
     for (let i = 0; i < s.n; i++) {
       if (!this.captured[i] || !(mask[i] & bit)) continue;
       const c = dtf / massOf(s, i);
-      for (let d = 0; d < 3; d++) if (this.comp[d] === null) v[3 * i + d] += c * f[3 * i + d];
+      for (let d = 0; d < 3; d++) if (free[d]) v[3 * i + d] += c * f[3 * i + d];
     }
   }
 }

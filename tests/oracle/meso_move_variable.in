@@ -1,0 +1,43 @@
+# oracle: two sdpd/taitwater/isothermal walls moved by fix meso/move variable, 2d, 100 atoms, 300 steps: the upper wall by equal-style displacement and velocity variables in x (y integrated by nve), the lower wall by an atom-style velocity variable in y of its original x (f_4[1]), its x integrated by nve
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+dimension       2
+units           micro
+atom_style      sph
+variable        a equal 0.1
+variable        T equal 300.
+variable        rho_0 equal 1.
+variable        c_0 equal 100.
+variable        mu equal 1.
+variable        h equal $a*4.5
+variable        mass equal $a*$a*$a*${rho_0}
+variable        dt equal 1e-3
+variable        skin equal 0.2*$h
+region          box block -0.5 0.5 -0.5 0.5 -0.5 0.5 units box
+create_box      4 box
+lattice         sq $a
+create_atoms    1 box
+region          upper_wall block INF INF +0.2 INF INF INF units box
+set             region upper_wall type 3
+region          lower_wall block INF INF INF -0.2 INF INF units box
+set             region lower_wall type 4
+group           fluid type 1
+group           upper_wall type 3
+group           lower_wall type 4
+mass            * ${mass}
+set             group all sph/rho ${rho_0}
+pair_style      sdpd/taitwater/isothermal $T ${mu} 76787
+pair_coeff      * * ${rho_0} ${c_0} ${h}
+fix             1 fluid sph
+variable        dx equal 0.02*sin(30*elapsed*dt)
+variable        vx equal 0.6*cos(30*elapsed*dt)
+variable        vy4 atom 0.05*cos(10*f_4[1])
+fix             3 upper_wall meso/move variable v_dx NULL NULL v_vx NULL NULL
+fix             4 lower_wall meso/move variable NULL NULL NULL NULL v_vy4 NULL
+fix             2 all enforce2d
+neighbor        ${skin} bin
+neigh_modify    delay 0 every 1 check yes
+timestep        ${dt}
+thermo_style    custom step time pe ke etotal
+thermo_modify   format float %.15g
+thermo          20
+run             300

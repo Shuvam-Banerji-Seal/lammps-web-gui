@@ -1,0 +1,30 @@
+# oracle: fix move variable in 2d with an equal-style velocity variable only in y and an atom-style displacement in x, then unfixed and run with fix nve
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+dimension       2
+atom_style      atomic
+lattice         sq2 0.8442
+region          box block 0 8 0 8 -0.5 0.5
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 5287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+region          strip block INF INF 0 1 INF INF
+group           strip region strip
+group           rest subtract all strip
+variable        vy equal -0.4+0.1*step*dt
+variable        dx atom 0.2*sin(f_1[2]+elapsed*dt)
+fix             1 strip move variable v_dx NULL NULL NULL v_vy NULL
+fix             2 rest nve
+fix             3 all enforce2d
+thermo_style    custom step temp pe ke press
+thermo_modify   format float %.15g
+thermo          50
+run             200
+unfix           1
+fix             1 strip nve
+run             100

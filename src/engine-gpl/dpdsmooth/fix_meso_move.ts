@@ -1,6 +1,6 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/DPD-SMOOTH/fix_meso_move.cpp and
- * fix_meso_move.h (FixMesoMove: fix meso/move, styles linear, wiggle and rotate; the variable style is refused).
+ * fix_meso_move.h (FixMesoMove: fix meso/move, styles linear, wiggle, rotate and variable).
  * LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU General Public License, version 2
  * (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE). Contributing author (from the source): Morteza
  * Jalalvand (IASBS).
@@ -15,17 +15,21 @@ import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { massOf } from '../../engine/atoms';
+import { numeric } from '../../engine/force/util';
 import { dropSphGhostVest, keepSphGhostVest, sphArrays } from '../sph/common';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { cosFma as libmCosFma } from '../libm/sincos_fma';
 
-type Style = 'linear' | 'wiggle' | 'rotate';
+type Style = 'linear' | 'wiggle' | 'rotate' | 'variable';
 
-const USAGE: Record<Style, string> = {
-  linear: 'linear Vx Vy Vz', wiggle: 'wiggle Ax Ay Az period', rotate: 'rotate Px Py Pz Rx Ry Rz period',
-};
-/** Arguments after the group, style included (fix_meso_move.cpp: narg < 4, 7, 8 and 11 for the styles). */
-const MIN_ARGS: Record<Style, number> = { linear: 4, wiggle: 5, rotate: 8 };
+/** Arguments after the group, style included (fix_meso_move.cpp: narg < 7, 8, 11 and 10 for the styles). */
+const MIN_ARGS: Record<Style, number> = { linear: 4, wiggle: 5, rotate: 8, variable: 7 };
+
+/** fix_meso_move.cpp's message for every malformed argument */
+const ILLEGAL = 'Illegal fix meso/move command';
+
+/** variable: the variable of a component (x, y, z, vx, vy, vz), atom-style or not (set at init); null for NULL. */
+type MoveVar = { name: string; atom: boolean } | null;
 
 /**
  * domain.cpp Domain::remap_near (orthogonal boxes): the periodic image of the new coordinate that is nearest the old
@@ -51,6 +55,8 @@ export class FixMesoMove extends Fix {
   private readonly mstyle: Style;
   /** Per-dimension velocity (linear), amplitude (wiggle); null marks a NULL component (integrated by nve). */
   private readonly comp: (number | null)[] = [null, null, null];
+  /** variable: the variables of x, y, z, vx, vy, vz. */
+  private readonly vars: MoveVar[] = [];
   /** rotate: the point P (scaled to lattice units by default) and the unit rotation axis. */
   private readonly point: number[] = [0, 0, 0];
   private readonly runit: number[] = [0, 0, 1];
@@ -68,69 +74,78 @@ export class FixMesoMove extends Fix {
     const s = sys.state;
     sphArrays(s, 'Fix meso/move');
     if (sys.geom.triclinic) throw new StyleError('fix meso/move on a triclinic box is not supported by the browser engine');
+    // fix_meso_move.cpp FixMesoMove::FixMesoMove: the style's words, the units keyword, the 2d checks, the lattice
+    // scaling and then the rotation axis
+    if (args.length < 1) throw new StyleError(ILLEGAL);
     const st = args[0];
-    if (st === 'variable') {
-      throw new StyleError('fix meso/move variable style is not supported by the browser engine (it needs the variable API); supported: linear, wiggle, rotate');
-    }
-    if (st !== 'linear' && st !== 'wiggle' && st !== 'rotate') {
-      throw new StyleError(`fix meso/move style '${st ?? ''}' is not supported by the browser engine; supported: linear, wiggle, rotate`);
-    }
-    this.mstyle = st;
-    if (args.length < MIN_ARGS[st]) throw new StyleError(`Illegal fix meso/move command: usage fix ID group meso/move ${USAGE[st]} [units box|lattice]`);
-    const num = (w: string | undefined, what: string): number => {
-      const v = Number(w);
-      if (w === undefined || w === 'NULL' || !Number.isFinite(v)) throw new StyleError(`fix meso/move ${st}: ${what} must be a number, got '${w ?? ''}'`);
-      return v;
-    };
-    const numOrNull = (w: string | undefined, what: string): number | null => (w === 'NULL' ? null : num(w, what));
+    if (!(st in MIN_ARGS)) throw new StyleError(ILLEGAL);
+    this.mstyle = st as Style;
+    if (args.length < MIN_ARGS[this.mstyle]) throw new StyleError(ILLEGAL);
+    const numOrNull = (w: string): number | null => (w === 'NULL' ? null : numeric(w));
     let iarg: number;
     let period = 0;
+    const axis = [0, 0, 0];
     if (st === 'linear') {
-      for (let d = 0; d < 3; d++) this.comp[d] = numOrNull(args[1 + d], 'velocity components');
+      for (let d = 0; d < 3; d++) this.comp[d] = numOrNull(args[1 + d]);
       iarg = 4;
     } else if (st === 'wiggle') {
-      for (let d = 0; d < 3; d++) this.comp[d] = numOrNull(args[1 + d], 'amplitude components');
-      period = num(args[4], 'period');
-      if (!(period > 0)) throw new StyleError('Illegal fix meso/move command: period must be > 0');
+      for (let d = 0; d < 3; d++) this.comp[d] = numOrNull(args[1 + d]);
+      period = numeric(args[4]);
+      if (period <= 0) throw new StyleError(ILLEGAL);
       iarg = 5;
-    } else {
-      for (let d = 0; d < 3; d++) this.point[d] = num(args[1 + d], 'point');
-      const axis = [0, 1, 2].map((d) => num(args[4 + d], 'rotation axis'));
-      period = num(args[7], 'period');
-      if (!(period > 0)) throw new StyleError('Illegal fix meso/move command: period must be > 0');
-      const len = Math.hypot(axis[0], axis[1], axis[2]);
-      if (len === 0) throw new StyleError('Zero length rotation vector with fix meso/move');
-      for (let d = 0; d < 3; d++) this.runit[d] = axis[d] / len;
+    } else if (st === 'rotate') {
+      for (let d = 0; d < 3; d++) this.point[d] = numeric(args[1 + d]);
+      for (let d = 0; d < 3; d++) axis[d] = numeric(args[4 + d]);
+      period = numeric(args[7]);
+      if (period <= 0) throw new StyleError(ILLEGAL);
       iarg = 8;
-      if (s.dimension === 2 && (axis[0] !== 0 || axis[1] !== 0)) {
-        throw new StyleError('Fix meso/move cannot rotate aroung non z-axis for 2d problem');
+    } else {
+      for (let k = 0; k < 6; k++) {
+        const w = args[1 + k];
+        if (w === 'NULL') this.vars.push(null);
+        else if (w.startsWith('v_')) this.vars.push({ name: w.slice(2), atom: false });
+        else throw new StyleError(ILLEGAL);
       }
+      iarg = 7;
     }
     // units: lattice (the default) scales the velocities, amplitudes and the rotation point by the lattice spacings
     let scaleflag = true;
     while (iarg < args.length) {
-      if (args[iarg] !== 'units') throw new StyleError(`Illegal fix meso/move command: unknown keyword '${args[iarg]}'`);
+      if (args[iarg] !== 'units' || iarg + 2 > args.length) throw new StyleError(ILLEGAL);
       const u = args[iarg + 1];
       if (u === 'box') scaleflag = false;
       else if (u === 'lattice') scaleflag = true;
-      else throw new StyleError(`Illegal fix meso/move command: units must be box or lattice, got '${u ?? ''}'`);
+      else throw new StyleError(ILLEGAL);
       iarg += 2;
     }
     if (s.dimension === 2) {
       if (st === 'linear' && this.comp[2] !== null && this.comp[2] !== 0) throw new StyleError('Fix meso/move cannot set linear z motion for 2d problem');
       if (st === 'wiggle' && this.comp[2] !== null && this.comp[2] !== 0) throw new StyleError('Fix meso/move cannot set wiggle z motion for 2d problem');
+      // native's typo "aroung"
+      if (st === 'rotate' && (axis[0] !== 0 || axis[1] !== 0)) throw new StyleError('Fix meso/move cannot rotate aroung non z-axis for 2d problem');
+      if (st === 'variable' && (this.vars[2] || this.vars[5])) throw new StyleError('Fix meso/move cannot define z or vz variable for 2d problem');
     }
-    if (scaleflag) {
+    if (scaleflag && st !== 'variable') {
       const sc = [0, 1, 2].map((d) => sys.lattice?.spacing[d] ?? 1);
       if (st === 'rotate') for (let d = 0; d < 3; d++) this.point[d] *= sc[d];
       else for (let d = 0; d < 3; d++) if (this.comp[d] !== null) this.comp[d] = this.comp[d]! * sc[d];
     }
-    this.omega = st === 'linear' ? 0 : (2 * Math.PI) / period;
+    if (st === 'rotate') {
+      const len = Math.hypot(axis[0], axis[1], axis[2]);
+      if (len === 0) throw new StyleError('Zero length rotation vector with fix meso/move');
+      for (let d = 0; d < 3; d++) this.runit[d] = axis[d] / len;
+    }
+    this.omega = st === 'wiggle' || st === 'rotate' ? (2 * Math.PI) / period : 0;
     this.timeIntegrate = true;
     this.origin = s.step;
     const n = s.n;
-    this.xorig = new Float64Array(3 * n);
+    const xorig = new Float64Array(3 * n);
+    this.xorig = xorig;
     this.captured = new Uint8Array(n);
+    // fix_meso_move.cpp: peratom_flag with 3 columns, the original unwrapped coordinates (xoriginal)
+    this.peratomFlag = true;
+    this.sizePeratomCols = 3;
+    this.arrayAtom = xorig;
     const bit = this.groupBit;
     const r = [0, 0, 0];
     for (let i = 0; i < n; i++) {
@@ -141,12 +156,24 @@ export class FixMesoMove extends Fix {
     }
   }
 
-  init(): void { this.resetDt(); }
-
-  resetDt(): void {
+  init(): void {
     const s = this.sys.state;
     this.dtv = s.dt;
     this.dtf = 0.5 * s.dt * s.units.ftm2v;
+    // fix_meso_move.cpp FixMesoMove::init: each variable exists and is equal-style or atom-style
+    for (const mv of this.vars) {
+      if (!mv) continue;
+      const v = this.sys.vars.get(mv.name);
+      if (!v) throw new StyleError('Variable name for fix meso/move does not exist');
+      if (v.style === 'atom' || v.style === 'atomfile') mv.atom = true;
+      else if (v.style === 'equal' || v.style === 'timer' || v.style === 'internal') mv.atom = false;
+      else throw new StyleError('Variable for fix meso/move is invalid style');
+    }
+  }
+
+  /** fix_meso_move.cpp FixMesoMove::reset_dt: a timestep command after a run refuses fix meso/move. */
+  resetDt(): void {
+    throw new StyleError('Resetting timestep size is not allowed with fix meso/move');
   }
 
   setupPreForce(): void {
@@ -176,9 +203,13 @@ export class FixMesoMove extends Fix {
     const s = this.sys.state;
     dropSphGhostVest(s);
     if (s.n !== this.captured.length) {
+      // fix_meso_move.cpp set_arrays: an atom added to the group refuses the variable style
+      if (this.mstyle === 'variable') throw new StyleError('Cannot add atoms to fix meso/move variable');
       throw new StyleError('fix meso/move: the number of atoms changed after the fix was specified (not supported by the browser engine)');
     }
-    this.halfStepSph();
+    // fix_meso_move.cpp initial_integrate: the linear, wiggle and rotate branches advance esph and rho by a half step;
+    // the variable branch does not (final_integrate does for every style)
+    if (this.mstyle !== 'variable') this.halfStepSph();
     const a = sphArrays(s, 'Fix meso/move');
     const { x, v, f, mask } = s;
     const vest = a.vest;
@@ -189,6 +220,10 @@ export class FixMesoMove extends Fix {
     const g = this.sys.geom;
     const per = [g.lx, g.ly, g.lz];
     const xold = [0, 0, 0];
+    // variable: the variables of x, y, z, vx, vy, vz, evaluated in that order each step (fix_meso_move.cpp)
+    const val = this.mstyle === 'variable'
+      ? this.vars.map((mv) => (mv === null ? null : mv.atom ? this.sys.atomVariable(mv.name) : this.sys.equalVariable(mv.name)))
+      : null;
     const updNve = (i: number, d: number): void => {
       const c = dtf / massOf(s, i);
       vest[3 * i + d] = v[3 * i + d] + 2.0 * c * f[3 * i + d];
@@ -215,8 +250,22 @@ export class FixMesoMove extends Fix {
           vest[3 * i + d] = val * this.omega * cosineNext;
           x[3 * i + d] = this.xorig[3 * i + d] + val * sine;
         }
-      } else {
+      } else if (this.mstyle === 'rotate') {
         this.rotateAtom(i, delta, deltaNext);
+      } else {
+        // fix_meso_move.cpp variable: a velocity variable sets v, and vest = 2 v_new - v_old ("vest (velocity in next
+        // step) could be different from v in the next step, but this is the best we could do")
+        for (let d = 0; d < 3; d++) {
+          const dx = val![d], vv = val![3 + d];
+          if (dx === null && vv === null) { updNve(i, d); continue; }
+          if (vv !== null) {
+            const nv = typeof vv === 'number' ? vv : vv[i];
+            vest[3 * i + d] = 2 * nv - v[3 * i + d];
+            v[3 * i + d] = nv;
+          }
+          if (dx !== null) x[3 * i + d] = this.xorig[3 * i + d] + (typeof dx === 'number' ? dx : dx[i]);
+          else x[3 * i + d] += dtv * v[3 * i + d];
+        }
       }
       for (let d = 0; d < 3; d++) {
         if (!g.periodic[d]) continue;
@@ -258,10 +307,12 @@ export class FixMesoMove extends Fix {
     const s = this.sys.state;
     const { v, f, mask } = s;
     const dtf = this.dtf;
+    // fix_meso_move.cpp final_integrate: the components that neither a value nor a variable sets
+    const free = this.mstyle === 'variable' ? [0, 1, 2].map((d) => this.vars[d] === null && this.vars[3 + d] === null) : this.comp.map((c) => c === null);
     for (let i = 0; i < s.n; i++) {
       if (!this.captured[i] || !(mask[i] & this.groupBit)) continue;
       const c = dtf / massOf(s, i);
-      for (let d = 0; d < 3; d++) if (this.comp[d] === null) v[3 * i + d] += c * f[3 * i + d];
+      for (let d = 0; d < 3; d++) if (free[d]) v[3 * i + d] += c * f[3 * i + d];
     }
   }
 }

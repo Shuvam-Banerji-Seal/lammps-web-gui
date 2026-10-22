@@ -1597,7 +1597,8 @@ const timestep: Handler = ({ sys }, a) => {
   s.time += (s.step - s.timeStep) * s.dt;
   s.timeStep = s.step;
   s.dt = dt;
-  for (const f of sys.fixes) f.resetDt?.();
+  // native resets the fixes' step size only once a run has happened (Input::timestep: update->first_update)
+  if (sys.run.ranOnce) for (const f of sys.fixes) f.resetDt?.();
 };
 
 /** reset_timestep N [time T] — reset_timestep.html. */

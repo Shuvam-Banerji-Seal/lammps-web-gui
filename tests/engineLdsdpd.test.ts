@@ -135,8 +135,8 @@ run 2
   });
 });
 
-describe('the DPD-SMOOTH example fixes are not in the engine', () => {
-  it('names the variable style of fix meso/move in its error', async () => {
+describe('fix meso/move variable', () => {
+  it('names a missing variable at the run, as native LAMMPS does (fix_meso_move.cpp init)', async () => {
     const { session, events } = newSession();
     const base = `units lj
 atom_style sph
@@ -148,6 +148,6 @@ create_atoms 1 single 0.0 0.0 0.0 units box
 mass * 1.0
 set group all sph/rho 1.0
 `;
-    expect(await errorOf(session, events, `${base}fix 3 all meso/move variable v_a NULL NULL NULL NULL NULL\n`)).toMatch(/meso\/move/);
+    expect(await errorOf(session, events, `${base}fix 3 all meso/move variable v_a NULL NULL NULL NULL NULL\nrun 1\n`)).toMatch(/Variable name for fix meso\/move does not exist/);
   });
 });

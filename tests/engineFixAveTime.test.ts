@@ -83,7 +83,10 @@ run 15`);
     expect(thermo.map((r) => r.f_1)).toEqual([0, 2.5, 7.5, 12.5]);
   });
 
-  it('start skips everything before the start step', async () => {
+  it('start bounds the window ends, but a run starting on a multiple of Nfreq with Nrepeat 1 samples that step', async () => {
+    // As native LAMMPS does (src/fix_ave_time.cpp nextvalid at b332f28): the current step is taken when it is a
+    // multiple of Nfreq and Nrepeat is 1, before start is looked at. Measured with native LAMMPS: thermo 0 2.5 5 7.5,
+    // and the file holds the step-0 line.
     const { thermo, files, error } = await runScript(`${SYS}
 variable s equal step
 fix 1 all ave/time 1 1 5 v_s ave running start 5 file s5.txt
@@ -91,9 +94,9 @@ thermo_style custom step f_1
 thermo 5
 run 15`);
     expect(error).toBeNull();
-    expect(thermo.map((r) => r.f_1)).toEqual([0, 5, 7.5, 10]);
+    expect(thermo.map((r) => r.f_1)).toEqual([0, 2.5, 5, 7.5]);
     expect(files.get('s5.txt')).toBe(
-      '# Time-averaged data for fix 1\n# TimeStep v_s\n5 5\n10 7.5\n15 10\n',
+      '# Time-averaged data for fix 1\n# TimeStep v_s\n0 0\n5 2.5\n10 5\n15 7.5\n',
     );
   });
 

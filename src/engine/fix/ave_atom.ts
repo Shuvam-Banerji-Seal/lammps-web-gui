@@ -4,6 +4,7 @@ import { StyleError } from '../force/types';
 import { localOutputOf } from '../compute/local_dump';
 import { expandWildcards, globalScalar, globalVector, parseRef, peratomValues, type Ref } from '../refs';
 import { formatNumber } from '../script';
+import { aveNextValid } from './util';
 
 /*
  * fix ave/atom and fix ave/histo — implemented only from the cited
@@ -170,8 +171,9 @@ export class FixAveAtom extends Fix {
   private readonly nFreq: number;
   private readonly inputs: Ref[];
   private readonly nvals: number;
-  private sum = new Float64Array(0);
-  private nSample = 0;
+  /** The next step that samples, and the samples taken of the current window (native nvalid and irepeat). */
+  private nvalid: number;
+  private irepeat = 0;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -194,6 +196,7 @@ export class FixAveAtom extends Fix {
     this.nvals = this.inputs.length;
     this.sizePeratomCols = this.nvals === 1 ? 0 : this.nvals;
     this.alloc();
+    this.nvalid = aveNextValid(sys.state.step, this.nEvery, this.nRepeat, this.nFreq);
   }
 
   /** One input: must be a per-atom producer ("not a global quantity or local quantity"). */
@@ -226,73 +229,62 @@ export class FixAveAtom extends Fix {
     return r;
   }
 
+  /**
+   * Sizes the per-atom output to the atoms: atoms added since keep the values of the atoms before them (the engine
+   * appends new atoms) and start at 0.
+   */
   private alloc(): void {
     const n = this.sys.state.n;
     const need = this.nvals * n;
-    const outOk = this.nvals === 1 ? this.vectorAtom.length === n : this.arrayAtom.length === need;
-    if (this.sum.length === need && outOk) return;
-    this.sum = new Float64Array(need);
-    if (this.nvals === 1) this.vectorAtom = new Float64Array(n);
-    else this.arrayAtom = new Float64Array(need);
-    this.nSample = 0;
+    const old = this.nvals === 1 ? this.vectorAtom : this.arrayAtom;
+    if (old.length === need) return;
+    const out = new Float64Array(need);
+    out.set(old.subarray(0, Math.min(old.length, need)));
+    if (this.nvals === 1) this.vectorAtom = out;
+    else this.arrayAtom = out;
   }
 
+  /** As native LAMMPS does (src/fix_ave_atom.cpp init at b332f28): a minimization past the next sample step restarts the window. */
   init(): void {
     this.alloc();
+    const step = this.sys.state.step;
+    if (this.nvalid < step) {
+      this.irepeat = 0;
+      this.nvalid = aveNextValid(step, this.nEvery, this.nRepeat, this.nFreq);
+    }
   }
 
-  /** Runs the end-of-step logic at the setup step as well (values for step-0 output when the window is complete). */
   setup(): void {
     this.endOfStep();
   }
 
-  /** Step of the last end-of-step call: a run that starts where the previous one ended must not sample it again. */
-  private lastEndStep = -1;
-
+  /**
+   * As native LAMMPS does (src/fix_ave_atom.cpp end_of_step at b332f28): the per-atom output itself holds the sums of
+   * the window (zeroed by its first sample, so it reads as a partial sum until the Nrepeat-th sample divides it);
+   * atoms outside the group stay 0.
+   */
   endOfStep(): void {
     const step = this.sys.state.step;
-    if (step === this.lastEndStep) return; // a run that starts where the previous one ended
-    this.lastEndStep = step;
-    if (step % this.nevery !== 0) return;
-    // samples only within the next output's window ("cannot overlap")
-    const rem = step % this.nFreq;
-    const nextOut = rem === 0 ? step : step + (this.nFreq - rem);
-    if (step < nextOut - (this.nRepeat - 1) * this.nEvery) return;
-    this.sample();
-    if (step % this.nFreq !== 0) return;
-    if (this.nSample === this.nRepeat) this.produce();
-    else {
-      // window cannot be complete yet (e.g. step 0 with Nrepeat > 1): discard it
-      this.sum.fill(0);
-      this.nSample = 0;
-    }
-  }
-
-  private sample(): void {
-    const n = this.sys.state.n;
-    for (let k = 0; k < this.nvals; k++) {
-      const vals = peratomValues(this.sys, this.inputs[k]);
-      const off = k * n;
-      for (let i = 0; i < n; i++) {
-        if (this.inGroup(i)) this.sum[off + i] += vals[i];
-      }
-    }
-    this.nSample++;
-  }
-
-  private produce(): void {
+    if (step !== this.nvalid) return;
+    this.alloc();
     const n = this.sys.state.n;
     const cols = this.nvals;
     const out = cols === 1 ? this.vectorAtom : this.arrayAtom;
-    for (let i = 0; i < n; i++) {
-      // "Results are set to 0.0 for atoms not in the group"
-      const inG = this.inGroup(i);
-      for (let k = 0; k < cols; k++) {
-        out[i * cols + k] = inG ? this.sum[k * n + i] / this.nRepeat : 0;
+    if (this.irepeat === 0) out.fill(0);
+    for (let k = 0; k < cols; k++) {
+      const vals = peratomValues(this.sys, this.inputs[k]);
+      for (let i = 0; i < n; i++) {
+        if (this.inGroup(i)) out[i * cols + k] += vals[i];
       }
     }
-    this.sum.fill(0);
-    this.nSample = 0;
+    this.irepeat++;
+    if (this.irepeat < this.nRepeat) {
+      this.nvalid += this.nEvery;
+      return;
+    }
+    this.irepeat = 0;
+    this.nvalid = step + this.nFreq - (this.nRepeat - 1) * this.nEvery;
+    for (let i = 0; i < out.length; i++) out[i] /= this.nRepeat;
   }
 }
 
@@ -338,7 +330,9 @@ export class FixAveHisto extends Fix {
   private missing = 0;
   private winMin = Infinity;
   private winMax = -Infinity;
-  private nSample = 0;
+  /** The next step that samples, and the samples taken of the current window (native nvalid and irepeat). */
+  private nvalid = 0;
+  private irepeat = 0;
   private runMissing = 0;
   private runMin = 0;
   private runMax = 0;
@@ -483,6 +477,7 @@ export class FixAveHisto extends Fix {
     this.bins = new Float64Array(len);
     this.runBins = new Float64Array(len);
     this.outBins = new Float64Array(len);
+    this.nvalid = aveNextValid(sys.state.step, this.nEvery, this.nRepeat, this.nFreq, this.startStep);
   }
 
   /** Resolves one input word to a global or per-atom source, per the mode/kind rules. */
@@ -583,45 +578,43 @@ export class FixAveHisto extends Fix {
     return { ref: r, peratom };
   }
 
-  /**
-   * Runs once per run. A run that starts on the step where the previous run ended has already sampled
-   * (and possibly written) that step, so it is not repeated. Measured with native LAMMPS (black box):
-   * `fix h all ave/histo 1 1 100 ... file h.txt` followed by `run 100` and `run 100` writes the
-   * TimeStep 100 block once, and `ave/histo 10 2 20` with `run 20` twice samples step 20 once (512 = 2 x 256
-   * counts in the block at 20).
-   */
+  /** As native LAMMPS does (src/fix_ave_histo.cpp init at b332f28): a minimization past the next sample step restarts the window. */
+  init(): void {
+    const step = this.sys.state.step;
+    if (this.nvalid < step) {
+      this.irepeat = 0;
+      this.nvalid = aveNextValid(step, this.nEvery, this.nRepeat, this.nFreq, this.startStep);
+    }
+  }
+
   setup(): void {
-    if (this.sys.state.step === this.lastEndStep) return;
     this.endOfStep();
   }
 
-  private lastEndStep = -1;
-
+  /**
+   * As native LAMMPS does (src/fix_ave_histo.cpp end_of_step at b332f28): only the scheduled step samples; the first
+   * sample of a window zeroes the histogram, the Nrepeat-th produces the output and schedules the next window to end
+   * Nfreq steps later.
+   */
   endOfStep(): void {
     const step = this.sys.state.step;
-    this.lastEndStep = step;
-    if (step % this.nevery !== 0) return;
-    if (step < this.startStep) return;
-    const rem = step % this.nFreq;
-    const nextOut = rem === 0 ? step : step + (this.nFreq - rem);
-    if (step < nextOut - (this.nRepeat - 1) * this.nEvery) return;
-    this.sample();
-    if (step % this.nFreq !== 0) return;
-    if (this.nSample === this.nRepeat) this.produce(step);
-    else {
-      // window cannot be complete yet (e.g. step 0 with Nrepeat > 1): discard it
+    if (step !== this.nvalid) return;
+    if (this.irepeat === 0) {
       this.bins.fill(0);
       this.missing = 0;
       this.winTotal = 0;
       this.winMin = Infinity;
       this.winMax = -Infinity;
-      this.nSample = 0;
     }
-  }
-
-  private sample(): void {
     this.sampleInputs();
-    this.nSample++;
+    this.irepeat++;
+    if (this.irepeat < this.nRepeat) {
+      this.nvalid += this.nEvery;
+      return;
+    }
+    this.irepeat = 0;
+    this.nvalid = step + this.nFreq - (this.nRepeat - 1) * this.nEvery;
+    this.produce(step);
   }
 
   /**
@@ -741,7 +734,6 @@ export class FixAveHisto extends Fix {
     this.winTotal = 0;
     this.winMin = Infinity;
     this.winMax = -Infinity;
-    this.nSample = 0;
     if (this.fileName) this.writeSection(step);
   }
 

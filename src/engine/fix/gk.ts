@@ -107,7 +107,6 @@ export const correlationLabelPairs = (type: CorrType, n: number): [number, numbe
   return correlationPairs(type, n);
 };
 
-interface Sample { step: number; vals: Float64Array }
 
 export class FixAveCorrelate extends Fix {
   readonly style = 'ave/correlate';
@@ -125,12 +124,17 @@ export class FixAveCorrelate extends Fix {
   private inputs: Ref[] = [];
   private inputWords: string[] = [];
   private pairs: [number, number][] = [];
-  private ring: Sample[] = [];
+  /** The last Nrepeat samples (native cvalues), the newest at lastindex; nsample of them are filled. */
+  private cvalues: Float64Array[] = [];
+  private lastindex = -1;
+  private nsample = 0;
+  /** The correlation sums per lag and pair (native corr) and their sample counts per lag (native count). */
   private sums = new Float64Array(0);
   private counts = new Float64Array(0);
+  /** The last output: per lag the time delta, the count and the correlations (native save_count and save_corr). */
   private out = new Float64Array(0);
-  private windowStart: number | null = null;
-  private lastSampled = -1;
+  /** The next step that samples (native nvalid). */
+  private nvalid: number;
   private headerWritten = false;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
@@ -221,6 +225,14 @@ export class FixAveCorrelate extends Fix {
     if (!this.running && this.nFreq < (this.nRepeat - 1) * this.nEvery) {
       throw new StyleError(`${what}: with ave one, Nfreq must be >= (Nrepeat-1)*Nevery`);
     }
+    this.nvalid = this.nextValid();
+  }
+
+  /** As native LAMMPS does (src/fix_ave_correlate.cpp nextvalid at b332f28): this step or start, up to a multiple of Nevery. */
+  private nextValid(): number {
+    let nvalid = Math.max(this.sys.state.step, this.startStep);
+    if (nvalid % this.nEvery) nvalid = Math.floor(nvalid / this.nEvery) * this.nEvery + this.nEvery;
+    return nvalid;
   }
 
 
@@ -233,37 +245,71 @@ export class FixAveCorrelate extends Fix {
     this.extvector = 1; // "The array values calculated by this fix are treated as extensive."
     this.sizeArrayRows = this.nRepeat;
     this.sizeArrayCols = npair + 2;
-    // The correlation sums and counts carry over a run boundary (measured with native LAMMPS, black box: a
-    // `run 10` then `run 40` with ave/correlate 5 4 20 gives the same lag counts and sums as one `run 50`),
-    // so only a change of their size reallocates them.
+    // As native LAMMPS does (src/fix_ave_correlate.cpp at b332f28): the samples, sums, counts and the last output
+    // carry over a run boundary; only a change of their size reallocates them
+    const nin = this.inputs.length;
+    if (this.cvalues.length !== this.nRepeat || this.cvalues[0]?.length !== nin) {
+      this.cvalues = Array.from({ length: this.nRepeat }, () => new Float64Array(nin));
+    }
     if (this.sums.length !== this.nRepeat * npair) this.sums = new Float64Array(this.nRepeat * npair);
     if (this.counts.length !== this.nRepeat) this.counts = new Float64Array(this.nRepeat);
-    this.out = new Float64Array(this.nRepeat * (npair + 2));
+    if (this.out.length !== this.nRepeat * (npair + 2)) {
+      this.out = new Float64Array(this.nRepeat * (npair + 2));
+      for (let lag = 0; lag < this.nRepeat; lag++) this.out[lag * (npair + 2)] = lag * this.nEvery;
+    }
+    // native init: a minimization past the next sample step restarts the ring (the sums are kept)
+    if (this.nvalid < this.sys.state.step) {
+      this.lastindex = -1;
+      this.nsample = 0;
+      this.nvalid = this.nextValid();
+    }
   }
 
   setup(): void { this.endOfStep(); }
 
+  /**
+   * As native LAMMPS does (src/fix_ave_correlate.cpp end_of_step at b332f28): every Nevery steps from the first
+   * sample step the values go into the ring and the products with the earlier samples are added; on multiples of
+   * Nfreq the averages are output, and with ave one the sums start again from the products of this step's sample.
+   */
   endOfStep(): void {
     const step = this.sys.state.step;
-    if (step % this.nEvery !== 0 || step < this.startStep || step === this.lastSampled) return;
-    this.lastSampled = step;
-    const vals = new Float64Array(this.inputs.length);
-    for (let k = 0; k < this.inputs.length; k++) vals[k] = globalScalar(this.sys, this.inputs[k]);
-    this.ring.unshift({ step, vals });
-    if (this.ring.length > this.nRepeat) this.ring.pop();
-    if (this.windowStart === null) this.windowStart = step;
+    if (step !== this.nvalid) return;
+    this.lastindex++;
+    if (this.lastindex === this.nRepeat) this.lastindex = 0;
+    const vals = this.cvalues[this.lastindex];
+    for (let k = 0; k < this.inputs.length; k++) vals[k] = this.inputValue(this.inputs[k]);
+    if (this.nsample < this.nRepeat) this.nsample++;
+    this.nvalid += this.nEvery;
+    this.accumulate();
+    if (step % this.nFreq) return;
+    this.produce(step);
+  }
+
+  /** One input's value; an element past the end of a vector-style variable is 0 (native end_of_step). */
+  private inputValue(r: Ref): number {
+    if (r.kind === 'v' && r.index !== null) {
+      const vec = this.sys.vars.evalVector(r.id, this.sys.formulaEnv);
+      return r.index > vec.length ? 0 : vec[r.index - 1];
+    }
+    return globalScalar(this.sys, r);
+  }
+
+  /** Adds the products of the newest sample with each sample in the ring (lag 0 = itself); native accumulate. */
+  private accumulate(): void {
     const npair = this.pairs.length;
-    const now = this.ring[0];
-    for (let lag = 0; lag < this.ring.length; lag++) {
-      const earlier = this.ring[lag];
-      if (earlier.step < this.windowStart) break;
+    for (let k = 0; k < this.nsample; k++) this.counts[k]++;
+    const now = this.cvalues[this.lastindex];
+    let m = this.lastindex;
+    for (let k = 0; k < this.nsample; k++) {
+      const earlier = this.cvalues[m];
       for (let p = 0; p < npair; p++) {
         const [i, j] = this.pairs[p];
-        this.sums[lag * npair + p] += earlier.vals[i] * now.vals[j];
+        this.sums[k * npair + p] += earlier[i] * now[j];
       }
-      this.counts[lag]++;
+      m--;
+      if (m < 0) m = this.nRepeat - 1;
     }
-    if (step % this.nFreq === 0 && step >= this.startStep) this.produce(step);
   }
 
   private produce(step: number): void {
@@ -278,16 +324,10 @@ export class FixAveCorrelate extends Fix {
     }
     if (this.fileName) this.writeSection(step);
     if (!this.running) {
-      // The sample at this step starts the next window (the "exception" of the doc page).
       this.sums.fill(0);
       this.counts.fill(0);
-      this.windowStart = step;
-      const now = this.ring[0];
-      for (let p = 0; p < npair; p++) {
-        const [i, j] = this.pairs[p];
-        this.sums[p] += now.vals[i] * now.vals[j];
-      }
-      this.counts[0]++;
+      this.nsample = 1;
+      this.accumulate();
     }
   }
 

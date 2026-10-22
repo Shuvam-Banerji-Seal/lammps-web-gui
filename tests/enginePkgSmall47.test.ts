@@ -240,8 +240,8 @@ variable s equal step
     await expect(session().s.execute(base + 'fix 2 all ave/moments 0 4 4 v_s mean\n')).rejects.toThrow(/Nevery/);
     await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s mean history 0\n')).rejects.toThrow(/history/);
     await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s mean foo 1\n')).rejects.toThrow(/unknown keyword 'foo'/);
-    // Nevery 1 with Nrepeat > Nfreq: native output differs from the documented window (file comment)
-    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 5 4 v_s mean\n')).rejects.toThrow(/Nrepeat > Nfreq/);
+    // Nevery 1 with Nrepeat > Nfreq follows native's schedule (tests/engineAveScheduleNative.test.ts), no refusal
+    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 5 4 v_s mean\nrun 8\n')).resolves.toBeUndefined();
   });
 
   it('computes the moments of the window with the doc definitions (values measured with native LAMMPS)', async () => {

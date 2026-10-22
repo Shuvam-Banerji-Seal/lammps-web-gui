@@ -1,7 +1,7 @@
 import type { ImageObject } from '../output/image_objects';
 import type { System } from '../system';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
+import { missingArgs, numeric, logical } from '../force/util';
 
 /*
  * Base class for computes — docs.lammps.org/compute.html: "Define a
@@ -179,15 +179,20 @@ export abstract class Compute {
    */
   imageObjects?(): ImageObject[];
 
-  /** compute_modify keyword; returns values consumed (0 = unknown keyword). */
+  /**
+   * compute_modify keyword; returns values consumed (0 = unknown keyword). As native LAMMPS does (src/compute.cpp
+   * Compute::modify_params at b332f28): extra/dof and dynamic/dof (compute_modify.html: "keyword = *extra/dof* or
+   * *dynamic/dof*"; the older names extra and dynamic are not accepted).
+   */
   modify(key: string, values: string[]): number {
-    if (key === 'extra/dof' || key === 'extra') {
-      this.extraDof = parseNum(values[0], 'extra/dof');
+    if (key === 'extra/dof') {
+      if (values.length < 1) throw missingArgs('compute_modify extra/dof');
+      this.extraDof = numeric(values[0]);
       return 1;
     }
-    if (key === 'dynamic/dof' || key === 'dynamic') {
-      if (values[0] !== 'yes' && values[0] !== 'no') throw new StyleError(`${key} must be yes or no`);
-      this.dynamicDofFlag = values[0] === 'yes';
+    if (key === 'dynamic/dof') {
+      if (values.length < 1) throw missingArgs('compute_modify dynamic/dof');
+      this.dynamicDofFlag = logical(values[0]);
       return 1;
     }
     return 0;

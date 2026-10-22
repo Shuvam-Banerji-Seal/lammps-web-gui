@@ -1,6 +1,7 @@
 import { takeFixRecord } from './restartRecord';
-import { Fix } from './fix';
+import { Fix, fixModifyCompute } from './fix';
 import { StyleError } from '../force/types';
+import { missingArgs } from '../force/util';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { ownCompute, ramp, removeCompute } from './util';
@@ -596,9 +597,9 @@ export class FixNH extends Fix {
   }
 
   modify(key: string, values: string[]): number {
+    // the messages of native's FixNH::modify_param (src/fix_nh.cpp at b332f28)
     if (key === 'temp') {
-      const c = this.sys.compute(values[0] ?? '');
-      if (!c.tempFlag) throw new StyleError(`fix_modify temp: compute ${values[0]} does not compute a temperature`);
+      const c = fixModifyCompute(this.sys, values[0], 'temp', 'Could not find fix_modify temperature ID {}', 'Fix_modify temperature ID {} does not compute temperature');
       this.tempId = values[0];
       this.tempCompute = c;
       // the fix's pressure compute uses the new temperature too
@@ -606,9 +607,9 @@ export class FixNH extends Fix {
       return 1;
     }
     if (key === 'press') {
-      if (!this.pstat) throw new StyleError(`fix_modify press: fix ${this.id} has no barostat`);
-      const c = this.sys.compute(values[0] ?? '');
-      if (!c.pressFlag) throw new StyleError(`fix_modify press: compute ${values[0]} does not compute a pressure`);
+      if (values.length < 1) throw missingArgs('fix_modify press');
+      if (!this.pstat) throw new StyleError('Fix_modify press command without a barostat');
+      const c = fixModifyCompute(this.sys, values[0], 'press', 'Could not find fix_modify pressure ID {}', 'Fix_modify pressure ID {} does not compute pressure');
       this.pressId = values[0];
       this.pressCompute = c;
       return 1;

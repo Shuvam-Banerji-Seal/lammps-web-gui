@@ -138,12 +138,12 @@ describe('fix_modify dynamic/dof', () => {
   it('accepts yes and no on a rigid/small fix', async () => {
     const { error, session } = await run(`${head}${rigidFix}fix_modify myrigid dynamic/dof yes\n${gcmc('rigid myrigid')}run 0\n`);
     expect(error).toBeNull();
-    expect((session.sys.fix('myrigid') as unknown as { dynamicDofSet: boolean }).dynamicDofSet).toBe(true);
+    expect(session.sys.fix('myrigid').dynamicDof).toBe(true);
   });
 
   it('refuses a value other than yes or no', async () => {
     const { error } = await run(`${head}${rigidFix}fix_modify myrigid dynamic/dof maybe\nrun 0\n`);
-    expect(error).toMatch(/fix_modify dynamic\/dof must be yes or no, got 'maybe'/);
+    expect(error).toMatch(/Expected boolean parameter instead of 'maybe'/);
   });
 });
 

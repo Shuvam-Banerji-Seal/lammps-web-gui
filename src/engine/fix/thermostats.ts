@@ -1,4 +1,4 @@
-import { Fix } from './fix';
+import { Fix, fixModifyCompute } from './fix';
 import { takeFixRecord } from './restartRecord';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
@@ -57,8 +57,10 @@ export abstract class RescaleFix extends Fix {
 
   modify(key: string, values: string[]): number {
     if (key === 'temp') {
-      const c = this.sys.compute(values[0] ?? '');
-      if (!c.tempFlag) throw new StyleError(`fix_modify temp: compute ${values[0]} does not compute a temperature`);
+      // the messages of each fix's native modify_param (fix_temp_berendsen.cpp, fix_temp_rescale.cpp; EXTRA-FIX
+      // fix_temp_csvr.cpp and fix_temp_csld.cpp name the compute an ID)
+      const word = this.style === 'temp/csvr' || this.style === 'temp/csld' ? 'ID' : 'compute';
+      const c = fixModifyCompute(this.sys, values[0], 'temp', `Could not find fix_modify temperature ${word} {}`, `Fix_modify temperature ${word} {} does not compute temperature`);
       if (this.tempId === `${this.id}_temp`) removeCompute(this.sys, this.tempId);
       this.tempId = values[0];
       this.temp = c;
@@ -339,8 +341,8 @@ export class FixLangevin extends Fix {
 
   modify(key: string, values: string[]): number {
     if (key === 'temp') {
-      const c = this.sys.compute(values[0] ?? '');
-      if (!c.tempFlag) throw new StyleError(`fix_modify temp: compute ${values[0]} does not compute a temperature`);
+      // fix_langevin.cpp modify_param
+      const c = fixModifyCompute(this.sys, values[0], 'temp', 'Could not find fix_modify temperature compute ID: {}', 'Fix_modify temperature compute {} does not compute temperature');
       this.temp = c;
       return 1;
     }

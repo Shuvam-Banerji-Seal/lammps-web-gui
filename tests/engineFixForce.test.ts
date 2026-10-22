@@ -236,6 +236,6 @@ fix_modify 1 energy yes`);
     const { error } = await runScript(`${BASE}
 fix 1 all addforce 0 0 0
 fix_modify 1 energy maybe`);
-    expect(error?.message).toMatch(/must be yes or no/);
+    expect(error?.message).toMatch(/Expected boolean parameter instead of 'maybe'/);
   });
 });

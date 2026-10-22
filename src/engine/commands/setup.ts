@@ -28,6 +28,7 @@ import { ComputeTemp } from '../compute/temp';
 import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
 import type { Fix } from '../fix/fix';
+import type { Compute } from '../compute/compute';
 import { bitOfIndex, type DynamicGroup } from '../group';
 import { parseBalanceWeight, applyBalanceWeights, balanceNeighFactor, balanceUsesNeigh, balanceDump, type BalanceWeightAction } from '../fix/balance';
 import { parseMoleculeFile, geometricCenter, orientationMatrix, templateDipoles, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
@@ -2194,33 +2195,72 @@ const set: Handler = ({ sys }, a) => {
 
 /** velocity group style args [keywords] — velocity.html (see the module comment for defaults). */
 const velocity: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/velocity.cpp Velocity::command and Velocity::options at b332f28): the box, the atoms, the
+  // per-type masses, the group and the style are checked first, then the keywords in order (with the bias checks after
+  // them), and the style's own arguments last
+  if (a.length < 2) throw missingArgs('velocity');
+  if (!sys.hasBox) throw new StyleError('Velocity command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
   const s = sys.state;
+  if (s.n === 0) throw new StyleError('Velocity command on a system without atoms');
+  if (!s.rmass) {
+    for (let t = 1; t <= s.ntypes; t++) if (!(s.massByType[t] > 0)) throw new StyleError(`Not all per-type masses are set. Type ${t} is missing.`);
+  }
   const [gname, style] = a;
-  if (!gname || !style) throw new StyleError('usage: velocity group-ID style args [keywords]');
+  if (sys.groups.find(gname) < 0) throw new StyleError(`Could not find velocity group ID ${gname}`);
   const bit = sys.groupBit(gname);
   const nargs: Record<string, number> = { create: 2, set: 3, scale: 1, ramp: 6, zero: 1 };
-  if (!(style in nargs)) throw new StyleError(`unknown velocity style '${style}'`);
+  if (!Object.prototype.hasOwnProperty.call(nargs, style)) throw new StyleError(`Unknown velocity command style: ${style}`);
+  if (a.length < 2 + nargs[style]) throw missingArgs('velocity');
   const args = a.slice(2, 2 + nargs[style]);
-  if (args.length < nargs[style]) throw new StyleError(`velocity ${style} needs ${nargs[style]} arguments`);
-  const kw = keywords(a.slice(2 + nargs[style]), { dist: 1, sum: 1, mom: 1, rot: 1, temp: 1, bias: 1, loop: 1, rigid: 1, units: 1 }, 'velocity');
   // "The keyword defaults are dist = uniform, sum = no, mom = yes, rot = no, bias = no, loop = all, and units = lattice."
-  const dist = kw.get('dist')?.[0] ?? 'uniform';
-  if (dist !== 'uniform' && dist !== 'gaussian') throw new StyleError('velocity dist must be uniform or gaussian');
-  const sum = kw.has('sum') ? yesno(kw.get('sum')![0], 'sum') : false;
-  const mom = kw.has('mom') ? yesno(kw.get('mom')![0], 'mom') : true;
-  const rot = kw.has('rot') ? yesno(kw.get('rot')![0], 'rot') : false;
-  const bias = kw.has('bias') ? yesno(kw.get('bias')![0], 'bias') : false;
-  const loop = kw.get('loop')?.[0] ?? 'all';
-  if (!['all', 'local', 'geom'].includes(loop)) throw new StyleError('velocity loop must be all, local or geom');
+  let dist = 'uniform', sum = false, mom = true, rot = false, bias = false, loop = 'all', unitsW = 'lattice';
+  let tempC: Compute | null = null;
   // velocity.html: "If the rigid option is specified, then the zeroing is performed on individual rigid bodies, as
-  // defined by the fix rigid or fix rigid/small commands." As native LAMMPS does (src/velocity.cpp at b332f28): the
-  // fix must exist ("Fix ID {} for velocity does not exist"); only the zero style uses it
+  // defined by the fix rigid or fix rigid/small commands." Only the zero style uses it
   let rigidFix: Fix | null = null;
-  if (kw.has('rigid')) {
-    const fid = kw.get('rigid')![0];
-    rigidFix = sys.fixes.find((f) => f.id === fid) ?? null;
-    if (!rigidFix) throw new StyleError(`Fix ID ${fid} for velocity does not exist`);
+  const opt = a.slice(2 + nargs[style]);
+  for (let k = 0; k < opt.length; k += 2) {
+    const key = opt[k], v = opt[k + 1];
+    const need = () => { if (v === undefined) throw missingArgs(`velocity ${key}`); };
+    switch (key) {
+      case 'dist':
+        need();
+        if (v !== 'uniform' && v !== 'gaussian') throw new StyleError(`Unknown velocity dist argument: ${v}`);
+        dist = v;
+        break;
+      case 'sum': need(); sum = logical(v); break;
+      case 'mom': need(); mom = logical(v); break;
+      case 'rot': need(); rot = logical(v); break;
+      case 'temp': {
+        need();
+        const c = sys.computes.find((x) => x.id === v);
+        if (!c) throw new StyleError(`Could not find velocity temperature compute ID: ${v}`);
+        if (!c.tempFlag) throw new StyleError(`Velocity temperature compute ${v} does not compute temperature`);
+        tempC = c;
+        break;
+      }
+      case 'bias': need(); bias = logical(v); break;
+      case 'loop':
+        need();
+        if (v !== 'all' && v !== 'local' && v !== 'geom') throw new StyleError(`Unknown velocity loop argument: ${v}`);
+        loop = v;
+        break;
+      case 'rigid':
+        need();
+        rigidFix = sys.fixes.find((f) => f.id === v) ?? null;
+        if (!rigidFix) throw new StyleError(`Fix ID ${v} for velocity does not exist`);
+        break;
+      case 'units':
+        need();
+        if (v !== 'box' && v !== 'lattice') throw new StyleError(`Unknown velocity units argument: ${v}`);
+        unitsW = v;
+        break;
+      default: throw new StyleError(`Unknown velocity keyword: ${key}`);
+    }
   }
+  if (bias && tempC === null) throw new StyleError('Cannot use velocity bias command without temp keyword');
+  // native's message (it says does where it means does not)
+  if (bias && !tempC!.hasBias()) throw new StyleError('Velocity temperature ID does calculate a velocity bias');
   // Modify::check_rigid_group_overlap: a warning when the group has atoms of set-up rigid bodies (the first rigid fix
   // whose bodies are not set up yet ends the check), unless the zeroing is done on the bodies themselves
   if (!(style === 'zero' && rigidFix)) {
@@ -2234,21 +2274,15 @@ const velocity: Handler = ({ sys }, a) => {
     }
     if (overlap) sys.warn('Changing velocities of atoms in rigid bodies. This has no effect unless rigid bodies are rebuilt');
   }
-  const unitsW = kw.get('units')?.[0] ?? 'lattice';
-  for (let t = 1; t <= s.ntypes; t++) {
-    if (!s.rmass && !(s.massByType[t] > 0)) throw new StyleError(`velocity: the mass of atom type ${t} is not set`);
-  }
   const members: number[] = [];
   // native order (SimState.order): loop local draws and the sums follow native's atom list
   for (const i of nativeOrder(s)) if (s.mask[i] & bit) members.push(i);
   // "If this keyword is not specified, create and scale calculate temperature using a compute ...
   //  compute velocity_temp group-ID temp"
   const tempCompute = () => {
-    if (kw.has('temp')) {
-      const c = sys.compute(kw.get('temp')![0]);
-      if (!c.tempFlag) throw new StyleError(`velocity temp: compute ${c.id} does not compute a temperature`);
-      c.init();
-      return c;
+    if (tempC) {
+      tempC.init();
+      return tempC;
     }
     const c = new ComputeTemp(sys, 'velocity_temp', gname, []);
     c.init();
@@ -2260,10 +2294,10 @@ const velocity: Handler = ({ sys }, a) => {
     if (bias && c.hasBias()) { c.computeBias(); c.removeBiasAll(); }
     sys.refreshComputes();
     const t = c.scalarValue();
-    if (t > 0) {
-      const f = Math.sqrt(target / t);
-      for (const i of members) { s.v[3 * i] *= f; s.v[3 * i + 1] *= f; s.v[3 * i + 2] *= f; }
-    } else if (target > 0) sys.warn('velocity: current temperature is 0, cannot rescale');
+    // Velocity::rescale: "Attempting to rescale a 0.0 temperature"
+    if (t === 0) throw new StyleError('Attempting to rescale a 0.0 temperature');
+    const f = Math.sqrt(target / t);
+    for (const i of members) { s.v[3 * i] *= f; s.v[3 * i + 1] *= f; s.v[3 * i + 2] *= f; }
     if (bias && c.hasBias()) c.restoreBiasAll();
   };
   // docs.lammps.org/velocity.html (bias keyword) says the bias "is subtracted
@@ -2286,10 +2320,9 @@ const velocity: Handler = ({ sys }, a) => {
     pc.init();
     sys.refreshComputes();
     const t = pc.scalarValue();
-    if (t > 0) {
-      const f = Math.sqrt(target / t);
-      for (const i of members) { s.v[3 * i] *= f; s.v[3 * i + 1] *= f; s.v[3 * i + 2] *= f; }
-    } else if (target > 0) sys.warn('velocity: current temperature is 0, cannot rescale');
+    if (t === 0) throw new StyleError('Attempting to rescale a 0.0 temperature');
+    const f = Math.sqrt(target / t);
+    for (const i of members) { s.v[3 * i] *= f; s.v[3 * i + 1] *= f; s.v[3 * i + 2] *= f; }
   };
   const createBias = () => {
     const c = tempCompute();
@@ -2307,10 +2340,11 @@ const velocity: Handler = ({ sys }, a) => {
   const old = sum ? Float64Array.from(s.v) : null;
   switch (style) {
     case 'create': {
-      const t = num(args[0], 'temperature');
-      const seed = int(args[1], 'seed');
-      if (seed <= 0) throw new StyleError('velocity create: seed must be a positive integer');
-      if (t < 0) throw new StyleError('velocity create: temperature must be >= 0');
+      const t = numeric(args[0]);
+      const seed = inumeric(args[1]);
+      if (seed <= 0) throw new StyleError(`Illegal velocity create seed argument: ${seed}`);
+      // native takes the square root of a negative ratio and gives every velocity NaN
+      if (t < 0) throw new StyleError('velocity create with a negative temperature is not supported by the browser engine (native sets every velocity to NaN)');
       // Measured with native LAMMPS (black box; rng.ts RanPark): each atom takes
       // three draws, uniform() - 0.5 or gaussian(), scaled by 1/sqrt(mass).
       // velocity.html: "If loop = all, then each processor loops over all
@@ -2364,32 +2398,42 @@ const velocity: Handler = ({ sys }, a) => {
       if (bias) { scalePlain(t); createBias(); } else scaleTo(t);
       break;
     }
-    case 'scale': scaleTo(num(args[0], 'temperature')); break;
+    case 'scale': scaleTo(numeric(args[0])); break;
     case 'set': {
       const sc = latticeScale(sys, unitsW, 'velocity');
-      const comp = args.map((w, d) => {
-        if (w === 'NULL') return null;
-        if (w.startsWith('v_')) {
-          const v = sys.vars.get(w.slice(2));
-          if (v?.style === 'atom') { const arr = sys.atomVariable(w.slice(2)); return (i: number) => arr[i]; }
-          const x = sys.equalVariable(w.slice(2));
-          return () => x;
-        }
-        const x = num(w, 'velocity') * sc[d];
+      // Velocity::set: the three values are read first (a constant is scaled by the lattice spacing, a variable is
+      // not), then the variables are looked up (equal-style: equal, timer, internal; atom-style: atom, atomfile), then
+      // the z component of a 2d system is checked
+      const parsed = args.map((w) => (w === 'NULL' ? null : w.startsWith('v_') ? w.slice(2) : numeric(w)));
+      const comp = parsed.map((p, d) => {
+        if (p === null) return null;
+        if (typeof p === 'number') { const x = p * sc[d]; return () => x; }
+        const v = sys.vars.get(p);
+        if (!v) throw new StyleError('Variable name for velocity set does not exist');
+        if (v.style === 'atom' || v.style === 'atomfile') { const arr = sys.atomVariable(p); return (i: number) => arr[i]; }
+        if (v.style !== 'equal' && v.style !== 'timer' && v.style !== 'internal') throw new StyleError('Variable for velocity set is invalid style');
+        const x = sys.equalVariable(p);
         return () => x;
       });
+      if (s.dimension === 2) {
+        if (typeof parsed[2] === 'number' && parsed[2] !== 0) throw new StyleError('Cannot set non-zero z velocity for 2d simulation');
+        if (typeof parsed[2] === 'string') throw new StyleError('Cannot set variable z velocity for 2d simulation');
+      }
       // velocity.html, keyword sum: "The new velocities will be added to the existing ones if sum = yes". Only the
       // components the style sets are added; a NULL component keeps its old value (old is only set when sum is yes).
       for (const i of members) for (let d = 0; d < 3; d++) { const f = comp[d]; if (f) s.v[3 * i + d] = (old ? old[3 * i + d] : 0) + f(i); }
       break;
     }
     case 'ramp': {
+      // Velocity::ramp: the velocity component, its range, the coordinate and its range, in that order
       const vd = ['vx', 'vy', 'vz'].indexOf(args[0]);
-      const cd = 'xyz'.indexOf(args[3]);
-      if (vd < 0 || cd < 0 || args[3].length !== 1) throw new StyleError('usage: velocity group ramp vx|vy|vz vlo vhi x|y|z clo chi');
+      if (vd < 0) throw new StyleError(`Illegal velocity ramp velocity direction ${args[0]}`);
+      if (vd === 2 && s.dimension === 2) throw new StyleError('Cannot generate velocity ramp in z for a 2d system');
       const sc = latticeScale(sys, unitsW, 'velocity');
-      const vlo = num(args[1], 'vlo') * sc[vd], vhi = num(args[2], 'vhi') * sc[vd];
-      const clo = num(args[4], 'clo') * sc[cd], chi = num(args[5], 'chi') * sc[cd];
+      const vlo = numeric(args[1]) * sc[vd], vhi = numeric(args[2]) * sc[vd];
+      const cd = ['x', 'y', 'z'].indexOf(args[3]);
+      if (cd < 0) throw new StyleError(`Illegal velocity ramp direction ${args[3]}`);
+      const clo = numeric(args[4]) * sc[cd], chi = numeric(args[5]) * sc[cd];
       for (const i of members) {
         let frac = (s.x[3 * i + cd] - clo) / (chi - clo);
         frac = Math.max(0, Math.min(1, frac));
@@ -2399,7 +2443,10 @@ const velocity: Handler = ({ sys }, a) => {
       break;
     }
     case 'zero':
-      if (args[0] !== 'linear' && args[0] !== 'angular') throw new StyleError('usage: velocity group zero linear|angular');
+      // Velocity::zero formats arg[2] of its own arguments, two words past the keyword: a stale word of an earlier
+      // command or a null pointer (measured with native LAMMPS: Unknown velocity zero keyword 1 after a compute with 1
+      // there, string pointer is null otherwise). The engine names the keyword given
+      if (args[0] !== 'linear' && args[0] !== 'angular') throw new StyleError(`Unknown velocity zero keyword ${args[0]}`);
       if (rigidFix) {
         // zero_momentum / zero_rotation of the rigid fix (the /small styles set up their bodies first)
         if (!/^rigid/.test(rigidFix.style) || !rigidFix.zeroMomentum || !rigidFix.zeroRotation) {

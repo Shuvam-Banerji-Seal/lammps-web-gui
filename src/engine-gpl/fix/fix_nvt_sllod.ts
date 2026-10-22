@@ -9,6 +9,7 @@
  */
 import { FixNH } from '../../engine/fix/nh';
 import { StyleError } from '../../engine/force/types';
+import { logical } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { ramp, removeCompute } from '../../engine/fix/util';
 import { isDeformFix, type FixDeform } from '../../engine/fix/deform';
@@ -232,9 +233,9 @@ export class FixNVTSllod extends FixNH {
    */
   modify(key: string, values: string[]): number {
     if (key !== 'kick') return super.modify(key, values);
-    const v = values[0];
-    if (v !== 'yes' && v !== 'no') throw new StyleError(`fix_modify kick must be yes or no (got '${v ?? ''}')`);
-    if (v === 'yes') this.kickPending = true;
+    // FixNVTSllod::modify_param: "Illegal fix_modify command" without a value, else utils::logical
+    if (values.length < 1) throw new StyleError('Illegal fix_modify command');
+    if (logical(values[0])) this.kickPending = true;
     return 1;
   }
 

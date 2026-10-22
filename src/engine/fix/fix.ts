@@ -1,6 +1,36 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
+import { inumeric, logical } from '../force/util';
 import type { ImageObject } from '../output/image_objects';
+import type { Compute } from '../compute/compute';
+
+/**
+ * The fix styles native LAMMPS gives a rRESPA level, which fix_modify respa sets (respa_level_support = 1 in the fix's
+ * source, or its base class's, at b332f28). The engine's run_style respa runs none of them, so the level only has to
+ * be checked.
+ */
+const RESPA_LEVEL_STYLES = new Set([
+  'addforce', 'addtorque', 'addtorque/atom', 'addtorque/group', 'align/self', 'amoeba/bitorsion', 'amoeba/pitorsion',
+  'aveforce', 'cmap', 'damping/cundall', 'drag', 'efield', 'efield/lepton', 'efield/tip4p', 'flow/gauss', 'gravity',
+  'indent', 'numdiff', 'numdiff/virial', 'orient/bcc', 'orient/fcc', 'pafi', 'precession/spin', 'propel/self',
+  'qeq/comb', 'restrain', 'setforce', 'setforce/spin', 'settorque/atom', 'smd', 'spring', 'spring/chunk', 'spring/rg',
+  'spring/self', 'viscous', 'viscous/nonlinear', 'viscous/sphere', 'wall/colloid', 'wall/ees', 'wall/harmonic',
+  'wall/harmonic/outside', 'wall/harmonic/returned', 'wall/lepton', 'wall/lj1043', 'wall/lj126', 'wall/lj93',
+  'wall/morse', 'wall/region', 'wall/table',
+]);
+
+/**
+ * The compute a fix_modify temp or press value names (fix_modify.html: "temp value = compute ID that calculates a
+ * temperature", "press value = compute ID that calculates a pressure"), with the messages of the fix's native
+ * modify_param, which each fix words in its own way ({} is the compute ID).
+ */
+export const fixModifyCompute = (sys: System, id: string | undefined, kind: 'temp' | 'press', notFound: string, wrongKind: string): Compute => {
+  if (id === undefined) throw new StyleError('Illegal fix_modify command');
+  const c = sys.computes.find((x) => x.id === id);
+  if (!c) throw new StyleError(notFound.replace('{}', id));
+  if (kind === 'temp' ? !c.tempFlag : !c.pressFlag) throw new StyleError(wrongKind.replace('{}', id));
+  return c;
+};
 
 /*
  * Base class for fixes — docs.lammps.org/fix.html: "Set a fix that will be
@@ -42,6 +72,12 @@ export abstract class Fix {
   virialGlobal = false;
   thermoEnergy = false;
   thermoVirial = false;
+  /**
+   * fix_modify dynamic/dof (native Fix::dynamic: "recount atoms for temperature computes"). Stored; the engine's fixes
+   * count their group's atoms when they need them (measured with native LAMMPS for fix rigid/small: dynamic/dof yes
+   * leaves the thermo temperature unchanged).
+   */
+  dynamicDof = false;
   /** Global outputs for f_ID references. */
   scalarFlag = false;
   vectorFlag = false;
@@ -167,23 +203,32 @@ export abstract class Fix {
   /** Rigid-body fixes: the IDs of the atoms in bodies once the bodies are set up, else null. */
   bodyAtomIds?(): Set<number> | null;
 
-  /** fix_modify; returns values consumed (0 = keyword not handled). */
+  /**
+   * fix_modify; returns values consumed (0 = keyword not handled). The keywords every fix reads, as native LAMMPS does
+   * (src/fix.cpp Fix::modify_params at b332f28): dynamic/dof; energy and virial, where yes needs a fix that tallies
+   * energy or virial and no is always accepted; respa, for the styles native gives a rRESPA level. A fix with keywords
+   * of its own handles them first and passes the rest here.
+   */
   modify(key: string, values: string[]): number {
-    const yesno = (w: string | undefined) => {
-      if (w !== 'yes' && w !== 'no') throw new StyleError(`fix_modify ${key} must be yes or no`);
-      return w === 'yes';
-    };
-    if (key === 'energy') {
-      if (!this.energyGlobal) throw new StyleError(`fix ${this.id} (${this.style}) does not support fix_modify energy`);
-      this.thermoEnergy = yesno(values[0]);
-      return 1;
+    switch (key) {
+      case 'dynamic/dof': this.dynamicDof = logical(values[0]); return 1;
+      case 'energy': {
+        const on = logical(values[0]);
+        if (on && !this.energyGlobal && !this.energyAtom) throw new StyleError(`Fix ${this.id} ${this.style} does not support fix_modify energy command`);
+        this.thermoEnergy = on;
+        return 1;
+      }
+      case 'virial': {
+        const on = logical(values[0]);
+        if (on && !this.virialGlobal && !this.virialAtom) throw new StyleError(`Fix ${this.id} ${this.style} does not support fix_modify virial command`);
+        this.thermoVirial = on;
+        return 1;
+      }
+      case 'respa':
+        if (!RESPA_LEVEL_STYLES.has(this.style) || inumeric(values[0]) < 0) throw new StyleError('Illegal fix_modify respa command');
+        return 1;
+      default: return 0;
     }
-    if (key === 'virial') {
-      if (!this.virialGlobal) throw new StyleError(`fix ${this.id} (${this.style}) does not support fix_modify virial`);
-      this.thermoVirial = yesno(values[0]);
-      return 1;
-    }
-    return 0;
   }
 
   /** True if atom i is in this fix's group. */

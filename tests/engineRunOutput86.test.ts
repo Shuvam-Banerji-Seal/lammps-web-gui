@@ -103,11 +103,12 @@ describe('thermo_modify warn (thermo_modify.html)', () => {
 });
 
 describe('min_modify line spin values and getenv', () => {
-  it('refuses spin_cubic and spin_none on a non-spin system by name', async () => {
-    // Measured with native LAMMPS (black box): both values stop a non-spin minimization with a segmentation fault
+  it('refuses spin_cubic and spin_none on a non-spin minimization by name', async () => {
+    // Measured with native LAMMPS (black box): both values stop a non-spin minimization with a segmentation fault;
+    // min_modify itself accepts them for every min style (src/min.cpp modify_params)
     const out = await runText(`${LJ}min_modify line spin_cubic\nminimize 0 1e-6 100 1000\n`);
-    expect(out.error).toContain('min_modify line spin_cubic needs spin atoms');
-    expect((await runText(`${LJ}min_modify line spin_none\n`)).error).toContain('min_modify line spin_none needs spin atoms');
+    expect(out.error).toContain('min_modify line spin_cubic is only for the spin minimizers');
+    expect((await runText(`${LJ}min_modify line spin_none\n`)).error).toBeNull();
   });
 
   it('refuses the getenv variable style instead of returning an empty value', async () => {

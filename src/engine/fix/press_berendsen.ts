@@ -1,4 +1,4 @@
-import { Fix } from './fix';
+import { Fix, fixModifyCompute } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
@@ -119,9 +119,10 @@ export class FixPressBerendsen extends Fix {
   }
 
   modify(key: string, values: string[]): number {
+    // the messages of native's FixPressBerendsen::modify_param (src/fix_press_berendsen.cpp at b332f28; its
+    // temperature message has no placeholder for the ID)
     if (key === 'temp') {
-      const c = this.sys.compute(values[0] ?? '');
-      if (!c.tempFlag) throw new StyleError(`fix_modify temp: compute ${values[0]} does not compute a temperature`);
+      fixModifyCompute(this.sys, values[0], 'temp', 'Could not find fix_modify temperature compute ID: ', 'Fix_modify temperature compute {} does not compute temperature');
       if (this.tempId === this.ownTempId) removeCompute(this.sys, this.tempId);
       this.tempId = values[0];
       // the fix's own pressure compute takes its temperature from the fix temperature
@@ -129,8 +130,7 @@ export class FixPressBerendsen extends Fix {
       return 1;
     }
     if (key === 'press') {
-      const c = this.sys.compute(values[0] ?? '');
-      if (!c.pressFlag) throw new StyleError(`fix_modify press: compute ${values[0]} does not compute a pressure`);
+      const c = fixModifyCompute(this.sys, values[0], 'press', 'Could not find fix_modify pressure compute ID: {}', 'Fix_modify pressure compute {} does not compute pressure');
       if (this.pressId === this.ownPressId) removeCompute(this.sys, this.pressId);
       this.pressId = values[0];
       this.pressCompute = c;

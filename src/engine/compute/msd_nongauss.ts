@@ -38,10 +38,9 @@ export class ComputeMSDNonGauss extends Compute {
       if (key !== 'com' && key !== 'average') throw new StyleError(`Unknown compute msd keyword: ${key}`);
       if (k + 2 > args.length) throw missingArgs(`compute msd ${key}`);
       const v = logical(args[k + 1]);
-      if (key === 'average') {
-        if (v) throw new StyleError('compute msd/nongauss average yes is not supported by the browser engine');
-        continue;
-      }
+      // As native LAMMPS does (src/EXTRA-COMPUTE/compute_msd_nongauss.cpp compute_vector at b332f28): the reference
+      // positions are the ones at definition; only compute msd's own compute_vector averages them (average yes)
+      if (key === 'average') continue;
       this.comFlag = v;
     }
     if (sys.groups.isDynamic(this.groupBit)) throw new StyleError('Compute msd/nongauss is not compatible with dynamic groups');
@@ -96,9 +95,11 @@ export class ComputeMSDNonGauss extends Compute {
       sum4 += r2 * r2;
     }
     const v = this.vector;
+    if (count === 0) return;
     const m2 = sum2 / count, m4 = sum4 / count;
     v[0] = m2;
     v[1] = m4;
-    v[2] = m2 > 0 ? (3 * m4) / (5 * m2 * m2) - 1 : 0;
+    // native's formula also at no displacement (0/0, printed -nan)
+    v[2] = (3 * m4) / (5 * m2 * m2) - 1;
   }
 }

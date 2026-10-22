@@ -211,12 +211,22 @@ const pad = (sign: string, body: string, spec: CSpec, zeroOk: boolean): string =
   return (sign + body).padStart(spec.width);
 };
 
+const nanView = new DataView(new ArrayBuffer(8));
+/**
+ * The sign bit of a NaN: C's printf (and {fmt}) print "-nan" when it is set, as it is for the NaN of 0/0 on x86 (the
+ * NaN the engine computes the same way carries it too; a NaN constant does not).
+ */
+const nanIsNegative = (x: number): boolean => {
+  nanView.setFloat64(0, x);
+  return (nanView.getUint8(0) & 0x80) !== 0;
+};
+
 const formatFloatValue = (value: number, spec: CSpec): string => {
   const upper = spec.conv === 'E' || spec.conv === 'G' || spec.conv === 'F';
   const alt = spec.flags.includes('#');
   if (!Number.isFinite(value)) {
     const body = Number.isNaN(value) ? 'nan' : 'inf';
-    const sign = value < 0 ? '-' : signOf(false, spec.flags);
+    const sign = value < 0 || (Number.isNaN(value) && nanIsNegative(value)) ? '-' : signOf(false, spec.flags);
     return pad(sign, upper ? body.toUpperCase() : body, spec, false);
   }
   const neg = value < 0 || Object.is(value, -0);
@@ -320,7 +330,7 @@ export const formatInteger = (value: number, format: string): string =>
  * messages: the shortest round-trip digits, exponent notation outside [-4, 16) with at least two exponent digits.
  */
 export const fmtShortest = (x: number, single: boolean): string => {
-  if (Number.isNaN(x)) return 'nan';
+  if (Number.isNaN(x)) return nanIsNegative(x) ? '-nan' : 'nan';
   if (!Number.isFinite(x)) return x > 0 ? 'inf' : '-inf';
   if (x === 0) return Object.is(x, -0) ? '-0' : '0';
   const sign = x < 0 ? '-' : '';

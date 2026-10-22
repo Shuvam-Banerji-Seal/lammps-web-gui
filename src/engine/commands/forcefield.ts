@@ -1,5 +1,5 @@
 import type { Handler } from './args';
-import { int, num, yesno, missingArgs, logical, numeric, inumeric, bounds } from './args';
+import { num, yesno, missingArgs, logical, numeric, inumeric, bounds } from './args';
 import { StyleError, type Bonded, type KSpace } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES, KSPACE_STYLES, styleNames } from '../styles';
 import type { System } from '../system';

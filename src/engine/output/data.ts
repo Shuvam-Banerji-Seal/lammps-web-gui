@@ -345,6 +345,8 @@ const numOf = (w: string | undefined, what: string, line: number): number => {
 
 /** read_data file [keywords] into the system. */
 export const readData = (sys: System, text: string, opts: ReadDataOptions): void => {
+  // As native LAMMPS does (src/read_data.cpp ReadData::command at b332f28), before the file is read
+  if (sys.dimension === 2 && sys.boundary[2][0] !== 'p') throw new StyleError('Cannot run 2d simulation with nonperiodic Z dimension');
   const lines = text.split('\n');
   // a read after the box exists (add keyword) is a subsequent read: its bonds are limited by the storage
   const subsequentRead = sys.hasBox;

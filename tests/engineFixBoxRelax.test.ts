@@ -71,7 +71,7 @@ describe('fix box/relax relaxation', () => {
 
   it('relaxes a box under hydrostatic tension to zero pressure', async () => {
     // the ideal fcc lattice at density 1.0 is under tension (press about -3.4 at the start)
-    const events = await run(SETUP + 'thermo_style custom step pe press vol f_1\nfix 1 all box/relax iso 0.0\nminimize 0 1e-10 20000 200000\n');
+    const events = await run(SETUP + 'fix 1 all box/relax iso 0.0\nthermo_style custom step pe press vol f_1\nminimize 0 1e-10 20000 200000\n');
     const rows = thermoRows(events);
     const first = rows[0], last = rows[rows.length - 1];
     expect(first.press).toBeLessThan(-3);
@@ -82,7 +82,7 @@ describe('fix box/relax relaxation', () => {
   }, 120_000);
 
   it('reports the box energy as f_ID per atom, zero at the reference box', async () => {
-    const events = await run(SETUP + 'thermo_style custom step pe f_1\nfix 1 all box/relax x 0.5 y 0.5 z 0.5\nthermo 0\nrun 0\n');
+    const events = await run(SETUP + 'fix 1 all box/relax x 0.5 y 0.5 z 0.5\nthermo_style custom step pe f_1\nthermo 0\nrun 0\n');
     expect(thermoRows(events)[0].f_1).toBe(0);
   });
 

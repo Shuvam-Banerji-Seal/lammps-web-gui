@@ -144,12 +144,13 @@ describe('lattice triclinic/general', () => {
   });
 
   it('rejects orient, 2d use and a left-handed cell with StyleError', () => {
-    expect(() => makeLattice('custom', 1, units, 3, [...kw, 'orient', 'x', '1', '0', '0'])).toThrow(/orient/);
+    // native checks the orientation's values: orient x 1 0 0 is the default and is accepted
+    expect(() => makeLattice('custom', 1, units, 3, [...kw, 'orient', 'x', '0', '1', '0', 'orient', 'y', '-1', '0', '0'])).toThrow(/must have default orientation/);
     // measured with native LAMMPS (black box): a 2d general lattice with a1 = (1 0 0), a2 = (0 1 0) and the default a3 = (0 0 1) is accepted
     expect(() => makeLattice('custom', 1, units, 2, ['a1', '1', '0', '0', 'a2', '0', '1', '0', 'basis', '0', '0', '0', 'triclinic/general'])).not.toThrow();
     // measured with native LAMMPS (black box): a3 = (0 0 2) in 2d stops with Lattice triclinic/general a3 vector for a 2d simulation must be (0,0,1)
     expect(() => makeLattice('custom', 1, units, 2, ['a1', '1', '0', '0', 'a2', '0', '1', '0', 'a3', '0', '0', '2', 'basis', '0', '0', '0', 'triclinic/general'])).toThrow(/must be \(0,0,1\)/);
     expect(() => makeLattice('custom', 1, units, 3, ['a1', '0', '1', '0', 'a2', '1', '0', '0', 'a3', '0', '0', '1', 'basis', '0', '0', '0', 'triclinic/general'])).toThrow(/right-handed/);
-    expect(() => makeLattice('fcc', 1, units, 3, ['triclinic/general'])).toThrow(/custom/);
+    expect(() => makeLattice('fcc', 1, units, 3, ['triclinic/general'])).toThrow(/must be style = CUSTOM/);
   });
 });

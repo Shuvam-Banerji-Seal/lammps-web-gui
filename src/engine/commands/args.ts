@@ -61,7 +61,7 @@ export const yesno = (w: string | undefined, what: string): boolean => {
 };
 
 // the native-text argument checks live with parseNum (force/util.ts), where the styles reach them too
-export { missingArgs, logical, numeric, inumeric, bounds } from '../force/util';
+export { missingArgs, logical, numeric, inumeric, bnumeric, bounds } from '../force/util';
 
 /** A number, or v_name evaluated as an equal-style variable now. */
 export const numOrVar = (sys: System, w: string | undefined, what: string): number => {

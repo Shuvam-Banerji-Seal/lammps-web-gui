@@ -60,6 +60,13 @@ const HEADER: Record<string, string> = {
   cellbeta: 'CellBeta', cellgamma: 'CellGamma', ecouple: 'Ecouple', econserve: 'Econserve', cpuuse: 'CPUuse',
 };
 
+/** A c_ID, f_ID or v_name thermo keyword with up to two [i] indices (native's ArgInfo takes any name up to the brackets). */
+const parseField = (k: string): { kind: 'c' | 'f' | 'v'; id: string; idx: number[] } | null => {
+  const m = /^([cfv])_([^[\]]+)((?:\[\d+\]){0,2})$/.exec(k);
+  if (!m) return null;
+  return { kind: m[1] as 'c' | 'f' | 'v', id: m[2], idx: [...m[3].matchAll(/\[(\d+)\]/g)].map((x) => Number(x[1])) };
+};
+
 export class Thermo {
   style: 'one' | 'multi' | 'custom' | 'yaml' = 'one';
   keywords: string[] = [...THERMO_ONE];
@@ -100,11 +107,11 @@ export class Thermo {
     else if (style === 'multi') kw = [...THERMO_MULTI];
     else if (style === 'yaml') kw = [...THERMO_ONE];
     else if (style === 'custom') {
-      if (!args.length) throw new StyleError('thermo_style custom needs at least one keyword');
+      if (!args.length) throw new StyleError('Cannot use thermo style custom without custom keywords');
       kw = [];
       for (const a of args) kw.push(...this.expand(a));
-    } else throw new StyleError(`unknown thermo_style '${style}'; use one, multi, yaml or custom`);
-    if (style !== 'custom' && args.length) throw new StyleError(`thermo_style ${style} takes no arguments`);
+    } else throw new StyleError(`Unknown thermo style ${style}`);
+    // native ignores the words after one, multi and yaml
     for (const k of kw) this.validate(k);
     this.style = style as Thermo['style'];
     this.keywords = kw;
@@ -152,27 +159,82 @@ export class Thermo {
     return out;
   }
 
+  /**
+   * A thermo_style custom keyword, checked as native LAMMPS does when the command is read (src/thermo.cpp
+   * Thermo::parse_fields at b332f28): c_ID, f_ID and v_name must exist, and a variable must be equal-style (or
+   * vector-style with one index). Whether a compute or fix provides the scalar, vector or array element the brackets
+   * ask for is checked at run setup (checkFieldValue), when the engine's computes and fixes know their sizes.
+   */
   private validate(k: string): void {
     if (BUILTIN.has(k)) return;
-    if (/^[cfv]_[A-Za-z0-9_]+(\[\d+\]){0,2}$/.test(k)) return;
-    throw new StyleError(`unknown thermo keyword '${k}'`);
+    const f = parseField(k);
+    if (!f) throw new StyleError(`Unknown keyword '${k}' in thermo_style custom command`);
+    const { kind, id, idx } = f;
+    if (kind === 'v') {
+      const v = this.sys.vars.get(id);
+      if (!v) throw new StyleError(`Could not find thermo custom variable name: ${id}`);
+      if (idx.length === 0 && v.style !== 'equal' && v.style !== 'timer' && v.style !== 'internal') {
+        throw new StyleError(`Thermo custom variable ${id} is not an equal-style variable`);
+      }
+      if (idx.length === 1 && v.style !== 'vector') throw new StyleError(`Thermo custom variable ${id} is not a vector-style variable`);
+      if (idx.length === 2) throw new StyleError(`Thermo custom variable ${id} cannot have two indices`);
+      return;
+    }
+    const what = kind === 'c' ? 'compute' : 'fix';
+    const o = kind === 'c' ? this.sys.computes.find((x) => x.id === id) : this.sys.fixes.find((x) => x.id === id);
+    if (!o) throw new StyleError(`Could not find thermo custom ${what} ID: ${id}`);
+  }
+
+  /**
+   * The value a c_ID or f_ID keyword asks for, with native's parse_fields messages: a scalar, a vector element in
+   * 1..size or an array element in its rows and columns (a size of 0 is a size known only when the value is computed,
+   * native's size_*_variable).
+   */
+  private checkFieldValue(k: string): void {
+    const f = parseField(k);
+    if (!f || f.kind === 'v') return;
+    const { kind, id, idx } = f;
+    const what = kind === 'c' ? 'compute' : 'fix';
+    const o = kind === 'c' ? this.sys.computes.find((x) => x.id === id) : this.sys.fixes.find((x) => x.id === id);
+    if (!o) return;
+    const range = '\nFor more information see https://docs.lammps.org/err0020';
+    if (idx.length === 0 && !o.scalarFlag) throw new StyleError(`Thermo custom ${what} ${id} does not compute a scalar`);
+    if (idx.length === 1) {
+      if (!o.vectorFlag) throw new StyleError(`Thermo custom ${what} ${id} does not compute a vector`);
+      if (idx[0] < 1 || (o.sizeVector > 0 && idx[0] > o.sizeVector)) throw new StyleError(`Thermo custom ${what} ${id} vector is accessed out-of-range${range}`);
+    }
+    if (idx.length === 2) {
+      if (!o.arrayFlag) throw new StyleError(`Thermo custom ${what} ${id} does not compute an array`);
+      if (idx[0] < 1 || idx[1] < 1 || (o.sizeArrayRows > 0 && idx[0] > o.sizeArrayRows) || (o.sizeArrayCols > 0 && idx[1] > o.sizeArrayCols)) {
+        throw new StyleError(`Thermo custom ${what} ${id} array is accessed out-of-range${range}`);
+      }
+    }
   }
 
   /** Checks references before a run. */
   init(): void {
+    // the references may have been deleted since thermo_style; as native LAMMPS does (src/thermo.cpp Thermo::init and
+    // src/output.cpp Output::setup at b332f28)
     for (const k of this.keywords) {
       const m = /^([cfv])_([A-Za-z0-9_]+)/.exec(k);
       if (!m) continue;
-      if (m[1] === 'c') this.sys.compute(m[2]);
-      else if (m[1] === 'f') {
-        const f = this.sys.fix(m[2]);
+      if (m[1] === 'c') {
+        if (!this.sys.computes.some((c) => c.id === m[2])) throw new StyleError(`Could not find thermo compute with ID ${m[2]}`);
+      } else if (m[1] === 'f') {
+        const f = this.sys.fixes.find((x) => x.id === m[2]);
+        if (!f) throw new StyleError(`Could not find thermo fix ID ${m[2]}`);
         // Measured with native LAMMPS (black box): thermo 2 with a fix ave/time of Nfreq 4 is "ERROR: Thermo and fix
         // a not computed at compatible times"; thermo 4 is accepted.
         if (this.every > 0 && f.globalFreq > 0 && this.every % f.globalFreq !== 0) {
-          throw new StyleError(`Thermo and fix ${m[2]} not computed at compatible times`);
+          throw new StyleError(`Thermo and fix ${m[2]} not computed at compatible times\nFor more information see https://docs.lammps.org/err0007`);
         }
-      }
-      else if (!this.sys.vars.has(m[2])) throw new StyleError(`thermo keyword ${k}: variable ${m[2]} is not defined`);
+      } else if (!this.sys.vars.has(m[2])) throw new StyleError(`Could not find thermo variable ${m[2]}`);
+    }
+    for (const k of this.keywords) this.checkFieldValue(k);
+    if (this.everyVar !== null) {
+      const v = this.sys.vars.get(this.everyVar);
+      if (!v) throw new StyleError('Variable name for thermo every does not exist');
+      if (v.style !== 'equal' && v.style !== 'timer' && v.style !== 'internal') throw new StyleError('Variable for thermo every is invalid style');
     }
     this.checkFormats();
     const t = this.sys.compute(this.tempId);
@@ -638,9 +700,18 @@ export class Thermo {
   }
 
   /** For thermo v_name: the next output step after `step`. */
-  nextVariableStep(): number {
+  /**
+   * The next thermo step of thermo v_name, after the current step. As native LAMMPS does (src/output.cpp Output::setup
+   * and Output::write at b332f28): a value at or before the current step is an error.
+   */
+  nextVariableStep(during = false): number {
     if (!this.everyVar) return Number.MAX_SAFE_INTEGER;
-    return Math.trunc(this.sys.equalVariable(this.everyVar));
+    const next = Math.trunc(this.sys.equalVariable(this.everyVar));
+    const step = this.sys.state.step;
+    if (next <= step) {
+      throw new StyleError(during ? `Thermo every variable returned a bad timestep: ${next} vs ${step}` : 'Thermo every variable returned a bad timestep');
+    }
+    return next;
   }
 
   /** Pressure tensor helper (unused virial pieces). */

@@ -39,7 +39,7 @@ const run = async (script: string): Promise<{ rows: Row[]; errors: string[] }> =
   return { rows, errors };
 };
 
-const TH = 'thermo_style custom step pe ebond ke c_tb\nthermo_modify format float %.15g norm no\ncompute nb all nbond/atom\ncompute tb all reduce sum c_nb\n';
+const TH = 'compute nb all nbond/atom\ncompute tb all reduce sum c_nb\nthermo_style custom step pe ebond ke c_tb\nthermo_modify format float %.15g norm no\n';
 
 describe('atom_style bpm/sphere', () => {
   it('create_atoms gives a sphere of radius 0.5 with the unit quaternion 1 0 0 0', async () => {

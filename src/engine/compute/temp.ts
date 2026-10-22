@@ -22,7 +22,8 @@ export class ComputeTemp extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length) throw new StyleError(`compute temp takes no arguments (got ${args.join(' ')})`);
+    // As native LAMMPS does (src/compute_temp.cpp at b332f28): compute ID group temp, nothing more
+    if (args.length) throw new StyleError('Illegal compute temp command');
     this.scalarFlag = true;
     this.vectorFlag = true;
     this.sizeVector = 6;

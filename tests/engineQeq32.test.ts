@@ -37,9 +37,10 @@ describe('fix qeq/point and qeq/shielded', () => {
   });
 
   it('reports bad input: an unknown keyword and a type without parameters', async () => {
-    await expect(session().execute(pairOf('fix q all qeq/point 1 20 1.0e-6 200 w32qeq_point.params bogus 1'))).rejects.toThrow(/bogus/);
+    // native fix_qeq_point.cpp: only "warn yes/no" may follow the qfile
+    await expect(session().execute(pairOf('fix q all qeq/point 1 20 1.0e-6 200 w32qeq_point.params bogus 1'))).rejects.toThrow('Illegal fix qeq/point command');
     const s = new Session({ emit: () => {} });
     s.addFile('one.params', '1 0.0 7.25028 0.2 0.772871 0.0\n');
-    await expect(s.execute(pairOf('fix q all qeq/point 1 20 1.0e-6 200 one.params'))).rejects.toThrow(/no parameters for atom type 2/);
+    await expect(s.execute(pairOf('fix q all qeq/point 1 20 1.0e-6 200 one.params'))).rejects.toThrow('Parameters for atom type 2 missing in qeq parameter file');
   });
 });

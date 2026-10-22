@@ -14,6 +14,8 @@ import { Fix } from '../../engine/fix/fix';
 import { StyleError, typeBounds } from '../../engine/force/types';
 import { PairCoulStreitz, mdfTaper, pointUval, slaterS } from '../../engine/force/pair/coul_streitz';
 import type { System } from '../../engine/system';
+import { hasCharge } from '../../engine/atoms';
+import { fmtShortest, formatNumber } from '../../engine/cformat';
 import { SQRT_PI } from '../../engine/libm';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
@@ -66,10 +68,9 @@ import { NativeQeqSolver, type QeqLinearSystem, type QeqSolver } from './native_
  * LAMMPS (black box, not part of the doc text):
  *   - qeq/point off-diagonal is exactly 1/r inside the cutoff (no units
  *     constant, no taper), independent of the cutoff;
- *   - qeq/shielded off-diagonal is 14.4 * (r^3 + gamma_ij^-3)^(-1/3) times a
- *     7th-order taper T(r/cutoff) = 1 - 35x^4 + 84x^5 - 70x^6 + 20x^7 for
- *     r < cutoff (0 beyond), with gamma_ij = sqrt(gamma_i*gamma_j); the 14.4
- *     is the fix's hard-coded A/eV/charge Coulomb constant;
+ *   - qeq/shielded off-diagonal is FixQEqShielded::calculate_H (src/QEQ/fix_qeq_shielded.cpp at b332f28), ported:
+ *     Taper(r) 14.4 / (r^3 + shld_ij)^(1/3), the 7th-order taper polynomial of init_shielding between 0 and the
+ *     cutoff by Horner, shld_ij = (gamma_i gamma_j)^-1.5, 14.4 = EV_TO_KCAL_PER_MOL of that file;
  * *   - qeq/point and qeq/shielded solve native's two conjugate-gradient
  *     systems H s = -chi and H t = -1 (src/QEQ/fix_qeq.cpp CG), each from the
  *     history extrapolation of the last five solutions, with the Jacobi
@@ -167,12 +168,27 @@ interface MatrixTerms {
   fixedTerm: Float64Array;
 }
 
-const COUL = 14.4; // hard-coded Coulomb constant of fix qeq (measured with native LAMMPS, black box)
+/** fix_qeq_shielded.cpp (b332f28): "static constexpr double EV_TO_KCAL_PER_MOL = 14.4;" */
+const EV_TO_KCAL_PER_MOL = 14.4;
 
-/** 7th-order taper used by the shielded interaction (measured with native LAMMPS, black box). */
-const taper = (x: number): number => {
-  if (x >= 1) return 0;
-  return 1 - 35 * x * x * x * x + 84 * libmPow(x, 5) - 70 * libmPow(x, 6) + 20 * libmPow(x, 7);
+/**
+ * FixQEqShielded::init_shielding (src/QEQ/fix_qeq_shielded.cpp at b332f28): the coefficients of the 7th-order taper
+ * between swa = 0 and swb = the fix cutoff (FixQEq: "swa = 0.0; swb = cutoff;").
+ */
+const taperCoefficients = (swb: number): Float64Array => {
+  const swa = 0.0;
+  const d7 = libmPow(swb - swa, 7);
+  const swa2 = swa * swa, swa3 = swa2 * swa, swb2 = swb * swb, swb3 = swb2 * swb;
+  const Tap = new Float64Array(8);
+  Tap[7] = 20.0 / d7;
+  Tap[6] = -70.0 * (swa + swb) / d7;
+  Tap[5] = 84.0 * (swa2 + 3.0 * swa * swb + swb2) / d7;
+  Tap[4] = -35.0 * (swa3 + 9.0 * swa2 * swb + 9.0 * swa * swb2 + swb3) / d7;
+  Tap[3] = 140.0 * (swa3 * swb + 3.0 * swa2 * swb2 + swa * swb3) / d7;
+  Tap[2] = -210.0 * (swa3 * swb2 + swa2 * swb3) / d7;
+  Tap[1] = 140.0 * swa3 * swb3 / d7;
+  Tap[0] = (-35.0 * swa3 * swb2 * swb2 + 21.0 * swa2 * swb3 * swb2 - 7.0 * swa * swb3 * swb3 + swb3 * swb3 * swb) / d7;
+  return Tap;
 };
 
 /** Constant of the qeq/dynamic charge dynamics (measured with native LAMMPS, black box). */
@@ -193,7 +209,13 @@ export class FixQeq extends Fix {
   private qdamp: number;
   private qstep: number;
   private params: Params | null = null;
+  /** qeq/shielded: the taper coefficients (taperCoefficients) and shld per type pair (shieldingTable). */
+  private tap: Float64Array | null = null;
+  private shld: Float64Array | null = null;
+  private shldStride = 0;
   private iterations = 0;
+  /** The class member nlocal of native FixQEq: 0 until the first solve sets it (see init). */
+  private nlocalSolved = 0;
   /** The CG solver (qeq/point, qeq/shielded, qeq/slater: src/engine-gpl/qeq/native_solver.ts), set by the constructor. */
   private solver: QeqSolver | null = null;
   /** The kspace paramsFrozen flag this fix found before its first run setup (restored in postRun). */
@@ -214,83 +236,82 @@ export class FixQeq extends Fix {
     this.kind = kind;
     this.style = `qeq/${kind}`;
     const a = args;
-    if (a.length < 5) {
-      throw new StyleError(`Illegal fix ${this.style} command: expected "Nevery cutoff tolerance maxiter qfile [keyword value ...]"`);
-    }
-    this.nEvery = intArg(a[0], 'Nevery');
-    this.cutoff = numArg(a[1], 'cutoff');
-    this.tol = numArg(a[2], 'tolerance');
-    this.maxiter = intArg(a[3], 'maxiter');
+    // As native LAMMPS does (src/QEQ/fix_qeq.cpp FixQEq::FixQEq at b332f28): the five arguments, checked together, then
+    // the charges, then the qfile (read here, before the keywords of the style)
+    if (a.length < 5) throw new StyleError(`Illegal fix ${this.style} command: missing argument(s)`);
+    this.nEvery = inumeric(a[0]);
+    this.cutoff = numeric(a[1]);
+    this.tol = numeric(a[2]);
+    this.maxiter = inumeric(a[3]);
     this.qfile = a[4];
-    if (!(this.nEvery > 0)) throw new StyleError(`fix ${this.style}: Nevery must be > 0`);
-    if (!(this.cutoff > 0)) throw new StyleError(`fix ${this.style}: cutoff must be > 0`);
-    if (!(this.tol > 0)) throw new StyleError(`fix ${this.style}: tolerance must be > 0`);
-    if (!(this.maxiter > 0)) throw new StyleError(`fix ${this.style}: maxiter must be > 0`);
-    // qdamp/qstep are documented for qeq/dynamic and qeq/fire only; their
-    // measured defaults are qdamp 0.1 and qstep 0.02 (dynamic) / 0.2 (fire).
+    if (this.nEvery <= 0 || this.cutoff <= 0.0 || this.tol <= 0.0 || this.maxiter <= 0) throw new StyleError('Illegal fix qeq command');
+    if (!hasCharge(sys.state)) throw new StyleError(`Fix ${this.style} requires atom attribute q`);
+    // "if (strcmp(arg[7],"coul/streitz") == 0) streitz_flag = 1; else if (utils::strmatch(arg[7],"^reax..")) reax_flag = 1;
+    // else if (strcmp(arg[7],"coul/ctip") == 0) ctip_flag = 1; else read_file(arg[7]);"
+    const streitz = this.qfile === 'coul/streitz', reax = /^reax../.test(this.qfile), ctip = this.qfile === 'coul/ctip';
+    if (!streitz && !reax && !ctip) this.parseQfile(sys.readFile(this.qfile));
+    // the defaults of fix_qeq_dynamic.cpp ("qdamp = 0.10; qstep = 0.02;") and fix_qeq_fire.cpp ("qdamp = 0.20; qstep = 0.20;")
     this.qdamp = kind === 'fire' ? 0.2 : 0.1;
     this.qstep = kind === 'fire' ? 0.2 : 0.02;
     this.warn = true;
-    const damped = kind === 'dynamic' || kind === 'fire';
-    for (let k = 5; k < a.length;) {
-      const key = a[k];
-      const val = a[k + 1];
-      if (key === 'warn') {
-        if (val !== 'yes' && val !== 'no') throw new StyleError(`fix ${this.style}: warn must be yes or no`);
-        this.warn = val === 'yes';
-        k += 2;
-      } else if (kind === 'slater' && key === 'alpha') {
-        this.alpha = numArg(val, 'alpha');
-        if (!(this.alpha > 0)) throw new StyleError(`fix ${this.style}: alpha must be > 0`);
-        k += 2;
-        // fix_qeq.html: "wolf value = width of taper to terminate Coulomb integrals for the Wolf summation"
-        // (the wolf taper is not reproduced here; see the header comment)
-        const sub = a[k];
-        if (sub === 'wolf') {
-          throw new StyleError(`fix ${this.style}: keyword wolf (Wolf-summation charges) is not reproduced by the browser engine`);
-        }
-        if (sub === 'dsf') {
-          // docs.lammps.org/fix_qeq.html: "*dsf* value = width of taper to terminate Coulomb integrals for the Fennell-Gezelter
-          // summation (default value is zero)". fix_qeq_slater.cpp (b332f28): "optional taper width; do not treat following
-          // keyword (e.g. "warn") as numeric"
-          k += 1;
-          let width = 0;
-          if (k < a.length && !Number.isNaN(Number(a[k]))) {
-            width = numArg(a[k], 'dsf taper width');
-            k += 1;
+    if (kind === 'point' || kind === 'shielded') {
+      // fix_qeq_point.cpp and fix_qeq_shielded.cpp: "if (narg == 10) { if (strcmp(arg[8], "warn") == 0) maxwarn =
+      // utils::logical(...); else error } else if (narg > 8) error"
+      if (a.length === 7 && a[5] === 'warn') this.warn = logical(a[6]);
+      else if (a.length > 5) throw new StyleError(`Illegal fix ${this.style} command`);
+    } else {
+      for (let k = 5; k < a.length;) {
+        const key = a[k];
+        if (key === 'warn') {
+          if (k + 2 > a.length) throw new StyleError(`Illegal fix ${this.style} warn command: missing argument(s)`);
+          this.warn = logical(a[k + 1]);
+          k += 2;
+        } else if (kind === 'slater' && key === 'alpha') {
+          if (k + 2 > a.length) throw new StyleError(`Illegal fix ${this.style} alpha command: missing argument(s)`);
+          this.alpha = numeric(a[k + 1]);
+          k += 2;
+          // fix_qeq.html: "wolf value = width of taper to terminate Coulomb integrals for the Wolf summation"
+          // (the wolf taper is not reproduced here; see the header comment)
+          if (a[k] === 'wolf') {
+            throw new StyleError(`fix ${this.style}: keyword wolf (Wolf-summation charges) is not reproduced by the browser engine`);
           }
-          if (!(width >= 0)) throw new StyleError(`fix ${this.style}: dsf taper width must be >= 0`);
-          this.dsf = true;
-          this.drtap = width;
+          if (a[k] === 'dsf') {
+            // docs.lammps.org/fix_qeq.html: "*dsf* value = width of taper to terminate Coulomb integrals for the
+            // Fennell-Gezelter summation (default value is zero)". fix_qeq_slater.cpp (b332f28): "optional taper width; do
+            // not treat following keyword (e.g. "warn") as numeric"
+            k += 1;
+            this.dsf = true;
+            if (k < a.length && isDouble(a[k])) {
+              this.drtap = numeric(a[k]);
+              k += 1;
+            }
+          }
+        } else if (kind !== 'slater' && (key === 'qdamp' || key === 'qstep')) {
+          if (k + 2 > a.length) throw new StyleError(`Illegal fix ${this.style} ${key} command: missing argument(s)`);
+          if (key === 'qdamp') this.qdamp = numeric(a[k + 1]);
+          else this.qstep = numeric(a[k + 1]);
+          k += 2;
+        } else {
+          throw new StyleError(`Unknown fix ${this.style} keyword: ${key}`);
         }
-      } else if (damped && key === 'qdamp') {
-        this.qdamp = numArg(val, 'qdamp');
-        k += 2;
-      } else if (damped && key === 'qstep') {
-        this.qstep = numArg(val, 'qstep');
-        k += 2;
-      } else {
-        throw new StyleError(`fix ${this.style}: keyword '${key}' is not supported (${damped ? 'qdamp, qstep, warn' : 'warn'})`);
       }
     }
-    if (damped && !(this.qstep > 0)) throw new StyleError(`fix ${this.style}: qstep must be > 0`);
-    // The qfile may be the literal word reaxff / coul/streitz / coul/ctip to
-    // pull the parameters from an active pair style; the engine has none.
-    if (kind === 'slater' && this.qfile === 'coul/streitz') {
-      // the parameters come from the active pair style (resolved at each solve)
+    if (kind === 'slater' && this.dsf && !(this.drtap >= 0)) throw new StyleError(`fix ${this.style}: dsf taper width must be >= 0`);
+    if (ctip) throw new StyleError(`fix ${this.style}: qfile 'coul/ctip' (parameters from pair coul/ctip) is not supported by the browser engine`);
+    if (kind === 'slater' && streitz) {
+      // fix_qeq_slater.cpp: "if (streitz_flag) extract_streitz();" (the parameters are read again at each solve)
       this.fromPair = true;
-    } else {
-      if (kind === 'shielded' && this.qfile === 'reaxff') {
-        // fix_qeq_shielded.cpp (b332f28) extract_reax: "pair->extract("chi", tmp)", "eta", "gamma" of pair reaxff
-        this.fromReax = true;
-        // the pair must know of the fix (pair reaxff checkqeq yes, pair_reaxff.cpp init_style)
-        this.reaxSource()?.attachQeqFix();
-      } else {
-        if (qfileSpecial(this.qfile)) {
-          throw new StyleError(`fix ${this.style}: qfile '${this.qfile}' (parameters from a pair style) is not supported by the browser engine`);
-        }
-        this.parseQfile(sys.readFile(this.qfile));
-      }
+      if (!this.streitzPair()) throw new StyleError('No pair style coul/streitz for fix qeq/slater');
+    } else if (kind === 'shielded' && reax) {
+      // fix_qeq_shielded.cpp (b332f28): "if (reax_flag) extract_reax();", "pair->extract("chi", tmp)", "eta", "gamma"
+      this.fromReax = true;
+      const src = this.reaxSource();
+      if (!src) throw new StyleError('No reaxff pair style for fix qeq/shielded');
+      // the pair must know of the fix (pair reaxff checkqeq yes, pair_reaxff.cpp init_style)
+      src.attachQeqFix();
+    } else if (streitz || reax) {
+      // native sets the flag and reads no parameters for a style that does not use them (its arrays stay unset)
+      throw new StyleError(`fix ${this.style}: qfile '${this.qfile}' (parameters from a pair style) is not supported by fix ${this.style}`);
     }
     if (kind === 'point' || kind === 'shielded' || kind === 'slater') {
       this.solver = new NativeQeqSolver({
@@ -302,41 +323,36 @@ export class FixQeq extends Fix {
     }
   }
 
+  /**
+   * FixQEq::read_file (src/QEQ/fix_qeq.cpp at b332f28): per line (comments and blank lines skipped) a type or type range
+   * and chi eta gamma zeta zcore; every type must be set ("Parameters for atom type {} missing in qeq parameter file").
+   */
   private parseQfile(text: string): void {
     const n = this.sys.state.ntypes;
-    const chi = new Float64Array(n + 1).fill(NaN);
-    const eta = new Float64Array(n + 1).fill(NaN);
-    const gamma = new Float64Array(n + 1);
-    const zeta = new Float64Array(n + 1);
-    const qcore = new Float64Array(n + 1);
-    const lines = text.split('\n');
-    for (let ln = 0; ln < lines.length; ln++) {
-      const line = lines[ln].replace(/#.*/, '').trim();
-      if (!line) continue;
-      const w = line.split(/\s+/);
-      if (w.length < 6) {
-        throw new StyleError(`Invalid param file for fix ${this.style} (${this.qfile}) line ${ln + 1}: expected "type chi eta gamma zeta qcore"`);
-      }
-      let lo = 0, hi = 0;
-      try {
-        [lo, hi] = typeBounds(w[0], n);
-      } catch (e) {
-        throw new StyleError(`Invalid param file for fix ${this.style} (${this.qfile}) line ${ln + 1}: ${(e as Error).message}`);
-      }
-      const vals = w.slice(1, 6).map((s, i) => numArg(s, `qfile column ${i + 1}`));
+    const chi = new Float64Array(n + 1), eta = new Float64Array(n + 1), gamma = new Float64Array(n + 1);
+    const zeta = new Float64Array(n + 1), qcore = new Float64Array(n + 1);
+    const setflag = new Uint8Array(n + 1);
+    for (const raw of text.split('\n')) {
+      const w = raw.replace(/#.*/, '').trim().split(/\s+/).filter((x) => x !== '');
+      if (w.length === 0) continue;
+      if (w.length < 6) throw new StyleError(`Invalid qeq parameter file for ${this.style}`);
+      let lo = -1, hi = -1;
+      try { [lo, hi] = typeBounds(w[0], n); } catch { lo = hi = -1; }
+      if (lo < 0 || hi < 0) throw new StyleError(`Invalid atom type range: ${w[0]}`);
+      const vals = w.slice(1, 6).map((v) => {
+        if (!isDouble(v)) throw new StyleError(`Not a valid floating-point number: '${v}'`);
+        return Number(v);
+      });
       for (let t = lo; t <= hi; t++) {
         chi[t] = vals[0];
         eta[t] = vals[1];
         gamma[t] = vals[2];
         zeta[t] = vals[3];
         qcore[t] = vals[4];
+        setflag[t] = 1;
       }
     }
-    for (let t = 1; t <= n; t++) {
-      if (Number.isNaN(chi[t]) || Number.isNaN(eta[t])) {
-        throw new StyleError(`Invalid param file for fix ${this.style} (${this.qfile}): no parameters for atom type ${t}`);
-      }
-    }
+    for (let t = 1; t <= n; t++) if (!setflag[t]) throw new StyleError(`Parameters for atom type ${t} missing in qeq parameter file`);
     this.params = { chi, eta, gamma, zeta, qcore };
   }
 
@@ -366,18 +382,22 @@ export class FixQeq extends Fix {
     return { chi: q.chi, eta: q.eta, gamma: q.gamma, zeta: zero, qcore: zero };
   }
 
+  /** The pair coul/streitz (force->pair_match("coul/streitz", 1): the pair style, or the sub-style of pair hybrid). */
+  private streitzPair(): PairCoulStreitz | null {
+    const pair = this.sys.ff.pair;
+    if (pair instanceof PairCoulStreitz) return pair;
+    let cs: PairCoulStreitz | null = null;
+    const subs = (pair as unknown as { subs?: { style: unknown }[] } | null)?.subs ?? [];
+    for (const sub of subs) if (sub.style instanceof PairCoulStreitz) cs = sub.style;
+    return cs;
+  }
+
   /** qeq/slater: parameters of the active coul/streitz pair style (qfile coul/streitz); chi, eta = J, zeta, qcore = Z. */
   private slaterParams(): Params {
     if (!this.fromPair) return this.params!;
     const n = this.sys.state.ntypes;
-    const pair = this.sys.ff.pair;
-    let cs: PairCoulStreitz | null = null;
-    if (pair instanceof PairCoulStreitz) cs = pair;
-    else {
-      const subs = (pair as unknown as { subs?: { style: unknown }[] } | null)?.subs ?? [];
-      for (const sub of subs) if (sub.style instanceof PairCoulStreitz) cs = sub.style;
-    }
-    if (!cs) throw new StyleError(`fix ${this.style}: qfile coul/streitz needs an active pair_style coul/streitz`);
+    const cs = this.streitzPair();
+    if (!cs) throw new StyleError('No pair style coul/streitz for fix qeq/slater');
     const chi = new Float64Array(n + 1), eta = new Float64Array(n + 1), gamma = new Float64Array(n + 1);
     const zeta = new Float64Array(n + 1), qcore = new Float64Array(n + 1);
     for (let t = 1; t <= n; t++) {
@@ -394,6 +414,8 @@ export class FixQeq extends Fix {
    * their solve after it.
    */
   setupPreForce(): void {
+    // FixQEq::setup_pre_force: "if (force->newton_pair == 0) error->all(FLERR,"QEQ with 'newton pair off' not supported");"
+    if (!this.sys.newtonPair) throw new StyleError("QEQ with 'newton pair off' not supported");
     // native FixQEq::setup_pre_force (inherited by every style of this file, src/QEQ/fix_qeq.cpp at b332f28) runs
     // pre_force before the setup force evaluation. The kspace G-ewald is the one of this run's init, as native keeps
     // it (KSpace::qsum_qsq refreshes only the charge sums): paramsFrozen stays set until postRun.
@@ -409,6 +431,44 @@ export class FixQeq extends Fix {
     const kspace = this.sys.ff.kspace;
     if (kspace && this.kspaceFrozenBefore !== null) kspace.paramsFrozen = this.kspaceFrozenBefore;
     this.kspaceFrozenBefore = null;
+  }
+
+  /**
+   * FixQEq::init and the init of each style (src/QEQ/fix_qeq*.cpp at b332f28), at every run: the charges, the group,
+   * the fix efield and net charge warnings; qeq/shielded: the taper warning and the gamma check, which loops over the
+   * class member nlocal, 0 until the first solve, so it applies from the second run on; qeq/slater: the zeta check;
+   * qeq/dynamic and qeq/fire: the tolerance warning.
+   */
+  init(): void {
+    const s = this.sys.state;
+    if (!hasCharge(s)) throw new StyleError(`Fix ${this.style} requires atom attribute q`);
+    let ngroup = 0, qsum = 0;
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      ngroup++;
+      qsum += s.q[i];
+    }
+    if (ngroup === 0) throw new StyleError(`Fix ${this.style} group has no atoms`);
+    if (this.sys.fixes.some((f) => /^efield/.test(f.style))) this.sys.warn('Fix efield is ignored during charge equilibration');
+    // "if ((comm->me == 0) && (fabs(qsum) > QSUMSMALL))" with QSUMSMALL 0.00001, "net charge = {:.8}" and errorurl(29)
+    if (Math.abs(qsum) > 0.00001) {
+      this.sys.warn(`Fix ${this.style} group is not charge neutral, net charge = ${formatNumber(qsum, '%.8g')}\nFor more information see https://docs.lammps.org/err0029`);
+    }
+    if (this.kind === 'shielded') {
+      // init_shielding: swa = 0, swb = the cutoff
+      if (this.cutoff < 5) this.sys.warn('Fix qeq has very low Taper radius cutoff');
+      const p = this.fromReax ? this.reaxParams() : this.params!;
+      for (let i = 0; i < Math.min(this.nlocalSolved, s.n); i++) {
+        if ((s.mask[i] & this.groupBit) && p.gamma[s.type[i]] === 0.0) throw new StyleError(`Invalid QEq parameters for atom type ${s.type[i]} provided`);
+      }
+    } else if (this.kind === 'slater') {
+      const p = this.slaterParams();
+      for (let t = 1; t <= s.ntypes; t++) if (p.zeta[t] === 0.0) throw new StyleError('Invalid parameter file values for fix qeq/slater');
+    } else if ((this.kind === 'dynamic' || this.kind === 'fire') && this.tol < 1e-4) {
+      this.sys.warn(this.kind === 'dynamic'
+        ? `Fix qeq/dynamic tolerance ${fmtShortest(this.tol, false)} may be too small for damped dynamics`
+        : `Fix qeq/fire tolerance ${fmtShortest(this.tol, false)} may be too small for damped fires`);
+    }
   }
 
   /** fix_qeq.html: Nevery = "perform charge equilibration every this many steps" (pre_force's ntimestep % nevery). */
@@ -429,6 +489,12 @@ export class FixQeq extends Fix {
     const p = this.kind === 'slater' ? this.slaterParams() : this.fromReax ? this.reaxParams() : this.params!;
     const bit = this.groupBit;
     const shielded = this.kind === 'shielded';
+    // pre_force: "nlocal = atom->nlocal;" (read by the gamma check of a later init)
+    this.nlocalSolved = s.n;
+    if (shielded) {
+      this.tap ??= taperCoefficients(this.cutoff);
+      this.shieldingTable(p);
+    }
     // group atoms (owned)
     const idx: number[] = [];
     for (let i = 0; i < s.n; i++) if (s.mask[i] & bit) idx.push(i);
@@ -504,13 +570,6 @@ export class FixQeq extends Fix {
       const q0 = new Float64Array(ng);
       for (let a = 0; a < ng; a++) q0[a] = s.q[idx[a]];
       q = this.kind === 'dynamic' ? this.solveDynamic(q0, gradient, ng) : this.solveFire(q0, gradient, ng);
-    }
-
-    // initial charges should already be neutral (doc note)
-    let sum0 = 0;
-    for (const i of idx) sum0 += s.q[i];
-    if (this.warn && Math.abs(sum0) > 1e-8) {
-      this.sys.warn('Fix qeq: initial charge of atoms in the fix group is not zero; charge equilibration enforces neutrality');
     }
 
     for (let a = 0; a < ng; a++) s.q[idx[a]] = q[a];
@@ -674,11 +733,34 @@ export class FixQeq extends Fix {
     return this.runSolver(s, idx, sys);
   }
 
-  /** Point (qeq/point, qeq/dynamic, qeq/fire) or shielded (qeq/shielded) pair interaction. */
-  private interaction(s: System['state'], p: Params, i: number, j: number, r: number, shielded: boolean): number {
+  /**
+   * Point (qeq/point, qeq/dynamic, qeq/fire) or shielded (qeq/shielded) pair interaction. The shielded one is
+   * FixQEqShielded::calculate_H (src/QEQ/fix_qeq_shielded.cpp at b332f28), whose half native stores in each list entry
+   * (H.val = 0.5 calculate_H): the taper polynomial by Horner, over (r^3 + shld)^(1/3) with shld = (gamma_i
+   * gamma_j)^-1.5 (shieldingTable). A type with gamma 0 has shld = inf and no interaction.
+   */
+  private interaction(s: System['state'], _p: Params, i: number, j: number, r: number, shielded: boolean): number {
     if (!shielded) return 1 / r;
-    const g = Math.sqrt(p.gamma[s.type[i]] * p.gamma[s.type[j]]);
-    return g > 0 ? COUL * libmPow(r * r * r + 1 / (g * g * g), -1 / 3) * taper(r / this.cutoff) : 0;
+    const Tap = this.tap!;
+    let Taper = Tap[7] * r + Tap[6];
+    Taper = Taper * r + Tap[5];
+    Taper = Taper * r + Tap[4];
+    Taper = Taper * r + Tap[3];
+    Taper = Taper * r + Tap[2];
+    Taper = Taper * r + Tap[1];
+    Taper = Taper * r + Tap[0];
+    let denom = r * r * r + this.shld![s.type[i] * this.shldStride + s.type[j]];
+    denom = libmPow(denom, 1.0 / 3.0);
+    return Taper * EV_TO_KCAL_PER_MOL / denom;
+  }
+
+  /** FixQEqShielded::init_shielding: "shld[i][j] = pow(gamma[i] * gamma[j], -1.5);" for every type pair. */
+  private shieldingTable(p: Params): void {
+    const nt = this.sys.state.ntypes;
+    const stride = nt + 1;
+    if (!this.shld || this.shld.length !== stride * stride) this.shld = new Float64Array(stride * stride);
+    this.shldStride = stride;
+    for (let i = 1; i <= nt; i++) for (let j = 1; j <= nt; j++) this.shld[i * stride + j] = libmPow(p.gamma[i] * p.gamma[j], -1.5);
   }
 
   /**
@@ -831,7 +913,7 @@ export class FixQeq extends Fix {
       fmax = maxAbs(f);
     }
     this.iterations = iters;
-    if (!(fm <= this.tol && fmax <= 100 * this.tol) && this.warn) this.sys.warn(`Charges did not converge at step ${this.sys.state.step}: ${fm}`);
+    if (!(fm <= this.tol && fmax <= 100 * this.tol) && this.warn) this.sys.warn(`Charges did not converge at step ${this.sys.state.step}: ${fmtShortest(fm, false)}`);
     return q;
   }
 
@@ -890,7 +972,7 @@ export class FixQeq extends Fix {
       if (fm < this.tol) break;
     }
     this.iterations = iloop;
-    if (fm >= this.tol && this.warn) this.sys.warn(`Charges did not converge at step ${step}: ${fm}`);
+    if (fm >= this.tol && this.warn) this.sys.warn(`Charges did not converge at step ${step}: ${fmtShortest(fm, false)}`);
     return q;
   }
 }
@@ -922,15 +1004,25 @@ const meanAbs = (f: Float64Array): number => {
   return f.length ? s / f.length : 0;
 };
 
-const numArg = (w: string, what: string): number => {
-  const v = Number(w);
-  if (!Number.isFinite(v)) throw new StyleError(`fix qeq: expected a number for ${what}, got '${w}'`);
-  return v;
-};
+/** utils::is_double: a floating-point number as LAMMPS reads one (sign, digits, optional point and exponent). */
+const isDouble = (w: string): boolean => /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(w);
 
-const intArg = (w: string, what: string): number => {
-  if (!/^\d+$/.test(w)) throw new StyleError(`fix qeq: expected an integer for ${what}, got '${w}'`);
+/** utils::numeric. */
+const numeric = (w: string | undefined): number => {
+  if (w === undefined || !isDouble(w)) throw new StyleError(`Expected floating point parameter instead of '${w ?? ''}' in input script or data file`);
   return Number(w);
 };
 
-const qfileSpecial = (name: string): boolean => name === 'reaxff' || name === 'coul/streitz' || name === 'coul/ctip';
+/** utils::inumeric. */
+const inumeric = (w: string | undefined): number => {
+  if (w === undefined || !/^[+-]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w ?? ''}' in input script or data file`);
+  return Number(w);
+};
+
+/** utils::logical: yes, no, true, false, on, off, 1, 0. */
+const logical = (w: string | undefined): boolean => {
+  if (w === 'yes' || w === 'true' || w === 'on' || w === '1') return true;
+  if (w === 'no' || w === 'false' || w === 'off' || w === '0') return false;
+  throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' in input script or data file`);
+};
+

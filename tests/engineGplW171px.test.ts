@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent } from '../src/engine/types';
-import { fmtShortest } from '../src/engine-gpl/diffraction/fix_saed_vtk';
+import { fmtShortest } from '../src/engine/cformat';
 
 /*
  * Ported styles fix saed/vtk, compute podd/atom and compute slcsa/atom (LAMMPS commit b332f28). Native parity is in

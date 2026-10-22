@@ -92,9 +92,9 @@ describe('fix qeq/dynamic and qeq/fire', () => {
     const b = session(); await b.execute(twoAtom('fix q all qeq/fire 1 20 1.0e-3 200 params.qeq qdamp 0.5 qstep 0.1'));
     // measured with native LAMMPS (black box): qeq/fire ignores qdamp
     expect(qOf(a)[0]).toBeCloseTo(qOf(b)[0], 12);
-    // qdamp/qstep are documented for qeq/dynamic and qeq/fire only
-    await expect(session().execute(twoAtom('fix q all qeq/point 1 20 1.0e-6 200 params.qeq qstep 0.1'))).rejects.toThrow(/qstep/);
-    await expect(session().execute(twoAtom('fix q all qeq/dynamic 1 20 1.0e-6 200 params.qeq bogus 1'))).rejects.toThrow(/bogus/);
+    // qdamp/qstep are documented for qeq/dynamic and qeq/fire only (native fix_qeq_point.cpp takes warn alone)
+    await expect(session().execute(twoAtom('fix q all qeq/point 1 20 1.0e-6 200 params.qeq qstep 0.1'))).rejects.toThrow('Illegal fix qeq/point command');
+    await expect(session().execute(twoAtom('fix q all qeq/dynamic 1 20 1.0e-6 200 params.qeq bogus 1'))).rejects.toThrow('Unknown fix qeq/dynamic keyword: bogus');
   });
 
   it('the example param.qeq2 loads and drives a two-charge system', async () => {

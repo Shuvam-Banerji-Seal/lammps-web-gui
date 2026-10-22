@@ -1,0 +1,18 @@
+# oracle: w480nh_tilt_only — fix npt on the xy tilt alone (no barostatted diagonal: native's MTK term over zero diagonal dimensions is zero)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS: max relative error 1.9e-14 on thermo, 4.6e-13 per atom.
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box prism 0 4 0 4 0 4 0.3 0 0
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+velocity all create 1.0 87287 loop geom
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+fix 1 all npt temp 1.0 1.0 0.5 xy 0.0 0.0 1.0
+thermo_style custom step temp pe press pxx pyy pzz pxy vol cella cellb cellgamma
+thermo_modify format float %.15g
+thermo 10
+run 50

@@ -1,0 +1,20 @@
+# oracle: w483nh_isochoric_2d — fix nph in 2d, barostat on y, isochoric x keeps the area (native checks the x flag twice for 2d periodicity, so isochoric y alone stops)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS: max relative error 4.8e-14 on thermo, 4.7e-13 per atom.
+units lj
+dimension 2
+atom_style atomic
+lattice sq 0.8442
+region box block 0 8 0 8 -0.5 0.5
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+velocity all create 1.0 87287 loop geom
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+fix 1 all nph y 1.0 1.0 1.0 isochoric x
+fix 2 all enforce2d
+thermo_style custom step temp pe press pyy vol lx ly
+thermo_modify format float %.15g
+thermo 10
+run 60

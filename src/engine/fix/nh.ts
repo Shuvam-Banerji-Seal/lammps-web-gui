@@ -39,7 +39,9 @@ import { gplHook } from '../gplHooks';
  * Tuckerman, and Klein are included in the equations of motion". The MTK terms are measured below.
  * Keywords: temp, iso, aniso, tri, x, y, z, xy, yz, xz, couple, tchain,
  * pchain, mtk, tloop, ploop, nreset, drag, ptemp, dilate, scalexy/yz/xz,
- * flip, fixedpoint. Defaults "tchain = 3, pchain = 3, mtk = yes, tloop = 1,
+ * flip, isochoric, fixedpoint. "The *isochoric* keyword allows to maintain constant volume when barostatting up to two
+ * dimensions with this fix. ... The selected dimensions are scaled to compensate the strain induced by the barostat and
+ * keep the system at a constant volume (or area in 2d)." Defaults "tchain = 3, pchain = 3, mtk = yes, tloop = 1,
  * ploop = 1, nreset = 0, drag = 0.0, dilate = all, couple = none, flip =
  * yes". "iso ... couple xyz"; "aniso ... couple none"; "tri Pstart Pstop Pdamp"
  * is the same as x, y and z with Pstart Pstop Pdamp, xy, yz and xz with
@@ -120,6 +122,27 @@ export interface NHDeviatoricHook {
  * command for info on how to re-specify a fix in an input script that reads a restart file, so that the operation of
  * the fix continues in an uninterrupted fashion."
  */
+/** utils::numeric: a floating-point number as LAMMPS reads one. */
+const numeric = (w: string | undefined): number => {
+  if (w === undefined || !/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(w)) {
+    throw new StyleError(`Expected floating point parameter instead of '${w ?? ''}' in input script or data file`);
+  }
+  return Number(w);
+};
+
+/** utils::inumeric. */
+const inumeric = (w: string | undefined): number => {
+  if (w === undefined || !/^[+-]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w ?? ''}' in input script or data file`);
+  return Number(w);
+};
+
+/** utils::logical: yes, no, true, false, on, off, 1, 0. */
+const logical = (w: string | undefined): boolean => {
+  if (w === 'yes' || w === 'true' || w === 'on' || w === '1') return true;
+  if (w === 'no' || w === 'false' || w === 'off' || w === '0') return false;
+  throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' in input script or data file`);
+};
+
 export interface NHRestart {
   eta: number[];
   etaDot: number[];
@@ -138,6 +161,9 @@ export interface NHRestart {
   len0?: number[];
   /** the barostat reference temperature (fix_nh.cpp t0, the temperature of the masses of an nph run), when there is a barostat */
   t0?: number;
+  /** isochoric: the compensating dimensions (fix_nh.cpp p_isoch) and the volume of the box at the fix's creation (vol_start) */
+  pIsoch?: number[];
+  volStart?: number;
 }
 
 export class FixNH extends Fix {
@@ -161,7 +187,15 @@ export class FixNH extends Fix {
   private drag = 0;
   private ptemp: number | null = null;
   protected dilateBit: number;
-  protected fixedpoint: number[] | null = null;
+  /** fix_nh.cpp fixedpoint: the box centre when the fix is created, or the fixedpoint keyword */
+  protected fixedpoint: number[] = [0, 0, 0];
+  /**
+   * fix_nh.html isochoric: "maintain constant volume when barostatting up to two dimensions"; the dimensions that
+   * compensate (fix_nh.cpp p_isoch) and the volume (area in 2d) of the box when the fix was created (vol_start)
+   */
+  private isochoric = false;
+  private pIsoch = [0, 0, 0];
+  private volStart = 0;
   protected omegaDot = new Float64Array(6);
   protected omegaPos = new Float64Array(6);
   protected omegaMass = new Float64Array(6);
@@ -213,87 +247,222 @@ export class FixNH extends Fix {
     this.scalarFlag = true;
     this.extscalar = 1;
     this.dilateBit = sys.groupBit('all');
+    // As native LAMMPS does (src/fix_nh.cpp FixNH::FixNH at b332f28): the keywords in order, each read by utils::numeric,
+    // inumeric or logical; then the checks of the whole command; the style's own checks (fix_nvt.cpp, fix_npt.cpp,
+    // fix_nph.cpp, ...) come after them
+    if (args.length < 1) throw new StyleError(`Illegal fix ${name} command: missing argument(s)`);
+    const dimension = sys.dimension;
+    const box = sys.state.box;
+    const geom = sys.geom;
+    // "turn on tilt factor scaling, whenever applicable": a periodic second dimension and a tilt that is not 0
+    let scaleyz = false, scalexz = false, scalexy = false;
+    if (box.periodic[1] && geom.xy !== 0.0) scalexy = true;
+    if (box.periodic[2] && dimension === 3) {
+      if (geom.yz !== 0.0) scaleyz = true;
+      if (geom.xz !== 0.0) scalexz = true;
+    }
+    // "set fixed-point to default = center of cell"
+    this.fixedpoint = [0.5 * (box.lo[0] + box.hi[0]), 0.5 * (box.lo[1] + box.hi[1]), 0.5 * (box.lo[2] + box.hi[2])];
     let flipflag = true;
+    let dipole = false;
+    let pTempFlag = false;
+    const missing = (k: number, need: number, key: string): void => {
+      if (k + need > args.length) throw new StyleError(`Illegal fix ${name} ${key} command: missing argument(s)`);
+    };
+    const P = (k: number): [number, number, number] => [numeric(args[k + 1]), numeric(args[k + 2]), numeric(args[k + 3])];
     for (let k = 0; k < args.length;) {
       const key = args[k];
-      const n = (j: number, what: string) => {
-        const v = Number(args[k + j]);
-        if (args[k + j] === undefined || !Number.isFinite(v)) throw new StyleError(`fix ${name} ${key}: expected a number for ${what}`);
-        return v;
-      };
       switch (key) {
-        case 'temp':
+        case 'temp': {
+          missing(k, 4, key);
           this.tstat = true;
-          this.tStart = n(1, 'Tstart'); this.tStop = n(2, 'Tstop'); this.tPeriod = n(3, 'Tdamp');
+          this.tStart = numeric(args[k + 1]);
           // fix_nh.cpp constructor: "t_target = t_start" (what extract("t_target") gives before the first setup)
           this.tTarget = this.tStart;
-          if (!(this.tPeriod > 0)) throw new StyleError(`fix ${name}: Tdamp must be > 0`);
+          this.tStop = numeric(args[k + 2]);
+          this.tPeriod = numeric(args[k + 3]);
+          if (this.tStart <= 0.0 || this.tStop <= 0.0) throw new StyleError(`Target temperature for fix ${name} cannot be <= 0.0`);
+          if (this.tPeriod <= 0.0) throw new StyleError(`Temperature damping for fix ${name} cannot be <= 0.0`);
           k += 4;
           break;
+        }
         case 'iso': case 'aniso': case 'tri': {
-          const ps = n(1, 'Pstart'), pe = n(2, 'Pstop'), pd = n(3, 'Pdamp');
+          missing(k, 4, key);
+          const [ps, pe, pd] = P(k);
           this.couple = key === 'iso' ? 'xyz' : 'none';
-          const dims = sys.dimension === 2 ? [0, 1] : [0, 1, 2];
-          for (const d of dims) this.setP(d as Dim, ps, pe, pd);
+          if (key === 'tri') scalexy = scalexz = scaleyz = false;
+          for (const d of dimension === 2 ? [0, 1] : [0, 1, 2]) this.setP(d as Dim, ps, pe, pd);
+          if (dimension === 2) this.clearP(2);
           if (key === 'tri') {
-            for (const d of (sys.dimension === 2 ? [5] : [3, 4, 5])) this.setP(d as Dim, 0, 0, pd);
+            for (const d of [3, 4, 5]) this.setP(d as Dim, 0, 0, pd);
+            if (dimension === 2) { this.clearP(3); this.clearP(4); }
           }
           k += 4;
           break;
         }
         case 'x': case 'y': case 'z': case 'xy': case 'yz': case 'xz': {
+          missing(k, 4, key);
           const d = KEYS.indexOf(key) as Dim;
-          if (sys.dimension === 2 && (key === 'z' || key === 'yz' || key === 'xz')) throw new StyleError(`fix ${name} ${key} is invalid for a 2d simulation`);
-          this.setP(d, n(1, 'Pstart'), n(2, 'Pstop'), n(3, 'Pdamp'));
-          // As native LAMMPS does (src/fix_nh.cpp at b332f28): each of these keywords sets deviatoric_flag
+          const [ps, pe, pd] = P(k);
+          this.setP(d, ps, pe, pd);
+          // As native LAMMPS does (src/fix_nh.cpp at b332f28): each of these keywords sets deviatoric_flag, and a tilt
+          // keyword turns off the scaling of its own tilt
           this.deviatoric = true;
+          if (key === 'yz') scaleyz = false;
+          if (key === 'xz') scalexz = false;
+          if (key === 'xy') scalexy = false;
           k += 4;
+          if (dimension === 2 && (key === 'z' || key === 'yz' || key === 'xz')) throw new StyleError(`Invalid fix ${name} command for a 2d simulation`);
           break;
         }
-        case 'couple':
-          if (!['none', 'xyz', 'xy', 'yz', 'xz'].includes(args[k + 1])) throw new StyleError(`fix ${name} couple must be none, xyz, xy, yz or xz`);
-          this.couple = args[k + 1] as FixNH['couple'];
+        case 'couple': {
+          missing(k, 2, key);
+          const c = args[k + 1];
+          if (c !== 'xyz' && c !== 'xy' && c !== 'yz' && c !== 'xz' && c !== 'none') throw new StyleError(`Illegal fix ${name} couple option: ${c}`);
+          this.couple = c;
           k += 2;
           break;
-        case 'tchain': this.tchain = Math.trunc(n(1, 'tchain')); if (this.tchain < 1) throw new StyleError(`Invalid fix ${name} tchain argument: ${this.tchain}`); k += 2; break;
-        case 'pchain': this.pchain = Math.trunc(n(1, 'pchain')); if (this.pchain < 0) throw new StyleError(`Invalid fix ${name} pchain argument: ${this.pchain}`); k += 2; break;
-        case 'tloop': this.tloop = Math.trunc(n(1, 'tloop')); k += 2; break;
-        case 'ploop': this.ploop = Math.trunc(n(1, 'ploop')); k += 2; break;
-        case 'mtk':
-          if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError('mtk must be yes or no');
-          this.mtk = args[k + 1] === 'yes';
+        }
+        case 'drag':
+          missing(k, 2, key);
+          this.drag = numeric(args[k + 1]);
+          if (this.drag < 0.0) throw new StyleError(`Invalid fix ${name} drag argument: ${this.drag}`);
+          k += 2;
+          break;
+        case 'ptemp':
+          missing(k, 2, key);
+          this.ptemp = numeric(args[k + 1]);
+          pTempFlag = true;
+          if (this.ptemp <= 0.0) throw new StyleError(`Invalid fix ${name} ptemp argument: ${this.ptemp}`);
+          k += 2;
+          break;
+        case 'dilate':
+          missing(k, 2, key);
+          if (args[k + 1] === 'all') this.dilateBit = sys.groupBit('all');
+          else {
+            if (sys.groups.find(args[k + 1]) < 0) throw new StyleError(`Fix ${name} dilate group ID ${args[k + 1]} does not exist`);
+            this.dilateBit = sys.groupBit(args[k + 1]);
+          }
+          k += 2;
+          break;
+        case 'tchain':
+          missing(k, 2, key);
+          this.tchain = inumeric(args[k + 1]);
+          if (this.tchain < 1) throw new StyleError(`Invalid fix ${name} tchain argument: ${this.tchain}`);
+          k += 2;
+          break;
+        case 'pchain':
+          missing(k, 2, key);
+          this.pchain = inumeric(args[k + 1]);
+          if (this.pchain < 0) throw new StyleError(`Invalid fix ${name} pchain argument: ${this.pchain}`);
+          k += 2;
+          break;
+        case 'mtk': missing(k, 2, key); this.mtk = logical(args[k + 1]); k += 2; break;
+        case 'tloop':
+          missing(k, 2, key);
+          this.tloop = inumeric(args[k + 1]);
+          if (this.tloop < 0) throw new StyleError(`Invalid fix ${name} tloop argument: ${this.tloop}`);
+          k += 2;
+          break;
+        case 'ploop':
+          missing(k, 2, key);
+          this.ploop = inumeric(args[k + 1]);
+          if (this.ploop < 0) throw new StyleError(`Invalid fix ${name} ploop argument: ${this.ploop}`);
           k += 2;
           break;
         case 'nreset':
-          this.nresetH0 = Math.trunc(n(1, 'nreset'));
+          missing(k, 2, key);
+          this.nresetH0 = inumeric(args[k + 1]);
           if (this.nresetH0 < 0) throw new StyleError(`Invalid fix ${name} nreset argument: ${this.nresetH0}`);
           k += 2;
           break;
-        case 'drag': this.drag = n(1, 'drag'); if (this.drag < 0) throw new StyleError(`Invalid fix ${name} drag argument: ${this.drag}`); k += 2; break;
-        case 'ptemp': this.ptemp = n(1, 'ptemp'); k += 2; break;
-        case 'dilate': this.dilateBit = sys.groupBit(args[k + 1] ?? ''); k += 2; break;
-        case 'scalexy': case 'scaleyz': case 'scalexz': {
-          if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError(`${key} must be yes or no`);
-          const t = ['scaleyz', 'scalexz', 'scalexy'].indexOf(key);
-          this.scaleTilt[t] = args[k + 1] === 'yes';
+        case 'scalexy': missing(k, 2, key); scalexy = logical(args[k + 1]); k += 2; break;
+        case 'scalexz': missing(k, 2, key); scalexz = logical(args[k + 1]); k += 2; break;
+        case 'scaleyz': missing(k, 2, key); scaleyz = logical(args[k + 1]); k += 2; break;
+        case 'flip': missing(k, 2, key); flipflag = logical(args[k + 1]); k += 2; break;
+        case 'update':
+          // the dipole update is parsed by the /sphere variants (nh_sphere.ts strips the keyword before it reaches here)
+          missing(k, 2, key);
+          if (args[k + 1] === 'dipole' || args[k + 1] === 'dipole/dlm') dipole = true;
+          else throw new StyleError(`Invalid fix ${name} update argument: ${args[k + 1]}`);
+          k += 2;
+          break;
+        case 'isochoric': {
+          missing(k, 2, key);
+          const w = args[k + 1];
+          const sel: Record<string, number[]> = { x: [0], y: [1], z: [2], xy: [0, 1], yz: [1, 2], xz: [0, 2] };
+          if (!sel[w]) throw new StyleError(`Illegal fix ${name} isochoric option: ${w}`);
+          for (const d of sel[w]) this.pIsoch[d] = 1;
+          this.isochoric = true;
           k += 2;
           break;
         }
-        case 'flip':
-          if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError('flip must be yes or no');
-          flipflag = args[k + 1] === 'yes';
-          k += 2;
+        case 'fixedpoint':
+          missing(k, 4, key);
+          this.fixedpoint = [numeric(args[k + 1]), numeric(args[k + 2]), numeric(args[k + 3])];
+          k += 4;
           break;
-        case 'fixedpoint': this.fixedpoint = [n(1, 'x'), n(2, 'y'), n(3, 'z')]; k += 4; break;
-        case 'update':
-          // As native LAMMPS does (src/fix_nh.cpp at b332f28): the dipole update is only for the /sphere variants
-          // (nh_sphere.ts strips the keyword before it reaches here).
-          if (args[k + 1] === 'dipole' || args[k + 1] === 'dipole/dlm') throw new StyleError("Must use a '/sphere' Nose-Hoover fix style for updating dipoles");
-          throw new StyleError(`Invalid fix ${name} update argument: ${args[k + 1] ?? ''}`.trim());
-        case 'disc': throw new StyleError(`fix ${name} disc needs finite-size particles`);
-        default: throw new StyleError(`unknown fix ${name} keyword '${key}'`);
+        // "disc keyword is also parsed in fix/nh/sphere", "keywords erate, strain, and ext are also parsed in
+        // fix/nh/uef", "keywords psllod, peculiar, kick and integrator are parsed in fix/nvt/sllod": skipped here
+        case 'disc': k += 1; break;
+        case 'erate': case 'strain': k += 3; break;
+        case 'ext': case 'psllod': case 'peculiar': case 'kick': case 'integrator': k += 2; break;
+        default: throw new StyleError(`Unknown fix ${name} keyword: ${key}`);
       }
     }
+    const pf = this.pFlag, per = box.periodic;
+    const bad2d = `Invalid fix ${name} command for a 2d simulation`;
+    if (dimension === 2 && (pf[2] || pf[3] || pf[4])) throw new StyleError(bad2d);
+    if (dimension === 2 && (this.couple === 'yz' || this.couple === 'xz')) throw new StyleError(bad2d);
+    if (dimension === 2 && (scalexz || scaleyz)) throw new StyleError(bad2d);
+    const badP = `Invalid fix ${name} command pressure settings`;
+    if (this.couple === 'xyz' && (!pf[0] || !pf[1])) throw new StyleError(badP);
+    if (this.couple === 'xyz' && dimension === 3 && !pf[2]) throw new StyleError(badP);
+    if (this.couple === 'xy' && (!pf[0] || !pf[1])) throw new StyleError(badP);
+    if (this.couple === 'yz' && (!pf[1] || !pf[2])) throw new StyleError(badP);
+    if (this.couple === 'xz' && (!pf[0] || !pf[2])) throw new StyleError(badP);
+    // "require periodicity in tensile dimension"
+    for (const d of [0, 1, 2]) if (pf[d] && !per[d]) throw new StyleError(`Cannot use fix ${name} on a non-periodic ${KEYS[d]} dimension`);
+    // "require periodicity in 2nd dim of off-diagonal tilt component"
+    if ((pf[3] && !per[2]) || (pf[4] && !per[2]) || (pf[5] && !per[1])) throw new StyleError(`Cannot use fix ${name} on a 2nd non-periodic dimension`);
+    if (scaleyz && !per[2]) throw new StyleError(`Cannot use fix ${name} with yz scaling when z is non-periodic dimension`);
+    if (scalexz && !per[2]) throw new StyleError(`Cannot use fix ${name} with xz scaling when z is non-periodic dimension`);
+    if (scalexy && !per[1]) throw new StyleError(`Cannot use fix ${name} with xy scaling when y is non-periodic dimension`);
+    if (pf[3] && scaleyz) throw new StyleError(`Cannot use fix ${name} with both yz dynamics and yz scaling`);
+    if (pf[4] && scalexz) throw new StyleError(`Cannot use fix ${name} with both xz dynamics and xz scaling`);
+    if (pf[5] && scalexy) throw new StyleError(`Cannot use fix ${name} with both xy dynamics and xy scaling`);
+    if (!box.triclinic && (pf[3] || pf[4] || pf[5])) throw new StyleError(`Can not specify Pxy/Pxz/Pyz in fix ${name} with non-triclinic box`);
+    // "Pstart, Pstop, Pdamp parameters for any coupled dimensions must be identical"
+    const coupled = this.coupledDims();
+    for (const d of coupled.slice(1)) {
+      if (this.pStart[d] !== this.pStart[coupled[0]] || this.pStop[d] !== this.pStop[coupled[0]] || this.pPeriod[d] !== this.pPeriod[coupled[0]]) {
+        throw new StyleError(`Invalid fix ${name} pressure settings`);
+      }
+    }
+    if (dipole) throw new StyleError("Must use a '/sphere' Nose-Hoover fix style for updating dipoles");
+    if (this.isochoric) {
+      for (const d of [0, 1, 2]) if (pf[d] && this.pIsoch[d]) throw new StyleError('Cannot use barostated dimension as isochoric dimension.');
+      const nbaro = (pf[0] ? 1 : 0) + (pf[1] ? 1 : 0) + (pf[2] ? 1 : 0);
+      if (dimension === 3 && nbaro > 2) throw new StyleError('Cannot perform isochoric NPT with all dimensions barostated.');
+      else if (dimension === 2 && (pf[0] ? 1 : 0) + (pf[1] ? 1 : 0) > 1) throw new StyleError('Cannot perform 2d isochoric NPT with all dimensions barostated.');
+      else if (nbaro === 0) throw new StyleError('Isochoric simulation requires at least 1 diagonal dimension to be barostated.');
+      const bad = 'Isochoric NPT requires periodic boundary conditions along isochoric dimensions.';
+      if (dimension === 3) {
+        if ((per[0] ? this.pIsoch[0] : 0) + (per[1] ? this.pIsoch[1] : 0) + (per[2] ? this.pIsoch[2] : 0) === 0) throw new StyleError(bad);
+      } else {
+        // native tests the x flag twice here ("domain->xperiodic * p_isoch[0] + domain->yperiodic * p_isoch[0]")
+        if ((per[0] ? this.pIsoch[0] : 0) + (per[1] ? this.pIsoch[0] : 0) === 0) throw new StyleError(bad);
+        if (this.pIsoch[2]) throw new StyleError('2d Isochoric NPT cannot use z dimension.');
+      }
+    }
+    if ((this.tstat && this.tPeriod <= 0.0) || [0, 1, 2, 3, 4, 5].some((d) => pf[d] && this.pPeriod[d] <= 0.0)) {
+      throw new StyleError(`Fix ${name} damping parameters must be > 0.0`);
+    }
+    // "check that ptemp is not defined with a thermostat"
+    if (this.tstat && pTempFlag) throw new StyleError(`Thermostat in fix ${name} is incompatible with ptemp command`);
+    this.scaleTilt = [scaleyz, scalexz, scalexy];
+    // "In the isochoric case, dimensions can change size while not being barostated to maintain volume/area"
+    if (this.pstat && this.isochoric) this.volStart = dimension === 3 ? geom.lx * geom.ly * geom.lz : geom.lx * geom.ly;
     // As native LAMMPS does (src/fix_nvt.cpp, fix_npt.cpp, fix_nph.cpp and their variants at b332f28)
     if ((style === 'nvt' || style === 'npt') && !this.tstat) throw new StyleError(`Temperature control must be used with fix ${name}`);
     if (style === 'nph' && this.tstat) throw new StyleError(`Temperature control can not be used with fix ${name}`);
@@ -305,24 +474,6 @@ export class FixNH extends Fix {
     // fix_npt_cauchy.cpp (EXTRA-FIX) constructor: "Temperature control must be used with fix npt/cauchy" and "Pressure control must be used with fix npt/cauchy"
     if (style === 'npt/cauchy' && !this.tstat) throw new StyleError('Temperature control must be used with fix npt/cauchy');
     if (style === 'npt/cauchy' && !this.pstat) throw new StyleError('Pressure control must be used with fix npt/cauchy');
-    if (this.pstat) {
-      const s = sys.state;
-      for (const d of [0, 1, 2]) if (this.pFlag[d] && !s.box.periodic[d]) throw new StyleError(`fix ${name}: cannot barostat a non-periodic dimension (${KEYS[d]})`);
-      if ((this.pFlag[3] || this.pFlag[4] || this.pFlag[5]) && !s.box.triclinic) throw new StyleError(`fix ${name}: tilt keywords need a triclinic box`);
-      // "Pstart, Pstop, Pdamp parameters for any coupled dimensions must be identical"
-      const coupled = this.coupledDims();
-      for (const d of coupled.slice(1)) {
-        if (this.pStart[d] !== this.pStart[coupled[0]] || this.pStop[d] !== this.pStop[coupled[0]] || this.pPeriod[d] !== this.pPeriod[coupled[0]]) {
-          throw new StyleError(`fix ${name}: coupled dimensions must have identical Pstart, Pstop and Pdamp`);
-        }
-      }
-      // tilt scaling default: "yes if periodic in second dimension and not coupled to barostat"
-      if (this.pFlag[3]) this.scaleTilt[0] = false;
-      if (this.pFlag[4]) this.scaleTilt[1] = false;
-      if (this.pFlag[5]) this.scaleTilt[2] = false;
-    }
-    // Measured with native LAMMPS (black box): "ERROR: Thermostat in fix npt is incompatible with ptemp command".
-    if (this.tstat && this.pstat && this.ptemp !== null) throw new StyleError(`fix ${id}: thermostat in fix ${this.style} is incompatible with ptemp command`);
     this.eta = new Float64Array(this.tchain);
     this.etaDot = new Float64Array(this.tchain + 1);
     this.etaDotdot = new Float64Array(this.tchain);
@@ -382,10 +533,16 @@ export class FixNH extends Fix {
   }
 
   private setP(d: Dim, ps: number, pe: number, pd: number): void {
-    if (!(pd > 0)) throw new StyleError(`fix ${this.style}: Pdamp must be > 0`);
     this.pstat = true;
     this.pFlag[d] = true;
     this.pStart[d] = ps; this.pStop[d] = pe; this.pPeriod[d] = pd;
+  }
+
+  /** A dimension iso, aniso or tri leaves unset in 2d ("p_start[2] = p_stop[2] = p_period[2] = 0.0; p_flag[2] = 0;"). */
+  private clearP(d: Dim): void {
+    this.pFlag[d] = false;
+    this.pStart[d] = 0; this.pStop[d] = 0; this.pPeriod[d] = 0;
+    this.pstat = this.pFlag.some((f) => f);
   }
 
   private coupledDims(): number[] {
@@ -438,20 +595,26 @@ export class FixNH extends Fix {
     return null;
   }
 
+  /** As native LAMMPS does (src/fix_nh.cpp FixNH::modify_param at b332f28). */
   modify(key: string, values: string[]): number {
     if (key === 'temp') {
-      const c = this.sys.compute(values[0] ?? '');
-      if (!c.tempFlag) throw new StyleError(`fix_modify temp: compute ${values[0]} does not compute a temperature`);
+      if (values.length < 1) throw new StyleError('Illegal fix_modify command');
+      const c = this.sys.computes.find((x) => x.id === values[0]);
+      if (!c) throw new StyleError(`Could not find fix_modify temperature ID ${values[0]}`);
+      if (!c.tempFlag) throw new StyleError(`Fix_modify temperature ID ${values[0]} does not compute temperature`);
+      if (c.group !== 'all') this.sys.warn('Temperature for fix modify is not for group all');
       this.tempId = values[0];
       this.tempCompute = c;
-      // the fix's pressure compute uses the new temperature too
+      // "reset id_temp of pressure to new temperature ID"
       if (this.pressCompute) (this.pressCompute as unknown as { tempId: string }).tempId = values[0];
       return 1;
     }
     if (key === 'press') {
-      if (!this.pstat) throw new StyleError(`fix_modify press: fix ${this.id} has no barostat`);
-      const c = this.sys.compute(values[0] ?? '');
-      if (!c.pressFlag) throw new StyleError(`fix_modify press: compute ${values[0]} does not compute a pressure`);
+      if (values.length < 1) throw new StyleError('Illegal fix_modify press command: missing argument(s)');
+      if (!this.pstat) throw new StyleError('Fix_modify press command without a barostat');
+      const c = this.sys.computes.find((x) => x.id === values[0]);
+      if (!c) throw new StyleError(`Could not find fix_modify pressure ID ${values[0]}`);
+      if (!c.pressFlag) throw new StyleError(`Fix_modify pressure ID ${values[0]} does not compute pressure`);
       this.pressId = values[0];
       this.pressCompute = c;
       return 1;
@@ -1013,6 +1176,12 @@ export class FixNH extends Fix {
       for (const d of coupled) cur[d] = avg;
     }
     for (let d = 0; d < 6; d++) this.pCurrent[d] = cur[d];
+    // As native LAMMPS does (src/fix_nh.cpp couple at b332f28): a pressure that is not finite stops the run
+    const unstable = 'Non-numeric pressure - simulation unstable\nFor more information see https://docs.lammps.org/err0006';
+    if (!Number.isFinite(cur[0]) || !Number.isFinite(cur[1]) || !Number.isFinite(cur[2])) throw new StyleError(unstable);
+    if ((this.pFlag[3] || this.pFlag[4] || this.pFlag[5]) && (!Number.isFinite(cur[3]) || !Number.isFinite(cur[4]) || !Number.isFinite(cur[5]))) {
+      throw new StyleError(unstable);
+    }
     if (stage === 'final' && this.couple !== 'none' && !stale) {
       pc.keOverride = null;
       this.sys.refreshComputes();
@@ -1045,7 +1214,9 @@ export class FixNH extends Fix {
         }
       }
     }
-    const drag = this.drag > 0 ? 1 - this.dtv / this.pPeriod.reduce((a, b) => Math.max(a, b), 0) * this.drag : 1;
+    // As native LAMMPS does (src/fix_nh.cpp init at b332f28): "pdrag_factor = 1.0 - (update->dt * p_freq_max * drag /
+    // nc_pchain)", p_freq_max the largest 1/Pdamp; 0/0 (no drag, ploop 0) makes it NaN, which reaches the pressure
+    const drag = 1.0 - (this.dtv * this.pfreqMax() * this.drag / this.ploop);
     // As native LAMMPS does (src/fix_nh.cpp nh_omega_dot at b332f28): the diagonal force uses the hydrostatic target
     // p_hydro, the tilt force the current tilt stress alone, and with deviatoric_flag the deviatoric force
     // fdev = h sigma h^t of the current box enters both.
@@ -1121,7 +1292,10 @@ export class FixNH extends Fix {
     if (!(dof > 0)) return 0;
     let tr = 0;
     for (let d = 0; d < (s.dimension === 2 ? 2 : 3); d++) if (this.pFlag[d]) tr += this.omegaDot[d];
-    return tr / (this.nbaroDiag() * s.n);
+    // As native LAMMPS does (src/fix_nh.cpp nh_omega_dot at b332f28): "if (pdim > 0) mtk_term2 /= pdim * atom->natoms;"
+    // (a barostat on tilts alone has no diagonal dimension and a zero term)
+    const pdim = this.nbaroDiag();
+    return pdim > 0 ? tr / (pdim * s.n) : tr;
   }
 
   private velocityPress(): void {
@@ -1173,7 +1347,7 @@ export class FixNH extends Fix {
       g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], tmp);
       lam[3 * i] = tmp[0]; lam[3 * i + 1] = tmp[1]; lam[3 * i + 2] = tmp[2];
     }
-    const fp = this.fixedpoint ?? [0.5 * (b.lo[0] + b.hi[0]), 0.5 * (b.lo[1] + b.hi[1]), 0.5 * (b.lo[2] + b.hi[2])];
+    const fp = this.fixedpoint;
     // As native LAMMPS does (src/fix_nh.cpp at b332f28, FixNH::remap): the tilts are swept in place in the
     // upper-triangular h (h[1], h[2] the lengths before the remap, as native refreshes them only in
     // set_global_box). The first half is the sweep xz, yz, xy, xz with factors dto/8, dto/4, dto/4, dto/8 and
@@ -1212,6 +1386,25 @@ export class FixNH extends Fix {
     if (this.pFlag[2]) {
       if (this.scaleTilt[1]) h[4] *= expo[2];
       if (this.scaleTilt[0]) h[3] *= expo[2];
+    }
+    if (this.isochoric) {
+      // As native LAMMPS does (src/fix_nh.cpp remap at b332f28): isofac = vol_start over the barostatted lengths (after
+      // their scaling) and over the current lengths of every other dimension, its square root when two dimensions
+      // compensate; the compensating dimensions scale by it about the fixed point, with the tilts of their scale flags
+      let isofac = this.volStart;
+      for (let d = 0; d < 3; d++) if (this.pFlag[d]) isofac /= b.hi[d] - b.lo[d];
+      for (let d = 0; d < 3; d++) if (this.pIsoch[d] || !this.pFlag[d]) isofac /= b.hi[d] - b.lo[d];
+      if (this.pIsoch[0] + this.pIsoch[1] + this.pIsoch[2] === 2) isofac = Math.sqrt(isofac);
+      for (let d = 0; d < 3; d++) {
+        if (!this.pIsoch[d]) continue;
+        b.lo[d] = (b.lo[d] - fp[d]) * isofac + fp[d];
+        b.hi[d] = (b.hi[d] - fp[d]) * isofac + fp[d];
+      }
+      if (this.pIsoch[1] && this.scaleTilt[2]) h[5] *= isofac;
+      if (this.pIsoch[2]) {
+        if (this.scaleTilt[1]) h[4] *= isofac;
+        if (this.scaleTilt[0]) h[3] *= isofac;
+      }
     }
     sweep();
     b.tilt[0] = h[5];
@@ -1253,6 +1446,7 @@ export class FixNH extends Fix {
     if (this.deviatoric && this.h0Inv) r.h0Inv = this.h0Inv.slice();
     // fix_nh.cpp pack_restart_data writes t0, which only a barostat without a thermostat sets (0 for npt)
     if (this.pstat) r.t0 = this.baroT0;
+    if (this.pstat && this.isochoric) { r.pIsoch = this.pIsoch.slice(); r.volStart = this.volStart; }
     const extra = this.restartExtra();
     if (extra) r.extra = extra;
     return r;
@@ -1280,6 +1474,8 @@ export class FixNH extends Fix {
     this.ecoupleCum = r.ecoupleCum;
     this.vol0 = r.vol0;
     if (r.h0Inv) this.h0Inv = r.h0Inv.slice();
+    // fix_nh.cpp restart: a file with the isochoric flag gives p_isoch and vol_start (they act only with the keyword)
+    if (r.pIsoch && r.volStart !== undefined) { this.pIsoch = r.pIsoch.slice(); this.volStart = r.volStart; }
     this.restoredExtra = r.extra;
   }
 

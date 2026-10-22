@@ -862,8 +862,8 @@ const fixRecordOf = (style: string, dv: DataView, h: Header): Partial<FixRecord>
  * A fix nvt, npt or nph block (fix_nh.cpp FixNH::pack_restart_data): tstat_flag, then mtchain, eta[mtchain], eta_dot[mtchain]
  * when set; pstat_flag, then omega[6], omega_dot[6], vol0, t0, mpchain, etap[mpchain], etap_dot[mpchain] (when mpchain
  * is set), deviatoric_flag (then h0_inv[6]) and isochoric (then p_isoch[3] and vol_start). The engine holds the chains
- * and barostat variables (NHRestart), with vol0 and the reference cell h0_inv when the file has it. An isochoric
- * barostat is a marker, since the engine has no isochoric barostat.
+ * and barostat variables (NHRestart), with vol0, the reference cell h0_inv and the isochoric p_isoch and vol_start when the
+ * file has them.
  * The style must match the flags (nvt a thermostat only, nph a barostat only, npt both).
  */
 const nhRecord = (style: string, dv: DataView, h: Header): Partial<FixRecord> | null => {
@@ -882,6 +882,7 @@ const nhRecord = (style: string, dv: DataView, h: Header): Partial<FixRecord> | 
   const pflag = next();
   let omega = [0, 0, 0, 0, 0, 0], omegaDot = [0, 0, 0, 0, 0, 0], vol0 = 0, t0 = 0;
   let etap: number[] = [], etapDot: number[] = [], h0inv: number[] | null = null;
+  let pIsoch: number[] | null = null, volStart = 0;
   if (pflag === 1) {
     if (k + 14 > d.length) return null;
     omega = d.slice(k, k + 6); k += 6;
@@ -899,7 +900,12 @@ const nhRecord = (style: string, dv: DataView, h: Header): Partial<FixRecord> | 
       if (k + 6 > d.length) return null;
       h0inv = d.slice(k, k + 6); k += 6;
     } else if (dev !== 0) return null;
-    if (next() !== 0) return null; // isochoric: not held by the engine
+    const iso = next();
+    if (iso === 1) {
+      if (k + 4 > d.length) return null;
+      pIsoch = d.slice(k, k + 3).map((v) => Math.trunc(v)); k += 3;
+      volStart = next();
+    } else if (iso !== 0) return null;
   } else if (pflag !== 0) return null;
   if (k !== d.length) return null;
   if ((tflag === 1) !== (style !== 'nph') || (pflag === 1) !== (style !== 'nvt')) return null;
@@ -908,6 +914,7 @@ const nhRecord = (style: string, dv: DataView, h: Header): Partial<FixRecord> | 
     omegaDot, omegaPos: omega, ecoupleCum: 0, vol0,
   };
   if (h0inv) nh.h0Inv = h0inv;
+  if (pIsoch) { nh.pIsoch = pIsoch; nh.volStart = volStart; }
   if (pflag === 1) nh.t0 = t0;
   return { nh };
 };

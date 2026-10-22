@@ -363,7 +363,7 @@ create_atoms 1 single 5 5 2
 mass 1 1.0
 fix 1 all wall/lj93 zlo 1.0 1.0 1.0 2.5 units box
 run 0`);
-    expect(per.error?.message).toMatch(/periodic dimension requires pbc yes/);
+    expect(per.error?.message).toMatch(/Cannot use zlo wall in periodic z dimension/);
     const ok = await runScript(`units lj
 atom_style atomic
 boundary p p p
@@ -384,7 +384,7 @@ create_atoms 1 single 5 5 0
 mass 1 1.0
 fix 1 all wall/lj93 zlo 1.0 1.0 1.0 2.5 units box
 run 0`);
-    expect(two.error?.message).toMatch(/z wall .*2d simulation/);
+    expect(two.error?.message).toMatch(/Cannot use fix wall\/lj93 zlo\/zhi for a 2d simulation/);
   });
 });
 

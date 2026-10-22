@@ -1,5 +1,5 @@
 import type { Ctx, Handler } from './args';
-import { int, num } from './args';
+import { int, num, missingArgs, numeric, inumeric, logical } from './args';
 import { StyleError, type KSpace } from '../force/types';
 import { removedStyleError } from '../deprecated';
 import { checkFixStateNotStored } from '../fix/restartRecord';
@@ -73,14 +73,26 @@ const unfix: Handler = ({ sys }, a) => {
 };
 
 /** fix_modify fix-ID keyword value ... — fix_modify.html. */
+/**
+ * fix_modify fix-ID keyword value ... — fix_modify.html. As native LAMMPS does (src/modify.cpp Modify::modify_fix and
+ * src/fix.cpp Fix::modify_params at b332f28): the fix reads its own keywords and then the common ones (Fix.modify), and
+ * a keyword it does not take stops with Fix ID style does not support fix_modify keyword command.
+ */
 const fixModify: Handler = ({ sys }, a) => {
-  const f = sys.fix(a[0] ?? '');
+  if (a.length < 2) throw missingArgs('fix_modify');
+  const f = sys.fixes.find((x) => x.id === a[0]);
+  if (!f) throw new StyleError(`Could not find fix_modify ID ${a[0]}`);
   for (let k = 1; k < a.length;) {
-    const used = f.modify(a[k], a.slice(k + 1));
-    if (used <= 0) throw new StyleError(`fix_modify keyword '${a[k]}' is not supported by fix ${f.id} (${f.style})`);
+    const key = a[k];
+    if (FIX_MODIFY_COMMON.has(key) && k + 2 > a.length) throw missingArgs(`fix_modify ${key}`);
+    const used = f.modify(key, a.slice(k + 1));
+    if (used <= 0) throw new StyleError(`Fix ${f.id} ${f.style} does not support fix_modify ${key} command`);
     k += 1 + used;
   }
 };
+
+/** The keywords of native Fix::modify_params, each with one value. */
+const FIX_MODIFY_COMMON = new Set(['dynamic/dof', 'energy', 'virial', 'respa']);
 
 /** compute ID group style args — compute.html. */
 const compute: Handler = ({ sys }, a) => {
@@ -109,10 +121,13 @@ const uncompute: Handler = ({ sys }, a) => {
 /** compute_modify compute-ID keyword value ... — compute_modify.html. */
 const computeModify: Handler = ({ sys }, a) => {
   ensureThermoComputes(sys);
-  const c = sys.compute(a[0] ?? '');
+  // As native LAMMPS does (src/modify.cpp Modify::modify_compute and src/compute.cpp Compute::modify_params at b332f28)
+  if (a.length < 2) throw missingArgs('compute_modify');
+  const c = sys.computes.find((x) => x.id === a[0]);
+  if (!c) throw new StyleError(`Could not find compute_modify ID ${a[0]}`);
   for (let k = 1; k < a.length;) {
     const used = c.modify(a[k], a.slice(k + 1));
-    if (used <= 0) throw new StyleError(`compute_modify keyword '${a[k]}' is not supported by compute ${c.id} (${c.style})`);
+    if (used <= 0) throw new StyleError(`Compute ${c.id} ${c.style} does not support compute_modify ${a[k]} command`);
     k += 1 + used;
   }
   sys.refreshComputes();
@@ -692,55 +707,61 @@ const minStyle: Handler = ({ sys }, a) => {
   createMinimize(sys, a[0]);
 };
 
-/** min_modify keyword value ... — min_modify.html. */
+/**
+ * min_modify keyword value ... — min_modify.html. As native LAMMPS does (src/min.cpp Min::modify_params at b332f28): a
+ * missing value or an unknown line, norm or integrator name stops with Illegal min_modify command; a keyword min.cpp
+ * does not read goes to the minimizer's own modify_param (alpha_damp and discrete_factor of min_style spin,
+ * discrete_factor of spin/cg and spin/lbfgs; src/SPIN/min_spin*.cpp), and one it does not take stops with native's
+ * Illegal fix_modify command.
+ */
 const minModify: Handler = ({ sys }, a) => {
+  if (a.length === 0) throw new StyleError('Illegal min_modify command');
+  const own: Record<string, string[]> = { spin: ['alpha_damp', 'discrete_factor'], 'spin/cg': ['discrete_factor'], 'spin/lbfgs': ['discrete_factor'] };
   for (let k = 0; k < a.length;) {
     const key = a[k];
     const v = a[k + 1];
+    const minKey = MIN_MODIFY_KEYS.has(key);
+    if (!minKey && !(own[sys.minStyle] ?? []).includes(key)) throw new StyleError('Illegal fix_modify command');
+    if (v === undefined) throw new StyleError('Illegal min_modify command');
     switch (key) {
-      case 'dmax': sys.minSettings.dmax = num(v, 'dmax'); k += 2; break;
+      case 'dmax': sys.minSettings.dmax = numeric(v); k += 2; break;
       case 'line':
         // min_modify.html: spin_cubic and spin_none are line searches of the spin minimizers (min_style spin/cg, run/
-        // minimizers.ts); they are kept in the minimizer settings and refused by the other minimizers in minimize().
+        // minimizers.ts); native accepts them for every style, so they are kept in the minimizer settings and refused
+        // by the other minimizers in minimize()
         if (v === 'spin_cubic' || v === 'spin_none') {
-          if (!sys.state?.sp) throw new StyleError(`min_modify line ${v} needs spin atoms (atom_style spin)`);
           sys.minSettings.fire.line = v;
           k += 2;
           break;
         }
-        if (!['backtrack', 'quadratic', 'forcezero'].includes(v ?? '')) throw new StyleError('min_modify line must be backtrack, quadratic or forcezero');
+        if (!['backtrack', 'quadratic', 'forcezero'].includes(v)) throw new StyleError('Illegal min_modify command');
         sys.minSettings.line = v as 'backtrack' | 'quadratic' | 'forcezero';
         k += 2;
         break;
       case 'norm':
-        if (!['two', 'max', 'inf'].includes(v ?? '')) throw new StyleError('min_modify norm must be two, max or inf');
+        if (!['two', 'max', 'inf'].includes(v)) throw new StyleError('Illegal min_modify command');
         sys.minSettings.norm = v as 'two' | 'max' | 'inf';
         k += 2;
         break;
-      case 'integrator': case 'tmax': case 'tmin': case 'delaystep': case 'dtgrow': case 'dtshrink': case 'alpha0': case 'alphashrink':
-      case 'halfstepback': case 'initialdelay': case 'vdfmax': case 'abcfire': case 'discrete_factor': case 'alpha_damp': {
-        // As native LAMMPS does (src/min.cpp modify_params at b332f28): each value is read when given, an integer
-        // (delaystep, vdfmax), a number, a boolean (halfstepback, initialdelay, abcfire) or an integrator name
-        if (v === undefined) throw new StyleError('Illegal min_modify command');
-        if (key === 'delaystep' || key === 'vdfmax') {
-          if (!/^[+-]?\d+$/.test(v)) throw new StyleError(`Expected integer parameter instead of '${v}' in input script or data file`);
-        } else if (key === 'halfstepback' || key === 'initialdelay' || key === 'abcfire') {
-          if (!['yes', 'no', 'on', 'off', 'true', 'false', '1', '0'].includes(v.toLowerCase())) {
-            throw new StyleError(`Expected boolean parameter instead of '${v}' in input script or data file`);
-          }
-        } else if (key === 'integrator') {
+      default: {
+        // each value is read when given: an integer (delaystep, vdfmax), a boolean (halfstepback, initialdelay,
+        // abcfire), an integrator name or a number
+        if (key === 'delaystep' || key === 'vdfmax') inumeric(v);
+        else if (key === 'halfstepback' || key === 'initialdelay' || key === 'abcfire') logical(v);
+        else if (key === 'integrator') {
           if (!['eulerimplicit', 'verlet', 'leapfrog', 'eulerexplicit'].includes(v)) throw new StyleError('Illegal min_modify command');
-        } else if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v)) {
-          throw new StyleError(`Expected floating point parameter instead of '${v}' in input script or data file`);
-        }
+        } else numeric(v);
         sys.minSettings.fire[key] = v;
         k += 2;
         break;
       }
-      default: throw new StyleError(`unknown min_modify keyword '${key}'`);
     }
   }
 };
+
+/** The keywords native Min::modify_params reads itself (src/min.cpp at b332f28). */
+const MIN_MODIFY_KEYS = new Set(['dmax', 'delaystep', 'dtgrow', 'dtshrink', 'alpha0', 'alphashrink', 'tmax', 'tmin', 'halfstepback',
+  'initialdelay', 'vdfmax', 'integrator', 'abcfire', 'line', 'norm']);
 
 export const RUN_COMMANDS: Record<string, Handler> = {
   fix, unfix, fix_modify: fixModify, compute, uncompute, compute_modify: computeModify,

@@ -121,9 +121,9 @@ describe('fix nvt/sllod kick, integrator, peculiar', () => {
     const ok = await runScript(`${BOX}\nfix 1 all nvt/sllod temp 1.0 1.0 0.1 kick no\n${deform}\nrun 0\nfix_modify 1 kick yes\nrun 0\n`);
     expect(ok.error).toBeNull();
     const other = await runScript(`${BOX}\nfix 1 all nve\nfix_modify 1 kick yes\nrun 1\n`);
-    expect(other.error).toMatch(/fix_modify keyword 'kick' is not supported by fix 1/);
+    expect(other.error).toMatch(/Fix 1 nve does not support fix_modify kick command/);
     const badValue = await runScript(`${BOX}\n${SLLOD}\n${deform}\nfix_modify 1 kick maybe\n`);
-    expect(badValue.error).toMatch(/fix_modify kick must be yes or no/);
+    expect(badValue.error).toMatch(/Expected boolean parameter instead of 'maybe'/);
   });
 
   it('refuses integrator legacy and peculiar yes by name, accepts integrator reversible and peculiar no', async () => {

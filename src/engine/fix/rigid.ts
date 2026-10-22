@@ -346,8 +346,6 @@ export class FixRigid extends Fix {
   private langTStop = 0;
   private langDamp = 0;
   private langRng: RanMars | null = null;
-  /** fix_modify dynamic/dof (stored; see modify). */
-  dynamicDofSet = false;
   /**
    * Per-atom virial (6 per atom, indexed by atom index). As native LAMMPS does (src/RIGID/fix_rigid_small.cpp set_xv/set_v
    * at b332f28, v_tally(1, &i, 1.0, vr)): each atom takes its own vr, the same term that goes into the global virial.
@@ -1159,15 +1157,9 @@ export class FixRigid extends Fix {
       this.early = values[0] === 'early';
       return 1;
     }
-    // docs.lammps.org/fix_modify.html: "*dynamic/dof* value = *yes* or *no*", "yes/no = do or do not re-compute
-    // the number of degrees of freedom (DOF) contributing to the temperature". Measured with native LAMMPS
-    // (black box, w38gcr_co2 with and without compute_modify thermo_temp dynamic/dof): fix_modify dynamic/dof
-    // yes on fix rigid/small alone leaves the thermo temperature unchanged, so the flag is only stored.
-    if (key === 'dynamic/dof') {
-      if (values[0] !== 'yes' && values[0] !== 'no') throw new StyleError(`fix_modify dynamic/dof must be yes or no, got '${values[0] ?? ''}'`);
-      this.dynamicDofSet = values[0] === 'yes';
-      return 1;
-    }
+    // fix_modify dynamic/dof is stored by Fix.modify: measured with native LAMMPS (black box, w38gcr_co2 with and
+    // without compute_modify thermo_temp dynamic/dof), dynamic/dof yes on fix rigid/small alone leaves the thermo
+    // temperature unchanged
     return super.modify(key, values);
   }
 

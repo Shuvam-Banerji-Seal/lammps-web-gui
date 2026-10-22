@@ -81,6 +81,20 @@ const FACES = ['xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi'] as const;
 type Face = (typeof FACES)[number];
 const isFace = (w: string): w is Face => (FACES as readonly string[]).includes(w);
 
+/**
+ * The box checks of a wall fix when it is created, as native LAMMPS does (src/fix_wall.cpp FixWall::FixWall at b332f28):
+ * no z wall in 2d, and without pbc yes no wall in a periodic dimension (fix_wall.html: "Any dimension (xyz) that has a
+ * wall must be non-periodic", unless "pbc yes").
+ */
+export const checkWallBox = (sys: System, style: string, walls: { dim: number; lo: boolean }[], pbcOk: boolean): void => {
+  const s = sys.state;
+  if (s.dimension === 2 && walls.some((w) => w.dim === 2)) throw new StyleError(`Cannot use fix ${style} zlo/zhi for a 2d simulation`);
+  if (pbcOk) return;
+  for (const w of walls) {
+    if (s.box.periodic[w.dim]) throw new StyleError(`Cannot use ${FACES[2 * w.dim + (w.lo ? 0 : 1)]} wall in periodic ${'xyz'[w.dim]} dimension`);
+  }
+};
+
 /** One wall: axis, side, position, style parameters, cutoff. */
 interface Wall {
   dim: 0 | 1 | 2;
@@ -135,6 +149,7 @@ export abstract class FixWallBase extends Fix {
       }
     }
     if (!this.walls.length) throw new StyleError(`fix ${id} (${wallStyle}): no wall face (xlo, xhi, ylo, yhi, zlo or zhi) was specified`);
+    checkWallBox(sys, wallStyle, this.walls, this.pbcOk);
     this.wallForce = new Float64Array(this.walls.length);
     // "This fix computes a global scalar energy and a global vector of forces"
     this.scalarFlag = true;
@@ -181,18 +196,9 @@ export abstract class FixWallBase extends Fix {
     return { dim, lo, coord, params, cutoff };
   }
 
-  init(): void {
-    const s = this.sys.state;
-    if (s.dimension === 2) {
-      const z = this.walls.find((w) => w.dim === 2);
-      if (z) throw new StyleError(`fix ${this.id} (${this.wallStyle}): cannot use a z wall (zlo/zhi) in a 2d simulation`);
-    }
-    for (const w of this.walls) {
-      if (!this.pbcOk && s.box.periodic[w.dim]) {
-        throw new StyleError(`fix ${this.id} (${this.wallStyle}): wall in a periodic dimension requires pbc yes (the default is pbc no)`);
-      }
-    }
-  }
+
+  /** The box checks are made when the fix is created (checkWallBox); the wall styles extend this. */
+  init(): void {}
 
   /** "invoke the wall constraint before pairwise interactions" (fld yes). */
   preForce(): void { this.apply(); }

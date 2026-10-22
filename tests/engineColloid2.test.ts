@@ -81,7 +81,8 @@ describe('pair brownian setup checks (native pair_brownian.cpp)', () => {
 
 describe('fix wall/colloid and fix wall/srd (native fix_wall_colloid.cpp, fix_wall_srd.cpp)', () => {
   it('wall/colloid requires atom attribute radius', async () => {
-    expect(await errorOf(box('fix 1 all wall/colloid zlo 0.0 1.0 1.0 2.5\nrun 1', 'atomic'))).toMatch(/requires atom attribute radius/);
+    // a z wall needs a non-periodic z (fix_wall.cpp checks that first, when the fix is created)
+    expect(await errorOf(box('fix 1 all wall/colloid zlo 0.0 1.0 1.0 2.5\nrun 1', 'atomic').replace('boundary p p p', 'boundary p p f'))).toMatch(/requires atom attribute radius/);
   });
   it('wall/srd without fix srd is an error at init', async () => {
     expect(await errorOf(box('fix 1 all wall/srd xlo EDGE\nrun 1').replace('boundary p p p', 'boundary f f f'))).toMatch(/Cannot use fix wall\/srd without fix srd/);

@@ -1,5 +1,6 @@
 import { hasChargeStyle } from '../atoms';
 import { Fix } from './fix';
+import { checkWallBox } from './walls';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
@@ -92,6 +93,7 @@ export class FixWallLepton extends Fix {
       }
     }
     if (!this.walls.length) throw new StyleError(`fix ${id} (wall/lepton): no wall face (xlo, xhi, ylo, yhi, zlo or zhi) was specified`);
+    checkWallBox(sys, 'wall/lepton', this.walls, this.pbcOk);
     this.wallForce = new Float64Array(this.walls.length);
     this.scalarFlag = true;
     this.vectorFlag = true;
@@ -124,18 +126,6 @@ export class FixWallLepton extends Fix {
     const env = new Float64Array(prog.builtins.length + prog.vrefs.length);
     env[1] = cutoff;
     return { dim, lo, coord, prog, env, cutoff };
-  }
-
-  init(): void {
-    const s = this.sys.state;
-    if (s.dimension === 2 && this.walls.some((w) => w.dim === 2)) {
-      throw new StyleError(`fix ${this.id} (wall/lepton): cannot use a z wall (zlo/zhi) in a 2d simulation`);
-    }
-    for (const w of this.walls) {
-      if (!this.pbcOk && s.box.periodic[w.dim]) {
-        throw new StyleError(`fix ${this.id} (wall/lepton): wall in a periodic dimension requires pbc yes (the default is pbc no)`);
-      }
-    }
   }
 
   preForce(): void { this.apply(); }

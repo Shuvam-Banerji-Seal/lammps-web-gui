@@ -26,8 +26,8 @@ const SQ = 'units lj\ndimension 2\natom_style body rounded/polygon 1 6\nread_dat
 const CB = 'units lj\ndimension 3\natom_style body rounded/polyhedron 1 10\nread_data cubes.data\n';
 
 describe('body fixes and compute: refusals by name (engine-gpl/body)', () => {
-  it('compute temp/body refuses the bias keyword and an unknown keyword', async () => {
-    await expect(run(`${CB}pair_style body/rounded/polyhedron 20 5 0 1 0.5\npair_coeff * * 100 1\ncompute t all temp/body bias x\n`)).rejects.toThrow(/temp\/body bias/);
+  it('compute temp/body checks its bias compute at init and refuses an unknown keyword', async () => {
+    await expect(run(`${CB}pair_style body/rounded/polyhedron 20 5 0 1 0.5\npair_coeff * * 100 1\ncompute t all temp/body bias x\nrun 0\n`)).rejects.toThrow(/Could not find compute x for temperature bias/);
     await expect(run(`${CB}compute t all temp/body foo 1\n`)).rejects.toThrow(/temp\/body keyword foo/);
   });
 

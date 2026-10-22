@@ -68,6 +68,8 @@ export class ComputeTempPartial extends ComputeTemp {
   /** Included velocity components (x, y, z); a dimension beyond sys.dimension is never counted. */
   private readonly inc: boolean[];
   private readonly ninclude: number;
+  /** xflag + yflag + zflag as given (native nper). */
+  private readonly nper: number;
   /** Excluded-dim velocities of group atoms, saved while the bias is removed. */
   private saved = new Float64Array(0);
   private biasOn = new Uint8Array(0);
@@ -81,8 +83,14 @@ export class ComputeTempPartial extends ComputeTemp {
       return w === '1';
     });
     this.inc = [dim > 0 && flags[0], dim > 1 && flags[1], dim > 2 && flags[2]];
+    this.nper = flags.filter((f) => f).length;
     this.ninclude = (this.inc[0] ? 1 : 0) + (this.inc[1] ? 1 : 0) + (this.inc[2] ? 1 : 0);
     if (this.ninclude === 0) throw new StyleError('compute temp/partial: all three flags are 0, no velocity component is left to thermostat');
+  }
+
+  /** As native LAMMPS does (src/compute_temp_partial.cpp dof_remove at b332f28): the excluded dimensions per atom. */
+  override dofRemove(_i: number): number {
+    return this.sys.dimension - this.nper;
   }
 
   /** dof = ninclude * N - scaled extra/dof - fix-removed DOF ("dim parameter is adjusted"). */
@@ -347,6 +355,13 @@ export class ComputeTempRegion extends ComputeTemp {
     if (!(s.mask[i] & this.groupBit)) return false;
     const r = this.reg ?? this.regionRef();
     return r.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]);
+  }
+
+  /** As native LAMMPS does (src/compute_temp_region.cpp dof_remove at b332f28): 1 for an atom outside the region. */
+  override dofRemove(i: number): number {
+    const s = this.sys.state;
+    const r = this.regionRef();
+    return r.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]) ? 0 : 1;
   }
 
   /** No fix-removed DOF; N is re-derived on every call (atoms enter/leave the region). */

@@ -215,6 +215,11 @@ export abstract class Compute {
   restoreBias(_i: number): void {}
   /** Recomputes the bias for the current state before removeBiasAll. */
   computeBias(): void {}
+  /**
+   * Native dof_remove: the degrees of freedom the bias takes from atom i (i = -1: from every atom alike), which a
+   * temperature compute using this one as its bias subtracts. Default none.
+   */
+  dofRemove(_i: number): number { return 0; }
 
   /** Lines for 'info computes' style listings. */
   describe(): string {

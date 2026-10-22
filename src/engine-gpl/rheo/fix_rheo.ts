@@ -19,7 +19,7 @@ import { computeRheoInterface, rheoFpStore, storeRheoForces } from './compute_rh
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { StyleError, typeBounds } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { massOf, RHEO_DRHO, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle } from '../../engine/atoms';
 import { computeRheoCoordination, computeRheoCorrections } from './compute_rheo_kernel';
 import { computeRheoRhoSum, computeRheoSurface } from './compute_rheo_surface';
@@ -40,8 +40,10 @@ export class FixRHEO extends Fix {
     // fix_rheo.cpp: "fix rheo command requires group all"
     if (group !== 'all') throw new StyleError('fix rheo command requires group all');
     const s = sys.state;
-    if (!isRheoStyle(s.atomStyle)) throw new StyleError('fix rheo command requires atom_style rheo');
-    if (args.length < 3) throw new StyleError('Illegal fix rheo command: needs cutoff, kernel and zmin');
+    // fix_rheo.cpp constructor: the first atom attribute missing (pressure, then density, viscosity and status; the
+    // rheo atom styles have all of them), then fewer than two words; zmin is read with utils::inumeric even when absent
+    if (!isRheoStyle(s.atomStyle)) throw new StyleError('fix rheo command requires atom_style with pressure');
+    if (args.length < 2) throw new StyleError('Illegal fix rheo command: missing argument(s)');
     // fix_rheo.cpp: "Fix RHEO must be defined before all other RHEO fixes" (the accessory fixes check the order at setup)
     if (sys.fixes.some((f) => f.style === 'rheo/viscosity' || f.style === 'rheo/pressure' || f.style === 'rheo/thermal')) {
       throw new StyleError('Fix RHEO must be defined before all other RHEO fixes');
@@ -54,11 +56,11 @@ export class FixRHEO extends Fix {
     }
     // zmin is the coordination threshold of the corrected kernels (fix_rheo.cpp: utils::inumeric); the quintic kernel
     // has no correction, so there the value only has to be an integer
-    if (!Number.isInteger(Number(args[2]))) throw new StyleError(`Expected integer parameter in fix rheo: ${args[2]}`);
+    const zmin = inumeric(args[2]);
     const dim = s.dimension;
     this.model = new RheoModel(dim, cut, n);
     this.model.setKernel(kernel);
-    this.model.zmin = Number(args[2]);
+    this.model.zmin = zmin;
     let shiftFlag = false;
     const shiftType = new Uint8Array(n + 1).fill(1);
     let iarg = 3;

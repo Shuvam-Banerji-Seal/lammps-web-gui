@@ -41,6 +41,10 @@ export class FixSMDIntegrateUlsph extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
+    // fix_smd_integrate_ulsph.cpp constructor: the atom attributes first
+    if (!sys.state.custom.has(SMD_ESPH) || !sys.state.vfrac) {
+      throw new StyleError('fix smd/integrate_ulsph command requires atom_style with both energy and volume');
+    }
     for (let k = 0; k < args.length; k++) {
       const kw = args[k];
       if (kw === 'xsph') throw new StyleError('fix smd/integrate_ulsph keyword xsph is not available (native LAMMPS: "XSPH is currently not available")');

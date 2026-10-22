@@ -26,12 +26,10 @@ export class ComputeTempBody extends ComputeTemp {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
-    if (!sys.state.quat || !sys.state.angmom || !sys.state.custom.has(BODY_RECORD)) {
-      throw new StyleError('Compute temp/body requires atom style body');
-    }
+    // compute_temp_body.cpp: the keywords here, the atom style at init
     for (let k = 0; k < args.length; k += 2) {
       const key = args[k], val = args[k + 1];
-      if (val === undefined) throw new StyleError(`Illegal compute temp/body keyword ${key}: missing value`);
+      if ((key === 'dof' || key === 'bias') && val === undefined) throw new StyleError(`Illegal compute temp/body ${key} command: missing argument(s)`);
       if (key === 'dof') {
         if (val !== 'all' && val !== 'rotate') throw new StyleError(`Unknown compute temp/body dof keyword ${val}`);
         this.rotateOnly = val === 'rotate';
@@ -43,6 +41,7 @@ export class ComputeTempBody extends ComputeTemp {
 
   init(): void {
     const s = this.sys.state;
+    if (!s.quat || !s.angmom || !s.custom.has(BODY_RECORD)) throw new StyleError('Compute temp/body requires atom style body');
     const rec = s.custom.get(BODY_RECORD)!;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;

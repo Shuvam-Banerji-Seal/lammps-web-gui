@@ -195,7 +195,8 @@ describe('pair eff/cut, fix nve/eff, compute temp/eff and ke/eff', () => {
     await expect(second.session.execute(`${HEAD}read_data h2.data\npair_style eff/cut 1.0\npair_coeff * *\nmin_style quickmin\nminimize 0 1e-6 5 20\n`))
       .rejects.toThrow(/damped dynamics min style with per-atom DOF/);
     const withData = () => { const n = newSession(); n.session.addFile('h2.data', H2_DATA); return n.session; };
-    await expect(withData().execute(`${HEAD}read_data h2.data\nfix f all nve/eff 1\n`)).rejects.toThrow(/takes no arguments/);
+    // Measured with native LAMMPS: fix nve/eff does not read the words after its style name
+    await expect(withData().execute(`${HEAD}read_data h2.data\nfix f all nve/eff 1\n`)).resolves.toBeUndefined();
     await expect(withData().execute(`${HEAD}read_data h2.data\ncompute t all temp/eff 1\n`)).rejects.toThrow(/takes no arguments/);
   });
 

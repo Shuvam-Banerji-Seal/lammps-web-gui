@@ -20,8 +20,6 @@ import type { System } from '../../engine/system';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { PODModel, parsePODCoeffFile, parsePODParams } from './eapod';
 
-const USAGE = 'usage: compute ID group-ID pod/global pod_file coeff_file elem1 ... elemN (one element per atom type)';
-
 export class ComputePODGlobal extends Compute {
   readonly style = 'pod/global';
   private readonly model: PODModel;
@@ -33,7 +31,7 @@ export class ComputePODGlobal extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 3) throw new StyleError(`Illegal compute pod/global command (${USAGE})`);
+    if (args.length < 3) throw new StyleError('Illegal compute pod/global command');
     this.arrayFlag = true;
     const ntypes = sys.state.ntypes;
     const elems = args.slice(2);

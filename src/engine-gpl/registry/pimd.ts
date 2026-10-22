@@ -14,7 +14,7 @@ import { FixPIMDLangevin } from '../pimd/fix_pimd_langevin';
 import { FixPIMDLangevinBosonic } from '../pimd/fix_pimd_langevin_bosonic';
 
 export const FIXES: Record<string, FixFactory> = {
-  pimd: (sys, id, group, args) => new FixPIMDNVT(sys, id, group, args),
+  pimd: (sys, id, group, args) => new FixPIMDNVT(sys, id, group, args, 'pimd'),
   'pimd/nvt': (sys, id, group, args) => new FixPIMDNVT(sys, id, group, args),
   'pimd/nvt/bosonic': (sys, id, group, args) => new FixPIMDNVTBosonic(sys, id, group, args),
   'pimd/langevin': (sys, id, group, args) => new FixPIMDLangevin(sys, id, group, args),

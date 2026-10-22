@@ -19,6 +19,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, logical, missingArgs, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { NativeQeqSolver, type QeqLinearSystem, type QeqSolveResult } from './native_solver';
 import { A1, A2, A3, A4, A5, EWALD_P, MY_PIS, PairCoulCtip, type CtipParams } from '../ctip/pair_coul_ctip';
@@ -46,24 +47,6 @@ interface CtipMatrix {
   fixedTerm: Float64Array;
 }
 
-const numArg = (w: string, what: string): number => {
-  const v = Number(w);
-  if (!Number.isFinite(v)) throw new StyleError(`fix qeq/ctip: expected a number for ${what}, got '${w}'`);
-  return v;
-};
-
-const intArg = (w: string, what: string): number => {
-  if (!/^\d+$/.test(w)) throw new StyleError(`fix qeq/ctip: expected an integer for ${what}, got '${w}'`);
-  return Number(w);
-};
-
-/** utils::logical: yes/no, on/off, true/false, 1/0. */
-const logicalArg = (w: string, what: string): boolean => {
-  if (['yes', 'on', 'true', '1'].includes(w)) return true;
-  if (['no', 'off', 'false', '0'].includes(w)) return false;
-  throw new StyleError(`fix qeq/ctip: expected yes or no for ${what}, got '${w}'`);
-};
-
 /** Receives the distance vector of one periodic image. */
 type VisitFn = (dx: number, dy: number, dz: number) => void;
 
@@ -85,29 +68,26 @@ export class FixQeqCtip extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 5) {
-      throw new StyleError('Illegal fix qeq/ctip command: expected "Nevery cutoff tolerance maxiter coul/ctip [keyword value ...]"');
-    }
-    this.nEvery = intArg(args[0], 'Nevery');
-    this.cutoff = numArg(args[1], 'cutoff');
-    this.tol = numArg(args[2], 'tolerance');
-    this.maxiter = intArg(args[3], 'maxiter');
-    if (!(this.nEvery > 0) || !(this.cutoff > 0) || !(this.tol > 0) || !(this.maxiter > 0)) {
-      throw new StyleError('Illegal fix qeq command: Nevery, cutoff, tolerance and maxiter must be positive');
-    }
+    // fix_qeq.cpp and fix_qeq_ctip.cpp constructors: at least five words, the four numbers (utils::numeric and
+    // inumeric), "Illegal fix qeq command" when one is not positive, then the keywords
+    if (args.length < 5) throw missingArgs('fix qeq/ctip');
+    this.nEvery = inumeric(args[0]);
+    this.cutoff = numeric(args[1]);
+    this.tol = numeric(args[2]);
+    this.maxiter = inumeric(args[3]);
+    if (this.nEvery <= 0 || this.cutoff <= 0 || this.tol <= 0 || this.maxiter <= 0) throw new StyleError('Illegal fix qeq command');
     if (args[4] !== 'coul/ctip') {
       throw new StyleError(`fix qeq/ctip: qfile '${args[4]}' is not supported (the parameters come from pair_style coul/ctip: use coul/ctip)`);
     }
     for (let k = 5; k < args.length; k += 2) {
       const key = args[k];
-      if (k + 1 >= args.length) throw new StyleError(`fix qeq/ctip: keyword '${key}' needs a value`);
+      if (key !== 'cdamp' && key !== 'maxrepeat' && key !== 'warn') throw new StyleError(`Unknown fix qeq/ctip keyword: ${key}`);
+      if (k + 1 >= args.length) throw missingArgs(`fix qeq/ctip ${key}`);
       const val = args[k + 1];
-      if (key === 'cdamp') this.cdamp = numArg(val, 'cdamp');
-      else if (key === 'maxrepeat') this.maxrepeat = intArg(val, 'maxrepeat');
-      else if (key === 'warn') this.warn = logicalArg(val, 'warn');
-      else throw new StyleError(`Unknown fix qeq/ctip keyword: ${key}`);
+      if (key === 'cdamp') this.cdamp = numeric(val);
+      else if (key === 'maxrepeat') this.maxrepeat = inumeric(val);
+      else this.warn = logical(val);
     }
-    if (!(this.maxrepeat > 0)) throw new StyleError('fix qeq/ctip: maxrepeat must be > 0');
     // extract_ctip: the pair style must exist when the fix is created
     this.pair();
     this.solver = new NativeQeqSolver({

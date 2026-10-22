@@ -62,17 +62,17 @@ describe('fix settorque/atom', () => {
 
 describe('compute frenkel', () => {
   it('refuses rescale yes', async () => {
-    const { error } = await runScript(`${ATOMIC}compute fr all frenkel rescale yes\nrun 0\n`);
+    const { error } = await runScript(`${ATOMIC}lattice fcc 0.8442\ncompute fr all frenkel rescale yes\nrun 0\n`);
     expect(error?.message ?? '').toMatch(/rescale yes is not supported/);
   });
 
   it('refuses site_file', async () => {
-    const { error } = await runScript(`${ATOMIC}compute fr all frenkel site_file sites.txt\nrun 0\n`);
+    const { error } = await runScript(`${ATOMIC}lattice fcc 0.8442\ncompute fr all frenkel site_file sites.txt\nrun 0\n`);
     expect(error?.message ?? '').toMatch(/site_file is not supported/);
   });
 
   it('needs a positive drvac', async () => {
-    const { error } = await runScript(`${ATOMIC}compute fr all frenkel drvac 0.0\n`);
+    const { error } = await runScript(`${ATOMIC}lattice fcc 0.8442\ncompute fr all frenkel drvac 0.0\n`);
     expect(error?.message ?? '').toMatch(/drvac value must be > 0.0/);
   });
 

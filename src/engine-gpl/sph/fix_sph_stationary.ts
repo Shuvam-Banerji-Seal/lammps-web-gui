@@ -10,7 +10,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { clearSphRates, sphArrays } from './common';
+import { clearSphRates, requireSph, sphArrays } from './common';
 
 export class FixSPHStationary extends Fix {
   readonly style: string = 'sph/stationary';
@@ -18,8 +18,9 @@ export class FixSPHStationary extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
+    // fix_sph_stationary.cpp constructor: the atom attributes, then the number of words
+    requireSph(sys.state, 'Fix sph/stationary requires atom attributes energy and density, e.g. in atom_style sph');
     if (args.length) throw new StyleError('Illegal number of arguments for fix sph/stationary command');
-    sphArrays(sys.state, 'Fix sph/stationary');
   }
 
   init(): void { this.resetDt(); }

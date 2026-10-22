@@ -12,7 +12,7 @@
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { sphArrays } from '../sph/common';
+import { requireSph, sphArrays } from '../sph/common';
 
 export class ComputeSPHTAtom extends Compute {
   readonly style = 'sph/t/atom';
@@ -22,7 +22,7 @@ export class ComputeSPHTAtom extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length !== 0) throw new StyleError('Number of arguments for compute sph/t/atom command != 3');
-    sphArrays(sys.state, 'Compute sph/t/atom requires atom attributes energy and specific heat, e.g. in atom_style sph');
+    requireSph(sys.state, 'Compute sph/t/atom requires atom attributes energy and specific heat, e.g. in atom_style sph');
   }
 
   protected computePeratom(): void {

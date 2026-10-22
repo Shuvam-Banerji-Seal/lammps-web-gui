@@ -22,19 +22,20 @@ export class FixNVEBody extends FixNVE {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length) throw new StyleError(`Illegal fix nve/body keyword ${args[0]}`);
-    if (!sys.state.quat || !sys.state.angmom || !sys.state.torque || !sys.state.custom.has(BODY_RECORD)) {
-      throw new StyleError('Fix nve/body requires atom style body');
-    }
   }
 
   init(): void {
-    super.init();
+    // further words are ignored and the atom style is checked at init (as native LAMMPS does,
+    // src/BODY/fix_nve_body.cpp at b332f28)
     const s = this.sys.state;
+    if (!s.quat || !s.angmom || !s.torque || !s.custom.has(BODY_RECORD)) {
+      throw new StyleError('Fix nve/body requires atom style body');
+    }
+    super.init();
     const rec = s.custom.get(BODY_RECORD)!;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      if (rec.data[rec.cols * i] === 0) throw new StyleError('Fix nve/body requires body particles (all particles in the group must be bodies)');
+      if (rec.data[rec.cols * i] === 0) throw new StyleError('Fix nve/body requires bodies');
     }
   }
 

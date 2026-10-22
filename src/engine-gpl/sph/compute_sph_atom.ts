@@ -10,7 +10,7 @@
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { sphArrays } from './common';
+import { requireSph, sphArrays } from './common';
 
 abstract class ComputeSPHAtom extends Compute {
   peratomFlag = true;
@@ -18,10 +18,10 @@ abstract class ComputeSPHAtom extends Compute {
   /** The per-atom property of the state this compute reports (rho or esph). */
   protected abstract pick(a: ReturnType<typeof sphArrays>): Float64Array;
 
-  constructor(sys: System, id: string, group: string, args: string[], private readonly what: string) {
+  constructor(sys: System, id: string, group: string, args: string[], private readonly what: string, attribute: string) {
     super(sys, id, group, args);
-    if (args.length) throw new StyleError(`Illegal compute ${what} command`);
-    sphArrays(sys.state, `Compute ${what}`);
+    if (args.length) throw new StyleError(what === 'sph/e/atom' ? 'Number of arguments for compute sph/e/atom command != 3' : `Illegal compute ${what} command`);
+    requireSph(sys.state, `Compute ${what} requires atom attribute ${attribute}, e.g. in atom_style sph`);
   }
 
   protected computePeratom(): void {
@@ -35,11 +35,11 @@ abstract class ComputeSPHAtom extends Compute {
 export class ComputeSPHRhoAtom extends ComputeSPHAtom {
   readonly style: string = 'sph/rho/atom';
   protected pick(a: ReturnType<typeof sphArrays>): Float64Array { return a.rho; }
-  constructor(sys: System, id: string, group: string, args: string[]) { super(sys, id, group, args, 'sph/rho/atom'); }
+  constructor(sys: System, id: string, group: string, args: string[]) { super(sys, id, group, args, 'sph/rho/atom', 'density'); }
 }
 
 export class ComputeSPHEAtom extends ComputeSPHAtom {
   readonly style: string = 'sph/e/atom';
   protected pick(a: ReturnType<typeof sphArrays>): Float64Array { return a.esph; }
-  constructor(sys: System, id: string, group: string, args: string[]) { super(sys, id, group, args, 'sph/e/atom'); }
+  constructor(sys: System, id: string, group: string, args: string[]) { super(sys, id, group, args, 'sph/e/atom', 'energy'); }
 }

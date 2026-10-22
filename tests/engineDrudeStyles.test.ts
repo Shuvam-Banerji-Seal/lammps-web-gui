@@ -35,7 +35,8 @@ describe('DRUDE type words (fix drude)', () => {
   });
 
   it('refuses a wrong count and an unknown word by name', () => {
-    expect(() => parseDrudeTypes(['C'], 2)).toThrow(/Incorrect number of arguments \(1 instead of 2\)/);
+    // native counts every word after "fix" (fix_drude.cpp: narg against 3 + ntypes)
+    expect(() => parseDrudeTypes(['C'], 2)).toThrow(/Incorrect number of arguments \(4 instead of 5\)/);
     expect(() => parseDrudeTypes(['C', 'X'], 2)).toThrow(/Unknown drude type X for atom type 2/);
   });
 });

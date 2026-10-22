@@ -54,7 +54,7 @@ export class FixAlchemy extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 1) throw new StyleError('Incorrect number of arguments for fix alchemy (usage: fix ID group alchemy v_lambda)');
+    if (args.length !== 1) throw new StyleError('Incorrect number of arguments for fix alchemy');
     if (!args[0].startsWith('v_')) throw new StyleError('Must use variable as lambda argument to fix alchemy');
     if (group !== 'all') throw new StyleError('fix alchemy must use group all');
     if (sys.replicaPeers().length !== 2) throw new StyleError('Must use exactly two partitions');

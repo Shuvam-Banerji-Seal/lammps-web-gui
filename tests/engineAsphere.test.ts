@@ -117,15 +117,16 @@ run 50
     expect(Math.abs(quatNorm(s.quat!, 0) - 1)).toBeLessThan(1e-12);
   });
 
-  it('refuses point particles in the group and unknown keywords', async () => {
+  it('refuses point particles in the group and ignores further words', async () => {
     const { session } = newSession();
     await expect(session.execute(`${TOP}create_atoms 1 single 2.0 2.0 2.0 units box
 fix 1 all nve/asphere
 run 0
 `)).rejects.toThrow(/requires extended particles/);
+    // Measured with native LAMMPS: fix nve/asphere does not read the words after its style name
     const second = newSession();
     await expect(second.session.execute(`${TOP}fix 1 all nve/asphere foo
-`)).rejects.toThrow(/Illegal fix nve\/asphere keyword foo/);
+`)).resolves.toBeUndefined();
   });
 
   it('needs an atom style with shape, quaternion and angular momentum', async () => {
@@ -136,7 +137,8 @@ region box block 0 10 0 10 0 10
 create_box 1 box
 create_atoms 1 single 5.0 5.0 5.0 units box
 fix 1 all nve/asphere
-`)).rejects.toThrow(/atom style ellipsoid/);
+run 0
+`)).rejects.toThrow(/^(line \d+: )?Compute nve\/asphere requires atom style ellipsoid/);
   });
 });
 
@@ -154,7 +156,7 @@ run 0
 
   it('refuses arguments and point particles', async () => {
     const { session } = newSession();
-    await expect(session.execute(`${TOP}compute e all erotate/asphere foo\n`)).rejects.toThrow(/Illegal compute erotate\/asphere keyword foo/);
+    await expect(session.execute(`${TOP}compute e all erotate/asphere foo\n`)).rejects.toThrow(/Illegal compute erotate\/asphere command/);
     const second = newSession();
     await expect(second.session.execute(`${TOP}create_atoms 1 single 2.0 2.0 2.0 units box
 compute e all erotate/asphere
@@ -197,9 +199,10 @@ run 0
   });
 
   it('refuses unknown keywords, a bad dof value, a missing bias compute and point particles', async () => {
-    await expect(newSession().session.execute(`${TOP}compute t all temp/asphere foo bar\n`)).rejects.toThrow(/Illegal compute temp\/asphere keyword foo/);
-    await expect(newSession().session.execute(`${TOP}compute t all temp/asphere dof trans\n`)).rejects.toThrow(/dof keyword trans/);
-    await expect(newSession().session.execute(`${TOP}compute t all temp/asphere bias nobias\n`)).rejects.toThrow(/nobias/);
+    await expect(newSession().session.execute(`${TOP}compute t all temp/asphere foo bar\n`)).rejects.toThrow(/Unknown compute temp\/asphere keyword foo/);
+    await expect(newSession().session.execute(`${TOP}compute t all temp/asphere dof trans\n`)).rejects.toThrow(/Unknown compute temp\/asphere dof keyword trans/);
+    // the bias compute is looked up at init (compute_temp_asphere.cpp)
+    await expect(newSession().session.execute(`${TOP}compute t all temp/asphere bias nobias\nthermo_style custom step c_t\nrun 0\n`)).rejects.toThrow(/Could not find compute ID nobias for temperature bias/);
     const second = newSession();
     await expect(second.session.execute(`${TOP}create_atoms 1 single 2.0 2.0 2.0 units box
 compute t all temp/asphere
@@ -215,7 +218,8 @@ region box block 0 10 0 10 0 10
 create_box 1 box
 create_atoms 1 single 5.0 5.0 5.0 units box
 compute t all temp/asphere
-`)).rejects.toThrow(/atom style ellipsoid/);
+run 0
+`)).rejects.toThrow(/Compute temp\/asphere requires atom style ellipsoid/);
   });
 
   it('gives the rotational tensor in the body frame, with trace 2 E (measured with native LAMMPS)', async () => {

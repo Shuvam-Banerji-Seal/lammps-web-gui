@@ -33,7 +33,8 @@ describe('body fixes and compute: refusals by name (engine-gpl/body)', () => {
 
   it('compute temp/body and the body fixes need atom style body', async () => {
     const BOX = 'units lj\ndimension 3\natom_style atomic\nregion b block 0 6 0 6 0 6\ncreate_box 1 b\n';
-    await expect(run(`${BOX}compute t all temp/body\n`)).rejects.toThrow(/temp\/body requires atom style body/);
+    // the atom style is checked at init (compute_temp_body.cpp)
+    await expect(run(`${BOX}mass 1 1.0\ncompute t all temp/body\nthermo_style custom step c_t\nrun 0\n`)).rejects.toThrow(/Compute temp\/body requires atom style body/);
     await expect(run(`${BOX}fix 1 all nvt/body temp 1 1 1\n`)).rejects.toThrow(/nvt\/body requires atom style body/);
   });
 

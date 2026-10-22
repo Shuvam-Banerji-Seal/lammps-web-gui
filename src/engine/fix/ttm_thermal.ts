@@ -1,5 +1,6 @@
 import { StyleError } from '../force/types';
 import type { System } from '../system';
+import { missingArgs } from '../force/util';
 import { FixTTM, type TtmKeywordHandler, type TtmPositional } from './ttm';
 
 /*
@@ -64,7 +65,8 @@ export interface ThermalPositional extends TtmPositional {
 /** The positional part: seed properties_file Nx Ny Nz. */
 export const parseThermalPositional = (id: string, args: string[]): ThermalPositional => {
   const style = 'ttm/thermal';
-  if (args.length < 5) throw new StyleError(`usage: fix ID group-ID ttm/thermal seed properties_file Nx Ny Nz [keyword value ...]`);
+  // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_thermal.cpp at b332f28)
+  if (args.length < 5) throw missingArgs('fix ttm/thermal');
   const seed = Number(args[0]);
   if (!Number.isInteger(seed) || seed < 1) throw new StyleError(`fix ${id} ${style}: seed must be a positive integer, got '${args[0]}'`);
   const dim = (w: string, what: string): number => {

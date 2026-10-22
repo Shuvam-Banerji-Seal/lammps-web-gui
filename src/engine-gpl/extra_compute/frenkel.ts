@@ -27,6 +27,7 @@
  */
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
+import { logical, missingArgs, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { Lattice } from '../../engine/lattice';
 import type { Region } from '../../engine/region';
@@ -76,6 +77,8 @@ export class ComputeFrenkel extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
+    // compute_frenkel.cpp constructor: a lattice with basis atoms is needed before the keywords are read
+    if (!sys.lattice || sys.lattice.basis.length === 0) throw new StyleError('Use of compute style frenkel with undefined lattice');
     this.parseArgs(args);
     this.vectorFlag = true;
     this.arrayFlag = true;
@@ -94,17 +97,20 @@ export class ComputeFrenkel extends Compute {
     for (let k = 0; k < args.length; k += 2) {
       const key = args[k];
       const val = args[k + 1];
-      if (val === undefined) throw new StyleError(`Illegal compute frenkel command: missing value for ${key}`);
+      if (key !== 'drvac' && key !== 'drint' && key !== 'region' && key !== 'rescale' && key !== 'site_file') {
+        throw new StyleError(`Unknown compute frenkel keyword: ${key}`);
+      }
+      if (val === undefined) throw missingArgs(`compute frenkel ${key}`);
       if (key === 'drvac' || key === 'drint') {
-        const v = Number(val);
-        if (!Number.isFinite(v) || v <= 0) throw new StyleError(`Compute frenkel ${key} value must be > 0.0`);
+        const v = numeric(val);
+        if (v <= 0) throw new StyleError(`Compute frenkel ${key} value must be > 0.0`);
         if (key === 'drvac') this.drVac = v;
         else this.drInt = v;
       } else if (key === 'region') {
+        if (val !== 'none' && !this.sys.regions.has(val)) throw new StyleError(`Region ${val} for compute frenkel doesn't exist`);
         this.regionId = val === 'none' ? null : val;
       } else if (key === 'rescale') {
-        if (val === 'yes') throw new StyleError('compute frenkel rescale yes is not supported by this engine (the reference sites do not follow a changing box)');
-        if (val !== 'no') throw new StyleError(`compute frenkel rescale must be yes or no (got '${val}')`);
+        if (logical(val)) throw new StyleError('compute frenkel rescale yes is not supported by this engine (the reference sites do not follow a changing box)');
       } else if (key === 'site_file') {
         if (val !== 'none') throw new StyleError('compute frenkel site_file is not supported by this engine');
       } else {

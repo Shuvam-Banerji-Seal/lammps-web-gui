@@ -26,19 +26,21 @@ export class ComputeSpin extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length) throw new StyleError('compute spin takes no arguments');
-    if (!sys.state.sp) throw new StyleError('compute spin requires atom_style spin');
+    // As native LAMMPS does (src/SPIN/compute_spin.cpp at b332f28): one further word is accepted and ignored, and the
+    // atom style is checked when a group atom is computed
+    if (args.length > 1) throw new StyleError('Illegal compute compute/spin command');
     this.vectorFlag = true;
     this.sizeVector = 6;
   }
 
   protected computeVector(): void {
     const s = this.sys.state;
-    const sp = s.sp!, fm = s.fm;
+    const sp = s.sp, fm = s.fm;
     const out = new Float64Array(6);
     let n = 0, mx = 0, my = 0, mz = 0, num = 0, den = 0;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
+      if (!sp) throw new StyleError('Compute compute/spin requires atom/spin style');
       n++;
       const sx = sp[4 * i], sy = sp[4 * i + 1], sz = sp[4 * i + 2];
       mx += sx; my += sy; mz += sz;

@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
-import { nativeOrder } from '../atoms';
+import { isMolecularStyle, nativeOrder } from '../atoms';
 import type { System } from '../system';
 import { libm } from '../libm';
 
@@ -77,15 +77,15 @@ export class FixHyperGlobal extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 4) throw new StyleError(`fix ${id} hyper/global: expected cutbond qfactor Vmax Tequil, got ${args.length} arguments`);
-    this.cutbond = parseNum(args[0], `fix ${id} hyper/global cutbond`);
-    this.qfactor = parseNum(args[1], `fix ${id} hyper/global qfactor`);
-    this.vmax = parseNum(args[2], `fix ${id} hyper/global Vmax`);
-    this.tequil = parseNum(args[3], `fix ${id} hyper/global Tequil`);
-    if (!(this.cutbond > 0)) throw new StyleError(`fix ${id} hyper/global: cutbond must be > 0`);
-    if (!(this.qfactor > 0)) throw new StyleError(`fix ${id} hyper/global: qfactor must be > 0`);
-    if (!(this.vmax >= 0)) throw new StyleError(`fix ${id} hyper/global: Vmax must be >= 0`);
-    if (!(this.tequil > 0)) throw new StyleError(`fix ${id} hyper/global: Tequil must be > 0`);
+    // As native LAMMPS does (src/REPLICA/fix_hyper_global.cpp at b332f28): an atom map, exactly four values, then
+    // cutbond >= 0, qfactor > 0, Vmax >= 0 and Tequil > 0, each failure "Illegal fix hyper/global command"
+    if (!isMolecularStyle(sys.state.atomStyle) && !sys.atomMapSet) throw new StyleError('Fix hyper/global command requires atom map');
+    if (args.length !== 4) throw new StyleError('Illegal fix hyper/global command');
+    this.cutbond = parseNum(args[0], 'cutbond');
+    this.qfactor = parseNum(args[1], 'qfactor');
+    this.vmax = parseNum(args[2], 'Vmax');
+    this.tequil = parseNum(args[3], 'Tequil');
+    if (this.cutbond < 0 || this.qfactor <= 0 || this.vmax < 0 || this.tequil <= 0) throw new StyleError('Illegal fix hyper/global command');
     this.beta = 1 / (sys.units.boltz * this.tequil);
     this.scalarFlag = true;
     this.vectorFlag = true;

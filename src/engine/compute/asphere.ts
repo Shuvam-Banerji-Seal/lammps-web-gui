@@ -134,18 +134,18 @@ export class ComputeERotateAsphere extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length) throw new StyleError(`Illegal compute erotate/asphere keyword ${args[0]}`);
-    const st = sys.state;
-    const ellipsoidStyle = !!st.shape && !!st.quat && !!st.angmom;
-    if (!ellipsoidStyle && !isLineStyle(st.atomStyle) && !isTriStyle(st.atomStyle)) {
-      throw new StyleError('Compute erotate/asphere requires atom style ellipsoid or line or tri');
-    }
+    if (args.length) throw new StyleError('Illegal compute erotate/asphere command');
     this.scalarFlag = true;
     this.extscalar = 1;
   }
 
   init(): void {
+    // the atom style is checked at init (as native LAMMPS does, src/ASPHERE/compute_erotate_asphere.cpp at b332f28)
     const s = this.sys.state;
+    const ellipsoidStyle = !!s.shape && !!s.quat && !!s.angmom;
+    if (!ellipsoidStyle && !isLineStyle(s.atomStyle) && !isTriStyle(s.atomStyle)) {
+      throw new StyleError('Compute erotate/asphere requires atom style ellipsoid or line or tri');
+    }
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
       if (!extended(s, i)) throw new StyleError('Compute erotate/asphere requires extended particles');
@@ -176,27 +176,40 @@ export class ComputeERotateAsphere extends Compute {
 export class ComputeTempAsphere extends ComputeTemp {
   readonly style: string = 'temp/asphere';
   private rotateOnly = false;
+  private biasId: string | null = null;
   private biasCompute: Compute | null = null;
 
+  /**
+   * The keywords are read here; the atom style and the bias compute are checked at init (as native LAMMPS does,
+   * src/ASPHERE/compute_temp_asphere.cpp at b332f28).
+   */
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
-    if (!sys.state.shape || !sys.state.quat || !sys.state.angmom) throw new StyleError('Compute temp/asphere requires atom style ellipsoid');
     for (let k = 0; k < args.length; k += 2) {
       const key = args[k], val = args[k + 1];
-      if (val === undefined) throw new StyleError(`Illegal compute temp/asphere keyword ${key}: missing value`);
-      if (key === 'dof') {
-        if (val !== 'all' && val !== 'rotate') throw new StyleError(`Illegal compute temp/asphere dof keyword ${val}`);
+      if (key === 'bias') {
+        if (val === undefined) throw new StyleError('Illegal compute temp/asphere bias command: missing argument(s)');
+        this.biasId = val;
+      } else if (key === 'dof') {
+        if (val === undefined) throw new StyleError('Illegal compute temp/asphere dof command: missing argument(s)');
+        if (val !== 'all' && val !== 'rotate') throw new StyleError(`Unknown compute temp/asphere dof keyword ${val}`);
         this.rotateOnly = val === 'rotate';
-      } else if (key === 'bias') {
-        const bc = sys.compute(val);
-        if (!bc.hasBias()) throw new StyleError(`Compute ${val} used as bias for temp/asphere does not remove a velocity bias`);
-        this.biasCompute = bc;
-      } else throw new StyleError(`Illegal compute temp/asphere keyword ${key}`);
+      } else throw new StyleError(`Unknown compute temp/asphere keyword ${key}`);
     }
   }
 
   init(): void {
-    if (!allExtended(this.sys.state, this.groupBit)) throw new StyleError('Compute temp/asphere requires all extended particles');
+    const s = this.sys.state;
+    if (!s.shape || !s.quat || !s.angmom) throw new StyleError('Compute temp/asphere requires atom style ellipsoid');
+    if (!allExtended(s, this.groupBit)) throw new StyleError('Compute temp/asphere requires all extended particles');
+    if (this.biasId !== null) {
+      const bc = this.sys.computes.find((c) => c.id === this.biasId);
+      if (!bc) throw new StyleError(`Could not find compute ID ${this.biasId} for temperature bias`);
+      if (!bc.tempFlag) throw new StyleError(`Bias compute ${this.biasId} does not calculate temperature`);
+      if (!bc.hasBias()) throw new StyleError(`Bias compute ${this.biasId} does not calculate a velocity bias`);
+      if (bc.groupBit !== this.groupBit) throw new StyleError('Bias compute group does not match compute group');
+      this.biasCompute = bc;
+    }
     this.dofCompute();
   }
 

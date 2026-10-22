@@ -15,7 +15,7 @@
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { SMD_DEFGRAD } from '../../engine/smd';
+import { SMD_CONTACT, SMD_DEFGRAD } from '../../engine/smd';
 import { PairHybrid } from '../../engine/force/pair/hybrid';
 import type { Pair } from '../../engine/force/types';
 import { PairSMDUlsph } from './pair_smd_ulsph';
@@ -116,7 +116,9 @@ export class ComputeSMDULSPHStress extends UlsphPeratom {
 
 /** compute ID group-ID smd/ulsph/effm: the effective shear modulus of each atom (native effm, zero for fluids). */
 export const makeSmdUlsphEffm = (sys: System, id: string, group: string, args: string[]): Compute => {
-  if (args.length) throw new StyleError('Illegal compute smd/ulsph/effm command');
+  if (args.length) throw new StyleError('Illegal compute smd/ulsph_effm command');
+  // compute_smd_ulsph_effm.cpp constructor: the atom attribute
+  if (!sys.state.custom.has(SMD_CONTACT)) throw new StyleError('compute smd/ulsph/effm command requires atom_style with contact_radius (e.g. smd)');
   return new UlsphScalarPeratom(sys, id, group, args, 'smd/ulsph/effm', (i, pair) => pair.effm[i]);
 };
 
@@ -144,8 +146,8 @@ export class ComputeSMDVol extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length) throw new StyleError('Illegal compute smd/vol command');
-    if (!sys.state.vfrac) throw new StyleError('compute smd/vol command requires atom_style with volume (e.g. smd)');
+    if (args.length) throw new StyleError('Illegal compute smd/volume command');
+    if (!sys.state.vfrac) throw new StyleError('compute smd/volume command requires atom_style with density (e.g. smd)');
     this.peratomFlag = true;
     this.sizePeratomCols = 0;
   }

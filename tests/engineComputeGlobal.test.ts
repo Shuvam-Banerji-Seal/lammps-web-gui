@@ -180,7 +180,7 @@ describe('compute vacf', () => {
   });
 
   it('rejects arguments', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute v all vacf 3`)).rejects.toThrow('compute vacf takes no arguments');
+    await expect(runScript(`${TWO_ATOMS}\ncompute v all vacf 3`)).rejects.toThrow('Compute vacf does not accept any arguments');
   });
 });
 

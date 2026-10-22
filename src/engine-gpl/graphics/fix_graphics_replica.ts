@@ -115,7 +115,7 @@ export class FixGraphicsReplicaFix extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 1) throw new StyleError(`usage: fix ${id} group-ID graphics/replica N keyword values ...`);
+    if (args.length < 1) throw new StyleError('Too few arguments for fix graphics/replica');
     this.nevery = parseInteger(args[0], `fix ${id} graphics/replica N`);
     if (this.nevery <= 0) throw new StyleError(`fix ${id} graphics/replica: N must be > 0`);
     try {

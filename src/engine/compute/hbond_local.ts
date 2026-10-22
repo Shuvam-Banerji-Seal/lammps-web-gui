@@ -1,7 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
-import { buildAtomMap, buildSpecial, type SpecialList } from '../atoms';
+import { missingArgs, parseNum } from '../force/util';
+import { buildAtomMap, buildSpecial, isMolecularStyle, type SpecialList } from '../atoms';
 import { NEIGHMASK } from '../neighbor';
 import type { System } from '../system';
 import type { ImageObject } from '../output/image_objects';
@@ -86,19 +86,25 @@ export class ComputeHbondLocal extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const usage = `compute ${id} hbond/local: missing argument(s) (usage: compute ID group-ID hbond/local rcut acut dgroup-ID agroup-ID hgroup-ID value ... ecut value)`;
-    if (args.length < 5) throw new StyleError(usage);
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_hbond_local.cpp at b332f28): a molecular system first, then the
+    // words, the cutoffs and the three groups (a molecular system always has an atom map)
+    if (!isMolecularStyle(sys.state.atomStyle)) throw new StyleError('Cannot (yet) use compute hbond/local with non-molecular systems');
+    if (args.length < 5) throw missingArgs('compute hbond/local');
     this.rcut = parseNum(args[0], 'distance cutoff');
-    if (!(this.rcut > 0)) throw new StyleError(`compute ${id} hbond/local: distance cutoff must be > 0.0`);
+    if (this.rcut <= 0) throw new StyleError('Compute hbond/local distance cutoff must be > 0.0');
     this.acut = parseNum(args[1], 'angle cutoff');
-    if (!(this.acut > 0)) throw new StyleError(`compute ${id} hbond/local: angle cutoff must be > 0.0`);
-    if (this.acut > 90) throw new StyleError(`compute ${id} hbond/local: angle cutoff must not be > 90.0 degrees`);
+    if (this.acut <= 0) throw new StyleError('Compute hbond/local angle cutoff must be > 0.0');
+    if (this.acut > 90) throw new StyleError('Compute hbond/local angle cutoff must not be > 90.0 degrees');
     this.dGroup = args[2];
     this.aGroup = args[3];
     this.hGroup = args[4];
-    this.dBit = sys.groups.bit(this.dGroup);
-    this.aBit = sys.groups.bit(this.aGroup);
-    this.hBit = sys.groups.bit(this.hGroup);
+    const bit = (name: string, role: string): number => {
+      if (sys.groups.find(name) < 0) throw new StyleError(`Group ID ${name} requested by compute hbond/local ${role} does not exist`);
+      return sys.groups.bit(name);
+    };
+    this.dBit = bit(this.dGroup, 'donor');
+    this.aBit = bit(this.aGroup, 'acceptor');
+    this.hBit = bit(this.hGroup, 'hydrogen');
     let k = 5;
     const values: Value[] = [];
     for (; k < args.length && (VALUES as readonly string[]).includes(args[k]); k++) values.push(args[k] as Value);
@@ -108,7 +114,7 @@ export class ComputeHbondLocal extends Compute {
       if (w !== 'ecut') throw new StyleError(`Unknown compute hbond/local keyword ${w}`);
       if (k + 1 >= args.length) throw new StyleError(`Illegal compute hbond/local ecut command: missing argument(s)`);
       ecut = parseNum(args[k + 1], 'ecut');
-      if (!(ecut >= 0)) throw new StyleError(`compute ${id} hbond/local: hydrogen bond strength cutoff ecut must be >= 0.0`);
+      if (ecut < 0) throw new StyleError('Hydrogen bond strength cutoff ecut must be >= 0.0');
       k += 2;
     }
     this.values = values;
@@ -151,7 +157,7 @@ export class ComputeHbondLocal extends Compute {
     const groupBit = this.groupBit;
     const id = this.id;
     if (this.needEnergy && (!pair || !pair.single || pair.singleNeedsSeparation())) {
-      throw new StyleError(`compute ${id} hbond/local: computation of the hydrogen bond energy is not supported by the pair style`);
+      throw new StyleError('Computation of hydrogen bond energy not supported by pair style');
     }
     if (nb.cutghost > 0 && nb.cutghost < this.rcut + nb.skin - 1e-9) {
       throw new StyleError(`compute ${id} hbond/local: distance cutoff ${this.rcut} exceeds the ghost cutoff ${nb.cutghost} (force cutoff + skin); a larger cutoff needs comm_modify cutoff`);

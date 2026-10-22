@@ -83,10 +83,9 @@ export const maxRadius = (p: SnaParams): number => {
 
 /** Parses the arguments rcutfac rfac0 twojmax, the radii R_t and weights w_t, and keyword values, for compute snap, sna/grid and sna/grid/local. */
 export const parseSnaArgs = (id: string, style: string, args: string[], ntypes: number, snapOnly: boolean): SnaOptions => {
+  // As native LAMMPS does (src/ML-SNAP/compute_snap.cpp at b332f28): too few words is "Illegal compute {style} command"
   const need = 3 + 2 * ntypes;
-  if (args.length < need) {
-    throw new StyleError(`compute ${id} (${style}): expects rcutfac rfac0 twojmax, ${ntypes} radii and ${ntypes} weights (${need} values), got ${args.length}`);
-  }
+  if (args.length < need) throw new StyleError(`Illegal compute ${style} command`);
   const rcutfac = parseNum(args[0], `compute ${id} (${style}) rcutfac`);
   if (!(rcutfac > 0)) throw new StyleError(`compute ${id} (${style}): rcutfac must be positive (got ${args[0]})`);
   const rfac0 = parseNum(args[1], `compute ${id} (${style}) rfac0`);

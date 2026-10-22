@@ -16,13 +16,11 @@ export class FixNVEEff extends FixNVE {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    // fix nve/eff takes no arguments (fix_nve_eff.cpp constructor: the electron style is required)
-    if (args.length) throw new StyleError('fix nve/eff takes no arguments');
+    // fix_nve_eff.cpp constructor: the electron style is required; further words are not checked
+    if (!isElectronStyle(sys.state.atomStyle)) throw new StyleError('Fix nve/eff requires atom style electron');
   }
 
   override init(): void {
-    const s = this.sys.state;
-    if (!isElectronStyle(s.atomStyle)) throw new StyleError('Fix nve/eff requires atom style electron');
     this.resetDt();
   }
 

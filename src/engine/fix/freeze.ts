@@ -37,9 +37,13 @@ export class FixFreeze extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 0) throw new StyleError(`Illegal fix freeze command: unexpected argument '${args[0]}' (fix freeze takes no arguments)`);
-    if (!sys.state.torque) throw new StyleError('fix freeze requires atom_style sphere (torque)');
-    if (sys.fixes.some((f) => f.style === 'freeze')) throw new StyleError('There can only be a single freeze fix defined');
+    if (args.length !== 0) throw new StyleError('Illegal fix freeze command');
+    if (!sys.state.torque) throw new StyleError('Fix freeze requires atom attribute torque');
+  }
+
+  init(): void {
+    // one freeze fix at most, counted at init (as native LAMMPS does, src/GRANULAR/fix_freeze.cpp at b332f28)
+    if (this.sys.fixes.filter((f) => f.style === 'freeze').length > 1) throw new StyleError('More than one fix freeze');
   }
 
   postForce(): void {

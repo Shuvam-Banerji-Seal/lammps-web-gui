@@ -19,8 +19,11 @@ export class ComputeTempRegionEff extends ComputeTempRegion {
   // the style name is the one of the base class (ComputeTempRegion types it as a literal); the registry name is temp/region/eff
 
   constructor(sys: System, id: string, group: string, args: string[]) {
-    super(sys, id, group, args);
+    // compute_temp_region_eff.cpp constructor: the atom style, then exactly one word, then the region
     if (!isElectronStyle(sys.state.atomStyle)) throw new StyleError('Compute temp/region/eff requires atom style electron');
+    if (args.length !== 1) throw new StyleError('Illegal compute temp/region/eff command');
+    if (!sys.regions.has(args[0])) throw new StyleError(`Region ${args[0]} for compute temp/region/eff does not exist`);
+    super(sys, id, group, args);
   }
 
   /** compute_temp_region_eff.cpp compute_scalar: dof = dim (nuclei in region) - extra; electrons add their KE, not their dof. */

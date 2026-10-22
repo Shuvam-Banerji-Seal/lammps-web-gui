@@ -260,7 +260,7 @@ export class ComputeVACF extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length) throw new StyleError(`compute vacf takes no arguments (got ${args.join(' ')})`);
+    if (args.length) throw new StyleError('Compute vacf does not accept any arguments');
     this.vectorFlag = true;
     this.sizeVector = 4;
     this.extvector = 0;

@@ -125,7 +125,7 @@ describe('compute sna/atom: argument errors', () => {
   };
 
   it('rejects too few arguments', async () => {
-    await fails('sna/atom 1.1 0.85 4 1.6', /expects rcutfac rfac0 twojmax/);
+    await fails('sna/atom 1.1 0.85 4 1.6', /Illegal compute sna\/atom command/);
   });
 
   it('rejects a non-integer twojmax', async () => {

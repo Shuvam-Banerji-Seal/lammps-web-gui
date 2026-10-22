@@ -22,7 +22,8 @@ export const DRUDE_TYPE = 2;
 /** Parses the per-type words of fix drude: n/0 non-polarizable, c/1 core, d/2 Drude (fix drude.html). */
 export const parseDrudeTypes = (words: string[], ntypes: number): Uint8Array => {
   if (words.length !== ntypes) {
-    throw new StyleError(`Incorrect number of arguments (${words.length} instead of ${ntypes}) for fix drude command`);
+    // fix_drude.cpp counts every word after "fix": narg against 3 + ntypes
+    throw new StyleError(`Incorrect number of arguments (${words.length + 3} instead of ${ntypes + 3}) for fix drude command`);
   }
   const kind = new Uint8Array(ntypes + 1);
   words.forEach((w, k) => {

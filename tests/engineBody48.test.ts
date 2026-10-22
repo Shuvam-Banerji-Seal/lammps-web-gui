@@ -167,7 +167,7 @@ describe('atom_style body and the refused styles', () => {
 
   it('refuses pair_modify shift and tail, and a point particle in the nve/body group', async () => {
     await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\npair_modify shift yes\nrun 0\n`)).rejects.toThrow(/shift and tail/);
-    await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\nfix 1 all nve/body\nrun 0\n`)).rejects.toThrow(/requires body particles/);
+    await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\nfix 1 all nve/body\nrun 0\n`)).rejects.toThrow(/Fix nve\/body requires bodies/);
   });
 });
 

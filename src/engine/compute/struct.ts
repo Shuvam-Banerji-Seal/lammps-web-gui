@@ -577,38 +577,45 @@ export class ComputeHexorderAtom extends Compute {
     let degree = 6;
     let nnn: number | null = 6;
     let cutoffArg: number | null = null;
-    if (sys.dimension !== 2) throw new StyleError(`compute ${id} (hexorder/atom): requires a 2d system (dimension 2)`);
-    for (let k = 0; k < args.length; k++) {
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_hexorder_atom.cpp at b332f28): every bad keyword is "Illegal
+    // compute hexorder/atom command", and nnn 0 is NULL
+    const illegal = (): StyleError => new StyleError('Illegal compute hexorder/atom command');
+    for (let k = 0; k < args.length; k += 2) {
       const kw = args[k];
       const w = args[k + 1];
+      if (kw !== 'degree' && kw !== 'nnn' && kw !== 'cutoff') throw illegal();
+      if (w === undefined) throw illegal();
       if (kw === 'degree') {
-        degree = parseInt_(w, `compute ${id} (hexorder/atom) degree`);
-        if (degree < 0) throw new StyleError(`compute ${id} (hexorder/atom): degree must be a non-negative integer (got ${w})`);
+        degree = parseInt_(w, 'degree');
+        if (degree < 0) throw illegal();
       } else if (kw === 'nnn') {
         if (w === 'NULL') nnn = null;
         else {
-          nnn = parseInt_(w, `compute ${id} (hexorder/atom) nnn`);
-          if (nnn < 1) throw new StyleError(`compute ${id} (hexorder/atom): nnn must be a positive integer or NULL (got ${w})`);
+          nnn = parseInt_(w, 'nnn');
+          if (nnn < 0) throw illegal();
+          if (nnn === 0) nnn = null;
         }
-      } else if (kw === 'cutoff') {
-        cutoffArg = parseCutoff(w, id, 'hexorder/atom');
       } else {
-        throw new StyleError(`compute ${id} (hexorder/atom): unknown keyword '${kw}' (use degree, nnn, cutoff)`);
+        cutoffArg = parseNum(w, 'cutoff');
+        if (cutoffArg <= 0) throw illegal();
       }
-      k++;
     }
     this.degree = degree;
     this.nnn = nnn;
     this.cutoffArg = cutoffArg;
   }
 
+  init(): void {
+    // compute_hexorder_atom.cpp init (the cutoff is compared with the pair cutoff when the values are computed: the
+    // engine sets the pair cutoffs after the computes' init)
+    if (!this.sys.ff.pair) throw new StyleError('Compute hexorder/atom requires a pair style be defined');
+  }
+
   protected computePeratom(): void {
     const pairCut = pairMaxCut(this.sys);
+    if (this.cutoffArg !== null && this.cutoffArg > pairCut) throw new StyleError('Compute hexorder/atom cutoff is longer than pairwise cutoff');
     const cut = this.cutoffArg ?? pairCut;
     if (!(cut > 0)) throw new StyleError(`compute ${this.id} (hexorder/atom): no pair style cutoff is defined; define a pair style or use the cutoff keyword`);
-    if (this.cutoffArg !== null && this.cutoffArg > pairCut + EPS) {
-      throw new StyleError(`compute ${this.id} (hexorder/atom): cutoff ${this.cutoffArg} exceeds the pair style cutoff ${pairCut} (the maximum allowable value)`);
-    }
     const { s, nb } = prepare(this.sys, this.id, 'hexorder/atom', cut);
     const n = s.n;
     const out = (this.arrayAtom = new Float64Array(2 * n));

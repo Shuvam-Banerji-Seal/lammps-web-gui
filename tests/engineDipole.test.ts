@@ -31,10 +31,12 @@ const evaluate = async (pairCmds: string[], atoms: Atom[]) => {
   const lines = [
     'units lj', 'atom_style hybrid sphere dipole', 'boundary p p p',
     `region box block 0 ${L} 0 ${L} 0 ${L}`, 'create_box 2 box',
-    'mass * 1.0', 'set type * diameter 1.0 density 1.0',
+    'mass * 1.0',
   ];
+  atoms.forEach((a) => lines.push(`create_atoms ${a.type} single ${a.x.join(' ')} units box`));
+  // set needs atoms (native: Set command on system without atoms)
+  lines.push('set type * diameter 1.0 density 1.0');
   atoms.forEach((a, k) => {
-    lines.push(`create_atoms ${a.type} single ${a.x.join(' ')} units box`);
     lines.push(`set atom ${k + 1} charge ${a.q}`);
     lines.push(`set atom ${k + 1} dipole ${a.mu.join(' ')}`);
   });

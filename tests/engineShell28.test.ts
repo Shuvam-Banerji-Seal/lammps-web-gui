@@ -124,7 +124,7 @@ describe('shell refuses what a browser cannot do', () => {
 
   it('shell with no command is refused', async () => {
     const { session } = newSession();
-    await expect(session.execute('shell\n')).rejects.toThrow(/shell: missing command/);
+    await expect(session.execute('shell\n')).rejects.toThrow(/Illegal shell command: missing argument/);
   });
 
   it('shell is listed as a supported command (its rm and mv built-ins run)', async () => {

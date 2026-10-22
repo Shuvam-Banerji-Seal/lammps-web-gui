@@ -140,7 +140,7 @@ export class System {
 
   constructor(readonly io: SessionIO) {
     this.nb = new Neighbor(this.units.skin);
-    this.vars = new Variables((name) => this.readFile(name), (text) => this.warn(text));
+    this.vars = new Variables((name) => this.readFile(name), (text) => this.warn(text), (name) => this.env.get(name));
     this.thermo = new Thermo(this);
   }
 

@@ -111,9 +111,12 @@ describe('min_modify line spin values and getenv', () => {
     expect((await runText(`${LJ}min_modify line spin_none\n`)).error).toBeNull();
   });
 
-  it('refuses the getenv variable style instead of returning an empty value', async () => {
-    const out = await runText(`${LJ}variable h getenv HOME\n`);
-    expect(out.error).toContain('variable style getenv is not supported by the browser engine');
+  it('reads getenv from the page environment: empty when not set, the shell putenv value when set', async () => {
+    // variable.html: getenv "returns the value of the environment variable, or an empty string if it not defined"
+    const out = await runText(`${LJ}variable h getenv HOME\nprint "[$h]"\nshell putenv HOME=/home/x\nprint "[$h]"\n`);
+    expect(out.error).toBeNull();
+    expect(out.logs).toContain('[]');
+    expect(out.logs).toContain('[/home/x]');
   });
 });
 

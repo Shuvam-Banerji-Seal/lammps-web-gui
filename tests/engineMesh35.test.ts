@@ -102,7 +102,7 @@ describe('create_atoms mesh bisect', () => {
     const { session } = newSession();
     session.addFile('m.stl', TRI);
     await expect(session.execute(`${BOX}create_atoms 1 mesh m.stl meshmode spiral 1.0 units box\n`))
-      .rejects.toThrow(/unknown meshmode/);
+      .rejects.toThrow(/Unknown create_atoms meshmode/);
   });
 });
 

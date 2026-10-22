@@ -36,18 +36,19 @@ const lex = (src: string): Tok[] => {
     if (op) { out.push({ k: 'op', v: op }); i += op.length; continue; }
     const str = /^[A-Za-z][A-Za-z0-9_/]*/.exec(src.slice(i));
     if (str) { out.push({ k: 'str', v: str[0] }); i += str[0].length; continue; }
-    throw new StyleError(`invalid character '${c}' in if Boolean "${src}"`);
+    throw new StyleError('Invalid Boolean syntax in if command');
   }
   return out;
 };
 
 export const evaluateBoolean = (src: string): boolean => {
   const toks = lex(src);
-  if (toks.length === 1 && toks[0].k === 'str') throw new StyleError(`if Boolean "${src}" is a single string`);
+  // the messages of native's Variable::evaluate_boolean (src/variable.cpp at b332f28)
+  if (toks.length === 1 && toks[0].k === 'str') throw new StyleError('If command boolean cannot be single string');
   let p = 0;
   const isOp = (v: string) => toks[p]?.k === 'op' && (toks[p] as { v: string }).v === v;
   const num = (x: V, op: string): number => {
-    if (typeof x !== 'number') throw new StyleError(`if: operator ${op} needs numbers, got '${x}'`);
+    if (typeof x !== 'number') throw new StyleError(op === '!' ? 'If command boolean not cannot operate on string' : 'If command boolean can only operate on numbers');
     return x;
   };
   const b = (t: boolean) => (t ? 1 : 0);
@@ -65,7 +66,7 @@ export const evaluateBoolean = (src: string): boolean => {
         case '|^': a = b((num(a, t.v) !== 0) !== (num(c, t.v) !== 0)); break;
         case '&&': a = b(num(a, t.v) !== 0 && num(c, t.v) !== 0); break;
         case '==': case '!=': {
-          if (typeof a !== typeof c) throw new StyleError(`if: cannot compare a number to a string in "${src}"`);
+          if (typeof a !== typeof c) throw new StyleError('If command boolean is comparing string to number');
           a = b(t.v === '==' ? a === c : a !== c);
           break;
         }
@@ -81,16 +82,17 @@ export const evaluateBoolean = (src: string): boolean => {
     if (isOp('(')) {
       p++;
       const v = level(0);
-      if (!isOp(')')) throw new StyleError(`if: missing ')' in "${src}"`);
+      // native's Boolean parser hands an unbalanced parenthesis to the formula parser
+      if (!isOp(')')) throw new StyleError('Invalid syntax in variable formula');
       p++;
       return v;
     }
     const t = toks[p++];
-    if (!t || t.k === 'op') throw new StyleError(`if: invalid Boolean "${src}"`);
+    if (!t || t.k === 'op') throw new StyleError('Invalid Boolean syntax in if command');
     return t.v;
   };
   const v = level(0);
-  if (p !== toks.length) throw new StyleError(`if: invalid Boolean "${src}"`);
-  if (typeof v !== 'number') throw new StyleError(`if Boolean "${src}" is a single string`);
+  if (p !== toks.length) throw new StyleError('Invalid Boolean syntax in if command');
+  if (typeof v !== 'number') throw new StyleError('If command boolean cannot be single string');
   return v !== 0;
 };

@@ -1,5 +1,5 @@
 import type { Handler } from './args';
-import { yesno } from './args';
+import { logical } from './args';
 import { StyleError } from '../force/types';
 import { formatNumber, mapUnquoted, substituteVariables } from '../script';
 import { evaluateScalar } from '../formula';
@@ -16,7 +16,7 @@ import { isDirectory, makeDirectories, removeDirectory, shellKey } from '../shel
  * LAMMPS does (src/variable.cpp Variable::set at b332f28), with Input::substitute's rules (quoted parts kept).
  */
 const variable: Handler = ({ sys }, a) => {
-  if (a.length < 2) throw new StyleError('usage: variable name style args');
+  if (a.length < 2) throw new StyleError('Illegal variable command: missing argument(s)');
   if (a[1] === 'string' && a.length === 3) {
     const env = sys.formulaEnv;
     const text = mapUnquoted(a[2], (part) => substituteVariables(part, (n) => sys.vars.text(n, env), (f, fmt) => formatNumber(evaluateScalar(f, env), fmt ?? '%.20g')));
@@ -33,18 +33,19 @@ const variable: Handler = ({ sys }, a) => {
  * (the line was substituted outside quotes when it was read).
  */
 const print: Handler = ({ sys }, a) => {
-  if (!a.length) throw new StyleError('usage: print "text" [keywords]');
+  // the keyword checks of native's Input::print (src/input.cpp at b332f28)
+  if (!a.length) throw new StyleError('Illegal print command: missing argument(s)');
   const env = sys.formulaEnv;
   const text = substituteVariables(a[0], (n) => sys.vars.text(n, env), (f, fmt) => formatNumber(evaluateScalar(f, env), fmt ?? '%.20g'));
   let screen = true;
   for (let k = 1; k < a.length; k += 2) {
     const key = a[k], v = a[k + 1];
-    if (v === undefined) throw new StyleError(`print ${key} needs a value`);
+    if (!['file', 'append', 'screen', 'universe'].includes(key)) throw new StyleError(`Unknown print keyword: ${key}`);
+    if (v === undefined) throw new StyleError(`Illegal print ${key} command: missing argument(s)`);
     if (key === 'file') sys.writeFile(v, text + '\n', false);
     else if (key === 'append') sys.writeFile(v, text + '\n', true);
-    else if (key === 'screen') screen = yesno(v, 'screen');
-    else if (key === 'universe') yesno(v, 'universe');
-    else throw new StyleError(`unknown print keyword '${key}'`);
+    else if (key === 'screen') screen = logical(v);
+    else logical(v);
   }
   if (screen) sys.log(text);
 };
@@ -55,7 +56,9 @@ const print: Handler = ({ sys }, a) => {
  * the specified file name is none, then no new log file is opened."
  */
 const log: Handler = ({ sys }, a) => {
-  if (!a[0] || a.length > 2 || (a[1] !== undefined && a[1] !== 'append')) throw new StyleError('usage: log file [append]');
+  // As native LAMMPS does (src/input.cpp Input::log at b332f28)
+  if (a.length < 1 || a.length > 2) throw new StyleError(`Illegal log command: expected 1 or 2 argument(s) but found ${a.length}`);
+  if (a.length === 2 && a[1] !== 'append') throw new StyleError(`Unknown log keyword: ${a[1]}`);
   sys.setLogFile(a[0] === 'none' ? null : a[0], a[1] === 'append');
 };
 
@@ -139,7 +142,7 @@ const browserOnly = (name: string, why: string): Handler => {
  */
 const shell: Handler = ({ sys, session }, a) => {
   const sub = a[0];
-  if (sub === undefined) throw new StyleError('shell: missing command (usage: shell command args)');
+  if (sub === undefined) throw new StyleError('Illegal shell command: missing argument(s)');
   const NO_SUCH = 'No such file or directory';
   const failed = (what: string, err: string) => sys.warn(`Shell command '${what}' failed with error '${err}'`);
   if (sub === 'cd') {
@@ -150,7 +153,7 @@ const shell: Handler = ({ sys, session }, a) => {
     return;
   }
   if (sub === 'mkdir') {
-    if (a.length < 2) throw new StyleError('shell mkdir: missing argument(s) (usage: shell mkdir dir1 dir2 ...)');
+    if (a.length < 2) throw new StyleError('Illegal shell mkdir command: missing argument(s)');
     for (const dir of a.slice(1)) {
       if (sys.files.has(shellKey(sys, dir))) { failed(`mkdir ${dir}`, 'File exists'); continue; }
       session.forEachReplica((r) => makeDirectories(r, shellKey(r, dir)));

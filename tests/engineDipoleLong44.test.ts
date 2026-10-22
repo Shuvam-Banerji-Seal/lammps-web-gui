@@ -39,12 +39,12 @@ const evaluate = async (setup: string[], atoms: Atom[], boundary = 'p p p', pris
   const lines = [
     'units lj', 'atom_style hybrid charge sphere dipole', `boundary ${boundary}`,
     prism ? `region box prism 0 ${L} 0 ${L} 0 ${L} 0.5 0 0` : `region box block 0 ${L} 0 ${L} 0 ${L}`, 'create_box 1 box',
-    'mass * 1.0', 'set type * diameter 1.0 density 1.0', 'set type * charge 0.0',
+    'mass * 1.0',
   ];
-  atoms.forEach((a, k) => {
-    lines.push(`create_atoms ${a.type} single ${a.x.join(' ')} units box`);
-    lines.push(`set atom ${k + 1} dipole ${a.mu.join(' ')}`);
-  });
+  atoms.forEach((a) => lines.push(`create_atoms ${a.type} single ${a.x.join(' ')} units box`));
+  // set needs atoms (native: Set command on system without atoms)
+  lines.push('set type * diameter 1.0 density 1.0', 'set type * charge 0.0');
+  atoms.forEach((a, k) => lines.push(`set atom ${k + 1} dipole ${a.mu.join(' ')}`));
   lines.push(...setup, 'thermo_style custom step pe elong ecoul evdwl', 'thermo_modify format float %.17g norm no');
   lines.push('run 0', 'write_dump all custom dip44.dump id fx fy fz tqx tqy tqz modify format float %.17g sort id');
   try {

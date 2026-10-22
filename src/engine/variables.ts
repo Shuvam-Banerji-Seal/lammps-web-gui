@@ -1,4 +1,6 @@
 import { StyleError } from './force/types';
+import { inumeric, numeric } from './force/util';
+import { checkCFormat } from './cformat';
 import { evaluate, type FormulaEnv, type Mode, type Value } from './formula';
 import { formatNumber } from './script';
 
@@ -55,7 +57,8 @@ export interface Variable {
   vec?: Float64Array;
 }
 
-const REDEFINABLE = new Set<VarStyle>(['string', 'getenv', 'internal', 'equal', 'vector', 'atom']);
+/** The variable styles (native's varstyles). */
+const ALL_STYLES = new Set<string>(['index', 'loop', 'world', 'universe', 'uloop', 'string', 'getenv', 'file', 'atomfile', 'format', 'equal', 'atom', 'vector', 'python', 'timer', 'internal']);
 
 export class Variables {
   readonly vars = new Map<string, Variable>();
@@ -72,32 +75,41 @@ export class Variables {
   nworlds = 1;
 
   /** warn: prints a WARNING line (the session's log). */
-  constructor(private readFile: (name: string) => string, private warn: (text: string) => void = () => undefined) {}
+  /** getenv: the page's environment (System.env, set by shell putenv); undefined when the name is not set. */
+  constructor(private readFile: (name: string) => string, private warn: (text: string) => void = () => undefined,
+    private getenv: (name: string) => string | undefined = () => undefined) {}
 
   has(name: string): boolean { return this.vars.has(name); }
   get(name: string): Variable | undefined { return this.vars.get(name); }
 
-  /** variable name style args — returns false if ignored (already defined). */
+  /**
+   * variable name style args — returns false if ignored (already defined). As native LAMMPS does (src/variable.cpp
+   * Variable::set at b332f28): index, loop, world, universe, uloop, file and atomfile keep an existing variable (of
+   * any style); the other styles replace one of the same style and refuse one of another style ("Cannot redefine ...").
+   */
   define(name: string, style: string, args: string[]): boolean {
-    if (!/^[A-Za-z0-9_]+$/.test(name)) throw new StyleError(`variable name '${name}' must be alphanumeric or underscore`);
+    if (!/^[A-Za-z0-9_]+$/.test(name)) throw new StyleError(`Variable name '${name}' must have only letters, numbers, or underscores`);
+    const narg = 2 + args.length;
+    const url3 = '\nFor more information see https://docs.lammps.org/err0003';
+    const expect = (n: number) => {
+      if (narg !== n) throw new StyleError(`Illegal variable command: expected ${n} arguments but found ${narg}${url3}`);
+    };
     if (style === 'delete') {
-      if (args.length) throw new StyleError('variable delete takes no arguments');
+      if (narg > 2) throw new StyleError(`Illegal variable delete command: expected 2 arguments but found ${narg}${url3}`);
       this.vars.delete(name);
       return true;
     }
     const existing = this.vars.get(name);
-    if (existing && !REDEFINABLE.has(style as VarStyle)) return false;
-    if (existing && existing.style !== style && REDEFINABLE.has(style as VarStyle) && !REDEFINABLE.has(existing.style)) {
-      throw new StyleError(`cannot redefine variable ${name} as a different style`);
+    const KEEP = ['index', 'loop', 'world', 'universe', 'uloop', 'file', 'atomfile'];
+    if (!KEEP.includes(style) && existing && existing.style !== style && ALL_STYLES.has(style)) {
+      throw new StyleError(`Cannot redefine ${existing.style} style variable ${name} as ${style} style variable`);
     }
-    const one = () => {
-      if (args.length !== 1) throw new StyleError(`variable ${style} takes exactly one argument (quote text that contains spaces)`);
-      return args[0];
-    };
+    const one = () => args[0];
     let v: Variable;
     switch (style) {
       case 'index': case 'world': case 'universe':
-        if (args.length < 1) throw new StyleError(`variable ${style} needs at least one value`);
+        if (args.length < 1) throw new StyleError(`Illegal variable ${style} command: missing argument(s)`);
+        if (existing) return false;
         if (style === 'world' && args.length !== this.nworlds) {
           throw new StyleError(`World variable count ${args.length} doesn't match # of partitions ${this.nworlds}`);
         }
@@ -109,17 +121,29 @@ export class Variables {
         break;
       case 'loop': case 'uloop': {
         let pad = false;
-        const a = [...args];
-        if (a[a.length - 1] === 'pad') { pad = true; a.pop(); }
-        const ints = a.map((w) => {
-          if (!/^-?\d+$/.test(w)) throw new StyleError(`variable ${style}: '${w}' is not an integer`);
-          return Number(w);
-        });
         let n1: number, n2: number;
-        if (ints.length === 1) { n1 = 1; n2 = ints[0]; }
-        else if (ints.length === 2 && style === 'loop') { [n1, n2] = ints; }
-        else throw new StyleError(`usage: variable name ${style} N [pad]${style === 'loop' ? ' or N1 N2 [pad]' : ''}`);
-        if (n2 < 0 || n1 > n2) throw new StyleError(`variable ${style}: need N1 <= N2 and N2 >= 0`);
+        if (style === 'loop') {
+          if (args.length < 1) throw new StyleError('Illegal variable loop command: missing argument(s)');
+          if (existing) return false;
+          if (narg === 3 || (narg === 4 && args[1] === 'pad')) {
+            n1 = 1;
+            n2 = inumeric(args[0]);
+            if (n2 <= 0) throw new StyleError(`Invalid variable loop argument: ${n2}`);
+            pad = narg === 4;
+          } else if (narg === 4 || (narg === 5 && args[2] === 'pad')) {
+            n1 = inumeric(args[0]);
+            n2 = inumeric(args[1]);
+            if (n1 > n2 || n2 < 0) throw new StyleError(`Illegal variable loop command: ${n1} > ${n2}`);
+            pad = narg === 5;
+          } else throw new StyleError('Illegal variable loop command: too many arguments');
+        } else {
+          if (narg < 3 || narg > 4) throw new StyleError(`Illegal variable uloop command: expected 3 or 4 arguments but found ${narg}${url3}`);
+          if (narg === 4 && args[1] !== 'pad') throw new StyleError(`Invalid variable uloop argument: ${args[1]}`);
+          if (existing) return false;
+          n1 = 1;
+          n2 = inumeric(args[0]);
+          pad = narg === 4;
+        }
         const width = String(n2).length;
         const values: string[] = [];
         for (let k = n1; k <= n2; k++) values.push(pad ? String(k).padStart(width, '0') : String(k));
@@ -130,15 +154,13 @@ export class Variables {
         v = { style, values, which: style === 'uloop' ? Math.min(this.partition, values.length - 1) : 0 };
         break;
       }
-      case 'string': v = { style, values: [one()], which: 0 }; break;
-      // variable.html: "it returns the value of the environment variable, or an empty string if it not defined".
-      // A browser has no process environment, so the engine cannot give that value; it refuses the style by name
-      // instead of returning the empty string (a silent difference from native LAMMPS).
-      case 'getenv': throw new StyleError('variable style getenv is not supported by the browser engine (there is no process environment to read)');
+      case 'string': expect(3); v = { style, values: [one()], which: 0 }; break;
+      // variable.html: "it returns the value of the environment variable, or an empty string if it not defined". The
+      // browser engine runs in a page, which has no process environment: every name reads as not defined (empty)
+      case 'getenv': expect(3); v = { style, values: [one()], which: 0 }; break;
       case 'internal': {
-        const n = Number(one());
-        if (!Number.isFinite(n)) throw new StyleError('variable internal needs a numeric value');
-        v = { style, values: [], which: 0, num: n };
+        expect(3);
+        v = { style, values: [], which: 0, num: numeric(one()) };
         break;
       }
       case 'equal': case 'vector': case 'atom': {
@@ -146,7 +168,8 @@ export class Variables {
         // it as a single argument." Measured with native LAMMPS (black box): unquoted words after an equal,
         // vector or atom style are joined with single spaces (variable a equal 2 +    3 gives 5; atom x + 1 and
         // vector [1,2] * 3 are joined the same way), while string, format, getenv and internal refuse extra words.
-        if (args.length < 1) throw new StyleError(`variable ${style} needs a formula`);
+        // native names the atom style for a vector-style variable too
+        if (args.length < 1) throw new StyleError(`Illegal variable ${style === 'vector' ? 'atom' : style} command: missing argument(s)`);
         const f = args.join(' ');
         v = { style, values: [], which: 0, formula: f };
         const list = /^\s*\[(.*)\]\s*$/.exec(f);
@@ -160,34 +183,54 @@ export class Variables {
         }
         break;
       }
-      case 'format':
-        if (args.length !== 2) throw new StyleError('usage: variable name format vname fstr');
+      case 'format': {
+        expect(4);
+        const src = this.vars.get(args[0]);
+        if (!src) throw new StyleError(`Variable ${name}: format variable ${args[0]} does not exist`);
+        if (src.style !== 'equal' && src.style !== 'timer' && src.style !== 'internal') {
+          throw new StyleError(`Variable ${name}: format variable ${args[0]} has incompatible style`);
+        }
+        checkCFormat(args[1], 'float', 'Invalid format string for format style variable');
         v = { style, values: [], which: 0, format: [args[0], args[1]] };
         break;
+      }
       case 'file': {
-        const lines = this.fileLines(one());
+        expect(3);
+        if (existing) return false;
+        const lines = this.fileLines(one(), 'file', name);
         if (!lines.length) throw new StyleError(`file-style variable ${name}: file has no values`);
         v = { style, values: [lines.shift()!], which: 0, lines };
         break;
       }
       case 'atomfile': {
-        const lines = this.fileLines(one());
+        expect(3);
+        if (existing) return false;
+        const lines = this.fileLines(one(), 'atomfile', name);
         v = { style, values: [], which: 0, lines };
         this.nextAtomfile(v);
         break;
       }
-      case 'timer': v = { style, values: [], which: 0, t0: performance.now() }; break;
-      case 'python': throw new StyleError('variable python is not available in the browser engine (no Python interpreter)');
+      case 'timer': expect(2); v = { style, values: [], which: 0, t0: performance.now() }; break;
+      // the browser engine has no Python interpreter, as a native binary built without the PYTHON package
+      case 'python': expect(3); throw new StyleError('LAMMPS is not built with Python embedded');
       default:
-        throw new StyleError(`unknown variable style '${style}'`);
+        throw new StyleError(`Unknown variable style: ${style}`);
     }
     this.vars.set(name, v);
     return true;
   }
 
   /** Non-comment, non-blank lines of a file. */
-  private fileLines(file: string): string[] {
-    return this.readFile(file).split('\n').map((l) => l.replace(/#.*/, '').trim()).filter((l) => l.length > 0);
+  private fileLines(file: string, style = 'file', name = ''): string[] {
+    let text: string;
+    try {
+      text = this.readFile(file);
+    } catch (e) {
+      // native's message (VarReader), then the engine's hint
+      if (e instanceof StyleError) throw new StyleError(`Cannot open ${style} variable ${name} file ${file}: No such file or directory (${e.message})`);
+      throw e;
+    }
+    return text.split('\n').map((l) => l.replace(/#.*/, '').trim()).filter((l) => l.length > 0);
   }
 
   /** atomfile: "N" line then N lines "ID value". */
@@ -211,16 +254,27 @@ export class Variables {
    */
   next(names: string[]): boolean {
     let exhausted = false;
-    const vs = names.map((nm) => {
+    // As native LAMMPS does (src/variable.cpp Variable::next at b332f28): every variable exists and has the first one's
+    // style (universe and uloop may mix), no name repeats, and the style is one next advances
+    const vs: (readonly [string, Variable])[] = [];
+    for (const nm of names) {
       const v = this.vars.get(nm);
-      if (!v) throw new StyleError(`invalid variable '${nm}' in next command`);
-      return [nm, v] as const;
-    });
-    const style = vs[0][1].style;
-    for (const [nm, v] of vs) {
-      if (v.style !== style && !(['index', 'loop'].includes(v.style) && ['index', 'loop'].includes(style))) {
-        throw new StyleError('all variables in a next command must be the same style');
+      if (!v) throw new StyleError(`Invalid variable '${nm}' in next command`);
+      if (vs.length) {
+        const z = vs[0][1].style;
+        const mix = (v.style === 'uloop' && z === 'universe') || (v.style === 'universe' && z === 'uloop');
+        if (!mix && v.style !== z) throw new StyleError('All variables in next command must have same style');
       }
+      vs.push([nm, v] as const);
+    }
+    for (let i = 0; i < names.length; i++) {
+      for (let j = i + 1; j < names.length; j++) if (names[i] === names[j]) throw new StyleError(`Duplicate variable '${names[j]}' in next command`);
+    }
+    const style = vs[0][1].style;
+    if (['string', 'equal', 'world', 'getenv', 'atom', 'vector', 'format', 'python', 'timer', 'internal'].includes(style)) {
+      throw new StyleError(`Variable ${names[0]} has invalid style ${style} for next command`);
+    }
+    for (const [nm, v] of vs) {
       if (['index', 'loop', 'world', 'universe', 'uloop'].includes(v.style)) {
         v.which++;
         if (v.which >= v.values.length) { exhausted = true; this.vars.delete(nm); }
@@ -251,7 +305,7 @@ export class Variables {
   /** Text of a variable for $name / ${name} substitution. */
   text(name: string, env: FormulaEnv): string {
     const v = this.vars.get(name);
-    if (!v) throw new StyleError(`substitution for illegal variable ${name}`);
+    if (!v) throw new StyleError(`Substitution for illegal variable ${name}`);
     switch (v.style) {
       case 'equal': return formatNumber(this.scalar(name, env), '%.15g');
       case 'internal': return formatNumber(v.num!, '%.15g');
@@ -264,6 +318,7 @@ export class Variables {
         const a = this.evalVector(name, env);
         return `[${Array.from(a, (x) => String(x)).join(',')}]`;
       }
+      case 'getenv': return this.getenv(v.values[0]) ?? '';
       case 'atom': throw new StyleError(`atom-style variable ${name} cannot be substituted with $ (it has one value per atom)`);
       case 'atomfile': throw new StyleError(`atomfile-style variable ${name} cannot be substituted with $`);
       default: return v.values[v.which];
@@ -286,7 +341,7 @@ export class Variables {
       case 'vector': case 'atom': case 'atomfile':
         throw new StyleError(`variable ${name} (style ${v.style}) does not give a single value`);
       default: {
-        const s = v.values[v.which];
+        const s = v.style === 'getenv' ? this.getenv(v.values[0]) ?? '' : v.values[v.which];
         const n = Number(s);
         if (s.trim() === '' || !Number.isFinite(n)) throw new StyleError(`variable ${name} = '${s}' is not a number`);
         return n;

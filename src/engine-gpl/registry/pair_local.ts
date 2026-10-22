@@ -5,13 +5,17 @@
  * LAMMPS is Copyright Sandia Corporation and distributed under the GNU General Public License, version 2
  * (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
- * Registered for the core through src/engine/lazyStyles.ts (kind HOOKS, word 'pair/local'): compute pair/local
- * (src/engine/compute/local.ts) reads the native row order through gplHook('pair/local').
+ * Registered for the core through src/engine/lazyStyles.ts (kind HOOKS, words 'pair/local' and 'property/local'):
+ * compute pair/local and the pair attributes of compute property/local (src/engine/compute/local.ts) read the native row
+ * order through gplHook('pair/local') and gplHook('property/local').
  */
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import type { PairLocalHook } from '../../engine/compute/local';
 
-/** The HOOKS entry 'pair/local' (the contract is PairLocalHook, src/engine/compute/local.ts). */
+const pairLocal: PairLocalHook = { pairOrder: (newton: boolean) => new NativePairOrder(newton) };
+
+/** The HOOKS entries 'pair/local' and 'property/local' (the contract is PairLocalHook, src/engine/compute/local.ts). */
 export const HOOKS: Record<string, PairLocalHook> = {
-  'pair/local': { pairOrder: (newton: boolean) => new NativePairOrder(newton) },
+  'pair/local': pairLocal,
+  'property/local': pairLocal,
 };

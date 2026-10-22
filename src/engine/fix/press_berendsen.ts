@@ -106,7 +106,8 @@ export class FixPressBerendsen extends Fix {
   init(): void {
     const sys = this.sys;
     const s = sys.state;
-    if (s.box.triclinic) throw new StyleError(`fix ${this.id} press/berendsen: triclinic boxes are not supported by the browser engine`);
+    // As native LAMMPS does (FixPressBerendsen::init, src/fix_press_berendsen.cpp at b332f28)
+    if (s.box.triclinic) throw new StyleError('Cannot use fix press/berendsen with triclinic box');
     for (let d = 0; d < 3; d++) {
       if (this.pStart[d] !== null && !s.box.periodic[d]) throw new StyleError(`fix ${this.id} press/berendsen: a barostatted dimension must be periodic`);
     }

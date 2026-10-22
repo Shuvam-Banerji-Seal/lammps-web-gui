@@ -1,0 +1,35 @@
+# oracle: compute property/local pair attributes with newton off: a pair with a ghost partner is counted once by the tag rule; patom1 ptype2 (force cutoff) and natom2 (neighbor list), dump local each step of run 2
+# oracle-files: propl_newtonoff_p.local propl_newtonoff_n.local
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12 atomrel=1e-8 filerel=1e-8
+units           lj
+newton          off
+atom_style      atomic
+lattice         fcc 0.9
+region          box block 0 2 0 2 0 2
+create_box      2 box
+create_atoms    1 box
+mass            * 1.0
+group           vac id 4
+delete_atoms    group vac compress no
+set             type 1 type/fraction 2 0.4 7071
+variable        dx atom 0.06*sin(2.3*x+1.1*y)
+variable        dy atom 0.06*cos(1.9*y-0.7*z)
+variable        dz atom 0.06*sin(1.4*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+velocity        all create 1.0 4321 loop geom
+fix             integ all nve
+pair_style      lj/cut 2.2
+pair_coeff      1 1 1.0 1.0 2.2
+pair_coeff      2 2 1.0 1.0 1.3
+pair_coeff      1 2 1.0 1.0 1.6
+neighbor        0.4 bin
+region          half block 0 1.2 INF INF INF INF
+group           sub region half
+compute         pp sub property/local patom1 ptype2
+compute         nn all property/local natom2
+dump            dp all local 1 propl_newtonoff_p.local index c_pp[*]
+dump            dn all local 1 propl_newtonoff_n.local index c_nn
+thermo_style    custom step pe ke
+thermo_modify   format float %.15g
+thermo          1
+run             2

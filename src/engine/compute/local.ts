@@ -2,7 +2,7 @@ import { Compute } from './compute';
 import { StyleError, newAccum, type Accum, type Bonded, type BondedCompute } from '../force/types';
 import { bondDelta, delta, dihedralGeometry } from '../force/bonded_util';
 import type { BondedCopies } from '../force/types';
-import { buildAtomMap, massOf, nativeOrder } from '../atoms';
+import { atomSubStyles, buildAtomMap, isTemplateStyle, massOf, nativeOrder } from '../atoms';
 import type { System } from '../system';
 import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
@@ -356,36 +356,90 @@ export class ComputeTermLocal extends Compute {
   }
 }
 
-/** property/local: the topology ids and types of bonds, angles, dihedrals or impropers. */
+/**
+ * The pair attributes of property/local (compute_property_local.html): "natom1, natom2 = store IDs of two atoms in each
+ * pair (within neighbor cutoff)", "ntype1, ntype2 = store types of two atoms in each pair (within neighbor cutoff)",
+ * "patom1, patom2 = store IDs of two atoms in each pair (within force cutoff)", "ptype1, ptype2 = store types of two
+ * atoms in each pair (within force cutoff)".
+ */
+const PAIR_ATTRS: Record<string, 'neigh' | 'pair'> = {
+  natom1: 'neigh', natom2: 'neigh', ntype1: 'neigh', ntype2: 'neigh', patom1: 'pair', patom2: 'pair', ptype1: 'pair', ptype2: 'pair',
+};
+
+/** The topology each atom style stores (native AtomVec bonds_allow, angles_allow, dihedrals_allow, impropers_allow). */
+const ALLOW: Record<TermKind, string[]> = {
+  bond: ['bond', 'angle', 'molecular', 'full', 'template', 'bpm/sphere', 'dielectric', 'amoeba'],
+  angle: ['angle', 'molecular', 'full', 'template', 'dielectric', 'amoeba'],
+  dihedral: ['molecular', 'full', 'template', 'dielectric', 'amoeba'],
+  improper: ['molecular', 'full', 'template', 'dielectric', 'amoeba'],
+};
+
+/**
+ * property/local: the topology ids and types of bonds, angles, dihedrals or impropers, or the IDs and types of the atoms
+ * of each pair of the neighbor list. compute_property_local.html: "For *natom1* and *natom2*, all atom pairs in the
+ * neighbor list are considered (out to the neighbor cutoff = force cutoff + neighbor skin).  For *patom1* and *patom2*,
+ * the distance between the atoms must be less than the force cutoff distance for that pair to be included"; "For the
+ * default setting of *type*, the pairwise cutoff defined by the pair_style command for the types of the two atoms is
+ * used.  For the *radius* setting, the sum of the radii of the two particles is used as a cutoff." As native LAMMPS does
+ * (src/compute_property_local.cpp at b332f28): the attributes are read until a word that is none (one kind only: "Compute
+ * property/local cannot use these inputs together"), then the cutoff keyword; the pairs are those of the half list in
+ * native's order (PairLocalHook, as compute pair/local), both atoms in the group, a ghost partner under newton off
+ * counted once by the tag rule; a pair attribute needs a pair style.
+ */
 export class ComputePropertyLocal extends Compute {
   readonly style = 'property/local';
   private readonly attrs: string[];
-  private readonly kind: TermKind;
+  private readonly kind: TermKind | 'neigh' | 'pair';
+  private readonly radiusCut: boolean;
+  private order: PairOrderSource | null = null;
+  private orderNewton = true;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (!args.length) throw new StyleError(`compute ${id} property/local needs at least one attribute`);
-    let kind: TermKind | null = null;
-    for (const w of args) {
-      if (w === 'cutoff' || w === 'type' || w === 'radius') {
-        throw new StyleError(`compute ${id} property/local: the cutoff keyword is only used with pair attributes, which are not supported by the browser engine`);
-      }
-      const k = (Object.keys(ATTRS) as TermKind[]).find((kk) => ATTRS[kk].atoms.includes(w) || ATTRS[kk].type === w);
-      if (!k) {
-        throw new StyleError(`compute ${id} property/local: attribute '${w}' is not supported by the browser engine (bond, angle, dihedral and improper attributes are)`);
-      }
-      if (kind && kind !== k) throw new StyleError(`compute ${id} property/local: bond, angle, dihedral and improper attributes cannot be mixed`);
-      kind = k;
+    if (!args.length) throw new StyleError('Illegal compute property/local command: missing argument(s)');
+    let kind: TermKind | 'neigh' | 'pair' | null = null;
+    const attrs: string[] = [];
+    let k = 0;
+    for (; k < args.length; k++) {
+      const w = args[k];
+      const wk = PAIR_ATTRS[w] ?? (Object.keys(ATTRS) as TermKind[]).find((kk) => ATTRS[kk].atoms.includes(w) || ATTRS[kk].type === w);
+      if (!wk) break;
+      if (kind && kind !== wk) throw new StyleError('Compute property/local cannot use these inputs together');
+      kind = wk;
+      attrs.push(w);
     }
-    this.kind = kind!;
-    this.attrs = args;
+    let radiusCut = false;
+    while (k < args.length) {
+      if (args[k] !== 'cutoff') throw new StyleError(`Unknown compute property/local keyword: ${args[k]}`);
+      if (k + 2 > args.length) throw new StyleError('Illegal compute property/local cutoff command: missing argument(s)');
+      if (args[k + 1] === 'type') radiusCut = false;
+      else if (args[k + 1] === 'radius') radiusCut = true;
+      else throw new StyleError(`Unknown compute property/local cutoff keyword: ${args[k + 1]}`);
+      k += 2;
+    }
+    const st = sys.state.atomStyle;
+    if (kind && kind !== 'neigh' && kind !== 'pair') {
+      if (isTemplateStyle(st)) throw new StyleError('Compute property/local does not (yet) work with atom_style template');
+      if (!atomSubStyles(st).some((x) => ALLOW[kind as TermKind].includes(x))) throw new StyleError("Compute property/local for property that isn't allocated");
+    }
+    if (radiusCut && !sys.state.radius) throw new StyleError(`Compute property/local with ID ${id} requires atom attribute radius`);
+    // native accepts no attribute (a cutoff keyword alone) and then gives no rows
+    this.kind = kind ?? 'bond';
+    this.attrs = attrs;
+    this.radiusCut = radiusCut;
     this.localFlag = true;
-    this.sizeLocalCols = args.length > 1 ? args.length : 0;
+    this.sizeLocalCols = attrs.length > 1 ? attrs.length : 0;
+  }
+
+  init(): void {
+    if ((this.kind === 'neigh' || this.kind === 'pair') && !this.sys.ff.pair) throw new StyleError('No pair style is defined for compute property/local');
   }
 
   protected computeLocal(): Float64Array<ArrayBuffer> {
+    if (this.kind === 'neigh' || this.kind === 'pair') return this.pairRows();
     const s = this.sys.state;
     const kind = this.kind;
+    if (!this.attrs.length) { this.localRows = 0; return new Float64Array(0); }
     const rows = termRows(this.sys, kind, this.groupBit);
     const list = s.topo[FIELD[kind]];
     const w = WIDTH[kind];
@@ -399,6 +453,69 @@ export class ComputePropertyLocal extends Compute {
     });
     this.localRows = rows.length;
     return out;
+  }
+
+  /** The pairs of the half list (ComputePropertyLocal::count_pairs): IDs and types of the two atoms. */
+  private pairRows(): Float64Array<ArrayBuffer> {
+    const sys = this.sys;
+    const pair = sys.ff.pair;
+    if (!pair) throw new StyleError('No pair style is defined for compute property/local');
+    sys.forces();
+    const s = sys.state;
+    const nb = sys.nb;
+    const list = nb.half;
+    if (!list) throw new StyleError(`compute ${this.id} property/local: no half neighbour list is available`);
+    const newton = sys.newtonPair !== false;
+    if (!this.order || this.orderNewton !== newton) {
+      this.order = gplHook<PairLocalHook>('property/local').pairOrder(newton);
+      this.orderNewton = newton;
+    }
+    const pairs = this.order.pairs(s, nb, sys.geom, list);
+    const force = this.kind === 'pair';
+    const nt = pair.ntypes + 1;
+    const ncol = this.attrs.length;
+    const rows: number[] = [];
+    const xa = nb.xall;
+    const nlocal = nb.nlocal;
+    const tag = s.id;
+    const radius = s.radius;
+    for (let p = 0; p < pairs.length; p += 2) {
+      const i = pairs[p];
+      const oi = nb.owner[i];
+      if (!(s.mask[oi] & this.groupBit)) continue;
+      const j = pairs[p + 1] & NEIGHMASK;
+      const oj = nb.owner[j];
+      if (!(s.mask[oj] & this.groupBit)) continue;
+      if (!newton && j >= nlocal) {
+        const itag = tag[oi], jtag = tag[oj];
+        if (itag > jtag) {
+          if ((itag + jtag) % 2 === 0) continue;
+        } else if (itag < jtag) {
+          if ((itag + jtag) % 2 === 1) continue;
+        } else {
+          if (xa[3 * j + 2] < xa[3 * i + 2]) continue;
+          if (xa[3 * j + 2] === xa[3 * i + 2]) {
+            if (xa[3 * j + 1] < xa[3 * i + 1]) continue;
+            if (xa[3 * j + 1] === xa[3 * i + 1] && xa[3 * j] < xa[3 * i]) continue;
+          }
+        }
+      }
+      const ti = nb.typeall[i], tj = nb.typeall[j];
+      if (force) {
+        const dx = xa[3 * i] - xa[3 * j], dy = xa[3 * i + 1] - xa[3 * j + 1], dz = xa[3 * i + 2] - xa[3 * j + 2];
+        const rsq = dx * dx + dy * dy + dz * dz;
+        if (this.radiusCut) {
+          const radsum = radius![oi] + radius![oj];
+          if (rsq >= radsum * radsum) continue;
+        } else if (rsq >= pair.cutsq[ti * nt + tj]) continue;
+      }
+      for (let c = 0; c < ncol; c++) {
+        const a = this.attrs[c];
+        rows.push(a.endsWith('atom1') ? tag[oi] : a.endsWith('atom2') ? tag[oj] : a.endsWith('type1') ? ti : tj);
+      }
+    }
+    this.localRows = ncol ? rows.length / ncol : 0;
+    return Float64Array.from(rows);
   }
 }
 

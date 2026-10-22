@@ -2,6 +2,7 @@ import type { Ctx, Handler } from './args';
 import { int, num, missingArgs, numeric, inumeric, bnumeric, logical } from './args';
 import { StyleError, type KSpace } from '../force/types';
 import { removedStyleError } from '../deprecated';
+import { gplHook } from '../gplHooks';
 import { checkFixStateNotStored } from '../fix/restartRecord';
 import { FIX_STYLES, COMPUTE_STYLES, styleNames } from '../styles';
 import { Dump, type DumpStyle } from '../output/dump';
@@ -57,6 +58,9 @@ const fix: Handler = ({ sys }, a) => {
     throw removedStyleError('fix', style) ?? new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${styleNames().fix.join(', ')}`);
   }
   if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError('Fix ID must be alphanumeric or underscore characters');
+  // native's constructor of the style checks the number of words first (most styles; gplHook('fix'))
+  const argMsg = gplHook<(style: string, narg: number) => string | null>('fix')(style, a.length);
+  if (argMsg) throw new StyleError(argMsg);
   checkFixStateNotStored(sys, id, style);
   ensureThermoComputes(sys);
   if (k >= 0) sys.fixes[k].destroy?.();
@@ -112,6 +116,9 @@ const compute: Handler = ({ sys }, a) => {
   }
   if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError(`Compute ID ${id} must only have alphanumeric or underscore characters`);
   if (sys.groups.find(group) < 0) throw new StyleError(`Group ID ${group} requested by compute ${style} does not exist`);
+  // native's constructor of the style checks the number of words first (most styles; gplHook('compute'))
+  const argMsg = gplHook<(style: string, narg: number) => string | null>('compute')(style, a.length);
+  if (argMsg) throw new StyleError(argMsg);
   ensureThermoComputes(sys);
   if (style === 'msd' && sys.groups.isDynamic(sys.groupBit(group))) throw new StyleError('Compute msd is not compatible with dynamic groups');
   sys.computes.push(make(sys, id, group, a.slice(3)));

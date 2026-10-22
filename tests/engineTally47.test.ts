@@ -71,7 +71,7 @@ describe('compute group/group, pe/tally, force/tally, stress/tally: parsing and 
   });
 
   it('needs the group2-ID and an existing group', async () => {
-    expect((await run(`${CRYSTAL}compute g odd group/group\nrun 0\n`)).error).toMatch(/needs the group2-ID/);
+    expect((await run(`${CRYSTAL}compute g odd group/group\nrun 0\n`)).error).toMatch(/Illegal compute group\/group command/);
     expect((await run(`${CRYSTAL}compute g odd group/group nosuch\nrun 0\n`)).error).toBeDefined();
   });
 

@@ -74,7 +74,7 @@ describe('SPIN styles, batch 2', () => {
     const s = await run(`${header}fix 2 all langevin/spin 0.0 0.01 0\n`);
     expect(s.error).toContain('seed must be a positive integer');
     const a = await run(`${header}fix 2 all langevin/spin 0.0 0.01\n`);
-    expect(a.error).toContain('usage: fix ID group-ID langevin/spin T Tdamp seed');
+    expect(a.error).toContain('Illegal langevin/spin command');
   });
 
   it('refuses variables in setforce/spin and min_style spin', async () => {

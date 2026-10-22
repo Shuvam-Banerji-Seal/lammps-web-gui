@@ -158,7 +158,7 @@ describe('compute temp/cs', () => {
       .rejects.toThrow('must be equal');
     await expect(runScript(`${FOUR_ATOMS}\ngroup cores id 1 3\ngroup shells id 2 4\ncompute cs all temp/cs cores cores\nrun 0`))
       .rejects.toThrow('no bond to the other group');
-    await expect(runScript(`${FOUR_ATOMS}\ncompute cs all temp/cs cores`)).rejects.toThrow('usage');
+    await expect(runScript(`${FOUR_ATOMS}\ncompute cs all temp/cs cores`)).rejects.toThrow('Illegal compute temp/cs command');
   });
 
   it('removes the pair-relative velocity as a bias and restores it', async () => {

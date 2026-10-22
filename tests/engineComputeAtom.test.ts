@@ -47,7 +47,7 @@ describe('compute ke/atom', () => {
   });
 
   it('rejects arguments', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute k all ke/atom extra`)).rejects.toThrow('ke/atom takes no arguments');
+    await expect(runScript(`${TWO_ATOMS}\ncompute k all ke/atom extra`)).rejects.toThrow('Illegal compute ke/atom command');
   });
 });
 

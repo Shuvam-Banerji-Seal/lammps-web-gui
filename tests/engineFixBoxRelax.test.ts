@@ -40,7 +40,7 @@ describe('fix box/relax argument errors', () => {
     expect(await fails(SETUP + 'fix 1 all box/relax iso 0.0 bogus 3\n')).toMatch(/bogus/);
   });
   it('rejects a keyword without its value', async () => {
-    expect(await fails(SETUP + 'fix 1 all box/relax iso\n')).toMatch(/iso.*value/);
+    expect(await fails(SETUP + 'fix 1 all box/relax iso\n')).toMatch(/Illegal fix box\/relax command: missing argument/);
   });
   it('rejects a non-positive vmax', async () => {
     expect(await fails(SETUP + 'fix 1 all box/relax iso 0.0 vmax 0.0\n')).toMatch(/vmax must be greater than 0/);

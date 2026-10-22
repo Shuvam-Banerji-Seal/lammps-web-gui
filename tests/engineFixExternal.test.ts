@@ -218,7 +218,7 @@ describe('fix lineforce (docs.lammps.org/fix_lineforce.html)', () => {
   });
 
   it('rejects wrong arg counts and zero vectors', async () => {
-    expect((await runScript(oneAtom('fix l all lineforce 1 0'))).error?.message).toContain('usage');
+    expect((await runScript(oneAtom('fix l all lineforce 1 0'))).error?.message).toContain('Illegal fix lineforce command');
     expect((await runScript(oneAtom('fix l all lineforce 0 0 0'))).error?.message).toContain('non-zero');
     expect((await runScript(oneAtom('fix l all lineforce 1 x 0'))).error?.message).toContain('number');
   });
@@ -256,7 +256,7 @@ describe('fix planeforce (docs.lammps.org/fix_planeforce.html)', () => {
   });
 
   it('rejects wrong arg counts and zero vectors', async () => {
-    expect((await runScript(oneAtom('fix p all planeforce 1 0 0 0'))).error?.message).toContain('usage');
+    expect((await runScript(oneAtom('fix p all planeforce 1 0 0 0'))).error?.message).toContain('Illegal fix planeforce command');
     expect((await runScript(oneAtom('fix p all planeforce 0 0 0'))).error?.message).toContain('non-zero');
   });
 });
@@ -344,6 +344,6 @@ run 0
     expect(errText(await runScript(dip + 'create_box 1 box\ncreate_atoms 1 single 5 5 5 units box\nset atom 1 dipole 0 0 1\nvariable az atom 0.1*x\nfix e all efield 0 0 v_az\nrun 0'))).toContain('Fix efield with dipoles cannot use atom-style variables');
     expect((await runScript(dip + 'create_box 1 box\ncreate_atoms 1 single 5 5 5 units box\nset atom 1 dipole 0 0 1\nvariable bz equal 0.1\nfix e all efield 0 0 v_bz\nrun 0')).error).toBeNull();
     expect(errText(await runScript(oneAtom('set group all charge 1.0\nfix e all efield 1 0 0 dipole 1 0 0', 'charge')))).toContain('dipole');
-    expect(errText(await runScript(oneAtom('set group all charge 1.0\nfix e all efield 1 0', 'charge')))).toContain('usage');
+    expect(errText(await runScript(oneAtom('set group all charge 1.0\nfix e all efield 1 0', 'charge')))).toContain('Illegal fix efield command: missing argument(s)');
   });
 });

@@ -337,7 +337,7 @@ run 0`);
 
   it('rejects bad arguments', async () => {
     const bad = async (line: string) => (await runScript(`${BASE}\n${line}\nrun 0`)).error?.message ?? '';
-    expect(await bad('fix 1 all wall/lj93')).toMatch(/usage: fix ID group-ID wall\/lj93/);
+    expect(await bad('fix 1 all wall/lj93')).toMatch(/Illegal fix wall\/lj93 command: no walls defined/);
     expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0')).toMatch(/face zlo needs 4 arguments/);
     expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 foo bar')).toMatch(/unknown argument 'foo'/);
     expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 units parsec')).toMatch(/units must be lattice or box/);

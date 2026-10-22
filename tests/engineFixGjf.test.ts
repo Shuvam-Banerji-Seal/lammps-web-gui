@@ -48,7 +48,7 @@ describe('fix gjf argument errors', () => {
   const base = `${SETUP}\n`;
   it('needs Tstart Tstop damp seed', async () => {
     const r = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0\nrun 1`);
-    expect(errorText(r.error)).toMatch(/usage: fix ID group gjf/);
+    expect(errorText(r.error)).toMatch(/Illegal fix gjf command: missing argument/);
   });
   it('damp must be positive', async () => {
     const r = await runScript(`${base}fix 1 all gjf 1.0 1.0 0.0 9182\nrun 1`);

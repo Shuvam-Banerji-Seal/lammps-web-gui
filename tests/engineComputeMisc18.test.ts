@@ -365,7 +365,8 @@ run 0
 
   it('rejects arguments and needs atom_style sphere', async () => {
     expect((await run(`${SPHERE('units lj')}compute era all erotate/sphere/atom extra\n`)).error)
-      .toMatch('compute erotate/sphere/atom takes no arguments');
+      // native's message has a doubled slash
+      .toMatch('Illegal compute erotate/sphere//atom command');
     const atomic = `units lj
 atom_style atomic
 lattice sc 1.0

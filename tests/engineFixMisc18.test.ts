@@ -183,7 +183,7 @@ create_box 1 box
 create_atoms 1 single 1.0 0.0 0.0
 mass 1 1.0
 fix t all addtorque 0.0 0.0
-`))).toContain('addtorque Tx Ty Tz');
+`))).toContain('Illegal fix addtorque/group command');
     expect(errText(await runScript(`units lj
 atom_style atomic
 boundary f f f
@@ -254,7 +254,7 @@ ${DUMP}
   });
 
   it('rejects bad arguments', async () => {
-    expect(errText(await runScript(box + 'fix d all drag 0 0 0 1\n'))).toContain('x y z fmag delta');
+    expect(errText(await runScript(box + 'fix d all drag 0 0 0 1\n'))).toContain('Illegal fix drag command');
     expect(errText(await runScript(box + 'fix d all drag v_x 0 0 1 1\n'))).toContain('number or NULL');
     expect(errText(await runScript(box + 'fix d all drag 0 0 0 abc 1\n'))).toContain('fmag');
   });

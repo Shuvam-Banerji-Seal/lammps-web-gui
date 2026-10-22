@@ -221,8 +221,8 @@ region uni union 2 sph sph_out units box
 `;
     const cases: [string, RegExp][] = [
       ['fix 2 all wall/region sph foo 1 1 2.5', /unknown style 'foo'/],
-      ['fix 2 all wall/region sph lj93 1 2.5', /takes 2 parameters/],
-      ['fix 2 all wall/region sph lj93 1 1', /takes 2 parameters and a cutoff/],
+      ['fix 2 all wall/region sph lj93 1 2.5', /Illegal fix wall\/region command: missing argument/],
+      ['fix 2 all wall/region sph lj93 1 1', /Illegal fix wall\/region command: missing argument/],
       ['fix 2 all wall/region sph lj93 1 1 0', /cutoff must be a number > 0/],
       ['fix 2 all wall/region sph morse 1 1 2.5', /takes 3 parameters/],
       // style colloid needs finite-size particles (fix_wall_region.cpp init at b332f28; measured with native LAMMPS: this

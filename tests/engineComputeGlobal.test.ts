@@ -59,7 +59,7 @@ describe('compute com', () => {
   });
 
   it('rejects arguments', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute c all com extra`)).rejects.toThrow('compute com takes no arguments');
+    await expect(runScript(`${TWO_ATOMS}\ncompute c all com extra`)).rejects.toThrow('Illegal compute com command');
   });
 });
 
@@ -89,7 +89,7 @@ describe('compute gyration', () => {
   });
 
   it('rejects arguments', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute g all gyration 3`)).rejects.toThrow('compute gyration takes no arguments');
+    await expect(runScript(`${TWO_ATOMS}\ncompute g all gyration 3`)).rejects.toThrow('Illegal compute gyration command');
   });
 });
 

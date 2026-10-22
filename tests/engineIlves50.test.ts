@@ -163,8 +163,8 @@ describe('fix ilves parsing', () => {
   const bad = (fix: string) => run(DIMER, BASE(DIMER, fix, 'run 0'));
 
   it('needs the tol, iter and N arguments and a selector', async () => {
-    expect((await bad('fix c all ilves 1e-4 25')).error?.message).toMatch(/usage: fix ID group ilves/);
-    expect((await bad('fix c all ilves 1e-4 25 0')).error?.message).toMatch(/usage: fix ID group ilves/);
+    expect((await bad('fix c all ilves 1e-4 25')).error?.message).toMatch(/Illegal fix ilves command: missing argument/);
+    expect((await bad('fix c all ilves 1e-4 25 0')).error?.message).toMatch(/Illegal fix ilves command: missing argument/);
     expect((await bad('fix c all ilves 1e-4 25 0 mode fixed')).error?.message).toMatch(/no bond, angle, atom type or mass selected/);
     expect((await bad('fix c all ilves 0 25 0 b 1')).error?.message).toMatch(/tol must be > 0/);
     expect((await bad('fix c all ilves 1e-4 0 0 b 1')).error?.message).toMatch(/iter >= 1/);

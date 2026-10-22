@@ -179,7 +179,7 @@ describe('fix restrain: argument errors', () => {
     expect(await errorOf(`${base}fix R all restrain dihedral 1 2 3 4 1.0 1.0 0.0 mult 1.5\n`)).toMatch(/mult/);
   });
   it('no restraint at all, and non-numeric values', async () => {
-    expect(await errorOf(`${base}fix R all restrain\n`)).toMatch(/at least one/);
+    expect(await errorOf(`${base}fix R all restrain\n`)).toMatch(/Illegal fix restrain command/);
     expect(await errorOf(`${base}fix R all restrain bond 1 2 abc 1.0 2.0\n`)).toMatch(/abc/);
   });
   it('bond atoms must differ', async () => {

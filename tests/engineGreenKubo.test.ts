@@ -152,6 +152,6 @@ describe('argument errors', () => {
   });
 
   it('compute heat/flux needs exactly three compute IDs', async () => {
-    await bad('compute F all heat/flux ke pe\n', /usage: compute ID group-ID heat\/flux/);
+    await bad('compute F all heat/flux ke pe\n', /Illegal compute heat\/flux command/);
   });
 });

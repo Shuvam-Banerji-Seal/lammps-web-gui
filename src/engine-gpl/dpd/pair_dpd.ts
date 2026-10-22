@@ -113,7 +113,7 @@ export class PairDPD extends Pair {
     this.logFn = (text) => ctx.log(text);
     this.runSteps = ctx.runSteps ?? null;
     // pair_dpd.cpp init_style(): "Pair dpd requires ghost atoms store velocity"
-    if (ctx.ghostVelocity !== true) throw new StyleError('Pair dpd requires ghost atoms store velocity (use comm_modify vel yes)');
+    if (ctx.ghostVelocity !== true) throw new StyleError('Pair dpd requires ghost atoms store velocity\n(use comm_modify vel yes)');
     // pair_dpd.cpp: "Pair dpd needs newton pair on for momentum conservation" (a warning natively; this port
     // applies only the newton-on force update, so newton off is refused)
     if (ctx.newtonPair === false) throw new StyleError('pair_style dpd with newton pair off is not supported by the browser engine');

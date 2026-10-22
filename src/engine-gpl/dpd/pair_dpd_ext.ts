@@ -92,7 +92,7 @@ export class PairDPDExt extends Pair {
     this.logFn = (text) => ctx.log(text);
     this.runSteps = ctx.runSteps ?? null;
     // pair_dpd_ext.cpp init_style() inherits pair_dpd: ghost velocities are required
-    if (ctx.ghostVelocity !== true) throw new StyleError(`Pair ${this.name} requires ghost atoms store velocity (use comm_modify vel yes)`);
+    if (ctx.ghostVelocity !== true) throw new StyleError(`Pair ${this.name} requires ghost atoms store velocity\n(use comm_modify vel yes)`);
     if (ctx.newtonPair === false) throw new StyleError(`pair_style ${this.name} with newton pair off is not supported by the browser engine`);
     this.boltz = ctx.s ? ctx.s.units.boltz : 1;
     this.nt = this.ntypes + 1;

@@ -118,7 +118,8 @@ describe('pair_style lj/spica family', () => {
   });
 
   it('refuses pair_modify tail yes (measured: Tail flag not supported by lj/spica pair style)', async () => {
-    const out = await runScript(dimer('pair_style lj/spica 2.8\npair_coeff 1 1 lj9_6 1.0 1.1 2.8\npair_modify tail yes', 1.5));
+    // one atom type: with an unset type 2 native stops first with All pair coeffs are not set. Status:
+    const out = await runScript(dimer('pair_style lj/spica 2.8\npair_coeff 1 1 lj9_6 1.0 1.1 2.8\npair_modify tail yes', 1.5, [1, 1]));
     expect(out.error).toContain('Tail flag not supported by lj/spica pair style');
   });
 

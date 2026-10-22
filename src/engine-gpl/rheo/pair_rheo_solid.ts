@@ -71,7 +71,7 @@ export class PairRHEOSolid extends Pair {
   }
 
   initStyle(ctx: StyleContext): void {
-    if (ctx.ghostVelocity !== true) throw new StyleError('Pair rheo/solid requires ghost atoms store velocity (use comm_modify vel yes)');
+    if (ctx.ghostVelocity !== true) throw new StyleError('Pair rheo/solid requires ghost atoms store velocity\n(use comm_modify vel yes)');
   }
 
   initOne(i: number, j: number): number {

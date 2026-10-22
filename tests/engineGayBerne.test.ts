@@ -172,8 +172,9 @@ describe('pair_style gayberne: refusals (measured native failures or unreproduce
     const pair = PAIR_A.map((l) => (l.startsWith('pair_coeff 4 4') ? 'pair_coeff 4 4 1.0 1.0 1.5 0.5 1.5 1.5 0.5 1.5 4.0' : l));
     await expect(withBodies(BODIES_A, pair)).rejects.toThrow('point particles need equal epsilon');
   });
-  it('rejects a type without epsilon a,b,c', async () => {
+  it('rejects a type without its I,I coefficients before the epsilon a,b,c check', async () => {
+    // native Pair::init checks every I,I pair before PairGayBerne::init_style checks epsilon a,b,c
     const pair = PAIR_B.filter((l) => !l.startsWith('pair_coeff 3 3'));
-    await expect(withBodies(BODIES_B, pair)).rejects.toThrow('epsilon a,b,c coeffs are not all set');
+    await expect(withBodies(BODIES_B, pair)).rejects.toThrow('All pair coeffs are not set. Status:');
   });
 });

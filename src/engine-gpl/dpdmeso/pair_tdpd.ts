@@ -99,7 +99,7 @@ export class PairTDPD extends Pair {
 
   initStyle(ctx: StyleContext): void {
     // pair_tdpd.cpp init_style(): "Pair style tdpd requires ghost atoms store velocity" and the cc / cc_flux properties
-    if (ctx.ghostVelocity !== true) throw new StyleError('Pair style tdpd requires ghost atoms store velocity (use comm_modify vel yes)');
+    if (ctx.ghostVelocity !== true) throw new StyleError('Pair style tdpd requires ghost atoms store velocity\n(use comm_modify vel yes)');
     if (!ctx.s || !isTdpdStyle(ctx.s.atomStyle) || !ctx.s.custom.has(TDPD_CC) || !ctx.s.custom.has(TDPD_CC_FLUX)) {
       throw new StyleError('Pair style tdpd requires atom properties cc/cc_flux (use atom_style tdpd N)');
     }

@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { fmtCoeff, parseNum } from '../util';
 import { tallyAtom } from './lj_cut';
@@ -451,16 +451,10 @@ export class PairZero extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (this.nocoeff) {
-      // "any pair_coeff commands will only be checked for the atom type
-      // numbers and the rest ignored"
-      if (args.length < 2) throw pairCoeffArgs('usage: pair_coeff I J [cutoff]');
-      typeBounds(args[0], this.ntypes);
-      typeBounds(args[1], this.ntypes);
-      return;
-    }
-    if (args.length < 2 || args.length > 3) throw pairCoeffArgs('usage: pair_coeff I J [cutoff]');
-    const cut = args[2] !== undefined ? parseNum(args[2], 'cutoff') : this.cutGlobal;
+    // As native LAMMPS does (src/pair_zero.cpp PairZero::coeff at b332f28): with nocoeff "any pair_coeff commands will
+    // only be checked for the atom type numbers and the rest ignored"; the pairs are set with the global cutoff
+    if (args.length < 2 || (!this.nocoeff && args.length > 3)) throw pairCoeffArgs('usage: pair_coeff I J [cutoff]');
+    const cut = !this.nocoeff && args[2] !== undefined ? parseNum(args[2], 'cutoff') : this.cutGlobal;
     this.p.setRange(args[0], args[1], [cut]);
   }
 

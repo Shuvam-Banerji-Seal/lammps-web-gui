@@ -136,10 +136,10 @@ run 0
 
 describe('pair simple2: missing coefficients throw', () => {
   const cases: [string, string, RegExp][] = [
-    ['soft: unset cross pair', 'pair_style soft 2.5\npair_coeff 1 1 10.0', /all pair coeffs are not set \(pair 1 2/],
-    ['yukawa: unset cross pair', 'pair_style yukawa 2.0 2.5\npair_coeff 1 1 20.0', /all pair coeffs are not set \(pair 1 2/],
-    ['gauss: unset cross pair', 'pair_style gauss 2.5\npair_coeff 1 1 1.0 0.9', /all pair coeffs are not set \(pair 1 2/],
-    ['zero: no pair_coeff at all', 'pair_style zero 2.5', /all pair coeffs are not set/],
+    ['soft: unset cross pair', 'pair_style soft 2.5\npair_coeff 1 1 10.0', /All pair coeffs are not set\. Status:/],
+    ['yukawa: unset cross pair', 'pair_style yukawa 2.0 2.5\npair_coeff 1 1 20.0', /All pair coeffs are not set\. Status:/],
+    ['gauss: unset cross pair', 'pair_style gauss 2.5\npair_coeff 1 1 1.0 0.9', /All pair coeffs are not set\. Status:/],
+    ['zero: no pair_coeff at all', 'pair_style zero 2.5', /All pair coeffs are not set\. Status:/],
   ];
   for (const [what, pair, re] of cases) {
     it(what, async () => {

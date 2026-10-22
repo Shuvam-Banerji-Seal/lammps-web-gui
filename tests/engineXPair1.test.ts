@@ -53,7 +53,8 @@ describe('argument errors of the xpair1 styles (native messages)', () => {
     await expectError('pair_style cosine/squared 2.5\npair_coeff 1 1 1.0 1.0 1.0', 'cutoff = sigma w/o wca');
     await expectError('pair_style cosine/squared 2.5\npair_coeff 1 1 1.0 1.0 2.0 nowca', 'unknown option');
     await expectError('pair_style cosine/squared 2.5\npair_modify mix arithmetic', 'pair_modify mix not supported for pair_style cosine/squared');
-    await expectError('pair_style cosine/squared 2.5\npair_coeff 1 1 1.0 1.0\nrun 0', 'Mixing not supported in pair_style cosine/squared');
+    // both I,I pairs set (an unset one stops first at Pair::init): the I,J pair cannot be mixed
+    await expectError('pair_style cosine/squared 2.5\npair_coeff 1 1 1.0 1.0\npair_coeff 2 2 1.0 1.0\nrun 0', 'Mixing not supported in pair_style cosine/squared');
     await expectError('pair_style ufm 2.5\npair_coeff 1 1 1.0', 'Incorrect args for pair coefficients');
     await expectError('pair_style wf/cut 2.5\npair_coeff 1 1 1.0 1.0 1.5 2', "Expected integer parameter instead of '1.5' in input script or data file");
     await expectError('pair_style coul/cut/global 2.5\npair_coeff 1 1 2.0', 'Incorrect args for pair coefficients');

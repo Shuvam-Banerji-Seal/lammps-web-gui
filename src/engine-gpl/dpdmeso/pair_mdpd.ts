@@ -72,7 +72,7 @@ export class PairMDPD extends Pair {
 
   initStyle(ctx: StyleContext): void {
     // pair_mdpd.cpp init_style(): "Pair mdpd requires ghost atoms store velocity" and "Pair style mdpd requires atom attribute rho"
-    if (ctx.ghostVelocity !== true) throw new StyleError('Pair mdpd requires ghost atoms store velocity (use comm_modify vel yes)');
+    if (ctx.ghostVelocity !== true) throw new StyleError('Pair mdpd requires ghost atoms store velocity\n(use comm_modify vel yes)');
     if (!ctx.s || !isMdpdStyle(ctx.s.atomStyle)) throw new StyleError('Pair style mdpd requires atom attribute rho (use atom_style mdpd)');
     if (ctx.newtonPair === false) throw new StyleError('pair_style mdpd with newton pair off is not supported by the browser engine');
     this.boltz = ctx.s.units.boltz;

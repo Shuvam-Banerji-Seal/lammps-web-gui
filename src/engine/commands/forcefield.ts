@@ -35,7 +35,10 @@ const pairStyle: Handler = ({ sys }, a) => {
   const same = sys.ff.pair && sys.ff.pair.name === name ? sys.ff.pair : null;
   const p = same ?? make();
   const where = { atomStyle: sys.atomStyle, units: sys.units.style };
-  if (!same) p.constructorCheck?.(where);
+  if (!same) {
+    p.constructorCheck?.(where);
+    p.coeffGiven = false;
+  }
   // native's settings() of most styles check the number of words first (gplHook('pair_style'))
   const argCheck = gplHook<(style: string, narg: number) => string | null>('pair_style');
   const argMsg = argCheck(name, a.length - 1);
@@ -62,6 +65,7 @@ const pairCoeff: Handler = ({ sys }, a) => {
   if (p.ntypes !== s.ntypes) p.allocate(s.ntypes);
   if (p.rawCoeff?.(a)) {
     p.coeff(a, sys.styleContext());
+    p.coeffGiven = true;
     sys.bump();
     return;
   }
@@ -70,6 +74,7 @@ const pairCoeff: Handler = ({ sys }, a) => {
   // two numeric types are put in increasing order (native Input::pair_coeff)
   if (/^\d+$/.test(args[0]) && /^\d+$/.test(args[1]) && inumeric(args[1]) < inumeric(args[0])) [args[0], args[1]] = [args[1], args[0]];
   p.coeff(args, sys.styleContext());
+  p.coeffGiven = true;
   sys.bump();
 };
 

@@ -185,7 +185,7 @@ describe('Session: errors are explicit and carry the line', () => {
     ['an unsupported pair style', 'pair_style quip', /pair_style 'quip' is not supported/],
     ['an undefined group', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nfix 1 mobile nve', /Could not find fix group ID mobile/],
     ['missing mass before run', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 1 b\ncreate_atoms 1 box\npair_style lj/cut 1.1\npair_coeff * * 1 1\nrun 1', /masses are set \(type 1\)/],
-    ['missing pair coeffs', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 2 b\nmass * 1\npair_style lj/cut 1.1\npair_coeff 1 1 1 1\nrun 1', /all pair coeffs are not set/],
+    ['missing pair coeffs', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 2 b\nmass * 1\npair_style lj/cut 1.1\npair_coeff 1 1 1 1\nrun 1', /All pair coeffs are not set\. Status:/],
     ['2d box not bracketing z = 0', 'dimension 2\nlattice sq 1\nregion b block 0 2 0 2 0 1\ncreate_box 1 b', /Create_box region zlo\/zhi for 2d simulation must straddle 0\.0/],
     ['undefined variable', 'print "${nope}"', /illegal variable nope/],
     ['string variable with extra words', 'variable a string hello world', /Illegal variable command: expected 3 arguments but found 4/],

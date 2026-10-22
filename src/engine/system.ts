@@ -25,6 +25,19 @@ import { groupFunction } from './groupfn';
 import { LabelMap, typeWord } from './labelmap';
 import { defaultMinSettings, type MinSettings } from './run/min';
 import { normalizeFileName, resolveFileName } from './fileName';
+import { gplHook } from './gplHooks';
+
+/** A lazily loaded pair-style table of src/engine-gpl (null when not loaded: the style's own checks apply). */
+const pairTable = (word: string, style: string): string | null => {
+  try {
+    return gplHook<(s: string) => string | null>(word)(style);
+  } catch {
+    return null;
+  }
+};
+
+/** A pair style's native init_one message for an unset I,J pair (the lazily loaded table; null when not loaded). */
+const pairUnsetText = (style: string): string | null => pairTable('pair_unset', style);
 
 /*
  * The whole simulation: settings, atoms, box, neighbor lists, force field,
@@ -248,7 +261,8 @@ export class System {
 
   styleContext(): StyleContext {
     const freeze = this.fixes.find((f) => f.style === 'freeze');
-    return { s: this._state, readFile: (n, o) => this.readFile(n, o), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0, newtonPair: this.newtonPair, equalVariable: (n: string) => this.equalVariable(n), atomTypeWord: (w: string) => typeWord(this.labels, 'atom', w), unitStyle: this.units.style, xlattice: this.lattice ? this.lattice.spacing[0] : 1, addFix: (make) => this.addStyleFix(make), fixOf: (st) => this.fixes.find((f) => f.style === st) ?? null, fixById: (id) => this.fixes.find((f) => f.id === id) ?? null, initialBoxExpansion: this.initSmall, runSteps: () => ({ begin: this.run.beginStep, end: this.run.endStep }) };
+    return { s: this._state, readFile: (n, o) => this.readFile(n, o), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0, newtonPair: this.newtonPair, equalVariable: (n: string) => this.equalVariable(n), atomTypeWord: (w: string) => typeWord(this.labels, 'atom', w), unitStyle: this.units.style, pairUnsetText,
+      pairNeedsQ: (style: string) => (this._state && !hasCharge(this._state) ? pairTable('pair_q', style) : null), xlattice: this.lattice ? this.lattice.spacing[0] : 1, addFix: (make) => this.addStyleFix(make), fixOf: (st) => this.fixes.find((f) => f.style === st) ?? null, fixById: (id) => this.fixes.find((f) => f.id === id) ?? null, initialBoxExpansion: this.initSmall, runSteps: () => ({ begin: this.run.beginStep, end: this.run.endStep }) };
   }
 
   /** A fix a style adds at its own command time (StyleContext.addFix): replaces a fix with the same ID. */

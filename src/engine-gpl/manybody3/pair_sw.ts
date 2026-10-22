@@ -50,6 +50,17 @@ export class PairSW extends Pair {
   protected threebody = true;
   /** PairSW::params_mapped: the potential file is read and the element maps are set. */
   protected paramsMapped = false;
+  /**
+   * Native setflag: with the three-body term map_element2type sets every pair of mapped types; with it off only the
+   * pairs of the pair_coeff commands (this.setflag).
+   */
+  override coeffSet(i: number, j: number): boolean {
+    if (!this.paramsMapped) return false;
+    if (this.threebody) return this.map[i] >= 0 && this.map[j] >= 0;
+    const a = Math.min(i, j), b = Math.max(i, j);
+    return this.setflag[a * (this.ntypes + 1) + b] === 1;
+  }
+
   /** Native setflag[i][j] (threebody off: only the pairs of pair_coeff commands; j >= i). */
   protected setflag = new Uint8Array(0);
   protected elements: string[] = [];

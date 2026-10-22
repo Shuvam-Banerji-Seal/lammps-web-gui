@@ -121,7 +121,7 @@ export class PairRHEO extends Pair {
     // pair_rheo.cpp setup(): "Pair rheo cutoff X does not agree with fix rheo cutoff Y"
     if (this.cutk !== m.cut) throw new StyleError(`Pair rheo cutoff ${this.cutk} does not agree with fix rheo cutoff ${m.cut}`);
     // pair_rheo.cpp setup(): "Pair RHEO requires ghost atoms store velocity"
-    if (!this.ghostVelocity) throw new StyleError('Pair RHEO requires ghost atoms store velocity (use comm_modify vel yes)');
+    if (!this.ghostVelocity) throw new StyleError('Pair RHEO requires ghost atoms store velocity\n(use comm_modify vel yes)');
     // The RK1 pair with newton off gives a global virial that differs from native (the per-atom tallies differ on a
     // 4 x 4 periodic lattice, measured with native LAMMPS, black box); refused by name until that is matched.
     // The newton-off global virial differs from native for some configurations (the RK1 lattice and the dam-break case,

@@ -154,7 +154,7 @@ export class PairGranularSuperellipsoid extends Pair {
     if (!s || !s.rmass || !s.angmom || !s.shape || !s.quat || !s.custom.get(SUPER_BLOCK) || !s.custom.get(SUPER_INERTIA)) {
       throw new StyleError('Pair granular/superellipsoid requires atom attributes rmass, angmom and superellipsoid flag (atom_style ellipsoid superellipsoid)');
     }
-    if (!ctx.ghostVelocity) throw new StyleError('Pair granular/superellipsoid requires ghost atoms store velocity (use comm_modify vel yes)');
+    if (!ctx.ghostVelocity) throw new StyleError('Pair granular/superellipsoid requires ghost atoms store velocity\n(use comm_modify vel yes)');
     if (s.rigidBodyMass && s.rigidBodyMass.size > 0) {
       throw new StyleError('pair_style granular/superellipsoid with atoms in rigid bodies is not supported by the browser engine');
     }

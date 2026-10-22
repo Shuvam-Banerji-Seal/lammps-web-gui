@@ -306,12 +306,21 @@ export class PairHybrid extends Pair {
     return this.map[i * (this.ntypes + 1) + j] ?? [];
   }
 
+  /** setflag of the hybrid: the type pair was assigned to sub-styles (or to none) by pair_coeff. */
+  override coeffSet(i: number, j: number): boolean | null {
+    const nt = this.ntypes + 1;
+    return this.map.length === nt * nt ? this.map[i * nt + j] !== null : null;
+  }
+
   init(ctx: StyleContext): void {
     // pair_modify.html: "You cannot use shift yes with tail yes, since those are conflicting
     // options." — per-sub-style settings also set the hybrid's own flags, as in native LAMMPS
     if (this.shift && this.tail) throw new StyleError('Cannot have both pair_modify shift and tail set to yes');
+    // As native LAMMPS does (src/pair_hybrid.cpp at b332f28): Pair::init's check of the I,I pairs, then init_style's
+    // check of the sub-styles, then init_one's mixing of the unassigned pairs
+    this.checkCoeffsSet();
     const unused = this.subs.find((s) => !s.used);
-    if (unused) throw new StyleError(`pair_style ${this.mode}: sub-style ${unused.name} is not used in any pair_coeff command`);
+    if (unused) throw new StyleError(`Pair hybrid sub-style ${unused.name} is not used`);
     const n = this.ntypes, nt = n + 1;
     // mixing: an unassigned I,J takes the sub-style shared by I,I and J,J
     for (let i = 1; i <= n; i++) {
@@ -320,7 +329,7 @@ export class PairHybrid extends Pair {
         const a = this.map[i * nt + i], b = this.map[j * nt + j];
         const single = (m: number[] | null) => m !== null && m.length === 1;
         if (i !== j && single(a) && single(b) && a![0] === b![0]) this.assign(i, j, [a![0]]);
-        else throw new StyleError(`all pair coeffs are not set (pair ${i} ${j} has no sub-style of pair_style ${this.mode})`);
+        else throw new StyleError(`All pair coeffs are not set. Status:\n${this.coeffStatus()}`);
       }
     }
     this.cut = new Float64Array(nt * nt);
@@ -331,8 +340,11 @@ export class PairHybrid extends Pair {
       const st = this.subs[k].style;
       // pair.html: shift and tail conflict; tail is not defined in 2d (checked per sub-style)
       if (st.shift && st.tail) throw new StyleError('Cannot have both pair_modify shift and tail set to yes');
-      if (st.tail && ctx.s?.dimension === 2) throw new StyleError('cannot use pair_modify tail yes with 2d simulations');
+      if (st.tail && ctx.s?.dimension === 2) throw new StyleError('Cannot use pair tail corrections with 2d simulations');
       st.gEwald = this.gEwald;
+      // the sub-style's init_style, which may begin by requiring charges (Pair.init)
+      const q = ctx.pairNeedsQ?.(st.name);
+      if (q) throw new StyleError(q);
       st.initStyle(ctx);
       st.cut = new Float64Array(nt * nt);
       st.cutsq = new Float64Array(nt * nt);

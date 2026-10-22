@@ -647,6 +647,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     ? restoreHybridPair(doc.styles.pair.name as HybridMode, doc.styles.pair.data, state.ntypes, sys)
     : restoreStyle('pair', PAIR_STYLES as Record<string, () => Pair>, doc.styles.pair, state.ntypes);
   sys.ff.pair = pair;
+  if (pair) pair.coeffGiven = true;
   // measured with native LAMMPS (black box): read_restart logs pair style sw stores no restart info,
   // and the next run needs a new pair_style (ForceField.pairNotRestarted)
   const notStored = typeof doc.styles.pairNotStored === 'string' ? doc.styles.pairNotStored : null;

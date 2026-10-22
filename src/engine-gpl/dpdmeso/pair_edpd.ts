@@ -102,7 +102,7 @@ export class PairEDPD extends Pair {
 
   initStyle(ctx: StyleContext): void {
     // pair_edpd.cpp init_style(): "Pair edpd requires ghost atoms store velocity"
-    if (ctx.ghostVelocity !== true) throw new StyleError('Pair edpd requires ghost atoms store velocity (use comm_modify vel yes)');
+    if (ctx.ghostVelocity !== true) throw new StyleError('Pair edpd requires ghost atoms store velocity\n(use comm_modify vel yes)');
     if (ctx.newtonPair === false) throw new StyleError('pair_style edpd with newton pair off is not supported by the browser engine');
     if (!ctx.s || !isEdpdStyle(ctx.s.atomStyle)) throw new StyleError('Pair style edpd requires atom style edpd');
     this.nt = this.ntypes + 1;

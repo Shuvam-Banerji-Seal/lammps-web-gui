@@ -488,6 +488,11 @@ export class PairZero extends Pair {
     return out;
   }
 
+  /** As native LAMMPS does (src/pair_zero.cpp at b332f28: single_enable = 1, single() returns 0 with fforce 0). */
+  single(): { eng: number; fforce: number } {
+    return { eng: 0, fforce: 0 };
+  }
+
   compute(_pc: PairCompute): void {
     // "but do not compute any pairwise forces or energies"
   }

@@ -58,9 +58,9 @@ const thermoOf = async (setup: string, keys: string) => {
 };
 
 describe('compute group/group, pe/tally, force/tally, stress/tally: parsing and refusals', () => {
-  it('refuses kspace yes by name', async () => {
+  it('kspace yes needs a kspace style, as native does (src/compute_group_group.cpp init at b332f28)', async () => {
     const r = await run(`${CRYSTAL}compute g all group/group all kspace yes\nthermo_style custom step c_g\nrun 0\n`);
-    expect(r.error).toMatch(/group\/group: kspace yes is not supported/);
+    expect(r.error).toContain('No Kspace style defined for compute group/group');
   });
 
   it('refuses unknown and malformed keywords', async () => {
@@ -83,7 +83,7 @@ describe('compute group/group, pe/tally, force/tally, stress/tally: parsing and 
     expect((await run(`${CRYSTAL}compute t odd force/tally even molecule inter\nrun 0\n`)).error).toBeUndefined();
   });
 
-  it('refuses a pair style without single(), naming it', async () => {
+  it('pair zero has single(), so group/group gives 0', async () => {
     const r = await run(`units lj
 atom_style atomic
 lattice fcc 0.8442
@@ -97,8 +97,9 @@ compute g all group/group all
 thermo_style custom step c_g
 run 0
 `);
-    expect(r.error).toBeDefined();
-    expect(r.error).toMatch(/needs a pair_style that supports single\(\).*pair_style zero does not/);
+    // As native LAMMPS does (src/pair_zero.cpp at b332f28): pair zero has single(), which gives 0
+    expect(r.error).toBeUndefined();
+    expect(r.rows.at(-1)?.c_g).toBe(0);
   });
 
   it('pair no gives zero energy and force', async () => {

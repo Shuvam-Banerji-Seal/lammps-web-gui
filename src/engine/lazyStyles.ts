@@ -27,6 +27,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_dump_vtk', names: { HOOKS: ['vtk'] }, load: () => import('../engine-gpl/registry/dump_vtk') as Promise<StyleModule> },
   { id: 'gpl_dump_grid', names: { HOOKS: ['grid', 'grid/vtk'] }, load: () => import('../engine-gpl/registry/dump_grid') as Promise<StyleModule> },
   { id: 'gpl_dump_cfg', names: { HOOKS: ['cfg'] }, load: () => import('../engine-gpl/registry/dump_cfg') as Promise<StyleModule> },
+  { id: 'gpl_group_group', names: { HOOKS: ['group/group'] }, load: () => import('../engine-gpl/registry/group_group') as Promise<StyleModule> },
   { id: 'gpl_tally2', names: { COMPUTES: ['heat/flux/tally', 'heat/flux/virial/tally'] }, load: () => import('../engine-gpl/registry/tally2') as Promise<StyleModule> },
   { id: 'gpl_uef', names: { COMPUTES: ['pressure/uef', 'temp/uef'], FIXES: ['npt/uef', 'nvt/uef'] }, load: () => import('../engine-gpl/registry/uef') as Promise<StyleModule> },
   { id: 'gpl_random', names: { HOOKS: ['dipole/random', 'geom', 'quat/random', 'random', 'spin/atom/random', 'spin/random', 'theta/random', 'type/fraction', 'type/ratio', 'type/subset'] }, load: () => import('../engine-gpl/registry/random') as Promise<StyleModule> },

@@ -41,6 +41,8 @@ const rms = (km: number, prd: number, natoms: number, q2: number, g: number): nu
 
 export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
   readonly name = 'ewald/electrode';
+  /** EwaldElectrode keeps Ewald's group_group_enable; its compute_group_group refuses (compute/group_group_kspace.ts). */
+  override groupGroupEnable = true;
   /** kspace_modify force (absolute accuracy); -1 = relative accuracy times the two-charge force. */
   private accuracyAbs = -1;
   /** The accuracy the C++ stores as `accuracy` (relative times the two-charge force, or absolute). */

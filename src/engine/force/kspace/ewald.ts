@@ -402,6 +402,7 @@ export abstract class KSpaceBase extends KSpace {
 
 export class KSpaceEwald extends KSpaceBase {
   readonly name = 'ewald';
+  override groupGroupEnable = true;
   protected override readonly kspaceLabel: string = 'Ewald';
   kmaxUser: [number, number, number] | null = null;
   private kvecs = new Float64Array(0);   // kx ky kz A(k) per vector (half space)
@@ -490,19 +491,10 @@ export class KSpaceEwald extends KSpaceBase {
     this.nvec = Int32Array.from(ns);
   }
 
-  compute(kc: KSpaceCompute): void {
-    const s = kc.s;
-    this.refreshChargeSums(s);
-    const g = kc.geom;
+  /** Per-atom phase factors exp(2 pi i n_d u_d) for 0 <= n_d <= kmax_d (atom-major per dimension), by recurrence. */
+  private phaseFactors(s: SimState, g: Geometry): { cs: Float64Array[]; sn: Float64Array[] } {
     const n = s.n;
-    const C = kc.qqrd2e;
-    const g2 = this.gEwald;
-    // box may have changed (barostat): rebuild wave vectors and volume
-    this.volume = g.volume(3) * this.slab;
-    this.buildVectors(g);
-    const V = this.volume;
     const [kx, ky, kz] = this.kmax;
-    // per-atom phase factors exp(2 pi i n_d u_d) for 0 <= n_d <= kmax_d via recurrence
     const lam = [0, 0, 0];
     const cs = [new Float64Array(n * (kx + 1)), new Float64Array(n * (ky + 1)), new Float64Array(n * (kz + 1))];
     const sn = [new Float64Array(n * (kx + 1)), new Float64Array(n * (ky + 1)), new Float64Array(n * (kz + 1))];
@@ -521,6 +513,55 @@ export class KSpaceEwald extends KSpaceBase {
         }
       }
     }
+    return { cs, sn };
+  }
+
+  /**
+   * The structure factors S(k) = sum_i q_i exp(i k.r_i) of two atom subsets (re, im per wave vector) over the wave
+   * vectors of the current box, with the vectors (kx, ky, kz, A = exp(-k^2 / 4 g^2) / k^2 per vector; half space, each
+   * standing for +k and -k) and the slab-extended volume: the long-range group-group term of compute group/group
+   * (docs.lammps.org/compute_group_group.html: "the interaction energy will include a Kspace component which is the
+   * long-range Coulombic energy between all the atoms in the first group and all the atoms in the second group").
+   */
+  groupStructureFactors(s: SimState, g: Geometry, inA: (i: number) => boolean, inB: (i: number) => boolean):
+    { kvecs: Float64Array; sA: Float64Array; sB: Float64Array; volume: number } {
+    this.buildVectors(g);
+    const [kx, ky, kz] = this.kmax;
+    const { cs, sn } = this.phaseFactors(s, g);
+    const nk = this.nvec.length / 3;
+    const sA = new Float64Array(2 * nk), sB = new Float64Array(2 * nk);
+    const q = s.q;
+    for (let v = 0; v < nk; v++) {
+      const nx = this.nvec[3 * v], ny = this.nvec[3 * v + 1], nz = this.nvec[3 * v + 2];
+      const ay = Math.abs(ny), az = Math.abs(nz);
+      for (let i = 0; i < s.n; i++) {
+        const a = inA(i), b = inB(i);
+        if (!a && !b) continue;
+        const cxr = cs[0][i * (kx + 1) + nx], cxi = sn[0][i * (kx + 1) + nx];
+        const cyr = cs[1][i * (ky + 1) + ay], cyi = (ny < 0 ? -1 : 1) * sn[1][i * (ky + 1) + ay];
+        const czr = cs[2][i * (kz + 1) + az], czi = (nz < 0 ? -1 : 1) * sn[2][i * (kz + 1) + az];
+        const xyr = cxr * cyr - cxi * cyi, xyi = cxr * cyi + cxi * cyr;
+        const cr = xyr * czr - xyi * czi, ci = xyr * czi + xyi * czr;
+        if (a) { sA[2 * v] += q[i] * cr; sA[2 * v + 1] += q[i] * ci; }
+        if (b) { sB[2 * v] += q[i] * cr; sB[2 * v + 1] += q[i] * ci; }
+      }
+    }
+    return { kvecs: this.kvecs, sA, sB, volume: g.volume(3) * this.slab };
+  }
+
+  compute(kc: KSpaceCompute): void {
+    const s = kc.s;
+    this.refreshChargeSums(s);
+    const g = kc.geom;
+    const n = s.n;
+    const C = kc.qqrd2e;
+    const g2 = this.gEwald;
+    // box may have changed (barostat): rebuild wave vectors and volume
+    this.volume = g.volume(3) * this.slab;
+    this.buildVectors(g);
+    const V = this.volume;
+    const [kx, ky, kz] = this.kmax;
+    const { cs, sn } = this.phaseFactors(s, g);
     const nk = this.nvec.length / 3;
     const cosk = new Float64Array(n), sink = new Float64Array(n);
     // per-atom energy and virial (native ewald.cpp compute: partial_peratom = exprl*sfacrl_all[k] + expim*sfacim_all[k];

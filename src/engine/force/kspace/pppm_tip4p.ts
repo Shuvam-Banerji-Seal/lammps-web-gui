@@ -40,6 +40,8 @@ const tip4pStyleOf = (pair: Pair | null): Tip4pSiteSource | null => {
 
 export class KSpacePPPMTIP4P extends KSpace {
   readonly name: string = 'pppm/tip4p';
+  /** As native PPPMTIP4P (a PPPM subclass) does: PPPM's group_group_enable; compute group/group refuses it by name. */
+  override groupGroupEnable = true;
   /** The pppm solver of pppm.ts; this style only changes where the charges and forces sit. */
   private readonly solver = new KSpacePPPM();
   private pair: Tip4pSiteSource | null = null;

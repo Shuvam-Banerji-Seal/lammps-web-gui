@@ -62,9 +62,15 @@ describe('compute heat/flux/tally and heat/flux/virial/tally: refusals and group
     expect(r.error).toMatch(/Atom 1 belonging to both groups is not allowed with compute heat\/flux\/virial\/tally/);
   });
 
-  it('refuses a pair style without single(), naming it', async () => {
-    const r = await run(`${PAIR(1.5, 'zero 2.5')}compute h g1 heat/flux/tally g2\nthermo_style custom step c_h[1]\nrun 0\n`);
-    expect(r.error).toMatch(/needs a pair_style that supports single\(\).*pair_style zero does not/);
+  it('pair zero has single() but tallies nothing: the kinetic part only, with the native warning', async () => {
+    // As native LAMMPS does (src/pair_zero.cpp at b332f28: single_enable = 1 and no ev_tally; src/TALLY/compute_heat_flux_tally.cpp
+    // compute_vector warns). Measured with native LAMMPS: c_h[1] = 0.25 and WARNING: Stress was not tallied by pair style
+    const events: EngineEvent[] = [];
+    const session = new Session({ emit: (e) => events.push(e), writeFile: () => {} });
+    await session.execute(`${PAIR(1.5, 'zero 2.5')}compute h g1 heat/flux/tally g2\nthermo_style custom step c_h[1]\nrun 0\n`);
+    const row = events.filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo').map((e) => e.row as ThermoRow).at(-1);
+    expect(row?.['c_h[1]']).toBe(0.25);
+    expect(events.some((e) => e.kind === 'log' && e.text.includes('WARNING: Stress was not tallied by pair style'))).toBe(true);
   });
 });
 

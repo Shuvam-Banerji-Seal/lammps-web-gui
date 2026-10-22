@@ -15,7 +15,7 @@
  */
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
-import { walkTallyPairs } from '../../engine/compute/tally';
+import { walkTallyPairs, warnUntallied } from '../../engine/compute/tally';
 import { hasMolecule } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 
@@ -56,6 +56,7 @@ export class ComputePEMolTally extends Compute {
   }
 
   protected computeVector(): void {
+    warnUntallied(this.sys, 'Energy');
     this.evaluate();
   }
 }

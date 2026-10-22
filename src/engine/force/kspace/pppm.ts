@@ -303,6 +303,7 @@ export class KSpacePPPM extends KSpaceBase {
   }
 
   readonly name: string = 'pppm';
+  override groupGroupEnable = true;
   meshUser: [number, number, number] | null = null;
   order = 5;
   /** Visibility: the electrode subclass (src/engine-gpl) reads the mesh, the influence function and the weights. */
@@ -455,6 +456,67 @@ export class KSpacePPPM extends KSpaceBase {
     return { first, wts };
   }
 
+  /** Adds charge q of atom i to the real parts of the complex mesh rho with its assignment weights. */
+  protected spread(rho: Float64Array, i: number, q: number, first: Int32Array, wts: Float64Array): void {
+    const [nx, ny, nz] = this.mesh;
+    const P = this.order;
+    const mod = (a: number, m: number) => ((a % m) + m) % m;
+    const fx = first[3 * i], fy = first[3 * i + 1], fz = first[3 * i + 2];
+    for (let c = 0; c < P; c++) {
+      const iz = mod(fz + c, nz);
+      const wz = q * wts[(3 * i + 2) * P + c];
+      for (let b = 0; b < P; b++) {
+        const iy = mod(fy + b, ny);
+        const wyz = wz * wts[(3 * i + 1) * P + b];
+        for (let a = 0; a < P; a++) {
+          const ix = mod(fx + a, nx);
+          rho[2 * ((iz * ny + iy) * nx + ix)] += wyz * wts[(3 * i) * P + a];
+        }
+      }
+    }
+  }
+
+  /**
+   * The mesh charges of two atom subsets in k-space (the forward transform of compute(), re and im interleaved), with
+   * the influence function, the wave vector of every mesh point and the slab-extended volume: the long-range group-group
+   * term of compute group/group (docs.lammps.org/compute_group_group.html: "the interaction energy will include a
+   * Kspace component which is the long-range Coulombic energy between all the atoms in the first group and all the
+   * atoms in the second group"). In compute()'s normalization the energy of the mesh is C / (2 V) sum_k G |rho(k)|^2.
+   */
+  groupDensities(s: SimState, geom: Geometry, inA: (i: number) => boolean, inB: (i: number) => boolean): {
+    rhoA: Float64Array; rhoB: Float64Array; green: Float64Array; kx: Float64Array; ky: Float64Array; kz: Float64Array; volume: number;
+  } {
+    const [nx, ny, nz] = this.mesh;
+    const ng = nx * ny * nz;
+    this.buildGreen(geom);
+    const { first, wts } = this.assignWeights(s, geom);
+    const qg = this.gridCharges(s);
+    const rhoA = new Float64Array(2 * ng), rhoB = new Float64Array(2 * ng);
+    for (let i = 0; i < s.n; i++) {
+      if (qg[i] === 0) continue;
+      if (inA(i)) this.spread(rhoA, i, qg[i], first, wts);
+      if (inB(i)) this.spread(rhoB, i, qg[i], first, wts);
+    }
+    fft3d(rhoA, nx, ny, nz, -1);
+    fft3d(rhoB, nx, ny, nz, -1);
+    const inv = invertUpper(geom.lx, geom.xy, geom.xz, geom.ly, geom.yz, geom.lz * this.slab);
+    const kx = new Float64Array(ng), ky = new Float64Array(ng), kz = new Float64Array(ng);
+    for (let iz = 0; iz < nz; iz++) {
+      const mz = iz < nz / 2 ? iz : iz - nz;
+      for (let iy = 0; iy < ny; iy++) {
+        const my = iy < ny / 2 ? iy : iy - ny;
+        for (let ix = 0; ix < nx; ix++) {
+          const mx = ix < nx / 2 ? ix : ix - nx;
+          const idx = (iz * ny + iy) * nx + ix;
+          kx[idx] = 2 * Math.PI * (mx * inv[0][0] + my * inv[1][0] + mz * inv[2][0]);
+          ky[idx] = 2 * Math.PI * (mx * inv[0][1] + my * inv[1][1] + mz * inv[2][1]);
+          kz[idx] = 2 * Math.PI * (mx * inv[0][2] + my * inv[1][2] + mz * inv[2][2]);
+        }
+      }
+    }
+    return { rhoA, rhoB, green: this.green, kx, ky, kz, volume: geom.volume(3) * this.slab };
+  }
+
   /** Charges that enter the mesh (and so the mesh forces and energy). pppm: every charge. */
   protected gridCharges(s: SimState): ArrayLike<number> {
     return s.q;
@@ -477,23 +539,7 @@ export class KSpacePPPM extends KSpaceBase {
     const mod = (a: number, m: number) => ((a % m) + m) % m;
     const rho = new Float64Array(2 * ng);
     const qg = this.gridCharges(s);
-    for (let i = 0; i < n; i++) {
-      const q = qg[i];
-      if (q === 0) continue;
-      const fx = first[3 * i], fy = first[3 * i + 1], fz = first[3 * i + 2];
-      for (let c = 0; c < P; c++) {
-        const iz = mod(fz + c, nz);
-        const wz = q * wts[(3 * i + 2) * P + c];
-        for (let b = 0; b < P; b++) {
-          const iy = mod(fy + b, ny);
-          const wyz = wz * wts[(3 * i + 1) * P + b];
-          for (let a = 0; a < P; a++) {
-            const ix = mod(fx + a, nx);
-            rho[2 * ((iz * ny + iy) * nx + ix)] += wyz * wts[(3 * i) * P + a];
-          }
-        }
-      }
-    }
+    for (let i = 0; i < n; i++) if (qg[i] !== 0) this.spread(rho, i, qg[i], first, wts);
     fft3d(rho, nx, ny, nz, -1);
     // energy, virial and the three field components in k-space
     const inv = invertUpper(geom.lx, geom.xy, geom.xz, geom.ly, geom.yz, geom.lz * this.slab);

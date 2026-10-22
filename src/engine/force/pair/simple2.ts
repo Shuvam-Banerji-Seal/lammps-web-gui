@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { fmtCoeff, parseNum } from '../util';
 import { tallyAtom } from './lj_cut';
@@ -43,7 +43,7 @@ export class PairSoft extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 3 || args.length > 4) throw new StyleError('usage: pair_coeff I J A [cutoff]');
+    if (args.length < 3 || args.length > 4) throw pairCoeffArgs('usage: pair_coeff I J A [cutoff]');
     const a = parseNum(args[2], 'A');
     const cut = args[3] !== undefined ? parseNum(args[3], 'cutoff') : this.cutGlobal;
     this.p.setRange(args[0], args[1], [a, cut]);
@@ -170,7 +170,7 @@ export class PairYukawa extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 3 || args.length > 4) throw new StyleError('usage: pair_coeff I J A [cutoff]');
+    if (args.length < 3 || args.length > 4) throw pairCoeffArgs('usage: pair_coeff I J A [cutoff]');
     const a = parseNum(args[2], 'A');
     const cut = args[3] !== undefined ? parseNum(args[3], 'cutoff') : this.cutGlobal;
     this.p.setRange(args[0], args[1], [a, cut]);
@@ -309,7 +309,7 @@ export class PairGauss extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 4 || args.length > 5) throw new StyleError('usage: pair_coeff I J A B [cutoff]');
+    if (args.length < 4 || args.length > 5) throw pairCoeffArgs('usage: pair_coeff I J A B [cutoff]');
     const a = parseNum(args[2], 'A');
     const b = parseNum(args[3], 'B');
     const cut = args[4] !== undefined ? parseNum(args[4], 'cutoff') : this.cutGlobal;
@@ -454,12 +454,12 @@ export class PairZero extends Pair {
     if (this.nocoeff) {
       // "any pair_coeff commands will only be checked for the atom type
       // numbers and the rest ignored"
-      if (args.length < 2) throw new StyleError('usage: pair_coeff I J [cutoff]');
+      if (args.length < 2) throw pairCoeffArgs('usage: pair_coeff I J [cutoff]');
       typeBounds(args[0], this.ntypes);
       typeBounds(args[1], this.ntypes);
       return;
     }
-    if (args.length < 2 || args.length > 3) throw new StyleError('usage: pair_coeff I J [cutoff]');
+    if (args.length < 2 || args.length > 3) throw pairCoeffArgs('usage: pair_coeff I J [cutoff]');
     const cut = args[2] !== undefined ? parseNum(args[2], 'cutoff') : this.cutGlobal;
     this.p.setRange(args[0], args[1], [cut]);
   }

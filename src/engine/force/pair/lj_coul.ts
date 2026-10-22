@@ -1,4 +1,4 @@
-import { PairParams, StyleError, mixDistance, type PairCompute } from '../types';
+import { PairParams, StyleError, mixDistance, type PairCompute, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut, tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -80,7 +80,7 @@ abstract class PairLJCutCoul extends PairLJCut {
 
   coeff(args: string[]): void {
     if (args.length < 4 || args.length > (this.coulCutPerPair ? 6 : 5)) {
-      throw new StyleError(`usage: pair_coeff I J epsilon sigma [cutoff1${this.coulCutPerPair ? ' [cutoff2]' : ''}] (${this.name})`);
+      throw pairCoeffArgs(`usage: pair_coeff I J epsilon sigma [cutoff1${this.coulCutPerPair ? ' [cutoff2]' : ''}] (${this.name})`);
     }
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');

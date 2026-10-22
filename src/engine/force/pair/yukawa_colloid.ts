@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 import { tallyAtom } from './lj_cut';
@@ -92,7 +92,7 @@ export class PairYukawaColloid extends Pair {
 
   coeff(args: string[], _ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 3 || args.length > 4) throw new StyleError('usage: pair_coeff I J A [cutoff]');
+    if (args.length < 3 || args.length > 4) throw pairCoeffArgs('usage: pair_coeff I J A [cutoff]');
     const a = parseNum(args[2], 'A');
     const cut = args[3] !== undefined ? parseNum(args[3], 'cutoff') : this.cutGlobal;
     this.p.setRange(args[0], args[1], [a, cut]);

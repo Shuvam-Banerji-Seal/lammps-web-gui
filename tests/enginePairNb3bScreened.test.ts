@@ -211,7 +211,7 @@ describe('pair_style nb3b/screened', () => {
     pair.allocate(3);
     expect(() => pair.coeff(['1', '1', 'good.nb3b.screened', 'P', 'O', 'Si'], ctx)).toThrow(/first 2 arguments/);
     expect(() => pair.coeff(['*', '*', 'good.nb3b.screened', 'P', 'O'], ctx)).toThrow(/one element name per atom type/);
-    expect(() => pair.coeff(['*', '*', 'six.nb3b.screened', 'P', 'O', 'Si'], ctx)).toThrow(/cutoff of the nb3b file entry|got 6/);
+    expect(() => pair.coeff(['*', '*', 'six.nb3b.screened', 'P', 'O', 'Si'], ctx)).toThrow(/Expected floating point parameter instead of 'P'/);
     expect(() => pair.coeff(['*', '*', 'short.nb3b.screened', 'P', 'O', 'Si'], ctxWith({ 'short.nb3b.screened': 'P P P 1 100 0.8\n' })))
       .toThrow(/expected 'element1 element2 element3 K theta0 rho cutoff' \(7 values\), got 6/);
     const bad = good.split('\n').map((l) => (l.startsWith('O P P') ? 'O P P 1 100 0 3.0' : l)).join('\n');

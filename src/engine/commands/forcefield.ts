@@ -1,12 +1,13 @@
 import type { Handler } from './args';
 import { num, yesno, missingArgs, logical, numeric, inumeric, bounds } from './args';
-import { StyleError, type Bonded, type KSpace } from '../force/types';
+import { StyleError, bondedCoeffArgs, type Bonded, type KSpace } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES, KSPACE_STYLES, styleNames } from '../styles';
 import type { System } from '../system';
 import type { MixRule, Pair } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
-import { atomSubStyles, isMolecularStyle, hasMolecule } from '../atoms';
+import { atomSubStyles, isMolecularStyle, hasMolecule, topologyLevel } from '../atoms';
 import { typeWord } from '../labelmap';
+import { errorUrl } from '../formula';
 import { KSpacePPPM } from '../force/kspace/pppm';
 import { KSpaceEwald } from '../force/kspace/ewald';
 import { pppmGplHook } from '../force/kspace/pppmHook';
@@ -40,11 +41,13 @@ const pairStyle: Handler = ({ sys }, a) => {
 
 /** pair_coeff I J args — pair_coeff.html. */
 const pairCoeff: Handler = ({ sys }, a) => {
-  const s = sys.state;
+  // As native LAMMPS does (src/input.cpp Input::pair_coeff at b332f28): the box, the pair style, two type words
+  if (!sys.hasBox) throw new StyleError(`Pair_coeff command before simulation box is defined${errorUrl(33)}`);
   const p = sys.ff.pair;
-  if (!p) throw new StyleError('pair_coeff needs a pair_style first');
+  if (!p) throw new StyleError('Pair_coeff command without a pair style');
+  if (a.length < 2) throw missingArgs('pair_coeff');
+  const s = sys.state;
   if (p.ntypes !== s.ntypes) p.allocate(s.ntypes);
-  if (a.length < 2) throw new StyleError('usage: pair_coeff I J args');
   if (p.rawCoeff?.(a)) {
     p.coeff(a, sys.styleContext());
     sys.bump();
@@ -52,6 +55,8 @@ const pairCoeff: Handler = ({ sys }, a) => {
   }
   // pair_coeff.html: "I,J = numeric atom types (see asterisk form below), or type labels"
   const args = [typeWord(sys.labels, 'atom', a[0]), typeWord(sys.labels, 'atom', a[1]), ...a.slice(2)];
+  // two numeric types are put in increasing order (native Input::pair_coeff)
+  if (/^\d+$/.test(args[0]) && /^\d+$/.test(args[1]) && inumeric(args[1]) < inumeric(args[0])) [args[0], args[1]] = [args[1], args[0]];
   p.coeff(args, sys.styleContext());
   sys.bump();
 };
@@ -180,6 +185,14 @@ const pairModify: Handler = ({ sys }, a) => {
   sys.bump();
 };
 
+/** Whether the atom style allows this topology (native avec->bonds_allow and friends). */
+const bondedAllowed = (sys: System, kind: 'bond' | 'angle' | 'dihedral' | 'improper'): boolean => {
+  const level = topologyLevel(sys.atomStyle);
+  const subs = atomSubStyles(sys.atomStyle);
+  const tmpl = subs.includes('template');
+  return kind === 'bond' ? level >= 1 || tmpl || subs.includes('bpm/sphere') : kind === 'angle' ? level >= 2 || tmpl : level >= 3 || tmpl;
+};
+
 const bondedKinds = {
   bond: { list: BOND_STYLES, types: (sys: System) => sys.state.topo.nbondtypes },
   angle: { list: ANGLE_STYLES, types: (sys: System) => sys.state.topo.nangletypes },
@@ -189,9 +202,11 @@ const bondedKinds = {
 
 const bondedStyle = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) => {
   const name = a[0];
-  if (!name) throw new StyleError(`usage: ${kind}_style style args`);
-  if (!isMolecularStyle(sys.atomStyle)) {
-    throw new StyleError(`${kind}_style needs a molecular atom_style (bond, angle, molecular or full); the current one is ${sys.atomStyle}`);
+  // As native LAMMPS does (src/input.cpp Input::bond_style and friends at b332f28): a style, and an atom style with
+  // this topology (native's wording has "are" for angles only)
+  if (!name) throw missingArgs(`${kind}_style`);
+  if (!bondedAllowed(sys, kind)) {
+    throw new StyleError(`${kind[0].toUpperCase()}${kind.slice(1)}_style command when no ${kind}s ${kind === 'angle' ? 'are ' : ''}allowed`);
   }
   if (name === 'none') { sys.ff[kind] = null; sys.bump(); return; }
   const make = bondedKinds[kind].list[name];
@@ -231,10 +246,17 @@ const attachBondStoreLocal = (sys: System, st: Bonded): void => {
 };
 
 const bondedCoeff = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) => {
+  // As native LAMMPS does (src/input.cpp Input::bond_coeff and friends at b332f28): the box, the style, a style with
+  // this topology; then the style reads the type (with no types, any type is out of bounds)
+  const K = `${kind[0].toUpperCase()}${kind.slice(1)}`;
+  if (!sys.hasBox) throw new StyleError(`${K}_coeff command before simulation box is defined${errorUrl(33)}`);
   const st = sys.ff[kind];
-  if (!st) throw new StyleError(`${kind}_coeff needs a ${kind}_style first`);
+  if (!st) throw new StyleError(`${K}_coeff command before ${kind}_style is defined`);
+  // native's wording has "are" for bonds and angles only
+  if (!bondedAllowed(sys, kind)) throw new StyleError(`${K}_coeff command when no ${kind}s ${kind === 'bond' || kind === 'angle' ? 'are ' : ''}allowed`);
+  // native reads past the arguments for an empty command (it stops with a crash)
+  if (!a.length) throw bondedCoeffArgs(kind, `usage: ${kind}_coeff N coefficients`);
   const n = bondedKinds[kind].types(sys);
-  if (n === 0) throw new StyleError(`${kind}_coeff: there are no ${kind} types (create_box ... ${kind}/types N, or the data file header)`);
   if (st.ntypes !== n) st.allocate(n);
   // bond_coeff.html etc.: "N = numeric bond type (see asterisk form below), or type label"
   const args = a.length ? [typeWord(sys.labels, kind, a[0]), ...a.slice(1)] : a;

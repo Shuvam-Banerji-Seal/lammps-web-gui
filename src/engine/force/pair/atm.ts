@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 
@@ -171,7 +171,7 @@ export class PairATM extends Pair {
 
   override coeff(args: string[], _ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length !== 4) throw new StyleError(`usage: pair_coeff I J K nu (style atm; got ${args.length} arguments)`);
+    if (args.length !== 4) throw pairCoeffArgs(`usage: pair_coeff I J K nu (style atm; got ${args.length} arguments)`);
     const nt = this.ntypes + 1;
     const nu = parseNum(args[3], 'nu');
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);

@@ -54,7 +54,8 @@ describe('gpl_cmds commands', () => {
   it('dihedral_write refuses charmm and class2 styles by name', async () => {
     // a charmm dihedral is refused before the table is written
     const { error } = await run('dihedral_style charmm\ndihedral_write 1 5 d.table KEY\n');
-    expect(error).toMatch(/Dihedral_write command is not compatible with dihedral style charmm|dihedral_style|charmm/);
+    // the fixture's atom style is atomic, which native refuses a dihedral style for first
+    expect(error).toMatch(/Dihedral_write command is not compatible with dihedral style charmm|Dihedral_style command when no dihedrals allowed/);
   });
 
   it('group2ndx writes the System group first and the IDs in rows of the native width', async () => {

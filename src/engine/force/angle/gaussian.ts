@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { atomIndex } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
@@ -47,14 +47,14 @@ export class AngleGaussian extends Bonded {
   }
 
   coeff(args: string[], _ctx?: StyleContext): void {
-    if (args.length < 3) throw new StyleError('usage: angle_coeff N T n A1 w1 theta1 ...');
+    if (args.length < 3) throw bondedCoeffArgs('angle', 'usage: angle_coeff N T n A1 w1 theta1 ...');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const T = parseNum(args[1], 'T');
     const n = parseInt_(args[2], 'n');
     if (n < 1) throw new StyleError(`angle_coeff gaussian: n must be an integer >= 1, got ${n}`);
     const need = 3 + 3 * n;
     if (args.length !== need) {
-      throw new StyleError(`angle_coeff gaussian: expected T n and ${n} (A w theta) term(s) = ${need - 1} values after the type, got ${args.length - 1}`);
+      throw bondedCoeffArgs('angle', `angle_coeff gaussian: expected T n and ${n} (A w theta) term(s) = ${need - 1} values after the type, got ${args.length - 1}`);
     }
     const terms: GaussTerm[] = [];
     for (let i = 0; i < n; i++) {

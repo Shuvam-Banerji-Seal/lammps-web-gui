@@ -1,19 +1,15 @@
 import { StyleError } from './types';
 import { formatNumber } from '../script';
 
-/** A finite number argument, or a StyleError naming what was expected. */
-export const parseNum = (w: string | undefined, what: string): number => {
-  if (w === undefined) throw new StyleError(`missing ${what}`);
-  const v = Number(w);
-  if (w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`expected a number for ${what}, got '${w}'`);
-  return v;
-};
+/**
+ * A number argument of a style (a coefficient or setting), read as native LAMMPS reads it (utils::numeric at b332f28:
+ * "Expected floating point parameter instead of '...' in input script or data file"); `what` names the argument only
+ * in the engine's own reading of it.
+ */
+export const parseNum = (w: string | undefined, _what: string): number => numeric(w);
 
-export const parseInt_ = (w: string | undefined, what: string): number => {
-  const v = parseNum(w, what);
-  if (!Number.isInteger(v)) throw new StyleError(`expected an integer for ${what}, got '${w}'`);
-  return v;
-};
+/** An integer argument of a style, read as native's utils::inumeric. */
+export const parseInt_ = (w: string | undefined, _what: string): number => inumeric(w);
 
 /**
  * Coefficients in data files. Measured with native LAMMPS write_data (pair

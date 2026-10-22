@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -117,7 +117,7 @@ export class PairZBL extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length !== 4) throw new StyleError('usage: pair_coeff I J z_i z_j');
+    if (args.length !== 4) throw pairCoeffArgs('usage: pair_coeff I J z_i z_j');
     const zi = parseNum(args[2], 'z_i');
     const zj = parseNum(args[3], 'z_j');
     if (!(zi > 0) || !(zj > 0)) throw new StyleError('zbl: Z coefficients must be > 0 (multiples of a proton charge)');

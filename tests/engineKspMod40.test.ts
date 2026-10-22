@@ -136,7 +136,7 @@ describe('kspace_style zero', () => {
     expect((await run(zero(''))).error?.message).toMatch(/Illegal kspace_style zero command/);
   });
   it('rejects a non-numeric accuracy', async () => {
-    expect((await run(zero('abc'))).error?.message).toMatch(/expected a number for accuracy/);
+    expect((await run(zero('abc'))).error?.message).toMatch(/Expected floating point parameter instead of 'abc'/);
   });
   it('an accuracy of 0 is refused only when G-ewald must come from it (native: KSpace accuracy must be > 0)', async () => {
     expect((await run(zero('0.0'))).error?.message).toMatch(/KSpace accuracy must be > 0/);

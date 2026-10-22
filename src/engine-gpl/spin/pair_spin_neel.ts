@@ -16,7 +16,7 @@
  *
  * Spins are the unit vectors of atom_style spin; the magnitudes are not used by this style.
  */
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, type Neighbor } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { spinContribute, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../../engine/force/spin_book';
@@ -166,7 +166,7 @@ export class PairSpinNeel extends Pair implements SpinPairStyle {
 
   coeff(args: string[], _ctx?: StyleContext): void {
     // docs.lammps.org/pair_spin_neel.html: pair_coeff * * neel rc k1 k2 k3 l1 l2 l3 (ten arguments in all)
-    if (args.length !== 10 || args[2] !== 'neel') throw new StyleError('usage: pair_coeff I J neel rc k1 k2 k3 l1 l2 l3 (pair spin/neel)');
+    if (args.length !== 10 || args[2] !== 'neel') throw pairCoeffArgs('usage: pair_coeff I J neel rc k1 k2 k3 l1 l2 l3 (pair spin/neel)', 'Incorrect args in pair_style command', false);
     const v = args.slice(3).map((w, n) => parseNum(w, ['rc', 'k1', 'k2', 'k3', 'l1', 'l2', 'l3'][n]));
     const [rc, k1, k2, k3, l1, l2, l3] = v;
     if (!(rc > 0)) throw new StyleError('spin/neel: rc must be > 0');

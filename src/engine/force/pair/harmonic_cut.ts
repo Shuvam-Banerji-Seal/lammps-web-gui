@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { fmtCoeff, parseNum } from '../util';
 import { tallyAtom } from './lj_cut';
@@ -43,7 +43,7 @@ export class PairHarmonicCut extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 4) throw new StyleError('usage: pair_coeff I J k rc');
+    if (args.length !== 4) throw pairCoeffArgs('usage: pair_coeff I J k rc');
     const k = parseNum(args[2], 'k');
     const rc = parseNum(args[3], 'rc');
     this.p.setRange(args[0], args[1], [k, rc]);

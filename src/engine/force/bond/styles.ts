@@ -1,5 +1,5 @@
 import { SimpleBonded, atomIndex, bondDelta } from '../bonded_util';
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { fmtCoeff, parseNum } from '../util';
 import { libm } from '../../libm';
 
@@ -314,7 +314,7 @@ export class BondZero extends Bonded {
     // "If specified, there can be only one value" (bond_zero.html); with nocoeff the values are not checked and
     // not read, as native bond_zero.cpp does ("if ((narg < 1) || (coeffflag && narg > 2))"), so read_data can pass
     // another style's coefficients
-    if (args.length > 2 && !this.nocoeff) throw new StyleError('bond_coeff zero: incorrect args (only one value allowed)');
+    if (args.length > 2 && !this.nocoeff) throw bondedCoeffArgs('bond', 'bond_coeff zero: incorrect args (only one value allowed)');
     if (args.length === 2 && !this.nocoeff) {
       const v = parseNum(args[1], 'r0');
       for (let t = lo; t <= hi; t++) this.eq[t] = v;

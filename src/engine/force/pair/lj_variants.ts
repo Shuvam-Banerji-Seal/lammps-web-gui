@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -162,7 +162,7 @@ export class PairLJ96Cut extends PairLJVariant {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 4 || args.length > 5) throw new StyleError(this.coeffUsage);
+    if (args.length < 4 || args.length > 5) throw pairCoeffArgs(this.coeffUsage);
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
     const cut = args[4] !== undefined ? parseNum(args[4], 'cutoff') : this.cutGlobal;
@@ -297,7 +297,7 @@ export class PairLJExpand extends PairLJVariant {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 5 || args.length > 6) throw new StyleError(this.coeffUsage);
+    if (args.length < 5 || args.length > 6) throw pairCoeffArgs(this.coeffUsage);
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
     const delta = parseNum(args[4], 'delta');
@@ -474,7 +474,7 @@ export class PairLJSmooth extends PairLJVariant {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 4 && args.length !== 6) throw new StyleError(this.coeffUsage);
+    if (args.length !== 4 && args.length !== 6) throw pairCoeffArgs(this.coeffUsage);
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
     const rin = args[4] !== undefined ? parseNum(args[4], 'rin') : this.rinGlobal;
@@ -619,7 +619,7 @@ export class PairLJSmoothLinear extends PairLJVariant {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 4 || args.length > 5) throw new StyleError(this.coeffUsage);
+    if (args.length < 4 || args.length > 5) throw pairCoeffArgs(this.coeffUsage);
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
     const cut = args[4] !== undefined ? parseNum(args[4], 'cutoff') : this.cutGlobal;

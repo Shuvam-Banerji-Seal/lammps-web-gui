@@ -6,7 +6,7 @@
  * Copyright (2003) Sandia Corporation (GNU General Public License). This file is GPL-2.0
  * (see src/engine-gpl/LICENSE).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { joinPotentialEntries, parseNum } from '../../engine/force/util';
 import { pow as libmPow } from '../libm/pow';
 
@@ -80,7 +80,7 @@ export abstract class InterlayerZBase<P> extends Pair {
 
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 4) throw new StyleError(`usage: pair_coeff I J filename elem1 ... elemN (style ${this.name})`);
+    if (args.length < 4) throw pairCoeffArgs(`usage: pair_coeff I J filename elem1 ... elemN (style ${this.name})`);
     const nt = this.ntypes + 1;
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);

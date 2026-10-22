@@ -11,7 +11,7 @@
  *
  * Not ported: pair_modify shift (refused by the base class).
  */
-import { StyleError, mixDistance, mixEpsilon, type PairCompute } from '../../engine/force/types';
+import { StyleError, mixDistance, mixEpsilon, type PairCompute, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { PairDipoleBase } from '../../engine/force/pair/dipole';
@@ -46,7 +46,7 @@ export class PairLJCutDipoleLong extends PairDipoleBase {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 4 || args.length > 6) throw new StyleError(`usage: pair_coeff I J epsilon sigma [cutoff1] (${this.name})`);
+    if (args.length < 4 || args.length > 6) throw pairCoeffArgs(`usage: pair_coeff I J epsilon sigma [cutoff1] (${this.name})`);
     if (args.length === 6) {
       throw new StyleError(`pair_coeff for ${this.name} accepts only the LJ cutoff: the Coulomb cutoff is global with a long-range solver`);
     }

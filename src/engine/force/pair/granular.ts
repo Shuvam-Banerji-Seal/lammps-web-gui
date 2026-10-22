@@ -1,4 +1,4 @@
-import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../types';
+import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type PairSep, type StyleContext, pairCoeffArgs } from '../types';
 import type { SimState } from '../../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
@@ -790,7 +790,7 @@ export class PairGranular extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 3) throw new StyleError('usage: pair_coeff I J normal-model args tangential ...');
+    if (args.length < 3) throw pairCoeffArgs('usage: pair_coeff I J normal-model args tangential ...');
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     const sp = parseGranularSpec(args.slice(2));

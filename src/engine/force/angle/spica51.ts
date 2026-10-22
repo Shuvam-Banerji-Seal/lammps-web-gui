@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
-import { StyleError, type BondedCompute, type Pair, type StyleContext } from '../types';
+import { StyleError, type BondedCompute, type Pair, type StyleContext, bondedCoeffArgs } from '../types';
 import { angleTerm } from './harmonic';
 import { PairLJSpica } from '../pair/class2_spica51';
 import { PairHybrid } from '../pair/hybrid';
@@ -50,7 +50,7 @@ export class AngleSpica extends SimpleBonded {
   }
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError(`angle_coeff ${this.name} needs K theta0`);
+    if (args.length !== 2) throw bondedCoeffArgs('angle', `angle_coeff ${this.name} needs K theta0`);
     // As native LAMMPS does (src/CG-SPICA/angle_spica.cpp at b332f28): theta0[i] = theta0_one/180.0 * MY_PI
     return [parseNum(args[0], 'K'), (parseNum(args[1], 'theta0') / 180) * Math.PI];
   }

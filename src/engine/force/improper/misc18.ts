@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, delta, termDelta } from '../bonded_util';
 import { parseNum } from '../util';
-import { bondedVirial, StyleError, type BondedCompute } from '../types';
+import { bondedVirial, type BondedCompute, bondedCoeffArgs } from '../types';
 
 /*
  * improper_style distharm and sqdistharm (wave 18).
@@ -120,7 +120,7 @@ export class ImproperDistharm extends SimpleBonded {
   readonly paramNames = ['K', 'd0'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('improper_coeff distharm needs K d0');
+    if (args.length !== 2) throw bondedCoeffArgs('improper', 'improper_coeff distharm needs K d0');
     return [parseNum(args[0], 'K'), parseNum(args[1], 'd0')];
   }
 
@@ -149,7 +149,7 @@ export class ImproperSqdistharm extends SimpleBonded {
   readonly paramNames = ['K', 'd02'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('improper_coeff sqdistharm needs K d02');
+    if (args.length !== 2) throw bondedCoeffArgs('improper', 'improper_coeff sqdistharm needs K d02');
     return [parseNum(args[0], 'K'), parseNum(args[1], 'd02')];
   }
 

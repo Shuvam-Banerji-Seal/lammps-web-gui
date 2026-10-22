@@ -84,12 +84,12 @@ describe('compute gaussian/grid/local', () => {
     // native message: All grid/local dimensions must be positive
     await fails('compute g all gaussian/grid/local grid 0 2 2 1.0 1.0 1.0 0.5 0.5', /grid counts must be positive integers/);
     // native message: Expected integer parameter instead of '2.5'
-    await fails('compute g all gaussian/grid/local grid 2.5 2 2 1.0 1.0 1.0 0.5 0.5', /expected an integer/);
+    await fails('compute g all gaussian/grid/local grid 2.5 2 2 1.0 1.0 1.0 0.5 0.5', /Expected integer parameter instead of/);
     // native message: Gaussian width for type 1 must be > 0
     await fails('compute g all gaussian/grid/local grid 2 2 2 1.0 1.0 1.0 0 0.5', /Gaussian width for type 1 must be > 0/);
     await fails('compute g all gaussian/grid/local grid 2 2 2 1.0 1.0 1.0 0.5 -0.1', /Gaussian width for type 2 must be > 0/);
     // native message: Expected floating point parameter instead of 'abc'
-    await fails('compute g all gaussian/grid/local grid 2 2 2 1.0 abc 1.0 0.5 0.5', /expected a number/);
+    await fails('compute g all gaussian/grid/local grid 2 2 2 1.0 abc 1.0 0.5 0.5', /Expected floating point parameter instead of 'abc'/);
   });
 
   it('refuses a cutoff longer than the ghost cutoff (pair cutoff + skin) instead of dropping images', async () => {

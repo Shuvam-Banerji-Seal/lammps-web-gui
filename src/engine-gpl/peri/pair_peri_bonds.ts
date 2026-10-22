@@ -13,7 +13,7 @@
  * per-bond deviator histories belong to the directed entry. Partner positions are taken through the image offset
  * of the ghost the neighbor list gave (the bond vector of the minimum image).
  */
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 
@@ -105,7 +105,7 @@ export abstract class PeriBondPair extends Pair {
   coeff(args: string[], _ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
     const usage = `usage: pair_coeff I J ${this.names.join(' ')}`;
-    if (args.length !== this.names.length + 2) throw new StyleError(usage);
+    if (args.length !== this.names.length + 2) throw pairCoeffArgs(usage);
     const vals = this.names.map((nm, k) => parseNum(args[k + 2], nm));
     if (!(vals[this.names.indexOf('cut')] > 0)) throw new StyleError(`${this.name}: cut (horizon) must be > 0`);
     this.pp.setRange(args[0], args[1], vals);

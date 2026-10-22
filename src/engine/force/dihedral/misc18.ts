@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
-import { StyleError, type BondedCompute } from '../types';
+import { StyleError, type BondedCompute, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -43,7 +43,7 @@ export class DihedralCosineSquaredRestricted extends SimpleBonded {
   readonly paramNames = ['K', 'phi0'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('dihedral_coeff cosine/squared/restricted needs K phi0');
+    if (args.length !== 2) throw bondedCoeffArgs('dihedral', 'dihedral_coeff cosine/squared/restricted needs K phi0');
     return [parseNum(args[0], 'K'), parseNum(args[1], 'phi0') * DEG2RAD];
   }
 

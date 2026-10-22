@@ -102,7 +102,7 @@ describe('zbl: errors', () => {
     s.allocate(2);
     expect(() => s.coeff('1 1 29.0'.split(/\s+/), ctx)).toThrow(/usage: pair_coeff I J z_i z_j/);
     expect(() => s.coeff('1 1 29.0 29.0 3.0'.split(/\s+/), ctx)).toThrow(/usage: pair_coeff I J z_i z_j/);
-    expect(() => s.coeff('1 1 abc 29.0'.split(/\s+/), ctx)).toThrow(/number for z_i/);
+    expect(() => s.coeff('1 1 abc 29.0'.split(/\s+/), ctx)).toThrow(/Expected floating point parameter instead of 'abc'/);
   });
 
   it('pair_style needs inner < outer with inner > 0', () => {

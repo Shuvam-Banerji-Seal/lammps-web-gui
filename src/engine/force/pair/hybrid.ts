@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type BondedEquilibria, type KSpace, type PairCompute, type PairSep, type StyleContext, newAccum, clearAccum, type Accum } from '../types';
+import { Pair, StyleError, typeBounds, type BondedEquilibria, type KSpace, type PairCompute, type PairSep, type StyleContext, newAccum, clearAccum, type Accum, pairCoeffArgs } from '../types';
 import { NEIGHMASK, type NeighList } from '../../neighbor';
 import { parseNum } from '../util';
 import { removedStyleError } from '../../deprecated';
@@ -233,7 +233,7 @@ export class PairHybrid extends Pair {
   }
 
   coeff(args: string[], ctx: StyleContext): void {
-    if (args.length < 3) throw new StyleError(`usage: pair_coeff I J sub-style args (pair_style ${this.mode})`);
+    if (args.length < 3) throw pairCoeffArgs(`usage: pair_coeff I J sub-style args (pair_style ${this.mode})`);
     const n = this.ntypes;
     const [ilo, ihi] = typeBounds(args[0], n);
     const [jlo, jhi] = typeBounds(args[1], n);
@@ -242,7 +242,7 @@ export class PairHybrid extends Pair {
     if (pairs.length === 0 && ilo === ihi && jlo === jhi) pairs.push([jlo, ilo]);
     if (pairs.length === 0) throw new StyleError(`pair_coeff: no type pairs with I <= J in ${args[0]} ${args[1]}`);
     if (args[2] === 'none') {
-      if (args.length !== 3) throw new StyleError('usage: pair_coeff I J none');
+      if (args.length !== 3) throw pairCoeffArgs('usage: pair_coeff I J none');
       for (const [i, j] of pairs) this.assign(i, j, []);
       return;
     }

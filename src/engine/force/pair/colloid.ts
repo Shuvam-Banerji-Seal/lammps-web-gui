@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 import { libm } from '../../libm';
@@ -152,7 +152,7 @@ export class PairColloid extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 6 || args.length > 7) throw new StyleError('usage: pair_coeff I J A sigma d1 d2 [cutoff]');
+    if (args.length < 6 || args.length > 7) throw pairCoeffArgs('usage: pair_coeff I J A sigma d1 d2 [cutoff]');
     const a = parseNum(args[2], 'A');
     const sig = parseNum(args[3], 'sigma');
     const d1 = parseNum(args[4], 'd1');

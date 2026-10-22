@@ -1,7 +1,7 @@
 import { SimpleBonded, atomIndex, termDelta } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -20,7 +20,7 @@ const degToRad = (form: DegForm, v: number): number =>
 
 /** Parses angle_coeff values, converting the named angle coefficients from degrees to radians with the given native form. */
 const parseDeg = (names: readonly string[], degIdx: readonly number[], form: DegForm) => (args: string[]): number[] => {
-  if (args.length !== names.length) throw new StyleError(`angle_coeff: expected ${names.length} coefficients: ${names.join(' ')}`);
+  if (args.length !== names.length) throw bondedCoeffArgs('angle', `angle_coeff: expected ${names.length} coefficients: ${names.join(' ')}`);
   return args.map((w, k) => {
     const v = parseNum(w, names[k]);
     return degIdx.includes(k) ? degToRad(form, v) : v;
@@ -133,7 +133,7 @@ export class AngleCosinePeriodic extends SimpleBonded {
   readonly paramNames = ['C', 'B', 'n'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 3) throw new StyleError('angle_coeff cosine/periodic needs C B n');
+    if (args.length !== 3) throw bondedCoeffArgs('angle', 'angle_coeff cosine/periodic needs C B n');
     return [parseNum(args[0], 'C'), parseNum(args[1], 'B'), parseInt_(args[2], 'n')];
   }
 
@@ -506,7 +506,7 @@ export class AngleZero extends Bonded {
     // "If specified, there can be only one value" (angle_zero.html); with nocoeff the values are not checked and
     // not read, as native angle_zero.cpp does ("if ((narg < 1) || (coeffflag && narg > 2))"), so read_data can pass
     // another style's coefficients
-    if (args.length > 2 && !this.nocoeff) throw new StyleError('angle_coeff zero: incorrect args (only one value allowed)');
+    if (args.length > 2 && !this.nocoeff) throw bondedCoeffArgs('angle', 'angle_coeff zero: incorrect args (only one value allowed)');
     if (args.length === 2 && !this.nocoeff) {
       // theta0 in degrees -> radians, DEG2RAD * theta0_one (angle_zero.cpp coeff)
       const v = (Math.PI / 180) * parseNum(args[1], 'theta0');

@@ -1,4 +1,4 @@
-import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../types';
+import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type PairSep, type StyleContext, pairCoeffArgs } from '../types';
 import type { SimState } from '../../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { contactMassArray } from '../../atoms';
@@ -149,7 +149,7 @@ export class PairGran extends Pair {
 
   coeff(args: string[]): void {
     // "For granular styles there are no additional coefficients to set for each pair of atom types"
-    if (args.length !== 2) throw new StyleError(`usage: pair_coeff I J (pair style ${this.name} takes no coefficients)`);
+    if (args.length !== 2) throw pairCoeffArgs(`usage: pair_coeff I J (pair style ${this.name} takes no coefficients)`);
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     const nt = this.ntypes + 1;

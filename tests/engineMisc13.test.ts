@@ -63,7 +63,7 @@ describe('compute event/displace', () => {
   it('rejects a threshold that is not a positive number', async () => {
     await expect(runScript(`${ONE_ATOM}\ncompute e all event/displace 0`)).rejects.toThrow('Distance must be > 0 for compute event/displace');
     await expect(runScript(`${ONE_ATOM}\ncompute e all event/displace -1`)).rejects.toThrow('Distance must be > 0 for compute event/displace');
-    await expect(runScript(`${ONE_ATOM}\ncompute e all event/displace abc`)).rejects.toThrow(/expected a number/);
+    await expect(runScript(`${ONE_ATOM}\ncompute e all event/displace abc`)).rejects.toThrow(/Expected floating point parameter instead of 'abc'/);
   });
 
   it('reports the flag as 0 in plain runs (native: 0 in every run tried)', async () => {

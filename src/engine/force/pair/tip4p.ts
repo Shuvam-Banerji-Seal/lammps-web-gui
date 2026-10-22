@@ -1,4 +1,4 @@
-import { StyleError, type BondedEquilibria, type PairCompute } from '../types';
+import { StyleError, type BondedEquilibria, type PairCompute, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut } from './lj_cut';
 import { parseNum } from '../util';
@@ -129,7 +129,7 @@ export class PairTIP4PBase extends PairLJCut {
   /** pair_coeff I J epsilon sigma [cutoff] (LJ); the Coulomb-only styles take "pair_coeff * *". */
   coeff(args: string[]): void {
     if (!this.hasLJ) {
-      if (args.length !== 2) throw new StyleError(`usage: pair_coeff I J (${this.name} takes no coefficients)`);
+      if (args.length !== 2) throw pairCoeffArgs(`usage: pair_coeff I J (${this.name} takes no coefficients)`);
       return;
     }
     super.coeff(args);

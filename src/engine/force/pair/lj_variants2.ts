@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type MixRule, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type MixRule, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -190,7 +190,7 @@ export class PairLJGromacs extends PairLJ2Variant {
   }
 
   coeff(args: string[]): void {
-    if (args.length !== 4 && args.length !== 6) throw new StyleError(this.coeffUsage);
+    if (args.length !== 4 && args.length !== 6) throw pairCoeffArgs(this.coeffUsage);
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
     const inner = args[4] !== undefined ? parseNum(args[4], 'inner') : this.innerGlobal;
@@ -326,7 +326,7 @@ export class PairLJClass2 extends PairLJ2Variant {
 
   coeff(args: string[]): void {
     if (args.length < 4 || args.length > 5) {
-      throw new StyleError(`${this.coeffUsage} (you cannot specify 2 cutoffs for style ${this.name}, since it has no Coulombic terms)`);
+      throw pairCoeffArgs(`${this.coeffUsage} (you cannot specify 2 cutoffs for style ${this.name}, since it has no Coulombic terms)`);
     }
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
@@ -468,7 +468,7 @@ export class PairLJCubic extends PairLJ2Variant {
   }
 
   coeff(args: string[]): void {
-    if (args.length !== 4) throw new StyleError(this.coeffUsage);
+    if (args.length !== 4) throw pairCoeffArgs(this.coeffUsage);
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
     this.p.setRange(args[0], args[1], [eps, sig]);
@@ -596,7 +596,7 @@ export class PairMieCut extends PairLJ2Variant {
   }
 
   coeff(args: string[]): void {
-    if (args.length !== 6 && args.length !== 7) throw new StyleError(this.coeffUsage);
+    if (args.length !== 6 && args.length !== 7) throw pairCoeffArgs(this.coeffUsage);
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
     const gr = parseNum(args[4], 'gammaR');

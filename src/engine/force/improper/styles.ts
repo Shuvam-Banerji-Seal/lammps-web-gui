@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, delta, dihedralGeometry, applyDihedral, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum, parseInt_ } from '../util';
-import { StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -212,7 +212,7 @@ export class ImproperCvff extends SimpleBonded {
   readonly paramNames = ['K', 'd', 'n'];
 
   protected override parse(args: string[]): number[] {
-    if (args.length !== 3) throw new StyleError('improper_coeff cvff needs K d n');
+    if (args.length !== 3) throw bondedCoeffArgs('improper', 'improper_coeff cvff needs K d n');
     const d = parseInt_(args[1], 'd');
     if (d !== 1 && d !== -1) throw new StyleError(`improper cvff d must be +1 or -1, got '${args[1]}'`);
     const n = parseInt_(args[2], 'n');
@@ -259,7 +259,7 @@ export class ImproperUmbrella extends SimpleBonded {
   readonly paramNames = ['K', 'omega0'];
 
   protected override parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('improper_coeff umbrella needs K omega0');
+    if (args.length !== 2) throw bondedCoeffArgs('improper', 'improper_coeff umbrella needs K omega0');
     return [parseNum(args[0], 'K'), parseNum(args[1], 'omega0') * DEG2RAD];
   }
 
@@ -343,7 +343,7 @@ export class ImproperCossq extends SimpleBonded {
   readonly paramNames = ['K', 'chi0'];
 
   protected override parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('improper_coeff cossq needs K chi0');
+    if (args.length !== 2) throw bondedCoeffArgs('improper', 'improper_coeff cossq needs K chi0');
     // As native LAMMPS does (src/EXTRA-MOLECULE/improper_cossq.cpp at b332f28): chi[i] = ((chi_one * MY_PI)/180.0)
     return [parseNum(args[0], 'K'), (parseNum(args[1], 'chi0') * Math.PI) / 180];
   }
@@ -408,7 +408,7 @@ export class ImproperFourier extends SimpleBonded {
   }
 
   override coeff(args: string[], ctx?: StyleContext): void {
-    if (args.length !== 5 && args.length !== 6) throw new StyleError('improper_coeff fourier needs type K C0 C1 C2 [all]');
+    if (args.length !== 5 && args.length !== 6) throw bondedCoeffArgs('improper', 'improper_coeff fourier needs type K C0 C1 C2 [all]');
     // Without the optional `all` value native uses all = 1: measured with native LAMMPS (black box), the case
     // with no sixth value matches the engine with all = 1 (oracle w87bond_fourier_default) and the explicit 0
     // case matches all = 0 (oracle w87bond_fourier_all0).
@@ -516,7 +516,7 @@ export class ImproperZero extends SimpleBonded {
   }
 
   override coeff(args: string[], _ctx?: StyleContext): void {
-    if (!args.length) throw new StyleError('usage: improper_coeff N');
+    if (!args.length) throw bondedCoeffArgs('improper', 'usage: improper_coeff N');
     if (!this.nocoeff && args.length > 1) {
       throw new StyleError("improper_coeff zero takes no coefficient values (use 'improper_style zero nocoeff' to ignore them)");
     }

@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, type PairCompute } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, type PairCompute, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -63,7 +63,7 @@ abstract class PairCoul extends Pair {
   coeff(args: string[]): void {
     const max = this.cutPerPair ? 3 : 2;
     if (args.length < 2 || args.length > max) {
-      throw new StyleError(`usage: pair_coeff I J${this.cutPerPair ? ' [cutoff]' : ''} (${this.name})`);
+      throw pairCoeffArgs(`usage: pair_coeff I J${this.cutPerPair ? ' [cutoff]' : ''} (${this.name})`);
     }
     const cut = args[2] !== undefined ? parseNum(args[2], 'cutoff') : this.cutGlobal;
     if (!(cut > 0)) throw new StyleError('pair_coeff cutoff must be > 0');

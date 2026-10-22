@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { atomIndex, delta } from '../bonded_util';
 import { tallyAngle } from './harmonic';
 import { fmtCoeff, parseNum } from '../util';
@@ -78,17 +78,17 @@ export class AngleClass2 extends Bonded {
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const kw = args[1];
     if (kw === 'bb') {
-      if (args.length !== 5) throw new StyleError('angle_coeff class2 bb needs M r1 r2');
+      if (args.length !== 5) throw bondedCoeffArgs('angle', 'angle_coeff class2 bb needs M r1 r2');
       const M = parseNum(args[2], 'M'), r1 = parseNum(args[3], 'r1'), r2 = parseNum(args[4], 'r2');
       for (let t = lo; t <= hi; t++) { this.M[t] = M; this.r1bb[t] = r1; this.r2bb[t] = r2; this.setBb[t] = 1; }
     } else if (kw === 'ba') {
-      if (args.length !== 6) throw new StyleError('angle_coeff class2 ba needs N1 N2 r1 r2');
+      if (args.length !== 6) throw bondedCoeffArgs('angle', 'angle_coeff class2 ba needs N1 N2 r1 r2');
       const N1 = parseNum(args[2], 'N1'), N2 = parseNum(args[3], 'N2');
       const r1 = parseNum(args[4], 'r1'), r2 = parseNum(args[5], 'r2');
       for (let t = lo; t <= hi; t++) { this.N1[t] = N1; this.N2[t] = N2; this.r1ba[t] = r1; this.r2ba[t] = r2; this.setBa[t] = 1; }
     } else if (this.p6) {
       // class2/p6: "theta0 K2 K3 K4 K5 K6" (docs.lammps.org/angle_class2.html, class2/p6 coefficients)
-      if (args.length !== 7) throw new StyleError('angle_coeff class2/p6 needs theta0 K2 K3 K4 K5 K6');
+      if (args.length !== 7) throw bondedCoeffArgs('angle', 'angle_coeff class2/p6 needs theta0 K2 K3 K4 K5 K6');
       // As native LAMMPS does (src/MOFFF/angle_class2_p6.cpp at b332f28): theta0[i] = theta0_one/180.0 * MY_PI
       const th = (parseNum(args[1], 'theta0') / 180) * Math.PI;
       const K = args.slice(2).map((v, k) => parseNum(v, `K${k + 2}`));
@@ -96,7 +96,7 @@ export class AngleClass2 extends Bonded {
         this.th0[t] = th; this.K2[t] = K[0]; this.K3[t] = K[1]; this.K4[t] = K[2]; this.K5[t] = K[3]; this.K6[t] = K[4]; this.setA[t] = 1;
       }
     } else {
-      if (args.length !== 5) throw new StyleError('angle_coeff class2 needs theta0 K2 K3 K4');
+      if (args.length !== 5) throw bondedCoeffArgs('angle', 'angle_coeff class2 needs theta0 K2 K3 K4');
       // As native LAMMPS does (src/CLASS2/angle_class2.cpp at b332f28): theta0[i] = theta0_one/180.0 * MY_PI
       const th = (parseNum(args[1], 'theta0') / 180) * Math.PI;
       const K2 = parseNum(args[2], 'K2'), K3 = parseNum(args[3], 'K3'), K4 = parseNum(args[4], 'K4');

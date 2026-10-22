@@ -129,7 +129,7 @@ describe('compute sna/atom: argument errors', () => {
   });
 
   it('rejects a non-integer twojmax', async () => {
-    await fails('sna/atom 1.1 0.85 4.5 1.6 2.0 1.0 1.0', /twojmax/);
+    await fails('sna/atom 1.1 0.85 4.5 1.6 2.0 1.0 1.0', /Expected integer parameter instead of '4.5'/);
   });
 
   it('rejects unsupported keywords by name', async () => {

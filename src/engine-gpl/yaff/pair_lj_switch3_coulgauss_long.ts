@@ -29,7 +29,7 @@
  * not reproduced), single() (pairwise energies for compute pair/local), and the mm3/switch3/coulgauss/long style
  * (its MM3 vdW term is not registered here).
  */
-import { PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute } from '../../engine/force/types';
+import { PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { PairLJCutCoulLong, coulLongPair } from '../../engine/force/pair/coul_long';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
@@ -85,7 +85,7 @@ export class PairLJSwitch3CoulGaussLong extends PairLJCutCoulLong {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 5 || args.length > 6) throw new StyleError('usage: pair_coeff I J epsilon sigma gamma [cutoff]');
+    if (args.length < 5 || args.length > 6) throw pairCoeffArgs('usage: pair_coeff I J epsilon sigma gamma [cutoff]');
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
     const gam = parseNum(args[4], 'gamma');

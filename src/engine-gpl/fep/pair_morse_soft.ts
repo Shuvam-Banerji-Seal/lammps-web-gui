@@ -17,7 +17,7 @@
  *
  * Measured with native LAMMPS (black box) in tests/oracle/w69fep_morse.in.
  */
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
@@ -63,7 +63,7 @@ export class PairMorseSoft extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 6 || args.length > 7) throw new StyleError('usage: pair_coeff I J d0 alpha r0 lambda [cutoff] for pair style morse/soft');
+    if (args.length < 6 || args.length > 7) throw pairCoeffArgs('usage: pair_coeff I J d0 alpha r0 lambda [cutoff] for pair style morse/soft');
     const cut = args.length === 7 ? parseNum(args[6], 'cutoff') : this.cutGlobal;
     this.p.setRange(args[0], args[1], [parseNum(args[2], 'd0'), parseNum(args[3], 'alpha'), parseNum(args[4], 'r0'), parseNum(args[5], 'lambda'), cut]);
   }

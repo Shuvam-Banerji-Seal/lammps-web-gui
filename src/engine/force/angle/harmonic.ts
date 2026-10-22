@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, delta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
-import { StyleError, addCentroid, type BondedCompute } from '../types';
+import { addCentroid, type BondedCompute, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -18,7 +18,7 @@ export class AngleHarmonic extends SimpleBonded {
   readonly paramNames = ['K', 'theta0'];
 
   protected parse(args: string[]): number[] {
-    if (args.length !== 2) throw new StyleError('angle_coeff harmonic needs K theta0');
+    if (args.length !== 2) throw bondedCoeffArgs('angle', 'angle_coeff harmonic needs K theta0');
     // As native LAMMPS does (src/MOLECULE/angle_harmonic.cpp at b332f28): theta0[i] = DEG2RAD * theta0_one
     return [parseNum(args[0], 'K'), (Math.PI / 180) * parseNum(args[1], 'theta0')];
   }

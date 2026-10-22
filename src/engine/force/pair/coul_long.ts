@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut, tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
@@ -87,7 +87,7 @@ export class PairCoulLong extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length !== 2) throw new StyleError('usage: pair_coeff I J (coul/long takes no coefficients)');
+    if (args.length !== 2) throw pairCoeffArgs('usage: pair_coeff I J (coul/long takes no coefficients)');
     this.set.setRange(args[0], args[1], [1]);
   }
 

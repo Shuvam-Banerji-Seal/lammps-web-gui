@@ -28,7 +28,9 @@ type Method = 'pimd' | 'nmpimd';
 
 export class FixPIMDNVT extends Fix {
   readonly style: string = 'pimd/nvt';
-  timeIntegrate = true;
+  // As native LAMMPS has it (src/REPLICA/fix_pimd_nvt.cpp at b332f28): FixPIMDNVT leaves the base Fix's time_integrate = 0,
+  // so a run with it alone warns that no fix integrates (Verlet::init); fix pimd/langevin sets it
+  timeIntegrate = false;
   vectorFlag = true;
   sizeVector = 3;
   extvector = 1;

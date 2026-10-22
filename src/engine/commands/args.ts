@@ -18,7 +18,7 @@ export interface RunApi {
   markRunSetup(sys: System): void;
   startRestarts(sys: System): void;
   writeRestarts(sys: System, step: number, force?: boolean): void;
-  initRun(sys: System): void;
+  initRun(sys: System, opts?: { verlet?: boolean }): void;
   runVerlet(sys: System, nsteps: number, hooks: RunHooks): Promise<number>;
   /** minimize (run/min.ts): the quench of prd and tad; the minimizer of the session's min_style */
   minimize(sys: System, p: { etol: number; ftol: number; maxiter: number; maxeval: number }, hooks: MinHooks): Promise<{ reason: string }>;

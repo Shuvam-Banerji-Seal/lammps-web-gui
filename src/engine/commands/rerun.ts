@@ -110,7 +110,8 @@ const rerun: Handler = async (ctx: Ctx, a) => {
       inRun: true, firstStep: first, lastStep: last, beginStep: args.start ?? first, endStep: args.stop ?? last,
       t0, ranOnce: true,
     };
-    initRun(sys);
+    // rerun.cpp: "update->whichflag = 1" and lmp->init(), the Verlet init of a run
+    initRun(sys, { verlet: true });
     setupRun(sys);
     if (th.due(s.step, first, last)) sys.io.emit({ kind: 'thermo', row: th.row() });
     let dumped = false;

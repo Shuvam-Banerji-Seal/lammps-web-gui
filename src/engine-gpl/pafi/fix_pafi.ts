@@ -30,6 +30,8 @@ interface Sums { proj: Float64Array; cv: Float64Array }
 
 export class FixPAFI extends Fix {
   readonly style = 'pafi';
+  // fix_pafi.cpp constructor: "time_integrate = 1;"
+  timeIntegrate = true;
   private readonly computeId: string;
   private readonly rng: RanMars;
   private readonly gamma: number;

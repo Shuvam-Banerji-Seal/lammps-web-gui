@@ -299,7 +299,8 @@ export class FixLangevin extends Fix {
           k += 2;
           break;
         }
-        case 'gjf': throw new StyleError('fix langevin gjf was removed from LAMMPS (22Jul2025); use fix gjf');
+        // As native LAMMPS does (src/fix_langevin.cpp at b332f28): the keyword was removed in favour of fix gjf
+        case 'gjf': throw new StyleError('The GJF integrator formulation in fix langevin has been removed.\nPlease use fix gjf instead: https://docs.lammps.org/fix_gjf.html');
         default: throw new StyleError(`unknown fix langevin keyword '${key}'`);
       }
     }

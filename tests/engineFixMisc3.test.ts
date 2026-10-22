@@ -80,13 +80,13 @@ run 10`);
     const r = await runScript(`${base}variable u equal step
 fix 3 all vector 5 v_t
 fix 4 all vector 5 v_t v_u
+run 0
 thermo_style custom step f_3[1] f_4[1][1] f_4[1][2]
 thermo 5
 run 10`);
     expect(r.error).toBeNull();
-    // only the first row of each vector is referenced: LAMMPS itself errors on a direct
-    // f_ID[I] at step 0 (the vector is still empty in the thermo header of that run); this
-    // engine samples at setup, so the step-0 row exists here too (a deviation, not tested)
+    // thermo_style checks the index against the stored rows, as native does: run 0 stores the step-0 row first (an
+    // empty vector would be "accessed out-of-range"), and only that first row is referenced
     const at = (step: number) => r.thermo.find((t) => t.step === step);
     expect(at(5)?.['f_3[1]']).toBe(1);
     expect(at(10)?.['f_3[1]']).toBe(1);
@@ -132,13 +132,13 @@ run 2`);
 
   it('argument errors', async () => {
     const cases: [string, RegExp][] = [
-      ['fix 3 all vector 0 v_t', /Nevery must be a positive integer/],
-      ['fix 3 all vector 2', /usage: fix ID group-ID vector/],
-      ['fix 3 all vector 2 v_t nmax 0', /nmax must be a positive integer/],
-      ['fix 3 all vector 2 v_t nmax 2 v_t', /after nmax/],
-      ['fix 3 all vector 2 v_missing', /variable missing for fix vector does not exist/],
-      ['fix 3 all vector 2 c_missing', /compute/],
-      ['fix 3 all vector 2 f_missing', /fix/],
+      ['fix 3 all vector 0 v_t', /Invalid fix vector every argument: 0/],
+      ['fix 3 all vector 2', /Illegal fix vector command: missing argument/],
+      ['fix 3 all vector 2 v_t nmax 0', /Invalid nmax value/],
+      ['fix 3 all vector 2 v_t nmax 2 v_t', /Unknown fix vector keyword: v_t/],
+      ['fix 3 all vector 2 v_missing', /Variable name missing for fix vector does not exist/],
+      ['fix 3 all vector 2 c_missing', /Compute ID missing for fix vector does not exist/],
+      ['fix 3 all vector 2 f_missing', /Fix ID missing for fix vector does not exist/],
       ['compute ke all ke\nfix 3 all vector 2 c_ke v_t', /cannot set output array intensive\/extensive/],
     ];
     for (const [line, re] of cases) {

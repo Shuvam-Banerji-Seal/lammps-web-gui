@@ -91,6 +91,11 @@ export abstract class Fix {
    */
   sizeVectorVariable = false;
   sizeArrayRowsVariable = false;
+  /**
+   * sizeVector and sizeArrayRows are the native values even when 0 (fix vector before its first sample): thermo and
+   * fix vector check an index against them as native does, where a 0 of another fix may be a size it sets later.
+   */
+  sizeExact = false;
   extscalar = 0;
   extvector = 0;
   /** Per-element extensive (1) or intensive (0) flags of a global vector, when they differ (fix ave/time). */

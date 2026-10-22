@@ -94,7 +94,9 @@ describe('argument errors (native texts)', () => {
     expect((await run(`${SETUP}${PAIR}variable a equal 1.0\nvariable b equal 1.0\ncompute t all ti coul/cut 1 v_a v_b\nrun 0\n`)).errors[0]).toMatch(/Compute ti pair style does not exist/);
     expect((await run(`${SETUP}${PAIR}variable a equal 1.0\nvariable b equal 1.0\ncompute t all ti kspace 1 v_a v_b\nrun 0\n`)).errors[0]).toMatch(/Compute ti kspace style does not exist/);
     expect((await run(`${SETUP}${PAIR}variable a equal 1.0\nvariable b equal 1.0\ncompute t all ti tail 1 v_a v_b\nrun 0\n`)).errors[0]).toMatch(/Compute ti tail when pair style does not compute tail corrections/);
-    expect((await run(`${SETUP}${PAIR}kspace_style ewald 1.0e-4\nvariable a equal 1.0\nvariable b equal 1.0\ncompute t all ti kspace 1 v_a v_b\nrun 0\n`)).errors[0]).toMatch(/per-atom energy of kspace style ewald is not available/);
+    // Measured with native LAMMPS: without charges the kspace style's init (force->init) stops first, with
+    // Kspace style requires atom attribute q
+    expect((await run(`${SETUP}${PAIR}kspace_style ewald 1.0e-4\nvariable a equal 1.0\nvariable b equal 1.0\ncompute t all ti kspace 1 v_a v_b\nrun 0\n`)).errors[0]).toMatch(/Kspace style requires atom attribute q/);
   });
 });
 

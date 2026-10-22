@@ -1,11 +1,14 @@
 import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, SpecialSettings } from '../neighbor';
-import { buildAtomMap, buildSpecial, filterTopo, type SpecialList, APIP_F_CONST_LAMBDA, APIP_F_DYN_LAMBDA, APIP_LAMBDA_REQUIRED } from '../atoms';
+import { buildAtomMap, buildSpecial, filterTopo, hasCharge, type SpecialList, APIP_F_CONST_LAMBDA, APIP_F_DYN_LAMBDA, APIP_LAMBDA_REQUIRED } from '../atoms';
 import { BOND_REMOVED, clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type StyleContext } from './types';
 import { PairHybrid } from './pair/hybrid';
 import { checkKspacePair } from './kspaceCheck';
 import { SMD_DESPH } from '../smd';
+
+/** The kspace styles whose native init requires per-atom charges (the dipole and dispersion solvers do not). */
+const KSPACE_NEEDS_Q = new Set(['ewald', 'pppm', 'pppm/cg', 'pppm/tip4p', 'pppm/stagger', 'pppm/dielectric', 'msm', 'msm/cg', 'msm/dielectric', 'pppm/electrode', 'ewald/electrode', 'zero', 'scafacos']);
 
 /*
  * The force field: one pair style (possibly hybrid), bond/angle/dihedral/
@@ -187,6 +190,10 @@ export class ForceField {
   initPair(s: SimState, geom: Geometry, ctx: StyleContext): void {
     this.pairStale = false;
     if (!this.pair && this.pairNotRestarted) throw new StyleError(`Must re-specify non-restarted pair style (${this.pairNotRestarted}) after read_restart`);
+    // As native LAMMPS does (src/force.cpp Force::init at b332f28): the kspace style's init comes before the pair's, and
+    // the charge solvers' init requires per-atom charges (src/KSPACE/ewald.cpp, pppm.cpp, msm.cpp, kspace_zero.cpp,
+    // ELECTRODE ...::init); the engine checks the rest of the kspace init after the pair's
+    if (this.kspace && KSPACE_NEEDS_Q.has(this.kspace.name) && !hasCharge(s)) throw new StyleError('Kspace style requires atom attribute q');
     this.warn = (t) => ctx.log(`WARNING: ${t}`);
     this.pair?.linkKSpace?.(this.kspace);
     // A solver that sets the pair style's Coulomb cutoff (MSM cutoff/adjust) does it before the pair style's init, as

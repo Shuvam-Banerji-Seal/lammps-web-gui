@@ -100,7 +100,7 @@ pair_coeff 1 1 0.0 5.0 0.5
     expect(error?.message ?? '').toMatch(/Incorrect args for pair coefficients/);
   });
 
-  it('does not mix an unset type pair', async () => {
+  it('requires every I,I pair (native Pair::init)', async () => {
     const { error } = await runScript(`units metal
 atom_style atomic
 region box block 0 10 0 10 0 10
@@ -112,6 +112,6 @@ pair_style bondval 2.0 8.0
 pair_coeff 1 1 0.0 5.0 0.5 2.0
 run 0
 `);
-    expect(error?.message ?? '').toMatch(/does not mix/);
+    expect(error?.message ?? '').toMatch(/All pair coeffs are not set\. Status:/);
   });
 });

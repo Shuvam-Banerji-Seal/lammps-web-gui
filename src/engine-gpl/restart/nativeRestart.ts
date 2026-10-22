@@ -1273,6 +1273,8 @@ export const readNativeRestart = (sys: System, text: string, name: string): void
     p.settings(ff.pair.settings, ctx);
     p.allocate(h.ntypes);
     for (const c of ff.pair.coeffs) p.coeff(c, ctx);
+    // the restart's pair style is allocated (Pair::read_restart)
+    p.coeffGiven = true;
     applyPairFlags(p, ff.pair.modify);
     if (p instanceof PairHybrid && ff.pair.subs) {
       ff.pair.subs.forEach((sub, m) => applyPairFlags(p.subs[m].style, sub.st.modify));

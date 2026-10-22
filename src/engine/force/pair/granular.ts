@@ -806,7 +806,7 @@ export class PairGranular extends Pair {
   initStyle(ctx: StyleContext): void {
     this.state = ctx.s;
     this.freezeBit = ctx.freezeGroupBit ?? 0;
-    if (!ctx.ghostVelocity) throw new StyleError('pair_style granular requires ghost atoms store velocity (use comm_modify vel yes)');
+    if (!ctx.ghostVelocity) throw new StyleError('Pair granular requires ghost atoms store velocity\n(use comm_modify vel yes)');
     const s = ctx.s;
     if (s && (!s.radius || !s.rmass || !s.omega)) throw new StyleError('pair_style granular requires atom_style sphere (radius, rmass, omega)');
     // pair_granular.html (mdr): "Newton's third law must be set to *off*." (measured with native

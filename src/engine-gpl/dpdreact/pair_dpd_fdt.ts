@@ -60,7 +60,7 @@ abstract class PairDPDfdtBase extends Pair {
 
   initStyle(ctx: StyleContext): void {
     // pair_dpd_fdt.cpp init_style(): "Pair dpd/fdt requires ghost atoms store velocity"
-    if (ctx.ghostVelocity !== true) throw new StyleError(`Pair ${this.name} requires ghost atoms store velocity (use comm_modify vel yes)`);
+    if (ctx.ghostVelocity !== true) throw new StyleError(`Pair ${this.name} requires ghost atoms store velocity\n(use comm_modify vel yes)`);
     if (ctx.newtonPair === false) throw new StyleError(`pair_style ${this.name} with newton pair off is not supported by the browser engine`);
     this.boltz = ctx.s ? ctx.s.units.boltz : 1;
     this.nt = this.ntypes + 1;

@@ -55,7 +55,7 @@ export class PairBpmSpring extends Pair {
 
   initStyle(ctx: StyleContext): void {
     if (this.tail) throw new StyleError('pair_modify tail is not supported by pair style bpm/spring');
-    if (ctx.ghostVelocity !== true) throw new StyleError('Pair bpm/spring requires ghost atoms store velocity (use comm_modify vel yes)');
+    if (ctx.ghostVelocity !== true) throw new StyleError('Pair bpm/spring requires ghost atoms store velocity\n(use comm_modify vel yes)');
     const nt = this.ntypes + 1;
     this.kk = new Float64Array(nt * nt); this.rc = new Float64Array(nt * nt);
     this.gg = new Float64Array(nt * nt); this.ka = new Float64Array(nt * nt);

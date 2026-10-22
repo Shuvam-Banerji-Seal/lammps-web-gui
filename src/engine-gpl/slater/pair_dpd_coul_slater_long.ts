@@ -87,7 +87,7 @@ export class PairDPDCoulSlaterLong extends Pair {
 
   initStyle(ctx: StyleContext): void {
     // init_style(): "Pair dpd requires ghost atoms store velocity"
-    if (ctx.ghostVelocity !== true) throw new StyleError('Pair dpd requires ghost atoms store velocity (use comm_modify vel yes)');
+    if (ctx.ghostVelocity !== true) throw new StyleError('Pair dpd requires ghost atoms store velocity\n(use comm_modify vel yes)');
     // init_style(): "Pair dpd needs newton pair on for momentum conservation" is a warning natively; newton off is refused here
     if (ctx.newtonPair === false) throw new StyleError('pair_style dpd/coul/slater/long with newton pair off is not supported by the browser engine');
     this.boltz = ctx.s ? ctx.s.units.boltz : 1;

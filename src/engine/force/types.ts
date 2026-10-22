@@ -307,6 +307,10 @@ export interface StyleContext {
   newtonPair?: boolean;
   /** Value of an equal-style variable (lepton expressions with v_name references). */
   equalVariable?(name: string): number;
+  /** Native's message when the pair style's init_style requires per-atom charges the system lacks (null: none). */
+  pairNeedsQ?(style: string): string | null;
+  /** Native's init_one message of a pair style for an I,J pair that is neither set nor mixed (null: none known). */
+  pairUnsetText?(style: string): string | null;
   /** The unit style of the units command (set before the box exists too). */
   unitStyle?: string;
   /** An atom type word with a type label replaced by its numeric type (labelmap.html); other words pass through. */
@@ -494,7 +498,11 @@ export abstract class Pair {
     // pair_modify.html: "You cannot use shift yes with tail yes, since those are conflicting
     // options. You cannot use tail yes with 2d simulations."
     if (this.shift && this.tail) throw new StyleError('Cannot have both pair_modify shift and tail set to yes');
-    if (this.tail && ctx.s?.dimension === 2) throw new StyleError('cannot use pair_modify tail yes with 2d simulations');
+    if (this.tail && ctx.s?.dimension === 2) throw new StyleError('Cannot use pair tail corrections with 2d simulations');
+    this.checkCoeffsSet();
+    // the charge check that begins the style's init_style in native LAMMPS (StyleContext.pairNeedsQ)
+    const q = ctx.pairNeedsQ?.(this.name);
+    if (q) throw new StyleError(q);
     this.initStyle(ctx);
     const nt = this.ntypes + 1;
     this.cut = new Float64Array(nt * nt);
@@ -503,11 +511,89 @@ export abstract class Pair {
     this.ptail = 0;
     for (let i = 1; i < nt; i++) {
       for (let j = i; j < nt; j++) {
-        const c = this.initOne(i, j);
+        let c: number;
+        try {
+          c = this.initOne(i, j);
+        } catch (e) {
+          throw this.unsetPairError(e, ctx);
+        }
         this.cut[i * nt + j] = this.cut[j * nt + i] = c;
         this.cutsq[i * nt + j] = this.cutsq[j * nt + i] = c * c;
       }
     }
+  }
+
+  /**
+   * Native allocated: pair_coeff, a data file's Pair Coeffs or a restart gave the style coefficients. The pair_style
+   * command sets false; null when untracked (a style made outside the commands).
+   */
+  coeffGiven: boolean | null = null;
+
+  /**
+   * Native setflag[i][j]: the type pair was set by pair_coeff (or a data file's Pair Coeffs); null when the style keeps
+   * no such flags. The default reads the style's PairParams or setflag array (fields p, pp, set, setflag), or its map of
+   * types to elements (elemOf, map).
+   */
+  coeffSet(i: number, j: number): boolean | null {
+    const nt = this.ntypes + 1;
+    const own = this as unknown as Record<string, unknown>;
+    for (const k of ['p', 'pp', 'set', 'setflag']) {
+      const v = own[k];
+      if (v instanceof PairParams && v.nt === nt) return v.isSet(i, j);
+      if (v instanceof Uint8Array && v.length === nt * nt) return v[i * nt + j] !== 0;
+    }
+    // a many-body style's map of types to elements (-1 for NULL): native map_element2type sets I,J when both map
+    for (const k of ['elemOf', 'map']) {
+      const v = own[k];
+      if (v instanceof Int32Array && v.length === nt) return v[i] >= 0 && v[j] >= 0;
+    }
+    return null;
+  }
+
+  /** Native's table of the set pairs (Info::get_pair_coeff_status): one line per I <= J. */
+  coeffStatus(): string {
+    const lines: string[] = [];
+    for (let i = 1; i <= this.ntypes; i++) {
+      for (let j = i; j <= this.ntypes; j++) {
+        lines.push(`${String(i).padStart(6)} ${String(j).padStart(6)}: is${this.coeffSet(i, j) ? ' ' : ' not '}set`);
+      }
+    }
+    return lines.join('\n');
+  }
+
+  /**
+   * As native LAMMPS does (src/pair.cpp Pair::init at b332f28): before the style's own init, the style must have
+   * coefficients ("Pair style not yet initialized" when pair_coeff never ran) and every I,I pair must be set. A hybrid
+   * sub-style is checked by its hybrid style instead; a style that keeps no set flags (coeffSet null) checks its own,
+   * and a style made outside the commands (coeffGiven null) is not checked.
+   */
+  protected checkCoeffsSet(): void {
+    // a style made outside the commands (coeffGiven null) is not checked
+    if (this.hybridSub || this.coeffGiven === null) return;
+    if (this.coeffGiven === false) throw new StyleError('All pair coeffs are not set. Status:\nPair style not yet initialized');
+    let any = false;
+    for (let i = 1; i <= this.ntypes && !any; i++) {
+      for (let j = i; j <= this.ntypes; j++) {
+        const f = this.coeffSet(i, j);
+        if (f === null) return;
+        if (f) { any = true; break; }
+      }
+    }
+    if (!any) throw new StyleError('All pair coeffs are not set. Status:\nPair style not yet initialized');
+    for (let i = 1; i <= this.ntypes; i++) {
+      if (!this.coeffSet(i, i)) throw new StyleError(`All pair coeffs are not set. Status:\n${this.coeffStatus()}`);
+    }
+  }
+
+  /**
+   * An I,J pair the style cannot use (not set and not mixed) stops with the style's init_one message in native's
+   * wording (StyleContext.pairUnsetText); any other error passes unchanged.
+   */
+  private unsetPairError(e: unknown, ctx: StyleContext): unknown {
+    if (!(e instanceof StyleError) || !/coeffs are not set/i.test(e.message.split('\n')[0])) return e;
+    const text = ctx.pairUnsetText?.(this.name);
+    if (!text) return e;
+    return new StyleError(/Status:?$/.test(text) ? `${text}\n${this.coeffStatus()}` : text);
   }
 
   /**

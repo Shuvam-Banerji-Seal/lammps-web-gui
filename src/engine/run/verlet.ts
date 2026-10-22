@@ -54,8 +54,11 @@ export const computeSetup = (sys: System): void => {
   for (const c of sys.computes) if (c.tempFlag) (c as unknown as { dofCompute?: () => void }).dofCompute?.();
 };
 
-/** Fix and compute initialization shared by run and minimize. */
-export const initRun = (sys: System): void => {
+/**
+ * Fix and compute initialization shared by run and minimize. opts.verlet: the init of a dynamics run with the Verlet
+ * integrator (Verlet::init, not Respa::init or Min::init), which warns when no fix integrates the atoms.
+ */
+export const initRun = (sys: System, opts: { verlet?: boolean } = {}): void => {
   const s = sys.state;
   // a run's init computes the pair style's tail correction from the current atom counts (Pair::init) and keeps it
   // until a pair reinit or the next run (ForceField.tailHold)
@@ -71,6 +74,11 @@ export const initRun = (sys: System): void => {
   sys.checkDynamicGroups();
   for (const f of sys.fixes) f.init?.();
   checkDynamicGroupFixes(sys.groups, sys.fixes);
+  // As native LAMMPS does (src/verlet.cpp Verlet::init at b332f28): "if (fix->time_integrate) do_time_integrate = true;"
+  // over every fix, else "No fixes with time integration, atoms won't move" + utils::errorurl(28)
+  if (opts.verlet && !sys.fixes.some((f) => f.timeIntegrate)) {
+    sys.warn("No fixes with time integration, atoms won't move\nFor more information see https://docs.lammps.org/err0028");
+  }
   // native LAMMPS: "WARNING: One or more atoms are time integrated more than once"
   const integ = sys.fixes.filter((f) => f.timeIntegrate);
   if (integ.length > 1) {

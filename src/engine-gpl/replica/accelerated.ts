@@ -67,7 +67,7 @@ export interface DynamicsOpts { cancelled(): boolean; laststep: number }
  * prints the setup row and the rows of the thermo interval (its last step included) for every run.
  */
 export const dynamics = async (run: RunApi, sys: System, nsteps: number, o: DynamicsOpts): Promise<void> => {
-  run.initRun(sys);
+  run.initRun(sys, { verlet: true });
   emitHeader(sys);
   // a dynamics segment prints its setup row and the thermo interval; its last step is printed only when it is the
   // command's last step (native: the segment's laststep is the command's, see prd.cpp PRD::dynamics)
@@ -81,7 +81,7 @@ export const dynamics = async (run: RunApi, sys: System, nsteps: number, o: Dyna
 
 /** integrate->setup(1) alone (the header and the setup row, no steps). */
 export const setupOnly = async (run: RunApi, sys: System, o: { cancelled(): boolean }): Promise<void> => {
-  run.initRun(sys);
+  run.initRun(sys, { verlet: true });
   emitHeader(sys);
   await run.runVerlet(sys, 0, { cancelled: o.cancelled, afterSetup: () => { run.emitThermoRow(sys); }, afterStep: () => undefined, yieldMs: 30 });
 };

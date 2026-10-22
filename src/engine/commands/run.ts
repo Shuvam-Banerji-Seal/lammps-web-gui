@@ -345,7 +345,7 @@ const runCoupledSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<numb
       inRun: true, firstStep: first, lastStep: first + n,
       beginStep: opts.start ?? first, endStep: opts.stop ?? first + n, t0: performance.now(), ranOnce: true,
     };
-    initRun(r);
+    initRun(r, { verlet: true });
     r.io.emit({ kind: 'thermo-header', keywords: [...r.thermo.keywords], labels: r.thermo.labels(), units: r.units.style });
     r.io.emit({ kind: 'run', from: first, to: first + n, dt: r.state.dt, units: r.units.style });
     startRestarts(r);
@@ -471,7 +471,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     inRun: true, firstStep: first, lastStep: first + n,
     beginStep: opts.start ?? first, endStep: opts.stop ?? first + n, t0: performance.now(), ranOnce: true,
   };
-  if (!reuse) initRun(sys);
+  if (!reuse) initRun(sys, { verlet: !sys.respa });
   if (reuse) sys.forcesCurrent();
   const th = sys.thermo;
   sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });

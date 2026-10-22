@@ -132,7 +132,7 @@ const quenchRun = async (sys: System, cancelled: () => boolean, opts: QuenchOpts
 
 /** One dynamics segment of nsteps with the bias fix's post_force (the velocity-Verlet order of run/verlet.ts). */
 const dynamics = async (sys: System, nsteps: number, cancelled: () => boolean): Promise<void> => {
-  initRun(sys);
+  initRun(sys, { verlet: true });
   const s = sys.state;
   const fixes = sys.fixes;
   const nb = sys.nb;
@@ -283,7 +283,7 @@ const hyperLoop = async (sys: System, session: Ctx['session'], hf: HyperBiasFix,
 
   for (let done = 0; done < nsteps; done += nevent) {
     // dynamics segment: its setup row (the restored state), then the thermo interval
-    initRun(sys);
+    initRun(sys, { verlet: true });
     emitHeader(sys);
     sys.refreshComputes();
     emitRow(sys);

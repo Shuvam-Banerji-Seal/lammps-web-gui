@@ -171,23 +171,24 @@ describe('compute reduce inputs local: values', () => {
   });
 });
 
+// the messages of native LAMMPS (src/compute_reduce.cpp at b332f28)
 describe('compute reduce inputs local: errors', () => {
   it('rejects per-atom inputs under inputs local and local inputs without the keyword', async () => {
-    await expect(molecule('compute b all bond/local dist engpot\ncompute r all reduce sum c_b[1]')).rejects.toThrow('does not calculate per-atom values');
-    await expect(molecule('compute r all reduce sum x inputs local')).rejects.toThrow('inputs local is not supported for per-atom inputs');
-    await expect(molecule('compute p all property/atom x\ncompute r all reduce sum c_p inputs local')).rejects.toThrow('does not calculate local values');
-    await expect(molecule('fix 1 all nve\ncompute r all reduce sum f_1 inputs local')).rejects.toThrow('does not calculate local values');
+    await expect(molecule('compute b all bond/local dist engpot\ncompute r all reduce sum c_b[1]')).rejects.toThrow('Compute reduce compute b does not calculate per-atom values');
+    await expect(molecule('compute r all reduce sum x inputs local')).rejects.toThrow('Compute {} inputs must be all local');
+    await expect(molecule('compute p all property/atom x\ncompute r all reduce sum c_p inputs local')).rejects.toThrow('Compute reduce compute p does not calculate local values');
+    await expect(molecule('fix 1 all nve\ncompute r all reduce sum f_1 inputs local')).rejects.toThrow('Compute reduce fix 1 does not calculate local values');
   });
 
   it('rejects local vector/array index mistakes', async () => {
-    await expect(molecule('compute b all bond/local dist\ncompute r all reduce sum c_b[1] inputs local')).rejects.toThrow('local vector, which has no columns');
-    await expect(molecule('compute b all bond/local dist engpot\ncompute r all reduce sum c_b inputs local')).rejects.toThrow('local array; give a column');
-    await expect(molecule('compute b all bond/local dist engpot\ncompute r all reduce sum c_b[3] inputs local')).rejects.toThrow('column out of range 1..2');
-    await expect(molecule('compute b all bond/local dist\ncompute r all reduce sum c_b[*] inputs local')).rejects.toThrow('no local columns');
+    await expect(molecule('compute b all bond/local dist\ncompute r all reduce sum c_b[1] inputs local')).rejects.toThrow('Compute reduce compute b does not calculate a local array');
+    await expect(molecule('compute b all bond/local dist engpot\ncompute r all reduce sum c_b inputs local')).rejects.toThrow('Compute reduce compute b does not calculate a local vector');
+    await expect(molecule('compute b all bond/local dist engpot\ncompute r all reduce sum c_b[3] inputs local')).rejects.toThrow('Compute reduce compute b array is accessed out-of-range');
+    await expect(molecule('compute b all bond/local dist\ncompute r all reduce sum c_b[*] inputs local')).rejects.toThrow('Illegal compute reduce argument: c_b[*]');
   });
 
   it('rejects local inputs in reduce/region and a mixing of kinds', async () => {
-    await expect(molecule('region rr block 0 5 0 5 0 5\ncompute b all bond/local dist engpot\ncompute r all reduce/region rr sum c_b[1] inputs local')).rejects.toThrow('cannot use local data as input');
-    await expect(molecule('compute b all bond/local dist engpot\ncompute r all reduce sum c_b[1] x inputs local')).rejects.toThrow('inputs local is not supported for per-atom inputs');
+    await expect(molecule('region rr block 0 5 0 5 0 5\ncompute b all bond/local dist engpot\ncompute r all reduce/region rr sum c_b[1] inputs local')).rejects.toThrow('Compute reduce/region cannot use local data as input');
+    await expect(molecule('compute b all bond/local dist engpot\ncompute r all reduce sum c_b[1] x inputs local')).rejects.toThrow('Compute {} inputs must be all local');
   });
 });

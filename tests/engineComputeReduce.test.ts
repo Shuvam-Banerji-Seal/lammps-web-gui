@@ -144,25 +144,26 @@ describe('compute reduce', () => {
     expect(s.sys.compute('rr').scalarValue()).toBeCloseTo(0.9, 12); // only atom 2 (x = 1.3) is in the region
   });
 
+  // the messages of native LAMMPS (src/compute_reduce.cpp at b332f28)
   it('rejects bad modes, keywords and indices', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce median vx`)).rejects.toThrow("unknown reduce mode 'median'");
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce sum`)).rejects.toThrow('at least one input value is required');
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce sum bogus`)).rejects.toThrow("invalid input value 'bogus'");
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce sum vx inputs local`)).rejects.toThrow('inputs local is not supported');
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce sum vx inputs sometimes`)).rejects.toThrow('peratom or local');
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce sum vx replace 1 1`)).rejects.toThrow('replace keyword can only be used if the mode is min or max');
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce min vx replace 1 2`)).rejects.toThrow('replace index out of range 1..1');
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce min vx replace x 1`)).rejects.toThrow('positive integer');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce median vx`)).rejects.toThrow('Unknown compute reduce mode: median');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce sum`)).rejects.toThrow('Illegal compute reduce command: missing argument(s)');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce sum bogus`)).rejects.toThrow('Unknown compute reduce keyword: bogus');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce sum vx inputs local`)).rejects.toThrow('Compute {} inputs must be all local');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce sum vx inputs sometimes`)).rejects.toThrow('Unknown compute reduce inputs argument: sometimes');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce sum vx replace 1 1`)).rejects.toThrow('Compute reduce replace requires min or max mode');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce min vx replace 1 2`)).rejects.toThrow('Invalid compute reduce replace second column index 1');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce min vx replace x 1`)).rejects.toThrow("Expected integer parameter instead of 'x' in input script or data file");
   });
 
   it('rejects inputs that are not per-atom producers', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute t all temp\ncompute r all reduce sum c_t`)).rejects.toThrow('compute t does not calculate per-atom values');
-    await expect(runScript(`${TWO_ATOMS}\ncompute p all property/atom x y z\ncompute r all reduce sum c_p`)).rejects.toThrow('give a column');
-    await expect(runScript(`${TWO_ATOMS}\ncompute p all property/atom x y z\ncompute r all reduce sum c_p[4]`)).rejects.toThrow('column out of range 1..3');
+    await expect(runScript(`${TWO_ATOMS}\ncompute t all temp\ncompute r all reduce sum c_t`)).rejects.toThrow('Compute reduce compute t does not calculate per-atom values');
+    await expect(runScript(`${TWO_ATOMS}\ncompute p all property/atom x y z\ncompute r all reduce sum c_p`)).rejects.toThrow('Compute reduce compute p does not calculate a per-atom vector');
+    await expect(runScript(`${TWO_ATOMS}\ncompute p all property/atom x y z\ncompute r all reduce sum c_p[4]`)).rejects.toThrow('Compute reduce compute p array is accessed out-of-range');
   });
 
   it('reduce/region rejects a missing region', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce/region nope sum vx`)).rejects.toThrow("region ID 'nope' does not exist");
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all reduce/region nope sum vx`)).rejects.toThrow('Region nope for compute reduce/region does not exist');
   });
 });
 

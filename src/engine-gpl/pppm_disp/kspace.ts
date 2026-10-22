@@ -447,6 +447,10 @@ export class KSpacePPPMDisp extends KSpaceBase {
     const acc = this.accuracyOf(s);
     // native "Charges are set, but coulombic solver is not used" (PPPMDisp::init, when the Coulomb term is off)
     if (!this.coulOn && hasChargeStyle(s.atomStyle)) ctx.log('WARNING: Charges are set, but coulombic solver is not used');
+    // PPPMDisp::init: a dispersion term without its parameters stops before the charge sums and the Coulomb setup
+    if (this.dispOn && !this.mesh6User && !(this.gDispUser > 0) && this.accuracyReal6 < 0 && this.accuracyKspace6 < 0 && !this.autoDisp) {
+      throw new StyleError('PPPMDisp used but no parameters set, for further information please see the pppm/disp documentation');
+    }
 
     if (this.coulOn) {
       this.setupCharges(s, geom, ctx);
@@ -492,9 +496,6 @@ export class KSpacePPPMDisp extends KSpaceBase {
       if (this.dispArith && !lj) {
         // native init_coeffs: the arithmetic B reads epsilon and sigma, which buck/long does not provide
         throw new StyleError('Epsilon or sigma reference not set by pair style for PPPMDisp');
-      }
-      if (!this.mesh6User && !(this.gDispUser > 0) && this.accuracyReal6 < 0 && this.accuracyKspace6 < 0 && !this.autoDisp) {
-        throw new StyleError('PPPMDisp used but no parameters set, for further information please see the pppm/disp documentation');
       }
       // init_coeffs (geometric: sqrt(|C_ii|); arithmetic: the seven-term B of the (sigma, epsilon) expansion)
       this.B = new Float64Array(nt);

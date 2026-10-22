@@ -36,7 +36,8 @@ export const localDumpColumns = (sys: System, dumpId: string, words: string[]): 
       continue;
     }
     const m = /^([cf])_([A-Za-z0-9_]+)(?:\[(\d+|\*)\])?$/.exec(w);
-    if (!m) throw new StyleError(`dump ${dumpId} local: attribute '${w}' is not supported by the browser engine (index, c_ID / c_ID[I] and f_ID / f_ID[I] are)`);
+    // As native LAMMPS does (src/dump_local.cpp at b332f28, DumpLocal::parse_fields): an unknown word is an invalid attribute
+    if (!m) throw new StyleError(`Invalid attribute ${w} in dump local command`);
     const kind = m[1] as 'c' | 'f';
     const what = kind === 'c' ? 'compute' : 'fix';
     const comp = localOutputOf(sys, kind, m[2]);

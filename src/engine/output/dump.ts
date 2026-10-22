@@ -311,10 +311,12 @@ export class Dump {
       this.imageDump = new ImageDump(sys, id, group, file, cols, multifileOverride, typeof every === 'number' ? every : 0);
       this.columns = [];
     } else if (style === 'atom') {
-      if (cols.length) throw new StyleError('dump atom takes no attributes (use dump custom)');
+      // As native LAMMPS does (src/dump_atom.cpp at b332f28, DumpAtom::DumpAtom): narg must be 5, so any extra word is illegal
+      if (cols.length) throw new StyleError('Illegal dump atom command');
       this.columns = ['id', 'type', 'xs', 'ys', 'zs'];
     } else if (style === 'xyz' || style === 'extxyz') {
-      if (cols.length) throw new StyleError(`dump ${style} takes no attributes`);
+      // As native LAMMPS does (src/dump_xyz.cpp at b332f28, DumpXYZ::DumpXYZ): narg must be 5
+      if (cols.length) throw new StyleError(`Illegal dump ${style} command`);
       this.columns = ['type', 'x', 'y', 'z'];
     } else if (style === 'local') {
       this.columns = localDumpColumns(sys, id, cols);
@@ -405,7 +407,7 @@ export class Dump {
       return;
     }
     const m = /^([cfv])_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(c);
-    if (!m) throw new StyleError(`invalid dump custom attribute '${c}'`);
+    if (!m) throw new StyleError(`Invalid attribute ${c} in dump ${this.style} command`);
     if (m[1] === 'c') {
       const cp = this.sys.compute(m[2]);
       if (!cp.peratomFlag) throw new StyleError(`dump ${this.id}: compute ${m[2]} does not compute per-atom info`);

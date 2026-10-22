@@ -92,8 +92,16 @@ export type SpatialSortHook = (x: Float64Array, n: number, dim: number) => numbe
  * renumbered with the atoms. Native calls domain->pbc() before either (reset_atoms_id.cpp, command()).
  */
 const resetIds = (sys: System, args: string[]): void => {
-  const kw = keywords(args, { sort: 1 }, 'reset_atoms id');
-  const sorted = kw.has('sort') && yesno(kw.get('sort')![0], 'reset_atoms id sort');
+  // As native LAMMPS does (src/reset_atoms_id.cpp at b332f28, ResetAtomsID::command): the words are read in order and
+  // an unknown word is "Unknown reset_atoms id keyword" (sort is the only keyword)
+  let sortValue: string | null = null;
+  for (let k = 0; k < args.length;) {
+    if (args[k] !== 'sort') throw new StyleError(`Unknown reset_atoms id keyword: ${args[k]}`);
+    if (k + 2 > args.length) throw new StyleError(`reset_atoms id: keyword 'sort' needs 1 value(s)`);
+    sortValue = args[k + 1];
+    k += 2;
+  }
+  const sorted = sortValue !== null && yesno(sortValue, 'reset_atoms id sort');
   const s = sys.state;
   sys.pbc();
   const order = sorted ? gplHook<SpatialSortHook>('reset_atoms')(s.x, s.n, s.dimension) : nativeOrder(s);

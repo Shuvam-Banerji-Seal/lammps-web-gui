@@ -55,7 +55,7 @@ describe('reset_atoms: refusals', () => {
 
   it('accepts sort no and refuses other keywords by name', async () => {
     expect(await runScript('reset_atoms id sort no')).toBe('');
-    expect(await runScript('reset_atoms id frob 1')).toMatch(/reset_atoms id: unknown keyword 'frob'/);
+    expect(await runScript('reset_atoms id frob 1')).toContain('Unknown reset_atoms id keyword: frob');
   });
 
   it('refuses an unknown property and a negative offset below -1', async () => {

@@ -125,7 +125,7 @@ class DumpVtk implements DumpVtkStyle {
       } else if (DYNAMIC.test(c)) {
         this.host.validateColumn(c);
       } else {
-        throw new StyleError(`Invalid attribute in dump vtk command: ${c}`);
+        throw new StyleError(`Invalid attribute ${c} in dump vtk command`);
       }
     }
     const out: Column[] = [];

@@ -99,6 +99,6 @@ describe('delete_bonds', () => {
     await expect(runWith('delete_bonds g bond 1\ndelete_bonds g angle 1 remove')).resolves.toBeDefined();
   });
   it('refuses an unknown keyword', async () => {
-    await expect(runWith('delete_bonds g bond 1 sometimes')).rejects.toThrow("unknown keyword 'sometimes'");
+    await expect(runWith('delete_bonds g bond 1 sometimes')).rejects.toThrow('Illegal delete_bonds command');
   });
 });

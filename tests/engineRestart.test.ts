@@ -296,8 +296,9 @@ minimize 1e-12 1e-12 7 100
     await expect(session.execute('restart 100 a.%.restart\n')).rejects.toThrow(/one file per processor/);
     await expect(session.execute('restart v_nope poly.restart\n')).rejects.toThrow(/variable nope does not exist/);
     await expect(session.execute('restart -5 x\n')).rejects.toThrow(/integer >= 0/);
-    await expect(session.execute('restart 0 extra\n')).rejects.toThrow(/takes no other arguments/);
-    await expect(session.execute('restart 10 a.restart c.restart d.restart\n')).rejects.toThrow(/one file name, or two/);
+    await expect(session.execute('restart 0 extra\n')).rejects.toThrow('Illegal restart command');
+    // As native LAMMPS does (src/output.cpp create_restart at b332f28): an even word count is one file, the rest are keywords
+    await expect(session.execute('restart 10 a.restart c.restart d.restart\n')).rejects.toThrow('Unknown write_restart keyword: c.restart');
   });
 });
 

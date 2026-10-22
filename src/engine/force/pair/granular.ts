@@ -364,7 +364,8 @@ export function parseGranularSpec(args: string[]): Spec {
         if (!(sp.hk >= 0)) throw new StyleError(`pair_coeff granular: heat ${hm} coefficient must be >= 0 (got ${sp.hk})`);
       } else throw new StyleError(`pair_coeff granular: unknown heat model '${hm}' (none, radius, area)`);
     } else {
-      throw new StyleError(`pair_coeff granular: unknown keyword '${kw}'`);
+      // GRANULAR/pair_granular.cpp PairGranular::coeff (native at b332f28): an unrecognised word stops the pair_coeff line
+      throw new StyleError(`Illegal pair_coeff command ${kw}`);
     }
   }
   if (!tangSeen) throw new StyleError('pair_coeff granular: the required keyword tangential is missing');

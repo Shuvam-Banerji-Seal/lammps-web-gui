@@ -94,7 +94,7 @@ describe('read_dump field and keyword parsing', () => {
 
   it('rejects type as a field (native rejects it too) and fields after keywords', () => {
     expect(() => parseDumpSpec(['type', 'x'], 'read_dump')).toThrow(/'type' is not a read field/);
-    expect(() => parseDumpSpec(['x', 'box', 'no', 'vx'], 'read_dump')).toThrow(/must come before the keywords/);
+    expect(() => parseDumpSpec(['x', 'box', 'no', 'vx'], 'read_dump')).toThrow('Unknown read_dump keyword: vx');
     expect(() => parseDumpSpec([], 'read_dump')).toThrow(/needs one or more fields/);
   });
 

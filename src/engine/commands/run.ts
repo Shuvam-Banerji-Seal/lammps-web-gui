@@ -189,8 +189,9 @@ const thermoModify: Handler = ({ sys }, a) => {
 const runStyle: Handler = ({ sys }, a) => {
   if (!sys.hasBox) throw new StyleError('Run_style command before simulation box is defined');
   const style = a[0];
+  // As native LAMMPS does (src/update.cpp at b332f28, Update::new_integrate, and src/verlet.cpp Verlet::Verlet): the
+  // verlet integrator ignores the words after its name, so run_style verlet bogus 1 is accepted
   if (style === 'verlet') {
-    if (a.length > 1) throw new StyleError('run_style verlet takes no arguments');
     sys.respa = null;
     sys.splitRun = null;
     return;
@@ -205,7 +206,6 @@ const runStyle: Handler = ({ sys }, a) => {
   // b332f28): verlet/split checks the partition count when the run style is set; verlet/split/rk does not (its
   // pppm/rk checks it when the run starts).
   if (style === 'verlet/split' || style === 'verlet/split/rk') {
-    if (a.length > 1) throw new StyleError(`run_style ${style} takes no arguments`);
     if (style === 'verlet/split' && sys.vars.nworlds !== 2) throw new StyleError('Verlet/split requires 2 partitions');
     sys.respa = null;
     sys.splitRun = style;

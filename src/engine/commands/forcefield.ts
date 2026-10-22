@@ -217,8 +217,10 @@ const bondedKinds = {
   improper: { list: IMPROPER_STYLES, types: (sys: System) => sys.state.topo.nimpropertypes },
 } as const;
 
-const bondedStyle = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) => {
+const bondedStyle = (kind: keyof typeof bondedKinds): Handler => (({ sys, typed }, a) => {
   const name = a[0];
+  // the style as typed (an accelerator alias such as harmonic/omp), which native's messages name
+  const shown = typed?.[0] ?? name;
   // As native LAMMPS does (src/input.cpp Input::bond_style and friends at b332f28): a style, and an atom style with
   // this topology (native's wording has "are" for angles only)
   if (!name) throw missingArgs(`${kind}_style`);
@@ -229,11 +231,11 @@ const bondedStyle = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) =
   const make = bondedKinds[kind].list[name];
   if (!make) return loadNativeStyles().then(() => { throw unknownStyleError(kind, name, () => unsupported(`${kind}_style`, name, bondedKinds[kind].list)); });
   // a hybrid style names its sub-styles in its settings: the native style names are loaded for an unknown one
-  if (name === 'hybrid') return loadNativeStyles().then(() => finishBondedStyle(sys, kind, name, make, a));
-  finishBondedStyle(sys, kind, name, make, a);
+  if (name === 'hybrid') return loadNativeStyles().then(() => finishBondedStyle(sys, kind, name, make, a, shown));
+  finishBondedStyle(sys, kind, name, make, a, shown);
 }) as Handler;
 
-const finishBondedStyle = (sys: System, kind: keyof typeof bondedKinds, name: string, make: () => Bonded, a: string[]): void => {
+const finishBondedStyle = (sys: System, kind: keyof typeof bondedKinds, name: string, make: () => Bonded, a: string[], shown = name): void => {
   // measured with native LAMMPS (black box): re-issuing a hybrid style clears its coefficients, so it is always made anew
   const same = name !== 'hybrid' && sys.ff[kind] && sys.ff[kind]!.name === name ? sys.ff[kind] : null;
   const st: Bonded = same ?? make();
@@ -242,7 +244,7 @@ const finishBondedStyle = (sys: System, kind: keyof typeof bondedKinds, name: st
   } catch (e) {
     // As native LAMMPS does (src/bond.cpp Bond::settings and friends at b332f28): a style without settings names
     // itself as given in the command (hybrid for its sub-styles)
-    if (e instanceof NoSettingsError) throw new StyleError(`Illegal ${kind}_style ${name} argument: ${e.word}`);
+    if (e instanceof NoSettingsError) throw new StyleError(`Illegal ${kind}_style ${shown} argument: ${e.word}`);
     throw e;
   }
   if (!same && sys.hasBox) st.allocate(bondedKinds[kind].types(sys));
@@ -349,6 +351,8 @@ const specialBonds: Handler = ({ sys }, a) => {
 
 /** dielectric value — dielectric.html. */
 const dielectric: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/input.cpp Input::dielectric at b332f28): exactly one argument, checked before its value.
+  if (a.length !== 1) throw new StyleError('Illegal dielectric command');
   const v = num(a[0], 'dielectric constant');
   if (!(v > 0)) throw new StyleError('dielectric constant must be > 0');
   sys.ff.dielectric = v;
@@ -422,6 +426,8 @@ const kspaceModify: Handler = ({ sys }, a) => {
 
 /** neighbor skin style — neighbor.html ("style = bin or nsq or multi"; all give the same answers). */
 const neighbor: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/neighbor.cpp Neighbor::set at b332f28): exactly two arguments, checked before the skin value.
+  if (a.length !== 2) throw new StyleError(`Illegal neighbor command: expected 2 arguments but found ${a.length}`);
   const skin = num(a[0], 'skin');
   if (skin < 0) throw new StyleError('neighbor skin must be >= 0');
   if (!['bin', 'nsq', 'multi', 'multi/old'].includes(a[1] ?? '')) throw new StyleError('usage: neighbor skin bin|nsq|multi');

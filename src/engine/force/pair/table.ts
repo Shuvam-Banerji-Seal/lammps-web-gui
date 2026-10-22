@@ -323,6 +323,9 @@ export class PairTable extends Pair {
     this.ntable = n;
     // "keyword = *ewald* or *pppm* or *msm* or *dispersion* or *tip4p*" —
     // long-range solver coupling is not implemented; reject by name.
+    // As native LAMMPS does (src/pair_table.cpp PairTable::settings at b332f28): every word after N is checked first, so an unknown word is reported before a known keyword is refused
+    const known = ['ewald', 'pppm', 'msm', 'dispersion', 'tip4p'];
+    for (const w of args.slice(2)) if (!known.includes(w)) throw new StyleError(`Unknown pair_style table keyword: ${w}`);
     if (args.length > 2) throw new StyleError(`pair_style table keyword '${args[2]}' is not supported (long-range solver coupling is not implemented)`);
   }
 

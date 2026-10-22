@@ -122,8 +122,9 @@ export const parseDumpSpec = (words: string[], what: string): DumpReadSpec => {
       case 'nfile':
         throw new StyleError(`${what}: keyword nfile (parallel dump files) is not supported by the browser engine`);
       default:
-        if ((READ_FIELDS as readonly string[]).includes(key)) throw new StyleError(`${what}: field ${key} must come before the keywords`);
-        throw new StyleError(`${what}: unknown keyword or field '${key}'`);
+        // As native LAMMPS does (src/read_dump.cpp ReadDump::fields_and_keywords at b332f28, which rerun also calls): the
+        // fields end at the first keyword, and a later word that is not a keyword (a field included) is unknown
+        throw new StyleError(`Unknown read_dump keyword: ${key}`);
     }
   }
   if (spec.purge && (spec.replace || spec.trim)) {

@@ -164,7 +164,7 @@ describe('pair simple2: unsupported options are rejected', () => {
     ['gauss rejects shift', 'pair_style gauss 2.5\npair_coeff * * 1.0 0.9\npair_modify shift yes', /shift is not supported/],
     ['gauss rejects sixthpower mix', 'pair_style gauss 2.5\npair_coeff * * 1.0 0.9\npair_modify mix sixthpower', /sixthpower is not supported/],
     ['zero rejects tail', 'pair_style zero 2.5\npair_coeff * *\npair_modify tail yes', /tail is not supported/],
-    ['zero rejects unknown keyword', 'pair_style zero 2.5 bogus', /unsupported keyword 'bogus'/],
+    ['zero rejects unknown keyword', 'pair_style zero 2.5 bogus', /Unknown pair style zero option bogus/],
   ];
   for (const [what, pair, re] of cases) {
     it(what, async () => {

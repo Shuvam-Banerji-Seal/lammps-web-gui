@@ -140,7 +140,8 @@ export class PairReaxFF extends Pair {
           break;
         }
         default:
-          throw new StyleError(`Illegal pair_style reaxff command: keyword ${key} is not ported (acks2, qtpie, qeq/rel and other fixes are not supported)`);
+          // As native LAMMPS does (src/REAXFF/pair_reaxff.cpp PairReaxFF::settings at b332f28): any other word is an illegal command
+          throw new StyleError('Illegal pair_style reaxff command');
       }
     }
     this.version++;

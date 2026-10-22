@@ -133,11 +133,14 @@ class DumpGridVtk implements DumpGridStyle {
   private readonly dataset: 'rectilinear' | 'image';
 
   constructor(private readonly host: DumpGridHost, fields: string[]) {
-    // DumpGridVTK: "Dump grid/vtk requires one or three fields"
-    if (fields.length !== 1 && fields.length !== 3) {
-      if (!fields.length) throw new StyleError('No dump grid/vtk arguments specified');
-      throw new StyleError('Dump grid/vtk requires one or three fields');
+    if (!fields.length) throw new StyleError('No dump grid/vtk arguments specified');
+    // As native LAMMPS does (src/dump_grid.cpp at b332f28, DumpGrid::DumpGrid parse_fields): the base constructor
+    // rejects a word that is not a grid field before DumpGridVTK::DumpGridVTK counts the fields
+    for (const f of fields) {
+      if (!isGridRef(f)) throw new StyleError(`Invalid attribute ${f} in dump grid/vtk command`);
     }
+    // DumpGridVTK: "Dump grid/vtk requires one or three fields"
+    if (fields.length !== 1 && fields.length !== 3) throw new StyleError('Dump grid/vtk requires one or three fields');
     ({ refs: this.refs, size: this.size } = resolveFields(host, 'grid/vtk', fields));
     // the file name extension selects the format; an unrecognized one keeps the XML rectilinear grid
     const dot = host.file.lastIndexOf('.');

@@ -88,7 +88,8 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
   private initDone = false;
 
   settings(args: string[]): void {
-    if (args.length !== 1) throw new StyleError('Illegal kspace_style ewald/electrode command (usage: kspace_style ewald/electrode accuracy)');
+    // As native LAMMPS does (src/KSPACE/ewald.cpp Ewald::settings at b332f28, inherited): exactly one argument.
+    if (args.length !== 1) throw new StyleError('Illegal kspace_style ewald/electrode command');
     this.accuracy = Math.abs(parseNum(args[0], 'accuracy'));
   }
 

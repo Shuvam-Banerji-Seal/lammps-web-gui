@@ -93,7 +93,8 @@ describe('partitions', () => {
 describe('neb command', () => {
   it('needs two or more partitions', async () => {
     const { error } = await run('neb 0.0 0.01 10 10 10 none\n', 1);
-    expect(error?.message).toMatch(/two or more partitions/);
+    // As native LAMMPS does (src/REPLICA/neb.cpp at b332f28)
+    expect(error?.message).toContain('Cannot use NEB with a single replica');
   });
 
   it('checks its argument form', async () => {

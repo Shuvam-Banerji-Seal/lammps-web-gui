@@ -40,7 +40,8 @@ export const dynamicalMatrixCmd: Handler = ({ sys }, a) => {
   for (let k = 3; k < a.length;) {
     const key = a[k];
     const val = a[k + 1];
-    if (val === undefined) throw new StyleError(`Illegal dynamical_matrix command: ${key} needs a value`);
+    // PHONON/dynamical_matrix.cpp options (native at b332f28): a keyword without its value, or an unknown word, is 'Illegal dynamical_matrix command'
+    if (val === undefined) throw new StyleError('Illegal dynamical_matrix command');
     if (key === 'binary') {
       if (val === 'gzip') throw new StyleError('dynamical_matrix binary gzip output is native-only; the browser engine writes text only');
       if (val === 'yes') throw new StyleError('dynamical_matrix binary yes output is native-only; the browser engine writes text only (binary no)');
@@ -51,7 +52,7 @@ export const dynamicalMatrixCmd: Handler = ({ sys }, a) => {
       if (val !== 'yes' && val !== 'no') throw new StyleError('Illegal input for dynamical_matrix fold option');
       folded = val === 'yes';
     } else {
-      throw new StyleError(`Illegal dynamical_matrix command: unknown keyword ${key}`);
+      throw new StyleError('Illegal dynamical_matrix command');
     }
     k += 2;
   }

@@ -115,12 +115,15 @@ const atomStyle: Handler = ({ sys }, a) => {
   };
   // atom_style.html: "*sphere* arg = 0/1 (optional) for static/dynamic particle radii"; 1 is kept as sys.radvary (the
   // engine's ghosts read their owners' radii, so it changes no numbers; fixes that change radii check it)
-  const sphereArg = (w: string | undefined) => w === '0' || w === '1';
   sys.radvary = false;
   // atom_style.html: "tdpd Nspecies": the number of chemical species is a positive integer
   const tdpdArg = (w: string | undefined): string => {
-    if (!w || !/^[1-9]\d*$/.test(w)) throw new StyleError('Invalid atom_style tdpd command');
-    return `tdpd:${Number(w)}`;
+    // As native LAMMPS does (src/DPD-MESO/atom_vec_tdpd.cpp process_args at b332f28): the count is required and read
+    // by utils::inumeric; the engine needs at least one species
+    if (w === undefined) throw new StyleError('Invalid atom_style tdpd command');
+    const n = inumeric(w);
+    if (n < 1) throw new StyleError('Invalid atom_style tdpd command');
+    return `tdpd:${n}`;
   };
   // atom_style.html: "*template* arg = template-ID" and "template-ID = ID of molecule template specified in a separate"
   // (the molecule command follows); the ID is kept in the style string (template:ID, see atoms.ts).
@@ -128,6 +131,41 @@ const atomStyle: Handler = ({ sys }, a) => {
     if (!id) throw new StyleError('atom_style template needs a molecule template-ID (defined by a molecule command)');
     if (!sys.molecules.has(id)) throw new StyleError(`atom_style template: molecule template ${id} does not exist (define it with the molecule command first)`);
     return `template:${id}`;
+  };
+  // native Atom::create_avec and AtomVecHybrid::process_args (src/atom.cpp, src/atom_vec_hybrid.cpp at b332f28): the
+  // words after a style name, up to the next known style name, are that style's own args, and the style checks them
+  const isStyleWord = (w: string) => (ATOM_STYLES as string[]).includes(w) || w === 'hybrid';
+  const subStyle = (w: string, args: string[]): string => {
+    if (w === 'tdpd') return tdpdArg(args[0]);
+    if (w === 'template') {
+      // native AtomVecTemplate::process_args (src/MOLECULE/atom_vec_template.cpp at b332f28): "if (narg != 1)"
+      if (args.length !== 1) throw new StyleError('Illegal atom_style template command');
+      return templateArg(args[0]);
+    }
+    if (w === 'sphere' || w === 'bpm/sphere') {
+      // native AtomVecSphere::process_args (src/atom_vec_sphere.cpp) and AtomVecBPMSphere::process_args
+      // (src/BPM/atom_vec_bpm_sphere.cpp): more than one arg is illegal; sphere reads its arg with utils::logical,
+      // bpm/sphere with utils::inumeric (0 or 1)
+      if (args.length > 1) throw new StyleError(`Illegal atom_style ${w} command`);
+      if (args.length === 1) {
+        if (w === 'sphere') sys.radvary = logical(args[0]);
+        else {
+          const v = inumeric(args[0]);
+          if (v < 0 || v > 1) throw new StyleError('Illegal atom_style bpm/sphere command');
+          sys.radvary = v === 1;
+        }
+      }
+      return w;
+    }
+    if (w === 'ellipsoid') {
+      // native AtomVecEllipsoid::process_args (src/ASPHERE/atom_vec_ellipsoid.cpp at b332f28): each arg must be superellipsoid
+      for (const x of args) if (x !== 'superellipsoid') throw new StyleError(`Unknown atom_style ellipsoid argument: ${x}`);
+      if (args.length) throw new StyleError('atom_style hybrid with ellipsoid superellipsoid is not supported by the browser engine');
+      return w;
+    }
+    // native AtomVec::process_args (src/atom_vec.cpp at b332f28): a style with no args of its own refuses any
+    if (args.length) throw new StyleError('Invalid atom_style command');
+    return w;
   };
   if (a[0] === 'hybrid') {
     const subs: string[] = [];
@@ -138,19 +176,6 @@ const atomStyle: Handler = ({ sys }, a) => {
       // atom_style hybrid tri (gransurf/in.screwfeeder.local): the triangle particles come from fix surface/local, so the
       // tri sub-style is accepted; a line sub-style is still refused
       if (w === 'line') throw new StyleError(`atom_style hybrid with a ${w} sub-style is not supported by the browser engine (use atom_style ${w} alone)`);
-      // atom_style.html: "tdpd Nspecies" (its argument is the number of chemical species)
-      if (w === 'tdpd') {
-        if (subs.some((x) => x.startsWith('tdpd:'))) throw new StyleError('atom_style hybrid lists tdpd twice');
-        subs.push(tdpdArg(a[k + 1]));
-        k++;
-        continue;
-      }
-      if (w === 'template') {
-        if (subs.some((x) => x.startsWith('template:'))) throw new StyleError('atom_style hybrid lists template twice');
-        subs.push(templateArg(a[k + 1]));
-        k++;
-        continue;
-      }
       // atom_style hybrid with apip: the default (lambda thermostat) mode; the conservative mode is not supported here
       if (w === 'apip' && a[k + 1] === 'conservative') throw new StyleError('atom_style hybrid with apip conservative is not supported by the browser engine');
       if (w === 'apip' && a[k + 1] === 'thermostat') {
@@ -160,12 +185,14 @@ const atomStyle: Handler = ({ sys }, a) => {
         continue;
       }
       known(w);
-      if (subs.includes(w)) throw new StyleError(`atom_style hybrid lists ${w} twice`);
-      subs.push(w);
-      if ((w === 'sphere' || w === 'bpm/sphere') && sphereArg(a[k + 1])) {
-        if (a[k + 1] === '1') sys.radvary = true;
-        k++;
-      }
+      // atom_style.html: "tdpd Nspecies" and "template-ID": a sub-style is listed once (tdpd and template keep their count or ID in the name)
+      const listed = w === 'tdpd' ? subs.some((x) => x.startsWith('tdpd:')) : w === 'template' ? subs.some((x) => x.startsWith('template:')) : subs.includes(w);
+      if (listed) throw new StyleError(`atom_style hybrid lists ${w} twice`);
+      let end = k + 1;
+      while (end < a.length && !isStyleWord(a[end])) end++;
+      const args = a.slice(k + 1, end);
+      k = end - 1;
+      subs.push(subStyle(w, args));
     }
     if (!subs.length) throw new StyleError('usage: atom_style hybrid sub-style1 sub-style2 ...');
     // atom_style.html: "When using the *hybrid* style, you cannot combine the *template* style"
@@ -176,26 +203,23 @@ const atomStyle: Handler = ({ sys }, a) => {
     sys.atomStyle = `hybrid ${subs.join(' ')}`;
     return;
   }
-  // atom_style.html: "tdpd args = Nspecies" with Nspecies the number of chemical species; the count is kept in the style
-  // string (tdpd:N, atoms.ts tdpdSpecies)
-  if (a[0] === 'tdpd') {
-    if (a.length !== 2) throw new StyleError('usage: atom_style tdpd Nspecies');
-    sys.atomStyle = tdpdArg(a[1]) as AtomStyle;
-    return;
-  }
-  if (a[0] === 'template') {
-    if (a.length !== 2) throw new StyleError('usage: atom_style template template-ID');
-    sys.atomStyle = templateArg(a[1]) as AtomStyle;
-    return;
-  }
   // atom_style.html: "body args = bstyle bstyle-args"; the engine implements the nparticle, rounded/polygon and
   // rounded/polyhedron body styles (Howto_body.rst: "atom_style body rounded/polyhedron Nmin Nmax"). Nmin and Nmax only
   // size the internal arrays (bodies.ts).
   if (a[0] === 'body') {
     if (a[1] !== 'nparticle' && a[1] !== 'rounded/polygon' && a[1] !== 'rounded/polyhedron') throw new StyleError(`atom_style body ${a[1] ?? ''} is not supported by the browser engine; only atom_style body nparticle, rounded/polygon and rounded/polyhedron Nmin Nmax are`);
     const nmin = Number(a[2]), nmax = Number(a[3]);
-    if (a.length !== 4 || !Number.isInteger(nmin) || !Number.isInteger(nmax) || nmin < 0 || nmax < 0) {
-      throw new StyleError('usage: atom_style body nparticle Nmin Nmax (non-negative integers)');
+    if (a[1] === 'nparticle') {
+      if (a.length !== 4 || !Number.isInteger(nmin) || !Number.isInteger(nmax) || nmin < 0 || nmax < 0) {
+        throw new StyleError('usage: atom_style body nparticle Nmin Nmax (non-negative integers)');
+      }
+    } else {
+      // native BodyRoundedPolygon and BodyRoundedPolyhedron (src/BODY/body_rounded_polygon.cpp, body_rounded_polyhedron.cpp
+      // at b332f28): the body args include the style name, so exactly two numbers follow it; the polyhedron copy of that
+      // count check also says "rounded/polygon"
+      if (a.length !== 4) throw new StyleError('Invalid body rounded/polygon command');
+      if (!Number.isInteger(nmin) || !Number.isInteger(nmax)) throw new StyleError('usage: atom_style body nparticle Nmin Nmax (non-negative integers)');
+      if (nmin <= 0 || nmin > nmax) throw new StyleError(`Invalid body ${a[1]} command`);
     }
     sys.atomStyle = `body ${a[1]} ${nmin} ${nmax}`;
     return;
@@ -209,18 +233,17 @@ const atomStyle: Handler = ({ sys }, a) => {
     sys.atomStyle = a[1] === 'conservative' ? 'apip conservative' : 'apip';
     return;
   }
+  known(a[0]);
   // atom_style.html: "*ellipsoid* arg = superellipsoid (optional) for superellipsoids instead of ellipsoids"
-  if (a[0] === 'ellipsoid' && a[1] === 'superellipsoid') {
-    if (a.length !== 2) throw new StyleError('usage: atom_style ellipsoid superellipsoid');
+  // native AtomVecEllipsoid::process_args (src/ASPHERE/atom_vec_ellipsoid.cpp at b332f28): every arg must be superellipsoid
+  if (a[0] === 'ellipsoid' && a.length > 1) {
+    for (const x of a.slice(1)) if (x !== 'superellipsoid') throw new StyleError(`Unknown atom_style ellipsoid argument: ${x}`);
     sys.atomStyle = 'ellipsoid superellipsoid';
     return;
   }
-  known(a[0]);
-  if (a[0] === 'sphere' || a[0] === 'bpm/sphere') {
-    if (a.length > 2 || (a.length === 2 && !sphereArg(a[1]))) throw new StyleError(`usage: atom_style ${a[0]} [0|1]`);
-    sys.radvary = a[1] === '1';
-  } else if (a.length > 1) throw new StyleError(`atom_style ${a[0]} takes no arguments`);
-  sys.atomStyle = a[0] as AtomStyle;
+  // atom_style.html: "tdpd args = Nspecies" with Nspecies the number of chemical species; the count is kept in the style
+  // string (tdpd:N, atoms.ts tdpdSpecies). Native AtomVecTDPD::process_args reads the first arg and ignores the rest.
+  sys.atomStyle = subStyle(a[0], a.slice(1)) as AtomStyle;
 };
 
 /**
@@ -296,7 +319,8 @@ const parallelOnly = (name: string): Handler => (({ sys }, a) => {
         throw new StyleError('usage: suffix hybrid default-suffix alternative-suffix (each of gpu, intel, kk, omp, opt)');
       }
     } else if (a.length !== 1) {
-      throw new StyleError(`suffix ${style} takes no arguments (only suffix hybrid takes two suffixes)`);
+      // native Input::suffix (src/input.cpp at b332f28): "if (narg != 1) error->all(FLERR,\"Illegal suffix command\")"
+      throw new StyleError('Illegal suffix command');
     }
     sys.log(`suffix ${a.join(' ')}: accepted; styles named later run as their base styles (the browser engine picks CPU threads or the GPU itself)`);
     return;
@@ -306,6 +330,15 @@ const parallelOnly = (name: string): Handler => (({ sys }, a) => {
     const packages = ['gpu', 'intel', 'kokkos', 'omp'];
     if (a[0] === undefined || !packages.includes(a[0])) {
       throw new StyleError(`package style must be gpu, intel, kokkos or omp (got '${a[0] ?? ''}')`);
+    }
+    if (a[0] === 'omp') {
+      // native FixOMP constructor (src/OPENMP/fix_omp.cpp at b332f28), which Input::package (src/input.cpp) reaches with the
+      // words after omp: after the thread count only the neigh keyword is known, and it takes one value
+      for (let k = 2; k < a.length;) {
+        if (a[k] !== 'neigh') throw new StyleError(`Unknown package omp keyword ${a[k]}`);
+        if (k + 1 >= a.length) throw missingArgs('package omp neigh');
+        k += 2;
+      }
     }
     sys.log(`package ${a.join(' ')}: accepted; the browser engine chooses CPU threads or the GPU in the notebook toolbar, so the settings have no effect`);
     return;
@@ -321,9 +354,55 @@ const parallelOnly = (name: string): Handler => (({ sys }, a) => {
 const processors: Handler = ({ sys }, a) => {
   if (sys.hasBox) throw new StyleError('Processors command after simulation box is defined\nFor more information see https://docs.lammps.org/err0034');
   if (a.length < 3) throw new StyleError('Illegal processors command');
+  // native Comm::set_processors (src/comm.cpp at b332f28): the three grid counts, then keywords whose values are checked in
+  // order; a keyword that is not known is "Illegal processors command". The keywords have no effect in one process.
+  const illegal = () => new StyleError('Illegal processors command');
   const p = a.slice(0, 3).map((w) => (w === '*' ? 0 : inumeric(w)));
-  if (p.some((v) => v < 0)) throw new StyleError('Illegal processors command');
+  if (p.some((v) => v < 0)) throw illegal();
   if (p[0] * p[1] * p[2] !== 0 && p[0] * p[1] * p[2] !== 1) throw new StyleError('Specified processors != physical processors');
+  const mapStyles = ['cart', 'cart/reorder', 'xyz', 'xzy', 'yxz', 'yzx', 'zxy', 'zyx'];
+  let gridflag = 'onelevel';
+  let mapflag = 'cart';
+  for (let k = 3; k < a.length;) {
+    const kw = a[k];
+    if (kw === 'grid') {
+      if (k + 2 > a.length) throw illegal();
+      const g = a[k + 1];
+      if (g === 'twolevel') {
+        // native: ncores and the three core-grid counts (* or a number) follow
+        if (k + 6 > a.length) throw illegal();
+        const ncores = inumeric(a[k + 2]);
+        const cg = [a[k + 3], a[k + 4], a[k + 5]].map((w) => (w === '*' ? 0 : inumeric(w)));
+        if (ncores <= 0 || cg.some((v) => v < 0)) throw illegal();
+        k += 4;
+      } else if (g === 'custom') {
+        if (k + 3 > a.length) throw illegal();
+        k += 1;
+      } else if (g !== 'onelevel' && g !== 'numa') {
+        throw illegal();
+      }
+      gridflag = g;
+      k += 2;
+    } else if (kw === 'map') {
+      if (k + 2 > a.length || !mapStyles.includes(a[k + 1])) throw illegal();
+      mapflag = a[k + 1];
+      k += 2;
+    } else if (kw === 'part') {
+      if (k + 4 > a.length) throw illegal();
+      // one process is one partition, and native refuses the part keyword without partitions
+      throw new StyleError('Cannot use processors part command without using partitions');
+    } else if (kw === 'file') {
+      if (k + 2 > a.length) throw illegal();
+      k += 2;
+    } else if (kw === 'numa_nodes') {
+      if (k + 2 > a.length) throw illegal();
+      inumeric(a[k + 1]);
+      k += 2;
+    } else {
+      throw illegal();
+    }
+  }
+  if (gridflag === 'numa' && mapflag !== 'cart') throw new StyleError('Processors grid numa and map style are incompatible');
   sys.log('processors: accepted (the browser engine runs one process; this setting has no effect)');
 };
 
@@ -384,7 +463,7 @@ const balanceCommand: Handler = ({ sys }, a) => {
       if (a[k + 1] === undefined) throw new StyleError('Illegal balance out command: missing file name');
       outFile = a[k + 1];
       k += 2;
-    } else throw new StyleError(`balance: unknown keyword '${key}'`);
+    } else throw new StyleError(`Unknown (fix) balance keyword ${key}`);
   }
   applyBalanceWeights(sys, actions, balanceUsesNeigh(actions) ? balanceNeighFactor(sys) : null);
   // As native LAMMPS does (src/balance.cpp at b332f28): the out file is opened by the options, and the result is
@@ -682,7 +761,12 @@ const createBox: Handler = ({ sys }, a) => {
   if (n < 1) throw new StyleError('create_box needs at least 1 atom type');
   const general = a[1] === 'NULL';
   const reg = general ? null : sys.region(a[1] ?? '');
-  const kw = keywords(a.slice(general ? 8 : 2), {
+  // native CreateBox::command (src/create_box.cpp at b332f28): "Unknown create_box keyword: X" for a word that is not a keyword
+  const boxKeywords = ['bond/types', 'angle/types', 'dihedral/types', 'improper/types',
+    'extra/bond/per/atom', 'extra/angle/per/atom', 'extra/dihedral/per/atom', 'extra/improper/per/atom', 'extra/special/per/atom'];
+  const boxRest = a.slice(general ? 8 : 2);
+  for (let i = 0; i < boxRest.length; i += 2) if (!boxKeywords.includes(boxRest[i])) throw new StyleError(`Unknown create_box keyword: ${boxRest[i]}`);
+  const kw = keywords(boxRest, {
     'bond/types': 1, 'angle/types': 1, 'dihedral/types': 1, 'improper/types': 1,
     'extra/bond/per/atom': 1, 'extra/angle/per/atom': 1, 'extra/dihedral/per/atom': 1, 'extra/improper/per/atom': 1, 'extra/special/per/atom': 1,
   }, 'create_box');
@@ -3804,7 +3888,11 @@ const createBonds: Handler = ({ sys }, a) => {
   const ids = a.slice(2, 2 + width[style]).map((w) => int(w, 'atom ID'));
   if (ids.length < width[style]) throw new StyleError(`create_bonds ${style} needs ${width[style]} atom IDs`);
   for (const id of ids) if (sys.indexOfId(id) < 0) throw new StyleError(`create_bonds: atom ${id} does not exist`);
-  const kw = keywords(a.slice(2 + width[style]), { special: 1 }, 'create_bonds');
+  // native create_bonds (src/create_bonds.cpp at b332f28): the only optional keyword is special, and any other word is
+  // "Illegal create_bonds command"
+  const kwRest = a.slice(2 + width[style]);
+  for (let i = 0; i < kwRest.length; i += 2) if (kwRest[i] !== 'special') throw new StyleError('Illegal create_bonds command');
+  const kw = keywords(kwRest, { special: 1 }, 'create_bonds');
   // special no leaves the special list stale until a later special yes (create_bonds.html); the engine
   // always rebuilds it after a topology change, so 'no' would silently differ: rejected instead
   if (kw.has('special') && yesno(kw.get('special')![0], 'create_bonds special') === false) {
@@ -3852,7 +3940,7 @@ const deleteBonds: Handler = ({ sys }, a) => {
   }
   const flags = { any: false, undo: false, remove: false, special: false };
   for (const w of a.slice(typed ? 3 : 2)) {
-    if (!(w in flags)) throw new StyleError(`Illegal delete_bonds command: unknown keyword '${w}'`);
+    if (!(w in flags)) throw new StyleError('Illegal delete_bonds command');
     flags[w as keyof typeof flags] = true;
   }
   if (style === 'stats') return;

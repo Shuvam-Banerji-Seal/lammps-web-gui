@@ -82,7 +82,7 @@ export class PairEDPD extends Pair {
         for (let k = 0; k < 4; k++) one[k] = parseNum(args[iarg + k + 1], kw);
         if (kw === 'power') this.powerFlag = true; else this.kappaFlag = true;
         iarg += 5;
-      } else throw new StyleError(`Illegal pair edpd coefficients: unknown keyword ${kw}`);
+      } else throw new StyleError('Illegal pair edpd coefficients');
     }
     const nt = this.ntypes + 1;
     if (this.powerFlag && this.sc.length === 0) this.sc = new Float64Array(nt * nt * 4);

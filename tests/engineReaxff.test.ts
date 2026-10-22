@@ -67,7 +67,7 @@ describe('pair_style reaxff in the engine', () => {
     const ff = readFileSync(join(POTENTIALS, 'ffield.reax.rdx'), 'utf8');
     const files = { 'ffield.reax.rdx': ff, 'water.data': water };
     await expect(runScript(`units real\natom_style charge\nread_data water.data\npair_style reaxff NULL lgvdw yes\npair_coeff * * ffield.reax.rdx H O\nrun 0\n`, files)).rejects.toThrow(/lgvdw/);
-    await expect(runScript(`units real\natom_style charge\nread_data water.data\npair_style reaxff NULL acks2 yes\npair_coeff * * ffield.reax.rdx H O\nrun 0\n`, files)).rejects.toThrow(/acks2/);
+    await expect(runScript(`units real\natom_style charge\nread_data water.data\npair_style reaxff NULL acks2 yes\npair_coeff * * ffield.reax.rdx H O\nrun 0\n`, files)).rejects.toThrow('Illegal pair_style reaxff command');
   });
 
   it('refuses checkqeq yes with no fix qeq/reaxff at the first evaluation', async () => {

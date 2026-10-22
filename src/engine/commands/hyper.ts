@@ -1,5 +1,5 @@
 import type { Ctx, Handler } from './args';
-import { int, num } from './args';
+import { inumeric, numeric } from '../force/util';
 import { StyleError } from '../force/types';
 import { minimize } from '../run/min';
 import { initRun, yieldNow } from '../run/verlet';
@@ -190,55 +190,57 @@ const dynamics = async (sys: System, nsteps: number, cancelled: () => boolean): 
 /** hyper N Nevent fix-ID compute-ID [min etol ftol maxiter maxeval] [dump dump-ID] [rebond Nrebond]. */
 const hyper: Handler = async (ctx: Ctx, a) => {
   const { sys, session } = ctx;
-  if (a.length < 4) throw new StyleError('usage: hyper N Nevent fix-ID compute-ID keyword values ...');
-  const nsteps = int(a[0], 'hyper N');
-  const nevent = int(a[1], 'hyper Nevent');
+  // As native LAMMPS does (src/REPLICA/hyper.cpp Hyper::command and options at b332f28): the box, the word count, N and
+  // Nevent (utils::inumeric), the keywords, then the counts, the fix and the compute, each with native's message
+  if (!sys.hasBox) throw new StyleError('Hyper command before simulation box is defined');
+  const illegal = 'Illegal hyper command';
+  if (a.length < 4) throw new StyleError(illegal);
+  const nsteps = inumeric(a[0]);
+  const nevent = inumeric(a[1]);
   const [fixId, compId] = [a[2], a[3]];
-  if (nsteps <= 0) throw new StyleError('hyper: N must be > 0 (the browser engine does not run an empty hyper command)');
-  if (nevent < 1) throw new StyleError('hyper: Nevent must be >= 1');
-  if (nsteps % nevent !== 0) throw new StyleError('hyper: N must be a multiple of Nevent');
   const quenchOpts: QuenchOpts = { etol: 0.1, ftol: 0.1, maxiter: 40, maxeval: 50 };
   const dumpIds: string[] = [];
   let rebond = 0;
   for (let k = 4; k < a.length;) {
     switch (a[k]) {
       case 'min': {
-        quenchOpts.etol = num(a[k + 1], 'hyper min etol');
-        quenchOpts.ftol = num(a[k + 2], 'hyper min ftol');
-        quenchOpts.maxiter = int(a[k + 3], 'hyper min maxiter');
-        quenchOpts.maxeval = int(a[k + 4], 'hyper min maxeval');
+        if (k + 5 > a.length) throw new StyleError(illegal);
+        quenchOpts.etol = numeric(a[k + 1]);
+        quenchOpts.ftol = numeric(a[k + 2]);
+        quenchOpts.maxiter = inumeric(a[k + 3]);
+        quenchOpts.maxeval = inumeric(a[k + 4]);
+        if (quenchOpts.maxiter < 0) throw new StyleError(illegal);
         k += 5;
         break;
       }
       case 'dump': {
-        if (a[k + 1] === undefined) throw new StyleError('hyper dump needs a dump-ID');
+        if (k + 2 > a.length) throw new StyleError(illegal);
+        if (!sys.dumps.some((x) => x.id === a[k + 1])) throw new StyleError(`Dump ID ${a[k + 1]} in hyper command does not exist`);
         dumpIds.push(a[k + 1]);
         k += 2;
         break;
       }
       case 'rebond': {
-        rebond = int(a[k + 1], 'hyper rebond Nrebond');
-        if (rebond < 1 || rebond % nevent !== 0) throw new StyleError('hyper rebond: Nrebond must be a multiple of Nevent');
+        if (k + 2 > a.length) throw new StyleError(illegal);
+        rebond = inumeric(a[k + 1]);
         k += 2;
         break;
       }
-      // As native LAMMPS does (src/REPLICA/hyper.cpp Hyper::options at b332f28): any other word is "Illegal hyper command"
-      default: throw new StyleError('Illegal hyper command');
+      default: throw new StyleError(illegal);
     }
   }
-  if (quenchOpts.etol < 0 || quenchOpts.ftol < 0) throw new StyleError('hyper min tolerances must be >= 0');
+  if (nevent <= 0) throw new StyleError('Invalid t_event in hyper command');
+  if (nsteps % nevent !== 0) throw new StyleError('Hyper nsteps must be multiple of t_event');
+  if (rebond < 0) throw new StyleError('Invalid rebond in hyper command');
+  if (rebond && rebond % nevent !== 0) throw new StyleError('Hyper rebond must be multiple of t_event');
+  if (fixId === 'NULL') throw new StyleError('hyper with fix-ID NULL (event detection without a bias) is not supported by the browser engine');
   const fix = sys.fixes.find((f) => f.id === fixId);
-  if (!fix) throw new StyleError(`hyper: fix ${fixId} does not exist`);
-  if (fix.style !== 'hyper/global' && fix.style !== 'hyper/local') {
-    throw new StyleError(`hyper: fix ${fixId} (${fix.style}) is not a bond-boost bias fix (fix hyper/global or hyper/local)`);
-  }
+  if (!fix) throw new StyleError('Could not find fix ID for hyper');
+  if (fix.style !== 'hyper/global' && fix.style !== 'hyper/local') throw new StyleError('Hyper fix is not a valid hyperdynamics fix');
   const comp = sys.computes.find((c) => c.id === compId);
-  if (!comp) throw new StyleError(`hyper: compute ${compId} does not exist`);
-  if (comp.style !== 'event/displace') throw new StyleError(`hyper: compute ${compId} (${comp.style}) is not an event computer; the browser engine supports compute event/displace`);
-  for (const d of dumpIds) {
-    if (!sys.dumps.some((x) => x.id === d)) throw new StyleError(`hyper: dump ${d} does not exist`);
-  }
-  if (!sys.hasBox) throw new StyleError('hyper: no simulation box is defined');
+  if (!comp || comp.style !== 'event/displace') throw new StyleError(`Could not find compute event/displace ID ${compId} for hyper`);
+  if (nsteps <= 0) throw new StyleError('hyper: N must be > 0 (the browser engine does not run an empty hyper command)');
+  if (quenchOpts.etol < 0 || quenchOpts.ftol < 0) throw new StyleError('hyper min tolerances must be >= 0');
   // fix_halt.html: a soft halt skips later run and minimize commands
   if (softHalted(sys)) return;
   clearHaltRequest(sys);

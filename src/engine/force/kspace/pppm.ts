@@ -698,7 +698,8 @@ export class KSpacePPPMCG extends KSpacePPPM {
   smallq = 1e-5;
 
   settings(args: string[]): void {
-    if (args.length !== 1 && args.length !== 2) throw new StyleError('Illegal kspace_style pppm/cg command: usage: kspace_style pppm/cg accuracy (smallq)');
+    // As native LAMMPS does (src/KSPACE/pppm_cg.cpp PPPMCG::settings at b332f28): one or two arguments.
+    if (args.length < 1 || args.length > 2) throw new StyleError(`Illegal kspace_style ${this.name} command`);
     super.settings([args[0]]);
     if (args.length === 2) {
       this.smallq = parseNum(args[1], 'smallq');

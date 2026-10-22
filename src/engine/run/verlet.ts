@@ -68,7 +68,8 @@ export const initRun = (sys: System, opts: { verlet?: boolean } = {}): void => {
   sys.initPair();
   if (!s.rmass) {
     for (let t = 1; t <= s.ntypes; t++) {
-      if (!(s.massByType[t] > 0)) throw new StyleError(`not all per-type masses are set (type ${t}); use the mass command`);
+      // As native LAMMPS does (src/atom.cpp Atom::check_mass at b332f28)
+      if (!(s.massByType[t] > 0)) throw new StyleError(`Not all per-type masses are set. Type ${t} is missing.`);
     }
   }
   for (const c of sys.computes) c.invalidate();

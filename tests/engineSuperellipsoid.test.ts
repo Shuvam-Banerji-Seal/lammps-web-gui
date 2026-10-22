@@ -42,8 +42,8 @@ describe('atom_style ellipsoid superellipsoid', () => {
     const s = newSession();
     await s.execute(BOX);
     expect(s.sys.state.atomStyle).toBe('ellipsoid superellipsoid');
-    await expect(newSession().execute('atom_style ellipsoid superellipsoid extra\n')).rejects.toThrow(/usage: atom_style ellipsoid superellipsoid/);
-    await expect(newSession().execute('atom_style ellipsoid foo\n')).rejects.toThrow(/takes no arguments/);
+    await expect(newSession().execute('atom_style ellipsoid superellipsoid extra\n')).rejects.toThrow('Unknown atom_style ellipsoid argument: extra');
+    await expect(newSession().execute('atom_style ellipsoid foo\n')).rejects.toThrow('Unknown atom_style ellipsoid argument: foo');
   });
 
   it('starts every atom as a regular ellipsoid (block 2 2) with zero inertia', async () => {

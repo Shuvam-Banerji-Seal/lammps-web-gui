@@ -79,16 +79,19 @@ export class PairLepton extends Pair {
     } else {
       if (args.length < 1) throw new StyleError('usage: pair_style lepton/coul cutoff [ewald|pppm|msm]');
       this.solverKeywords = [];
+      // As native LAMMPS does (src/LEPTON/pair_lepton_coul.cpp PairLeptonCoul::settings at b332f28): every word is checked
+      // for a known keyword first, so an unknown word is reported before a known but unsupported keyword is refused
+      let refused: string | null = null;
       for (const kw of args.slice(1)) {
         if (kw === 'ewald' || kw === 'pppm' || kw === 'msm') {
           this.coulKeyword = true;
           // pair_lepton_coul.cpp settings: the keyword sets the flag of that solver (kspaceCheck.ts reads it)
           this.solverKeywords = [...this.solverKeywords, kw];
-        }
-        else if (kw === 'dispersion' || kw === 'tip4p') {
-          throw new StyleError(`pair_style lepton/coul keyword '${kw}' is not supported by this engine (ewald, pppm and msm are)`);
-        } else throw new StyleError(`pair_style lepton/coul: unknown keyword '${kw}' (expected ewald, pppm or msm)`);
+        } else if (kw === 'dispersion' || kw === 'tip4p') {
+          refused ??= kw;
+        } else throw new StyleError(`Unknown pair_style lepton/coul keyword: ${kw}`);
       }
+      if (refused !== null) throw new StyleError(`pair_style lepton/coul keyword '${refused}' is not supported by this engine (ewald, pppm and msm are)`);
       this.coulLong = this.coulKeyword;
     }
     this.cutGlobal = parseNum(args[0], 'cutoff');

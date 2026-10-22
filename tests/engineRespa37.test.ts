@@ -138,7 +138,7 @@ describe('run_style respa parsing (run_style.html)', () => {
     expect(() => parseRunStyleRespa(['respa', '3', '2'])).toThrow(/loop factor 2/);
     expect(() => parseRunStyleRespa(['respa', '2', '2', 'pair', '3'])).toThrow(/level must be an integer 1 to 2/);
     expect(() => parseRunStyleRespa(['respa', '2', '2', 'hybrid', '1', 'pair', '2'])).toThrow(/mutually exclusive/);
-    expect(() => parseRunStyleRespa(['respa', '2', '2', 'frob', '1'])).toThrow(/unknown keyword 'frob'/);
+    expect(() => parseRunStyleRespa(['respa', '2', '2', 'frob', '1'])).toThrow('Unknown run_style respa keyword frob');
   });
 });
 

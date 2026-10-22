@@ -300,7 +300,8 @@ variable        e equal 2.0
   });
 
   it('a bonded hybrid style is refused by name', async () => {
-    const r = await runScript(`${MOL.replace('bond_style      harmonic\nbond_coeff      1 10.0 1.0', 'bond_style      hybrid harmonic morse\nbond_coeff      1 harmonic 10.0 1.0')}fix 1 all adapt 1 bond harmonic k 1 v_e\nrun 0\n`);
+    // every sub-style used: an unused one stops first at the bond style's init (Bond hybrid sub-style X is not used)
+    const r = await runScript(`${MOL.replace('bond_style      harmonic\nbond_coeff      1 10.0 1.0', 'bond_style      hybrid harmonic\nbond_coeff      1 harmonic 10.0 1.0')}fix 1 all adapt 1 bond harmonic k 1 v_e\nrun 0\n`);
     expect(r.message).toMatch(/bond with bond_style hybrid is not supported/);
   });
 

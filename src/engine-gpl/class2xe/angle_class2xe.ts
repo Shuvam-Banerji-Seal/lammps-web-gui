@@ -93,6 +93,11 @@ export class AngleClass2xe extends Bonded {
     }
   }
 
+  /** Native setflag[t]: the angle, bond-bond and bond-angle coefficients are all set. */
+  override coeffSet(t: number): boolean | null {
+    return this.setA?.length === this.ntypes + 1 ? !!(this.setA[t] && this.setBb[t] && this.setBa[t]) : null;
+  }
+
   init(_ctx?: StyleContext): void {
     for (let t = 1; t <= this.ntypes; t++) {
       if (!(this.setA[t] && this.setBb[t] && this.setBa[t])) {

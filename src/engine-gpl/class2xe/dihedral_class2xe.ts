@@ -87,6 +87,12 @@ export class DihedralClass2xe extends SimpleBonded {
     this.params.setRange(word, nums);
   }
 
+  /** Native setflag[t]: the main line and the five cross-term lines are all set. */
+  override coeffSet(t: number): boolean | null {
+    if (this.params.set.length !== this.ntypes + 1) return null;
+    return !!(this.params.set[t] && this.mbt.set[t] && this.ebt.set[t] && this.at.set[t] && this.aat.set[t] && this.bb13.set[t]);
+  }
+
   /** The six sets are required for every type (C++ coeff: setflag once all six are set). */
   override init(_ctx?: StyleContext): void {
     for (let t = 1; t <= this.ntypes; t++) {

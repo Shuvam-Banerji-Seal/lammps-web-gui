@@ -659,6 +659,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     const st = entry?.name === 'hybrid'
       ? restoreHybrid(kind, entry.data, bondedTypeCount(state, kind), reg)
       : restoreStyle(kind, reg, entry, bondedTypeCount(state, kind));
+    if (st) st.coeffGiven = true;
     sys.ff[kind] = st;
   }
   sys.bump();

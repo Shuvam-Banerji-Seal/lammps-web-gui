@@ -85,6 +85,11 @@ export class BondOxdnaFene extends Bonded {
     this.special = link.special.lj;
   }
 
+  /** Native setflag[t]: bond_coeff set the type. */
+  override coeffSet(t: number): boolean | null {
+    return this.par.length === this.ntypes + 1 ? !!this.par[t] : null;
+  }
+
   init(_ctx?: StyleContext): void {
     // special_bonds lj weights of the engine are [1-2, 1-3, 1-4] (the C++ special_lj[1..3])
     const sp = this.special;

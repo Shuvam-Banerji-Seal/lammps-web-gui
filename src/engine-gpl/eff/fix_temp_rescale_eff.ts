@@ -29,6 +29,8 @@ export class FixTempRescaleEff extends Fix {
     if (!Number.isInteger(nevery) || nevery <= 0) throw new StyleError('Illegal fix temp/rescale/eff command');
     if (!isElectronStyle(sys.state.atomStyle)) throw new StyleError('Fix temp/rescale/eff requires atom style electron');
     this.nevery = nevery;
+    // fix_temp_rescale_eff.cpp: global_freq = nevery
+    this.globalFreq = nevery;
     this.scalarFlag = true;
     this.extscalar = 1;
     this.ecouple = () => this.removed;

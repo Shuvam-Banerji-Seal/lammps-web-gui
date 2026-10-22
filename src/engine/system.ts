@@ -1035,16 +1035,20 @@ export class System {
         due('a ');
         return f.computeScalar();
       }
+      // a fix whose vector length or row count varies is read as 0 past its end, without the range error
       if (lower && j === null) {
         if (!f.vectorFlag) throw mismatch();
-        if (i! > f.sizeVector) throw range('vector');
+        if (i! > f.sizeVector && !f.sizeVectorVariable) throw range('vector');
         due('a ');
+        if (f.sizeVectorVariable && i! > f.sizeVector) return 0;
         return f.computeVector(i! - 1);
       }
       if (lower) {
         if (!f.arrayFlag) throw mismatch();
-        if (i! > f.sizeArrayRows || j! > f.sizeArrayCols) throw range('array');
+        if (i! > f.sizeArrayRows && !f.sizeArrayRowsVariable) throw range('array');
+        if (j! > f.sizeArrayCols) throw range('array');
         due('a ');
+        if (f.sizeArrayRowsVariable && i! > f.sizeArrayRows) return 0;
         return f.computeArray(i! - 1, j! - 1);
       }
       if (i === null || !f.peratomFlag) throw mismatch();

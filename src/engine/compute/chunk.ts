@@ -146,7 +146,8 @@ export class ComputeChunkAtom extends Compute {
   private readonly regionId: string | null;
   private readonly postOps: PostOp[];
   private readonly idsMode: 'once' | 'nfreq' | 'every';
-  private readonly compress: boolean;
+  /** compress yes (native cchunk->compress): fix ave/chunk counts a column of original chunk IDs. */
+  readonly compress: boolean;
   private readonly discard: Discard;
   private readonly units: Units;
   /** nchunk held constant (nchunk once by default for type and molecule, or fix ave/chunk). */

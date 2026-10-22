@@ -70,7 +70,7 @@ export const initRun = (sys: System, opts: { verlet?: boolean } = {}): void => {
     }
   }
   for (const c of sys.computes) c.invalidate();
-  for (const c of sys.computes) c.init();
+  for (const c of sys.computes) { c.init(); c.initialized = true; }
   sys.checkDynamicGroups();
   for (const f of sys.fixes) f.init?.();
   checkDynamicGroupFixes(sys.groups, sys.fixes);

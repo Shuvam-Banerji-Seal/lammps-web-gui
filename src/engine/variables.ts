@@ -1,7 +1,7 @@
 import { StyleError } from './force/types';
 import { inumeric, numeric } from './force/util';
 import { checkCFormat } from './cformat';
-import { evaluate, type FormulaEnv, type Mode, type Value } from './formula';
+import { evaluate, FormulaError, roundUnderflow, type FormulaEnv, type Mode, type Value } from './formula';
 import { formatNumber } from './script';
 
 /*
@@ -57,13 +57,16 @@ export interface Variable {
   vec?: Float64Array;
 }
 
+/** A number as native utils::is_double reads one: sign, digits with one period, optional exponent. */
+const IS_DOUBLE = /^[+-]?(\d+\.?\d*|\d*\.?\d+)([eE][+-]?\d+)?$/;
+
 /** The variable styles (native's varstyles). */
 const ALL_STYLES = new Set<string>(['index', 'loop', 'world', 'universe', 'uloop', 'string', 'getenv', 'file', 'atomfile', 'format', 'equal', 'atom', 'vector', 'python', 'timer', 'internal']);
 
 export class Variables {
   readonly vars = new Map<string, Variable>();
-  /** Guards against self-referencing formulas. */
-  private depth = 0;
+  /** The variables being evaluated now (native eval_in_progress): a formula reaching one again is circular. */
+  private inProgress = new Set<string>();
 
   /**
    * The partition (replica) this table belongs to. A world-style variable gives each partition one of its N
@@ -325,7 +328,11 @@ export class Variables {
     }
   }
 
-  /** Numeric value of an equal-compatible variable. */
+  /**
+   * Numeric value of an equal-compatible variable. As native LAMMPS does (Variable::compute_equal and retrieve,
+   * variable.cpp at b332f28): an equal-style value below DBL_MIN in size is 0, and the text of an index, loop, string or
+   * other text style variable must read as a number (utils::is_double).
+   */
   scalar(name: string, env: FormulaEnv): number {
     const v = this.vars.get(name);
     if (!v) throw new StyleError(`variable ${name} is not defined`);
@@ -333,7 +340,7 @@ export class Variables {
       case 'equal': {
         const r = this.guard(name, () => evaluate(v.formula!, env, 'equal'));
         if (typeof r !== 'number') throw new StyleError(`variable ${name} does not give a single value`);
-        return r;
+        return roundUnderflow(r);
       }
       case 'internal': return v.num!;
       case 'timer': return (performance.now() - v.t0!) / 1000;
@@ -342,20 +349,25 @@ export class Variables {
         throw new StyleError(`variable ${name} (style ${v.style}) does not give a single value`);
       default: {
         const s = v.style === 'getenv' ? this.getenv(v.values[0]) ?? '' : v.values[v.which];
-        const n = Number(s);
-        if (s.trim() === '' || !Number.isFinite(n)) throw new StyleError(`variable ${name} = '${s}' is not a number`);
-        return n;
+        if (!IS_DOUBLE.test(s)) throw new FormulaError(`Variable ${name}: Non-numeric variable value in variable formula`, true);
+        return Number(s);
       }
     }
   }
 
-  /** A vector-style variable's values. */
+  /**
+   * A vector-style variable's values. As native LAMMPS does (Variable::compute_vector, variable.cpp at b332f28): a formula
+   * whose terms hold no vector has zero length, an error.
+   */
   evalVector(name: string, env: FormulaEnv): Float64Array {
     const v = this.vars.get(name);
     if (!v || v.style !== 'vector') throw new StyleError(`variable ${name} is not a vector-style variable`);
     if (v.vec) return v.vec;
-    const r = this.guard(name, () => evaluate(v.formula!, env, 'vector'));
-    return typeof r === 'number' ? Float64Array.of(r) : r;
+    return this.guard(name, () => {
+      const r = evaluate(v.formula!, env, 'vector');
+      if (typeof r === 'number' || r.length === 0) throw new FormulaError('Vector-style variable has zero length');
+      return r;
+    });
   }
 
   /** Per-atom values of an atom-style (or atomfile-style) variable, given the atom IDs. */
@@ -375,25 +387,57 @@ export class Variables {
     return typeof r === 'number' ? new Float64Array(n).fill(r) : r;
   }
 
-  /** v_name in a formula in the given mode. */
+  /**
+   * v_name in a formula in the given mode. As native LAMMPS does (Variable::evaluate, variable.cpp at b332f28): a
+   * vector-, atom- or atomfile-style variable must suit the formula's style, in messages that name the referenced variable.
+   */
   value(name: string, env: FormulaEnv, mode: Mode, ids: Int32Array, n: number): Value {
     const v = this.vars.get(name);
-    if (!v) throw new StyleError(`variable ${name} in a formula is not defined`);
+    if (!v) throw new StyleError(`Invalid variable reference v_${name} in variable formula`);
+    const named = (text: string) => new FormulaError(`Variable ${name}: ${text}`, true);
+    if (this.inProgress.has(name)) throw named('has a circular dependency');
+    const formula = mode === 'equal' ? 'equal' : mode === 'vector' ? 'vector' : 'atom';
     if (v.style === 'atom' || v.style === 'atomfile') {
-      if (mode !== 'atom') throw new StyleError(`atom-style variable ${name} can only be used in an atom-style variable`);
+      const what = v.style === 'atom' ? 'Atom' : 'Atomfile';
+      if (mode !== 'atom') throw named(`${what}-style variable in ${formula}-style variable formula`);
       return this.evalAtom(name, env, ids, n);
     }
     if (v.style === 'vector') {
-      if (mode === 'equal') throw new StyleError(`vector-style variable ${name} needs an index v_${name}[i] in an equal-style formula`);
+      if (mode !== 'vector') throw named(`Vector-style variable in ${formula}-style variable formula`);
       return this.evalVector(name, env);
     }
     return this.scalar(name, env);
   }
 
+  /**
+   * Evaluates the formula of variable `name`. As native LAMMPS does (Variable::print_var_error and eval_in_progress,
+   * variable.cpp at b332f28): an error of the formula that names no variable is given this one's name ("Variable NAME:
+   * ..."), and reaching a variable again while it is evaluated is a circular dependency.
+   */
   private guard<T>(name: string, f: () => T): T {
-    if (this.depth > 64) throw new StyleError(`variable ${name} refers to itself (directly or through other variables)`);
-    this.depth++;
-    try { return f(); } finally { this.depth--; }
+    if (this.inProgress.has(name)) throw new FormulaError(`Variable ${name}: has a circular dependency`, true);
+    this.inProgress.add(name);
+    try {
+      return f();
+    } catch (e) {
+      if (e instanceof FormulaError && !e.named) throw new FormulaError(`Variable ${name}: ${e.message}`, true);
+      throw e;
+    } finally {
+      this.inProgress.delete(name);
+    }
+  }
+
+  /**
+   * The integer of a [v_name] index. As native LAMMPS does (Variable::int_between_brackets, variable.cpp at b332f28): the
+   * variable must exist and give text (not an atom- or atomfile-style one), which std::stod reads and the index truncates.
+   */
+  bracketValue(name: string, env: FormulaEnv): number {
+    const v = this.vars.get(name);
+    if (!v) throw new StyleError(`Invalid variable name ${name} in variable formula`);
+    if (v.style === 'atom' || v.style === 'atomfile') throw new StyleError(`Invalid variable evaluation for variable ${name} in variable formula`);
+    const m = /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(this.text(name, env));
+    if (!m) throw new StyleError(`Illegal value in brackets: stod(v_${name})`);
+    return Math.trunc(Number(m[0]));
   }
 
   /** clear: "Variables are not deleted ... with the exception of atomfile-style variables." */

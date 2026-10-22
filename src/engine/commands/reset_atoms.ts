@@ -1,5 +1,5 @@
 import type { Handler } from './args';
-import { int, yesno, keywords } from './args';
+import { int, yesno, keywords, initializing } from './args';
 import { StyleError } from '../force/types';
 import { hasMolecule, isMolecularStyle, nativeOrder } from '../atoms';
 import { gplHook } from '../gplHooks';
@@ -205,4 +205,5 @@ const resetAtoms: Handler = ({ sys }, a) => {
   else throw new StyleError(`Illegal reset_atoms command: property must be id, image or mol, got '${prop ?? ''}'`);
 };
 
-export const RESET_ATOMS_COMMANDS: Record<string, Handler> = { reset_atoms: resetAtoms };
+// reset_atoms initializes the system first (native lmp->init() in reset_atoms_id, _image and _mol at b332f28)
+export const RESET_ATOMS_COMMANDS: Record<string, Handler> = { reset_atoms: initializing(resetAtoms) };

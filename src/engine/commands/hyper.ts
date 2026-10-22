@@ -269,7 +269,7 @@ const hyperLoop = async (sys: System, session: Ctx['session'], hf: HyperBiasFix,
   const cancelled = () => session.isCancelled;
   const s = sys.state;
   const start = s.step;
-  sys.run = { inRun: true, firstStep: start, lastStep: start + nsteps, beginStep: start, endStep: start + nsteps, t0: performance.now(), ranOnce: true };
+  sys.run = { inRun: true, firstStep: start, lastStep: start + nsteps, beginStep: start, endStep: start + nsteps, t0: performance.now(), ranOnce: true, eflagStep: sys.run.eflagStep };
   hf.beginRun(start);
 
   // initial quench: bonds and the event reference come from the quenched state; the start state is restored

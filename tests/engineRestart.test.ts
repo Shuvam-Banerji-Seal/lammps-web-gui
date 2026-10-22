@@ -210,7 +210,8 @@ describe('write_restart options and unsupported states', () => {
 
   it('keeps fix property/atom data for a fix re-specified with the same ID after read_restart', async () => {
     const { session, files } = newSession();
-    await session.execute(`${LJ_BOX}fix p all property/atom i_flag d_val\nset atom 5 i_flag 7\nset atom 6 d_val 2.5\nwrite_restart p.restart\n`);
+    // i_flag[5] needs the atom map, which the restart file keeps (native read_restart: ATOM_MAP_STYLE)
+    await session.execute(`${LJ_BOX.replace('atom_style      atomic', 'atom_style      atomic\natom_modify map yes')}fix p all property/atom i_flag d_val\nset atom 5 i_flag 7\nset atom 6 d_val 2.5\nwrite_restart p.restart\n`);
     const again = newSession();
     again.session.addFile('p.restart', files.get('p.restart')!);
     await again.session.execute('read_restart p.restart\nfix p all property/atom i_flag d_val\nvariable f equal i_flag[5]\nvariable d equal d_val[6]\nprint "f=${f} d=${d}"\n');

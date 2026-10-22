@@ -7,6 +7,7 @@ import { massOf } from '../atoms';
 import { generalBoxFromRestricted, rotateTensorToGeneral, type GeneralBox } from '../triclinic_general';
 import { checkCFormat, compileCFormat, type ValueKind } from '../cformat';
 import { libm } from '../libm';
+import { errorUrl } from '../formula';
 
 /*
  * Thermodynamic output — docs.lammps.org/thermo_style.html and
@@ -67,6 +68,12 @@ const parseField = (k: string): { kind: 'c' | 'f' | 'v'; id: string; idx: number
   return { kind: m[1] as 'c' | 'f' | 'v', id: m[2], idx: [...m[3].matchAll(/\[(\d+)\]/g)].map((x) => Number(x[1])) };
 };
 
+/** The thermo keywords that use the temperature, pressure or potential-energy compute (native Thermo::parse_fields). */
+const TEMP_KEYS = new Set(['temp', 'ke', 'etotal', 'enthalpy', 'econserve']);
+const PRESS_KEYS = new Set(['press', 'enthalpy', 'pxx', 'pyy', 'pzz', 'pxy', 'pxz', 'pyz']);
+const PE_KEYS = new Set(['pe', 'etotal', 'evdwl', 'ecoul', 'epair', 'ebond', 'eangle', 'edihed', 'eimp', 'emol', 'elong', 'etail', 'enthalpy', 'ecouple', 'econserve']);
+const CPU_KEYS = new Set(['cpu', 'tpcpu', 'spcpu', 'cpuuse', 'cpuremain']);
+
 export class Thermo {
   style: 'one' | 'multi' | 'custom' | 'yaml' = 'one';
   keywords: string[] = [...THERMO_ONE];
@@ -93,6 +100,12 @@ export class Thermo {
   triclinicGeneral = false;
   /** Last wall time / step for tpcpu, spcpu. */
   private lastCpu = { t: 0, step: 0, time: 0 };
+  /**
+   * The temperature, pressure and potential-energy computes thermo has bound (native's temperature, pressure and pe
+   * pointers): set by the run's init for the ones the thermo keywords use, and by thermo_modify temp and press; a new
+   * thermo_style unbinds them (src/thermo.cpp at b332f28).
+   */
+  private bound = { temp: false, press: false, pe: false };
 
   constructor(private sys: System) {}
 
@@ -120,6 +133,7 @@ export class Thermo {
     this.normUser = null;
     this.tempId = 'thermo_temp';
     this.pressId = 'thermo_press';
+    this.bound = { temp: false, press: false, pe: false };
     this.lost = 'error';
     this.lostBond = 'error';
     this.flush = false;
@@ -241,6 +255,10 @@ export class Thermo {
     if (!t.tempFlag) throw new StyleError(`thermo_modify temp: compute ${this.tempId} does not compute a temperature`);
     const p = this.sys.compute(this.pressId);
     if (!p.pressFlag) throw new StyleError(`thermo_modify press: compute ${this.pressId} does not compute a pressure`);
+    const uses = (keys: Set<string>) => this.keywords.some((k) => keys.has(k));
+    if (uses(TEMP_KEYS)) this.bound.temp = true;
+    if (uses(PRESS_KEYS)) this.bound.press = true;
+    if (uses(PE_KEYS)) this.bound.pe = true;
     this.lastCpu = { t: performance.now(), step: this.sys.state.step, time: 0 };
   }
 
@@ -319,6 +337,8 @@ export class Thermo {
 
   /** The current row (fresh compute values). */
   row(): ThermoRow {
+    // a thermo output step tallies the energy (native Integrate::ev_set: update->eflag_global)
+    this.sys.run.eflagStep = this.sys.state.step;
     this.sys.refreshComputes();
     const out: ThermoRow = {};
     for (const k of this.keywords) out[k] = this.value(k);
@@ -338,7 +358,32 @@ export class Thermo {
   /** A thermo keyword for formulas, or undefined if `name` is not a keyword. */
   keyword(name: string): number | undefined {
     if (!BUILTIN.has(name)) return undefined;
+    this.checkKeyword(name);
     return this.value(name);
+  }
+
+  /**
+   * A thermo keyword in a variable formula. As native LAMMPS does (src/thermo.cpp Thermo::evaluate_keyword and its
+   * check_temp, check_pe and check_press_* at b332f28): the CPU keywords only during a run; the energy keywords on a step
+   * whose energy was tallied (between runs: the last thermo output's step, until the step changes); and the keywords of
+   * the temperature, pressure and potential-energy computes when thermo has bound the compute and a run initialized it.
+   * The engine computes energies when they are asked for during a run, so it checks the tally between runs only.
+   */
+  private checkKeyword(k: string): void {
+    const sys = this.sys;
+    if (CPU_KEYS.has(k) && !sys.run.inRun) throw new StyleError(`The variable thermo keyword ${k} cannot be used between runs`);
+    const tallied = () => !sys.run.inRun && sys.run.eflagStep !== sys.state.step;
+    if (k === 'etail' && tallied()) throw new StyleError(`Energy was not tallied on needed timestep for thermo keyword etail${errorUrl(22)}`);
+    const check = (what: 'temp' | 'press' | 'pe', id: string, text: string) => {
+      if (!this.bound[what]) throw new StyleError(`Thermo keyword ${k} in variable requires thermo to use/init ${text}`);
+      if (!sys.computes.find((c) => c.id === id)?.initialized) throw new StyleError(`Thermo keyword ${k} cannot be invoked before initialization by a run`);
+    };
+    if (PE_KEYS.has(k) && k !== 'etail' && k !== 'ecouple') {
+      if (tallied()) throw new StyleError(`Energy was not tallied on needed timestep${errorUrl(22)}`);
+      check('pe', 'thermo_pe', 'potential energy');
+    }
+    if (TEMP_KEYS.has(k)) check('temp', this.tempId, 'temperature');
+    if (PRESS_KEYS.has(k)) check('press', this.pressId, 'press');
   }
 
   value(k: string): number {
@@ -531,10 +576,14 @@ export class Thermo {
       switch (key) {
         case 'norm': this.normUser = yesno(need(val), key); k += 2; break;
         case 'temp': {
-          if (!this.sys.computes.some((x) => x.id === need(val))) throw new StyleError(`Could not find thermo_modify temperature compute ${val}`);
+          // As native LAMMPS does (src/thermo.cpp Thermo::modify_params at b332f28)
+          need(val);
+          if (!this.keywords.some((x) => TEMP_KEYS.has(x))) throw new StyleError('Thermo style does not use temp');
+          if (!this.sys.computes.some((x) => x.id === val)) throw new StyleError(`Could not find thermo_modify temperature compute ${val}`);
           const c = this.sys.compute(val!);
-          if (!c.tempFlag) throw new StyleError(`thermo_modify temp: compute ${val} does not compute a temperature`);
+          if (!c.tempFlag) throw new StyleError(`Thermo_modify compute ${val} does not compute temperature`);
           this.tempId = val!;
+          this.bound.temp = true;
           // "a pressure compute defines its own temperature compute as an argument when it is
           // specified. The temp keyword will override this (for the pressure compute being used
           // by thermodynamics), but only if the temp keyword comes after the press keyword."
@@ -544,10 +593,13 @@ export class Thermo {
           break;
         }
         case 'press': {
-          if (!this.sys.computes.some((x) => x.id === need(val))) throw new StyleError(`Could not find thermo_modify pressure compute ${val}`);
+          need(val);
+          if (!this.keywords.some((x) => PRESS_KEYS.has(x))) throw new StyleError('Thermo style does not use press');
+          if (!this.sys.computes.some((x) => x.id === val)) throw new StyleError(`Could not find thermo_modify pressure compute ${val}`);
           const c = this.sys.compute(val!);
-          if (!c.pressFlag) throw new StyleError(`thermo_modify press: compute ${val} does not compute a pressure`);
+          if (!c.pressFlag) throw new StyleError(`Thermo_modify compute ${val} does not compute pressure`);
           this.pressId = val!;
+          this.bound.press = true;
           k += 2;
           break;
         }

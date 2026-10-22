@@ -209,7 +209,7 @@ export const runTempering = async (kind: Kind, ctx: Ctx, a: string[]): Promise<v
     const sys = r.sys;
     ensureThermoComputes(sys);
     initRun(sys);
-    sys.run = { inRun: true, firstStep: tFirst, lastStep: tLast, beginStep: tFirst, endStep: tLast, t0: performance.now(), ranOnce: true };
+    sys.run = { inRun: true, firstStep: tFirst, lastStep: tLast, beginStep: tFirst, endStep: tLast, t0: performance.now(), ranOnce: true, eflagStep: sys.run.eflagStep };
     const th = sys.thermo;
     sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });
     if (sys.logOpen) sys.logTable(th.logHeader());

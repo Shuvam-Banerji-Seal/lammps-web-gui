@@ -370,7 +370,7 @@ const runCoupledSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<numb
     // the run's steps before init, as in a single run
     r.run = {
       inRun: true, firstStep: first, lastStep: first + n,
-      beginStep: opts.start ?? first, endStep: opts.stop ?? first + n, t0: performance.now(), ranOnce: true,
+      beginStep: opts.start ?? first, endStep: opts.stop ?? first + n, t0: performance.now(), ranOnce: true, eflagStep: r.run.eflagStep,
     };
     initRun(r, { verlet: true });
     r.io.emit({ kind: 'thermo-header', keywords: [...r.thermo.keywords], labels: r.thermo.labels(), units: r.units.style });
@@ -496,7 +496,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   // init, which fixes read (fix deform: the box rate over the run, 0 for a run of no steps).
   sys.run = {
     inRun: true, firstStep: first, lastStep: first + n,
-    beginStep: opts.start ?? first, endStep: opts.stop ?? first + n, t0: performance.now(), ranOnce: true,
+    beginStep: opts.start ?? first, endStep: opts.stop ?? first + n, t0: performance.now(), ranOnce: true, eflagStep: sys.run.eflagStep,
   };
   if (!reuse) initRun(sys, { verlet: !sys.respa });
   if (reuse) sys.forcesCurrent();
@@ -682,7 +682,7 @@ const minimizeCmd: Handler = async (ctx, a) => {
   const s = sys.state;
   const th = sys.thermo;
   // the minimization's steps before init, as native Minimize::command (src/minimize.cpp at b332f28) sets them
-  sys.run = { inRun: true, firstStep: s.step, lastStep: s.step + maxiter, beginStep: s.step, endStep: s.step + maxiter, t0: performance.now(), ranOnce: true };
+  sys.run = { inRun: true, firstStep: s.step, lastStep: s.step + maxiter, beginStep: s.step, endStep: s.step + maxiter, t0: performance.now(), ranOnce: true, eflagStep: sys.run.eflagStep };
   initRun(sys);
   sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });
   if (sys.logOpen) sys.logTable(th.logHeader());

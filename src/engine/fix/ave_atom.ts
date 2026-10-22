@@ -475,6 +475,9 @@ export class FixAveHisto extends Fix {
       }
     }
     const len = this.beyond === 'extra' ? this.nBins + 2 : this.nBins;
+    // fix_ave_histo.html: "The global array has Nbins rows and three columns" (Nbins + 2 with beyond extra)
+    this.sizeArrayRows = len;
+    this.sizeArrayCols = 3;
     this.bins = new Float64Array(len);
     this.runBins = new Float64Array(len);
     this.outBins = new Float64Array(len);

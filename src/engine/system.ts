@@ -12,7 +12,7 @@ import type { Region, RegionEnv } from './region';
 import type { Compute } from './compute/compute';
 import type { Fix } from './fix/fix';
 import { Variables } from './variables';
-import { evaluateScalar, type FormulaEnv, type Mode, type Value } from './formula';
+import { ATOM_VECTORS, FormulaError, errorUrl, evaluateScalar, resolveIndex, type FormulaEnv, type Index, type Mode, type Value } from './formula';
 import { substituteVariables } from './script';
 import { formatNumber } from './cformat';
 import type { Lattice } from './lattice';
@@ -20,7 +20,7 @@ import { Rng } from './rng';
 import { Thermo } from './output/thermo';
 import type { Dump } from './output/dump';
 import type { Handler } from './commands/args';
-import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, customAttr, nativeOrder, hasMolecule } from './atoms';
+import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, nativeOrder, hasMolecule, hasCharge, isMolecularStyle } from './atoms';
 import { groupFunction } from './groupfn';
 import { LabelMap } from './labelmap';
 import { defaultMinSettings, type MinSettings } from './run/min';
@@ -57,6 +57,8 @@ export interface RunInfo {
   t0: number;
   /** Any run has been performed (for vdisplace etc. between runs). */
   ranOnce: boolean;
+  /** The step whose energy was last tallied (native update->eflag_global): a thermo output's step; -1 before any. */
+  eflagStep: number;
 }
 
 export class System {
@@ -129,7 +131,7 @@ export class System {
   readonly env = new Map<string, string>();
   /** molecule templates by ID (each a list of sets; create_atoms uses the first). */
   readonly molecules = new Map<string, MoleculeTemplate[]>();
-  run: RunInfo = { inRun: false, firstStep: 0, lastStep: 0, beginStep: 0, endStep: 0, t0: 0, ranOnce: false };
+  run: RunInfo = { inRun: false, firstStep: 0, lastStep: 0, beginStep: 0, endStep: 0, t0: 0, ranOnce: false, eflagStep: -1 };
 
   epoch = 0;
   stateVersion = 0;
@@ -188,6 +190,15 @@ export class System {
    */
   refreshComputes(): void {
     this.epoch++;
+  }
+
+  /**
+   * A command that initializes the whole system as a run does (native lmp->init(): write_data, write_restart,
+   * create_bonds, delete_bonds, delete_atoms overlap, set of topology types, balance, reset_atoms) leaves every compute
+   * initialized, so variable formulas may read them afterwards (Compute::init_flags in Modify::init, at b332f28).
+   */
+  markComputesInitialized(): void {
+    for (const c of this.computes) c.initialized = true;
   }
 
   /** True when the stored forces belong to the current state. */
@@ -806,17 +817,13 @@ export class System {
   // ---------------------------------------------------------------- formulas
 
   readonly formulaEnv: FormulaEnv = {
-    thermo: (name) => this.thermo.keyword(name),
-    variable: (name, mode) => this.variableValue(name, mode),
-    variableElement: (name, i) => {
-      const v = this.vars.evalVector(name, this.formulaEnv);
-      if (i < 1 || i > v.length) throw new StyleError(`v_${name}[${i}] is out of range (1..${v.length})`);
-      return v[i - 1];
-    },
+    name: (name, mode) => this.formulaName(name, mode),
+    variable: (name, index, mode) => this.variableRef(name, index, mode),
     reference: (kind, id, i, j, mode) => this.reference(kind, id, i, j, mode),
-    atomValue: (name, id) => this.atomValue(name, id),
-    atomVector: (name) => this.atomVector(name),
-    raw: (fn, args, mode) => groupFunction(this, fn, args, mode),
+    atomValue: (name, index) => this.atomValue(name, index),
+    custom: (name, b1, b2, mode) => this.customRef(name, b1, b2, mode),
+    indexVariable: (name) => this.vars.bracketValue(name, this.formulaEnv),
+    raw: (fn, args, mode, index) => groupFunction(this, fn, args, mode, index),
     timing: () => ({
       step: this.hasBox ? this.state.step : 0,
       startStep: this.run.beginStep,
@@ -828,104 +835,258 @@ export class System {
     random: (lo, hi, seed, mode) => this.randomValue(lo, hi, seed, mode, false),
     normal: (mu, sg, seed, mode) => this.randomValue(mu, sg, seed, mode, true),
     natoms: () => (this.hasBox ? this.state.n : 0),
+    hasFixStyle: (style) => this.fixes.some((f) => f.style === style),
   };
 
-  private variableValue(name: string, mode: Mode): Value {
+  /*
+   * The references of a formula. As native LAMMPS does (src/variable.cpp Variable::evaluate at b332f28): computes, fixes,
+   * atom values and thermo keywords need the box; the compute, fix or variable is looked up before its brackets are
+   * read; a reference must give what the formula's style takes (equal: a global scalar, an element of a global vector
+   * or array, or C_ID[I] / F_ID[I] of one atom; vector: a global vector or a column of a global array; atom: a per-atom
+   * vector or a column of a per-atom array), else "does not compute the requested property"; a compute must have been
+   * initialized by a run (or another command that initializes the system); a fix that is due on some steps only can be
+   * read on those steps of a run.
+   */
+
+  private formulaBox(): void {
+    if (!this.hasBox) throw new FormulaError(`Variable evaluation before simulation box is defined${errorUrl(30)}`);
+  }
+
+  /** A name that is no constant: an atom vector, else a thermo keyword. */
+  private formulaName(name: string, mode: Mode): Value {
+    this.formulaBox();
+    if (ATOM_VECTORS.includes(name)) {
+      if (mode === 'atom') return this.atomVector(name);
+      if (mode === 'equal') throw new StyleError('Atom vector in equal-style variable formula');
+      throw new StyleError(`atom vector '${name}' can only be used in an atom-style variable (use ${name}[ID] for one atom)`);
+    }
+    const v = this.thermo.keyword(name);
+    if (v === undefined) throw new FormulaError(`Invalid thermo keyword '${name}' in variable formula`);
+    return v;
+  }
+
+  /** v_name and v_name[I]: the name, then the brackets, then the variable's style (messages that name the referenced variable). */
+  private variableRef(name: string, index: Index | null, mode: Mode): Value {
+    const v = this.vars.get(name);
+    if (!v) throw new StyleError(`Invalid variable reference v_${name} in variable formula`);
     const s = this._state;
-    return this.vars.value(name, this.formulaEnv, mode, s ? s.id : new Int32Array(0), s ? s.n : 0);
+    const ids = s ? s.id : new Int32Array(0), n = s ? s.n : 0;
+    if (index === null) return this.vars.value(name, this.formulaEnv, mode, ids, n);
+    const i = resolveIndex(index, this.formulaEnv);
+    if (v.style === 'vector') {
+      const vec = this.vars.evalVector(name, this.formulaEnv);
+      if (i > vec.length) throw new FormulaError(`Variable ${name}: Invalid index into vector-style variable`, true);
+      return vec[i - 1];
+    }
+    if (v.style === 'atom' || v.style === 'atomfile') {
+      const vals = this.vars.evalAtom(name, this.formulaEnv, ids, n);
+      return this.peratom(i, (k) => vals[k]);
+    }
+    throw new FormulaError(`Variable ${name}: Mismatched variable in variable formula`, true);
+  }
+
+  /** The atom map exists: molecular atom styles have one, atomic ones after atom_modify map (native Atom::map_style). */
+  private get hasAtomMap(): boolean { return this.atomMapSet || isMolecularStyle(this.atomStyle); }
+
+  /** One atom's value of per-atom data (native Variable::peratom2global): 0 for an ID no atom has. */
+  private peratom(id: number, read: (k: number) => number, noMap = 'Indexed per-atom vector in variable formula without atom map'): number {
+    if (!this.hasAtomMap) throw new StyleError(noMap);
+    const s = this.state;
+    let maxId = 0;
+    for (let k = 0; k < s.n; k++) if (s.id[k] > maxId) maxId = s.id[k];
+    if (id > maxId) throw new StyleError('Variable atom ID is too large');
+    const k = this.indexOfId(id);
+    return k < 0 ? 0 : read(k);
+  }
+
+  private reference(kind: 'c' | 'C' | 'f' | 'F', id: string, i: Index | null, j: Index | null, mode: Mode): Value {
+    this.formulaBox();
+    const idx = (ix: Index | null) => (ix === null ? null : resolveIndex(ix, this.formulaEnv));
+    if (kind === 'c' || kind === 'C') {
+      const c = this.computes.find((x) => x.id === id);
+      if (!c) throw new FormulaError(`Invalid compute ID '${id}' in variable formula`);
+      const i1 = idx(i);
+      return this.computeRef(c, kind === 'c', i1, idx(j), mode);
+    }
+    const f = this.fixes.find((x) => x.id === id);
+    if (!f) throw new FormulaError(`Invalid fix ID '${id}' in variable formula`);
+    const i1 = idx(i);
+    return this.fixRef(f, kind === 'f', i1, idx(j), mode);
+  }
+
+  private computeRef(c: Compute, lower: boolean, i: number | null, j: number | null, mode: Mode): Value {
+    const mismatch = () => new FormulaError(`Compute '${c.id}' in variable formula does not compute the requested property. ${errorUrl(37)}`);
+    const init = () => {
+      if (!c.initialized) throw new FormulaError('Variable formula compute cannot be invoked before initialization by a run');
+    };
+    const range = (what: string) => new FormulaError(`Variable formula compute ${what} is accessed out-of-range${errorUrl(20)}`);
+    const column = (a: Float64Array, rows: number, cols: number, col: number) => {
+      const out = new Float64Array(rows);
+      for (let r = 0; r < rows; r++) out[r] = a[r * cols + col - 1];
+      return out;
+    };
+    if (mode === 'equal') {
+      if (lower && i === null) {
+        if (!c.scalarFlag) throw mismatch();
+        init();
+        return c.scalarValue();
+      }
+      if (lower && j === null) {
+        if (!c.vectorFlag) throw mismatch();
+        init();
+        // the length is read after the compute ran, for a compute whose vector length varies
+        const v = c.vectorValues();
+        if (i! > v.length) throw range('vector');
+        return v[i! - 1];
+      }
+      if (lower) {
+        if (!c.arrayFlag) throw mismatch();
+        if (j! > c.sizeArrayCols) throw range('array');
+        init();
+        const a = c.arrayValues();
+        if (i! > c.sizeArrayRows) throw range('array');
+        return a[(i! - 1) * c.sizeArrayCols + j! - 1];
+      }
+      if (i === null || !c.peratomFlag) throw mismatch();
+      if (j === null) {
+        if (c.sizePeratomCols) throw mismatch();
+        init();
+        const vals = c.peratomValues();
+        return this.peratom(i, (k) => vals[k]);
+      }
+      if (!c.sizePeratomCols) throw mismatch();
+      if (j > c.sizePeratomCols) throw range('array');
+      init();
+      const vals = c.peratomValues();
+      const w = c.sizePeratomCols;
+      return this.peratom(i, (k) => vals[k * w + j - 1]);
+    }
+    if (mode === 'vector') {
+      if (lower && i === null) {
+        if (!c.vectorFlag) throw mismatch();
+        init();
+        const v = c.vectorValues();
+        if (v.length === 0) throw new FormulaError('Variable formula compute vector is zero length');
+        return v;
+      }
+      if (lower && j === null) {
+        if (!c.arrayFlag) throw mismatch();
+        init();
+        if (i! > c.sizeArrayCols) throw range('array');
+        const a = c.arrayValues();
+        if (c.sizeArrayRows === 0) throw new FormulaError('Variable formula compute array has zero rows');
+        return column(a, c.sizeArrayRows, c.sizeArrayCols, i!);
+      }
+      throw mismatch();
+    }
+    if (lower && i === null) {
+      if (!c.peratomFlag || c.sizePeratomCols) throw mismatch();
+      init();
+      return c.peratomValues();
+    }
+    if (lower && j === null) {
+      if (!c.peratomFlag || !c.sizePeratomCols) throw mismatch();
+      if (i! > c.sizePeratomCols) throw range('array');
+      init();
+      return column(c.peratomValues(), this.state.n, c.sizePeratomCols, i!);
+    }
+    throw mismatch();
+  }
+
+  private fixRef(f: Fix, lower: boolean, i: number | null, j: number | null, mode: Mode): Value {
+    const mismatch = () => new FormulaError(`Fix '${f.id}' in variable formula does not compute the requested property. ${errorUrl(37)}`);
+    const range = (what: string) => new FormulaError(`Variable formula fix ${what} is accessed out-of-range${errorUrl(20)}`);
+    // native's texts differ in one word ("at a compatible time" / "at compatible time")
+    const due = (a: string) => {
+      if (this.run.inRun && f.globalFreq > 0 && this.state.step % f.globalFreq !== 0) {
+        throw new FormulaError(`Fix in variable not computed at ${a}compatible time${errorUrl(7)}`);
+      }
+    };
+    const peratom = () => (f.sizePeratomCols === 0 ? f.vectorAtom : f.arrayAtom);
+    if (mode === 'equal') {
+      if (lower && i === null) {
+        if (!f.scalarFlag) throw mismatch();
+        due('a ');
+        return f.computeScalar();
+      }
+      if (lower && j === null) {
+        if (!f.vectorFlag) throw mismatch();
+        if (i! > f.sizeVector) throw range('vector');
+        due('a ');
+        return f.computeVector(i! - 1);
+      }
+      if (lower) {
+        if (!f.arrayFlag) throw mismatch();
+        if (i! > f.sizeArrayRows || j! > f.sizeArrayCols) throw range('array');
+        due('a ');
+        return f.computeArray(i! - 1, j! - 1);
+      }
+      if (i === null || !f.peratomFlag) throw mismatch();
+      if (j === null) {
+        if (f.sizePeratomCols) throw mismatch();
+        const vals = peratom();
+        return this.peratom(i, (k) => vals[k]);
+      }
+      if (!f.sizePeratomCols) throw mismatch();
+      if (j > f.sizePeratomCols) throw range('array');
+      const vals = peratom();
+      const w = f.sizePeratomCols;
+      return this.peratom(i, (k) => vals[k * w + j - 1]);
+    }
+    if (mode === 'vector') {
+      if (lower && i === null) {
+        if (!f.vectorFlag) throw mismatch();
+        if (f.sizeVector === 0) throw new FormulaError('Variable formula fix vector is zero length');
+        due('');
+        const out = new Float64Array(f.sizeVector);
+        for (let k = 0; k < f.sizeVector; k++) out[k] = f.computeVector(k);
+        return out;
+      }
+      if (lower && j === null) {
+        if (!f.arrayFlag) throw mismatch();
+        if (f.sizeArrayRows === 0) throw new FormulaError('Variable formula fix array is zero length');
+        if (i! > f.sizeArrayCols) throw range('array');
+        due('a ');
+        const out = new Float64Array(f.sizeArrayRows);
+        for (let r = 0; r < f.sizeArrayRows; r++) out[r] = f.computeArray(r, i! - 1);
+        return out;
+      }
+      throw mismatch();
+    }
+    if (lower && i === null) {
+      if (!f.peratomFlag || f.sizePeratomCols) throw mismatch();
+      return f.vectorAtom;
+    }
+    if (lower && j === null) {
+      if (!f.peratomFlag || !f.sizePeratomCols) throw mismatch();
+      if (i! > f.sizePeratomCols) throw range('array');
+      const w = f.sizePeratomCols;
+      const n = this.state.n;
+      const out = new Float64Array(n);
+      for (let k = 0; k < n; k++) out[k] = f.arrayAtom[k * w + i! - 1];
+      return out;
+    }
+    throw mismatch();
   }
 
   private randomValue(a: number, b: number, seed: number, mode: Mode, gauss: boolean): Value {
-    if (!(seed > 0)) throw new StyleError('random()/normal() seed must be > 0');
     const draw = (r: Rng) => (gauss ? a + b * r.gaussian() : a + (b - a) * r.uniform());
+    // As native LAMMPS does (Variable::math_function and collapse_tree at b332f28): the seed, read as an int, makes the
+    // generator at the first call and must be positive then
+    const make = (offset: number) => {
+      const s = Math.trunc(seed);
+      if (s <= 0) throw mode === 'equal' ? new FormulaError('Invalid math function in variable formula') : new StyleError('Invalid math function in variable formula');
+      return new Rng(s + offset);
+    };
     if (mode !== 'atom') {
-      this.rngEqual ??= new Rng(Math.trunc(seed));
+      this.rngEqual ??= make(0);
       return draw(this.rngEqual);
     }
-    this.rngAtom ??= new Rng(Math.trunc(seed) + 1);
+    this.rngAtom ??= make(1);
     const n = this.state.n;
     const out = new Float64Array(n);
     for (let i = 0; i < n; i++) out[i] = draw(this.rngAtom);
     return out;
-  }
-
-  private reference(kind: 'c' | 'C' | 'f' | 'F', id: string, i: number | null, j: number | null, mode: Mode): Value {
-    const s = this.state;
-    if (kind === 'C' || kind === 'F') {
-      // per-atom value of the atom with ID i (equal-style access to per-atom data)
-      if (i === null) throw new StyleError(`${kind}_${id} needs an atom ID index`);
-      const vals = kind === 'C' ? this.compute(id).peratomValues() : this.fixPeratom(id);
-      const cols = kind === 'C' ? this.compute(id).sizePeratomCols : this.fix(id).sizePeratomCols;
-      const k = this.indexOfId(i);
-      if (k < 0) return 0;
-      if (cols === 0) return vals[k];
-      if (j === null || j < 1 || j > cols) throw new StyleError(`${kind}_${id}[${i}] needs a column index 1..${cols}`);
-      return vals[k * cols + j - 1];
-    }
-    if (kind === 'c') {
-      const c = this.compute(id);
-      if (mode === 'atom' && c.peratomFlag) {
-        const vals = c.peratomValues();
-        if (c.sizePeratomCols === 0) {
-          if (i !== null) throw new StyleError(`c_${id} is a per-atom vector: no index in an atom-style formula`);
-          return vals;
-        }
-        if (i === null || i < 1 || i > c.sizePeratomCols) throw new StyleError(`c_${id} needs a column index 1..${c.sizePeratomCols}`);
-        const out = new Float64Array(s.n);
-        for (let k = 0; k < s.n; k++) out[k] = vals[k * c.sizePeratomCols + i - 1];
-        return out;
-      }
-      if (mode === 'vector' && i === null && c.vectorFlag) return c.vectorValues();
-      if (mode === 'vector' && i !== null && j === null && c.arrayFlag) {
-        const a = c.arrayValues();
-        const out = new Float64Array(c.sizeArrayRows);
-        for (let r = 0; r < c.sizeArrayRows; r++) out[r] = a[r * c.sizeArrayCols + i - 1];
-        return out;
-      }
-      if (i === null) return c.scalarValue();
-      if (j === null) {
-        const v = c.vectorValues();
-        if (i < 1 || i > v.length) throw new StyleError(`c_${id}[${i}] is out of range (1..${v.length})`);
-        return v[i - 1];
-      }
-      const a = c.arrayValues();
-      if (i < 1 || i > c.sizeArrayRows || j < 1 || j > c.sizeArrayCols) throw new StyleError(`c_${id}[${i}][${j}] is out of range`);
-      return a[(i - 1) * c.sizeArrayCols + j - 1];
-    }
-    const f = this.fix(id);
-    if (mode === 'atom' && f.peratomFlag) {
-      const vals = this.fixPeratom(id);
-      if (f.sizePeratomCols === 0) return vals;
-      if (i === null) throw new StyleError(`f_${id} needs a column index`);
-      const out = new Float64Array(s.n);
-      for (let k = 0; k < s.n; k++) out[k] = vals[k * f.sizePeratomCols + i - 1];
-      return out;
-    }
-    if (mode === 'vector' && i === null && f.vectorFlag) {
-      const out = new Float64Array(f.sizeVector);
-      for (let k = 0; k < f.sizeVector; k++) out[k] = f.computeVector(k);
-      return out;
-    }
-    if (i === null) return f.computeScalar();
-    if (mode === 'vector' && j === null && f.arrayFlag) {
-      // a global array used as a vector: its Ith column, one value per row
-      // docs.lammps.org/variable.html, vector-style table: "vector / f_ID[I] / column of global array"
-      if (i < 1 || i > f.sizeArrayCols) throw new StyleError(`f_${id}[${i}] is out of range (1..${f.sizeArrayCols})`);
-      const out = new Float64Array(f.sizeArrayRows);
-      for (let r = 0; r < f.sizeArrayRows; r++) out[r] = f.computeArray(r, i - 1);
-      return out;
-    }
-    if (j === null) {
-      if (i < 1 || i > f.sizeVector) throw new StyleError(`f_${id}[${i}] is out of range (1..${f.sizeVector})`);
-      return f.computeVector(i - 1);
-    }
-    return f.computeArray(i - 1, j - 1);
-  }
-
-  private fixPeratom(id: string): Float64Array {
-    const f = this.fix(id);
-    if (!f.peratomFlag) throw new StyleError(`fix ${id} does not compute per-atom values`);
-    return f.sizePeratomCols === 0 ? f.vectorAtom : f.arrayAtom;
   }
 
   private idMap: Int32Array | null = null;
@@ -940,10 +1101,24 @@ export class System {
     return id >= 0 && id < this.idMap.length ? this.idMap[id] : -1;
   }
 
-  private atomValue(name: string, id: number): number {
-    const k = this.indexOfId(id);
-    if (k < 0) return 0;
-    return this.atomVectorAt(name, k);
+  /** NAME[ID]: native's box check, brackets, atom map and then the atom's value (peratom2global). */
+  private atomValue(name: string, index: Index): number {
+    this.formulaBox();
+    const id = resolveIndex(index, this.formulaEnv);
+    return this.peratom(id, (k) => {
+      if (!ATOM_VECTORS.includes(name)) throw new StyleError(`Invalid atom vector ${name} in variable formula`);
+      if (!this.atomHas(name)) throw new StyleError('Variable uses atom property that isn\'t allocated');
+      return this.atomVectorAt(name, k);
+    });
+  }
+
+  /** The atom style stores mol, radius and q (native molecule_flag, radius_flag, q_flag). */
+  private atomHas(name: string): boolean {
+    const s = this.state;
+    if (name === 'mol') return hasMolecule(s);
+    if (name === 'radius') return !!s.radius;
+    if (name === 'q') return hasCharge(s);
+    return true;
   }
 
   private atomVectorAt(name: string, i: number): number {
@@ -964,21 +1139,56 @@ export class System {
       case 'fz': return s.f[3 * i + 2];
       case 'q': return s.q[i];
       // variable.html: "atom vector = id, mass, type, mol, radius, q, x, y, z, vx, vy, vz, fx, fy, fz"
-      case 'radius':
-        if (!s.radius) throw new StyleError('variable uses atom property radius, which needs atom_style sphere');
-        return s.radius[i];
+      case 'radius': return s.radius![i];
     }
-    const custom = customAttr(s, name);
-    if (custom) return custom(i);
-    throw new StyleError(`unknown atom vector ${name}`);
+    throw new StyleError(`Invalid atom vector ${name} in variable formula`);
   }
 
   private atomVector(name: string): Float64Array {
     const s = this.state;
+    // native atom_vector: "Variable uses atom property 'mol' that isn't allocated" (the same for radius and q)
+    if (!this.atomHas(name)) throw new StyleError(`Variable uses atom property '${name}' that isn't allocated`);
     if (name.startsWith('f')) this.forces();
     const out = new Float64Array(s.n);
     for (let i = 0; i < s.n; i++) out[i] = this.atomVectorAt(name, i);
     return out;
+  }
+
+  /**
+   * i_name, d_name, i2_name and d2_name. As native LAMMPS does (Variable::evaluate, variable.cpp at b332f28): the property
+   * is found by its name, then the brackets are read; a vector takes no bracket (its per-atom values) or one (the atom
+   * ID), an array one (a column) or two (atom ID and column). Measured with native LAMMPS (2 Sep 2026): native reads
+   * J of i2_name[I][J] as 0-based (J = Ncol runs into the next atom's row); the engine follows the documented 1-based
+   * columns (variable.html: "i2_name[I][J]").
+   */
+  private customRef(word: string, b1: Index | null, b2: Index | null, mode: Mode): Value {
+    this.formulaBox();
+    const s = this.state;
+    const prop = s.custom.get(word.slice(/^[id]2_/.test(word) ? 3 : 2));
+    const bad = () => new FormulaError(`Invalid custom atom property reference ${word} in variable formula`);
+    if (!prop) throw bad();
+    const i1 = b1 === null ? null : resolveIndex(b1, this.formulaEnv);
+    const i2 = b2 === null ? null : resolveIndex(b2, this.formulaEnv);
+    const w = prop.cols;
+    // a per-atom vector of an equal- or vector-style formula is no value there (native's formula has none left)
+    const perAtom = (col: number) => {
+      if (mode !== 'atom') throw new FormulaError('Invalid syntax in variable formula');
+      const out = new Float64Array(s.n);
+      for (let k = 0; k < s.n; k++) out[k] = w ? prop.data[k * w + col - 1] : prop.data[k];
+      return out;
+    };
+    const noMap = 'Referenced custom atom property in variable formula without atom map';
+    if (i1 === null) {
+      if (w) throw bad();
+      return perAtom(0);
+    }
+    if (i2 === null) {
+      if (!w) return this.peratom(i1, (k) => prop.data[k], noMap);
+      if (i1 > w) throw bad();
+      return perAtom(i1);
+    }
+    if (!w || i2 > w) throw bad();
+    return this.peratom(i1, (k) => prop.data[k * w + i2 - 1], noMap);
   }
 
   /** An equal-style formula's value (used by commands that take v_name arguments). */

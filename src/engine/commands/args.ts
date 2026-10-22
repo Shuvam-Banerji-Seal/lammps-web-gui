@@ -41,6 +41,18 @@ export interface Ctx {
 
 export type Handler = (ctx: Ctx, args: string[]) => void | Promise<void>;
 
+/**
+ * A command that initializes the whole system as a run does (native lmp->init(), at b332f28: balance, create_bonds,
+ * delete_bonds, delete_atoms overlap, set of bond, angle, dihedral or improper types); afterwards variable formulas may
+ * read the computes (System.markComputesInitialized). `when` picks the forms of the command that do.
+ */
+export const initializing = (h: Handler, when: (a: string[]) => boolean = () => true): Handler => (ctx, a) => {
+  const r = h(ctx, a);
+  if (!when(a)) return r;
+  if (r instanceof Promise) return r.then(() => ctx.sys.markComputesInitialized());
+  ctx.sys.markComputesInitialized();
+};
+
 export const num = (w: string | undefined, what: string): number => {
   if (w === undefined) throw new StyleError(`missing ${what}`);
   const v = Number(w);

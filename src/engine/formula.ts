@@ -34,17 +34,39 @@ import { libm } from './libm';
 export type Mode = 'equal' | 'vector' | 'atom';
 export type Value = number | Float64Array;
 
+/** errorurl(N) of native LAMMPS: the line that points at docs.lammps.org/errNNNN. */
+export const errorUrl = (n: number): string => `\nFor more information see https://docs.lammps.org/err${String(n).padStart(4, '0')}`;
+
+/**
+ * An error of a variable formula. As native LAMMPS does (src/variable.cpp Variable::print_var_error at b332f28), an error
+ * found while a named variable is evaluated reads "Variable NAME: text": the variable store adds the name of the variable
+ * it evaluates (Variables.guard) unless the error names one already (`named`). Errors native raises without a name
+ * (error->all and error->one) are plain StyleErrors.
+ */
+export class FormulaError extends StyleError {
+  constructor(message: string, readonly named = false) { super(message); }
+}
+
+const SYNTAX = 'Invalid syntax in variable formula';
+const MATH_FN = 'Invalid math function in variable formula';
+
+/**
+ * A bracketed index as written. As native LAMMPS does (src/variable.cpp Variable::int_between_brackets at b332f28), the
+ * text is a v_name or digits with + - * / signs read as an integer; the checks are raised when the formula is evaluated,
+ * after the compute, fix, variable or atom vector in front of the brackets was looked up (native's order).
+ */
+export type Index = { text: string; error: string | null; n: number; variable: string | null };
+
 type Node =
   | { t: 'num'; v: number }
   | { t: 'name'; name: string }
   | { t: 'un'; op: '-' | '!'; a: Node }
   | { t: 'bin'; op: string; a: Node; b: Node }
   | { t: 'call'; fn: string; args: Node[] }
-  | { t: 'raw'; fn: string; args: string[] }
+  | { t: 'raw'; fn: string; args: string[]; index: Index | null }
   | { t: 'ref'; kind: 'c' | 'C' | 'f' | 'F' | 'v'; id: string; i: Index | null; j: Index | null }
-  | { t: 'atomval'; name: string; index: Index };
-
-export type Index = number | { variable: string };
+  | { t: 'atomval'; name: string; index: Index }
+  | { t: 'custom'; name: string; col: Index | null; index: Index | null };
 
 export const ATOM_VECTORS = ['id', 'mass', 'type', 'mol', 'radius', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'q'];
 
@@ -62,26 +84,85 @@ const MATH: Record<string, number> = {
   logfreq: 3, logfreq2: 3, logfreq3: 3, stride: 3, stride2: 6, vdisplace: 2, swiggle: 3, cwiggle: 3,
 };
 
+/** native's messages for a math function with the wrong number of arguments (math_function, variable.cpp at b332f28) */
+const MATH_ARGS: Record<string, string> = {
+  vdisplace: 'Invalid vdisplace function in variable formula: must have 2 arguments',
+  swiggle: 'Invalid swiggle function in variable formula: must have 3 arguments',
+  cwiggle: 'Invalid cwiggle function in variable formula: must have 3 arguments',
+};
+
 const CONSTANTS: Record<string, number> = { PI: Math.PI, on: 1, true: 1, yes: 1, off: 0, false: 0, no: 0 };
 
-type Tok = { k: 'num'; v: number; s: string } | { k: 'id'; v: string } | { k: 'op'; v: string };
+/** The smallest normal double: native rounds an equal-style result below it to zero (Variable::compute_equal). */
+const DBL_MIN = 2.2250738585072014e-308;
+
+type Tok =
+  | { k: 'num'; v: number; at: number }
+  | { k: 'id'; v: string; at: number }
+  | { k: 'op'; v: string; at: number }
+  | { k: 'bad'; v: string; at: number; error?: string };
 const OPS = ['&&', '||', '|^', '==', '!=', '<=', '>=', '<', '>', '+', '-', '*', '/', '%', '^', '!', '(', ')', ',', '[', ']'];
 
+/**
+ * Tokens of a formula; a character that starts no token becomes a 'bad' token, a syntax error where the parser reaches
+ * it. As native LAMMPS does (src/variable.cpp Variable::evaluate at b332f28): a number is a run of digits and periods
+ * with an optional exponent, read as its longest leading number (std::stod: 1.2.3 is 1.2); a word starts with a letter.
+ */
 const lex = (src: string): Tok[] => {
   const out: Tok[] = [];
   let i = 0;
   while (i < src.length) {
     const c = src[i];
-    if (c === ' ' || c === '\t' || c === '\n' || c === '\r') { i++; continue; }
-    const num = /^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(src.slice(i));
-    if (num) { out.push({ k: 'num', v: Number(num[0]), s: num[0] }); i += num[0].length; continue; }
-    const id = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i));
-    if (id) { out.push({ k: 'id', v: id[0] }); i += id[0].length; continue; }
+    if (/\s/.test(c)) { i++; continue; }
+    const num = /^[0-9.]+(?:[eE][+-]?[0-9]*)?/.exec(src.slice(i));
+    if (num) {
+      const v = Number.parseFloat(num[0]);
+      // std::stod refuses a number past the range of a double, or one that underflows below DBL_MIN; native LAMMPS then
+      // stops with "Exception: stod" (measured with native LAMMPS: 1e400, 1e-320)
+      const mantissa = /^[0-9.]*/.exec(num[0])![0];
+      const range = !Number.isFinite(v) || (/[1-9]/.test(mantissa) && Math.abs(v) < DBL_MIN);
+      if (Number.isNaN(v)) out.push({ k: 'bad', v: num[0], at: i });
+      else if (range) out.push({ k: 'bad', v: num[0], at: i, error: `Exception: stod (${num[0]} is outside the range of a double)` });
+      else out.push({ k: 'num', v, at: i });
+      i += num[0].length;
+      continue;
+    }
+    const id = /^[A-Za-z][A-Za-z0-9_]*/.exec(src.slice(i));
+    if (id) { out.push({ k: 'id', v: id[0], at: i }); i += id[0].length; continue; }
     const op = OPS.find((o) => src.startsWith(o, i));
-    if (op) { out.push({ k: 'op', v: op }); i += op.length; continue; }
-    throw new StyleError(`invalid character '${c}' in formula "${src}"`);
+    if (op) { out.push({ k: 'op', v: op, at: i }); i += op.length; continue; }
+    out.push({ k: 'bad', v: c, at: i });
+    i++;
   }
   return out;
+};
+
+/**
+ * The bracketed index whose text starts at src[start] (after the '['); end is the position of the ']' (or the end of
+ * src). varallow: a v_name index is allowed. As native LAMMPS does (Variable::int_between_brackets, variable.cpp at
+ * b332f28): a bad character fails first, then a missing ']' and empty brackets; digits are read as std::stoll does.
+ */
+export const scanBracket = (src: string, start: number, varallow: boolean): { index: Index; end: number } => {
+  const isVar = varallow && src.startsWith('v_', start);
+  let q = start;
+  let error: string | null = null;
+  for (; q < src.length && src[q] !== ']'; q++) {
+    if (error) continue;
+    if (isVar ? !/[A-Za-z0-9_]/.test(src[q]) : !/[0-9+\-*/]/.test(src[q])) {
+      error = isVar ? 'Variable name between brackets must be letters, numbers, or underscores' : 'Non digit character between brackets in variable';
+    }
+  }
+  if (!error && q >= src.length) error = 'Mismatched brackets in variable';
+  if (!error && q === start) error = 'Empty brackets in variable';
+  const text = src.slice(start, q);
+  let n = 0;
+  if (!error && !isVar) {
+    // std::stoll: an optional sign and digits (the rest is ignored); none, or a value past 64 bits, is an error
+    const m = /^[+-]?\d+/.exec(text);
+    if (!m || BigInt(m[0]) > 9223372036854775807n || BigInt(m[0]) < -9223372036854775808n) error = `Illegal value in brackets: stoll(${text})`;
+    else n = Number(m[0]);
+  }
+  return { index: { text, error, n, variable: isVar ? text.slice(2) : null }, end: q };
 };
 
 const cache = new Map<string, Node>();
@@ -91,12 +172,23 @@ export const parseFormula = (src: string): Node => {
   if (hit) return hit;
   const toks = lex(src);
   let p = 0;
+  const syntax = () => new FormulaError(SYNTAX);
   const peek = () => toks[p];
   const isOp = (v: string) => toks[p]?.k === 'op' && (toks[p] as { v: string }).v === v;
   const expect = (v: string) => {
-    if (!isOp(v)) throw new StyleError(`expected '${v}' in formula "${src}"`);
+    if (!isOp(v)) throw syntax();
     p++;
   };
+  /** the position of the ')' that closes the '(' at src[open] (native find_matching_paren counts parentheses only) */
+  const closing = (open: number): number => {
+    let level = 0;
+    for (let q = open + 1; q < src.length; q++) {
+      if (src[q] === '(') level++;
+      else if (src[q] === ')') { if (level === 0) return q; level--; }
+    }
+    throw syntax();
+  };
+  const skipTo = (pos: number) => { while (p < toks.length && toks[p].at <= pos) p++; };
   const LEVELS = [['||', '|^'], ['&&'], ['==', '!='], ['<', '<=', '>', '>='], ['+', '-'], ['*', '/', '%']];
 
   const binary = (level: number): Node => {
@@ -115,128 +207,114 @@ export const parseFormula = (src: string): Node => {
     while (isOp('^')) { p++; a = { t: 'bin', op: '^', a, b: unary() }; }
     return a;
   };
+  // native has no unary plus: a '+' where a value is expected is a syntax error
   const unary = (): Node => {
     if (isOp('-')) { p++; return { t: 'un', op: '-', a: unary() }; }
     if (isOp('!')) { p++; return { t: 'un', op: '!', a: unary() }; }
-    if (isOp('+')) { p++; return unary(); }
     return primary();
   };
-  const index = (): Index => {
-    const t = peek();
-    if (t?.k === 'num' && Number.isInteger(t.v)) { p++; return t.v; }
-    if (t?.k === 'id' && t.v.startsWith('v_')) { p++; return { variable: t.v.slice(2) }; }
-    if (t?.k === 'op' && t.v === '*') throw new StyleError(`wildcard indices are not allowed in formulas ("${src}")`);
-    throw new StyleError(`an index must be an integer or v_name in formula "${src}"`);
+  /** the brackets at toks[p] (a '[') */
+  const bracket = (): Index => {
+    const r = scanBracket(src, toks[p].at + 1, true);
+    skipTo(r.end);
+    return r.index;
   };
+  /** the comma-separated arguments of the function whose '(' is at toks[p], as text (native parse_args: trimmed) */
   const rawArgs = (): string[] => {
-    // tokens up to the matching ')', split at depth-0 commas, re-joined as text
-    expect('(');
+    const open = toks[p].at;
+    const close = closing(open);
+    skipTo(close);
+    const body = src.slice(open + 1, close);
     const out: string[] = [];
-    let cur = '';
-    let depth = 0;
-    for (;;) {
-      const t = toks[p];
-      if (!t) throw new StyleError(`unbalanced parentheses in formula "${src}"`);
-      p++;
-      if (t.k === 'op' && (t.v === '(' || t.v === '[')) depth++;
-      if (t.k === 'op' && (t.v === ')' || t.v === ']')) {
-        if (depth === 0 && t.v === ')') { if (cur || out.length) out.push(cur); break; }
-        depth--;
-      }
-      if (t.k === 'op' && t.v === ',' && depth === 0) { out.push(cur); cur = ''; continue; }
-      cur += t.k === 'num' ? t.s : t.v;
+    let level = 0, from = 0;
+    for (let q = 0; q < body.length; q++) {
+      if (body[q] === '(') level++;
+      else if (body[q] === ')') level--;
+      else if (body[q] === ',' && level === 0) { out.push(body.slice(from, q).trim()); from = q + 1; }
     }
+    out.push(body.slice(from).trim());
     return out;
   };
   const primary = (): Node => {
     const t = peek();
-    if (!t) throw new StyleError(`formula "${src}" ends unexpectedly`);
+    if (t?.k === 'bad' && t.error) throw new StyleError(t.error);
+    if (!t || t.k === 'bad') throw syntax();
     if (t.k === 'num') { p++; return { t: 'num', v: t.v }; }
     if (t.k === 'op' && t.v === '(') { p++; const v = binary(0); expect(')'); return v; }
-    if (t.k !== 'id') throw new StyleError(`unexpected '${t.v}' in formula "${src}"`);
+    if (t.k !== 'id') throw syntax();
     p++;
     const name = t.v;
     if (isOp('(')) {
-      if (RAW_FUNCS.has(name)) return { t: 'raw', fn: name, args: rawArgs() };
-      if (!(name in MATH)) throw new StyleError(`unknown function ${name}() in formula "${src}"`);
-      p++;
-      const args: Node[] = [];
-      if (!isOp(')')) {
-        args.push(binary(0));
-        while (isOp(',')) { p++; args.push(binary(0)); }
+      if (RAW_FUNCS.has(name)) {
+        const args = rawArgs();
+        // sort() and rsort() of an equal-style formula take the element in the brackets that follow (special_function)
+        const index = (name === 'sort' || name === 'rsort') && isOp('[') ? bracket() : null;
+        return { t: 'raw', fn: name, args, index };
       }
+      if (!(name in MATH)) {
+        closing(toks[p].at);
+        if (name.startsWith('py_')) throw new FormulaError('Invalid python function variable name');
+        throw new FormulaError(`Invalid math/group/special/feature function '${name}()' in variable formula`);
+      }
+      p++;
+      // an empty argument is an empty formula, a syntax error (native evaluates each argument of parse_args)
+      const args: Node[] = [binary(0)];
+      while (isOp(',')) { p++; args.push(binary(0)); }
       expect(')');
-      if (args.length !== MATH[name]) throw new StyleError(`${name}() takes ${MATH[name]} argument(s), got ${args.length}`);
+      if (args.length !== MATH[name]) throw new FormulaError(MATH_ARGS[name] ?? MATH_FN);
       return { t: 'call', fn: name, args };
     }
     const m = /^([cCfFv])_(.+)$/.exec(name);
     if (m) {
+      // c_, C_, f_ and F_ take up to two brackets, v_ one (a further bracket is a syntax error)
       let i: Index | null = null, j: Index | null = null;
-      if (isOp('[')) { p++; i = index(); expect(']'); }
-      if (isOp('[')) { p++; j = index(); expect(']'); }
+      if (isOp('[')) i = bracket();
+      if (m[1] !== 'v' && i && isOp('[')) j = bracket();
       return { t: 'ref', kind: m[1] as 'c' | 'C' | 'f' | 'F' | 'v', id: m[2], i, j };
-    }
-    if (ATOM_VECTORS.includes(name) && isOp('[')) {
-      p++;
-      const ix = index();
-      expect(']');
-      return { t: 'atomval', name, index: ix };
     }
     // variable.html: custom atom properties "i_name[I]" (atom ID I), "i2_name[I][J]", and in
     // atom-style variables "i_name" (per-atom vector) and "i2_name[I]" (column of per-atom array).
     // Measured: native LAMMPS (2 Sep 2026) reads J of i2_name[I][J] as 0-based (J = Ncol runs into
     // the next atom's row) and gives inconsistent atom-style column sums; the engine follows the
     // documented 1-based columns.
-    const cm = /^[id](2?)_[A-Za-z0-9_]+$/.exec(name);
-    if (cm) {
-      if (!isOp('[')) {
-        if (cm[1]) throw new StyleError(`${name} is a per-atom array: give a column, ${name}[J], in formula "${src}"`);
-        return { t: 'name', name };
-      }
-      p++;
-      const a1 = index();
-      expect(']');
-      if (!cm[1]) return { t: 'atomval', name, index: a1 };
-      if (!isOp('[')) {
-        if (typeof a1 !== 'number') throw new StyleError(`the column of ${name} must be an integer in formula "${src}"`);
-        return { t: 'name', name: `${name}[${a1}]` };
-      }
-      p++;
-      const a2 = index();
-      expect(']');
-      if (typeof a2 !== 'number') throw new StyleError(`the column of ${name} must be an integer in formula "${src}"`);
-      return { t: 'atomval', name: `${name}[${a2}]`, index: a1 };
+    if (/^[id]2?_[A-Za-z0-9_]+$/.test(name)) {
+      const a1 = isOp('[') ? bracket() : null;
+      const a2 = a1 && isOp('[') ? bracket() : null;
+      return { t: 'custom', name, col: a2 ? a2 : null, index: a1 };
     }
+    if (isOp('[')) return { t: 'atomval', name, index: bracket() };
     return { t: 'name', name };
   };
   const node = binary(0);
-  if (p !== toks.length) throw new StyleError(`unexpected '${(toks[p] as { v: unknown }).v}' in formula "${src}"`);
+  if (p !== toks.length) throw syntax();
   cache.set(src, node);
   return node;
 };
 
 /** What a formula can reach; implemented by the session. */
 export interface FormulaEnv {
-  /** Thermo keyword value, or undefined if `name` is not one. */
-  thermo(name: string): number | undefined;
-  /** v_name: equal -> number; atom/vector -> per-atom/global values. */
-  variable(name: string, mode: Mode): Value;
-  /** v_name[i] (vector-style variable element, 1-based). */
-  variableElement(name: string, i: number): number;
-  /** c_/C_/f_/F_ references. i, j are 1-based or null. */
-  reference(kind: 'c' | 'C' | 'f' | 'F', id: string, i: number | null, j: number | null, mode: Mode): Value;
-  /** x[ID] etc.; 0.0 for an ID that does not exist. */
-  atomValue(name: string, id: number): number;
-  /** Per-atom vector (atom mode). */
-  atomVector(name: string): Float64Array;
-  /** Group / region / special / feature functions with raw arguments. */
-  raw(fn: string, args: string[], mode: Mode): Value;
+  /** A name that is no constant: an atom vector (per-atom values in atom mode) or a thermo keyword. */
+  name(name: string, mode: Mode): Value;
+  /** v_name and v_name[I]: equal -> number; atom/vector -> per-atom/global values. */
+  variable(name: string, index: Index | null, mode: Mode): Value;
+  /** c_/C_/f_/F_ references with their brackets as written. */
+  reference(kind: 'c' | 'C' | 'f' | 'F', id: string, i: Index | null, j: Index | null, mode: Mode): Value;
+  /** NAME[ID]: the atom vector NAME of the atom with that ID (0.0 for an ID that does not exist). */
+  atomValue(name: string, index: Index): number;
+  /** i_name, d_name, i2_name and d2_name with their brackets. */
+  custom(name: string, b1: Index | null, b2: Index | null, mode: Mode): Value;
+  /** The integer of a [v_name] index: the variable's value, truncated. */
+  indexVariable(name: string): number;
+  /** Group / region / special / feature functions with raw arguments; index: sort()[I] and rsort()[I]. */
+  raw(fn: string, args: string[], mode: Mode, index: Index | null): Value;
   /** Current step and run bounds for ramp() etc. */
   timing(): { step: number; startStep: number; stopStep: number; dt: number; inRun: boolean; firstStep: number };
   random(lo: number, hi: number, seed: number, mode: Mode): Value;
   normal(mu: number, sigma: number, seed: number, mode: Mode): Value;
   /** Number of owned atoms (length of atom-mode values). */
   natoms(): number;
+  /** A fix of this style is defined (vdisplace, swiggle and cwiggle refuse fix dt/reset). */
+  hasFixStyle(style: string): boolean;
 }
 
 const isVec = (v: Value): v is Float64Array => typeof v !== 'number';
@@ -248,14 +326,24 @@ const map1 = (a: Value, f: (x: number) => number): Value => {
   return out;
 };
 
-const map2 = (a: Value, b: Value, f: (x: number, y: number) => number): Value => {
+const map2 = (a: Value, b: Value, f: (x: number, y: number) => number, mode: Mode): Value => {
   if (!isVec(a) && !isVec(b)) return f(a, b);
   const n = isVec(a) ? a.length : (b as Float64Array).length;
-  if (isVec(a) && isVec(b) && a.length !== b.length) throw new StyleError('vector lengths do not match in a formula');
+  // native size_tree_vector: the vectors of a vector-style formula have one length
+  if (isVec(a) && isVec(b) && a.length !== b.length) {
+    throw mode === 'vector' ? new FormulaError('Inconsistent lengths in vector-style variable') : new StyleError('vector lengths do not match in a formula');
+  }
   const out = new Float64Array(n);
   for (let k = 0; k < n; k++) out[k] = f(isVec(a) ? a[k] : a, isVec(b) ? b[k] : b);
   return out;
 };
+
+/**
+ * An error of the arithmetic of a formula. As native LAMMPS does (src/variable.cpp at b332f28): an equal-style formula
+ * is computed while it is parsed and names the variable (print_var_error); the tree of a vector- or atom-style formula is
+ * computed afterwards (collapse_tree, eval_tree), whose errors have no name (error->one).
+ */
+const arith = (text: string, mode: Mode): StyleError => (mode === 'equal' ? new FormulaError(text) : new StyleError(text));
 
 const truth = (b: boolean) => (b ? 1 : 0);
 
@@ -284,17 +372,26 @@ const ceilPoint = (v: number) => Math.ceil(v - 1e-9);
 
 export const evaluate = (src: string, env: FormulaEnv, mode: Mode): Value => evalNode(parseFormula(src), env, mode, src);
 
+
+/** An immediate formula $(...): as native LAMMPS does (Variable::compute_equal(str), variable.cpp at b332f28), a value below DBL_MIN in size is 0. */
 export const evaluateScalar = (src: string, env: FormulaEnv): number => {
   const v = evaluate(src, env, 'equal');
   if (isVec(v)) throw new StyleError(`formula "${src}" gives a vector where a single value is needed`);
-  return v;
+  return Math.abs(v) < DBL_MIN ? 0 : v;
 };
 
-const resolveIndex = (ix: Index, env: FormulaEnv): number => {
-  if (typeof ix === 'number') return ix;
-  const v = env.variable(ix.variable, 'equal');
-  if (isVec(v)) throw new StyleError(`index variable ${ix.variable} must give a single value`);
-  return Math.trunc(v);
+/** native's rounding of an equal-style variable's value (|x| < DBL_MIN gives 0, -0 included) */
+export const roundUnderflow = (v: number): number => (Math.abs(v) < DBL_MIN ? 0 : v);
+
+/**
+ * The integer of a bracketed index. As native LAMMPS does (Variable::int_between_brackets, variable.cpp at b332f28): a
+ * malformed bracket fails first, then a v_name index reads the variable, and the index must be positive.
+ */
+export const resolveIndex = (ix: Index, env: FormulaEnv): number => {
+  if (ix.error) throw new StyleError(ix.error);
+  const n = ix.variable !== null ? env.indexVariable(ix.variable) : ix.n;
+  if (n <= 0) throw new StyleError('Index between variable brackets must be positive');
+  return n;
 };
 
 const evalNode = (n: Node, env: FormulaEnv, mode: Mode, src: string): Value => {
@@ -307,56 +404,47 @@ const evalNode = (n: Node, env: FormulaEnv, mode: Mode, src: string): Value => {
     case 'bin': {
       const a = evalNode(n.a, env, mode, src);
       const b = evalNode(n.b, env, mode, src);
+      const m2 = (f: (x: number, y: number) => number) => map2(a, b, f, mode);
       switch (n.op) {
-        case '+': return map2(a, b, (x, y) => x + y);
-        case '-': return map2(a, b, (x, y) => x - y);
-        case '*': return map2(a, b, (x, y) => x * y);
-        case '/': return map2(a, b, (x, y) => {
-          if (y === 0) throw new StyleError(`divide by 0 in variable formula "${src}"`);
+        case '+': return m2((x, y) => x + y);
+        case '-': return m2((x, y) => x - y);
+        case '*': return m2((x, y) => x * y);
+        case '/': return m2((x, y) => {
+          if (y === 0) throw arith('Divide by 0 in variable formula', mode);
           return x / y;
         });
-        case '%': return map2(a, b, (x, y) => {
-          if (y === 0) throw new StyleError(`modulo 0 in variable formula "${src}"`);
+        case '%': return m2((x, y) => {
+          if (y === 0) throw arith('Modulo 0 in variable formula', mode);
           return x % y;
         });
-        case '^': return map2(a, b, (x, y) => {
+        case '^': return m2((x, y) => {
           if (y === 0) return 1;
-          if (x === 0 && y < 0) throw new StyleError(`invalid power expression in variable formula "${src}"`);
+          if (x === 0 && y < 0) throw arith('Invalid power expression in variable formula', mode);
           return Math.pow(x, y);
         });
-        case '<': return map2(a, b, (x, y) => truth(x < y));
-        case '<=': return map2(a, b, (x, y) => truth(x <= y));
-        case '>': return map2(a, b, (x, y) => truth(x > y));
-        case '>=': return map2(a, b, (x, y) => truth(x >= y));
-        case '==': return map2(a, b, (x, y) => truth(x === y));
-        case '!=': return map2(a, b, (x, y) => truth(x !== y));
-        case '&&': return map2(a, b, (x, y) => truth(x !== 0 && y !== 0));
-        case '||': return map2(a, b, (x, y) => truth(x !== 0 || y !== 0));
-        case '|^': return map2(a, b, (x, y) => truth((x !== 0) !== (y !== 0)));
+        case '<': return m2((x, y) => truth(x < y));
+        case '<=': return m2((x, y) => truth(x <= y));
+        case '>': return m2((x, y) => truth(x > y));
+        case '>=': return m2((x, y) => truth(x >= y));
+        case '==': return m2((x, y) => truth(x === y));
+        case '!=': return m2((x, y) => truth(x !== y));
+        case '&&': return m2((x, y) => truth(x !== 0 && y !== 0));
+        case '||': return m2((x, y) => truth(x !== 0 || y !== 0));
+        case '|^': return m2((x, y) => truth((x !== 0) !== (y !== 0)));
       }
       throw new StyleError(`unknown operator ${n.op}`);
     }
     case 'name': {
       if (n.name in CONSTANTS) return CONSTANTS[n.name];
       if (n.name === 'version') return 20260902;
-      if (mode === 'atom' && (ATOM_VECTORS.includes(n.name) || /^[id]2?_/.test(n.name))) return env.atomVector(n.name);
-      const th = env.thermo(n.name);
-      if (th !== undefined) return th;
-      if (ATOM_VECTORS.includes(n.name) || /^[id]2?_/.test(n.name)) throw new StyleError(`atom vector '${n.name}' can only be used in an atom-style variable (use ${n.name}[ID] for one atom)`);
-      throw new StyleError(`invalid thermo keyword or name '${n.name}' in variable formula "${src}"`);
+      return env.name(n.name, mode);
     }
-    case 'atomval': return env.atomValue(n.name, resolveIndex(n.index, env));
-    case 'ref': {
-      const i = n.i === null ? null : resolveIndex(n.i, env);
-      const j = n.j === null ? null : resolveIndex(n.j, env);
-      if (n.kind === 'v') {
-        if (j !== null) throw new StyleError(`v_${n.id}[i][j] is not valid`);
-        if (i !== null) return env.variableElement(n.id, i);
-        return env.variable(n.id, mode);
-      }
-      return env.reference(n.kind, n.id, i, j, mode);
-    }
-    case 'raw': return env.raw(n.fn, n.args, mode);
+    case 'atomval': return env.atomValue(n.name, n.index);
+    case 'custom': return env.custom(n.name, n.index, n.col, mode);
+    case 'ref':
+      if (n.kind === 'v') return env.variable(n.id, n.i, mode);
+      return env.reference(n.kind, n.id, n.i, n.j, mode);
+    case 'raw': return env.raw(n.fn, n.args, mode, n.index);
     case 'call': return callMath(n, env, mode, src);
   }
 };
@@ -370,16 +458,16 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
   });
   switch (n.fn) {
     case 'sqrt': return map1(arg(0), (x) => {
-      if (x < 0) throw new StyleError(`sqrt of negative value in variable formula "${src}"`);
+      if (x < 0) throw arith('Sqrt of negative value in variable formula', mode);
       return Math.sqrt(x);
     });
     case 'exp': return map1(arg(0), (x) => libm.exp(x));
     case 'ln': return map1(arg(0), (x) => {
-      if (x <= 0) throw new StyleError(`log of zero/negative value in variable formula "${src}"`);
+      if (x <= 0) throw arith('Log of zero/negative value in variable formula', mode);
       return libm.log(x);
     });
     case 'log': return map1(arg(0), (x) => {
-      if (x <= 0) throw new StyleError(`log of zero/negative value in variable formula "${src}"`);
+      if (x <= 0) throw arith('Log of zero/negative value in variable formula', mode);
       return Math.log10(x);
     });
     case 'abs': return map1(arg(0), Math.abs);
@@ -388,26 +476,34 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
     case 'cos': return map1(arg(0), (x) => libm.cos(x));
     case 'tan': return map1(arg(0), Math.tan);
     case 'asin': return map1(arg(0), (x) => {
-      if (x < -1 || x > 1) throw new StyleError(`arcsin of invalid value in variable formula "${src}"`);
+      if (x < -1 || x > 1) throw arith('Arcsin of invalid value in variable formula', mode);
       return Math.asin(x);
     });
     case 'acos': return map1(arg(0), (x) => {
-      if (x < -1 || x > 1) throw new StyleError(`arccos of invalid value in variable formula "${src}"`);
+      if (x < -1 || x > 1) throw arith('Arccos of invalid value in variable formula', mode);
       return libm.acos(x);
     });
     case 'atan': return map1(arg(0), Math.atan);
-    case 'atan2': return map2(arg(0), arg(1), Math.atan2);
+    case 'atan2': return map2(arg(0), arg(1), Math.atan2, mode);
     case 'ceil': return map1(arg(0), Math.ceil);
     case 'floor': return map1(arg(0), Math.floor);
     case 'round': return map1(arg(0), cround);
     case 'ternary': {
       const c = arg(0);
       if (!isVec(c)) return c !== 0 ? arg(1) : arg(2);
-      return map2(map2(c, arg(1), (x, y) => (x !== 0 ? y : Number.NaN)), arg(2), (x, z) => (Number.isNaN(x) ? z : x));
+      return map2(map2(c, arg(1), (x, y) => (x !== 0 ? y : Number.NaN), mode), arg(2), (x, z) => (Number.isNaN(x) ? z : x), mode);
     }
     case 'random': { const [lo, hi, seed] = scalarArgs(); return env.random(lo, hi, seed, mode); }
-    case 'normal': { const [mu, sg, seed] = scalarArgs(); return env.normal(mu, sg, seed, mode); }
+    case 'normal': {
+      const [mu, sg, seed] = scalarArgs();
+      if (sg < 0) throw arith(MATH_FN, mode);
+      return env.normal(mu, sg, seed, mode);
+    }
     default: break;
+  }
+  // native checks fix dt/reset while it parses the call, in every style of formula (math_function)
+  if ((n.fn === 'vdisplace' || n.fn === 'swiggle' || n.fn === 'cwiggle') && env.hasFixStyle('dt/reset')) {
+    throw new FormulaError(`Must not use ${n.fn}(${n.fn === 'vdisplace' ? 'x,y' : 'x,y,z'}) function with fix dt/reset`);
   }
   const a = scalarArgs();
   const tm = env.timing();
@@ -418,18 +514,22 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
       return a[0] + (a[1] - a[0]) * (step - tm.startStep) / (tm.stopStep - tm.startStep);
     }
     case 'vdisplace': return a[0] + a[1] * (step - tm.startStep) * tm.dt;
-    case 'swiggle': return a[0] + a[1] * libm.sin(2 * Math.PI / a[2] * (step - tm.startStep) * tm.dt);
-    case 'cwiggle': return a[0] + a[1] * (1 - libm.cos(2 * Math.PI / a[2] * (step - tm.startStep) * tm.dt));
+    case 'swiggle':
+      if (a[2] === 0) throw arith('Invalid swiggle(x,y,z) function in variable formula: z must be > 0', mode);
+      return a[0] + a[1] * libm.sin(2 * Math.PI / a[2] * (step - tm.startStep) * tm.dt);
+    case 'cwiggle':
+      if (a[2] === 0) throw arith('Invalid cwiggle(x,y,z) function in variable formula: z must be > 0', mode);
+      return a[0] + a[1] * (1 - libm.cos(2 * Math.PI / a[2] * (step - tm.startStep) * tm.dt));
     case 'stagger': {
       const [x, y] = ints(a);
-      if (!(x > 0 && y > 0 && x > y)) throw new StyleError('invalid stagger() arguments: need x > y > 0');
+      if (!(x > 0 && y > 0 && x > y)) throw arith(MATH_FN, mode);
       const lower = Math.floor(step / x) * x;
       const delta = step - lower;
       return delta < y ? lower + y : lower + x;
     }
     case 'logfreq': {
       const [x, y, z] = ints(a);
-      if (!(x > 0 && y > 0 && z > 0 && y < z)) throw new StyleError('invalid logfreq() arguments');
+      if (!(x > 0 && y > 0 && z > 0 && y < z)) throw arith(MATH_FN, mode);
       if (step < x) return x;
       let lower = x;
       while (step >= z * lower) lower *= z;
@@ -441,8 +541,10 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
       // output". The points of an interval [lower, z*lower) are ceil(lower + k*delta), k = 1..y, with
       // delta = (z-1)*lower/y; the next value is the first point above the step. Measured with native LAMMPS
       // (black box), logfreq2(1,3,2) at steps 0..16: 1 2 3 4 6 6 7 8 11 11 11 14 14 14 16 (ceil, not round).
+      // As native LAMMPS does (math_function, variable.cpp at b332f28) x, y and z must be positive; with z = 1 native's
+      // interval never grows and its loop does not end once the step reaches x, which the engine refuses as well
       const [x, y, z] = ints(a);
-      if (!(x > 0 && y > 0 && z > 1)) throw new StyleError('invalid logfreq2() arguments: need x > 0, y > 0, z > 1');
+      if (!(x > 0 && y > 0 && z > 1)) throw arith(MATH_FN, mode);
       if (step < x) return x;
       let lower = x;
       while (step >= z * lower) lower *= z;
@@ -461,7 +563,7 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
       // the documented sequence (29 for logfreq3(1,3,10)); this engine returns z there. Past z native stops with
       // "Calls to variable exceeded limit" (measured: the error is raised when the variable is evaluated at step 11).
       const [x, y, z] = ints(a);
-      if (!(x > 0 && z > 0 && y > 1 && z - x >= y - 1)) throw new StyleError('invalid logfreq3() arguments');
+      if (!(x > 0 && z > 0 && y > 1 && z - x >= y - 1)) throw arith(MATH_FN, mode);
       if (step < x) return x;
       if (step > z) throw new StyleError('Calls to variable exceeded limit');
       const r = Math.pow(z / x, 1 / (y - 1));
@@ -473,7 +575,7 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
     }
     case 'stride': {
       const [x, y, z] = ints(a);
-      if (!(x >= 0 && y >= 0 && z > 0 && x <= y)) throw new StyleError('invalid stride() arguments');
+      if (!(x >= 0 && y >= 0 && z > 0 && x <= y)) throw new StyleError(MATH_FN);
       if (step < x) return x;
       if (step >= y) return NO_MORE_STEPS;
       const next = x + (Math.floor((step - x) / z) + 1) * z;
@@ -487,7 +589,7 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
       // against y (22 at step 19, the limit is reached at step 20).
       const [x, y, z, aa, b, c] = ints(a);
       if (!(x >= 0 && y >= 0 && z > 0 && x <= y && aa >= 0 && b >= 0 && c > 0 && aa < b && aa >= x && b <= y)) {
-        throw new StyleError('invalid stride2() arguments');
+        throw new StyleError(MATH_FN);
       }
       if (step < x) return x;
       if (step >= y) return NO_MORE_STEPS;

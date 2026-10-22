@@ -165,6 +165,8 @@ export class FixTempRescale extends RescaleFix {
     if (energy !== undefined) this.exchanged = energy;
     this.nevery = Number(args[0]);
     if (!Number.isInteger(this.nevery) || this.nevery < 1) throw new StyleError('fix temp/rescale: N must be a positive integer');
+    // fix_temp_rescale.cpp: global_freq = nevery
+    this.globalFreq = this.nevery;
     this.tStart = parseNumOrVar(args[1], 'Tstart');
     this.tStop = Number(args[2]);
     this.window = Number(args[3]);

@@ -146,6 +146,8 @@ export class FixAveCorrelate extends Fix {
     this.nRepeat = pos(args[1], 'Nrepeat');
     this.nFreq = pos(args[2], 'Nfreq');
     this.nevery = this.nEvery;
+    // fix_ave_correlate.cpp: global_freq = nfreq
+    this.globalFreq = this.nFreq;
     const words: string[] = [];
     let k = 3;
     while (k < args.length && !CORR_KEYWORDS.has(args[k])) { words.push(args[k]); k++; }

@@ -78,6 +78,8 @@ export class FixReaxFFBonds extends Fix {
     if (args.length !== 2) throw new StyleError('Illegal fix reaxff/bonds command: expected Nevery and a file name');
     this.nevery = intArg(args[0], 'Nevery');
     if (this.nevery <= 0) throw new StyleError(`Illegal fix reaxff/bonds nevery value ${this.nevery}`);
+    // fix_reaxff_bonds.cpp: global_freq = nevery
+    this.globalFreq = this.nevery;
     this.file = args[1];
     if (this.file.includes('*')) throw new StyleError('fix reaxff/bonds with a * file name (one file per output step) is not supported');
     if (/\.(gz|bz2|zst|lz4|xz)$/.test(this.file)) throw new StyleError('fix reaxff/bonds with a compressed file name is not supported');

@@ -85,6 +85,12 @@ export abstract class Fix {
   sizeVector = 0;
   sizeArrayRows = 0;
   sizeArrayCols = 0;
+  /**
+   * The length of the global vector or the number of rows of the global array varies (native size_vector_variable and
+   * size_array_rows_variable): a formula may read past it and gets 0 (Variable::evaluate at b332f28).
+   */
+  sizeVectorVariable = false;
+  sizeArrayRowsVariable = false;
   extscalar = 0;
   extvector = 0;
   /** Per-element extensive (1) or intensive (0) flags of a global vector, when they differ (fix ave/time). */

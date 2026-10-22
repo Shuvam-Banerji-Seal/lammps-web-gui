@@ -138,6 +138,9 @@ export class FixAveChunk extends Fix {
     this.nEvery = posInt(args[0], `${what}: Nevery`);
     this.nRepeat = posInt(args[1], `${what}: Nrepeat`);
     this.nFreq = posInt(args[2], `${what}: Nfreq`);
+    // fix_ave_chunk.cpp: global_freq = nfreq, and the number of rows (chunks) varies (size_array_rows_variable)
+    this.globalFreq = this.nFreq;
+    this.sizeArrayRowsVariable = true;
     this.nevery = this.nEvery;
     if (this.nFreq % this.nEvery !== 0) throw new StyleError(`${what}: Nfreq must be a multiple of Nevery`);
     if (this.nRepeat * this.nEvery > this.nFreq) {
@@ -252,6 +255,9 @@ export class FixAveChunk extends Fix {
       if (!c.hasBias()) throw new StyleError(`Bias compute ${this.biasId} does not calculate a velocity bias`);
       this.bias = c;
     }
+    // fix_ave_chunk.cpp: size_array_cols = colextra + 1 + nvalues (the compressed chunk ID, the bin coordinates, the
+    // count, then the values), known before the first output
+    this.sizeArrayCols = (this.chunk.compress ? 1 : 0) + (this.chunk.kind === 'bin' ? this.chunk.binDims : 0) + 1 + this.vals.length;
     // ave running / window: Nchunk must stay constant for the whole run (docs)
     if (this.aveMode !== 'one') this.chunk.holdNchunk();
     // The window (samples taken since the last output) carries over a run boundary: native keeps it

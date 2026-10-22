@@ -362,6 +362,8 @@ export class FixAveHisto extends Fix {
     this.nEvery = posInt(args[0], `${what}: Nevery`);
     this.nRepeat = posInt(args[1], `${what}: Nrepeat`);
     this.nFreq = posInt(args[2], `${what}: Nfreq`);
+    // fix_ave_histo.cpp: global_freq = nfreq
+    this.globalFreq = this.nFreq;
     this.nevery = this.nEvery;
     if (this.nFreq % this.nEvery !== 0) {
       throw new StyleError(`${what}: Nfreq must be a multiple of Nevery`);

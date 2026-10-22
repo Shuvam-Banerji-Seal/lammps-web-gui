@@ -71,6 +71,8 @@ export class FixVector extends Fix {
       throw new StyleError(`fix ${id} (vector): ${usage} (Nevery must be a positive integer, got '${args[0] ?? ''}')`);
     }
     this.nevery = every;
+    // fix_vector.cpp: global_freq = nevery
+    this.globalFreq = every;
     let nmax: number | null = null;
     let k = 1;
     for (; k < args.length; k++) {

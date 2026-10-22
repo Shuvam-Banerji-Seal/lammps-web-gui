@@ -126,6 +126,8 @@ abstract class FixLayerSwap extends Fix {
     super(sys, id, group, args);
     this.nEvery = nEvery;
     this.nevery = nEvery;
+    // fix_viscosity.cpp and fix_thermal_conductivity.cpp: global_freq = nevery
+    this.globalFreq = nEvery;
     this.dim = dim;
     this.nbin = nbin;
     this.nswap = nswap;

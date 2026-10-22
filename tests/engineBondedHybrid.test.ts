@@ -126,7 +126,7 @@ describe('bond_style hybrid: coefficients', () => {
 
   it('angle skip leaves the type unset, so the run stops (measured)', async () => {
     const r = await runScript(`${HEAD}angle_style hybrid harmonic\nangle_coeff 1 harmonic 40 109.5\nangle_coeff 2 skip\nrun 0\n`);
-    expect(r.error).toMatch(/All angle coeffs are not set \(type 2\)/);
+    expect(r.error).toMatch(/All angle coeffs are not set\. Status:/);
   });
 
   it('a later line overrides the sub-style of a type (measured energies below)', async () => {

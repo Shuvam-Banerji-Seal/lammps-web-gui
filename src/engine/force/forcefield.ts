@@ -177,8 +177,8 @@ export class ForceField {
   private warn: (text: string) => void = () => {};
 
   /**
-   * The pair style's part of native's force->init: the restart check, then the pair style's init, which sets its
-   * cutoffs (cutforce). A run's init calls it first, as native LAMMPS does (src/lammps.cpp LAMMPS::init at b332f28:
+   * The pair and bonded styles' part of native's force->init: the restart check, then the pair style's init, which sets
+   * its cutoffs (cutforce), then the bond, angle, dihedral and improper styles' init. A run's init calls it first, as native LAMMPS does (src/lammps.cpp LAMMPS::init at b332f28:
    * force->init, then atom->init and modify->init), so computes compare their cutoffs with the pair's at their init.
    */
   /**
@@ -207,6 +207,35 @@ export class ForceField {
       this.pair.linkBonded?.({ bond: (t) => this.bond?.equilibrium(t) ?? Number.NaN, angle: (t) => this.angle?.equilibriumRadians(t) ?? Number.NaN });
       this.pair.init(ctx);
     }
+    // then bond, angle, dihedral and improper, as Force::init orders them
+    for (const b of [this.bond, this.angle, this.dihedral, this.improper]) b?.linkForceField?.({ pair: this.pair, special: this.special });
+    const counts = { bond: s.topo.nbondtypes, angle: s.topo.nangletypes, dihedral: s.topo.ndihedraltypes, improper: s.topo.nimpropertypes };
+    for (const b of [this.bond, this.angle, this.dihedral, this.improper]) {
+      if (!b) continue;
+      this.checkBondedCoeffs(b, counts[b.kind]);
+      b.init(ctx);
+    }
+  }
+
+  /**
+   * As native LAMMPS does (src/bond.cpp Bond::init, angle.cpp, dihedral.cpp, improper.cpp at b332f28): before a bonded
+   * style's own init, "<Kind> coeffs are not set" when no command gave it coefficients (and the box has such types),
+   * then "All <kind> coeffs are not set" when a type has none, each with native's status table. A style made outside
+   * the commands (coeffGiven null) or keeping no set flags (coeffSet null) checks its own.
+   */
+  private checkBondedCoeffs(b: Bonded, ntypes: number): void {
+    if (b.coeffGiven === null) return;
+    const K = `${b.kind[0].toUpperCase()}${b.kind.slice(1)}`;
+    if (!b.coeffGiven && ntypes > 0) throw new StyleError(`${K} coeffs are not set. Status:\n${K} style not yet initialized`);
+    const lines: string[] = [];
+    let missing = false;
+    for (let t = 1; t <= ntypes; t++) {
+      const f = b.coeffSet(t);
+      if (f === null) return;
+      lines.push(`${String(t).padStart(6)}: is${f ? ' ' : ' not '}set`);
+      if (!f) missing = true;
+    }
+    if (missing) throw new StyleError(`All ${b.kind} coeffs are not set. Status:\n${lines.join('\n')}`);
   }
 
   /** The largest pair cutoff (native force->pair->cutforce) as of the last pair init; 0 without a pair style. */
@@ -218,14 +247,12 @@ export class ForceField {
   }
 
   /**
-   * Setup before a run or a force evaluation: the pair style's init (unless the run's init has just done it: pairDone),
-   * the bonded styles' init, the special list and the neighbor requests, then the kspace style.
+   * Setup before a run or a force evaluation: the pair and bonded styles' init (unless the run's init has just done it:
+   * pairDone), the special list and the neighbor requests, then the kspace style.
    */
   init(s: SimState, nb: Neighbor, geom: Geometry, ctx: StyleContext, pairDone = false): void {
     if (!pairDone) this.initPair(s, geom, ctx);
     this.checkTopology(s);
-    for (const b of [this.bond, this.angle, this.dihedral, this.improper]) b?.linkForceField?.({ pair: this.pair, special: this.special });
-    for (const b of [this.bond, this.angle, this.dihedral, this.improper]) b?.init(ctx);
     this.specialLJ = new Float64Array([1, ...this.special.lj]);
     this.specialCoul = new Float64Array([1, ...this.special.coul]);
     const manybody = this.pair?.manybody ?? false;

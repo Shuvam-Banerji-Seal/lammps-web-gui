@@ -170,6 +170,11 @@ export class BondedHybrid extends Bonded {
     if (this.subs) for (const st of this.subs) st.linkForceField?.(link);
   }
 
+  /** Native setflag of the hybrid: the type was assigned to a sub-style (or to none). */
+  override coeffSet(t: number): boolean | null {
+    return this.assign.length === this.ntypes + 1 ? this.assign[t] !== UNSET : null;
+  }
+
   /** Setup: every type needs coefficients, every sub-style must be used, and bond none types stop the run. */
   init(ctx?: StyleContext): void {
     if (ctx) this.ctx = ctx;

@@ -787,6 +787,23 @@ export abstract class Bonded {
    */
   readonly centroidNative?: boolean;
   ntypes = 0;
+  /**
+   * Native allocated: a *_coeff command, a data file's Coeffs section or a restart gave the style coefficients. The
+   * style command sets false; null when untracked (a style made outside the commands).
+   */
+  coeffGiven: boolean | null = null;
+  /**
+   * Native setflag[t]: type t has coefficients (null: the style keeps no such flags). Reads a set/setflag array, or the
+   * set flags of the style's per-type parameters (params.set).
+   */
+  coeffSet(t: number): boolean | null {
+    const own = this as unknown as Record<string, unknown>;
+    const params = own.params as { set?: unknown } | undefined;
+    for (const v of [own.set, own.setflag, params?.set]) {
+      if (v instanceof Uint8Array && v.length === this.ntypes + 1) return v[t] !== 0;
+    }
+    return null;
+  }
   abstract settings(args: string[], ctx: StyleContext): void;
   /** *_coeff arguments including the type. */
   abstract coeff(args: string[], ctx: StyleContext): void;

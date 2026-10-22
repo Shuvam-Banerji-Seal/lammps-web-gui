@@ -119,6 +119,13 @@ export class DihedralClass2 extends SimpleBonded {
     this.params.setRange(word, nums);
   }
 
+  /** Native setflag[t]: the main line and the five cross-term lines are all set (DihedralClass2::coeff). */
+  override coeffSet(t: number): boolean | null {
+    if (this.params.set.length !== this.ntypes + 1) return null;
+    return this.params.set[t] === 1 && this.mbt.set[t] === 1 && this.ebt.set[t] === 1 && this.at.set[t] === 1 &&
+      this.aat.set[t] === 1 && this.bb13.set[t] === 1;
+  }
+
   /**
    * Dihedral::init: every type needs the main line and the five cross-term lines (setflag is set only when all six
    * are). The status block is the native Info::get_dihedral_coeff_status text.

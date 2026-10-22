@@ -90,6 +90,11 @@ export class ImproperClass2 extends Bonded {
     }
   }
 
+  /** Native setflag[t]: the improper and angle-angle coefficients are both set (ImproperClass2::coeff). */
+  override coeffSet(t: number): boolean | null {
+    return this.setPlain?.length === this.ntypes + 1 ? !!(this.setPlain[t] && this.setAa[t]) : null;
+  }
+
   init(_ctx?: StyleContext): void {
     for (let t = 1; t <= this.ntypes; t++) {
       if (!(this.setPlain[t] && this.setAa[t])) {

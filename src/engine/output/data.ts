@@ -1264,7 +1264,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
           if (opts.nocoeff) continue;
           const st = kind === 'pair' ? sys.ff.pair : sys.ff[kind];
           st!.coeff(args, sys.styleContext());
-          if (kind === 'pair') sys.ff.pair!.coeffGiven = true;
+          st!.coeffGiven = true;
         }
       }
     }

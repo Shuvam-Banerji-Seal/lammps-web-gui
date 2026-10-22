@@ -152,6 +152,11 @@ abstract class DihedralVarLen extends SimpleBonded {
     for (let t = lo; t <= hi; t++) this.vals[t] = packed;
   }
 
+  /** Native setflag[t]: dihedral_coeff set the type (its packed values). */
+  override coeffSet(t: number): boolean | null {
+    return this.vals.length === this.ntypes + 1 ? this.vals[t] !== null : null;
+  }
+
   override init(_ctx?: StyleContext): void {
     for (let t = 1; t <= this.ntypes; t++) {
       if (!this.vals[t]) throw new StyleError(`all dihedral coeffs are not set (type ${t})`);

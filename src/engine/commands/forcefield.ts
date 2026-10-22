@@ -246,6 +246,10 @@ const finishBondedStyle = (sys: System, kind: keyof typeof bondedKinds, name: st
     throw e;
   }
   if (!same && sys.hasBox) st.allocate(bondedKinds[kind].types(sys));
+  // a style made anew starts without coefficients; native keeps a re-issued style of the same name (re-issued hybrid,
+  // which the engine makes anew), so whether it was given coefficients carries over
+  const prev = sys.ff[kind];
+  if (!same) st.coeffGiven = prev && prev !== st && prev.name === name ? prev.coeffGiven : false;
   sys.ff[kind] = st;
   if (kind === 'bond') attachBondStoreLocal(sys, st);
   sys.bump();
@@ -291,6 +295,7 @@ const bondedCoeff = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) =
   // bond_coeff.html etc.: "N = numeric bond type (see asterisk form below), or type label"
   const args = a.length ? [typeWord(sys.labels, kind, a[0]), ...a.slice(1)] : a;
   st.coeff(args, sys.styleContext());
+  st.coeffGiven = true;
   sys.bump();
 }) as Handler;
 

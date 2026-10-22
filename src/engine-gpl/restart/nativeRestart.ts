@@ -1293,6 +1293,7 @@ export const readNativeRestart = (sys: System, text: string, name: string): void
     o.settings([], ctx);
     o.allocate(ntypes);
     for (const c of st.coeffs) o.coeff(c, ctx);
+    o.coeffGiven = true;
     return o;
   };
   sys.ff.bond = bonded('bond', ff.bond, BOND_STYLES, h.nbondtypes);

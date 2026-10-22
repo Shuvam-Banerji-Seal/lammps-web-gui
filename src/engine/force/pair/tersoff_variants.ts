@@ -1,4 +1,4 @@
-import { StyleError, type StyleContext } from '../types';
+import { StyleError, type PairConstructorWhere, type StyleContext } from '../types';
 import { parseNum, joinPotentialEntries } from '../util';
 import { PairTersoff, key3, type ParsedFile, type TersoffEntry } from './tersoff';
 import { libm } from '../../libm';
@@ -356,6 +356,14 @@ export class PairTersoffZBL extends PairTersoff {
   protected override readFile(filename: string, ctx: StyleContext): void {
     refuseUnitsTag(ctx.readFile(filename), filename, this.name, ctx);
     super.readFile(filename, ctx);
+  }
+
+  /**
+   * As native LAMMPS does (src/MANYBODY/pair_tersoff_zbl.cpp PairTersoffZBL::PairTersoffZBL at b332f28): the
+   * constructor sets the ZBL constants for metal and real units and refuses every other unit style.
+   */
+  override constructorCheck(where: PairConstructorWhere): void {
+    if (where.units !== 'metal' && where.units !== 'real') throw new StyleError('Pair tersoff/zbl requires metal or real units');
   }
 
   override initStyle(ctx: StyleContext): void {

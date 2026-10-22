@@ -10,7 +10,7 @@
  * The loops are those of PairGW::compute over the full neighbor list (atom IDs decide which of two atoms owns a
  * two-body term), with the same operation order; forces on ghost atoms are folded into their owners by the force field.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type PairConstructorWhere, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
@@ -470,9 +470,9 @@ export class PairGWZBL extends PairGW {
   protected override get nparamsPerLine(): number { return NPARAMS_PER_LINE_ZBL; }
   protected override get fileType(): string { return 'gw/zbl'; }
 
-  override settings(args: string[], ctx: StyleContext): void {
-    super.settings(args, ctx);
-    const style = ctx.s?.units.style;
+  /** The constructor's constants per unit style (metal or real only). */
+  override constructorCheck(where: PairConstructorWhere): void {
+    const style = where.units;
     if (style === 'metal') {
       this.globalA0 = 0.529;
       this.globalEpsilon0 = 0.00552635;

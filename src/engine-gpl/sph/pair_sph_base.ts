@@ -5,8 +5,9 @@
  * Corporation and distributed under the GNU General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too
  * (src/engine-gpl/LICENSE). Package author (from src/SPH/README): Georg Ganzenmuller (Fraunhofer EMI).
  */
-import { Pair, StyleError, typeBounds, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairConstructorWhere, type StyleContext } from '../../engine/force/types';
 import { isSphStyle } from '../../engine/atoms';
+import { atomHasFlag, type AtomFlag } from '../atom_flags';
 
 /**
  * Base of the SPH pair styles. Pair cutoffs (the kernel support h) are per type pair, symmetric, with I <= J set by
@@ -48,13 +49,23 @@ export abstract class PairSPHBase extends Pair {
     if (count === 0) throw new StyleError('Incorrect args for pair coefficients');
   }
 
-  /** Atom style and newton checks at init (the constructors and init_style of the source). */
-  override initStyle(ctx: StyleContext): void {
-    if (ctx.newtonPair === false) throw new StyleError(`pair_style ${this.name} with newton pair off is not supported by the browser engine`);
-    if (ctx.s && !isSphStyle(ctx.s.atomStyle)) throw new StyleError(`Pair ${this.name} requires atom attributes ${this.attributesText}, e.g. in atom_style sph`);
+  /** The constructor's check of the atom attribute flags the style needs. */
+  override constructorCheck(where: PairConstructorWhere): void {
+    if (!this.attributeFlags.every((f) => atomHasFlag(where.atomStyle, f))) throw new StyleError(this.attributesMessage());
   }
 
-  /** Names the sph attributes this style needs, for the error (its constructor checks them). */
+  /** Newton check at init; the engine's SPH arrays come with atom_style sph only. */
+  override initStyle(ctx: StyleContext): void {
+    if (ctx.newtonPair === false) throw new StyleError(`pair_style ${this.name} with newton pair off is not supported by the browser engine`);
+    if (ctx.s && !isSphStyle(ctx.s.atomStyle)) throw new StyleError(this.attributesMessage());
+  }
+
+  protected attributesMessage(): string {
+    return `Pair ${this.name} requires atom ${this.attributesText}, e.g. in atom_style sph`;
+  }
+
+  /** The atom attribute flags the constructor tests, and how its message names them. */
+  protected abstract readonly attributeFlags: readonly AtomFlag[];
   protected abstract readonly attributesText: string;
 
   override initOne(i: number, j: number): number {

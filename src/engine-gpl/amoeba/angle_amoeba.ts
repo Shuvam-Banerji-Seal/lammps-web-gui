@@ -11,7 +11,7 @@
  * docs.lammps.org/angle_amoeba.html: "angle_coeff N ba ..." (BondAngle) and "angle_coeff N ub ..." (Urey-Bradley)
  * and the plain line "pflag ubflag theta0 K2 K3 K4 K5 K6".
  */
-import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { parseNum } from '../../engine/force/util';
 import { acos as libmAcos } from '../libm/acos';
@@ -84,7 +84,7 @@ export class AngleAmoeba extends Bonded {
   private setUb!: Uint8Array;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

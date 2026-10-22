@@ -509,10 +509,9 @@ export class ImproperZero extends SimpleBonded {
   private nocoeff = false;
 
   override settings(args: string[], _ctx?: StyleContext): void {
-    for (const w of args) {
-      if (w !== 'nocoeff') throw new StyleError(`improper_style zero: unknown keyword '${w}' (only nocoeff)`);
-      this.nocoeff = true;
-    }
+    // As native LAMMPS does (src/improper_zero.cpp at b332f28): nothing or nocoeff
+    if (args.length > 1 || (args.length === 1 && args[0] !== 'nocoeff')) throw new StyleError('Illegal improper_style command');
+    this.nocoeff = args.length === 1;
   }
 
   override coeff(args: string[], _ctx?: StyleContext): void {

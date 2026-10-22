@@ -14,7 +14,7 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { exp as libmExp } from '../libm/exp';
 
 /** pair_e3b.cpp: NOT_SET marks a keyword that was not given. */
@@ -31,6 +31,8 @@ export class PairE3B extends Pair {
   /** pvector (pair_e3b.cpp): e2, ea, eb, ec energies of the last evaluation (compute pair e3b). */
   private readonly pvector = new Float64Array(4);
   private typeO = 0;
+  /** The Otype word of pair_style (native typeO_str), read at pair_coeff. */
+  private typeOStr = '';
   private ea = NOT_SET;
   private eb = NOT_SET;
   private ec = NOT_SET;
@@ -53,8 +55,8 @@ export class PairE3B extends Pair {
 
   settings(args: string[]): void {
     // pair_e3b.cpp settings(): if (narg != 1) error->all(FLERR, "Illegal pair_style command");
-    if (args.length !== 1) throw new StyleError('Illegal pair_style command (e3b Otype)');
-    this.typeO = parseNum(args[0], 'Otype');
+    if (args.length !== 1) throw new StyleError('Illegal pair_style command');
+    this.typeOStr = args[0];
   }
 
   allocate(ntypes: number): void {
@@ -68,6 +70,12 @@ export class PairE3B extends Pair {
     // pair_e3b.cpp coeff(): "There must be at least one keyword given to pair_coeff"
     if (args.length < 4) throw new StyleError('There must be at least one keyword given to pair_coeff');
     if (this.setflag.length === 0) throw new StyleError('pair_coeff e3b before the box exists');
+    // the Otype word of pair_style is read here, a type label or a number within 1-ntypes (utils::expand_type_int)
+    if (this.typeOStr) {
+      const t = inumeric(ctx.atomTypeWord ? ctx.atomTypeWord(this.typeOStr) : this.typeOStr);
+      if (t <= 0 || t > this.ntypes) throw new StyleError(`Atom type ${t} is out of bounds (1-${this.ntypes})`);
+      this.typeO = t;
+    }
     // clear setflag, then set the O-O pair only
     this.setflag.fill(0);
     this.setflag[this.typeO * this.nt + this.typeO] = 1;

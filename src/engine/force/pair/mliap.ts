@@ -1,4 +1,5 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
+import { missingArgs } from '../util';
 import { NEIGHMASK } from '../../neighbor';
 import { WignerTables, rawBispectrum, adjointBispectrum, type Cmat, type Grad } from '../../compute/sna';
 import { parseMliapSnaDescriptor, type MliapSnaDescriptor } from '../../mliap/descriptor';
@@ -91,38 +92,45 @@ export class PairMliap extends Pair {
   private chemEng: ChemSna | null = null;
 
   settings(args: string[], ctx: StyleContext): void {
-    if (args[0] === 'unified') throw new StyleError(`pair_style mliap: keyword 'unified' (serialized Python object) is not implemented in this engine`);
-    if (args.length !== 4 && args.length !== 6) {
-      throw new StyleError(`pair_style mliap needs the keywords model and descriptor (got ${args.length} arguments)`);
-    }
-    let kind: string | null = null, mfile = '', dstyle: string | null = null, dfile = '';
-    for (let k = 0; k < args.length; k += 2) {
-      const kw = args[k], v = args[k + 1];
-      if (v === undefined) throw new StyleError(`pair_style mliap: keyword '${kw}' needs a style and a filename`);
+    // As native LAMMPS does (src/ML-IAP/pair_mliap.cpp PairMLIAP::settings at b332f28): keywords in order, each model
+    // or descriptor read from its file when its keyword is reached, at most one of each; python-backed options
+    // (model mliappy, unified) need a python build, which the browser has not.
+    const n = args.length;
+    if (n < 2) throw missingArgs('pair_style mliap');
+    let kind: string | null = null, mfile = '', modelText = '', dstyle: string | null = null, dfile = '', descText = '';
+    let k = 0;
+    while (k < n) {
+      const kw = args[k];
       if (kw === 'model') {
+        if (k + 2 > n) throw missingArgs('pair_style mliap model');
+        if (kind !== null) throw new StyleError('Illegal multiple pair_style mliap model definition');
         const style = args[k + 1];
-        const file = args[k + 2];
-        if (file === undefined) throw new StyleError(`pair_style mliap: model needs a style and a filename`);
-        if (style === 'mliappy') throw new StyleError(`pair_style mliap: model mliappy needs the Python module and is not implemented in this engine`);
-        if (style !== 'linear' && style !== 'quadratic' && style !== 'nn') throw new StyleError(`pair_style mliap: unknown model style '${style}'`);
-        kind = style; mfile = file;
-        k += 1;
-      } else if (kw === 'descriptor') {
-        const style = args[k + 1];
-        const file = args[k + 2];
-        if (file === undefined) throw new StyleError(`pair_style mliap: descriptor needs a style and a filename`);
-        if (!DESCRIPTOR_STYLES.includes(style)) {
-          throw new StyleError(`pair_style mliap: descriptor style '${style}' is not implemented in this engine (sna is)`);
+        if (style === 'linear' || style === 'quadratic' || style === 'nn') {
+          if (k + 3 > n) throw missingArgs(`pair_style mliap model ${style}`);
+          kind = style; mfile = args[k + 2];
+          modelText = ctx.readFile(mfile);
+          k += 3;
+        } else if (style === 'mliappy') {
+          throw new StyleError('Using pair_style mliap model mliappy requires ML-IAP with python support');
+        } else {
+          throw new StyleError(`Unknown pair_style mliap model keyword: ${kw}`);
         }
-        dstyle = style; dfile = file;
-        k += 1;
+      } else if (kw === 'descriptor') {
+        if (k + 2 > n) throw missingArgs('pair_style mliap descriptor');
+        if (dstyle !== null) throw new StyleError('Illegal multiple pair_style mliap descriptor definition');
+        const style = args[k + 1];
+        if (!DESCRIPTOR_STYLES.includes(style)) throw new StyleError('Illegal pair_style mliap command');
+        if (k + 3 > n) throw style === 'ace' ? new StyleError('Illegal pair_style mliap command') : missingArgs(`pair_style mliap descriptor ${style}`);
+        dstyle = style; dfile = args[k + 2];
+        descText = ctx.readFile(dfile);
+        k += 3;
       } else if (kw === 'unified') {
-        throw new StyleError(`pair_style mliap: keyword 'unified' (serialized Python object) is not implemented in this engine`);
+        throw new StyleError('Using pair_style mliap unified requires ML-IAP with python support');
       } else {
-        throw new StyleError(`pair_style mliap: unknown keyword '${kw}'`);
+        throw new StyleError(`Unknown pair_style mliap keyword: ${kw}`);
       }
     }
-    if (kind === null || dstyle === null) throw new StyleError(`pair_style mliap needs both model and descriptor keywords`);
+    if (kind === null || dstyle === null) throw new StyleError('Incomplete pair_style mliap setup: need model and descriptor, or unified');
     if (dstyle === 'so3' && kind === 'quadratic') {
       // doc: "The available models are *linear* and *nn*." (so3)
       throw new StyleError(`pair_style mliap: model quadratic with descriptor so3 is not implemented (the doc lists linear and nn for so3)`);
@@ -131,21 +139,21 @@ export class PairMliap extends Pair {
     this.modelFile = mfile;
     this.ace = null;
     if (dstyle === 'ace') {
-      this.ace = gplHook<MliapAceHook>('ace').load(ctx.readFile(dfile), dfile);
+      this.ace = gplHook<MliapAceHook>('ace').load(descText, dfile);
       this.desc = null;
       this.so3 = null;
       this.so3Engine = null;
     } else if (dstyle === 'so3') {
-      this.so3 = parseMliapSo3Descriptor(ctx.readFile(dfile), dfile);
+      this.so3 = parseMliapSo3Descriptor(descText, dfile);
       this.so3Engine = new So3Engine(this.so3);
       this.desc = null;
     } else {
-      this.desc = parseMliapSnaDescriptor(ctx.readFile(dfile), dfile);
+      this.desc = parseMliapSnaDescriptor(descText, dfile);
       this.so3 = null;
       this.so3Engine = null;
     }
     this.descFile = dfile;
-    this.modelText = ctx.readFile(mfile);
+    this.modelText = modelText;
     this.model = null;
   }
 

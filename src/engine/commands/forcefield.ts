@@ -1,6 +1,6 @@
 import type { Handler } from './args';
 import { num, yesno, missingArgs, logical, numeric, inumeric, bounds } from './args';
-import { StyleError, bondedCoeffArgs, type Bonded, type KSpace } from '../force/types';
+import { NoSettingsError, StyleError, bondedCoeffArgs, type Bonded, type KSpace } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES, KSPACE_STYLES, styleNames } from '../styles';
 import type { System } from '../system';
 import type { MixRule, Pair } from '../force/types';
@@ -12,6 +12,8 @@ import { KSpacePPPM } from '../force/kspace/pppm';
 import { KSpaceEwald } from '../force/kspace/ewald';
 import { pppmGplHook } from '../force/kspace/pppmHook';
 import { removedStyleError } from '../deprecated';
+import { gplHook } from '../gplHooks';
+import { loadNativeStyles, unknownStyleError } from '../nativeStyles';
 
 /*
  * Force-field commands. Styles come from styles.ts; anything else is an
@@ -28,11 +30,21 @@ const pairStyle: Handler = ({ sys }, a) => {
   sys.ff.pairNotRestarted = null;
   if (name === 'none') { sys.ff.pair = null; sys.bump(); return; }
   const make = PAIR_STYLES[name];
-  if (!make) throw unsupported('pair_style', name, PAIR_STYLES);
+  if (!make) throw unknownStyleError('pair', name, () => unsupported('pair_style', name, PAIR_STYLES));
   // "If the pair style is redefined ... the pair coefficients are lost" unless the style is the same
   const same = sys.ff.pair && sys.ff.pair.name === name ? sys.ff.pair : null;
   const p = same ?? make();
-  if (p instanceof PairHybrid) p.setVariableEvaluator((v) => sys.equalVariable(v));
+  const where = { atomStyle: sys.atomStyle, units: sys.units.style };
+  if (!same) p.constructorCheck?.(where);
+  // native's settings() of most styles check the number of words first (gplHook('pair_style'))
+  const argCheck = gplHook<(style: string, narg: number) => string | null>('pair_style');
+  const argMsg = argCheck(name, a.length - 1);
+  if (argMsg) throw new StyleError(argMsg);
+  if (p instanceof PairHybrid) {
+    p.setVariableEvaluator((v) => sys.equalVariable(v));
+    p.constructorWhere = where;
+    p.subArgCheck = argCheck;
+  }
   p.settings(a.slice(1), sys.styleContext());
   if (!same && sys.hasBox) p.allocate(sys.state.ntypes);
   sys.ff.pair = p;
@@ -210,16 +222,29 @@ const bondedStyle = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) =
   }
   if (name === 'none') { sys.ff[kind] = null; sys.bump(); return; }
   const make = bondedKinds[kind].list[name];
-  if (!make) throw unsupported(`${kind}_style`, name, bondedKinds[kind].list);
+  if (!make) return loadNativeStyles().then(() => { throw unknownStyleError(kind, name, () => unsupported(`${kind}_style`, name, bondedKinds[kind].list)); });
+  // a hybrid style names its sub-styles in its settings: the native style names are loaded for an unknown one
+  if (name === 'hybrid') return loadNativeStyles().then(() => finishBondedStyle(sys, kind, name, make, a));
+  finishBondedStyle(sys, kind, name, make, a);
+}) as Handler;
+
+const finishBondedStyle = (sys: System, kind: keyof typeof bondedKinds, name: string, make: () => Bonded, a: string[]): void => {
   // measured with native LAMMPS (black box): re-issuing a hybrid style clears its coefficients, so it is always made anew
   const same = name !== 'hybrid' && sys.ff[kind] && sys.ff[kind]!.name === name ? sys.ff[kind] : null;
   const st: Bonded = same ?? make();
-  st.settings(a.slice(1), sys.styleContext());
+  try {
+    st.settings(a.slice(1), sys.styleContext());
+  } catch (e) {
+    // As native LAMMPS does (src/bond.cpp Bond::settings and friends at b332f28): a style without settings names
+    // itself as given in the command (hybrid for its sub-styles)
+    if (e instanceof NoSettingsError) throw new StyleError(`Illegal ${kind}_style ${name} argument: ${e.word}`);
+    throw e;
+  }
   if (!same && sys.hasBox) st.allocate(bondedKinds[kind].types(sys));
   sys.ff[kind] = st;
   if (kind === 'bond') attachBondStoreLocal(sys, st);
   sys.bump();
-}) as Handler;
+};
 
 /**
  * bond_style bpm/* store/local ID N values (bond_bpm.cpp settings): the broken-bond rows go to fix store/local ID,
@@ -326,7 +351,7 @@ const kspaceStyle: Handler = ({ sys }, a) => {
   if (!name) throw new StyleError('usage: kspace_style style args');
   if (name === 'none') { sys.ff.kspace = null; sys.bump(); return; }
   const make = KSPACE_STYLES[name];
-  if (!make) throw unsupported('kspace_style', name, KSPACE_STYLES);
+  if (!make) return loadNativeStyles().then(() => { throw unknownStyleError('kspace', name, () => unsupported('kspace_style', name, KSPACE_STYLES)); });
   const k = make();
   k.settings(a.slice(1), sys.styleContext());
   sys.ff.kspace = k;

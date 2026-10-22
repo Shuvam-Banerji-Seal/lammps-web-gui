@@ -1,4 +1,5 @@
 import type { SimState } from '../types';
+import { StyleError, type StyleContext } from './types';
 import type { Neighbor } from '../neighbor';
 
 /*
@@ -89,6 +90,14 @@ export const tallyPairVirial = (vatom: Float64Array, i: number, j: number, dx: n
   const v0 = 0.5 * dx * fx, v1 = 0.5 * dy * fy, v2 = 0.5 * dz * fz, v3 = 0.5 * dx * fy, v4 = 0.5 * dx * fz, v5 = 0.5 * dy * fz;
   vatom[6 * i] += v0; vatom[6 * i + 1] += v1; vatom[6 * i + 2] += v2; vatom[6 * i + 3] += v3; vatom[6 * i + 4] += v4; vatom[6 * i + 5] += v5;
   vatom[6 * j] += v0; vatom[6 * j + 1] += v1; vatom[6 * j + 2] += v2; vatom[6 * j + 3] += v3; vatom[6 * j + 4] += v4; vatom[6 * j + 5] += v5;
+};
+
+/**
+ * The checks every spin pair style's settings make first, after the word count (1 or 2 words): metal units. As native
+ * LAMMPS does (src/SPIN/pair_spin.cpp PairSpin::settings at b332f28).
+ */
+export const spinPairSettings = (ctx: StyleContext | undefined): void => {
+  if ((ctx?.unitStyle ?? ctx?.s?.units.style) !== 'metal') throw new StyleError('Spin pair styles require metal units');
 };
 
 /** Spin pair style that contributes precession vectors and reports its atom-level magnetic terms (fix nve/spin). */

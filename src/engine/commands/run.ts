@@ -2,6 +2,7 @@ import type { Ctx, Handler } from './args';
 import { int, num, missingArgs, numeric, inumeric, bnumeric, logical } from './args';
 import { StyleError, type KSpace } from '../force/types';
 import { removedStyleError } from '../deprecated';
+import { loadNativeStyles, unknownStyleError } from '../nativeStyles';
 import { gplHook } from '../gplHooks';
 import { checkFixStateNotStored } from '../fix/restartRecord';
 import { FIX_STYLES, COMPUTE_STYLES, styleNames } from '../styles';
@@ -55,7 +56,7 @@ const fix: Handler = ({ sys }, a) => {
   if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError('Replacing a fix, but new style != old style');
   const make = FIX_STYLES[style];
   if (!make) {
-    throw removedStyleError('fix', style) ?? new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${styleNames().fix.join(', ')}`);
+    throw unknownStyleError('fix', style, () => removedStyleError('fix', style) ?? new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${styleNames().fix.join(', ')}`));
   }
   if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError('Fix ID must be alphanumeric or underscore characters');
   // native's constructor of the style checks the number of words first (most styles; gplHook('fix'))
@@ -112,7 +113,7 @@ const compute: Handler = ({ sys }, a) => {
   if (sys.computes.some((c) => c.id === id)) throw new StyleError(`Reuse of compute ID '${id}'`);
   const make = COMPUTE_STYLES[style];
   if (!make) {
-    throw removedStyleError('compute', style) ?? new StyleError(`compute style '${style}' is not supported by the browser engine; supported: ${styleNames().compute.join(', ')}`);
+    throw unknownStyleError('compute', style, () => removedStyleError('compute', style) ?? new StyleError(`compute style '${style}' is not supported by the browser engine; supported: ${styleNames().compute.join(', ')}`));
   }
   if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError(`Compute ID ${id} must only have alphanumeric or underscore characters`);
   if (sys.groups.find(group) < 0) throw new StyleError(`Group ID ${group} requested by compute ${style} does not exist`);
@@ -213,7 +214,9 @@ const runStyle: Handler = ({ sys }, a) => {
   if (style === 'respa/omp') {
     throw new StyleError(`run_style ${style} is not supported by the browser engine (it runs velocity Verlet only)`);
   }
-  throw new StyleError(`unknown run_style '${style ?? ''}' (verlet, verlet/split, verlet/split/rk, respa or respa/omp)`);
+  return loadNativeStyles().then(() => {
+    throw unknownStyleError('integrate', style ?? '', () => new StyleError(`run_style ${style} is not supported by the browser engine (verlet, verlet/split, verlet/split/rk, respa)`));
+  });
 };
 
 // cfg is a lazily loaded helper (lazyStyles.ts group gpl_dump_cfg, loaded before the dump command by the session: its
@@ -245,7 +248,11 @@ const dump: Handler = ({ sys }, a) => {
   const { base, gzStyle } = compressStyle(style);
   // vtk, grid and grid/vtk are lazily loaded styles (lazyStyles.ts groups gpl_dump_vtk and gpl_dump_grid, loaded before
   // this command by the session)
-  if (!(DUMP_STYLES as string[]).includes(base) && !LAZY_DUMP_STYLES.includes(base)) throw removedStyleError('dump', style) ?? new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${[...DUMP_STYLES, ...LAZY_DUMP_STYLES, ...GZ_STYLES].join(', ')}`);
+  if (!(DUMP_STYLES as string[]).includes(base) && !LAZY_DUMP_STYLES.includes(base)) {
+    return loadNativeStyles().then(() => {
+      throw unknownStyleError('dump', style, () => removedStyleError('dump', style) ?? new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${[...DUMP_STYLES, ...LAZY_DUMP_STYLES, ...GZ_STYLES].join(', ')}`));
+    });
+  }
   let n: number | string;
   if (every.startsWith('v_')) n = every.slice(2);
   else {
@@ -748,7 +755,9 @@ export const createMinimize = (sys: System, style: string): void => {
 const minStyle: Handler = ({ sys }, a) => {
   const known = a[0] !== undefined && (Object.prototype.hasOwnProperty.call(MINIMIZERS, a[0]) || (MIN_STYLES as readonly string[]).includes(a[0]));
   if (!known) {
-    throw removedStyleError('min_style', a[0] ?? '') ?? new StyleError(`min_style '${a[0] ?? ''}' is not supported by the browser engine; supported: ${MIN_STYLES.join(', ')}`);
+    return loadNativeStyles().then(() => {
+      throw unknownStyleError('minimize', a[0] ?? '', () => removedStyleError('min_style', a[0] ?? '') ?? new StyleError(`min_style '${a[0] ?? ''}' is not supported by the browser engine; supported: ${MIN_STYLES.join(', ')}`));
+    });
   }
   createMinimize(sys, a[0]);
 };

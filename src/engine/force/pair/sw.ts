@@ -1,6 +1,6 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK } from '../../neighbor';
-import { parseNum, joinPotentialEntries } from '../util';
+import { logical, missingArgs, numeric, parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
 
 /*
@@ -293,24 +293,26 @@ export abstract class PairSWBase extends Pair {
   private sW = new Float64Array(0);
 
   override settings(args: string[], _ctx: StyleContext): void {
-    for (let k = 0; k < args.length; k++) {
+    // As native LAMMPS does (src/MANYBODY/pair_sw.cpp PairSW::settings and pair_sw_mod.cpp PairSWMOD::settings at
+    // b332f28): sw takes threebody yes|no (utils::logical), sw/mod takes maxdelcs delta1 delta2 (utils::numeric, both
+    // within 0-1, delta1 <= delta2); any other word stops at "Illegal pair_style <style> keyword"
+    const n = args.length;
+    let k = 0;
+    while (k < n) {
       const key = args[k];
       if (key === 'threebody' && !this.isMod) {
-        const v = args[++k];
-        if (v === 'on') this.threebody = true;
-        else if (v === 'off') this.threebody = false;
-        else throw new StyleError(`usage: pair_style ${this.name} threebody on|off (got '${v}')`);
+        if (k + 2 > n) throw missingArgs('pair_style sw');
+        this.threebody = logical(args[k + 1]);
+        k += 2;
       } else if (key === 'maxdelcs' && this.isMod) {
-        const d1 = parseNum(args[++k], 'delta1');
-        const d2 = parseNum(args[++k], 'delta2');
-        if (!(d1 >= 0) || !(d2 > d1)) throw new StyleError(`usage: pair_style ${this.name} maxdelcs delta1 delta2 with 0 <= delta1 < delta2 (got ${d1} ${d2})`);
+        if (k + 3 > n) throw missingArgs('pair_style sw/mod');
+        const d1 = numeric(args[k + 1]);
+        const d2 = numeric(args[k + 2]);
+        k += 3;
+        if (d1 < 0 || d1 > 1 || d2 < 0 || d2 > 1 || d1 > d2) throw new StyleError('Out of range value(s) for pair style sw/mod maxdelcs keyword');
         this.setDeltas(d1, d2);
-      } else if (key === 'threebody') {
-        throw new StyleError(`pair_style ${this.name} does not support the threebody keyword (only the plain sw style does)`);
-      } else if (key === 'maxdelcs') {
-        throw new StyleError(`pair_style ${this.name} does not support the maxdelcs keyword (only sw/mod does)`);
       } else {
-        throw new StyleError(`pair_style ${this.name} keyword '${key}' is not supported (keywords: ${this.isMod ? 'maxdelcs' : 'threebody'})`);
+        throw new StyleError(`Illegal pair_style ${this.isMod ? 'sw/mod' : 'sw'} keyword: ${key}`);
       }
     }
   }

@@ -104,9 +104,9 @@ describe('gw and gw/zbl input', () => {
   });
 
   it('gw/zbl needs metal or real units', () => {
-    const p = new PairGWZBL();
-    expect(() => p.settings([], ctxWith('', 'lj'))).toThrow(new StyleError('Pair gw/zbl requires metal or real units'));
-    expect(() => new PairGWZBL().settings([], ctxWith('', 'real'))).not.toThrow();
+    // the constructor's check (pair_style runs it with the unit style before settings)
+    expect(() => new PairGWZBL().constructorCheck({ atomStyle: 'atomic', units: 'lj' })).toThrow(new StyleError('Pair gw/zbl requires metal or real units'));
+    expect(() => new PairGWZBL().constructorCheck({ atomStyle: 'atomic', units: 'real' })).not.toThrow();
   });
 
   it('converts a metal file in real units and refuses a units tag it cannot convert', () => {

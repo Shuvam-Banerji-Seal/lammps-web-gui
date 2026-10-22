@@ -16,7 +16,8 @@ import { QUADRIC_2D, QUADRIC_3D, sphArrays } from './common';
 
 export class PairSPHRhoSum extends PairSPHBase {
   readonly name = 'sph/rhosum';
-  protected readonly attributesText = 'density';
+  protected readonly attributesText = 'attribute density';
+  protected readonly attributeFlags = ['rho'] as const;
   override needsFull = true;
   override needsHalf = false;
   /** Density is recomputed every nstep timesteps (0: never). */

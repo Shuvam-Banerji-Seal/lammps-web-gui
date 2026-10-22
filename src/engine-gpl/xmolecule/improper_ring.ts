@@ -10,7 +10,7 @@
  * MathSpecial::powint. The bond vectors of the three angles are taken from the copies of i, k and l nearest to j
  * (the owner of the improper). Native writedata = 0: no Impropers Coeffs section.
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { parseNum } from '../../engine/force/util';
 import { cosFma as cos } from '../libm/sincos_fma';
@@ -40,7 +40,7 @@ export class ImproperRing extends Bonded {
   private set!: Uint8Array;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

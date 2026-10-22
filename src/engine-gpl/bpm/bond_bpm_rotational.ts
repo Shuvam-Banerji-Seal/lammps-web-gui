@@ -17,6 +17,7 @@
  */
 import { delta } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import { bondKey, BondBPMBase, yesno } from './bond_bpm';
 import { add3, cross3, dot3, len3, normalize3, quatquat, qconjugate, qnormalize, quatrotvec, scale3, sub3, type Quat, type Vec3 } from './quat';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -94,16 +95,18 @@ export class BondBpmRotational extends BondBPMBase {
     const rest = this.takeCommon(args);
     for (let k = 0; k < rest.length; k += 2) {
       const key = rest[k], val = rest[k + 1];
-      if (val === undefined) throw new StyleError(`bond_style bpm/rotational: keyword '${key}' needs a value`);
+      // bond_bpm_rotational.cpp settings: the keyword, then its value
+      if (!['smooth', 'normalize', 'frame', 'damping'].includes(key)) throw new StyleError(`Illegal bond bpm command, invalid argument ${key}`);
+      if (val === undefined) throw missingArgs(`bond_style bpm/rotational ${key}`);
       if (key === 'smooth') this.smooth = yesno(val, 'bond_style bpm/rotational', key);
       else if (key === 'normalize') this.normalize = yesno(val, 'bond_style bpm/rotational', key);
       else if (key === 'frame') {
-        if (val !== 'average' && val !== 'particle') throw new StyleError(`bond_style bpm/rotational frame must be average or particle (got '${val}')`);
+        if (val !== 'average' && val !== 'particle') throw new StyleError(`Unknown frame style ${val}`);
         this.frame = val;
       } else if (key === 'damping') {
-        if (val !== 'derivative' && val !== 'dem') throw new StyleError(`bond_style bpm/rotational damping must be derivative or dem (got '${val}')`);
+        if (val !== 'derivative' && val !== 'dem') throw new StyleError(`Unknown damping style ${val}`);
         this.damping = val;
-      } else throw new StyleError(`illegal bond_style bpm/rotational keyword '${key}'`);
+      } else throw new StyleError(`Illegal bond bpm command, invalid argument ${key}`);
     }
     if (!this.breakOn && this.smooth) throw new StyleError('Illegal bond bpm command, must turn off smoothing with break no option');
   }

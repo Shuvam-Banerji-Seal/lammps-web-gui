@@ -21,26 +21,28 @@ const run = async (body: string) => {
 };
 
 describe('removed LAMMPS styles and commands', () => {
+  // native logs the note, then stops with "<Kind> style <name> is no longer available. " and the error page
   it.each([
-    ['pair_style reax/c NULL', "Pair style 'reax/c' has been renamed to 'reaxff'. Pair style reax/c is no longer available."],
-    ['pair_style meam/c', "Pair style 'meam/c' has been renamed to 'meam'. Pair style meam/c is no longer available."],
-    ['pair_style agni', "Pair style 'agni' has been removed from LAMMPS. Pair style agni is no longer available."],
-    ['pair_style hybrid lj/cut 2.5 reax/c NULL', "Pair style 'reax/c' has been renamed to 'reaxff'."],
-    ['fix 1 all reax/c/bonds 1 bonds.out', "Fix style 'reax/c/bonds' has been renamed to 'reaxff/bonds'. Fix style reax/c/bonds is no longer available."],
-    ['fix 1 all ave/spatial 1 1 1 x lower 0.5 vx', 'have been replaced by the more general fix ave/chunk'],
-    ['fix 1 all poems group all', 'The POEMS package has been removed from LAMMPS. Fix style poems is no longer available.'],
-    ['compute 1 all mesont estretch', "Please use pair style 'mesocnt' instead. Compute style mesont is no longer available."],
-    ['dump d all custom/mpiio 1 a.mpiio id x y z', 'The MPIIO package has been removed from LAMMPS. Dump style custom/mpiio is no longer available.'],
-    ['min_style fire/old', "Minimize style 'fire/old' has been removed from LAMMPS. Please use 'min_style fire' instead."],
-    ['message client md file tmp', 'The MESSAGE package has been replaced by the MDI package. The message command is no longer available.'],
-  ])('%s', async (cmd, want) => {
+    ['pair_style reax/c NULL', 'Pair style reax/c is no longer available.', "Pair style 'reax/c' has been renamed to 'reaxff'."],
+    ['pair_style meam/c', 'Pair style meam/c is no longer available.', "Pair style 'meam/c' has been renamed to 'meam'."],
+    ['pair_style agni', 'Pair style agni is no longer available.', "Pair style 'agni' has been removed from LAMMPS."],
+    ['pair_style hybrid lj/cut 2.5 reax/c NULL', 'Pair style reax/c is no longer available.', "Pair style 'reax/c' has been renamed to 'reaxff'."],
+    ['fix 1 all reax/c/bonds 1 bonds.out', 'Fix style reax/c/bonds is no longer available.', "Fix style 'reax/c/bonds' has been renamed to 'reaxff/bonds'."],
+    ['fix 1 all ave/spatial 1 1 1 x lower 0.5 vx', 'Fix style ave/spatial is no longer available.', 'have been replaced by the more general fix ave/chunk'],
+    ['fix 1 all poems group all', 'Fix style poems is no longer available.', 'The POEMS package has been removed from LAMMPS.'],
+    ['compute 1 all mesont estretch', 'Compute style mesont is no longer available.', "Please use pair style 'mesocnt' instead."],
+    ['dump d all custom/mpiio 1 a.mpiio id x y z', 'Dump style custom/mpiio is no longer available.', 'The MPIIO package has been removed from LAMMPS.'],
+    ['min_style fire/old', '', "Minimize style 'fire/old' has been removed from LAMMPS. Please use 'min_style fire' instead."],
+    ['message client md file tmp', 'The message command is no longer available.', 'The MESSAGE package has been replaced by the MDI package.'],
+  ])('%s', async (cmd, first, note) => {
     const { error } = await run(cmd);
-    expect(error).toContain(want);
+    expect(error.split('\n')[0].replace(/^line \d+: /, '')).toBe(first ? `${first} ` : '');
+    expect(error).toContain(note);
     expect(error).toContain('https://docs.lammps.org/err0038');
   });
 
-  it('a name that was never a LAMMPS style keeps the generic message', async () => {
-    expect((await run('pair_style no/such/style')).error).toContain("pair_style 'no/such/style' is not supported by the browser engine");
+  it('a name no LAMMPS package has stops as native does', async () => {
+    expect((await run('pair_style no/such/style')).error).toContain("Unrecognized pair style 'no/such/style'");
   });
 });
 

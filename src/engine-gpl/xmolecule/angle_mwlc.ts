@@ -9,7 +9,7 @@
  * Coefficients: "k1 k2 mu T" (angle_coeff N k1 k2 mu T). kB is force->boltz of the units style, T the temperature
  * of the coefficient line. The equilibrium angle is pi (native equilibrium_angle returns MY_PI).
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { exp } from '../libm/exp';
@@ -26,7 +26,7 @@ export class AngleMWLC extends Bonded {
   private set!: Uint8Array;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

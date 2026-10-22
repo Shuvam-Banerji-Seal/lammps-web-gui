@@ -1,6 +1,6 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
-import { parseNum, fmtCoeff } from '../util';
+import { logical, missingArgs, parseNum, fmtCoeff } from '../util';
 import { tallyAtom } from './lj_cut';
 
 /*
@@ -30,11 +30,12 @@ export class PairBpmSpring extends Pair {
   private ka = new Float64Array(0);
 
   settings(args: string[], _ctx: StyleContext): void {
+    // As native LAMMPS does (src/BPM/pair_bpm_spring.cpp PairBPMSpring::settings at b332f28): anharmonic yes|no
+    // (utils::logical); the missing-value message names pair_coeff, as native's does
     for (let k = 0; k < args.length; k += 2) {
-      if (args[k] !== 'anharmonic') throw new StyleError(`illegal pair_style bpm/spring keyword '${args[k]}'`);
-      if (args[k + 1] === 'yes') this.anharmonic = true;
-      else if (args[k + 1] === 'no') this.anharmonic = false;
-      else throw new StyleError(`pair_style bpm/spring anharmonic must be yes or no (got '${args[k + 1]}')`);
+      if (args[k] !== 'anharmonic') throw new StyleError(`Illegal pair_style command ${args[k]}`);
+      if (k + 1 >= args.length) throw missingArgs('pair_coeff bpm/spring anharmonic');
+      this.anharmonic = logical(args[k + 1]);
     }
   }
 

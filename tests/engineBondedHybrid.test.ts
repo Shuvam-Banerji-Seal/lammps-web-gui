@@ -104,7 +104,7 @@ describe('bond_style hybrid: settings', () => {
   });
 
   it('names an unsupported first sub-style in the error', async () => {
-    expect((await runScript(`${HEAD}bond_style hybrid foo\n`)).error).toMatch(/'foo' is not supported by the browser engine/);
+    expect((await runScript(`${HEAD}bond_style hybrid foo\n`)).error).toMatch(/Unrecognized bond style 'foo'/);
   });
 
   it('re-issuing bond_style hybrid clears the coefficients (measured: All bond coeffs are not set)', async () => {

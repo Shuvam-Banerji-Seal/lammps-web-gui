@@ -93,8 +93,8 @@ describe('run_style refusals name the keyword and say why', () => {
     expect(err).toMatch(/A KSpace style must be defined with verlet\/split\/rk/);
   });
 
-  it('keeps the unknown run_style message for a style that does not exist', async () => {
+  it('names a run_style that does not exist as native LAMMPS does', async () => {
     const err = await run('units lj\natom_style atomic\nregion box block 0 5 0 5 0 5\ncreate_box 1 box\nrun_style foo\n');
-    expect(err).toMatch(/unknown run_style 'foo'/);
+    expect(err).toMatch(/Unknown integrate style foo/);
   });
 });

@@ -1,6 +1,7 @@
 import type { Handler } from './args';
 import { int, num, yesno, latticeScale, keywords, missingArgs, logical, numeric, inumeric, bnumeric, bounds, initializing } from './args';
 import { StyleError } from '../force/types';
+import { unknownStyleError } from '../nativeStyles';
 import { errorUrl } from '../formula';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
@@ -109,7 +110,7 @@ const atomStyle: Handler = ({ sys }, a) => {
   noBox(sys, 'atom_style');
   const known = (w: string) => {
     if (!(ATOM_STYLES as string[]).includes(w)) {
-      throw new StyleError(`atom_style '${w}' is not supported by the browser engine; supported: ${ATOM_STYLES.join(', ')}, hybrid`);
+      throw unknownStyleError('atom', w, () => new StyleError(`atom_style '${w}' is not supported by the browser engine; supported: ${ATOM_STYLES.join(', ')}, hybrid`));
     }
   };
   // atom_style.html: "*sphere* arg = 0/1 (optional) for static/dynamic particle radii"; 1 is kept as sys.radvary (the

@@ -29,11 +29,11 @@ export class BondLepton extends Bonded {
   private ctx: StyleContext | null = null;
 
   settings(args: string[]): void {
-    if (args.length > 1) throw new StyleError('usage: bond_style lepton [auto_offset|no_offset]');
-    if (args.length === 1) {
+    // As native LAMMPS does (src/LEPTON/bond_lepton.cpp at b332f28): the first word only
+    if (args.length > 0) {
       if (args[0] === 'auto_offset') this.autoOffset = true;
       else if (args[0] === 'no_offset') this.autoOffset = false;
-      else throw new StyleError(`bond_style lepton: unknown argument '${args[0]}' (expected auto_offset or no_offset)`);
+      else throw new StyleError(`Unknown bond style lepton setting ${args[0]}`);
     }
   }
 

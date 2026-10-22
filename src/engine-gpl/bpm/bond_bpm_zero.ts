@@ -11,6 +11,7 @@
  */
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import { BondBPMBase, bondKey, yesno } from './bond_bpm';
 
 export class BondBpmZero extends BondBPMBase {
@@ -24,7 +25,9 @@ export class BondBpmZero extends BondBPMBase {
     const rest = this.takeCommon(args);
     for (let k = 0; k < rest.length; k += 2) {
       const key = rest[k], val = rest[k + 1];
-      if (val === undefined) throw new StyleError(`bond_style bpm/zero: keyword '${key}' needs a value`);
+      // bond_bpm_zero.cpp settings: the keyword, then its value
+      if (!['manybody'].includes(key)) throw new StyleError(`Illegal bond bpm command, invalid argument ${key}`);
+      if (val === undefined) throw missingArgs(`bond_style bpm/zero ${key}`);
       if (key === 'manybody') {
         if (yesno(val, 'bond_style bpm/zero', key)) throw new StyleError('bond_style bpm/zero keyword manybody yes is not supported by the browser engine');
       } else throw new StyleError(`Illegal bond bpm command, invalid argument ${key}`);

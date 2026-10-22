@@ -18,6 +18,7 @@
  */
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
+import { numeric } from '../../engine/force/util';
 import { DPD_UCG, DPD_UCGNEW } from '../../engine/atoms';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { tallyXYZ } from '../dpd/pair_dpd';
@@ -81,11 +82,7 @@ const exp6Pair = (r: number, rCut: number, rCutInv: number, rCut6inv: number, r6
 };
 
 /** A keyword-argument number (utils::numeric). */
-const numArg = (w: string | undefined): number => {
-  const v = Number(w);
-  if (w === undefined || w === '' || !Number.isFinite(v)) throw new StyleError(`Expected floating-point parameter instead of '${w ?? ''}'`);
-  return v;
-};
+const numArg = (w: string | undefined): number => numeric(w);
 
 export class PairExp6rx extends Pair {
   readonly name = 'exp6/rx';

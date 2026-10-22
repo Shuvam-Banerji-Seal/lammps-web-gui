@@ -364,19 +364,18 @@ const ROWS: [Row, string | null][] = [
   [{ dim: 'dimension 2\n', post: 'displace_atoms all ramp z 0 1 x 0 1' }, 'Must not displace atoms in z-direction with 2d system'],
   [{ dim: 'dimension 2\n', post: 'displace_atoms all rotate 0 0 0 1 0 0 90' }, 'Invalid displace_atoms rotate axis for 2d system'],
   [{ dim: 'dimension 2\n', post: 'displace_atoms all random 0.1 0.1 0.1 5' }, 'Must not displace atoms in z-direction with 2d system'],
+  [{ post: 'fix 2 all bogus' }, 'Unrecognized fix style \'bogus\''],
+  [{ post: 'compute 2 all bogus' }, 'Unrecognized compute style \'bogus\''],
+  [{ pre: 'atom_style bogus\n' }, 'Unrecognized atom style \'bogus\''],
 ];
 
 /**
- * Inputs the engine answers differently on purpose: [row, engine message, native result]. Native names an unknown
- * style or command "Unrecognized ... style" or "Unknown command" (the engine has no list of native names, so it names
- * what it lacks), deletes a thermo compute and fails at the next run (the engine refuses at once), and creates a
+ * Inputs the engine answers differently on purpose: [row, engine message, native result]. Native names a command it
+ * does not have "Unknown command" (the engine names a LAMMPS command it lacks as one it does not support), deletes a thermo compute and fails at the next run (the engine refuses at once), and creates a
  * compute before the box (the engine's computes need the box).
  */
 const DIFFERENT: [Row, string, string][] = [
-  [{ post: 'fix 2 all bogus' }, 'fix style \'bogus\' is not supported by the browser engine', 'ERROR: Unrecognized fix style \'bogus\''],
-  [{ post: 'compute 2 all bogus' }, 'compute style \'bogus\' is not supported by the browser engine', 'ERROR: Unrecognized compute style \'bogus\''],
   [{ post: 'uncompute thermo_temp' }, 'compute thermo_temp is used by thermo output and cannot be deleted by the browser engine', 'ERROR: Could not find compute pressure temperature ID thermo_temp'],
-  [{ pre: 'atom_style bogus\n' }, 'atom_style \'bogus\' is not supported by the browser engine', 'ERROR: Unrecognized atom style \'bogus\''],
   [{ post: 'delete_region nope' }, '\'delete_region\' is not supported by the in-browser engine', 'ERROR: Unknown command: delete_region nope'],
   [{ pre: 'compute c all temp\n' }, 'this needs a simulation box', 'OK'],
 ];

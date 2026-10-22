@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { Bonded, NoSettingsError, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { atomIndex, delta } from '../bonded_util';
 import { tallyAngle } from './harmonic';
 import { fmtCoeff, parseNum } from '../util';
@@ -49,7 +49,7 @@ export class AngleClass2 extends Bonded {
   private setBa!: Uint8Array;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

@@ -1,7 +1,8 @@
-import { Pair, StyleError, typeBounds, type BondedEquilibria, type KSpace, type PairCompute, type PairSep, type StyleContext, newAccum, clearAccum, type Accum, pairCoeffArgs } from '../types';
+import { Pair, StyleError, typeBounds, type BondedEquilibria, type KSpace, type PairCompute, type PairSep, type StyleContext, type PairConstructorWhere, newAccum, clearAccum, type Accum, pairCoeffArgs } from '../types';
 import { NEIGHMASK, type NeighList } from '../../neighbor';
-import { parseNum } from '../util';
+import { numeric } from '../util';
 import { removedStyleError } from '../../deprecated';
+import { unknownStyleError } from '../../nativeStyles';
 
 /*
  * pair_style hybrid, hybrid/overlay, hybrid/scaled, hybrid/molecular —
@@ -139,10 +140,12 @@ export class PairHybrid extends Pair {
     while (k < args.length) {
       let scale: number | string = 1;
       if (scaled) {
+        // As native LAMMPS does (src/pair_hybrid_scaled.cpp PairHybridScaled::settings at b332f28): a scale factor
+        // (utils::numeric, or v_name) is read only while a word follows it; a last word alone is left unread
+        if (k >= args.length - 1) break;
         const w = args[k++];
-        if (w === undefined) break;
         if (w.startsWith('v_')) scale = w.slice(2);
-        else scale = parseNum(w, 'hybrid/scaled scale factor');
+        else scale = numeric(w);
       }
       const name = args[k];
       if (name === undefined) throw new StyleError(`pair_style ${this.mode}: a scale factor must be followed by a sub-style`);
@@ -150,16 +153,21 @@ export class PairHybrid extends Pair {
       if (name === 'none') throw new StyleError(`pair_style ${this.mode}: none is not a sub-style (use pair_coeff I J none)`);
       const make = this.registry[name];
       if (!make) {
-        throw removedStyleError('pair_style', name) ?? new StyleError(`pair_style ${this.mode}: sub-style '${name}' is not supported by the browser engine; supported: ${Object.keys(this.registry).filter((n) => !n.startsWith('hybrid')).sort().join(', ')}`);
+        throw unknownStyleError('pair', name, () => removedStyleError('pair_style', name) ?? new StyleError(`pair_style ${this.mode}: sub-style '${name}' is not supported by the browser engine; supported: ${Object.keys(this.registry).filter((n) => !n.startsWith('hybrid')).sort().join(', ')}`));
       }
       // the sub-style's arguments run up to the next sub-style name (or scale factor)
       let e = k + 1;
       while (e < args.length && !this.startsSub(args, e)) e++;
       const style = make();
+      // As native LAMMPS does (src/pair_hybrid.cpp PairHybrid::settings at b332f28): each sub-style is constructed
+      // (its constructor checks) right before its settings()
+      if (this.constructorWhere) style.constructorCheck?.(this.constructorWhere);
       const subArgs = args.slice(k + 1, e);
       style.hybridOverlay = this.mode === 'hybrid/overlay';
       style.hybridSub = true;
       try {
+        const argMsg = this.subArgCheck?.(name, subArgs.length);
+        if (argMsg) throw new StyleError(argMsg);
         style.settings(subArgs, ctx);
       } catch (err) {
         if (!(err instanceof StyleError)) throw err;
@@ -170,10 +178,11 @@ export class PairHybrid extends Pair {
           const removed = removedStyleError('pair_style', w);
           if (removed) throw removed;
         }
+        // the sub-style's own message comes first, as native's; the engine's note on the words follows it
         const hint = words.length
-          ? ` If ${words.map((w) => `'${w}'`).join(' or ')} is meant as a pair style, the browser engine does not support it; supported: ${Object.keys(this.registry).filter((n) => !n.startsWith('hybrid')).sort().join(', ')}.`
+          ? `. If ${words.map((w) => `'${w}'`).join(' or ')} is meant as a pair style, the browser engine does not support it; supported: ${Object.keys(this.registry).filter((n) => !n.startsWith('hybrid')).sort().join(', ')}`
           : '';
-        throw new StyleError(`pair_style ${this.mode}: sub-style ${name} ${subArgs.join(' ')}: ${err.message}.${hint}`);
+        throw new StyleError(`${err.message}\n(pair_style ${this.mode}: sub-style ${name} ${subArgs.join(' ')}${hint})`);
       }
       const instance = subs.filter((s) => s.name === name).length + 1;
       subs.push({ style, name, instance, scale, specialLJ: null, specialCoul: null, used: false, half: null, full: null, evdwl: 0, ecoul: 0, evaluated: false, virial: new Float64Array(6) });
@@ -388,6 +397,11 @@ export class PairHybrid extends Pair {
   setVariableEvaluator(fn: (name: string) => number): void {
     this.evalVar = fn;
   }
+
+  /** The atom and unit style the sub-styles' constructor checks see (set by pair_style before settings). */
+  constructorWhere: PairConstructorWhere | null = null;
+  /** Native's count check of a sub-style's settings words (set by pair_style; null: none), run before its settings(). */
+  subArgCheck: ((style: string, narg: number) => string | null) | null = null;
 
   /**
    * Filters `list` to the pairs sub-style k owns (and, for hybrid/molecular,

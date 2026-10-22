@@ -24,6 +24,7 @@
  */
 import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
+import { numeric } from '../../engine/force/util';
 import { isLineStyle, isTriStyle, LINE_BONUS, LINE_FLAG, TRI_BONUS, TRI_BONUS_COLS, TRI_FLAG } from '../../engine/atoms';
 import { buildConnect2d, lineEnds, type Connect2d } from './connect2d';
 import { surfaceLocalFlatthresh } from './fix_surface_local';
@@ -125,7 +126,12 @@ export class PairSurfGranular extends Pair {
   private hist = new Map<string, Float64Array>();
 
   settings(args: string[], _ctx: StyleContext): void {
-    if (args.length) throw new StyleError('Illegal pair_style surf/granular command');
+    // PairGranular::settings: one word is a global cutoff (utils::numeric); any other count leaves the cutoffs to the
+    // particle sizes. This port takes its cutoffs from the sizes only.
+    if (args.length === 1) {
+      numeric(args[0]);
+      throw new StyleError('pair_style surf/granular with a global cutoff is not supported by the browser engine (omit it: the cutoffs follow the particle sizes)');
+    }
   }
 
   allocate(ntypes: number): void {

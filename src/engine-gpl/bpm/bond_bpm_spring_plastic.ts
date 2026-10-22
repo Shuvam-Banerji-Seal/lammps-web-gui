@@ -14,6 +14,7 @@
  */
 import { delta, atomIndex } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import { BondBPMBase, bondKey, yesno } from './bond_bpm';
 
 export class BondBpmSpringPlastic extends BondBPMBase {
@@ -29,7 +30,9 @@ export class BondBpmSpringPlastic extends BondBPMBase {
     const rest = this.takeCommon(args);
     for (let k = 0; k < rest.length; k += 2) {
       const key = rest[k], val = rest[k + 1];
-      if (val === undefined) throw new StyleError(`bond_style bpm/spring/plastic: keyword '${key}' needs a value`);
+      // bond_bpm_spring_plastic.cpp settings: the keyword, then its value
+      if (!['smooth', 'normalize'].includes(key)) throw new StyleError(`Illegal bond bpm command, invalid argument ${key}`);
+      if (val === undefined) throw missingArgs(`bond_style bpm/spring/plastic ${key}`);
       if (key === 'smooth') this.smooth = yesno(val, 'bond_style bpm/spring/plastic', key);
       else if (key === 'normalize') this.normalize = yesno(val, 'bond_style bpm/spring/plastic', key);
       else throw new StyleError(`Illegal bond bpm command, invalid argument ${key}`);

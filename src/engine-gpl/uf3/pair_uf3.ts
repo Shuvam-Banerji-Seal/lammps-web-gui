@@ -14,6 +14,7 @@
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
+import { inumeric } from '../../engine/force/util';
 import { uf3Basis2Constants, uf3Basis3Constants } from './bspline';
 import { idx3, key3, readUF3Potential, type UF3Potential } from './potfile';
 
@@ -50,9 +51,10 @@ export class PairUF3 extends Pair {
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 1) throw new StyleError('Invalid number of arguments for pair_style uf3  Are you using a 2-body or 2 & 3-body UF potential?');
-    if (args[0] === '2') this.nbody = 2;
-    else if (args[0] === '3') this.nbody = 3;
-    else throw new StyleError(`Pair style uf3 not (yet) implemented for ${args[0]}-body terms`);
+    const nbody = inumeric(args[0]);
+    if (nbody === 2) this.nbody = 2;
+    else if (nbody === 3) this.nbody = 3;
+    else throw new StyleError(`Pair style uf3 not (yet) implemented for ${nbody}-body terms`);
   }
 
   coeff(args: string[], ctx: StyleContext): void {

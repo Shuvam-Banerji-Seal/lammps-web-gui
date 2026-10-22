@@ -4,6 +4,8 @@
  *   line 1: 'pair_coef' is not supported by the in-browser engine (it is not LAMMPS). Supported commands: ...
  *   line 3: fix style 'bogus/style' is not supported by the browser engine; supported: adapt, ...
  *   line 2: velocity: unknown keyword 'bais' (supported: dist, sum, mom, ...)
+ *   line 4: Unrecognized fix style 'nvz'
+ *   (supported: adapt, ...)
  * The notebook shows the head, a "did you mean" for the closest supported name, and the list folded away.
  */
 export interface EngineErrorView {

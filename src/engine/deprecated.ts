@@ -19,7 +19,7 @@ export type RemovedKind = 'pair_style' | 'fix' | 'compute' | 'dump' | 'min_style
 
 const LABEL: Record<RemovedKind, string> = {
   pair_style: 'Pair style', fix: 'Fix style', compute: 'Compute style', dump: 'Dump style',
-  min_style: 'Minimize style', command: 'The',
+  min_style: 'The minimize style', command: 'The',
 };
 
 const AVE_SPATIAL =
@@ -69,9 +69,11 @@ const MORE = 'For more information see https://docs.lammps.org/err0038';
 export const removedStyleError = (kind: RemovedKind, name: string): StyleError | null => {
   if (!Object.prototype.hasOwnProperty.call(REMOVED[kind], name)) return null;
   const note = REMOVED[kind][name];
-  const what = kind === 'command' ? `The ${name} command is no longer available.`
-    : kind === 'min_style' && note ? '' : `${LABEL[kind]} ${name} is no longer available.`;
-  return new StyleError([note, what, MORE].filter(Boolean).join(' '));
+  // native prints the note to the log first, then stops with "<Kind> style <name> is no longer available. " and the
+  // error page; min_style fire/old stops with the note itself, on a line of its own
+  if (kind === 'min_style' && note) return new StyleError(`\n${note} \n${MORE}`);
+  const what = kind === 'command' ? `The ${name} command is no longer available.` : `${LABEL[kind]} ${name} is no longer available.`;
+  return new StyleError(`${what} \n${MORE}${note ? `\n${note}` : ''}`);
 };
 
 /**

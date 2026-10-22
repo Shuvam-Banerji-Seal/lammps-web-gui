@@ -79,7 +79,7 @@ export class PairReaxFF extends Pair {
       ctrl.thbCutsq = 0.00001;
       ctrl.bgCut = 0.3;
     } else {
-      const parsed = readControlFile(ctx.readFile(args[0]), args[0]);
+      const parsed = readControlFile(ctx.readFile(args[0], 'cannot open ReaxFF control file'), args[0]);
       ctrl.tabulate = 0;
       ctrl.bondCut = 5.0;
       ctrl.bgCut = 0.3;

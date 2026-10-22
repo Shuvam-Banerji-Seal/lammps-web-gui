@@ -114,8 +114,8 @@ describe('compute hma', () => {
 });
 
 describe('unsupported compute style', () => {
-  it('is refused by name (not registered: the engine rejects the style)', async () => {
+  it('is refused by name as native LAMMPS does (no package has the style)', async () => {
     const r = await run(`${LATTICE}compute e all ti/fl\nrun 0\n`);
-    expect(r.errors[0]).toMatch(/compute style 'ti\/fl' is not supported by the browser engine/);
+    expect(r.errors[0]).toMatch(/Unrecognized compute style 'ti\/fl'/);
   });
 });

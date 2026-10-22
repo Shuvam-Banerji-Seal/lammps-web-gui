@@ -18,7 +18,8 @@ import { tallyAtom } from '../../engine/force/pair/lj_cut';
 
 export class PairSPHTaitwater extends PairSPHBase {
   readonly name: string = 'sph/taitwater';
-  protected readonly attributesText = 'energy, density, and velocity estimates';
+  protected readonly attributesText = 'attributes energy, density, and velocity estimates';
+  protected readonly attributeFlags = ['esph', 'rho', 'vest'] as const;
   override needsHalf = true;
   /** Per type: reference density, sound speed, and the Tait bulk factor B. */
   protected rho0 = new Float64Array(0);

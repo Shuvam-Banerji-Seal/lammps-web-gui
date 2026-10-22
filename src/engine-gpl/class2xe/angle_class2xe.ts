@@ -17,7 +17,7 @@
  * which is kept as native has it. The angle clamp s >= 0.001 (SMALL) is native's.
  * Geometry: every atom is placed relative to the vertex (delta from the owner), as the other angle styles do.
  */
-import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { exp as libmExp } from '../libm/exp';
@@ -48,7 +48,7 @@ export class AngleClass2xe extends Bonded {
   private setBa!: Uint8Array;
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   allocate(ntypes: number): void {

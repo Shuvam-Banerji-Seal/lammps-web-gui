@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { Bonded, NoSettingsError, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { bondLoop } from './styles';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
 import { libm } from '../../libm';
@@ -34,7 +34,7 @@ export class BondGaussian extends Bonded {
   private terms: GaussTerm[][] = [];
 
   settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length) throw new StyleError(`bond_style gaussian takes no arguments (got '${args[0]}')`);
+    if (args.length) throw new NoSettingsError(args[0]);
   }
 
   // As native LAMMPS does (src/EXTRA-MOLECULE/bond_gaussian.cpp at b332f28, equilibrium_distance): the r0 of the first term

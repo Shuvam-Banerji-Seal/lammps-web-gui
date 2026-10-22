@@ -15,8 +15,8 @@
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, type Neighbor } from '../../engine/neighbor';
-import { parseNum } from '../../engine/force/util';
-import { spinContribute, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../../engine/force/spin_book';
+import { numeric, parseNum } from '../../engine/force/util';
+import { spinContribute, spinPairSettings, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../../engine/force/spin_book';
 import { HBAR, MUB2MU0, MUB2MU0HBINV } from './pair_spin_dipole_cut';
 import { fmLongOf } from './dipole_long_field';
 import { nativeFullLast } from '../neighbor/nativeOrder';
@@ -58,9 +58,11 @@ export class PairSpinDipoleLong extends Pair implements SpinPairStyle {
   private lastOrder: Int32Array | null = null;
   private lastList: object | null = null;
 
-  settings(args: string[], _ctx?: StyleContext): void {
-    if (args.length !== 1) throw new StyleError('usage: pair_style spin/dipole/long cutoff');
-    this.cutGlobal = parseNum(args[0], 'cutoff');
+  settings(args: string[], ctx?: StyleContext): void {
+    // PairSpin::settings: 1 or 2 words (the second is ignored), metal units; then the cutoff (utils::numeric)
+    if (args.length < 1 || args.length > 2) throw new StyleError('Incorrect number of args in pair_style pair/spin command');
+    spinPairSettings(ctx);
+    this.cutGlobal = numeric(args[0]);
     if (!(this.cutGlobal > 0)) throw new StyleError('spin/dipole/long: cutoff must be > 0');
   }
 

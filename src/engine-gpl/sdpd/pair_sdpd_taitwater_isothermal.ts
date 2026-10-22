@@ -33,6 +33,8 @@ const SQRT_2_INV = Math.sqrt(0.5);
 export class PairSDPDTaitwaterIsothermal extends PairSPHBase {
   readonly name: string = 'sdpd/taitwater/isothermal';
   protected readonly attributesText = 'density and its rate';
+  /** The constructor checks no atom attributes; init_style does (attributesMessage). */
+  protected readonly attributeFlags = [] as const;
   override needsHalf = true;
   /** Global settings: temperature, dynamic viscosity, and the random stream of the pair style. */
   private temperature = 0;
@@ -82,6 +84,10 @@ export class PairSDPDTaitwaterIsothermal extends PairSPHBase {
       this.bulk[i] = bOne;
     }
     this.forPairs(r.ilo, r.ihi, r.jlo, r.jhi, (i, j) => { this.h[i * this.nt + j] = cutOne; });
+  }
+
+  protected override attributesMessage(): string {
+    return 'Pair style dpd/taitwater/isothermal requires atom attributes rho and drho';
   }
 
   override initStyle(ctx: StyleContext): void {

@@ -18,6 +18,7 @@
  */
 import { delta } from '../../engine/force/bonded_util';
 import { StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import { parseNum } from '../../engine/force/util';
 import { BondBPMBase, bondKey, yesno } from './bond_bpm';
 import { pow as libmPow } from '../libm/pow';
@@ -45,7 +46,9 @@ export class BondBpmSpring extends BondBPMBase {
     const rest = this.takeCommon(args);
     for (let k = 0; k < rest.length; k += 2) {
       const key = rest[k], val = rest[k + 1];
-      if (val === undefined) throw new StyleError(`Illegal bond bpm command, missing argument for ${key}`);
+      // bond_bpm_spring.cpp settings: the keyword, then its value
+      if (!['smooth', 'normalize', 'volume/factor'].includes(key)) throw new StyleError(`Illegal bond bpm command, invalid argument ${key}`);
+      if (val === undefined) throw missingArgs(`bond_style bpm/spring ${key}`);
       if (key === 'smooth') this.smooth = yesno(val, 'bond_style bpm/spring', key);
       else if (key === 'normalize') this.normalize = yesno(val, 'bond_style bpm/spring', key);
       else if (key === 'volume/factor') this.volume = yesno(val, 'bond_style bpm/spring', key);

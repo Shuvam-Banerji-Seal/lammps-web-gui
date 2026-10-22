@@ -22,7 +22,7 @@ import type { Dump } from './output/dump';
 import type { Handler } from './commands/args';
 import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, nativeOrder, hasMolecule, hasCharge, isMolecularStyle } from './atoms';
 import { groupFunction } from './groupfn';
-import { LabelMap } from './labelmap';
+import { LabelMap, typeWord } from './labelmap';
 import { defaultMinSettings, type MinSettings } from './run/min';
 import { normalizeFileName, resolveFileName } from './fileName';
 
@@ -248,7 +248,7 @@ export class System {
 
   styleContext(): StyleContext {
     const freeze = this.fixes.find((f) => f.style === 'freeze');
-    return { s: this._state, readFile: (n) => this.readFile(n), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0, newtonPair: this.newtonPair, equalVariable: (n: string) => this.equalVariable(n), xlattice: this.lattice ? this.lattice.spacing[0] : 1, addFix: (make) => this.addStyleFix(make), fixOf: (st) => this.fixes.find((f) => f.style === st) ?? null, fixById: (id) => this.fixes.find((f) => f.id === id) ?? null, initialBoxExpansion: this.initSmall, runSteps: () => ({ begin: this.run.beginStep, end: this.run.endStep }) };
+    return { s: this._state, readFile: (n, o) => this.readFile(n, o), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0, newtonPair: this.newtonPair, equalVariable: (n: string) => this.equalVariable(n), atomTypeWord: (w: string) => typeWord(this.labels, 'atom', w), unitStyle: this.units.style, xlattice: this.lattice ? this.lattice.spacing[0] : 1, addFix: (make) => this.addStyleFix(make), fixOf: (st) => this.fixes.find((f) => f.style === st) ?? null, fixById: (id) => this.fixes.find((f) => f.id === id) ?? null, initialBoxExpansion: this.initSmall, runSteps: () => ({ begin: this.run.beginStep, end: this.run.endStep }) };
   }
 
   /** A fix a style adds at its own command time (StyleContext.addFix): replaces a fix with the same ID. */

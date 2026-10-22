@@ -242,13 +242,13 @@ const ROWS: [Row, string | null][] = [
 ];
 
 /**
- * Inputs native runs into undefined behaviour with (NaN velocities, an unset line search, a stale argument in a
- * message), refused or named by the engine: [row, engine message, native result].
+ * Inputs native runs into undefined behaviour with (NaN velocities, an unset line search that segfaults, a stale
+ * argument in a message), refused or named by the engine: [row, engine message, native result].
  */
 const REFUSED: [Row, string, string][] = [
   [{ post: 'velocity all create -1.0 87287' }, 'velocity create with a negative temperature is not supported by the browser engine', 'OK'],
   [{ post: 'velocity all zero bogus' }, 'Unknown velocity zero keyword bogus', 'ERROR: Unknown velocity zero keyword 1'],
-  [{ post: 'min_modify line spin_cubic', tail: 'minimize 1e-4 1e-6 5 50' }, 'min_modify line spin_cubic is only for the spin minimizers', 'OK'],
+  [{ post: 'min_modify line spin_cubic', tail: 'minimize 1e-4 1e-6 5 50' }, 'min_modify line spin_cubic is only for the spin minimizers', 'Segmentation fault'],
 ];
 
 describe('velocity and the modify commands as native LAMMPS', () => {

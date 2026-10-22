@@ -44,23 +44,23 @@ describe('fix nvt / npt / nph keywords', () => {
     expect(await errorOf('fix 1 all nph iso 1.0 1.0 1.0 temp 1.0 1.0 0.5')).toMatch(/Temperature control can not be used with fix nph/);
   });
 
-  it('Pdamp and Tdamp must be positive', async () => {
-    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 0.0')).toMatch(/Pdamp must be > 0/);
-    expect(await errorOf('fix 1 all nvt temp 1.0 1.0 0.0')).toMatch(/Tdamp must be > 0/);
+  it('Pdamp and Tdamp must be positive (native texts)', async () => {
+    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 0.0')).toMatch(/Fix npt damping parameters must be > 0.0/);
+    expect(await errorOf('fix 1 all nvt temp 1.0 1.0 0.0')).toMatch(/Temperature damping for fix nvt cannot be <= 0.0/);
   });
 
   it('couple accepts only none, xyz, xy, yz, xz', async () => {
-    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 1.0 couple abc')).toMatch(/couple must be none, xyz, xy, yz or xz/);
+    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 1.0 couple abc')).toMatch(/Illegal fix npt couple option: abc/);
   });
 
   it('coupled dimensions need identical Pstart, Pstop and Pdamp', async () => {
-    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 x 1.0 1.0 1.0 y 2.0 2.0 1.0 couple xy')).toMatch(/identical Pstart, Pstop and Pdamp/);
-    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 x 1.0 1.0 1.0 y 1.0 1.0 2.0 couple xy')).toMatch(/identical Pstart, Pstop and Pdamp/);
+    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 x 1.0 1.0 1.0 y 2.0 2.0 1.0 couple xy')).toMatch(/Invalid fix npt pressure settings/);
+    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 x 1.0 1.0 1.0 y 1.0 1.0 2.0 couple xy')).toMatch(/Invalid fix npt pressure settings/);
   });
 
   it('tilt keywords need a triclinic box', async () => {
-    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 tri 1.0 1.0 1.0')).toMatch(/tilt keywords need a triclinic box/);
-    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 xy 0.0 0.0 1.0')).toMatch(/tilt keywords need a triclinic box/);
+    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 tri 1.0 1.0 1.0')).toMatch(/Can not specify Pxy\/Pxz\/Pyz in fix npt with non-triclinic box/);
+    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 xy 0.0 0.0 1.0')).toMatch(/Can not specify Pxy\/Pxz\/Pyz in fix npt with non-triclinic box/);
   });
 
   it('a triclinic box accepts the tilt keywords', async () => {
@@ -74,7 +74,7 @@ describe('fix nvt / npt / nph keywords', () => {
   });
 
   it('mtk and the nonzero keyword values are validated', async () => {
-    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 1.0 mtk maybe')).toMatch(/mtk must be yes or no/);
+    expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 1.0 mtk maybe')).toMatch(/Expected boolean parameter instead of 'maybe' in input script or data file/);
     expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 1.0 pchain -1')).toMatch(/Invalid fix npt pchain argument: -1/);
     expect(await errorOf('fix 1 all npt temp 1.0 1.0 0.5 x 1.0 1.0 1.0 nreset -2')).toMatch(/Invalid fix npt nreset argument: -2/);
   });
@@ -94,6 +94,6 @@ describe('fix nvt / npt / nph keywords', () => {
   it('barostatting a non-periodic dimension is refused', async () => {
     const np = BASE.replace('units lj', 'units lj\nboundary p p f');
     const session = new Session({ emit: (_e: EngineEvent) => {} });
-    await expect(session.execute(`${np}\nfix 1 all npt temp 1.0 1.0 0.5 z 1.0 1.0 1.0\nrun 0\n`)).rejects.toThrow(/non-periodic dimension/);
+    await expect(session.execute(`${np}\nfix 1 all npt temp 1.0 1.0 0.5 z 1.0 1.0 1.0\nrun 0\n`)).rejects.toThrow('Cannot use fix npt on a non-periodic z dimension');
   });
 });

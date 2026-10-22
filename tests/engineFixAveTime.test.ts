@@ -216,7 +216,7 @@ run 10`);
 
   it('rejects bad arguments', async () => {
     for (const [fix, msg] of [
-      ['fix 1 all print 5', 'usage'],
+      ['fix 1 all print 5', 'Illegal fix print command: missing argument(s)'],
       ['fix 1 all print 0 "x"', 'N must be a positive integer'],
       ['fix 1 all print 5 "x" screen maybe', 'screen must be yes or no'],
       ['fix 1 all print 5 "x" bogus yes', "unknown keyword 'bogus'"],

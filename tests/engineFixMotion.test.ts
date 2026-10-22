@@ -335,7 +335,7 @@ run             1
 create_atoms    1 single 2 5 5
 mass            1 1.0
 `;
-    expect(errText((await runScript(`${base}\nfix 1 all recenter 0.0 5.0\nrun 1\n`)).error)).toMatch(/usage/);
+    expect(errText((await runScript(`${base}\nfix 1 all recenter 0.0 5.0\nrun 1\n`)).error)).toMatch(/Illegal fix recenter command: missing argument/);
     expect(errText((await runScript(`${base}\nfix 1 all recenter 0.0 bogus 0.0 units box\nrun 1\n`)).error)).toMatch(/NULL or INIT/);
     expect(errText((await runScript(`${base}\nfix 1 all recenter 0.0 0.0 0.0 units parsecs\nrun 1\n`)).error)).toMatch(/box or lattice or fraction/);
     expect(errText((await runScript(`${base}\nfix 1 all recenter 0.0 0.0 0.0 shift\nrun 1\n`)).error)).toMatch(/shift needs a group-ID/);
@@ -390,9 +390,9 @@ run             2
 create_atoms    1 single 5 5 5
 mass            1 1.0
 `;
-    expect(errText((await runScript(`${base}\nfix 1 all nve/limit\nrun 1\n`)).error)).toMatch(/usage/);
+    expect(errText((await runScript(`${base}\nfix 1 all nve/limit\nrun 1\n`)).error)).toMatch(/Illegal fix nve\/limit command: missing argument/);
     expect(errText((await runScript(`${base}\nfix 1 all nve/limit -0.5\nrun 1\n`)).error)).toMatch(/positive distance/);
-    expect(errText((await runScript(`${base}\nfix 1 all nve/limit 0.5 0.2\nrun 1\n`)).error)).toMatch(/usage/);
+    expect(errText((await runScript(`${base}\nfix 1 all nve/limit 0.5 0.2\nrun 1\n`)).error)).toMatch(/Illegal fix nve\/limit command: missing argument/);
   });
 });
 
@@ -432,7 +432,7 @@ ${VDUMP}
 create_atoms    1 single 5 5 5
 mass            1 1.0
 `;
-    expect(errText((await runScript(`${base}\nfix 1 all nve/noforce 0.5\nrun 1\n`)).error)).toMatch(/no arguments/);
+    expect(errText((await runScript(`${base}\nfix 1 all nve/noforce 0.5\nrun 1\n`)).error)).toMatch(/Illegal fix nve\/noforce command: missing argument/);
   });
 });
 

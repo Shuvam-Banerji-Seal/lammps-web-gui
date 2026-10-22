@@ -33,8 +33,8 @@ const run = async (script: string): Promise<{ errors: string[]; thermo: ThermoRo
 
 describe('compute cnp/atom', () => {
   it('needs exactly one cutoff argument and a positive cutoff', async () => {
-    expect((await run(`${LATTICE}compute c all cnp/atom\nrun 0\n`)).errors[0]).toMatch(/usage: compute ID group-ID cnp\/atom cutoff/);
-    expect((await run(`${LATTICE}compute c all cnp/atom 3.0 3.0\nrun 0\n`)).errors[0]).toMatch(/usage/);
+    expect((await run(`${LATTICE}compute c all cnp/atom\nrun 0\n`)).errors[0]).toMatch(/Illegal compute cnp\/atom command/);
+    expect((await run(`${LATTICE}compute c all cnp/atom 3.0 3.0\nrun 0\n`)).errors[0]).toMatch(/Illegal compute cnp\/atom command/);
     expect((await run(`${LATTICE}compute c all cnp/atom 0\nrun 0\n`)).errors[0]).toMatch(/cutoff must be > 0/);
   });
 

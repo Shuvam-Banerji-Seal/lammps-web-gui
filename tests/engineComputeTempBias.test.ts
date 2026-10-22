@@ -102,7 +102,7 @@ describe('compute temp/partial', () => {
   });
 
   it('rejects bad flags and argument counts', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/partial 1 1`)).rejects.toThrow('temp/partial xflag yflag zflag');
+    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/partial 1 1`)).rejects.toThrow('Illegal compute temp/partial command');
     await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/partial 1 1 2`)).rejects.toThrow('must be 0 or 1');
     await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/partial 0 0 0`)).rejects.toThrow('all three flags are 0');
   });
@@ -150,7 +150,7 @@ describe('compute temp/com', () => {
   });
 
   it('rejects arguments', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/com 1`)).rejects.toThrow('temp/com takes no arguments');
+    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/com 1`)).rejects.toThrow('Compute temp/com command requires exactly 3 arguments');
   });
 });
 
@@ -218,7 +218,7 @@ describe('compute temp/region', () => {
   });
 
   it('rejects a missing region-ID and an unknown region', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/region`)).rejects.toThrow('temp/region region-ID');
+    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/region`)).rejects.toThrow('Illegal compute temp/region command');
     await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/region nowhere\nrun 0`)).rejects.toThrow("region ID 'nowhere' does not exist");
   });
 });

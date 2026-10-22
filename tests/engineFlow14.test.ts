@@ -37,7 +37,7 @@ describe('w14flow: fix accelerate/cos', () => {
 
 describe('w14flow: compute viscosity/cos', () => {
   it('rejects arguments', async () => {
-    await expect(run(`${base}compute c all viscosity/cos 3\nrun 0\n`)).rejects.toThrow(/takes no arguments/);
+    await expect(run(`${base}compute c all viscosity/cos 3\nrun 0\n`)).rejects.toThrow(/Illegal compute viscosity\/cos command/);
   });
   it('is usable in thermo as a 7-vector', async () => {
     const ev = await run(`${base}compute c all viscosity/cos\nthermo_style custom step c_c[7]\nrun 0\n`);

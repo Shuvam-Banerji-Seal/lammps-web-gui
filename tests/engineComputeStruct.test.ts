@@ -96,7 +96,7 @@ describe('compute cna/atom', () => {
       if (!(mask[i] & bit)) expect(vals[i]).toBe(0);
     }
     let e = await errorOf(`${FCC}\ncompute n all cna/atom\nrun 0\n`);
-    expect((e as Error).message).toMatch(/usage: compute ID group-ID cna\/atom cutoff/);
+    expect((e as Error).message).toMatch(/Illegal compute cna\/atom command/);
     e = await errorOf(`${FCC}\ncompute n all cna/atom -1.0\nrun 0\n`);
     expect((e as Error).message).toMatch(/cutoff must be > 0/);
   });

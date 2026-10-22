@@ -115,7 +115,7 @@ run 0`);
 
   it('rejects malformed arguments with a style error', async () => {
     expect((await run(`${HEADER}
-fix fd all numdiff 1`)).error?.message).toMatch(/expected exactly Nevery and delta/);
+fix fd all numdiff 1`)).error?.message).toMatch(/Illegal fix numdiff command/);
     expect((await run(`${HEADER}
 fix fd all numdiff 0 1e-6`)).error?.message).toMatch(/Nevery must be a positive integer/);
     expect((await run(`${HEADER}

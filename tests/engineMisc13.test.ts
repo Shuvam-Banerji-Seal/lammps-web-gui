@@ -56,8 +56,8 @@ pair_coeff * *
 
 describe('compute event/displace', () => {
   it('needs exactly one threshold argument', async () => {
-    await expect(runScript(`${ONE_ATOM}\ncompute e all event/displace`)).rejects.toThrow('expected one argument (threshold)');
-    await expect(runScript(`${ONE_ATOM}\ncompute e all event/displace 0.5 0.5`)).rejects.toThrow('expected one argument (threshold)');
+    await expect(runScript(`${ONE_ATOM}\ncompute e all event/displace`)).rejects.toThrow('Illegal compute event/displace command');
+    await expect(runScript(`${ONE_ATOM}\ncompute e all event/displace 0.5 0.5`)).rejects.toThrow('Illegal compute event/displace command');
   });
 
   it('rejects a threshold that is not a positive number', async () => {
@@ -82,7 +82,7 @@ run 5`);
 
 describe('fix controller', () => {
   it('checks its argument count and Nevery', async () => {
-    await expect(runScript(`${ONE_ATOM}\nvariable c internal 0\nfix f all controller 1 1 1 1 1 v_c 0.5`)).rejects.toThrow('expected Nevery');
+    await expect(runScript(`${ONE_ATOM}\nvariable c internal 0\nfix f all controller 1 1 1 1 1 v_c 0.5`)).rejects.toThrow('Illegal fix controller command');
     await expect(runScript(`${ONE_ATOM}\nvariable c internal 0\nfix f all controller 0 1 1 1 1 v_c 0.5 c`)).rejects.toThrow('Nevery must be a positive integer');
   });
 

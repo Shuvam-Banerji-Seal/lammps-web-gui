@@ -148,7 +148,7 @@ run 4
   it('rejects the unsupported and inconsistent arguments with a StyleError', async () => {
     const cases: [string, RegExp][] = [
       [`fix w all widom 1 1 2 12345 1.0 bogus\n`, /unknown keyword 'bogus'/],
-      [`fix w all widom 1 1 2 12345\n`, /usage: fix ID group-ID widom/],
+      [`fix w all widom 1 1 2 12345\n`, /Illegal fix widom command: missing argument/],
       [`fix w all widom 0 1 2 12345 1.0\n`, /N must be a positive integer/],
       [`fix w all widom 1 1 2 0 1.0\n`, /seed must be a positive integer/],
       [`fix w all widom 1 1 2 12345 -1.0\n`, /T must be > 0/],

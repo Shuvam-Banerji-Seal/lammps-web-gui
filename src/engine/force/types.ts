@@ -878,6 +878,12 @@ export abstract class KSpace {
    */
   rkFlag = false;
   /**
+   * The solver computes the long-range interaction of two groups for compute group/group (native
+   * KSpace::group_group_enable, 0 by default; ewald, pppm and pppm/cg set it). docs.lammps.org/compute_group_group.html:
+   * "Not all Kspace styles support the calculation of group/group interactions. The regular ewald and pppm styles do."
+   */
+  groupGroupEnable = false;
+  /**
    * When true, the charge sums of the self and background energies keep the values of the last refresh instead of
    * following the charges at each compute. A fix that changes charges without changing the atom count sets it (the
    * browser port of fix bond/react does). Measured with native LAMMPS (black box): after a reaction changes the

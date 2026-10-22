@@ -12,11 +12,12 @@
  * partitions prints the same thermo as kspace_style pppm with run_style verlet, to all 15 printed digits. The one
  * partition here computes the whole solve: this class is the engine's PPPM with native's rk_flag, which the run
  * checks (src/engine/commands/run.ts): pppm/rk needs run_style verlet/split/rk and two partitions.
- * The constructor's group_group_enable = 0 needs nothing here: compute group/group refuses kspace yes for every solver.
+ * The constructor's group_group_enable = 0 is groupGroupEnable = false.
  */
 import { KSpacePPPM } from '../../engine/force/kspace/pppm';
 
 export class KSpacePPPMRK extends KSpacePPPM {
   override readonly name: string = 'pppm/rk';
   override rkFlag = true;
+  override groupGroupEnable = false;
 }

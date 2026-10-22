@@ -16,7 +16,7 @@
  * ignores them).
  */
 import { Compute } from '../../engine/compute/compute';
-import { walkTallyPairs } from '../../engine/compute/tally';
+import { walkTallyPairs, warnUntallied } from '../../engine/compute/tally';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 
@@ -80,11 +80,13 @@ export class ComputeHeatFluxVirialTally extends Compute {
   }
 
   protected computeScalar(): number {
+    warnUntallied(this.sys, 'Stress');
     this.evaluate();
     return this.total;
   }
 
   protected computePeratom(): void {
+    warnUntallied(this.sys, 'Stress');
     this.evaluate();
   }
 }

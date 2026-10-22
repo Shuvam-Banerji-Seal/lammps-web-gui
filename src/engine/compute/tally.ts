@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { logical } from '../force/util';
 import { hasMolecule } from '../atoms';
+import { gplHook } from '../gplHooks';
 
 /*
  * Pairwise group computes (docs.lammps.org/compute_group_group.html and
@@ -58,9 +59,8 @@ import { hasMolecule } from '../atoms';
  * The per-atom outputs are listed by compute ID in the engine's per-atom convention (length n, indexed by
  * the local atom index); ghosts add to their owner.
  *
- * Not implemented (refused by name, or not registered): kspace yes for group/group (the long-range
- * group-group term is not in this engine), molecule keyword for the tally computes, pe/mol/tally,
- * heat/flux/tally and heat/flux/virial/tally.
+ * kspace yes for group/group: the long-range part comes from the lazily loaded helper (GroupGroupKspaceHook).
+ * pe/mol/tally, heat/flux/tally and heat/flux/virial/tally are ports in src/engine-gpl (lazyStyles.ts).
  */
 
 export type MolMode = 'off' | 'inter' | 'intra';
@@ -126,15 +126,45 @@ export const walkTallyPairs = (
   }
 };
 
+/**
+ * As native LAMMPS's tally computes do (src/TALLY/compute_*_tally.cpp compute_scalar, compute_vector and compute_peratom
+ * at b332f28: "if (!force->pair->did_tally_callback())"): a warning when the pair style's force computation tallies no
+ * pair, as pair zero and zero/coul (src/pair_zero.cpp compute, no ev_tally call) do. what: Energy for pe/tally and
+ * pe/mol/tally, Stress for the others.
+ */
+export const warnUntallied = (sys: System, what: 'Energy' | 'Stress'): void => {
+  const name = sys.ff.pair?.name;
+  if (name === 'zero' || name === 'zero/coul') sys.warn(`${what} was not tallied by pair style\nFor more information see https://docs.lammps.org/err0011`);
+};
+
 /** Per-atom tally values are indexed by the local atom index; a ghost neighbour adds to its owner. */
 const atomIndex = (sys: System, j: number): number => sys.nb.owner[j];
+
+/** The self-energy and k = 0 terms of the long-range part of compute group/group, found once per run. */
+export interface GroupGroupKspaceTerms { eSelf: number; eCorrection: number }
+
+/**
+ * The long-range part of compute group/group (kspace yes), from the lazily loaded helper of the style word
+ * (src/engine-gpl/compute/group_group_kspace.ts, through gplHook('group/group')).
+ */
+export interface GroupGroupKspaceHook {
+  /** At init: the kspace style checks. */
+  init(sys: System): void;
+  /** The self-energy and k = 0 terms of the two groups (native's init, once the solver has its G-ewald). */
+  terms(sys: System, bitA: number, bitB: number): GroupGroupKspaceTerms;
+  /** The long-range energy of the two groups (with the k = 0 term when boundary is yes) and the force on the first. */
+  contribution(sys: System, bitA: number, bitB: number, terms: GroupGroupKspaceTerms, boundary: boolean): { e: number; f: number[] };
+}
 
 /** compute group/group group-ID group2-ID [pair yes|no] [kspace yes|no] [boundary yes|no] [molecule off|inter|intra]. */
 export class ComputeGroupGroup extends Compute {
   readonly style = 'group/group';
   private readonly group2Bit: number;
   private readonly pairOn: boolean;
+  private readonly kspaceOn: boolean;
+  private readonly boundaryOn: boolean;
   private readonly molMode: MolMode;
+  private kspaceTerms: GroupGroupKspaceTerms | null = null;
   private cacheEpoch = -1;
   private energy = 0;
 
@@ -146,7 +176,7 @@ export class ComputeGroupGroup extends Compute {
     if (!args.length) throw illegal();
     if (sys.groups.find(args[0]) < 0) throw new StyleError(`Group ID ${args[0]} requested by compute group/group does not exist`);
     this.group2Bit = sys.groups.bit(args[0]);
-    let pairOn = true, mol: MolMode = 'off';
+    let pairOn = true, kspaceOn = false, boundaryOn = true, mol: MolMode = 'off';
     for (let a = 1; a < args.length; a += 2) {
       const key = args[a], val = args[a + 1];
       if (key !== 'pair' && key !== 'kspace' && key !== 'boundary' && key !== 'molecule') throw illegal();
@@ -154,9 +184,8 @@ export class ComputeGroupGroup extends Compute {
       if (key === 'pair' || key === 'kspace' || key === 'boundary') {
         const on = logical(val);
         if (key === 'pair') pairOn = on;
-        if (key === 'kspace' && on) {
-          throw new StyleError(`compute ${id} group/group: kspace yes is not supported by the browser engine (the long-range group-group term is not implemented)`);
-        }
+        else if (key === 'kspace') kspaceOn = on;
+        else boundaryOn = on;
       } else {
         if (val !== 'off' && val !== 'inter' && val !== 'intra') throw illegal();
         if (val !== 'off' && !hasMolecule(sys.state)) throw new StyleError('Compute group/group molecule requires molecule IDs');
@@ -164,6 +193,8 @@ export class ComputeGroupGroup extends Compute {
       }
     }
     this.pairOn = pairOn;
+    this.kspaceOn = kspaceOn;
+    this.boundaryOn = boundaryOn;
     this.molMode = mol;
     this.scalarFlag = true;
     this.vectorFlag = true;
@@ -173,7 +204,19 @@ export class ComputeGroupGroup extends Compute {
     this.vector = new Float64Array(3);
   }
 
-  /** One pass over the counted pairs gives the energy (scalar) and the force on group1 (vector). */
+  init(): void {
+    // As native LAMMPS does (src/compute_group_group.cpp ComputeGroupGroup::init at b332f28): the pair style checks (a
+    // hybrid style is left to its sub-styles), then the kspace style's (the lazily loaded helper). Native computes the
+    // correction terms there too; the engine's solver chooses its G-ewald after the computes' init, so the terms are
+    // found at the first evaluation of the run, with the same G-ewald.
+    const pair = this.sys.ff.pair;
+    if (this.pairOn && !pair) throw new StyleError('No pair style defined for compute group/group');
+    if (pair && !pair.name.startsWith('hybrid') && !pair.single) throw new StyleError('Pair style does not support compute group/group');
+    if (this.kspaceOn) gplHook<GroupGroupKspaceHook>('group/group').init(this.sys);
+    this.kspaceTerms = null;
+  }
+
+  /** One pass over the counted pairs gives the energy (scalar) and the force on group1 (vector); kspace yes adds the long-range part. */
   private evaluate(): void {
     if (this.cacheEpoch === this.sys.epoch) return;
     const f = new Float64Array(3);
@@ -182,11 +225,21 @@ export class ComputeGroupGroup extends Compute {
       const s = this.sys.state;
       walkTallyPairs(this.sys, this.id, this.groupBit, this.group2Bit, this.molMode, (i, j, evdwl, ecoul, fforce, dx, dy, dz) => {
         e += evdwl + ecoul;
-        // the force on the group1 atoms of the pair (both when both atoms are in group1)
+        // As native LAMMPS does (src/compute_group_group.cpp pair_contribution at b332f28): the force of group2 on
+        // group1 is added when I is in group1 and J in group2, and subtracted when J is in group1 and I in group2 (a
+        // pair with both atoms in both groups adds nothing)
+        const mi = s.mask[i], mj = s.mask[atomIndex(this.sys, j)];
         const fx = fforce * dx, fy = fforce * dy, fz = fforce * dz;
-        if (s.mask[i] & this.groupBit) { f[0] += fx; f[1] += fy; f[2] += fz; }
-        if (s.mask[atomIndex(this.sys, j)] & this.groupBit) { f[0] -= fx; f[1] -= fy; f[2] -= fz; }
+        if ((mi & this.groupBit) && (mj & this.group2Bit)) { f[0] += fx; f[1] += fy; f[2] += fz; }
+        if ((mj & this.groupBit) && (mi & this.group2Bit)) { f[0] -= fx; f[1] -= fy; f[2] -= fz; }
       });
+    }
+    if (this.kspaceOn) {
+      const hook = gplHook<GroupGroupKspaceHook>('group/group');
+      this.kspaceTerms ??= hook.terms(this.sys, this.groupBit, this.group2Bit);
+      const k = hook.contribution(this.sys, this.groupBit, this.group2Bit, this.kspaceTerms, this.boundaryOn);
+      e += k.e;
+      f[0] += k.f[0]; f[1] += k.f[1]; f[2] += k.f[2];
     }
     this.energy = e;
     this.vector.set(f);
@@ -283,11 +336,13 @@ export class ComputePairTally extends Compute {
   }
 
   protected computeScalar(): number {
+    warnUntallied(this.sys, this.style === 'pe/tally' ? 'Energy' : 'Stress');
     this.evaluate();
     return this.total;
   }
 
   protected computePeratom(): void {
+    warnUntallied(this.sys, this.style === 'pe/tally' ? 'Energy' : 'Stress');
     this.evaluate();
   }
 }

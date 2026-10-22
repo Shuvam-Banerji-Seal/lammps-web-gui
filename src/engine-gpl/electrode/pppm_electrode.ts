@@ -24,6 +24,8 @@ import type { ElectrodeKSpace } from './ewald_electrode';
 
 export class KSpacePPPMElectrode extends KSpacePPPM implements ElectrodeKSpace {
   override readonly name = 'pppm/electrode';
+  /** pppm_electrode.cpp (PPPMElectrode::PPPMElectrode at b332f28): group_group_enable = 0. */
+  override groupGroupEnable = false;
   protected override readonly kspaceLabel: string = 'PPPM/electrode';
   qqrd2e = 0;
   private boundcorr: BoundaryCorrection = new NoBoundaryCorrection();

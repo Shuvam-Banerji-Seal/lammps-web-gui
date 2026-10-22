@@ -51,6 +51,8 @@ const bspline = (p: number, x: number): number => {
 
 export class KSpacePPPMDielectric extends KSpacePPPM {
   override readonly name: string = 'pppm/dielectric';
+  /** pppm_dielectric.cpp (PPPMDielectric::PPPMDielectric at b332f28): group_group_enable = 0. */
+  override groupGroupEnable = false;
   /** Electric field of the mesh at each owned atom, LAMMPS efield: scale * epsilon_i * E / V (3 per atom). */
   efield = new Float64Array(0);
   private dieMesh: [number, number, number] = [0, 0, 0];

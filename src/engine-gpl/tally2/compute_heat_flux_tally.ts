@@ -23,7 +23,7 @@
  * the engine refuses the first case through walkTallyPairs and reports the second through the log.
  */
 import { Compute } from '../../engine/compute/compute';
-import { walkTallyPairs } from '../../engine/compute/tally';
+import { walkTallyPairs, warnUntallied } from '../../engine/compute/tally';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 
@@ -103,6 +103,7 @@ export class ComputeHeatFluxTally extends Compute {
   }
 
   protected computeVector(): void {
+    warnUntallied(this.sys, 'Stress');
     this.evaluate();
   }
 }

@@ -8,9 +8,10 @@
  * each with the arguments atype v_name1 v_name2: the energy of the atom types atype (per-atom energies, summed over the
  * atoms of those types) times f(lambda) and its derivative, dU/dlambda = U / f * df/dlambda. The scalar is extensive.
  *
- * Engine scope: the pair term is the per-atom energy of the pair style itself (a hybrid's total included). Refused with
- * a StyleError, because the engine does not keep their per-atom energies: a hybrid sub-style, the kspace term (the
- * engine's kspace styles tally no per-atom energy) and the tail term (no per-type tail corrections). The "total" branch of the native code (ihi - ilo == ntypes) can not be reached with
+ * Engine scope: the pair term is the per-atom energy of the pair style itself (a hybrid's total included), the kspace
+ * term the per-atom energy of the kspace style (summed over the owned atoms of the types, as the native kspace branch
+ * does). Refused with a StyleError, because the engine does not keep their per-atom energies: a hybrid sub-style, a
+ * kspace style that tallies no per-atom energy, and the tail term (no per-type tail corrections). The "total" branch of the native code (ihi - ilo == ntypes) can not be reached with
  * a type range 1..ntypes, so every term takes the per-type branch, as in native LAMMPS.
  */
 import { Compute } from '../../engine/compute/compute';
@@ -80,7 +81,6 @@ export class ComputeTI extends Compute {
         throw new StyleError('compute ti tail: the per-type tail correction of each pair is not available in the engine');
       }
       if (!sys.ff.kspace) throw new StyleError('Compute ti kspace style does not exist');
-      throw new StyleError(`compute ti kspace: the per-atom energy of kspace style ${sys.ff.kspace.name} is not available in the engine`);
     }
   }
 
@@ -91,16 +91,20 @@ export class ComputeTI extends Compute {
     const order = nativeOrder(s);
     sys.peratomEnergy();
     const pairEatom = sys.ff.eatomTerm.pair ?? null;
+    const kspaceEatom = sys.ff.eatomTerm.kspace ?? null;
     let dUdl = 0.0;
     for (const t of this.terms) {
       const value1 = sys.vars.scalar(t.var1, sys.formulaEnv);
       const value2 = sys.vars.scalar(t.var2, sys.formulaEnv);
       if (value1 === 0.0) continue;
       // the per-atom energies summed over the atoms of the type range (owned atoms: the ghosts of an atom are already
-      // added to it, so this equals the native sum over local and ghost atoms of those types). check() refused every
-      // term but the pair one.
+      // added to it, so this equals the native sum over local and ghost atoms of those types). check() refused the
+      // tail term.
       let eng = 0.0;
-      if (pairEatom) {
+      if (t.kind === 'kspace') {
+        if (!kspaceEatom) throw new StyleError(`compute ti kspace: the per-atom energy of kspace style ${sys.ff.kspace!.name} is not available in the engine`);
+        for (const i of order) if (t.ilo <= s.type[i] && t.ihi >= s.type[i]) eng += kspaceEatom[i];
+      } else if (pairEatom) {
         for (const i of order) if (t.ilo <= s.type[i] && t.ihi >= s.type[i]) eng += pairEatom[i];
       }
       dUdl += eng / value1 * value2;

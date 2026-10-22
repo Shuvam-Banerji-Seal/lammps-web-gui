@@ -119,10 +119,12 @@ export class LabelMap {
 
 /**
  * A type word of a command, as native converts it: a numeric type or wildcard passes through, a label
- * becomes its numeric type. Native message: "Atom type string Z not found in labelmap".
+ * becomes its numeric type. Native message: "Atom type string Z not found in labelmap". As native LAMMPS does
+ * (utils::expand_type, src/utils.cpp at b332f28), without a labelmap the word is left as it is, for the command's own
+ * number check ("Expected integer parameter instead of 'Z' ...").
  */
 export const typeWord = (map: LabelMap, kind: LabelKind, word: string): string => {
-  if (isNumericTypeWord(word)) return word;
+  if (isNumericTypeWord(word) || !map.defined) return word;
   const t = map.typeOf(kind, word);
   if (t === undefined) throw new StyleError(`${KIND_NAME[kind]} type string ${word} not found in labelmap`);
   return String(t);

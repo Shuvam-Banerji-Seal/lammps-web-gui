@@ -128,10 +128,11 @@ write_dump all custom out.dump id mol type x y z modify format float %.15g sort 
     const { error } = await run(`${base}fix 1 all deposit 1 1 1 12345 region slab mol dimer units box
 run 1
 `);
-    expect(error).toMatch(/type offset 1 plus template type 3 is larger than ntypes 3/);
+    // native LAMMPS (src/fix_deposit.cpp at b332f28)
+    expect(error).toMatch(/Invalid atom type in fix deposit mol command/);
   });
 
-  it('takes global with mol and rejects a multi-molecule template', async () => {
+  it('takes global with mol and a template with a Molecules section', async () => {
     const multi = `# two molecules
 4 atoms
 2 bonds
@@ -182,10 +183,15 @@ run 1
     // global and local place the molecule centre (oracle w434deposit_mol_local)
     expect(glob.error).toBeNull();
     const many = await run(`${base}molecule multi multi
-fix 1 all deposit 1 0 1 12345 region slab mol multi units box
-run 1
+fix 1 all deposit 2 0 1 12345 region slab mol multi units box
+run 2
+write_data multi.data
 `, { dimer: DIMER, multi });
-    expect(many.error).toMatch(/only a single-molecule template is supported/);
+    // Measured with native LAMMPS: one insertion places the 4 atoms of the template with molecule IDs max + 1 and
+    // max + 2, and the next insertion continues after them (atoms 1..8 have molecules 1 1 2 2 3 3 4 4)
+    expect(many.error).toBeNull();
+    const atoms = (many.files.get('multi.data') ?? '').split('Atoms')[1].split('Velocities')[0].split('\n').filter((l) => /^\d/.test(l.trim()));
+    expect(atoms.map((l) => Number(l.trim().split(/\s+/)[1])).sort((a, b) => a - b)).toEqual([1, 1, 2, 2, 3, 3, 4, 4]);
   });
 
   it('rigid/small mol takes the molecules added by deposit rigid', async () => {

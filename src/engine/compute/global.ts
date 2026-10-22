@@ -360,7 +360,12 @@ export class ComputeRDF extends Compute {
         return [t, t];
       }
       // compute_rdf.rst: "itype ... integer, type label, or asterisk form": a label is its numeric type (labelmap.ts)
-      if (!isNumericTypeWord(w)) { const t = Number(typeWord(sys.labels, 'atom', w)); return [t, t]; }
+      if (!isNumericTypeWord(w)) {
+        // without a labelmap the word is a range for utils::bounds (native: "Invalid range string: C1")
+        if (!sys.labels.defined) throw new StyleError(`Invalid range string: ${w}`);
+        const t = Number(typeWord(sys.labels, 'atom', w));
+        return [t, t];
+      }
       throw new StyleError(`compute rdf: invalid atom type '${w}' (number or asterisk range)`);
     };
     for (let k = 1; k < args.length;) {

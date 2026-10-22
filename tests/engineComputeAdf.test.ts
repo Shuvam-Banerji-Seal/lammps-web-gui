@@ -242,7 +242,7 @@ describe('compute adf', () => {
     await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 1.0 0.5 0.0 2.0`)).rejects.toThrow('illegal j-cutoff');
     await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 0.0 2.0 0.5 0.5`)).rejects.toThrow('illegal k-cutoff');
     await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 0.0 2.0 0.0 2.0 ordinate bogus`)).rejects.toThrow('unknown ordinate');
-    await expect(runScript(`${base}\ncompute a all adf 4 1 2 C1 0.0 2.0 0.0 2.0`)).rejects.toThrow('Atom type string C1 not found in labelmap');
+    await expect(runScript(`${base}\ncompute a all adf 4 1 2 C1 0.0 2.0 0.0 2.0`)).rejects.toThrow('Invalid range string: C1');
     await expect(runScript(`${base}\ncompute a all adf 4 1 2 3 0.0 2.0 0.0 2.0`)).rejects.toThrow('out of range');
   });
 });

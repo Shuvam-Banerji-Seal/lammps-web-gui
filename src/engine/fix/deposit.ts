@@ -2,11 +2,13 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { appendAtoms, maxAtomId, isMolecularStyle } from '../atoms';
 import type { System } from '../system';
-import { insertionStream, insertionBox, num, posInt, separation, appendMolecule, type InsertionRegion } from './pour';
+import { insertionStream, separation, appendMolecule, type InsertionRegion } from './pour';
 import { CompoundRegion, PrismRegion, Region } from '../region';
 import { geometricCenter, type MoleculeTemplate } from '../molecule';
 import { gplHook } from '../gplHooks';
 import { latticeScale } from '../commands/args';
+import { inumeric, missingArgs, numeric } from '../force/util';
+import { typeWord } from '../labelmap';
 import type { RanPark } from '../rng';
 import { takeFixRecord } from './restartRecord';
 
@@ -14,11 +16,24 @@ import { takeFixRecord } from './restartRecord';
  * fix ID group-ID deposit N type M seed keyword values ... — docs.lammps.org/fix_deposit.html
  * (plans/lammps-docs/fix_deposit.rst). "Insert a single atom or molecule into
  * the simulation domain every M timesteps until N atoms or molecules have
- * been inserted." Supported keywords: region (any region style with a bounding box, see regionExtent), id max|next, global,
- * local, near, attempt, rate, vx, vy, vz, target, units box, and mol (one
- * molecule template, single-molecule templates only) with molfrac, rigid,
- * shake and orient, and both units box and units lattice (the default).
- * Everything else throws a StyleError: var, set, gaussian, and global/local combined with mol.
+ * been inserted." All the keywords are read: region (any region style with a bounding box, see regionExtent), var and
+ * set, id max|next, global, local, near, gaussian, attempt, rate, vx, vy, vz, target, units, and mol (a molecule
+ * template of one or more molecules) with molfrac, rigid, shake and orient. As native LAMMPS does (src/fix_deposit.cpp
+ * FixDeposit::FixDeposit and options at b332f28) the arguments are checked when the fix is defined, in native's order
+ * and with its messages; M = 0 (native divides by it and stops with a floating-point exception) is refused.
+ *
+ * fix_deposit.html: "The *var* and *set* keywords can be used together to provide a criterion for accepting or
+ * rejecting the addition of an individual atom, based on its coordinates."; "if one (or more) is not defined, then the
+ * *set* option creates an internal-style variable with the specified name."; "When an atom is about to be created, its
+ * (x,y,z) coordinates become the values for any *set* variable that is defined.  The *var* variable is then evaluated.
+ * If the returned value is 0.0, the atom is not created."; "If either the *near* or the *var* keyword is not satisfied,
+ * a new random position within the insertion volume is chosen and another trial is made." As native LAMMPS does
+ * (FixDeposit::vartest at b332f28) the test comes before the rate offset and the global or local height, and a
+ * rejected trial counts as one of the Q attempts. "The locations of inserted particles are taken from uniform
+ * distributed random numbers, unless the *gaussian* keyword is used. Then the individual coordinates are taken from a
+ * gaussian distribution of width *sigma* centered on *xmid,ymid,zmid*"; native draws x, y and z with
+ * RanPark::gaussian (the second value of a pair kept for the next draw) until the point is in the region, sigma scaled
+ * by the x lattice spacing.
  *
  * Region (native src/fix_deposit.cpp at b332f28: "Fix deposit region does not support a bounding box" when bboxflag
  * is 0, and "Fix deposit region cannot be dynamic"; fix_deposit.rst: "region-ID = ID of region to use as insertion volume"
@@ -84,15 +99,6 @@ import { takeFixRecord } from './restartRecord';
 
 type Vec3 = [number, number, number];
 
-/** Number of molecules a template ID defines (summed over the files loaded under that ID). */
-const moleculeCount = (sys: System, id: string): number => {
-  const sets = sys.molecules.get(id);
-  if (!sets || !sets.length) throw new StyleError(`fix deposit mol: molecule template '${id}' does not exist`);
-  let n = 0;
-  for (const t of sets) n += t.mol ? new Set(t.mol).size : 1;
-  return n;
-};
-
 /** Largest molecule ID currently in the system (0 when none). */
 const maxMoleculeId = (s: { n: number; molecule: Int32Array }): number => {
   let m = 0;
@@ -110,6 +116,21 @@ const TWO_PI = 2 * Math.PI;
 
 /** Candidate draws for one attempt before a region that matches nothing is reported (native would loop forever). */
 const MAX_REGION_DRAWS = 100000;
+
+/**
+ * The extent reaches outside the box (native FixDeposit: "Deposition region extends outside simulation box"), the box's
+ * bounding box for a triclinic box (boxlo_bound, boxhi_bound).
+ */
+const outsideBox = (sys: System, e: RegionExtent): boolean => {
+  const b = sys.state.box;
+  const lo = [b.lo[0], b.lo[1], b.lo[2]], hi = [b.hi[0], b.hi[1], b.hi[2]];
+  if (b.triclinic) {
+    const [xy, xz, yz] = b.tilt;
+    lo[0] += Math.min(0, xy, xz, xy + xz); hi[0] += Math.max(0, xy, xz, xy + xz);
+    lo[1] += Math.min(0, yz); hi[1] += Math.max(0, yz);
+  }
+  return e.xlo < lo[0] || e.xhi > hi[0] || e.ylo < lo[1] || e.yhi > hi[1] || e.zlo < lo[2] || e.zhi > hi[2];
+};
 
 /** The extent of a region's interior (native Region::extent_*), or null when it has no bounding box (bboxflag 0). */
 export interface RegionExtent { xlo: number; xhi: number; ylo: number; yhi: number; zlo: number; zhi: number }
@@ -187,8 +208,14 @@ export class FixDeposit extends Fix {
   private vy: [number, number] = [0, 0];
   private vz: [number, number] = [0, 0];
   private target: Vec3 | null = null;
+  /** var name: the equal-style variable that accepts (non-zero) or rejects (0.0) a candidate position. */
+  private varName: string | null = null;
+  /** set x|y|z name: the internal-style variables that receive the candidate's coordinates. */
+  private readonly setNames: (string | null)[] = [null, null, null];
+  /** gaussian xmid ymid zmid sigma (scaled): positions from a normal distribution instead of the region's extent. */
+  private gaussian: { mid: Vec3; sigma: number } | null = null;
   private readonly molTemplateId: string | null;
-  private molTemplate: MoleculeTemplate | null = null;
+  private molTemplates: MoleculeTemplate[] = [];
   private readonly molfrac: number[] | null;
   private readonly rigidId: string | null;
   private readonly shakeId: string | null;
@@ -204,101 +231,174 @@ export class FixDeposit extends Fix {
     super(sys, id, group, args);
     // fix_deposit.cpp: "dimension == 2" inserts in the y direction (the rate offset, the lateral placement and the
     // global and local heights) with a z coordinate drawn but unused, and a molecule rotates about z
-    if (args.length < 4) throw new StyleError('usage: fix ID group-ID deposit N type M seed keyword values ...');
-    this.N = posInt(args[0], 'N');
-    this.M = posInt(args[2], 'M');
-    this.rng = insertionStream(posInt(args[3], 'seed'));
+    // As native LAMMPS does (src/fix_deposit.cpp FixDeposit::FixDeposit and options at b332f28): the four required
+    // values, the keywords, the variables, the type, the region, the molecules, rigid and shake, then the scaling
+    const illegal = () => new StyleError('Illegal fix deposit command');
+    if (args.length < 4) throw illegal();
+    this.N = inumeric(args[0]);
+    const ntype = inumeric(typeWord(sys.labels, 'atom', args[1]));
+    this.M = inumeric(args[2]);
+    const seed = inumeric(args[3]);
+    if (seed <= 0) throw illegal();
     let region: string | null = null;
     let idNext = false;
-    let units: string | null = null;
+    let scaleBox = false;
     let molTemplateId: string | null = null;
     let molfrac: number[] | null = null;
     let rigidId: string | null = null;
     let shakeId: string | null = null;
     let orient: Vec3 | null = null;
     let i = 4;
+    const need = (k: number) => { if (i + k > args.length) throw illegal(); };
     while (i < args.length) {
       const key = args[i];
-      const v = (k: number) => {
-        if (args[i + k] === undefined) throw new StyleError(`fix deposit: keyword '${key}' needs ${k} value(s)`);
-        return args[i + k];
-      };
-      if (key === 'region') { region = v(1); i += 2; }
+      if (key === 'region') {
+        need(2);
+        if (!sys.regions.has(args[i + 1])) throw new StyleError(`Region ID ${args[i + 1]} for fix deposit does not exist`);
+        region = args[i + 1];
+        i += 2;
+      } else if (key === 'var') {
+        if (i + 2 > args.length) throw missingArgs('fix deposit var');
+        this.varName = args[i + 1];
+        i += 2;
+      } else if (key === 'set') {
+        if (i + 3 > args.length) throw missingArgs('fix deposit set');
+        const d = ['x', 'y', 'z'].indexOf(args[i + 1]);
+        // native names the variable, not the option, in this message
+        if (d < 0) throw new StyleError(`Unknown fix deposit set option ${args[i + 2]}`);
+        this.setNames[d] = args[i + 2];
+        i += 3;
+      } else if (key === 'mol') {
+        need(2);
+        const sets = sys.molecules.get(args[i + 1]);
+        if (!sets || !sets.length) throw new StyleError('Molecule template ID for fix deposit does not exist');
+        molTemplateId = args[i + 1];
+        // the default fractions: equal shares, the last cumulative value 1
+        molfrac = sets.map((_, k) => (k + 1) / sets.length);
+        molfrac[sets.length - 1] = 1;
+        i += 2;
+      } else if (key === 'molfrac') {
+        if (!molTemplateId || !molfrac) throw illegal();
+        const n = molfrac.length;
+        need(n + 1);
+        // cumulative fractions; native's sum check is void (EPSILON = 1.0e6) and the last value is set to 1
+        molfrac[0] = numeric(args[i + 1]);
+        for (let k = 1; k < n; k++) molfrac[k] = molfrac[k - 1] + numeric(args[i + 1 + k]);
+        molfrac[n - 1] = 1;
+        i += n + 1;
+      } else if (key === 'rigid') { need(2); rigidId = args[i + 1]; i += 2; }
+      else if (key === 'shake') { need(2); shakeId = args[i + 1]; i += 2; }
       else if (key === 'id') {
-        const w = v(1);
-        if (w !== 'max' && w !== 'next') throw new StyleError(`fix deposit: id must be max or next, got '${w}'`);
-        idNext = w === 'next';
+        need(2);
+        if (args[i + 1] !== 'max' && args[i + 1] !== 'next') throw illegal();
+        idNext = args[i + 1] === 'next';
         i += 2;
-      } else if (key === 'global') { this.globalRange = [num(v(1), 'global lo'), num(v(2), 'global hi')]; i += 3; }
-      else if (key === 'local') {
-        this.localRange = [num(v(1), 'local lo'), num(v(2), 'local hi'), num(v(3), 'local delta')];
+      } else if (key === 'global') {
+        need(3);
+        this.globalRange = [numeric(args[i + 1]), numeric(args[i + 2])];
+        this.localRange = null;
+        i += 3;
+      } else if (key === 'local') {
+        need(4);
+        this.localRange = [numeric(args[i + 1]), numeric(args[i + 2]), numeric(args[i + 3])];
+        this.globalRange = null;
         i += 4;
-      } else if (key === 'near') { this.near = num(v(1), 'near R'); i += 2; }
-      else if (key === 'attempt') { this.attempt = posInt(v(1), 'attempt Q'); i += 2; }
-      else if (key === 'rate') { this.rateV = num(v(1), 'rate'); i += 2; }
-      else if (key === 'vx') { this.vx = [num(v(1), 'vx lo'), num(v(2), 'vx hi')]; i += 3; }
-      else if (key === 'vy') { this.vy = [num(v(1), 'vy lo'), num(v(2), 'vy hi')]; i += 3; }
-      else if (key === 'vz') { this.vz = [num(v(1), 'vz lo'), num(v(2), 'vz hi')]; i += 3; }
-      else if (key === 'target') {
-        this.target = [num(v(1), 'target tx'), num(v(2), 'target ty'), num(v(3), 'target tz')];
+      } else if (key === 'near') { need(2); this.near = numeric(args[i + 1]); i += 2; }
+      else if (key === 'attempt') { need(2); this.attempt = inumeric(args[i + 1]); i += 2; }
+      else if (key === 'rate') { need(2); this.rateV = numeric(args[i + 1]); i += 2; }
+      else if (key === 'vx') { need(3); this.vx = [numeric(args[i + 1]), numeric(args[i + 2])]; i += 3; }
+      else if (key === 'vy') { need(3); this.vy = [numeric(args[i + 1]), numeric(args[i + 2])]; i += 3; }
+      else if (key === 'vz') { need(3); this.vz = [numeric(args[i + 1]), numeric(args[i + 2])]; i += 3; }
+      else if (key === 'orient') {
+        need(4);
+        orient = [numeric(args[i + 1]), numeric(args[i + 2]), numeric(args[i + 3])];
+        if (sys.dimension === 2 && (orient[0] !== 0 || orient[1] !== 0)) throw new StyleError('Illegal fix deposit orient settings');
+        if (orient[0] === 0 && orient[1] === 0 && orient[2] === 0) throw new StyleError('Illegal fix deposit orient settings');
         i += 4;
-      } else if (key === 'mol') { molTemplateId = v(1); i += 2; }
-      else if (key === 'molfrac') {
-        if (!molTemplateId) throw new StyleError('fix deposit: molfrac requires the mol keyword before it');
-        const n = moleculeCount(sys, molTemplateId);
-        const vals: number[] = [];
-        for (let k = 1; k <= n; k++) vals.push(num(v(k), 'molfrac'));
-        const sum = vals.reduce((a, b) => a + b, 0);
-        if (Math.abs(sum - 1) > 1e-8) throw new StyleError('fix deposit: molfrac values must sum to 1.0');
-        molfrac = vals;
-        i += 1 + n;
-      } else if (key === 'rigid') { rigidId = v(1); i += 2; }
-      else if (key === 'shake') { shakeId = v(1); i += 2; }
-      else if (key === 'orient') { orient = [num(v(1), 'orient rx'), num(v(2), 'orient ry'), num(v(3), 'orient rz')]; i += 4; }
-      else if (key === 'units') {
-        units = v(1);
-        if (units !== 'box' && units !== 'lattice') throw new StyleError(`fix deposit: units must be lattice or box, got '${units}'`);
+      } else if (key === 'units') {
+        need(2);
+        if (args[i + 1] === 'box') scaleBox = true;
+        else if (args[i + 1] === 'lattice') scaleBox = false;
+        else throw illegal();
         i += 2;
-      } else if (['var', 'set', 'gaussian'].includes(key)) {
-        throw new StyleError(`fix deposit keyword '${key}' is not supported by the browser engine`);
-      } else throw new StyleError(`fix deposit: unknown keyword '${key}'`);
+      } else if (key === 'gaussian') {
+        need(5);
+        this.gaussian = { mid: [numeric(args[i + 1]), numeric(args[i + 2]), numeric(args[i + 3])], sigma: numeric(args[i + 4]) };
+        i += 5;
+      } else if (key === 'target') {
+        need(4);
+        this.target = [numeric(args[i + 1]), numeric(args[i + 2]), numeric(args[i + 3])];
+        i += 4;
+      } else throw illegal();
     }
-    if (region === null) throw new StyleError('fix deposit requires the region keyword');
+    // the variable test: var with at least one set variable, an equal-style var, and internal-style set variables
+    // (created when missing)
+    const anySet = this.setNames.some((n) => n !== null);
+    if ((!this.varName && anySet) || (this.varName && !anySet)) throw new StyleError('Incomplete use of variables in fix deposit command');
+    if (this.varName) {
+      const v = sys.vars.get(this.varName);
+      if (!v) throw new StyleError(`Variable ${this.varName} for fix deposit does not exist`);
+      if (v.style !== 'equal' && v.style !== 'timer' && v.style !== 'internal') throw new StyleError('Variable for fix deposit is invalid style');
+      for (const n of this.setNames) {
+        if (n === null) continue;
+        const sv = sys.vars.get(n);
+        if (!sv) sys.vars.setInternal(n, 0);
+        else if (sv.style !== 'internal') throw new StyleError(`Variable ${n} for fix deposit is invalid style`);
+      }
+    }
+    if (!molTemplateId && (ntype <= 0 || ntype > sys.state.ntypes)) throw new StyleError('Invalid atom type in fix deposit command');
+    if (region === null) throw new StyleError('Must specify a region in fix deposit');
+    const r = sys.region(region);
+    // a moving interior region has a bounding box natively (bboxflag), so it fails on the dynamic check
+    if (r.dynamic && r.interior) throw new StyleError('Fix deposit region cannot be dynamic');
+    const e = regionExtent(sys, r);
+    if (!e) throw new StyleError('Fix deposit region does not support a bounding box');
+    if (r.dynamic) throw new StyleError('Fix deposit region cannot be dynamic');
+    if (outsideBox(sys, e)) throw new StyleError('Deposition region extends outside simulation box');
+    if (molTemplateId) {
+      for (const t of sys.molecules.get(molTemplateId)!) {
+        let maxT = 0;
+        for (const ty of t.type) if (ty > maxT) maxT = ty;
+        if (ntype + maxT <= 0 || ntype + maxT > sys.state.ntypes) throw new StyleError('Invalid atom type in fix deposit mol command');
+      }
+      if (!isMolecularStyle(sys.state.atomStyle)) throw new StyleError(`fix deposit mol: atom_style ${sys.state.atomStyle} cannot store molecule IDs and bonds`);
+    }
+    if (rigidId && !molTemplateId) throw new StyleError('Cannot use fix deposit rigid and not molecule');
+    if (shakeId && !molTemplateId) throw new StyleError('Cannot use fix deposit shake and not molecule');
+    if (rigidId && shakeId) throw new StyleError('Cannot use fix deposit rigid and shake');
+    // native divides by M (the insertion interval) and stops with a floating-point exception for M = 0
+    if (this.M === 0) throw new StyleError('fix deposit with M = 0 is refused: native LAMMPS stops with a floating-point exception for it');
     // fix_deposit.rst: "A lattice value means the distance units are in lattice spacings." and "the
     // units choice affects all the keyword values that have units of distance or velocity"; the
     // default is units lattice.
-    const sc = latticeScale(sys, units ?? 'lattice', 'deposit');
+    const sc = latticeScale(sys, scaleBox ? 'box' : 'lattice', 'deposit');
     this.near *= sc[0];
-    // As native LAMMPS does (src/fix_deposit.cpp at b332f28): lo and hi scale with the lattice spacing of the vertical
-    // dimension (y in 2d, z in 3d), and deltasq = delta * delta with the x spacing squared
+    // As native LAMMPS does (src/fix_deposit.cpp at b332f28): lo, hi and rate scale with the lattice spacing of the
+    // vertical dimension (y in 2d, z in 3d), deltasq = delta * delta with the x spacing squared, the gaussian centre
+    // per dimension and sigma with the x spacing ("same as in region sphere")
     const sv = sys.dimension === 2 ? sc[1] : sc[2];
+    this.rateV *= sv;
     if (this.globalRange) this.globalRange = [this.globalRange[0] * sv, this.globalRange[1] * sv];
     if (this.localRange) {
       const d = this.localRange[2];
       this.localRange = [this.localRange[0] * sv, this.localRange[1] * sv, d * d * (sc[0] * sc[0])];
     }
+    if (this.gaussian) {
+      const g = this.gaussian;
+      this.gaussian = { mid: [g.mid[0] * sc[0], g.mid[1] * sc[1], g.mid[2] * sc[2]], sigma: g.sigma * sc[0] };
+    }
     if (this.target) this.target = [this.target[0] * sc[0], this.target[1] * sc[1], this.target[2] * sc[2]];
     this.vx = [this.vx[0] * sc[0], this.vx[1] * sc[0]];
     this.vy = [this.vy[0] * sc[1], this.vy[1] * sc[1]];
     this.vz = [this.vz[0] * sc[2], this.vz[1] * sc[2]];
-    if (this.globalRange && this.localRange) throw new StyleError('fix deposit: global and local cannot both be used');
-    if (this.globalRange && !(this.globalRange[1] >= this.globalRange[0])) throw new StyleError('fix deposit: global needs lo <= hi');
-    if (orient && !molTemplateId) throw new StyleError('fix deposit: orient requires the mol keyword');
-    if (rigidId && !molTemplateId) throw new StyleError('fix deposit: rigid requires the mol keyword');
-    if (shakeId && !molTemplateId) throw new StyleError('fix deposit: shake requires the mol keyword');
-    // fix_deposit.html: "type = atom type ... to assign to inserted atoms (offset for molecule insertion)"
-    const typeInt = num(args[1], 'type');
-    if (!Number.isInteger(typeInt) || typeInt < (molTemplateId ? 0 : 1)) {
-      throw new StyleError(`fix deposit: type must be ${molTemplateId ? 'a non-negative integer offset' : 'a positive integer'}, got '${args[1]}'`);
-    }
-    this.type = typeInt;
+    this.rng = insertionStream(seed);
+    this.type = ntype;
     this.regionId = region;
     this.molTemplateId = molTemplateId;
     this.molfrac = molfrac;
     this.rigidId = rigidId;
     this.shakeId = shakeId;
     this.orient = orient;
-    if (this.vx[0] > this.vx[1] || this.vy[0] > this.vy[1] || this.vz[0] > this.vz[1]) throw new StyleError('fix deposit: velocity ranges need lo <= hi');
     this.idNext = idNext;
     this.nextId = maxAtomId(sys.state);
     this.nextMolId = maxMoleculeId(sys.state);
@@ -327,46 +427,36 @@ export class FixDeposit extends Fix {
   }
 
   init(): void {
-    const s = this.sys.state;
-    if (this.molTemplateId) {
-      if (!isMolecularStyle(s.atomStyle)) throw new StyleError(`fix deposit mol: atom_style ${s.atomStyle} cannot store molecule IDs and bonds`);
-      const sets = this.sys.molecules.get(this.molTemplateId);
-      if (!sets || !sets.length) throw new StyleError(`fix deposit mol: molecule template '${this.molTemplateId}' does not exist`);
-      const count = moleculeCount(this.sys, this.molTemplateId);
-      if (count > 1) {
-        throw new StyleError(`fix deposit mol: molecule template '${this.molTemplateId}' defines ${count} molecules (molfrac); only a single-molecule template is supported by the browser engine`);
-      }
-      this.molTemplate = sets[0];
-      let maxT = 0;
-      for (const ty of this.molTemplate.type) if (ty > maxT) maxT = ty;
-      if (this.type + maxT > s.ntypes) {
-        throw new StyleError(`fix deposit mol: type offset ${this.type} plus template type ${maxT} is larger than ntypes ${s.ntypes}`);
-      }
-    } else if (this.type > s.ntypes) throw new StyleError(`fix deposit: atom type ${this.type} is larger than ntypes ${s.ntypes}`);
+    // As native LAMMPS does (FixDeposit::init at b332f28): the region again (it may have been deleted since), then the
+    // rigid and shake fixes and their molecule templates
+    const sys = this.sys;
+    if (!sys.regions.has(this.regionId)) throw new StyleError(`Region ID ${this.regionId} for fix deposit does not exist`);
+    if (this.molTemplateId) this.molTemplates = sys.molecules.get(this.molTemplateId) ?? [];
     if (this.rigidId) {
-      const rf = this.sys.fix(this.rigidId);
+      const rf = sys.fixes.find((f) => f.id === this.rigidId);
+      if (!rf) throw new StyleError(`Fix deposit rigid fix ID ${this.rigidId} does not exist`);
       if (typeof (rf as { addMolecule?: unknown }).addMolecule !== 'function') {
         throw new StyleError(`fix deposit rigid: fix ${this.rigidId} (${rf.style}) is not a fix rigid/small`);
       }
-      // fix_deposit.cpp (init): "Fix deposit and rigid fix are not using the same molecule template ID"
       const fixMol = (rf as { moleculeTemplateId?: () => string | null }).moleculeTemplateId?.() ?? null;
       if (fixMol !== this.molTemplateId) throw new StyleError('Fix deposit and rigid fix are not using the same molecule template ID');
       this.rigidFix = rf;
     }
     if (this.shakeId) {
-      const sf = this.sys.fix(this.shakeId);
+      const sf = sys.fixes.find((f) => f.id === this.shakeId);
+      if (!sf) throw new StyleError(`Fix deposit shake fix ID ${this.shakeId} does not exist`);
       if (typeof (sf as { rebuildClusters?: unknown }).rebuildClusters !== 'function') {
         throw new StyleError(`fix deposit shake: fix ${this.shakeId} (${sf.style}) is not a fix shake`);
       }
+      const fixMol = (sf as { moleculeTemplateId?: () => string | null }).moleculeTemplateId?.() ?? null;
+      if (fixMol !== this.molTemplateId) throw new StyleError('Fix deposit and fix shake are not using the same molecule template ID');
       this.shakeFix = sf;
     }
-    const r = this.sys.region(this.regionId);
-    if (r.dynamic) throw new StyleError('Fix deposit region cannot be dynamic');
-    const e = regionExtent(this.sys, r);
+    const r = sys.region(this.regionId);
+    const e = regionExtent(sys, r);
     if (!e) throw new StyleError('Fix deposit region does not support a bounding box');
     this.region = r;
     this.reg = { kind: 'block', xlo: e.xlo, xhi: e.xhi, ylo: e.ylo, yhi: e.yhi, zlo: e.zlo, zhi: e.zhi, xc: 0, yc: 0, radius: 0 };
-    insertionBox(this.sys, this.reg, 'deposit');
   }
 
   /** The run loop calls preExchange only on neighbour rebuilds; it is a stub (see fix pour). */
@@ -390,19 +480,28 @@ export class FixDeposit extends Fix {
     const twod = s.dimension === 2;
     const yOff = twod ? shift : 0;
     const zOff = twod ? 0 : shift;
-    const t = this.molTemplate;
-    const center = t ? geometricCenter(t) : [0, 0, 0];
-    let placed: { p: Vec3; v: Vec3; atoms: Float64Array | null; rot: number[][] | null } | null = null;
+    const mols = this.molTemplates;
+    let placed: { p: Vec3; v: Vec3; atoms: Float64Array | null; rot: number[][] | null; t: MoleculeTemplate | null } | null = null;
     for (let a = 0; a < this.attempt && !placed; a++) {
-      // fix_deposit.cpp: draws in the extent until the region matches (rejections are not attempts)
+      // fix_deposit.cpp: draws in the extent (or from the gaussian) until the region matches (rejections are not
+      // attempts)
       let x = 0, y = 0, z = 0;
       let draws = 0;
+      const g = this.gaussian;
       do {
         if (++draws > MAX_REGION_DRAWS) throw new StyleError('fix deposit: no point inside the region could be drawn (is the region empty?)');
-        x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
-        y = reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo);
-        z = reg.zlo + this.rng.uniform() * (reg.zhi - reg.zlo);
+        if (g) {
+          x = g.mid[0] + this.rng.gaussian() * g.sigma;
+          y = g.mid[1] + this.rng.gaussian() * g.sigma;
+          z = g.mid[2] + this.rng.gaussian() * g.sigma;
+        } else {
+          x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
+          y = reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo);
+          z = reg.zlo + this.rng.uniform() * (reg.zhi - reg.zlo);
+        }
       } while (!region.match(x, y, z));
+      // var and set: a rejected position uses up the attempt (FixDeposit::vartest)
+      if (this.varName && !this.varTest(x, y, z)) continue;
       y += yOff;
       z += zOff;
       // global and local: the vertical coordinate lo..hi above the highest atom (nearby, for local), the point or the
@@ -416,10 +515,13 @@ export class FixDeposit extends Fix {
       }
       let atoms: Float64Array | null = null;
       let rot0: number[][] | null = null;
-      if (t) {
-        // one draw samples the molfrac list; a single-molecule template always takes molecule 0
+      let t: MoleculeTemplate | null = null;
+      if (mols.length) {
+        // fix_deposit.cpp: one draw picks the molecule, the first whose cumulative fraction is not below it
         const sel = this.rng.uniform();
-        if (this.molfrac) { let c = 0; for (const f of this.molfrac) { c += f; if (sel < c) break; } }
+        let imol = 0;
+        while (imol < mols.length - 1 && sel > this.molfrac![imol]) imol++;
+        t = mols[imol];
         // fix_deposit.cpp: in 2d the rotation axis is z and only the angle is drawn; in 3d the axis is drawn (unless
         // orient is given) and then the angle
         const rot = twod
@@ -430,7 +532,7 @@ export class FixDeposit extends Fix {
               const u1 = this.rng.uniform(), u2 = this.rng.uniform(), u3 = this.rng.uniform(), u4 = this.rng.uniform();
               return nativeRotation([u1 - 0.5, u2 - 0.5, u3 - 0.5], u4 * TWO_PI);
             })();
-        atoms = this.moleculeCoords(t, center, rot, [x, y, z]);
+        atoms = this.moleculeCoords(t, geometricCenter(t), rot, [x, y, z]);
         rot0 = rot;
       }
       if (this.near > 0 && this.tooNear(atoms ?? Float64Array.of(x, y, z), t !== null)) continue;
@@ -440,18 +542,30 @@ export class FixDeposit extends Fix {
         this.vz[0] + this.rng.uniform() * (this.vz[1] - this.vz[0]),
       ];
       if (this.target) v = this.aimAt([x, y, z], v);
-      placed = { p: [x, y, z], v, atoms, rot: t ? rot0 : null };
+      placed = { p: [x, y, z], v, atoms, rot: t ? rot0 : null, t };
     }
     if (!placed) {
       sys.warn('Particle deposition was unsuccessful');
       return;
     }
+    const t = placed.t;
     if (t && placed.atoms) {
       const n = t.natoms;
       const ids = this.idNext ? new Int32Array(n) : undefined;
       if (ids) for (let k = 0; k < n; k++) ids[k] = ++this.nextId;
       const molId = this.idNext ? ++this.nextMolId : maxMoleculeId(s) + 1;
       const firstId = appendMolecule(sys, t, this.type, placed.atoms, placed.v, molId, this.groupBit, ids, placed.rot ?? undefined);
+      // fix_deposit.cpp: a template with a Molecules section gives its atoms the current maximum molecule ID plus their
+      // template molecule IDs, and the maximum grows by the template's molecule count
+      if (t.mol) {
+        const base = s.n - n;
+        let nmol = 0;
+        for (let k = 0; k < n; k++) {
+          s.molecule[base + k] = molId - 1 + t.mol[k];
+          if (t.mol[k] > nmol) nmol = t.mol[k];
+        }
+        if (this.idNext) this.nextMolId += nmol - 1;
+      }
       sys.atomsChanged();
       sys.setupNeighbors();
       if (this.rigidFix) (this.rigidFix as unknown as RigidAdder).addMolecule(Array.from({ length: n }, (_, k) => firstId + k));
@@ -465,6 +579,19 @@ export class FixDeposit extends Fix {
       sys.setupNeighbors();
     }
     this.inserted++;
+  }
+
+  /**
+   * var and set (FixDeposit::vartest): the set variables take the candidate's coordinates, then the var variable decides
+   * (0.0 rejects the position).
+   */
+  private varTest(x: number, y: number, z: number): boolean {
+    const c = [x, y, z];
+    for (let d = 0; d < 3; d++) {
+      const n = this.setNames[d];
+      if (n !== null) this.sys.vars.setInternal(n, c[d]);
+    }
+    return this.sys.equalVariable(this.varName!) !== 0;
   }
 
   /**

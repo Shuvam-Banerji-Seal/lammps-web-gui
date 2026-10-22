@@ -143,7 +143,7 @@ describe('compute sna/atom: argument errors', () => {
   });
 
   it('rejects unknown keywords and non-binary flags', async () => {
-    await fails('sna/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 frobnicate 1', /unknown keyword 'frobnicate'/);
+    await fails('sna/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 frobnicate 1', /Illegal compute sna\/atom command/);
     await fails('sna/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 switchflag 2', /switchflag must be 0 or 1/);
   });
 

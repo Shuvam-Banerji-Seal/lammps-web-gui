@@ -45,7 +45,7 @@ export class FixFlowGauss extends Fix {
     this.extscalar = 1;
     this.extvector = 1;
     for (let k = 3; k < args.length;) {
-      if (args[k] !== 'energy') throw new StyleError(`Illegal fix flow/gauss command: unknown keyword '${args[k]}' (energy is the only keyword)`);
+      if (args[k] !== 'energy') throw new StyleError('Illegal fix flow/gauss command');
       const v = args[k + 1];
       if (v !== 'yes' && v !== 'no') throw new StyleError(`Illegal energy keyword: value must be yes or no, got '${v ?? ''}'`);
       this.workflag = v === 'yes';

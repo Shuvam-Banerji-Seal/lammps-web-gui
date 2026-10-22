@@ -54,7 +54,12 @@ export class FixSMDSetVel extends Fix {
     super(sys, id, group, args);
     if (args.length < 3) throw new StyleError('Illegal fix setvelocity command');
     this.comps = [parseComponent(args[0], 'x'), parseComponent(args[1], 'y'), parseComponent(args[2], 'z')];
-    if (args.length > 3) throw new StyleError(`fix smd/setvel keyword '${args[3]}' is not supported by the browser engine yet`);
+    // fix_smd_setvel.cpp (FixSMDSetVel::FixSMDSetVel at b332f28): the optional words are only "region ID";
+    // any other word is "Illegal fix setvelocity command" and region itself is not supported here.
+    if (args.length > 3) {
+      if (args[3] !== 'region' || args.length < 5) throw new StyleError('Illegal fix setvelocity command');
+      throw new StyleError(`fix smd/setvel keyword 'region' is not supported by the browser engine yet`);
+    }
     for (const c of this.comps) {
       if (c.kind === 'equal' && !sys.vars.has(c.name)) throw new StyleError(`Variable name for fix setvelocity does not exist: ${c.name}`);
     }

@@ -1159,7 +1159,7 @@ const buildReaction = (sys: System, id: number, r: ReactArgs, stabilization: boo
       }
       k = j;
     } else {
-      throw new StyleError(`Illegal fix bond/react command: unknown keyword '${key}' in reaction ${r.name}`);
+      throw new StyleError('Illegal fix bond/react command: unknown keyword');
     }
   }
   return rxn;

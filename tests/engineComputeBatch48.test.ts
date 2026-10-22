@@ -58,8 +58,8 @@ describe('compute temp/profile', () => {
     expect((await run(`${LATTICE}compute tp all temp/profile 2 1 1 x 3\nrun 0\n`)).errors[0]).toMatch(/xflag must be 0 or 1/);
     expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 w 3\nrun 0\n`)).errors[0]).toMatch(/binstyle must be x, y, z, xy, yz, xz or xyz/);
     expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 x 2.5\nrun 0\n`)).errors[0]).toMatch(/Nx must be a positive integer/);
-    expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 x 3 out foo\nrun 0\n`)).errors[0]).toMatch(/out must be tensor or bin/);
-    expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 x 3 extra 2\nrun 0\n`)).errors[0]).toMatch(/unknown keyword 'extra'/);
+    expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 x 3 out foo\nrun 0\n`)).errors[0]).toContain('Illegal compute temp/profile command');
+    expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 x 3 extra 2\nrun 0\n`)).errors[0]).toContain('Illegal compute temp/profile command');
   });
 
   it('refuses a triclinic box', async () => {

@@ -222,7 +222,8 @@ const hyper: Handler = async (ctx: Ctx, a) => {
         k += 2;
         break;
       }
-      default: throw new StyleError(`hyper: unknown keyword '${a[k]}' (min, dump or rebond)`);
+      // As native LAMMPS does (src/REPLICA/hyper.cpp Hyper::options at b332f28): any other word is "Illegal hyper command"
+      default: throw new StyleError('Illegal hyper command');
     }
   }
   if (quenchOpts.etol < 0 || quenchOpts.ftol < 0) throw new StyleError('hyper min tolerances must be >= 0');

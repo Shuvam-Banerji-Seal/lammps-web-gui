@@ -177,10 +177,10 @@ describe('fix gravity (docs.lammps.org/fix_gravity.html)', () => {
   });
 
   it('rejects bad styles and arguments', async () => {
-    expect((await runScript(oneAtom('fix g all gravity 1.0 gradient 1 2 3 4 5 6'))).error?.message).toContain('gradient');
-    expect((await runScript(oneAtom('fix g all gravity 1.0 chute'))).error?.message).toContain('chute');
+    expect((await runScript(oneAtom('fix g all gravity 1.0 gradient 1 2 3 4 5 6'))).error?.message).toContain('Illegal fix gravity command');
+    expect((await runScript(oneAtom('fix g all gravity 1.0 chute'))).error?.message).toContain('Illegal fix gravity command');
     expect((await runScript(oneAtom('fix g all gravity 1.0 vector 0 0 0'))).error?.message).toContain('non-zero');
-    expect((await runScript(oneAtom('fix g all gravity 1.0 vector 0 0'))).error?.message).toContain('vector');
+    expect((await runScript(oneAtom('fix g all gravity 1.0 vector 0 0'))).error?.message).toContain('Illegal fix gravity command');
   });
 });
 

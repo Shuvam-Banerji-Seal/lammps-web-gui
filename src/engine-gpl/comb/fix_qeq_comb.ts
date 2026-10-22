@@ -40,13 +40,15 @@ export class FixQeqComb extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 2) throw new StyleError('Illegal fix qeq/comb command: usage fix ID group qeq/comb Nevery precision');
+    // As native LAMMPS does (src/MANYBODY/fix_qeq_comb.cpp FixQEQComb::FixQEQComb at b332f28): every argument error is
+    // "Illegal fix qeq/comb command".
+    if (args.length < 2) throw new StyleError('Illegal fix qeq/comb command');
     this.nEvery = Math.trunc(Number(args[0]));
     this.precision = Number(args[1]);
-    if (!(this.nEvery > 0) || !(this.precision > 0)) throw new StyleError('Illegal fix qeq/comb command: Nevery and precision must be positive');
+    if (!(this.nEvery > 0) || !(this.precision > 0)) throw new StyleError('Illegal fix qeq/comb command');
     // fix_qeq_comb.cpp (b332f28): "file" takes a file name; the file is opened with "w" when the fix is created
     for (let k = 2; k < args.length;) {
-      if (args[k] !== 'file' || k + 1 >= args.length) throw new StyleError(`Illegal fix qeq/comb command: unknown keyword '${args[k]}'`);
+      if (args[k] !== 'file' || k + 1 >= args.length) throw new StyleError('Illegal fix qeq/comb command');
       this.fileName = args[k + 1];
       k += 2;
     }

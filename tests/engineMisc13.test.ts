@@ -148,12 +148,12 @@ describe('fix ave/grid', () => {
     await expect(runScript(`${base}fix a all ave/grid 1 3 2 2 2 2 vx`)).rejects.toThrow('Inconsistent nevery/nrepeat/pergrid_nfreq values');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 0 2 2 vx`)).rejects.toThrow('Nx must be an integer >= 1');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2`)).rejects.toThrow('missing argument');
-    await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 xyz`)).rejects.toThrow("invalid input value 'xyz'");
+    await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 xyz`)).rejects.toThrow('No values in fix ave/grid command');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx bias tb`)).rejects.toThrow('Could not find compute ID tb for temperature bias');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx norm bogus`)).rejects.toThrow('norm must be all, sample or none');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx ave window 0`)).rejects.toThrow('ave window M must be an integer >= 1');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx discard maybe`)).rejects.toThrow('discard must be yes or no');
-    await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx foo 1`)).rejects.toThrow("invalid input value 'foo'");
+    await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx foo 1`)).rejects.toThrow('Unknown fix ave/grid keyword: foo');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 c_nope:grid:data`)).rejects.toThrow('Fix ave/grid compute ID nope not found');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx`)).resolves.toBeDefined();
   });

@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { inumeric, numeric } from '../force/util';
 import { massOf } from '../atoms';
 
 /*
@@ -58,38 +59,40 @@ import { massOf } from '../atoms';
 type Dim = 0 | 1 | 2;
 const DIMS: Record<string, Dim> = { x: 0, y: 1, z: 2 };
 
-const parseCommon = (what: string, args: string[], nWord: string, dimWord: string, nbinWord: string) => {
-  if (args.length < 3) throw new StyleError(`usage: ${what} ${nWord} ${dimWord} Nbin [keyword value ...]`);
-  const n = Number(args[0]);
-  if (!Number.isInteger(n) || n < 1) throw new StyleError(`${what}: ${nWord} must be a positive integer, got '${args[0]}'`);
+/*
+ * As native LAMMPS does (src/fix_thermal_conductivity.cpp and src/EXTRA-FIX/fix_viscosity.cpp at b332f28): N and Nbin
+ * are read by utils::inumeric, N must be positive, Nbin even and above 2, and swap a positive count (vtarget, viscosity
+ * only: a positive number or INF); any other malformed word is "Illegal fix {style} command".
+ */
+const parseCommon = (style: string, args: string[]) => {
+  const illegal = `Illegal fix ${style} command`;
+  if (args.length < 3) throw new StyleError(illegal);
+  const n = inumeric(args[0]);
+  if (n <= 0) throw new StyleError(illegal);
   const d = DIMS[args[1]];
-  if (d === undefined) throw new StyleError(`${what}: ${dimWord} must be x, y or z, got '${args[1]}'`);
-  const nbin = Number(args[2]);
-  if (!Number.isInteger(nbin) || nbin < 2) throw new StyleError(`${what}: ${nbinWord} must be an integer >= 2, got '${args[2]}'`);
-  if (nbin % 2 !== 0) throw new StyleError(`${what}: ${nbinWord} must be an even number, got ${nbin}`);
+  if (d === undefined) throw new StyleError(illegal);
+  const nbin = inumeric(args[2]);
+  if (nbin % 2 !== 0 || nbin <= 2) throw new StyleError(illegal);
   return { n, d, nbin };
 };
 
-const parseSwap = (what: string, args: string[], from: number, allowVtarget: boolean) => {
+const parseSwap = (args: string[], from: number, allowVtarget: boolean, style: string) => {
+  const illegal = `Illegal fix ${style} command`;
   let nswap = 1;
   let vtarget: number | null = null; // null = INF
   for (let k = from; k < args.length; k += 2) {
     const key = args[k];
     const val = args[k + 1];
-    if (val === undefined) throw new StyleError(`${what}: keyword ${key} needs a value`);
     if (key === 'swap') {
-      const m = Number(val);
-      if (!Number.isInteger(m) || m < 1) throw new StyleError(`${what}: swap Nswap must be a positive integer, got '${val}'`);
-      nswap = m;
+      if (val === undefined) throw new StyleError(illegal);
+      nswap = inumeric(val);
+      if (nswap <= 0) throw new StyleError(`Fix ${style} swap value must be positive`);
     } else if (key === 'vtarget' && allowVtarget) {
-      if (val === 'INF') vtarget = null;
-      else {
-        const v = Number(val);
-        if (!Number.isFinite(v)) throw new StyleError(`${what}: vtarget must be a number or INF, got '${val}'`);
-        vtarget = v;
-      }
+      if (val === undefined) throw new StyleError(illegal);
+      vtarget = val === 'INF' ? null : numeric(val);
+      if (vtarget !== null && vtarget <= 0) throw new StyleError(`Fix ${style} vtarget value must be positive`);
     } else {
-      throw new StyleError(`${what}: unknown keyword '${key}'`);
+      throw new StyleError(illegal);
     }
   }
   return { nswap, vtarget };
@@ -160,19 +163,18 @@ export class FixViscosity extends FixLayerSwap {
   private readonly vtarget: number | null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
-    const what = `fix ${id} (viscosity)`;
     // fix ID group-ID viscosity N vdim pdim Nbin keyword value ...
-    if (args.length < 4) throw new StyleError(`usage: fix ${id} group-ID viscosity N vdim pdim Nbin [keyword value ...]`);
-    const n = Number(args[0]);
-    if (!Number.isInteger(n) || n < 1) throw new StyleError(`${what}: N must be a positive integer, got '${args[0]}'`);
+    const illegal = 'Illegal fix viscosity command';
+    if (args.length < 4) throw new StyleError(illegal);
+    const n = inumeric(args[0]);
+    if (n <= 0) throw new StyleError(illegal);
     const vdim = DIMS[args[1]];
-    if (vdim === undefined) throw new StyleError(`${what}: vdim must be x, y or z, got '${args[1]}'`);
+    if (vdim === undefined) throw new StyleError(illegal);
     const pdim = DIMS[args[2]];
-    if (pdim === undefined) throw new StyleError(`${what}: pdim must be x, y or z, got '${args[2]}'`);
-    const nbin = Number(args[3]);
-    if (!Number.isInteger(nbin) || nbin < 2) throw new StyleError(`${what}: Nbin must be an integer >= 2, got '${args[3]}'`);
-    if (nbin % 2 !== 0) throw new StyleError(`${what}: Nbin must be an even number, got ${nbin}`);
-    const { nswap, vtarget } = parseSwap(what, args, 4, true);
+    if (pdim === undefined) throw new StyleError(illegal);
+    const nbin = inumeric(args[3]);
+    if (nbin % 2 !== 0 || nbin <= 2) throw new StyleError(illegal);
+    const { nswap, vtarget } = parseSwap(args, 4, true, 'viscosity');
     super(sys, id, group, args, n, pdim, nbin, nswap);
     this.vdim = vdim;
     this.vtarget = vtarget;
@@ -213,9 +215,8 @@ export class FixThermalConductivity extends FixLayerSwap {
   readonly style = 'thermal/conductivity';
 
   constructor(sys: System, id: string, group: string, args: string[]) {
-    const what = `fix ${id} (thermal/conductivity)`;
-    const { n, d, nbin } = parseCommon(what, args, 'N', 'edim', 'Nbin');
-    const { nswap } = parseSwap(what, args, 3, false);
+    const { n, d, nbin } = parseCommon('thermal/conductivity', args);
+    const { nswap } = parseSwap(args, 3, false, 'thermal/conductivity');
     super(sys, id, group, args, n, d, nbin, nswap);
   }
 

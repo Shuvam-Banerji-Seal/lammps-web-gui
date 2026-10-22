@@ -81,9 +81,9 @@ describe('fix gjf argument errors', () => {
       expect(r.error, `method ${m}`).toBeNull();
     }
   });
-  it('unknown keywords throw a StyleError naming them', async () => {
+  it('unknown keywords are refused with the native message', async () => {
     const r = await runScript(`${base}fix 1 all gjf 1.0 1.0 2.0 9182 tally yes\nrun 1`);
-    expect(errorText(r.error)).toMatch(/unknown fix gjf keyword 'tally'/);
+    expect(errorText(r.error)).toContain('Illegal fix gjf command');
   });
 });
 

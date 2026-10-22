@@ -92,6 +92,11 @@ export interface PressureKeywords {
   pChain: number;
 }
 
+/** Keywords of the native fix rigid keyword loop (fix_rigid.cpp, RIGID/fix_rigid.cpp at b332f28). */
+const RIGID_KEYWORDS = new Set(['force', 'torque', 'langevin', 'temp', 'iso', 'aniso', 'x', 'y', 'z', 'couple', 'dilate', 'tparam', 'pchain', 'infile', 'reinit', 'gravity']);
+/** Keywords of the native /small keyword loop (fix_rigid_small.cpp, RIGID/fix_rigid_small.cpp at b332f28). */
+const RIGID_SMALL_KEYWORDS = new Set(['langevin', 'infile', 'reinit', 'mol', 'temp', 'iso', 'aniso', 'x', 'y', 'z', 'couple', 'dilate', 'tparam', 'pchain', 'gravity']);
+
 /**
  * Parses the bodystyle and every keyword of the rigid styles handled here: force, torque, reinit (all styles),
  * temp, tparam (the Nose-Hoover styles) and iso, aniso, x, y, z, couple, dilate, pchain (the barostats).
@@ -196,6 +201,13 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
       out.thermo.tOrder = Math.trunc(num(args[k + 3], 'tparam Torder'));
       k += 4;
     } else {
+      // fix_rigid.cpp (keyword loop ends in "Illegal fix {} command") and fix_rigid_small.cpp (ends in
+      // "Unknown fix {} keyword {}"): a keyword native does not know is refused by native first, so the
+      // engine's own refusal below only applies to keywords native knows.
+      const known = small ? RIGID_SMALL_KEYWORDS : RIGID_KEYWORDS;
+      if (!known.has(key)) {
+        throw new StyleError(small ? `Unknown fix ${style} keyword ${key}` : `Illegal fix ${style} command`);
+      }
       throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine's native-parity ${style} (supported: bodystyle, force, torque, reinit, temp, tparam, iso, aniso, x, y, z, couple, dilate, pchain, and mol for rigid/small)`);
     }
   }

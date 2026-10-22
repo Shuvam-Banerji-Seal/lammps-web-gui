@@ -107,7 +107,7 @@ fix h3 all halt 100 v_s |^ 0
     expect((await runText(`${BASE}\nfix h all halt 10 v_s => 1\n`)).error).toMatch(/operator must be one of/);
     expect((await runText(`${BASE}\nfix h all halt 10 v_s > 1 error maybe\n`)).error).toMatch(/error must be hard, soft or continue/);
     expect((await runText(`${BASE}\nfix h all halt 10 v_s > 1 message maybe\n`)).error).toMatch(/message must be yes or no/);
-    expect((await runText(`${BASE}\nfix h all halt 10 v_s > 1 color red\n`)).error).toMatch(/unknown keyword 'color'/);
+    expect((await runText(`${BASE}\nfix h all halt 10 v_s > 1 color red\n`)).error).toMatch('Unknown fix halt keyword color');
     expect((await runText(`${BASE}\nfix h all halt 0 v_s > 1\n`)).error).toMatch(/N must be an integer >= 1/);
     expect((await runText(`${BASE}\nfix h all halt 10 v_ > 1\n`)).error).toMatch(/missing variable name|attribute must be/);
   });
@@ -213,7 +213,7 @@ describe('fix hyper/global and the hyper command', () => {
     expect((await runText(`${setup}\nhyper 20 0 HG ev\n`)).error).toMatch(/Nevent must be >= 1/);
     expect((await runText(`${setup}\nhyper 20 20 HG ev rebond 7\n`)).error).toMatch(/Nrebond must be a multiple of Nevent/);
     expect((await runText(`${setup}\nhyper 20 20 HG ev dump nope\n`)).error).toMatch(/dump nope does not exist/);
-    expect((await runText(`${setup}\nhyper 20 20 HG ev color\n`)).error).toMatch(/unknown keyword 'color'/);
+    expect((await runText(`${setup}\nhyper 20 20 HG ev color\n`)).error).toContain('Illegal hyper command');
     expect((await runText(`${setup}\nhyper 20 20 HG nope\n`)).error).toMatch(/compute nope does not exist/);
     expect((await runText(`${setup}\ncompute c2 all temp\nhyper 20 20 HG c2\n`)).error).toMatch(/is not an event computer/);
     expect((await runText(`${HYPER_BASE}\ncompute ev all event/displace 0.5\nfix HG mobile nve\nhyper 20 20 HG ev\n`)).error).toMatch(/is not a bond-boost bias fix/);

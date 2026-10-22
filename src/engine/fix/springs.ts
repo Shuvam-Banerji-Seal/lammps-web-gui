@@ -114,16 +114,17 @@ export class FixSpring extends Fix {
     this.energyGlobal = true;
     const mode = args[0];
     if (mode === 'tether') {
-      if (args.length !== 6) throw new StyleError('usage: fix ID group spring tether K x y z R0');
+      // As native LAMMPS does (src/fix_spring.cpp FixSpring::FixSpring at b332f28): the argument count is checked per mode.
+      if (args.length !== 6) throw new StyleError('Incorrect number of arguments for tether mode');
       this.couple = false;
       this.k = num(args[1], 'K');
     } else if (mode === 'couple') {
-      if (args.length !== 7) throw new StyleError('usage: fix ID group spring couple group-ID2 K x y z R0');
+      if (args.length !== 7) throw new StyleError('Incorrect number of arguments for couple mode');
       this.couple = true;
       this.group2Bit = sys.groups.bit(args[1]);
       this.k = num(args[2], 'K');
     } else {
-      throw new StyleError(`fix spring keyword must be tether or couple, got '${mode ?? ''}'`);
+      throw new StyleError(`Unknown fix spring keyword ${mode ?? ''}`);
     }
     const xyz = [parseXYZ(args[this.couple ? 3 : 2], 'x'), parseXYZ(args[this.couple ? 4 : 3], 'y'), parseXYZ(args[this.couple ? 5 : 4], 'z')];
     this.inc = [xyz[0].on, xyz[1].on, xyz[2].on];

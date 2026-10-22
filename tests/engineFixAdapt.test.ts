@@ -246,9 +246,9 @@ variable e equal 2.0
     expect(r.message).toMatch(/no attribute given/);
   });
 
-  it('unknown attribute or keyword is named', async () => {
+  it('unknown keyword is refused with the native message', async () => {
     const r = await runScript(`${SYS1}\nfix 1 all adapt 1 frob v_x\n`);
-    expect(r.message).toMatch(/unknown attribute or keyword 'frob'/);
+    expect(r.message).toContain('Unknown fix adapt keyword frob');
   });
 
   it('kspace attribute: native texts without a variable or a kspace style (numbers in oracle w382adapt_kspace)', async () => {

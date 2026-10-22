@@ -41,7 +41,8 @@ export class FixGrem extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 4) throw new StyleError('Illegal fix grem command. Expecting: fix ID group grem lambda eta h0 fix-ID-nvt-or-npt');
+    // As native LAMMPS does (src/REPLICA/fix_grem.cpp FixGrem::FixGrem at b332f28): narg must be at least 7, so the first four arguments are read and any further words are ignored
+    if (args.length < 4) throw new StyleError('Illegal fix grem command');
     this.scalarFlag = true;
     this.extscalar = 0;
     this.lambda = Number(args[0]);

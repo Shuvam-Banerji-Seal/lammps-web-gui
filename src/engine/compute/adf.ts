@@ -1,7 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { parseInt_, parseNum } from '../force/util';
+import { bounds, inumeric, missingArgs, numeric } from '../force/util';
 import { isNumericTypeWord, typeWord } from '../labelmap';
 import { libm } from '../libm';
 
@@ -72,70 +72,47 @@ export class ComputeADF extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    this.nbin = parseInt_(args[0], 'compute adf Nbin');
-    if (this.nbin < 1) throw new StyleError(`compute adf Nbin must be >= 1 (got ${args[0]})`);
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_adf.cpp ComputeADF::ComputeADF at b332f28): Nbin is read by utils::inumeric
+    if (!args.length) throw missingArgs('compute adf');
+    this.nbin = inumeric(args[0]);
+    if (this.nbin < 1) throw new StyleError('Illegal compute adf command');
     const ntypes = sys.state.ntypes;
 
-    const typeRange = (w: string): [number, number] => {
-      const wild = /^(\d*)\*(\d*)$/.exec(w);
-      if (wild) {
-        const lo = wild[1] === '' ? 1 : Number(wild[1]);
-        const hi = wild[2] === '' ? ntypes : Number(wild[2]);
-        return [lo, hi];
-      }
-      if (/^\d+$/.test(w)) {
-        const t = Number(w);
-        return [t, t];
-      }
-      // compute_adf.rst: "itype ... integer, type label, or asterisk form": a label is its numeric type (labelmap.ts)
-      if (!isNumericTypeWord(w)) {
-        // without a labelmap the word is a range for utils::bounds (native: "Invalid range string: C1")
-        if (!sys.labels.defined) throw new StyleError(`Invalid range string: ${w}`);
-        const t = Number(typeWord(sys.labels, 'atom', w));
-        return [t, t];
-      }
-      throw new StyleError(`compute adf: invalid atom type '${w}' (number or asterisk range)`);
-    };
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_adf.cpp at b332f28): each type word is read by utils::bounds over
+    // 1..ntypes; compute_adf.rst: "itype ... integer, type label, or asterisk form", so a label is its numeric type first
+    // (without a labelmap the word stays as it is, and utils::bounds gives "Invalid range string: C1")
+    const typeRange = (w: string): [number, number] => bounds(isNumericTypeWord(w) || !sys.labels.defined ? w : typeWord(sys.labels, 'atom', w), 1, ntypes);
 
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_adf.cpp ComputeADF::ComputeADF at b332f28): the words before
+    // the first "ordinate" are the triple groups; after it only "ordinate" may appear, anything else is an unknown keyword.
     const nums: string[] = [];
+    let sawOrdinate = false;
     for (let k = 1; k < args.length;) {
       if (args[k] === 'ordinate') {
+        sawOrdinate = true;
+        if (k + 1 >= args.length) throw new StyleError('Illegal compute adf command');
         const v = args[k + 1];
-        if (v !== 'degree' && v !== 'radian' && v !== 'cosine') {
-          throw new StyleError(`compute adf: unknown ordinate '${v}' (degree, radian or cosine)`);
-        }
+        if (v !== 'degree' && v !== 'radian' && v !== 'cosine') throw new StyleError(`Unknown compute adf ordinate flag ${v}`);
         this.ordinate = v;
         k += 2;
         continue;
       }
+      if (sawOrdinate) throw new StyleError(`Unknown compute adf keyword ${args[k]}`);
       nums.push(args[k]);
       k++;
     }
 
-    if (nums.length % 7 !== 0) {
-      const at = Math.floor(nums.length / 7) * 7;
-      throw new StyleError(`compute adf: unknown keyword or argument '${nums[at]}' (expected groups of itype jtype ktype Rjinner Rjouter Rkinner Rkouter)`);
-    }
+    if (nums.length % 7 !== 0) throw new StyleError('Illegal compute adf command');
     for (let k = 0; k < nums.length; k += 7) {
       const [ilo, ihi] = typeRange(nums[k]);
       const [jlo, jhi] = typeRange(nums[k + 1]);
       const [klo, khi] = typeRange(nums[k + 2]);
-      for (const t of [ilo, ihi, jlo, jhi, klo, khi]) {
-        if (t < 1 || t > ntypes) throw new StyleError(`compute adf: atom type ${t} is out of range 1..${ntypes}`);
-      }
-      if (ilo > ihi || jlo > jhi || klo > khi) {
-        throw new StyleError(`compute adf: empty type range in '${nums[k]} ${nums[k + 1]} ${nums[k + 2]}'`);
-      }
-      const rjinner = parseNum(nums[k + 3], 'compute adf Rjinner');
-      const rjouter = parseNum(nums[k + 4], 'compute adf Rjouter');
-      const rkinner = parseNum(nums[k + 5], 'compute adf Rkinner');
-      const rkouter = parseNum(nums[k + 6], 'compute adf Rkouter');
-      if (!(rjinner >= 0) || !(rjouter > rjinner)) {
-        throw new StyleError(`compute adf: illegal j-cutoff, need 0 <= Rjinner < Rjouter (got ${nums[k + 3]} ${nums[k + 4]})`);
-      }
-      if (!(rkinner >= 0) || !(rkouter > rkinner)) {
-        throw new StyleError(`compute adf: illegal k-cutoff, need 0 <= Rkinner < Rkouter (got ${nums[k + 5]} ${nums[k + 6]})`);
-      }
+      const rjinner = numeric(nums[k + 3]);
+      const rjouter = numeric(nums[k + 4]);
+      if (rjinner < 0 || rjinner >= rjouter) throw new StyleError('Illegal compute adf command j-cutoff');
+      const rkinner = numeric(nums[k + 5]);
+      const rkouter = numeric(nums[k + 6]);
+      if (rkinner < 0 || rkinner >= rkouter) throw new StyleError('Illegal compute adf command k-cutoff');
       this.triples.push({ ilo, ihi, jlo, jhi, klo, khi, rjinner, rjouter, rkinner, rkouter });
     }
     if (!this.triples.length) {

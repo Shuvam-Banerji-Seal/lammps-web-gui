@@ -14,7 +14,7 @@ import { Fix } from '../../engine/fix/fix';
 import { takeFixRecord } from '../../engine/fix/restartRecord';
 import { ownCompute, removeCompute } from '../../engine/fix/util';
 import { StyleError } from '../../engine/force/types';
-import { parseInt_, parseNum } from '../../engine/force/util';
+import { inumeric, missingArgs, numeric } from '../../engine/force/util';
 import { nativeOrder } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
@@ -81,13 +81,13 @@ export class FixQBMSST extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 2) throw new StyleError('Illegal fix qbmsst command: usage fix ID group qbmsst x|y|z velocity keywords');
+    if (args.length < 2) throw missingArgs('fix qbmsst');
     const dir = args[0];
     if (dir === 'x') this.direction = 0;
     else if (dir === 'y') this.direction = 1;
     else if (dir === 'z') this.direction = 2;
     else throw new StyleError(`Unknown fix qbmsst direction keyword: ${dir}`);
-    this.velocity = parseNum(args[1], 'fix qbmsst velocity');
+    this.velocity = numeric(args[1]);
     if (this.velocity < 0) throw new StyleError(`Illegal fix qbmsst velocity value ${this.velocity}`);
     this.timeIntegrate = true;
     this.energyGlobal = true;
@@ -100,30 +100,31 @@ export class FixQBMSST extends Fix {
     for (let k = 2; k < args.length;) {
       const key = args[k];
       const val = args[k + 1];
+      // fix_qbmsst.cpp: every keyword takes one value (a missing one, or an unknown keyword, is "Illegal fix qbmsst command")
+      if (val === undefined) throw new StyleError('Illegal fix qbmsst command');
       switch (key) {
-        case 'q': this.qmass = parseNum(val, 'fix qbmsst q'); if (this.qmass < 0) throw new StyleError('Fix qbmsst qmass must be >= 0.0'); break;
-        case 'mu': this.mu = parseNum(val, 'fix qbmsst mu'); if (this.mu < 0) throw new StyleError('Fix qbmsst mu must be >= 0.0'); break;
-        case 'p0': this.p0 = parseNum(val, 'fix qbmsst p0'); if (this.p0 < 0) throw new StyleError('Fix qbmsst p0 must be >= 0.0'); this.p0Set = true; break;
-        case 'v0': this.v0 = parseNum(val, 'fix qbmsst v0'); if (this.v0 < 0) throw new StyleError('Fix qbmsst v0 must be >= 0.0'); this.v0Set = true; break;
-        case 'e0': this.e0 = parseNum(val, 'fix qbmsst e0'); this.e0Set = true; break;
+        case 'q': this.qmass = numeric(val); if (this.qmass < 0) throw new StyleError('Fix qbmsst qmass must be >= 0.0'); break;
+        case 'mu': this.mu = numeric(val); if (this.mu < 0) throw new StyleError('Fix qbmsst mu must be >= 0.0'); break;
+        case 'p0': this.p0 = numeric(val); if (this.p0 < 0) throw new StyleError('Fix qbmsst p0 must be >= 0.0'); this.p0Set = true; break;
+        case 'v0': this.v0 = numeric(val); if (this.v0 < 0) throw new StyleError('Fix qbmsst v0 must be >= 0.0'); this.v0Set = true; break;
+        case 'e0': this.e0 = numeric(val); this.e0Set = true; break;
         case 'tscale':
-          this.tscale = parseNum(val, 'fix qbmsst tscale');
+          this.tscale = numeric(val);
           if (this.tscale < 0.0 || this.tscale > 1.0) throw new StyleError('Fix qbmsst tscale must satisfy 0 <= tscale < 1');
           break;
         case 'damp':
-          this.tPeriod = parseNum(val, 'fix qbmsst damp');
+          this.tPeriod = numeric(val);
           if (this.tPeriod <= 0.0) throw new StyleError('Fix qbmsst damp must be > 0.0');
           this.fricCoef = 1 / this.tPeriod;
           break;
-        case 'seed': this.seed = parseInt_(val, 'fix qbmsst seed'); if (this.seed <= 0) throw new StyleError('Fix qbmsst seed must be a positive integer'); break;
-        case 'f_max': this.fMax = parseNum(val, 'fix qbmsst f_max'); if (this.fMax <= 0) throw new StyleError('Fix qbmsst f_max must be > 0.0'); break;
-        case 'N_f': this.nf = parseInt_(val, 'fix qbmsst N_f'); if (this.nf <= 0) throw new StyleError('Fix qbmsst N_f must be a positive integer'); break;
-        case 'eta': this.eta = parseNum(val, 'fix qbmsst eta'); if (this.eta <= 0) throw new StyleError('Fix qbmsst eta must be >= 0.0'); break;
-        case 'beta': this.beta = parseInt_(val, 'fix qbmsst beta'); if (this.beta <= 0) throw new StyleError('Fix qbmsst beta must be a positive integer'); break;
-        case 'T_init': this.tInit = parseNum(val, 'fix qbmsst T_init'); if (this.tInit <= 0) throw new StyleError('Fix qbmsst T_init must be >= 0.0'); break;
-        default: throw new StyleError(`Illegal fix qbmsst command: unknown keyword '${key}'`);
+        case 'seed': this.seed = inumeric(val); if (this.seed <= 0) throw new StyleError('Fix qbmsst seed must be a positive integer'); break;
+        case 'f_max': this.fMax = numeric(val); if (this.fMax <= 0) throw new StyleError('Fix qbmsst f_max must be > 0.0'); break;
+        case 'N_f': this.nf = inumeric(val); if (this.nf <= 0) throw new StyleError('Fix qbmsst N_f must be a positive integer'); break;
+        case 'eta': this.eta = numeric(val); if (this.eta <= 0) throw new StyleError('Fix qbmsst eta must be >= 0.0'); break;
+        case 'beta': this.beta = inumeric(val); if (this.beta <= 0) throw new StyleError('Fix qbmsst beta must be a positive integer'); break;
+        case 'T_init': this.tInit = numeric(val); if (this.tInit <= 0) throw new StyleError('Fix qbmsst T_init must be >= 0.0'); break;
+        default: throw new StyleError('Illegal fix qbmsst command');
       }
-      if (val === undefined) throw new StyleError('Illegal fix qbmsst command');
       k += 2;
     }
     if (!sys.geom.periodic.every((p) => p)) throw new StyleError('Fix qbmsst requires a periodic box');

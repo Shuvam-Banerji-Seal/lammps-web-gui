@@ -218,7 +218,8 @@ export class FixBoxRelax extends Fix {
           k += 4; break;
         }
         default:
-          throw new StyleError(`fix box/relax: unknown or unsupported keyword '${key}'`);
+          // As native LAMMPS does (src/fix_box_relax.cpp FixBoxRelax::FixBoxRelax at b332f28): an unrecognised keyword stops with "Unknown fix box/relax keyword".
+          throw new StyleError(`Unknown fix box/relax keyword ${key}`);
       }
     }
     if (!any) throw new StyleError('fix box/relax: no pressure keyword (iso, aniso, tri, x, y, z, xy, xz, yz) given');

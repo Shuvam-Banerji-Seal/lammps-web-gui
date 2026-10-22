@@ -46,7 +46,7 @@ const runWith = async (text: string, files: Record<string, string>) => {
   return events;
 };
 
-const expectError = async (fix: string, files: Record<string, string>, msg: RegExp) => {
+const expectError = async (fix: string, files: Record<string, string>, msg: RegExp | string) => {
   await expect(runWith(`${BOX}\n${fix}\nrun 1`, files)).rejects.toThrow(msg);
 };
 
@@ -179,11 +179,11 @@ describe('ttm/thermal and ttm/cascade in the engine', () => {
   });
 
   it('ttm/thermal: an unknown keyword is an error', async () => {
-    await expectError('fix 2 all ttm/thermal 11 p.in 2 2 2 set 1000 bogus 3', { 'p.in': props() }, /unknown keyword 'bogus'/);
+    await expectError('fix 2 all ttm/thermal 11 p.in 2 2 2 set 1000 bogus 3', { 'p.in': props() }, 'Unknown fix ttm/thermal keyword bogus');
   });
 
   it('ttm/thermal: no stopping keywords (the doc: the effects of electron stopping have been removed)', async () => {
-    await expectError('fix 2 all ttm/thermal 11 p.in 2 2 2 set 1000 cutoff', { 'p.in': props() }, /unknown keyword 'cutoff'/);
+    await expectError('fix 2 all ttm/thermal 11 p.in 2 2 2 set 1000 cutoff', { 'p.in': props() }, 'Unknown fix ttm/thermal keyword cutoff');
   });
 
   it('ttm/cascade: needs set or infile (the doc: the temperature must be a non-zero positive value)', async () => {
@@ -201,7 +201,7 @@ describe('ttm/thermal and ttm/cascade in the engine', () => {
   });
 
   it('ttm/cascade: cutoff takes no value (measured: the number after it is an unknown keyword)', async () => {
-    await expectError('fix 2 all ttm/cascade 77 1 1 0.5 20 0 2 2 2 2 set 1000 cutoff 3', {}, /unknown keyword '3'/);
+    await expectError('fix 2 all ttm/cascade 77 1 1 0.5 20 0 2 2 2 2 set 1000 cutoff 3', {}, 'Unknown fix ttm/cascade keyword 3');
   });
 
   it('ttm/cascade: a negative offset is an error; gamma_p = 0 and gamma_s < 0 are errors (measured)', async () => {

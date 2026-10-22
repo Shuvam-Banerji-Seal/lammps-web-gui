@@ -280,8 +280,8 @@ describe('compute coord/atom', () => {
     await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom weird 1.0`)).rejects.toThrow("unknown compute coord/atom cstyle 'weird'");
     await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff`)).rejects.toThrow('Illegal compute coord/atom command');
     await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff -1.0`)).rejects.toThrow('must be a positive number');
-    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff 0.8 3`)).rejects.toThrow("type '3' is outside 1..2");
-    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff 0.8 2*1`)).rejects.toThrow("type range '2*1' is outside 1..2");
+    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff 0.8 3`)).rejects.toThrow('Numeric index 3 is out of bounds (1-2)');
+    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff 0.8 2*1`)).rejects.toThrow('Numeric index 2 is out of bounds (1-1)');
     await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff 0.8 1 group two`)).rejects.toThrow('group keyword must come before the typeN values');
   });
 });

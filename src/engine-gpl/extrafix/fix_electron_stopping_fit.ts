@@ -31,7 +31,6 @@ export class FixElectronStoppingFit extends Fix {
     super(sys, id, group, args);
     const ntypes = sys.state.ntypes;
     if (args.length < 3 * ntypes) throw new StyleError('Incorrect number of fix electron/stopping/fit arguments');
-    if (args.length > 3 * ntypes) throw new StyleError(`fix electron/stopping/fit: ${args.length - 3 * ntypes} extra arguments are not supported`);
     this.scalarFlag = true;
     this.extscalar = 0;
     this.vMinSq = new Float64Array(ntypes + 1);

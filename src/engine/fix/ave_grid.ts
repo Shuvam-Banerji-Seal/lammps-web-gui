@@ -88,6 +88,9 @@ type Column =
 
 const ATTRS: AttrName[] = ['vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'mass'];
 const KEYWORDS = new Set(['discard', 'norm', 'ave', 'bias', 'adof', 'cdof']);
+/** A word of the value list: an atom attribute, temp, a density, or a compute, fix or variable reference. */
+const isValueWord = (w: string): boolean =>
+  (ATTRS as readonly string[]).includes(w) || w === 'temp' || w === 'density/number' || w === 'density/mass' || /^[cfv]_/.test(w);
 /** Keeps an atom just outside the box from rounding toward cell 0 (fix_ave_grid.cpp OFFSET). */
 const OFFSET = 16384;
 
@@ -161,8 +164,10 @@ export class FixAveGrid extends Fix {
     // values, then keywords
     let k = 6;
     const values: string[] = [];
-    while (k < args.length && !KEYWORDS.has(args[k])) values.push(args[k++]);
-    if (values.length === 0) throw new StyleError(`${what}: at least one input value is required`);
+    // As native LAMMPS does (src/fix_ave_grid.cpp FixAveGrid::FixAveGrid at b332f28): the value list ends at the first
+    // word that is not an input value; that word must then be one of the optional keywords.
+    while (k < args.length && !KEYWORDS.has(args[k]) && isValueWord(args[k])) values.push(args[k++]);
+    if (values.length === 0) throw new StyleError('No values in fix ave/grid command');
     for (const w of expandWildcards(sys, expandGridRefs(sys, values), 'peratom')) {
       this.cols.push(this.column(w, what));
     }
@@ -177,6 +182,7 @@ export class FixAveGrid extends Fix {
 
     while (k < args.length) {
       const key = args[k];
+      if (!KEYWORDS.has(key)) throw new StyleError(`Unknown fix ave/grid keyword: ${key}`);
       const val = args[k + 1];
       if (val === undefined) throw new StyleError(`${what}: keyword ${key} needs a value`);
       k += 2;
@@ -203,7 +209,7 @@ export class FixAveGrid extends Fix {
         this.adof = parseNum(val, `${what} adof`);
       } else if (key === 'cdof') {
         this.cdof = parseNum(val, `${what} cdof`);
-      } else throw new StyleError(`${what}: unknown keyword '${key}'`);
+      }
     }
     const ncol = this.cols.length;
     this.data = new Float64Array(this.ncell * ncol);

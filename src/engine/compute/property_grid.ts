@@ -91,7 +91,8 @@ export class ComputePropertyGrid extends Compute {
     for (let k = 3; k < args.length; k++) {
       const w = args[k] as Attr;
       if (!(ATTRS as readonly string[]).includes(w)) {
-        throw new StyleError(`${what}: unknown attribute '${args[k]}' (use ${ATTRS.join(', ')})`);
+        // As native LAMMPS does (src/compute_property_grid.cpp ComputePropertyGrid::ComputePropertyGrid at b332f28): "Unknown compute property/grid keyword: {}"
+        throw new StyleError(`Unknown compute property/grid keyword: ${args[k]}`);
       }
       if (sys.dimension === 2 && Z_ATTRS.has(w)) {
         throw new StyleError(`${what}: attribute '${w}' refers to the Z dimension and cannot be used in a 2d simulation`);

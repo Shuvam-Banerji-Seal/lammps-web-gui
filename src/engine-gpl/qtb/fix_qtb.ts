@@ -12,7 +12,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { parseInt_, parseNum } from '../../engine/force/util';
+import { inumeric, numeric } from '../../engine/force/util';
 import { nativeOrder } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 import { RanMars } from '../random_mars';
@@ -79,32 +79,32 @@ export class FixQTB extends Fix {
     for (let k = 0; k < args.length;) {
       const key = args[k];
       const val = args[k + 1];
+      // fix_qtb.cpp: every keyword takes one value (a missing one, or an unknown keyword, is "Illegal fix qtb command")
+      if (val === undefined) throw new StyleError('Illegal fix qtb command');
       switch (key) {
         case 'temp':
-          this.tTarget = parseNum(val, 'fix qtb temp');
+          this.tTarget = numeric(val);
           if (this.tTarget < 0.0) throw new StyleError('Fix qtb temp must be >= 0.0');
           break;
         case 'damp':
-          this.tPeriod = parseNum(val, 'fix qtb damp');
+          this.tPeriod = numeric(val);
           if (this.tPeriod <= 0.0) throw new StyleError('Fix qtb damp must be > 0.0');
           this.fricCoef = 1 / this.tPeriod;
           break;
         case 'seed':
-          this.seed = parseInt_(val, 'fix qtb seed');
+          this.seed = inumeric(val);
           if (this.seed <= 0) throw new StyleError('Illegal fix qtb command');
           break;
         case 'f_max':
-          this.fMax = parseNum(val, 'fix qtb f_max');
+          this.fMax = numeric(val);
           if (this.fMax <= 0) throw new StyleError('Illegal fix qtb command');
           break;
         case 'N_f':
-          this.nf = parseInt_(val, 'fix qtb N_f');
+          this.nf = inumeric(val);
           if (this.nf <= 0) throw new StyleError('Illegal fix qtb command');
           break;
-        default:
-          throw new StyleError(`Illegal fix qtb command: unknown keyword '${key}'`);
+        default: throw new StyleError('Illegal fix qtb command');
       }
-      if (val === undefined) throw new StyleError('Illegal fix qtb command');
       k += 2;
     }
     this.random = new RanMars(this.seed);

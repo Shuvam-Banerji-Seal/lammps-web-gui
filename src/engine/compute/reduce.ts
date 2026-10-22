@@ -514,24 +514,6 @@ export class ComputeDisplaceAtom extends Compute {
   }
 }
 
-/** Parses a typeN keyword of compute coord/atom: "*" or "*n" or "m*" or "m*n", or one type. */
-const parseTypeRange = (id: string, w: string, ntypes: number): readonly [number, number] => {
-  const m = /^(\d*)\*(\d*)$/.exec(w);
-  if (m) {
-    const lo = m[1] === '' ? 1 : Number(m[1]);
-    const hi = m[2] === '' ? ntypes : Number(m[2]);
-    if (lo < 1 || hi < 1 || lo > ntypes || hi > ntypes || lo > hi) {
-      throw new StyleError(`compute ${id} (coord/atom): type range '${w}' is outside 1..${ntypes}`);
-    }
-    return [lo, hi];
-  }
-  const t = Number(w);
-  if (!Number.isInteger(t) || t < 1 || t > ntypes) {
-    throw new StyleError(`compute ${id} (coord/atom): type '${w}' is outside 1..${ntypes}`);
-  }
-  return [t, t];
-};
-
 /*
  * compute ID group-ID coord/atom style args ... —
  * docs.lammps.org/compute_coord_atom.html, with
@@ -635,7 +617,8 @@ export class ComputeCoordAtom extends Compute {
         k++;
         continue;
       }
-      ranges.push(parseTypeRange(id, args[k], ntypes));
+      // As native LAMMPS does (src/compute_coord_atom.cpp at b332f28): each typeN word is read by utils::bounds over 1..ntypes
+      ranges.push(bounds(args[k], 1, ntypes));
     }
     this.ranges = ranges.length ? ranges : ([[1, ntypes]] as const); // no typeN: "includes atoms of all types"
     if (this.ranges.length > 1) this.sizePeratomCols = this.ranges.length; // else per-atom vector

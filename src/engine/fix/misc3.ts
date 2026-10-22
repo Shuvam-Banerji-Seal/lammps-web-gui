@@ -288,8 +288,8 @@ export class FixWallRegion extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const usage = 'usage: fix ID group-ID wall/region region-ID style args ... cutoff';
-    if (args.length < 2) throw new StyleError(`fix ${id} (wall/region): ${usage}`);
+    // As native LAMMPS does (src/fix_wall_region.cpp FixWallRegion::FixWallRegion at b332f28): the word count is checked before the style name, and a wrong count is "Illegal fix wall/region command" (morse: "... morse command")
+    if (args.length < 4) throw new StyleError('Illegal fix wall/region command: missing argument(s)');
     this.regionId = args[0];
     this.wallStyle = args[1];
     if (!WR_STYLES.includes(this.wallStyle)) {
@@ -297,7 +297,7 @@ export class FixWallRegion extends Fix {
     }
     const nParams = this.wallStyle === 'morse' ? 3 : 2;
     if (args.length !== 2 + nParams + 1) {
-      throw new StyleError(`fix ${id} (wall/region): style ${this.wallStyle} takes ${nParams} parameters and a cutoff (${usage})`);
+      throw new StyleError(this.wallStyle === 'morse' ? 'Illegal fix wall/region morse command' : 'Illegal fix wall/region command');
     }
     this.params = [];
     for (let k = 0; k < nParams; k++) {

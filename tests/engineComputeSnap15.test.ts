@@ -214,7 +214,7 @@ describe('compute snap, sna/grid: argument errors', () => {
   });
 
   it('rejects unknown keywords, non-binary flags and a missing grid keyword', async () => {
-    await fails(`compute s all snap ${SNAP} frobnicate 1`, /unknown keyword 'frobnicate'/);
+    await fails(`compute s all snap ${SNAP} frobnicate 1`, /Illegal compute snap command/);
     await fails(`compute s all snap ${SNAP} switchflag 2`, /switchflag must be 0 or 1/);
     await fails(`compute g all sna/grid 2 2 2 ${SNAP}`, /expects 'grid nx ny nz/);
   });

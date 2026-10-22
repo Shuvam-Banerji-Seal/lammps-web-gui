@@ -348,6 +348,15 @@ export class ComputeRDF extends Compute {
     super(sys, id, group, args);
     this.nbin = parseInt_(args[0], 'compute rdf Nbin');
     if (this.nbin < 1) throw new StyleError(`compute rdf Nbin must be >= 1 (got ${args[0]})`);
+    // As native LAMMPS does (src/compute_rdf.cpp ComputeRDF::ComputeRDF at b332f28): after the first "cutoff" only "cutoff value" pairs are read, then the atom-type words must come in pairs
+    const cutAt = args.indexOf('cutoff', 1);
+    if (cutAt >= 0) {
+      for (let k = cutAt; k < args.length; k += 2) {
+        if (args[k] !== 'cutoff') throw new StyleError(`Unknown compute rdf keyword ${args[k]}`);
+        if (k + 1 >= args.length) throw new StyleError('Illegal compute rdf cutoff command: missing argument(s)');
+      }
+    }
+    if (((cutAt < 0 ? args.length : cutAt) - 1) % 2) throw new StyleError('Must provide atom types in pairs for compute rdf command');
     const ntypes = sys.state.ntypes;
     const typeRange = (w: string): [number, number] => {
       const wild = /^(\d*)\*(\d*)$/.exec(w);

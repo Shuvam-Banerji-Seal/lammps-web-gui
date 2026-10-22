@@ -74,7 +74,8 @@ export class ComputeFEP extends Compute {
       const w = args[k];
       if (w === 'tail') this.tailFlag = logical(w, args[k + 1]);
       else if (w === 'volume') this.volumeFlag = logical(w, args[k + 1]);
-      else throw new StyleError(`Illegal optional keyword in compute fep: '${w}' (${USAGE})`);
+      // As native LAMMPS does (src/FEP/compute_fep.cpp ComputeFEP::ComputeFEP at b332f28): "Illegal optional keyword in compute fep".
+      else throw new StyleError('Illegal optional keyword in compute fep');
       k += 2;
     }
   }

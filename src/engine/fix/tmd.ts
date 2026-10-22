@@ -132,14 +132,17 @@ export class FixTmd extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 4 && args.length !== 3) throw new StyleError('fix tmd: usage: fix ID group-ID tmd rho_final file1 N file2');
+    // As native LAMMPS does (src/EXTRA-FIX/fix_tmd.cpp FixTMD::FixTMD at b332f28): fewer than the three required words is
+    // "Illegal fix tmd command"; with N = 0 any words after N are not read.
+    if (args.length < 3) throw new StyleError('Illegal fix tmd command');
     this.rhoFinal = Number(args[0]);
     if (!Number.isFinite(this.rhoFinal)) throw new StyleError(`fix tmd: rho_final must be a number, got '${args[0]}'`);
     const fileName = args[1];
     this.every = Number(args[2]);
     if (!Number.isInteger(this.every) || this.every < 0) throw new StyleError(`fix tmd: N must be a non-negative integer, got '${args[2]}'`);
     // "file2 = filename to write TMD statistics to (only needed if N > 0)"
-    if (this.every > 0 && args.length !== 4) throw new StyleError('fix tmd: file2 is needed when N > 0');
+    // native: "if (nfileevery && narg != 7)": the file2 word is required (and only then) when N > 0
+    if (this.every > 0 && args.length !== 4) throw new StyleError('Illegal fix tmd command');
     this.file2 = this.every > 0 ? args[3] : null;
     this.nevery = 1;
     this.targets = parseTarget(sys.readFile(fileName), fileName).targets;

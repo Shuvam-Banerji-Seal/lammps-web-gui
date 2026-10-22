@@ -313,7 +313,9 @@ export class FixDeform extends Fix {
     const tilt = name.length === 2;
     const style = a[k + 1];
     if (!['x', 'y', 'z', 'xy', 'xz', 'yz'].includes(name)) {
-      throw new StyleError(`fix deform: unknown parameter '${name}' (expected x, y, z, xy, xz or yz)`);
+      // As native LAMMPS does (src/fix_deform.cpp FixDeform::FixDeform and FixDeform::options at b332f28): the first word that is
+      // neither a box parameter nor a keyword ends the parameter loop, and options() then rejects it as an unknown keyword.
+      throw new StyleError(`Unknown fix ${child ? child.name : 'deform'} keyword: ${name}`);
     }
     // a style the parent does not know is the child's (native child_styles): its words are left to the child
     const parentStyle = tilt ? style === 'erate/rescale' || TILT_STYLES.includes(style as DimStyle) : LEN_STYLES.includes(style as DimStyle);

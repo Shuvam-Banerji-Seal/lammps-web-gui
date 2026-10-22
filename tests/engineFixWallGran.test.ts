@@ -72,7 +72,7 @@ describe('fix wall/gran argument errors', () => {
     ['both planes NULL', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane NULL NULL', /NULL/],
     ['dampflag not 0 or 1', 'hooke 2000.0 NULL 50.0 NULL 0.5 2 zplane 0.0 NULL', /dampflag/],
     ['wiggle period not positive', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL wiggle z 0.1 0', /period/],
-    ['unknown keyword', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL foo', /foo/],
+    ['unknown keyword', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL foo', /Illegal fix wall\/gran command/],
   ];
   for (const [name, wall, re] of cases) {
     it(`rejects ${name}`, async () => {

@@ -311,7 +311,8 @@ export class ComputeSnaAtom extends Compute {
       } else if (kw === 'switchinnerflag' || kw === 'sinner' || kw === 'dinner' || kw === 'bikflag' || kw === 'dgradflag') {
         throw new StyleError(`compute ${id} (sna/atom): keyword '${kw}' is not implemented in this engine`);
       } else {
-        throw new StyleError(`compute ${id} (sna/atom): unknown keyword '${kw}'`);
+        // As native LAMMPS does (src/ML-SNAP/compute_sna_atom.cpp at b332f28): an unknown keyword is "Illegal compute {style} command"
+        throw new StyleError(`Illegal compute ${style} command`);
       }
     }
     this.rmin0 = rmin0;

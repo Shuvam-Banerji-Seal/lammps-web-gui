@@ -291,7 +291,8 @@ export class FixAdapt extends Fix {
         k += 2; nattr++;
         continue;
       }
-      throw new StyleError(`fix ${id} (adapt): unknown attribute or keyword '${w}' (${USAGE})`);
+      // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::FixAdapt at b332f28): a word that is neither an attribute nor a keyword reaches the keyword loop's "Unknown fix adapt keyword {}"
+      throw new StyleError(`Unknown fix adapt keyword ${w}`);
     }
     if (nattr === 0) throw new StyleError(`fix ${id} (adapt): no attribute given (${USAGE})`);
     // fix_adapt.rst: "The option defaults are scale = no, reset = no, mass = yes."

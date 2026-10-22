@@ -157,7 +157,7 @@ export class FixGLE extends Fix {
     if (!Number.isFinite(this.tStart) || !Number.isFinite(this.tStop)) throw new StyleError('Illegal fix gle temperature');
     const seed = Number(args[3]);
     if (!Number.isInteger(seed) || seed <= 0) throw new StyleError('Illegal fix gle command');
-    // keyword pairs: noneq cmatrix, every nmts; any other keyword is refused by name
+    // keyword pairs: noneq cmatrix, every nmts; other words are skipped (see below)
     let noneqFile: string | null = null;
     let every = 1;
     for (let iarg = 5; iarg < args.length; iarg += 2) {
@@ -169,9 +169,9 @@ export class FixGLE extends Fix {
         if (iarg + 1 >= args.length) throw new StyleError('Did not specify interval for applying the GLE');
         every = Number(args[iarg + 1]);
         if (!Number.isInteger(every)) throw new StyleError('Illegal fix gle every value');
-      } else {
-        throw new StyleError(`fix gle: keyword '${key}' is not supported (noneq, every)`);
       }
+      // any other word is skipped in pairs, as native does (fix_gle.cpp FixGLE::FixGLE at b332f28: the loop
+      // only tests noneq and every, then steps two words at a time)
     }
     this.fnoneq = noneqFile !== null;
     this.gleEvery = every;

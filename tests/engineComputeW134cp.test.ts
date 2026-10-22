@@ -41,9 +41,9 @@ describe('compute entropy/atom (ported)', () => {
     expect(r.errors[0]).toMatch(/cutoff is longer than the pairwise cutoff/);
   });
 
-  it('names an unknown keyword', async () => {
+  it('refuses an unknown keyword with the native message', async () => {
     const r = await run(`${SETUP}${PAIR}compute e all entropy/atom 0.25 3.0 bogus yes\nrun 0\n`);
-    expect(r.errors[0]).toMatch(/unknown keyword 'bogus'/);
+    expect(r.errors[0]).toContain('Illegal compute entropy/atom command');
   });
 
   it('refuses a non-positive sigma', async () => {
@@ -65,9 +65,9 @@ describe('compute xrd (ported)', () => {
     expect(r.errors[0]).toMatch(/Invalid ASF atom type Qq/);
   });
 
-  it('names an unknown keyword', async () => {
+  it('refuses an unknown keyword with the native message', async () => {
     const r = await run(`${SETUP}${PAIR}compute x all xrd 1.54 Ni bogus 1\nrun 0\n`);
-    expect(r.errors[0]).toMatch(/unknown keyword 'bogus'/);
+    expect(r.errors[0]).toContain('Illegal Compute XRD Command');
   });
 
   it('needs the 2Theta range to be ordered', async () => {
@@ -87,9 +87,9 @@ describe('compute saed (ported)', () => {
     expect(r.errors[0]).toMatch(/must be between 0 and 6/);
   });
 
-  it('names an unknown keyword', async () => {
+  it('refuses an unknown keyword with the native message', async () => {
     const r = await run(`${SETUP}${PAIR}compute s all saed 0.0251 Ni bogus manual\nrun 0\n`);
-    expect(r.errors[0]).toMatch(/unknown keyword 'bogus'/);
+    expect(r.errors[0]).toContain('Illegal Compute SAED Command');
   });
 });
 

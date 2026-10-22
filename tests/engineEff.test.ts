@@ -197,7 +197,8 @@ describe('pair eff/cut, fix nve/eff, compute temp/eff and ke/eff', () => {
     const withData = () => { const n = newSession(); n.session.addFile('h2.data', H2_DATA); return n.session; };
     // Measured with native LAMMPS: fix nve/eff does not read the words after its style name
     await expect(withData().execute(`${HEAD}read_data h2.data\nfix f all nve/eff 1\n`)).resolves.toBeUndefined();
-    await expect(withData().execute(`${HEAD}read_data h2.data\ncompute t all temp/eff 1\n`)).rejects.toThrow(/takes no arguments/);
+    // As native LAMMPS does (src/EFF/compute_temp_eff.cpp at b332f28): the constructor reads no arguments after the style name
+    await expect(withData().execute(`${HEAD}read_data h2.data\ncompute t all temp/eff 1\n`)).resolves.toBeUndefined();
   });
 
   it('refuses fix nve/eff and compute temp/eff without atom_style electron', async () => {

@@ -886,7 +886,8 @@ const chunkCom = (sys: System, groupBit: number, chunk: ComputeChunkAtom, wrap =
 export const parseComChunkWrap = (id: string, words: string[]): boolean => {
   let wrap = false;
   for (let k = 0; k < words.length; k++) {
-    if (words[k] !== 'wrap') throw new StyleError(`compute ${id} (com/chunk): unknown keyword '${words[k]}'`);
+    // As native LAMMPS does (src/compute_com_chunk.cpp ComputeCOMChunk::ComputeCOMChunk at b332f28): "Unknown compute com/chunk keyword {}"
+    if (words[k] !== 'wrap') throw new StyleError(`Unknown compute com/chunk keyword ${words[k]}`);
     if (k + 1 >= words.length) throw new StyleError(`compute ${id} (com/chunk): wrap needs a logical value (yes, true, on, 1, no, false, off or 0)`);
     const v = words[++k];
     if (v === 'yes' || v === 'true' || v === 'on' || v === '1') wrap = true;
@@ -944,7 +945,8 @@ export class ComputeMsdChunk extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 1) throw new StyleError(`usage: compute ${id} group-ID msd/chunk chunkID`);
+    // As native LAMMPS does (src/compute_msd_chunk.cpp ComputeMSDChunk::ComputeMSDChunk at b332f28): narg must be 4, so any extra word is refused
+    if (args.length !== 1) throw new StyleError('Incorrect number of arguments for compute msd/chunk');
     this.chunk = chunkCompute(sys, args[0], 'compute msd/chunk');
     this.arrayFlag = true;
     this.sizeArrayCols = 4;

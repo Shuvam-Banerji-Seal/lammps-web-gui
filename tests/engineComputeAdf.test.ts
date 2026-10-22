@@ -237,12 +237,12 @@ describe('compute adf', () => {
 
   it('rejects bad arguments with a StyleError', async () => {
     const base = `${MIXED}`;
-    await expect(runScript(`${base}\ncompute a all adf 0 1 2 2 0.0 2.0 0.0 2.0`)).rejects.toThrow('Nbin must be >= 1');
-    await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 0.0 2.0 0.0 2.0 bogus 3`)).rejects.toThrow('bogus');
-    await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 1.0 0.5 0.0 2.0`)).rejects.toThrow('illegal j-cutoff');
-    await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 0.0 2.0 0.5 0.5`)).rejects.toThrow('illegal k-cutoff');
-    await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 0.0 2.0 0.0 2.0 ordinate bogus`)).rejects.toThrow('unknown ordinate');
+    await expect(runScript(`${base}\ncompute a all adf 0 1 2 2 0.0 2.0 0.0 2.0`)).rejects.toThrow('Illegal compute adf command');
+    await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 0.0 2.0 0.0 2.0 bogus 3`)).rejects.toThrow('Illegal compute adf command');
+    await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 1.0 0.5 0.0 2.0`)).rejects.toThrow('Illegal compute adf command j-cutoff');
+    await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 0.0 2.0 0.5 0.5`)).rejects.toThrow('Illegal compute adf command k-cutoff');
+    await expect(runScript(`${base}\ncompute a all adf 4 1 2 2 0.0 2.0 0.0 2.0 ordinate bogus`)).rejects.toThrow('Unknown compute adf ordinate flag bogus');
     await expect(runScript(`${base}\ncompute a all adf 4 1 2 C1 0.0 2.0 0.0 2.0`)).rejects.toThrow('Invalid range string: C1');
-    await expect(runScript(`${base}\ncompute a all adf 4 1 2 3 0.0 2.0 0.0 2.0`)).rejects.toThrow('out of range');
+    await expect(runScript(`${base}\ncompute a all adf 4 1 2 3 0.0 2.0 0.0 2.0`)).rejects.toThrow('Numeric index 3 is out of bounds (1-2)');
   });
 });

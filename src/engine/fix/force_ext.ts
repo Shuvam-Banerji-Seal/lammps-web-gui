@@ -131,27 +131,33 @@ export class FixGravity extends Fix {
 
   constructor(sys: System, id: string, group: string, argsIn: string[]) {
     super(sys, id, group, argsIn);
-    // trailing keyword "disable" (no value) may follow the style arguments
+    // As native LAMMPS does (src/fix_gravity.cpp FixGravity::FixGravity at b332f28): the magnitude and the style words are read by
+    // position, the style's arguments follow, and then only the keyword "disable" (no value) may come; any other word is
+    // "Illegal fix gravity command". A style or a short argument list gives the same message.
     const args = argsIn.slice();
-    while (args.length > 0 && args[args.length - 1] === 'disable') { args.pop(); this.disabled = true; }
-    if (args.length < 2) throw new StyleError('usage: fix ID group gravity magnitude style args');
+    if (args.length < 2) throw new StyleError('Illegal fix gravity command');
     this.magnitude = parseNumOrVar(args[0], 'gravity magnitude');
     const style = args[1];
+    const styleArgs = style === 'chute' ? 3 : style === 'spherical' ? 4 : style === 'vector' ? 5 : 0;
+    if (styleArgs === 0 || args.length < styleArgs) throw new StyleError('Illegal fix gravity command');
     if (style === 'chute') {
-      if (args.length !== 3) throw new StyleError('usage: fix ID group gravity magnitude chute angle');
       this.a1 = parseNumOrVar(args[2], 'gravity chute angle');
       this.kind = 'chute';
     } else if (style === 'spherical') {
-      if (args.length !== 4) throw new StyleError('usage: fix ID group gravity magnitude spherical phi theta');
       this.a1 = parseNumOrVar(args[2], 'gravity spherical phi');
       this.a2 = parseNumOrVar(args[3], 'gravity spherical theta');
       this.kind = 'spherical';
-    } else if (style === 'vector') {
-      if (args.length !== 5) throw new StyleError('usage: fix ID group gravity magnitude vector x y z');
+    } else {
       this.a1 = parseNumOrVar(args[2], 'gravity vector x');
       this.a2 = parseNumOrVar(args[3], 'gravity vector y');
       this.a3 = parseNumOrVar(args[4], 'gravity vector z');
       this.kind = 'vector';
+    }
+    for (const w of args.slice(styleArgs)) {
+      if (w !== 'disable') throw new StyleError('Illegal fix gravity command');
+      this.disabled = true;
+    }
+    if (this.kind === 'vector') {
       // a constant zero direction is rejected when the fix is defined; a
       // variable that evaluates to zero at some step is caught in gvec().
       // A disabled fix never evaluates its direction for the atoms, so it is not rejected here.
@@ -159,8 +165,6 @@ export class FixGravity extends Fix {
         && this.a1 === 0 && this.a2 === 0 && this.a3 === 0) {
         throw new StyleError(`fix ${id} gravity: the vector direction must be non-zero`);
       }
-    } else {
-      throw new StyleError(`fix gravity: style '${style}' is not supported (only chute, spherical and vector are documented with args on docs.lammps.org/fix_gravity.html)`);
     }
     this.scalarFlag = true;
     this.extscalar = 1;
@@ -421,7 +425,7 @@ export class FixEfield extends Fix {
   /** Per-atom force added by the last postForce, in LAMMPS force units. */
   private fadd: Float64Array = new Float64Array(0);
 
-  constructor(sys: System, id: string, group: string, args: string[]) {
+  constructor(sys: System, id: string, group: string, args: string[], keywordStyle = 'efield') {
     super(sys, id, group, args);
     const s = sys.state;
     if (!hasChargeStyle(s.atomStyle)) {
@@ -440,6 +444,8 @@ export class FixEfield extends Fix {
     for (let k = 3; k < args.length; k += 2) {
       const key = args[k];
       const val = args[k + 1];
+      // As native LAMMPS does (src/fix_efield.cpp FixEfield::FixEfield at b332f28): the keyword is checked first, so an unknown keyword is reported even without a value
+      if (key !== 'region' && key !== 'energy' && key !== 'potential') throw new StyleError(`Unknown keyword for fix ${keywordStyle} command: ${key}`);
       if (val === undefined) throw new StyleError(`fix efield keyword '${key}' needs a value`);
       if (key === 'region') {
         // "region-ID = ID of region atoms must be in to have added force"
@@ -454,7 +460,7 @@ export class FixEfield extends Fix {
         if (this.energyVar !== null) throw new StyleError('fix efield: when the potential keyword is specified, the energy keyword must not be used');
         this.potentialVar = FixEfield.atomVar(sys, val, 'potential');
       } else {
-        throw new StyleError(`fix efield: unknown keyword '${key}' (region, energy and potential are the documented keywords; point-dipole handling is not supported by this engine)`);
+        throw new StyleError(`Unknown keyword for fix efield command: ${key}`);
       }
     }
     this.scalarFlag = true;

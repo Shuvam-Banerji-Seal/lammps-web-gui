@@ -17,7 +17,6 @@ export class ComputeTempEff extends ComputeTemp {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
     if (!isElectronStyle(sys.state.atomStyle)) throw new StyleError('Compute temp/eff requires atom style electron');
-    if (args.length) throw new StyleError(`compute temp/eff takes no arguments (got ${args.join(' ')})`);
   }
 
   /** compute_temp_eff.cpp dof_compute: d N - extra - fix, minus d for each electron. */

@@ -113,7 +113,8 @@ run 10
 
   it('fix store/state refuses an attribute that is not a store/state input (temperature)', async () => {
     const { error } = await runScript(`${SYS}\nfix s all store/state 0 temperature\n`);
-    expect(error?.message).toContain("invalid input value 'temperature'");
+    // As native LAMMPS does (src/fix_store_state.cpp at b332f28): the input list ends at a word that is not an input, read as a keyword
+    expect(error?.message).toContain('Unknown fix store/state keyword: temperature');
   });
 
   it('fix store/state stores a custom d_name property (fix property/atom) at the first run', async () => {

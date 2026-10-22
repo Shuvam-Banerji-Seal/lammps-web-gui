@@ -431,7 +431,8 @@ export class FixPour extends Fix {
         i += 1 + n;
       } else if (key === 'rigid') { rigidId = args[i + 1] ?? null; i += 2; }
       else if (key === 'shake') { shakeId = args[i + 1] ?? null; i += 2; }
-      else throw new StyleError(`fix pour: unknown keyword '${key}'`);
+      // As native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour::FixPour at b332f28): an unrecognised word stops with "Illegal fix pour command argument".
+      else throw new StyleError(`Illegal fix pour command argument: ${key}`);
     }
     if (region === null) throw new StyleError('fix pour requires the region keyword');
     this.regionId = region;

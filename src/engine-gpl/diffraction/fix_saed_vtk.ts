@@ -147,7 +147,7 @@ export class FixSAEDVTK extends Fix {
         if (k + 2 > args.length) throw new StyleError('Illegal fix saed/vtk command: start needs Nstart');
         startStep = intArg(args[k + 1], what);
         k += 2;
-      } else throw new StyleError(`Illegal fix saed/vtk command: unknown keyword '${kw}'`);
+      } else throw new StyleError('Illegal fix saed/vtk command');
     }
     this.ave = ave;
     this.nwindow = nwindow;

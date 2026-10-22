@@ -15,6 +15,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { PairReaxFF } from './pair';
 import { type HistoryMap, solveFictitious, taperFix } from './charge';
@@ -65,32 +66,37 @@ export class FixQEqReaxFF extends Fix {
   private efieldFix: FixEfield | null = null;
   private matvecs = 0;
 
-  constructor(sys: System, id: string, group: string, args: string[], private pairRef: () => PairReaxFF | null) {
+  constructor(sys: System, id: string, group: string, args: string[], private pairRef: () => PairReaxFF | null, invoked = 'qeq/reaxff') {
     super(sys, id, group, args);
     this.scalarFlag = true;
     this.extscalar = 0;
     // narg of LAMMPS is 8..12 with "fix ID group style" in front: 5..9 arguments here
     if (args.length < 5 || args.length > 9) throw new StyleError('Illegal fix qeq/reaxff command');
     this.pairRef()?.attachQeqFix();
-    this.nevery = intArg(args[0], 'Nevery');
+    this.nevery = inumeric(args[0]);
     if (this.nevery <= 0) throw new StyleError('Illegal fix qeq/reaxff command');
-    this.swa = numArg(args[1], 'swa');
-    this.swb = numArg(args[2], 'swb');
-    this.tolerance = numArg(args[3], 'tolerance');
+    this.swa = numeric(args[1]);
+    this.swb = numeric(args[2]);
+    this.tolerance = numeric(args[3]);
     this.pertype = args[4];
+    // fix_qeq_reaxff.cpp (FixQEqReaxFF::FixQEqReaxFF and post_constructor): a keyword without its value, or an unknown
+    // one, is "Illegal fix {style} command" with the style as invoked (qeq/reax for the alias); matfree selects the
+    // Kokkos solver and is not read by this style; dual is refused after the keywords
+    let dual = false;
     let iarg = 5;
     while (iarg < args.length) {
       const k = args[iarg];
-      if (k === 'nowarn') this.maxwarn = false;
+      if (k === 'dual') dual = true;
+      else if (k === 'nowarn') this.maxwarn = false;
+      else if (k === 'matfree') { /* read only by the Kokkos variant */ }
       else if (k === 'maxiter') {
-        if (iarg + 1 > args.length - 1) throw new StyleError('Illegal fix qeq/reaxff command: maxiter needs a value');
-        this.imax = intArg(args[iarg + 1], 'maxiter');
+        if (iarg + 1 > args.length - 1) throw new StyleError(`Illegal fix ${invoked} command`);
+        this.imax = inumeric(args[iarg + 1]);
         iarg++;
-      } else if (k === 'dual') throw new StyleError('fix qeq/reaxff keyword dual is not ported (OPENMP variant only)');
-      else if (k === 'matfree') throw new StyleError('fix qeq/reaxff keyword matfree is not ported (Kokkos variant only)');
-      else throw new StyleError(`Illegal fix qeq/reaxff command: unknown keyword ${k}`);
+      } else throw new StyleError(`Illegal fix ${invoked} command`);
       iarg++;
     }
+    if (dual) throw new StyleError('Dual keyword only supported with fix qeq/reaxff/omp');
   }
 
   override init(): void {
@@ -166,14 +172,3 @@ export class FixQEqReaxFF extends Fix {
   /** The QEq parameters of the fix (for tests and the notebook). */
   qeqParams(): QeqParams | null { return this.params; }
 }
-
-const intArg = (w: string, what: string): number => {
-  const v = Number(w);
-  if (!Number.isInteger(v)) throw new StyleError(`Illegal fix qeq/reaxff command: expected an integer for ${what}, got '${w}'`);
-  return v;
-};
-const numArg = (w: string, what: string): number => {
-  const v = Number(w);
-  if (w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`Illegal fix qeq/reaxff command: expected a number for ${what}, got '${w}'`);
-  return v;
-};

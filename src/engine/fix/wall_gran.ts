@@ -215,7 +215,8 @@ export class FixWallGran extends Fix {
         if (args[k + 1] === undefined) throw new StyleError('Illegal fix wall/gran command');
         throw new StyleError('Must define wall temperature with heat model');
       } else {
-        throw new StyleError(`fix ${id} wall/gran: unknown keyword or argument '${w}'`);
+        // As native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp FixWallGran::FixWallGran at b332f28): an unrecognised optional word stops with "Illegal fix wall/gran command".
+        throw new StyleError('Illegal fix wall/gran command');
       }
     }
     this.step0 = sys.state.step;
@@ -532,7 +533,8 @@ export class FixWallGranGranular extends Fix {
         this.wallT = tw.startsWith('v_') ? tw.slice(2) : parseNum(tw, 'wall temperature');
         k += 2;
       } else {
-        throw new StyleError(`fix ${id} ${this.style}: unknown keyword or argument '${w}'`);
+        // As native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp FixWallGran::FixWallGran at b332f28, shared by fix_wall_gran_region.cpp): an unrecognised optional word stops with "Illegal fix wall/gran command".
+        throw new StyleError('Illegal fix wall/gran command');
       }
     }
     if (this.contactsOn) {

@@ -64,7 +64,7 @@ fix 5 all dt/reset 10 1.0e-5 0.01 0.1 emax 30 units box
     await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0\n')).rejects.toThrow(/Xmax/);
     await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0.1 emax -1\n')).rejects.toThrow(/emax/);
     await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0.1 units metric\n')).rejects.toThrow(/units must be lattice or box/);
-    await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0.1 foo 3\n')).rejects.toThrow(/unknown keyword 'foo'/);
+    await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0.1 foo 3\n')).rejects.toThrow('Illegal fix dt/reset command');
   });
 
   it('chooses the timestep from the displacement rule (values measured with native LAMMPS)', async () => {
@@ -154,7 +154,7 @@ run 2
     // electron/stopping/fit is a GPL port now (src/engine-gpl/extrafix); graphics/isosurface is still refused
     await expect(session().s.execute('units metal\natom_style atomic\nlattice fcc 0.8442\nregion box block 0 3 0 3 0 3\ncreate_box 1 box\ncreate_atoms 1 box\nmass 1 1.0\nfix 3 all graphics/isosurface\n'))
       .rejects.toThrow(/isosurface/);
-    await expect(session({ 'tab2.txt': TABLE2 }).s.execute(es(1388, 0, 'tab2.txt'))).rejects.toThrow(/Ecut must be a positive energy/);
+    await expect(session({ 'tab2.txt': TABLE2 }).s.execute(es(1388, 0, 'tab2.txt'))).rejects.toThrow('Illegal fix electron/stopping command: Ecut <= 0');
     await expect(session({ 'tab2.txt': TABLE2 }).s.execute(es(1388, 1, 'tab2.txt', 'region nowhere'))).rejects.toThrow(/nowhere/);
   });
 

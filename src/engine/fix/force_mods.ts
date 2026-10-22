@@ -155,6 +155,11 @@ export class FixSetForce extends ForceModFix {
     this.parse('setforce', args, true, false);
   }
 
+  protected keyword(key: string, _value: string): void {
+    // As native LAMMPS does (src/fix_setforce.cpp FixSetForce::FixSetForce at b332f28): "Unknown fix setforce keyword: {}".
+    throw new StyleError(`Unknown fix setforce keyword: ${key}`);
+  }
+
   postForce(): void {
     const s = this.sys.state;
     const f = s.f;
@@ -257,7 +262,8 @@ export class FixAddForce extends ForceModFix {
       this.energyVar = name;
       return;
     }
-    throw new StyleError(`unknown fix addforce keyword '${key}'`);
+    // As native LAMMPS does (src/fix_addforce.cpp FixAddForce::FixAddForce at b332f28): "Unknown fix addforce keyword: {}".
+    throw new StyleError(`Unknown fix addforce keyword: ${key}`);
   }
 
   postForce(): void {
@@ -337,6 +343,12 @@ export class FixAveForce extends ForceModFix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     this.parse('aveforce', args, true, true);
+  }
+
+  protected keyword(_key: string, _value: string): void {
+    // As native LAMMPS does (src/fix_aveforce.cpp FixAveForce::FixAveForce at b332f28): any keyword other than region
+    // gives "Illegal fix aveforce command".
+    throw new StyleError('Illegal fix aveforce command');
   }
 
   postForce(): void {

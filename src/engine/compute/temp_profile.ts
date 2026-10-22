@@ -86,10 +86,12 @@ export class ComputeTempProfile extends ComputeTemp {
     // compute temp/profile: the extra degrees of freedom default to dim - Ns (overridden by compute_modify extra)
     this.extraDof = sys.dimension - this.ns;
     let outBin = false;
+    // As native LAMMPS does (src/compute_temp_profile.cpp ComputeTempProfile::ComputeTempProfile at b332f28): the only
+    // optional words are "out tensor" or "out bin"; any other word, or a missing value, is "Illegal compute temp/profile command".
     while (k < args.length) {
-      if (args[k] !== 'out') throw new StyleError(`compute ${id} (temp/profile): unknown keyword '${args[k]}' (use out)`);
+      if (args[k] !== 'out' || k + 1 >= args.length) throw new StyleError('Illegal compute temp/profile command');
       const w = args[k + 1];
-      if (w !== 'tensor' && w !== 'bin') throw new StyleError(`compute ${id} (temp/profile): out must be tensor or bin (got '${w}')`);
+      if (w !== 'tensor' && w !== 'bin') throw new StyleError('Illegal compute temp/profile command');
       outBin = w === 'bin';
       k += 2;
     }

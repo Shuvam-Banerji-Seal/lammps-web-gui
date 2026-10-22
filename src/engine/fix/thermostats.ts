@@ -1,6 +1,7 @@
 import { Fix, fixModifyCompute } from './fix';
 import { takeFixRecord } from './restartRecord';
 import { StyleError } from '../force/types';
+import { missingArgs } from '../force/util';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { RanMars } from '../rng';
@@ -160,7 +161,8 @@ export class FixTempRescale extends RescaleFix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 5) throw new StyleError('usage: fix ID group temp/rescale N Tstart Tstop window fraction');
+    // As native LAMMPS does (src/fix_temp_rescale.cpp at b332f28): the first five arguments are read and any further words are ignored
+    if (args.length < 5) throw missingArgs('fix temp/rescale');
     const energy = energyRestart(sys, id, this.style);
     if (energy !== undefined) this.exchanged = energy;
     this.nevery = Number(args[0]);
@@ -301,7 +303,8 @@ export class FixLangevin extends Fix {
         }
         // As native LAMMPS does (src/fix_langevin.cpp at b332f28): the keyword was removed in favour of fix gjf
         case 'gjf': throw new StyleError('The GJF integrator formulation in fix langevin has been removed.\nPlease use fix gjf instead: https://docs.lammps.org/fix_gjf.html');
-        default: throw new StyleError(`unknown fix langevin keyword '${key}'`);
+        // As native LAMMPS does (src/fix_langevin.cpp FixLangevin::FixLangevin at b332f28): "Unknown fix langevin keyword"
+        default: throw new StyleError(`Unknown fix langevin keyword ${key}`);
       }
     }
     this.checkAngmom();

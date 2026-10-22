@@ -33,24 +33,25 @@ export class FixBondBreak extends Fix {
     super(sys, id, group, args);
     if (args.length < 3) throw new StyleError('Illegal fix bond/break command');
     const nevery = intArg(args[0], 'fix bond/break nevery');
-    if (nevery <= 0) throw new StyleError('Illegal fix bond/break command: nevery must be positive');
+    if (nevery <= 0) throw new StyleError('Illegal fix bond/break command');
     this.nevery = nevery;
     this.vectorFlag = true;
     this.sizeVector = 2;
     this.btype = intArg(args[1], 'fix bond/break bond type');
     if (this.btype < 1 || this.btype > sys.state.topo.nbondtypes) throw new StyleError('Invalid bond type in fix bond/break command');
     const cutoff = numArg(args[2], 'fix bond/break cutoff');
-    if (cutoff < 0) throw new StyleError('Illegal fix bond/break command: cutoff must not be negative');
+    if (cutoff < 0) throw new StyleError('Illegal fix bond/break command');
     this.cutsq = cutoff * cutoff;
     let fraction = 1;
     let seed = 12345;
     for (let i = 3; i < args.length;) {
-      if (args[i] !== 'prob') throw new StyleError(`Illegal fix bond/break command: unknown keyword ${args[i]}`);
-      if (i + 3 > args.length) throw new StyleError('Illegal fix bond/break command: prob needs a fraction and a seed');
+      // As native LAMMPS does (src/MC/fix_bond_break.cpp FixBondBreak::FixBondBreak at b332f28): every keyword and value error is "Illegal fix bond/break command"
+      if (args[i] !== 'prob') throw new StyleError('Illegal fix bond/break command');
+      if (i + 3 > args.length) throw new StyleError('Illegal fix bond/break command');
       fraction = numArg(args[i + 1], 'fix bond/break prob fraction');
       seed = intArg(args[i + 2], 'fix bond/break prob seed');
-      if (fraction < 0 || fraction > 1) throw new StyleError('Illegal fix bond/break command: prob fraction must be between 0 and 1');
-      if (seed <= 0) throw new StyleError('Illegal fix bond/break command: prob seed must be positive');
+      if (fraction < 0 || fraction > 1) throw new StyleError('Illegal fix bond/break command');
+      if (seed <= 0) throw new StyleError('Illegal fix bond/break command');
       i += 3;
     }
     this.fraction = fraction;

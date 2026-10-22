@@ -138,7 +138,8 @@ export const parseSnaArgs = (id: string, style: string, args: string[], ntypes: 
     } else if (kw === 'nnn' || kw === 'wmode' || kw === 'delta') {
       throw new StyleError(`compute ${id} (${style}): keyword '${kw}' is only implemented for compute sna/atom (doc), not in this engine for ${style}`);
     } else {
-      throw new StyleError(`compute ${id} (${style}): unknown keyword '${kw}'`);
+      // As native LAMMPS does (src/ML-SNAP/compute_snap.cpp at b332f28): an unknown keyword is "Illegal compute {style} command"
+      throw new StyleError(`Illegal compute ${style} command`);
     }
   }
   if (switchinnerflag && (!sinnerList || !dinnerList)) {

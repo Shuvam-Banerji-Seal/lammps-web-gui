@@ -129,11 +129,12 @@ run 1`, BREAK_DATA);
     expect([last.bonds, last.angles, last.dihedrals, last['f_b[1]']]).toEqual([3, 2, 1, 0]);
   });
 
-  it('refuses keywords it does not support, naming them', async () => {
+  it('refuses keywords it does not support, as native does', async () => {
     const r = await runScript(`${header}read_data chain.data
 ${coeffs}fix b all bond/break 1 1 1.5 vizsteps 5
 run 0`, BREAK_DATA);
-    expect(r.message).toMatch(/vizsteps/);
+    // As native LAMMPS does (src/MC/fix_bond_break.cpp at b332f28, line 86): an unknown keyword prints the generic message.
+    expect(r.message).toContain('Illegal fix bond/break command');
   });
 });
 
@@ -175,6 +176,7 @@ run 0`, CREATE_DATA);
     const brk = await runScript(`${header}read_data chain.data
 ${coeffs}fix b all bond/break 1 1 1.5 prob 0.5 0
 run 0`, BREAK_DATA);
-    expect(brk.message).toMatch(/seed/);
+    // As native LAMMPS does (src/MC/fix_bond_break.cpp at b332f28, line 84): a seed <= 0 prints the generic message.
+    expect(brk.message).toContain('Illegal fix bond/break command');
   });
 });

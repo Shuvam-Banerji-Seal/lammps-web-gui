@@ -224,7 +224,8 @@ region uni union 2 sph sph_out units box
       ['fix 2 all wall/region sph lj93 1 2.5', /Illegal fix wall\/region command: missing argument/],
       ['fix 2 all wall/region sph lj93 1 1', /Illegal fix wall\/region command: missing argument/],
       ['fix 2 all wall/region sph lj93 1 1 0', /cutoff must be a number > 0/],
-      ['fix 2 all wall/region sph morse 1 1 2.5', /takes 3 parameters/],
+      // fix_wall_region.cpp (morse branch, narg != 9) at b332f28
+      ['fix 2 all wall/region sph morse 1 1 2.5', /Illegal fix wall\/region morse command/],
       // style colloid needs finite-size particles (fix_wall_region.cpp init at b332f28; measured with native LAMMPS: this
       // text for atom_style atomic)
       ['fix 2 all wall/region sph colloid 1 1 2.5', /Fix wall\/region colloid requires atom attribute radius/],

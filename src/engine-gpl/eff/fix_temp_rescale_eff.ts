@@ -24,7 +24,9 @@ export class FixTempRescaleEff extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 5) throw new StyleError('Illegal fix temp/rescale/eff command');
+    // As native LAMMPS does (src/EFF/fix_temp_rescale_eff.cpp FixTempRescaleEff::FixTempRescaleEff at b332f28): narg < 8 is refused and
+    // the words after the four values are never read, so they are ignored
+    if (args.length < 5) throw new StyleError('Illegal fix temp/rescale/eff command');
     const nevery = Number(args[0]);
     if (!Number.isInteger(nevery) || nevery <= 0) throw new StyleError('Illegal fix temp/rescale/eff command');
     if (!isElectronStyle(sys.state.atomStyle)) throw new StyleError('Fix temp/rescale/eff requires atom style electron');

@@ -337,7 +337,8 @@ export class FixGcmc extends Fix {
       else if (key === 'rigid') { rigidId = v(1); i += 2; }
       else if (key === 'pressure') { this.pressure = num(v(1), 'pressure'); i += 2; }
       else if (key === 'fugacity_coeff') { this.fugacity = num(v(1), 'fugacity_coeff'); i += 2; }
-      else throw new StyleError(`fix gcmc: unknown keyword '${key}'`);
+      // As native LAMMPS does (src/MC/fix_gcmc.cpp FixGCMC::FixGCMC at b332f28): "Unknown fix gcmc keyword {}".
+      else throw new StyleError(`Unknown fix gcmc keyword ${key}`);
     }
     if (shakeId) {
       if (!molTemplateId) throw new StyleError('fix gcmc: Cannot use fix gcmc shake and not molecule (shake needs the mol keyword)');

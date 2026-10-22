@@ -60,15 +60,17 @@ export class FixEvaporate extends Fix {
     this.regionId = args[2];
     const seed = posInt(args[3], 'seed');
     this.rng = insertionStream(seed);
+    // As native LAMMPS does (src/fix_evaporate.cpp FixEvaporate::FixEvaporate at b332f28): the region is looked up before the keywords are read
+    sys.region(this.regionId); // fail early on an unknown region
     let molecule = false;
     for (let k = 4; k < args.length; k += 2) {
-      if (args[k] !== 'molecule') throw new StyleError(`fix evaporate: unknown keyword '${args[k]}' (only molecule)`);
+      // native: any keyword other than molecule, or a molecule keyword without its value, is "Illegal fix evaporate command"
+      if (args[k] !== 'molecule' || args[k + 1] === undefined) throw new StyleError('Illegal fix evaporate command');
       const v = args[k + 1];
       if (v !== 'yes' && v !== 'no') throw new StyleError(`fix evaporate molecule must be yes or no (got '${v ?? ''}')`);
       molecule = v === 'yes';
     }
     this.molecule = molecule;
-    sys.region(this.regionId); // fail early on an unknown region
     this.scalarFlag = true;
     this.extscalar = 0;
   }

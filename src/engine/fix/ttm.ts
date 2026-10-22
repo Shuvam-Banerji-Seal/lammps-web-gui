@@ -168,7 +168,8 @@ export const parseTtmKeywords = (id: string, style: string, args: string[], outf
       k.outfile = args[i + 2];
       i += 3;
     } else {
-      throw new StyleError(`fix ${id} ${style}: unknown keyword '${key}'`);
+      // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp at b332f28): "Unknown fix {style} keyword {key}"
+      throw new StyleError(`Unknown fix ${style} keyword ${key}`);
     }
   }
   return k;

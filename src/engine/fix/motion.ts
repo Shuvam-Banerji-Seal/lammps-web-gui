@@ -263,12 +263,14 @@ export class FixRecenter extends Fix {
         k += 2;
       } else if (key === 'units') {
         if (val !== 'box' && val !== 'lattice' && val !== 'fraction') {
-          throw new StyleError(`fix recenter units must be box or lattice or fraction, got '${val ?? ''}'`);
+          // As native LAMMPS does (src/fix_recenter.cpp at b332f28): "Unknown fix recenter units argument {}".
+          throw new StyleError(`Unknown fix recenter units argument ${val ?? ''}`);
         }
         this.unitsMode = val;
         k += 2;
       } else {
-        throw new StyleError(`fix recenter: unknown keyword '${key}' (keyword = *shift* or *units*)`);
+        // As native LAMMPS does (src/fix_recenter.cpp FixRecenter::FixRecenter at b332f28): "Unknown fix recenter keyword {}".
+        throw new StyleError(`Unknown fix recenter keyword ${key}`);
       }
     }
     this.scalarFlag = true;

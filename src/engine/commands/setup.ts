@@ -1499,7 +1499,7 @@ const parseList = (w: string): [number, number, number] => {
     return Number(t);
   };
   const start = int64(parts[0]);
-  let stop = start, delta = 1;
+  let stop: number, delta = 1;
   if (/^-?\d+$/.test(w)) stop = start;
   else if (/^-?\d+:-?\d+$/.test(w)) stop = int64(parts[1]);
   else if (/^-?\d+:-?\d+:\d+$/.test(w)) { stop = int64(parts[1]); delta = int64(parts[2]); } else throw bad('Syntax error');

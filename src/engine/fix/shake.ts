@@ -4,7 +4,8 @@ import type { System } from '../system';
 import type { TopoList } from '../types';
 import { int, num } from '../commands/args';
 import { typeWord } from '../labelmap';
-import { massOf } from '../atoms';
+import { isMolecularStyle, massOf } from '../atoms';
+import { missingArgs } from '../force/util';
 import { harmonicRestraint } from './harmonicRestraint';
 import { libm } from '../libm';
 
@@ -210,7 +211,9 @@ export class FixShake extends Fix {
   constructor(sys: System, id: string, group: string, args: string[], style: 'shake' | 'rattle') {
     super(sys, id, group, args);
     this.style = style;
-    if (args.length < 4) throw new StyleError(`usage: fix ID group ${style} tol iter N constraint values ...`);
+    // As native LAMMPS does (src/RIGID/fix_shake.cpp at b332f28): a molecular system, then at least four words
+    if (!isMolecularStyle(sys.state.atomStyle)) throw new StyleError(`Cannot use fix ${style} with non-molecular system`);
+    if (args.length < 4) throw missingArgs(`fix ${style}`);
     this.tol = num(args[0], 'tol');
     this.maxIter = int(args[1], 'iter');
     int(args[2], 'N');

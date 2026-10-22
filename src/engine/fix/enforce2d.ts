@@ -16,8 +16,12 @@ export class FixEnforce2d extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length) throw new StyleError('fix enforce2d takes no arguments');
-    if (sys.dimension !== 2) throw new StyleError('cannot use fix enforce2d with 3d simulation');
+    if (args.length) throw new StyleError('Illegal fix enforce2d command');
+  }
+
+  init(): void {
+    // the dimension is checked at init (as native LAMMPS does, src/fix_enforce2d.cpp at b332f28)
+    if (this.sys.dimension === 3) throw new StyleError('Cannot use fix enforce2d with 3d simulation');
   }
 
   /**

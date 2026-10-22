@@ -57,7 +57,7 @@ describe('ttm/thermal positional arguments', () => {
   });
 
   it('rejects a short argument list, a bad seed and a bad grid size', () => {
-    expect(() => parseThermalPositional('f', ['1', 'p', '2', '2'])).toThrow(/usage: fix ID group-ID ttm\/thermal/);
+    expect(() => parseThermalPositional('f', ['1', 'p', '2', '2'])).toThrow(/Illegal fix ttm\/thermal command: missing argument\(s\)/);
     expect(() => parseThermalPositional('f', ['1.5', 'p', '2', '2', '2'])).toThrow(/seed must be a positive integer/);
     expect(() => parseThermalPositional('f', ['1', 'p', '0', '2', '2'])).toThrow(/Nx must be a positive integer/);
     expect(() => parseThermalPositional('f', ['1', 'p', '2', '2', '2.5'])).toThrow(/Nz must be a positive integer/);

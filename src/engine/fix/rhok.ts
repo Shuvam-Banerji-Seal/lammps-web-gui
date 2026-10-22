@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { libm } from '../libm';
+import { inumeric, numeric } from '../force/util';
 
 /*
  * fix rhok — written from docs.lammps.org/fix_rhok.html (plans/lammps-docs-live/fix_rhok.rst). Syntax quoted there:
@@ -37,17 +38,12 @@ export class FixRhok extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 5) throw new StyleError('fix rhok: usage: fix ID group-ID rhok nx ny nz K a');
-    const ints = args.slice(0, 3).map((w, d) => {
-      const v = Number(w);
-      if (!Number.isInteger(v)) throw new StyleError(`fix rhok: n${'xyz'[d]} must be an integer, got '${w}'`);
-      return v;
-    });
-    this.n = [ints[0], ints[1], ints[2]];
-    // K and a: numbers only (the doc does not give variable forms)
-    this.K = Number(args[3]);
-    this.a = Number(args[4]);
-    if (!Number.isFinite(this.K) || !Number.isFinite(this.a)) throw new StyleError(`fix rhok: K and a must be numbers, got '${args[3]}' and '${args[4]}'`);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_rhok.cpp at b332f28): exactly five words, the message naming the fix
+    // rhoKUmbrella; the three integers and two numbers are read with utils::inumeric and utils::numeric
+    if (args.length !== 5) throw new StyleError('Illegal fix rhoKUmbrella command');
+    this.n = [inumeric(args[0]), inumeric(args[1]), inumeric(args[2])];
+    this.K = numeric(args[3]);
+    this.a = numeric(args[4]);
     this.scalarFlag = true;
     this.vectorFlag = true;
     this.sizeVector = 3;

@@ -31,7 +31,8 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
+import { isMolecularStyle } from '../../engine/atoms';
 import { NEIGHMASK } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
 import { nativePairs } from '../neighbor/nativeOrder';
@@ -39,6 +40,7 @@ import { exp as libmExp } from '../libm/exp';
 
 /** fix_hyper_local.cpp: BIG (minimum of the bias coefficients before any update) and COEFFINIT (a new bond). */
 const BIG = 1.0e20;
+const ILLEGAL = 'Illegal fix hyper/local command';
 const COEFFINIT = 1.0;
 /** fix_hyper_local.cpp: FCCBONDS, the initial maximum of bonds per atom. */
 const FCCBONDS = 12;
@@ -125,9 +127,9 @@ export class FixHyperLocal extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 7) {
-      throw new StyleError(`fix ${id} hyper/local: expected cutbond qfactor Vmax Tequil Dcut alpha boost [keywords], got ${args.length} arguments`);
-    }
+    // fix_hyper_local.cpp constructor: an atom map, then the words; every bad value is "Illegal fix hyper/local command"
+    if (!isMolecularStyle(sys.state.atomStyle) && !sys.atomMapSet) throw new StyleError('Fix hyper/local command requires atom map');
+    if (args.length < 7) throw new StyleError(ILLEGAL);
     this.cutbond = parseNum(args[0], `fix ${id} hyper/local cutbond`);
     this.qfactor = parseNum(args[1], `fix ${id} hyper/local qfactor`);
     this.vmax = parseNum(args[2], `fix ${id} hyper/local Vmax`);
@@ -139,7 +141,7 @@ export class FixHyperLocal extends Fix {
     // alpha_user <= 0.0 || boost_target < 1.0) error->all(FLERR,"Illegal fix hyper/local command");"
     if (this.cutbond < 0 || this.qfactor < 0 || this.vmax < 0 || this.tequil <= 0 || this.dcut <= 0 ||
         this.alphaUser <= 0 || this.boostTarget < 1) {
-      throw new StyleError(`fix ${id} hyper/local: illegal arguments (cutbond, qfactor and Vmax >= 0; Tequil, Dcut, alpha > 0; boost >= 1)`);
+      throw new StyleError(ILLEGAL);
     }
     let boundfrac = 0;
     let boundflag = false;
@@ -147,19 +149,19 @@ export class FixHyperLocal extends Fix {
     for (let k = 7; k < args.length;) {
       const kw = args[k];
       if (kw === 'bound') {
-        if (k + 1 >= args.length) throw new StyleError(`fix ${id} hyper/local: keyword bound needs a value`);
+        if (k + 1 >= args.length) throw new StyleError(ILLEGAL);
         boundfrac = parseNum(args[k + 1], `fix ${id} hyper/local bound`);
         boundflag = boundfrac >= 0;
         k += 2;
       } else if (kw === 'reset') {
-        if (k + 1 >= args.length) throw new StyleError(`fix ${id} hyper/local: keyword reset needs a value`);
-        resetfreq = parseNum(args[k + 1], `fix ${id} hyper/local reset`);
-        if (!Number.isInteger(resetfreq) || resetfreq < -1) throw new StyleError(`fix ${id} hyper/local: reset must be an integer >= -1`);
+        if (k + 1 >= args.length) throw new StyleError(ILLEGAL);
+        resetfreq = inumeric(args[k + 1]);
+        if (resetfreq < -1) throw new StyleError(ILLEGAL);
         k += 2;
       } else if (kw === 'check/ghost' || kw === 'check/bias') {
         throw new StyleError(`fix ${id} hyper/local keyword ${kw} is not supported by the browser engine (it only adds diagnostics of ghost atoms and biased bonds)`);
       } else {
-        throw new StyleError(`fix ${id} hyper/local: unknown keyword '${kw}' (bound, reset)`);
+        throw new StyleError(ILLEGAL);
       }
     }
     this.invvmax = 1.0 / this.vmax;

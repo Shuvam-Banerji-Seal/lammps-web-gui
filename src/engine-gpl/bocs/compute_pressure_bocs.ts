@@ -26,7 +26,7 @@ export interface CgBasis {
 }
 
 export class ComputePressureBocs extends ComputePressure {
-  readonly style: string = 'pressure/bocs';
+  readonly style: string = 'PRESSURE/BOCS';
   private basis: CgBasis | null = null;
 
   /** send_cg_info (analytic basis): the fix hands in its coefficients, the molecule count and vavg. */

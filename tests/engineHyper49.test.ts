@@ -188,10 +188,10 @@ print           "continued step=$(step)"
 
 describe('fix hyper/global and the hyper command', () => {
   it('checks the fix hyper/local arguments and refuses its diagnostic keywords', async () => {
-    expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 0.5\n`)).error).toMatch(/expected cutbond qfactor Vmax Tequil Dcut alpha boost/);
-    expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 0.5\n`)).error).toMatch(/boost >= 1/);
+    expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 0.5\n`)).error).toMatch(/Illegal fix hyper\/local command/);
+    expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 0.5\n`)).error).toMatch(/Illegal fix hyper\/local command/);
     expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 1.2 check/ghost\n`)).error).toMatch(/keyword check\/ghost is not supported/);
-    expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 1.2 bogus\n`)).error).toMatch(/unknown keyword 'bogus'/);
+    expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 1.2 bogus\n`)).error).toMatch(/Illegal fix hyper\/local command/);
   });
 
   it('accepts fix hyper/local in the hyper command (bond list, bias and the 26 vector entries)', async () => {
@@ -201,9 +201,9 @@ describe('fix hyper/global and the hyper command', () => {
   });
 
   it('checks the fix arguments', async () => {
-    expect((await runText(`${HYPER_BASE}\nfix HG mobile hyper/global 1.5 0.3 0.5\n`)).error).toMatch(/expected cutbond qfactor Vmax Tequil/);
-    expect((await runText(`${HYPER_BASE}\nfix HG mobile hyper/global 0.0 0.3 0.5 1.0\n`)).error).toMatch(/cutbond must be > 0/);
-    expect((await runText(`${HYPER_BASE}\nfix HG mobile hyper/global 1.5 0.3 0.5 0.0\n`)).error).toMatch(/Tequil must be > 0/);
+    expect((await runText(`${HYPER_BASE}\nfix HG mobile hyper/global 1.5 0.3 0.5\n`)).error).toMatch(/Illegal fix hyper\/global command/);
+    expect((await runText(`${HYPER_BASE}\nfix HG mobile hyper/global -1.0 0.3 0.5 1.0\n`)).error).toMatch(/Illegal fix hyper\/global command/);
+    expect((await runText(`${HYPER_BASE}\nfix HG mobile hyper/global 1.5 0.3 0.5 0.0\n`)).error).toMatch(/Illegal fix hyper\/global command/);
   });
 
   it('refuses the hyper command arguments it cannot run', async () => {

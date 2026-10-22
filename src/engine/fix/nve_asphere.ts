@@ -89,18 +89,22 @@ export class FixNVEAsphere extends FixNVE {
   constructor(sys: System, id: string, group: string, args: string[], noforce = false) {
     super(sys, id, group, args);
     this.noforce = noforce;
-    if (args.length) throw new StyleError(`Illegal fix ${noforce ? 'nve/asphere/noforce' : 'nve/asphere'} keyword ${args[0]}`);
-    if (!sys.state.shape || !sys.state.quat || !sys.state.angmom || !sys.state.torque) {
-      throw new StyleError('Fix nve/asphere requires atom style ellipsoid');
-    }
+    // fix nve/asphere/noforce takes no arguments; fix nve/asphere ignores any (as native LAMMPS does,
+    // src/ASPHERE/fix_nve_asphere_noforce.cpp and fix_nve_asphere.cpp at b332f28)
+    if (noforce && args.length) throw new StyleError('Illegal fix nve/asphere/noforce command');
   }
 
   init(): void {
-    super.init();
+    // the atom style is checked at init, not when the fix is defined (as native LAMMPS does, src/ASPHERE/
+    // fix_nve_asphere.cpp at b332f28, whose message says Compute)
     const s = this.sys.state;
+    if (!s.shape || !s.quat || !s.angmom || !s.torque) {
+      throw new StyleError(this.noforce ? 'Fix nve/asphere/noforce requires atom style ellipsoid' : 'Compute nve/asphere requires atom style ellipsoid');
+    }
+    super.init();
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      if (!isEllipsoid(s, i)) throw new StyleError('Fix nve/asphere requires extended particles');
+      if (!isEllipsoid(s, i)) throw new StyleError(`Fix ${this.noforce ? 'nve/asphere/noforce' : 'nve/asphere'} requires extended particles`);
     }
   }
 

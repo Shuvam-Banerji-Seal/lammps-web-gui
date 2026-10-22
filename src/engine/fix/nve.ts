@@ -19,7 +19,8 @@ export class FixNVE extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length && new.target === FixNVE) throw new StyleError('fix nve takes no arguments');
+    // As native LAMMPS does (src/fix_nve.cpp at b332f28): only plain fix nve refuses further words
+    if (args.length && new.target === FixNVE) throw new StyleError('Unsupported additional arguments for fix nve');
     this.timeIntegrate = true;
   }
 

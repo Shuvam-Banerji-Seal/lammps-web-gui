@@ -21,7 +21,7 @@ export class FixPIMDNVTBosonic extends FixPIMDNVT {
   private primValue = 0;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
-    super(sys, id, group, args);
+    super(sys, id, group, args, 'pimd/nvt/bosonic');
   }
 
   init(): void {

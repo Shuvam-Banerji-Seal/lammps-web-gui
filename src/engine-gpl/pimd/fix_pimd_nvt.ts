@@ -16,6 +16,8 @@
  * method nmpimd (native's eigenvalue table is only filled for an even count), a change of the atom count.
  */
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
+import { fmtShortest } from '../../engine/cformat';
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -27,7 +29,7 @@ const MY_PI = Math.PI;
 type Method = 'pimd' | 'nmpimd';
 
 export class FixPIMDNVT extends Fix {
-  readonly style: string = 'pimd/nvt';
+  readonly style: string;
   // As native LAMMPS has it (src/REPLICA/fix_pimd_nvt.cpp at b332f28): FixPIMDNVT leaves the base Fix's time_integrate = 0,
   // so a run with it alone warns that no fix integrates (Verlet::init); fix pimd/langevin sets it
   timeIntegrate = false;
@@ -69,42 +71,40 @@ export class FixPIMDNVT extends Fix {
   private nhcEtaDotdot = new Float64Array(0);
   private nhcEtaMass = new Float64Array(0);
 
-  constructor(sys: System, id: string, group: string, args: string[]) {
+  constructor(sys: System, id: string, group: string, args: string[], name = 'pimd/nvt') {
     super(sys, id, group, args);
+    this.style = name;
     let method: Method = 'pimd';
     let fmass = 1.0, sp = 1.0, temp = 298.15, nchain = 2;
-    const usage = 'usage: fix ID group pimd/nvt [method pimd|nmpimd] [fmass F] [sp S] [temp T] [nhc N]';
-    if (args.length % 2 !== 0) throw new StyleError(usage);
-    for (let i = 0; i < args.length; i += 2) {
+    // fix_pimd_nvt.cpp constructor: keyword/value pairs (a last word without a value is not read), messages naming
+    // the style as given; the number of beads is the number of partitions
+    const np = sys.replicaPeers().length;
+    for (let i = 0; i + 1 < args.length; i += 2) {
       const key = args[i], val = args[i + 1];
-      const num = (name: string): number => {
-        const x = Number(val);
-        if (val === undefined || !Number.isFinite(x)) throw new StyleError(`Invalid ${name} value for fix pimd/nvt`);
-        return x;
-      };
       if (key === 'method') {
         if (val === 'pimd') method = 'pimd';
         else if (val === 'nmpimd') method = 'nmpimd';
-        else if (val === 'cmd') throw new StyleError('fix pimd/nvt method cmd is not supported (only pimd and nmpimd)');
-        else throw new StyleError(`Unknown method parameter ${val} for fix pimd/nvt`);
+        else if (val === 'cmd') throw new StyleError(`fix ${name} method cmd is not supported (only pimd and nmpimd)`);
+        else throw new StyleError(`Unknown method parameter ${val} for fix ${name}`);
       } else if (key === 'fmass') {
-        fmass = num('fmass');
-        if (fmass < 0) throw new StyleError('Invalid fmass value for fix pimd/nvt');
+        fmass = numeric(val);
+        if (fmass < 0 || fmass > np) throw new StyleError(`Invalid fmass value ${fmtShortest(fmass, false)} for fix ${name}`);
       } else if (key === 'sp') {
-        sp = num('sp');
-        if (sp < 0) throw new StyleError('Invalid sp value for fix pimd/nvt');
+        sp = numeric(val);
+        if (sp < 0) throw new StyleError(`Invalid sp value for fix ${name}`);
       } else if (key === 'temp') {
-        temp = num('temp');
-        if (temp < 0) throw new StyleError('Invalid temp value for fix pimd/nvt');
+        temp = numeric(val);
+        if (temp < 0) throw new StyleError(`Invalid temp value for fix ${name}`);
       } else if (key === 'nhc') {
-        nchain = Math.trunc(num('nhc'));
-        if (nchain < 2) throw new StyleError('Invalid nhc value for fix pimd/nvt');
+        nchain = inumeric(val);
+        if (nchain < 2) throw new StyleError(`Invalid nhc value for fix ${name}`);
       } else {
-        throw new StyleError(`Unknown keyword ${key} for fix pimd/nvt`);
+        throw new StyleError(`Unknown keyword ${key} for fix ${name}`);
       }
     }
-    if (group !== 'all') throw new StyleError('fix pimd/nvt acts on all atoms: its group must be all (native LAMMPS ignores the group; not supported here)');
-    if (sys.state.units.style === 'lj') throw new StyleError('Fix pimd/nvt does not support lj units');
+    if (sys.state.units.style === 'lj') throw new StyleError(`Fix ${name} does not support lj units`);
+    if (np < 2) throw new StyleError(`Fix ${name} requires at least 2 beads, i.e. running with the -partition command line option`);
+    if (group !== 'all') throw new StyleError(`fix ${name} acts on all atoms: its group must be all (native LAMMPS ignores the group; not supported here)`);
     this.method = method;
     this.fmass = fmass;
     this.sp = sp;
@@ -128,7 +128,6 @@ export class FixPIMDNVT extends Fix {
     const peers = this.sys.replicaPeers();
     this.np = peers.length;
     this.iworld = peers.indexOf(this.sys);
-    if (this.np < 2) throw new StyleError('Fix pimd/nvt requires at least 2 beads (partitions, as lammps -partition N)');
     if (this.method === 'nmpimd' && this.np % 2 !== 0) throw new StyleError('fix pimd/nvt method nmpimd needs an even number of beads (native eigenvalue table)');
     const u = s.units;
     // native: the constants are force->boltz, force->hplanck and force->mvv2e of the unit style

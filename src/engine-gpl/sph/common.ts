@@ -51,6 +51,11 @@ export interface SphArrays {
   vest: Float64Array;
 }
 
+/** A StyleError with `message` (native's wording of the style's constructor) when the atom style has no SPH arrays. */
+export const requireSph = (s: SimState, message: string): void => {
+  if (!isSphStyle(s.atomStyle) || !s.custom.has(SPH_RHO)) throw new StyleError(message);
+};
+
 /** The SPH arrays of the state; a StyleError naming `what` when the atom style has none. */
 export const sphArrays = (s: SimState, what: string): SphArrays => {
   const get = (name: string): Float64Array => {

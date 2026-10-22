@@ -27,7 +27,9 @@ export class FixDPDenergy extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length) throw new StyleError('Illegal fix dpd/energy command');
-    if (!sys.state.custom.has(DPD_THETA)) throw new StyleError('Must use atom_style dpd with fix dpd/energy');
+    // fix_dpd_energy.cpp constructor: the pair style first, then the atom style (its message names dpd/fdt/energy)
+    this.pair();
+    if (!sys.state.custom.has(DPD_THETA)) throw new StyleError('Must use atom_style dpd/fdt/energy with fix dpd/energy');
   }
 
   private pair(): PairDPDfdtEnergy {
@@ -135,7 +137,7 @@ export class ComputeDpdAtom extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length) throw new StyleError('Illegal compute dpd/atom command');
-    if (!sys.state.custom.has(DPD_THETA)) throw new StyleError('compute dpd/atom requires atom_style with internal temperature and energies (e.g. dpd)');
+    if (!sys.state.custom.has(DPD_THETA)) throw new StyleError('compute dpd requires atom_style with internal temperature and energies (e.g. dpd)');
     this.peratomFlag = true;
     this.sizePeratomCols = 4;
   }

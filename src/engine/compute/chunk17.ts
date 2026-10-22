@@ -747,7 +747,8 @@ export class ComputeChunkSpreadAtom extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 2) throw new StyleError(`usage: compute ${id} group-ID chunk/spread/atom chunkID input1 input2 ...`);
+    // As native LAMMPS does (src/compute_chunk_spread_atom.cpp at b332f28)
+    if (args.length < 2) throw new StyleError('Illegal compute chunk/spread/atom command: missing argument(s)');
     this.chunk = chunkCompute(sys, args[0], `compute ${id} (chunk/spread/atom)`);
     this.refs = inputRefs(sys, `${id} (chunk/spread/atom)`, args.slice(1), 'vector');
     this.peratomFlag = true;

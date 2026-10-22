@@ -170,7 +170,7 @@ run 10
 
 describe('fix rhok', () => {
   it('refuses the wrong argument count', async () => {
-    await expect(run(`${LJ_HEAD}create_atoms 1 single 0 0 0 units box\nmass 1 1.0\npair_style lj/cut 2.5\npair_coeff 1 1 1.0 1.0 2.5\nfix B all rhok 1 0 0 2.0\nrun 0\n`)).rejects.toThrow(/usage: fix ID group-ID rhok/);
+    await expect(run(`${LJ_HEAD}create_atoms 1 single 0 0 0 units box\nmass 1 1.0\npair_style lj/cut 2.5\npair_coeff 1 1 1.0 1.0 2.5\nfix B all rhok 1 0 0 2.0\nrun 0\n`)).rejects.toThrow(/Illegal fix rhoKUmbrella command/);
   });
 
   it('matches the native U, Re, Im and |rho| for eight atoms (k = 2 pi / L_x, K = 2, a = 1)', async () => {

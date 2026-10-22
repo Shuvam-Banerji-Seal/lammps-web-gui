@@ -11,6 +11,7 @@
  */
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
+import { logical, numeric } from '../../engine/force/util';
 import { massOf } from '../../engine/atoms';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
@@ -60,6 +61,8 @@ function groupPairs(sys: System, groupBit: number, order: NativePairOrder): Pair
 
 /** Native phi table size (compute_stress_cylinder.cpp: nphi = 360). */
 const NPHI = 360;
+/** compute_stress_cylinder.cpp: every bad value of the constructor stops with this message. */
+const ILLEGAL_CYL = 'Illegal compute stress/cylinder command';
 
 /**
  * compute stress/cylinder ID group-ID stress/cylinder zlo zhi Rmax bin_width [ke yes|no] (native arguments:
@@ -91,20 +94,18 @@ export class ComputeStressCylinder extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 4 && args.length !== 6) throw new StyleError(`compute ${id} stress/cylinder: illegal command (usage: zlo zhi Rmax bin_width [ke yes|no])`);
-    this.zlo = Number(args[0]);
-    this.zhi = Number(args[1]);
-    this.Rmax = Number(args[2]);
-    this.binWidth = Number(args[3]);
+    if (args.length !== 4 && args.length !== 6) throw new StyleError(ILLEGAL_CYL);
+    this.zlo = numeric(args[0]);
+    this.zhi = numeric(args[1]);
+    this.Rmax = numeric(args[2]);
+    this.binWidth = numeric(args[3]);
     this.kinetic = true;
     if (args.length === 6) {
-      if (args[4] !== 'ke') throw new StyleError(`compute ${id} stress/cylinder: unknown keyword '${args[4]}' (use ke)`);
-      const v = args[5];
-      if (v !== 'yes' && v !== 'no' && v !== 'on' && v !== 'off' && v !== 'true' && v !== 'false') throw new StyleError(`compute ${id} stress/cylinder: ke expects yes or no (got '${v}')`);
-      this.kinetic = v === 'yes' || v === 'on' || v === 'true';
+      if (args[4] !== 'ke') throw new StyleError('Unknown compute stress/cylinder command');
+      this.kinetic = logical(args[5]);
     }
-    if (!(this.binWidth > 0) || this.binWidth > this.Rmax) throw new StyleError(`compute ${id} stress/cylinder: illegal bin width ${this.binWidth} for Rmax ${this.Rmax}`);
-    if (this.zhi < this.zlo || this.zhi - this.zlo < this.binWidth) throw new StyleError(`compute ${id} stress/cylinder: illegal z range ${this.zlo} ${this.zhi}`);
+    if (this.binWidth <= 0 || this.binWidth > this.Rmax) throw new StyleError(ILLEGAL_CYL);
+    if (this.zhi < this.zlo || this.zhi - this.zlo < this.binWidth) throw new StyleError(ILLEGAL_CYL);
     if (sys.hasBox) this.setBins();
     this.arrayFlag = true;
     this.sizeArrayCols = this.kinetic ? 8 : 5;
@@ -113,10 +114,10 @@ export class ComputeStressCylinder extends Compute {
   /** Bin tables of the C++ constructor and init(); the box must bound the z range. */
   private setBins(): void {
     const s = this.sys.state;
-    if (this.zhi > s.box.hi[2] || this.zlo < s.box.lo[2]) throw new StyleError(`compute ${this.id} stress/cylinder: the z range ${this.zlo} ${this.zhi} is outside the box`);
+    if (this.zhi > s.box.hi[2] || this.zlo < s.box.lo[2]) throw new StyleError(ILLEGAL_CYL);
     const nb = Math.trunc(this.Rmax / this.binWidth);
     const nz = Math.trunc((this.zhi - this.zlo) / this.binWidth);
-    if (nb < 1 || nz < 1) throw new StyleError(`compute ${this.id} stress/cylinder: illegal bin count`);
+    if (nb < 1 || nz < 1 || nb > 2 << 22 || nz > 2 << 22) throw new StyleError(ILLEGAL_CYL);
     this.nbins = nb;
     this.nzbins = nz;
     const w = this.binWidth, zl = this.zlo, zh = this.zhi;

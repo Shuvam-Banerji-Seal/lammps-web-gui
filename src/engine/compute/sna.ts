@@ -248,13 +248,13 @@ export class ComputeSnaAtom extends Compute {
   /** keyword delta: width of the tangent weight's transition (docs: default 1.e-3). */
   protected delta = 1e-3;
 
-  constructor(sys: System, id: string, group: string, args: string[]) {
+  constructor(sys: System, id: string, group: string, args: string[], style = 'sna/atom') {
     super(sys, id, group, args);
     const ntypes = sys.state.ntypes;
+    // As native LAMMPS does (src/ML-SNAP/compute_sna_atom.cpp at b332f28): rcutfac rfac0 twojmax, a radius and a
+    // weight per type, else "Illegal compute {style} command"
     const need = 3 + 2 * ntypes;
-    if (args.length < need) {
-      throw new StyleError(`compute ${id} (sna/atom): expects rcutfac rfac0 twojmax, ${ntypes} radii and ${ntypes} weights (${need} values), got ${args.length}`);
-    }
+    if (args.length < need) throw new StyleError(`Illegal compute ${style} command`);
     this.rcutfac = parseNum(args[0], `compute ${id} (sna/atom) rcutfac`);
     if (!(this.rcutfac > 0)) throw new StyleError(`compute ${id} (sna/atom): rcutfac must be positive (got ${args[0]})`);
     this.rfac0 = parseNum(args[1], `compute ${id} (sna/atom) rfac0`);
@@ -863,7 +863,7 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
   private readonly mode: 'snad' | 'snav';
 
   constructor(sys: System, id: string, group: string, args: string[], mode: 'snad' | 'snav') {
-    super(sys, id, group, args);
+    super(sys, id, group, args, `${mode}/atom`);
     this.mode = mode;
     this.style = `${mode}/atom`;
     if (this.chemflag) throw new StyleError(`compute ${id} (${mode}/atom): keyword 'chem' is not implemented in this engine`);

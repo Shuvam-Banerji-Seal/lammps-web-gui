@@ -16,5 +16,6 @@ export const FIXES: Record<string, FixFactory> = {
 };
 
 export const COMPUTES: Record<string, ComputeFactory> = {
-  'pressure/bocs': (sys, id, group, args) => new ComputePressureBocs(sys, id, group, args),
+  // compute_pressure_bocs.h registers the style in capitals: ComputeStyle(PRESSURE/BOCS,ComputePressureBocs)
+  'PRESSURE/BOCS': (sys, id, group, args) => new ComputePressureBocs(sys, id, group, args),
 };

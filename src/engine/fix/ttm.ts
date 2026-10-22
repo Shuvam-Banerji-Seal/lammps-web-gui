@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { RanMars } from '../rng';
 import { nativeOrder } from '../atoms';
+import { missingArgs } from '../force/util';
 
 /*
  * fix ttm and fix ttm/grid — the two-temperature model. Written from the
@@ -91,7 +92,8 @@ export interface TtmParams {
 
 /** Parses the common argument list of fix ttm and fix ttm/grid. */
 export const parseTtmArgs = (id: string, style: string, args: string[]): TtmParams => {
-  if (args.length < 10) throw new StyleError(`usage: fix ID group ${style} seed C_e rho_e kappa_e gamma_p gamma_s v_0 Nx Ny Nz [keywords]`);
+  // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp at b332f28)
+  if (args.length < 10) throw missingArgs(`fix ${style}`);
   const num = (w: string, what: string): number => {
     const v = Number(w);
     if (w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`fix ${id} ${style}: ${what} must be a number, got '${w}'`);

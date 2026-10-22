@@ -296,10 +296,10 @@ create_box 3 box
   it('refuses an STL source in 2d, a zero surface type, a bad flat value and an unknown keyword by name', async () => {
     expect((await run(`${head}fix 20 all surface/local input stl 1 1 w127gsg_surf.tri.stl\n`)).error).toMatch(/STL file for 2d simulations/);
     expect((await run(`${head}fix 20 all surface/local input mol lines flat 91\n`)).error).toMatch(/Invalid value 91 for fix surface\/local flat/);
-    expect((await run(`${head}fix 20 all surface/local input mol lines smaxtype 3\n`)).error).toMatch(/keyword 'smaxtype' is not supported/);
+    expect((await run(`${head}fix 20 all surface/local input mol lines smaxtype 3\n`)).error).toMatch(/Unknown fix surface\/local keyword: smaxtype/);
     expect((await run(`${head}fix 20 all surface/local input mol nope\n`)).error).toMatch(/does not exist/);
     expect((await run(`${head3}fix 20 all surface/local input stl 0 1 w127gsg_surf.tri.stl\n`)).error).toMatch(/STL surface type must be >= 1/);
-    expect((await run(`${head3}fix 20 all surface/local input stl 2 1\n`)).error).toMatch(/needs type, molecule-ID and file name/);
+    expect((await run(`${head3}fix 20 all surface/local input stl 2 1\n`)).error).toMatch(/Illegal fix surface\/local input stl command: missing argument\(s\)/);
   });
   it('accepts atom_style hybrid tri sphere, and its tri particles come from fix surface/local (in.screwfeeder.local)', async () => {
     const r = await run(`units lj

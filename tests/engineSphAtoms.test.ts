@@ -95,7 +95,7 @@ describe('atom_style sph', () => {
   it('an sph keyword or compute on another atom style is an error', async () => {
     const { session, events } = newSession();
     const head = 'units lj\natom_style atomic\ndimension 2\nregion box block 0 2 0 2 -0.5 0.5\ncreate_box 1 box\nlattice sq 1.0\ncreate_atoms 1 box\nmass 1 1\n';
-    expect(await errorOf(session, events, `${head}compute r all sph/rho/atom\n`)).toMatch(/Compute sph\/rho\/atom requires atom style sph$/);
+    expect(await errorOf(session, events, `${head}compute r all sph/rho/atom\n`)).toMatch(/Compute sph\/rho\/atom requires atom attribute density, e.g. in atom_style sph$/);
     const next = newSession();
     expect(await errorOf(next.session, next.events, `${head}pair_style sph/taitwater\npair_coeff * * 1 1 0.1 1\nrun 0\n`)).toMatch(/requires atom attributes energy, density, and velocity estimates, e\.g\. in atom_style sph/);
   });

@@ -16,7 +16,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { massOf } from '../../engine/atoms';
 import { numeric } from '../../engine/force/util';
-import { dropSphGhostVest, keepSphGhostVest, sphArrays } from '../sph/common';
+import { dropSphGhostVest, keepSphGhostVest, requireSph, sphArrays } from '../sph/common';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { cosFma as libmCosFma } from '../libm/sincos_fma';
 
@@ -72,7 +72,7 @@ export class FixMesoMove extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     const s = sys.state;
-    sphArrays(s, 'Fix meso/move');
+    requireSph(s, 'fix meso/move command requires atom_style with both energy and density');
     if (sys.geom.triclinic) throw new StyleError('fix meso/move on a triclinic box is not supported by the browser engine');
     // fix_meso_move.cpp FixMesoMove::FixMesoMove: the style's words, the units keyword, the 2d checks, the lattice
     // scaling and then the rotation axis

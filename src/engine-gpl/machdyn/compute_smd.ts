@@ -104,10 +104,12 @@ export class ComputeSMDTLSPHNumNeighs extends Compute {
 class PeratomVector extends Compute {
   readonly style: string;
 
-  constructor(sys: System, id: string, group: string, args: string[], what: string, private readonly fill: (i: number, pair: PairSMDTlsph | null) => number) {
+  constructor(sys: System, id: string, group: string, args: string[], what: string, private readonly fill: (i: number, pair: PairSMDTlsph | null) => number, attribute: [prop: string, message: string]) {
     super(sys, id, group, args);
     this.style = what;
     if (args.length) throw new StyleError(`Illegal compute ${what} command`);
+    // the constructor's atom attribute check (compute_smd_*.cpp)
+    if (!sys.state.custom.has(attribute[0])) throw new StyleError(attribute[1]);
     this.peratomFlag = true;
     this.sizePeratomCols = 0;
   }
@@ -123,16 +125,20 @@ class PeratomVector extends Compute {
 
 /** compute ID group-ID smd/tlsph/dt (docs.lammps.org/compute_smd_tlsph_dt.html): the stable time step of each atom. */
 export const makeSmdTlsphDt = (sys: System, id: string, group: string, args: string[]): Compute =>
-  new PeratomVector(sys, id, group, args, 'smd/tlsph/dt', (i, p) => (p ? p.work.particleDt[i] ?? 0 : 0));
+  new PeratomVector(sys, id, group, args, 'smd/tlsph/dt', (i, p) => (p ? p.work.particleDt[i] ?? 0 : 0),
+    [SMD_CONTACT, 'compute smd/tlsph/dt command requires atom style with contact_radius']);
 /** compute ID group-ID smd/plastic/strain: the effective plastic strain of each atom. */
 export const makeSmdPlasticStrain = (sys: System, id: string, group: string, args: string[]): Compute =>
-  new PeratomVector(sys, id, group, args, 'smd/plastic/strain', (i, p) => (p ? sys.state.custom.get(SMD_EPS)!.data[i] : 0));
+  new PeratomVector(sys, id, group, args, 'smd/plastic/strain', (i, p) => (p ? sys.state.custom.get(SMD_EPS)!.data[i] : 0),
+    [SMD_EPS, 'compute smd/plastic/strain command requires atom_style with plastic_strain']);
 /** compute ID group-ID smd/plastic/strain/rate: the rate of the effective plastic strain of each atom. */
 export const makeSmdPlasticStrainRate = (sys: System, id: string, group: string, args: string[]): Compute =>
-  new PeratomVector(sys, id, group, args, 'smd/plastic/strain/rate', (i, p) => (p ? sys.state.custom.get(SMD_EPSRATE)!.data[i] : 0));
+  new PeratomVector(sys, id, group, args, 'smd/plastic/strain/rate', (i, p) => (p ? sys.state.custom.get(SMD_EPSRATE)!.data[i] : 0),
+    [SMD_EPSRATE, 'compute smd/plastic/strain/rate command requires atom_style with plastic_strain_rate']);
 /** compute ID group-ID smd/damage: the damage of each atom. */
 export const makeSmdDamage = (sys: System, id: string, group: string, args: string[]): Compute =>
-  new PeratomVector(sys, id, group, args, 'smd/damage', (i, p) => (p ? sys.state.custom.get(SMD_DAMAGE)!.data[i] : 0));
+  new PeratomVector(sys, id, group, args, 'smd/damage', (i, p) => (p ? sys.state.custom.get(SMD_DAMAGE)!.data[i] : 0),
+    [SMD_DAMAGE, 'compute smd/damage command requires atom_style with damage']);
 
 /** compute ID group-ID smd/tlsph/strain/rate: the rate of deformation D (xx yy zz xy xz yz) of each atom, for all atoms. */
 export class ComputeSMDTLSPHStrainRate extends Compute {
@@ -217,9 +223,11 @@ export class ComputeSMDTLSPHShape extends Compute {
  * compute_smd_rho.cpp, compute_smd_vol.cpp): zero outside the group, as the native computes check the mask.
  */
 class SmdAtomProp extends Compute {
-  constructor(sys: System, id: string, group: string, args: string[], readonly style: string, private readonly value: (i: number) => number) {
+  constructor(sys: System, id: string, group: string, args: string[], readonly style: string, private readonly value: (i: number) => number, has: boolean, message: string) {
     super(sys, id, group, args);
     if (args.length) throw new StyleError(`Illegal compute ${style} command`);
+    // the constructor's atom attribute check
+    if (!has) throw new StyleError(message);
     this.peratomFlag = true;
     this.sizePeratomCols = 0;
   }
@@ -234,10 +242,13 @@ class SmdAtomProp extends Compute {
 
 /** compute ID group-ID smd/contact/radius (docs.lammps.org/compute_smd_contact_radius.html): the contact radius of each atom. */
 export const makeSmdContactRadius = (sys: System, id: string, group: string, args: string[]): Compute =>
-  new SmdAtomProp(sys, id, group, args, 'smd/contact/radius', (i) => sys.state.custom.get(SMD_CONTACT)!.data[i]);
+  new SmdAtomProp(sys, id, group, args, 'smd/contact/radius', (i) => sys.state.custom.get(SMD_CONTACT)!.data[i],
+    sys.state.custom.has(SMD_CONTACT), 'compute smd/contact_radius command requires atom_style with contact_radius');
 /** compute ID group-ID smd/internal/energy: the internal energy per unit mass (esph) of each atom. */
 export const makeSmdInternalEnergy = (sys: System, id: string, group: string, args: string[]): Compute =>
-  new SmdAtomProp(sys, id, group, args, 'smd/internal/energy', (i) => sys.state.custom.get(SMD_ESPH)!.data[i]);
+  new SmdAtomProp(sys, id, group, args, 'smd/internal/energy', (i) => sys.state.custom.get(SMD_ESPH)!.data[i],
+    sys.state.custom.has(SMD_ESPH), 'compute smd/internal/energy command requires atom_style with internal_energy');
 /** compute ID group-ID smd/rho: the mass density rmass / vfrac of each atom. */
 export const makeSmdRho = (sys: System, id: string, group: string, args: string[]): Compute =>
-  new SmdAtomProp(sys, id, group, args, 'smd/rho', (i) => sys.state.rmass![i] / sys.state.vfrac![i]);
+  new SmdAtomProp(sys, id, group, args, 'smd/rho', (i) => sys.state.rmass![i] / sys.state.vfrac![i],
+    !!sys.state.vfrac && !!sys.state.rmass, 'compute smd/rho command requires atom_style with volume fraction');

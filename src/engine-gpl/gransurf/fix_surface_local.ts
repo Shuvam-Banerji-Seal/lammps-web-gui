@@ -24,6 +24,8 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, missingArgs, numeric } from '../../engine/force/util';
+import { fmtShortest } from '../../engine/cformat';
 import type { System } from '../../engine/system';
 import { appendAtoms, isLineStyle, isTriStyle, LINE_BONUS, LINE_FLAG, maxAtomId, TRI_BONUS, TRI_BONUS_COLS, TRI_FLAG } from '../../engine/atoms';
 import { lineFromEnds } from '../../engine/lineTri';
@@ -85,32 +87,35 @@ export class FixSurfaceLocal extends Fix {
     const sources: Source[] = [];
     let k = 0;
     while (k < args.length && args[k] === 'input') {
-      if (args[k + 1] === 'mol' && args[k + 2] !== undefined) {
+      if (k + 2 > args.length) throw missingArgs('fix surface/local input');
+      if (args[k + 1] === 'mol') {
+        if (k + 3 > args.length) throw missingArgs('fix surface/local input mol');
         sources.push({ kind: 'mol', id: args[k + 2] });
         k += 3;
       } else if (args[k + 1] === 'stl') {
         // fix_surface_local.cpp: "input stl" takes the surface type, the molecule-ID and the file name
-        const stype = Number(args[k + 2]), smol = Number(args[k + 3]);
-        const file = args[k + 4];
-        if (file === undefined || !Number.isInteger(stype) || !Number.isInteger(smol)) {
-          throw new StyleError('fix surface/local input stl needs type, molecule-ID and file name');
-        }
-        sources.push({ kind: 'stl', stype, smol, file });
+        if (k + 5 > args.length) throw missingArgs('fix surface/local input stl');
+        const stype = inumeric(args[k + 2]), smol = inumeric(args[k + 3]);
+        sources.push({ kind: 'stl', stype, smol, file: args[k + 4] });
         k += 5;
       } else {
-        throw new StyleError(`fix surface/local keyword 'input ${args[k + 1] ?? ''}' is not supported`);
+        throw new StyleError(`Unknown fix surface/local input keyword: ${args[k + 1]}`);
       }
     }
     // fix_surface_local.cpp: "flat" sets the flat threshold, 1 - cos(flat degrees); the default is one degree
     let flatthresh = FLATTHRESH;
     while (k < args.length) {
-      if (args[k] !== 'flat') throw new StyleError(`fix surface/local keyword '${args[k]}' is not supported`);
-      const flat = Number(args[k + 1]);
-      // fix_surface_local.cpp: "Invalid value {} for fix surface/local flat keyword" when flat is outside 0..90
-      if (args[k + 1] === undefined || !(flat >= 0 && flat <= 90)) throw new StyleError(`Invalid value ${args[k + 1] ?? ''} for fix surface/local flat keyword`);
+      if (args[k] !== 'flat') throw new StyleError(`Unknown fix surface/local keyword: ${args[k]}`);
+      if (k + 2 > args.length) throw missingArgs('fix surface/local flat');
+      const flat = numeric(args[k + 1]);
+      if (flat < 0 || flat > 90) throw new StyleError(`Invalid value ${fmtShortest(flat, false)} for fix surface/local flat keyword`);
       flatthresh = 1.0 - libmCos((Math.PI * flat) / 180.0);
       k += 2;
     }
+    // then the atom style of the dimension (lines in 2d, triangles in 3d)
+    const s = sys.state;
+    if (sys.dimension === 2 && !isLineStyle(s.atomStyle)) throw new StyleError('Fix surface/local requires atom style line');
+    if (sys.dimension === 3 && !isTriStyle(s.atomStyle)) throw new StyleError('Fix surface/local requires atom style tri');
     FLAT_THRESHOLD.set(sys.state, flatthresh);
     if (sources.length) this.createFromTemplates(sys, sources);
   }
@@ -119,8 +124,6 @@ export class FixSurfaceLocal extends Fix {
   private createFromTemplates(sys: System, sources: Source[]): void {
     const dim = sys.dimension;
     const s = sys.state;
-    if (dim === 2 && !isLineStyle(s.atomStyle)) throw new StyleError('Fix surface/local requires atom style line');
-    if (dim === 3 && !isTriStyle(s.atomStyle)) throw new StyleError('Fix surface/local requires atom style tri');
     const entries: SurfaceEntry[] = [];
     for (const src of sources) {
       if (src.kind === 'stl') {

@@ -104,7 +104,7 @@ run 0
 
   it('rejects a second freeze fix and freeze arguments', async () => {
     const twice = await runScript(`${BASE}\ngroup g id 1\nfix a g freeze\nfix b g freeze\nrun 0\n`);
-    expect(twice.error?.message ?? '').toMatch(/single freeze/);
+    expect(twice.error?.message ?? '').toMatch(/More than one fix freeze/);
     const args = await runScript(`${BASE}\ngroup g id 1\nfix a g freeze foo\nrun 0\n`);
     expect(args.error?.message ?? '').toMatch(/freeze/);
   });

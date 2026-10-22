@@ -1,4 +1,5 @@
 import type { Handler } from './args';
+import { initializing } from './args';
 import { StyleError } from '../force/types';
 import { writeRestartText, readRestartText } from '../output/restart';
 import type { System } from '../system';
@@ -193,7 +194,8 @@ export const writeRestarts = (sys: System, step: number, force = false): void =>
 };
 
 export const RESTART_COMMANDS: Record<string, Handler> = {
-  write_restart: writeRestart,
+  // write_restart initializes the system first unless noinit is given (native lmp->init(), src/write_restart.cpp at b332f28)
+  write_restart: initializing(writeRestart, (a) => !a.includes('noinit')),
   read_restart: readRestart,
   restart: restartCmd,
 };

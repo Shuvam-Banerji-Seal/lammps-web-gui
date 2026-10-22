@@ -85,9 +85,11 @@ describe('kspace: rocksalt Madelung energy', () => {
 describe('kspace: ewald forces are the energy gradient', () => {
   // gewald 2.0 makes the real-space term (and its erfc table) negligible: the check is on the k-space sum
   it('matches central differences for every component of a charged atom', async () => {
+    // fx[3] etc. need the atom map (native Variable::peratom2global refuses an indexed per-atom vector without one)
     const base = `
 units           real
 atom_style      charge
+atom_modify     map yes
 region          box block 0 10 0 9 0 11
 create_box      2 box
 create_atoms    1 single 1.1 2.2 3.3 units box

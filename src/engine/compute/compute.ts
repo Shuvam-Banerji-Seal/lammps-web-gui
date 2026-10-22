@@ -101,6 +101,12 @@ export abstract class Compute {
     this.extraDof = sys.dimension;
   }
 
+  /**
+   * Set when a run (or another command that initializes the system) has initialized the compute (native
+   * Compute::init_flags): before that a variable formula may not read it (Variable::evaluate, variable.cpp at b332f28).
+   */
+  initialized = false;
+
   /** Called at the start of every run and before first use. */
   init(): void {}
 

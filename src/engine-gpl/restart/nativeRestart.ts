@@ -172,6 +172,8 @@ interface Header {
   specialCoul: number[];
   dt: number;
   atomId: number;
+  /** the atom map style of the run that wrote the file (0: none) */
+  atomMap: number;
   commMode: number;
   commCutoff: number;
   commVel: number;
@@ -206,7 +208,7 @@ const readHeader = (b: Bin): Header => {
     boundary: [0, 0, 0, 0, 0, 0], boundmin: null, atomStyle: 'atomic', atomStyleArgs: [], natoms: 0, ntypes: 0,
     nbonds: 0, nbondtypes: 0, nangles: 0, nangletypes: 0, ndihedrals: 0, ndihedraltypes: 0, nimpropers: 0, nimpropertypes: 0, triclinic: 0,
     boxlo: [0, 0, 0], boxhi: [1, 1, 1], xy: 0, xz: 0, yz: 0, specialLJ: [0, 0, 0], specialCoul: [0, 0, 0],
-    dt: 0, atomId: 1, commMode: 0, commCutoff: 0, commVel: 0, atime: 0, atimestep: 0,
+    dt: 0, atomId: 1, atomMap: 0, commMode: 0, commCutoff: 0, commVel: 0, atime: 0, atimestep: 0,
   };
   let flag = b.int();
   while (flag >= 0) {
@@ -260,7 +262,7 @@ const readHeader = (b: Bin): Header => {
       case F.SPECIAL_COUL: b.int(); h.specialCoul = b.dbls(3); break;
       case F.TIMESTEP: h.dt = b.dbl(); break;
       case F.ATOM_ID: h.atomId = b.int(); break;
-      case F.ATOM_MAP_STYLE: b.int(); break;
+      case F.ATOM_MAP_STYLE: h.atomMap = b.int(); break;
       case F.ATOM_MAP_USER: b.int(); break;
       case F.ATOM_SORTFREQ: b.int(); break;
       case F.ATOM_SORTBIN: b.dbl(); break;
@@ -1240,6 +1242,9 @@ export const readNativeRestart = (sys: System, text: string, name: string): void
   sys.dimension = h.dimension as 2 | 3;
   sys.boundary = box.boundary.map((f) => [f[0], f[1]]) as SimBox['boundary'];
   sys.atomStyle = style;
+  // read_restart.cpp: "we should be able to enable an atom map, even if the simulation in the restart didn't use one":
+  // the file's map style applies unless atom_modify map was given before read_restart
+  if (!sys.atomMapSet && h.atomMap !== 0) sys.atomMapSet = true;
   sys.commStyle = h.commMode === 1 ? 'tiled' : 'brick';
   sys.ghostVelocity = h.commVel !== 0;
   sys.nb.commCutoff = h.commCutoff;

@@ -421,6 +421,8 @@ export const writeRestartText = (sys: System): string => {
     apip,
     smd,
     comm: { style: sys.commStyle, vel: sys.ghostVelocity, cutoff: sys.nb.commCutoff },
+    // the atom map (native writes atom->map_style; read_restart takes it unless atom_modify map was given first)
+    atomMap: sys.atomMapSet,
     // atom_style sphere 1 (dynamic radii), as native writes the atom style's arguments
     radvary: sys.radvary,
     groups: encodeValue({ names: sys.groups.names, dynamic: sys.groups.dynamic }, 'groups', []),
@@ -619,6 +621,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   for (const [bit, dg] of g.dynamic) sys.groups.dynamic.set(bit, dg);
 
   sys.ff.special = decodeValue(doc.special, 'special') as SpecialBonds;
+  if (!sys.atomMapSet && (doc as { atomMap?: boolean }).atomMap) sys.atomMapSet = true;
   // the label map (files written before type labels existed have none: an empty map)
   const lab = (doc as { labels?: { defined: boolean; maps: Record<string, [number, string][]> } }).labels;
   sys.labels = new LabelMap();

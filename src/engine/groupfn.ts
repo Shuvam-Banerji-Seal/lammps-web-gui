@@ -1,6 +1,6 @@
 import type { System } from './system';
 import { StyleError } from './force/types';
-import type { Mode, Value } from './formula';
+import { FormulaError, errorUrl, resolveIndex, scanBracket, type Index, type Mode, type Value } from './formula';
 import { hasCharge, hasMolecule, massOf } from './atoms';
 import { finiteSpin } from './compute/finiteSpin';
 import type { SimState } from './types';
@@ -35,36 +35,56 @@ import { groupMotionOf } from './groupMotion';
 
 const DIMS: Record<string, number> = { x: 0, y: 1, z: 2 };
 
-export const groupFunction = (sys: System, fn: string, args: string[], mode: Mode): Value => {
+/** The operating-system text is_os() matches in the browser engine (native: platform::os_info()). */
+const OS_INFO = 'Web browser';
+
+const special = (fn: string) => new FormulaError(fn ? `Invalid special function ${fn}() in variable formula` : 'Invalid special function in variable formula');
+
+export const groupFunction = (sys: System, fn: string, args: string[], mode: Mode, index: Index | null = null): Value => {
   switch (fn) {
     case 'count': case 'mass': case 'charge': case 'xcm': case 'vcm': case 'fcm': case 'bound':
     case 'gyration': case 'ke': case 'angmom': case 'torque': case 'inertia': case 'omega':
       return groupFn(sys, fn, args);
     case 'sum': case 'min': case 'max': case 'ave': case 'trap': case 'slope': case 'sort': case 'rsort':
-      return reduceFn(sys, fn, args);
+      return reduceFn(sys, fn, args, mode, index);
     case 'gmask': case 'rmask': case 'grmask':
       return maskFn(sys, fn, args, mode);
     case 'next': {
-      if (args.length !== 1) throw new StyleError('next() takes one variable name');
+      // As native LAMMPS does (Variable::special_function, variable.cpp at b332f28)
+      if (args.length !== 1) throw special('');
       const v = sys.vars.get(args[0]);
-      if (!v || (v.style !== 'file' && v.style !== 'atomfile')) throw new StyleError(`next(${args[0]}) needs a file- or atomfile-style variable`);
+      if (!v) throw new StyleError(`Variable ID '${args[0]}' in variable formula does not exist`);
       if (v.style === 'file') {
         const cur = Number(v.values[0]);
         sys.vars.next([args[0]]);
         return Number.isFinite(cur) ? cur : 0;
       }
+      if (v.style !== 'atomfile') throw new FormulaError(`Variable ${args[0]}: Invalid variable style in special function next`, true);
+      if (mode === 'equal') throw new FormulaError(`Variable ${args[0]}: Atomfile variable in equal-style variable formula`, true);
       const s = sys.state;
       const cur = sys.vars.evalAtom(args[0], sys.formulaEnv, s.id, s.n);
       sys.vars.next([args[0]]);
       return cur;
     }
-    case 'is_file': return sys.files.has(sys.resolveFile(args[0])) ? 1 : 0;
-    case 'is_os': return 0;
-    case 'is_timeout': return 0;
-    case 'extract_setting': return extractSetting(sys, args[0]);
-    case 'is_defined': return isDefined(sys, args[0], args[1]);
-    case 'is_active': return isActive(sys, args[0], args[1]);
-    case 'is_available': return isAvailable(sys, args[0], args[1]);
+    case 'is_file':
+      if (args.length !== 1) throw new FormulaError('Invalid is_file() function in variable formula');
+      return sys.files.has(sys.resolveFile(args[0])) ? 1 : 0;
+    case 'is_os': {
+      // variable.html: is_os(name) "checks, if the name (a regular expression) matches the name of the operating
+      // system"; the browser engine runs in a web page, whose system name is OS_INFO
+      if (args.length !== 1) throw new FormulaError('Invalid is_os() function in variable formula');
+      try { return new RegExp(args[0]).test(OS_INFO) ? 1 : 0; } catch { return 0; }
+    }
+    case 'is_timeout':
+      if (args.length !== 1 || args[0] !== '') throw new FormulaError('Invalid is_timeout() function in variable formula');
+      return 0;
+    case 'extract_setting':
+      if (args.length !== 1) throw new FormulaError('Invalid extract_setting() function in variable formula');
+      return extractSetting(sys, args[0]);
+    case 'is_defined': case 'is_active': case 'is_available':
+      if (args.length !== 2) throw new FormulaError(`Invalid ${fn}() function in variable formula`);
+      if (fn === 'is_defined') return isDefined(sys, args[0], args[1]);
+      return fn === 'is_active' ? isActive(sys, args[0], args[1]) : isAvailable(sys, args[0], args[1]);
     case 'label2type': case 'is_typelabel': return labelFunction(sys, fn, args);
   }
   throw new StyleError(`unknown function ${fn}()`);
@@ -78,21 +98,29 @@ export const groupFunction = (sys: System, fn: string, args: string[], mode: Mod
  * "Invalid atom type label ZZ in label2type() in variable", "Cannot use label2type() function without a labelmap".
  */
 const labelFunction = (sys: System, fn: string, args: string[]): number => {
-  const kind = args[0] ?? '';
-  if (!isLabelKind(kind)) throw new StyleError(`Invalid kind ${kind} in ${fn}() in variable`);
-  if (!sys.labels.defined) throw new StyleError(`Cannot use ${fn}() function without a labelmap`);
-  const label = args[1] ?? '';
+  // native's order: the labelmap, the comma, the kind, then the label (Variable::special_function at b332f28)
+  if (!sys.labels.defined) throw new FormulaError(`Cannot use ${fn}() function without a labelmap`);
+  if (args.length < 2) throw new FormulaError(`Invalid ${fn}(${args[0]}) function in variable formula`);
+  const kind = args[0];
+  if (!isLabelKind(kind)) throw new FormulaError(`Invalid kind ${kind} in ${fn}() in variable`);
+  const label = args.slice(1).join(',');
   const t = sys.labels.typeOf(kind, label);
   if (fn === 'is_typelabel') return t === undefined ? 0 : 1;
-  if (t === undefined) throw new StyleError(`Invalid ${kind} type label ${label} in ${fn}() in variable`);
+  if (t === undefined) throw new FormulaError(`Invalid ${kind} type label ${label} in ${fn}() in variable`);
   return t;
+};
+
+/** A region of a formula's function (native Variable::region_function at b332f28). */
+const formulaRegion = (sys: System, id: string) => {
+  if (!sys.regions.has(id)) throw new FormulaError(`Region ${id} in variable formula does not exist`);
+  return sys.region(id);
 };
 
 /** Atoms in group (and region, if given), unwrapped positions available. */
 const members = (sys: System, group: string, region: string | undefined): number[] => {
   const s = sys.state;
   const bit = sys.groupBit(group);
-  const reg = region !== undefined ? sys.region(region) : null;
+  const reg = region !== undefined ? formulaRegion(sys, region) : null;
   const out: number[] = [];
   for (let i = 0; i < s.n; i++) {
     if (!(s.mask[i] & bit)) continue;
@@ -102,19 +130,43 @@ const members = (sys: System, group: string, region: string | undefined): number
   return out;
 };
 
+/** The components of inertia(), in native's order. */
+const INERTIA = ['xx', 'yy', 'zz', 'xy', 'yz', 'xz'];
+
+/** The group functions that weigh atoms by mass (native calls atom->check_mass first). */
+const MASS_FNS = new Set(['xcm', 'vcm', 'gyration', 'angmom', 'torque', 'inertia', 'omega']);
+
 const groupFn = (sys: System, fn: string, args: string[]): number => {
   const nreq: Record<string, number> = {
     count: 1, mass: 1, charge: 1, xcm: 2, vcm: 2, fcm: 2, bound: 2, gyration: 1, ke: 1, angmom: 2, torque: 2, inertia: 2, omega: 2,
   };
+  // As native LAMMPS does (Variable::group_function, variable.cpp at b332f28): the group, the per-type masses of the
+  // functions that weigh atoms, the argument count and the region, then the component
+  if (sys.groups.find(args[0]) < 0) throw new FormulaError(`Group ${args[0]} in variable formula does not exist`);
+  const bad = () => new FormulaError(`Invalid ${fn}() function in variable formula`);
+  if (MASS_FNS.has(fn) && sys.hasBox && !sys.state.rmass) {
+    const st = sys.state;
+    for (let t = 1; t <= st.ntypes; t++) if (!(st.massByType[t] > 0)) throw new StyleError(`Not all per-type masses are set. Type ${t} is missing.`);
+  }
   const n0 = nreq[fn];
-  if (args.length !== n0 && args.length !== n0 + 1) throw new StyleError(`${fn}() takes ${n0} argument(s) (plus an optional region ID)`);
+  if (args.length !== n0 && args.length !== n0 + 1) throw bad();
   const region = args.length === n0 + 1 ? args[n0] : undefined;
+  if (region !== undefined) formulaRegion(sys, region);
+  if (!sys.hasBox) {
+    // before the box there are no atoms: native's sums over none are 0, bound() gives the empty extent
+    if (fn === 'bound') {
+      if (!/^[xyz](min|max)$/.test(args[1])) throw bad();
+      return args[1].endsWith('min') ? 1e20 : -1e20;
+    }
+    if (fn === 'inertia' ? !INERTIA.includes(args[1]) : n0 === 2 && !(args[1] in DIMS)) throw bad();
+    return 0;
+  }
   const s = sys.state;
   if (fn === 'fcm' || fn === 'torque') sys.forces();
   const idx = members(sys, args[0], region);
   const m = (i: number) => massOf(s, i);
   const dim = (w: string) => {
-    if (!(w in DIMS)) throw new StyleError(`${fn}(): dimension must be x, y or z, got '${w}'`);
+    if (!(w in DIMS)) throw bad();
     return DIMS[w];
   };
   const pos = (i: number) => {
@@ -131,7 +183,10 @@ const groupFn = (sys: System, fn: string, args: string[]): number => {
   switch (fn) {
     case 'count': return idx.length;
     case 'mass': return idx.reduce((a, i) => a + m(i), 0);
-    case 'charge': return idx.reduce((a, i) => a + s.q[i], 0);
+    case 'charge':
+      // native reads the per-atom charges, which an atom style without them lacks (it crashes there)
+      if (idx.length && !hasCharge(s)) throw new StyleError('charge() in a variable formula needs an atom style with charges');
+      return idx.reduce((a, i) => a + s.q[i], 0);
     case 'xcm': return com()[dim(args[1])];
     case 'vcm': {
       let mt = 0, p = 0;
@@ -146,7 +201,7 @@ const groupFn = (sys: System, fn: string, args: string[]): number => {
     case 'bound': {
       const w = args[1];
       const d = DIMS[w[0]];
-      if (d === undefined || (w.slice(1) !== 'min' && w.slice(1) !== 'max')) throw new StyleError(`bound(): direction must be xmin, xmax, ymin, ymax, zmin or zmax, got '${w}'`);
+      if (d === undefined || (w.slice(1) !== 'min' && w.slice(1) !== 'max')) throw bad();
       let v = w.slice(1) === 'min' ? Infinity : -Infinity;
       for (const i of idx) v = w.slice(1) === 'min' ? Math.min(v, s.x[3 * i + d]) : Math.max(v, s.x[3 * i + d]);
       return Number.isFinite(v) ? v : (w.slice(1) === 'min' ? 1e20 : -1e20);
@@ -180,8 +235,8 @@ const groupFn = (sys: System, fn: string, args: string[]): number => {
     }
     case 'inertia': {
       const I = inertia(s, idx, pos, com(), m, true);
-      const k = ['xx', 'yy', 'zz', 'xy', 'yz', 'xz'].indexOf(args[1]);
-      if (k < 0) throw new StyleError(`inertia(): component must be xx, yy, zz, xy, yz or xz, got '${args[1]}'`);
+      const k = INERTIA.indexOf(args[1]);
+      if (k < 0) throw bad();
       return [I[0][0], I[1][1], I[2][2], I[0][1], I[1][2], I[0][2]][k];
     }
     case 'omega': {
@@ -240,67 +295,117 @@ const inertia = (s: SimState, idx: number[], pos: (i: number) => number[], c: nu
   return I;
 };
 
-/** The global vector a special function reduces: c_ID, c_ID[N], f_ID, f_ID[N], v_name. */
-const specialVector = (sys: System, arg: string): Float64Array => {
-  const m = /^([cfv])_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(arg);
-  if (!m) throw new StyleError(`invalid special function argument '${arg}' (use c_ID, c_ID[N], f_ID, f_ID[N] or v_name)`);
-  const [, kind, id, col] = m;
-  if (kind === 'v') return sys.vars.evalVector(id, sys.formulaEnv);
-  if (kind === 'c') {
-    const c = sys.compute(id);
-    if (col === undefined) return c.vectorValues();
-    const a = c.arrayValues();
-    const j = Number(col);
-    if (j < 1 || j > c.sizeArrayCols) throw new StyleError(`${arg}: column out of range 1..${c.sizeArrayCols}`);
-    const out = new Float64Array(c.sizeArrayRows);
-    for (let r = 0; r < c.sizeArrayRows; r++) out[r] = a[r * c.sizeArrayCols + j - 1];
+/**
+ * The global vector a special function reduces: c_ID, c_ID[N], f_ID, f_ID[N] or v_name. As native LAMMPS does
+ * (Variable::special_function, variable.cpp at b332f28): the messages of a compute or fix name no variable, those of a
+ * vector-style variable name it.
+ */
+const specialVector = (sys: System, fn: string, arg: string): Float64Array => {
+  const unnamed = 'Invalid special function in variable formula';
+  const br = arg.indexOf('[');
+  const index = br >= 0 ? resolveIndex(scanBracket(arg, br + 1, false).index, sys.formulaEnv) : 0;
+  const id = (br >= 0 ? arg.slice(0, br) : arg).slice(2);
+  const column = (rows: number, at: (r: number) => number) => {
+    const out = new Float64Array(rows);
+    for (let r = 0; r < rows; r++) out[r] = at(r);
     return out;
+  };
+  if (arg.startsWith('c_')) {
+    const c = sys.computes.find((x) => x.id === id);
+    if (!c) throw new StyleError(`Invalid compute ID '${id}' in variable formula`);
+    const init = () => {
+      if (!c.initialized) throw new StyleError('Variable formula compute cannot be invoked before initialization by a run');
+    };
+    if (index === 0 && c.vectorFlag) {
+      init();
+      return c.vectorValues();
+    }
+    if (index && c.arrayFlag) {
+      if (index > c.sizeArrayCols) throw new StyleError(`Variable formula compute array is accessed out-of-range${errorUrl(20)}`);
+      init();
+      const a = c.arrayValues();
+      return column(c.sizeArrayRows, (r) => a[r * c.sizeArrayCols + index - 1]);
+    }
+    throw new StyleError(`Compute '${c.id}' in variable formula does not compute the requested property. ${errorUrl(37)}`);
   }
-  const f = sys.fix(id);
-  if (col === undefined) {
-    const out = new Float64Array(f.sizeVector);
-    for (let k = 0; k < f.sizeVector; k++) out[k] = f.computeVector(k);
-    return out;
+  if (arg.startsWith('f_')) {
+    const f = sys.fixes.find((x) => x.id === id);
+    if (!f) throw new StyleError(`Invalid fix ID '${id}' in variable formula`);
+    const off = sys.run.inRun && f.globalFreq > 0 && sys.state.step % f.globalFreq !== 0;
+    if (index === 0 && f.vectorFlag) {
+      if (off) throw new StyleError(`Fix with ID '${id}' in variable formula not computed at compatible time${errorUrl(7)}`);
+      return column(f.sizeVector, (k) => f.computeVector(k));
+    }
+    if (index && f.arrayFlag) {
+      if (index > f.sizeArrayCols) throw new StyleError(`Variable formula fix array is accessed out-of-range${errorUrl(20)}`);
+      if (off) throw new StyleError(`Fix in variable not computed at compatible time${errorUrl(7)}`);
+      return column(f.sizeArrayRows, (r) => f.computeArray(r, index - 1));
+    }
+    throw new StyleError(`Fix '${f.id}' in variable formula does not compute the requested property. ${errorUrl(37)}`);
   }
-  const j = Number(col);
-  const out = new Float64Array(f.sizeArrayRows);
-  for (let r = 0; r < f.sizeArrayRows; r++) out[r] = f.computeArray(r, j - 1);
-  return out;
+  if (arg.startsWith('v_')) {
+    if (index) throw new StyleError(unnamed);
+    const v = sys.vars.get(id);
+    if (!v) throw new StyleError(unnamed);
+    if (v.style !== 'vector') throw new FormulaError(`Variable ${id}: Mis-matched special function variable in variable formula`, true);
+    const vec = sys.vars.evalVector(id, sys.formulaEnv);
+    if (fn === 'ave' && vec.length === 0) throw new FormulaError(`Variable ${id}: Cannot compute average of empty vector`, true);
+    return vec;
+  }
+  throw new StyleError(unnamed);
 };
 
-const reduceFn = (sys: System, fn: string, args: string[]): Value => {
-  if (args.length !== 1) throw new StyleError(`${fn}() takes one argument`);
-  const v = specialVector(sys, args[0]);
+/** native's start of min() and max(), and slope()'s value for a vertical line (BIG) */
+const BIG = 1.0e20;
+
+const reduceFn = (sys: System, fn: string, args: string[], mode: Mode, index: Index | null): Value => {
+  if (args.length !== 1) throw special(fn);
+  const v = specialVector(sys, fn, args[0]);
   const n = v.length;
   switch (fn) {
     case 'sum': { let t = 0; for (const x of v) t += x; return t; }
-    case 'min': { let t = Infinity; for (const x of v) if (x < t) t = x; return n ? t : 0; }
-    case 'max': { let t = -Infinity; for (const x of v) if (x > t) t = x; return n ? t : 0; }
-    case 'ave': { let t = 0; for (const x of v) t += x; return n ? t / n : 0; }
+    case 'min': { let t = BIG; for (const x of v) if (x < t) t = x; return t; }
+    case 'max': { let t = -BIG; for (const x of v) if (x > t) t = x; return t; }
+    case 'ave': { let t = 0; for (const x of v) t += x; return t / n; }
     case 'trap': {
       let t = 0;
       for (let k = 0; k < n; k++) t += k === 0 || k === n - 1 ? 0.5 * v[k] : v[k];
       return t;
     }
     case 'slope': {
-      if (n < 2) return 1e20;
       let sx = 0, sy = 0, sxx = 0, sxy = 0;
-      for (let k = 0; k < n; k++) { const x = k + 1; sx += x; sy += v[k]; sxx += x * x; sxy += x * v[k]; }
+      for (let k = 0; k < n; k++) { sx += k; sy += v[k]; sxx += k * k; sxy += k * v[k]; }
       const den = n * sxx - sx * sx;
-      return den === 0 ? 1e20 : (n * sxy - sx * sy) / den;
+      return den === 0 ? BIG : (n * sxy - sx * sy) / den;
     }
-    case 'sort': return Float64Array.from(v).sort();
-    case 'rsort': return Float64Array.from(v).sort().reverse();
+    case 'sort': case 'rsort': {
+      const out = Float64Array.from(v).sort();
+      if (fn === 'rsort') out.reverse();
+      // an equal-style formula takes one element, sort(x)[I]; a vector-style one the whole vector (no brackets)
+      if (mode === 'vector' && index) throw new FormulaError('Invalid syntax in variable formula');
+      if (mode !== 'equal') return out;
+      if (!index) throw new FormulaError('Invalid syntax in variable formula');
+      const i = resolveIndex(index, sys.formulaEnv);
+      if (i > n) {
+        const text = `index ${i} exceeds vector size of ${n}\n`;
+        throw args[0].startsWith('v_') ? new FormulaError(`Variable ${args[0].slice(2)}: ${text}`, true) : new StyleError(text);
+      }
+      return out[i - 1];
+    }
   }
   throw new StyleError(`unknown special function ${fn}()`);
 };
 
 const maskFn = (sys: System, fn: string, args: string[], mode: Mode): Value => {
+  // As native LAMMPS does (Variable::special_function, variable.cpp at b332f28)
+  if (mode === 'equal') throw new FormulaError(`${fn[0].toUpperCase()}${fn.slice(1)} function in equal-style variable formula`);
   if (mode !== 'atom') throw new StyleError(`${fn}() can only be used in atom-style variables`);
+  if (args.length !== (fn === 'grmask' ? 2 : 1)) throw special('');
+  if (fn !== 'rmask' && sys.groups.find(args[0]) < 0) throw new FormulaError('Group ID in variable formula does not exist');
   const s = sys.state;
   const out = new Float64Array(s.n);
   const bit = fn === 'rmask' ? 0 : sys.groupBit(args[0]);
-  const reg = fn === 'gmask' ? null : sys.region(fn === 'rmask' ? args[0] : args[1]);
+  const reg = fn === 'gmask' ? null : formulaRegion(sys, fn === 'rmask' ? args[0] : args[1]);
   for (let i = 0; i < s.n; i++) {
     let ok = true;
     if (fn !== 'rmask') ok = (s.mask[i] & bit) !== 0;
@@ -310,7 +415,7 @@ const maskFn = (sys: System, fn: string, args: string[], mode: Mode): Value => {
   return out;
 };
 
-const extractSetting = (sys: System, name: string | undefined): number => {
+const extractSetting = (sys: System, name: string): number => {
   const s = sys.hasBox ? sys.state : null;
   switch (name) {
     case 'dimension': return sys.dimension;
@@ -330,11 +435,11 @@ const extractSetting = (sys: System, name: string | undefined): number => {
     case 'world_size': case 'universe_size': case 'nthreads': return 1;
     case 'bigint': case 'tagint': case 'imageint': return 4;
   }
-  throw new StyleError(`extract_setting(${name ?? ''}) is not a known setting`);
+  throw new FormulaError(`Unknown setting ${name} for extract_setting() function in variable formula`);
 };
 
-const isDefined = (sys: System, cat: string | undefined, id: string | undefined): number => {
-  if (!id) throw new StyleError('is_defined(category,id) needs two arguments');
+// the messages of native's Info::is_defined, is_active and is_available (src/info.cpp at b332f28)
+const isDefined = (sys: System, cat: string, id: string): number => {
   switch (cat) {
     case 'compute': return sys.computes.some((c) => c.id === id) ? 1 : 0;
     case 'fix': return sys.fixes.some((f) => f.id === id) ? 1 : 0;
@@ -343,14 +448,29 @@ const isDefined = (sys: System, cat: string | undefined, id: string | undefined)
     case 'variable': return sys.vars.has(id) ? 1 : 0;
     case 'dump': return sys.dumps.some((d) => d.id === id) ? 1 : 0;
   }
-  throw new StyleError(`is_defined(): unknown category '${cat ?? ''}'`);
+  throw new StyleError(`Unknown category for info is_defined(): ${cat}`);
 };
 
-const isActive = (sys: System, cat: string | undefined, feature: string | undefined): number => {
+const isActive = (sys: System, cat: string, feature: string): number => {
   switch (cat) {
-    case 'package': return 0;
-    case 'newton': return feature === 'pair' || feature === 'bond' || feature === 'any' ? 1 : 0;
-    case 'pair': return sys.ff.pair ? (feature === 'single' ? (sys.ff.pair.single ? 1 : 0) : 0) : 0;
+    case 'package':
+      if (['gpu', 'intel', 'kokkos', 'omp'].includes(feature)) return 0;
+      throw new StyleError(`Unknown name for info package category: ${feature}`);
+    case 'newton':
+      if (feature === 'pair' || feature === 'bond' || feature === 'any') return 1;
+      throw new StyleError(`Unknown name for info newton category: ${feature}`);
+    case 'pair': {
+      const p = sys.ff.pair;
+      if (!p) return 0;
+      switch (feature) {
+        case 'single': return p.single ? 1 : 0;
+        case 'respa': return 0;
+        case 'manybody': return p.manybody ? 1 : 0;
+        case 'tail': return p.tail ? 1 : 0;
+        case 'shift': return p.shift ? 1 : 0;
+      }
+      throw new StyleError(`Unknown name for info pair category: ${feature}`);
+    }
     case 'comm_style': return feature === 'brick' ? 1 : 0;
     case 'min_style': return feature === sys.minStyle ? 1 : 0;
     case 'run_style': return feature === 'verlet' ? 1 : 0;
@@ -358,13 +478,19 @@ const isActive = (sys: System, cat: string | undefined, feature: string | undefi
     case 'pair_style': return feature === sys.ff.pair?.name ? 1 : 0;
     case 'comm_mode': return feature === 'single' ? 1 : 0;
   }
-  throw new StyleError(`is_active(): unknown category '${cat ?? ''}'`);
+  throw new StyleError(`Unknown category for info is_active(): ${cat}`);
 };
 
-const isAvailable = (sys: System, cat: string | undefined, feature: string | undefined): number => {
-  if (!feature) throw new StyleError('is_available(category,name) needs two arguments');
-  const reg = sys.registries[cat ?? ''];
+/** native Info::has_style categories, and the engine's style registry of each */
+const INFO_CATEGORIES: Record<string, string> = {
+  pair: 'pair_style', bond: 'bond_style', angle: 'angle_style', dihedral: 'dihedral_style', improper: 'improper_style',
+  kspace: 'kspace_style', fix: 'fix', compute: 'compute', minimize: 'min_style', command: 'command',
+};
+
+const isAvailable = (sys: System, cat: string, feature: string): number => {
+  const reg = sys.registries[INFO_CATEGORIES[cat] ?? ''];
   if (reg) return reg.includes(feature) ? 1 : 0;
+  if (['atom', 'integrate', 'region', 'dump'].includes(cat)) throw new StyleError(`is_available(${cat},${feature}) is not supported by the browser engine (it lists no ${cat} styles)`);
   if (cat === 'feature') return ['gzip', 'ffmpeg', 'png', 'jpeg', 'exceptions'].includes(feature) ? (feature === 'exceptions' ? 1 : 0) : 0;
-  throw new StyleError(`is_available(): unknown category '${cat ?? ''}'`);
+  throw new StyleError(`Unknown category for info is_available(): ${cat}`);
 };

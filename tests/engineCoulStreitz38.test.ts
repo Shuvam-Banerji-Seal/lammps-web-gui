@@ -157,9 +157,11 @@ describe('Slater integral [f_a|f_b](R) = 1/R + S(R)', () => {
 
 describe('coul/streitz forces', () => {
   /** Two atoms along x: returns the force on atom 2 (printed) and the total pe at separation r. */
+  // fx[2] needs the atom map: native refuses an indexed per-atom vector without one (Variable::peratom2global)
   const pairText = (ta: number, tb: number, qa: number, qb: number, r: number, pair: string[], extra: string[] = []) => `
 units metal
 atom_style charge
+atom_modify map yes
 boundary p p p
 region box block 0 40 0 40 0 40
 create_box 2 box

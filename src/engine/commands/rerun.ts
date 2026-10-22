@@ -108,7 +108,7 @@ const rerun: Handler = async (ctx: Ctx, a) => {
     // the run's steps before init, as in a run (src/rerun.cpp at b332f28 sets update->beginstep and endstep first)
     sys.run = {
       inRun: true, firstStep: first, lastStep: last, beginStep: args.start ?? first, endStep: args.stop ?? last,
-      t0, ranOnce: true,
+      t0, ranOnce: true, eflagStep: sys.run.eflagStep,
     };
     // rerun.cpp: "update->whichflag = 1" and lmp->init(), the Verlet init of a run
     initRun(sys, { verlet: true });

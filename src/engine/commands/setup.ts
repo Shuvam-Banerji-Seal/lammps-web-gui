@@ -1,5 +1,5 @@
 import type { Handler } from './args';
-import { int, num, yesno, latticeScale, keywords, missingArgs, logical, numeric, inumeric, bnumeric, bounds } from './args';
+import { int, num, yesno, latticeScale, keywords, missingArgs, logical, numeric, inumeric, bnumeric, bounds, initializing } from './args';
 import { StyleError } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
@@ -1572,6 +1572,8 @@ const writeDataCmd: Handler = ({ sys }, a) => {
   // are written wrapped back in, so remap them even when forces are current. Measured likewise: the
   // forces are not recomputed (fx of an atom after a fix langevin run is unchanged by write_data,
   // random force included), so the wrapped state keeps the forces of the last run.
+  // write_data initializes the system first (native lmp->init(), src/write_data.cpp at b332f28)
+  sys.markComputesInitialized();
   const wasCurrent = sys.hasForces;
   sys.pbc();
   sys.nb.lastBuild = -1;
@@ -1599,6 +1601,13 @@ const timestep: Handler = ({ sys }, a) => {
 };
 
 /** reset_timestep N [time T] — reset_timestep.html. */
+/** The fix styles native marks time-dependent (time_depend = 1 at b332f28): reset_timestep refuses them. */
+const TIME_DEPEND_FIXES = new Set([
+  'ave/correlate', 'ave/correlate/long', 'ave/time', 'ave/grid', 'ave/histo', 'ave/histo/weight', 'ave/atom', 'ave/chunk', 'ave/moments',
+  'vector', 'dt/reset', 'deposit', 'pour', 'ti/spring', 'widom', 'atom/swap', 'gcmc', 'gemc', 'charge/regulation', 'lb/fluid',
+  'neighbor/swap', 'mol/swap', 'alchemy', 'smd/adjust_dt', 'append/atoms', 'graphics/lines',
+]);
+
 const resetTimestep: Handler = ({ sys }, a) => {
   // As native LAMMPS does (src/update.cpp Update::reset_timestep at b332f28): the step, then the time keyword
   if (a.length < 1) throw missingArgs('reset_timestep');
@@ -1612,6 +1621,11 @@ const resetTimestep: Handler = ({ sys }, a) => {
     t = numeric(a[2]);
   }
   sys.checkTimestepReset();
+  for (const f of sys.fixes) {
+    if (TIME_DEPEND_FIXES.has(f.style)) throw new StyleError(`Cannot reset timestep with time-dependent fix ${f.style} defined`);
+  }
+  // no energy is current after the reset (native resets update->eflag_global)
+  sys.run.eflagStep = -1;
   // reset_timestep.html: "The optional time keyword allows to also set the accumulated simulation time." Without the
   // time keyword the clock is not restarted
   // unless the step goes down: measured with native LAMMPS (black box, LJ 32 atoms, dt 0.005): after run 2
@@ -3836,11 +3850,12 @@ const deleteBonds: Handler = ({ sys }, a) => {
 export const SETUP_COMMANDS: Record<string, Handler> = {
   units, dimension, boundary, atom_style: atomStyle, atom_modify: atomModify, newton,
   processors, comm_style: commStyle, package: parallelOnly('package'),
-  suffix: parallelOnly('suffix'), balance: balanceCommand,
+  suffix: parallelOnly('suffix'), balance: initializing(balanceCommand),
   comm_modify: commModify, lattice, region, create_box: createBox, create_atoms: createAtoms, mass, molecule,
   read_data: readDataCmd, write_data: writeDataCmd, timestep, reset_timestep: resetTimestep,
-  group, set, velocity, delete_atoms: deleteAtomsCmd, displace_atoms: displaceAtoms, replicate,
-  change_box: changeBox, create_bonds: createBonds, delete_bonds: deleteBonds, labelmap: labelmapCmd,
+  group, set: initializing(set, (a) => a.slice(2).some((w) => w === 'bond' || w === 'angle' || w === 'dihedral' || w === 'improper')),
+  velocity, delete_atoms: initializing(deleteAtomsCmd, (a) => a[0] === 'overlap'), displace_atoms: displaceAtoms, replicate,
+  change_box: changeBox, create_bonds: initializing(createBonds), delete_bonds: initializing(deleteBonds), labelmap: labelmapCmd,
 };
 
 void ALL_GROUP_BIT;

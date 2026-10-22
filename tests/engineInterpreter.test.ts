@@ -219,8 +219,10 @@ describe('Session: variables, print, thermo keywords', () => {
     expect(logs).toContain('single 4');
   });
 
-  it('thermo keywords in formulas use the current state (forces computed on demand)', async () => {
+  it('thermo keywords in formulas read the energy tallied by the last run', async () => {
+    // native refuses pe before a run has tallied the energy ("Energy was not tallied on needed timestep")
     const { logs, error } = await runScript(MELT.replace('run             250', [
+      'run 0',
       'variable e equal pe',
       'print "pe=$(pe:%.7f) atoms=$(atoms) vol=$(vol:%.4f) e=$e"',
     ].join('\n')));

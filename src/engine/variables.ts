@@ -175,14 +175,12 @@ export class Variables {
         if (args.length < 1) throw new StyleError(`Illegal variable ${style === 'vector' ? 'atom' : style} command: missing argument(s)`);
         const f = args.join(' ');
         v = { style, values: [], which: 0, formula: f };
-        const list = /^\s*\[(.*)\]\s*$/.exec(f);
-        if (style === 'vector' && list) {
-          const nums = list[1].split(',').map((w) => {
-            const x = Number(w);
-            if (w.trim() === '' || !Number.isFinite(x)) throw new StyleError(`vector initializer: '${w}' is not a number`);
-            return x;
-          });
-          v.vec = Float64Array.from(nums);
+        // As native LAMMPS does (src/variable.cpp set and parse_vector at b332f28): a formula that starts with [ is a
+        // list of numbers, which must end with ]; its comma-separated words (empty ones skipped) are read as numbers
+        if (style === 'vector' && f[0] === '[') {
+          if (f[f.length - 1] !== ']') throw new StyleError(`Vector variable formula lacks opening or closing brace: ${f}`);
+          const words = f.slice(1, -1).split(',').filter((w) => w !== '');
+          v.vec = Float64Array.from(words.map((w) => numeric(w.trim())));
         }
         break;
       }

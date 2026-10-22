@@ -4,66 +4,72 @@ import { StyleError } from '../force/types';
 import { expandWildcards, globalScalar, parseRef, type Ref } from '../refs';
 
 /*
- * fix ave/moments — docs.lammps.org/fix_ave_moments.html. Written from the doc
- * page and from black-box runs of the native binary.
+ * fix ave/moments — docs.lammps.org/fix_ave_moments.html.
  *
  * Doc: "The :math:`N_\text{every}`, :math:`N_\text{repeat}`, and ..." — the
  * window: "on step 5 from steps 1-5, on step 10 from 3-10" (Nfreq 5, Nrepeat 8),
  * i.e. the last Nrepeat samples taken every Nevery steps, ending at the output
- * step. Measured: step 0 is never sampled, and the outputs appear only on
- * multiples of Nfreq (an output of 0 before the first one).
+ * step.
  *
  * Doc (the moments): skew is "the adjusted Fisher--Pearson standardized
  * moment" G_1 = k3 / stddev^3 and kurtosis is the same kind of moment,
  * G_2 = k4 / k2^2 (k2 the Bessel-corrected variance; k3 and k4 the unbiased
- * sample cumulants, Cramer). Measured native values agree with these formulas
- * for n = 8 (skew 0.879189153563413, kurtosis -0.663817520661157).
+ * sample cumulants, Cramer).
  *
- * Measured: a window with fewer than 3 samples outputs 0 for every moment; with
- * n = 3 the kurtosis is NaN (n - 3 = 0 in the cumulant correction). The
- * start keyword is "no earlier than" the step given (measured for Nrepeat <=
- * Nfreq, Nevery 1: an output on the start step itself is computed, except for
- * the single cell Nfreq 3, Nrepeat 3, start 6, where native gives 0).
- *
- * Not reproduced (measured): with Nrepeat > Nfreq and Nevery 1, native outputs
- * were measured to freeze after the first output when Nrepeat = Nfreq + 1, and
- * the first window can include step 0 (Nfreq 3, Nrepeat 4 gives the mean of
- * steps 0-3). The engine refuses Nevery 1 with Nrepeat > Nfreq with an EngineError.
+ * As native LAMMPS does (src/EXTRA-FIX/fix_ave_moments.cpp at b332f28): the
+ * samples go into a ring of Nrepeat entries; each output step (a multiple of
+ * Nfreq, at or after start) is scheduled first and the first sample of its
+ * window is the multiple of Nevery that leaves Nrepeat samples up to it, but
+ * never before the current step, so a window longer than Nfreq keeps sampling
+ * every Nevery steps (and with Nrepeat = Nfreq + 1 and Nevery 1 the next
+ * sample step is the output step just done: the fix stops sampling). The
+ * moments are taken over the filled entries in ring order, with the mean as
+ * a sum of x / n, and only when at least 3 are filled (else the outputs keep
+ * their values).
  */
 
 const MOMENTS = ['mean', 'stddev', 'variance', 'skew', 'kurtosis'] as const;
 type Moment = (typeof MOMENTS)[number];
 
-/** Moment of the sample x (length n). The formulas are those of the doc page (see the file comment). */
-const moment = (kind: Moment, x: number[]): number => {
-  const n = x.length;
-  let sum = 0;
-  for (const v of x) sum += v;
-  const mean = sum / n;
-  if (kind === 'mean') return mean;
-  let m2 = 0, m3 = 0, m4 = 0;
-  for (const v of x) {
-    const d = v - mean;
-    const d2 = d * d;
-    m2 += d2;
-    m3 += d2 * d;
-    m4 += d2 * d2;
-  }
-  // Bessel-corrected variance k2
-  const k2 = m2 / (n - 1);
-  if (kind === 'variance') return k2;
-  if (kind === 'stddev') return Math.sqrt(k2);
-  if (kind === 'skew') {
-    // unbiased third cumulant k3 = n^2 / ((n-1)(n-2)) * (sum d^3 / n); G1 = k3 / stddev^3
-    const k3 = ((n * n) / ((n - 1) * (n - 2))) * (m3 / n);
-    return k3 / Math.pow(Math.sqrt(k2), 3);
-  }
-  // kurtosis: unbiased fourth cumulant k4 = n^2 [(n+1) m4 - 3 (n-1) m2^2] / ((n-1)(n-2)(n-3)), G2 = k4 / k2^2
-  if (n < 4) return NaN;
-  const mm2 = m2 / n, mm4 = m4 / n;
-  const k4 = (n * n * ((n + 1) * mm4 - 3 * (n - 1) * mm2 * mm2)) / ((n - 1) * (n - 2) * (n - 3));
-  return k4 / (k2 * k2);
+/**
+ * The moments of each input over its filled ring entries, as native LAMMPS does (src/EXTRA-FIX/fix_ave_moments.cpp
+ * update_results at b332f28): series[k][j] for entry j of input k; the result is interleaved, input 1's moments first.
+ */
+const moments = (series: Float64Array[], count: number, kinds: Moment[]): Float64Array => {
+  const res = new Float64Array(series.length * kinds.length);
+  const invN = 1.0 / count;
+  const fk2 = count / (count - 1);
+  const fk3 = (count * count) / ((count - 1) * (count - 2));
+  const np1Nm3 = (count + 1.0) / (count - 3.0);
+  const nm1Nm3 = (3.0 * (count - 1.0)) / (count - 3.0);
+  series.forEach((x, k) => {
+    let mean = 0.0;
+    for (let j = 0; j < count; j++) mean += x[j] * invN;
+    let m2 = 0.0, m3 = 0.0, m4 = 0.0;
+    for (let j = 0; j < count; j++) {
+      const dx = x[j] - mean;
+      let y = dx * dx * invN;
+      m2 += y;
+      y *= dx;
+      m3 += y;
+      y *= dx;
+      m4 += y;
+    }
+    const k2 = fk2 * m2;
+    const k3 = fk3 * m3;
+    const k4 = fk3 * (np1Nm3 * m4 - nm1Nm3 * (m2 * m2));
+    const stddev = Math.sqrt(k2);
+    const vals: Record<Moment, number> = {
+      mean, stddev, variance: k2, skew: k3 / (stddev * stddev * stddev), kurtosis: k4 / (k2 * k2),
+    };
+    kinds.forEach((m, j) => { res[k * kinds.length + j] = vals[m]; });
+  });
+  return res;
 };
+
+/** The first step at or after `after` that is ts plus a multiple of freq (native next_after). */
+const nextAfter = (ts: number, after: number, freq: number): number =>
+  ts >= after ? ts : ts + (Math.floor((after - ts) / freq) + 1) * freq;
 
 export class FixAveMoments extends Fix {
   readonly style = 'ave/moments';
@@ -73,12 +79,16 @@ export class FixAveMoments extends Fix {
   private readonly valueWords: string[];
   private readonly momentWords: Moment[];
   private inputs: Ref[] = [];
-  /** Sample window: one entry per sample step, holding the value of every input. */
-  private window: number[][] = [];
-  /** Current output, interleaved: input 1's moments, then input 2's, ... */
-  private out = new Float64Array(0);
-  /** Outputs, most recent first (history keyword). */
-  private hist: Float64Array[] = [];
+  /** The ring of samples, one array per input (native window_list), the next entry and whether it has wrapped. */
+  private window: Float64Array[] = [];
+  private iwindow = 0;
+  private windowFilled = false;
+  /** The ring of outputs (native result_list, history rows), and the next row to write. */
+  private results: Float64Array[] = [];
+  private iresult = 0;
+  /** The next step that samples and the next output step (native nvalid and nvalid_comp_next). */
+  private nvalid = -1;
+  private nvalidCompNext = -1;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -93,11 +103,6 @@ export class FixAveMoments extends Fix {
     this.nRepeat = posInt(args[1], 'Nrepeat');
     const nFreq = posInt(args[2], 'Nfreq');
     this.nFreq = nFreq;
-    // Nevery 1 with Nrepeat > Nfreq is not reproduced (see the file comment): refuse it. Longer windows with
-    // Nevery > 1 match native (tests/oracle/w47pkg_moments_simple: Nevery 5, Nrepeat 60, Nfreq 30).
-    if (this.nevery === 1 && this.nRepeat > nFreq) {
-      throw new StyleError(`${what}: Nevery 1 with Nrepeat > Nfreq (${this.nRepeat} > ${nFreq}) is not supported by the browser engine: native output there differs from the documented window`);
-    }
     const isValue = (w: string) => /^[cfv]_/.test(w);
     const isMoment = (w: string) => (MOMENTS as readonly string[]).includes(w);
     let k = 3;
@@ -136,6 +141,23 @@ export class FixAveMoments extends Fix {
       this.sizeArrayRows = this.sizeVector;
       this.sizeArrayCols = nrecent;
     }
+    this.setNextValid();
+  }
+
+  /**
+   * As native LAMMPS does (setnextvalid): before the next output step the next sample is Nevery steps on; else the
+   * next output step is scheduled and the window's first sample from it, not before this step.
+   */
+  private setNextValid(): void {
+    const step = this.sys.state.step;
+    if (this.nvalidCompNext > step) {
+      this.nvalid = step + this.nevery;
+      return;
+    }
+    const nextComp = Math.floor(step / this.nFreq) * this.nFreq + this.nFreq;
+    this.nvalidCompNext = nextAfter(nextComp, this.startStep, this.nFreq);
+    const ntake = this.nvalidCompNext - (this.nRepeat - 1) * this.nevery;
+    this.nvalid = nextAfter(ntake, step, this.nevery);
   }
 
   /** Nfreq is the output interval (multiples of Nfreq compute the moments). */
@@ -169,42 +191,59 @@ export class FixAveMoments extends Fix {
     this.sizeArrayCols = this.nrecent;
     // As native LAMMPS does (src/EXTRA-FIX/fix_ave_moments.cpp at b332f28): the window and the results are allocated
     // once (the constructor) and init() keeps them, so a later run starts with the samples and outputs of the last one
-    if (this.out.length !== size) {
-      this.out = new Float64Array(size);
-      this.hist = [];
-      this.window = [];
+    if (this.results[0]?.length !== size || this.window.length !== this.inputs.length) {
+      this.window = this.inputs.map(() => new Float64Array(this.nRepeat));
+      this.iwindow = 0;
+      this.windowFilled = false;
+      this.results = Array.from({ length: this.nrecent }, () => new Float64Array(size));
+      this.iresult = 0;
+    }
+    // a minimization past the next sample step: the schedule starts again from this step (native init)
+    if (this.nvalid < this.sys.state.step) this.setNextValid();
+  }
+
+  setup(): void { this.endOfStep(); }
+
+  /** As native LAMMPS does (end_of_step): a scheduled step samples, and an output step also takes the moments. */
+  endOfStep(): void {
+    const step = this.sys.state.step;
+    if (step !== this.nvalid) return;
+    this.inputs.forEach((r, k) => { this.window[k][this.iwindow] = this.inputValue(r); });
+    if (++this.iwindow >= this.nRepeat) {
+      this.windowFilled = true;
+      this.iwindow = 0;
+    }
+    if (step === this.nvalidCompNext) {
+      const count = this.windowFilled ? this.nRepeat : this.iwindow;
+      if (count >= 3) {
+        this.results[this.iresult] = moments(this.window, count, this.momentWords);
+        if (++this.iresult >= this.nrecent) this.iresult = 0;
+      }
+      this.setNextValid();
+    } else {
+      this.nvalid += this.nevery;
     }
   }
 
-  /** Samples are taken in end_of_step; the moments are evaluated on multiples of Nfreq after the start step. */
-  endOfStep(): void {
-    const step = this.sys.state.step;
-    if (step % this.nevery !== 0) return;
-    this.window.push(this.inputs.map((r) => globalScalar(this.sys, r)));
-    if (this.window.length > this.nRepeat) this.window.shift();
-    if (step % this.nFreq !== 0 || step < this.startStep) return;
-    const M = this.momentWords.length;
-    const res = new Float64Array(this.inputs.length * M);
-    const n = this.window.length;
-    if (n >= 3) {
-      for (let k = 0; k < this.inputs.length; k++) {
-        const x = this.window.map((w) => w[k]);
-        for (let m = 0; m < M; m++) res[k * M + m] = moment(this.momentWords[m], x);
-      }
+  /** One input's value; an element past the end of a vector-style variable is 0 (native get_values). */
+  private inputValue(r: Ref): number {
+    if (r.kind === 'v' && r.index !== null) {
+      const vec = this.sys.vars.evalVector(r.id, this.sys.formulaEnv);
+      return r.index > vec.length ? 0 : vec[r.index - 1];
     }
-    this.out = res;
-    this.hist.unshift(res.slice());
-    if (this.hist.length > this.nrecent) this.hist.pop();
+    return globalScalar(this.sys, r);
   }
 
   computeVector(i: number): number {
     if (!this.vectorFlag) throw new StyleError(`fix ${this.id} does not compute a global vector`);
-    return this.out[i] ?? 0;
+    return this.computeArray(i, 0);
   }
 
-  /** f_ID[i][j] (0-based): column 0 is the most recent output (history keyword). */
+  /** f_ID[i][j] (0-based): column j is the output j outputs before the latest (history keyword). */
   computeArray(i: number, j: number): number {
     if (!this.arrayFlag) throw new StyleError(`fix ${this.id} does not compute a global array`);
-    return this.hist[j]?.[i] ?? 0;
+    if (i >= this.sizeVector || j >= this.nrecent) return 0;
+    const row = (this.iresult - 1 - j + this.nrecent) % this.nrecent;
+    return this.results[row]?.[i] ?? 0;
   }
 }

@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { aveNextValid } from './util';
 import { expandWildcards, globalScalar, globalVector, parseRef, type Ref } from '../refs';
 import { evaluateScalar } from '../formula';
 import { formatNumber, substituteVariables } from '../script';
@@ -227,6 +228,9 @@ export class FixAveTime extends Fix {
   private runN = 0;
   private ring: Float64Array[][] = [];
   private nSample = 0;
+  /** The next step that samples, and the samples taken of the current window (native nvalid and irepeat). */
+  private nvalid = 0;
+  private irepeat = 0;
   private header: string[] | null = null;
   private headerWritten = false;
   private body: string[] = [];
@@ -339,6 +343,7 @@ export class FixAveTime extends Fix {
     // the output shape is known when the fix is defined (native LAMMPS sets scalar_flag, vector_flag and
     // array_flag and expands the wildcards in the constructor), so thermo_style and variables can use it before
     // the first run; init() repeats this at each run
+    this.nvalid = aveNextValid(sys.state.step, this.nEvery, this.nRepeat, this.nFreq, this.startStep);
     this.init();
   }
 
@@ -413,6 +418,13 @@ export class FixAveTime extends Fix {
       else this.sizeArrayRows = L;
     }
     this.ensureAlloc();
+    // As native LAMMPS does (src/fix_ave_time.cpp init at b332f28): a minimization that moved past the next sample
+    // step starts a new window
+    const step = this.sys.state.step;
+    if (this.nvalid < step) {
+      this.irepeat = 0;
+      this.nvalid = aveNextValid(step, this.nEvery, this.nRepeat, this.nFreq, this.startStep);
+    }
   }
 
   /** Intensive (0) or extensive (1) of one scalar input value (mode scalar). */
@@ -445,27 +457,27 @@ export class FixAveTime extends Fix {
 
   setup(): void { this.endOfStep(); }
 
-  /** Step of the last end-of-step call: a run that starts where the previous one ended must not sample it again. */
-  private lastEndStep = -1;
-
+  /**
+   * As native LAMMPS does (src/fix_ave_time.cpp end_of_step at b332f28): only the scheduled step samples; the first
+   * sample of a window zeroes the sums, the Nrepeat-th averages them and schedules the next window to end Nfreq steps
+   * later.
+   */
   endOfStep(): void {
     const step = this.sys.state.step;
-    if (step === this.lastEndStep) return; // a run that starts where the previous one ended
-    this.lastEndStep = step;
-    if (step % this.nevery !== 0) return;
-    if (step < this.startStep) return;
-    const rem = step % this.nFreq;
-    const nextOut = rem === 0 ? step : step + (this.nFreq - rem);
-    if (step < nextOut - (this.nRepeat - 1) * this.nEvery) return; // not in the next output's window
-    this.sampleInputs();
-    if (step % this.nFreq !== 0) return;
-    if (this.nSample === this.nRepeat) {
-      this.produceOutput(step);
-    } else {
-      // window cannot be complete yet (e.g. step 0 with Nrepeat > 1): discard it
+    if (step !== this.nvalid) return;
+    if (this.irepeat === 0) {
       for (const a of this.acc) a.fill(0);
       this.nSample = 0;
     }
+    this.sampleInputs();
+    this.irepeat++;
+    if (this.irepeat < this.nRepeat) {
+      this.nvalid += this.nEvery;
+      return;
+    }
+    this.irepeat = 0;
+    this.nvalid = step + this.nFreq - (this.nRepeat - 1) * this.nEvery;
+    this.produceOutput(step);
   }
 
   /** Evaluates every input on this sample step. */

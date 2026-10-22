@@ -74,7 +74,11 @@ const DOUBLE = /^[+-]?(\d+\.?\d*|\d*\.?\d+)([eE][+-]?\d+)?$/;
 export const numeric = (w: string | undefined): number => {
   if (!w) throw new StyleError('Expected floating point parameter instead of NULL or empty string in input script or data file');
   if (!DOUBLE.test(w)) throw new StyleError(`Expected floating point parameter instead of '${w}' in input script or data file`);
-  return Number(w);
+  // As native LAMMPS does (src/utils.cpp numeric at b332f28): a number past the range of a double is refused (one that
+  // underflows reads as its nearest double, 0 or a denormal)
+  const v = Number(w);
+  if (!Number.isFinite(v)) throw new StyleError(`Floating point number ${w} in input script or data file is out of range`);
+  return v;
 };
 
 /** utils::bnumeric: as inumeric, for a 64-bit integer (timesteps). */

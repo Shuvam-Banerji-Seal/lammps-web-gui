@@ -58,3 +58,18 @@ export const temperatureOf = (sys: System, c: Compute): number => {
   sys.refreshComputes();
   return c.scalarValue();
 };
+
+/**
+ * The next step an averaging fix samples on, as native LAMMPS does (nextvalid of src/fix_ave_time.cpp,
+ * fix_ave_histo.cpp, fix_ave_atom.cpp, fix_ave_chunk.cpp and fix_ave_grid.cpp at b332f28): the first step of the
+ * Nrepeat samples that end on the next multiple of Nfreq at or after start, or this step when it is a multiple of
+ * Nfreq and Nrepeat is 1. Only the window's end is held to start, so its first samples may come before it.
+ */
+export const aveNextValid = (step: number, nevery: number, nrepeat: number, nfreq: number, startstep = 0): number => {
+  let nvalid = Math.floor(step / nfreq) * nfreq + nfreq;
+  while (nvalid < startstep) nvalid += nfreq;
+  if (nvalid - nfreq === step && nrepeat === 1) nvalid = step;
+  else nvalid -= (nrepeat - 1) * nevery;
+  if (nvalid < step) nvalid += nfreq;
+  return nvalid;
+};

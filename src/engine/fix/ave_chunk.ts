@@ -4,6 +4,7 @@ import { StyleError } from '../force/types';
 import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
 import { formatNumber } from '../script';
 import { massOf } from '../atoms';
+import { aveNextValid } from './util';
 import { chunkCompute, type ComputeChunkAtom } from '../compute/chunk';
 import type { Compute } from '../compute/compute';
 
@@ -115,6 +116,9 @@ export class FixAveChunk extends Fix {
   private ke2All = new Float64Array(0);
   private dofAll = new Float64Array(0);
   private nSample = 0;
+  /** The next step that samples, and the samples taken of the current window (native nvalid and irepeat). */
+  private nvalid: number;
+  private irepeat = 0;
   private totalLast = 0;
 
   // outputs for ave running / window: the averaged part of each chunk row
@@ -218,6 +222,7 @@ export class FixAveChunk extends Fix {
     if (this.overwriteFile && this.aveMode !== 'running') {
       throw new StyleError(`${what}: the overwrite keyword can only be used with the ave running setting`);
     }
+    this.nvalid = aveNextValid(sys.state.step, this.nEvery, this.nRepeat, this.nFreq);
   }
 
   /** Resolves the chunk compute and the value list (wildcards need the referenced computes). */
@@ -260,15 +265,23 @@ export class FixAveChunk extends Fix {
     this.sizeArrayCols = (this.chunk.compress ? 1 : 0) + (this.chunk.kind === 'bin' ? this.chunk.binDims : 0) + 1 + this.vals.length;
     // ave running / window: Nchunk must stay constant for the whole run (docs)
     if (this.aveMode !== 'one') this.chunk.holdNchunk();
-    // The window (samples taken since the last output) carries over a run boundary: native keeps it
-    // (measured with native LAMMPS, black box: `run 15` then `run 25` with ave/chunk 5 2 20 gives the same
-    // step-20 block as one `run 30`). Only a change of the value list restarts it.
-    if (this.sumAll.length !== this.vals.length || this.acc.length !== this.vals.length) this.clearWindow();
-    this.runSum = [];
-    this.runN = 0;
-    this.runTotal = 0;
-    this.ring = [];
-    this.table = [];
+    // The window (samples taken since the last output) and the running and window averages carry over a run
+    // boundary, as native's init keeps them (src/fix_ave_chunk.cpp at b332f28); only a change of the value list
+    // restarts them.
+    if (this.sumAll.length !== this.vals.length || this.acc.length !== this.vals.length) {
+      this.clearWindow();
+      this.runSum = [];
+      this.runN = 0;
+      this.runTotal = 0;
+      this.ring = [];
+      this.table = [];
+    }
+    // a minimization past the next sample step restarts the window (native init)
+    const step = this.sys.state.step;
+    if (this.nvalid < step) {
+      this.irepeat = 0;
+      this.nvalid = aveNextValid(step, this.nEvery, this.nRepeat, this.nFreq);
+    }
   }
 
   private clearWindow(): void {
@@ -306,22 +319,25 @@ export class FixAveChunk extends Fix {
     if (this.aveMode !== 'one') this.chunk.unlock(this);
   }
 
-  /** Step of the last end-of-step call: a run that starts where the previous one ended must not sample it again. */
-  private lastEndStep = -1;
-
+  /**
+   * As native LAMMPS does (src/fix_ave_chunk.cpp end_of_step at b332f28): only the scheduled step samples; the first
+   * sample of a window zeroes the sums (and sets up and locks the chunks), the Nrepeat-th averages them and schedules
+   * the next window to end Nfreq steps later.
+   */
   endOfStep(): void {
     const step = this.sys.state.step;
-    if (step === this.lastEndStep) return; // a run that starts where the previous one ended
-    this.lastEndStep = step;
-    if (step % this.nevery !== 0) return;
-    const rem = step % this.nFreq;
-    const nextOut = rem === 0 ? step : step + (this.nFreq - rem);
-    if (step < nextOut - (this.nRepeat - 1) * this.nEvery) return; // not in the next output's window
+    if (step !== this.nvalid) return;
+    if (this.irepeat === 0) this.clearWindow();
     this.sample();
-    if (step % this.nFreq !== 0) return;
+    this.irepeat++;
+    if (this.irepeat < this.nRepeat) {
+      this.nvalid += this.nEvery;
+      return;
+    }
+    this.irepeat = 0;
+    this.nvalid = step + this.nFreq - (this.nRepeat - 1) * this.nEvery;
     if (this.nRepeat > 1 && this.aveMode === 'one') this.chunk.unlock(this);
-    if (this.nSample === this.nRepeat) this.produce(step);
-    else this.clearWindow();
+    this.produce(step);
   }
 
   /** ave running / window: the chunk/atom was locked for good on the first sample. */

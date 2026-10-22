@@ -1,6 +1,6 @@
 import { ComputeTemp } from './temp';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
+import { numeric } from '../force/util';
 import type { System } from '../system';
 import { massOf } from '../atoms';
 
@@ -72,27 +72,26 @@ export class ComputeTempRamp extends ComputeTemp {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
-    const usage = 'usage: compute ID group-ID temp/ramp vdim vlo vhi dim clo chi keyword value ...';
-    if (args.length < 6) throw new StyleError(usage);
-    const vdimNames = ['vx', 'vy', 'vz'];
-    const vdim = vdimNames.indexOf(args[0]);
-    if (vdim < 0) throw new StyleError(`compute temp/ramp: vdim must be vx, vy or vz (got '${args[0]}')`);
-    const cdim = ['x', 'y', 'z'].indexOf(args[3]);
-    if (cdim < 0) throw new StyleError(`compute temp/ramp: dim must be x, y or z (got '${args[3]}')`);
-    this.vdim = vdim;
-    this.cdim = cdim;
-    this.vlo = parseNum(args[1], 'compute temp/ramp vlo');
-    this.vhi = parseNum(args[2], 'compute temp/ramp vhi');
-    this.clo = parseNum(args[4], 'compute temp/ramp clo');
-    this.chi = parseNum(args[5], 'compute temp/ramp chi');
-    if (!(this.chi > this.clo)) throw new StyleError(`compute temp/ramp: chi must be greater than clo (got ${this.clo} and ${this.chi})`);
+    // As native LAMMPS does (src/compute_temp_ramp.cpp ComputeTempRamp::ComputeTempRamp at b332f28): the keywords are read
+    // first, then vdim and dim; every malformed word is "Illegal compute temp/ramp command" (a short line "Illegal compute
+    // temp command"), the bounds are read by utils::numeric, and clo and chi may come in either order
+    if (args.length < 6) throw new StyleError('Illegal compute temp command');
+    const illegal = 'Illegal compute temp/ramp command';
     let latticeUnits = true;
-    if ((args.length - 6) % 2 !== 0) throw new StyleError('compute temp/ramp: keyword without a value');
     for (let k = 6; k < args.length; k += 2) {
-      if (args[k] !== 'units') throw new StyleError(`compute temp/ramp: unknown keyword '${args[k]}'`);
-      if (args[k + 1] !== 'lattice' && args[k + 1] !== 'box') throw new StyleError(`compute temp/ramp: units must be lattice or box (got '${args[k + 1]}')`);
+      if (args[k] !== 'units' || k + 1 >= args.length || (args[k + 1] !== 'lattice' && args[k + 1] !== 'box')) throw new StyleError(illegal);
       latticeUnits = args[k + 1] === 'lattice';
     }
+    const vdim = ['vx', 'vy', 'vz'].indexOf(args[0]);
+    if (vdim < 0) throw new StyleError(illegal);
+    this.vlo = numeric(args[1]);
+    this.vhi = numeric(args[2]);
+    const cdim = ['x', 'y', 'z'].indexOf(args[3]);
+    if (cdim < 0) throw new StyleError(illegal);
+    this.clo = numeric(args[4]);
+    this.chi = numeric(args[5]);
+    this.vdim = vdim;
+    this.cdim = cdim;
     this.latticeUnits = latticeUnits;
   }
 
@@ -109,9 +108,10 @@ export class ComputeTempRamp extends ComputeTemp {
   /** Ramp velocity of atom i along vdim (clamped to vlo/vhi outside the coordinate bounds). */
   private rampOf(i: number, b: { vlo: number; vhi: number; clo: number; chi: number }): number {
     const c = this.sys.state.x[3 * i + this.cdim];
+    // clamped as native's MAX(fraction, 0.0) then MIN(fraction, 1.0): a NaN (an atom at clo == chi) becomes 0
     let f = (c - b.clo) / (b.chi - b.clo);
-    if (f < 0) f = 0;
-    if (f > 1) f = 1;
+    f = f > 0 ? f : 0;
+    f = f < 1 ? f : 1;
     return b.vlo + f * (b.vhi - b.vlo);
   }
 

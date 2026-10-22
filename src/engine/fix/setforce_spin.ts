@@ -18,8 +18,14 @@ export class FixSetForceSpin extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (!sys.state.sp) throw new StyleError('fix setforce/spin requires atom_style spin');
-    if (args.length !== 3) throw new StyleError('usage: fix ID group-ID setforce/spin fx fy fz');
-    this.comp = args.map((w) => {
+    if (args.length < 3) throw new StyleError('usage: fix ID group-ID setforce/spin fx fy fz');
+    // As native LAMMPS does (src/fix_setforce.cpp FixSetForce::FixSetForce at b332f28, inherited by FixSetForceSpin): the optional words
+    // after the three values are the keyword loop, whose only keyword is region; any other word is "Unknown fix setforce keyword: {}"
+    for (let k = 3; k < args.length; k++) {
+      if (args[k] !== 'region') throw new StyleError(`Unknown fix setforce keyword: ${args[k]}`);
+      throw new StyleError('fix setforce/spin: the region keyword is not supported by the browser engine');
+    }
+    this.comp = args.slice(0, 3).map((w) => {
       if (w === 'NULL') return null;
       if (w.startsWith('v_')) throw new StyleError(`fix setforce/spin: variables (${w}) are not implemented in the browser engine`);
       const v = Number(w);

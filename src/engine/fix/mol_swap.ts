@@ -4,7 +4,8 @@ import { hasCharge, isMolecularStyle } from '../atoms';
 import type { System } from '../system';
 import { RanPark } from '../rng';
 import { takeFixRecord } from './restartRecord';
-import { num, posInt } from './pour';
+import { inumeric, logical, numeric } from '../force/util';
+import { typeWord } from '../labelmap';
 import { libm } from '../libm';
 
 /*
@@ -101,35 +102,33 @@ export class FixMolSwap extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     const s = sys.state;
+    // As native LAMMPS does (src/MC/fix_mol_swap.cpp FixMolSwap::FixMolSwap at b332f28): the six values are read, then the
+    // optional keywords (ke takes a logical value), then the values are checked; each check but the type range fails as
+    // "Illegal fix mol/swap command".
+    const illegal = 'Illegal fix mol/swap command';
+    if (args.length < 6) throw new StyleError(illegal);
+    this.N = inumeric(args[0]);
+    this.X = inumeric(args[1]);
+    this.itype = inumeric(typeWord(sys.labels, 'atom', args[2]));
+    this.jtype = inumeric(typeWord(sys.labels, 'atom', args[3]));
+    const seed = inumeric(args[4]);
+    this.T = numeric(args[5]);
+    let ke = true;
+    for (let i = 6; i < args.length; i += 2) {
+      if (args[i] !== 'ke' || i + 2 > args.length) throw new StyleError(illegal);
+      ke = logical(args[i + 1]);
+    }
+    if (this.N <= 0 || this.X < 0 || this.itype === this.jtype) throw new StyleError(illegal);
+    if (this.itype <= 0 || this.itype > s.ntypes || this.jtype <= 0 || this.jtype > s.ntypes) {
+      throw new StyleError('Fix mol/swap atom types are invalid');
+    }
+    if (seed <= 0 || !(this.T > 0)) throw new StyleError(illegal);
+    if (ke && s.rmass) throw new StyleError('Cannot conserve kinetic energy with fix mol/swap unless per-type masses');
     if (!isMolecularStyle(s.atomStyle)) {
       throw new StyleError(`fix mol/swap: atom_style ${s.atomStyle} has no molecule IDs`);
     }
-    if (args.length < 6) throw new StyleError('usage: fix ID group-ID mol/swap N X itype jtype seed T [ke yes|no]');
-    this.N = posInt(args[0], 'N');
-    this.X = posInt(args[1], 'X');
-    this.itype = posInt(args[2], 'itype');
-    this.jtype = posInt(args[3], 'jtype');
-    if (this.itype === this.jtype) throw new StyleError('fix mol/swap: itype and jtype must be different types');
-    if (this.itype > s.ntypes || this.jtype > s.ntypes) {
-      throw new StyleError(`fix mol/swap: type ${Math.max(this.itype, this.jtype)} is larger than ntypes ${s.ntypes}`);
-    }
-    const seed = posInt(args[4], 'seed');
     if (seed >= 2147483647) throw new StyleError(`fix mol/swap: seed must be a positive integer below 2^31-1, got '${args[4]}'`);
     this.rng = new RanPark(seed);
-    this.T = num(args[5], 'T');
-    if (!(this.T > 0)) throw new StyleError(`fix mol/swap: T must be > 0, got '${args[5]}'`);
-    let ke = true;
-    for (let i = 6; i < args.length;) {
-      const key = args[i];
-      if (key === 'ke') {
-        const w = args[i + 1];
-        if (w !== 'yes' && w !== 'no') throw new StyleError(`fix mol/swap: ke must be yes or no, got '${w ?? ''}'`);
-        ke = w === 'yes';
-        i += 2;
-      } else {
-        throw new StyleError(`fix mol/swap: unknown keyword '${key}'`);
-      }
-    }
     this.ke = ke;
     this.vectorFlag = true;
     this.sizeVector = 2;

@@ -50,12 +50,17 @@ export class ComputeSlice extends Compute {
     if (this.nstart < 1) throw new StyleError(`Invalid compute slice nstart value ${this.nstart} < 1`);
     if (this.nstop < this.nstart) throw new StyleError(`Invalid compute slice nstop value ${this.nstop} < ${this.nstart}`);
     if (this.nskip < 1) throw new StyleError(`Invalid compute slice nskip value < 1: ${this.nskip}`);
+    // As native LAMMPS does (src/compute_slice.cpp ComputeSlice::ComputeSlice at b332f28): every input word is parsed first, and the
+    // first word that is not a valid input is "Illegal compute slice argument", before any input is looked up.
+    for (let k = 3; k < args.length; k++) {
+      const mk = REF.exec(args[k]);
+      if (!mk) throw new StyleError(`Illegal compute slice argument: ${args[k]}`);
+    }
     if (args.length > 4) {
       throw new StyleError('compute slice with more than one input (a global array) is not supported by the engine yet: native compute_array reads input 1 for every column (src/compute_slice.cpp)');
     }
     const w = args[3];
-    const m = REF.exec(w);
-    if (!m) throw new StyleError(`Illegal compute slice argument: ${w}`);
+    const m = REF.exec(w)!;
     const kind = m[1] as 'c' | 'f' | 'v';
     const argindex = m[3] === undefined ? 0 : Number(m[3]);
     if (argindex < 0) throw new StyleError(`Illegal compute slice argument: ${w}`);

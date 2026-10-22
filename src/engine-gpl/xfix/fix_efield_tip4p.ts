@@ -49,7 +49,8 @@ export class FixEfieldTIP4P extends Fix {
     if (sys.state.mu) {
       throw new StyleError('fix efield/tip4p: point dipoles (atom_style dipole) are not supported; the dipole torque branch of fix efield/tip4p is not translated');
     }
-    this.base = new FixEfield(sys, id, group, args);
+    // the keyword check of native FixEfield::FixEfield names the style it was called with (efield/tip4p)
+    this.base = new FixEfield(sys, id, group, args, 'efield/tip4p');
     this.energyGlobal = true;
     this.virialGlobal = true;
     this.scalarFlag = true;

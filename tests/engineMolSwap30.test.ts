@@ -168,15 +168,15 @@ ${fix}
 run 0
 `;
     const { error: same } = await run(script('fix 1 all mol/swap 1 1 1 1 12345 1.0'), { 'm.data': MOL2 });
-    expect(same).toMatch(/itype and jtype must be different/);
+    expect(same).toMatch('Illegal fix mol/swap command');
     const { error: t0 } = await run(script('fix 1 all mol/swap 1 1 1 2 12345 0.0'), { 'm.data': MOL2 });
-    expect(t0).toMatch(/T must be > 0/);
+    expect(t0).toMatch('Illegal fix mol/swap command');
     const { error: ke } = await run(script('fix 1 all mol/swap 1 1 1 2 12345 1.0 ke maybe'), { 'm.data': MOL2 });
-    expect(ke).toMatch(/ke must be yes or no/);
+    expect(ke).toMatch("Expected boolean parameter instead of 'maybe' in input script or data file");
     const { error: kw } = await run(script('fix 1 all mol/swap 1 1 1 2 12345 1.0 foo'), { 'm.data': MOL2 });
-    expect(kw).toMatch(/unknown keyword 'foo'/);
+    expect(kw).toMatch('Illegal fix mol/swap command');
     const { error: big } = await run(script('fix 1 all mol/swap 1 1 1 3 12345 1.0'), { 'm.data': MOL2 });
-    expect(big).toMatch(/larger than ntypes/);
+    expect(big).toMatch('Fix mol/swap atom types are invalid');
   });
 
   it('swaps charges with the atom types (atom_style full)', async () => {

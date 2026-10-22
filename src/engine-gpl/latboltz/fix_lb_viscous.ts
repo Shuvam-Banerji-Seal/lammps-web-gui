@@ -21,7 +21,7 @@ export class FixLbViscous extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length > 0) throw new StyleError('Illegal fix lb/viscous command');
+    // fix_lb_viscous.cpp: only the three words up to the style are required; later words are not read
     const fluids = sys.fixes.filter((f): f is FixLbFluid => f.style === 'lb/fluid');
     if (fluids.length === 0) throw new StyleError('the lb/fluid fix must also be used if using the lb/viscous fix');
     this.fluid = fluids[0];

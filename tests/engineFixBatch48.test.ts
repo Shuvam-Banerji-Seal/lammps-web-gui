@@ -154,7 +154,7 @@ run 10
     await expect(run(eight('fix 2 all tmd 0.5 t.txt 1 f.log'), { 't.txt': short })).rejects.toThrow(/atom 8 of the group is not listed/);
     const withImages = TARGET.split('\n').map((l) => (l.startsWith('#') || !l ? l : `${l} 0 0 0`)).join('\n');
     await expect(run(eight('fix 2 all tmd 0.5 t.txt 1 f.log'), { 't.txt': withImages })).rejects.toThrow(/image flags but no box lines/);
-    await expect(run(eight('fix 2 all tmd 0.5 t.txt 1'), { 't.txt': TARGET })).rejects.toThrow(/file2 is needed/);
+    await expect(run(eight('fix 2 all tmd 0.5 t.txt 1'), { 't.txt': TARGET })).rejects.toThrow('Illegal fix tmd command');
   });
 
   it('writes the native first row of the statistics file (rho_target, rho_old, gammas, lambda, work_lambda)', async () => {

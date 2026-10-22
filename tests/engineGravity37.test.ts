@@ -127,7 +127,7 @@ run 200`, { 'six.data': SIX });
 
   it('an unknown word after the style arguments is an error', async () => {
     const { error } = await run(`${HEAD}fix g all gravity 9.8 vector 0 0 -1 foo\nrun 0`, { 'six.data': SIX });
-    expect(msg(error)).toMatch(/usage: fix ID group gravity magnitude vector x y z/);
+    expect(msg(error)).toMatch(/Illegal fix gravity command/);
   });
 
   it('a zero vector is still rejected when the fix is not disabled', async () => {
@@ -142,6 +142,6 @@ run 200`, { 'six.data': SIX });
 
   it('rigid/small keyword set still rejects force/torque, and mol without rigid/small', async () => {
     const f = await run(`${HEAD}fix g all gravity 9.8 vector 0 0 -1 disable\nfix r all rigid/small molecule gravity g force 1 off off off\nrun 0`, { 'six.data': SIX });
-    expect(msg(f.error)).toMatch(/only allowed for the rigid styles/);
+    expect(msg(f.error)).toMatch(/Unknown fix rigid\/small keyword force/);
   });
 });

@@ -255,7 +255,9 @@ export class ComputeAngmomChunk extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 1) throw new StyleError(`usage: compute ${id} group-ID angmom/chunk chunkID`);
+    // As native LAMMPS does (src/compute_angmom_chunk.cpp at b332f28): exactly one argument (the chunk ID) after the style
+    if (args.length < 1) throw new StyleError('Illegal compute angmom/chunk command: missing argument(s)');
+    if (args.length !== 1) throw new StyleError('Illegal compute angmom/chunk command');
     this.chunk = chunkCompute(sys, args[0], 'compute angmom/chunk');
     this.arrayFlag = true;
     this.sizeArrayCols = 3;
@@ -282,7 +284,9 @@ export class ComputeOmegaChunk extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 1) throw new StyleError(`usage: compute ${id} group-ID omega/chunk chunkID`);
+    // As native LAMMPS does (src/compute_omega_chunk.cpp at b332f28): exactly one argument (the chunk ID) after the style
+    if (args.length < 1) throw new StyleError('Illegal compute omega/chunk command: missing argument(s)');
+    if (args.length !== 1) throw new StyleError('Illegal compute omega/chunk command');
     this.chunk = chunkCompute(sys, args[0], 'compute omega/chunk');
     this.arrayFlag = true;
     this.sizeArrayCols = 3;
@@ -317,7 +321,9 @@ export class ComputeInertiaChunk extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 1) throw new StyleError(`usage: compute ${id} group-ID inertia/chunk chunkID`);
+    // As native LAMMPS does (src/compute_inertia_chunk.cpp at b332f28): exactly one argument (the chunk ID) after the style
+    if (args.length < 1) throw new StyleError('Illegal compute inertia/chunk command: missing argument(s)');
+    if (args.length !== 1) throw new StyleError('Illegal compute inertia/chunk command');
     this.chunk = chunkCompute(sys, args[0], 'compute inertia/chunk');
     this.arrayFlag = true;
     this.sizeArrayCols = 6;
@@ -348,11 +354,13 @@ export class ComputeGyrationChunk extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (!args.length) throw new StyleError(`usage: compute ${id} group-ID gyration/chunk chunkID [tensor]`);
+    // As native LAMMPS does (src/compute_gyration_chunk.cpp at b332f28): the chunk ID is required
+    if (!args.length) throw new StyleError('Illegal compute gyration/chunk command: missing argument(s)');
     this.chunk = chunkCompute(sys, args[0], 'compute gyration/chunk');
     let tensor = false;
     for (const w of args.slice(1)) {
-      if (w !== 'tensor') throw new StyleError(`compute ${id} (gyration/chunk): unknown keyword '${w}'`);
+      // As native LAMMPS does (src/compute_gyration_chunk.cpp at b332f28): any other word is an illegal command
+      if (w !== 'tensor') throw new StyleError('Illegal compute gyration/chunk command');
       tensor = true;
     }
     this.tensor = tensor;
@@ -662,6 +670,11 @@ export class ComputeDipoleTip4pChunk extends Compute {
 }
 
 /** Parses the optional leading value of a per-chunk input list (reduce/chunk and chunk/spread/atom). */
+/** As native LAMMPS does (src/compute_reduce_chunk.cpp and src/compute_chunk_spread_atom.cpp at b332f28): every input word must start with c_, f_ or v_. */
+const checkChunkInputWords = (cmd: string, words: string[]): void => {
+  for (const w of words) if (!/^[cfv]_/.test(w)) throw new StyleError(`Illegal compute ${cmd} argument: ${w}`);
+};
+
 const inputRefs = (sys: System, style: string, words: string[], context: 'vector' | 'peratom'): Ref[] => {
   if (!words.length) throw new StyleError(`compute ${style}: at least one input is required`);
   return expandWildcards(sys, words, context).map((w) => parseRef(w));
@@ -694,6 +707,7 @@ export class ComputeReduceChunk extends Compute {
     const mode = args[1];
     if (mode !== 'sum' && mode !== 'min' && mode !== 'max') throw new StyleError(`compute ${id} (reduce/chunk): mode must be sum, min or max, got '${mode}'`);
     this.mode = mode;
+    checkChunkInputWords('reduce/chunk', args.slice(2));
     this.refs = inputRefs(sys, `${id} (reduce/chunk)`, args.slice(2), 'peratom');
     if (this.refs.length === 1) {
       this.vectorFlag = true;
@@ -760,6 +774,7 @@ export class ComputeChunkSpreadAtom extends Compute {
     const c = sys.computes.find((x) => x.id === args[0]);
     if (!(c instanceof ComputeChunkAtom)) throw new StyleError(`Chunk/atom compute ${args[0]} does not exist for compute chunk/spread/atom or is of invalid style`);
     this.chunk = c;
+    checkChunkInputWords('chunk/spread/atom', args.slice(1));
     this.refs = inputRefs(sys, `${id} (chunk/spread/atom)`, args.slice(1), 'vector');
     this.peratomFlag = true;
     this.sizePeratomCols = this.refs.length === 1 ? 0 : this.refs.length;
@@ -818,7 +833,8 @@ export class ComputePropertyChunk extends Compute {
         if (this.chunk.binDims < Number(m[1])) throw new StyleError(`compute ${id} (property/chunk): compute chunk/atom ${this.chunk.id} stores no ${a}`);
         continue;
       }
-      throw new StyleError(`compute ${id} (property/chunk): unknown attribute '${a}', expected count, id, coord1, coord2 or coord3`);
+      // As native LAMMPS does (src/compute_property_chunk.cpp at b332f28; its typo "Unkown" is kept)
+      throw new StyleError(`Unkown keyword ${a} in compute property/chunk command`);
     }
     if (this.attrs.length === 1) {
       this.vectorFlag = true;

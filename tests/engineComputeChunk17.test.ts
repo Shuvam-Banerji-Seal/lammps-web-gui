@@ -282,7 +282,7 @@ run 0
     const noTensor = await run(`${HEAD}\ncompute g all gyration/chunk cm\ncompute s all gyration/shape/chunk g\nrun 0\n`);
     expect(noTensor.error).toMatch(/tensor/);
     const kw = await run(`${HEAD}\ncompute g all gyration/chunk cm bogus\nrun 0\n`);
-    expect(kw.error).toMatch(/bogus/);
+    expect(kw.error).toContain('Illegal compute gyration/chunk command');
     const id = await run(`${HEAD}\ncompute p all property/chunk cm id\nthermo_style custom step c_p[1]\nrun 0\n`);
     expect(id.error).toMatch(/compress/);
     const reduceMode = await run(`${HEAD}\ncompute r all reduce/chunk cm avg c_pa[1]\nrun 0\n`);

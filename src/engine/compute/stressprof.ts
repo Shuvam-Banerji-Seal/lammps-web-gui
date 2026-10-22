@@ -382,7 +382,8 @@ export class ComputeStressMop extends Compute {
     this.d = parseDim(args[0], `compute ${id} stress/mop`);
     this.pos = args[1];
     this.kws = args.slice(2);
-    for (const w of this.kws) if (!MOP_KEYWORDS.includes(w)) throw new StyleError(`compute ${id} stress/mop: unknown keyword '${w}' (use ${MOP_KEYWORDS.join(', ')})`);
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_mop.cpp ComputeStressMop::ComputeStressMop at b332f28): keywords are read in order and an unknown one stops with "Unknown compute stress/mop keyword".
+    for (const w of this.kws) if (!MOP_KEYWORDS.includes(w)) throw new StyleError(`Unknown compute stress/mop keyword ${w}`);
     refuseStress(sys, id, 'stress/mop', this.kws);
     this.vectorFlag = true;
     this.sizeVector = 3 * this.kws.length;
@@ -430,7 +431,8 @@ export class ComputeStressMopProfile extends Compute {
     this.delta = Number(args[2]);
     if (!(this.delta > 0)) throw new StyleError(`compute ${id} stress/mop/profile: delta must be positive (got ${args[2]})`);
     this.kws = args.slice(3);
-    for (const w of this.kws) if (!MOP_KEYWORDS.includes(w)) throw new StyleError(`compute ${id} stress/mop/profile: unknown keyword '${w}' (use ${MOP_KEYWORDS.join(', ')})`);
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_mop_profile.cpp ComputeStressMopProfile::ComputeStressMopProfile at b332f28): an unknown keyword stops with "Unknown compute stress/mop/profile keyword".
+    for (const w of this.kws) if (!MOP_KEYWORDS.includes(w)) throw new StyleError(`Unknown compute stress/mop/profile keyword ${w}`);
     refuseStress(sys, id, 'stress/mop/profile', this.kws);
     this.arrayFlag = true;
     this.sizeArrayCols = 1 + 3 * this.kws.length;
@@ -505,7 +507,8 @@ export class ComputeStressCartesian extends Compute {
     }
     const kw = args.slice(4);
     for (const w of kw) {
-      if (!['ke', 'pair', 'bond'].includes(w)) throw new StyleError(`compute ${id} stress/cartesian: unknown keyword '${w}' (use ke, pair, bond)`);
+      // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_cartesian.cpp ComputeStressCartesian::ComputeStressCartesian at b332f28): an unknown keyword stops with "Unknown compute stress/cartesian keyword".
+      if (!['ke', 'pair', 'bond'].includes(w)) throw new StyleError(`Unknown compute stress/cartesian keyword: ${w}`);
     }
     this.explicit = kw.length > 0;
     this.withKe = !this.explicit || kw.includes('ke');

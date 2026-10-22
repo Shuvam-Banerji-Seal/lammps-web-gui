@@ -169,7 +169,9 @@ export class FixOneway extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 3) throw new StyleError('usage: fix ID group-ID oneway N region-ID direction');
+    // As native LAMMPS does (src/EXTRA-FIX/fix_oneway.cpp FixOneWay::FixOneWay at b332f28): it reads N, region and
+    // direction and needs at least six words in all; words after the direction are not read, so they are accepted.
+    if (args.length < 3) throw new StyleError('usage: fix ID group-ID oneway N region-ID direction');
     const n = Number(args[0]);
     if (!Number.isInteger(n) || n < 1) throw new StyleError(`fix oneway: N must be a positive integer, got '${args[0]}'`);
     this.nevery = n;

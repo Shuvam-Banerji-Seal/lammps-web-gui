@@ -94,8 +94,8 @@ run 0
   });
 
   it('rejects unknown attributes and Z attributes in 2d', async () => {
-    await expect(run(grid('pg', '2 2 3 bogus'))).rejects.toThrow(/unknown attribute 'bogus'/);
-    await expect(run(grid('pg', '2 2 3 id nope'))).rejects.toThrow(/unknown attribute/);
+    await expect(run(grid('pg', '2 2 3 bogus'))).rejects.toThrow('Unknown compute property/grid keyword: bogus');
+    await expect(run(grid('pg', '2 2 3 id nope'))).rejects.toThrow('Unknown compute property/grid keyword: nope');
     await expect(run(`units lj
 atom_style atomic
 dimension 2

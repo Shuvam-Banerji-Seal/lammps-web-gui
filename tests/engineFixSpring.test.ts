@@ -243,11 +243,11 @@ ${line}
   };
 
   it('rejects an unknown keyword, missing/extra values and bad numbers', async () => {
-    expect(await bad('fix 1 all spring bogus 1 2 3 4 5')).toMatch(/tether or couple/);
+    expect(await bad('fix 1 all spring bogus 1 2 3 4 5')).toMatch(/Unknown fix spring keyword bogus/);
     expect(await bad('fix 1 all spring tether 10.0 1 0 0')).toMatch(/Illegal fix spring command: missing argument/);
-    expect(await bad('fix 1 all spring couple 10.0 1 0 0 0')).toMatch(/unknown group|usage/);
+    expect(await bad('fix 1 all spring couple 10.0 1 0 0 0')).toMatch(/Incorrect number of arguments for couple mode/);
     expect(await bad('fix 1 all spring tether 10.0 1 0 abc 0')).toMatch(/number or NULL/);
-    expect(await bad('fix 1 all spring tether 10.0 1 0 0 0 9')).toMatch(/usage/);
+    expect(await bad('fix 1 all spring tether 10.0 1 0 0 0 9')).toMatch(/Incorrect number of arguments for tether mode/);
   });
 
   it('rejects a bad dir and an undefined or unsupported K variable', async () => {

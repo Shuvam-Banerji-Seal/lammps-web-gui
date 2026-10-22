@@ -164,7 +164,8 @@ export class FixChargeRegulation extends Fix {
           i += 2; break;
         }
         default:
-          throw new StyleError(`Illegal fix charge/regulation command: unknown keyword '${key}'`);
+          // As native LAMMPS does (src/MC/fix_charge_regulation.cpp FixChargeRegulation::options at b332f28): "Illegal fix charge/regulation command".
+          throw new StyleError('Illegal fix charge/regulation command');
       }
     }
     if (this.mcEvery <= 0 || this.nmc < 0 || this.lunit < 0 || this.reservoirT < 0 || this.cationType <= 0 || this.anionType <= 0

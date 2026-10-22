@@ -82,7 +82,8 @@ describe('com/chunk wrap keyword parsing', () => {
       expect(() => parseComChunkWrap('c', ['wrap', w])).toThrow(/expected a boolean value for wrap/);
     }
     expect(() => parseComChunkWrap('c', ['wrap'])).toThrow(/wrap needs a logical value/);
-    expect(() => parseComChunkWrap('c', ['wrap', 'yes', 'extra'])).toThrow(/unknown keyword 'extra'/);
+    // As native LAMMPS does (src/compute_com_chunk.cpp at b332f28, line 55): an unknown keyword is an error.
+    expect(() => parseComChunkWrap('c', ['wrap', 'yes', 'extra'])).toThrow('Unknown compute com/chunk keyword extra');
   });
 
   it('a repeated wrap keeps the last value', () => {

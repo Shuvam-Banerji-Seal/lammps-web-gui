@@ -65,10 +65,11 @@ export class FixPAFI extends Fix {
     let k = 4;
     while (k < args.length) {
       const w = args[k], v = args[k + 1];
+      // As native LAMMPS does (src/EXTRA-FIX/fix_pafi.cpp FixPAFI::FixPAFI at b332f28): a word that is neither keyword stops with "Illegal fix pafi command".
+      if (w !== 'overdamped' && w !== 'com') throw new StyleError('Illegal fix pafi command');
       if (v !== 'yes' && v !== 'no') throw new StyleError(`Illegal fix pafi command (${USAGE})`);
       if (w === 'overdamped') this.od = v === 'yes';
-      else if (w === 'com') this.com = v === 'yes';
-      else throw new StyleError(`Illegal fix pafi command (${USAGE})`);
+      else this.com = v === 'yes';
       k += 2;
     }
     this.rng = new RanMars(Math.trunc(seed));

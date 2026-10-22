@@ -117,7 +117,7 @@ run 1`, /set Tinit must be > 0/));
 
   it('rejects an unknown keyword', () => expectError(`${BOX}
 fix 2 all ttm 1 1.0 1.0 0.0 1.0 0.0 2.0 2 2 2 bogus 3
-run 1`, /unknown keyword 'bogus'/));
+run 1`, /Unknown fix ttm keyword bogus/));
 
   it('ttm/grid has no outfile keyword (fix_ttm.html)', () => expectError(`${BOX}
 fix 2 all ttm/grid 1 1.0 1.0 0.0 1.0 0.0 2.0 2 2 2 set 1000.0 outfile 1 Q.out

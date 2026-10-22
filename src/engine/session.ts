@@ -464,6 +464,10 @@ export class Session {
         this.io.emit({ kind: 'log', text: `${a[k]}: runs as ${base} (the browser engine picks CPU threads or the GPU itself)` });
       }
     }
+    // As native LAMMPS does (src/fix_nve.cpp FixNVE::FixNVE at b332f28): only a style that reads "nve" once the suffix
+    // command's suffix is stripped refuses words after it, so an accelerator style named in the input (nve/omp,
+    // nve/kk, ...) leaves them unread
+    if (cmd === 'fix' && out[2] === 'nve' && a[2] !== 'nve') out = out.slice(0, 3);
     return out;
   }
 

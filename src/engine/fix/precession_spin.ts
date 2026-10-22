@@ -70,7 +70,7 @@ export class FixPrecessionSpin extends Fix {
         k += 12;
       } else if (style === 'stt') {
         throw new StyleError('fix precession/spin stt is not implemented in the browser engine');
-      } else throw new StyleError(`Illegal fix precession/spin style: ${style ?? ''}`);
+      } else throw new StyleError('Illegal precession/spin command'); // As native LAMMPS does (src/SPIN/fix_precession_spin.cpp FixPrecessionSpin::FixPrecessionSpin at b332f28)
     }
     if (!this.zee && !this.aniso && !this.cubic) throw new StyleError('fix precession/spin needs a style: zeeman, anisotropy or cubic');
   }

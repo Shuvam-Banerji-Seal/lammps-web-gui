@@ -101,7 +101,7 @@ export class ComputeSAED extends Compute {
       } else if (kw === 'manual') {
         manual = true;
         iarg += 1;
-      } else throw new StyleError(`Illegal Compute SAED Command: unknown keyword '${kw}'`);
+      } else throw new StyleError('Illegal Compute SAED Command');
     }
     this.Kmax = Kmax;
     this.dRewald = dR;

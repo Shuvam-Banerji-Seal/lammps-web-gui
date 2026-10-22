@@ -30,8 +30,12 @@ abstract class FixSourceBase extends Fix {
   /** Parses the form keyword and its values from args[k..] (the number of values of each form is fixed). */
   protected parseForm(args: string[], k: number, cmd: string): void {
     const form = args[k];
+    // As native LAMMPS does (src/DPD-MESO/fix_edpd_source.cpp and fix_tdpd_source.cpp at b332f28): the message quotes a
+    // fixed count per form whatever the argument count (edpd/source: sphere 4, cuboid 6, region 2; tdpd/source: sphere 5,
+    // cuboid 7, region 2)
+    const nativeCount: Record<string, number> = cmd === 'tdpd/source' ? { sphere: 5, cuboid: 7, region: 2 } : { sphere: 4, cuboid: 6, region: 2 };
     const want = (n: number) => {
-      if (args.length !== k + n) throw new StyleError(`Illegal fix ${cmd} command (${n - 1} args for ${form})`);
+      if (args.length !== k + n) throw new StyleError(`Illegal fix ${cmd} command (${nativeCount[form!]} args for ${form})`);
     };
     if (form === 'sphere') {
       want(6);

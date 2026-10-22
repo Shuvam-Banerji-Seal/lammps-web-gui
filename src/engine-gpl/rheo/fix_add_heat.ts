@@ -34,7 +34,8 @@ export class FixAddHeat extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 2) throw new StyleError('Illegal fix add/heat command: missing arguments');
+    // As native LAMMPS does (src/GRANULAR/fix_add_heat.cpp FixAddHeat::FixAddHeat at b332f28): narg < 5 is utils::missing_cmd_args
+    if (args.length < 2) throw new StyleError('Illegal fix add/heat command: missing argument(s)');
     const style = args[0];
     if (style === 'constant') this.kind = ADD;
     else if (style === 'linear') this.kind = LINEAR;
@@ -46,7 +47,7 @@ export class FixAddHeat extends Fix {
     let prefactor = 0.0;
     if (this.kind !== ADD) {
       // fix_add_heat.cpp: "if (narg != 6) utils::missing_cmd_args" (the prefactor is the last argument)
-      if (args.length !== 3) throw new StyleError('Illegal fix add/heat command: missing prefactor');
+      if (args.length !== 3) throw new StyleError('Illegal fix add/heat command: missing argument(s)');
       prefactor = parseNum(args[2], 'prefactor');
       iarg = 3;
     }

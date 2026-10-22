@@ -35,7 +35,8 @@ export class ComputePODLocal extends Compute {
     const ntypes = sys.state.ntypes;
     const elems = args.slice(2);
     if (elems.length !== ntypes) {
-      throw new StyleError(`Number of element to type mappings does not match number of atom types (${elems.length} given, ${ntypes} types)`);
+      // As native LAMMPS does (src/ML-POD/compute_pod_local.cpp ComputePODLocal::map_element2type at b332f28): the element list must have one word per atom type
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     if (elems.includes('NULL')) throw new StyleError('compute pod/local: NULL atom types are not supported');
     const params = parsePODParams(sys.readFile(args[0]));

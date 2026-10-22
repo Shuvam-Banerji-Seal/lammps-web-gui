@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { inumeric, numeric } from '../force/util';
 import { massOf } from '../atoms';
 import type { Region } from '../region';
 
@@ -86,25 +87,32 @@ export class FixElectronStopping extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 2) throw new StyleError(`usage: fix ${id} group-ID electron/stopping Ecut file [region ID] [minneigh N]`);
-    const ecut = Number(args[0]);
-    if (!Number.isFinite(ecut) || !(ecut > 0)) throw new StyleError(`fix ${id} (electron/stopping): Ecut must be a positive energy, got '${args[0]}'`);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_electron_stopping.cpp FixElectronStopping::FixElectronStopping at b332f28):
+    // Ecut (utils::numeric, > 0) and the file are required; region and minneigh may each be given once.
+    const illegal = 'Illegal fix electron/stopping command';
+    if (args.length < 2) throw new StyleError(`${illegal}: too few arguments`);
+    const ecut = numeric(args[0]);
+    if (!(ecut > 0)) throw new StyleError(`${illegal}: Ecut <= 0`);
     this.ecut = ecut;
     let minneigh = 1;
+    let minneighGiven = false;
     let regionId: string | null = null;
     for (let k = 2; k < args.length; k += 2) {
       const key = args[k];
       const value = args[k + 1];
-      if (value === undefined) throw new StyleError(`fix ${id} (electron/stopping): keyword '${key}' needs a value`);
       if (key === 'region') {
-        sys.region(value);
+        if (regionId !== null) throw new StyleError(`${illegal}: region given twice`);
+        if (value === undefined) throw new StyleError(`${illegal}: region name missing`);
+        if (!sys.regions.has(value)) throw new StyleError(`Region ${value} for fix electron/stopping does not exist`);
         regionId = value;
       } else if (key === 'minneigh') {
-        const n = Number(value);
-        if (!Number.isInteger(n) || n < 0) throw new StyleError(`fix ${id} (electron/stopping): minneigh must be an integer >= 0, got '${value}'`);
-        minneigh = n;
+        if (minneighGiven) throw new StyleError(`${illegal}: minneigh given twice`);
+        minneighGiven = true;
+        if (value === undefined) throw new StyleError(`${illegal}: minneigh number missing`);
+        minneigh = inumeric(value);
+        if (minneigh < 0) throw new StyleError(`${illegal}: minneigh < 0`);
       } else {
-        throw new StyleError(`fix ${id} (electron/stopping): unknown keyword '${key}'`);
+        throw new StyleError(`${illegal}: unknown argument`);
       }
     }
     this.minneigh = minneigh;

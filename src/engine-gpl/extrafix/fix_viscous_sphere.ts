@@ -29,8 +29,10 @@ export class FixViscousSphere extends Fix {
     }
     const s = sys.state;
     for (let k = 1; k < args.length;) {
-      if (args[k] !== 'scale') throw new StyleError(`Illegal fix viscous/sphere command: unknown keyword '${args[k]}' (scale is the only keyword)`);
-      if (k + 1 >= args.length) throw new StyleError('Illegal fix viscous/sphere command: scale needs values');
+      // As native LAMMPS does (src/EXTRA-FIX/fix_viscous_sphere.cpp FixViscousSphere::FixViscousSphere at b332f28): the only keyword is scale,
+      // and an unknown word or a missing value gives the same "Illegal fix viscous/sphere command"
+      if (args[k] !== 'scale') throw new StyleError('Illegal fix viscous/sphere command');
+      if (k + 1 >= args.length) throw new StyleError('Illegal fix viscous/sphere command');
       if (args[k + 1].startsWith('v_')) {
         if (this.scaleType) throw new StyleError('Must use only one style of scaling');
         const name = args[k + 1].slice(2);
@@ -41,7 +43,7 @@ export class FixViscousSphere extends Fix {
         k += 2;
       } else {
         if (this.scaleVar) throw new StyleError('Must use only one style of scaling');
-        if (k + 2 >= args.length) throw new StyleError('Illegal fix viscous/sphere command: scale needs type and ratio');
+        if (k + 2 >= args.length) throw new StyleError('Illegal fix viscous/sphere command');
         this.scaleType ??= new Float64Array(s.ntypes + 1).fill(1);
         const t = Number(args[k + 1]);
         const r = Number(args[k + 2]);

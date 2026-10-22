@@ -51,7 +51,8 @@ export class FixPressBerendsen extends Fix {
     let couple = 'none';
     const setDim = (d: number, k: number): void => {
       const start = args[k + 1], stop = args[k + 2], damp = args[k + 3];
-      if (start === undefined || stop === undefined || damp === undefined) throw new StyleError(`fix ${id} press/berendsen ${args[k]} needs Pstart Pstop Pdamp`);
+      // As native LAMMPS does (src/fix_press_berendsen.cpp FixPressBerendsen::FixPressBerendsen at b332f28): a keyword with too few values is "Illegal fix press/berendsen command"
+      if (start === undefined || stop === undefined || damp === undefined) throw new StyleError('Illegal fix press/berendsen command');
       this.pStart[d] = parseNumOrVar(start, 'Pstart');
       this.pStop[d] = Number(stop);
       this.pDamp[d] = Number(damp);
@@ -86,7 +87,8 @@ export class FixPressBerendsen extends Fix {
           k += 2;
           break;
         default:
-          throw new StyleError(`fix ${id} press/berendsen: unknown keyword '${key}'`);
+          // As native LAMMPS does (src/fix_press_berendsen.cpp at b332f28): any other word is an illegal command
+          throw new StyleError('Illegal fix press/berendsen command');
       }
     }
     if (this.pStart.every((p) => p === null)) throw new StyleError(`fix ${id} press/berendsen: no barostatted dimension (iso, aniso, x, y or z)`);

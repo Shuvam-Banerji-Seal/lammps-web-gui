@@ -121,7 +121,7 @@ export class FixBondCreateAngle extends Fix {
         this.constrainflag = true;
         i += 3;
       } else {
-        throw new StyleError(`Unknown fix bond/create keyword ${key}`);
+        throw new StyleError(`Unknown fix bond/create/angle keyword ${key}`);
       }
     }
     if (this.iat === this.jat && (this.imax !== this.jmax || this.inew !== this.jnew)) {

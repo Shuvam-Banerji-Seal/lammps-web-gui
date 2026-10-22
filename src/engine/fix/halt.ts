@@ -69,6 +69,8 @@ export class FixHalt extends Fix {
     let message = true;
     for (let k = 4; k < args.length;) {
       const key = args[k];
+      // As native LAMMPS does (src/fix_halt.cpp FixHalt::FixHalt at b332f28): a word that is not one of its keywords stops with "Unknown fix halt keyword".
+      if (!['error', 'message', 'path', 'universe'].includes(key)) throw new StyleError(`Unknown fix halt keyword ${key}`);
       const v = args[k + 1];
       if (v === undefined) throw new StyleError(`fix ${id} halt: keyword ${key} needs a value`);
       if (key === 'error') {
@@ -81,8 +83,6 @@ export class FixHalt extends Fix {
         throw new StyleError(`fix ${id} halt path is only used with attribute diskfree, which the browser engine does not support`);
       } else if (key === 'universe') {
         if (v === 'yes') throw new StyleError(`fix ${id} halt universe yes is not supported by the browser engine (no multi-partition runs)`);
-      } else {
-        throw new StyleError(`fix ${id} halt: unknown keyword '${key}'`);
       }
       k += 2;
     }

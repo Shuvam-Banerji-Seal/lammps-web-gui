@@ -234,7 +234,10 @@ export class FixWallFlow extends Fix {
     if (!Number.isInteger(n) || n < 1) {
       throw new StyleError('Illegal fix wall/flow argument: wall count must be positive integer');
     }
-    if (args.length < 5 + n) throw new StyleError('Wrong fix wall/flow wall count');
+    // As native LAMMPS does (src/EXTRA-FIX/fix_wall_flow.cpp FixWallFlow::FixWallFlow at b332f28): the words after the
+    // count must be the walls alone or the walls followed by a units pair, checked before any wall is read.
+    const rest = args.length - 5;
+    if (rest !== n && rest !== n + 2) throw new StyleError('Wrong fix wall/flow wall count');
     for (let k = 0; k < n; k++) {
       const w = args[5 + k];
       const v = Number(w);
@@ -243,14 +246,11 @@ export class FixWallFlow extends Fix {
       }
       this.walls.push(v);
     }
-    for (let k = 5 + n; k < args.length;) {
-      if (args[k] !== 'units') {
-        throw new StyleError(`fix ${id} (wall/flow): unknown argument '${args[k]}' (expected the keyword units, or nothing)`);
-      }
-      const v = args[k + 1];
+    if (rest === n + 2) {
+      if (args[args.length - 2] !== 'units') throw new StyleError('Wrong fix wall/flow units command');
+      const v = args[args.length - 1];
       if (v !== 'lattice' && v !== 'box') throw new StyleError('Wrong fix wall/flow units command');
       this.unitsMode = v;
-      k += 2;
     }
     this.rng = new RanMars(seed);
     this.rng.uniform(); // warm-up draw made when the fix is created (measured with native LAMMPS)

@@ -30,11 +30,12 @@ abstract class FixMvvMeso extends Fix {
   protected dtf = 0;
   protected verlet = 0.5;
 
-  constructor(sys: System, id: string, group: string, args: string[], style: string) {
+  constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     this.timeIntegrate = true;
-    if (args.length > 1) throw new StyleError(`Illegal fix ${style} command`);
-    if (args.length === 1) this.verlet = parseNum(args[0], 'verlet');
+    // fix_mvv_dpd.cpp, fix_mvv_edpd.cpp, fix_mvv_tdpd.cpp (b332f28): the first argument after the style is verlet,
+    // read with utils::numeric; any further words are not read.
+    if (args.length >= 1) this.verlet = parseNum(args[0], 'verlet');
   }
 
   resetDt(): void {
@@ -90,7 +91,7 @@ export class FixMvvDPD extends FixMvvMeso {
   readonly style = 'mvv/dpd';
 
   constructor(sys: System, id: string, group: string, args: string[]) {
-    super(sys, id, group, args, 'mvv/dpd');
+    super(sys, id, group, args);
   }
 
   init(): void {
@@ -112,7 +113,7 @@ export class FixMvvEDPD extends FixMvvMeso {
   readonly style = 'mvv/edpd';
 
   constructor(sys: System, id: string, group: string, args: string[]) {
-    super(sys, id, group, args, 'mvv/edpd');
+    super(sys, id, group, args);
   }
 
   init(): void {
@@ -170,7 +171,7 @@ export class FixMvvTDPD extends FixMvvMeso {
   private nsp = 0;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
-    super(sys, id, group, args, 'mvv/tdpd');
+    super(sys, id, group, args);
   }
 
   init(): void {

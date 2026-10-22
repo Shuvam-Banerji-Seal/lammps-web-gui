@@ -77,6 +77,9 @@ export class FixDtReset extends Fix {
     let unitsBox = false;
     for (let k = 4; k < args.length; k += 2) {
       const key = args[k];
+      // As native LAMMPS does (src/fix_dt_reset.cpp FixDtReset::FixDtReset at b332f28): only emax and units are
+      // keywords, any other word is "Illegal fix dt/reset command".
+      if (key !== 'emax' && key !== 'units') throw new StyleError('Illegal fix dt/reset command');
       const value = args[k + 1];
       if (value === undefined) throw new StyleError(`fix ${id} (dt/reset): keyword '${key}' needs a value`);
       if (key === 'emax') {
@@ -86,8 +89,6 @@ export class FixDtReset extends Fix {
       } else if (key === 'units') {
         if (value !== 'lattice' && value !== 'box') throw new StyleError(`fix ${id} (dt/reset): units must be lattice or box, got '${value}'`);
         unitsBox = value === 'box';
-      } else {
-        throw new StyleError(`fix ${id} (dt/reset): unknown keyword '${key}'`);
       }
     }
     this.emax = emax;

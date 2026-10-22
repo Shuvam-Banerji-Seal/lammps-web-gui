@@ -100,7 +100,8 @@ export class FixAdaptFEP extends Fix {
         k += 2; nattr++;
         continue;
       }
-      throw new StyleError(`fix ${id} (adapt/fep): unknown attribute or keyword '${w}' (${USAGE})`);
+      // As native LAMMPS does (src/FEP/fix_adapt_fep.cpp FixAdaptFEP::FixAdaptFEP at b332f28): a word that is not a keyword stops with "Illegal fix adapt/fep command".
+      throw new StyleError('Illegal fix adapt/fep command');
     }
     if (nattr === 0) throw new StyleError(`fix ${id} (adapt/fep): nothing to adapt (${USAGE})`);
     if (this.scale && this.atoms.length) throw new StyleError("Keyword 'scale yes' is not supported with fix adapt/fep for 'atom'");

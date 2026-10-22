@@ -47,7 +47,7 @@ export class FixLangevinDrude extends Fix {
     if (this.periodCore <= 0 || this.periodDrude <= 0) throw new StyleError('Fix langevin/drude period must be > 0.0');
     if (seedCore <= 0 || seedDrude <= 0) throw new StyleError('Illegal langevin/drude seed');
     for (let k = 6; k < args.length; k += 2) {
-      if (args[k] !== 'zero' || args[k + 1] === undefined) throw new StyleError(`Illegal fix langevin/drude command: '${args[k]}'`);
+      if (args[k] !== 'zero' || args[k + 1] === undefined) throw new StyleError('Illegal fix langevin/drude command');
       const yn = args[k + 1];
       if (yn !== 'yes' && yn !== 'no') throw new StyleError(`Expected boolean parameter instead of '${yn}' in input script`);
       this.zero = yn === 'yes';

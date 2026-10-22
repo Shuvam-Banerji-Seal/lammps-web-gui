@@ -52,6 +52,8 @@ const ATTRS = new Set([
 ]);
 const COM_ATTRS = ['xu', 'yu', 'zu'];
 const KEYWORDS = new Set(['com', 'history', 'thresh']);
+/** A word that can be an input: an attribute, or a compute, fix, variable or custom reference (prefix c_, f_, v_, d_, i_). */
+const isInputWord = (w: string): boolean => ATTRS.has(w) || /^[cfvid]2?_/.test(w);
 const OPS = new Set(['<', '<=', '>', '>=', '==', '!=', '|^']);
 /** utils::logical (src/utils.cpp at b332f28): yes, on, true, 1 and no, off, false, 0. */
 const TRUE_WORDS = new Set(['yes', 'on', 'true', '1']);
@@ -94,8 +96,13 @@ export class FixStoreState extends Fix {
     if (!Number.isInteger(this.nStore) || this.nStore < 0) throw new StyleError(`${what}: N must be an integer >= 0`);
     let k = 1;
     const words: string[] = [];
-    while (k < args.length && !KEYWORDS.has(args[k])) words.push(args[k++]);
-    if (!words.length) throw new StyleError(`${what}: no input attributes given`);
+    // As native LAMMPS does (src/fix_store_state.cpp at b332f28): the input loop ends at the first word that is neither an
+    // attribute nor a c_, f_, v_, d_ or i_ reference, and that word is then read as a keyword
+    while (k < args.length && !KEYWORDS.has(args[k]) && isInputWord(args[k])) words.push(args[k++]);
+    if (!words.length) {
+      if (k < args.length && !KEYWORDS.has(args[k])) throw new StyleError(`Unknown fix store/state keyword: ${args[k]}`);
+      throw new StyleError(`${what}: no input attributes given`);
+    }
     this.inputs = expandInputs(sys, words).map((w) => this.parseInput(w));
     this.nvals = this.inputs.length;
     this.sizePeratomCols = this.nvals === 1 ? 0 : this.nvals;

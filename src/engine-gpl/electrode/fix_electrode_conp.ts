@@ -217,7 +217,7 @@ export class FixElectrodeConp extends Fix {
           break;
         }
         default:
-          throw new StyleError(`Unknown keyword ${key} for fix electrode/conp command`);
+          throw new StyleError(`Unknown keyword ${key} for fix ${this.styleName()} command`);
       }
     }
     if (this.etaNull && this.etaName === null) throw new StyleError('If eta is NULL the eta keyword must be used');

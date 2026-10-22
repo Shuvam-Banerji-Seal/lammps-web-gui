@@ -112,15 +112,15 @@ describe('fix adapt/fep and compute fep (src/engine-gpl/fep/)', () => {
     expect(withFep[0]['c_FEP[3]'] as number).toBeGreaterThan(0);
   });
 
-  it('compute fep rejects tail yes without a tail correction and an unknown keyword', async () => {
+  it('compute fep rejects tail yes without a tail correction and an unknown keyword with the native text', async () => {
     await expect(runLines([...base, 'compute FEP all fep 300.0 pair lj/cut/coul/long/soft lambda * * v_dl tail yes', 'run 0'])).rejects.toThrow(/tail/);
-    await expect(runLines([...base, 'compute FEP all fep 300.0 pair lj/cut/coul/long/soft lambda * * v_dl bogus yes', 'run 0'])).rejects.toThrow(/bogus/);
+    await expect(runLines([...base, 'compute FEP all fep 300.0 pair lj/cut/coul/long/soft lambda * * v_dl bogus yes', 'run 0'])).rejects.toThrow('Illegal optional keyword in compute fep');
   });
 
   it('fix adapt/fep names the keywords it does not support, and gives native texts for kspace and diameter', async () => {
     await expect(runLines([...base, 'fix A all adapt/fep 10 kspace x', 'run 0'])).rejects.toThrow(/Illegal fix adapt\/fep command/);
     await expect(runLines([...base, 'variable x equal 1.0', 'fix A all adapt/fep 10 atom diameter 1 v_x', 'run 0'])).rejects.toThrow(/Fix adapt\/fep requires atom attribute diameter/);
-    await expect(runLines([...base, 'fix A all adapt/fep 10 pair lj/cut/coul/long/soft lambda * * v_dl bogus yes', 'run 0'])).rejects.toThrow(/bogus/);
+    await expect(runLines([...base, 'fix A all adapt/fep 10 pair lj/cut/coul/long/soft lambda * * v_dl bogus yes', 'run 0'])).rejects.toThrow('Illegal fix adapt/fep command');
   });
 
   it('fix adapt/fep reset yes restores the pair lambda after the run', async () => {

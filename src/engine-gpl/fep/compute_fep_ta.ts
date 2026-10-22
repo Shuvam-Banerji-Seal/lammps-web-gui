@@ -49,7 +49,7 @@ export class ComputeFEPTA extends Compute {
     this.scale = parseNum(args[2], 'scale factor');
     let k = 3;
     while (k < args.length) {
-      if (args[k] !== 'tail') throw new StyleError(`Illegal optional keyword in compute fep/ta: '${args[k]}' (${USAGE})`);
+      if (args[k] !== 'tail') throw new StyleError('Illegal optional keyword in compute fep/ta');
       const w = args[k + 1];
       if (w !== 'yes' && w !== 'no') throw new StyleError(`compute fep/ta keyword tail must be yes or no, got '${w ?? ''}'`);
       this.tailFlag = w === 'yes';

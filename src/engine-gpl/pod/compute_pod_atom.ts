@@ -32,13 +32,14 @@ export class ComputePODAtom extends Compute {
     this.peratomFlag = true;
     const ntypes = sys.state.ntypes;
     const elems = args.slice(2);
-    if (elems.length !== ntypes) {
-      throw new StyleError(`Number of element to type mappings does not match number of atom types (${elems.length} given, ${ntypes} types)`);
-    }
-    if (elems.includes('NULL')) throw new StyleError('compute pod/atom: NULL atom types are not supported');
     const params = parsePODParams(sys.readFile(args[0]));
     const coeffFile = parsePODCoeffFile(sys.readFile(args[1]));
     this.model = new PODModel(params, coeffFile);
+    // compute_pod_atom.cpp: the potential files are read first, then map_element2type checks the mapping count
+    if (elems.length !== ntypes) {
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
+    }
+    if (elems.includes('NULL')) throw new StyleError('compute pod/atom: NULL atom types are not supported');
     // element indices follow the order of first appearance, as native map_element2type
     const names = [...new Set(elems)];
     if (names.length !== params.species.length) {

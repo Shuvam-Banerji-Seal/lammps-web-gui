@@ -197,7 +197,8 @@ export class FixWidom extends Fix {
       else if (key === 'full_energy') { fullEnergy = true; i += 1; }
       else if (key === 'charge') { charge = num(v(1), 'charge'); i += 2; }
       else if (key === 'intra_energy') { intraEnergy = num(v(1), 'intra_energy'); i += 2; }
-      else throw new StyleError(`fix widom: unknown keyword '${key}'`);
+      // As native LAMMPS does (src/MC/fix_widom.cpp at b332f28): an unknown keyword is "Illegal fix widom command"
+      else throw new StyleError('Illegal fix widom command');
     }
     const typeInt = num(args[2], 'type');
     if (!Number.isInteger(typeInt)) throw new StyleError(`fix widom: type must be an integer, got '${args[2]}'`);

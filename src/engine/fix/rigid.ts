@@ -268,6 +268,14 @@ const principalFrame = (I: number[][], twoD = false): { inertia: number[]; q: nu
 };
 
 /**
+ * Keywords the native keyword loops of the rigid styles accept (src/RIGID/fix_rigid.cpp FixRigid::FixRigid at b332f28).
+ * A keyword outside the list is reported as unknown; a listed one the engine does not model is refused after that.
+ */
+const RIGID_KEYWORDS = ['force', 'torque', 'langevin', 'temp', 'iso', 'aniso', 'x', 'y', 'z', 'couple', 'dilate', 'tparam', 'pchain', 'infile', 'reinit', 'gravity'];
+/** Keywords of the native /small keyword loop (src/RIGID/fix_rigid_small.cpp FixRigidSmall::FixRigidSmall at b332f28). */
+const RIGID_SMALL_KEYWORDS = ['langevin', 'infile', 'reinit', 'mol', 'temp', 'iso', 'aniso', 'x', 'y', 'z', 'couple', 'dilate', 'tparam', 'pchain', 'gravity'];
+
+/**
  * Parses an infile: "The file can contain initial blank lines or comment lines starting with "#"
  * which are ignored. The first non-blank, non-comment line should list N = the number of lines
  * to follow." Each line: "ID1 masstotal xcm ycm zcm ixx iyy izz ixy ixz iyz vxcm vycm vzcm lx ly lz ixcm iycm izcm".
@@ -417,7 +425,8 @@ export class FixRigid extends Fix {
     for (; k < args.length;) {
       const key = args[k];
       if (key === 'force' || key === 'torque') {
-        if (small) throw new StyleError(`fix ${style}: "The force and torque keywords discussed next are only allowed for the rigid styles."`);
+        // As native LAMMPS does (src/RIGID/fix_rigid_small.cpp FixRigidSmall::FixRigidSmall at b332f28): the /small keyword loop has no force or torque, so they are unknown there
+        if (small) throw new StyleError(`Unknown fix ${style} keyword ${key}`);
         const spec: [string, boolean[]] = [args[k + 1], [onoff(args[k + 2]), onoff(args[k + 3]), onoff(args[k + 4])]];
         (key === 'force' ? this.forceSpecs : this.torqueSpecs).push(spec);
         k += 5;
@@ -434,8 +443,8 @@ export class FixRigid extends Fix {
         k += 2;
       } else if (key === 'mol') {
         // docs.lammps.org/fix_rigid.html: "The *mol* keyword can only be used with the *rigid/small* styles."
-        // Measured with native LAMMPS (black box): fix rigid molecule mol <template> stops with Illegal fix rigid command.
-        if (!small) throw new StyleError(`fix ${style}: the mol keyword can only be used with the rigid/small styles (Illegal fix ${style} command)`);
+        // As native LAMMPS does (src/RIGID/fix_rigid.cpp FixRigid::FixRigid at b332f28): mol is not a keyword of the rigid styles, so the keyword loop's catch-all reports it
+        if (!small) throw new StyleError(`Illegal fix ${style} command`);
         const t = args[k + 1];
         if (!t) throw new StyleError(`fix ${style}: keyword mol needs a molecule template-ID`);
         this.molTemplateId = t;
@@ -471,6 +480,9 @@ export class FixRigid extends Fix {
         if (!gid) throw new StyleError(`fix ${style}: keyword gravity needs a gravity-ID (Illegal fix ${style} gravity command: missing argument(s))`);
         this.gravityId = gid;
         k += 2;
+      } else if (!(small ? RIGID_SMALL_KEYWORDS : RIGID_KEYWORDS).includes(key)) {
+        // As native LAMMPS does (src/RIGID/fix_rigid.cpp and fix_rigid_small.cpp at b332f28): an unknown keyword is reported by the keyword loop. The rigid styles say "Illegal fix {} command", the /small styles "Unknown fix {} keyword {}".
+        throw new StyleError(small ? `Unknown fix ${style} keyword ${key}` : `Illegal fix ${style} command`);
       } else {
         throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine (supported: force, torque, reinit, infile, mol, langevin, gravity)`);
       }

@@ -69,7 +69,8 @@ export class FixAppendAtoms extends Fix {
       } else if (w === 'random' || w === 'spatial' || w === 'temp') {
         throw new StyleError(`fix append/atoms keyword ${w} is not supported by the browser engine`);
       } else {
-        throw new StyleError(`Illegal fix append/atoms command: unknown keyword '${w}' (zhi, freq, basis, size, units)`);
+        // As native LAMMPS does (src/SHOCK/fix_append_atoms.cpp FixAppendAtoms::FixAppendAtoms at b332f28): "Illegal fix append/atoms command".
+        throw new StyleError('Illegal fix append/atoms command');
       }
     }
     if (!this.zhiflag) throw new StyleError('fix append/atoms needs the zhi face');

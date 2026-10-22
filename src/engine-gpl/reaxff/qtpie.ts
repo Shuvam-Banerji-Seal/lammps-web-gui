@@ -17,6 +17,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { type HistoryMap, solveFictitious, taperFix } from './charge';
 import { parsePertypeFile, type QeqParams } from './qeq';
@@ -73,23 +74,25 @@ export class FixQtpieReaxFF extends Fix {
     // narg of LAMMPS is 9..14 with "fix ID group style" in front: 6..11 arguments here
     if (args.length < 6 || args.length > 11) throw new StyleError(`Illegal fix ${style} command: incorrect number of parameters`);
     this.pairRef()?.attachQeqFix();
-    this.nevery = intArg(args[0], 'Nevery', style);
+    this.nevery = inumeric(args[0]);
     if (this.nevery <= 0) throw new StyleError(`Illegal fix ${style} command`);
-    this.swa = numArg(args[1], 'swa', style);
-    this.swb = numArg(args[2], 'swb', style);
-    this.tolerance = numArg(args[3], 'tolerance', style);
+    this.swa = numeric(args[1]);
+    this.swb = numeric(args[2]);
+    this.tolerance = numeric(args[3]);
     this.pertype = args[4];
     this.gaussFile = args[5];
+    // fix_qtpie_reaxff.cpp (FixQtpieReaxFF::FixQtpieReaxFF at b332f28): nowarn, maxiter and scale; any other word,
+    // or a missing value, is "Illegal fix {} command"
     let iarg = 6;
     while (iarg < args.length) {
       const k = args[iarg];
       if (k === 'nowarn') this.maxwarn = false;
       else if (k === 'maxiter' || k === 'scale') {
-        if (iarg + 1 > args.length - 1) throw new StyleError(`Illegal fix ${style} command: ${k} needs a value`);
-        if (k === 'maxiter') this.imax = intArg(args[iarg + 1], 'maxiter', style);
-        else this.scale = numArg(args[iarg + 1], 'scale', style);
+        if (iarg + 1 > args.length - 1) throw new StyleError(`Illegal fix ${style} command`);
+        if (k === 'maxiter') this.imax = inumeric(args[iarg + 1]);
+        else this.scale = numeric(args[iarg + 1]);
         iarg++;
-      } else throw new StyleError(`Illegal fix ${style} command: unknown keyword ${k}`);
+      } else throw new StyleError(`Illegal fix ${style} command`);
       iarg++;
     }
   }
@@ -292,14 +295,3 @@ export class FixQEqRelReaxFF extends FixQtpieReaxFF {
     return chiEff;
   }
 }
-
-const intArg = (w: string, what: string, style: string): number => {
-  const v = Number(w);
-  if (!Number.isInteger(v)) throw new StyleError(`Illegal fix ${style} command: expected an integer for ${what}, got '${w}'`);
-  return v;
-};
-const numArg = (w: string, what: string, style: string): number => {
-  const v = Number(w);
-  if (w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`Illegal fix ${style} command: expected a number for ${what}, got '${w}'`);
-  return v;
-};

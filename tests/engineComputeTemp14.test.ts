@@ -86,10 +86,11 @@ describe('compute temp/ramp', () => {
   });
 
   it('rejects an unknown keyword, a bad units value and a bad vdim', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all temp/ramp vx 0 1 x 0 1 foo bar`)).rejects.toThrow('unknown keyword');
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all temp/ramp vx 0 1 x 0 1 units real`)).rejects.toThrow('units must be lattice or box');
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all temp/ramp vw 0 1 x 0 1`)).rejects.toThrow('vdim must be vx, vy or vz');
-    await expect(runScript(`${TWO_ATOMS}\ncompute r all temp/ramp vx 0 1 x 1 1`)).rejects.toThrow('chi must be greater than clo');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all temp/ramp vx 0 1 x 0 1 foo bar`)).rejects.toThrow('Illegal compute temp/ramp command');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all temp/ramp vx 0 1 x 0 1 units real`)).rejects.toThrow('Illegal compute temp/ramp command');
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all temp/ramp vw 0 1 x 0 1`)).rejects.toThrow('Illegal compute temp/ramp command');
+    // As native LAMMPS does (src/compute_temp_ramp.cpp at b332f28): clo and chi are not compared (the ramp fraction is clamped to 0..1)
+    await expect(runScript(`${TWO_ATOMS}\ncompute r all temp/ramp vx 0 1 x 1 1`)).resolves.toBeDefined();
   });
 
   it('removes and restores the ramp bias exactly (thermostat contract)', async () => {
@@ -239,9 +240,9 @@ describe('compute temp/chunk', () => {
 
   it('rejects com yes together with bias, and unknown keywords', async () => {
     await expect(runScript(`${ONE_CHUNK}\ncompute t all temp/chunk cc com yes bias tp\ncompute tp all temp/partial 1 1 1`))
-      .rejects.toThrow('cannot be used together');
-    await expect(runScript(`${ONE_CHUNK}\ncompute t all temp/chunk cc foo bar`)).rejects.toThrow('unknown value or keyword');
-    await expect(runScript(`${ONE_CHUNK}\ncompute t all temp/chunk cc com maybe`)).rejects.toThrow('com must be yes or no');
+      .rejects.toThrow('Cannot use both com and bias with compute temp/chunk');
+    await expect(runScript(`${ONE_CHUNK}\ncompute t all temp/chunk cc foo bar`)).rejects.toThrow('Illegal compute temp/chunk command');
+    await expect(runScript(`${ONE_CHUNK}\ncompute t all temp/chunk cc com maybe`)).rejects.toThrow("Expected boolean parameter instead of 'maybe' in input script or data file");
   });
 
   it('uses adof and cdof in the DOF formula N adof + Nchunk cdof', async () => {

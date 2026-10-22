@@ -1,7 +1,7 @@
 import { Compute } from './compute';
 import { ComputeChunkAtom, chunkCompute } from './chunk';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
+import { logical, numeric } from '../force/util';
 import type { System } from '../system';
 import { massOf } from '../atoms';
 
@@ -89,23 +89,25 @@ export class ComputeTempChunk extends Compute {
         k++;
         continue;
       }
-      if (k + 1 >= args.length) throw new StyleError(`compute ${id} (temp/chunk): keyword ${w} needs a value`);
+      // As native LAMMPS does (src/compute_temp_chunk.cpp ComputeTempChunk::ComputeTempChunk at b332f28): a word that is not a
+      // keyword stops with "Illegal compute temp/chunk command".
+      if (!['com', 'bias', 'adof', 'cdof'].includes(w)) throw new StyleError('Illegal compute temp/chunk command');
+      if (k + 1 >= args.length) throw new StyleError('Illegal compute temp/chunk command');
       const v = args[k + 1];
       if (w === 'com') {
-        if (v !== 'yes' && v !== 'no') throw new StyleError(`compute ${id} (temp/chunk): com must be yes or no (got '${v}')`);
-        com = v === 'yes';
+        com = logical(v);
       } else if (w === 'bias') {
         biasId = v;
       } else if (w === 'adof') {
-        this.adof = parseNum(v, 'compute temp/chunk adof');
+        this.adof = numeric(v);
       } else if (w === 'cdof') {
-        this.cdof = parseNum(v, 'compute temp/chunk cdof');
+        this.cdof = numeric(v);
       } else {
-        throw new StyleError(`compute ${id} (temp/chunk): unknown value or keyword '${w}'`);
+        throw new StyleError('Illegal compute temp/chunk command');
       }
       k += 2;
     }
-    if (com && biasId !== null) throw new StyleError(`compute ${id} (temp/chunk): The com and bias keywords cannot be used together.`);
+    if (com && biasId !== null) throw new StyleError('Cannot use both com and bias with compute temp/chunk');
     this.values = values;
     this.com = com;
     this.biasId = biasId;

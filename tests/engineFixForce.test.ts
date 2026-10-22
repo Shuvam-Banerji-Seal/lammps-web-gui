@@ -68,7 +68,7 @@ run 0`);
 
   it('rejects bad arguments', async () => {
     expect((await runScript(`${BASE}\nfix 1 all setforce 0.0 0.0`)).error?.message).toMatch(/Illegal fix setforce command: missing argument/);
-    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 foo 1`)).error?.message).toMatch(/unknown fix setforce keyword 'foo'/);
+    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 foo 1`)).error?.message).toContain('Unknown fix setforce keyword: foo');
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 region`)).error?.message).toMatch(/keyword 'region' needs a value/);
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 v_nope`)).error?.message).toMatch(/variable nope does not exist/);
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 region noregion`)).error?.message).toMatch(/region ID 'noregion' does not exist/);

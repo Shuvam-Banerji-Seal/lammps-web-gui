@@ -54,14 +54,16 @@ describe('ReaxFF charge models: refusals', () => {
       .rejects.toThrow(/Atom-style/);
   });
 
-  it('refuses the dual and matfree variants of fix acks2/reaxff by name', async () => {
-    await expect(runScript(`${head}fix 2 all acks2/reaxff 1 0.0 10.0 1e-6 reaxff dual\nrun 0\n`, files)).rejects.toThrow(/dual/);
-    await expect(runScript(`${head}fix 2 all acks2/reaxff 1 0.0 10.0 1e-6 reaxff matfree\nrun 0\n`, files)).rejects.toThrow(/matfree/);
+  it('refuses dual for fix acks2/reaxff and accepts matfree, as native does', async () => {
+    // As native LAMMPS does (src/REAXFF/fix_acks2_reaxff.cpp FixACKS2ReaxFF::FixACKS2ReaxFF at b332f28): dual is refused
+    // after the keywords; matfree is read by fix_qeq_reaxff.cpp's keyword loop and used only by the Kokkos variant
+    await expect(runScript(`${head}fix 2 all acks2/reaxff 1 0.0 10.0 1e-6 reaxff dual\nrun 0\n`, files)).rejects.toThrow('Dual keyword only supported with fix qeq/reax/omp');
+    await expect(runScript(`${head}fix 2 all acks2/reaxff 1 0.0 10.0 1e-6 reaxff matfree\nrun 0\n`, files)).resolves.toBeDefined();
   });
 
   it('refuses the obsolete reax/c keyword of fix qtpie/reaxff and an unknown keyword', async () => {
     await expect(runScript(`${head}fix 2 all qtpie/reaxff 1 0.0 10.0 1e-6 reax/c w65reaxq_gauss_exp.txt\nrun 0\n`, files)).rejects.toThrow(/reax\/c/);
-    await expect(runScript(`${head}fix 2 all qtpie/reaxff 1 0.0 10.0 1e-6 reaxff w65reaxq_gauss_exp.txt frobnicate\nrun 0\n`, files)).rejects.toThrow(/frobnicate/);
+    await expect(runScript(`${head}fix 2 all qtpie/reaxff 1 0.0 10.0 1e-6 reaxff w65reaxq_gauss_exp.txt frobnicate\nrun 0\n`, files)).rejects.toThrow('Illegal fix qtpie/reaxff command');
   });
 
   it('reads the Gaussian exponents of the gauss file and refuses a bad one', async () => {

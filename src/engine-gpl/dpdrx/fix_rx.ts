@@ -158,7 +158,8 @@ export class FixRX extends Fix {
     this.absTol = 1.0e-8;
     if (this.rk4Solver) {
       if (args.length === 5) this.minSteps = intArg(args[4]);
-      else if (args.length > 5) throw new StyleError(`Too many arguments (${args.length + 4}) for RK4 solver`);
+      // fix_rx.cpp counts narg with the ID, group and style words in front (args has none of them)
+      else if (args.length > 5) throw new StyleError(`Too many arguments (${args.length + 3}) for RK4 solver`);
     } else {
       if (args.length < 7) throw new StyleError('Missing arguments for fix rx RKF45');
       this.minSteps = intArg(args[4]);

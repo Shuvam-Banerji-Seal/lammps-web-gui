@@ -136,7 +136,8 @@ export class FixGJF extends Fix {
         if (!Number.isInteger(method) || method < 0 || method > 8) throw new StyleError('Invalid GJ method choice in gjf command');
         k += 2;
       } else {
-        throw new StyleError(`unknown fix gjf keyword '${key}'`);
+        // As native LAMMPS does (src/EXTRA-FIX/fix_gjf.cpp FixGJF::FixGJF at b332f28): any other word is "Illegal fix gjf command"
+        throw new StyleError('Illegal fix gjf command');
       }
     }
     this.vhalf = vel === 'vhalf';

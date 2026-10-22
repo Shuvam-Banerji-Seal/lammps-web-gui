@@ -143,12 +143,13 @@ describe('argument errors', () => {
   });
 
   it('viscosity and thermal/conductivity reject bad layer counts and keywords', async () => {
-    await bad('fix V all viscosity 10 x z 5\n', /even number/);
-    await bad('fix V all viscosity 10 q z 4\n', /vdim must be x, y or z/);
-    await bad('fix V all viscosity 10 x z 4 swap 0\n', /swap Nswap must be a positive integer/);
-    await bad('fix V all viscosity 10 x z 4 bogus 2\n', /unknown keyword 'bogus'/);
-    await bad('fix E all thermal/conductivity 10 z 3\n', /even number/);
-    await bad('fix E all thermal/conductivity 10 z 4 vtarget 1\n', /unknown keyword 'vtarget'/);
+    await bad('fix V all viscosity 10 x z 5\n', /Illegal fix viscosity command/);
+    await bad('fix V all viscosity 10 q z 4\n', /Illegal fix viscosity command/);
+    await bad('fix V all viscosity 10 x z 4 swap 0\n', /Fix viscosity swap value must be positive/);
+    await bad('fix V all viscosity 10 x z 2\n', /Illegal fix viscosity command/);
+    await bad('fix V all viscosity 10 x z 4 bogus 2\n', /Illegal fix viscosity command/);
+    await bad('fix E all thermal/conductivity 10 z 3\n', /Illegal fix thermal\/conductivity command/);
+    await bad('fix E all thermal/conductivity 10 z 4 vtarget 1\n', /Illegal fix thermal\/conductivity command/);
   });
 
   it('compute heat/flux needs exactly three compute IDs', async () => {

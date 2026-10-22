@@ -70,7 +70,7 @@ export class ComputeEntropyAtom extends Compute {
         if (iarg + 2 > args.length) throw new StyleError('Illegal compute entropy/atom command');
         this.localDensity = logical(args[iarg + 1], what);
         iarg += 2;
-      } else throw new StyleError(`Illegal compute entropy/atom command: unknown keyword '${args[iarg]}'`);
+      } else throw new StyleError('Illegal compute entropy/atom command');
     }
     this.cutsq = this.cutoff * this.cutoff;
     this.cutsq2 = this.cutoff2 * this.cutoff2;

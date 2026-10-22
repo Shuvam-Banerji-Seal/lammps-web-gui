@@ -105,7 +105,7 @@ export class ComputeXRD extends Compute {
       } else if (kw === 'manual') {
         manual = true;
         iarg += 1;
-      } else throw new StyleError(`Illegal Compute XRD Command: unknown keyword '${kw}'`);
+      } else throw new StyleError('Illegal Compute XRD Command');
     }
     this.LP = LP;
     // 2Theta is given in degrees unless its maximum is below 2 pi (then radians); the half angles are used below

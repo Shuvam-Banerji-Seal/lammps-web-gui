@@ -18,6 +18,16 @@ import type { Ctx } from '../../engine/commands/args';
 /** The selection styles of the set command (set.cpp Set::process_args): the first two words are the style and the ID. */
 const STYLE_WORDS = ['atom', 'mol', 'type', 'group', 'region'];
 
+/** The keywords of the set command (set.cpp Set::Set keyword chain); a custom i_/d_/i2_/d2_ name is also accepted. */
+const SET_KEYWORDS = new Set([
+  'angle', 'angmom', 'apip/lambda', 'block', 'bond', 'cc', 'charge', 'density', 'density/disc', 'diameter', 'dihedral',
+  'dipole', 'dipole/random', 'dpd/theta', 'edpd/cv', 'edpd/temp', 'epsilon', 'image', 'improper', 'length', 'mass', 'mol',
+  'omega', 'quat', 'quat/random', 'radius/electron', 'rheo/rho', 'rheo/status', 'shape', 'smd/contact/radius',
+  'smd/mass/density', 'sph/cv', 'sph/e', 'sph/rho', 'spin', 'spin/atom', 'spin/atom/random', 'spin/electron', 'spin/random',
+  'temperature', 'theta', 'theta/random', 'tri', 'type', 'type/fraction', 'type/ratio', 'type/subset', 'volume', 'vx', 'vy',
+  'vz', 'x', 'y', 'z',
+]);
+
 export class FixSet extends Fix {
   readonly style = 'set';
   private readonly actions: string[];
@@ -36,9 +46,13 @@ export class FixSet extends Fix {
     }
     this.actions = rest;
     // every keyword group (a word that is not a value: not a number and not a v_ variable) must invoke a variable
+    // As native LAMMPS does (src/set.cpp Set::Set at b332f28): an unknown keyword stops while the keywords are read, and the
+    // per-atom variable check for the fix comes after all of them.
+    let noVar: string | null = null;
     let k = 2;
     while (k < rest.length) {
       const kw = rest[k];
+      if (!SET_KEYWORDS.has(kw) && !/^[id]2?_/.test(kw)) throw new StyleError(`Unrecognized set or fix set command keyword ${kw}`);
       let j = k + 1;
       let hasVar = false;
       while (j < rest.length && (rest[j].startsWith('v_') || /^[-+.\d]/.test(rest[j]))) {
@@ -49,9 +63,10 @@ export class FixSet extends Fix {
         }
         j++;
       }
-      if (!hasVar) throw new StyleError(`Fix set command keyword ${kw} does not invoke a per-atom variable`);
+      if (!hasVar && noVar === null) noVar = kw;
       k = j;
     }
+    if (noVar !== null) throw new StyleError(`Fix set command keyword ${noVar} does not invoke a per-atom variable`);
   }
 
   /**

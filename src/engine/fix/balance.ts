@@ -264,7 +264,7 @@ export class FixBalance extends Fix {
         this.outFile = name;
         this.sys.writeFile(name, '', false);
         k += 2;
-      } else throw new StyleError(`fix balance: unknown keyword '${key}'`);
+      } else throw new StyleError(`Unknown (fix) balance keyword ${key}`);
     }
   }
 

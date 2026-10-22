@@ -117,13 +117,14 @@ run 0`);
     expect((await run(`${HEADER}
 fix fd all numdiff 1`)).error?.message).toMatch(/Illegal fix numdiff command/);
     expect((await run(`${HEADER}
-fix fd all numdiff 0 1e-6`)).error?.message).toMatch(/Nevery must be a positive integer/);
+fix fd all numdiff 0 1e-6`)).error?.message).toMatch(/Illegal fix numdiff command/);
     expect((await run(`${HEADER}
-fix fd all numdiff 1.5 1e-6`)).error?.message).toMatch(/Nevery must be a positive integer/);
+fix fd all numdiff 1.5 1e-6`)).error?.message).toMatch(/Expected integer parameter instead of '1.5' in input script/);
     expect((await run(`${HEADER}
-fix fd all numdiff 1 -1e-6`)).error?.message).toMatch(/delta must be a positive number/);
+fix fd all numdiff 1 -1e-6`)).error?.message).toMatch(/Illegal fix numdiff command/);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_numdiff.cpp at b332f28): only narg < 5 is refused, extra words are not read
     expect((await run(`${HEADER}
-fix fd all numdiff 1 1e-6 extra`)).error?.message).toMatch(/expected exactly Nevery and delta/);
+fix fd all numdiff 1 1e-6 extra`)).error).toBeFalsy();
   });
 });
 
@@ -172,7 +173,8 @@ run 0`);
 group g id 1
 fix fd g numdiff/virial 1 1e-6
 run 0`);
-    expect(error?.message).toMatch(/requires group all/);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_numdiff_virial.cpp at b332f28): group must be all
+    expect(error?.message).toMatch(/Compute numdiff\/virial must use group all/);
   });
 
   it('does not perturb a run and restores the analytic virial state', async () => {

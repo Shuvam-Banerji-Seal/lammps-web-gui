@@ -1,5 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { inumeric, missingArgs, numeric } from '../force/util';
 import type { System } from '../system';
 import type { PerAtomTerm } from '../force/forcefield';
 
@@ -77,18 +78,14 @@ abstract class FixNumdiffBase extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[], style: string) {
     super(sys, id, group, args);
-    if (args.length !== 2) {
-      throw new StyleError(`fix ${id} (${style}): expected exactly Nevery and delta, got ${args.length} argument(s)`);
-    }
-    const nevery = Number(args[0]);
-    if (!Number.isInteger(nevery) || nevery < 1) {
-      throw new StyleError(`fix ${id} (${style}): Nevery must be a positive integer, got '${args[0]}'`);
-    }
+    // As native LAMMPS does (src/EXTRA-FIX/fix_numdiff.cpp and fix_numdiff_virial.cpp at b332f28): Nevery (utils::inumeric)
+    // and delta (utils::numeric) are read and any later words are not; numdiff/virial checks its group first.
+    if (args.length < 2) throw style === 'numdiff' ? new StyleError('Illegal fix numdiff command') : missingArgs('numdiff/virial');
+    if (style === 'numdiff/virial' && group !== 'all') throw new StyleError('Compute numdiff/virial must use group all');
+    const nevery = inumeric(args[0]);
+    const delta = numeric(args[1]);
+    if (nevery <= 0 || !(delta > 0)) throw new StyleError('Illegal fix numdiff command');
     this.nevery = nevery;
-    const delta = Number(args[1]);
-    if (!Number.isFinite(delta) || !(delta > 0)) {
-      throw new StyleError(`fix ${id} (${style}): delta must be a positive number, got '${args[1]}'`);
-    }
     this.delta = delta;
   }
 
@@ -213,8 +210,6 @@ export class FixNumdiffVirial extends FixNumdiffBase {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args, 'numdiff/virial');
-    // "The specified group must be "all"."
-    if (group !== 'all') throw new StyleError('fix numdiff/virial requires group all');
     this.vectorFlag = true;
     this.sizeVector = 6;
   }

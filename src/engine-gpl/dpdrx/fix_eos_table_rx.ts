@@ -361,6 +361,6 @@ const intArg = (w: string): number => {
 /** A keyword-argument number (utils::numeric). */
 const numArg = (w: string): number => {
   const v = Number(w);
-  if (w === '' || !Number.isFinite(v)) throw new StyleError(`Expected floating-point parameter instead of '${w}'`);
+  if (w === '' || !Number.isFinite(v)) throw new StyleError(`Expected floating point parameter instead of '${w}' in input script or data file`);
   return v;
 };

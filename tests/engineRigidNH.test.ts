@@ -106,7 +106,7 @@ describe('fix rigid/nvt', () => {
   it('refuses the pressure keywords of rigid/nvt and names what else is not ported', async () => {
     expect((await run('fix 1 all rigid/nvt molecule iso 1.0 1.0 1.0 temp 1.0 1.0 0.5\nrun 1')).error).toMatch(/pressure keywords \(iso, aniso, x, y, z\) are not ported; use rigid\/npt/);
     expect((await run('fix 1 all rigid/nvt molecule temp 1.0 1.0 0.5 langevin 1 1 1 5\nrun 1')).error).toMatch(/keyword 'langevin' is not supported/);
-    expect((await run('fix 1 all rigid/nvt molecule temp 1.0 1.0 0.5 mol foo\nrun 1')).error).toMatch(/keyword 'mol' is not supported/);
+    expect((await run('fix 1 all rigid/nvt molecule temp 1.0 1.0 0.5 mol foo\nrun 1')).error).toMatch('Illegal fix rigid/nvt command');
     expect((await run('fix 1 all rigid/nvt molecule temp 1.0 1.0 0.5 infile foo.txt\nrun 1')).error).toMatch(/keyword 'infile' is not supported/);
   });
 

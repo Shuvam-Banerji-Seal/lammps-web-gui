@@ -36,7 +36,7 @@ export class ComputePODGlobal extends Compute {
     const ntypes = sys.state.ntypes;
     const elems = args.slice(2);
     if (elems.length !== ntypes) {
-      throw new StyleError(`Number of element to type mappings does not match number of atom types (${elems.length} given, ${ntypes} types)`);
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     if (elems.includes('NULL')) throw new StyleError('compute pod/global: NULL atom types are not supported');
     const params = parsePODParams(sys.readFile(args[0]));

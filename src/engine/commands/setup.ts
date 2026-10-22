@@ -706,7 +706,8 @@ const createBox: Handler = ({ sys }, a) => {
     lo = b.lo as [number, number, number]; hi = b.hi as [number, number, number];
   } else throw new StyleError('create_box needs a block, cylinder, cone or prism region');
   if ([...lo, ...hi].some((v) => Math.abs(v) >= BIG)) throw new StyleError('create_box needs a finite region (no INF bounds)');
-  if (sys.dimension === 2 && !(lo[2] < 0 && hi[2] > 0)) throw new StyleError('for a 2d simulation the region z bounds must bracket zero (e.g. -0.5 0.5)');
+  // As native LAMMPS does (src/create_box.cpp at b332f28): "if (domain->boxlo[2] >= 0.0 || domain->boxhi[2] <= 0.0)"
+  if (sys.dimension === 2 && !(lo[2] < 0 && hi[2] > 0)) throw new StyleError('Create_box region zlo/zhi for 2d simulation must straddle 0.0');
   if (sys.dimension === 2 && tilt && (tilt[1] !== 0 || tilt[2] !== 0)) throw new StyleError('2d triclinic boxes must have xz = yz = 0');
   const box = makeBox({ lo, hi, boundary: sys.boundary, tilt });
   // the rotation of a general triclinic box is kept on the box (types.ts SimBox.general)

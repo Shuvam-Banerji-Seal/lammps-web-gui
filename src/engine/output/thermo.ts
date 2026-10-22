@@ -197,6 +197,8 @@ export class Thermo {
     const what = kind === 'c' ? 'compute' : 'fix';
     const o = kind === 'c' ? this.sys.computes.find((x) => x.id === id) : this.sys.fixes.find((x) => x.id === id);
     if (!o) throw new StyleError(`Could not find thermo custom ${what} ID: ${id}`);
+    // a fix whose sizes are the native ones now (fix vector) is checked here, as native's parse_fields does
+    if ('sizeExact' in o && o.sizeExact) this.checkFieldValue(k);
   }
 
   /**
@@ -212,14 +214,18 @@ export class Thermo {
     const o = kind === 'c' ? this.sys.computes.find((x) => x.id === id) : this.sys.fixes.find((x) => x.id === id);
     if (!o) return;
     const range = '\nFor more information see https://docs.lammps.org/err0020';
+    // native compares with the sizes unless they vary (size_vector_variable, size_array_rows_variable)
+    const exact = 'sizeExact' in o && o.sizeExact;
+    const vecVar = 'sizeVectorVariable' in o && o.sizeVectorVariable;
+    const rowsVar = 'sizeArrayRowsVariable' in o && o.sizeArrayRowsVariable;
     if (idx.length === 0 && !o.scalarFlag) throw new StyleError(`Thermo custom ${what} ${id} does not compute a scalar`);
     if (idx.length === 1) {
       if (!o.vectorFlag) throw new StyleError(`Thermo custom ${what} ${id} does not compute a vector`);
-      if (idx[0] < 1 || (o.sizeVector > 0 && idx[0] > o.sizeVector)) throw new StyleError(`Thermo custom ${what} ${id} vector is accessed out-of-range${range}`);
+      if (idx[0] < 1 || ((o.sizeVector > 0 || exact) && !vecVar && idx[0] > o.sizeVector)) throw new StyleError(`Thermo custom ${what} ${id} vector is accessed out-of-range${range}`);
     }
     if (idx.length === 2) {
       if (!o.arrayFlag) throw new StyleError(`Thermo custom ${what} ${id} does not compute an array`);
-      if (idx[0] < 1 || idx[1] < 1 || (o.sizeArrayRows > 0 && idx[0] > o.sizeArrayRows) || (o.sizeArrayCols > 0 && idx[1] > o.sizeArrayCols)) {
+      if (idx[0] < 1 || idx[1] < 1 || ((o.sizeArrayRows > 0 || exact) && !rowsVar && idx[0] > o.sizeArrayRows) || (o.sizeArrayCols > 0 && idx[1] > o.sizeArrayCols)) {
         throw new StyleError(`Thermo custom ${what} ${id} array is accessed out-of-range${range}`);
       }
     }
@@ -546,7 +552,13 @@ export class Thermo {
     }
     const f = sys.fix(id);
     if (i === null) return this.normalize(f.computeScalar(), f.extscalar === 1);
-    if (j === null) return this.normalize(f.computeVector(i - 1), f.extlist ? f.extlist[i - 1] === 1 : f.extvector === 1);
+    // As native LAMMPS does (src/thermo.cpp compute_fix at b332f28): past the end of a vector or array whose length
+    // varies the value is 0
+    if (j === null) {
+      if (f.sizeVectorVariable && i > f.sizeVector) return 0;
+      return this.normalize(f.computeVector(i - 1), f.extlist ? f.extlist[i - 1] === 1 : f.extvector === 1);
+    }
+    if (f.sizeArrayRowsVariable && i > f.sizeArrayRows) return 0;
     return this.normalize(f.computeArray(i - 1, j - 1), f.extarray === 1);
   }
 

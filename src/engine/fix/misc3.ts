@@ -1,7 +1,8 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { globalScalar, parseRef, type Ref } from '../refs';
+import { missingArgs, inumeric, bnumeric } from '../force/util';
+import { errorUrl } from '../formula';
 import { BlockRegion, ConeRegion, SphereRegion, type Region, type SurfaceContact } from '../region';
 import { massOf, nativeOrder } from '../atoms';
 import { RanMars } from '../rng';
@@ -10,7 +11,7 @@ import { gplHook } from '../gplHooks';
 
 /*
  * Fixes of the misc3 wave: fix vector, fix wall/region, fix wall/reflect/stochastic.
- * Implemented from docs.lammps.org pages only (never from LAMMPS source).
+ * Implemented from docs.lammps.org pages; fix vector follows native LAMMPS as noted at it.
  */
 
 /*
@@ -36,141 +37,200 @@ import { gplHook } from '../gplHooks';
  * by the compute is used."
  * "The values can only be accessed on timesteps that are multiples of
  * *Nevery*."
- * "If the fix produces a vector, then the entire vector will be either
- * "intensive" or "extensive", depending on whether the values stored in the
- * vector are "intensive" or "extensive". If the fix produces an array, then
- * all elements in the array must be the same, either "intensive" or
- * "extensive". ... Values produced by a variable are treated as intensive."
  * "This fix is not invoked during energy minimization."
  *
- * Measured with native LAMMPS (black box): the step-0 sample is taken at the
- * setup of a run (run 0 stores one entry); a run that starts on a multiple of
- * Nevery does not store that step twice; an f_ID[I] reference on a step that
- * is not a multiple of Nevery errors (not computed at a compatible time);
- * mixing an extensive and an intensive input errors ("cannot set output array
- * intensive/extensive from these inputs").
- *
- * Deviation: the default storage of LAMMPS (sized from the run length, and
- * discarding the oldest entry for "pre no" runs) is not emulated; without
- * nmax the vector grows for the whole session (the measured behaviour of
- * pre yes runs).
+ * As native LAMMPS does (src/fix_vector.cpp at b332f28): the values are read as
+ * ArgInfo references up to the first word that is none, then only the nmax
+ * keyword; the first sample is the first multiple of Nevery at or after the
+ * step the fix was defined on, and later samples follow every Nevery steps from
+ * it (a run that does not reach that step, such as a minimization, leaves the
+ * fix waiting for it). Each run's init sizes the storage for the samples up to
+ * the run's end step (its stop value), at most nmax; a run with pre no keeps the
+ * old size, and once the storage is full the oldest entry is overwritten. The
+ * fix itself does not check the step a value is read on: variables do it during
+ * a run (Variable::evaluate).
  */
+
+/** One input value: a compute, fix or variable and its index (0: the scalar, I: element I of the vector). */
+type VectorInput = { which: 'c' | 'f' | 'v'; id: string; argindex: number };
+
+/** The largest nmax (native MAXSMALLINT). */
+const MAX_SMALL_INT = 2147483647;
+
+/** The variable styles native's Variable::equalstyle accepts (without Python). */
+const EQUAL_STYLES = new Set(['equal', 'timer', 'internal']);
+
+/**
+ * A c_ID, f_ID or v_name reference with up to two [I] indices, as native's ArgInfo with computes, fixes and
+ * variables allowed reads it: null for a word that is none of these (the end of the values), dim 0 for no brackets,
+ * 'unknown' for brackets that do not hold a number.
+ */
+const vectorArg = (w: string): { which: 'c' | 'f' | 'v'; id: string; dim: number; index: number } | 'unknown' | null => {
+  const offset = w.length > 3 && w[1] === '2' && w[2] === '_' ? 3 : w.length > 2 && w[1] === '_' ? 2 : 0;
+  if (!offset || !'cfv'.includes(w[0])) return null;
+  const which = w[0] as 'c' | 'f' | 'v';
+  const open = w.indexOf('[', offset);
+  if (open < 0) return { which, id: w.slice(offset), dim: 0, index: 0 };
+  // std::stoi: leading blanks and a sign, then at least one digit; what follows the digits is ignored
+  const stoi = (t: string): number | null => {
+    const m = /^\s*([+-]?\d+)/.exec(t);
+    return m ? Number(m[1]) : null;
+  };
+  const open2 = w.indexOf('[', open + 1);
+  if (open2 >= 0) return 'unknown';
+  if (w[w.length - 1] !== ']' || w.indexOf(']') !== w.length - 1) return 'unknown';
+  const index = stoi(w.slice(open + 1, w.length - 1));
+  if (index === null) return 'unknown';
+  return { which, id: w.slice(offset, open), dim: 1, index };
+};
+
 export class FixVector extends Fix {
   readonly style = 'vector';
-  private readonly inputs: Ref[] = [];
-  private readonly nmax: number | null;
-  /** One row per stored sample; one column per input value. */
-  private rows: number[][] = [];
-  private lastStep = -1;
+  private readonly values: VectorInput[] = [];
+  private readonly nmaxval: number;
+  /** The stored rows (one value per input), ncountmax of them; filled in order, then overwritten from the oldest. */
+  private store: number[][] = [];
+  private allocated = false;
+  private ncount = 0;
+  private ncountmax = 1;
+  /** The next step that stores a row, and the first one. */
+  private nextstep: number;
+  private readonly initialstep: number;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const usage = `usage: fix ID group-ID vector Nevery value1 value2 ... [nmax length]`;
-    const every = Number(args[0]);
-    if (args.length < 2 || !Number.isInteger(every) || every < 1) {
-      throw new StyleError(`fix ${id} (vector): ${usage} (Nevery must be a positive integer, got '${args[0] ?? ''}')`);
-    }
-    this.nevery = every;
-    // fix_vector.cpp: global_freq = nevery
-    this.globalFreq = every;
-    let nmax: number | null = null;
+    if (args.length < 2) throw missingArgs('fix vector');
+    this.nevery = inumeric(args[0]);
+    if (this.nevery <= 0) throw new StyleError(`Invalid fix vector every argument: ${this.nevery}`);
+    let nmaxval = MAX_SMALL_INT;
     let k = 1;
     for (; k < args.length; k++) {
-      const w = args[k];
-      if (w === 'nmax') {
-        const v = Number(args[k + 1]);
-        if (!Number.isInteger(v) || v < 1) throw new StyleError(`fix ${id} (vector): nmax must be a positive integer, got '${args[k + 1] ?? ''}'`);
-        nmax = v;
-        k++;
-        continue;
-      }
-      if (nmax !== null) {
-        throw new StyleError(`fix ${id} (vector): unexpected '${w}' after nmax (input values come first, then keywords)`);
-      }
-      this.inputs.push(this.checkInput(w));
+      const a = vectorArg(args[k]);
+      if (a === null) break;
+      if (a === 'unknown') throw new StyleError(`Invalid fix vector argument: ${args[k]}`);
+      // an index below 1 in brackets: native reads the scalar for [0] and outside the vector for a negative index
+      if (a.index < 0) throw new StyleError(`fix vector: index ${a.index} in ${args[k]} is refused: native LAMMPS reads outside the vector for it`);
+      this.values.push({ which: a.which, id: a.id, argindex: a.index });
     }
-    if (!this.inputs.length) throw new StyleError(`fix ${id} (vector): ${usage} (no input value given)`);
-    this.nmax = nmax;
-    // the extensive/intensive flag of the output (fix.html: vector or array rules)
-    const exts = this.inputs.map((r) => this.extOf(r));
-    const allSame = exts.every((e) => e === exts[0]);
-    if (this.inputs.length === 1) {
+    for (; k < args.length; k += 2) {
+      if (args[k] !== 'nmax') throw new StyleError(`Unknown fix vector keyword: ${args[k]}`);
+      if (k + 2 > args.length) throw missingArgs('fix vector nmax');
+      nmaxval = bnumeric(args[k + 1]);
+      if (nmaxval < 1 || nmaxval > MAX_SMALL_INT) throw new StyleError('Invalid nmax value');
+    }
+    this.nmaxval = nmaxval;
+    // the inputs' sources and their intensive/extensive flags, which must agree
+    let ext: number | null = null;
+    for (const val of this.values) {
+      let value = 0;
+      if (val.which === 'c') {
+        const c = sys.computes.find((x) => x.id === val.id);
+        if (!c) throw new StyleError(`Compute ID ${val.id} for fix vector does not exist`);
+        if (val.argindex === 0 && !c.scalarFlag) throw new StyleError(`Fix vector compute ${val.id} does not calculate a scalar`);
+        if (val.argindex && !c.vectorFlag) throw new StyleError(`Fix vector compute ${val.id} does not calculate a vector`);
+        // an engine compute that sizes its vector at init reports 0 here
+        if (val.argindex && c.sizeVector > 0 && val.argindex > c.sizeVector) {
+          throw new StyleError(`Fix vector compute ${val.id} vector is accessed out-of-range${errorUrl(20)}`);
+        }
+        value = val.argindex === 0 ? c.extscalar : c.extlist ? c.extlist[val.argindex - 1] ?? 0 : c.extvector;
+      } else if (val.which === 'f') {
+        const f = sys.fixes.find((x) => x.id === val.id);
+        if (!f) throw new StyleError(`Fix ID ${val.id} for fix vector does not exist`);
+        if (val.argindex === 0 && !f.scalarFlag) throw new StyleError(`Fix vector fix ${val.id} does not calculate a scalar`);
+        if (val.argindex && !f.vectorFlag) throw new StyleError(`Fix vector fix ${val.id} does not calculate a vector`);
+        if (val.argindex && (f.sizeVector > 0 || f.sizeExact) && val.argindex > f.sizeVector) {
+          throw new StyleError(`Fix vector fix ${val.id} vector is accessed out-of-range${errorUrl(20)}`);
+        }
+        if (f.globalFreq > 0 && this.nevery % f.globalFreq) {
+          throw new StyleError(`Fix for fix ${val.id} vector not computed at compatible time${errorUrl(7)}`);
+        }
+        value = val.argindex === 0 ? f.extscalar : f.extlist ? f.extlist[val.argindex - 1] ?? 0 : f.extvector;
+      } else {
+        const v = sys.vars.get(val.id);
+        if (!v) throw new StyleError(`Variable name ${val.id} for fix vector does not exist`);
+        if (val.argindex === 0 && !EQUAL_STYLES.has(v.style)) throw new StyleError(`Fix vector variable ${val.id} is not equal-style variable`);
+        if (val.argindex && v.style !== 'vector') throw new StyleError(`Fix vector variable ${val.id} is not vector-style variable`);
+      }
+      if (ext === null) ext = value;
+      else if (value !== ext) throw new StyleError('Fix vector cannot set output array intensive/extensive from these inputs');
+    }
+    if (this.values.length === 1) {
       this.vectorFlag = true;
-      this.extvector = exts[0];
+      this.extvector = ext!;
     } else {
-      if (!allSame) {
-        throw new StyleError(`fix ${id} (vector): Fix vector cannot set output array intensive/extensive from these inputs`);
+      // Measured with native LAMMPS: without input values (fix vector 2 nmax 5) the fix is refused with the message of
+      // an output whose intensive/extensive flag is unset; native leaves the flag unassigned then.
+      if (!this.values.length) {
+        throw new StyleError(`Must set 'extarray' when setting 'array_flag' for fix vector.  Please contact the LAMMPS developers.${errorUrl(35)}`);
       }
       this.arrayFlag = true;
-      this.sizeArrayCols = this.inputs.length;
-      this.extarray = exts[0];
+      this.sizeArrayCols = this.values.length;
+      this.extarray = ext!;
     }
+    this.globalFreq = this.nevery;
+    this.sizeExact = true;
+    const step = sys.state.step;
+    this.nextstep = Math.floor(step / this.nevery) * this.nevery;
+    if (this.nextstep < step) this.nextstep += this.nevery;
+    this.initialstep = this.nextstep;
   }
 
-  /** Validates an input word (c_ID, c_ID[I], f_ID, f_ID[I], v_name, v_name[I]) and that its source exists. */
-  private checkInput(w: string): Ref {
-    const r = parseRef(w);
-    if (r.kind === 'v') {
-      if (!this.sys.vars.has(r.id)) throw new StyleError(`fix ${this.id} (vector): variable ${r.id} for fix vector does not exist`);
-    } else if (r.kind === 'c') {
-      const c = this.sys.compute(r.id);
-      if (c.peratomFlag) throw new StyleError(`fix ${this.id} (vector): compute ${r.id} must produce a global quantity, not per-atom`);
-    } else {
-      this.sys.fix(r.id);
+  /** The inputs must still exist; the storage grows (or shrinks) to the samples up to the run's end step, at most nmax. */
+  init(): void {
+    for (const val of this.values) {
+      if (val.which === 'c' && !this.sys.computes.some((x) => x.id === val.id)) throw new StyleError(`Compute ID ${val.id} for fix vector does not exist`);
+      if (val.which === 'f' && !this.sys.fixes.some((x) => x.id === val.id)) throw new StyleError(`Fix ID ${val.id} for fix vector does not exist`);
+      if (val.which === 'v' && !this.sys.vars.has(val.id)) throw new StyleError('Variable name for fix vector does not exist');
     }
-    return r;
+    const end = this.sys.run.endStep;
+    let finalstep = Math.floor(end / this.nevery) * this.nevery;
+    if (finalstep > end) finalstep -= this.nevery;
+    const oldmax = this.allocated ? this.ncountmax : 0;
+    let ncountmax = Math.floor((finalstep - this.initialstep) / this.nevery) + 1;
+    if (ncountmax <= 0) ncountmax = 1;
+    if (ncountmax > this.nmaxval) ncountmax = this.nmaxval;
+    this.ncountmax = ncountmax;
+    // rows stored in earlier runs are kept; new rows start at zero
+    if (ncountmax < this.store.length) this.store.length = ncountmax;
+    for (let i = Math.max(oldmax, this.store.length); i < ncountmax; i++) this.store.push(new Array<number>(this.values.length).fill(0));
+    this.allocated = true;
   }
 
-  /**
-   * Intensive (0) or extensive (1) of one input value: an element of a vector takes its own flag when the vector
-   * has a per-element list (as native LAMMPS does, src/fix_vector.cpp at b332f28: "else value = extlist[argindex-1]").
-   */
-  private extOf(r: Ref): number {
-    if (r.kind === 'v') return 0; // "Values produced by a variable are treated as intensive."
-    const src = r.kind === 'c' ? this.sys.compute(r.id) : this.sys.fix(r.id);
-    if (r.index === null) return src.extscalar;
-    return src.extlist ? src.extlist[r.index - 1] ?? 0 : src.extvector;
+  setup(): void { this.endOfStep(); }
+
+  endOfStep(): void {
+    if (this.sys.state.step !== this.nextstep) return;
+    const row = this.store[this.ncount % this.ncountmax];
+    this.values.forEach((val, i) => { row[i] = this.input(val); });
+    this.nextstep += this.nevery;
+    this.ncount++;
+    if (this.values.length === 1) this.sizeVector = Math.min(this.sizeVector + 1, this.ncountmax);
+    else this.sizeArrayRows = Math.min(this.sizeArrayRows + 1, this.ncountmax);
   }
 
-  /** Stores the inputs for the current step; nmax discards the oldest row. */
-  private sample(): void {
-    const step = this.sys.state.step;
-    if (step % this.nevery !== 0 || step === this.lastStep) return;
-    this.lastStep = step;
-    this.rows.push(this.inputs.map((r) => globalScalar(this.sys, r)));
-    if (this.nmax !== null && this.rows.length > this.nmax) this.rows.shift();
-    this.sizeVector = this.rows.length;
-    this.sizeArrayRows = this.rows.length;
-  }
-
-  /** Setup stores the step-0 (or first multiple of Nevery) sample. */
-  setup(): void { this.sample(); }
-
-  endOfStep(): void { this.sample(); }
-
-  /** "The values can only be accessed on timesteps that are multiples of Nevery." */
-  private checkTime(): void {
-    const step = this.sys.state.step;
-    if (step % this.nevery !== 0) {
-      throw new StyleError(`Fix with ID ${this.id} not computed at a compatible time (step ${step} is not a multiple of Nevery = ${this.nevery})`);
+  /** One input's current value; an element past the end of a vector-style variable is 0. */
+  private input(val: VectorInput): number {
+    if (val.which === 'c') {
+      const c = this.sys.compute(val.id);
+      return val.argindex === 0 ? c.scalarValue() : c.vectorValues()[val.argindex - 1];
     }
+    if (val.which === 'f') {
+      const f = this.sys.fix(val.id);
+      return val.argindex === 0 ? f.computeScalar() : f.computeVector(val.argindex - 1);
+    }
+    if (val.argindex === 0) return this.sys.equalVariable(val.id);
+    const vec = this.sys.vars.evalVector(val.id, this.sys.formulaEnv);
+    return vec.length < val.argindex ? 0 : vec[val.argindex - 1];
   }
 
-  computeVector(i: number): number {
-    this.checkTime();
-    if (!this.vectorFlag) throw new StyleError(`fix ${this.id} (vector) with several inputs is an array: use f_${this.id}[I][J]`);
-    const row = this.rows[i];
-    if (!row) throw new StyleError(`f_${this.id}[${i + 1}] is out of range (1..${this.rows.length})`);
-    return row[0];
+  /** Row I in storage order: once the storage is full, row 0 is the oldest kept entry. */
+  private row(i: number): number[] {
+    return this.store[this.ncount >= this.ncountmax ? (i + this.ncount) % this.ncountmax : i];
   }
 
-  computeArray(i: number, j: number): number {
-    this.checkTime();
-    if (!this.arrayFlag) throw new StyleError(`fix ${this.id} (vector) has a single input: its output is a vector, use f_${this.id}[I]`);
-    const row = this.rows[i];
-    if (!row) throw new StyleError(`f_${this.id}[${i + 1}][${j + 1}] is out of range (1..${this.rows.length})`);
-    return row[j];
-  }
+  computeVector(i: number): number { return this.row(i)[0]; }
+
+  computeArray(i: number, j: number): number { return this.row(i)[j]; }
 }
 
 /*

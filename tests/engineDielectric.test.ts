@@ -120,7 +120,7 @@ set group all epsilon 2
   it('a data file Atoms line with too few dielectric columns is refused by name', async () => {
     const short = dielData(1).replace('1 0 2 1.0 4 4 4 0 0 1 1 0 0 1 0\n', '1 0 2 1.0 4 4 4 0 0 1 1 0 0 1\n');
     expect(short).not.toBe(dielData(1));
-    await expect(runScript(`${DIEL_HEAD}`, { 'd.data': short })).rejects.toThrow(/expects 15 values/);
+    await expect(runScript(`${DIEL_HEAD}`, { 'd.data': short })).rejects.toThrow(/Incorrect format in Atoms section of data file/);
   });
 
   it('the dielectric pair styles need a kspace style for the long-range variant', async () => {

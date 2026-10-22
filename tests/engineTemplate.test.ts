@@ -90,14 +90,14 @@ describe('atom_style template', () => {
   it('refuses Bonds sections and bond headers in a template data file', async () => {
     const data = `t\n\n3 atoms\n1 atom types\n\n0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\nAtoms # template\n\n1 1 1 1 1 1 1 1\n2 1 1 2 1 2 1 1\n3 1 1 3 1 3 1 1\n\nBonds\n\n1 1 1 2\n`;
     const e = await errorOf(`units real\nmolecule c chain.txt\natom_style template c\nread_data t.data`, { 'chain.txt': CHAIN, 't.data': data });
-    expect(e?.message).toMatch(/topology of atom_style template comes from the molecule templates/);
+    expect(e?.message).toMatch(/Invalid data file section: Bonds/);
   });
 
   it('refuses a data file in the docs column order (native reads the type after the template columns)', async () => {
     // docs row "atom-ID atom-type molecule-ID template-index template-atom": "1 2 0 0 0" would read type 0 here
     const data = `t\n\n3 atoms\n2 atom types\n\n0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\nAtoms # template\n\n1 2 0 0 0 1 1 1\n2 1 1 1 1 2 1 1\n3 1 1 2 1 3 1 1\n`;
     const e = await errorOf(`units real\nmolecule c chain.txt\natom_style template c\nread_data t.data`, { 'chain.txt': CHAIN, 't.data': data });
-    expect(e?.message).toMatch(/atom type 0 is outside/);
+    expect(e?.message).toMatch(/Invalid atom type 0 in Atoms section of data file: 1 2 0 0 0 1 1 1/);
   });
 
   it('refuses create_atoms mol with a template other than the atom style template', async () => {

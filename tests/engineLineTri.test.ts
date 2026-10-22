@@ -118,7 +118,7 @@ describe('atom_style line in read_data', () => {
     const off = LINE2D.replace('1 1.5 2.0 2.5 2.0', '1 1.5 2.0 2.5 3.0');
     await expect(run(HEAD2, { 'line2d.data': off })).rejects.toThrow(/Inconsistent line segment/);
     const none = LINE2D.replace('2 4.0 5.0 6.0 5.0\n', '');
-    await expect(run(HEAD2, { 'line2d.data': none })).rejects.toThrow(/expected 2 lines|lineflag 1 but no Lines/);
+    await expect(run(HEAD2, { 'line2d.data': none })).rejects.toThrow(/Unexpected end of data file/);
     await expect(run(HEAD2, { 'line2d.data': LINE2D.replace('2 4.0 5.0 6.0 5.0', '3 4.0 5.0 6.0 5.0') })).rejects.toThrow(/is not a line segment/);
   });
 

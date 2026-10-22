@@ -35,7 +35,8 @@ describe('setup commands: refusals and limits measured with native LAMMPS', () =
   });
 
   it('read_data shift without add stops (native: Cannot use read_data shift without add keyword)', async () => {
-    const msg = await errorOf(`${BOX}read_data base.data shift 1 1 1\n`, { 'base.data': BONDS_DATA });
+    // without a box: with one, native first stops with "Cannot use read_data without add keyword after simulation box is defined"
+    const msg = await errorOf('units lj\natom_style atomic\nread_data base.data shift 1 1 1\n', { 'base.data': BONDS_DATA });
     expect(msg).toContain('Cannot use read_data shift without add keyword');
   });
 

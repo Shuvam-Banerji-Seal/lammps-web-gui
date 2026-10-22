@@ -1,6 +1,8 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
+import { bnumeric, inumeric, numeric } from '../force/util';
+import { errorUrl } from '../formula';
 import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { isSphStyle, SPH_CV, SPH_DESPH, SPH_DRHO, SPH_ESPH, SPH_RHO, SPH_VEST, appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle, isDielectricStyle, DIEL_AREA, DIEL_ED, DIEL_EM, DIEL_EPSILON, DIEL_CURVATURE, DIEL_QSCALED, isEdpdStyle, isMdpdStyle, tdpdSpecies, EDPD_TEMP, EDPD_CV, MDPD_RHO, TDPD_CC, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH, isDpdStyle, DPD_THETA } from '../atoms';
 import { lineFromEnds, lineEnds, triangleCorner, triangleAreaOfBody, type LineBonus } from '../lineTri';
@@ -10,7 +12,7 @@ import type { TriBody } from '../triBonus';
 import { expandTemplateTopology } from '../template';
 import { BODY_RECORD, POLY_OFF, bodyRecordOffset, bodyRecordStride, parseBodyStyle, polyRecordLength, polyStoredCounts, polyhedronFrame, principalFrame } from '../bodies';
 import { makeBox } from '../domain';
-import { LABEL_KINDS, LABEL_SECTION, isValidLabel, labelKindOfSection, type LabelKind } from '../labelmap';
+import { LABEL_KINDS, LABEL_SECTION, labelKindOfSection, type LabelKind } from '../labelmap';
 import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
 
 /*
@@ -124,21 +126,9 @@ export const atomStyleCols = (style: AtomStyle): string[] => {
   return out;
 };
 
-const HEADER_KEYS: [RegExp, string][] = [
-  [/^atoms$/, 'atoms'], [/^bonds$/, 'bonds'], [/^angles$/, 'angles'], [/^dihedrals$/, 'dihedrals'], [/^impropers$/, 'impropers'],
-  [/^atom types$/, 'atom types'], [/^bond types$/, 'bond types'], [/^angle types$/, 'angle types'],
-  [/^dihedral types$/, 'dihedral types'], [/^improper types$/, 'improper types'],
-  [/^extra (bond|angle|dihedral|improper|special) per atom$/, 'extra'],
-  [/^ellipsoids$/, 'ellipsoids'], [/^bodies$/, 'bodies'], [/^lines$/, 'lines'], [/^triangles$/, 'triangles'],
-];
 
-/** Sections whose lines name atom or molecular types: a Type Labels section must come before them (read_data.html). */
-const TYPE_SECTIONS = new Set([
-  'Atoms', 'Masses', 'Bonds', 'Angles', 'Dihedrals', 'Impropers', 'Pair Coeffs', 'PairIJ Coeffs',
-  'Bond Coeffs', 'Angle Coeffs', 'Dihedral Coeffs', 'Improper Coeffs',
-]);
-
-const SECTIONS = new Set([
+/** The data-file sections (native section_keywords). */
+export const DATA_SECTION_NAMES: ReadonlySet<string> = new Set([
   'Atoms', 'Velocities', 'Masses', 'Bonds', 'Angles', 'Dihedrals', 'Impropers',
   'Pair Coeffs', 'PairIJ Coeffs', 'Bond Coeffs', 'Angle Coeffs', 'Dihedral Coeffs', 'Improper Coeffs',
   'Ellipsoids', 'Lines', 'Triangles', 'Bodies',
@@ -169,7 +159,6 @@ const CLASS2_SECTIONS: Record<string, ['angle' | 'dihedral' | 'improper', string
   'AngleAngle Coeffs': ['improper', 'aa'],
 };
 
-for (const title of Object.keys(CLASS2_SECTIONS)) TYPE_SECTIONS.add(title);
 
 export interface ReadDataOptions {
   add: 'none' | 'append' | 'merge' | { id: number; mol: number };
@@ -344,13 +333,54 @@ const numOf = (w: string | undefined, what: string, line: number): number => {
 };
 
 /** read_data file [keywords] into the system. */
+/** The words of a data-file line up to the first that starts a comment ('#'), as native's Tokenizer and comment check. */
+const words = (l: string): string[] => {
+  const out: string[] = [];
+  for (const w of l.trim().split(/\s+/)) {
+    if (!w) continue;
+    if (w.startsWith('#')) break;
+    out.push(w);
+  }
+  return out;
+};
+
+/**
+ * native utils::is_type: 0 for a numeric type (digits, with at most one '*'), 1 for a type label (no leading digit,
+ * '*' or '#', no blank), -1 otherwise.
+ */
+const isType = (str: string): number => {
+  if (!str) return -1;
+  let numericOnly = true;
+  let nstar = 0;
+  for (const c of str) {
+    if (c >= '0' && c <= '9') continue;
+    if (c === '*') { nstar++; continue; }
+    numericOnly = false;
+  }
+  if (numericOnly && nstar < 2) return 0;
+  if (/^[0-9*#]/.test(str) || /[ \t\r\n\f]/.test(str)) return -1;
+  return 1;
+};
+
 export const readData = (sys: System, text: string, opts: ReadDataOptions): void => {
   // As native LAMMPS does (src/read_data.cpp ReadData::command at b332f28), before the file is read
   if (sys.dimension === 2 && sys.boundary[2][0] !== 'p') throw new StyleError('Cannot run 2d simulation with nonperiodic Z dimension');
+  // As native LAMMPS does (src/read_data.cpp header, parse_keyword and the section loop of command at b332f28): the
+  // file is read line by line as fgets reads it, the header lines are recognized by their pattern, and each section
+  // reads its count of lines, blank ones included
   const lines = text.split('\n');
+  if (lines.length && lines[lines.length - 1] === '') lines.pop();
+  let k = 0;
+  const next = (): string | null => (k < lines.length ? lines[k++].replace(/\r$/, '') : null);
+  /** native read_lines_from_file: exactly n lines; none (n = 0) or too few is the end of the file. */
+  const readLines = (n: number): string[] => {
+    if (n <= 0 || k + n > lines.length) throw new StyleError('Unexpected end of data file');
+    const out = lines.slice(k, k + n).map((l) => l.replace(/\r$/, ''));
+    k += n;
+    return out;
+  };
   // a read after the box exists (add keyword) is a subsequent read: its bonds are limited by the storage
   const subsequentRead = sys.hasBox;
-  // header: skip the first line (title)
   const h: Record<string, number> = {};
   let orthoLines = false;
   let lo: [number, number, number] = [-0.5, -0.5, -0.5];
@@ -358,52 +388,98 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   let tilt: [number, number, number] | null = null;
   // general triclinic header (Howto_triclinic.html): avec, bvec, cvec, abc origin
   const gen: { avec?: V3; bvec?: V3; cvec?: V3; origin?: V3 } = {};
-  let k = 1;
   // read_data.html: "header lines containing this string will be passed to fix"
   const headerFixes = [...opts.fixSections.values()].filter((e) => e.header !== 'NULL');
-  for (; k < lines.length; k++) {
-    const raw = lines[k].replace(/#.*/, '').trim();
-    if (!raw) continue;
-    if (SECTIONS.has(raw) || SECTIONS.has(lines[k].trim().split('#')[0].trim())) break;
-    const hf = headerFixes.find((e) => raw.includes(e.header));
+  const subs = atomSubStyles(sys.atomStyle);
+  if (next() === null) throw new StyleError('Unexpected end of data file');
+  /** The line the header stopped at, without its comment (null: the file ended in the header). */
+  let stopLine: string | null = null;
+  const F = '[-+0-9.eE]+';
+  const triple = (w: string[]): V3 => [numeric(w[0]), numeric(w[1]), numeric(w[2])];
+  for (;;) {
+    const raw = next();
+    if (raw === null) break;
+    const hash = raw.indexOf('#');
+    const t = hash >= 0 ? raw.slice(0, hash) : raw;
+    if (/^[ \t\n\r]*$/.test(t)) continue;
+    const hf = headerFixes.find((e) => t.includes(e.header));
     if (hf) {
       const fx = sys.fix(hf.fixId) as unknown as DataFix;
       if (!isDataFix(fx) || typeof fx.readHeader !== 'function') {
         throw new StyleError(`read_data fix ${hf.fixId}: header-string must be NULL (fix ${fx.style} reads no header lines)`);
       }
-      fx.readHeader(raw, k + 1);
+      fx.readHeader(t.trim(), k);
       continue;
     }
-    const w = raw.split(/\s+/);
-    const rest = w.slice(1).join(' ');
-    const rest3 = w.slice(3).join(' ');
-    const rest2 = w.slice(2).join(' ');
-    if (rest2 === 'xlo xhi' || rest2 === 'ylo yhi' || rest2 === 'zlo zhi') {
-      const d = 'xyz'.indexOf(rest2[0]);
-      lo[d] = numOf(w[0], rest2, k + 1);
-      hi[d] = numOf(w[1], rest2, k + 1);
-      orthoLines = true;
-      continue;
+    const w = t.trim().split(/\s+/);
+    const L = `${t}\n`;
+    const is = (re: string): boolean => new RegExp(re).test(L);
+    if (is('^\\s*\\d+\\s+atoms\\s')) h.atoms = bnumeric(w[0]);
+    else if (is('^\\s*\\d+\\s+ellipsoids\\s')) {
+      if (!subs.includes('ellipsoid')) throw new StyleError('No ellipsoids allowed with this atom style');
+      h.ellipsoids = bnumeric(w[0]);
+    } else if (is('^\\s*\\d+\\s+lines\\s')) {
+      if (!subs.includes('line')) throw new StyleError('No lines allowed with this atom style');
+      h.lines = bnumeric(w[0]);
+    } else if (is('^\\s*\\d+\\s+triangles\\s')) {
+      if (!subs.includes('tri')) throw new StyleError('No triangles allowed with this atom style');
+      h.triangles = bnumeric(w[0]);
+    } else if (is('^\\s*\\d+\\s+bodies\\s')) {
+      if (!subs.includes('body')) throw new StyleError('No bodies allowed with this atom style');
+      h.bodies = bnumeric(w[0]);
+    } else if (is('^\\s*\\d+\\s+bonds\\s')) h.bonds = bnumeric(w[0]);
+    else if (is('^\\s*\\d+\\s+angles\\s')) h.angles = bnumeric(w[0]);
+    else if (is('^\\s*\\d+\\s+dihedrals\\s')) h.dihedrals = bnumeric(w[0]);
+    else if (is('^\\s*\\d+\\s+impropers\\s')) h.impropers = bnumeric(w[0]);
+    else if (is('^\\s*\\d+\\s+atom\\s+types\\s')) h['atom types'] = inumeric(w[0]);
+    // native's pattern for bond types has no ^
+    else if (is('\\s*\\d+\\s+bond\\s+types\\s')) h['bond types'] = inumeric(w[0]);
+    else if (is('^\\s*\\d+\\s+angle\\s+types\\s')) h['angle types'] = inumeric(w[0]);
+    else if (is('^\\s*\\d+\\s+dihedral\\s+types\\s')) h['dihedral types'] = inumeric(w[0]);
+    else if (is('^\\s*\\d+\\s+improper\\s+types\\s')) h['improper types'] = inumeric(w[0]);
+    else if (/extra (bond|angle|dihedral|improper|special) per atom/.test(t)) {
+      if (opts.add === 'none') inumeric(w[0]);
+    } else if (is(`^\\s*${F}\\s+${F}\\s+xlo\\s+xhi\\s`)) { lo[0] = numeric(w[0]); hi[0] = numeric(w[1]); orthoLines = true; }
+    else if (is(`^\\s*${F}\\s+${F}\\s+ylo\\s+yhi\\s`)) { lo[1] = numeric(w[0]); hi[1] = numeric(w[1]); orthoLines = true; }
+    else if (is(`^\\s*${F}\\s+${F}\\s+zlo\\s+zhi\\s`)) { lo[2] = numeric(w[0]); hi[2] = numeric(w[1]); orthoLines = true; }
+    else if (is(`^\\s*${F}\\s+${F}\\s+${F}\\s+xy\\s+xz\\s+yz\\s`)) { tilt = triple(w); orthoLines = true; }
+    else if (is(`^\\s*${F}\\s+${F}\\s+${F}\\s+avec\\s`)) gen.avec = triple(w);
+    else if (is(`^\\s*${F}\\s+${F}\\s+${F}\\s+bvec\\s`)) gen.bvec = triple(w);
+    else if (is(`^\\s*${F}\\s+${F}\\s+${F}\\s+cvec\\s`)) gen.cvec = triple(w);
+    else if (is(`^\\s*${F}\\s+${F}\\s+${F}\\s+abc\\s+origin\\s`)) gen.origin = triple(w);
+    else { stopLine = t; break; }
+  }
+  /**
+   * native parse_keyword: the section keyword (the next line that is not blank or a comment, or the given line) and
+   * the style after its '#'; the line after the keyword is always skipped, and when there is none the keyword is
+   * empty (the end of the file).
+   */
+  const parseKeyword = (given: string | null): { keyword: string; style: string } => {
+    let line = given ?? next();
+    while (line !== null && (/^[ \t\n\r]*$/.test(line) || /^[ \t\n\r]*#/.test(line))) line = next();
+    if (line === null || next() === null) return { keyword: '', style: '' };
+    const hash = line.indexOf('#');
+    return { keyword: (hash >= 0 ? line.slice(0, hash) : line).trim(), style: hash >= 0 ? line.slice(hash + 1).trim() : '' };
+  };
+  // the header ends at the first section keyword, which must be a data-file section (a fix section is not one here)
+  let kw = { keyword: '', style: '' };
+  if (stopLine !== null) {
+    kw = parseKeyword(stopLine);
+    if (!DATA_SECTION_NAMES.has(kw.keyword)) throw new StyleError(`Unknown identifier in data file: ${kw.keyword}${errorUrl(1)}`);
+    const level = topologyLevel(sys.atomStyle);
+    const tmpl = subs.includes('template');
+    const allow = [level >= 1 || tmpl || subs.includes('bpm/sphere'), level >= 2 || tmpl, level >= 3 || tmpl, level >= 3 || tmpl];
+    (['bond', 'angle', 'dihedral', 'improper'] as const).forEach((x, i) => {
+      if (((h[`${x}s`] ?? 0) || (h[`${x} types`] ?? 0)) && !allow[i]) throw new StyleError(`No ${x}s allowed with this atom style`);
+    });
+    (['bond', 'angle', 'dihedral', 'improper'] as const).forEach((x) => {
+      if ((h[`${x}s`] ?? 0) > 0 && !((h[`${x} types`] ?? 0) + opts.extraTypes[['bond', 'angle', 'dihedral', 'improper'].indexOf(x) + 1] > 0)) {
+        throw new StyleError(`${x[0].toUpperCase()}${x.slice(1)}s defined but no ${x} types`);
+      }
+    });
+    if (tmpl && ((h.bonds ?? 0) || (h.angles ?? 0) || (h.dihedrals ?? 0) || (h.impropers ?? 0))) {
+      throw new StyleError('No molecule topology allowed with atom style template');
     }
-    if (rest3 === 'xy xz yz') {
-      tilt = [numOf(w[0], 'xy', k + 1), numOf(w[1], 'xz', k + 1), numOf(w[2], 'yz', k + 1)];
-      orthoLines = true;
-      continue;
-    }
-    if (rest3 === 'avec' || rest3 === 'bvec' || rest3 === 'cvec') {
-      gen[rest3] = [numOf(w[0], rest3, k + 1), numOf(w[1], rest3, k + 1), numOf(w[2], rest3, k + 1)];
-      continue;
-    }
-    if (rest3 === 'abc origin') {
-      gen.origin = [numOf(w[0], 'abc origin', k + 1), numOf(w[1], 'abc origin', k + 1), numOf(w[2], 'abc origin', k + 1)];
-      continue;
-    }
-    const key = HEADER_KEYS.find(([re]) => re.test(rest));
-    if (!key) {
-      if (/^(ellipsoids|lines|triangles|bodies)$/.test(rest)) throw new StyleError(`data file header '${rest}' needs an atom style the browser engine does not support`);
-      throw new StyleError(`unknown data file header line ${k + 1}: '${raw}'`);
-    }
-    if (key[1] !== 'extra') h[key[1]] = intOf(w[0], rest, k + 1);
   }
   const ntypesFile = h['atom types'] ?? 0;
   const s0 = sys.hasBox ? sys.state : null;
@@ -424,6 +500,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     lo = genFrame.lo; hi = genFrame.hi; tilt = genFrame.tilt;
   }
   let s: SimState;
+  // native Domain::set_initial_box: every dimension needs lo < hi
+  if (!adding && !genFrame && (lo[0] >= hi[0] || lo[1] >= hi[1] || lo[2] >= hi[2])) throw new StyleError('Box bounds are invalid or missing');
   if (!adding) {
     if (sys.dimension === 2 && !(lo[2] < 0 && hi[2] > 0)) throw new StyleError('read_data: for a 2d simulation zlo and zhi must straddle zero');
     const box = makeBox({ lo, hi, boundary: sys.boundary, tilt: tilt ?? undefined });
@@ -477,7 +555,6 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const linePending = new Map<number, number>();
   const triPending = new Map<number, number>();
   // read_data.html: a Type Labels section must come before any section involving types ("Must read Type Labels before any section involving types")
-  let typesRead = false;
   /**
    * atom_style body rounded/polyhedron: the Bodies entries (native body_rounded_polyhedron.cpp data_body). The
    * record of each body holds its counts, the principal moments, the enclosing and rounded radii, the body-frame
@@ -567,35 +644,43 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     if (bodyPending.size) throw new StyleError(`data file: ${bodyPending.size} atoms have bodyflag 1 but no Bodies entry`);
   };
   /**
-   * A type column of a data line: a numeric type (plus the offset) or a type label of the kind. Offsets are
-   * ignored on a label (read_data.html: "the type labels will determine the actual types directly").
+   * An atom type of an Atoms line as native's data_atoms reads it: a numeric type plus the offset, in range, or a
+   * defined type label.
    */
-  const typeCol = (v: string, kind: LabelKind, off: number, at: number, what: string): number => {
-    if (!/^[+-]?\d/.test(v)) {
-      const t = sys.labels.typeOf(kind, v);
-      if (t === undefined) throw new StyleError(`data file line ${at}: Invalid line in ${what} section of data file: ${kind} type label ${v} is not defined`);
+  const atomTypeOf = (typestr: string, off: number, loc: string, line: string, ntypes: number): number => {
+    const kind = isType(typestr);
+    if (kind === 0) {
+      const t = inumeric(typestr) + off;
+      if (t < 1 || t > ntypes) throw new StyleError(`Invalid atom type ${t} in ${loc}: ${line}`);
       return t;
     }
-    return intOf(v, `${kind}-type`, at) + off;
+    const t = kind === 1 ? sys.labels.typeOf('atom', typestr) : undefined;
+    if (t === undefined) throw new StyleError(`Invalid line in ${loc}: ${line}`);
+    return t;
   };
   /** atom_style body: atoms with bodyflag 1 waiting for their Bodies entry. */
   const bodyPending = new Set<number>();
-  const coeffLines: { section: string; line: string; at: number }[] = [];
   const topo: { kind: 'bonds' | 'angles' | 'dihedrals' | 'impropers'; type: number; ids: number[] }[] = [];
   const fixRows: { fx: DataFix; rows: { w: string[]; at: number }[]; title: string }[] = [];
-  // sections
-  while (k < lines.length) {
-    const title = lines[k].split('#')[0].trim();
-    const hint = (lines[k].split('#')[1] ?? '').trim();
-    k++;
-    if (!title) continue;
-    // read_data.html: "The *next* line is *always* skipped." Measured with native LAMMPS (black box): a
-    // non-blank line there (e.g. a column legend) is ignored, and with no blank line the first value line is lost.
-    k++;
-    // read_data.html: "fix values = fix-ID header-string section-string" — a section named
-    // section-string carries one line per atom for that fix
-    const fixEntry = opts.fixSections.get(title);
-    if (fixEntry !== undefined) {
+  // sections, in native's dispatch order: a data-file section, else a fix's section, else an unknown identifier
+  let atomflag = false;
+  const seen = new Set<string>();
+  /** native settypeflag: a Masses or coefficient section was read, so no Type Labels section may follow */
+  let settypeflag = false;
+  const kindIndex = { Bonds: 1, Angles: 2, Dihedrals: 3, Impropers: 4 } as Record<string, number>;
+  const allowed = (i: number): boolean => {
+    const level = topologyLevel(sys.atomStyle);
+    const tmpl = subs.includes('template');
+    return [level >= 1 || tmpl || subs.includes('bpm/sphere'), level >= 2 || tmpl, level >= 3 || tmpl, level >= 3 || tmpl][i];
+  };
+  for (; kw.keyword !== ''; kw = parseKeyword(null)) {
+    const title = kw.keyword;
+    const hint = kw.style;
+    seen.add(title);
+    if (!DATA_SECTION_NAMES.has(title)) {
+      // read_data.html: "fix values = fix-ID header-string section-string" — a section named section-string
+      const fixEntry = opts.fixSections.get(title);
+      if (fixEntry === undefined) throw new StyleError(`Unknown identifier in data file: ${title}${errorUrl(1)}`);
       const fixId = fixEntry.fixId;
       const fx = sys.fix(fixId) as unknown as DataFix;
       if (!isDataFix(fx) || (typeof fx.readValues !== 'function' && typeof fx.readSection !== 'function')) {
@@ -603,22 +688,45 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
       }
       // the fix says how many lines its section holds (per-atom fixes: one line per atom)
       const nlines = fx.sectionLines ? fx.sectionLines(natoms, title) : natoms;
+      const at0 = k;
       const rows: { w: string[]; at: number }[] = [];
-      while (rows.length < nlines && k < lines.length) {
-        const t = lines[k].replace(/#.*/, '').trim();
-        k++;
-        if (!t) continue;
-        rows.push({ w: t.split(/\s+/), at: k });
+      if (nlines > 0) {
+        readLines(nlines).forEach((l, i) => {
+          const t = l.replace(/#.*/, '').trim();
+          if (t) rows.push({ w: t.split(/\s+/), at: at0 + i + 1 });
+        });
       }
-      if (rows.length < nlines) throw new StyleError(`data file section ${title}: expected ${nlines} lines, found ${rows.length}`);
       fixRows.push({ fx, rows, title });
       continue;
     }
-    if (!SECTIONS.has(title)) throw new StyleError(`unknown data file section '${title}' (line ${k})`);
     const labelKind = labelKindOfSection(title);
-    if (labelKind && typesRead) throw new StyleError('Must read Type Labels before any section involving types');
-    if (labelKind && adding) throw new StyleError(`read_data: ${title} with add append/merge is not supported by the browser engine`);
-    if (TYPE_SECTIONS.has(title)) typesRead = true;
+    if (labelKind) {
+      if (settypeflag) throw new StyleError('Must read Type Labels before any section involving types');
+      if (adding) throw new StyleError(`read_data: ${title} with add append/merge is not supported by the browser engine`);
+      const before = { atom: 'Atoms', bond: 'Bonds', angle: 'Angles', dihedral: 'Dihedrals', improper: 'Impropers' }[labelKind];
+      if (seen.has(before)) throw new StyleError(`Must read ${title} before ${before}`);
+    }
+    if (title === 'Masses' || title.endsWith(' Coeffs')) settypeflag = true;
+    if (title === 'Atoms') atomflag = true;
+    if (title === 'Velocities' && !atomflag) throw new StyleError('Must read Atoms before Velocities');
+    if (kindIndex[title]) {
+      if (!((h[title.toLowerCase()] ?? 0) > 0)) throw new StyleError(`Invalid data file section: ${title}`);
+      if (!atomflag) throw new StyleError(`Must read Atoms before ${title}`);
+    }
+    const bonusSub = { Ellipsoids: 'ellipsoid', Lines: 'line', Triangles: 'tri', Bodies: 'body' }[title];
+    if (bonusSub) {
+      if (!subs.includes(bonusSub)) throw new StyleError(`Invalid data file section: ${title}`);
+      if (!atomflag) throw new StyleError(`Must read Atoms before ${title}`);
+    }
+    if ((title === 'Pair Coeffs' || title === 'PairIJ Coeffs') && !sys.ff.pair && !opts.nocoeff) {
+      throw new StyleError(`Must define pair_style before ${title}`);
+    }
+    const coeffKind = title === 'Bond Coeffs' ? 'bond' : title === 'Angle Coeffs' ? 'angle' : title === 'Dihedral Coeffs' ? 'dihedral'
+      : title === 'Improper Coeffs' ? 'improper' : CLASS2_SECTIONS[title]?.[0];
+    if (coeffKind) {
+      if (!allowed(['bond', 'angle', 'dihedral', 'improper'].indexOf(coeffKind))) throw new StyleError(`Invalid data file section: ${title}`);
+      if (!sys.ff[coeffKind] && !opts.nocoeff) throw new StyleError(`Must define ${coeffKind}_style before ${title}`);
+    }
     // read_data.html: "The *Bodies* section must appear if atom_style body is used"; its entries have no fixed
     // line count (Ninteger and Ndouble values per body, read line by line), so it is read here.
     if (title === 'Bodies') {
@@ -676,7 +784,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
       if (bodyPending.size) throw new StyleError(`data file: ${bodyPending.size} atoms have bodyflag 1 but no Bodies entry`);
       continue;
     }
-    // count of lines expected
+    // count of lines: each section reads its count of lines, blank and comment lines included
     const count = (() => {
       switch (title) {
         case 'Atoms': case 'Velocities': return natoms;
@@ -698,164 +806,195 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         case 'MiddleBondTorsion Coeffs': case 'EndBondTorsion Coeffs': case 'AngleTorsion Coeffs':
         case 'AngleAngleTorsion Coeffs': case 'BondBond13 Coeffs': return h['dihedral types'] ?? 0;
         case 'AngleAngle Coeffs': return h['improper types'] ?? 0;
-        case 'Ellipsoids':
-          if (!s.shape) throw new StyleError('data file section Ellipsoids needs atom_style ellipsoid');
-          return h.ellipsoids ?? 0;
-        // read_data.html: "The *Lines* section must appear if atom_style line is used and any atoms are listed in the *Atoms* section with a lineflag = 1"
-        case 'Lines':
-          if (!isLineStyle(style)) throw new StyleError('data file section Lines needs atom_style line');
-          return h.lines ?? 0;
-        case 'Triangles':
-          if (!isTriStyle(style)) throw new StyleError('data file section Triangles needs atom_style tri');
-          return h.triangles ?? 0;
-        default: throw new StyleError(`data file section '${title}' needs features the browser engine does not support (type labels, class2 cross terms or finite-size particles)`);
+        case 'Ellipsoids': return h.ellipsoids ?? 0;
+        case 'Lines': return h.lines ?? 0;
+        case 'Triangles': return h.triangles ?? 0;
+        default: throw new StyleError(`data file section '${title}' needs features the browser engine does not support`);
       }
     })();
-    if (title === 'Atoms' && hint && hint !== style) sys.warn(`atom style in data file (${hint}) differs from the current atom style (${style})`);
+    if (title === 'Atoms' && hint && hint !== style) sys.warn(`Atom style in data file ${hint} differs from currently defined atom style ${style}`);
+    // Masses, Pair Coeffs and PairIJ Coeffs read their lines even for no types (native read_lines_from_file then
+    // reports the end of the file); the other sections read nothing for a count of 0
+    const at0 = k;
+    const raw = count > 0 || title === 'Masses' || title === 'Pair Coeffs' || title === 'PairIJ Coeffs' ? readLines(count) : [];
+    /** The section's lines that are not blank, their words up to a word that starts a comment. */
     const body: { w: string[]; at: number }[] = [];
-    // read `count` non-blank lines (the line after the title was skipped above)
-    while (body.length < count && k < lines.length) {
-      const t = lines[k].replace(/#.*/, '').trim();
-      k++;
-      if (!t) continue;
-      body.push({ w: t.split(/\s+/), at: k });
-    }
-    if (body.length < count) throw new StyleError(`data file section ${title}: expected ${count} lines, found ${body.length}`);
+    raw.forEach((l, i) => {
+      const w = words(l);
+      if (w.length) body.push({ w, at: at0 + i + 1 });
+    });
     switch (title) {
       case 'Atoms': {
         sawAtoms = true;
-        const x = new Float64Array(3 * count), type = new Int32Array(count), id = new Int32Array(count);
-        const mol = new Int32Array(count), q = new Float64Array(count), image = new Int32Array(3 * count);
-        const radius = new Float64Array(count), density = new Float64Array(count), vol = new Float64Array(count);
-        const mu = s.mu ? new Float64Array(4 * count) : null;
-        const spin = s.sp ? new Float64Array(4 * count) : null;
-        const eflag = s.shape ? new Uint8Array(count) : null;
+        // As native LAMMPS does (src/atom.cpp data_atoms, src/atom_vec.cpp data_atom and the styles' data_atom_post at
+        // b332f28): the first line sets the number of words (the style's columns, or 3 more with image flags); blank and
+        // comment lines are skipped, a line with fewer words, or more that do not start a comment, is refused
+        const loc = 'Atoms section of data file';
+        const nwords = raw.length ? words(raw[0]).length : 0;
+        if (raw.length && nwords !== cols.length && nwords !== cols.length + 3) {
+          throw new StyleError(`Incorrect format in ${loc}: ${raw[0].trim()}${errorUrl(2)}`);
+        }
+        const rows: { w: string[]; line: string; at: number }[] = [];
+        raw.forEach((l, i) => {
+          const v = l.trim() ? l.trim().split(/\s+/) : [];
+          if (!v.length || v[0].startsWith('#')) return;
+          rows.push({ w: v, line: l.trim(), at: at0 + i + 1 });
+        });
+        const nrow = rows.length;
+        const xcol = cols.indexOf('x');
+        const resetImage = [false, false, false];
+        const x = new Float64Array(3 * nrow), type = new Int32Array(nrow), id = new Int32Array(nrow);
+        const mol = new Int32Array(nrow), q = new Float64Array(nrow), image = new Int32Array(3 * nrow);
+        const radius = new Float64Array(nrow), density = new Float64Array(nrow), vol = new Float64Array(nrow);
+        const mu = s.mu ? new Float64Array(4 * nrow) : null;
+        const spin = s.sp ? new Float64Array(4 * nrow) : null;
+        const eflag = s.shape ? new Uint8Array(nrow) : null;
         // atom_style line: lineflag; atom_style tri: triangleflag (read_data.html: 1 for line segment or triangular particles, 0 for point particles)
-        const lflag = isLineStyle(style) || isTriStyle(style) ? new Uint8Array(count) : null;
-        const tIdx = new Int32Array(count), tAt = new Int32Array(count);
-        const espin = new Float64Array(count), eradius = new Float64Array(count);
-        const rheoStatus = isRheoStyle(style) ? new Float64Array(count) : null, rheoRho = isRheoStyle(style) ? new Float64Array(count) : null;
-        const rheoEsph = isRheoThermalStyle(style) ? new Float64Array(count) : null;
-        const diel = isDielectricStyle(style) ? { area: new Float64Array(count), ed: new Float64Array(count), em: new Float64Array(count), epsilon: new Float64Array(count), curvature: new Float64Array(count) } : null;
-        const sph = isSphStyle(style) ? { rho: new Float64Array(count), esph: new Float64Array(count), cv: new Float64Array(count) } : null;
-        const bflag = parseBodyStyle(style) ? new Uint8Array(count) : null;
-        // atom_style edpd / mdpd / tdpd (read_data.html: "edpd_temp", "edpd_cv", "rho", "ccN"); the species count of tdpd
+        const lflag = isLineStyle(style) || isTriStyle(style) ? new Uint8Array(nrow) : null;
+        const tIdx = new Int32Array(nrow), tAt = new Int32Array(nrow);
+        const espin = new Float64Array(nrow), eradius = new Float64Array(nrow);
+        const rheoStatus = isRheoStyle(style) ? new Float64Array(nrow) : null, rheoRho = isRheoStyle(style) ? new Float64Array(nrow) : null;
+        const rheoEsph = isRheoThermalStyle(style) ? new Float64Array(nrow) : null;
+        const diel = isDielectricStyle(style) ? { area: new Float64Array(nrow), ed: new Float64Array(nrow), em: new Float64Array(nrow), epsilon: new Float64Array(nrow), curvature: new Float64Array(nrow) } : null;
+        const sph = isSphStyle(style) ? { rho: new Float64Array(nrow), esph: new Float64Array(nrow), cv: new Float64Array(nrow) } : null;
+        const bflag = parseBodyStyle(style) ? new Uint8Array(nrow) : null;
+        // atom_style edpd / mdpd / tdpd (read_data.html: "edpd_temp", "edpd_cv", "rho", "ccN"); the species nrow of tdpd
         const nsp = tdpdSpecies(style);
         const dm = isEdpdStyle(style) || isMdpdStyle(style) || nsp > 0
-          ? { temp: new Float64Array(count), cv: new Float64Array(count), rho: new Float64Array(count), cc: new Float64Array(count * nsp) }
+          ? { temp: new Float64Array(nrow), cv: new Float64Array(nrow), rho: new Float64Array(nrow), cc: new Float64Array(nrow * nsp) }
           : null;
-        const dpdTh = isDpdStyle(style) ? new Float64Array(count) : null;
+        const dpdTh = isDpdStyle(style) ? new Float64Array(nrow) : null;
         // atom_style smd (read_data.html): the contact radius and the mass are columns; the kernel radius is the radius
-        const smdCr = isSmdStyle(style) ? new Float64Array(count) : null;
-        const smdRm = isSmdStyle(style) ? new Float64Array(count) : null;
-        body.forEach(({ w, at }, a) => {
-          if (w.length !== cols.length && w.length !== cols.length + 3) {
-            throw new StyleError(`data file line ${at}: Atoms # ${style} expects ${cols.length} values (+3 image flags), got ${w.length}`);
+        const smdCr = isSmdStyle(style) ? new Float64Array(nrow) : null;
+        const smdRm = isSmdStyle(style) ? new Float64Array(nrow) : null;
+        rows.forEach(({ w: all, line, at }, a) => {
+          // line by line: the format of a line is checked when it is reached
+          if (all.length < nwords || (all.length > nwords && !all[nwords].startsWith('#'))) {
+            throw new StyleError(`Incorrect format in ${loc}: ${line}${errorUrl(2)}`);
           }
+          const w = all.slice(0, nwords);
+          if (nwords > cols.length) {
+            const im = [inumeric(w[nwords - 3]), inumeric(w[nwords - 2]), inumeric(w[nwords - 1])];
+            if (sys.dimension === 2 && im[2] !== 0) throw new StyleError('Z-direction image flag must be 0 for 2d-systems');
+            for (let d = 0; d < 3; d++) {
+              if (!s.box.periodic[d] && im[d] !== 0) { resetImage[d] = true; im[d] = 0; }
+              image[3 * a + d] = im[d];
+            }
+          }
+          const xd = [numeric(w[xcol]), numeric(w[xcol + 1]), numeric(w[xcol + 2])];
+          if (sys.dimension === 2) {
+            if (Math.abs(xd[2]) > 1e-12) throw new StyleError('Read_data atom z coord is non-zero for 2d simulation');
+            xd[2] = 0;
+          }
+          for (let d = 0; d < 3; d++) x[3 * a + d] = xd[d] + opts.shift[d];
+          let typestr = '';
           for (let c = 0; c < cols.length; c++) {
             const v = w[c];
             switch (cols[c]) {
-              case 'id': id[a] = intOf(v, 'atom-ID', at) + (idBase || 0); break;
-              case 'mol': mol[a] = intOf(v, 'molecule-ID', at) + (intOf(v, 'molecule-ID', at) > 0 ? molBase : 0); break;
-              case 'type': {
-                const t = typeCol(v, 'atom', toff, at, 'Atoms');
-                if (t < 1 || t > s.ntypes) throw new StyleError(`data file line ${at}: atom type ${t} is outside 1..${s.ntypes}`);
-                type[a] = t;
-                break;
-              }
-              case 'q': q[a] = numOf(v, 'charge', at); break;
-              case 'diameter': radius[a] = numOf(v, 'diameter', at) / 2; break;
-              case 'density': density[a] = numOf(v, 'density', at); break;
-              case 'volume': vol[a] = numOf(v, 'volume', at); break;
-              case 'x': x[3 * a] = numOf(v, 'x', at) + opts.shift[0]; break;
-              case 'y': x[3 * a + 1] = numOf(v, 'y', at) + opts.shift[1]; break;
-              case 'z': x[3 * a + 2] = numOf(v, 'z', at) + opts.shift[2]; break;
+              // atom and molecule IDs are 32-bit (native tagint, utils::tnumeric)
+              case 'id': id[a] = inumeric(v); break;
+              case 'mol': { const m = inumeric(v); mol[a] = m + (m > 0 ? molBase : 0); break; }
+              case 'type': typestr = v; break;
+              case 'q': q[a] = numeric(v); break;
+              case 'diameter': radius[a] = numeric(v) / 2; break;
+              case 'density': density[a] = numeric(v); break;
+              case 'volume': vol[a] = numeric(v); break;
+              case 'x': case 'y': case 'z': break;
               case 'ellipsoidflag': {
-                const f = intOf(v, 'ellipsoidflag', at);
-                if (f !== 0 && f !== 1) throw new StyleError(`data file line ${at}: ellipsoidflag must be 0 or 1`);
+                const f = inumeric(v);
+                if (f !== 0 && f !== 1) throw new StyleError(`Invalid ellipsoid flag in ${loc}`);
                 eflag![a] = f;
                 break;
               }
               case 'lineflag': case 'triangleflag': {
-                const f = intOf(v, cols[c], at);
-                if (f !== 0 && f !== 1) throw new StyleError(`data file line ${at}: ${cols[c]} must be 0 or 1`);
+                const f = inumeric(v);
+                if (f !== 0 && f !== 1) throw new StyleError(`Invalid ${cols[c] === 'lineflag' ? 'line' : 'tri'} flag in ${loc}`);
                 lflag![a] = f;
                 break;
               }
               case 'bodyflag': {
-                const f = intOf(v, 'bodyflag', at);
-                if (f !== 0 && f !== 1) throw new StyleError(`data file line ${at}: bodyflag must be 0 or 1`);
+                const f = inumeric(v);
+                if (f !== 0 && f !== 1) throw new StyleError(`Invalid body flag in ${loc}`);
                 bflag![a] = f;
                 break;
               }
-              case 'mass': density[a] = numOf(v, 'mass', at); break;
-              case 'tindex': tIdx[a] = intOf(v, 'template-index', at); break;
-              case 'tatom': tAt[a] = intOf(v, 'template-atom', at); break;
-              case 'mux': mu![4 * a] = numOf(v, 'mux', at); break;
-              case 'muy': mu![4 * a + 1] = numOf(v, 'muy', at); break;
-              case 'muz': mu![4 * a + 2] = numOf(v, 'muz', at); break;
-              case 'spx': spin![4 * a] = numOf(v, 'spx', at); break;
-              case 'spy': spin![4 * a + 1] = numOf(v, 'spy', at); break;
-              case 'spz': spin![4 * a + 2] = numOf(v, 'spz', at); break;
-              case 'sp': spin![4 * a + 3] = numOf(v, 'sp', at); break;
+              case 'mass': density[a] = numeric(v); break;
+              case 'tindex': tIdx[a] = inumeric(v); break;
+              case 'tatom': tAt[a] = inumeric(v); break;
+              case 'mux': mu![4 * a] = numeric(v); break;
+              case 'muy': mu![4 * a + 1] = numeric(v); break;
+              case 'muz': mu![4 * a + 2] = numeric(v); break;
+              case 'spx': spin![4 * a] = numeric(v); break;
+              case 'spy': spin![4 * a + 1] = numeric(v); break;
+              case 'spz': spin![4 * a + 2] = numeric(v); break;
+              case 'sp': spin![4 * a + 3] = numeric(v); break;
               // read_data.html: "espin = electron spin (+1/-1), 0 = nuclei, 2 = fixed-core, 3 = pseudo-cores (i.e. ECP)"
-              case 'espin': espin[a] = intOf(v, 'espin', at); break;
+              case 'espin': espin[a] = inumeric(v); break;
               // atom_style dpd: "dpdTheta" is the internal temperature of the atom (read_data: "must be > 0.0")
-              case 'dpdTheta': dpdTh![a] = numOf(v, 'dpdTheta', at); break;
+              case 'dpdTheta': dpdTh![a] = numeric(v); break;
               // read_data.html: "eradius = electron radius (or fixed-core radius)"
-              case 'eradius': eradius[a] = numOf(v, 'eradius', at); break;
+              case 'eradius': eradius[a] = numeric(v); break;
               // read_data.html, row rheo: "status = status or phase of RHEO particles (unitless)", "rho = density"
-              case 'rheo_status': rheoStatus![a] = intOf(v, 'status', at); break;
+              case 'rheo_status': rheoStatus![a] = inumeric(v); break;
               // read_data.html, rheo/thermal: "energy = energy of RHEO particles (need units)"
-              case 'energy': rheoEsph![a] = numOf(v, 'energy', at); break;
+              case 'energy': rheoEsph![a] = numeric(v); break;
               case 'area': case 'ed': case 'em': case 'epsilon': case 'curvature': {
                 const dk = cols[c] as 'area' | 'ed' | 'em' | 'epsilon' | 'curvature';
-                diel![dk][a] = numOf(v, dk, at);
+                diel![dk][a] = numeric(v);
                 break;
               }
               // read_data.html, sph: "rho = density (need units)", "esph = energy (need units) for SPH particles", "cv = heat capacity (need units) for SPH particles"
               case 'esph': case 'cv': {
                 const sk = cols[c] as 'esph' | 'cv';
-                sph![sk][a] = numOf(v, sk, at);
+                sph![sk][a] = numeric(v);
                 break;
               }
               // rho is a column of atom_style sph, mdpd and rheo (read_data.html)
               case 'rho':
-                if (rheoRho) rheoRho[a] = numOf(v, 'rho', at);
-                else if (sph) sph.rho[a] = numOf(v, 'rho', at);
-                else dm!.rho[a] = numOf(v, 'rho', at);
+                if (rheoRho) rheoRho[a] = numeric(v);
+                else if (sph) sph.rho[a] = numeric(v);
+                else dm!.rho[a] = numeric(v);
                 break;
               // atom_style smd (read_data.html): "volume", "mass", "kradius", "cradius"; the x0 values are not kept (x0 = x)
-              case 'vfrac': vol[a] = numOf(v, 'volume', at); break;
-              case 'rmass': smdRm![a] = numOf(v, 'mass', at); break;
-              case 'kradius': radius[a] = numOf(v, 'kradius', at); break;
-              case 'cradius': smdCr![a] = numOf(v, 'cradius', at); break;
-              case 'x0': case 'y0': case 'z0': numOf(v, cols[c], at); break;
-              case 'edpd_temp': dm!.temp[a] = numOf(v, 'edpd_temp', at); break;
-              case 'edpd_cv': dm!.cv[a] = numOf(v, 'edpd_cv', at); break;
+              case 'vfrac': vol[a] = numeric(v); break;
+              case 'rmass': smdRm![a] = numeric(v); break;
+              case 'kradius': radius[a] = numeric(v); break;
+              case 'cradius': smdCr![a] = numeric(v); break;
+              case 'x0': case 'y0': case 'z0': numeric(v); break;
+              case 'edpd_temp': dm!.temp[a] = numeric(v); break;
+              case 'edpd_cv': dm!.cv[a] = numeric(v); break;
               default: {
                 const k = /^cc(\d+)$/.exec(cols[c]);
-                if (k && dm) dm.cc[nsp * a + Number(k[1]) - 1] = numOf(v, cols[c], at);
+                if (k && dm) dm.cc[nsp * a + Number(k[1]) - 1] = numeric(v);
                 break;
               }
             }
           }
           if (mu) mu[4 * a + 3] = Math.hypot(mu[4 * a], mu[4 * a + 1], mu[4 * a + 2]);
           if (spin) setSpinVector(spin, a, spin[4 * a], spin[4 * a + 1], spin[4 * a + 2], spin[4 * a + 3], `data file line ${at}`);
-          if (w.length === cols.length + 3) {
-            for (let d = 0; d < 3; d++) {
-              const f = intOf(w[cols.length + d], 'image flag', at);
-              image[3 * a + d] = s.box.periodic[d] ? f : 0;
-            }
+          // the ID before the offsets; native names the atom's place among the atoms (its local index)
+          if (!(id[a] > 0)) throw new StyleError(`Invalid atom ID ${id[a]} in line ${s.n + a + 1} of ${loc}`);
+          if (idBase) id[a] += idBase;
+          if (sys.atomStyle === 'peri' && !(density[a] > 0)) throw new StyleError(`Invalid mass in ${loc}`);
+          // ellipsoid, line, tri, body and sphere styles: the density (a sphere's mass: density times volume, or the
+          // density of a point particle) must be > 0
+          const sphereSub = subs.includes('sphere') || subs.includes('bpm/sphere');
+          if ((eflag || lflag || bflag || sphereSub) && !(density[a] > 0)) {
+            const m = sphereSub && radius[a] > 0 ? sphereMass(radius[a], density[a]) : density[a];
+            if (!(m > 0)) throw new StyleError(`Invalid density in ${loc}`);
           }
-          if (sys.dimension === 2) {
-            if (Math.abs(x[3 * a + 2]) > 1e-6) throw new StyleError(`data file line ${at}: z must be 0.0 in a 2d simulation`);
-            x[3 * a + 2] = 0;
+          if (tmplId !== null) {
+            // native atom_vec_template data_atom_post: the template index and atom (0 = none) of a set of the template
+            const sets = sys.molecules.get(tmplId) ?? [];
+            const mi = tIdx[a] - 1, ma = tAt[a] - 1;
+            if (mi < -1 || mi >= sets.length) throw new StyleError(`Invalid template index in ${loc}`);
+            if (ma < -1 || (mi >= 0 && ma >= sets[mi].natoms)) throw new StyleError(`Invalid template atom in ${loc}`);
           }
+          type[a] = atomTypeOf(typestr, toff, loc, line, s.ntypes);
         });
         if (opts.add === 'merge' || opts.add === 'none') {
           const existing = new Set(Array.from(s.id.subarray(0, s.n)));
-          for (const i of id) if (existing.has(i)) throw new StyleError(`read_data: atom ID ${i} already exists`);
+          for (const i of id) if (existing.has(i)) throw new StyleError('Duplicate atom IDs exist');
         }
         // read_data.html: "the density is used in conjunction with the particle volume to set the mass
         // of each particle as mass = density * volume ... If the volume is 0.0, meaning a point
@@ -865,16 +1004,16 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         // atom_style peri. Measured with native LAMMPS (black box): read_data gives mass = density (volume is kept apart)
         const rmass = smdRm ?? (s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : s.shape || s.vfrac || bflag ? Float64Array.from(density) : undefined);
         // atom_style body: the mass column is the body's mass (read_data.html); a bodyflag 1 atom needs a Bodies entry
-        if (bflag) for (let a = 0; a < count; a++) if (bflag[a]) bodyPending.add(id[a]);
-        if (eflag) for (let a = 0; a < count; a++) if (eflag[a]) ellPending.set(id[a], density[a]);
+        if (bflag) for (let a = 0; a < nrow; a++) if (bflag[a]) bodyPending.add(id[a]);
+        if (eflag) for (let a = 0; a < nrow; a++) if (eflag[a]) ellPending.set(id[a], density[a]);
         // atom_style line / tri: the density is per length or per area; the mass is set when the Lines or Triangles entry gives the size
-        if (lflag && isLineStyle(style)) for (let a = 0; a < count; a++) if (lflag[a]) linePending.set(id[a], density[a]);
-        if (lflag && isTriStyle(style)) for (let a = 0; a < count; a++) if (lflag[a]) triPending.set(id[a], density[a]);
+        if (lflag && isLineStyle(style)) for (let a = 0; a < nrow; a++) if (lflag[a]) linePending.set(id[a], density[a]);
+        if (lflag && isTriStyle(style)) for (let a = 0; a < nrow; a++) if (lflag[a]) triPending.set(id[a], density[a]);
         if (genFrame) {
           // read_data.html: coordinates "should be inside the general triclinic simulation box"; the
           // general -> restricted rotation is about the box origin (Howto_triclinic.html)
           const o = gen.origin ?? [0, 0, 0];
-          for (let a = 0; a < count; a++) {
+          for (let a = 0; a < nrow; a++) {
             const r = toRestrictedPoint(genFrame.Q, o, [x[3 * a], x[3 * a + 1], x[3 * a + 2]]);
             x[3 * a] = r[0]; x[3 * a + 1] = r[1]; x[3 * a + 2] = r[2];
           }
@@ -883,8 +1022,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const electronCustom = isElectronStyle(s.atomStyle) ? new Map([[ELECTRON_SPIN, espin], [ELECTRON_RADIUS, eradius]]) : undefined;
         // Measured with native LAMMPS (black box): a data line with q 2.0 and epsilon 4.0 reads as q_scaled 0.5 (q / epsilon)
         const rheoCustom = rheoStatus && rheoRho ? new Map<string, Float64Array>([[RHEO_STATUS, rheoStatus], [RHEO_RHO, rheoRho], ...(rheoEsph ? [[RHEO_ESPH, rheoEsph] as [string, Float64Array]] : [])]) : undefined;
-        if (dpdTh) for (let a = 0; a < count; a++) {
-          if (!(dpdTh[a] > 0)) throw new StyleError(`data file line ${body[a].at}: Internal temperature theta in Atoms section of data file must be > 0.0`);
+        if (dpdTh) for (let a = 0; a < nrow; a++) {
+          if (!(dpdTh[a] > 0)) throw new StyleError('Internal temperature theta in Atoms section of data file must be > 0.0');
         }
         const dpdCustom = dpdTh ? new Map<string, Float64Array>([[DPD_THETA, dpdTh]]) : undefined;
         const dielCustom = diel ? new Map<string, Float64Array>([
@@ -893,8 +1032,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         ]) : undefined;
         // atom_style sph: the velocity estimate and the rates start at zero
         const sphCustom = sph ? new Map<string, Float64Array>([
-          [SPH_RHO, sph.rho], [SPH_ESPH, sph.esph], [SPH_CV, sph.cv], [SPH_DRHO, new Float64Array(count)],
-          [SPH_DESPH, new Float64Array(count)], [SPH_VEST, new Float64Array(3 * count)],
+          [SPH_RHO, sph.rho], [SPH_ESPH, sph.esph], [SPH_CV, sph.cv], [SPH_DRHO, new Float64Array(nrow)],
+          [SPH_DESPH, new Float64Array(nrow)], [SPH_VEST, new Float64Array(3 * nrow)],
         ]) : undefined;
         // atom_style edpd / mdpd / tdpd: the DPD-MESO props of the read atoms (appendAtoms keeps only the styles' own props)
         const dmCustom = dm ? new Map<string, Float64Array>([[EDPD_TEMP, dm.temp], [EDPD_CV, dm.cv], [MDPD_RHO, dm.rho], [TDPD_CC, dm.cc]]) : undefined;
@@ -907,15 +1046,20 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         // with fixed (f) faces on both sides, an atom on the upper face is not assigned. "Measured with native LAMMPS
         // (black box, boundary p p f, zhi 3.0 with atoms at z 3.0): ERROR: Did not assign all atoms correctly (read_data.cpp)".
         // Shrink-wrapped faces (s, m) keep the header box as before.
+        // native: "Non-zero imageflag(s) in x direction for non-periodic boundary reset to zero" (once per direction)
+        resetImage.forEach((r, d) => { if (r) sys.warn(`Non-zero imageflag(s) in ${'xyz'[d]} direction for non-periodic boundary reset to zero`); });
+        let assigned = nrow;
         if (!s.box.triclinic) {
-          for (let d = 0; d < 3; d++) {
-            if (s.box.periodic[d] || s.box.boundary[d][0] !== 'f' || s.box.boundary[d][1] !== 'f') continue;
-            for (let i = n0; i < s.n; i++) {
+          for (let i = n0; i < s.n; i++) {
+            for (let d = 0; d < 3; d++) {
+              if (s.box.periodic[d] || s.box.boundary[d][0] !== 'f' || s.box.boundary[d][1] !== 'f') continue;
               const xd = s.x[3 * i + d];
-              if (xd < s.box.lo[d] || xd >= s.box.hi[d]) throw new StyleError('read_data: Did not assign all atoms correctly (an atom lies outside the box in a fixed dimension; native ERROR err0016)');
+              if (xd < s.box.lo[d] || xd >= s.box.hi[d]) { assigned--; break; }
             }
           }
         }
+        // native: the atoms read (blank and comment lines are none) and kept must be the header's count
+        if (assigned !== natoms) throw new StyleError(`Did not assign all atoms correctly${errorUrl(16)}`);
         if (tmplId !== null) expandTemplateTopology(s, sys.molecules.get(tmplId) ?? [], tmplId, firstNew, s.n);
         break;
       }
@@ -996,23 +1140,43 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const electron = isElectronStyle(s.atomStyle);
         if (s.omega && s.angmom && !tri) throw new StyleError('data file Velocities: hybrid styles with both sphere and ellipsoid sub-styles are not supported by the browser engine');
         if (electron && (s.omega || s.angmom)) throw new StyleError('data file Velocities: atom_style electron with a sphere or ellipsoid sub-style is not supported by the browser engine');
-        const labels = electron ? ['vx', 'vy', 'vz', 'ervel'] : ['vx', 'vy', 'vz', 'wx', 'wy', 'wz', 'lx', 'ly', 'lz'];
-        for (const { w, at } of body) {
-          const need = tri ? 10 : s.omega || s.angmom ? 7 : electron ? 5 : 4;
-          if (w.length < need) throw new StyleError(`data file line ${at}: Velocities needs atom-ID vx vy vz${tri ? ' wx wy wz lx ly lz' : s.omega ? ' wx wy wz' : s.angmom ? ' lx ly lz' : electron ? ' ervel' : ''}`);
-          vel.set(intOf(w[0], 'atom-ID', at) + (idBase || 0), w.slice(1, need).map((t, c) => numOf(t, labels[c], at)));
-        }
+        // As native LAMMPS does (src/atom.cpp data_vels at b332f28): blank and comment lines are skipped, a line has
+        // exactly the style's values, and its atom ID is at most the largest one read
+        const need = tri ? 10 : s.omega || s.angmom ? 7 : electron ? 5 : 4;
+        raw.forEach((l) => {
+          const w = l.replace(/#.*/, '').trim() ? l.replace(/#.*/, '').trim().split(/\s+/) : [];
+          if (!w.length) return;
+          if (w.length !== need) throw new StyleError(`Incorrect format in Velocities section of data file: ${l.trim()}${errorUrl(2)}`);
+          const tag = inumeric(w[0]) + (idBase || 0);
+          if (tag <= 0 || tag > maxAtomId(s)) throw new StyleError(`Invalid atom ID ${tag} in Velocities section of data file: ${l}`);
+          vel.set(tag, w.slice(1, need).map((x) => numeric(x)));
+        });
         break;
       }
       case 'Masses':
         // measured with native LAMMPS (atom_style sphere): "Cannot set mass for atom style sphere"
         // read_data.html: "This section cannot be used for atom styles that define a mass for individual atoms - e.g. atom_style sphere"
         if (s.atomStyle === 'sphere' || s.atomStyle === 'bpm/sphere' || isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle)) throw new StyleError(`Cannot set mass for atom style ${s.atomStyle}`);
-        for (const { w, at } of body) {
-          const t = typeCol(w[0], 'atom', toff, at, 'Masses');
-          if (t < 1 || t > s.ntypes) throw new StyleError(`data file line ${at}: atom type ${t} is outside 1..${s.ntypes}`);
-          const m = numOf(w[1], 'mass', at);
-          if (!(m > 0)) throw new StyleError(`data file line ${at}: mass must be > 0`);
+        // As native LAMMPS does (src/atom.cpp set_mass at b332f28): every line names a type and a mass
+        for (const l of raw) {
+          const loc = 'Masses section of data file';
+          const w = words(l);
+          if (w.length !== 2) throw new StyleError(`Invalid format in ${loc}: ${l}`);
+          const kind = isType(w[0]);
+          let t: number;
+          if (kind === 0) {
+            t = inumeric(w[0]);
+            if (t < 1 || t > s.ntypes) throw new StyleError(`Invalid atom type ${t} in ${loc}: ${l.trim()}`);
+          } else if (kind === 1) {
+            if (!sys.labels.defined) throw new StyleError(`Invalid atom type in ${loc}: ${l.trim()}`);
+            const lt = sys.labels.typeOf('atom', w[0]);
+            if (lt === undefined) throw new StyleError(`Unknown atom type ${w[0]} in ${loc}: ${l.trim()}`);
+            t = lt;
+          } else throw new StyleError(`Invalid ${loc}: ${l.trim()}`);
+          t += kind === 0 ? toff : 0;
+          const m = numeric(w[1]);
+          if (t < 1 || t > s.ntypes) throw new StyleError(`Invalid atom type ${t} in ${loc}: ${l.trim()}`);
+          if (!(m > 0)) throw new StyleError(`Invalid mass value ${shortest(m)} in ${loc}: ${l.trim()}`);
           s.massByType[t] = m;
         }
         break;
@@ -1023,43 +1187,93 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const off = kind === 'bonds' ? boff : kind === 'angles' ? aoff : kind === 'dihedrals' ? doff : ioff;
         const ntype = kind === 'bonds' ? s.topo.nbondtypes : kind === 'angles' ? s.topo.nangletypes : kind === 'dihedrals' ? s.topo.ndihedraltypes : s.topo.nimpropertypes;
         const lkind: LabelKind = kind === 'bonds' ? 'bond' : kind === 'angles' ? 'angle' : kind === 'dihedrals' ? 'dihedral' : 'improper';
-        for (const { w, at } of body) {
-          if (w.length < 2 + width) throw new StyleError(`data file line ${at}: ${title} needs ID type and ${width} atom IDs`);
-          const t = typeCol(w[1], lkind, off, at, title);
-          if (t < 1 || t > ntype) throw new StyleError(`data file line ${at}: ${title.slice(0, -1).toLowerCase()} type ${t} is outside 1..${ntype}`);
-          const ids = w.slice(2, 2 + width).map((v) => intOf(v, 'atom-ID', at) + (idBase || 0));
+        // As native LAMMPS does (src/atom.cpp data_bonds, data_angles, data_dihedrals, data_impropers at b332f28):
+        // blank and comment lines are skipped; a line is "ID type atom-IDs"; its atom IDs are distinct and at most the
+        // largest atom ID read
+        const loc = `${title} section of data file`;
+        const maxTag = maxAtomId(s);
+        raw.forEach((l) => {
+          const w = words(l);
+          if (!w.length) return;
+          if (w.length !== 2 + width) throw new StyleError(`Incorrect format in ${loc}: ${l.trim()}${errorUrl(2)}`);
+          const ids = w.slice(2).map((v) => inumeric(v) + (idBase || 0));
+          const tk = isType(w[1]);
+          let t: number;
+          if (tk === 0) {
+            t = inumeric(w[1]) + off;
+            if (t < 1 || t > ntype) throw new StyleError(`Invalid ${lkind} type ${t} in ${loc}: ${l.trim()}`);
+          } else {
+            const lt = tk === 1 && sys.labels.defined ? sys.labels.typeOf(lkind, w[1]) : undefined;
+            if (lt === undefined) throw new StyleError(`Invalid ${loc}: ${l.trim()}`);
+            t = lt;
+          }
+          if (ids.some((id) => id <= 0 || id > maxTag) || new Set(ids).size !== ids.length) {
+            throw new StyleError(`Invalid atom ID in ${loc}: ${l.trim()}`);
+          }
           topo.push({ kind, type: t, ids });
-        }
+        });
         break;
       }
-      // read_data.html: the type-label sections give one label per numeric type (ID label); the sections
-      // that follow must name their types numerically
+      // read_data.html: the type-label sections give one label per numeric type (ID label); as native LAMMPS does
+      // (src/read_data.cpp typelabels at b332f28), every type must end up with its own label
       case 'Atom Type Labels': case 'Bond Type Labels': case 'Angle Type Labels': case 'Dihedral Type Labels': case 'Improper Type Labels': {
         const lk = labelKind!;
-        for (const { w, at } of body) {
-          if (w.length !== 2) throw new StyleError(`data file line ${at}: Invalid format in section: ${title}`);
-          const t = intOf(w[0], 'type', at);
-          if (t < 1 || t > count) throw new StyleError(`data file line ${at}: ${title.slice(0, -' Type Labels'.length)} type ${t} is outside 1..${count}`);
-          if (!isValidLabel(w[1])) throw new StyleError(`data file line ${at}: Invalid type label ${w[1]}`);
-          const other = sys.labels.typeOf(lk, w[1]);
-          if (other !== undefined && other !== t) throw new StyleError(`${title} map is incomplete`);
-          sys.labels.set(lk, t, w[1]);
+        const name = title.slice(0, -' Type Labels'.length);
+        const got = new Map<number, string>();
+        for (const l of raw) {
+          const w = words(l);
+          if (w.length !== 2) throw new StyleError(`Invalid format in section: ${title}: ${l}`);
+          if (isType(w[1]) !== 1) throw new StyleError(`Invalid type label ${w[1]}`);
+          const t = inumeric(w[0]);
+          // native formats this message with three placeholders and two values, and its formatter stops with this text
+          if (t < 1 || t > count) throw new StyleError('argument not found');
+          got.set(t, w[1]);
         }
-        if (!sys.labels.complete(lk, count)) throw new StyleError(`${title} map is incomplete`);
+        if (count > 0 && (got.size !== count || new Set(got.values()).size !== count)) throw new StyleError(`${name} Type Labels map is incomplete`);
+        for (const [t, label] of got) sys.labels.set(lk, t, label);
         break;
       }
-      default:
-        for (const { w, at } of body) {
-          // read_data.html: "ID coeffs" with a numeric ID (measured with native read_data: a label there is refused)
-          const nid = title === 'PairIJ Coeffs' ? 2 : 1;
-          for (let c = 0; c < nid; c++) {
-            if (!/^[+-]?\d+$/.test(w[c] ?? '')) throw new StyleError(`Expected integer parameter instead of '${w[c] ?? ''}' in input script or data file`);
+      default: {
+        // As native LAMMPS does (src/read_data.cpp parse_coeffs and the Coeffs sections at b332f28): each line is a
+        // coeff command, read as it comes; a blank line is refused, the type IDs are integers
+        const emptyMsg: Record<string, string> = {
+          'Pair Coeffs': `Unexpected empty line in PairCoeffs section. Expected ${count} lines.`,
+          'PairIJ Coeffs': `Unexpected empty line in PairIJCoeffs section. Expected ${count} lines.`,
+          'Bond Coeffs': `Unexpected empty line in BondCoeffs section. Expected ${count} lines.`,
+        };
+        const c2 = title in CLASS2_SECTIONS ? CLASS2_SECTIONS[title] : null;
+        const kind: 'pair' | 'bond' | 'angle' | 'dihedral' | 'improper' = title === 'Pair Coeffs' || title === 'PairIJ Coeffs' ? 'pair'
+          : c2 ? c2[0] : (title.split(' ')[0].toLowerCase() as 'bond' | 'angle' | 'dihedral' | 'improper');
+        for (const l of raw) {
+          const w = l.replace(/#.*/, '').trim() ? l.replace(/#.*/, '').trim().split(/\s+/) : [];
+          if (!w.length) {
+            throw new StyleError(emptyMsg[title] ?? `Unexpected empty line in ${kind[0].toUpperCase()}${kind.slice(1)}Coeffs section`);
           }
-          coeffLines.push({ section: title, line: w.join(' '), at });
+          let args: string[];
+          if (kind === 'pair') {
+            const i = String(inumeric(w[0]) + toff);
+            const j = title === 'Pair Coeffs' ? i : String(inumeric(w[1]) + toff);
+            args = [i, j, ...w.slice(title === 'Pair Coeffs' ? 1 : 2)];
+          } else {
+            const off = kind === 'bond' ? boff : kind === 'angle' ? aoff : kind === 'dihedral' ? doff : ioff;
+            args = [String(inumeric(w[0]) + off), ...w.slice(1)];
+            const add = c2?.[1];
+            // the class 2 keyword goes after the ID, or after a hybrid sub-style name (a word that starts lower case)
+            if (add) args.splice(args.length > 1 && /^[a-z]/.test(args[1]) ? 2 : 1, 0, add);
+          }
+          if (opts.nocoeff) continue;
+          const st = kind === 'pair' ? sys.ff.pair : sys.ff[kind];
+          st!.coeff(args, sys.styleContext());
         }
+      }
     }
   }
-  if (natoms > 0 && !sawAtoms) throw new StyleError('data file: an Atoms section is required when atoms > 0');
+  // native: the header's atoms need an Atoms section, and its topology and bonus counts their sections
+  if (natoms > 0 && !sawAtoms) throw new StyleError('No valid atoms found in data file');
+  for (const [key, sec] of [['bonds', 'Bonds'], ['angles', 'Angles'], ['dihedrals', 'Dihedrals'], ['impropers', 'Impropers'],
+    ['ellipsoids', 'Ellipsoids'], ['lines', 'Lines'], ['triangles', 'Triangles'], ['bodies', 'Bodies']]) {
+    if ((h[key] ?? 0) > 0 && !seen.has(sec)) throw new StyleError(`${sec} section for ${h[key]} ${key} not found`);
+  }
   if (ellPending.size) throw new StyleError(`data file: ${ellPending.size} atoms have ellipsoidflag 1 but no Ellipsoids line`);
   if (linePending.size) throw new StyleError(`data file: ${linePending.size} atoms have lineflag 1 but no Lines line`);
   if (triPending.size) throw new StyleError(`data file: ${triPending.size} atoms have triangleflag 1 but no Triangles line`);
@@ -1106,10 +1320,19 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     }
   }
   // topology must reference existing atoms
-  if (topo.length) {
+  if (topo.length || ['Bonds', 'Angles', 'Dihedrals', 'Impropers'].some((x) => seen.has(x))) {
     const ids = new Set(Array.from(s.id.subarray(0, s.n)));
+    // As native LAMMPS does (src/read_data.cpp bonds and friends at b332f28): an entry is stored with its first atom (a
+    // bond) or its second (the others); one whose storing atom does not exist is not stored, and the count fails
+    for (const kind of ['bonds', 'angles', 'dihedrals', 'impropers'] as const) {
+      const of = topo.filter((e) => e.kind === kind);
+      if (of.length !== (h[kind] ?? 0) || of.some((e) => !ids.has(e.ids[kind === 'bonds' ? 0 : 1]))) {
+        throw new StyleError(`${kind[0].toUpperCase()}${kind.slice(1)} assigned incorrectly`);
+      }
+    }
     for (const e of topo) {
-      for (const id of e.ids) if (!ids.has(id)) throw new StyleError(`data file: ${e.kind.slice(0, -1)} references atom ${id}, which does not exist`);
+      // native keeps an entry whose other atoms are missing until a run looks them up; the engine needs them now
+      for (const id of e.ids) if (!ids.has(id)) throw new StyleError(`data file: ${e.kind.slice(0, -1)} references atom ${id}, which does not exist (native LAMMPS stops at the first run for it)`);
       pushTopo(s.topo[e.kind] as TopoList, e.type, e.ids);
     }
     // a bond is stored with its first atom, so the bonds per atom of this file count the bonds that start at each atom.
@@ -1130,31 +1353,6 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
 
     // atom_style oxdna: each bond sets the 5'/3' partners (atoms.ts setOxdnaPartners)
     setOxdnaPartners(s, topo.filter((e) => e.kind === 'bonds').map((e) => [e.ids[0], e.ids[1]] as const));
-  }
-  // force-field coefficients
-  if (!opts.nocoeff) {
-    for (const c of coeffLines) {
-      const w = c.line.split(/\s+/);
-      const ctx = sys.styleContext();
-      if (c.section === 'Pair Coeffs' || c.section === 'PairIJ Coeffs') {
-        if (!sys.ff.pair) throw new StyleError(`data file has ${c.section} but no pair_style is defined (define pair_style before read_data, or use nocoeff)`);
-        const shiftT = (t: string) => String(Number(t) + toff);
-        const args = c.section === 'Pair Coeffs' ? [shiftT(w[0]), shiftT(w[0]), ...w.slice(1)] : [shiftT(w[0]), shiftT(w[1]), ...w.slice(2)];
-        sys.ff.pair.coeff(args, ctx);
-      } else if (CLASS2_SECTIONS[c.section]) {
-        const [kind, kw] = CLASS2_SECTIONS[c.section];
-        const st = sys.ff[kind];
-        if (!st) throw new StyleError(`data file has ${c.section} but no ${kind}_style is defined (define it before read_data, or use nocoeff)`);
-        const off = kind === 'angle' ? aoff : kind === 'dihedral' ? doff : ioff;
-        st.coeff([String(Number(w[0]) + off), kw, ...w.slice(1)], ctx);
-      } else {
-        const kind = c.section.split(' ')[0].toLowerCase() as 'bond' | 'angle' | 'dihedral' | 'improper';
-        const st = sys.ff[kind];
-        if (!st) throw new StyleError(`data file has ${c.section} but no ${kind}_style is defined (define it before read_data, or use nocoeff)`);
-        const off = kind === 'bond' ? boff : kind === 'angle' ? aoff : kind === 'dihedral' ? doff : ioff;
-        st.coeff([String(Number(w[0]) + off), ...w.slice(1)], ctx);
-      }
-    }
   }
   sys.atomsChanged();
 };

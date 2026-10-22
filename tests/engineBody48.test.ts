@@ -140,7 +140,7 @@ describe('read_data Bodies (output/data.ts)', () => {
   });
 
   it('refuses a bodies header with an atom style that has no bodies', async () => {
-    await expect(run('units lj\natom_style atomic\nread_data one.data\n', { 'one.data': ONE })).rejects.toThrow(/bodies needs atom_style body/);
+    await expect(run('units lj\natom_style atomic\nread_data one.data\n', { 'one.data': ONE })).rejects.toThrow(/No bodies allowed with this atom style/);
   });
 });
 

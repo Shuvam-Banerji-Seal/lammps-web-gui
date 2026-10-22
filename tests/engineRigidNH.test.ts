@@ -128,8 +128,8 @@ describe('fix rigid/nvt', () => {
   });
 
   it('refuses what the /small styles do not take (bodystyle single or group, force and torque flags)', async () => {
-    expect((await run('fix 1 all rigid/nvt/small single temp 1.0 1.0 0.5\nrun 1')).error).toMatch(/bodystyle single is only allowed for the rigid styles/);
-    expect((await run('fix 1 all rigid/nvt/small group 1 all temp 1.0 1.0 0.5\nrun 1')).error).toMatch(/bodystyle group is only allowed for the rigid styles/);
+    expect((await run('fix 1 all rigid/nvt/small single temp 1.0 1.0 0.5\nrun 1')).error).toMatch(/Unknown fix rigid\/nvt\/small body style single/);
+    expect((await run('fix 1 all rigid/nvt/small group 1 all temp 1.0 1.0 0.5\nrun 1')).error).toMatch(/Unknown fix rigid\/nvt\/small body style group/);
     expect((await run('fix 1 all rigid/nvt/small molecule temp 1.0 1.0 0.5 force 1 off off off\nrun 1')).error).toMatch(/force and torque keywords/);
   });
 

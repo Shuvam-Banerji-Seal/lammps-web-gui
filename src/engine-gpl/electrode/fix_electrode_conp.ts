@@ -121,12 +121,16 @@ export class FixElectrodeConp extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
+    // fix_electrode_conp.cpp reads pot (utils::numeric unless v_name) before eta, without a count check (it stops with
+    // a crash when words are missing; the engine refuses that by name)
+    const w0 = args[0] ?? '';
+    const psi = w0.startsWith('v_') ? 0 : parseNum(args[0], 'pot');
     if (args.length < 2) throw new StyleError('Illegal fix electrode/conp command (usage: fix ID group electrode/conp pot eta ...)');
     this.groupBits.push(this.groupBit);
     const names: string[] = [group];
     // the potential: a number, or an equal-style variable v_name (re-evaluated at every charge update)
-    this.psiVar.push(args[0].startsWith('v_') ? args[0].slice(2) : null);
-    this.psiConst.push(args[0].startsWith('v_') ? 0 : parseNum(args[0], 'pot'));
+    this.psiVar.push(w0.startsWith('v_') ? w0.slice(2) : null);
+    this.psiConst.push(psi);
     if (args[1] === 'NULL') this.etaNull = true;
     else this.eta = parseNum(args[1], 'eta');
     let iarg = 2;

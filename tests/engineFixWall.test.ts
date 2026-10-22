@@ -338,19 +338,20 @@ run 0`);
   it('rejects bad arguments', async () => {
     const bad = async (line: string) => (await runScript(`${BASE}\n${line}\nrun 0`)).error?.message ?? '';
     expect(await bad('fix 1 all wall/lj93')).toMatch(/Illegal fix wall\/lj93 command: no walls defined/);
-    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0')).toMatch(/face zlo needs 4 arguments/);
-    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 foo bar')).toMatch(/unknown argument 'foo'/);
-    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 units parsec')).toMatch(/units must be lattice or box/);
-    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 pbc maybe')).toMatch(/pbc value must be yes or no/);
-    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 fld 1')).toMatch(/fld value must be yes or no/);
-    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 v_cut')).toMatch(/cutoff must be a number/);
-    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 0.0')).toMatch(/cutoff must be > 0/);
-    expect(await bad('fix 1 all wall/lj93 1.0 1.0 1.0 2.5')).toMatch(/unknown argument '1.0'/);
-    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 zlo EDGE 1.0 1.0 2.5')).toMatch(/face zlo is specified more than once/);
-    expect(await bad('fix 1 all wall/morse zlo EDGE 1.0 1.0 2.5')).toMatch(/face zlo needs 5 arguments/);
-    expect(await bad('fix 1 all wall/lj93 zlo EDGE v_nope 1.0 2.5')).toMatch(/variable nope does not exist/);
-    expect(await bad('fix 1 all wall/lj93 zlo v_nope 1.0 1.0 2.5')).toMatch(/variable nope does not exist/);
-    expect(await bad('fix 1 all wall/lj93 zlo 1e-3junk 1.0 1.0 2.5')).toMatch(/expected a number/);
+    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0')).toMatch(/Missing argument for fix wall\/lj93 command/);
+    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 foo bar')).toMatch(/Illegal fix wall\/lj93 command/);
+    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 units parsec')).toMatch(/Illegal fix wall\/lj93 command/);
+    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 pbc maybe')).toMatch(/Expected boolean parameter instead of 'maybe'/);
+    // Measured with native LAMMPS: fld takes any utils::logical value (1 is yes)
+    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 fld 1')).toBe('');
+    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 v_cut')).toMatch(/Expected floating point parameter instead of 'v_cut'/);
+    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 0.0')).toMatch(/Fix wall\/lj93 cutoff <= 0.0 for zlo wall/);
+    expect(await bad('fix 1 all wall/lj93 1.0 1.0 1.0 2.5')).toMatch(/Illegal fix wall\/lj93 command/);
+    expect(await bad('fix 1 all wall/lj93 zlo EDGE 1.0 1.0 2.5 zlo EDGE 1.0 1.0 2.5')).toMatch(/zlo wall defined twice in fix wall\/lj93 command/);
+    expect(await bad('fix 1 all wall/morse zlo EDGE 1.0 1.0 2.5')).toMatch(/Missing argument for fix wall\/morse command/);
+    expect(await bad('fix 1 all wall/lj93 zlo EDGE v_nope 1.0 2.5')).toMatch(/Variable name for fix wall does not exist/);
+    expect(await bad('fix 1 all wall/lj93 zlo v_nope 1.0 1.0 2.5')).toMatch(/Variable name for fix wall does not exist/);
+    expect(await bad('fix 1 all wall/lj93 zlo 1e-3junk 1.0 1.0 2.5')).toMatch(/Expected floating point parameter instead of '1e-3junk'/);
   });
 
   it('rejects walls in periodic dimensions unless pbc yes, and z walls in 2d', async () => {

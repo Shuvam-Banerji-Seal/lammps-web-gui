@@ -69,13 +69,13 @@ describe('compute centro/atom', () => {
 
   it('rejects an odd or non-positive N and an unknown lattice keyword', async () => {
     let e = await errorOf(`${FCC}\ncompute c all centro/atom 5\nrun 0\n`);
-    expect((e as Error).message).toMatch(/even integer/);
+    expect((e as Error).message).toMatch(/Illegal neighbor value for compute centro\/atom command/);
     e = await errorOf(`${FCC}\ncompute c all centro/atom hcp\nrun 0\n`);
-    expect((e as Error).message).toMatch(/lattice must be fcc, bcc or N/);
+    expect((e as Error).message).toMatch(/Expected integer parameter instead of 'hcp'/);
     e = await errorOf(`${FCC}\ncompute c all centro/atom fcc axes maybe\nrun 0\n`);
-    expect((e as Error).message).toMatch(/axes must be yes or no/);
+    expect((e as Error).message).toMatch(/Expected boolean parameter instead of 'maybe'/);
     e = await errorOf(`${FCC}\ncompute c all centro/atom fcc foo\nrun 0\n`);
-    expect((e as Error).message).toMatch(/unknown keyword 'foo'/);
+    expect((e as Error).message).toMatch(/Illegal compute centro\/atom command1/);
   });
 });
 
@@ -146,6 +146,6 @@ create_bonds single/bond 1 1 2
 
   it('rejects unknown fragment keywords', async () => {
     const e = await errorOf(`${FCC}\ncompute fr all fragment/atom bogus\nrun 0\n`);
-    expect((e as Error).message).toMatch(/unknown keyword 'bogus'/);
+    expect((e as Error).message).toMatch(/Unknown compute fragment\/atom keyword bogus/);
   });
 });

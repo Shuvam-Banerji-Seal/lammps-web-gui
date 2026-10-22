@@ -175,7 +175,7 @@ describe('read_restart errors', () => {
 
   it('rejects a missing file', async () => {
     const { session } = newSession();
-    await expect(session.execute('read_restart missing.restart\n')).rejects.toThrow(/cannot open file missing\.restart/);
+    await expect(session.execute('read_restart missing.restart\n')).rejects.toThrow(/Cannot open restart file missing\.restart/);
   });
 
   it('rejects a damaged body and an unknown format version', async () => {

@@ -5,6 +5,7 @@ import type { System } from '../system';
 import type { Region } from '../region';
 import { hasMolecule, massOf } from '../atoms';
 import { num } from '../commands/args';
+import { inumeric } from '../force/util';
 
 /*
  * fix heat and fix ehex (the HEX and eHEX non-equilibrium heat exchange
@@ -108,8 +109,10 @@ abstract class HeatBase extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[], usage: string, fluxWord: string | undefined, name: string) {
     super(sys, id, group, args);
-    const n = Number(args[0]);
-    if (!Number.isInteger(n) || n < 1) throw new StyleError(`fix ${id} (${name}): N must be a positive integer, got '${args[0] ?? ''}' (${usage})`);
+    // As native LAMMPS does (src/fix_heat.cpp and src/EXTRA-FIX/fix_ehex.cpp at b332f28): N is read with
+    // utils::inumeric and must be > 0
+    const n = inumeric(args[0]);
+    if (n <= 0) throw new StyleError(`Illegal fix ${name} command`);
     this.nevery = n;
     if (fluxWord === undefined) throw new StyleError(`fix ${id} (${name}): missing eflux (${usage})`);
     if (fluxWord.startsWith('v_')) {
@@ -130,8 +133,9 @@ abstract class HeatBase extends Fix {
 
   protected parseRegion(words: string[], k: number, usage: string): number {
     const val = words[k + 1];
-    if (val === undefined) throw new StyleError(`fix ${this.id} (${this.style}): keyword region needs a region-ID (${usage})`);
-    this.sys.region(val); // throws StyleError if it does not exist
+    // fix_heat.cpp / fix_ehex.cpp: their own missing-word messages (ehex's ends with a blank)
+    if (val === undefined) throw new StyleError(this.style === 'ehex' ? 'Illegal fix ehex command: wrong number of parameters ' : 'Illegal fix heat command');
+    if (!this.sys.regions.has(val)) throw new StyleError(`Region ${val} for fix ${this.style} does not exist`);
     this.regionId = val;
     this.regionObj = this.sys.region(val);
     return 2;
@@ -249,7 +253,7 @@ export class FixHeat extends HeatBase {
     for (let k = 0; k < words.length;) {
       const w = words[k];
       if (w === 'region') { k += this.parseRegion(words, k, usage); continue; }
-      throw new StyleError(`fix ${this.id} (heat): unknown keyword '${w}' (only region is documented) (${usage})`);
+      throw new StyleError('Illegal fix heat command');
     }
   }
 }
@@ -283,9 +287,9 @@ export class FixEhex extends HeatBase {
       if (w === 'constrain') { this.constrain = true; k++; continue; }
       if (w === 'com') { this.com = true; k++; continue; }
       if (w === 'hex') { this.hex = true; k++; continue; }
-      throw new StyleError(`fix ${this.id} (ehex): unknown keyword '${w}' (${usage})`);
+      throw new StyleError('Illegal fix ehex keyword ');
     }
-    if (this.com && !this.constrain) throw new StyleError(`fix ${this.id} (ehex): You can only use the keyword 'com' together with the keyword 'constrain'`);
+    if (this.com && !this.constrain) throw new StyleError("You can only use the keyword 'com' together with the keyword 'constrain' ");
   }
 
   endOfStep(): void {

@@ -76,7 +76,7 @@ const molecule = async (extra: string) => {
 
 describe('local computes: argument errors', () => {
   it('rejects unknown values, v_name and set misuse with the native texts, invalid bN and omega', async () => {
-    await expect(molecule('compute c all bond/local bogus')).rejects.toThrow(/unknown value 'bogus'/);
+    await expect(molecule('compute c all bond/local bogus')).rejects.toThrow(/Unknown compute bond\/local keyword: bogus/);
     // src/compute_bond_local.cpp, compute_angle_local.cpp, compute_dihedral_local.cpp at b332f28
     await expect(molecule('compute c all bond/local dist set dist d')).rejects.toThrow(/Compute bond\/local set used with without a variable/);
     await expect(molecule('compute c all bond/local v_d')).rejects.toThrow(/Compute bond\/local variable requires a set variable/);
@@ -86,20 +86,20 @@ describe('local computes: argument errors', () => {
     await expect(molecule('variable e equal 1\ncompute c all bond/local v_e set theta d')).rejects.toThrow(/Unknown compute bond\/local set keyword: d/);
     await expect(molecule('variable e equal 1\ncompute c all angle/local v_e set phi t')).rejects.toThrow(/Illegal compute angle\/local command/);
     await expect(molecule('compute c all dihedral/local phi set phi p')).rejects.toThrow(/Compute dihedral\/local set with no variable/);
-    await expect(molecule('compute c all improper/local v_e')).rejects.toThrow(/unknown value 'v_e'/);
+    await expect(molecule('compute c all improper/local v_e')).rejects.toThrow(/Unknown compute improper\/local keyword v_e/);
     // bN is a bond-style extra output (compute bond/local): b0 is an invalid keyword, b1 on angles is an unknown value
     await expect(molecule('compute c all bond/local b0')).rejects.toThrow(/Invalid keyword b0/);
-    await expect(molecule('compute c all angle/local b1')).rejects.toThrow(/unknown value 'b1'/);
+    await expect(molecule('compute c all angle/local b1')).rejects.toThrow(/Illegal compute angle\/local command/);
     await expect(molecule('compute c all bond/local omega')).rejects.toThrow(/omega/);
-    await expect(molecule('compute c all angle/local dist')).rejects.toThrow(/unknown value 'dist'/);
+    await expect(molecule('compute c all angle/local dist')).rejects.toThrow(/Illegal compute angle\/local command/);
   });
 
   it('rejects pair/local pN values of a pair style that defines none, a bad cutoff keyword and radius without radius', async () => {
     // docs.lammps.org/compute_pair_local.html: "Most pair styles do not define any additional quantities, so N = 0."
     await expect(molecule('compute c all pair/local dist p1\ndump d all local 1 pl.txt c_c[1] c_c[2]')).rejects.toThrow(/pair style lj\/cut does not have extra field p1/);
-    await expect(molecule('compute c all pair/local dist cutoff bogus')).rejects.toThrow(/unknown cutoff keyword bogus/);
+    await expect(molecule('compute c all pair/local dist cutoff bogus')).rejects.toThrow(/Unknown compute pair\/local cutoff keyword: bogus/);
     await expect(molecule('compute c all pair/local dist cutoff radius\ndump d all local 1 pl.txt c_c')).rejects.toThrow(/requires atom attribute radius/);
-    await expect(molecule('compute c all pair/local dist p0')).rejects.toThrow(/invalid keyword p0/);
+    await expect(molecule('compute c all pair/local dist p0')).rejects.toThrow(/Invalid keyword p0 in compute pair\/local command/);
     // cutoff type is the default and is accepted (the rows are checked in tests/oracle/w172pl_ljcut.in)
     await expect(molecule('compute c all pair/local dist cutoff type\ndump d all local 1 pl.txt c_c')).resolves.toBeDefined();
     // pair attributes are supported (tests/oracle/propl_*.in); kinds cannot be mixed (native's message)

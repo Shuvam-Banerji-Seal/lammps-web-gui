@@ -164,13 +164,14 @@ describe('compute orientorder/atom', () => {
 
   it('throws StyleError for bad arguments', async () => {
     const cases: [string, RegExp][] = [
-      ['compute q all orientorder/atom bogus 1', /unknown keyword 'bogus'/],
-      ['compute q all orientorder/atom wl maybe', /wl must be yes or no/],
-      ['compute q all orientorder/atom degrees 3 4 6', /degrees needs 3 degrees/],
-      ['compute q all orientorder/atom degrees 2 4 -6', /non-negative integers/],
-      ['compute q all orientorder/atom nnn 0', /nnn must be a positive integer or NULL/],
-      ['compute q all orientorder/atom components 5', /components degree 5 must be included/],
-      ['compute q all orientorder/atom chunksize 0', /chunksize must be a positive integer/],
+      // native's messages (compute_orientorder_atom.cpp)
+      ['compute q all orientorder/atom bogus 1', /Illegal compute orientorder\/atom command/],
+      ['compute q all orientorder/atom wl maybe', /Expected boolean parameter instead of 'maybe'/],
+      ['compute q all orientorder/atom degrees 3 4 6', /Illegal compute orientorder\/atom command/],
+      ['compute q all orientorder/atom degrees 2 4 -6', /Illegal compute orientorder\/atom command/],
+      ['compute q all orientorder/atom nnn 0', /Illegal compute orientorder\/atom command/],
+      ['compute q all orientorder/atom components 5', /Illegal compute orientorder\/atom command/],
+      ['compute q all orientorder/atom chunksize 0', /Illegal compute orientorder\/atom command/],
     ];
     for (const [cmd, re] of cases) {
       let err: unknown;

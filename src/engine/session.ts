@@ -493,12 +493,7 @@ export class Session {
 
   /** An input script for include or jump: native's message when the file is missing, then the engine's hint. */
   private readScript(file: string): string {
-    try {
-      return this.sys.readFile(file);
-    } catch (e) {
-      if (e instanceof StyleError) throw new StyleError(`Cannot open input script ${file}: No such file or directory (${e.message})`);
-      throw e;
-    }
+    return this.sys.readFile(file, 'Cannot open input script');
   }
 
   /**

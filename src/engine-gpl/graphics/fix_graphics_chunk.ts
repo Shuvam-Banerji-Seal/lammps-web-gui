@@ -334,7 +334,7 @@ export class FixGraphicsChunkFix extends Fix {
     if (this.nevery <= 0) throw new StyleError(`fix ${id} graphics/chunk: N must be > 0`);
     this.chunkId = args[1];
     // the chunk ID must name a compute chunk/atom (checked now, as the C++ constructor does)
-    chunkCompute(sys, this.chunkId, `fix ${id} graphics/chunk`);
+    chunkCompute(sys, this.chunkId, 'fix graphics/chunk');
     const regionOf = (rid: string): ((x: Vec3) => boolean) | null => {
       try {
         const r = sys.region(rid);
@@ -358,7 +358,7 @@ export class FixGraphicsChunkFix extends Fix {
   imageObjects(): ImageObject[] {
     const sys = this.sys;
     const s = sys.state;
-    const chunk = chunkCompute(sys, this.chunkId, `fix ${this.id} graphics/chunk`);
+    const chunk = chunkCompute(sys, this.chunkId, 'fix graphics/chunk');
     chunk.ensure();
     // without a radius keyword the C++ takes the per-atom radius, else half the pair style's sigma[type][type]
     // ("sigma = (double **) force->pair->extract("sigma", dim); if (dim != 2) sigma = nullptr;"), else the default radius

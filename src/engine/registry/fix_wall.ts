@@ -10,6 +10,6 @@ export const FIXES: Record<string, FixFactory> = {
   'wall/harmonic/outside': (sys, id, group, args) => new FixWallHarmonicOutside(sys, id, group, args),
   // a second name of the same style: native src/fix_wall_harmonic_outside.h at b332f28 registers
   // "FixStyle(wall/harmonic/outside,FixWallHarmonicOutside);" and "FixStyle(wall/harmonic/returned,FixWallHarmonicOutside);"
-  'wall/harmonic/returned': (sys, id, group, args) => new FixWallHarmonicOutside(sys, id, group, args),
+  'wall/harmonic/returned': (sys, id, group, args) => new FixWallHarmonicOutside(sys, id, group, args, 'wall/harmonic/returned'),
   'wall/morse': (sys, id, group, args) => new FixWallMorse(sys, id, group, args),
 };

@@ -5,9 +5,8 @@ import type { System } from '../system';
 import type { SimState } from '../types';
 import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle } from '../atoms';
 import { shortest } from '../output/data';
+import { logical } from '../force/util';
 
-/** The words native takes for a boolean keyword value (measured, see the ghost keyword below). */
-const BOOL_WORDS = new Set(['yes', 'no', 'on', 'off', 'true', 'false', '1', '0']);
 
 /*
  * fix ID group-ID property/atom name1 name2 ... keyword value ... —
@@ -59,7 +58,7 @@ export class FixPropertyAtom extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (!args.length) throw new StyleError('usage: fix ID group-ID property/atom name1 name2 ... [ghost yes|no]');
+    if (!args.length) throw new StyleError('Illegal fix property/atom command');
     const seen = new Set<string>();
     for (let k = 0; k < args.length; k++) {
       const w = args[k];
@@ -67,8 +66,8 @@ export class FixPropertyAtom extends Fix {
         // fix_property_atom.html: "ghost value = no or yes for whether ghost atom info in communicated".
         // Measured with native LAMMPS (black box): ghost also takes on, off, true, false, 1 and 0 (lower case only);
         // On or YES stops with Expected boolean parameter instead of 'On'.
-        const v = args[k + 1];
-        if (!BOOL_WORDS.has(v)) throw new StyleError(`Expected boolean parameter instead of '${v ?? ''}' for fix property/atom ghost`);
+        if (k + 2 > args.length) throw new StyleError('Illegal fix property/atom command');
+        logical(args[k + 1]);
         k++;
         continue;
       }
@@ -77,7 +76,7 @@ export class FixPropertyAtom extends Fix {
       else if (w === 'temperature' || w === 'heatflow') spec = { kind: w, name: w, cols: 0 };
       else {
         const m = /^(i|d)(2?)_([A-Za-z0-9_]+)$/.exec(w);
-        if (!m) throw new StyleError(`Illegal fix property/atom command: unknown property '${w}'`);
+        if (!m) throw new StyleError('Illegal fix property/atom command');
         let cols = 0;
         if (m[2]) {
           const n = Number(args[k + 1]);

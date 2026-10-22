@@ -300,7 +300,11 @@ export class System {
     return this.cwd === '' ? normalizeFileName(name) : resolveFileName(this.cwd, name);
   }
 
-  readFile(name: string): string {
+  /**
+   * A file of the notebook. A missing file stops with native's message (`opener` is the caller's wording, as "Cannot
+   * open restart file"; utils::getsyserror gives "No such file or directory"), then the engine's hint on a second line.
+   */
+  readFile(name: string, opener = 'Cannot open file'): string {
     let f = this.files.get(this.resolveFile(name));
     // As native LAMMPS does (src/utils.cpp get_potential_file_path and src/platform.cpp list_pathenv at b332f28): a file
     // not found where its name points is looked up, by its base name, in each directory of the colon-separated
@@ -314,7 +318,7 @@ export class System {
       }
     }
     if (f === undefined) {
-      throw new StyleError(`cannot open file ${name}: add it to the notebook's files (upload) or write it earlier in the session`);
+      throw new StyleError(`${opener} ${name}: No such file or directory\nThe notebook has no file ${name}: add it to the notebook's files (upload) or write it earlier in the session`);
     }
     // A gzipped file arrives one character per byte (the notebook reads .gz uploads as bytes); read_data
     // takes a file that "can be ASCII text or a gzipped text file (detected by a .gz suffix)" (docs.lammps.org/read_data.html).

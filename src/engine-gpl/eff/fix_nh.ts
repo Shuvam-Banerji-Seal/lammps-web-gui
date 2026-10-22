@@ -23,6 +23,13 @@ import { exp as libmExp } from '../libm/exp';
 /** fix_nh.cpp constructor: mtchain = mpchain = 3 by default, nc_tchain = nc_pchain = 1 (tloop, ploop). */
 const DEFAULT_CHAIN = 3;
 
+/** The keywords of native FixNH (fix_nh.cpp constructor at b332f28); the ones not ported here are refused by name. */
+const FIX_NH_KEYWORDS: ReadonlySet<string> = new Set([
+  'aniso', 'couple', 'dilate', 'disc', 'drag', 'erate', 'ext', 'fixedpoint', 'flip', 'integrator', 'iso', 'isochoric', 'kick',
+  'mtk', 'nreset', 'pchain', 'peculiar', 'ploop', 'psllod', 'ptemp', 'scalexy', 'scalexz', 'scaleyz', 'strain', 'tchain',
+  'temp', 'tloop', 'tri', 'update', 'x', 'xy', 'xz', 'y', 'yz', 'z',
+]);
+
 export class FixNHBase extends Fix {
   protected tstat = false;
   protected tStart = 0;
@@ -129,8 +136,11 @@ export class FixNHBase extends Fix {
       } else if (w === 'fixedpoint') {
         this.fixedpoint = [Number(args[i + 1]), Number(args[i + 2]), Number(args[i + 3])];
         i += 4;
-      } else {
+      } else if (FIX_NH_KEYWORDS.has(w)) {
         throw new StyleError(`fix ${style} keyword '${w}' is not supported by the browser engine (ported: temp, iso, tchain, pchain, tloop, ploop, drag, fixedpoint)`);
+      } else {
+        // fix_nh.cpp: a word that is no fix nh keyword
+        throw new StyleError(`Unknown fix ${style} keyword: ${w}`);
       }
     }
     if (this.pstat && sys.dimension === 2) throw new StyleError(`fix ${style} iso in a 2d simulation is not supported by the browser engine`);

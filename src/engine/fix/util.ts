@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { COMPUTE_STYLES } from '../styles';
-import { StyleError } from '../force/types';
+import { numeric } from '../force/util';
 
 /*
  * Shared helpers for thermostat and barostat fixes.
@@ -26,12 +26,10 @@ export const ramp = (sys: System, start: number, stop: number): number => start 
 /** A number or v_name (equal-style variable evaluated now). */
 export type NumOrVar = number | { variable: string };
 
-export const parseNumOrVar = (w: string | undefined, what: string): NumOrVar => {
-  if (w === undefined) throw new StyleError(`missing ${what}`);
-  if (w.startsWith('v_')) return { variable: w.slice(2) };
-  const v = Number(w);
-  if (w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`expected a number for ${what}, got '${w}'`);
-  return v;
+/** v_name, or a number read as native LAMMPS reads one (utils::numeric; `what` documents the call site). */
+export const parseNumOrVar = (w: string | undefined, _what: string): NumOrVar => {
+  if (w?.startsWith('v_')) return { variable: w.slice(2) };
+  return numeric(w);
 };
 
 export const valueOf = (sys: System, v: NumOrVar): number => (typeof v === 'number' ? v : sys.equalVariable(v.variable));

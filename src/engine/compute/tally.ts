@@ -1,6 +1,8 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
+import { logical } from '../force/util';
+import { hasMolecule } from '../atoms';
 
 /*
  * Pairwise group computes (docs.lammps.org/compute_group_group.html and
@@ -138,23 +140,27 @@ export class ComputeGroupGroup extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (!args.length) throw new StyleError(`compute ${id} group/group needs the group2-ID`);
+    // As native LAMMPS does (src/compute_group_group.cpp at b332f28): group2 (Group::get_bitmask_by_id), then the
+    // keywords; every bad word is "Illegal compute group/group command"
+    const illegal = (): StyleError => new StyleError('Illegal compute group/group command');
+    if (!args.length) throw illegal();
+    if (sys.groups.find(args[0]) < 0) throw new StyleError(`Group ID ${args[0]} requested by compute group/group does not exist`);
     this.group2Bit = sys.groups.bit(args[0]);
     let pairOn = true, mol: MolMode = 'off';
     for (let a = 1; a < args.length; a += 2) {
       const key = args[a], val = args[a + 1];
-      if (val === undefined) throw new StyleError(`compute ${id} group/group: keyword ${key} needs a value`);
+      if (key !== 'pair' && key !== 'kspace' && key !== 'boundary' && key !== 'molecule') throw illegal();
+      if (val === undefined) throw illegal();
       if (key === 'pair' || key === 'kspace' || key === 'boundary') {
-        if (val !== 'yes' && val !== 'no') throw new StyleError(`compute ${id} group/group: ${key} must be yes or no`);
-        if (key === 'pair') pairOn = val === 'yes';
-        if (key === 'kspace' && val === 'yes') {
+        const on = logical(val);
+        if (key === 'pair') pairOn = on;
+        if (key === 'kspace' && on) {
           throw new StyleError(`compute ${id} group/group: kspace yes is not supported by the browser engine (the long-range group-group term is not implemented)`);
         }
-      } else if (key === 'molecule') {
-        if (val !== 'off' && val !== 'inter' && val !== 'intra') throw new StyleError(`compute ${id} group/group: molecule must be off, inter or intra`);
-        mol = val;
       } else {
-        throw new StyleError(`compute ${id} group/group: unknown keyword '${key}'`);
+        if (val !== 'off' && val !== 'inter' && val !== 'intra') throw illegal();
+        if (val !== 'off' && !hasMolecule(sys.state)) throw new StyleError('Compute group/group molecule requires molecule IDs');
+        mol = val;
       }
     }
     this.pairOn = pairOn;

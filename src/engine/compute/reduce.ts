@@ -440,8 +440,8 @@ export class ComputeDisplaceAtom extends Compute {
     super(sys, id, group, args);
     let refreshVar: string | null = null;
     for (let k = 0; k < args.length; k += 2) {
-      if (args[k] !== 'refresh') throw new StyleError(`unknown compute displace/atom keyword '${args[k]}'`);
-      if (k + 1 >= args.length) throw new StyleError(`compute ${id} (displace/atom): the refresh keyword needs the ID of an atom-style variable`);
+      // As native LAMMPS does (src/compute_displace_atom.cpp at b332f28)
+      if (args[k] !== 'refresh' || k + 1 >= args.length) throw new StyleError('Illegal compute displace/atom command');
       refreshVar = args[k + 1];
     }
     this.refreshVar = refreshVar;

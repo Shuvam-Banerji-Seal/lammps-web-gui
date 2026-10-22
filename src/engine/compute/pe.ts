@@ -21,8 +21,9 @@ export class ComputePE extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (group !== 'all') throw new StyleError('compute pe must use group all');
-    for (const a of args) if (!(KEYS as readonly string[]).includes(a)) throw new StyleError(`unknown compute pe keyword '${a}'`);
+    if (group !== 'all') throw new StyleError('Compute pe must use group all');
+    // As native LAMMPS does (src/compute_pe.cpp at b332f28)
+    for (const a of args) if (!(KEYS as readonly string[]).includes(a)) throw new StyleError(`Unknown compute pe keyword ${a}`);
     this.terms = new Set(args.length ? args : KEYS);
     this.scalarFlag = true;
     this.extscalar = 1;

@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
+import { numeric } from '../force/util';
 import { libm } from '../libm';
 
 /*
@@ -42,11 +43,11 @@ export class FixAccelerateCos extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 1) throw new StyleError('usage: fix ID group-ID accelerate/cos value');
-    if (sys.dimension === 2) throw new StyleError('fix accelerate/cos cannot be used in 2d simulations (it depends on the z-coordinate)');
-    if (args[0].startsWith('v_')) throw new StyleError('fix accelerate/cos: value must be a number, variables are not supported');
-    this.amp = Number(args[0]);
-    if (args[0].trim() === '' || !Number.isFinite(this.amp)) throw new StyleError(`fix accelerate/cos: expected a number for value, got '${args[0]}'`);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_accelerate_cos.cpp at b332f28): the value (utils::numeric; words after it
+    // are not read), then the dimension
+    if (args.length < 1) throw new StyleError('Illegal fix accelerate/cos command');
+    this.amp = numeric(args[0]);
+    if (sys.dimension === 2) throw new StyleError('Fix accelerate/cos cannot be used with 2d systems');
   }
 
   /** f_x += m A cos(2 pi (z - zlo) / lz) / ftm2v for each atom of the group. */

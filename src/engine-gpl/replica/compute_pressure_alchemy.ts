@@ -21,9 +21,11 @@ export class ComputePressureAlchemy extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 1) throw new StyleError('Illegal compute pressure/alchemy command (usage: compute ID group pressure/alchemy fix-ID)');
+    // compute_pressure_alchemy.cpp constructor: the count, group all, then the fix must exist
+    if (args.length !== 1) throw new StyleError('Illegal compute pressure/alchemy command');
     if (group !== 'all') throw new StyleError('Compute pressure/alchemy must use group all');
     this.fixId = args[0];
+    if (!sys.fixes.some((f) => f.id === this.fixId)) throw new StyleError(`Could not find compute pressure/alchemy fix ID ${this.fixId} for fix alchemy`);
     this.scalarFlag = true;
     this.vectorFlag = true;
     this.sizeVector = 6;

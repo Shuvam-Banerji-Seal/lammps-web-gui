@@ -2,6 +2,7 @@ import { FixNVE } from './nve';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { updateDipoles } from './nve_sphere';
+import { missingArgs } from '../force/util';
 
 /*
  * fix ID group nve/bpm/sphere [disc] — docs.lammps.org/fix_nve_bpm_sphere.html. The doc says: "Perform
@@ -71,13 +72,15 @@ export class FixNVEBpmSphere extends FixNVE {
         if (sys.dimension !== 2) throw new StyleError('Fix nve/bpm/sphere disc requires 2d simulation');
         this.inertia = 0.5;
       } else if (args[k] === 'update') {
+        // As native LAMMPS does (src/BPM/fix_nve_bpm_sphere.cpp at b332f28)
+        if (k + 2 > args.length) throw missingArgs('fix nve/bpm/sphere update');
         const v = args[k + 1];
         if (v === 'dipole' || v === 'dipole/dlm') {
           this.updateDipole = true;
           this.dlm = v === 'dipole/dlm';
-        } else throw new StyleError(`Unknown keyword in fix nve/bpm/sphere update command: ${v ?? '(missing)'}`);
+        } else throw new StyleError(`Unknown keyword in fix nve/bpm/sphere update command: ${v}`);
         k++;
-      } else throw new StyleError(`Unknown keyword in fix nve/bpm/sphere command: ${args[k]}`);
+      } else throw new StyleError(`Illegal fix nve/bpm/sphere keyword ${args[k]}`);
     }
     const s = sys.state;
     if (!s.omega || !s.quat || !s.torque || !s.radius) throw new StyleError('Fix nve/bpm/sphere requires atom style bpm/sphere');

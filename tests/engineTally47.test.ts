@@ -64,10 +64,10 @@ describe('compute group/group, pe/tally, force/tally, stress/tally: parsing and 
   });
 
   it('refuses unknown and malformed keywords', async () => {
-    expect((await run(`${CRYSTAL}compute g odd group/group even bogus yes\nrun 0\n`)).error).toMatch(/unknown keyword 'bogus'/);
-    expect((await run(`${CRYSTAL}compute g odd group/group even pair maybe\nrun 0\n`)).error).toMatch(/pair must be yes or no/);
-    expect((await run(`${CRYSTAL}compute g odd group/group even molecule both\nrun 0\n`)).error).toMatch(/molecule must be off, inter or intra/);
-    expect((await run(`${CRYSTAL}compute g odd group/group even pair\nrun 0\n`)).error).toMatch(/keyword pair needs a value/);
+    expect((await run(`${CRYSTAL}compute g odd group/group even bogus yes\nrun 0\n`)).error).toMatch(/Illegal compute group\/group command/);
+    expect((await run(`${CRYSTAL}compute g odd group/group even pair maybe\nrun 0\n`)).error).toMatch(/Expected boolean parameter instead of 'maybe'/);
+    expect((await run(`${CRYSTAL}compute g odd group/group even molecule both\nrun 0\n`)).error).toMatch(/Illegal compute group\/group command/);
+    expect((await run(`${CRYSTAL}compute g odd group/group even pair\nrun 0\n`)).error).toMatch(/Illegal compute group\/group command/);
   });
 
   it('needs the group2-ID and an existing group', async () => {

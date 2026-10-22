@@ -170,12 +170,12 @@ run 0`;
 
   it('rejects an unknown tabstyle', async () => {
     const { error } = await runScript(base('fix 1 all wall/table cubic 5 zlo 0.0 harm.dat HARM 3.0 units box'), { 'harm.dat': HARM });
-    expect(error?.message ?? '').toMatch(/unknown table style 'cubic'/);
+    expect(error?.message ?? '').toMatch(/Unknown table style cubic in fix wall\/table/);
   });
 
   it('rejects N < 2', async () => {
     const { error } = await runScript(base('fix 1 all wall/table linear 1 zlo 0.0 harm.dat HARM 3.0 units box'), { 'harm.dat': HARM });
-    expect(error?.message ?? '').toMatch(/N must be an integer >= 2/);
+    expect(error?.message ?? '').toMatch(/Illegal number of fix wall\/table table entries/);
   });
 
   it('rejects an unknown table parameter by name', async () => {

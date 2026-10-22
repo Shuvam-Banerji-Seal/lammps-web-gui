@@ -209,7 +209,7 @@ pair_coeff 1 1 1.0 1.0 2.5
   };
 
   it('reports a missing dump file, a missing snapshot and a missing box', async () => {
-    await expect(run(`${setup}rerun nope.dump dump x y z\n`)).rejects.toThrow(/cannot open file nope.dump/);
+    await expect(run(`${setup}rerun nope.dump dump x y z\n`)).rejects.toThrow(/Cannot open file nope.dump: No such file or directory/);
     await expect(run(`${setup}read_dump d.dump 7 x y z\n`, { 'd.dump': dumpText([0, 10]) })).rejects.toThrow('no snapshot with timestep 7 in d.dump');
     await expect(run('rerun d.dump dump x y z\n', { 'd.dump': dumpText([0]) })).rejects.toThrow(/needs a simulation box/);
   });

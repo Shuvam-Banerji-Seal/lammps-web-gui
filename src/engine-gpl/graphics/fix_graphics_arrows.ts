@@ -71,7 +71,7 @@ export class FixGraphicsArrows extends Fix {
     } else if (mode === 'chunk') {
       // fix_graphics_arrows.cpp: "fix ID group-ID graphics/arrows Nevery chunk chunkID posID vecID scale radius keyword value ..."
       if (args.length < 7) throw new StyleError(`fix ${id} graphics/arrows chunk: needs chunkID, posID, vecID, scale and radius`);
-      const chunk = chunkCompute(sys, args[2], `fix ${id} graphics/arrows`);
+      const chunk = chunkCompute(sys, args[2], 'fix graphics/arrows');
       const pos = sys.compute(args[3]);
       const vec = sys.compute(args[4]);
       for (const [c, cid] of [[pos, args[3]], [vec, args[4]]] as const) {

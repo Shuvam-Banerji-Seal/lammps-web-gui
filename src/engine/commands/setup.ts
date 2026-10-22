@@ -1426,7 +1426,7 @@ const molecule: Handler = ({ sys }, a) => {
       } else { o[key as 'toff'] = int(a[k + 1], key); k += 2; }
     }
     // molecule.html: type words may be type labels, resolved through the label map at read time
-    const t = parseMoleculeFile(id, file, sys.readFile(file), o, sys.labels);
+    const t = parseMoleculeFile(id, file, sys.readFile(file, 'Cannot open molecule file'), o, sys.labels);
     if (checkWhich) moleculeLabelCheck(sys, sys.labels, checkWhich, id, t);
     // molecule.cpp (read_molecule): "Molecule file with lines must be for 2d simulation" and "... with triangles must be for 3d simulation"
     if (t.lines && sys.dimension !== 2) throw new StyleError('Molecule file with lines must be for 2d simulation');

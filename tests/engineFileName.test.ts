@@ -76,6 +76,6 @@ describe('session file lookup with a "./" prefix', () => {
 
   it('a missing file still errors and names the file as written', async () => {
     const r = await runRead({}, './missing.data');
-    expect(r.error).toContain('cannot open file ./missing.data');
+    expect(r.error).toContain('Cannot open file ./missing.data: No such file or directory');
   });
 });

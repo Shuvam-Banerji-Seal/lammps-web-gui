@@ -18,6 +18,7 @@
  */
 import { FixNH, type NHRestart } from '../../engine/fix/nh';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
 import type { Fix } from '../../engine/fix/fix';
@@ -65,22 +66,22 @@ const parseUefArgs = (args: string[], name: string): UefArgs => {
   let hasPress = false;
   let tilt = false;
   let tchainGiven = false;
-  const num = (w: string | undefined, what: string): number => {
-    const v = Number(w);
-    if (w === undefined || w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`fix ${name}: expected a number for ${what}`);
-    return v;
-  };
+  // fix_nh_uef.cpp: its own keywords say "Illegal fix nvt/npt/uef command"; FixNH names the others
+  const illegal = (): StyleError => new StyleError('Illegal fix nvt/npt/uef command');
   let k = 0;
   while (k < args.length) {
     const key = args[k];
     if (key === 'erate') {
-      erate = [num(args[k + 1], 'erate x'), num(args[k + 2], 'erate y')];
+      if (k + 3 > args.length) throw illegal();
+      erate = [numeric(args[k + 1]), numeric(args[k + 2])];
       k += 3;
     } else if (key === 'strain') {
-      strain[0] = num(args[k + 1], 'strain x');
-      strain[1] = num(args[k + 2], 'strain y');
+      if (k + 3 > args.length) throw illegal();
+      strain[0] = numeric(args[k + 1]);
+      strain[1] = numeric(args[k + 2]);
       k += 3;
     } else if (key === 'ext') {
+      if (k + 2 > args.length) throw illegal();
       switch (args[k + 1]) {
         case 'x': ext[1] = ext[2] = false; break;
         case 'y': ext[0] = ext[2] = false; break;
@@ -89,7 +90,7 @@ const parseUefArgs = (args: string[], name: string): UefArgs => {
         case 'xz': ext[1] = false; break;
         case 'yz': ext[0] = false; break;
         case 'xyz': break;
-        default: throw new StyleError(`Illegal fix ${name} command: ext must be x, y, z, xy, xz, yz or xyz`);
+        default: throw illegal();
       }
       k += 2;
     } else if (key in NH_VALUES) {
@@ -107,7 +108,7 @@ const parseUefArgs = (args: string[], name: string): UefArgs => {
       for (let j = 0; j <= n; j++) rest.push(args[k + j] ?? '');
       k += n + 1;
     } else {
-      throw new StyleError(`unknown fix ${name} keyword '${key}'`);
+      throw new StyleError(`Unknown fix ${name} keyword: ${key}`);
     }
   }
   // "if (mtchain_default_flag) mtchain = 1;": the thermostat chain defaults to 1 for this fix
@@ -159,9 +160,10 @@ export class FixNHUef extends FixNH {
   constructor(sys: System, id: string, group: string, args: string[], variant: UefVariant) {
     const name = `${variant}/uef`;
     const parsed = parseUefArgs(args, name);
+    // fix_nh_uef.cpp constructor: erate, then the triclinic box (its messages name nvt/npt/uef)
+    if (!parsed.erate) throw new StyleError('Keyword erate must be set for fix nvt/npt/uef command');
     if (sys.dimension !== 3) throw new StyleError(`fix ${name} requires a 3d simulation`);
-    if (!sys.state.box.triclinic) throw new StyleError(`Simulation box must be triclinic for fix/${name}`);
-    if (!parsed.erate) throw new StyleError(`Keyword erate must be set for fix ${name} command`);
+    if (!sys.state.box.triclinic) throw new StyleError('Simulation box must be triclinic for fix/nvt/npt/uef');
     if (!parsed.hasTemp) throw new StyleError(`Temperature control must be used with fix ${name}`);
     if (variant === 'nvt' && parsed.hasPress) throw new StyleError(`Pressure control can't be used with fix ${name}`);
     if (variant === 'npt' && !parsed.hasPress) throw new StyleError(`Pressure control must be used with fix ${name}`);

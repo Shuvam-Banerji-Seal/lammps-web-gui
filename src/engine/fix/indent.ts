@@ -2,6 +2,9 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
+import { fmtShortest } from '../cformat';
+import { EQUAL_STYLES } from '../argInfo';
+import { missingArgs, numeric } from '../force/util';
 
 /*
  * fix wall/reflect and fix indent — implemented only from the cited
@@ -26,10 +29,9 @@ const geoValue = (sys: System, w: string | undefined, what: string, style: strin
   const v = parseNumOrVar(w, what);
   if (typeof v === 'object') {
     const def = sys.vars.get(v.variable);
-    if (!def) throw new StyleError(`fix ${style}: variable ${v.variable} does not exist`);
-    if (def.style !== 'equal') {
-      throw new StyleError(`fix ${style}: variable ${v.variable} must be an equal-style variable, not ${def.style}-style`);
-    }
+    // native's wording (fix_indent.cpp init; the engine checks when the fix is defined)
+    if (!def) throw new StyleError(`Variable ${v.variable} for fix ${style} does not exist`);
+    if (!EQUAL_STYLES.has(def.style)) throw new StyleError(`Variable ${v.variable} for fix ${style} is invalid style`);
   }
   return v;
 };
@@ -93,52 +95,45 @@ export class FixWallReflect extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 2) {
-      throw new StyleError('usage: fix ID group-ID wall/reflect face arg ... [face arg ...] [keyword value ...]');
-    }
+    // As native LAMMPS does (src/fix_wall_reflect.cpp at b332f28): faces with a position and units; then the periodic
+    // and 2d checks; the variables are checked at init. docs.lammps.org/fix_wall_reflect.html: "Any dimension (xyz)
+    // that has a reflecting wall must be non-periodic."
     for (let k = 0; k < args.length;) {
       const w = args[k];
-      if (w === 'units') {
-        const v = args[k + 1];
-        if (v !== 'lattice' && v !== 'box') {
-          throw new StyleError(`fix ${id} (wall/reflect): units must be lattice or box, got '${v ?? ''}'`);
-        }
-        this.unitsMode = v;
-        k += 2;
-        continue;
-      }
       const dim = 'xyz'.indexOf(w[0]) as 0 | 1 | 2;
       const isFace = dim >= 0 && w.length === 3 && (w[1] === 'l' || w[1] === 'h') && w[2] === (w[1] === 'l' ? 'o' : 'i');
-      if (!isFace) {
-        throw new StyleError(`fix ${id} (wall/reflect): unknown argument '${w}' (expected a face xlo, xhi, ylo, yhi, zlo or zhi, or the keyword units)`);
+      if (isFace) {
+        if (k + 2 > args.length) throw new StyleError(`Illegal fix wall/reflect ${w} command: missing argument(s)`);
+        const lo = w[1] === 'l';
+        if (this.faces.some((f) => f.dim === dim && f.lo === lo)) throw new StyleError('Wall defined twice in fix wall/reflect command');
+        const arg = args[k + 1];
+        const pos = arg === 'EDGE' ? { edge: true as const } : { edge: false as const, v: parseNumOrVar(arg, `${w} wall position`) };
+        this.faces.push({ dim, lo, pos });
+        k += 2;
+      } else if (w === 'units') {
+        if (k + 2 > args.length) throw missingArgs('fix wall/reflect units');
+        const v = args[k + 1];
+        if (v !== 'lattice' && v !== 'box') throw new StyleError(`Unknown fix wall/reflect units argument: ${v}`);
+        this.unitsMode = v;
+        k += 2;
+      } else {
+        throw new StyleError(`Unknown fix wall/reflect keyword: ${w}`);
       }
-      const lo = w[1] === 'l';
-      if (this.faces.some((f) => f.dim === dim && f.lo === lo)) {
-        throw new StyleError(`fix ${id} (wall/reflect): face ${w} is specified more than once`);
-      }
-      const arg = args[k + 1];
-      if (arg === undefined) {
-        throw new StyleError(`fix ${id} (wall/reflect): face ${w} needs an argument (EDGE, a constant, or v_name)`);
-      }
-      const pos = arg === 'EDGE'
-        ? { edge: true as const }
-        : arg.startsWith('v_')
-          ? { edge: false as const, v: geoValue(sys, arg, `${w} wall position`, 'wall/reflect') }
-          : { edge: false as const, v: parseNumOrVar(arg, `${w} wall position`) };
-      this.faces.push({ dim, lo, pos });
-      k += 2;
     }
-    if (!this.faces.length) {
-      throw new StyleError(`fix ${id} (wall/reflect): no wall face (xlo, xhi, ylo, yhi, zlo or zhi) was specified`);
+    if (!this.faces.length) throw missingArgs('fix wall/reflect');
+    for (const f of this.faces) {
+      if (sys.state.box.periodic[f.dim]) throw new StyleError(`Cannot use fix wall/reflect in periodic dimension ${'xyz'[f.dim]}`);
     }
+    if (sys.dimension === 2 && this.faces.some((f) => f.dim === 2)) throw new StyleError('Cannot use fix wall/reflect zlo/zhi for a 2d simulation');
   }
 
   init(): void {
-    const s = this.sys.state;
     for (const f of this.faces) {
-      if (s.box.periodic[f.dim]) {
-        throw new StyleError(`fix ${this.id} (wall/reflect): a reflecting wall requires a non-periodic dimension (docs.lammps.org/fix_wall_reflect.html: "Any dimension (xyz) that has a reflecting wall must be non-periodic.")`);
-      }
+      if (f.pos.edge || typeof f.pos.v === 'number') continue;
+      const name = f.pos.v.variable;
+      const def = this.sys.vars.get(name);
+      if (!def) throw new StyleError(`Variable ${name} for fix wall/reflect does not exist`);
+      if (!EQUAL_STYLES.has(def.style)) throw new StyleError(`Variable ${name} for fix wall/reflect is invalid style`);
     }
   }
 
@@ -277,18 +272,16 @@ export class FixIndent extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 2) {
-      throw new StyleError('usage: fix ID group-ID indent K gstyle args [keyword value ...]');
-    }
-    const kw = args[0];
-    if (kw.startsWith('v_') || !Number.isFinite(Number(kw))) {
-      throw new StyleError(`fix ${id} (indent): K must be a number (force/distance^2 units), got '${kw}'`);
-    }
-    this.k = Number(kw);
+    // As native LAMMPS does (src/fix_indent.cpp at b332f28): K (utils::numeric, >= 0), the geometry and its words,
+    // then side and units
+    this.k = numeric(args[0]);
+    if (this.k < 0) throw new StyleError(`Illegal fix indent force constant: ${fmtShortest(this.k, false)}`);
+    // native reads the geometry word past the end of the line here (no message of its own)
+    if (args.length < 2) throw new StyleError('usage: fix ID group-ID indent K gstyle args [keyword value ...]');
     const gstyle = args[1];
     let k: number;
     if (gstyle === 'sphere') {
-      if (args.length < 6) throw new StyleError(`fix ${id} (indent): sphere needs 4 args (x y z R)`);
+      if (args.length < 6) throw missingArgs('fix indent sphere');
       this.geom = {
         kind: 'sphere',
         c: [
@@ -300,11 +293,9 @@ export class FixIndent extends Fix {
       };
       k = 6;
     } else if (gstyle === 'cylinder') {
-      if (args.length < 6) throw new StyleError(`fix ${id} (indent): cylinder needs 4 args (dim c1 c2 R)`);
+      if (args.length < 6) throw missingArgs('fix indent cylinder');
       const axis = 'xyz'.indexOf(args[2]);
-      if (axis < 0 || args[2].length !== 1) {
-        throw new StyleError(`fix ${id} (indent): cylinder dim must be x, y or z, got '${args[2]}'`);
-      }
+      if (axis < 0 || args[2].length !== 1) throw new StyleError(`Unknown fix indent cylinder argument: ${args[2]}`);
       this.geom = {
         kind: 'cylinder',
         axis: axis as 0 | 1 | 2,
@@ -314,42 +305,35 @@ export class FixIndent extends Fix {
       };
       k = 6;
     } else if (gstyle === 'plane') {
-      if (args.length < 5) throw new StyleError(`fix ${id} (indent): plane needs 3 args (dim pos side)`);
+      if (args.length < 5) throw missingArgs('fix indent plane');
       const dim = 'xyz'.indexOf(args[2]);
-      if (dim < 0 || args[2].length !== 1) {
-        throw new StyleError(`fix ${id} (indent): plane dim must be x, y or z, got '${args[2]}'`);
-      }
-      if (args[4] !== 'lo' && args[4] !== 'hi') {
-        throw new StyleError(`fix ${id} (indent): plane side must be lo or hi, got '${args[4]}'`);
-      }
-      this.geom = { kind: 'plane', dim: dim as 0 | 1 | 2, pos: geoValue(sys, args[3], 'plane pos', 'indent'), lo: args[4] === 'lo' };
+      if (dim < 0 || args[2].length !== 1) throw new StyleError(`Unknown fix indent plane argument: ${args[2]}`);
+      const pos = geoValue(sys, args[3], 'plane pos', 'indent');
+      if (args[4] !== 'lo' && args[4] !== 'hi') throw new StyleError(`Unknown fix indent plane argument: ${args[4]}`);
+      this.geom = { kind: 'plane', dim: dim as 0 | 1 | 2, pos, lo: args[4] === 'lo' };
       k = 5;
     } else if (gstyle === 'cone') {
       throw new StyleError(`fix ${id} (indent): gstyle cone is documented on docs.lammps.org/fix_indent.html but is not supported by this browser engine`);
     } else {
-      throw new StyleError(`fix ${id} (indent): gstyle must be sphere, cylinder or plane, got '${gstyle ?? ''}'`);
+      throw new StyleError(`Unknown fix indent geometry: ${gstyle}`);
     }
     for (; k < args.length;) {
       const key = args[k];
       if (key === 'side') {
-        if (this.geom.kind === 'plane') {
-          throw new StyleError(`fix ${id} (indent): the side keyword (in/out) applies to sphere and cylinder indenters; the plane's side is its lo/hi argument`);
-        }
+        // side is read for every geometry (a plane's side is its lo/hi word)
+        if (k + 2 > args.length) throw missingArgs('fix indent side');
         const v = args[k + 1];
-        if (v !== 'in' && v !== 'out') {
-          throw new StyleError(`fix ${id} (indent): side must be in or out, got '${v ?? ''}'`);
-        }
+        if (v !== 'in' && v !== 'out') throw new StyleError(`Unknown fix indent side argument: ${v}`);
         this.sideOut = v === 'out';
         k += 2;
       } else if (key === 'units') {
+        if (k + 2 > args.length) throw missingArgs('fix indent units');
         const v = args[k + 1];
-        if (v !== 'lattice' && v !== 'box') {
-          throw new StyleError(`fix ${id} (indent): units must be lattice or box, got '${v ?? ''}'`);
-        }
+        if (v !== 'lattice' && v !== 'box') throw new StyleError(`Unknown fix indent units argument: ${v}`);
         this.unitsMode = v;
         k += 2;
       } else {
-        throw new StyleError(`fix ${id} (indent): unknown keyword '${key}' (side and units are documented)`);
+        throw new StyleError(`Unknown fix indent argument: ${key}`);
       }
     }
     this.scalarFlag = true;

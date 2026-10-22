@@ -39,9 +39,6 @@ export class FixNHBody extends FixNH {
 
   constructor(sys: System, id: string, group: string, args: string[], variant: 'nvt' | 'npt' | 'nph') {
     const name = `${variant}/body`;
-    if (!sys.state.quat || !sys.state.angmom || !sys.state.torque || !sys.state.custom.has(BODY_RECORD)) {
-      throw new StyleError(`Fix ${name} requires atom style body`);
-    }
     super(sys, id, group, args, variant, name);
     this.style = name;
 
@@ -71,10 +68,12 @@ export class FixNHBody extends FixNH {
 
   init(): void {
     const s = this.sys.state;
+    // fix_nh_body.cpp init: the atom style (its message says Compute), then bodies in the group
+    if (!s.quat || !s.angmom || !s.torque || !s.custom.has(BODY_RECORD)) throw new StyleError('Compute nvt/nph/npt body requires atom style body');
     const rec = s.custom.get(BODY_RECORD)!;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      if (rec.data[rec.cols * i] === 0) throw new StyleError(`Fix ${this.style} requires bodies`);
+      if (rec.data[rec.cols * i] === 0) throw new StyleError('Fix nvt/nph/npt body requires bodies');
     }
     super.init();
   }

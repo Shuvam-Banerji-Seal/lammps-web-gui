@@ -199,10 +199,10 @@ create_atoms    1 single 1 5 5
 mass            1 1.0
 `;
     expect(errText((await runScript(`${base}\nfix 1 all momentum 1\nrun 1\n`)).error)).toMatch(/linear/);
-    expect(errText((await runScript(`${base}\nfix 1 all momentum 0 linear 1 1 1\nrun 1\n`)).error)).toMatch(/N must be a positive integer/);
-    expect(errText((await runScript(`${base}\nfix 1 all momentum 1 linear 1 2 1\nrun 1\n`)).error)).toMatch(/0\/1/);
-    expect(errText((await runScript(`${base}\nfix 1 all momentum 1 linear 1 1\nrun 1\n`)).error)).toMatch(/0\/1/);
-    expect(errText((await runScript(`${base}\nfix 1 all momentum 1 bogus\nrun 1\n`)).error)).toMatch(/unknown keyword/);
+    expect(errText((await runScript(`${base}\nfix 1 all momentum 0 linear 1 1 1\nrun 1\n`)).error)).toMatch(/Fix momentum nevery value must be > 0/);
+    expect(errText((await runScript(`${base}\nfix 1 all momentum 1 linear 1 2 1\nrun 1\n`)).error)).toMatch(/Fix momentum linear flag must be 0 or 1/);
+    expect(errText((await runScript(`${base}\nfix 1 all momentum 1 linear 1 1\nrun 1\n`)).error)).toMatch(/Illegal fix momentum linear command: missing argument/);
+    expect(errText((await runScript(`${base}\nfix 1 all momentum 1 bogus\nrun 1\n`)).error)).toMatch(/Unknown fix momentum keyword bogus/);
   });
 });
 
@@ -391,7 +391,8 @@ create_atoms    1 single 5 5 5
 mass            1 1.0
 `;
     expect(errText((await runScript(`${base}\nfix 1 all nve/limit\nrun 1\n`)).error)).toMatch(/Illegal fix nve\/limit command: missing argument/);
-    expect(errText((await runScript(`${base}\nfix 1 all nve/limit -0.5\nrun 1\n`)).error)).toMatch(/positive distance/);
+    // Measured with native LAMMPS: xmax is not checked (utils::numeric only)
+    expect((await runScript(`${base}\nfix 1 all nve/limit -0.5\nrun 1\n`)).error).toBeNull();
     expect(errText((await runScript(`${base}\nfix 1 all nve/limit 0.5 0.2\nrun 1\n`)).error)).toMatch(/Illegal fix nve\/limit command: missing argument/);
   });
 });

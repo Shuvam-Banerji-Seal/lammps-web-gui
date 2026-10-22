@@ -15,6 +15,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { DPD_THETA, DPD_UCOND, DPD_UMECH, DPD_UCHEM } from '../../engine/atoms';
 import { PairDPDfdtEnergy } from './pair_dpd_fdt';
@@ -63,8 +64,8 @@ export class FixEOScv extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length !== 1) throw new StyleError('Illegal fix eos/cv command');
-    this.cv = Number(args[0]);
-    if (!(this.cv > 0)) throw new StyleError('EOS cv must be > 0.0');
+    this.cv = numeric(args[0]);
+    if (this.cv <= 0) throw new StyleError('EOS cv must be > 0.0');
     this.nevery = 1;
     if (!sys.state.custom.has(DPD_THETA)) throw new StyleError('FixEOScv requires atom_style with internal temperature and energies (e.g. dpd)');
   }

@@ -28,7 +28,7 @@ describe('w14flow: fix accelerate/cos', () => {
     await expect(run(`${base}fix 1 all nve\nfix 2 all accelerate/cos 0.05\nrun 2\n`)).resolves.toBeDefined();
   });
   it('rejects a variable amplitude', async () => {
-    await expect(run(`${base}variable A equal 0.1\nfix 1 all nve\nfix 2 all accelerate/cos v_A\nrun 1\n`)).rejects.toThrow(/variables are not supported/);
+    await expect(run(`${base}variable A equal 0.1\nfix 1 all nve\nfix 2 all accelerate/cos v_A\nrun 1\n`)).rejects.toThrow(/Expected floating point parameter instead of 'v_A'/);
   });
   it('rejects a missing amplitude', async () => {
     await expect(run(`${base}fix 1 all nve\nfix 2 all accelerate/cos\nrun 1\n`)).rejects.toThrow();

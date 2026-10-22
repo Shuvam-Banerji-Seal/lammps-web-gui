@@ -179,7 +179,7 @@ describe('Session: errors are explicit and carry the line', () => {
   });
 
   it.each([
-    ['a file the notebook does not have', 'read_data system.data', /cannot open file system.data/],
+    ['a file the notebook does not have', 'read_data system.data', /Cannot open file system.data: No such file or directory/],
     ['units after the box', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nunits real', /Units command after simulation box is defined/],
     ['2d with a non-periodic z', 'dimension 2\nboundary p p f\nregion b block 0 2 0 2 -0.5 0.5\ncreate_box 1 b', /Cannot run 2d simulation with nonperiodic Z dimension/],
     ['an unsupported pair style', 'pair_style quip', /pair_style 'quip' is not supported/],

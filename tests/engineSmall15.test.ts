@@ -194,7 +194,7 @@ describe('compute voronoi/atom neighbors yes and occupation', () => {
   it('rejects the combinations that are not measured', async () => {
     await expect(voronoiRows('occupation only_group')).rejects.toThrow(/occupation/);
     await expect(voronoiRows('occupation neighbors yes')).rejects.toThrow(/occupation/);
-    await expect(voronoiRows('neighbors maybe')).rejects.toThrow(/neighbors/);
+    await expect(voronoiRows('neighbors maybe')).rejects.toThrow(/Expected boolean parameter instead of 'maybe'/);
   });
 });
 

@@ -23,7 +23,8 @@ export class FixDrudeTransform extends Fix {
   constructor(sys: System, id: string, group: string, args: string[], private readonly inverse: boolean) {
     super(sys, id, group, args);
     this.style = inverse ? 'drude/transform/inverse' : 'drude/transform/direct';
-    if (args.length) throw new StyleError(`Illegal fix ${this.style} command`);
+    // fix_drude_transform.cpp: one message for both styles
+    if (args.length) throw new StyleError('Illegal fix drude/transform command');
   }
 
   init(): void {

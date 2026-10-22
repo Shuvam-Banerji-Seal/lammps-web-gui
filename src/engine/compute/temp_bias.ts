@@ -323,8 +323,10 @@ export class ComputeTempRegion extends ComputeTemp {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
-    if (args.length !== 1) throw new StyleError('usage: compute ID group-ID temp/region region-ID');
+    // As native LAMMPS does (src/compute_temp_region.cpp at b332f28): the region must exist when the compute is defined
+    if (args.length !== 1) throw new StyleError('Illegal compute temp/region command');
     this.regionId = args[0];
+    if (!sys.regions.has(this.regionId)) throw new StyleError(`Region ${this.regionId} for compute temp/region does not exist`);
   }
 
   init(): void {
@@ -333,6 +335,7 @@ export class ComputeTempRegion extends ComputeTemp {
   }
 
   private regionRef(): Region {
+    if (!this.sys.regions.has(this.regionId)) throw new StyleError(`Region ${this.regionId} for compute temp/region does not exist`);
     const r = this.sys.region(this.regionId);
     this.reg = r;
     return r;

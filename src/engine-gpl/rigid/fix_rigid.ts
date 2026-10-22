@@ -125,7 +125,7 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
   let k = 1;
   // fix_rigid_small.cpp: the /small styles take molecule bodies only (bodystyle single and group are for the rigid styles)
   const small = style.includes('small');
-  if (small && bodystyle !== 'molecule') throw new StyleError(`fix ${style}: bodystyle ${bodystyle ?? ''} is only allowed for the rigid styles, not ${style} (bodystyle molecule)`);
+  if (small && bodystyle !== 'molecule' && bodystyle !== 'custom') throw new StyleError(`Unknown fix ${style} body style ${bodystyle}`);
   if (bodystyle === 'single' || bodystyle === 'molecule') out.bodystyle = bodystyle;
   else if (bodystyle === 'group') {
     out.bodystyle = 'group';
@@ -136,7 +136,7 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
     k = 2 + n;
   } else if (bodystyle === 'custom') {
     throw new StyleError(`fix ${style}: bodystyle custom is not supported by the browser engine's native-parity rigid/nvt`);
-  } else throw new StyleError(`fix ${style}: unknown bodystyle '${bodystyle ?? ''}' (single, molecule or group)`);
+  } else throw new StyleError(`Unknown fix ${style} mode ${bodystyle}`);
   const onoff = (w: string | undefined) => {
     if (w !== 'on' && w !== 'off') throw new StyleError(`fix ${style}: force/torque flags must be on or off`);
     return w === 'on' ? 1 : 0;

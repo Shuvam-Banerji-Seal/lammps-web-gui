@@ -16,6 +16,7 @@
  * applied to the time increment."
  */
 import { StyleError, type Pair } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { SMD_DESPH, SMD_ESPH, SMD_VEST } from '../../engine/smd';
@@ -95,7 +96,12 @@ export class FixSMDIntegrateTlsph extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     // the native keywords xsph (not available) and limit_velocity (not ported) are refused here
-    if (args.length) throw new StyleError(`fix smd/integrate_tlsph keyword '${args[0]}' is not supported by the browser engine yet`);
+    // fix_smd_integrate_tlsph.cpp: xsph stops the run, limit_velocity takes a number, any other word is unknown
+    for (const w of args) {
+      if (w === 'xsph') throw new StyleError('XSPH is currently not available');
+      if (w === 'limit_velocity') throw new StyleError(`fix smd/integrate_tlsph keyword '${w}' is not supported by the browser engine yet`);
+      throw new StyleError(`Unknown fix smd/integrate_tlsph keyword: ${w}`);
+    }
   }
 
   initialIntegrate(): void {
@@ -138,9 +144,7 @@ export class FixSMDAdjustDt extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length !== 1) throw new StyleError('Illegal fix smd/adjust_dt command');
-    const v = Number(args[0]);
-    if (!Number.isFinite(v)) throw new StyleError(`Illegal fix smd/adjust_dt safety factor '${args[0]}'`);
-    this.safety = v;
+    this.safety = numeric(args[0]);
   }
 
   /** Native setup: the stable time step is computed before the first step (the time step is 1e-16 at step 0). */

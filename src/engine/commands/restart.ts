@@ -111,7 +111,7 @@ const readRestart: Handler = ({ sys }, a) => {
   }
   if (file.endsWith('.mpiio')) throw new StyleError(`read_restart ${file}: MPI-IO restart files are not supported by the browser engine`);
   const name = file.includes('*') ? latestMatch(sys, file) : file;
-  readRestartText(sys, sys.readFile(name), name);
+  readRestartText(sys, sys.readFile(name, 'Cannot open restart file'), name);
 };
 
 /**

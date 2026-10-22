@@ -267,8 +267,12 @@ export class FixNH extends Fix {
     let flipflag = true;
     let dipole = false;
     let pTempFlag = false;
+    // fix npt/cauchy (src/EXTRA-FIX/fix_npt_cauchy.cpp at b332f28) keeps the older wording: most bad words are
+    // "Illegal fix npt/cauchy command"
+    const cauchy = name === 'npt/cauchy';
+    const old = (msg: string): StyleError => new StyleError(cauchy ? 'Illegal fix npt/cauchy command' : msg);
     const missing = (k: number, need: number, key: string): void => {
-      if (k + need > args.length) throw new StyleError(`Illegal fix ${name} ${key} command: missing argument(s)`);
+      if (k + need > args.length) throw old(`Illegal fix ${name} ${key} command: missing argument(s)`);
     };
     const P = (k: number): [number, number, number] => [numeric(args[k + 1]), numeric(args[k + 2]), numeric(args[k + 3])];
     for (let k = 0; k < args.length;) {
@@ -282,8 +286,8 @@ export class FixNH extends Fix {
           this.tTarget = this.tStart;
           this.tStop = numeric(args[k + 2]);
           this.tPeriod = numeric(args[k + 3]);
-          if (this.tStart <= 0.0 || this.tStop <= 0.0) throw new StyleError(`Target temperature for fix ${name} cannot be <= 0.0`);
-          if (this.tPeriod <= 0.0) throw new StyleError(`Temperature damping for fix ${name} cannot be <= 0.0`);
+          if (this.tStart <= 0.0 || this.tStop <= 0.0) throw new StyleError(`Target temperature for fix ${name} cannot be ${cauchy ? '0.0' : '<= 0.0'}`);
+          if (this.tPeriod <= 0.0 && !cauchy) throw new StyleError(`Temperature damping for fix ${name} cannot be <= 0.0`);
           k += 4;
           break;
         }
@@ -319,7 +323,7 @@ export class FixNH extends Fix {
         case 'couple': {
           missing(k, 2, key);
           const c = args[k + 1];
-          if (c !== 'xyz' && c !== 'xy' && c !== 'yz' && c !== 'xz' && c !== 'none') throw new StyleError(`Illegal fix ${name} couple option: ${c}`);
+          if (c !== 'xyz' && c !== 'xy' && c !== 'yz' && c !== 'xz' && c !== 'none') throw old(`Illegal fix ${name} couple option: ${c}`);
           this.couple = c;
           k += 2;
           break;
@@ -327,7 +331,7 @@ export class FixNH extends Fix {
         case 'drag':
           missing(k, 2, key);
           this.drag = numeric(args[k + 1]);
-          if (this.drag < 0.0) throw new StyleError(`Invalid fix ${name} drag argument: ${this.drag}`);
+          if (this.drag < 0.0) throw old(`Invalid fix ${name} drag argument: ${this.drag}`);
           k += 2;
           break;
         case 'ptemp':
@@ -341,7 +345,7 @@ export class FixNH extends Fix {
           missing(k, 2, key);
           if (args[k + 1] === 'all') this.dilateBit = sys.groupBit('all');
           else {
-            if (sys.groups.find(args[k + 1]) < 0) throw new StyleError(`Fix ${name} dilate group ID ${args[k + 1]} does not exist`);
+            if (sys.groups.find(args[k + 1]) < 0) throw new StyleError(cauchy ? 'Fix npt/cauchy dilate group ID does not exist' : `Fix ${name} dilate group ID ${args[k + 1]} does not exist`);
             this.dilateBit = sys.groupBit(args[k + 1]);
           }
           k += 2;
@@ -349,32 +353,32 @@ export class FixNH extends Fix {
         case 'tchain':
           missing(k, 2, key);
           this.tchain = inumeric(args[k + 1]);
-          if (this.tchain < 1) throw new StyleError(`Invalid fix ${name} tchain argument: ${this.tchain}`);
+          if (this.tchain < 1) throw old(`Invalid fix ${name} tchain argument: ${this.tchain}`);
           k += 2;
           break;
         case 'pchain':
           missing(k, 2, key);
           this.pchain = inumeric(args[k + 1]);
-          if (this.pchain < 0) throw new StyleError(`Invalid fix ${name} pchain argument: ${this.pchain}`);
+          if (this.pchain < 0) throw old(`Invalid fix ${name} pchain argument: ${this.pchain}`);
           k += 2;
           break;
         case 'mtk': missing(k, 2, key); this.mtk = logical(args[k + 1]); k += 2; break;
         case 'tloop':
           missing(k, 2, key);
           this.tloop = inumeric(args[k + 1]);
-          if (this.tloop < 0) throw new StyleError(`Invalid fix ${name} tloop argument: ${this.tloop}`);
+          if (this.tloop < 0) throw old(`Invalid fix ${name} tloop argument: ${this.tloop}`);
           k += 2;
           break;
         case 'ploop':
           missing(k, 2, key);
           this.ploop = inumeric(args[k + 1]);
-          if (this.ploop < 0) throw new StyleError(`Invalid fix ${name} ploop argument: ${this.ploop}`);
+          if (this.ploop < 0) throw old(`Invalid fix ${name} ploop argument: ${this.ploop}`);
           k += 2;
           break;
         case 'nreset':
           missing(k, 2, key);
           this.nresetH0 = inumeric(args[k + 1]);
-          if (this.nresetH0 < 0) throw new StyleError(`Invalid fix ${name} nreset argument: ${this.nresetH0}`);
+          if (this.nresetH0 < 0) throw old(`Invalid fix ${name} nreset argument: ${this.nresetH0}`);
           k += 2;
           break;
         case 'scalexy': missing(k, 2, key); scalexy = logical(args[k + 1]); k += 2; break;
@@ -408,7 +412,7 @@ export class FixNH extends Fix {
         case 'disc': k += 1; break;
         case 'erate': case 'strain': k += 3; break;
         case 'ext': case 'psllod': case 'peculiar': case 'kick': case 'integrator': k += 2; break;
-        default: throw new StyleError(`Unknown fix ${name} keyword: ${key}`);
+        default: throw old(`Unknown fix ${name} keyword: ${key}`);
       }
     }
     const pf = this.pFlag, per = box.periodic;
@@ -423,7 +427,7 @@ export class FixNH extends Fix {
     if (this.couple === 'yz' && (!pf[1] || !pf[2])) throw new StyleError(badP);
     if (this.couple === 'xz' && (!pf[0] || !pf[2])) throw new StyleError(badP);
     // "require periodicity in tensile dimension"
-    for (const d of [0, 1, 2]) if (pf[d] && !per[d]) throw new StyleError(`Cannot use fix ${name} on a non-periodic ${KEYS[d]} dimension`);
+    for (const d of [0, 1, 2]) if (pf[d] && !per[d]) throw new StyleError(cauchy ? 'Cannot use fix npt/cauchy on a non-periodic dimension' : `Cannot use fix ${name} on a non-periodic ${KEYS[d]} dimension`);
     // "require periodicity in 2nd dim of off-diagonal tilt component"
     if ((pf[3] && !per[2]) || (pf[4] && !per[2]) || (pf[5] && !per[1])) throw new StyleError(`Cannot use fix ${name} on a 2nd non-periodic dimension`);
     if (scaleyz && !per[2]) throw new StyleError(`Cannot use fix ${name} with yz scaling when z is non-periodic dimension`);

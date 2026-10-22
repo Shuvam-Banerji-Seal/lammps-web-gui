@@ -3,6 +3,7 @@ import type { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
+import { missingArgs } from '../force/util';
 import { isDeformFix, type FixDeform } from '../fix/deform';
 
 /*
@@ -77,8 +78,9 @@ export class ComputeTempDeform extends ComputeTemp {
     super(sys, id, group, []);
     // compute_temp_deform.rst: "keyword = *temp*" with "*temp* value = compute ID that calculates a temperature"
     for (let k = 0; k < args.length;) {
-      if (args[k] !== 'temp') throw new StyleError(`Unknown compute temp/deform keyword: ${args[k]} (compute temp/deform takes no arguments other than the keyword temp)`);
-      if (args[k + 1] === undefined) throw new StyleError('compute temp/deform keyword temp needs a compute ID');
+      // As native LAMMPS does (src/compute_temp_deform.cpp at b332f28)
+      if (args[k] !== 'temp') throw new StyleError(`Unknown compute temp/deform keyword: ${args[k]}`);
+      if (args[k + 1] === undefined) throw missingArgs('compute temp/deform temp');
       this.tempId = args[k + 1];
       k += 2;
     }

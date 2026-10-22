@@ -1,6 +1,6 @@
 import { FixWallBase } from './walls';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
+import { inumeric, parseNum } from '../force/util';
 import type { System } from '../system';
 
 /*
@@ -296,44 +296,29 @@ const readSection = (text: string, filename: string, keyword: string): FileSecti
 };
 
 /**
- * Parses the tokens after the style: tabstyle, N, then face/arg quadruples and
- * the units/fld/pbc keywords. Builds the numeric substitute arguments the base
- * wall parser accepts (filename and keyword are not numbers there).
+ * The words after "linear|spline N": face quadruples (coord filename keyword cutoff) and the units/fld/pbc keywords.
+ * Builds the arguments the base wall parser reads (two numeric stand-ins for filename and keyword), which makes the
+ * native FixWall checks; the table style and N are checked after it (FixWallTable).
  */
-const parseTableArgs = (id: string, args: string[]): { tabStyle: 'linear' | 'spline'; ntable: number; specs: FaceSpec[]; fakeArgs: string[] } => {
-  if (args.length < 2) throw new StyleError(`fix ${id} (wall/table): usage fix ID group-ID wall/table linear|spline N face args ... [keyword value ...]`);
-  const tabStyle = args[0];
-  if (tabStyle !== 'linear' && tabStyle !== 'spline') {
-    throw new StyleError(`fix ${id} (wall/table): unknown table style '${tabStyle}' (linear or spline)`);
-  }
-  const ntable = parseNum(args[1], `fix ${id} (wall/table) table entries N`);
-  if (!Number.isInteger(ntable) || ntable < 2) {
-    throw new StyleError(`fix ${id} (wall/table): N must be an integer >= 2, got '${args[1]}'`);
-  }
+const parseTableArgs = (args: string[]): { specs: FaceSpec[]; fakeArgs: string[] } => {
   const specs: FaceSpec[] = [];
   const fakeArgs: string[] = [];
+  // native FixWall reads the words after "linear|spline N"; a face takes coord filename keyword cutoff
   for (let k = 2; k < args.length;) {
     const w = args[k];
     if (isFace(w)) {
-      const words = args.slice(k + 1, k + 5);
-      if (words.length < 4) throw new StyleError(`fix ${id} (wall/table): face ${w} needs coord filename keyword cutoff`);
-      const coord = words[0], filename = words[1], keyword = words[2], cutW = words[3];
-      const cutoff = parseNum(cutW, `fix ${id} (wall/table) cutoff`);
-      if (!(cutoff > 0)) throw new StyleError(`fix ${id} (wall/table): cutoff must be > 0, got '${cutW}'`);
-      specs.push({ filename, keyword, cutoff });
-      // the base wall parser reads coord, two numeric params, cutoff
+      if (k + 5 > args.length) throw new StyleError('Missing argument for fix wall/table command');
+      const [coord, filename, keyword, cutW] = args.slice(k + 1, k + 5);
+      specs.push({ filename, keyword, cutoff: Number(cutW) });
+      // the base wall parser reads coord, two numeric params, cutoff (and makes the native checks of them)
       fakeArgs.push(w, coord, '1', '1', cutW);
       k += 5;
-    } else if (w === 'units' || w === 'fld' || w === 'pbc') {
-      if (args[k + 1] === undefined) throw new StyleError(`fix ${id} (wall/table): keyword ${w} needs a value`);
-      fakeArgs.push(w, args[k + 1]);
-      k += 2;
     } else {
-      throw new StyleError(`fix ${id} (wall/table): unknown argument '${w}' (expected a face xlo..zhi or the keyword units, fld or pbc)`);
+      fakeArgs.push(w);
+      k += 1;
     }
   }
-  if (!specs.length) throw new StyleError(`fix ${id} (wall/table): no wall face (xlo, xhi, ylo, yhi, zlo or zhi) was specified`);
-  return { tabStyle, ntable, specs, fakeArgs };
+  return { specs, fakeArgs };
 };
 
 /**
@@ -348,10 +333,15 @@ export class FixWallTable extends FixWallBase {
   private tables: Table[] = [];
 
   constructor(sys: System, id: string, group: string, args: string[]) {
-    const parsed = parseTableArgs(id, args);
+    const parsed = parseTableArgs(args);
     super(sys, id, group, parsed.fakeArgs, 'wall/table', 4);
-    this.tabStyle = parsed.tabStyle;
-    this.ntable = parsed.ntable;
+    // As native LAMMPS does (src/fix_wall_table.cpp at b332f28): the table style and length after the walls
+    const tabStyle = args[0];
+    if (tabStyle !== 'linear' && tabStyle !== 'spline') throw new StyleError(`Unknown table style ${tabStyle} in fix wall/table`);
+    const ntable = inumeric(args[1]);
+    if (ntable < 2) throw new StyleError('Illegal number of fix wall/table table entries');
+    this.tabStyle = tabStyle;
+    this.ntable = ntable;
     this.specs = parsed.specs;
   }
 

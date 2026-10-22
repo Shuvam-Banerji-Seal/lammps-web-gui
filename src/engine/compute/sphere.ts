@@ -1,6 +1,7 @@
 import { Compute } from './compute';
 import { ComputeTemp } from './temp';
 import { StyleError } from '../force/types';
+import { missingArgs } from '../force/util';
 import type { System } from '../system';
 
 /*
@@ -65,15 +66,19 @@ export class ComputeTempSphere extends ComputeTemp {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
-    if (!sys.state.omega) throw new StyleError('Compute temp/sphere requires atom attribute omega');
+    // As native LAMMPS does (src/compute_temp_sphere.cpp at b332f28): the keywords, then the atom attributes
     for (let k = 0; k < args.length; k += 2) {
       if (args[k] === 'dof') {
-        if (args[k + 1] !== 'all' && args[k + 1] !== 'rotate') throw new StyleError(`Unknown compute temp/sphere dof keyword ${args[k + 1] ?? ''}`.trim());
+        if (k + 2 > args.length) throw missingArgs('compute temp/sphere dof');
+        if (args[k + 1] !== 'all' && args[k + 1] !== 'rotate') throw new StyleError(`Unknown compute temp/sphere dof keyword ${args[k + 1]}`);
         this.rotateOnly = args[k + 1] === 'rotate';
       } else if (args[k] === 'bias') {
+        if (k + 2 > args.length) throw missingArgs('compute temp/sphere bias');
         throw new StyleError('compute temp/sphere bias is not supported by the browser engine');
-      } else throw new StyleError(`Illegal compute temp/sphere keyword ${args[k]}`);
+      } else throw new StyleError(`Unknown compute temp/sphere keyword ${args[k]}`);
     }
+    if (!sys.state.omega) throw new StyleError('Compute temp/sphere requires atom attribute omega');
+    if (!sys.state.radius) throw new StyleError('Compute temp/sphere requires atom attribute radius');
   }
 
   dofCompute(): void {

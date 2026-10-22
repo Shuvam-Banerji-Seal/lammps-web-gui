@@ -94,7 +94,8 @@ export class ComputePEAtom extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     for (const a of args) {
-      if (!(PE_KEYWORDS as readonly string[]).includes(a)) throw new StyleError(`unknown compute pe/atom keyword '${a}'`);
+      // As native LAMMPS does (src/compute_pe_atom.cpp at b332f28)
+      if (!(PE_KEYWORDS as readonly string[]).includes(a)) throw new StyleError('Illegal compute pe/atom command');
     }
     this.terms = new Set(args.length ? args : PE_KEYWORDS);
     this.peratomFlag = true;
@@ -169,11 +170,18 @@ export class ComputeStressAtom extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 1) throw new StyleError('usage: compute ID group-ID stress/atom temp-ID [keywords]');
+    // As native LAMMPS does (src/compute_stress_atom.cpp at b332f28): the temperature compute is looked up here, then
+    // the keywords
+    if (args.length < 1) throw new StyleError('Illegal compute stress/atom command');
     this.tempId = args[0] === 'NULL' ? null : args[0];
+    if (this.tempId) {
+      const c = sys.computes.find((x) => x.id === this.tempId);
+      if (!c) throw new StyleError(`Could not find compute stress/atom temperature compute ${this.tempId}`);
+      if (!c.tempFlag) throw new StyleError(`Compute stress/atom compute ${this.tempId} does not compute temperature`);
+    }
     const rest = args.slice(1);
     for (const a of rest) {
-      if (!(STRESS_KEYWORDS as readonly string[]).includes(a)) throw new StyleError(`unknown compute stress/atom keyword '${a}'`);
+      if (!(STRESS_KEYWORDS as readonly string[]).includes(a)) throw new StyleError('Illegal compute stress/atom command');
     }
     const expanded = rest.includes('virial') ? [...rest.filter((k) => k !== 'virial'), ...VIRIAL_TERMS] : rest;
     this.terms = new Set(expanded.length ? expanded : ['ke', ...VIRIAL_TERMS]);
@@ -589,6 +597,16 @@ interface HistoryStore {
   historyColumn(frame: number, col: number, groupBit: number, out: Float64Array, stride: number, k: number): void;
 }
 
+/** The keywords of native's compute property/atom constructor (src/compute_property_atom.cpp at b332f28). */
+const NATIVE_PROPERTY_ATOM: ReadonlySet<string> = new Set([
+  'angmomx', 'angmomy', 'angmomz', 'block1', 'block2', 'corner1x', 'corner1y', 'corner1z', 'corner2x', 'corner2y',
+  'corner2z', 'corner3x', 'corner3y', 'corner3z', 'diameter', 'end1x', 'end1y', 'end1z', 'end2x', 'end2y', 'end2z', 'fmx',
+  'fmy', 'fmz', 'fx', 'fy', 'fz', 'heatflow', 'history', 'id', 'inertiax', 'inertiay', 'inertiaz', 'ix', 'iy', 'iz', 'mass',
+  'mol', 'mu', 'mux', 'muy', 'muz', 'nbonds', 'omegax', 'omegay', 'omegaz', 'proc', 'q', 'quati', 'quatj', 'quatk',
+  'quatw', 'radius', 'shapex', 'shapey', 'shapez', 'sp', 'spx', 'spy', 'spz', 'temperature', 'tqx', 'tqy', 'tqz', 'type',
+  'vx', 'vy', 'vz', 'x', 'xs', 'xu', 'y', 'ys', 'yu', 'z', 'zs', 'zu',
+]);
+
 export class ComputePropertyAtom extends Compute {
   readonly style = 'property/atom';
   /** The attributes, with history[I][J] as { frame: I (0 until a wildcard is expanded), col: J }. */
@@ -630,7 +648,10 @@ export class ComputePropertyAtom extends Compute {
       // compute_property_atom.html also lists "i_name, d_name, i2_name[I], d2_name[I]" (fix
       // property/atom) and the finite-size sphere attributes radius, diameter, omega*, tq*
       if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !SUPER_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a) && !APIP_ATTRS.has(a) && !LINE_END.test(a) && !TRI_CORNER.test(a)) {
-        throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
+        // a keyword of native's compute the engine does not have is refused by name; any other word is neither a keyword
+        // of the compute nor a property of the atom style (src/compute_property_atom.cpp at b332f28)
+        if (NATIVE_PROPERTY_ATOM.has(a) || /^[id]2?_/.test(a)) throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
+        throw new StyleError(`Invalid keyword ${a} for atom style ${sys.atomStyle.split(' ')[0]} in compute property/atom command`);
       }
       // as native LAMMPS does (src/compute_property_atom.cpp at b332f28): an APIP field the atom style does not have is
       // an invalid keyword for that style

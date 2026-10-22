@@ -107,10 +107,11 @@ ${DUMP}
   });
 
   it('rejects bad keywords and arguments', async () => {
-    expect((await runScript(oneAtom('fix d all viscous abc'))).error?.message).toContain('gamma');
-    expect((await runScript(oneAtom('fix d all viscous 0.5 bogus 1 2'))).error?.message).toContain('bogus');
-    expect((await runScript(oneAtom('fix d all viscous 0.5 scale 1 0'))).error?.message).toContain('ratio');
-    expect((await runScript(oneAtom('fix d all viscous 0.5 scale 9 1'))).error?.message).toContain('type');
+    // native's messages (fix_viscous.cpp: the scale ratio is not checked)
+    expect((await runScript(oneAtom('fix d all viscous abc'))).error?.message).toContain("Expected floating point parameter instead of 'abc'");
+    expect((await runScript(oneAtom('fix d all viscous 0.5 bogus 1 2'))).error?.message).toContain('Illegal fix viscous command');
+    expect((await runScript(oneAtom('fix d all viscous 0.5 scale 1 0'))).error).toBeNull();
+    expect((await runScript(oneAtom('fix d all viscous 0.5 scale 9 1'))).error?.message).toContain('Illegal fix viscous command');
   });
 });
 

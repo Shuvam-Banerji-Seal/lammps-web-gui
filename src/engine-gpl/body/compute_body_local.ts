@@ -26,6 +26,7 @@ import { Compute } from '../../engine/compute/compute';
 import { quatToMatrix, rotateVec } from '../../engine/compute/asphere';
 import { BODY_RECORD, bodyRecordOffset, parseBodyStyle } from '../../engine/bodies';
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 
 /** One keyword: 'id', 'type', or the 0-based index of a space coordinate (integer 1..3 in the command). */
@@ -38,14 +39,15 @@ export class ComputeBodyLocal extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 1) throw new StyleError('Illegal compute body/local command');
-    if (!sys.state.custom.has(BODY_RECORD) || !sys.state.quat) throw new StyleError('Compute body/local requires atom style body');
+    // compute_body_local.cpp: the words (id, type or an index read with utils::inumeric), then the atom style, then the
+    // indices, which must be < noutcol() (3 for every body style)
     for (const w of args) {
       if (w === 'id' || w === 'type') { this.which.push(w); continue; }
-      const v = Number(w);
-      if (!Number.isInteger(v)) throw new StyleError(`Illegal compute body/local keyword ${w}`);
-      // native: index = inumeric(arg) - 1, refused unless 0 <= index < noutcol() (3 for every body style)
-      if (v < 1 || v > 3) throw new StyleError('Invalid index in compute body/local command');
-      this.which.push(v - 1);
+      this.which.push(inumeric(w) - 1);
+    }
+    if (!sys.state.custom.has(BODY_RECORD) || !sys.state.quat) throw new StyleError('Compute body/local requires atom style body');
+    for (const w of this.which) {
+      if (typeof w === 'number' && (w < 0 || w >= 3)) throw new StyleError('Invalid index in compute body/local command');
     }
     this.localFlag = true;
     this.sizeLocalCols = this.which.length === 1 ? 0 : this.which.length;

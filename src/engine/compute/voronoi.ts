@@ -2,7 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Geometry } from '../domain';
-import { parseNum, parseInt_ } from '../force/util';
+import { inumeric, logical, numeric } from '../force/util';
 import { gplHook } from '../gplHooks';
 import { nativeOrder } from '../atoms';
 
@@ -360,52 +360,39 @@ export class ComputeVoronoiAtom extends Compute {
     let faceThreshold = 0;
     let occupationOn = false;
     let neighborsOn = false;
+    // As native LAMMPS does (src/VORONOI/compute_voronoi_atom.cpp at b332f28): every bad word is "Illegal compute
+    // voronoi/atom command"; the numbers are read with utils::inumeric and utils::numeric and not checked further
+    const illegal = (): StyleError => new StyleError('Illegal compute voronoi/atom command');
     for (let k = 0; k < args.length; k++) {
       const kw = args[k];
-      const where = `compute ${id} (voronoi/atom)`;
       if (kw === 'only_group') { onlyGroup = true; continue; }
       if (kw === 'occupation') { occupationOn = true; continue; }
-      if (kw === 'neighbors') {
-        const w = args[++k];
-        if (w === 'no') continue;
-        if (w === 'yes') { neighborsOn = true; continue; }
-        throw new StyleError(`${where}: neighbors must be yes or no (got '${w}')`);
+      if (kw !== 'radius' && kw !== 'surface' && kw !== 'edge_histo' && kw !== 'face_threshold' && kw !== 'edge_threshold' && kw !== 'neighbors') {
+        if (kw === 'peratom') throw new StyleError(`compute ${id} (voronoi/atom): keyword peratom was removed from LAMMPS and is not accepted`);
+        throw illegal();
       }
-      if (kw === 'peratom') {
-        throw new StyleError(`${where}: keyword peratom was removed from LAMMPS and is not accepted`);
-      }
-      if (kw === 'surface') {
-        const g = args[++k];
-        if (g === undefined) throw new StyleError(`${where}: surface needs a group ID`);
-        surfaceBit = sys.groups.bit(g);
-        surfaceAll = g === 'all';
-        continue;
-      }
+      if (k + 2 > args.length) throw illegal();
+      const w = args[++k];
       if (kw === 'radius') {
-        const w = args[++k];
-        if (w === undefined || !w.startsWith('v_')) throw new StyleError(`${where}: radius needs an atom-style variable v_name (got '${w}')`);
+        if (!w.startsWith('v_')) throw illegal();
         radiusName = w.slice(2);
-        continue;
+      } else if (kw === 'surface') {
+        if (w !== 'all' && sys.groups.find(w) < 0) throw new StyleError('Could not find compute/voronoi surface group ID');
+        surfaceBit = sys.groups.bit(w);
+        surfaceAll = w === 'all';
+      } else if (kw === 'edge_histo') {
+        const v = inumeric(w);
+        edgeMax = v > 0 ? v : null;
+      } else if (kw === 'face_threshold') {
+        faceThreshold = numeric(w);
+      } else if (kw === 'edge_threshold') {
+        edgeThreshold = numeric(w);
+      } else {
+        neighborsOn = logical(w);
       }
-      if (kw === 'edge_histo') {
-        const v = parseInt_(args[++k], `${where} edge_histo maxedge`);
-        if (v < 1) throw new StyleError(`${where}: edge_histo maxedge must be >= 1 (got ${args[k]})`);
-        edgeMax = v;
-        continue;
-      }
-      if (kw === 'edge_threshold') {
-        const v = parseNum(args[++k], `${where} edge_threshold minlength`);
-        if (v < 0) throw new StyleError(`${where}: edge_threshold must be >= 0 (got ${args[k]})`);
-        edgeThreshold = v;
-        continue;
-      }
-      if (kw === 'face_threshold') {
-        const v = parseNum(args[++k], `${where} face_threshold minarea`);
-        if (v < 0) throw new StyleError(`${where}: face_threshold must be >= 0 (got ${args[k]})`);
-        faceThreshold = v;
-        continue;
-      }
-      throw new StyleError(`${where}: unknown keyword '${kw}' (use only_group, surface, radius, edge_histo, edge_threshold, face_threshold, neighbors)`);
+    }
+    if (occupationOn && (surfaceBit !== null || edgeMax !== null)) {
+      throw new StyleError('Illegal compute voronoi/atom command (occupation and (surface or edges))');
     }
     this.onlyGroup = onlyGroup;
     this.surfaceBit = surfaceBit;

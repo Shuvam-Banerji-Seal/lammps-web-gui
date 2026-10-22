@@ -55,7 +55,7 @@ describe('fix rigid bodystyle custom', () => {
   });
 
   it('rejects unknown bodystyles by name', async () => {
-    expect(msg(await run('fix 1 all rigid bogus'))).toMatch(/unknown bodystyle 'bogus'/);
+    expect(msg(await run('fix 1 all rigid bogus'))).toMatch(/Unknown fix rigid mode bogus/);
   });
 });
 

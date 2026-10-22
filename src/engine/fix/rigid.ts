@@ -369,14 +369,15 @@ export class FixRigid extends Fix {
     this.bodystyle = args[0];
     let k = 1;
     if (this.bodystyle === 'single') {
-      if (small) throw new StyleError(`fix ${style}: bodystyle single is only allowed for the rigid styles, not rigid/small`);
+      // As native LAMMPS does (src/RIGID/fix_rigid_small.cpp at b332f28): the /small styles know molecule and custom only
+      if (small) throw new StyleError(`Unknown fix ${style} body style single`);
     } else if (this.bodystyle === 'molecule') {
       // As native LAMMPS does (src/RIGID/fix_rigid.cpp and fix_rigid_small.cpp at b332f28): the molecule ID is needed
       if (!hasMolecule(sys.state)) {
         throw new StyleError(small ? `Fix ${style} requires atom attribute molecule` : `Fix ${style} molecule requires atom attribute molecule`);
       }
     } else if (this.bodystyle === 'group') {
-      if (small) throw new StyleError(`fix ${style}: bodystyle group is only allowed for the rigid styles`);
+      if (small) throw new StyleError(`Unknown fix ${style} body style group`);
       const n = Number(args[1]);
       if (!Number.isInteger(n) || n < 1) throw new StyleError(`fix ${style} group: N must be a positive integer`);
       this.groupList = args.slice(2, 2 + n);
@@ -405,7 +406,10 @@ export class FixRigid extends Fix {
         this.customVar = vname;
         k = 2;
       }
-    } else throw new StyleError(`fix ${style}: unknown bodystyle '${this.bodystyle ?? ''}' (single, molecule or group)`);
+    } else {
+      // fix_rigid.cpp: "Unknown fix {} mode {}"; fix_rigid_small.cpp: "Unknown fix {} body style {}"
+      throw new StyleError(small ? `Unknown fix ${style} body style ${this.bodystyle}` : `Unknown fix ${style} mode ${this.bodystyle}`);
+    }
     const onoff = (w: string | undefined) => {
       if (w !== 'on' && w !== 'off') throw new StyleError(`fix ${style}: force/torque flags must be on or off`);
       return w === 'on';

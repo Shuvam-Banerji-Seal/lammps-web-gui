@@ -9,6 +9,7 @@ import type { Geometry } from '../domain';
 import type { Neighbor, NeighList } from '../neighbor';
 import { NEIGHMASK, SBBITS } from '../neighbor';
 import { gplHook } from '../gplHooks';
+import { missingArgs } from '../force/util';
 import { libm } from '../libm';
 
 /*
@@ -223,9 +224,12 @@ export class ComputeTermLocal extends Compute {
         values.push(w);
         continue;
       }
+      if (kind === 'bond' && w === 'omega') throw new StyleError(`compute ${id} ${this.style}: value 'omega' is not supported by the browser engine`);
       if (!VALUES[kind].includes(w)) {
-        const extra = kind === 'bond' && w === 'omega' ? ' (omega is not supported by the browser engine)' : '';
-        throw new StyleError(`compute ${id} ${this.style}: unknown value '${w}'${extra}`);
+        // As native LAMMPS does (src/compute_{bond,angle,dihedral,improper}_local.cpp at b332f28): the value loop stops at
+        // an unknown word and the keyword loop names it in each style's own words
+        throw new StyleError(kind === 'bond' ? `Unknown compute bond/local keyword: ${w}`
+          : kind === 'improper' ? `Unknown compute improper/local keyword ${w}` : `Illegal compute ${kind}/local command`);
       }
       values.push(w);
     }
@@ -590,20 +594,22 @@ export class ComputePairLocal extends Compute {
     let a = 0;
     for (; a < args.length && args[a] !== 'cutoff'; a++) {
       const w = args[a];
+      // As native LAMMPS does (src/compute_pair_local.cpp at b332f28): the value loop stops at an unknown word, which the
+      // keyword loop then names
       if (PN.test(w)) {
-        if (Number(w.slice(1)) < 1) throw new StyleError(`compute ${id} pair/local: invalid keyword ${w}`);
+        if (Number(w.slice(1)) < 1) throw new StyleError(`Invalid keyword ${w} in compute pair/local command`);
       } else if (!PAIR_VALUES.includes(w)) {
-        throw new StyleError(`compute ${id} pair/local: unknown value '${w}' (use ${PAIR_VALUES.join(', ')}, or pN)`);
+        throw new StyleError(`Unknown compute pair/local keyword: ${w}`);
       }
       values.push(w);
     }
     // keyword cutoff type|radius (native: "cutstyle = TYPE" by default; the keywords follow the values)
     let radiusCut = false;
     for (; a < args.length; a += 2) {
-      if (args[a] !== 'cutoff') throw new StyleError(`compute ${id} pair/local: unknown keyword ${args[a]} (use cutoff)`);
-      if (a + 1 >= args.length) throw new StyleError(`compute ${id} pair/local: missing argument after cutoff (type or radius)`);
+      if (args[a] !== 'cutoff') throw new StyleError(`Unknown compute pair/local keyword: ${args[a]}`);
+      if (a + 1 >= args.length) throw missingArgs('compute pair/local cutoff');
       const c = args[a + 1];
-      if (c !== 'type' && c !== 'radius') throw new StyleError(`compute ${id} pair/local: unknown cutoff keyword ${c} (use type or radius)`);
+      if (c !== 'type' && c !== 'radius') throw new StyleError(`Unknown compute pair/local cutoff keyword: ${c}`);
       radiusCut = c === 'radius';
     }
     this.values = values;

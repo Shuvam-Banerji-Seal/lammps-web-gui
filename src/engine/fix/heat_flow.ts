@@ -34,21 +34,21 @@ export class FixHeatFlow extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const usage = 'usage: fix ID group-ID heat/flow constant cp | type cp1 ... cpN';
+    // As native LAMMPS does (src/GRANULAR/fix_heat_flow.cpp at b332f28): constant cp, or type with one cp per type
     const style = args[0];
     if (style === 'constant') {
-      if (args.length !== 2) throw new StyleError(`Illegal fix heat/flow constant command (${usage})`);
+      if (args.length !== 2) throw new StyleError('Illegal fix heat/flow constant command');
       this.cp = [parseNum(args[1], 'heat/flow constant cp')];
       this.perType = false;
     } else if (style === 'type') {
-      if (args.length < 2) throw new StyleError(`Illegal fix heat/flow type command (${usage})`);
+      if (args.length !== 1 + sys.state.ntypes) throw new StyleError('Illegal fix heat/flow type command');
       this.cp = args.slice(1).map((w) => parseNum(w, 'heat/flow type cp'));
       this.perType = true;
     } else {
-      throw new StyleError(`fix ${id} heat/flow: unknown style '${style ?? ''}' (constant or type)`);
+      throw new StyleError(`Unknown fix heat/flow keyword ${style}`);
     }
     for (const c of this.cp) {
-      if (!(c >= 0)) throw new StyleError(`Illegal fix heat/flow ${style} command value: cp must be >= 0 (got ${c})`);
+      if (c < 0) throw new StyleError(`Illegal fix heat/flow ${style} command value`);
     }
     if (sys.hasBox) this.check();
   }
@@ -60,7 +60,7 @@ export class FixHeatFlow extends Fix {
       throw new StyleError('Fix heat/flow requires atom style with temperature property (define fix property/atom temperature heatflow)');
     }
     if (this.perType && this.cp.length !== s.ntypes) {
-      throw new StyleError(`Illegal fix heat/flow type command: ${this.cp.length} values for ${s.ntypes} atom types`);
+      throw new StyleError('Illegal fix heat/flow type command');
     }
   }
 

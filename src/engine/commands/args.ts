@@ -53,18 +53,14 @@ export const initializing = (h: Handler, when: (a: string[]) => boolean = () => 
   ctx.sys.markComputesInitialized();
 };
 
-export const num = (w: string | undefined, what: string): number => {
-  if (w === undefined) throw new StyleError(`missing ${what}`);
-  const v = Number(w);
-  if (w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`expected a number for ${what}, got '${w}'`);
-  return v;
-};
+/**
+ * A number of a command's arguments, read as native LAMMPS reads one (utils::numeric, src/utils.cpp at b332f28: its
+ * messages do not name the argument; `what` documents the call site).
+ */
+export const num = (w: string | undefined, _what: string): number => numeric(w);
 
-export const int = (w: string | undefined, what: string): number => {
-  const v = num(w, what);
-  if (!Number.isInteger(v)) throw new StyleError(`expected an integer for ${what}, got '${w}'`);
-  return v;
-};
+/** An integer argument, read as native LAMMPS reads one (utils::inumeric). */
+export const int = (w: string | undefined, _what: string): number => inumeric(w);
 
 export const yesno = (w: string | undefined, what: string): boolean => {
   if (w === 'yes') return true;
@@ -73,6 +69,7 @@ export const yesno = (w: string | undefined, what: string): boolean => {
 };
 
 // the native-text argument checks live with parseNum (force/util.ts), where the styles reach them too
+import { inumeric, numeric } from '../force/util';
 export { missingArgs, logical, numeric, inumeric, bnumeric, bounds } from '../force/util';
 
 /** A number, or v_name evaluated as an equal-style variable now. */

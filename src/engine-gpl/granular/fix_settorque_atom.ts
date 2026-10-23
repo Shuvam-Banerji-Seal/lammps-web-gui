@@ -19,7 +19,7 @@
 import { Fix } from '../../engine/fix/fix';
 import type { Region } from '../../engine/region';
 import { StyleError } from '../../engine/force/types';
-import { numeric } from '../../engine/force/util';
+import { numeric, missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 
 /** One torque component: NULL (left alone), a constant, or a v_name variable. */
@@ -44,8 +44,9 @@ export class FixSetTorqueAtom extends Fix {
     this.comps = args.slice(0, 3).map((w, k) => this.parseComponent(w, ['tx', 'ty', 'tz'][k]));
     for (let k = 3; k < args.length; k += 2) {
       if (args[k] !== 'region') throw new StyleError(`Unknown fix settorque/atom keyword: ${args[k]}`);
-      if (k + 1 >= args.length) throw new StyleError('Illegal fix settorque/atom command: region needs an ID');
+      if (k + 1 >= args.length) throw missingArgs('fix settorque/atom region');
       this.regionId = args[k + 1];
+      if (!sys.regions.has(this.regionId)) throw new StyleError(`Region ${this.regionId} for fix settorque/atom does not exist`);
     }
     this.vectorFlag = true;
     this.sizeVector = 3;

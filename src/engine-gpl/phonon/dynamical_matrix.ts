@@ -17,7 +17,7 @@
  */
 import type { Handler } from '../../engine/commands/args';
 import { StyleError } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { parseNum, logical } from '../../engine/force/util';
 import { massOf } from '../../engine/atoms';
 import type { SimState } from '../../engine/types';
 
@@ -44,8 +44,8 @@ export const dynamicalMatrixCmd: Handler = ({ sys }, a) => {
     if (val === undefined) throw new StyleError('Illegal dynamical_matrix command');
     if (key === 'binary') {
       if (val === 'gzip') throw new StyleError('dynamical_matrix binary gzip output is native-only; the browser engine writes text only');
-      if (val === 'yes') throw new StyleError('dynamical_matrix binary yes output is native-only; the browser engine writes text only (binary no)');
-      if (val !== 'no') throw new StyleError(`Illegal dynamical_matrix binary value ${val}`);
+      // native: gzip, or utils::logical
+      if (logical(val)) throw new StyleError('dynamical_matrix binary yes output is native-only; the browser engine writes text only (binary no)');
     } else if (key === 'file') {
       file = val;
     } else if (key === 'fold') {

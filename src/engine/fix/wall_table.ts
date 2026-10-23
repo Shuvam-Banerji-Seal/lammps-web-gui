@@ -1,5 +1,5 @@
 import { FixWallBase } from './walls';
-import { StyleError } from '../force/types';
+import { StyleError, potentialFile } from '../force/types';
 import { inumeric, parseNum } from '../force/util';
 import type { System } from '../system';
 
@@ -352,7 +352,7 @@ export class FixWallTable extends FixWallBase {
 
   /** Preliminary splines, Ntable grid, optional internal splines for one wall. */
   private buildTable(s: FaceSpec): Table {
-    const sec = readSection(this.sys.readFile(s.filename), s.filename, s.keyword);
+    const sec = readSection(this.sys.readFile(s.filename, potentialFile('fix wall/table table')), s.filename, s.keyword);
     const { n, r, e, f } = sec;
     const rInner = r[0], rOuter = r[n - 1];
     const cutoff = s.cutoff;

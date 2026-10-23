@@ -5,7 +5,7 @@ import type { System } from '../system';
 import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
 import { CUSTOM_ATTR, hasCharge, hasMolecule, massOf } from '../atoms';
 import { fillPeratomAttr, peratomAttrProblem } from '../compute/peratom';
-import { inumeric, missingArgs, numeric } from '../force/util';
+import { inumeric, missingArgs, numeric, logical } from '../force/util';
 
 /*
  * fix ID group-ID store/state N input1 input2 ... [keyword value ...] — docs.lammps.org/fix_store_state.html:
@@ -58,8 +58,6 @@ const KEYWORDS = new Set(['com', 'history', 'thresh']);
 const isInputWord = (w: string): boolean => ATTRS.has(w) || /^[cfvid]2?_/.test(w);
 const OPS = new Set(['<', '<=', '>', '>=', '==', '!=', '|^']);
 /** utils::logical (src/utils.cpp at b332f28): yes, on, true, 1 and no, off, false, 0. */
-const TRUE_WORDS = new Set(['yes', 'on', 'true', '1']);
-const FALSE_WORDS = new Set(['no', 'off', 'false', '0']);
 
 /**
  * A stored input: 'keyword' attributes are packed at the constructor and on each stored step; 'custom' (i_name,
@@ -113,10 +111,9 @@ export class FixStoreState extends Fix {
     while (k < args.length) {
       const kw = args[k];
       if (kw === 'com') {
-        if (k + 2 > args.length) throw new StyleError(`${what}: keyword com needs a value`);
-        const v = args[k + 1];
-        if (!TRUE_WORDS.has(v) && !FALSE_WORDS.has(v)) throw new StyleError(`${what}: com must be yes or no, not '${v}'`);
-        comflag = TRUE_WORDS.has(v);
+        // fix_store_state.cpp: utils::logical
+        if (k + 2 > args.length) throw missingArgs('fix store/state com');
+        comflag = logical(args[k + 1]);
         k += 2;
       } else if (kw === 'history') {
         if (k + 4 > args.length) throw new StyleError('Illegal fix store/state history command: missing argument(s)');

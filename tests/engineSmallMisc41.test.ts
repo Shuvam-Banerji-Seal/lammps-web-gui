@@ -140,7 +140,7 @@ run 0`);
     const { error } = await runScript(`${BASE}fix 2 all shake 1.0e-10 100 0 b 1 store maybe
 run 0`);
     expect(error).not.toBeNull();
-    expect(error!.message).toMatch(/store must be yes or no/);
+    expect(error!.message).toMatch("Expected boolean parameter instead of 'maybe' in input script or data file");
   });
 });
 

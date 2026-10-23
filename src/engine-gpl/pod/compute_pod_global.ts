@@ -18,7 +18,7 @@ import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { NEIGHMASK } from '../../engine/neighbor';
-import { PODModel, parsePODCoeffFile, parsePODParams } from './eapod';
+import { POD_OPENER, PODModel, parsePODCoeffFile, parsePODParams } from './eapod';
 
 export class ComputePODGlobal extends Compute {
   readonly style = 'pod/global';
@@ -39,8 +39,8 @@ export class ComputePODGlobal extends Compute {
       throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     if (elems.includes('NULL')) throw new StyleError('compute pod/global: NULL atom types are not supported');
-    const params = parsePODParams(sys.readFile(args[0]));
-    const coeffFile = parsePODCoeffFile(sys.readFile(args[1]));
+    const params = parsePODParams(sys.readFile(args[0], POD_OPENER));
+    const coeffFile = parsePODCoeffFile(sys.readFile(args[1], POD_OPENER));
     this.model = new PODModel(params, coeffFile);
     // element indices follow the order of first appearance, as native map_element2type
     const names = [...new Set(elems)];

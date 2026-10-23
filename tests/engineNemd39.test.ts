@@ -104,7 +104,7 @@ describe('fix nvt/sllod kick, integrator, peculiar', () => {
     expect((await runScript(`${BOX}\nfix 1 all nvt/sllod temp 1.0 1.0 0.1 kick no\n${deform}\nrun 1\n`)).error).toBeNull();
     expect((await runScript(`${BOX}\nfix 1 all nvt/sllod temp 1.0 1.0 0.1 kick yes\n${deform}\nrun 1\n`)).error).toBeNull();
     const bad = await runScript(`${BOX}\nfix 1 all nvt/sllod temp 1.0 1.0 0.1 kick maybe\n${deform}\nrun 1\n`);
-    expect(bad.error).toMatch(/kick must be yes or no/);
+    expect(bad.error).toMatch(/Expected boolean parameter instead of '.*' in input script or data file/);
   });
 
   it('consumes the queued kick at the run setup (default kick yes)', async () => {

@@ -2,7 +2,7 @@ import { isSmdStyle } from '../smd';
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { errorUrl } from '../formula';
-import { inumeric, missingArgs, numeric } from '../force/util';
+import { inumeric, missingArgs, numeric, logical } from '../force/util';
 import { compileCFormat, checkCFormat, formatNumber, type ValueKind } from '../cformat';
 import { localDumpColumns, localColumnSource, localOutputOf } from '../compute/local_dump';
 import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
@@ -464,8 +464,7 @@ export class Dump {
       // utils::missing_cmd_args(FLERR, "dump_modify append", error)", and "if (narg < 2) utils::missing_cmd_args(FLERR,
       // "dump_modify triclinic/general",error)" for the yes/no keywords with no value
       if (w === undefined) throw new StyleError(`Illegal dump_modify ${key} command: missing argument(s)`);
-      if (w !== 'yes' && w !== 'no') throw new StyleError(`dump_modify ${key} must be yes or no`);
-      return w === 'yes';
+      return logical(w);
     };
     for (let k = 0; k < args.length;) {
       const key = args[k];

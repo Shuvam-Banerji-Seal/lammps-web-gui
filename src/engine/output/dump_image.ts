@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { SimState } from '../types';
 import { StyleError } from '../force/types';
-import { inumeric, numeric } from '../force/util';
+import { inumeric, numeric, logical } from '../force/util';
 import { buildAtomMap, isEllipsoid, isLineAtom, isTriAtom, massOf, nativeOrder, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { termRows } from '../compute/local';
 import { SUPER_BLOCK } from '../superellipsoid';
@@ -405,9 +405,7 @@ export class ImageDump {
       if (need !== undefined && k + need > a.length) throw new StyleError(`Illegal dump image ${key} command: missing argument(s)`);
       switch (key) {
         case 'atom': {
-          const v = a[k + 1];
-          if (v !== 'yes' && v !== 'no') throw new StyleError(`dump ${this.id}: dump image atom must be yes or no`);
-          this.atomOn = v === 'yes';
+          this.atomOn = logical(a[k + 1]);
           k += 2;
           break;
         }
@@ -626,16 +624,13 @@ export class ImageDump {
         }
         case 'fsaa': {
           // dump_image.html: "fsaa value = *yes* or *no*"; with yes the image is rendered at twice the size and averaged
-          const v = a[k + 1];
-          if (v !== 'yes' && v !== 'no') throw new StyleError(`dump ${this.id}: dump image fsaa must be yes or no`);
-          this.fsaa = v === 'yes';
+          this.fsaa = logical(a[k + 1]);
           k += 2;
           break;
         }
         case 'ssao': {
           // dump_image.html: "ssao value = *yes* or *no* seed intensity"; seed is a positive integer, intensity 0.0 to 1.0
-          const v = a[k + 1];
-          if (v !== 'yes' && v !== 'no') throw new StyleError(`dump ${this.id}: dump image ssao must be yes or no`);
+          const v = logical(a[k + 1]) ? 'yes' : 'no';
           const seed = this.num(a[k + 2], 'ssao'), inten = this.num(a[k + 3], 'ssao');
           if (!(seed > 0) || !Number.isInteger(seed)) throw new StyleError(`dump ${this.id}: invalid dump image ssao seed ${seed}`);
           if (inten < 0 || inten > 1) throw new StyleError(`dump ${this.id}: invalid dump image ssao intensity value ${inten}`);

@@ -14,16 +14,12 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, OXDNA_QEFF, isEllipsoid } from '../../engine/atoms';
-import { parseNum } from '../../engine/force/util';
+import { parseNum, logical as readLogical } from '../../engine/force/util';
 import { type OxdnaConstants, backboneOxdna2, backboneOxrna2Dh, lrfOf, oxdnaConstants, potentialLines } from './common';
 import { exp as libmExp } from '../libm/exp';
 
 /** utils::logical of LAMMPS for the half_charged_ends keyword. */
-const logical = (w: string): boolean => {
-  if (['yes', 'on', 'true', '1'].includes(w)) return true;
-  if (['no', 'off', 'false', '0'].includes(w)) return false;
-  throw new StyleError(`Expected boolean parameter instead of '${w}' in input`);
-};
+const logical = (w: string): boolean => readLogical(w);
 
 type Tab = Float64Array;
 

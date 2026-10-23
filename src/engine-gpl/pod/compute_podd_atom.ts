@@ -17,7 +17,7 @@ import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { NEIGHMASK } from '../../engine/neighbor';
-import { PODModel, parsePODCoeffFile, parsePODParams } from './eapod';
+import { POD_OPENER, PODModel, parsePODCoeffFile, parsePODParams } from './eapod';
 
 export class ComputePODDAtom extends Compute {
   readonly style = 'podd/atom';
@@ -40,8 +40,8 @@ export class ComputePODDAtom extends Compute {
       throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     if (elems.includes('NULL')) throw new StyleError('compute podd/atom: NULL atom types are not supported');
-    const params = parsePODParams(sys.readFile(args[0]));
-    const coeffFile = parsePODCoeffFile(sys.readFile(args[1]));
+    const params = parsePODParams(sys.readFile(args[0], POD_OPENER));
+    const coeffFile = parsePODCoeffFile(sys.readFile(args[1], POD_OPENER));
     this.model = new PODModel(params, coeffFile);
     if (this.model.nl4 > 0) throw new StyleError('compute podd/atom: four-body POD descriptors (fourbody_number_radial_basis_functions > 0) are not ported');
     // element indices follow the order of first appearance, as native map_element2type

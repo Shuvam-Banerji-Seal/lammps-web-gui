@@ -2,7 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { insertionStream } from './pour';
-import { inumeric } from '../force/util';
+import { inumeric, logical } from '../force/util';
 import type { RanPark } from '../rng';
 
 /*
@@ -71,9 +71,8 @@ export class FixEvaporate extends Fix {
     for (let k = 4; k < args.length; k += 2) {
       // native: any keyword other than molecule, or a molecule keyword without its value, is "Illegal fix evaporate command"
       if (args[k] !== 'molecule' || args[k + 1] === undefined) throw new StyleError('Illegal fix evaporate command');
-      const v = args[k + 1];
-      if (v !== 'yes' && v !== 'no') throw new StyleError(`fix evaporate molecule must be yes or no (got '${v ?? ''}')`);
-      molecule = v === 'yes';
+      // utils::logical (src/fix_evaporate.cpp at b332f28)
+      molecule = logical(args[k + 1]);
     }
     this.molecule = molecule;
     this.scalarFlag = true;

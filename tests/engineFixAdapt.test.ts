@@ -364,6 +364,6 @@ variable        e equal 2.0
 
   it('scale and reset take yes or no', async () => {
     const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut epsilon 1 1 v_e reset maybe\n`);
-    expect(r.message).toMatch(/keyword reset must be yes or no/);
+    expect(r.message).toContain("Expected boolean parameter instead of 'maybe' in input script or data file");
   });
 });

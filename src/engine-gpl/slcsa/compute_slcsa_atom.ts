@@ -24,7 +24,7 @@
  */
 import { errorUrl } from '../../engine/formula';
 import { Compute } from '../../engine/compute/compute';
-import { StyleError } from '../../engine/force/types';
+import { StyleError, potentialFile } from '../../engine/force/types';
 import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { exp as libmExp } from '../libm/exp';
@@ -111,11 +111,11 @@ export class ComputeSLCSAAtom extends Compute {
     this.source = src;
 
     const ncomps = this.ncomps;
-    const meanVals = numbersOf(sys.readFile(args[2]), 'the database mean descriptor file');
-    const ldaVals = numbersOf(sys.readFile(args[3]), 'the lda scalings file');
-    const decVals = numbersOf(sys.readFile(args[4]), 'the lr decision file');
-    const biasVals = numbersOf(sys.readFile(args[5]), 'the lr bias file');
-    const mahaVals = numbersOf(sys.readFile(args[6]), 'the mahalanobis stats file');
+    const meanVals = numbersOf(sys.readFile(args[2], potentialFile('database mean descriptor file')), 'the database mean descriptor file');
+    const ldaVals = numbersOf(sys.readFile(args[3], potentialFile('lda scalings file')), 'the lda scalings file');
+    const decVals = numbersOf(sys.readFile(args[4], potentialFile('lr decision file')), 'the lr decision file');
+    const biasVals = numbersOf(sys.readFile(args[5], potentialFile('lr bias file')), 'the lr bias file');
+    const mahaVals = numbersOf(sys.readFile(args[6], potentialFile('mahalanobis stats file')), 'the mahalanobis stats file');
     this.mean = Float64Array.from(take(meanVals, { i: 0 }, ncomps, 'the database mean descriptor file'));
     this.lda = Float64Array.from(take(ldaVals, { i: 0 }, ncomps * NRED, 'the lda scalings file'));
     this.decision = Float64Array.from(take(decVals, { i: 0 }, NCLASSES * NRED, 'the lr decision file'));

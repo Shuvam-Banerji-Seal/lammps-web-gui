@@ -1,4 +1,4 @@
-import { StyleError, type PairCompute } from '../types';
+import { pairCoeffArgs, StyleError, type PairCompute } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 import { gplHook } from '../../gplHooks';
@@ -153,13 +153,14 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
   private dispKey: number[] = [];
 
   settings(args: string[]): void {
-    if (args.length !== 3 && args.length !== 4) {
-      throw new StyleError('usage: pair_style lj/long/coul/long flag_lj flag_coul cutoff (cutoff2)');
-    }
+    // As native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp settings and options at b332f28): the word count,
+    // each flag long, cut or off, no Coulomb cut, then the cutoffs (one only when both flags are long)
+    if (args.length !== 3 && args.length !== 4) throw new StyleError('Illegal pair_style command');
     const [flagLJ, flagCoul] = args;
-    if (flagLJ !== 'cut' && flagLJ !== 'long' && flagLJ !== 'off') throw new StyleError(`pair_style lj/long/coul/long: invalid flag_lj '${flagLJ}' (long, cut or off)`);
-    if (flagCoul !== 'long' && flagCoul !== 'off') throw new StyleError(`pair_style lj/long/coul/long: invalid flag_coul '${flagCoul}' (long or off)`);
+    for (const f of [flagLJ, flagCoul]) if (f !== 'long' && f !== 'cut' && f !== 'off') throw new StyleError('Illegal pair_style lj/long/coul/long command');
+    if (flagCoul === 'cut') throw new StyleError('Coulomb cut not supported in pair_style lj/long/coul/long');
     this.cutGlobal = parseNum(args[2], 'cutoff');
+    if (args.length === 4 && flagLJ === 'long' && flagCoul === 'long') throw new StyleError('Only one cutoff allowed when requesting all long');
     if (!(this.cutGlobal > 0)) throw new StyleError('pair_style lj/long/coul/long: cutoff must be > 0');
     this.cutCoul = args.length === 4 ? parseNum(args[3], 'Coulomb cutoff') : this.cutGlobal;
     if (!(this.cutCoul > 0)) throw new StyleError('pair_style lj/long/coul/long: Coulomb cutoff must be > 0');
@@ -181,9 +182,9 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
   }
 
   coeff(args: string[]): void {
-    if (args.length === 6) {
-      throw new StyleError('pair_coeff cutoff2 (a per-pair Coulomb cutoff) is not implemented for pair style lj/long/coul/long');
-    }
+    // As native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp coeff at b332f28): 4 or 5 words, so no per-pair
+    // Coulomb cutoff although pair_lj_long.rst lists "cutoff2 (distance units)"
+    if (args.length < 4 || args.length > 5) throw pairCoeffArgs();
     super.coeff(args);
   }
 

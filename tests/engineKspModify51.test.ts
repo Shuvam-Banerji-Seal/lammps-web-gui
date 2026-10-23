@@ -61,10 +61,10 @@ describe('kspace_modify keywords refused by the engine', () => {
     expect(err).toBeNull();
   });
 
-  it('rejects a non-boolean value of the yes/no keywords by name', async () => {
+  it('rejects a non-boolean value of the yes/no keywords as utils::logical does', async () => {
     for (const kw of ['collective maybe', 'nonblocking maybe', 'overlap maybe', 'fftbench maybe', 'cutoff/adjust maybe', 'pressure/scalar maybe']) {
       const err = await run(system('ewald 1e-4', `gewald 0.4 kmax/ewald 5 5 5 ${kw}`));
-      expect(err, kw).toMatch(new RegExp(`Expected boolean parameter instead of 'maybe' for kspace_modify ${kw.split(' ')[0].replace('/', '\\/')}`));
+      expect(err, kw).toContain("Expected boolean parameter instead of 'maybe' in input script or data file");
     }
   });
 

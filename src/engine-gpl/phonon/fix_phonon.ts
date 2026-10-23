@@ -224,7 +224,7 @@ export class FixPhonon extends Fix {
       }
       return;
     }
-    const lines = sys.readFile(this.mapfile).split('\n');
+    const lines = sys.readFile(this.mapfile, 'Cannot open input map file').split('\n');
     const head = (lines[0] ?? '').trim().split(/\s+/).map(Number);
     if (head.length < 4 || head.slice(0, 4).some((v) => !Number.isInteger(v))) throw new StyleError('Incorrect header format in the fix phonon map file');
     [this.nx, this.ny, this.nz, this.nucell] = head;

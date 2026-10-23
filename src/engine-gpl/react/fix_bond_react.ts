@@ -28,7 +28,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { inumeric, numeric } from '../../engine/force/util';
+import { inumeric, numeric, logical } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { MoleculeTemplate } from '../../engine/molecule';
 import { specialFromBonds } from '../../engine/molecule';
@@ -1209,9 +1209,8 @@ export class FixBondReact extends Fix {
       const key = args[i];
       if (!modeWords.has(key)) throw new StyleError(`Unknown fix bond/react command keyword ${key}`);
       if (key === 'stabilization') {
-        const yes = args[i + 1];
-        if (yes !== 'yes' && yes !== 'no') throw new StyleError('Illegal fix bond/react stabilization value');
-        this.stabilization = yes === 'yes';
+        // fix_bond_react.cpp: utils::logical
+        this.stabilization = logical(args[i + 1]);
         if (this.stabilization) {
           this.exclude = args[i + 2] ?? '';
           this.nveXmax = args[i + 3] ?? '';
@@ -1290,7 +1289,7 @@ export class FixBondReact extends Fix {
         amap: [idx + 1, idx + 1] as [number, number], ramap: [0, 0] as [number, number],
       }));
     }
-    for (const [k, b] of blocks.entries()) readMap(this.rxns[k], sys.readFile(b.map), b.map);
+    for (const [k, b] of blocks.entries()) readMap(this.rxns[k], sys.readFile(b.map, (n) => `Fix bond/react: Cannot open map file ${n}`), b.map);
     for (const rxn of this.rxns) {
       rxn.iatomtype = rxn.reactant.t.type[rxn.ibonding - 1];
       rxn.jatomtype = rxn.reactant.t.type[rxn.jbonding - 1];

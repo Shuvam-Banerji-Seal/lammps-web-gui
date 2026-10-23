@@ -9,7 +9,7 @@
  */
 import { FixNH } from '../../engine/fix/nh';
 import { StyleError } from '../../engine/force/types';
-import { logical } from '../../engine/force/util';
+import { logical, missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { ramp, removeCompute } from '../../engine/fix/util';
 import { isDeformFix, type FixDeform } from '../../engine/fix/deform';
@@ -170,19 +170,17 @@ export class FixNVTSllod extends FixNH {
     let kick = true;
     for (let k = 0; k < args.length;) {
       if (args[k] === 'psllod') {
-        const v = args[k + 1];
-        if (v !== 'yes' && v !== 'no') throw new StyleError(`fix nvt/sllod psllod must be yes or no (got '${v ?? ''}')`);
-        psllod = v === 'yes';
+        // fix_nvt_sllod.cpp: the word count, then utils::logical
+        if (k + 2 > args.length) throw missingArgs('fix nvt/sllod psllod');
+        psllod = logical(args[k + 1]);
         k += 2;
       } else if (args[k] === 'peculiar') {
-        const v = args[k + 1];
-        if (v !== 'yes' && v !== 'no') throw new StyleError(`fix nvt/sllod peculiar must be yes or no (got '${v ?? ''}')`);
-        peculiar = v === 'yes';
+        if (k + 2 > args.length) throw missingArgs('fix nvt/sllod peculiar');
+        peculiar = logical(args[k + 1]);
         k += 2;
       } else if (args[k] === 'kick') {
-        const v = args[k + 1];
-        if (v !== 'yes' && v !== 'no') throw new StyleError(`fix nvt/sllod kick must be yes or no (got '${v ?? ''}')`);
-        kick = v === 'yes';
+        if (k + 2 > args.length) throw missingArgs('fix nvt/sllod kick');
+        kick = logical(args[k + 1]);
         k += 2;
       } else if (args[k] === 'integrator') {
         const v = args[k + 1];

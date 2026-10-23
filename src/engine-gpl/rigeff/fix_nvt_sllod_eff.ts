@@ -11,6 +11,7 @@
  * (src/engine-gpl/eff/fix_nh.ts, fix_nh_eff.ts), reused here by import. The temperature is the wrapped compute
  * temp/deform/eff (ComputeTempDeformEff), or temp/eff with peculiar yes.
  */
+import { logical as readLogical } from '../../engine/force/util';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { massOf, ELECTRON_RFORCE, ELECTRON_RVEL, ELECTRON_RADIUS, ELECTRON_SPIN } from '../../engine/atoms';
@@ -20,12 +21,8 @@ import { ComputeTempDeformEff, boxH, deformRates, multiplyShapeShape } from './c
 import { isDeformFix } from '../../engine/fix/deform';
 import { exp as libmExp } from '../libm/exp';
 
-/** logical keyword value: yes / no (utils::logical). */
-const logical = (w: string | undefined, what: string): boolean => {
-  if (w === 'yes') return true;
-  if (w === 'no') return false;
-  throw new StyleError(`Expected yes or no for ${what}, got '${w ?? ''}'`);
-};
+/** logical keyword value (utils::logical). */
+const logical = (w: string | undefined, _what: string): boolean => readLogical(w);
 
 const OWN_KEYWORDS = new Set(['psllod', 'peculiar', 'kick', 'integrator']);
 

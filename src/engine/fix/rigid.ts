@@ -1,6 +1,6 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
-import { inumeric, missingArgs, numeric } from '../force/util';
+import { inumeric, missingArgs, numeric, logical } from '../force/util';
 import type { System } from '../system';
 import { hasMolecule, isEllipsoid, isLineAtom, isSuperEllipsoidStyle, isTriAtom, LINE_BONUS, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { ellipsoidInertia, quatToMatrix } from '../compute/asphere';
@@ -422,7 +422,8 @@ export class FixRigid extends Fix {
       throw new StyleError(small ? `Unknown fix ${style} body style ${this.bodystyle}` : `Unknown fix ${style} mode ${this.bodystyle}`);
     }
     const onoff = (w: string | undefined) => {
-      if (w !== 'on' && w !== 'off') throw new StyleError(`fix ${style}: force/torque flags must be on or off`);
+      // fix_rigid.cpp: a flag that is neither on nor off is "Illegal fix {} command"
+      if (w !== 'on' && w !== 'off') throw new StyleError(`Illegal fix ${style} command`);
       return w === 'on';
     };
     for (; k < args.length;) {
@@ -434,13 +435,14 @@ export class FixRigid extends Fix {
         (key === 'force' ? this.forceSpecs : this.torqueSpecs).push(spec);
         k += 5;
       } else if (key === 'reinit') {
-        if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError(`fix ${style}: reinit must be yes or no`);
-        this.reinit = args[k + 1] === 'yes';
+        // fix_rigid.cpp: utils::logical
+        if (k + 2 > args.length) throw missingArgs(`fix ${style} reinit`);
+        this.reinit = logical(args[k + 1]);
         k += 2;
       } else if (key === 'infile') {
         const fname = args[k + 1];
         if (!fname) throw new StyleError(`fix ${style}: keyword infile needs a filename`);
-        this.infile = parseInfileText(sys.readFile(fname), style, fname);
+        this.infile = parseInfileText(sys.readFile(fname, 'Cannot open fix rigid infile'), style, fname);
         // docs.lammps.org/fix_rigid.html: "When using the *infile* keyword, the *reinit* option is automatically set to *no*\ ."
         this.reinit = false;
         k += 2;

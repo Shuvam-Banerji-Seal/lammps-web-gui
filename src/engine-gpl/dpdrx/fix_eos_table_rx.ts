@@ -19,7 +19,7 @@
  * does (fix_eos_table_rx.cpp constructor: energyCorr[0], tempCorrCoeff[0]).
  */
 import { Fix } from '../../engine/fix/fix';
-import { StyleError } from '../../engine/force/types';
+import { StyleError, potentialFile } from '../../engine/force/types';
 import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { SimState } from '../../engine/types';
@@ -112,7 +112,7 @@ export class FixEOStableRX extends Fix {
     this.tablength = intArg(args[2]);
     if (this.tablength < 2) throw new StyleError('Illegal number of eos/table/rx entries');
     const tableFile = args[1];
-    const reader = new RxTableReader(sys.readFile(tableFile), args[3], tableFile, 'eos/table/rx');
+    const reader = new RxTableReader(sys.readFile(tableFile, potentialFile('eos/table/rx table')), args[3], tableFile, 'eos/table/rx');
     const N = reader.N;
     // param_extract: the species named on the keyword line, one per column (or species 0 without fix rx)
     const eosSpecies: number[] = [];

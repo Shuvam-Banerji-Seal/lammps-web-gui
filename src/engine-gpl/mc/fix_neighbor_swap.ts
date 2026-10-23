@@ -23,7 +23,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { inumeric, missingArgs, numeric } from '../../engine/force/util';
+import { inumeric, missingArgs, numeric, logical } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { RanPark } from '../random_park';
 import { nativeOrder } from '../../engine/atoms';
@@ -98,14 +98,15 @@ export class FixNeighborSwap extends Fix {
     while (i < args.length) {
       const key = args[i];
       if (key === 'region') {
-        if (i + 2 > args.length) throw new StyleError(`Illegal ${where} region: missing argument`);
+        if (i + 2 > args.length) throw missingArgs('fix neighbor/swap region');
         this.regionId = args[i + 1];
+        // fix_neighbor_swap.cpp options: the region exists
+        if (!this.sys.regions.has(this.regionId)) throw new StyleError(`Region ID ${this.regionId} for fix neighbor/swap does not exist`);
         i += 2;
       } else if (key === 'ke') {
         if (i + 2 > args.length) throw new StyleError(`Illegal ${where} ke: missing argument`);
-        const v = args[i + 1];
-        if (v !== 'yes' && v !== 'no') throw new StyleError(`Illegal ${where} ke value '${v}' (yes or no)`);
-        this.keFlag = v === 'yes';
+        // fix_neighbor_swap.cpp: utils::logical
+        this.keFlag = logical(args[i + 1]);
         i += 2;
       } else if (key === 'types') {
         if (i + 3 > args.length) throw missingArgs(`${where} types`);

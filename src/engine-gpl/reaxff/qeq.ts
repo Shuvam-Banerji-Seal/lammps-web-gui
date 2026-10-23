@@ -130,7 +130,8 @@ export class FixQEqReaxFF extends Fix {
       return;
     }
     if (this.pertype.startsWith('reax/c')) throw new StyleError("Fix qeq/reaxff keyword 'reax/c' is obsolete; please use 'reaxff'");
-    this.params = parsePertypeFile(this.sys.readFile(this.pertype), this.ntypes, 'qeq/reaxff');
+    // fix_qeq_reaxff.cpp pertype_parameters: a word that is neither reaxff nor a readable file is an unknown keyword
+    this.params = parsePertypeFile(this.sys.readFile(this.pertype, (n) => `Unknown fix qeq/reaxff keyword ${n}`), this.ntypes, 'qeq/reaxff');
   }
 
   /** setup_pre_force: one pre_force before the setup force evaluation. */

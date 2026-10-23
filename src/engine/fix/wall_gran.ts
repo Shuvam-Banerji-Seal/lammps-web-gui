@@ -501,7 +501,7 @@ export class FixWallGranGranular extends Fix {
       // As native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp FixWallGran::FixWallGran at b332f28): if (narg < iarg+2) error "Illegal fix wall/gran command"
       this.regionId = args[k + 1] ?? null;
       if (!this.regionId) throw new StyleError('Illegal fix wall/gran command');
-      this.sys.region(this.regionId);
+      this.sys.region(this.regionId, `Region ${this.regionId} for fix wall/gran/region does not exist`);
       k += 2;
     } else {
       this.regionId = null;

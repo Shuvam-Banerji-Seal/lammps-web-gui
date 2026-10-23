@@ -9,7 +9,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { inumeric } from '../../engine/force/util';
+import { inumeric, logical } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { massOf, nativeOrder } from '../../engine/atoms';
 
@@ -49,9 +49,8 @@ export class FixFlowGauss extends Fix {
     this.extvector = 1;
     for (let k = 3; k < args.length;) {
       if (args[k] !== 'energy') throw new StyleError('Illegal fix flow/gauss command');
-      const v = args[k + 1];
-      if (v !== 'yes' && v !== 'no') throw new StyleError(`Illegal energy keyword: value must be yes or no, got '${v ?? ''}'`);
-      this.workflag = v === 'yes';
+      // fix_flow_gauss.cpp: utils::logical
+      this.workflag = logical(args[k + 1]);
       k += 2;
     }
   }

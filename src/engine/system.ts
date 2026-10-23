@@ -640,9 +640,10 @@ export class System {
     return f;
   }
 
-  region(id: string): Region {
+  /** The region with this ID; a missing one is an error with `missing` (the caller's native message) or a generic one. */
+  region(id: string, missing?: string): Region {
     const r = this.regions.get(id);
-    if (!r) throw new StyleError(`region ID '${id}' does not exist`);
+    if (!r) throw new StyleError(missing ?? `region ID '${id}' does not exist`);
     return r;
   }
 

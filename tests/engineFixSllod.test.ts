@@ -68,11 +68,12 @@ describe('fix nvt/sllod', () => {
     expect(flag(dflt.session)).toBe(false);
   });
 
-  it('rejects a psllod value other than yes or no', async () => {
-    for (const v of ['true', 'on', '']) {
-      const { error } = await runScript(`${BOX}\nfix 1 all nvt/sllod temp 1.0 1.0 0.1 psllod ${v}\nfix 2 all deform 1 xy erate 0.05 remap v\nrun 1\n`);
-      expect(error, `psllod '${v}'`).toMatch(/psllod must be yes or no/);
-    }
+  it('reads psllod with utils::logical, as native LAMMPS does', async () => {
+    // Measured with native LAMMPS (b332f28): true and on run; no value is a missing argument; maybe is refused
+    const run = (v: string) => runScript(`${BOX}\nfix 1 all nvt/sllod temp 1.0 1.0 0.1 psllod ${v}\nfix 2 all deform 1 xy erate 0.05 remap v\nrun 1\n`);
+    for (const v of ['true', 'on']) expect((await run(v)).error, `psllod '${v}'`).toBeNull();
+    expect((await run('')).error).toMatch(/Illegal fix nvt\/sllod psllod command: missing argument\(s\)/);
+    expect((await run('maybe')).error).toMatch(/Expected boolean parameter instead of 'maybe' in input script or data file/);
   });
 
   it('still needs the temp keyword and rejects pressure keywords (fix nvt rules)', async () => {

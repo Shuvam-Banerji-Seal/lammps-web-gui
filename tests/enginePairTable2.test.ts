@@ -98,11 +98,13 @@ describe('CHARMM force-switched and lj/long argument checks', () => {
     expect(() => p.settings(['10.0', '8.0', '9.0'])).toThrow(/inner cutoff/);
   });
 
-  it('lj/long/coul/long rejects flag_lj long and the per-pair Coulomb cutoff by name', () => {
+  it('lj/long/coul/long refuses its argument counts as native LAMMPS', () => {
+    // Measured with native LAMMPS: two cutoffs with both flags long, two words, and a pair_coeff with a Coulomb cutoff
     const p = new PairLJLongCoulLong();
-    expect(() => p.settings(['long', 'long', '8.0', '10.0'])).not.toThrow();
-    expect(() => p.settings(['cut', 'long'])).toThrow(/usage/);
+    expect(() => p.settings(['long', 'long', '8.0', '10.0'])).toThrow('Only one cutoff allowed when requesting all long');
+    expect(() => p.settings(['long', 'long', '8.0'])).not.toThrow();
+    expect(() => p.settings(['cut', 'long'])).toThrow('Illegal pair_style command');
     p.settings(['cut', 'long', '8.0', '10.0']);
-    expect(() => p.coeff(['1', '1', '0.1', '3.0', '7.0', '9.0'])).toThrow(/cutoff2/);
+    expect(() => p.coeff(['1', '1', '0.1', '3.0', '7.0', '9.0'])).toThrow('Incorrect args for pair coefficients\nFor more information see https://docs.lammps.org/err0021');
   });
 });

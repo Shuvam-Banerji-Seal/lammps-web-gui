@@ -1,3 +1,4 @@
+import { logical, missingArgs } from '../force/util';
 import type { Ctx, Handler } from './args';
 import { int } from './args';
 import { StyleError } from '../force/types';
@@ -53,7 +54,9 @@ export const parseRerunArgs = (a: string[]): RerunArgs => {
     if (w === 'dump') { dumpWords = a.slice(k + 1); break; }
     if (!KEYWORDS.has(w)) throw new StyleError(`rerun: unknown keyword '${w}' (keywords: first last every skip start stop post dump)`);
     if (w === 'post') {
-      if (a[k + 1] !== 'yes' && a[k + 1] !== 'no') throw new StyleError('rerun post must be yes or no');
+      // rerun.cpp: utils::logical
+      if (k + 2 > a.length) throw missingArgs('rerun post');
+      logical(a[k + 1]);
       k += 2;
       continue;
     }

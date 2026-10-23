@@ -66,7 +66,7 @@ export class ComputeMliap extends Compute {
         const file = args[k + 2];
         if (file === undefined) throw missingArgs(`compute mliap descriptor ${v}`);
         if (v !== 'sna') throw new StyleError(`compute ${id} (mliap): descriptor style '${v}' is not implemented in this engine (sna is)`);
-        desc = parseMliapSnaDescriptor(sys.readFile(file), file);
+        desc = parseMliapSnaDescriptor(sys.readFile(file, 'Cannot open SNAP parameter file'), file);
         k += 1;
       } else if (kw === 'gradgradflag') {
         // native checks iarg+1 > narg here, so a missing value is read as NULL by utils::logical

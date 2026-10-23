@@ -64,14 +64,14 @@ export const num = (w: string | undefined, _what: string): number => numeric(w);
 /** An integer argument, read as native LAMMPS reads one (utils::inumeric). */
 export const int = (w: string | undefined, _what: string): number => inumeric(w);
 
-export const yesno = (w: string | undefined, what: string): boolean => {
-  if (w === 'yes') return true;
-  if (w === 'no') return false;
-  throw new StyleError(`${what} must be yes or no, got '${w ?? ''}'`);
-};
+/**
+ * A yes/no keyword value, read as native LAMMPS reads its yes/no values (utils::logical: yes, on, true, 1 or no, off,
+ * false, 0, with its message; `what` documents the call site).
+ */
+export const yesno = (w: string | undefined, _what: string, _key?: string): boolean => logical(w);
 
 // the native-text argument checks live with parseNum (force/util.ts), where the styles reach them too
-import { inumeric, numeric } from '../force/util';
+import { inumeric, logical, numeric } from '../force/util';
 export { missingArgs, logical, numeric, inumeric, bnumeric, bounds } from '../force/util';
 
 /** A number, or v_name evaluated as an equal-style variable now. */

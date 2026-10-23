@@ -17,7 +17,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError, typeBounds } from '../../engine/force/types';
-import { inumeric, numeric } from '../../engine/force/util';
+import { inumeric, numeric, logical, missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { isLineAtom, isTriAtom, massOf } from '../../engine/atoms';
 import { exyzToQ, transposeMatvec, matvec, angmomToOmega, omegaToAngmom, jacobi3, quatToMat, qToExyz, qconjugate, quatquat, qnormalize, snormalize3, inertiaEllipsoid, type V3, type Q4 } from './math_extra';
@@ -165,8 +165,9 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
       (key === 'force' ? out.forceSpecs : out.torqueSpecs).push([args[k + 1], flags]);
       k += 5;
     } else if (key === 'reinit') {
-      if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError(`fix ${style}: reinit must be yes or no`);
-      out.reinit = args[k + 1] === 'yes';
+      // fix_rigid.cpp: utils::logical
+      if (k + 2 > args.length) throw missingArgs(`fix ${style} reinit`);
+      out.reinit = logical(args[k + 1]);
       k += 2;
     } else if (key === 'temp') {
       // fix_rigid.html: "temp values = Tstart Tstop Tperiod"

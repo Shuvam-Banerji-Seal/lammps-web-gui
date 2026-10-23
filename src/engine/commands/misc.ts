@@ -1,5 +1,5 @@
 import type { Handler } from './args';
-import { logical } from './args';
+import { inumeric, logical, missingArgs } from './args';
 import { StyleError } from '../force/types';
 import { formatNumber, mapUnquoted, substituteVariables } from '../script';
 import { evaluateScalar } from '../formula';
@@ -62,16 +62,46 @@ const log: Handler = ({ sys }, a) => {
   sys.setLogFile(a[0] === 'none' ? null : a[0], a[1] === 'append');
 };
 
+/** utils::timespec2seconds: off or unlimited (-1), or up to three ':'-separated numbers; null when one is no number. */
+const timespecSeconds = (spec: string): number | null => {
+  if (spec === 'off' || spec === 'unlimited') return -1;
+  const vals = [0, 0, 0];
+  const parts = spec.split(':');
+  let i = 0;
+  for (; i < 3 && i < parts.length; i++) {
+    if (!/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(parts[i])) return null;
+    vals[i] = Number(parts[i]);
+  }
+  if (i === 3) return (vals[0] * 60 + vals[1]) * 60 + vals[2];
+  if (i === 2) return vals[0] * 60 + vals[1];
+  return vals[0];
+};
+
 /** timer args — timer.html; timing breakdowns are not collected in the browser, timeout is not supported. */
 const timer: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/timer.cpp Timer::modify_params at b332f28): the styles and modes, timeout with a time
+  // (utils::timespec2seconds: off, unlimited, or [[HH:]MM:]SS), every with a check frequency (utils::inumeric, > 0); the
+  // messages name the keyword, not the value
   for (let k = 0; k < a.length; k++) {
     const w = a[k];
     if (['off', 'loop', 'normal', 'full', 'sync', 'nosync'].includes(w)) continue;
-    // timer.html: "timer timeout off" and "timer timeout unlimited" clear a timeout; a fix halt with error soft
-    // stops later runs until one of them is given (fix_halt.html). Other timeouts need the wall clock: refused.
-    if (w === 'timeout' && (a[k + 1] === 'off' || a[k + 1] === 'unlimited')) { clearSoftHalt(sys); k++; continue; }
-    if (w === 'timeout' || w === 'every') throw new StyleError(`timer ${w} is not supported by the browser engine (use the Stop button)`);
-    throw new StyleError(`unknown timer keyword '${w}'`);
+    if (w === 'timeout') {
+      if (++k >= a.length) throw missingArgs('timer timeout');
+      const t = timespecSeconds(a[k]);
+      if (t === null) throw new StyleError(`Illegal timeout time: ${w}`);
+      // timer.html: "timer timeout off" and "timer timeout unlimited" clear a timeout; a fix halt with error soft
+      // stops later runs until one of them is given (fix_halt.html). Other timeouts need the wall clock: refused.
+      if (t >= 0) throw new StyleError('timer timeout is not supported by the browser engine (use the Stop button)');
+      clearSoftHalt(sys);
+      continue;
+    }
+    if (w === 'every') {
+      if (++k >= a.length) throw missingArgs('timer every');
+      // the timeout check frequency; the engine has no timeout to check
+      if (inumeric(a[k]) <= 0) throw new StyleError(`Illegal timer every frequency: ${w}`);
+      continue;
+    }
+    throw new StyleError(`Unknown timer keyword ${w}`);
   }
   sys.log('timer: accepted (the browser engine reports only the loop time)');
 };

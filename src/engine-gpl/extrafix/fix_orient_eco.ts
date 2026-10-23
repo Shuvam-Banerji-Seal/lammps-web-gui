@@ -11,7 +11,7 @@
  * mapped to their owners (the source's forward communication of the Nbr data).
  */
 import { Fix } from '../../engine/fix/fix';
-import { StyleError } from '../../engine/force/types';
+import { StyleError, potentialFile } from '../../engine/force/types';
 import { numeric } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
@@ -63,7 +63,7 @@ export class FixOrientECO extends Fix {
     this.eta = numeric(args[1]);
     this.rCut = numeric(args[2]);
     // the reference orientations: 18 numbers (six primitive lattice vectors, three components each), '#' comments allowed
-    const text = sys.readFile(args[3]);
+    const text = sys.readFile(args[3], potentialFile('fix orient/eco'));
     const nums: number[] = [];
     for (const line of text.split('\n')) {
       const body = line.replace(/#.*/, '').trim();

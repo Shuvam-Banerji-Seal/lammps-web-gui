@@ -90,7 +90,8 @@ describe('fix orient/fcc and orient/bcc arguments and reader', () => {
   it('reports a missing reference file as a read failure', async () => {
     const r = await runScript(FCC_BOX + 'fix or all orient/fcc 0 1 3.6 0.01 0.25 0.75 missing.ori b.ori\nrun 0\n',
       { 'b.ori': FCC_ROTATED });
-    expect(r.error).toContain('Fix orient/fcc file read failed: cannot open fix orient/fcc potential file missing.ori');
+    // Measured with native LAMMPS: the reader names the file itself, with no Fix orient/fcc file read failed prefix
+    expect(r.error).toContain('cannot open fix orient/fcc potential file missing.ori: No such file or directory');
   });
 
   it('reports a short reference file with the values read so far', async () => {

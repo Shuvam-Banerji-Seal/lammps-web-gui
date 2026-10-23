@@ -1,4 +1,4 @@
-import { StyleError } from '../force/types';
+import { StyleError, potentialFile } from '../force/types';
 import type { System } from '../system';
 import { inumeric, missingArgs, numeric } from '../force/util';
 import { FixTTM, type TtmKeywordHandler, type TtmPositional } from './ttm';
@@ -141,7 +141,7 @@ export class FixTTMThermal extends FixTTM {
     };
     super(sys, id, group, args, 'ttm/thermal', pos, handler);
     this.source = kw.source ?? 0;
-    this.cells = parseThermalProps(sys.readFile(pos.propsFile), id, this.p.nx, this.p.ny, this.p.nz, sys.state.units.style, pos.propsFile);
+    this.cells = parseThermalProps(sys.readFile(pos.propsFile, potentialFile('electron property grid')), id, this.p.nx, this.p.ny, this.p.nz, sys.state.units.style, pos.propsFile);
   }
 
   protected cvolAt(c: number, _T: number): number {

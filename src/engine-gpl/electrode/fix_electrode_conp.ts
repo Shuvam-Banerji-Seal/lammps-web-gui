@@ -18,7 +18,7 @@ import { EQUAL_STYLES } from '../../engine/argInfo';
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { parseInt_, parseNum } from '../../engine/force/util';
+import { parseInt_, parseNum, logical } from '../../engine/force/util';
 import { FixEfield } from '../../engine/fix/force_ext';
 import { invertDense, invertSPD } from './electrode_math';
 import { MY_2PI, safeDerfcr } from './electrode_math';
@@ -288,10 +288,9 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** utils::logical: yes/on/true/1 and no/off/false/0. */
-  protected yesNo(w: string | undefined, key: string): boolean {
-    if (w === 'yes' || w === 'on' || w === 'true' || w === '1') return true;
-    if (w === 'no' || w === 'off' || w === 'false' || w === '0') return false;
-    throw new StyleError(`Expected yes or no after ${key}`);
+  /** fix_electrode_conp.cpp: the yes/no keyword values are read with utils::logical. */
+  protected yesNo(w: string | undefined, _key: string): boolean {
+    return logical(w);
   }
 
   modify(key: string, values: string[]): number {

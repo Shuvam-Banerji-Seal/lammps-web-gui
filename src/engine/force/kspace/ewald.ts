@@ -44,8 +44,9 @@ export const ANGSTROM: Record<string, number> = { lj: 1, real: 1, metal: 1, si: 
 export const QELECTRON: Record<string, number> = { lj: 1, real: 1, metal: 1, si: 1.6021765e-19, cgs: 4.8032044e-10, electron: 1, micro: 1.6021765e-7, nano: 1 };
 
 /** kspace_modify yes/no keywords: a value other than yes or no is refused (native message, measured). */
-const yesNoValue = (w: string | undefined, key: string): void => {
-  if (w !== 'yes' && w !== 'no') throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' for kspace_modify ${key}`);
+/** kspace.cpp modify_params: utils::logical. */
+const yesNoValue = (w: string | undefined, _key: string): void => {
+  logical(w);
 };
 
 /** kspace_modify minorder value: an integer of at least 2 (native message, measured: Kspace_modify minorder must be at least 2). */

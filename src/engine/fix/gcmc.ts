@@ -336,7 +336,12 @@ export class FixGcmc extends Fix {
         if (this.patomtrans + this.pmoltrans + this.pmolrotate <= 0) throw new StyleError('fix gcmc mcmoves: at least one proportion must be non-zero');
         sawMcmoves = true;
         i += 4;
-      } else if (key === 'region') { regionId = v(1); i += 2; }
+      } else if (key === 'region') {
+        // fix_gcmc.cpp options: the region exists
+        regionId = v(1);
+        if (!sys.regions.has(regionId)) throw new StyleError(`Region ${regionId} for fix gcmc does not exist`);
+        i += 2;
+      }
       else if (key === 'maxangle') { this.maxangle = (num(v(1), 'maxangle') * Math.PI) / 180; i += 2; }
       else if (key === 'full_energy') { fullEnergy = true; i += 1; }
       else if (key === 'charge') { charge = num(v(1), 'charge'); i += 2; }

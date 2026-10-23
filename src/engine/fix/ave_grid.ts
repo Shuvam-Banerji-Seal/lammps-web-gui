@@ -193,7 +193,8 @@ export class FixAveGrid extends Fix {
       if (val === undefined) throw new StyleError(`${what}: keyword ${key} needs a value`);
       k += 2;
       if (key === 'discard') {
-        if (val !== 'yes' && val !== 'no') throw new StyleError(`${what}: discard must be yes or no, got '${val}'`);
+        // As native LAMMPS does (src/fix_ave_grid.cpp at b332f28)
+        if (val !== 'yes' && val !== 'no') throw new StyleError(`Illegal fix ave/grid discard argument: ${val}`);
         this.discard = val === 'yes';
       } else if (key === 'norm') {
         if (val !== 'all' && val !== 'sample' && val !== 'none') throw new StyleError(`${what}: norm must be all, sample or none, got '${val}'`);

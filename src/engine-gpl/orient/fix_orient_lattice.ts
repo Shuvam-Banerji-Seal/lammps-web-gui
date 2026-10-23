@@ -16,7 +16,7 @@
  * minimisation hooks (the source's setmask has POST_FORCE and POST_FORCE_RESPA only, no MIN_POST_FORCE).
  */
 import { Fix } from '../../engine/fix/fix';
-import { StyleError } from '../../engine/force/types';
+import { potentialFile, StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { NativeFullOrder } from './native_full_order';
@@ -306,13 +306,9 @@ const readOrientFile = (sys: System, name: string, n: number, style: string): Fl
   const failed = (what: string): never => {
     throw new StyleError(`Fix ${style} file read failed: ${what}`);
   };
-  let text: string;
-  try {
-    text = sys.readFile(name);
-  } catch {
-    failed(`cannot open ${filetype} potential file ${name}: No such file or directory`);
-  }
-  const lines = text!.split(/\r?\n/);
+  // a file that cannot be opened is PotentialFileReader's own error (the source's catch takes only the read errors)
+  const text = sys.readFile(name, potentialFile(filetype));
+  const lines = text.split(/\r?\n/);
   const tag = /UNITS:\s*(\S+)/.exec(lines[0] ?? '');
   const units = sys.state.units.style;
   if (tag && tag[1] !== units) failed(`${filetype} file ${name} requires ${tag[1]} units but ${units} units are in use`);

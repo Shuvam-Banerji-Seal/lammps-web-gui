@@ -56,7 +56,7 @@ abstract class FixSourceBase extends Fix {
       this.regionId = args[k + 1];
       this.value = parseNum(args[k + 2], 'value');
       this.form = 'region';
-      this.sys.region(this.regionId); // fails early on an unknown region (fix_edpd_source.cpp: "Region ... does not exist")
+      this.sys.region(this.regionId, `Region ${this.regionId} for fix ${this.style} does not exist`); // fix_edpd_source.cpp, fix_tdpd_source.cpp
     } else throw new StyleError(`Illegal fix ${cmd} command option ${form ?? ''}`);
   }
 

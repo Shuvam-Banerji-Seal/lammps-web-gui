@@ -249,8 +249,8 @@ set atom 2 charge -1.0
 
   it('ewald without a kspace style names the kspace requirement', async () => {
     const out = await run(`${head}pair_style coul/streitz 12.0 ewald\npair_coeff * * AlO.streitz Al O\nrun 0\n`, { 'AlO.streitz': streitzFile });
-    expect(out.error).toMatch(/kspace/);
-    expect(out.error).toMatch(/coul\/streitz/);
+    // As native LAMMPS does (src/KSPACE/pair_coul_streitz.cpp init_style at b332f28)
+    expect(out.error).toContain('Pair style requires a KSpace style');
   });
 
   it('an unknown keyword is an error naming the keyword', async () => {

@@ -215,7 +215,7 @@ describe('pair styles (measured with native LAMMPS, two atoms at r = 1.3)', () =
     expect((await run(pair2('lepton/coul 2.5 tip4p', '1 1 "qi*qj/r"', '', 'q'))).error).toMatch(/tip4p/);
   });
   it('lepton/coul with a long-range keyword needs a kspace style', async () => {
-    expect((await run(pair2('lepton/coul 2.5 pppm', '1 1 "qi*qj/r*erfc(alpha*r); alpha=1.067"', '', 'q'))).error).toMatch(/kspace/);
+    expect((await run(pair2('lepton/coul 2.5 pppm', '1 1 "qi*qj/r*erfc(alpha*r); alpha=1.067"', '', 'q'))).error).toContain('Pair style requires a KSpace style');
   });
   it('lepton does not mix: an unset I J pair is an error', async () => {
     const text = `

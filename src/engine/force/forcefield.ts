@@ -187,6 +187,28 @@ export class ForceField {
    */
   pairStale = false;
 
+  /**
+   * The kspace style's init: KSpace::pair_check (src/kspace.cpp at b332f28, with the solver styles that call it checked
+   * against the pair's flags in kspaceCheck.ts), the Coulomb cutoff, then the solver's G-ewald and grid.
+   */
+  private initKspace(s: SimState, geom: Geometry, ctx: StyleContext): void {
+    const kspace = this.kspace!;
+    if (!this.pair) throw new StyleError(`KSpace style ${kspace.name} requires a pair style`);
+    kspace.linkPair?.(this.pair);
+    checkKspacePair(kspace, this.pair, s.atomStyle);
+    const cutCoul = this.pair.extract('cut_coul');
+    // kspace_zero.cpp (b332f28) has no pair_check; its own refusal names no styles
+    if (typeof cutCoul !== 'number') {
+      throw new StyleError(kspace.name === 'zero'
+        ? 'KSpace style is incompatible with Pair style'
+        : `KSpace style ${kspace.name} is incompatible with Pair style ${this.pair.name}`);
+    }
+    // paramsFrozen: a charge-changing fix (fix charge/regulation) keeps the init-time G-ewald, kmax and mesh
+    if (kspace.paramsFrozen && kspace.gEwald > 0) kspace.updateChargeSums(s);
+    else kspace.init(s, geom, cutCoul, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);
+    this.pair.gEwald = kspace.gEwald;
+  }
+
   initPair(s: SimState, geom: Geometry, ctx: StyleContext): void {
     this.pairStale = false;
     if (!this.pair && this.pairNotRestarted) throw new StyleError(`Must re-specify non-restarted pair style (${this.pairNotRestarted}) after read_restart`);
@@ -202,11 +224,21 @@ export class ForceField {
       if (this.pair.ntypes !== s.ntypes) this.pair.allocate(s.ntypes);
       this.kspace.preparePair(this.pair, s, geom, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);
     }
+    // As native LAMMPS does (src/force.cpp Force::init at b332f28): "kspace->init(); // kspace must come before pair",
+    // so the solver's pair checks, G-ewald and grid come before the pair style's init, which reads G-ewald. A
+    // dispersion solver reads the pair's mixed dispersion coefficients, which the engine's pair builds in its init, so it
+    // is initialized after the pair (native reads the pair_coeff values of the diagonal there).
+    if (this.kspace && this.pair) this.kspace.linkPair?.(this.pair);
+    const kspaceFirst = this.kspace !== null && !this.kspace.dispersion();
+    if (kspaceFirst) this.initKspace(s, geom, ctx);
     if (this.pair) {
       if (this.pair.ntypes !== s.ntypes) this.pair.allocate(s.ntypes);
       this.pair.linkBonded?.({ bond: (t) => this.bond?.equilibrium(t) ?? Number.NaN, angle: (t) => this.angle?.equilibriumRadians(t) ?? Number.NaN });
       this.pair.init(ctx);
+      // the long-range pair styles' init_style (e.g. src/KSPACE/pair_lj_cut_coul_long.cpp at b332f28)
+      if (this.pair.coulLong && !this.kspace) throw new StyleError('Pair style requires a KSpace style');
     }
+    if (this.kspace && !kspaceFirst) this.initKspace(s, geom, ctx);
     // then bond, angle, dihedral and improper, as Force::init orders them
     for (const b of [this.bond, this.angle, this.dihedral, this.improper]) b?.linkForceField?.({ pair: this.pair, special: this.special });
     const counts = { bond: s.topo.nbondtypes, angle: s.topo.nangletypes, dihedral: s.topo.ndihedraltypes, improper: s.topo.nimpropertypes };
@@ -273,27 +305,6 @@ export class ForceField {
       cutoff, ntypes: s.ntypes, special: this.specialList, specialSettings: settings,
       size: (this.pair?.sizeList ?? false) && s.radius !== null,
     });
-    if (this.pair?.coulLong && !this.kspace) {
-      throw new StyleError(`pair style ${this.pair.name} needs a kspace style (kspace_style ewald, pppm or msm)`);
-    }
-    if (this.kspace) {
-      if (!this.pair) throw new StyleError('kspace_style needs a pair style with a long-range Coulomb part');
-      this.kspace.linkPair?.(this.pair);
-      // KSpace::pair_check (src/kspace.cpp at b332f28) runs in the kspace init, before the cutoff is read; the solver
-      // styles that call it are checked against the pair's flags (kspaceCheck.ts)
-      checkKspacePair(this.kspace, this.pair, s.atomStyle);
-      const cutCoul = this.pair.extract('cut_coul');
-      // kspace_zero.cpp (b332f28) has no pair_check; its own refusal names no styles
-      if (typeof cutCoul !== 'number') {
-        throw new StyleError(this.kspace.name === 'zero'
-          ? 'KSpace style is incompatible with Pair style'
-          : `KSpace style ${this.kspace.name} is incompatible with Pair style ${this.pair.name}`);
-      }
-      // paramsFrozen: a charge-changing fix (fix charge/regulation) keeps the init-time G-ewald, kmax and mesh
-      if (this.kspace.paramsFrozen && this.kspace.gEwald > 0) this.kspace.updateChargeSums(s);
-      else this.kspace.init(s, geom, cutCoul, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);
-      this.pair.gEwald = this.kspace.gEwald;
-    }
     if (this.pair) this.pair.version++;
     this.updateTail(s);
     if (this.holdTailAtInit) {

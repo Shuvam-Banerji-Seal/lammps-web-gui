@@ -159,7 +159,8 @@ run             0
     ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify order 8', /PPPM order cannot be < 2 or > 7/],
     ['p p p', 'coul/long 4.0', 'kspace_style ewald 1e-4\nkspace_modify amat onestep', /'amat' available for pppm\/conp, only/],
     ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify kmax/ewald 4 -1 4', /Bad kspace_modify kmax\/ewald parameter/],
-    ['p p p', 'coul/long 4.0', '', /needs a kspace style/],
+    // the long-range pair styles' init_style (e.g. src/KSPACE/pair_coul_long.cpp at b332f28)
+    ['p p p', 'coul/long 4.0', '', /Pair style requires a KSpace style/],
     // Measured with native LAMMPS: KSpace style ewald is incompatible with Pair style lj/cut (src/kspace.cpp pair_check)
     ['p p p', 'lj/cut 4.0', 'kspace_style ewald 1e-4', /KSpace style ewald is incompatible with Pair style lj\/cut/],
     // Measured with native LAMMPS: KSpace style msm is incompatible with Pair style lj/cut/coul/long (kspace.cpp pair_check)

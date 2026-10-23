@@ -127,7 +127,7 @@ describe('lj/cut/dipole/long with kspace ewald/dipole', () => {
     const slab = await evaluate([...SETUP, 'kspace_modify slab 3.0'], ATOMS);
     expect(slab.error).toMatch(/kspace_modify slab is not supported/);
     const noKspaceDipole = await evaluate(['pair_style lj/cut/dipole/long 4.0', 'pair_coeff * * 0.0 1.0'], ATOMS);
-    expect(noKspaceDipole.error).toMatch(/kspace/);
+    expect(noKspaceDipole.error).toContain('Pair style requires a KSpace style');
     const sixArg = await evaluate(['pair_style lj/cut/dipole/long 4.0', 'pair_coeff 1 1 0.0 1.0 3.0 3.5', ...SETUP.slice(2)], ATOMS);
     expect(sixArg.error).toMatch(/accepts only the LJ cutoff/);
     const tilt = await evaluate(SETUP, ATOMS, 'p p p', true);

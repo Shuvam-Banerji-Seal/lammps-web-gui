@@ -140,7 +140,7 @@ export const warnUntallied = (sys: System, what: 'Energy' | 'Stress'): void => {
 /** Per-atom tally values are indexed by the local atom index; a ghost neighbour adds to its owner. */
 const atomIndex = (sys: System, j: number): number => sys.nb.owner[j];
 
-/** The self-energy and k = 0 terms of the long-range part of compute group/group, found once per run. */
+/** The self-energy and k = 0 terms of the long-range part of compute group/group, found at init. */
 export interface GroupGroupKspaceTerms { eSelf: number; eCorrection: number }
 
 /**
@@ -150,7 +150,7 @@ export interface GroupGroupKspaceTerms { eSelf: number; eCorrection: number }
 export interface GroupGroupKspaceHook {
   /** At init: the kspace style checks. */
   init(sys: System): void;
-  /** The self-energy and k = 0 terms of the two groups (native's init, once the solver has its G-ewald). */
+  /** The self-energy and k = 0 terms of the two groups (native's init, with the solver's G-ewald). */
   terms(sys: System, bitA: number, bitB: number): GroupGroupKspaceTerms;
   /** The long-range energy of the two groups (with the k = 0 term when boundary is yes) and the force on the first. */
   contribution(sys: System, bitA: number, bitB: number, terms: GroupGroupKspaceTerms, boundary: boolean): { e: number; f: number[] };
@@ -206,14 +206,17 @@ export class ComputeGroupGroup extends Compute {
 
   init(): void {
     // As native LAMMPS does (src/compute_group_group.cpp ComputeGroupGroup::init at b332f28): the pair style checks (a
-    // hybrid style is left to its sub-styles), then the kspace style's (the lazily loaded helper). Native computes the
-    // correction terms there too; the engine's solver chooses its G-ewald after the computes' init, so the terms are
-    // found at the first evaluation of the run, with the same G-ewald.
+    // hybrid style is left to its sub-styles), then the kspace style's and its correction terms (the lazily loaded
+    // helper), with the G-ewald the run's force init has chosen
     const pair = this.sys.ff.pair;
     if (this.pairOn && !pair) throw new StyleError('No pair style defined for compute group/group');
     if (pair && !pair.name.startsWith('hybrid') && !pair.single) throw new StyleError('Pair style does not support compute group/group');
-    if (this.kspaceOn) gplHook<GroupGroupKspaceHook>('group/group').init(this.sys);
     this.kspaceTerms = null;
+    if (this.kspaceOn) {
+      const hook = gplHook<GroupGroupKspaceHook>('group/group');
+      hook.init(this.sys);
+      this.kspaceTerms = hook.terms(this.sys, this.groupBit, this.group2Bit);
+    }
   }
 
   /** One pass over the counted pairs gives the energy (scalar) and the force on group1 (vector); kspace yes adds the long-range part. */
@@ -236,6 +239,7 @@ export class ComputeGroupGroup extends Compute {
     }
     if (this.kspaceOn) {
       const hook = gplHook<GroupGroupKspaceHook>('group/group');
+      // a compute evaluated before any run's init finds the terms here
       this.kspaceTerms ??= hook.terms(this.sys, this.groupBit, this.group2Bit);
       const k = hook.contribution(this.sys, this.groupBit, this.group2Bit, this.kspaceTerms, this.boundaryOn);
       e += k.e;

@@ -11,7 +11,7 @@
  */
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { nativeOrder } from '../../engine/atoms';
-import { parseNum } from '../../engine/force/util';
+import { parseInt_, parseNum } from '../../engine/force/util';
 import { RanMars } from '../random_mars';
 import { pow } from '../libm/pow';
 import { cos, sin } from '../libm/sincos';
@@ -68,11 +68,11 @@ export class PairDSMC extends Pair {
     if (args.length !== 6) throw new StyleError('Illegal pair_style command');
     this.cutGlobal = 0.0;
     this.maxCellSize = parseNum(args[0], 'max_cell_size');
-    this.seed = parseNum(args[1], 'seed');
+    this.seed = parseInt_(args[1], 'seed');
     this.weighting = parseNum(args[2], 'weighting');
     this.Tref = parseNum(args[3], 'Tref');
-    this.recomputeStride = parseNum(args[4], 'Nrecompute');
-    this.vsigmaSamples = parseNum(args[5], 'Nsample');
+    this.recomputeStride = parseInt_(args[4], 'Nrecompute');
+    this.vsigmaSamples = parseInt_(args[5], 'Nsample');
     if (this.maxCellSize <= 0.0) throw new StyleError('Illegal pair_style command');
     if (this.seed <= 0) throw new StyleError('Illegal pair_style command');
     this.random = new RanMars(this.seed);

@@ -19,7 +19,7 @@
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
-import { fmtCoeff, parseNum } from '../../engine/force/util';
+import { fmtCoeff, parseInt_, parseNum } from '../../engine/force/util';
 import { massOf, DPD_THETA } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
 import { NativePairOrder } from '../neighbor/nativeOrder';
@@ -271,7 +271,7 @@ export class PairDPDfdt extends PairDPDfdtBase {
     if (args.length !== 3) throw new StyleError('Illegal pair_style command (dpd/fdt T cutoff seed)');
     this.temperature = parseNum(args[0], 'temperature');
     this.cutGlobal = parseNum(args[1], 'cutoff');
-    this.seed = parseNum(args[2], 'seed');
+    this.seed = parseInt_(args[2], 'seed');
     this.seedRng(this.seed);
   }
 
@@ -294,7 +294,7 @@ export class PairDPDfdtEnergy extends PairDPDfdtBase {
   settings(args: string[]): void {
     if (args.length !== 2) throw new StyleError('Illegal pair_style command (dpd/fdt/energy cutoff seed)');
     this.cutGlobal = parseNum(args[0], 'cutoff');
-    this.seed = parseNum(args[1], 'seed');
+    this.seed = parseInt_(args[1], 'seed');
     this.seedRng(this.seed);
   }
 

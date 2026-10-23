@@ -134,6 +134,6 @@ run 10
     const h = await runScript(`${SYS}\nfix s all store/state 0 x history 5 10 0\n`);
     expect(h.error).toBeNull();
     const t = await runScript(`${SYS}\nvariable g equal 1\nfix s all store/state 0 x thresh v_g > 0 thresh v_g > 0\n`);
-    expect(t.error?.message).toContain('the thresh keyword may be used only once');
+    expect(t.error?.message).toContain('The fix store/state thresh keyword may be used only once');
   });
 });

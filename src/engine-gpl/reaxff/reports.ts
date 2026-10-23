@@ -23,7 +23,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { inumeric, missingArgs } from '../../engine/force/util';
+import { inumeric, missingArgs, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { buildAtomMap, hasMolecule, nativeOrder } from '../../engine/atoms';
 import { PairReaxFF } from './pair';
@@ -217,13 +217,11 @@ export class FixReaxFFSpecies extends Fix {
     while (iarg < args.length) {
       const key = args[iarg];
       if (key === 'cutoff') {
-        if (iarg + 4 > args.length) throw new StyleError('Illegal fix reaxff/species cutoff command');
+        if (iarg + 4 > args.length) throw missingArgs('fix reaxff/species cutoff');
         const [ilo, ihi] = this.bounds(args[iarg + 1]);
         const [jlo, jhi] = this.bounds(args[iarg + 2]);
-        const value = Number(args[iarg + 3]);
-        if (!Number.isFinite(value) || value > 1.0 || value < 0.0) {
-          throw new StyleError(`Fix reaxff/species invalid cutoff value: ${args[iarg + 3]}`);
-        }
+        const value = numeric(args[iarg + 3]);
+        if (value > 1.0 || value < 0.0) throw new StyleError(`Fix reaxff/species invalid cutoff value: ${value}`);
         for (let i = ilo; i <= ihi; i++) {
           for (let j = Math.max(jlo, i); j <= jhi; j++) {
             this.bocut[i * (this.ntypes + 1) + j] = value;

@@ -16,6 +16,7 @@
  * copy_arrays does. Pit geometry (npits, wp, sw) is ported in pit_geometry.ts. Not ported and refused by name: D3Q19,
  * stencil 4 (Keys), dumpxdmf, read_restart and write_restart.
  */
+import { inumeric, numeric } from '../../engine/force/util';
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
@@ -35,16 +36,9 @@ const cRound = (x: number): number => (x < 0 ? -Math.round(-x) : Math.round(x));
 /** C lround(): halves away from zero (the same rounding as cRound). */
 const lround = cRound;
 
-const intArg = (w: string | undefined, what: string): number => {
-  const n = Number(w);
-  if (w === undefined || !Number.isInteger(n)) throw new StyleError(`Illegal fix lb/fluid ${what} ${w ?? ''}`);
-  return n;
-};
-const numArg = (w: string | undefined, what: string): number => {
-  const n = Number(w);
-  if (w === undefined || !Number.isFinite(n)) throw new StyleError(`Illegal fix lb/fluid ${what} ${w ?? ''}`);
-  return n;
-};
+// the values are read with utils::inumeric and utils::numeric (fix_lb_fluid.cpp constructor)
+const intArg = (w: string | undefined, _what: string): number => inumeric(w);
+const numArg = (w: string | undefined, _what: string): number => numeric(w);
 
 /** Refused keywords (not ported). */
 const REFUSED: Record<string, string> = {

@@ -7,6 +7,7 @@
  * Shared helpers of fix bond/create and fix bond/break: list access by atom ID, the unordered bond key of the broken and
  * created bonds, and the topology refresh after a change (special lists and neighbor rebuild, tail corrections kept).
  */
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { SimState, TopoList } from '../../engine/types';
 import { StyleError } from '../../engine/force/types';
@@ -62,19 +63,11 @@ export const refreshTopology = (sys: System): void => {
   ff.ptailV = ptail;
 };
 
-/** An integer argument of a fix (the Illegal-command wording of the fix). */
-export const intArg = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || !Number.isInteger(v)) throw new StyleError(`Illegal ${what}: '${w ?? ''}' is not an integer`);
-  return v;
-};
+/** An integer argument of a fix, read as native's utils::inumeric (fix_bond_break.cpp, fix_bond_create.cpp at b332f28). */
+export const intArg = (w: string | undefined, _what: string): number => inumeric(w);
 
-/** A numeric argument of a fix. */
-export const numArg = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`Illegal ${what}: '${w ?? ''}' is not a number`);
-  return v;
-};
+/** A numeric argument of a fix, read as native's utils::numeric. */
+export const numArg = (w: string | undefined, _what: string): number => numeric(w);
 
 /*
  * The 1-2 neighbor order of each atom, as native LAMMPS keeps it in atom->special (its order matters for the impropers

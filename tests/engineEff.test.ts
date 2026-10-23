@@ -172,7 +172,7 @@ describe('pair eff/cut, fix nve/eff, compute temp/eff and ke/eff', () => {
     const run = (text: string) => newSession().session.execute(text);
     const withData = () => { const n = newSession(); n.session.addFile('h2.data', H2_DATA); return n.session; };
     // ecp with an element that has no default ECP parameters (pair_eff_cut.cpp settings: "No default parameters for this atom ECP")
-    await expect(withData().execute(`${HEAD}read_data h2.data\npair_style eff/cut 1.0 ecp 1 Xx\n`)).rejects.toThrow(/ecp/);
+    await expect(withData().execute(`${HEAD}read_data h2.data\npair_style eff/cut 1.0 ecp 1 Xx\n`)).rejects.toThrow(/No default parameters for this atom ECP/);
     // an ECP line for a type that has no ecp element is refused (native would index element 0 silently)
     await expect(run('units electron\natom_style electron\nregion b block -1 1 -1 1 -1 1\ncreate_box 2 b\npair_style eff/cut 1.0\npair_coeff 1 s 0.3 2.2 0.8\n'))
       .rejects.toThrow(/has no element/);

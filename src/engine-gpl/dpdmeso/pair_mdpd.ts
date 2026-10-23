@@ -12,7 +12,7 @@
  */
 import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
-import { parseNum } from '../../engine/force/util';
+import { parseInt_, parseNum } from '../../engine/force/util';
 import { MDPD_RHO, isMdpdStyle } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
 import { NativePairOrder } from '../neighbor/nativeOrder';
@@ -35,7 +35,7 @@ export class PairMDPD extends Pair {
     if (args.length !== 3) throw new StyleError('Illegal pair_style command');
     this.temperature = parseNum(args[0], 'temperature');
     this.cutGlobal = parseNum(args[1], 'cutoff');
-    this.seed = parseNum(args[2], 'seed');
+    this.seed = parseInt_(args[2], 'seed');
     if (!(this.seed > 0) || !Number.isInteger(this.seed)) throw new StyleError('Invalid random number seed');
     this.rng = new RanMars(this.seed % 900000000);
     // pair_mdpd.cpp settings(): the cutoff of set pairs (i < j) is taken from the pair_style cutoff again

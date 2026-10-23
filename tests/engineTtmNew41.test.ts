@@ -207,7 +207,7 @@ describe('ttm/thermal and ttm/cascade in the engine', () => {
   });
 
   it('ttm/cascade: a negative offset is an error; gamma_p = 0 and gamma_s < 0 are errors (measured)', async () => {
-    await expectError('fix 2 all ttm/cascade 77 1 1 0.5 20 0 2 2 2 2 set 1000 offset -1.0', {}, /time offset must be >= 0/);
+    await expectError('fix 2 all ttm/cascade 77 1 1 0.5 20 0 2 2 2 2 set 1000 offset -1.0', {}, /Fix ttm\/cascade time_offset must be >= 0/);
     // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp at b332f28): the value checks come after the keywords
     await expectError('fix 2 all ttm/cascade 77 1 1 0.5 0 0 2 2 2 2 set 1000', {}, 'Fix ttm/cascade gamma_p must be > 0.0');
     await expectError('fix 2 all ttm/cascade 77 1 1 0.5 20 -1 2 2 2 2 set 1000', {}, 'Fix ttm/cascade gamma_s must be >= 0.0');

@@ -79,8 +79,9 @@ describe('fix wall/gran granular analytic single-sphere force', () => {
 
 describe('fix wall/gran/region classic fstyles and cones', () => {
   it('rejects a classic fstyle with too few parameters and a bad dampflag', async () => {
-    await expect(fzOn(base('fix 2 all wall/gran/region hooke 1000 NULL 0.4 region reg', 'region reg block -1 1 -1 1 -1 1 units box'))).rejects.toThrow(/needs Kn Kt/);
-    await expect(fzOn(base('fix 2 all wall/gran/region hooke 1000 NULL 0.4 NULL 0.6 2 region reg', 'region reg block -1 1 -1 1 -1 1 units box'))).rejects.toThrow(/dampflag/);
+    // Measured with native LAMMPS (src/GRANULAR/granular_model.cpp define_classic_model at b332f28)
+    await expect(fzOn(base('fix 2 all wall/gran/region hooke 1000 NULL 0.4 region reg', 'region reg block -1 1 -1 1 -1 1 units box'))).rejects.toThrow(/Insufficient arguments provided for classic gran model command/);
+    await expect(fzOn(base('fix 2 all wall/gran/region hooke 1000 NULL 0.4 NULL 0.6 2 region reg', 'region reg block -1 1 -1 1 -1 1 units box'))).rejects.toThrow(/Illegal classic gran model command/);
   });
   it('hooke on an interior cone: normal along the generator, overlap = distance to the generator (measured)', async () => {
     // cone radius 1.0 at z = 0 to 2.0 at z = 3; sphere at (1.2, 0, 1.5): distance 0.2846, F = k_n delta n

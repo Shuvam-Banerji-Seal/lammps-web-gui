@@ -1,9 +1,10 @@
 import { Fix, fixModifyCompute } from './fix';
 import { StyleError } from '../force/types';
+import { numeric } from '../force/util';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { ComputePressure } from '../compute/pressure';
-import { ownCompute, parseNumOrVar, ramp, removeCompute, valueOf, type NumOrVar } from './util';
+import { ownCompute, ramp, removeCompute, valueOf, type NumOrVar } from './util';
 
 /*
  * fix ID group press/berendsen keyword values — docs.lammps.org/fix_press_berendsen.html: "Reset the pressure of
@@ -48,59 +49,71 @@ export class FixPressBerendsen extends Fix {
     this.ownPressId = `${id}_press`;
     this.tempId = this.ownTempId;
     this.pressId = this.ownPressId;
+    // As native LAMMPS does (src/fix_press_berendsen.cpp FixPressBerendsen::FixPressBerendsen at b332f28): the keywords
+    // (each with its word count; Pstart, Pstop and Pdamp utils::numeric), then the 2d, couple, periodicity and damping
+    // checks with native's messages
+    const illegal = () => new StyleError('Illegal fix press/berendsen command');
+    if (args.length < 2) throw illegal();
+    const dim = sys.dimension;
+    const flag = [false, false, false];
     let couple = 'none';
     const setDim = (d: number, k: number): void => {
-      const start = args[k + 1], stop = args[k + 2], damp = args[k + 3];
-      // As native LAMMPS does (src/fix_press_berendsen.cpp FixPressBerendsen::FixPressBerendsen at b332f28): a keyword with too few values is "Illegal fix press/berendsen command"
-      if (start === undefined || stop === undefined || damp === undefined) throw new StyleError('Illegal fix press/berendsen command');
-      this.pStart[d] = parseNumOrVar(start, 'Pstart');
-      this.pStop[d] = Number(stop);
-      this.pDamp[d] = Number(damp);
-      if (!Number.isFinite(this.pStop[d]) || !(this.pDamp[d] > 0)) throw new StyleError(`fix ${id} press/berendsen: Pstop must be a number and Pdamp > 0`);
+      this.pStart[d] = numeric(args[k + 1]);
+      this.pStop[d] = numeric(args[k + 2]);
+      this.pDamp[d] = numeric(args[k + 3]);
+      flag[d] = true;
     };
     for (let k = 0; k < args.length;) {
       const key = args[k];
       switch (key) {
         case 'iso': case 'aniso':
-          for (const d of [0, 1, 2]) setDim(d, k);
+          if (k + 4 > args.length) throw illegal();
           couple = key === 'iso' ? 'xyz' : 'none';
+          for (const d of [0, 1, 2]) setDim(d, k);
+          if (dim === 2) { this.pStart[2] = null; this.pStop[2] = this.pDamp[2] = 0; flag[2] = false; }
           k += 4;
           break;
         case 'x': case 'y': case 'z':
+          if (k + 4 > args.length) throw illegal();
           setDim(key === 'x' ? 0 : key === 'y' ? 1 : 2, k);
           k += 4;
+          if (key === 'z' && dim === 2) throw new StyleError('Invalid fix press/berendsen for a 2d simulation');
           break;
         case 'couple':
-          if (!(args[k + 1] in COUPLE)) throw new StyleError(`fix ${id} press/berendsen couple must be none, xyz, xy, yz or xz`);
+          if (k + 2 > args.length || !(args[k + 1] in COUPLE)) throw illegal();
           couple = args[k + 1];
           k += 2;
           break;
         case 'modulus':
-          this.modulus = Number(args[k + 1]);
-          if (!(this.modulus > 0)) throw new StyleError(`fix ${id} press/berendsen modulus must be > 0`);
+          if (k + 2 > args.length) throw illegal();
+          this.modulus = numeric(args[k + 1]);
+          if (this.modulus <= 0) throw illegal();
           k += 2;
           break;
         case 'dilate':
+          if (k + 2 > args.length) throw illegal();
           if (args[k + 1] === 'all') this.dilateBit = sys.groupBit('all');
           else if (args[k + 1] === 'partial') this.dilateBit = sys.groupBit(group);
-          else throw new StyleError(`fix ${id} press/berendsen dilate must be all or partial`);
+          else throw illegal();
           k += 2;
           break;
         default:
-          // As native LAMMPS does (src/fix_press_berendsen.cpp at b332f28): any other word is an illegal command
-          throw new StyleError('Illegal fix press/berendsen command');
+          throw illegal();
       }
     }
-    if (this.pStart.every((p) => p === null)) throw new StyleError(`fix ${id} press/berendsen: no barostatted dimension (iso, aniso, x, y or z)`);
-    // a 2d simulation has no z dimension: it is ignored (also by couple xyz)
-    if (sys.dimension === 2) this.pStart[2] = null;
-    this.coupled = COUPLE[couple].filter((d) => sys.dimension === 3 || d !== 2);
+    const invalid = () => new StyleError('Invalid fix press/berendsen pressure settings');
+    if (dim === 2 && (flag[2] || couple === 'yz' || couple === 'xz')) throw new StyleError('Invalid fix press/berendsen for a 2d simulation');
+    if (couple === 'xyz' && (!flag[0] || !flag[1] || (dim === 3 && !flag[2]))) throw invalid();
+    if (couple !== 'none' && couple !== 'xyz' && COUPLE[couple].some((d) => !flag[d])) throw invalid();
+    for (let d = 0; d < 3; d++) {
+      if (flag[d] && !sys.state.box.periodic[d]) throw new StyleError('Cannot use fix press/berendsen on a non-periodic dimension');
+    }
+    this.coupled = COUPLE[couple].filter((d) => dim === 3 || d !== 2);
     for (const d of this.coupled) {
-      if (this.pStart[d] === null) throw new StyleError(`fix ${id} press/berendsen: couple ${couple} needs a pressure for every coupled dimension`);
-      if (this.pStart[d] !== this.pStart[this.coupled[0]] || this.pStop[d] !== this.pStop[this.coupled[0]] || this.pDamp[d] !== this.pDamp[this.coupled[0]]) {
-        throw new StyleError(`fix ${id} press/berendsen: Pstart, Pstop and Pdamp must be identical for coupled dimensions`);
-      }
+      const c = this.coupled[0];
+      if (this.pStart[d] !== this.pStart[c] || this.pStop[d] !== this.pStop[c] || this.pDamp[d] !== this.pDamp[c]) throw invalid();
     }
+    if (flag.some((f, d) => f && this.pDamp[d] <= 0)) throw new StyleError('Fix press/berendsen damping parameters must be > 0.0');
     ownCompute(sys, this.tempId, group, 'temp', []);
     this.pressCompute = ownCompute(sys, this.pressId, 'all', 'pressure', [this.tempId]);
   }

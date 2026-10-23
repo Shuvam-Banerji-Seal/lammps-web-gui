@@ -43,11 +43,15 @@ describe('fix rigid langevin', () => {
   });
 
   it('names bad langevin arguments', async () => {
-    expect((await run('fix 1 all rigid molecule langevin 1.0 1.0 0.5') as EngineError).message).toMatch(/expected Tstart Tstop Tperiod seed/);
-    expect((await run('fix 1 all rigid molecule langevin 1.0 1.0 0.0 4567') as EngineError).message).toMatch(/Tperiod must be > 0/);
-    expect((await run('fix 1 all rigid molecule langevin 1.0 1.0 0.5 0') as EngineError).message).toMatch(/seed must be a positive integer/);
-    expect((await run('fix 1 all rigid molecule langevin 1.0 1.0 0.5 1.5') as EngineError).message).toMatch(/seed must be a positive integer/);
-    expect((await run('fix 1 all rigid molecule langevin 1.0 x 0.5 4567') as EngineError).message).toMatch(/Tstop must be a number/);
+    // Measured with native LAMMPS (b332f28): the messages of src/RIGID/fix_rigid.cpp and fix_rigid_small.cpp
+    expect((await run('fix 1 all rigid molecule langevin 1.0 1.0 0.5') as EngineError).message).toMatch(/Illegal fix rigid command/);
+    expect((await run('fix 1 all rigid molecule langevin 1.0 1.0 0.0 4567') as EngineError).message).toMatch(/Fix rigid langevin period must be > 0\.0/);
+    expect((await run('fix 1 all rigid molecule langevin 1.0 1.0 0.5 0') as EngineError).message).toMatch(/Illegal fix rigid command/);
+    expect((await run('fix 1 all rigid molecule langevin 1.0 1.0 0.5 1.5') as EngineError).message).toMatch(/Expected integer parameter instead of '1\.5' in input script or data file/);
+    expect((await run('fix 1 all rigid molecule langevin 1.0 x 0.5 4567') as EngineError).message).toMatch(/Expected floating point parameter instead of 'x' in input script or data file/);
+    expect((await run('fix 1 all rigid/small molecule langevin 1.0 1.0 0.5') as EngineError).message).toMatch(/Illegal fix rigid\/small langevin command: missing argument\(s\)/);
+    expect((await run('fix 1 all rigid/small molecule langevin 1.0 1.0 0.0 4567') as EngineError).message).toMatch(/Fix rigid\/small langevin period must be > 0\.0/);
+    expect((await run('fix 1 all rigid/small molecule langevin 1.0 1.0 0.5 0') as EngineError).message).toMatch(/Illegal fix rigid\/small langevin random seed/);
   });
 
   it('is deterministic for a given seed and differs across seeds', async () => {

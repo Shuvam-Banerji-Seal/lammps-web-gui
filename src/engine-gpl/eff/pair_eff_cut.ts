@@ -9,7 +9,7 @@
  * (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
 import { Pair, PairParams, StyleError, mixDistance, type PairCompute, type PairMinPerAtom, type StyleContext } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { ELECTRON_RADIUS, ELECTRON_RFORCE, ELECTRON_SPIN, isElectronStyle } from '../../engine/atoms';
 import type { SimState } from '../../engine/types';
@@ -95,11 +95,12 @@ export class PairEffCut extends Pair {
         // pair_eff_cut.cpp settings: "ecp" takes pairs "atomtype element" up to the end of the command
         iarg += 1;
         while (iarg < args.length) {
-          const t = Number(args[iarg]);
-          if (!Number.isInteger(t) || t < 1) throw new StyleError(`Illegal pair_style eff/cut ecp atom type: ${args[iarg]}`);
+          // utils::inumeric; native writes ecp_type[atype] for any integer, the engine refuses a type below 1
+          const t = inumeric(args[iarg]);
           const el = args[iarg + 1];
           const z = el !== undefined && Object.hasOwn(ECP_ELEMENTS, el) ? ECP_ELEMENTS[el] : undefined;
-          if (z === undefined) throw new StyleError(`No default parameters for this atom ECP (ecp ${args[iarg]} ${el ?? ''})`);
+          if (z === undefined) throw new StyleError('No default parameters for this atom ECP');
+          if (t < 1) throw new StyleError(`Illegal pair_style eff/cut ecp atom type: ${args[iarg]}`);
           this.ecpType[t] = z;
           iarg += 2;
           this.ecpFound = true;

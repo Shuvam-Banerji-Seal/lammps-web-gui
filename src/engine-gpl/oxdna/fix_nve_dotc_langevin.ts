@@ -11,7 +11,7 @@ import { FixNVE } from '../../engine/fix/nve';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { isEllipsoid, massOf } from '../../engine/atoms';
-import { parseNum } from '../../engine/force/util';
+import { parseInt_, parseNum } from '../../engine/force/util';
 import { RanMars } from '../random_mars';
 import { noSquishRotate, vec3ToVec4, vec4ToVec3 } from './fix_nve_dot';
 import { exp as libmExp } from '../libm/exp';
@@ -41,7 +41,7 @@ export class FixNVEDotcLangevin extends FixNVE {
     const period = parseNum(args[2], 'period');
     if (period <= 0.0) throw new StyleError('Fix nve/dotc/langevin period must be > 0.0');
     this.gamma = 1.0 / period;
-    const seed = parseNum(args[3], 'seed');
+    const seed = parseInt_(args[3], 'seed');
     if (seed <= 0) throw new StyleError('Illegal fix nve/dotc/langevin command');
     // "angmom no" zeroes the rotational damping; "angmom value" gives Gamma = gamma value
     if (args[5] === 'no') this.Gamma = 0.0;

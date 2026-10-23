@@ -9,6 +9,7 @@
  * docs.lammps.org/fix_lb_momentum.html: "Zero the linear momentum of the particles and fluid ... linear flags select
  * the components."
  */
+import { inumeric } from '../../engine/force/util';
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
@@ -16,11 +17,8 @@ import { massOf, nativeOrder } from '../../engine/atoms';
 import type { FixLbFluid } from './fix_lb_fluid';
 import { MG15, NG15, W15 } from './lb_tables';
 
-const intArg = (w: string | undefined): number => {
-  const n = Number(w);
-  if (w === undefined || !Number.isInteger(n)) throw new StyleError(`Illegal fix lb/momentum command: ${w ?? ''}`);
-  return n;
-};
+// the values are read with utils::inumeric (fix_lb_momentum.cpp constructor)
+const intArg = (w: string | undefined): number => inumeric(w);
 
 export class FixLbMomentum extends Fix {
   readonly style = 'lb/momentum';

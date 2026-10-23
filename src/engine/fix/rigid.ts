@@ -1,10 +1,11 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
+import { inumeric, missingArgs, numeric } from '../force/util';
 import type { System } from '../system';
 import { hasMolecule, isEllipsoid, isLineAtom, isSuperEllipsoidStyle, isTriAtom, LINE_BONUS, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { ellipsoidInertia, quatToMatrix } from '../compute/asphere';
 import { RanMars } from '../rng';
-import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
+import { ramp, valueOf, type NumOrVar } from './util';
 import { FixGravity } from './force_ext';
 import { libm } from '../libm';
 
@@ -457,17 +458,23 @@ export class FixRigid extends Fix {
          * used with the 2 NVT rigid styles". "The desired temperature at each
          * timestep is a ramped value during the run from Tstart to Tstop." "The
          * random # seed must be a positive integer." */
-        const tStart = args[k + 1], tStop = args[k + 2], tPeriod = args[k + 3], seed = args[k + 4];
-        if (tStart === undefined || tStop === undefined || tPeriod === undefined || seed === undefined) {
-          throw new StyleError(`fix ${style} langevin: expected Tstart Tstop Tperiod seed`);
+        // As native LAMMPS does (src/RIGID/fix_rigid.cpp FixRigid::FixRigid and fix_rigid_small.cpp
+        // FixRigidSmall::FixRigidSmall at b332f28): the word count and the style, then Tstart, Tstop, Tperiod
+        // (utils::numeric) and seed (utils::inumeric) with their checks; the two families word them differently
+        const illegal = () => new StyleError(`Illegal fix ${style} command`);
+        if (small) {
+          if (k + 5 > args.length) throw missingArgs(`fix ${style} langevin`);
+          if (/^rigid\/n.t\/small/.test(style)) throw new StyleError('Must not combine Langevin with Nose-Hoover thermostat');
+        } else {
+          if (k + 5 > args.length) throw illegal();
+          if (!['rigid', 'rigid/nve', 'rigid/omp', 'rigid/nve/omp'].includes(style)) throw illegal();
         }
-        this.langTStart = parseNumOrVar(tStart, 'Tstart');
-        this.langTStop = Number(tStop);
-        this.langDamp = Number(tPeriod);
-        const sd = Number(seed);
-        if (!Number.isFinite(this.langTStop)) throw new StyleError(`fix ${style} langevin: Tstop must be a number, got '${tStop}'`);
-        if (!(this.langDamp > 0)) throw new StyleError(`fix ${style} langevin: Tperiod must be > 0, got '${tPeriod}'`);
-        if (!Number.isInteger(sd) || sd <= 0) throw new StyleError(`fix ${style} langevin: seed must be a positive integer, got '${seed}'`);
+        this.langTStart = numeric(args[k + 1]);
+        this.langTStop = numeric(args[k + 2]);
+        this.langDamp = numeric(args[k + 3]);
+        const sd = inumeric(args[k + 4]);
+        if (this.langDamp <= 0) throw new StyleError(small ? `Fix ${style} langevin period must be > 0.0` : 'Fix rigid langevin period must be > 0.0');
+        if (sd <= 0) throw small ? new StyleError(`Illegal fix ${style} langevin random seed`) : illegal();
         this.langevin = true;
         this.langRng = new RanMars(sd);
         // Measured with native LAMMPS (black box): the stream starts one draw in,

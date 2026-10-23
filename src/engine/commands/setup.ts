@@ -764,21 +764,7 @@ const createBox: Handler = ({ sys }, a) => {
   if (n < 1) throw new StyleError('create_box needs at least 1 atom type');
   const general = a[1] === 'NULL';
   const reg = general ? null : sys.region(a[1] ?? '');
-  // native CreateBox::command (src/create_box.cpp at b332f28): "Unknown create_box keyword: X" for a word that is not a keyword
-  const boxKeywords = ['bond/types', 'angle/types', 'dihedral/types', 'improper/types',
-    'extra/bond/per/atom', 'extra/angle/per/atom', 'extra/dihedral/per/atom', 'extra/improper/per/atom', 'extra/special/per/atom'];
   const boxRest = a.slice(general ? 8 : 2);
-  for (let i = 0; i < boxRest.length; i += 2) if (!boxKeywords.includes(boxRest[i])) throw new StyleError(`Unknown create_box keyword: ${boxRest[i]}`);
-  const kw = keywords(boxRest, {
-    'bond/types': 1, 'angle/types': 1, 'dihedral/types': 1, 'improper/types': 1,
-    'extra/bond/per/atom': 1, 'extra/angle/per/atom': 1, 'extra/dihedral/per/atom': 1, 'extra/improper/per/atom': 1, 'extra/special/per/atom': 1,
-  }, 'create_box');
-  // create_box.html, keyword extra/bond/per/atom: the bonds per atom the storage holds for later reads (data.ts)
-  if (kw.has('extra/bond/per/atom')) {
-    const nb = int(kw.get('extra/bond/per/atom')![0], 'extra/bond/per/atom');
-    if (nb < 0) throw new StyleError('create_box extra/bond/per/atom must be >= 0');
-    sys.extraBondPerAtom = nb;
-  }
   let lo: [number, number, number], hi: [number, number, number];
   let tilt: [number, number, number] | undefined;
   let genQ: [[number, number, number], [number, number, number], [number, number, number]] | undefined;
@@ -805,13 +791,42 @@ const createBox: Handler = ({ sys }, a) => {
   // the rotation of a general triclinic box is kept on the box (types.ts SimBox.general)
   if (genQ) box.general = { Q: genQ };
   const s = emptyState(sys.units, sys.dimension, box, n, sys.atomStyle);
-  const types = (k: string) => (kw.has(k) ? int(kw.get(k)![0], k) : 0);
-  s.topo.nbondtypes = types('bond/types');
-  s.topo.nangletypes = types('angle/types');
-  s.topo.ndihedraltypes = types('dihedral/types');
-  s.topo.nimpropertypes = types('improper/types');
-  const molecular = isMolecularStyle(s.atomStyle);
-  if (!molecular && (s.topo.nbondtypes || s.topo.nangletypes)) throw new StyleError(`atom_style ${s.atomStyle} cannot have bond or angle types`);
+  // As native LAMMPS does (src/create_box.cpp CreateBox::command at b332f28): the keywords in order, each with its word
+  // count, the atom style's permission for its kind (AtomVec bonds_allow, angles_allow, ...) and its value
+  // (utils::inumeric). bond and bpm/sphere allow bonds, angle bonds and angles, molecular, full, dielectric and amoeba
+  // all four, template those its molecules have; a hybrid style allows those of its sub-styles.
+  const tmplSets = templateStyleId(sys.atomStyle) !== null ? sys.molecules.get(templateStyleId(sys.atomStyle)!) ?? [] : [];
+  const KINDS = ['bond', 'angle', 'dihedral', 'improper'] as const;
+  const allows = (kind: typeof KINDS[number]): boolean => atomSubStyles(sys.atomStyle).some((x) => {
+    if (x === 'molecular' || x === 'full' || x === 'dielectric' || x === 'amoeba') return true;
+    if (x === 'angle') return kind === 'bond' || kind === 'angle';
+    if (x === 'bond' || x === 'bpm/sphere' || x === 'oxdna') return kind === 'bond';
+    if (x === 'template') return tmplSets.some((t) => ({ bond: t.bonds, angle: t.angles, dihedral: t.dihedrals, improper: t.impropers })[kind].length > 0);
+    return false;
+  });
+  const shownStyle = (sys.atomStyle.startsWith('hybrid ') ? 'hybrid ' : '') + atomSubStyles(sys.atomStyle).join(' ');
+  const ntypesOf = { bond: 0, angle: 0, dihedral: 0, improper: 0 };
+  for (let i = 0; i < boxRest.length; i += 2) {
+    const key = boxRest[i];
+    const m = /^(bond|angle|dihedral|improper)\/types$|^extra\/(bond|angle|dihedral|improper|special)\/per\/atom$/.exec(key);
+    if (!m) throw new StyleError(`Unknown create_box keyword: ${key}`);
+    // native names bond/types "create_box bond/type" in this message
+    if (i + 2 > boxRest.length) throw missingArgs(`create_box ${key === 'bond/types' ? 'bond/type' : key}`);
+    const kind = (m[1] ?? m[2]) as typeof KINDS[number] | 'special';
+    if (kind !== 'special' && !allows(kind)) throw new StyleError(`No ${kind}s allowed with atom style ${shownStyle}`);
+    const v = inumeric(boxRest[i + 1]);
+    if (m[1]) ntypesOf[m[1] as typeof KINDS[number]] = v;
+    // create_box.html, keyword extra/bond/per/atom: the bonds per atom the storage holds for later reads (data.ts)
+    else if (kind === 'bond') {
+      // native sizes its storage with any integer; the engine needs a count of at least 0
+      if (v < 0) throw new StyleError('create_box extra/bond/per/atom must be >= 0');
+      sys.extraBondPerAtom = v;
+    }
+  }
+  s.topo.nbondtypes = ntypesOf.bond;
+  s.topo.nangletypes = ntypesOf.angle;
+  s.topo.ndihedraltypes = ntypesOf.dihedral;
+  s.topo.nimpropertypes = ntypesOf.improper;
   sys.setState(s);
   // src/domain.cpp Domain::set_initial_box (expandflag = 1, called by create_box at b332f28): SMALL = 1.0e-4 of the box
   // length, taken before the expansion; a shrink-wrapped face is then moved out by that amount. create_atoms lattice

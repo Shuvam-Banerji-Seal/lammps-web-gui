@@ -10,6 +10,7 @@
  * distribution of the kinetic energy; the random draws are the same as the source's (gaussian for r1, then the
  * sum of tdof-1 squared gaussians through gamdev), so a seed gives the same trajectory as native LAMMPS.
  */
+import { inumeric, numeric } from '../../engine/force/util';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { RescaleFix } from '../../engine/fix/thermostats';
@@ -26,13 +27,14 @@ export class FixTempCSVR extends RescaleFix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 4) throw new StyleError('usage: fix ID group temp/csvr Tstart Tstop Tdamp seed');
+    // As native LAMMPS does (src/EXTRA-FIX/fix_temp_csvr.cpp at b332f28): Tstop and Tdamp utils::numeric, seed utils::inumeric
+    if (args.length !== 4) throw new StyleError(`Incorrect number of arguments for fix ${this.style} command`);
     this.tStart = parseNumOrVar(args[0], 'Tstart');
-    this.tStop = Number(args[1]);
-    this.tPeriod = Number(args[2]);
-    const seed = Number(args[3]);
-    if (!Number.isFinite(this.tStop) || !(this.tPeriod > 0)) throw new StyleError('Illegal fix temp/csvr command period value');
-    if (!Number.isInteger(seed) || seed <= 0) throw new StyleError('Illegal fix temp/csvr command seed value');
+    this.tStop = numeric(args[1]);
+    this.tPeriod = numeric(args[2]);
+    const seed = inumeric(args[3]);
+    if (this.tPeriod <= 0) throw new StyleError(`Illegal fix ${this.style} command period value`);
+    if (seed <= 0) throw new StyleError(`Illegal fix ${this.style} command seed value`);
     this.rng = new RanMars(seed);
     const saved = takeFixRecord(sys, id, this.style)?.state as MarsEnergyRestart | undefined;
     if (saved) { this.exchanged = saved.energy; this.rng.setState(saved.rng); }

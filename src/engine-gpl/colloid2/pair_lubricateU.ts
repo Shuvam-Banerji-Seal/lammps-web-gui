@@ -10,7 +10,7 @@
  */
 import { Pair, StyleError, mixDistance, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, type NeighList } from '../../engine/neighbor';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { FixWallBase } from '../../engine/fix/walls';
 import type { Fix } from '../../engine/fix/fix';
 import { NativePairOrder } from '../neighbor/nativeOrder';
@@ -35,11 +35,8 @@ export interface WallView {
   coords(): Float64Array;
 }
 
-export const intArg = (w: string | undefined, what: string): number => {
-  const v = parseNum(w, what);
-  if (!Number.isInteger(v)) throw new StyleError(`expected an integer for ${what}, got '${w}'`);
-  return v;
-};
+/** utils::inumeric, as native settings reads the flags. */
+export const intArg = (w: string | undefined, _what: string): number => inumeric(w);
 
 /** Native Pair::ev_tally_xyz (pair.cpp at b332f28) for the virial and per-atom virial: the arguments are native's. */
 export const evTallyXYZ = (

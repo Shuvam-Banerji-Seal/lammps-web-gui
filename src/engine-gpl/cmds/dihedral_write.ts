@@ -13,7 +13,8 @@ import { StyleError } from '../../engine/force/types';
 import { cos, sin } from '../libm/sincos';
 import { minEnergyForce } from '../../engine/run/minimizers';
 import { errorUrl } from './common';
-import { dummySession, finite, intArg, startTableFile, tableRow } from './table_write';
+import { dummySession, finite, startTableFile, tableRow } from './table_write';
+import { inumeric } from '../../engine/force/util';
 
 const DEG2RAD = Math.PI / 180;
 const EPSILON = 6.5e-6;
@@ -25,10 +26,10 @@ const dihedralWrite: Handler = async ({ sys, session }, a) => {
   if (dihedral.dataCoeffs() === null) throw new StyleError('Dihedral style must support writing coeffs to data file for dihedral_write');
   if (/^(charmm|class2)/.test(dihedral.name)) throw new StyleError(`Dihedral_write command is not compatible with dihedral style ${dihedral.name}`);
   if (a.length !== 4) throw new StyleError('Illegal dihedral_write command');
-  const dtype = intArg(a[0], 'dihedral type');
+  const dtype = inumeric(a[0]);
   const ndt = sys.state.topo.ndihedraltypes;
   if (dtype <= 0 || dtype > ndt) throw new StyleError(`Invalid dihedral type ${dtype} in dihedral_write command`);
-  const n = intArg(a[1], 'N');
+  const n = inumeric(a[1]);
   const tableFile = a[2];
   const keyword = a[3];
   if (n < 2) throw new StyleError('Must have at least 2 table values');

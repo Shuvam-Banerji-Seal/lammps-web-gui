@@ -20,11 +20,12 @@
  * Per-atom energy and virial: the LJ term as Pair::ev_tally (half to each atom) and the Coulomb term as
  * Pair::ev_tally_tip4p (src/pair.cpp at b332f28): an O's half goes 1 - alpha to O and alpha / 2 to each of its H atoms.
  */
-import { StyleError, type BondedEquilibria, type PairCompute } from '../../engine/force/types';
+import { StyleError, type BondedEquilibria, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { PairLJLongCoulLong, type DispTable } from '../../engine/force/pair/lj_long';
 import { buildOwnedSites, tip4pAlpha, type Tip4pModel } from '../../engine/force/pair/tip4p_sites';
+import { tip4pTypes } from '../../engine/force/pair/tip4p';
 import { erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../../engine/force/erfc';
 import { exp } from '../libm/exp';
 import { makeDispTable } from '../pair_disp/dispTable';
@@ -82,6 +83,8 @@ export class PairLJLongTIP4PLong extends PairLJLongCoulLong {
   typeH = 0;
   typeB = 0;
   typeA = 0;
+  /** The otype htype btype atype words of pair_style, read at each pair_coeff. */
+  typeWords: string[] = [];
   qdist = 0;
   private alpha = Number.NaN;
   private bonded: BondedEquilibria | null = null;
@@ -102,12 +105,15 @@ export class PairLJLongTIP4PLong extends PairLJLongCoulLong {
   settings(args: string[]): void {
     if (args.length !== 8 && args.length !== 9) throw new StyleError('Illegal pair_style command');
     if (args[1] !== 'long') throw new StyleError('Coulomb cut not supported in pair_style lj/long/tip4p/long');
-    this.typeO = parseNum(args[2], 'otype');
-    this.typeH = parseNum(args[3], 'htype');
-    this.typeB = parseNum(args[4], 'btype');
-    this.typeA = parseNum(args[5], 'atype');
+    this.typeWords = args.slice(2, 6);
     this.qdist = parseNum(args[6], 'qdist');
     super.settings([args[0], args[1], args[7], ...(args.length === 9 ? [args[8]] : [])]);
+  }
+
+  /** coeff: the types of the pair_style words first ("set atom types from pair_style command unless we were restarted"). */
+  coeff(args: string[], ctx?: StyleContext): void {
+    if (this.typeWords.length > 0) [this.typeO, this.typeH, this.typeB, this.typeA] = tip4pTypes(this.typeWords, ctx);
+    super.coeff(args);
   }
 
   /** Equilibrium OH length and HOH angle come from the bond and angle styles (forcefield.ts hook). */

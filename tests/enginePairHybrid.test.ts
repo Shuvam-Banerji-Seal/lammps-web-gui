@@ -70,7 +70,10 @@ describe('pair_style hybrid: errors', () => {
   const cases: [string, string, RegExp][] = [
     ['unknown sub-style', 'pair_style hybrid lj/bogus 2.5', /Unrecognized pair style 'lj\/bogus'/],
     ['nested hybrid', 'pair_style hybrid hybrid lj/cut 2.5', /cannot be a sub-style/],
-    ['instance number required', 'pair_style hybrid lj/cut 2.5 lj/cut 2.0\npair_coeff * * lj/cut 1.0 1.0', /listed 2 times; give its number/],
+    // native PairHybrid::coeff (src/pair_hybrid.cpp at b332f28)
+    ['instance number required', 'pair_style hybrid lj/cut 2.5 lj/cut 2.0\npair_coeff * * lj/cut 1.0 1.0', /Pair style lj\/cut was listed multiple times, but there is no index in the pair_coeff command \(expected 1-2 but found 1\.0\)/],
+    ['instance number out of range', 'pair_style hybrid lj/cut 2.5 lj/cut 2.0\npair_coeff * * lj/cut 3 1.0 1.0', /Pair style lj\/cut was listed multiple times but its pair_coeff index of 3 is out of range \(1-2\)/],
+    ['overlay instance number with no listing', 'pair_style hybrid/overlay lj/cut 2.5 lj/cut 2.0\npair_coeff * * lj/cut 3 1.0 1.0', /Expected hybrid sub-style instead of lj\/cut in pair_coeff command/],
     ['unassigned pair, no common sub-style', 'pair_style hybrid lj/cut 2.5 lj/cut 2.0\npair_coeff 1 1 lj/cut 1 1.0 1.0\npair_coeff 2 2 lj/cut 2 1.0 1.0', /All pair coeffs are not set\. Status:/],
     ['overlay mixing needs a single sub-style', 'pair_style hybrid/overlay lj/cut 2.5 lj/cut 2.0\npair_coeff 1 1 lj/cut 1 1.0 1.0\npair_coeff 1 1 lj/cut 2 1.0 1.0\npair_coeff 2 2 lj/cut 1 1.0 1.0', /All pair coeffs are not set\. Status:/],
     ['unused sub-style', 'pair_style hybrid lj/cut 2.5 lj/cut 2.0\npair_coeff * * lj/cut 1 1.0 1.0', /sub-style lj\/cut is not used/],

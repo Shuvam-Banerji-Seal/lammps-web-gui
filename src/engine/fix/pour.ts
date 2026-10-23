@@ -1,6 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { inumeric, missingArgs } from '../force/util';
+import { inumeric, missingArgs, numeric } from '../force/util';
 import { RanPark } from '../rng';
 import { appendAtoms, maxAtomId, pushTopo, sphereMass, hasChargeStyle, hasDipoleStyle, hasRadiusStyle, hasRmassStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, SPHERE_DEFAULT_RADIUS } from '../atoms';
 import { BlockRegion, ConeRegion, type Param, type Region } from '../region';
@@ -139,12 +139,8 @@ export const num = (w: string | undefined, what: string): number => {
   return Number(w);
 };
 
-/** Strict positive integer argument. */
-export const posInt = (w: string | undefined, what: string): number => {
-  const v = num(w, what);
-  if (!Number.isInteger(v) || v <= 0) throw new StyleError(`fix: ${what} must be a positive integer, got '${w}'`);
-  return v;
-};
+/** fix_pour.cpp SMALL: the tolerance of the diam poly fractions' sum. */
+const SMALL = 1.0e-10;
 
 /**
  * RanPark seeded with the seed and advanced past the 30 draws native LAMMPS
@@ -315,23 +311,46 @@ interface ClusterRebuilder { rebuildClusters(): void; }
 
 type Diam = { style: 'one'; d: number } | { style: 'range'; lo: number; hi: number } | { style: 'poly'; d: number[]; p: number[] };
 
-/** Keyword values of fix pour (docs.lammps.org/fix_pour.html). */
+/**
+ * The diam keyword of fix pour (docs.lammps.org/fix_pour.html). As native LAMMPS does (src/GRANULAR/fix_pour.cpp
+ * FixPour::options at b332f28): the word count of each style, then its values (utils::numeric, utils::inumeric) and
+ * their checks, whose messages give the radius (half the diameter).
+ */
 const parseDiam = (args: string[], i: number): [Diam, number] => {
+  if (i + 1 > args.length) throw missingArgs('fix pour diam');
   const st = args[i];
-  if (st === 'one') return [{ style: 'one', d: num(args[i + 1], 'diam one D') }, i + 2];
-  if (st === 'range') return [{ style: 'range', lo: num(args[i + 1], 'diam range Dlo'), hi: num(args[i + 2], 'diam range Dhi') }, i + 3];
+  if (st === 'one') {
+    if (i + 2 > args.length) throw missingArgs('fix pour diam one');
+    const d = numeric(args[i + 1]);
+    if (0.5 * d <= 0) throw new StyleError(`Illegal fix pour radius: ${0.5 * d}`);
+    return [{ style: 'one', d }, i + 2];
+  }
+  if (st === 'range') {
+    if (i + 3 > args.length) throw missingArgs('fix pour diam range');
+    const lo = numeric(args[i + 1]), hi = numeric(args[i + 2]);
+    if (lo > hi) throw new StyleError(`Illegal fix pour radii: ${0.5 * lo} exceeds ${0.5 * hi}`);
+    if (0.5 * lo <= 0) throw new StyleError(`Illegal fix pour radius: ${0.5 * lo}`);
+    return [{ style: 'range', lo, hi }, i + 3];
+  }
   if (st === 'poly') {
-    const n = posInt(args[i + 1], 'diam poly Npoly');
+    if (i + 2 > args.length) throw missingArgs('fix pour diam poly');
+    const n = inumeric(args[i + 1]);
+    if (n <= 0) throw new StyleError(`Illegal fix pour poly number: ${n}`);
+    if (i + 2 + 2 * n > args.length) throw missingArgs('fix pour diam poly');
     const d: number[] = [], p: number[] = [];
     for (let k = 0; k < n; k++) {
-      d.push(num(args[i + 2 + 2 * k], 'diam poly D'));
-      p.push(num(args[i + 3 + 2 * k], 'diam poly P'));
+      const dk = numeric(args[i + 2 + 2 * k]), pk = numeric(args[i + 3 + 2 * k]);
+      if (0.5 * dk <= 0) throw new StyleError(`Illegal fix pour poly radius: ${0.5 * dk}`);
+      if (pk < 0) throw new StyleError(`Illegal fix pour poly fraction: ${pk}`);
+      d.push(dk);
+      p.push(pk);
     }
-    const sum = p.reduce((a, b) => a + b, 0);
-    if (Math.abs(sum - 1) > 1e-8) throw new StyleError('fix pour: the diam poly percentages must sum to 1');
+    let sum = 0;
+    for (const x of p) sum += x;
+    if (Math.abs(sum - 1) > SMALL) throw new StyleError('Fix pour polydisperse fractions do not sum to 1.0');
     return [{ style: 'poly', d, p }, i + 2 + 2 * n];
   }
-  throw new StyleError(`fix pour: diam style '${st ?? ''}' is not one, range or poly`);
+  throw new StyleError(`Unknown fix pour diam keyword ${st}`);
 };
 
 export class FixPour extends Fix {
@@ -382,6 +401,7 @@ export class FixPour extends Fix {
     // As native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour::FixPour at b332f28): N and seed are read with
     // utils::inumeric, then checked (a value not positive is refused with native's message).
     const nInsert = inumeric(args[0]);
+    const ntype = inumeric(args[1]);
     const seed = inumeric(args[2]);
     if (nInsert <= 0) throw new StyleError('Invalid number of inserted particles requested');
     if (seed <= 0) throw new StyleError('Invalid fix pour seed value');
@@ -394,76 +414,93 @@ export class FixPour extends Fix {
     let rigidId: string | null = null;
     let shakeId: string | null = null;
     let i = 3;
+    // As native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour::options at b332f28): each keyword checks its word count
+    // ("Illegal fix pour vel command: missing argument(s)"), then reads its values with utils::numeric or
+    // utils::inumeric and checks them with native's messages
+    const need = (n: number, what: string): void => { if (i + n > args.length) throw missingArgs(what); };
     while (i < args.length) {
       const key = args[i];
-      // As native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour::options at b332f28): region without its ID is "Illegal fix pour region command: missing argument(s)"
       if (key === 'region') {
-        if (args[i + 1] === undefined) throw missingArgs('fix pour region');
+        need(2, 'fix pour region');
+        if (!sys.regions.has(args[i + 1])) throw new StyleError(`Fix pour region ${args[i + 1]} does not exist`);
         region = args[i + 1]; i += 2;
-      }
-      else if (key === 'diam') { [this.diam, i] = parseDiam(args, i + 1); }
+      } else if (key === 'mol') {
+        need(2, 'fix pour mol');
+        if (!sys.molecules.get(args[i + 1])?.length) throw new StyleError('Molecule template ID for fix pour does not exist');
+        molTemplateId = args[i + 1];
+        molfrac = null;
+        i += 2;
+      } else if (key === 'molfrac') {
+        if (!molTemplateId) throw new StyleError('Illegal fix pour command, must specify mol keyword before molfrac');
+        const n = moleculeCount(sys, molTemplateId);
+        need(n + 1, 'fix pour molfrac');
+        // molfrac[0] = v1, molfrac[i] = molfrac[i-1] + v(i+1); the last sum must be 1 within EPSILON = 0.001 and is
+        // then set to 1.0
+        const cum: number[] = [];
+        for (let k = 0; k < n; k++) cum.push((k === 0 ? 0 : cum[k - 1]) + numeric(args[i + k + 1]));
+        if (cum[n - 1] < 1 - 0.001 || cum[n - 1] > 1 + 0.001) throw new StyleError(`Illegal fix pour command molfrac: ${cum[n - 1]}`);
+        cum[n - 1] = 1;
+        molfrac = cum;
+        i += 1 + n;
+      } else if (key === 'rigid') { need(2, 'fix pour rigid'); rigidId = args[i + 1]; i += 2; }
+      else if (key === 'shake') { need(2, 'fix pour shake'); shakeId = args[i + 1]; i += 2; }
       else if (key === 'id') {
+        need(2, 'fix pour id');
         const v = args[i + 1];
-        if (v !== 'max' && v !== 'next') throw new StyleError(`fix pour: id must be max or next, got '${v ?? ''}'`);
+        if (v !== 'max' && v !== 'next') throw new StyleError(`Illegal fix pour command id argument: ${v}`);
         idNext = v === 'next';
         i += 2;
-      } else if (key === 'vol') {
-        this.vol = num(args[i + 1], 'vol fraction');
-        this.nattempt = posInt(args[i + 2], 'vol Nattempt');
-        if (!(this.vol > 0)) throw new StyleError('fix pour: vol fraction must be > 0');
-        i += 3;
-      } else if (key === 'rate') { this.rateV = num(args[i + 1], 'rate'); i += 2; }
-      else if (key === 'dens') {
-        this.dens = [num(args[i + 1], 'dens Rholo'), num(args[i + 2], 'dens Rhohi')];
-        i += 3;
-      } else if (key === 'vel') {
-        // "vel values (3d) = vxlo vxhi vylo vyhi vz"; "vel values (2d) = vxlo vxhi vy"
-        // Measured with native LAMMPS (black box): "vel 0.0 0.0 0.0" in 3d is "ERROR: Illegal fix pour vel command: missing argument(s)".
-        if (i + (twoD ? 4 : 6) > args.length) throw new StyleError('Illegal fix pour vel command: missing argument(s)');
-        if (twoD) { this.vel = [num(args[i + 1], 'vel vxlo'), num(args[i + 2], 'vel vxhi'), 0, 0, num(args[i + 3], 'vel vy')]; i += 4; }
-        else { this.vel = [num(args[i + 1], 'vel vxlo'), num(args[i + 2], 'vel vxhi'), num(args[i + 3], 'vel vylo'), num(args[i + 4], 'vel vyhi'), num(args[i + 5], 'vel vz')]; i += 6; }
       } else if (key === 'ignore') {
         // fix_pour.html, ignore: "the inserted particles do not overlap line or tri particles" (overlap() of
         // fix_pour.cpp: "if ignore line/tri set, ignore line or tri particles"); set only for the styles that have them
         if (isLineStyle(sys.atomStyle)) this.ignoreLine = true;
         if (isTriStyle(sys.atomStyle)) this.ignoreTri = true;
         i += 1;
-      } else if (key === 'mol') { molTemplateId = args[i + 1] ?? null; i += 2; }
-      else if (key === 'molfrac') {
-        if (!molTemplateId) throw new StyleError('fix pour: molfrac requires the mol keyword before it');
-        const n = moleculeCount(sys, molTemplateId);
-        // fix_pour.cpp (molfrac): molfrac[0] = v1, molfrac[i] = molfrac[i-1] + v(i+1); the last sum must be 1 within
-        // EPSILON = 0.001 and is then set to 1.0 ("Illegal fix pour command molfrac")
-        const cum: number[] = [];
-        for (let k = 0; k < n; k++) cum.push((k === 0 ? 0 : cum[k - 1]) + num(args[i + k + 1], 'molfrac'));
-        if (cum[n - 1] < 1 - 0.001 || cum[n - 1] > 1 + 0.001) throw new StyleError(`Illegal fix pour command molfrac: ${cum[n - 1]}`);
-        cum[n - 1] = 1;
-        molfrac = cum;
-        i += 1 + n;
-      } else if (key === 'rigid') { rigidId = args[i + 1] ?? null; i += 2; }
-      else if (key === 'shake') { shakeId = args[i + 1] ?? null; i += 2; }
-      // As native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour::FixPour at b332f28): an unrecognised word stops with "Illegal fix pour command argument".
+      } else if (key === 'diam') { [this.diam, i] = parseDiam(args, i + 1); }
+      else if (key === 'dens') {
+        need(3, 'fix pour dens');
+        const lo = numeric(args[i + 1]), hi = numeric(args[i + 2]);
+        if (lo > hi) throw new StyleError(`Illegal fix pour densities: ${lo} exceeds ${hi}`);
+        this.dens = [lo, hi];
+        i += 3;
+      } else if (key === 'vol') {
+        need(3, 'fix pour vol');
+        this.vol = numeric(args[i + 1]);
+        this.nattempt = inumeric(args[i + 2]);
+        i += 3;
+      } else if (key === 'rate') { need(2, 'fix pour rate'); this.rateV = numeric(args[i + 1]); i += 2; }
+      else if (key === 'vel') {
+        // "vel values (3d) = vxlo vxhi vylo vyhi vz"; "vel values (2d) = vxlo vxhi vy"
+        if (twoD) {
+          need(4, 'fix pour vel');
+          const vxlo = numeric(args[i + 1]), vxhi = numeric(args[i + 2]), vy = numeric(args[i + 3]);
+          if (vxlo > vxhi) throw new StyleError(`Illegal fix pour velocities: ${vxlo} exceeds ${vxhi}`);
+          this.vel = [vxlo, vxhi, 0, 0, vy];
+          i += 4;
+        } else {
+          need(6, 'fix pour vel');
+          const vxlo = numeric(args[i + 1]), vxhi = numeric(args[i + 2]), vylo = numeric(args[i + 3]), vyhi = numeric(args[i + 4]);
+          if (vxlo > vxhi) throw new StyleError(`Illegal fix pour x velocities: ${vxlo} exceeds ${vxhi}`);
+          if (vylo > vyhi) throw new StyleError(`Illegal fix pour y velocities: ${vylo} exceeds ${vyhi}`);
+          this.vel = [vxlo, vxhi, vylo, vyhi, numeric(args[i + 5])];
+          i += 6;
+        }
+      }
+      // an unrecognised word stops with "Illegal fix pour command argument"
       else throw new StyleError(`Illegal fix pour command argument: ${key}`);
     }
+    // the type: an atom type, or with mol an offset of the template types (checked at init)
+    if (!molTemplateId && (ntype <= 0 || ntype > sys.state.ntypes)) throw new StyleError(`Invalid atom type value ${ntype}. Must be between 1 and ${sys.state.ntypes}`);
     // As native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour::FixPour at b332f28)
     if (region === null) throw new StyleError('Must specify a region in fix pour');
     this.regionId = region;
-    // "type = atom type to assign to inserted particles (offset for molecule insertion)"
-    if (molTemplateId) {
-      const tv = num(args[1], 'type');
-      if (!Number.isInteger(tv) || tv < 0) throw new StyleError(`fix pour: type must be a non-negative integer offset with mol, got '${args[1]}'`);
-      this.type = tv;
-    } else {
-      this.type = posInt(args[1], 'type');
-    }
+    this.type = ntype;
     this.molTemplateId = molTemplateId;
     this.molfrac = molfrac;
     this.rigidId = rigidId;
     this.shakeId = shakeId;
-    if ((rigidId || shakeId) && !molTemplateId) throw new StyleError(`fix pour: the ${rigidId ? 'rigid' : 'shake'} keyword requires the mol keyword`);
-    if (this.diam.style === 'one' && !(this.diam.d > 0)) throw new StyleError('fix pour: diam must be > 0');
-    if (this.diam.style === 'range' && !(this.diam.lo > 0 && this.diam.hi >= this.diam.lo)) throw new StyleError('fix pour: diam range needs 0 < Dlo <= Dhi');
-    if (!(this.dens[0] > 0 && this.dens[1] >= this.dens[0])) throw new StyleError('fix pour: dens needs 0 < Rholo <= Rhohi');
+    if (rigidId && !molTemplateId) throw new StyleError('Cannot use fix pour rigid and not molecule');
+    if (shakeId && !molTemplateId) throw new StyleError('Cannot use fix pour shake and not molecule');
     // "id next": the maximum ID is read once, when the fix is defined
     this.idNext = idNext;
     this.nextId = maxAtomId(sys.state);
@@ -492,9 +529,8 @@ export class FixPour extends Fix {
       } else this.molCum = this.molfrac;
       let maxT = 0;
       for (const t of sets) for (const ty of t.type) if (ty > maxT) maxT = ty;
-      if (this.type + maxT > s.ntypes) {
-        throw new StyleError(`fix pour mol: type offset ${this.type} plus template type ${maxT} is larger than ntypes ${s.ntypes}`);
-      }
+      // native: "if (ntype + onemols[i]->ntypes <= 0 || ntype + onemols[i]->ntypes > atom->ntypes)"
+      if (this.type + maxT <= 0 || this.type + maxT > s.ntypes) throw new StyleError('Invalid atom type in fix pour mol command');
       if (count > 1 && (this.rigidId || this.shakeId)) {
         throw new StyleError('fix pour: the rigid and shake keywords with several molecule templates are not supported by the browser engine');
       }
@@ -512,7 +548,7 @@ export class FixPour extends Fix {
         }
         this.shakeFix = sf;
       }
-    } else if (this.type > s.ntypes) throw new StyleError(`fix pour: atom type ${this.type} is larger than ntypes ${s.ntypes}`);
+    }
     if (this.bodyStyle) {
       if (!this.molTemplates.length) throw new StyleError(`fix pour: atom_style ${s.atomStyle} needs a body molecule (mol with Body Integers and Body Doubles); point body particles are not supported by the browser engine`);
       if (this.rigidId || this.shakeId) throw new StyleError('fix pour: the rigid and shake keywords with body molecules are not supported by the browser engine');

@@ -315,6 +315,8 @@ export interface StyleContext {
   unitStyle?: string;
   /** An atom type word with a type label replaced by its numeric type (labelmap.html); other words pass through. */
   atomTypeWord?(word: string): string;
+  /** A type word of the kind with a type label replaced by its numeric type (labelmap.html); other words pass through. */
+  typeWord?(kind: 'atom' | 'bond' | 'angle' | 'dihedral' | 'improper', word: string): string;
   /** Lattice spacing in x of the lattice command (1 when none is defined): peri styles take half of it as the node radius. */
   xlattice?: number;
   /**

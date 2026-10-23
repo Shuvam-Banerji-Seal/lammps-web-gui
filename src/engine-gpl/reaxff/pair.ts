@@ -12,7 +12,7 @@
  * minhbonds only size LAMMPS's buffers and do not change results, so they are accepted.
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, logical, parseNum } from '../../engine/force/util';
 import {
   allocBondList, buildFarList, computeBondOrders, computeTotalForce, ensureHBondList, initForces,
   newEnergies, newWorkspace, regionCounts, resetHydrogenIndex, resetWorkspace, taperCoefficients,
@@ -98,11 +98,6 @@ export class PairReaxFF extends Pair {
       if (w === undefined) throw new StyleError('Illegal pair_style reaxff command');
       return w;
     };
-    const logical = (w: string): boolean => {
-      if (w === 'yes') return true;
-      if (w === 'no') return false;
-      throw new StyleError(`Expected boolean parameter instead of '${w}' in pair_style reaxff command`);
-    };
     while (iarg < args.length) {
       const key = args[iarg];
       const val = args[iarg + 1];
@@ -120,22 +115,25 @@ export class PairReaxFF extends Pair {
           break;
         }
         case 'mincap': {
-          const mc = Math.trunc(parseNum(word(val), 'mincap'));
+          const mc = inumeric(word(val));
           if (mc < 0) throw new StyleError('Illegal pair_style reaxff mincap command');
           void REAX_MIN_CAP;
           iarg += 2;
           break;
         }
         case 'minhbonds': {
-          const mh = Math.trunc(parseNum(word(val), 'minhbonds'));
+          const mh = inumeric(word(val));
           if (mh < 0) throw new StyleError('Illegal pair_style reaxff minhbonds command');
           iarg += 2;
           break;
         }
         case 'list/blocking':
-          throw new StyleError('pair_style reaxff keyword list/blocking is not ported');
+          // read with utils::logical; only the KOKKOS variant uses list_blocking_flag, so the CPU style ignores it
+          logical(word(val));
+          iarg += 2;
+          break;
         case 'tabulate': {
-          const t = Math.trunc(parseNum(word(val), 'tabulate'));
+          const t = inumeric(word(val));
           if (t < 0) throw new StyleError('Illegal pair_style reaxff tabulate command');
           ctrl.tabulate = t;
           iarg += 2;

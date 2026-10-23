@@ -11,7 +11,7 @@
 import { BondHarmonic } from '../../engine/force/bond/harmonic';
 import { SimpleBonded } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { ANGSTROM } from '../../engine/force/kspace/ewald';
 import { chiralRadius, eunitOf } from './units';
 
@@ -42,8 +42,8 @@ export class BondMesoCNT extends SimpleBonded {
       r0 = parseNum(args[3], 'r0');
     } else if (args[1] === 'C') {
       if (args.length !== 5) throw new StyleError("Incorrect number of args for 'C' preset in bond coefficients");
-      const n = Math.trunc(parseNum(args[2], 'n'));
-      const m = Math.trunc(parseNum(args[3], 'm'));
+      const n = inumeric(args[2]);
+      const m = inumeric(args[3]);
       r0 = parseNum(args[4], 'r0');
       const rAng = chiralRadius(n, m);
       k = 0.5 * (86.64 + 100.56 * rAng) * eunit / (ang * r0);

@@ -53,8 +53,3 @@ export const dummySession = async (session: Session, lines: string[]): Promise<S
   return w.sys;
 };
 
-/** Parses an integer argument as native utils::inumeric(..., false) does. */
-export const intArg = (text: string, what: string): number => {
-  if (!/^[+-]?\d+$/.test(text)) throw new StyleError(`Expected integer parameter instead of '${text}' for ${what}`);
-  return Number(text);
-};

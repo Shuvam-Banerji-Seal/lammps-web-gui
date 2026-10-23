@@ -14,7 +14,8 @@ import { cos, sin } from '../libm/sincos';
 import { minEnergyForce } from '../../engine/run/minimizers';
 import { formatNumber } from '../../engine/cformat';
 import { errorUrl } from './common';
-import { dummySession, finite, intArg, startTableFile, tableRow } from './table_write';
+import { dummySession, finite, startTableFile, tableRow } from './table_write';
+import { inumeric } from '../../engine/force/util';
 
 /** math_const.h: DEG2RAD = MY_PI/180, RAD2DEG = 180/MY_PI, and the epsilon of the numerical derivative. */
 const DEG2RAD = Math.PI / 180;
@@ -28,9 +29,9 @@ const angleWrite: Handler = async ({ sys, session }, a) => {
   if (angle.dataCoeffs() === null) throw new StyleError('Angle style must support writing coeffs to data file for angle_write');
   if (/^class2/.test(angle.name)) throw new StyleError(`Angle_write command is not compatible with angle style ${angle.name}`);
   if (a.length !== 4) throw new StyleError('Illegal angle_write command');
-  const atype = intArg(a[0], 'angle type');
+  const atype = inumeric(a[0]);
   if (atype <= 0 || atype > sys.state.topo.nangletypes) throw new StyleError(`Invalid angle type ${atype} in angle_write command`);
-  const n = intArg(a[1], 'N');
+  const n = inumeric(a[1]);
   const tableFile = a[2];
   const keyword = a[3];
   if (n < 2) throw new StyleError('Must have at least 2 table values');

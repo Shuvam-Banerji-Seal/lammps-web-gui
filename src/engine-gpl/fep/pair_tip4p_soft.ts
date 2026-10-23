@@ -18,7 +18,7 @@
  *
  * Per-atom energy and virial follow native ev_tally and ev_tally_tip4p (the Coulomb x (x) f virial split by side and site).
  */
-import { PairParams, StyleError, mixDistance, mixEpsilon, type BondedEquilibria, type PairCompute, pairCoeffArgs } from '../../engine/force/types';
+import { PairParams, StyleError, mixDistance, mixEpsilon, type BondedEquilibria, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { erfcPoly, EWALD_F } from '../../engine/force/erfc';
@@ -68,10 +68,8 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
       ? 'usage: pair_style lj/cut/tip4p/long/soft otype htype btype atype qdist nlambda alpha_LJ alpha_C cut_LJ (cut_coul)'
       : 'usage: pair_style tip4p/long/soft otype htype btype atype qdist nlambda alpha_C cut_coul';
     if (this.hasLJ ? args.length !== 9 && args.length !== 10 : args.length !== 8) throw new StyleError(usage);
-    this.otype = parseNum(args[0], 'otype');
-    this.htype = parseNum(args[1], 'htype');
-    this.btype = parseNum(args[2], 'btype');
-    this.atype = parseNum(args[3], 'atype');
+    // the type words are read at pair_coeff (coeff: "set atom types from pair_style command")
+    this.typeWords = args.slice(0, 4);
     this.qdist = parseNum(args[4], 'qdist');
     this.nlambda = parseNum(args[5], 'nlambda');
     if (this.hasLJ) {
@@ -85,7 +83,6 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
     }
     if (!(this.qdist > 0)) throw new StyleError('qdist must be > 0');
     if (!(this.cutCoul > 0)) throw new StyleError('cutoffs must be > 0');
-    if (this.otype === this.htype) throw new StyleError(`pair_style ${this.name}: O and H need different atom types`);
   }
 
   allocate(ntypes: number): void {
@@ -100,7 +97,8 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
     return name === 'cut_coul' ? this.cutCoul : undefined;
   }
 
-  coeff(args: string[]): void {
+  coeff(args: string[], ctx?: StyleContext): void {
+    this.setTypes(ctx);
     if (this.hasLJ) {
       if (args.length < 5 || args.length > 6) throw pairCoeffArgs(`usage: pair_coeff I J epsilon sigma lambda [cutoff] for pair style ${this.name}`);
       const cut = args.length === 6 ? parseNum(args[5], 'cutoff') : this.cutLJGlobal;

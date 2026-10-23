@@ -73,9 +73,9 @@ describe('pair granular/superellipsoid, static contacts against native LAMMPS (b
 describe('pair granular/superellipsoid refusals', () => {
   it('names the rolling, twisting and heat models it does not implement', async () => {
     const base = pairScript('2 2 2', '2 2', '2 2 2', '2 2');
-    await expect(forcesOf(base.replace('damping mass_velocity', 'damping mass_velocity rolling sds 1 1 1'))).rejects.toThrow(/Rolling models are not implemented/);
-    await expect(forcesOf(base.replace('damping mass_velocity', 'damping mass_velocity twisting marshall'))).rejects.toThrow(/Twisting models are not implemented/);
-    await expect(forcesOf(base.replace('damping mass_velocity', 'damping mass_velocity heat area 1.0'))).rejects.toThrow(/Heat models are not implemented/);
+    await expect(forcesOf(base.replace('damping mass_velocity', 'damping mass_velocity rolling sds 1 1 1'))).rejects.toThrow(/Rolling models not yet implemented for superellipsoids/);
+    await expect(forcesOf(base.replace('damping mass_velocity', 'damping mass_velocity twisting marshall'))).rejects.toThrow(/Twisting models not yet implemented for superellipsoids/);
+    await expect(forcesOf(base.replace('damping mass_velocity', 'damping mass_velocity heat area 1.0'))).rejects.toThrow(/Heat models not yet implemented for superellipsoids/);
   });
 
   it('refuses blockiness below 2 (the contact solver needs convex particles)', async () => {

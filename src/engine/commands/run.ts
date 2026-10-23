@@ -10,6 +10,7 @@ import { Dump, type DumpStyle } from '../output/dump';
 import { initRun, runVerlet } from '../run/verlet';
 import { runVerletCoupled } from '../run/coupled';
 import { parseRunStyleRespa, runRespa } from '../run/respa';
+import { PairHybrid } from '../force/pair/hybrid';
 import { RunCancelled } from '../errors';
 import { FIX_COMMAND_STYLE } from '../group';
 import type { System } from '../system';
@@ -197,7 +198,8 @@ const runStyle: Handler = ({ sys }, a) => {
     return;
   }
   if (style === 'respa') {
-    sys.respa = parseRunStyleRespa(a);
+    const pair = sys.ff.pair;
+    sys.respa = parseRunStyleRespa(a, { hybridStyles: pair instanceof PairHybrid ? pair.subs.length : null, log: (m) => sys.log(m), warn: (m) => sys.warn(m) });
     sys.splitRun = null;
     return;
   }
@@ -264,15 +266,18 @@ const dump: Handler = ({ sys }, a) => {
   sys.dumps.push(new Dump(sys, id, group, base as DumpStyle, n, file, cols, false, gzStyle));
 };
 
+// As native LAMMPS does (src/input.cpp Input::undump and src/output.cpp Output::delete_dump, modify_dump at b332f28)
 const undump: Handler = ({ sys }, a) => {
+  if (a.length !== 1) throw new StyleError('Undump command expects exactly one argument');
   const k = sys.dumps.findIndex((d) => d.id === a[0]);
-  if (k < 0) throw new StyleError(`could not find undump ID '${a[0] ?? ''}'`);
+  if (k < 0) throw new StyleError(`Could not find undump ID: ${a[0]}`);
   sys.dumps.splice(k, 1);
 };
 
 const dumpModify: Handler = ({ sys }, a) => {
+  if (a.length < 2) throw missingArgs('dump_modify');
   const d = sys.dumps.find((x) => x.id === a[0]);
-  if (!d) throw new StyleError(`could not find dump_modify ID '${a[0] ?? ''}'`);
+  if (!d) throw new StyleError(`Could not find dump_modify ID: ${a[0]}`);
   d.modify(a.slice(1));
 };
 

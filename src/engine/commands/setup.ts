@@ -3,7 +3,6 @@ import { int, num, yesno, latticeScale, keywords, missingArgs, logical, numeric,
 import { StyleError } from '../force/types';
 import { unknownStyleError } from '../nativeStyles';
 import { errorUrl } from '../formula';
-import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, Geometry, cloneBox } from '../domain';
 import { APIP_LAMBDA, isApipStyle, DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH, atomSubStyles, topologyLevel } from '../atoms';
@@ -208,19 +207,12 @@ const atomStyle: Handler = ({ sys }, a) => {
   // size the internal arrays (bodies.ts).
   if (a[0] === 'body') {
     if (a[1] !== 'nparticle' && a[1] !== 'rounded/polygon' && a[1] !== 'rounded/polyhedron') throw new StyleError(`atom_style body ${a[1] ?? ''} is not supported by the browser engine; only atom_style body nparticle, rounded/polygon and rounded/polyhedron Nmin Nmax are`);
-    const nmin = Number(a[2]), nmax = Number(a[3]);
-    if (a[1] === 'nparticle') {
-      if (a.length !== 4 || !Number.isInteger(nmin) || !Number.isInteger(nmax) || nmin < 0 || nmax < 0) {
-        throw new StyleError('usage: atom_style body nparticle Nmin Nmax (non-negative integers)');
-      }
-    } else {
-      // native BodyRoundedPolygon and BodyRoundedPolyhedron (src/BODY/body_rounded_polygon.cpp, body_rounded_polyhedron.cpp
-      // at b332f28): the body args include the style name, so exactly two numbers follow it; the polyhedron copy of that
-      // count check also says "rounded/polygon"
-      if (a.length !== 4) throw new StyleError('Invalid body rounded/polygon command');
-      if (!Number.isInteger(nmin) || !Number.isInteger(nmax)) throw new StyleError('usage: atom_style body nparticle Nmin Nmax (non-negative integers)');
-      if (nmin <= 0 || nmin > nmax) throw new StyleError(`Invalid body ${a[1]} command`);
-    }
+    // As native LAMMPS does (src/BODY/body_nparticle.cpp, body_rounded_polygon.cpp and body_rounded_polyhedron.cpp at
+    // b332f28): the body args include the style name, so exactly two integers (utils::inumeric) follow it; the
+    // polyhedron copy of that count check also says "rounded/polygon"
+    if (a.length !== 4) throw new StyleError(`Invalid body ${a[1] === 'nparticle' ? 'nparticle' : 'rounded/polygon'} command`);
+    const nmin = inumeric(a[2]), nmax = inumeric(a[3]);
+    if (nmin <= 0 || nmin > nmax) throw new StyleError(`Invalid body ${a[1]} command`);
     sys.atomStyle = `body ${a[1]} ${nmin} ${nmax}`;
     return;
   }
@@ -327,19 +319,23 @@ const parallelOnly = (name: string): Handler => (({ sys }, a) => {
   }
   // package.html: "style = *gpu* or *intel* or *kokkos* or *omp*"; the package settings do not change the engine
   if (name === 'package') {
+    // As native LAMMPS does (src/input.cpp Input::package at b332f28): before the box, then the package name
+    if (sys.hasBox) throw new StyleError(`Package command after simulation box is defined${errorUrl(34)}`);
+    if (a.length < 1) throw missingArgs('package');
     const packages = ['gpu', 'intel', 'kokkos', 'omp'];
-    if (a[0] === undefined || !packages.includes(a[0])) {
-      throw new StyleError(`package style must be gpu, intel, kokkos or omp (got '${a[0] ?? ''}')`);
-    }
+    if (!packages.includes(a[0])) throw new StyleError(`Unknown package keyword: ${a[0]}`);
     if (a[0] === 'omp') {
       // native FixOMP constructor (src/OPENMP/fix_omp.cpp at b332f28), which Input::package (src/input.cpp) reaches with the
       // words after omp: after the thread count only the neigh keyword is known, and it takes one value. As native
       // FixOMP::FixOMP does: "if (narg < 4) utils::missing_cmd_args(FLERR, \"package omp\", error)", and the fix line
-      // is "package_omp all OMP" plus these words, so the thread count is required
+      // is "package_omp all OMP" plus these words, so the thread count is required. The count is 0 (all threads) or
+      // utils::inumeric, at least 1; neigh takes utils::logical
       if (a.length < 2) throw missingArgs('package omp');
+      if (a[1] !== '0' && inumeric(a[1]) < 1) throw new StyleError('Illegal number of OpenMP threads requested');
       for (let k = 2; k < a.length;) {
         if (a[k] !== 'neigh') throw new StyleError(`Unknown package omp keyword ${a[k]}`);
-        if (k + 1 >= a.length) throw missingArgs('package omp neigh');
+        if (k + 2 > a.length) throw missingArgs('package omp neigh');
+        logical(a[k + 1]);
         k += 2;
       }
     }
@@ -428,16 +424,19 @@ const commStyle: Handler = ({ sys }, a) => {
  */
 const balanceCommand: Handler = ({ sys }, a) => {
   if (!sys.hasBox) throw new StyleError('balance requires a simulation box (create_box or read_data first)');
-  const thresh = Number(a[0]);
-  if (a.length < 2 || !Number.isFinite(thresh) || thresh <= 0) throw new StyleError('usage: balance thresh style args ... keyword args ...');
+  // As native LAMMPS does (src/balance.cpp Balance::command at b332f28): two words at least, then thresh (utils::numeric)
+  if (a.length < 2) throw missingArgs('balance');
+  const thresh = numeric(a[0]);
   let k = 1;
   const style = a[k];
   if (style === 'shift') {
+    if (k + 4 > a.length) throw missingArgs('balance shift');
     const dims = a[k + 1];
     if (!dims || !/^[xyz]{1,3}$/.test(dims) || new Set(dims).size !== dims.length) throw new StyleError(`balance shift: dimstr '${dims ?? ''}' must contain x, y or z, each at most once`);
     if (sys.dimension === 2 && dims.includes('z')) throw new StyleError('balance shift: cannot balance in z for a 2d simulation');
-    const niter = Number(a[k + 2]), stop = Number(a[k + 3]);
-    if (!Number.isInteger(niter) || niter < 1 || !Number.isFinite(stop)) throw new StyleError('usage: balance thresh shift dimstr Niter stopthresh');
+    // native: utils::inumeric Niter > 0 ("Illegal balance shift value N") and utils::numeric stopthresh >= 1
+    if (inumeric(a[k + 2]) <= 0) throw new StyleError(`Illegal balance shift value ${a[k + 2]}`);
+    if (numeric(a[k + 3]) < 1) throw new StyleError(`Illegal balance stop threshold value ${a[k + 3]}`);
     k += 4;
   } else if (style === 'rcb') {
     if (sys.commStyle !== 'tiled') throw new StyleError('balance rcb requires comm_style tiled');
@@ -3943,12 +3942,13 @@ const deleteBonds: Handler = ({ sys }, a) => {
   let lo = 0, hi = 0;
   if (typed) {
     const tok = a[2];
-    if (tok === undefined) throw new StyleError(`delete_bonds ${style} needs a type or range of types`);
-    if (tok === '*') throw new StyleError('Invalid range string: *');
+    if (tok === undefined) throw new StyleError('Illegal delete_bonds command');
     const ntypes = style === 'atom' ? s.ntypes : { bond: s.topo.nbondtypes, angle: s.topo.nangletypes, dihedral: s.topo.ndihedraltypes, improper: s.topo.nimpropertypes }[style as typeof kinds[number]];
-    // a type of 0 selects bonds broken by a bond-breaking style ("you can set the type to 0 to delete bonds that
-    // have been previously broken")
-    if (tok === '0' && style !== 'atom') { lo = 0; hi = 0; } else [lo, hi] = typeRange(tok, ntypes);
+    // As native LAMMPS does (src/delete_bonds.cpp at b332f28): a type label is its type (utils::expand_type), any
+    // other word a range over 0..N (utils::bounds, which refuses 0 and so "*" too). Measured with native LAMMPS:
+    // delete_bonds all bond 0 gives Invalid range string: 0.
+    if (sys.labels.defined && !isNumericTypeWord(tok)) lo = hi = inumeric(typeWord(sys.labels, style as LabelKind, tok));
+    else [lo, hi] = bounds(tok, 0, ntypes);
   }
   const flags = { any: false, undo: false, remove: false, special: false };
   for (const w of a.slice(typed ? 3 : 2)) {

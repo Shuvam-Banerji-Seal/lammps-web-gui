@@ -422,6 +422,8 @@ export class PairLJCharmmSoftCoulLong extends PairFepSoft {
   }
 
   coeff(args: string[]): void {
+    // As native LAMMPS does (src/FEP/pair_lj_charmm_coul_long_soft.cpp PairLJCharmmCoulLongSoft::coeff at b332f28): a count other than 5 or 7 is "Illegal pair_coeff command".
+    if (args.length !== 5 && args.length !== 7) throw pairCoeffArgs(`usage: pair_coeff I J epsilon sigma lambda [epsilon14 sigma14] for pair style ${this.name}`, 'Illegal pair_coeff command', false);
     // eps14/sigma14 (the 1-4 CHARMM parameters) are not implemented for the soft styles
     if (args.length !== 5) {
       throw pairCoeffArgs(`usage: pair_coeff I J epsilon sigma lambda for pair style ${this.name} (epsilon14/sigma14 are not supported)`);

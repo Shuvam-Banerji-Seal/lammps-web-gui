@@ -112,7 +112,7 @@ export class PairCoulCtip extends Pair {
     const filename = args[2];
     const elems = args.slice(3);
     if (elems.length !== this.ntypes) {
-      throw new StyleError(`pair_coeff for style coul/ctip needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     if (!this.fileRead) {
       this.entries = parseCtipFile(ctx.readFile(filename, potentialFile('coul/ctip')), filename);

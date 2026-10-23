@@ -69,7 +69,7 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
     const nt = this.ntypes + 1;
     const elems = args.slice(3);
     if (elems.length !== this.ntypes) {
-      throw new StyleError(`pair_coeff for style ${this.name} needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     // map_element2type: every type pair with both types mapped is set (the I J arguments are not used)
     for (let t = 1; t <= this.ntypes; t++) {

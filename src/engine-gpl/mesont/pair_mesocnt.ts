@@ -21,7 +21,7 @@
 import { Pair, PairCompute, StyleError, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { ANGSTROM } from '../../engine/force/kspace/ewald';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { BUCKLED } from './angle_mesocnt';
 import { eunitOf } from './units';
 import { finf, fsemi, geometry, mesoConst, newGeoOut, newWeightOut, weight, type GeoOut, type MesoConst, type WeightOut } from './forces';
@@ -169,7 +169,8 @@ export class PairMesoCNT extends Pair {
     const eunit = eunitOf(style, `Pair style ${this.name}`);
     const ang = ANGSTROM[style];
     this.tables = readMesocntFile(ctx.readFile(file, potentialFile('mesocnt')));
-    this.endTypes = endWords.map((w) => Math.trunc(parseNum(w, 'end type')));
+    // As native LAMMPS does (src/MESONT/pair_mesocnt.cpp PairMesoCNT::coeff at b332f28): the end types are read with utils::inumeric.
+    this.endTypes = endWords.map((w) => inumeric(w));
     this.consts = mesoConst(this.tables, ang, eunit, (text) => ctx.log(`WARNING: ${text}`));
     this.topoBuild = -1;
   }

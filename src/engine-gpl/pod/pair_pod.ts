@@ -45,7 +45,7 @@ export class PairPOD extends Pair {
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError('the first 2 arguments of pair_coeff for style pod must be * *');
     const elems = args.slice(4);
     if (elems.length !== this.ntypes) {
-      throw new StyleError(`pair_coeff for style pod needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     if (elems.includes('NULL')) throw new StyleError('pair style pod: NULL atom types are not supported');
     // EAPOD's messages (src/ML-POD/eapod.cpp): the parameter file is named a coefficient file, and neither

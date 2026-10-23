@@ -1,6 +1,6 @@
-import { Bonded, NoSettingsError, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { Bonded, NoSettingsError, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
 import { bondLoop } from './styles';
-import { fmtCoeff, parseInt_, parseNum } from '../util';
+import { fmtCoeff, missingArgs, parseInt_, parseNum } from '../util';
 import { libm } from '../../libm';
 
 /*
@@ -48,15 +48,14 @@ export class BondGaussian extends Bonded {
   }
 
   coeff(args: string[], _ctx?: StyleContext): void {
-    if (args.length < 3) throw bondedCoeffArgs('bond', 'usage: bond_coeff N T n A1 w1 r1 ...');
+    // As native LAMMPS does (src/EXTRA-MOLECULE/bond_gaussian.cpp at b332f28): fewer than five words after the type
+    if (args.length < 6) throw missingArgs('bond_coeff');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const T = parseNum(args[1], 'T');
     const n = parseInt_(args[2], 'n');
-    if (n < 1) throw new StyleError(`bond_coeff gaussian: n must be an integer >= 1, got ${n}`);
+    if (n < 1) throw new StyleError(`Invalid bond style gaussian value for n: ${n}`);
     const need = 3 + 3 * n;
-    if (args.length !== need) {
-      throw bondedCoeffArgs('bond', `bond_coeff gaussian: expected T n and ${n} (A w r) term(s) = ${need - 1} values after the type, got ${args.length - 1}`);
-    }
+    if (args.length !== need) throw missingArgs('bond_coeff');
     const terms: GaussTerm[] = [];
     for (let i = 0; i < n; i++) {
       terms.push({

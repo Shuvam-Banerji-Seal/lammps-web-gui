@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
-import { StyleError, type BondedCompute, type Pair, type StyleContext, bondedCoeffArgs } from '../types';
+import { StyleError, typeBounds, type BondedCompute, type Pair, type StyleContext, bondedCoeffArgs } from '../types';
 import { angleTerm } from './harmonic';
 import { PairLJSpica } from '../pair/class2_spica51';
 import { PairHybrid } from '../pair/hybrid';
@@ -53,6 +53,22 @@ export class AngleSpica extends SimpleBonded {
     if (args.length !== 2) throw bondedCoeffArgs('angle', `angle_coeff ${this.name} needs K theta0`);
     // As native LAMMPS does (src/CG-SPICA/angle_spica.cpp at b332f28): theta0[i] = theta0_one/180.0 * MY_PI
     return [parseNum(args[0], 'K'), (parseNum(args[1], 'theta0') / 180) * Math.PI];
+  }
+
+  /**
+   * As native LAMMPS does (src/CG-SPICA/angle_spica.cpp AngleSPICA::coeff at b332f28): three, four or six words (the
+   * type included) are accepted, the fourth or the fifth value after the type being the repulsion scale, read with
+   * utils::numeric. The repulsion scale is not supported here, so those forms are refused after native's own checks.
+   */
+  override coeff(args: string[], ctx?: StyleContext): void {
+    if (args.length < 3 || args.length === 5 || args.length > 6) throw bondedCoeffArgs('angle');
+    typeBounds(args[0], this.ntypes);
+    parseNum(args[1], 'K');
+    parseNum(args[2], 'theta0');
+    if (args.length === 4) parseNum(args[3], 'repscale');
+    if (args.length === 6) parseNum(args[4], 'repscale');
+    if (args.length > 3) throw new StyleError(`angle_coeff ${this.name}: a repulsion scale (repscale) coefficient is not supported; give K and theta0 only`);
+    super.coeff(args, ctx);
   }
 
   dataCoeffs(): string[] {

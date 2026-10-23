@@ -111,7 +111,7 @@ export class PairYLZ extends Pair {
 
   override coeff(args: string[], _ctx: StyleContext): void {
     if (!this.allocatedTypes) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length !== 8) throw new StyleError('Incorrect args for pair coefficients (pair_style ylz: I J epsilon sigma zeta mu beta cutoff)');
+    if (args.length !== 8) throw new StyleError('Incorrect args for pair coefficients');
     const vals = [2, 3, 4, 5, 6, 7].map((k) => parseNum(args[k], 'pair_coeff value'));
     // ylz sets the pairs of the I and J ranges with I <= J (pair_coeff in pair_ylz.cpp)
     const count = this.p.setRange(args[0], args[1], vals);

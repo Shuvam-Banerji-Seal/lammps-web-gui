@@ -193,7 +193,7 @@ export class PairAIREBO extends Pair {
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
     if (args.length !== 3 + this.ntypes) {
-      throw new StyleError(`Incorrect number of args for pair coefficient (style ${this.name} needs * * file and one element per type)`);
+      throw new StyleError('Incorrect number of args for pair coefficient.');
     }
     if (args[0] !== '*' || args[1] !== '*') {
       throw new StyleError(`the first 2 arguments of pair_coeff for style ${this.name} must be * *`);

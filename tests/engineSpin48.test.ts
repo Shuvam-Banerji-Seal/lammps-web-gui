@@ -49,7 +49,9 @@ describe('SPIN styles, batch 2', () => {
 
   it('refuses the biquadratic K arguments, a zero DMI direction and missing coefficients', async () => {
     const bq = await run(`${header}pair_style spin/exchange/biquadratic 4.0\npair_coeff * * biquadratic 4.0 0.05 0.03 1.48 offset no\n`);
-    expect(bq.error).toContain('usage: pair_coeff I J [biquadratic]');
+    // native's count check (pair_spin_exchange_biquadratic.cpp coeff): the first line is native's, the usage follows
+    expect(bq.error).toContain('Incorrect args for pair coefficients');
+    expect(bq.error).toContain('usage: pair_coeff I J biquadratic');
     const z = await run(`${header}pair_style spin/dmi 4.0\npair_coeff * * dmi 4.0 0.001 0 0 0\n`);
     expect(z.error).toContain('the direction vector must be non-zero');
     const m = await run(`${header}pair_style spin/dmi 4.0\npair_coeff * * dmi 4.0 0.001 1.0 0.0\n`);

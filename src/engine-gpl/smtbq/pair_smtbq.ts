@@ -90,7 +90,7 @@ export class PairSMTBQ extends Pair {
     }
     const names = args.slice(3);
     if (names.length !== this.ntypes) {
-      throw new StyleError(`Number of element to type mappings does not match number of atom types (${names.length} elements, ${this.ntypes} types)`);
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     if (names.includes('NULL')) throw new StyleError('pair_style smtbq does not support NULL in pair_coeff (every atom type is an element)');
     const file = readSmtbqFile(ctx.readFile(args[2]));

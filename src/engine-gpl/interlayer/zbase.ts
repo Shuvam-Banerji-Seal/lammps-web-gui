@@ -88,7 +88,7 @@ export abstract class InterlayerZBase<P> extends Pair {
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     const elems = args.slice(3);
     if (elems.length !== this.ntypes) {
-      throw new StyleError(`pair_coeff for style ${this.name} needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     for (let t = 1; t <= this.ntypes; t++) {
       const name = elems[t - 1];

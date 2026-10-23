@@ -195,8 +195,14 @@ export class PairCoulDiel extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 5) throw pairCoeffArgs('usage: pair_coeff I J epsilon r_me sigma_e');
+    if (args.length < 5 || args.length > 6) throw pairCoeffArgs('usage: pair_coeff I J epsilon r_me sigma_e');
     const vals = args.slice(2, 5).map((w, k) => parseNum(w, ['epsilon', 'r_me', 'sigma_e'][k]));
+    // As native LAMMPS does (src/EXTRA-PAIR/pair_coul_diel.cpp PairCoulDiel::coeff at b332f28): an optional 6th word is the per-pair cutoff, read as a number.
+    // The engine has no per-pair cutoff for coul/diel, so a valid one is refused rather than ignored.
+    if (args.length === 6) {
+      parseNum(args[5], 'cutoff');
+      throw new StyleError('pair coul/diel: a per-pair cutoff is not supported (use the global cutoff of pair_style coul/diel)');
+    }
     if (!(vals[2] > 0)) throw new StyleError('pair coul/diel: sigma_e must be > 0');
     this.p.setRange(args[0], args[1], vals);
   }

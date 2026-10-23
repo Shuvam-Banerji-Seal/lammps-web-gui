@@ -51,8 +51,14 @@ export class PairMomb extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 7) throw pairCoeffArgs('usage: pair_coeff I J D0 alpha r0 C6 Rr');
+    if (args.length < 7 || args.length > 8) throw pairCoeffArgs('usage: pair_coeff I J D0 alpha r0 C6 Rr');
     const vals = args.slice(2, 7).map((w, k) => parseNum(w, ['D0', 'alpha', 'r0', 'C6', 'Rr'][k]));
+    // As native LAMMPS does (src/EXTRA-PAIR/pair_momb.cpp PairMomb::coeff at b332f28): an optional 8th word is the per-pair cutoff, read as a number.
+    // The engine has no per-pair cutoff for momb, so a valid one is refused rather than ignored.
+    if (args.length === 8) {
+      parseNum(args[7], 'cutoff');
+      throw new StyleError('pair momb: a per-pair cutoff is not supported (use the global cutoff of pair_style momb)');
+    }
     this.p.setRange(args[0], args[1], vals);
   }
 

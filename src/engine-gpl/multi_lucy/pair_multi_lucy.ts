@@ -164,7 +164,8 @@ export class PairMultiLucy extends Pair {
   }
 
   coeff(args: string[], ctx: StyleContext): void {
-    if (args.length !== 4 && args.length !== 5) throw new StyleError('Illegal pair_coeff command (pair_coeff I J file keyword [cutoff])');
+    // As native LAMMPS does (src/DPD-REACT/pair_multi_lucy.cpp PairMultiLucy::coeff at b332f28): a count other than 4 or 5 is "Illegal pair_coeff command".
+    if (args.length !== 4 && args.length !== 5) throw new StyleError('Illegal pair_coeff command\nusage: pair_coeff I J file keyword [cutoff]');
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the atom types first');
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);

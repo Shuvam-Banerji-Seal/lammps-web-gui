@@ -122,7 +122,7 @@ export class PairComb extends Pair {
     const filename = args[2];
     const names = args.slice(3);
     if (names.length !== this.ntypes) {
-      throw new StyleError(`pair_coeff for style comb needs one element name per atom type (${this.ntypes}), got ${names.length}`);
+      throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     // map_element2type: unique element names in the order of the atom types
     const elements: string[] = [];

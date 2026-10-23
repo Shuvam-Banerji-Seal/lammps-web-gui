@@ -516,9 +516,8 @@ export class ImproperZero extends SimpleBonded {
 
   override coeff(args: string[], _ctx?: StyleContext): void {
     if (!args.length) throw bondedCoeffArgs('improper', 'usage: improper_coeff N');
-    if (!this.nocoeff && args.length > 1) {
-      throw new StyleError("improper_coeff zero takes no coefficient values (use 'improper_style zero nocoeff' to ignore them)");
-    }
+    // As native LAMMPS does (src/improper_zero.cpp at b332f28): with coefficients allowed, more than one word is refused
+    if (!this.nocoeff && args.length > 1) throw bondedCoeffArgs('improper');
     this.params.setRange(args[0], []);
   }
 

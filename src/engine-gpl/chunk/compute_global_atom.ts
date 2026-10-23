@@ -47,7 +47,8 @@ export class ComputeGlobalAtom extends Compute {
     const r = this.reference;
     if (r.kind === 'c') {
       const c = sys.computes.find((x) => x.id === r.id);
-      if (!c) throw new StyleError(`Compute ID ${r.id} for compute global/atom index does not exist`);
+      // native's constructor message ends at "index" (src/compute_global_atom.cpp at b332f28)
+      if (!c) throw new StyleError(`Compute ID ${r.id} for compute global/atom index`);
       if (!c.peratomFlag) throw new StyleError(`Compute global/atom compute ${r.id} does not calculate a per-atom vector or array`);
       if (r.argindex === 0 && c.sizePeratomCols !== 0) throw new StyleError(`Compute global/atom compute ${r.id} does not calculate a per-atom vector`);
       if (r.argindex && c.sizePeratomCols === 0) throw new StyleError('Compute global/atom compute does not calculate a per-atom array');

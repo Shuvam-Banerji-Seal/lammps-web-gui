@@ -334,10 +334,11 @@ run 0
   });
 
   it('rejects missing charges, bad keywords and bad variable styles', async () => {
-    expect((await runScript(oneAtom('fix e all efield 1 0 0'))).error?.message).toContain('charge');
-    expect(errText(await runScript(oneAtom('set group all charge 1.0\nfix e all efield 1 0 0 energy v_u', 'charge')))).toContain('constant vector');
-    expect(errText(await runScript(oneAtom('set group all charge 1.0\nvariable u equal 1.0\nfix e all efield 1 0 0 energy v_u', 'charge')))).toContain('constant vector');
-    expect(errText(await runScript(oneAtom('set group all charge 1.0\nvariable exq equal 0.5\nvariable u equal 1.0\nfix e all efield v_exq 0 0 energy v_u', 'charge')))).toContain('atom-style');
+    // Measured with native LAMMPS (b332f28): these checks are made at init (src/fix_efield.cpp FixEfield::init)
+    expect((await runScript(oneAtom('fix e all efield 1 0 0\nrun 0'))).error?.message).toContain('Fix efield requires atom attribute q or mu');
+    expect(errText(await runScript(oneAtom('set group all charge 1.0\nfix e all efield 1 0 0 energy v_u\nrun 0', 'charge')))).toContain('Variable u for energy in fix efield does not exist');
+    expect(errText(await runScript(oneAtom('set group all charge 1.0\nvariable u atom 1.0\nfix e all efield 1 0 0 energy v_u\nrun 0', 'charge')))).toContain('Cannot use variable energy with constant efield in fix efield');
+    expect(errText(await runScript(oneAtom('set group all charge 1.0\nvariable exq equal 0.5\nvariable u equal 1.0\nfix e all efield v_exq 0 0 energy v_u\nrun 0', 'charge')))).toContain('Variable u for energy in fix efield must be atom-style');
     expect(errText(await runScript(oneAtom('set group all charge 1.0\nvariable exq equal 0.5\nvariable uu atom -0.5*q*x\nvariable pp atom 0.5*x\nfix e all efield v_exq 0 0 energy v_uu potential v_pp', 'charge')))).toContain('potential');
     // As native LAMMPS does (src/fix_efield.cpp init at b332f28): with point dipoles an atom-style variable is refused
     // by name, an equal-style one is accepted (docs fix_efield.html: "For point-dipoles, equal-style variables can be used")

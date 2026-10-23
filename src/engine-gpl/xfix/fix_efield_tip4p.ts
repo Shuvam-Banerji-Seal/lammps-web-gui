@@ -66,6 +66,8 @@ export class FixEfieldTIP4P extends Fix {
    */
   init(): void {
     const sys = this.sys;
+    // native FixEfieldTIP4P::init starts with FixEfield::init
+    this.base.init();
     const pair = tip4pStyleOf(sys.ff.pair);
     if (!pair) throw new StyleError('A TIP4P pair style must be defined fix efield/tip4p');
     this.otype = pair.otype;

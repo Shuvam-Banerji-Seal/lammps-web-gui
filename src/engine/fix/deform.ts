@@ -1,3 +1,4 @@
+import { EQUAL_STYLES } from '../argInfo';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { missingArgs } from '../force/util';
@@ -441,6 +442,17 @@ export class FixDeform extends Fix {
     const g = this.sys.geom;
     // fix_deform.cpp init(): "More than one fix deform" (get_fix_by_style("deform") counts fix deform/pressure too)
     if (this.sys.fixes.filter((f) => isDeformFix(f)).length > 1) throw new StyleError('More than one fix deform');
+    // then the variables of the variable style, in native's set[] order (x, y, z, yz, xz, xy): each exists and is
+    // equal-style
+    const ORDER = ['x', 'y', 'z', 'yz', 'xz', 'xy'];
+    const varSpecs = this.specs.filter((sp) => sp.style === 'variable').sort((a, b) => ORDER.indexOf(a.name) - ORDER.indexOf(b.name));
+    for (const sp of varSpecs) {
+      for (const name of [sp.var1!, sp.var2!]) {
+        const v = this.sys.vars.get(name);
+        if (!v) throw new StyleError(`Variable name ${name} for fix ${this.style} does not exist`);
+        if (!EQUAL_STYLES.has(v.style)) throw new StyleError(`Variable ${name} for fix ${this.style} is invalid style`);
+      }
+    }
     for (let d = 0; d < 3; d++) {
       this.lo0[d] = s.box.lo[d];
       this.hi0[d] = s.box.hi[d];

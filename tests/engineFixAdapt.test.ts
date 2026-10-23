@@ -305,9 +305,11 @@ variable        e equal 2.0
     expect(r.message).toMatch(/bond with bond_style hybrid is not supported/);
   });
 
-  it('the variable must exist', async () => {
-    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut epsilon 1 1 v_nope\n`);
-    expect(r.message).toMatch(/variable nope does not exist/);
+  it('the variable must exist when the run starts (native FixAdapt::init), not when the fix is defined', async () => {
+    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut epsilon 1 1 v_nope\nrun 0\n`);
+    expect(r.message).toMatch(/Variable name nope for fix adapt does not exist/);
+    const later = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut epsilon 1 1 v_eps\nvariable eps equal 1.0\nrun 0\n`);
+    expect(later.message).toBe('');
   });
 
   it('the value must be v_name', async () => {
@@ -316,8 +318,8 @@ variable        e equal 2.0
   });
 
   it('atom-style variables are rejected (equal-style only)', async () => {
-    const r = await runScript(`${pairSetup}\nvariable av atom x/10\nfix 1 all adapt 1 pair lj/cut epsilon 1 1 v_av\n`);
-    expect(r.message).toMatch(/must be equal-style/);
+    const r = await runScript(`${pairSetup}\nvariable av atom x/10\nfix 1 all adapt 1 pair lj/cut epsilon 1 1 v_av\nrun 0\n`);
+    expect(r.message).toMatch(/Variable av for fix adapt is invalid style/);
   });
 
   it('cutoff parameters cannot be adapted (the neighbor list would not follow)', async () => {

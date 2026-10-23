@@ -247,8 +247,12 @@ const dump: Handler = ({ sys }, a) => {
   const [id, group, style, every, file, ...cols] = a;
   // As native LAMMPS does (src/output.cpp Output::add_dump at b332f28): "if (narg < 5) utils::missing_cmd_args(FLERR,"dump", error)"
   if (a.length < 5) throw new StyleError('Illegal dump command: missing argument(s)');
-  if (!id || !group || !style || !every || !file) throw new StyleError('usage: dump ID group-ID style N file [attributes]');
-  if (sys.dumps.some((d) => d.id === id)) throw new StyleError(`reuse of dump ID '${id}' (undump it first)`);
+  // then the ID, the group and the frequency (utils::inumeric, > 0; a v_name is a dump_modify every value), before the
+  // style is looked up
+  if (sys.dumps.some((d) => d.id === id)) throw new StyleError(`Reuse of dump ID: ${id}`);
+  if (sys.groups.find(group) < 0) throw new StyleError(`Could not find dump group ID: ${group}`);
+  const n = inumeric(every);
+  if (n <= 0) throw new StyleError(`Invalid dump frequency ${every}`);
   const { base, gzStyle } = compressStyle(style);
   // vtk, grid and grid/vtk are lazily loaded styles (lazyStyles.ts groups gpl_dump_vtk and gpl_dump_grid, loaded before
   // this command by the session)
@@ -256,12 +260,6 @@ const dump: Handler = ({ sys }, a) => {
     return loadNativeStyles().then(() => {
       throw unknownStyleError('dump', style, () => removedStyleError('dump', style) ?? new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${[...DUMP_STYLES, ...LAZY_DUMP_STYLES, ...GZ_STYLES].join(', ')}`));
     });
-  }
-  let n: number | string;
-  if (every.startsWith('v_')) n = every.slice(2);
-  else {
-    n = int(every, 'dump interval');
-    if (n < 1) throw new StyleError('dump interval must be > 0');
   }
   sys.dumps.push(new Dump(sys, id, group, base as DumpStyle, n, file, cols, false, gzStyle));
 };

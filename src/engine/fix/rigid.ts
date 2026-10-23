@@ -399,22 +399,24 @@ export class FixRigid extends Fix {
        * "v_varname = an atom-style or atomfile-style variable"; "the floating-point value
        * produced by the variable is rounded to an integer". The native code casts it ("(tagint) value[i]"): measured with
        * native LAMMPS, values 0.6, 0.7, 1.4 and 1.45 give 2 rigid bodies (truncation), not 1. */
-      const w = args[1] ?? '';
-      if (w.startsWith('i_') && w.length > 2) {
+      // As native LAMMPS does (src/RIGID/fix_rigid.cpp and fix_rigid_small.cpp constructors at b332f28): an i_name of a
+      // custom integer vector, or a v_name of an atom-style variable
+      if (args.length < 2) throw missingArgs(`fix ${style} custom`);
+      const w = args[1];
+      if (w.startsWith('i_')) {
         const c = sys.state.custom.get(w.slice(2));
-        if (!c || !c.int || c.cols !== 0) throw new StyleError(`fix ${style} custom: ${w} is not a custom integer vector (define it with fix property/atom ${w})`);
+        if (!c) throw new StyleError(`Fix ${style} custom requires previously defined property/atom`);
+        if (!c.int || c.cols !== 0) throw new StyleError(`Fix ${style} custom requires integer-valued property/atom vector`);
         this.customProp = w.slice(2);
         k = 2;
-      } else if (!w.startsWith('v_') || w.length < 3) {
-        throw new StyleError(`fix ${style} custom: expected i_name or v_name, got '${w}'`);
-      } else {
+      } else if (w.startsWith('v_')) {
         const vname = w.slice(2);
         const v = sys.vars.get(vname);
-        if (!v) throw new StyleError(`fix ${style} custom: variable ${vname} does not exist`);
-        if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`fix ${style} custom: variable ${vname} must be atom-style or atomfile-style, not ${v.style}`);
+        if (!v) throw new StyleError(`Variable ${vname} for fix ${style} custom does not exist`);
+        if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Fix ${style} custom variable ${vname} is not atom-style variable`);
         this.customVar = vname;
         k = 2;
-      }
+      } else throw new StyleError(`Unsupported fix ${style} custom property: ${w}`);
     } else {
       // fix_rigid.cpp: "Unknown fix {} mode {}"; fix_rigid_small.cpp: "Unknown fix {} body style {}"
       throw new StyleError(small ? `Unknown fix ${style} body style ${this.bodystyle}` : `Unknown fix ${style} mode ${this.bodystyle}`);

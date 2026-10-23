@@ -15,6 +15,7 @@
  * across all particles contained in the group for which this fix is defined. An additional safety factor s_fact is
  * applied to the time increment."
  */
+import { EQUAL_STYLES } from '../../engine/argInfo';
 import { StyleError, type Pair } from '../../engine/force/types';
 import { numeric } from '../../engine/force/util';
 import { Fix } from '../../engine/fix/fix';
@@ -60,8 +61,19 @@ export class FixSMDSetVel extends Fix {
       if (args[3] !== 'region' || args.length < 5) throw new StyleError('Illegal fix setvelocity command');
       throw new StyleError(`fix smd/setvel keyword 'region' is not supported by the browser engine yet`);
     }
+  }
+
+  /**
+   * fix_smd_setvel.cpp init: each variable exists and is equal- or atom-style (native names none of them); the engine
+   * evaluates equal-style variables only.
+   */
+  init(): void {
     for (const c of this.comps) {
-      if (c.kind === 'equal' && !sys.vars.has(c.name)) throw new StyleError(`Variable name for fix setvelocity does not exist: ${c.name}`);
+      if (c.kind !== 'equal') continue;
+      const v = this.sys.vars.get(c.name);
+      if (!v) throw new StyleError('Variable name for fix setvelocity does not exist');
+      if (v.style === 'atom' || v.style === 'atomfile') throw new StyleError(`fix smd/setvel with the atom-style variable ${c.name} is not supported by the browser engine yet`);
+      if (!EQUAL_STYLES.has(v.style)) throw new StyleError('Variable for fix setvelocity is invalid style');
     }
   }
 

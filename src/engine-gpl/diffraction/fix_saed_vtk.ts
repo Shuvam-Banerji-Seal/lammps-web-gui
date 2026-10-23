@@ -155,7 +155,8 @@ export class FixSAEDVTK extends Fix {
 
     const cid = args[3];
     if (!cid.startsWith('c_') || cid.includes('[')) throw new StyleError('Illegal fix saed/vtk command: the 4th argument must be c_ID');
-    const compute = sys.compute(cid.slice(2));
+    // fix_saed_vtk.cpp: a missing compute and one of another style get the same message
+    const compute = sys.computes.find((c) => c.id === cid.slice(2));
     if (!(compute instanceof ComputeSAED)) throw new StyleError(`Compute ID ${cid.slice(2)} for fix saed/vtk does not exist or is of incorrect style`);
     this.compute = compute;
 

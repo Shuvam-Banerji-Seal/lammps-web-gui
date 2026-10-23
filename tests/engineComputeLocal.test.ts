@@ -144,7 +144,7 @@ describe('local computes: argument errors', () => {
 
   it('rejects a dump column that the compute cannot give', async () => {
     await expect(molecule('compute v all bond/local dist\ndump d all local 1 x.txt c_v[1]')).rejects.toThrow(/does not calculate local array/);
-    await expect(molecule('compute a all bond/local dist engpot\ndump d all local 1 x.txt c_a[3]')).rejects.toThrow(/out of range/);
+    await expect(molecule('compute a all bond/local dist engpot\ndump d all local 1 x.txt c_a[3]')).rejects.toThrow(/Dump local compute a vector is accessed out-of-range/);
   });
 });
 

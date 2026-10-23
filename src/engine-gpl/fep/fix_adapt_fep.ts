@@ -16,6 +16,7 @@
  * always when N is 1 or at step 0); post_run restores the original values when reset is yes. The original
  * per-atom charges are the values the fix saw when it was defined (the STORE/ATOM vector of the native fix).
  */
+import { EQUAL_STYLES } from '../../engine/argInfo';
 import { Fix } from '../../engine/fix/fix';
 import { Pair, StyleError, typeBounds } from '../../engine/force/types';
 import { inumeric } from '../../engine/force/util';
@@ -53,6 +54,8 @@ const sphereVolume = (r: number): number => 4.0 * Math.PI / 3.0 * r * r * r;
 export class FixAdaptFEP extends Fix {
   readonly style = 'adapt/fep';
   private readonly pending: Array<{ pstyle: string; pparam: string; iw: string; jw: string; vname: string }> = [];
+  /** The variables of the attributes, in the order they were given (checked at init, as native). */
+  private readonly varNames: string[] = [];
   private readonly atoms: AtomAdapt[] = [];
   /** kspace v_name entries (the kspace scale factor) */
   private readonly kspaces: string[] = [];
@@ -96,6 +99,7 @@ export class FixAdaptFEP extends Fix {
         const pstyle = args[k + 1], pparam = args[k + 2], iw = args[k + 3], jw = args[k + 4], vw = args[k + 5];
         if (vw === undefined || !vw.startsWith('v_')) throw new StyleError(`fix ${id} (adapt/fep): pair needs pstyle pparam I J v_name (${USAGE})`);
         this.pending.push({ pstyle, pparam, iw, jw, vname: vw.slice(2) });
+        this.varNames.push(vw.slice(2));
         k += 6; nattr++;
         continue;
       }
@@ -104,6 +108,7 @@ export class FixAdaptFEP extends Fix {
         if (vw === undefined || !vw.startsWith('v_')) throw new StyleError(`fix ${id} (adapt/fep): atom needs atomparam type v_name (${USAGE})`);
         if (kind !== 'charge' && kind !== 'diameter') throw new StyleError('Illegal fix adapt/fep command');
         this.atoms.push({ kind, vname: vw.slice(2), iw });
+        this.varNames.push(vw.slice(2));
         k += 4; nattr++;
         continue;
       }
@@ -111,6 +116,7 @@ export class FixAdaptFEP extends Fix {
         const vw = args[k + 1];
         if (vw === undefined || !vw.startsWith('v_')) throw new StyleError('Illegal fix adapt/fep command');
         this.kspaces.push(vw.slice(2));
+        this.varNames.push(vw.slice(2));
         k += 2; nattr++;
         continue;
       }
@@ -147,6 +153,12 @@ export class FixAdaptFEP extends Fix {
     const s = this.sys.state;
     // fix_adapt_fep.cpp init: a dynamic group only without the atom attribute
     if (this.atoms.length && this.sys.groups.isDynamic(this.groupBit)) throw new StyleError('Cannot use dynamic group with fix adapt/fep atom');
+    // then each attribute's variable exists and is equal-style
+    for (const name of this.varNames) {
+      const v = this.sys.vars.get(name);
+      if (!v) throw new StyleError(`Variable name ${name} for fix adapt/fep does not exist`);
+      if (!EQUAL_STYLES.has(v.style)) throw new StyleError(`Variable ${name} for fix adapt/fep is invalid style`);
+    }
     if (this.kspaces.length && !this.sys.ff.kspace) throw new StyleError('Fix adapt/fep kspace style does not exist');
     if (this.hasDiameter && !s.radius) throw new StyleError('Fix adapt/fep requires atom attribute diameter');
     // AtomVecSphere::init (src/atom_vec_sphere.cpp at b332f28): changing diameters needs atom_style sphere 1

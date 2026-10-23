@@ -1,4 +1,5 @@
 import { Fix } from './fix';
+import { EQUAL_STYLES } from '../argInfo';
 import { StyleError } from '../force/types';
 import { inumeric, numeric, parseNum } from '../force/util';
 import type { System } from '../system';
@@ -15,6 +16,24 @@ const CLASSIC_FSTYLES = ['hooke', 'hooke/history', 'hertz/history'] as const;
  * the default Kt and gamma_t), dampflag (utils::inumeric; gamma_t is 0 without damping), the range check, and then the
  * style name.
  */
+/**
+ * The variables of a granular wall, checked at init as native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp
+ * FixWallGran::init at b332f28): the wall temperature, then the wall positions; each exists and is equal-style.
+ */
+const checkWallVariables = (sys: System, planes: readonly { variable?: string }[], wallT: string | null): void => {
+  if (wallT !== null) {
+    const v = sys.vars.get(wallT);
+    if (!v) throw new StyleError(`Variable ${wallT} for fix wall/gran does not exist`);
+    if (!EQUAL_STYLES.has(v.style)) throw new StyleError(`Variable ${wallT} for fix wall/gran must be an equal style variable`);
+  }
+  for (const p of planes) {
+    if (p.variable === undefined) continue;
+    const v = sys.vars.get(p.variable);
+    if (!v) throw new StyleError(`Variable ${p.variable} for fix wall/gran wall position does not exist`);
+    if (!EQUAL_STYLES.has(v.style)) throw new StyleError(`Variable ${p.variable} for fix wall/gran wall position must be an equal style variable`);
+  }
+};
+
 const classicModel = (args: string[]): { kn: number; kt: number; gn: number; gt: number; xmu: number; dampflag: number } => {
   if (args.length <= 6) throw new StyleError('Insufficient arguments provided for classic gran model command');
   const kn = numeric(args[1]);
@@ -243,6 +262,7 @@ export class FixWallGran extends Fix {
       if (s.dimension === 2 && p.dim === 2) throw new StyleError('fix wall/gran: cannot use a z wall in a 2d simulation');
       if (s.box.periodic[p.dim]) throw new StyleError('Cannot use wall in periodic dimension');
     }
+    checkWallVariables(this.sys, this.planes, null);
   }
 
   /** Forces of the walls are applied in post_force, as in every timestep. */
@@ -554,6 +574,7 @@ export class FixWallGranGranular extends Fix {
     if (this.pm.heat !== 'none' && (!s.custom.has(HEAT_TEMPERATURE) || !s.custom.has(HEAT_FLOW))) {
       throw new StyleError(`fix ${this.id} ${this.style}: heat conduction needs fix property/atom temperature heatflow`);
     }
+    checkWallVariables(this.sys, this.planes, typeof this.wallT === 'string' ? this.wallT : null);
   }
 
   postForce(): void { this.apply(true); }

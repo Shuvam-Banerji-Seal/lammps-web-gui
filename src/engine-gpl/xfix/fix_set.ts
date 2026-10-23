@@ -64,8 +64,10 @@ export class FixSet extends Fix {
       while (j < rest.length && (rest[j].startsWith('v_') || /^[-+.\d]/.test(rest[j]))) {
         if (rest[j].startsWith('v_')) {
           hasVar = true;
-          const name = rest[j].slice(2);
-          if (!sys.vars.get(name)) throw new StyleError(`Variable name ${name} for set command does not exist`);
+          // Set::varparse (src/set.cpp at b332f28) names the word with its v_ and wants an atom-style variable
+          const v = sys.vars.get(rest[j].slice(2));
+          if (!v) throw new StyleError(`Variable name ${rest[j]} for set command does not exist`);
+          if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Variable ${rest[j]} for set command is invalid style`);
         }
         j++;
       }

@@ -5,6 +5,7 @@ import { PairHybrid } from '../force/pair/hybrid';
 import { SimpleBonded } from '../force/bonded_util';
 import { bounds, inumeric, missingArgs } from '../force/util';
 import { isNumericTypeWord, typeWord } from '../labelmap';
+import { EQUAL_STYLES } from '../argInfo';
 import { BondedHybrid } from '../force/bonded_hybrid';
 import type { System } from '../system';
 import type { SimState } from '../types';
@@ -309,15 +310,14 @@ export class FixAdapt extends Fix {
     // fix_adapt.rst: "The option defaults are scale = no, reset = no, mass = yes."
   }
 
-  private checkVariable(id: string, vw: string): void {
-    // native FixAdapt::FixAdapt (src/fix_adapt.cpp at b332f28), for every attribute
+  /** The variables of the attributes, in the order they were given (checked at init, as native). */
+  private readonly varNames: string[] = [];
+
+  private checkVariable(_id: string, vw: string): void {
+    // native FixAdapt::FixAdapt (src/fix_adapt.cpp at b332f28), for every attribute: a v_ reference; the variable itself
+    // is looked up at init
     if (!vw.startsWith('v_')) throw new StyleError(`Argument must be variable not ${vw}`);
-    const name = vw.slice(2);
-    const v = this.sys.vars.get(name);
-    if (!v) throw new StyleError(`fix ${id} (adapt): variable ${name} does not exist`);
-    if (v.style === 'atom' || v.style === 'atomfile' || v.style === 'vector') {
-      throw new StyleError(`fix ${id} (adapt): variable ${name} must be equal-style (atom-style variables are not supported by this engine)`);
-    }
+    this.varNames.push(vw.slice(2));
   }
 
   private addPair(id: string, pstyle: string | undefined, pparam: string | undefined, iw: string | undefined, jw: string | undefined, vw: string): void {
@@ -437,8 +437,13 @@ export class FixAdapt extends Fix {
 
   /** Stores the original values (run start) and applies the variables for this run's setup. */
   init(): void {
-    // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::init at b332f28): "allow a dynamic group only if ATOM attribute
-    // not used"
+    // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::init at b332f28): each attribute's variable exists and is
+    // equal-style; "allow a dynamic group only if ATOM attribute not used"
+    for (const name of this.varNames) {
+      const v = this.sys.vars.get(name);
+      if (!v) throw new StyleError(`Variable name ${name} for fix adapt does not exist`);
+      if (!EQUAL_STYLES.has(v.style)) throw new StyleError(`Variable ${name} for fix adapt is invalid style`);
+    }
     if (this.atoms.length && this.sys.groups.isDynamic(this.groupBit)) throw new StyleError(`Cannot use dynamic group ${this.group} with fix adapt atom`);
     this.resolve();
     const s = this.sys.state;

@@ -87,14 +87,14 @@ describe('fix controller', () => {
   });
 
   it('checks the process variable reference', async () => {
-    await expect(runScript(`${ONE_ATOM}\nvariable c internal 0\nfix f all controller 1 1 1 1 1 x_c 0.5 c`)).rejects.toThrow('pvar must be c_ID, c_ID[I], f_ID, f_ID[I] or v_name');
+    await expect(runScript(`${ONE_ATOM}\nvariable c internal 0\nfix f all controller 1 1 1 1 1 x_c 0.5 c`)).rejects.toThrow('Illegal fix controller argument x_c');
   });
 
   it('requires an internal-style control variable', async () => {
     await expect(runScript(`${ONE_ATOM}\nvariable c equal 0\nvariable p equal 1\nfix f all controller 1 1 1 1 1 v_p 0.5 c\nrun 1`))
-      .rejects.toThrow('variable c is not internal-style');
+      .rejects.toThrow('Fix controller variable c is not internal-style variable');
     await expect(runScript(`${ONE_ATOM}\nvariable p equal 1\nfix f all controller 1 1 1 1 1 v_p 0.5 nothere\nrun 1`))
-      .rejects.toThrow('variable nothere does not exist');
+      .rejects.toThrow('Variable name nothere for fix controller does not exist');
   });
 
   it('applies the discrete proportional law c_n = c_(n-1) - alpha Kp tau e_n (tau = Nevery dt)', async () => {

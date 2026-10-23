@@ -360,13 +360,17 @@ const dielectric: Handler = ({ sys }, a) => {
 };
 
 /** kspace_style style accuracy — kspace_style.html; "kspace_style none" removes it. */
-const kspaceStyle: Handler = ({ sys }, a) => {
+const kspaceStyle: Handler = ({ sys, typed }, a) => {
   const name = a[0];
   if (!name) throw new StyleError('usage: kspace_style style args');
   if (name === 'none') { sys.ff.kspace = null; sys.bump(); return; }
   const make = KSPACE_STYLES[name];
   if (!make) return loadNativeStyles().then(() => { throw unknownStyleError('kspace', name, () => unsupported('kspace_style', name, KSPACE_STYLES)); });
+  // the style as typed (an accelerator alias such as pppm/omp): native's settings messages name force->kspace_style as
+  // typed (KSpace.shownName)
+  const shown = typed?.[0] ?? name;
   const k = make();
+  if (shown !== k.name) k.shownName = shown;
   k.settings(a.slice(1), sys.styleContext());
   sys.ff.kspace = k;
   sys.bump();

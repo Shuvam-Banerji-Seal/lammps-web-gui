@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { inumeric, numeric } from '../force/util';
 import { massOf } from '../atoms';
 
 /*
@@ -38,19 +39,6 @@ export const setTimestep = (sys: System, dt: number): void => {
   for (const f of sys.fixes) f.resetDt?.();
 };
 
-const posInt = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || !Number.isInteger(v) || v < 1) throw new StyleError(`${what} must be a positive integer, got '${w ?? ''}'`);
-  return v;
-};
-
-const bound = (w: string | undefined, what: string): number | null => {
-  if (w === 'NULL') return null;
-  const v = Number(w);
-  if (w === undefined || !Number.isFinite(v) || !(v > 0)) throw new StyleError(`fix dt/reset: ${what} must be NULL or a positive time, got '${w ?? ''}'`);
-  return v;
-};
-
 export class FixDtReset extends Fix {
   readonly style = 'dt/reset';
   private readonly tmin: number | null;
@@ -63,32 +51,34 @@ export class FixDtReset extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 4) throw new StyleError(`usage: fix ${id} group-ID dt/reset N Tmin Tmax Xmax [emax value] [units lattice|box]`);
-    this.nevery = posInt(args[0], `fix ${id} (dt/reset): N`);
-    this.tmin = bound(args[1], 'Tmin');
-    this.tmax = bound(args[2], 'Tmax');
-    if (this.tmin !== null && this.tmax !== null && this.tmin > this.tmax) {
-      throw new StyleError(`fix ${id} (dt/reset): Tmin must not exceed Tmax`);
-    }
-    const xmax = Number(args[3]);
-    if (!Number.isFinite(xmax) || !(xmax > 0)) throw new StyleError(`fix ${id} (dt/reset): Xmax must be a positive distance, got '${args[3]}'`);
+    // As native LAMMPS does (src/fix_dt_reset.cpp FixDtReset::FixDtReset at b332f28): N (utils::inumeric), Tmin and Tmax
+    // (NULL or utils::numeric), Xmax, then the keywords; every failed check is "Illegal fix dt/reset command"
+    const illegal = (): StyleError => new StyleError('Illegal fix dt/reset command');
+    if (args.length < 4) throw illegal();
+    this.nevery = inumeric(args[0]);
+    if (this.nevery <= 0) throw illegal();
+    this.tmin = args[1] === 'NULL' ? null : numeric(args[1]);
+    this.tmax = args[2] === 'NULL' ? null : numeric(args[2]);
+    const xmax = numeric(args[3]);
+    if (this.tmin !== null && this.tmin < 0) throw illegal();
+    if (this.tmax !== null && this.tmax < 0) throw illegal();
+    if (this.tmin !== null && this.tmax !== null && this.tmin >= this.tmax) throw illegal();
+    if (xmax <= 0) throw illegal();
     this.xmax = xmax;
     let emax: number | null = null;
     let unitsBox = false;
     for (let k = 4; k < args.length; k += 2) {
       const key = args[k];
-      // As native LAMMPS does (src/fix_dt_reset.cpp FixDtReset::FixDtReset at b332f28): only emax and units are
-      // keywords, any other word is "Illegal fix dt/reset command".
-      if (key !== 'emax' && key !== 'units') throw new StyleError('Illegal fix dt/reset command');
       const value = args[k + 1];
-      if (value === undefined) throw new StyleError(`fix ${id} (dt/reset): keyword '${key}' needs a value`);
-      if (key === 'emax') {
-        const e = Number(value);
-        if (!Number.isFinite(e) || !(e > 0)) throw new StyleError(`fix ${id} (dt/reset): emax must be a positive energy, got '${value}'`);
-        emax = e;
-      } else if (key === 'units') {
-        if (value !== 'lattice' && value !== 'box') throw new StyleError(`fix ${id} (dt/reset): units must be lattice or box, got '${value}'`);
+      if (key === 'units') {
+        if (value === undefined || (value !== 'lattice' && value !== 'box')) throw illegal();
         unitsBox = value === 'box';
+      } else if (key === 'emax') {
+        if (value === undefined) throw illegal();
+        emax = numeric(value);
+        if (emax <= 0) throw illegal();
+      } else {
+        throw illegal();
       }
     }
     this.emax = emax;

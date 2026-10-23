@@ -333,7 +333,10 @@ const parallelOnly = (name: string): Handler => (({ sys }, a) => {
     }
     if (a[0] === 'omp') {
       // native FixOMP constructor (src/OPENMP/fix_omp.cpp at b332f28), which Input::package (src/input.cpp) reaches with the
-      // words after omp: after the thread count only the neigh keyword is known, and it takes one value
+      // words after omp: after the thread count only the neigh keyword is known, and it takes one value. As native
+      // FixOMP::FixOMP does: "if (narg < 4) utils::missing_cmd_args(FLERR, \"package omp\", error)", and the fix line
+      // is "package_omp all OMP" plus these words, so the thread count is required
+      if (a.length < 2) throw missingArgs('package omp');
       for (let k = 2; k < a.length;) {
         if (a[k] !== 'neigh') throw new StyleError(`Unknown package omp keyword ${a[k]}`);
         if (k + 1 >= a.length) throw missingArgs('package omp neigh');
@@ -460,7 +463,8 @@ const balanceCommand: Handler = ({ sys }, a) => {
       if (a[k + 1] !== 'yes' && a[k + 1] !== 'no') throw new StyleError('balance sort must be yes or no');
       k += 2;
     } else if (key === 'out') {
-      if (a[k + 1] === undefined) throw new StyleError('Illegal balance out command: missing file name');
+      // As native LAMMPS does (src/balance.cpp Balance::command at b332f28): "if (iarg+2 > narg) utils::missing_cmd_args(FLERR,"(fix) balance out", error)"
+      if (a[k + 1] === undefined) throw new StyleError('Illegal (fix) balance out command: missing argument(s)');
       outFile = a[k + 1];
       k += 2;
     } else throw new StyleError(`Unknown (fix) balance keyword ${key}`);
@@ -1479,7 +1483,9 @@ const createAtoms: Handler = ({ sys }, a) => {
  */
 const molecule: Handler = ({ sys }, a) => {
   const id = a[0];
-  if (!id || a.length < 2) throw new StyleError('usage: molecule ID file1 keyword values ... file2 ...');
+  // As native LAMMPS does (src/molecule.cpp Molecule::command at b332f28): "if (index >= narg) utils::missing_cmd_args(FLERR, \"molecule\", error)"
+  if (a.length < 2) throw missingArgs('molecule');
+  if (!id) throw new StyleError('usage: molecule ID file1 keyword values ... file2 ...');
   if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError(`molecule ID '${id}' must be alphanumeric or underscore`);
   if (sys.molecules.has(id)) throw new StyleError(`molecule template ID '${id}' already exists`);
   const sets: MoleculeTemplate[] = [];
@@ -1492,6 +1498,10 @@ const molecule: Handler = ({ sys }, a) => {
     let checkWhich: CheckWhich | null = null;
     while (k < a.length && ['offset', 'toff', 'boff', 'aoff', 'doff', 'ioff', 'scale', 'auto', 'check_labels'].includes(a[k])) {
       const key = a[k];
+      // As native LAMMPS does (src/molecule.cpp Molecule::command at b332f28): each keyword checks its own arguments
+      // first, "if (iarg + 6 > narg) utils::missing_cmd_args(FLERR, \"molecule offset\", error)" for offset and
+      // "if (iarg + 2 > narg) utils::missing_cmd_args(FLERR, \"molecule <key>\", error)" for the others
+      if (k + (key === 'offset' ? 6 : 2) > a.length) throw missingArgs(key === 'check_labels' ? key : `molecule ${key}`);
       if (key === 'offset') {
         [o.toff, o.boff, o.aoff, o.doff, o.ioff] = [1, 2, 3, 4, 5].map((j) => int(a[k + j], 'offset'));
         k += 6;
@@ -1505,7 +1515,6 @@ const molecule: Handler = ({ sys }, a) => {
       } else if (key === 'check_labels') {
         // As native LAMMPS does (src/molecule.cpp at b332f28): the letters b, a, d, i; the template's type labels are
         // checked once it is read (labelcheck.ts moleculeLabelCheck)
-        if (a[k + 1] === undefined) throw new StyleError('Illegal check_labels command: missing argument(s)');
         checkWhich = parseCheckWhich(a[k + 1], (c) => `Illegal check_labels option ${c}`);
         k += 2;
       } else { o[key as 'toff'] = int(a[k + 1], key); k += 2; }
@@ -1653,8 +1662,9 @@ const readDataCmd: Handler = ({ sys }, a) => {
  * warns about labels that disagree with their atom types, which the browser engine does not do, so it is refused.
  */
 const labelmapCmd: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/label_map.cpp LabelMap::modify_lmap at b332f28): "if ((narg < 1) || ((narg > 2) && ((narg % 2) == 0)))"
+  if (a.length < 1 || (a.length > 2 && a.length % 2 === 0)) throw new StyleError('Incorrect number of arguments for labelmap command');
   const opt = a[0];
-  if (!opt) throw new StyleError('usage: labelmap option args');
   if (opt === 'clear') {
     if (a.length !== 1) throw new StyleError('Incorrect number of arguments for labelmap clear command');
     sys.labels.clear();
@@ -3876,6 +3886,8 @@ const createBondsMany = (sys: System, a: string[]): void => {
 };
 
 const createBonds: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/create_bonds.cpp CreateBonds::command at b332f28): "if (narg < 4) utils::missing_cmd_args(FLERR, "create_bonds", error)"
+  if (a.length < 4) throw missingArgs('create_bonds');
   if (a[0] === 'many') { createBondsMany(sys, a); return; }
   const s = sys.state;
   const width: Record<string, number> = { 'single/bond': 2, 'single/angle': 3, 'single/dihedral': 4, 'single/improper': 4 };

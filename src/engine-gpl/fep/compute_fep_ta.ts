@@ -16,7 +16,7 @@
  */
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { logical, parseNum } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { hasTail } from './pair_table';
 import { restoreAccum, snapshotAccum } from './compute_fep';
@@ -49,10 +49,10 @@ export class ComputeFEPTA extends Compute {
     this.scale = parseNum(args[2], 'scale factor');
     let k = 3;
     while (k < args.length) {
-      if (args[k] !== 'tail') throw new StyleError('Illegal optional keyword in compute fep/ta');
-      const w = args[k + 1];
-      if (w !== 'yes' && w !== 'no') throw new StyleError(`compute fep/ta keyword tail must be yes or no, got '${w ?? ''}'`);
-      this.tailFlag = w === 'yes';
+      // As native LAMMPS does (src/FEP/compute_fep_ta.cpp ComputeFEPTA::ComputeFEPTA at b332f28): "tail" needs its value
+      // (a missing one is "Illegal optional keyword"), read by utils::logical
+      if (args[k] !== 'tail' || k + 1 >= args.length) throw new StyleError('Illegal optional keyword in compute fep/ta');
+      this.tailFlag = logical(args[k + 1]);
       k += 2;
     }
   }

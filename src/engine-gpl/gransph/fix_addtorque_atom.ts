@@ -12,7 +12,7 @@
 import { Fix } from '../../engine/fix/fix';
 import type { Region } from '../../engine/region';
 import { StyleError } from '../../engine/force/types';
-import { parseNum, parseInt_ } from '../../engine/force/util';
+import { missingArgs, parseNum, parseInt_ } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 
 /** One torque component: a constant, or a v_name variable (equal or atom style). */
@@ -32,12 +32,12 @@ export class FixAddTorqueAtom extends Fix {
     this.comps = args.slice(0, 3).map((w) => (w.startsWith('v_') ? { kind: 'var' as const, name: w.slice(2) } : { kind: 'const' as const, v: parseNum(w, 'torque') }));
     for (let k = 3; k < args.length; ) {
       if (args[k] === 'every') {
-        if (k + 2 > args.length) throw new StyleError('Illegal fix addtorque/atom command: missing argument(s)');
+        if (k + 2 > args.length) throw missingArgs('fix addtorque/atom every');
         this.nevery = parseInt_(args[k + 1], 'every');
         if (this.nevery <= 0) throw new StyleError(`Invalid fix addtorque/atom every argument: ${this.nevery}`);
         k += 2;
       } else if (args[k] === 'region') {
-        if (k + 2 > args.length) throw new StyleError('Illegal fix addtorque/atom command: missing argument(s)');
+        if (k + 2 > args.length) throw missingArgs('fix addtorque/atom region');
         this.regionId = args[k + 1];
         k += 2;
       } else {

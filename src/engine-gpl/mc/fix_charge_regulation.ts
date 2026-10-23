@@ -122,7 +122,8 @@ export class FixChargeRegulation extends Fix {
     for (let i = 2; i < args.length;) {
       const key = args[i];
       const v = (k: number) => {
-        if (args[i + k] === undefined) throw new StyleError(`Illegal fix charge/regulation command: keyword '${key}' needs ${k} value(s)`);
+        // As native LAMMPS does (src/MC/fix_charge_regulation.cpp FixChargeRegulation::options at b332f28): a keyword without its value is "Illegal fix charge/regulation command"
+        if (args[i + k] === undefined) throw new StyleError('Illegal fix charge/regulation command');
         return args[i + k];
       };
       switch (key) {

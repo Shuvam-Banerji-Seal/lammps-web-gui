@@ -658,7 +658,8 @@ export class Thermo {
           const which = need(val);
           const fmt = args[k + 2];
           if (which === 'none') { this.formatLine = this.formatInt = this.formatFloat = null; this.formatCol.clear(); k += 2; break; }
-          if (fmt === undefined) throw new StyleError('thermo_modify format needs a format string');
+          // As native LAMMPS does (src/thermo.cpp Thermo::modify_params at b332f28): "if (iarg + 3 > narg) utils::missing_cmd_args(FLERR, \"thermo_modify format\", error)"
+          if (fmt === undefined) throw new StyleError('Illegal thermo_modify format command: missing argument(s)');
           if (which === 'line') this.formatLine = fmt;
           else if (which === 'int') { checkCFormat(fmt, 'int', 'Invalid thermo_modify int format'); this.formatInt = fmt; }
           else if (which === 'float') { checkCFormat(fmt, 'float', 'Invalid thermo_modify float format'); this.formatFloat = fmt; }

@@ -79,6 +79,8 @@ export class FixPropertyAtom extends Fix {
         if (!m) throw new StyleError('Illegal fix property/atom command');
         let cols = 0;
         if (m[2]) {
+          // As native LAMMPS does (src/fix_property_atom.cpp FixPropertyAtom::FixPropertyAtom at b332f28): an array keyword needs its column count
+          if (k + 2 > args.length) throw new StyleError('Illegal fix property/atom command');
           const n = Number(args[k + 1]);
           if (!Number.isInteger(n) || n < 1) throw new StyleError(`Invalid array columns number ${args[k + 1] ?? ''} in fix property/atom`);
           cols = n;

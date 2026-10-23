@@ -169,7 +169,8 @@ export class FixWallGran extends Fix {
     const dim = (ws === 'xplane' ? 0 : ws === 'yplane' ? 1 : 2) as Dim;
     this.wallDim = dim;
     const lo = args[k++], hi = args[k++];
-    if (lo === undefined || hi === undefined) throw new StyleError(`fix ${id} wall/gran ${ws} needs lo and hi (either may be NULL)`);
+    // As native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp FixWallGran::FixWallGran at b332f28): if (narg < iarg+3) error "Illegal fix wall/gran command"
+    if (lo === undefined || hi === undefined) throw new StyleError('Illegal fix wall/gran command');
     if (lo === 'NULL' && hi === 'NULL') throw new StyleError(`fix ${id} wall/gran ${ws}: lo and hi are both NULL, no wall is defined`);
     // fix_wall_gran.html (versionadded 2Sep2026): "The *lo* and *hi* wall positions can also be set by an equal-style
     // :doc:`variable <variable>`, specified as v_name" -- the value is read as a variable name, not parsed
@@ -488,8 +489,9 @@ export class FixWallGranGranular extends Fix {
     const ws = args[k];
     if (regionMode) {
       if (ws !== 'region') throw new StyleError(`fix ${id} wall/gran/region: wallstyle must be region, got '${ws}'`);
+      // As native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp FixWallGran::FixWallGran at b332f28): if (narg < iarg+2) error "Illegal fix wall/gran command"
       this.regionId = args[k + 1] ?? null;
-      if (!this.regionId) throw new StyleError(`fix ${id} wall/gran/region: missing region ID`);
+      if (!this.regionId) throw new StyleError('Illegal fix wall/gran command');
       this.sys.region(this.regionId);
       k += 2;
     } else {
@@ -498,7 +500,8 @@ export class FixWallGranGranular extends Fix {
       if (ws === 'zcylinder') throw new StyleError('The zcylinder keyword has been removed. Please use fix wall/gran/region instead.');
       const dim = (ws === 'xplane' ? 0 : ws === 'yplane' ? 1 : 2) as Dim;
       const lo = args[k + 1], hi = args[k + 2];
-      if (lo === undefined || hi === undefined) throw new StyleError(`fix ${id} wall/gran ${ws} needs lo and hi (either may be NULL)`);
+      // As native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp FixWallGran::FixWallGran at b332f28): if (narg < iarg+3) error "Illegal fix wall/gran command"
+      if (lo === undefined || hi === undefined) throw new StyleError('Illegal fix wall/gran command');
       if (lo === 'NULL' && hi === 'NULL') throw new StyleError(`fix ${id} wall/gran ${ws}: lo and hi are both NULL, no wall is defined`);
       if (lo !== 'NULL') this.planes.push({ dim, lo: true, coord: parseNum(lo, `${ws} lo`) });
       if (hi !== 'NULL') this.planes.push({ dim, lo: false, coord: parseNum(hi, `${ws} hi`) });

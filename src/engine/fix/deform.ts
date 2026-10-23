@@ -1,5 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { missingArgs } from '../force/util';
 import type { System } from '../system';
 import { int, latticeScale, num, yesno } from '../commands/args';
 import { libm } from '../libm';
@@ -238,7 +239,8 @@ export class FixDeform extends Fix {
       }
       if (w === 'remap' || w === 'flip' || w === 'units' || PRESSURE_KEYWORDS.includes(w)) {
         const val = args[k + 1];
-        if (val === undefined) throw new StyleError(`fix deform: keyword '${w}' is missing its value`);
+        // As native LAMMPS does (src/fix_deform.cpp FixDeform::options at b332f28): "Illegal fix {style} {keyword} command: missing argument(s)"
+        if (val === undefined) throw missingArgs(`fix ${child ? child.name : 'deform'} ${w}`);
         if (w === 'remap') {
           if (val !== 'x' && val !== 'v' && val !== 'none') throw new StyleError(`fix deform: remap must be x, v or none (got '${val}')`);
           this.remapMode = val;

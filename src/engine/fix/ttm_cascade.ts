@@ -137,14 +137,17 @@ export class FixTTMCascade extends FixTTM {
       }
       if (key === 'offset') {
         const v = Number(a[i + 1]);
-        if (a[i + 1] === undefined || !Number.isFinite(v)) throw new StyleError(`fix ${id} ttm/cascade: keyword offset needs a time`);
+        // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_cascade.cpp FixTTMCascade::FixTTMCascade at b332f28): missing_cmd_args("fix ttm/cascade offset")
+        if (i + 2 > a.length) throw new StyleError('Illegal fix ttm/cascade offset command: missing argument(s)');
+        if (!Number.isFinite(v)) throw new StyleError(`fix ${id} ttm/cascade: keyword offset needs a time`);
         // Measured with native LAMMPS (black box): a negative offset stops the run with an error.
         if (v < 0) throw new StyleError(`fix ${id} ttm/cascade: time offset must be >= 0`);
         data.offset = v;
         return 2;
       }
       if (key === 'cetab' || key === 'ketab') {
-        if (a[i + 1] === undefined) throw new StyleError(`fix ${id} ttm/cascade: keyword ${key} needs a table file`);
+        // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_cascade.cpp FixTTMCascade::FixTTMCascade at b332f28): missing_cmd_args("fix ttm/cascade {key}")
+        if (i + 2 > a.length) throw new StyleError(`Illegal fix ttm/cascade ${key} command: missing argument(s)`);
         data[key] = a[i + 1];
         return 2;
       }

@@ -12,6 +12,7 @@
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
+import { missingArgs } from '../../engine/force/util';
 import { PODModel, parsePODCoeffFile, parsePODParams } from './eapod';
 
 /** pair_style pod (evaluation only), docs.lammps.org/pair_pod.html: pair_coeff * * param coeff elem1 ... elemN. */
@@ -41,7 +42,8 @@ export class PairPOD extends Pair {
 
   coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 5) throw new StyleError('Illegal pair_coeff command: usage pair_coeff * * param_file coeff_file elem1 ... elemN');
+    // As native LAMMPS does (src/ML-POD/pair_pod.cpp PairPOD::coeff at b332f28): "narg < 5" is utils::missing_cmd_args
+    if (args.length < 5) throw missingArgs('pair_coeff');
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError('the first 2 arguments of pair_coeff for style pod must be * *');
     const elems = args.slice(4);
     if (elems.length !== this.ntypes) {

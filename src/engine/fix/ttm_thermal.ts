@@ -144,7 +144,9 @@ export class FixTTMThermal extends FixTTM {
     const handler: TtmKeywordHandler = (key, a, i) => {
       if (key !== 'source') return 0;
       const v = Number(a[i + 1]);
-      if (a[i + 1] === undefined || !Number.isFinite(v)) throw new StyleError(`fix ${id} ttm/thermal: keyword source needs a value (energy/(time*volume))`);
+      // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_thermal.cpp FixTTMThermal::FixTTMThermal at b332f28): if (iarg + 2 > narg) missing_cmd_args("fix ttm/thermal source")
+      if (i + 2 > a.length) throw new StyleError('Illegal fix ttm/thermal source command: missing argument(s)');
+      if (!Number.isFinite(v)) throw new StyleError(`fix ${id} ttm/thermal: keyword source needs a value (energy/(time*volume))`);
       kw.source = v;
       return 2;
     };

@@ -423,6 +423,10 @@ export class Dump {
   /** dump_modify keywords. */
   modify(args: string[]): void {
     const yesno = (w: string | undefined, key: string) => {
+      // As native LAMMPS does (src/dump.cpp and src/dump_custom.cpp at b332f28, modify_param): "if (iarg+2 > narg)
+      // utils::missing_cmd_args(FLERR, "dump_modify append", error)", and "if (narg < 2) utils::missing_cmd_args(FLERR,
+      // "dump_modify triclinic/general",error)" for the yes/no keywords with no value
+      if (w === undefined) throw new StyleError(`Illegal dump_modify ${key} command: missing argument(s)`);
       if (w !== 'yes' && w !== 'no') throw new StyleError(`dump_modify ${key} must be yes or no`);
       return w === 'yes';
     };

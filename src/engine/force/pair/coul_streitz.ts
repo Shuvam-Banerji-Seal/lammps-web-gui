@@ -230,7 +230,9 @@ export class PairCoulStreitz extends Pair {
     if (!(this.cutGlobal > 0)) throw new StyleError('pair_style coul/streitz cutoff must be > 0');
     const kw = args[1];
     if (kw === 'wolf' || kw === 'dsf') {
-      if (args.length < 3) throw new StyleError(`pair_style coul/streitz with keyword ${kw} needs a damping parameter: pair_style coul/streitz cutoff ${kw} alpha [taper]`);
+      // As native LAMMPS does (src/KSPACE/pair_coul_streitz.cpp PairCoulStreitz::settings at b332f28): "if (narg < 3)
+      // utils::missing_cmd_args(FLERR, "pair_style coul/streitz dsf", error)"
+      if (args.length < 3) throw new StyleError(`Illegal pair_style coul/streitz ${kw} command: missing argument(s)`);
       this.alpha = parseNum(args[2], 'alpha');
       // docs.lammps.org/pair_coul.html: "the optional arguments *wolf* and *dsf* with the value representing the width of
       // taper that smoothly terminates the Coulomb integrals. ... For backward compatibility, the default taper width is zero."

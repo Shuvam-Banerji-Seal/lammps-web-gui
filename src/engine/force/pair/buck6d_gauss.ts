@@ -142,7 +142,9 @@ export class PairBuck6dCoulGauss extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 7 || args.length > 8) throw new StyleError(`Incorrect args for pair coefficients (${this.name}): pair_coeff I J A rho C D alpha [cutoff]`);
+    // As native LAMMPS does (src/MOFFF/pair_buck6d_coul_gauss_dsf.cpp and _long.cpp coeff at b332f28): a word count other than
+    // seven or eight (I, J, the five coefficients and an optional cutoff) gives "Incorrect args for pair coefficients".
+    if (args.length < 7 || args.length > 8) throw new StyleError('Incorrect args for pair coefficients');
     const names = ['A', 'rho', 'C', 'D', 'alpha'];
     const vals = args.slice(2, 7).map((w, k) => parseNum(w, names[k]));
     if (!(vals[1] > 0)) throw new StyleError(`${this.name}: the second coefficient rho must be greater than zero`);

@@ -274,6 +274,9 @@ export class ComputeSnaAtom extends Compute {
     const elemMap = new Int32Array(ntypes);
     for (let k = need; k < args.length; k++) {
       const kw = args[k];
+      // As native LAMMPS does (src/ML-SNAP/compute_sna_atom.cpp at b332f28): a keyword whose value is missing is
+      // "Illegal compute {style} command" (sinner and dinner take one value per type and are checked below)
+      if (k + 1 >= args.length && kw !== 'sinner' && kw !== 'dinner') throw new StyleError(`Illegal compute ${style} command`);
       const flag = (): boolean => {
         const w = args[++k];
         if (w !== '0' && w !== '1') throw new StyleError(`compute ${id} (sna/atom): ${kw} must be 0 or 1 (got '${w}')`);

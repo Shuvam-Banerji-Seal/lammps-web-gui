@@ -144,9 +144,9 @@ export class KSpaceMSM extends KSpaceBase {
 
   /** MSM::settings: kspace_style msm accuracy (the relative accuracy, absolute value taken, at most 1). */
   settings(args: string[]): void {
-    if (args.length < 1) throw new StyleError(`Illegal kspace_style ${this.name} command: missing argument(s)`);
+    if (args.length < 1) throw new StyleError(`Illegal kspace_style ${this.styleShown} command: missing argument(s)`);
     this.accuracy = Math.abs(numeric(args[0], 'accuracy'));
-    if (this.accuracy > 1.0) throw new StyleError(`Invalid relative accuracy ${this.accuracy} for kspace_style ${this.name}`);
+    if (this.accuracy > 1.0) throw new StyleError(`Invalid relative accuracy ${this.accuracy} for kspace_style ${this.styleShown}`);
   }
 
   modify(key: string, values: string[]): number {
@@ -1584,7 +1584,7 @@ export class KSpaceMSMCG extends KSpaceMSM {
   }
 
   override settings(args: string[]): void {
-    if (args.length < 1 || args.length > 2) throw new StyleError(`Illegal kspace_style ${this.name} command`);
+    if (args.length < 1 || args.length > 2) throw new StyleError(`Illegal kspace_style ${this.styleShown} command`);
     super.settings(args.slice(0, 1));
     this.smallq = args.length === 2 ? Math.abs(numeric(args[1], 'smallq')) : SMALLQ;
   }

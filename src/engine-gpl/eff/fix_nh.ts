@@ -104,7 +104,8 @@ export class FixNHBase extends Fix {
     while (i < args.length) {
       const w = args[i];
       if (w === 'temp') {
-        if (i + 4 > args.length) throw new StyleError(`fix ${style} temp needs Tstart Tstop Tperiod`);
+        // As native LAMMPS does (src/fix_nh.cpp FixNH::FixNH at b332f28): if (iarg + 4 > narg) missing_cmd_args("fix {} temp")
+        if (i + 4 > args.length) throw new StyleError(`Illegal fix ${style} temp command: missing argument(s)`);
         this.tstat = true;
         this.tStart = Number(args[i + 1]);
         this.tStop = Number(args[i + 2]);
@@ -113,7 +114,8 @@ export class FixNHBase extends Fix {
         if (!(this.tPeriod > 0)) throw new StyleError(`Temperature damping for fix ${style} cannot be <= 0.0`);
         i += 4;
       } else if (w === 'iso') {
-        if (i + 4 > args.length) throw new StyleError(`fix ${style} iso needs Pstart Pstop Pperiod`);
+        // As native LAMMPS does (src/fix_nh.cpp FixNH::FixNH at b332f28): if (iarg + 4 > narg) missing_cmd_args("fix {} iso")
+        if (i + 4 > args.length) throw new StyleError(`Illegal fix ${style} iso command: missing argument(s)`);
         this.pstat = true;
         this.pStart = Number(args[i + 1]);
         this.pStop = Number(args[i + 2]);

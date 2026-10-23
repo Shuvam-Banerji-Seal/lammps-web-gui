@@ -67,7 +67,8 @@ export class ComputePressure extends Compute {
     }
     if (rest.includes('virial')) rest.push('pair', 'bond', 'angle', 'dihedral', 'improper', 'kspace', 'fix');
     this.terms = new Set(rest.length ? rest : KEYS);
-    if (this.terms.has('ke') && !this.tempId) throw new StyleError('compute pressure with temp-ID NULL cannot include the ke term');
+    // As native LAMMPS does (src/compute_pressure.cpp ComputePressure::ComputePressure at b332f28): the ke term needs a temperature ID
+    if (this.terms.has('ke') && !this.tempId) throw new StyleError('Compute pressure requires temperature ID to include kinetic energy');
     this.scalarFlag = true;
     this.vectorFlag = true;
     this.sizeVector = 6;

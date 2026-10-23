@@ -1,5 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { missingArgs } from '../force/util';
 import { RanPark } from '../rng';
 import { appendAtoms, maxAtomId, pushTopo, sphereMass, hasChargeStyle, hasDipoleStyle, hasRadiusStyle, hasRmassStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, SPHERE_DEFAULT_RADIUS } from '../atoms';
 import { BlockRegion, ConeRegion, type Param, type Region } from '../region';
@@ -389,7 +390,11 @@ export class FixPour extends Fix {
     let i = 3;
     while (i < args.length) {
       const key = args[i];
-      if (key === 'region') { region = args[i + 1] ?? null; i += 2; }
+      // As native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour::options at b332f28): region without its ID is "Illegal fix pour region command: missing argument(s)"
+      if (key === 'region') {
+        if (args[i + 1] === undefined) throw missingArgs('fix pour region');
+        region = args[i + 1]; i += 2;
+      }
       else if (key === 'diam') { [this.diam, i] = parseDiam(args, i + 1); }
       else if (key === 'id') {
         const v = args[i + 1];
@@ -434,7 +439,8 @@ export class FixPour extends Fix {
       // As native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour::FixPour at b332f28): an unrecognised word stops with "Illegal fix pour command argument".
       else throw new StyleError(`Illegal fix pour command argument: ${key}`);
     }
-    if (region === null) throw new StyleError('fix pour requires the region keyword');
+    // As native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour::FixPour at b332f28)
+    if (region === null) throw new StyleError('Must specify a region in fix pour');
     this.regionId = region;
     // "type = atom type to assign to inserted particles (offset for molecule insertion)"
     if (molTemplateId) {

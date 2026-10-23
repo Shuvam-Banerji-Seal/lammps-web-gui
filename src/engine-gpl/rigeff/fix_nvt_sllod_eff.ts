@@ -55,7 +55,10 @@ export class FixNVTSllodEff extends FixNHEff {
         k++;
       }
     }
-    if (!hasTchain) base.push('tchain', '1');
+    // The default goes first: the base parse checks each keyword's arguments against the end of the list (native
+    // FixNH reads only the user's words, the default is set after the parse), so a trailing default would hide a
+    // missing value.
+    if (!hasTchain) base.unshift('tchain', '1');
     const tempId = `${id}_temp`;
     super(sys, id, group, base, tempId, 'nvt/sllod/eff');
     this.ownTempId = tempId;

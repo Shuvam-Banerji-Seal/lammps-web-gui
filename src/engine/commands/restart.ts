@@ -48,36 +48,45 @@ const expandStar = (file: string, step: number): string => {
   return n === 1 ? fillWildcard(file, String(step)) : file;
 };
 
-const KEYWORDS = new Set(['fileper', 'nfile']);
-
 /**
- * Validates write_restart / restart keyword value pairs; returns the first one found (if any). As native LAMMPS does
- * (src/write_restart.cpp at b332f28, WriteRestart::multiproc_options): an unknown word is "Unknown write_restart
- * keyword: ...", and the restart command passes its words after the file names to the same parser.
+ * The keywords of write_restart and restart, as native LAMMPS reads them (src/write_restart.cpp
+ * WriteRestart::multiproc_options at b332f28; the restart command passes the words after its file names, src/output.cpp
+ * Output::create_restart): fileper and nfile need a "%" file name and a positive count, noinit takes no value (it has no
+ * effect for the restart command). Returns whether noinit was given.
  */
-const checkKeywords = (args: string[], what: string): string | null => {
-  let first: string | null = null;
+const parseRestartOptions = (args: string[], multiproc: boolean): boolean => {
+  let noinit = false;
   for (let k = 0; k < args.length;) {
     const key = args[k];
-    if (!KEYWORDS.has(key)) throw new StyleError(`Unknown write_restart keyword: ${key}`);
-    const v = Number(args[k + 1]);
-    if (args[k + 1] === undefined || !Number.isInteger(v) || v < 1) throw new StyleError(`${what}: ${key} needs an integer value >= 1`);
-    first ??= key;
-    k += 2;
+    if (key === 'fileper' || key === 'nfile') {
+      if (k + 2 > args.length) throw missingArgs(key === 'fileper' ? 'write_restart' : 'write_restart nfile');
+      if (!multiproc) throw new StyleError(`Cannot use write_restart ${key} without % in restart file name`);
+      const v = inumeric(args[k + 1]);
+      // native's fileper text has the typo "Invalue" and a trailing colon
+      if (v <= 0) throw new StyleError(key === 'fileper' ? `Invalue write_restart fileper value ${v}:` : `Invalid write_restart nfile value ${v}`);
+      k += 2;
+    } else if (key === 'noinit') {
+      noinit = true;
+      k++;
+    } else {
+      throw new StyleError(`Unknown write_restart keyword: ${key}`);
+    }
   }
-  return first;
+  return noinit;
 };
 
-/** write_restart file [fileper Np | nfile Nf] — write_restart.html. */
+/** write_restart file [fileper Np | nfile Nf | noinit] — write_restart.html. */
 const writeRestart: Handler = ({ sys }, a) => {
-  if (!a[0]) throw new StyleError('usage: write_restart file [fileper Np | nfile Nf]');
+  // As native LAMMPS does (src/write_restart.cpp WriteRestart::command at b332f28): the box, the file name, the MPI-IO
+  // refusal, then the keywords
+  if (!sys.hasBox) throw new StyleError('Write_restart command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033');
+  if (!a[0]) throw missingArgs('write_restart');
   const file = a[0];
-  const kw = checkKeywords(a.slice(1), 'write_restart');
-  if (kw && !file.includes('%')) throw new StyleError(`Cannot use write_restart ${kw} without % in restart file name`);
+  if (file.endsWith('.mpiio')) throw new StyleError('MPI-IO files are no longer supported by LAMMPS');
+  parseRestartOptions(a.slice(1), file.includes('%'));
   if (file.includes('%')) {
     throw new StyleError(`write_restart ${file}: '%' writes one file per processor, and the browser engine runs one process; give a single file name`);
   }
-  if (file.endsWith('.mpiio')) throw new StyleError(`write_restart ${file}: MPI-IO restart files are not supported by the browser engine`);
   // the state must be current (atoms wrapped, as write_data does before writing)
   sys.pbc();
   sys.nb.lastBuild = -1;
@@ -153,12 +162,15 @@ const restartCmd: Handler = ({ sys }, a) => {
   if (!rest.length) throw new StyleError('Illegal restart command');
   const nfile = a.length % 2 === 0 ? 1 : 2;
   const files = rest.slice(0, nfile);
-  const kw = checkKeywords(rest.slice(nfile), `restart ${n}`);
+  // As native LAMMPS does (src/output.cpp Output::create_restart at b332f28): two file names both use "%" or neither,
+  // then the keywords
+  const multiproc = files[0].includes('%');
+  if (files.length === 2 && multiproc !== files[1].includes('%')) throw new StyleError('Both restart files must use % or neither');
+  parseRestartOptions(rest.slice(nfile), multiproc);
   for (const f of files) {
     if (f.includes('%')) throw new StyleError(`restart ${f}: '%' writes one file per processor, and the browser engine runs one process; give a single file name`);
     if (f.endsWith('.mpiio')) throw new StyleError(`restart ${f}: MPI-IO restart files are not supported by the browser engine`);
   }
-  if (kw) throw new StyleError(`restart ${n}: ${kw} needs a '%' file name, which the browser engine does not write`);
   if (everyVar !== null && !sys.vars.has(everyVar)) throw new StyleError(`restart: variable ${everyVar} does not exist`);
   const mode = files.length === 1 ? 'single' as const : 'toggle' as const;
   sys.restartOut = sys.restartOut.filter((r) => r.mode !== mode);

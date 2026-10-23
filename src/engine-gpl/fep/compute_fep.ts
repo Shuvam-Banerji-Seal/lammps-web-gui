@@ -52,18 +52,29 @@ export class ComputeFEP extends Compute {
     this.extvector = 0;
     this.vector = new Float64Array(3);
     this.temp = parseNum(args[0], 'temperature');
+    // As native LAMMPS does (src/FEP/compute_fep.cpp ComputeFEP::ComputeFEP at b332f28): the perturbations are counted
+    // first, so a short "pair" or "atom" entry is refused before any of its words is checked.
+    for (let c = 1; c < args.length; ) {
+      if (args[c] === 'pair') {
+        if (c + 6 > args.length) throw new StyleError('Illegal pair attribute in compute fep');
+        c += 6;
+      } else if (args[c] === 'atom') {
+        if (c + 4 > args.length) throw new StyleError('Illegal atom attribute in compute fep');
+        c += 4;
+      } else break;
+    }
     let k = 1;
     while (k < args.length) {
       const w = args[k];
       if (w === 'pair') {
         const vw = args[k + 5];
-        if (vw === undefined || !vw.startsWith('v_')) throw new StyleError(`Illegal variable in compute fep (${USAGE})`);
+        if (vw === undefined || !vw.startsWith('v_')) throw new StyleError('Illegal variable in compute fep');
         this.perts.push({ kind: 'pair', pstyle: args[k + 1], pparam: args[k + 2], iw: args[k + 3], jw: args[k + 4], vname: vw.slice(2), table: null, pairs: [], orig: new Float64Array(0) });
         k += 6;
       } else if (w === 'atom') {
-        if (args[k + 1] !== 'charge') throw new StyleError(`Illegal atom argument in compute fep (${USAGE})`);
+        if (args[k + 1] !== 'charge') throw new StyleError('Illegal atom argument in compute fep');
         const vw = args[k + 3];
-        if (vw === undefined || !vw.startsWith('v_')) throw new StyleError(`Illegal variable in compute fep (${USAGE})`);
+        if (vw === undefined || !vw.startsWith('v_')) throw new StyleError('Illegal variable in compute fep');
         this.perts.push({ kind: 'charge', iw: args[k + 2], vname: vw.slice(2) });
         this.chgFlag = true;
         k += 4;

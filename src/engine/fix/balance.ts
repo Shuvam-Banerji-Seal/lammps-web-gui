@@ -1,5 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { missingArgs } from '../force/util';
 import type { System } from '../system';
 import type { CustomProp } from '../types';
 import { formatNumber } from '../cformat';
@@ -239,6 +240,8 @@ export class FixBalance extends Fix {
     let k = 2;
     const style = args[k++];
     if (style === 'shift') {
+      // As native LAMMPS does (src/fix_balance.cpp FixBalance::FixBalance at b332f28): shift needs its dimstr, Niter and stopthresh
+      if (k + 3 > args.length) throw missingArgs('fix balance shift');
       const dims = args[k];
       if (!dims || !/^[xyz]{1,3}$/.test(dims) || new Set(dims).size !== dims.length) throw new StyleError(`fix balance shift: dimstr '${dims ?? ''}' must contain x, y or z, each at most once`);
       if (this.sys.dimension === 2 && dims.includes('z')) throw new StyleError('fix balance shift: cannot balance in z for a 2d simulation');

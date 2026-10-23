@@ -4,7 +4,7 @@ import { System, type SessionIO } from './system';
 import { RUN_API } from './commands/runApi';
 import { StyleError } from './force/types';
 import { removedStyleError, renamedCommand } from './deprecated';
-import { mapUnquoted, splitCommands, substituteVariables, tokenize, formatNumber, type RawCommand } from './script';
+import { checkQuotes, mapUnquoted, splitCommands, substituteVariables, tokenize, formatNumber, type RawCommand } from './script';
 import { evaluateScalar } from './formula';
 import { COMMANDS, UNAVAILABLE_COMMANDS, type Ctx } from './commands';
 import { ensureStyles, LAZY_COMMANDS, styleNames } from './styles';
@@ -316,6 +316,7 @@ export class Session {
 
   /** $-substitution and word splitting (Commands_parse.html steps 3-6). */
   parse(text: string): string[] {
+    checkQuotes(text);
     const env = this.sys.formulaEnv;
     const substituted = mapUnquoted(text, (part) => substituteVariables(
       part,

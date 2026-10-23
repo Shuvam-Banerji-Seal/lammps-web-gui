@@ -47,6 +47,9 @@ export class KSpacePPPMTIP4P extends KSpace {
   private pair: Tip4pSiteSource | null = null;
 
   settings(args: string[]): void {
+    // As native LAMMPS does (src/KSPACE/pppm_tip4p.cpp at b332f28, the settings of the PPPM it derives from): the messages
+    // name the style the command gives (kspace_style pppm/tip4p), not the base solver
+    this.solver.shownName = this.styleShown;
     this.solver.settings(args);
     this.accuracy = this.solver.accuracy;
   }

@@ -20,7 +20,7 @@ export const brownNum = (w: string | undefined, what: string): number => (w === 
 
 /** Arguments after the keyword must be present: utils::missing_cmd_args. */
 const needArgs = (args: string[], k: number, count: number, what: string): void => {
-  if (args.length < k + count) throw new StyleError(`Illegal ${what} command: missing arguments`);
+  if (args.length < k + count) throw new StyleError(`Illegal ${what} command: missing argument(s)`);
 };
 
 export type RotStyle = 'projection' | 'geometric';
@@ -56,7 +56,7 @@ export abstract class FixBrownianBase extends Fix {
   constructor(sys: System, id: string, group: string, args: string[], readonly style: string) {
     super(sys, id, group, args);
     this.rotStyle = style.startsWith('brownian/sphere') ? 'projection' : 'geometric';
-    if (args.length < 2) throw new StyleError(`Illegal fix ${style} command: missing arguments`);
+    if (args.length < 2) throw new StyleError(`Illegal fix ${style} command: missing argument(s)`);
     this.temp = brownNum(args[0], 'temp');
     if (this.temp <= 0) throw new StyleError(`Fix ${style} temp must be > 0.0`);
     this.seed = parseInt_(args[1], 'seed');

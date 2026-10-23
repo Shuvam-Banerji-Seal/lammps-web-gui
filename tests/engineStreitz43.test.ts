@@ -55,7 +55,7 @@ describe('pair coul/streitz dsf keyword', () => {
 
   it('dsf without its damping parameter names it', async () => {
     const out = await run(`${head}pair_style coul/streitz 12.0 dsf\npair_coeff * * AlO.streitz Al O\nrun 0\n`, { 'AlO.streitz': streitzFile });
-    expect(out.error).toMatch(/keyword dsf needs a damping parameter/);
+    expect(out.error).toContain('Illegal pair_style coul/streitz dsf command: missing argument(s)');
   });
 
   it('qeq/slater with dsf and a taper width runs', async () => {

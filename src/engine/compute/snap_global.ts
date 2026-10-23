@@ -105,7 +105,9 @@ export const parseSnaArgs = (id: string, style: string, args: string[], ntypes: 
   for (let k = need; k < args.length; k++) {
     const kw = args[k];
     const value = (): string => {
-      if (k + 1 >= args.length) throw new StyleError(`compute ${id} (${style}): keyword '${kw}' needs a value`);
+      // As native LAMMPS does (src/ML-SNAP/compute_snap.cpp ComputeSnap::ComputeSnap at b332f28): a keyword with no
+      // value left is "Illegal compute {style} command"
+      if (k + 1 >= args.length) throw new StyleError(`Illegal compute ${style} command`);
       return args[++k];
     };
     const flag = (): boolean => {

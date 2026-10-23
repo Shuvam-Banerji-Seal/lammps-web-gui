@@ -58,16 +58,17 @@ export class PairRHEO extends Pair {
   settings(args: string[]): void {
     if (args.length < 1) throw new StyleError('Illegal pair_style command');
     this.cutk = parseNum(args[0], 'cutoff');
+    // As native LAMMPS does (src/RHEO/pair_rheo.cpp PairRHEO::settings at b332f28): "if (iarg + 1 >= narg) utils::missing_cmd_args(FLERR, "pair rheo rho/damp", error)"
     let iarg = 1;
     while (iarg < args.length) {
       const w = args[iarg];
       if (w === 'rho/damp') {
-        if (iarg + 1 >= args.length) throw new StyleError('Illegal pair rheo rho/damp: missing value');
+        if (iarg + 1 >= args.length) throw new StyleError('Illegal pair rheo rho/damp command: missing argument(s)');
         this.rhoDampFlag = true;
         this.rhoDamp = parseNum(args[iarg + 1], 'rho/damp');
         iarg += 2;
       } else if (w === 'artificial/visc') {
-        if (iarg + 1 >= args.length) throw new StyleError('Illegal pair rheo artificial/visc: missing value');
+        if (iarg + 1 >= args.length) throw new StyleError('Illegal pair rheo artificial/visc command: missing argument(s)');
         this.artificialFlag = true;
         this.av = parseNum(args[iarg + 1], 'artificial/visc');
         iarg += 2;

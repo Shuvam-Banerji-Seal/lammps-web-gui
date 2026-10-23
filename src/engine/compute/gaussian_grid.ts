@@ -70,6 +70,9 @@ interface GaussSpec {
 
 const parseSpec = (id: string, style: string, args: string[], ntypes: number): GaussSpec => {
   // Measured with native LAMMPS (black box): a missing 'grid' keyword is an "Illegal" command.
+  // As native LAMMPS does (src/ML-SNAP/compute_gaussian_grid_local.cpp ComputeGaussianGridLocal::ComputeGaussianGridLocal
+  // at b332f28): fewer than 4 + 2 ntypes words after the grid block is "Illegal compute {style} command".
+  if (args.length < 5 + 2 * ntypes && args[0] === 'grid') throw new StyleError(`Illegal compute ${style} command`);
   if (args.length < 5 + 2 * ntypes || args[0] !== 'grid') {
     throw new StyleError(`compute ${id} (${style}): expects 'grid nx ny nz rcutfac R_1 .. R_${ntypes} sigma_1 .. sigma_${ntypes}' (${ntypes} types)`);
   }

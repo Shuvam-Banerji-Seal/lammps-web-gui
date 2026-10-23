@@ -241,9 +241,10 @@ create_atoms 2 single 12 10 10
 set atom 1 charge 1.0
 set atom 2 charge -1.0
 `;
-  it('wolf without a damping parameter names the parameter', async () => {
+  it('wolf without a damping parameter, as native', async () => {
     const out = await run(`${head}pair_style coul/streitz 12.0 wolf\npair_coeff * * AlO.streitz Al O\nrun 0\n`, { 'AlO.streitz': streitzFile });
-    expect(out.error).toMatch(/damping parameter/);
+    // As native LAMMPS does (src/KSPACE/pair_coul_streitz.cpp settings at b332f28)
+    expect(out.error).toContain('Illegal pair_style coul/streitz wolf command: missing argument(s)');
   });
 
   it('ewald without a kspace style names the kspace requirement', async () => {

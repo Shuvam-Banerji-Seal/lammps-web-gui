@@ -699,7 +699,7 @@ export class KSpacePPPMCG extends KSpacePPPM {
 
   settings(args: string[]): void {
     // As native LAMMPS does (src/KSPACE/pppm_cg.cpp PPPMCG::settings at b332f28): one or two arguments.
-    if (args.length < 1 || args.length > 2) throw new StyleError(`Illegal kspace_style ${this.name} command`);
+    if (args.length < 1 || args.length > 2) throw new StyleError(`Illegal kspace_style ${this.styleShown} command`);
     super.settings([args[0]]);
     if (args.length === 2) {
       this.smallq = parseNum(args[1], 'smallq');

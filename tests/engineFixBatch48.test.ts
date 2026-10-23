@@ -81,11 +81,11 @@ run 0
 });
 
 describe('fix ti/spring', () => {
-  it('refuses a zero switching length, a bad function and an unknown keyword', async () => {
+  it('refuses a zero switching length, a bad function and an unknown keyword as native does', async () => {
     const head = `${LJ_HEAD}create_atoms 1 single 0 0 0 units box\nmass 1 1.0\npair_style lj/cut 2.5\npair_coeff 1 1 1.0 1.0 2.5\nfix 1 all nve\n`;
-    await expect(run(`${head}fix f all ti/spring 3.0 0 3\nrun 0\n`)).rejects.toThrow(/t_s must be a positive integer/);
-    await expect(run(`${head}fix f all ti/spring 3.0 4 3 function 3\nrun 0\n`)).rejects.toThrow(/function must be 1 or 2/);
-    await expect(run(`${head}fix f all ti/spring 3.0 4 3 bogus 1\nrun 0\n`)).rejects.toThrow(/unknown keyword 'bogus'/);
+    await expect(run(`${head}fix f all ti/spring 3.0 0 3\nrun 0\n`)).rejects.toThrow('Illegal fix ti/spring command');
+    await expect(run(`${head}fix f all ti/spring 3.0 4 3 function 3\nrun 0\n`)).rejects.toThrow('Illegal fix ti/spring switching function');
+    await expect(run(`${head}fix f all ti/spring 3.0 4 3 bogus 1\nrun 0\n`)).rejects.toThrow('Illegal fix ti/spring switching function');
   });
 
   it('follows the native lambda schedule (function 1: t_s 4, t_eq 3, defined at step 0)', async () => {

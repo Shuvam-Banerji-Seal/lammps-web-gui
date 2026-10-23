@@ -884,6 +884,12 @@ export abstract class KSpace {
    */
   groupGroupEnable = false;
   /**
+   * The style as the kspace_style command typed it, when it differs from name (an accelerator alias such as pppm/omp):
+   * native's settings messages name force->kspace_style as typed. Empty: name.
+   */
+  shownName = '';
+  get styleShown(): string { return this.shownName || this.name; }
+  /**
    * When true, the charge sums of the self and background energies keep the values of the last refresh instead of
    * following the charges at each compute. A fix that changes charges without changing the atom count sets it (the
    * browser port of fix bond/react does). Measured with native LAMMPS (black box): after a reaction changes the

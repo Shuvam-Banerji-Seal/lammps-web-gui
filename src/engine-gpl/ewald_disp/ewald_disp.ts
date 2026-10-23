@@ -118,11 +118,11 @@ export class KSpaceEwaldDisp extends KSpaceBase {
 
   /** EwaldDisp::settings: one argument, the relative accuracy (absolute value, at most 1). */
   settings(args: string[]): void {
-    if (args.length !== 1) throw new StyleError(`Illegal kspace_style ${this.name} command`);
+    if (args.length !== 1) throw new StyleError(`Illegal kspace_style ${this.styleShown} command`);
     const v = Number(args[0]);
     if (args[0].trim() === '' || !Number.isFinite(v)) throw new StyleError(`Expected floating point parameter instead of '${args[0]}' in input script or data file`);
     this.accuracy = Math.abs(v);
-    if (this.accuracy > 1.0) throw new StyleError(`Invalid relative accuracy ${this.accuracy} for kspace_style ${this.name}`);
+    if (this.accuracy > 1.0) throw new StyleError(`Invalid relative accuracy ${this.accuracy} for kspace_style ${this.styleShown}`);
   }
 
   modify(key: string, values: string[]): number {

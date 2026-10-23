@@ -47,20 +47,31 @@ export class FixPrecessionSpin extends Fix {
     super(sys, id, group, args);
     if (!sys.state.sp) throw new StyleError('fix precession/spin requires atom_style spin');
     const num = (w: string | undefined, what: string): number => {
+      // As native LAMMPS does (src/utils.cpp utils::numeric at b332f28): a value past the end of the line is NULL
+      if (w === undefined || w === '') throw new StyleError('Expected floating point parameter instead of NULL or empty string in input script or data file');
       const v = Number(w);
-      if (w === undefined || w === '' || !Number.isFinite(v)) throw new StyleError(`fix precession/spin: ${what} must be a number, got '${w ?? ''}'`);
+      if (!Number.isFinite(v)) throw new StyleError(`fix precession/spin: ${what} must be a number, got '${w}'`);
       return v;
+    };
+    // As native LAMMPS does (src/SPIN/fix_precession_spin.cpp FixPrecessionSpin::FixPrecessionSpin at b332f28): a style
+    // whose first arguments are not all there is "Illegal fix precession/spin command"; the last values are read without
+    // this check (past the end they are NULL, see num)
+    const need = (n: number): void => {
+      if (k + n > args.length) throw new StyleError('Illegal fix precession/spin command');
     };
     let k = 0;
     while (k < args.length) {
       const style = args[k];
       if (style === 'zeeman') {
+        need(4);
         this.zee = { h: num(args[k + 1], 'zeeman H'), n: unit([num(args[k + 2], 'zeeman x'), num(args[k + 3], 'zeeman y'), num(args[k + 4], 'zeeman z')], 'zeeman') };
         k += 5;
       } else if (style === 'anisotropy') {
+        need(4);
         this.aniso = { k: num(args[k + 1], 'anisotropy K'), n: unit([num(args[k + 2], 'anisotropy x'), num(args[k + 3], 'anisotropy y'), num(args[k + 4], 'anisotropy z')], 'anisotropy') };
         k += 5;
       } else if (style === 'cubic') {
+        need(2);
         const v = [];
         for (let m = 1; m <= 11; m++) v.push(num(args[k + m], `cubic argument ${m}`));
         this.cubic = {

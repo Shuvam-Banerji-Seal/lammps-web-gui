@@ -99,10 +99,11 @@ describe('read_dump field and keyword parsing', () => {
   });
 
   it('checks yes/no and add values and the label field', () => {
-    expect(() => parseDumpSpec(['x', 'box', 'maybe'], 'read_dump')).toThrow(/box must be yes or no/);
-    expect(() => parseDumpSpec(['x', 'add', 'sometimes'], 'read_dump')).toThrow(/add must be yes, keep or no/);
+    // As native LAMMPS does (src/read_dump.cpp at b332f28): the yes/no keywords are read by utils::logical
+    expect(() => parseDumpSpec(['x', 'box', 'maybe'], 'read_dump')).toThrow("Expected boolean parameter instead of 'maybe' in input script or data file");
+    expect(() => parseDumpSpec(['x', 'add', 'sometimes'], 'read_dump')).toThrow('Unknown read_dump add keyword sometimes');
     expect(() => parseDumpSpec(['x', 'label', 'apip_lambda', 'fx'], 'read_dump')).toThrow(/label field must be one of/);
-    expect(() => parseDumpSpec(['x', 'label', 'id'], 'read_dump')).toThrow(/keyword label needs a field and a column/);
+    expect(() => parseDumpSpec(['x', 'label', 'id'], 'read_dump')).toThrow('Illegal read_dump label command: missing argument(s)');
   });
 
   it('rejects the purge combinations the native command rejects', () => {

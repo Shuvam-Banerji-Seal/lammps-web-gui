@@ -64,7 +64,7 @@ fix 1 all nve
 describe('fix pour / fix deposit argument errors', () => {
   it('pour needs the region keyword', async () => {
     const r = await run(`${header}fix 3 all pour 5 1 12345 diam one 1.0\n`);
-    expect(r.error).toMatch(/requires the region keyword/);
+    expect(r.error).toContain('Must specify a region in fix pour');
   });
 
   it('pour rejects the seed 0 and a non-integer N', async () => {

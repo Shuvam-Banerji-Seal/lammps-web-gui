@@ -1,5 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { bnumeric, inumeric, numeric } from '../force/util';
 import type { System } from '../system';
 
 /*
@@ -50,8 +51,6 @@ import type { System } from '../system';
  * yes, velocity mom yes) is advice, not enforced.
  */
 
-const KEYWORDS = ['function'] as const;
-
 const quintic = (t: number): number => t ** 5 * (70 * t ** 4 - 315 * t ** 3 + 540 * t ** 2 - 420 * t + 126);
 const dquintic = (t: number): number => 630 * t ** 4 * (1 - t) ** 4;
 const clamp01 = (t: number): number => (t < 0 ? 0 : t > 1 ? 1 : t);
@@ -77,23 +76,21 @@ export class FixTiSpring extends Fix {
     this.extscalar = 1;
     this.extvector = 1;
     this.energyGlobal = true;
-    if (args.length < 3) throw new StyleError('fix ti/spring: usage: fix ID group-ID ti/spring k t_s t_eq [function 1|2]');
-    this.k = Number(args[0]);
-    if (!Number.isFinite(this.k)) throw new StyleError(`fix ti/spring: expected a spring constant, got '${args[0]}'`);
-    const ts = Number(args[1]), teq = Number(args[2]);
-    if (!Number.isInteger(ts) || ts < 1) throw new StyleError(`fix ti/spring: t_s must be a positive integer, got '${args[1]}'`);
-    if (!Number.isInteger(teq) || teq < 0) throw new StyleError(`fix ti/spring: t_eq must be a non-negative integer, got '${args[2]}'`);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_ti_spring.cpp FixTISpring::FixTISpring at b332f28): 3 to 5 words, k > 0
+    // (utils::numeric), t_s > 0 and t_eq >= 0 (utils::bnumeric), then "function 1|2"
+    if (args.length < 3 || args.length > 5) throw new StyleError('Illegal fix ti/spring command');
+    this.k = numeric(args[0]);
+    if (this.k <= 0) throw new StyleError('Illegal fix ti/spring command');
+    const ts = bnumeric(args[1]), teq = bnumeric(args[2]);
+    if (ts <= 0 || teq < 0) throw new StyleError('Illegal fix ti/spring command');
     this.ts = ts;
     this.teq = teq;
     this.func = 1;
-    let k = 3;
-    while (k < args.length) {
-      if (!KEYWORDS.includes(args[k] as (typeof KEYWORDS)[number])) throw new StyleError(`fix ti/spring: unknown keyword '${args[k]}' (function)`);
-      if (k + 1 >= args.length) throw new StyleError('fix ti/spring: function needs a value (1 or 2)');
-      const f = Number(args[k + 1]);
-      if (f !== 1 && f !== 2) throw new StyleError(`fix ti/spring: function must be 1 or 2, got '${args[k + 1]}'`);
+    if (args.length > 3) {
+      if (args[3] !== 'function') throw new StyleError('Illegal fix ti/spring switching function');
+      const f = inumeric(args[4]);
+      if (f !== 1 && f !== 2) throw new StyleError('Illegal fix ti/spring switching function');
       this.func = f;
-      k += 2;
     }
     this.start = sys.state.step;
     const s = sys.state;

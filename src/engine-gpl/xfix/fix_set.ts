@@ -12,6 +12,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { Ctx } from '../../engine/commands/args';
 
@@ -53,6 +54,9 @@ export class FixSet extends Fix {
     while (k < rest.length) {
       const kw = rest[k];
       if (!SET_KEYWORDS.has(kw) && !/^[id]2?_/.test(kw)) throw new StyleError(`Unrecognized set or fix set command keyword ${kw}`);
+      // As native LAMMPS does (src/set.cpp Set::process_args at b332f28, e.g. "if (iarg+2 > narg) utils::missing_cmd_args(FLERR, "set vx", error)"):
+      // a keyword that is the last word has no value and is "Illegal set {keyword} command: missing argument(s)"
+      if (k + 1 >= rest.length) throw missingArgs(`set ${kw}`);
       let j = k + 1;
       let hasVar = false;
       while (j < rest.length && (rest[j].startsWith('v_') || /^[-+.\d]/.test(rest[j]))) {

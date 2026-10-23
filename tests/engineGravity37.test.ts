@@ -102,7 +102,7 @@ run 200`, { 'six.data': SIX });
 
   it('keyword gravity with no gravity-ID is an error', async () => {
     const { error } = await run(`${HEAD}fix r all rigid/small molecule gravity\nrun 0`, { 'six.data': SIX });
-    expect(msg(error)).toMatch(/keyword gravity needs a gravity-ID/);
+    expect(msg(error)).toMatch(/Illegal fix rigid\/small gravity command: missing argument\(s\)/);
   });
 
   it('keyword gravity naming a missing fix is an error (checked at run time)', async () => {

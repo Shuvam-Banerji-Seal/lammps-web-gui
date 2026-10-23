@@ -80,6 +80,8 @@ export class FixNHSphere extends FixNH {
         disc = true;
         k++;
       } else if (args[k] === 'update') {
+        // As native LAMMPS does (src/fix_nh.cpp FixNH::FixNH at b332f28): if (iarg + 2 > narg) missing_cmd_args("fix {} update")
+        if (k + 2 > args.length) throw new StyleError(`Illegal fix ${name} update command: missing argument(s)`);
         const w = args[k + 1];
         if (w !== 'dipole' && w !== 'dipole/dlm') throw new StyleError(`Invalid fix ${name} update argument: ${w ?? ''}`.trim());
         dipole = true;

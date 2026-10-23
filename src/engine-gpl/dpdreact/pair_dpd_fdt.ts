@@ -316,5 +316,10 @@ export class PairDPDfdtEnergy extends PairDPDfdtBase {
     // pair_dpd_fdt_energy.cpp coeff(): "alpha_one = sqrt(2.0*force->boltz*kappa_one);" (filled here: the units are set by now)
     const kappa = this.p.p('kappa'), alpha = this.p.p('alpha');
     for (let t = 0; t < kappa.length; t++) alpha[t] = Math.sqrt(2.0 * this.boltz * kappa[t]);
+    // pair_dpd_fdt_energy.cpp init_style(): "if (modify->get_fix_by_style("^eos").empty()) error->all(...)". The engine has
+    // the EOS fixes of native's "^eos" family (eos/cv, eos/table, eos/table/rx) and matches them by style name.
+    if (ctx.fixOf && !['eos/cv', 'eos/table', 'eos/table/rx'].some((st) => ctx.fixOf!(st) !== null)) {
+      throw new StyleError('pair_style dpd/fdt/energy requires an EOS fix to be specified');
+    }
   }
 }

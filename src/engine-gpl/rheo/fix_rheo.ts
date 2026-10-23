@@ -88,7 +88,7 @@ export class FixRHEO extends Fix {
         }
       } else if (w === 'surface/detection') {
         // fix_rheo.cpp: "surface/detection coordination zmin_surface zmin_splash" or "divergence divr_surface zmin_splash"
-        if (iarg + 3 >= args.length) throw new StyleError('Illegal fix rheo surface/detection: missing values');
+        if (iarg + 3 >= args.length) throw new StyleError('Illegal fix rheo surface/detection command: missing argument(s)');
         const sstyle = args[iarg + 1];
         if (sstyle !== 'coordination' && sstyle !== 'divergence') throw new StyleError(`Illegal surface/detection option in fix rheo, ${sstyle}`);
         if ((sstyle === 'coordination' && !Number.isInteger(Number(args[iarg + 2]))) || !Number.isInteger(Number(args[iarg + 3]))) {
@@ -166,6 +166,11 @@ export class FixRHEO extends Fix {
    * defined (native sets the flags in the accessories' setup_pre_force).
    */
   setup(): void {
+    // As native LAMMPS does (src/RHEO/pair_rheo.cpp PairRHEO::setup at b332f28, run before the fixes' setup): pair rheo
+    // needs fix rheo/pressure
+    if (this.sys.ff.pair?.name === 'rheo' && !this.sys.fixes.some((f) => f.style === 'rheo/pressure')) {
+      throw new StyleError('Need to define fix rheo/pressure to use pair rheo');
+    }
     if (!this.sys.fixes.some((f) => f.style === 'rheo/viscosity')) throw new StyleError('Missing fix rheo/viscosity');
     if (!this.sys.fixes.some((f) => f.style === 'rheo/pressure')) throw new StyleError('Missing fix rheo/pressure');
     // fix_rheo.cpp setup(): "Missing fix rheo/thermal" when the thermal keyword has no fix rheo/thermal

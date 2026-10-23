@@ -135,7 +135,8 @@ describe('run_style respa parsing (run_style.html)', () => {
   it('refuses more than 4 levels, a missing loop factor, a level out of range, and hybrid with pair', () => {
     expect(() => parseRunStyleRespa(['respa', '5', '2', '2', '2', '2'])).toThrow(/2 to 4 levels/);
     expect(() => parseRunStyleRespa(['respa', '1'])).toThrow(/2 to 4 levels/);
-    expect(() => parseRunStyleRespa(['respa', '3', '2'])).toThrow(/loop factor 2/);
+    // As native LAMMPS does (src/respa.cpp at b332f28)
+    expect(() => parseRunStyleRespa(['respa', '3', '2'])).toThrow('Not enough rRESPA loop factors provided');
     expect(() => parseRunStyleRespa(['respa', '2', '2', 'pair', '3'])).toThrow(/level must be an integer 1 to 2/);
     expect(() => parseRunStyleRespa(['respa', '2', '2', 'hybrid', '1', 'pair', '2'])).toThrow(/mutually exclusive/);
     expect(() => parseRunStyleRespa(['respa', '2', '2', 'frob', '1'])).toThrow('Unknown run_style respa keyword frob');

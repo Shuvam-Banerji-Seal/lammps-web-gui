@@ -59,7 +59,9 @@ export class ComputeMliapAce extends Compute {
         // utils::logical: yes/no, on/off, true/false or 1/0
         if (v === 'yes' || v === 'on' || v === 'true' || v === '1') gradgradflag = 1;
         else if (v === 'no' || v === 'off' || v === 'false' || v === '0') gradgradflag = 0;
-        else throw new StyleError(`Expected boolean parameter instead of '${v ?? ''}' in input script or data file`);
+        // a missing value is read as NULL by utils::logical (src/compute_mliap.cpp reads arg[narg] past the end)
+        else if (v === undefined) throw new StyleError('Expected boolean parameter instead of NULL or empty string in input script or data file');
+        else throw new StyleError(`Expected boolean parameter instead of '${v}' in input script or data file`);
         iarg += 2;
       } else {
         throw new StyleError(`Unknown compute mliap keyword ${kw}`);

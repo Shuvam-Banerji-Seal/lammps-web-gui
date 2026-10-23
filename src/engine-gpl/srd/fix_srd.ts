@@ -48,7 +48,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { FixDeform } from '../../engine/fix/deform';
 import { StyleError } from '../../engine/force/types';
-import { inumeric, missingArgs, numeric } from '../../engine/force/util';
+import { inumeric, missingArgs, numeric, logical } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS } from '../../engine/atoms';
 import { bodyMotion, quatToMatrix, rotateVec } from '../../engine/compute/asphere';
@@ -2390,8 +2390,5 @@ const intArg = (w: string | undefined, _what: string): number => inumeric(w);
 
 const numArg = (w: string | undefined, _what: string): number => numeric(w);
 
-const logicalArg = (w: string | undefined, what: string): boolean => {
-  if (w === 'yes') return true;
-  if (w === 'no') return false;
-  throw new StyleError(`Expected boolean parameter for fix srd ${what}, got ${w ?? ''}`);
-};
+/** fix_srd.cpp: utils::logical. */
+const logicalArg = (w: string | undefined, _what: string): boolean => logical(w);

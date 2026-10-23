@@ -13,7 +13,7 @@
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { StyleError } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { parseNum, logical } from '../../engine/force/util';
 import { thermalKeys } from '../../engine/atoms';
 
 const ADD = 0, LINEAR = 1, QUARTIC = 2;
@@ -55,8 +55,8 @@ export class FixAddHeat extends Fix {
     while (iarg < args.length) {
       if (args[iarg] === 'overwrite') {
         if (iarg + 1 >= args.length) throw new StyleError('Illegal fix add/heat command: missing overwrite value');
-        if (args[iarg + 1] !== 'yes' && args[iarg + 1] !== 'no') throw new StyleError(`Expected boolean parameter instead of ${args[iarg + 1]} in fix add/heat`);
-        overwrite = args[iarg + 1] === 'yes';
+        // fix_add_heat.cpp: utils::logical
+        overwrite = logical(args[iarg + 1]);
         iarg += 2;
       } else {
         throw new StyleError(`Illegal fix add/heat command, invalid argument ${args[iarg]}`);

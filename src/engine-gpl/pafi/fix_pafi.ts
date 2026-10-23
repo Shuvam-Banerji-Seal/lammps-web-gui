@@ -19,12 +19,10 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { inumeric, numeric } from '../../engine/force/util';
+import { inumeric, numeric, logical } from '../../engine/force/util';
 import { massOf } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 import { RanMars } from '../random_mars';
-
-const USAGE = 'usage: fix ID group-ID pafi compute-ID T tdamp seed [overdamped yes/no] [com yes/no]';
 
 /** Projections (proj) and centre-of-mass sums (cv) of one evaluation (native proj_all, c_v_all). */
 interface Sums { proj: Float64Array; cv: Float64Array }
@@ -67,9 +65,10 @@ export class FixPAFI extends Fix {
       const w = args[k], v = args[k + 1];
       // As native LAMMPS does (src/EXTRA-FIX/fix_pafi.cpp FixPAFI::FixPAFI at b332f28): a word that is neither keyword stops with "Illegal fix pafi command".
       if (w !== 'overdamped' && w !== 'com') throw new StyleError('Illegal fix pafi command');
-      if (v !== 'yes' && v !== 'no') throw new StyleError(`Illegal fix pafi command (${USAGE})`);
-      if (w === 'overdamped') this.od = v === 'yes';
-      else this.com = v === 'yes';
+      if (k + 2 > args.length) throw new StyleError('Illegal fix pafi command');
+      // the value is read by utils::logical (yes/no, on/off, true/false, 1/0)
+      if (w === 'overdamped') this.od = logical(v);
+      else this.com = logical(v);
       k += 2;
     }
     this.rng = new RanMars(Math.trunc(seed));

@@ -12,7 +12,7 @@
  * The second, inverse table (E against T, native tables[1]) gives the temperature in post_integrate and end_of_step.
  */
 import { Fix } from '../../engine/fix/fix';
-import { StyleError } from '../../engine/force/types';
+import { StyleError, potentialFile } from '../../engine/force/types';
 import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { DPD_THETA, DPD_UCOND, DPD_UMECH } from '../../engine/atoms';
@@ -95,7 +95,7 @@ export class FixEOStable extends Fix {
     this.tablength = intArg(args[2], 'fix eos/table');
     if (this.tablength < 2) throw new StyleError('Illegal number of eos/table entries');
     const file = args[1];
-    const reader = new RxTableReader(sys.readFile(file), args[3], file, 'eos/table');
+    const reader = new RxTableReader(sys.readFile(file, potentialFile('eos/table table')), args[3], file, 'eos/table');
     const N = reader.N;
     const mk = (): Table => ({
       ninput: N, lo: 0, hi: 0, rfile: new Float64Array(N), efile: new Float64Array(N), e2file: new Float64Array(N),

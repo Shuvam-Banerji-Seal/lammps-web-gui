@@ -66,6 +66,12 @@ const numArg = (w: string, what: string): number => {
 };
 
 /** Parses the POD parameter file (text of the file named by pair_coeff). */
+/**
+ * The message of a POD parameter or coefficient file that cannot be opened (eapod.cpp read_pod_file and
+ * read_model_coeff_file at b332f28, whose format string drops the system error: "Cannot open POD coefficient file {}: ").
+ */
+export const POD_OPENER = (name: string): string => `Cannot open POD coefficient file ${name}: `;
+
 export const parsePODParams = (text: string): PODParams => {
   const p: PODParams = {
     species: [], rin: 0.5, rcut: 5.0, nClusters: 1, nComponents: 1, besseldegree: 4, inversedegree: 8, onebody: 1,

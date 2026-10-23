@@ -15,7 +15,7 @@ import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { NEIGHMASK } from '../../engine/neighbor';
-import { PODModel, parsePODCoeffFile, parsePODParams } from './eapod';
+import { POD_OPENER, PODModel, parsePODCoeffFile, parsePODParams } from './eapod';
 
 export class ComputePODAtom extends Compute {
   readonly style = 'pod/atom';
@@ -32,8 +32,8 @@ export class ComputePODAtom extends Compute {
     this.peratomFlag = true;
     const ntypes = sys.state.ntypes;
     const elems = args.slice(2);
-    const params = parsePODParams(sys.readFile(args[0]));
-    const coeffFile = parsePODCoeffFile(sys.readFile(args[1]));
+    const params = parsePODParams(sys.readFile(args[0], POD_OPENER));
+    const coeffFile = parsePODCoeffFile(sys.readFile(args[1], POD_OPENER));
     this.model = new PODModel(params, coeffFile);
     // compute_pod_atom.cpp: the potential files are read first, then map_element2type checks the mapping count
     if (elems.length !== ntypes) {

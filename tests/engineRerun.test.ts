@@ -58,7 +58,7 @@ describe('rerun argument parsing', () => {
 
   it('refuses a timestep keyword in the dump arguments and post values other than yes or no', () => {
     expect(() => parseRerunArgs(['d.dump', 'dump', 'x', 'timestep', 'no'])).toThrow(/timestep is not used/);
-    expect(() => parseRerunArgs(['d.dump', 'post', 'maybe', 'dump', 'x'])).toThrow(/post must be yes or no/);
+    expect(() => parseRerunArgs(['d.dump', 'post', 'maybe', 'dump', 'x'])).toThrow("Expected boolean parameter instead of 'maybe' in input script or data file");
   });
 
   it('parses the selection and dump fields', () => {

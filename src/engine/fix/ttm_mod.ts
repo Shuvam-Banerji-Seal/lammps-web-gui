@@ -1,4 +1,4 @@
-import { StyleError } from '../force/types';
+import { StyleError, potentialFile } from '../force/types';
 import { inumeric, missingArgs } from '../force/util';
 import type { System } from '../system';
 import { FixTTM, type TtmPositional } from './ttm';
@@ -208,7 +208,7 @@ export class FixTTMMod extends FixTTM {
     const pos = parseTtmModPositional(id, args);
     super(sys, id, group, args, 'ttm/mod', pos);
     const fname = pos.initFile;
-    this.par = parseTtmModParams(sys.readFile(fname), id, fname);
+    this.par = parseTtmModParams(sys.readFile(fname, potentialFile('ttm/mod parameter')), id, fname);
     const p = this.par;
     // Measured with native LAMMPS (black box): n_ion = 0 stops the run with a message that says ionic_density must be > 0.0.
     if (!(p.nIon > 0)) throw new StyleError(`fix ${id} ttm/mod: n_ion (ionic density) must be > 0`);

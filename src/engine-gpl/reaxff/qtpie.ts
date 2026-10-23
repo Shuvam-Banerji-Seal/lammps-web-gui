@@ -144,7 +144,7 @@ export class FixQtpieReaxFF extends Fix {
   /** The gauss file: "itype exponent" per type in 1/bohr^2 (comments after '#'), and the overlap distance cutoff. */
   protected readGaussExponents(nt: number): void {
     const gaussExp = new Float64Array(nt + 1);
-    const lines = this.sys.readFile(this.gaussFile).split(/\r?\n/).map((l) => l.replace(/#.*$/, '').trim()).filter((l) => l !== '');
+    const lines = this.sys.readFile(this.gaussFile, (n) => `Fix qtpie/reaxff: could not open gauss file: '${n}'`).split(/\r?\n/).map((l) => l.replace(/#.*$/, '').trim()).filter((l) => l !== '');
     for (let i = 1; i <= nt; i++) {
       const line = lines[i - 1];
       if (line === undefined) throw new StyleError('Fix qtpie/reaxff: Incorrect number of atom types in gauss file');

@@ -20,7 +20,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { FixPropertyAtom } from '../../engine/fix/property_atom';
-import { StyleError } from '../../engine/force/types';
+import { StyleError, potentialFile } from '../../engine/force/types';
 import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { SimState } from '../../engine/types';
@@ -173,7 +173,7 @@ export class FixRX extends Fix {
       this.maxIters = Math.max(this.minSteps, this.maxIters);
     }
     // fix_rx.cpp post_constructor: the species are the names in the reactions, in the order they first appear here
-    const lines = new TextLines(sys.readFile(kineticsFile), kineticsFile);
+    const lines = new TextLines(sys.readFile(kineticsFile, potentialFile('rx')), kineticsFile);
     const reactionLines: string[] = [];
     for (let line = lines.next(); line; line = lines.next()) reactionLines.push(line.join(' '));
     this.nreactions = reactionLines.length;

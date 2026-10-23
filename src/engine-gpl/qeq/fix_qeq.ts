@@ -249,7 +249,7 @@ export class FixQeq extends Fix {
     // "if (strcmp(arg[7],"coul/streitz") == 0) streitz_flag = 1; else if (utils::strmatch(arg[7],"^reax..")) reax_flag = 1;
     // else if (strcmp(arg[7],"coul/ctip") == 0) ctip_flag = 1; else read_file(arg[7]);"
     const streitz = this.qfile === 'coul/streitz', reax = /^reax../.test(this.qfile), ctip = this.qfile === 'coul/ctip';
-    if (!streitz && !reax && !ctip) this.parseQfile(sys.readFile(this.qfile));
+    if (!streitz && !reax && !ctip) this.parseQfile(sys.readFile(this.qfile, 'Cannot open fix qeq parameter file'));
     // the defaults of fix_qeq_dynamic.cpp ("qdamp = 0.10; qstep = 0.02;") and fix_qeq_fire.cpp ("qdamp = 0.20; qstep = 0.20;")
     this.qdamp = kind === 'fire' ? 0.2 : 0.1;
     this.qstep = kind === 'fire' ? 0.2 : 0.02;

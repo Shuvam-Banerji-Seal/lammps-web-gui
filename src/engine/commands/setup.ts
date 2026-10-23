@@ -459,7 +459,9 @@ const balanceCommand: Handler = ({ sys }, a) => {
     const key = a[k];
     if (key === 'weight') k = parseBalanceWeight(sys, a, k, actions);
     else if (key === 'sort') {
-      if (a[k + 1] !== 'yes' && a[k + 1] !== 'no') throw new StyleError('balance sort must be yes or no');
+      // Balance::options (src/balance.cpp at b332f28): utils::logical
+      if (k + 2 > a.length) throw missingArgs('(fix) balance sort');
+      logical(a[k + 1]);
       k += 2;
     } else if (key === 'out') {
       // As native LAMMPS does (src/balance.cpp Balance::command at b332f28): "if (iarg+2 > narg) utils::missing_cmd_args(FLERR,"(fix) balance out", error)"
@@ -1322,7 +1324,7 @@ const createAtoms: Handler = ({ sys }, a) => {
     // each triangle." "The use of the *units box* option is required."
     if (unitsW !== 'box') throw new StyleError('create_atoms mesh must use the "units box" option (create_atoms.html: "The use of the units box option is required.")');
     if (molKw) throw new StyleError('create_atoms mesh does not support the mol keyword');
-    const tris = parseStl(sys.readFile(meshFile), meshFile);
+    const tris = parseStl(sys.readFile(meshFile, 'Cannot open STL file'), meshFile);
     const mm = kw.get('meshmode');
     const mode = mm ? mm[0] : 'bisect';
     const radscale = kw.has('radscale') ? num(kw.get('radscale')![0], 'radscale') : 1.0;

@@ -1,5 +1,5 @@
 import { Fix } from './fix';
-import { StyleError } from '../force/types';
+import { potentialFile, StyleError } from '../force/types';
 import type { System } from '../system';
 import { RanMars } from '../rng';
 import { nativeOrder } from '../atoms';
@@ -300,7 +300,9 @@ export class FixTTM extends Fix {
     this.cellVolume = (lx / this.p.nx) * (ly / this.p.ny) * (lz / this.p.nz);
     this.Te = new Float64Array(nGrid);
     if (this.kw.infile !== null) {
-      this.Te = parseTtmInfile(sys.readFile(this.kw.infile), id, style, this.p.nx, this.p.ny, this.p.nz, s.units.style, this.kw.infile);
+      this.Te = parseTtmInfile(sys.readFile(this.kw.infile, style === 'ttm/grid' || style === 'ttm/cascade'
+        // fix_ttm_grid.cpp read_electron_temperatures (also for ttm/cascade); fix_ttm.cpp for ttm and ttm/thermal
+        ? (n, r) => `Cannot open grid file: ${n}: ${r}` : potentialFile('electron temperature grid')), id, style, this.p.nx, this.p.ny, this.p.nz, s.units.style, this.kw.infile);
     } else if (this.kw.setT !== null) {
       this.Te.fill(this.kw.setT);
     }

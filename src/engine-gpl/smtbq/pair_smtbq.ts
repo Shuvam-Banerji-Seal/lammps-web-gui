@@ -93,7 +93,7 @@ export class PairSMTBQ extends Pair {
       throw new StyleError('Number of element to type mappings does not match number of atom types');
     }
     if (names.includes('NULL')) throw new StyleError('pair_style smtbq does not support NULL in pair_coeff (every atom type is an element)');
-    const file = readSmtbqFile(ctx.readFile(args[2]));
+    const file = readSmtbqFile(ctx.readFile(args[2], (n) => `Cannot open SMTBQ potential file ${n}`));
     if (file.params.length !== names.length || file.params.some((p, k) => p.nom !== names[k])) {
       const order = file.params.map((p: SmtbqParam) => p.nom).join(' ');
       throw new StyleError(`pair_coeff element names must follow the element order of the potential file (${order})`);

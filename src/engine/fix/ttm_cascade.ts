@@ -1,4 +1,4 @@
-import { StyleError } from '../force/types';
+import { potentialFile, StyleError } from '../force/types';
 import { numeric } from '../force/util';
 import type { System } from '../system';
 import { FixTTM, type TtmKeywordHandler } from './ttm';
@@ -156,8 +156,8 @@ export class FixTTMCascade extends FixTTM {
     super(sys, id, group, args, 'ttm/cascade', undefined, handler);
     this.cutoff = data.cutoff;
     this.offset = data.offset;
-    this.ceTab = data.cetab !== null ? parseCascadeTable(sys.readFile(data.cetab), id, 'C_e', data.cetab) : null;
-    this.keTab = data.ketab !== null ? parseCascadeTable(sys.readFile(data.ketab), id, 'kappa_e', data.ketab) : null;
+    this.ceTab = data.cetab !== null ? parseCascadeTable(sys.readFile(data.cetab, potentialFile('specific heat table')), id, 'C_e', data.cetab) : null;
+    this.keTab = data.ketab !== null ? parseCascadeTable(sys.readFile(data.ketab, potentialFile('thermal conductivity table')), id, 'kappa_e', data.ketab) : null;
     if (this.kw.setT === null && this.kw.infile === null) {
       throw new StyleError(`fix ${id} ttm/cascade needs the set or infile keyword: the electron temperature at each grid point must be a non-zero positive value (docs.lammps.org/fix_ttm.html)`);
     }

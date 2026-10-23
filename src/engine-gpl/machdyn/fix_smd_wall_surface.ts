@@ -62,7 +62,7 @@ export class FixSMDWallSurface extends Fix {
     if (!s.custom.has(SMD_DEFGRAD) || !s.custom.has(SMD_CONTACT) || !s.x0 || !s.radius) {
       throw new StyleError('fix smd/wall_surface needs atom_style smd');
     }
-    const mesh = parseStl(this.sys.readFile(this.filename));
+    const mesh = parseStl(this.sys.readFile(this.filename, (n, r) => `Error reading triangles from file ${n}: Cannot open STL file ${n}: ${r}`));
     this.sys.log(`fix smd/wall_surface reads ${mesh.triangles.length} triangles from ${this.filename}`);
     // the subdomain of this process: the box, widened by EPSILON of its length at the periodic boundaries
     const lo = [0, 0, 0], hi = [0, 0, 0];

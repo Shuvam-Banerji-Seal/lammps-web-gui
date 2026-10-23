@@ -3,7 +3,7 @@ import { Fix } from './fix';
 import { Pair, PairParams, StyleError, typeBounds, type Bonded } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
 import { SimpleBonded } from '../force/bonded_util';
-import { bounds, inumeric, missingArgs } from '../force/util';
+import { bounds, inumeric, missingArgs, logical } from '../force/util';
 import { isNumericTypeWord, typeWord } from '../labelmap';
 import { EQUAL_STYLES } from '../argInfo';
 import { BondedHybrid } from '../force/bonded_hybrid';
@@ -215,10 +215,8 @@ interface AtomTarget {
   origM: Map<number, number>;
 }
 
-const yesNo = (key: string, w: string | undefined): boolean => {
-  if (w !== 'yes' && w !== 'no') throw new StyleError(`fix adapt keyword ${key} must be yes or no, got '${w ?? ''}' (${USAGE})`);
-  return w === 'yes';
-};
+/** fix_adapt.cpp: utils::logical. */
+const yesNo = (_key: string, w: string | undefined): boolean => logical(w);
 
 /** True when the style or one of its hybrid sub-styles applies a tail correction. */
 const hasTail = (p: Pair): boolean => {

@@ -19,7 +19,7 @@
 import { EQUAL_STYLES } from '../../engine/argInfo';
 import { Fix } from '../../engine/fix/fix';
 import { Pair, StyleError, typeBounds } from '../../engine/force/types';
-import { inumeric } from '../../engine/force/util';
+import { inumeric, logical as readLogical } from '../../engine/force/util';
 import { hasChargeStyle, isSphereStyle } from '../../engine/atoms';
 import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
@@ -29,10 +29,8 @@ const USAGE = 'usage: fix ID group-ID adapt/fep N keyword args ... keyword value
 /** Words of each attribute keyword, as native's first argument loop counts them (src/FEP/fix_adapt_fep.cpp at b332f28). */
 const ATTRIBUTE_WORDS: Record<string, number> = { pair: 6, kspace: 2, atom: 4 };
 
-const logical = (key: string, w: string | undefined): boolean => {
-  if (w !== 'yes' && w !== 'no') throw new StyleError(`fix adapt/fep keyword ${key} must be yes or no, got '${w ?? ''}'`);
-  return w === 'yes';
-};
+/** fix_adapt_fep.cpp: utils::logical. */
+const logical = (_key: string, w: string | undefined): boolean => readLogical(w);
 
 interface PairAdapt {
   vname: string;

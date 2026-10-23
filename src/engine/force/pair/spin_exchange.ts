@@ -1,6 +1,6 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, type Neighbor } from '../../neighbor';
-import { numeric, parseNum } from '../util';
+import { numeric, parseNum, logical } from '../util';
 import { PairHybrid } from './hybrid';
 import { spinContribute, spinPairSettings, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../spin_book';
 import { libm } from '../../libm';
@@ -130,9 +130,8 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
     let offset = 0;
     for (let m = k + nv; m < args.length; m += 2) {
       if (args[m] !== 'offset') throw new StyleError('Incorrect args for pair coefficients');
-      if (args[m + 1] === 'yes') offset = 1;
-      else if (args[m + 1] === 'no') offset = 0;
-      else throw new StyleError(`pair_coeff ${this.name}: offset must be yes or no`);
+      // pair_spin_exchange.cpp: utils::logical
+      offset = logical(args[m + 1]) ? 1 : 0;
     }
     const ak = this.biquadratic ? v[4] : 0, bk = this.biquadratic ? v[5] : 0, dk = this.biquadratic ? v[6] : 1;
     this.p.setRange(args[0], args[1], [v[0], v[1], v[2], v[3], ak, bk, dk, offset]);

@@ -205,7 +205,12 @@ export class FixWidom extends Fix {
         return args[i + k];
       };
       if (key === 'mol') { molTemplateId = v(1); i += 2; }
-      else if (key === 'region') { regionId = v(1); i += 2; }
+      else if (key === 'region') {
+        // fix_widom.cpp options: the region exists
+        regionId = v(1);
+        if (!sys.regions.has(regionId)) throw new StyleError(`Region ${regionId} for fix widom does not exist`);
+        i += 2;
+      }
       else if (key === 'full_energy') { fullEnergy = true; i += 1; }
       else if (key === 'charge') { charge = num(v(1), 'charge'); i += 2; }
       else if (key === 'intra_energy') { intraEnergy = num(v(1), 'intra_energy'); i += 2; }

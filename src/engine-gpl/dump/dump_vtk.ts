@@ -29,7 +29,7 @@
  * .vtp or .vtu (one piece file per processor and a .pvtp summary); compressed (.gz) files.
  */
 import { StyleError } from '../../engine/force/types';
-import { numeric } from '../../engine/force/util';
+import { numeric, logical } from '../../engine/force/util';
 import type { DumpVtkFactory, DumpVtkHost, DumpVtkStyle } from '../../engine/output/dump';
 import { VtkWriter, type VtkArray } from './vtk_writer';
 
@@ -171,8 +171,7 @@ class DumpVtk implements DumpVtkStyle {
         if (v !== 'no') throw new StyleError('dump_modify binary yes is not supported by the browser engine (binary VTK output); use binary no');
         return 2;
       case 'double':
-        if (v !== 'yes' && v !== 'no') throw new StyleError('dump_modify double must be yes or no');
-        this.precision = v === 'yes' ? 'double' : 'single';
+        this.precision = logical(v) ? 'double' : 'single';
         return 2;
       case 'element': {
         const n = this.host.sys.state.ntypes;
@@ -185,7 +184,7 @@ class DumpVtk implements DumpVtkStyle {
         if (v === undefined) throw new StyleError('Illegal dump_modify command');
         if (v === 'none') this.region = null;
         else {
-          this.host.sys.region(v);
+          this.host.sys.region(v, `Dump_modify region ${v} does not exist`);
           this.region = v;
         }
         return 2;

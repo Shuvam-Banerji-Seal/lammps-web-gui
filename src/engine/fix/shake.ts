@@ -5,7 +5,7 @@ import type { TopoList } from '../types';
 import { int, num } from '../commands/args';
 import { typeWord } from '../labelmap';
 import { isMolecularStyle, massOf } from '../atoms';
-import { missingArgs } from '../force/util';
+import { missingArgs, logical } from '../force/util';
 import { harmonicRestraint } from './harmonicRestraint';
 import { libm } from '../libm';
 
@@ -235,9 +235,9 @@ export class FixShake extends Fix {
         continue;
       }
       if (w === 'store') {
-        const v = args[++k];
-        if (v !== 'yes' && v !== 'no') throw new StyleError(`fix ${style}: store must be yes or no, got '${v ?? ''}'`);
-        this.storeForces = v === 'yes';
+        // fix_shake.cpp: utils::logical
+        if (k + 2 > args.length) throw missingArgs(`fix ${style} store`);
+        this.storeForces = logical(args[++k]);
         continue;
       }
       if (!mode) throw new StyleError(`fix ${style}: '${w}' must follow a constraint keyword b, a, t or m`);

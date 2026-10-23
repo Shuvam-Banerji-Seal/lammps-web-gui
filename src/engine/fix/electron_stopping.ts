@@ -1,6 +1,6 @@
 import type { System } from '../system';
 import { Fix } from './fix';
-import { StyleError } from '../force/types';
+import { StyleError, potentialFile } from '../force/types';
 import { inumeric, numeric } from '../force/util';
 import { massOf } from '../atoms';
 import type { Region } from '../region';
@@ -117,7 +117,7 @@ export class FixElectronStopping extends Fix {
     }
     this.minneigh = minneigh;
     this.regionId = regionId;
-    this.table = parseStoppingTable(sys.readFile(args[1]), sys.state.ntypes, args[1]);
+    this.table = parseStoppingTable(sys.readFile(args[1], potentialFile('electron stopping data table')), sys.state.ntypes, args[1]);
     this.scalarFlag = true;
     this.extscalar = 1;
   }

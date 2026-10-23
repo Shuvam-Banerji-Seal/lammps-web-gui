@@ -15,7 +15,7 @@
  * Not supported (refused by the engine with run_style respa, since the respa hooks are not implemented here):
  * the restart of the auxiliary momenta and the global scalar (the source does not set scalar_flag either).
  */
-import { StyleError } from '../../engine/force/types';
+import { StyleError, potentialFile } from '../../engine/force/types';
 import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { Fix } from '../../engine/fix/fix';
@@ -153,7 +153,7 @@ export class FixGLE extends Fix {
     this.tStop = numeric(args[2]);
     const seed = inumeric(args[3]);
     if (seed <= 0) throw new StyleError('Illegal fix gle command');
-    this.A = readDVector(sys.readFile(args[4]), this.ns1sq, 'fix gle A matrix', sys.state.units.style);
+    this.A = readDVector(sys.readFile(args[4], potentialFile('fix gle A matrix')), this.ns1sq, 'fix gle A matrix', sys.state.units.style);
     this.C = new Float64Array(this.ns1sq);
     this.S = new Float64Array(this.ns1sq);
     this.T = new Float64Array(this.ns1sq);
@@ -183,7 +183,7 @@ export class FixGLE extends Fix {
       const kT = this.tTarget * cfac;
       for (let i = 0; i < this.ns1sq; i += ns + 2) this.C[i] = kT;
     } else {
-      const c = readDVector(sys.readFile(noneqFile!), this.ns1sq, 'fix gle C matrix', sys.state.units.style);
+      const c = readDVector(sys.readFile(noneqFile!, potentialFile('fix gle C matrix')), this.ns1sq, 'fix gle C matrix', sys.state.units.style);
       for (let i = 0; i < this.ns1sq; i++) this.C[i] = c[i] * cfac;
     }
     this.rng = new RanMars(seed);

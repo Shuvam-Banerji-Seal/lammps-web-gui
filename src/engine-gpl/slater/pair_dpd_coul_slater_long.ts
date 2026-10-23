@@ -14,7 +14,7 @@
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
-import { fmtCoeff, parseInt_, parseNum } from '../../engine/force/util';
+import { fmtCoeff, parseInt_, parseNum, logical } from '../../engine/force/util';
 import { RanMars } from '../random_mars';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { EPSILON, tallyXYZ } from '../dpd/pair_dpd';
@@ -23,9 +23,7 @@ import { slaterCoulPair } from './pair_coul_slater_long';
 /** utils::logical accepts these words for the per-pair "do_slater" flag. */
 const logicalWord = (w: string | undefined): boolean => {
   if (w === undefined) throw new StyleError('Illegal pair_coeff command (expected yes or no)');
-  if (w === 'yes' || w === 'on' || w === 'true' || w === '1') return true;
-  if (w === 'no' || w === 'off' || w === 'false' || w === '0') return false;
-  throw new StyleError(`Expected boolean parameter instead of '${w}' in input`);
+  return logical(w);
 };
 
 export class PairDPDCoulSlaterLong extends Pair {

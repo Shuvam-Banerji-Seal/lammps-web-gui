@@ -120,7 +120,8 @@ const parseOptions = (w: readonly string[]): Options => {
         k += 2;
         break;
       }
-      default: throw new StyleError(`Illegal prd command: unknown keyword '${w[k]}' (min, temp, vel or time)`);
+      // As native LAMMPS does (src/REPLICA/prd.cpp PRD::options at b332f28): an unknown word is 'Illegal prd command'
+      default: throw new StyleError('Illegal prd command');
     }
   }
   return o;

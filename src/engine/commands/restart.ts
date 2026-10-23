@@ -1,5 +1,5 @@
 import type { Handler } from './args';
-import { initializing } from './args';
+import { initializing, inumeric, missingArgs } from './args';
 import { StyleError } from '../force/types';
 import { writeRestartText, readRestartText } from '../output/restart';
 import type { System } from '../system';
@@ -50,12 +50,16 @@ const expandStar = (file: string, step: number): string => {
 
 const KEYWORDS = new Set(['fileper', 'nfile']);
 
-/** Validates write_restart / restart keyword value pairs; returns the first one found (if any). */
+/**
+ * Validates write_restart / restart keyword value pairs; returns the first one found (if any). As native LAMMPS does
+ * (src/write_restart.cpp at b332f28, WriteRestart::multiproc_options): an unknown word is "Unknown write_restart
+ * keyword: ...", and the restart command passes its words after the file names to the same parser.
+ */
 const checkKeywords = (args: string[], what: string): string | null => {
   let first: string | null = null;
   for (let k = 0; k < args.length;) {
     const key = args[k];
-    if (!KEYWORDS.has(key)) throw new StyleError(`${what}: unknown keyword '${key}' (supported: fileper, nfile)`);
+    if (!KEYWORDS.has(key)) throw new StyleError(`Unknown write_restart keyword: ${key}`);
     const v = Number(args[k + 1]);
     if (args[k + 1] === undefined || !Number.isInteger(v) || v < 1) throw new StyleError(`${what}: ${key} needs an integer value >= 1`);
     first ??= key;
@@ -128,25 +132,28 @@ const readRestart: Handler = ({ sys }, a) => {
  */
 const restartCmd: Handler = ({ sys }, a) => {
   const n = a[0];
-  if (n === undefined) throw new StyleError('usage: restart N file [file2] [fileper Np | nfile Nf] | restart 0');
+  // As native LAMMPS does (src/output.cpp Output::create_restart at b332f28): N (utils::inumeric, or v_name), and
+  // restart 0 alone; a negative N is the engine's own refusal
+  if (n === undefined) throw missingArgs('restart');
   let every = 0;
   let everyVar: string | null = null;
   if (n.startsWith('v_')) everyVar = n.slice(2);
   else {
-    every = Number(n);
-    if (!Number.isInteger(every) || every < 0) throw new StyleError(`restart: N must be an integer >= 0, got '${n}'`);
+    every = inumeric(n);
+    if (every < 0) throw new StyleError(`restart: N must be an integer >= 0, got '${n}'`);
   }
   if (every === 0 && everyVar === null) {
-    if (a.length !== 1) throw new StyleError('restart 0 takes no other arguments');
+    if (a.length !== 1) throw new StyleError('Illegal restart command');
     sys.restartOut = [];
     return;
   }
+  // As native LAMMPS does (src/output.cpp at b332f28, Output::create_restart): the count includes N, so an even count
+  // is one file name and an odd count two; the words after the file names are write_restart keywords.
   const rest = a.slice(1);
-  let k = 0;
-  while (k < rest.length && !KEYWORDS.has(rest[k])) k++;
-  if (k < 1 || k > 2) throw new StyleError(`restart ${n}: give one file name, or two (toggled)`);
-  const files = rest.slice(0, k);
-  const kw = checkKeywords(rest.slice(k), `restart ${n}`);
+  if (!rest.length) throw new StyleError('Illegal restart command');
+  const nfile = a.length % 2 === 0 ? 1 : 2;
+  const files = rest.slice(0, nfile);
+  const kw = checkKeywords(rest.slice(nfile), `restart ${n}`);
   for (const f of files) {
     if (f.includes('%')) throw new StyleError(`restart ${f}: '%' writes one file per processor, and the browser engine runs one process; give a single file name`);
     if (f.endsWith('.mpiio')) throw new StyleError(`restart ${f}: MPI-IO restart files are not supported by the browser engine`);

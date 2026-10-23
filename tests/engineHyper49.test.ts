@@ -206,17 +206,21 @@ describe('fix hyper/global and the hyper command', () => {
     expect((await runText(`${HYPER_BASE}\nfix HG mobile hyper/global 1.5 0.3 0.5 0.0\n`)).error).toMatch(/Illegal fix hyper\/global command/);
   });
 
-  it('refuses the hyper command arguments it cannot run', async () => {
+  it('refuses bad hyper arguments as native does (src/REPLICA/hyper.cpp at b332f28)', async () => {
     const setup = `${HYPER_BASE}\ncompute ev all event/displace 0.5\nfix HG mobile hyper/global 1.5 0.3 0.5 1.0\n`;
-    expect((await runText(`${setup}\nhyper 20 6 HG ev\n`)).error).toMatch(/N must be a multiple of Nevent/);
-    expect((await runText(`${setup}\nhyper 0 0 HG ev\n`)).error).toMatch(/N must be > 0/);
-    expect((await runText(`${setup}\nhyper 20 0 HG ev\n`)).error).toMatch(/Nevent must be >= 1/);
-    expect((await runText(`${setup}\nhyper 20 20 HG ev rebond 7\n`)).error).toMatch(/Nrebond must be a multiple of Nevent/);
-    expect((await runText(`${setup}\nhyper 20 20 HG ev dump nope\n`)).error).toMatch(/dump nope does not exist/);
+    // Measured with native LAMMPS: each line below stops with the message given
+    expect((await runText(`${setup}\nhyper 20 6 HG ev\n`)).error).toContain('Hyper nsteps must be multiple of t_event');
+    expect((await runText(`${setup}\nhyper 0 0 HG ev\n`)).error).toContain('Invalid t_event in hyper command');
+    expect((await runText(`${setup}\nhyper 20 0 HG ev\n`)).error).toContain('Invalid t_event in hyper command');
+    expect((await runText(`${setup}\nhyper 20 20 HG ev rebond 7\n`)).error).toContain('Hyper rebond must be multiple of t_event');
+    expect((await runText(`${setup}\nhyper 20 20 HG ev dump nope\n`)).error).toContain('Dump ID nope in hyper command does not exist');
     expect((await runText(`${setup}\nhyper 20 20 HG ev color\n`)).error).toContain('Illegal hyper command');
-    expect((await runText(`${setup}\nhyper 20 20 HG nope\n`)).error).toMatch(/compute nope does not exist/);
-    expect((await runText(`${setup}\ncompute c2 all temp\nhyper 20 20 HG c2\n`)).error).toMatch(/is not an event computer/);
-    expect((await runText(`${HYPER_BASE}\ncompute ev all event/displace 0.5\nfix HG mobile nve\nhyper 20 20 HG ev\n`)).error).toMatch(/is not a bond-boost bias fix/);
+    expect((await runText(`${setup}\nhyper 20 20 HG nope\n`)).error).toContain('Could not find compute event/displace ID nope for hyper');
+    expect((await runText(`${setup}\ncompute c2 all temp\nhyper 20 20 HG c2\n`)).error).toContain('Could not find compute event/displace ID c2 for hyper');
+    // native LAMMPS crashes on a fix that is not a hyperdynamics fix (hyper.cpp casts it and reads its hyperflag)
+    expect((await runText(`${HYPER_BASE}\ncompute ev all event/displace 0.5\nfix HG mobile nve\nhyper 20 20 HG ev\n`)).error).toContain('Hyper fix is not a valid hyperdynamics fix');
+    // native runs hyper 0 (a quench and the final stats); the browser engine refuses it by name
+    expect((await runText(`${setup}\nhyper 0 20 HG ev\n`)).error).toMatch(/N must be > 0/);
   });
 
   it('runs a short hyper run: thermo rows with the bias vector, hyper stats in the log', async () => {

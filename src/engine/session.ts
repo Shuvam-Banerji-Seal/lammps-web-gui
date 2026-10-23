@@ -432,6 +432,7 @@ export class Session {
     if (INIT_COMMANDS.has(cmd)) for (const sys of this.replicas) for (const d of sys.dumps) d.openFile();
     // an accelerator alias (lj/cut/omp, nve/kk, ...) runs as its base style: the names are replaced here, before
     // the styles load, so every object is created with the base name and the fast paths see the base style
+    const typed = a;
     a = this.baseStyleNames(cmd, a);
     // styles of the lazily loaded registries (lazyStyles.ts) are loaded before a command that names one;
     // read_restart restores the styles named in its file
@@ -446,7 +447,7 @@ export class Session {
     if (!handler) {
       throw removedStyleError('command', cmd) ?? new StyleError(`'${cmd}' is not supported by the in-browser engine (it is not LAMMPS). Supported commands: ${SUPPORTED_COMMANDS.join(', ')}`);
     }
-    await handler(this.ctx(frame), a);
+    await handler({ ...this.ctx(frame), typed }, a);
   }
 
   /** The words of a command with each accelerator alias replaced by its base style (ACCEL_ALIASES). */

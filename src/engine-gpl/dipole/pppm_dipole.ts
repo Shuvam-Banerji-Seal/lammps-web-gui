@@ -195,7 +195,9 @@ export class KSpacePPPMDipole extends KSpaceBase {
   }
 
   settings(args: string[]): void {
-    if (args.length !== 1) throw new StyleError(`Illegal kspace_style ${this.name} command`);
+    // PPPMDipole inherits PPPM::settings (src/KSPACE/pppm.cpp at b332f28): one missing argument is an error, and any
+    // further words are not read.
+    if (args.length < 1) throw new StyleError(`Illegal kspace_style ${this.name} command: missing argument(s)`);
     // PPPM::settings: accuracy_relative = fabs(numeric)
     this.accuracy = Math.abs(parseNum(args[0], 'accuracy'));
   }

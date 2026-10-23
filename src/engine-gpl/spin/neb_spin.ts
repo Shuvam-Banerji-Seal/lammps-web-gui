@@ -157,7 +157,7 @@ export const runNebSpin = async (host: NebHost, run: Pick<RunApi, 'ensureThermoC
   if (etol < 0 || ttol < 0) throw new StyleError('Illegal neb/spin command: etol and ttol must be >= 0');
   if (nevery <= 0) throw new StyleError('Illegal neb/spin command: Nevery must be > 0');
   if (N1 % nevery !== 0 || N2 % nevery !== 0) throw new StyleError('Illegal neb/spin command: N1 and N2 must be multiples of Nevery');
-  if (reps.length < 2) throw new StyleError('Cannot use NEBSpin with a single replica (neb/spin needs two or more partitions)');
+  if (reps.length < 2) throw new StyleError('Cannot use NEBSpin with a single replica');
   const nRep = reps.length;
 
   // file-style: final (one file, the intermediate replicas interpolated), each (a file per replica) or none

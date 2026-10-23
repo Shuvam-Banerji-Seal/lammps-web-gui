@@ -100,7 +100,8 @@ export const parseRunStyleRespa = (a: readonly string[]): RespaSettings => {
         break;
       }
       default:
-        throw new StyleError(`run_style respa: unknown keyword '${key ?? ''}' (bond, angle, dihedral, improper, pair, hybrid, kspace)`);
+        // As native LAMMPS does (src/respa.cpp at b332f28, Respa::Respa): "Unknown run_style respa keyword {}"
+        throw new StyleError(`Unknown run_style respa keyword ${key ?? ''}`);
     }
   }
   if (hybrid && kw.pair !== undefined) throw new StyleError('run_style respa: the hybrid keyword and the pair keyword are mutually exclusive');

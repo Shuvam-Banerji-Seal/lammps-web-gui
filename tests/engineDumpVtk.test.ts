@@ -120,7 +120,7 @@ describe('dump vtk: dump_modify keywords', () => {
 
 describe('dump vtk: refusals name the keyword', () => {
   it('rejects an unknown attribute', async () => {
-    await expect(run(['dump d all vtk 1 bad.vtk foo', 'run 0'])).rejects.toThrow(/Invalid attribute in dump vtk command: foo/);
+    await expect(run(['dump d all vtk 1 bad.vtk foo', 'run 0'])).rejects.toThrow('Invalid attribute foo in dump vtk command');
   });
   it('rejects a per-atom property that is not allocated', async () => {
     await expect(run(['dump d all vtk 1 bad.vtk mol', 'run 0'])).rejects.toThrow(/molecular atom_style/);

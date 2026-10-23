@@ -441,7 +441,7 @@ export class PairZero extends Pair {
     for (let k = 1; k < args.length; k++) {
       if (args[k] === 'nocoeff') this.nocoeff = true;
       else if (args[k] === 'full') { this.needsFull = true; this.needsHalf = false; }
-      else throw new StyleError(`pair_style zero: unsupported keyword '${args[k]}' (expected nocoeff or full)`);
+      else throw new StyleError(`Unknown pair style zero option ${args[k]}`); // As native LAMMPS does (src/pair_zero.cpp PairZero::settings at b332f28)
     }
   }
 

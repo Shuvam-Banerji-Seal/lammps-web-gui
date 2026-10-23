@@ -23,7 +23,7 @@
  * as native does at init_style and at each compute with moving boxes or walls.
  */
 import { Pair, StyleError, mixDistance, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { FixWallBase } from '../../engine/fix/walls';
 import { FixDeform } from '../../engine/fix/deform';
@@ -45,10 +45,8 @@ const VXMU2F: Record<string, number> = {
   lj: 1.0, real: 1.4393264316e4, metal: 0.6241509647, si: 1.0, cgs: 1.0, electron: 3.39893149e1, micro: 1.0, nano: 1.0,
 };
 
-const intArg = (w: string | undefined, what: string): number => {
-  if (w === undefined || !/^[+-]?\d+$/.test(w)) throw new StyleError(`expected an integer for ${what}, got '${w ?? ''}'`);
-  return Number(w);
-};
+// As native LAMMPS does (src/COLLOID/pair_lubricate.cpp PairLubricate::settings at b332f28): utils::inumeric reads each flag
+const intArg = (w: string | undefined, _what: string): number => inumeric(w);
 
 /** The fix wall members the native code reads (walls keeps the parsed faces; coords() the resolved positions). */
 interface WallView {

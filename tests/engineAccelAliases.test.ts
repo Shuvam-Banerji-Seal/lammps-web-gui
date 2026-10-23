@@ -314,7 +314,8 @@ describe('suffix, package and aliased names: errors', () => {
   it('refuses a suffix hybrid without two suffixes, and arguments on a plain suffix', async () => {
     expect((await runScript('suffix hybrid omp\n')).error?.message).toMatch(/usage: suffix hybrid/);
     expect((await runScript('suffix hybrid omp bogus\n')).error?.message).toMatch(/usage: suffix hybrid/);
-    expect((await runScript('suffix omp fast\n')).error?.message).toMatch(/suffix omp takes no arguments/);
+    // As native LAMMPS does (src/input.cpp Input::suffix at b332f28): a plain suffix takes one word
+    expect((await runScript('suffix omp fast\n')).error?.message).toContain('Illegal suffix command');
   });
 
   it('refuses an unknown package style', async () => {

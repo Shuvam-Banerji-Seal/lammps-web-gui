@@ -96,10 +96,11 @@ run 0
     expect(row['c_qs[4]']).toBeCloseTo(Math.SQRT1_2, 12);
   });
 
-  it('accepts the optional 0/1 argument and rejects a bad one with the usage text', async () => {
+  it('accepts the optional 0/1 argument and rejects a bad one as native does', async () => {
     expect((await run('atom_style bpm/sphere 1\n')).errors).toEqual([]);
     const bad = await run('atom_style bpm/sphere 2\n');
-    expect(bad.errors.join(' ')).toMatch(/usage: atom_style bpm\/sphere/);
+    // As native LAMMPS does (src/BPM/atom_vec_bpm_sphere.cpp process_args at b332f28)
+    expect(bad.errors.join(' ')).toContain('Illegal atom_style bpm/sphere command');
   });
 });
 

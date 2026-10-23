@@ -227,7 +227,6 @@ const norm = (a: Float64Array | number[], from = 0, to = a.length): number => {
  */
 export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
   const reps = [...host.replicaSystems];
-  if (reps.length < 2) throw new StyleError('neb needs two or more partitions (replicas); this session has 1 partition (Session partitions option)');
   if (a.length < 6) throw new StyleError(USAGE);
   const etol = num(a[0], 'etol'), ftol = num(a[1], 'ftol');
   const N1 = int(a[2], 'N1'), N2 = int(a[3], 'N2'), nevery = int(a[4], 'Nevery');
@@ -235,6 +234,8 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
   if (N1 < 0 || N2 < 0) throw new StyleError('neb N1 and N2 must be >= 0');
   if (nevery < 1) throw new StyleError('neb Nevery must be >= 1');
   if (N1 % nevery !== 0 || N2 % nevery !== 0) throw new StyleError('neb N1 and N2 must be multiples of Nevery');
+  // As native LAMMPS does (src/REPLICA/neb.cpp NEB::command at b332f28): the single-replica check comes after the numeric checks and before the file-style
+  if (reps.length < 2) throw new StyleError('Cannot use NEB with a single replica');
   const fileStyle = a[5];
   let k = 6;
   let coordFile: string | null = null;

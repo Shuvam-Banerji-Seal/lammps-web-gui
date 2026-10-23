@@ -66,7 +66,7 @@ describe('atom_style edpd, mdpd and tdpd', () => {
   });
 
   it('refuses a bad species count and a set keyword on the wrong style', async () => {
-    await expect(newSession().session.execute(`${headFor('tdpd')}`)).rejects.toThrow(/usage: atom_style tdpd Nspecies/);
+    await expect(newSession().session.execute(`${headFor('tdpd')}`)).rejects.toThrow(/Invalid atom_style tdpd command/);
     await expect(newSession().session.execute(`${headFor('tdpd 0')}`)).rejects.toThrow(/Invalid atom_style tdpd command/);
     await expect(newSession().session.execute(`${headFor('atomic')}create_atoms 1 single 1 1 1\nset atom * edpd/temp 2.0\n`)).rejects.toThrow(/Cannot set attribute edpd\/temp for atom style atomic/);
     await expect(newSession().session.execute(`${headFor('edpd')}create_atoms 1 single 1 1 1\nset atom * edpd/cv 0\n`)).rejects.toThrow(/Invalid edpd\/cv value 0 in set command/);

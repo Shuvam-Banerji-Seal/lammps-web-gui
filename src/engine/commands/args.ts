@@ -37,6 +37,8 @@ export interface Ctx {
   frame: unknown;
   fail(message: string): never;
   run: RunApi;
+  /** The command's words as typed, before an accelerator alias was replaced by its base style (Session.baseStyleNames). */
+  typed?: string[];
 }
 
 export type Handler = (ctx: Ctx, args: string[]) => void | Promise<void>;

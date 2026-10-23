@@ -191,9 +191,16 @@ export abstract class KSpaceBase extends KSpace {
    */
   protected readonly kspaceLabel: string = '';
 
+  /**
+   * The PPPM-style settings (native PPPM::settings, src/KSPACE/pppm.cpp at b332f28): the first word is the relative
+   * accuracy (its absolute value, at most 1) and any further words are not read. KSpaceEwald and KSpaceZero check for
+   * exactly one word first (Ewald::settings, KSpaceZero::settings). A zero accuracy is refused here (native's solvers
+   * have no estimate for it).
+   */
   settings(args: string[]): void {
-    if (args.length !== 1) throw new StyleError(`usage: kspace_style ${this.name} accuracy`);
-    this.accuracy = parseNum(args[0], 'accuracy');
+    if (args.length < 1) throw new StyleError(`Illegal kspace_style ${this.name} command: missing argument(s)`);
+    this.accuracy = Math.abs(numeric(args[0]));
+    if (this.accuracy > 1) throw new StyleError(`Invalid relative accuracy ${formatNumber(this.accuracy, '%g')} for kspace_style ${this.name}`);
     if (!(this.accuracy > 0)) throw new StyleError('kspace accuracy must be > 0');
   }
 
@@ -404,6 +411,12 @@ export class KSpaceEwald extends KSpaceBase {
   readonly name = 'ewald';
   override groupGroupEnable = true;
   protected override readonly kspaceLabel: string = 'Ewald';
+
+  /** As native LAMMPS does (src/KSPACE/ewald.cpp Ewald::settings at b332f28): exactly one argument (the accuracy). */
+  override settings(args: string[]): void {
+    if (args.length !== 1) throw new StyleError(`Illegal kspace_style ${this.name} command`);
+    super.settings(args);
+  }
   kmaxUser: [number, number, number] | null = null;
   private kvecs = new Float64Array(0);   // kx ky kz A(k) per vector (half space)
   private nvec = new Int32Array(0);      // n_x n_y n_z per vector
@@ -637,8 +650,11 @@ export class KSpaceZero extends KSpaceBase {
   readonly name = 'zero';
 
   settings(args: string[]): void {
+    // As native LAMMPS does (src/kspace_zero.cpp KSpaceZero::settings at b332f28): exactly one word, its absolute value
+    // (at most 1) is the relative accuracy; 0 is checked at init (with no gewald)
     if (args.length !== 1) throw new StyleError('Illegal kspace_style zero command');
-    this.accuracy = parseNum(args[0], 'accuracy');
+    this.accuracy = Math.abs(numeric(args[0]));
+    if (this.accuracy > 1) throw new StyleError(`Invalid relative accuracy ${formatNumber(this.accuracy, '%g')} for kspace_style zero`);
   }
 
   modify(key: string, values: string[]): number {

@@ -127,7 +127,7 @@ set group all epsilon 2
     await expect(runScript(`${DIEL_HEAD}pair_style lj/cut/coul/long/dielectric 3.0 12.0
 pair_coeff * * 0.5 1.0
 run 0
-`, { 'd.data': dielData(1) })).rejects.toThrow(/needs a kspace style/);
+`, { 'd.data': dielData(1) })).rejects.toThrow('Pair style requires a KSpace style');
   });
 });
 

@@ -78,7 +78,7 @@ describe('pair buck6d/coul/gauss/dsf and /long', () => {
     const partial = `${DIMER}pair_style buck6d/coul/gauss/dsf 0.9 12.0\npair_coeff 1 1 10304 3.0612245 457.17971 4.5218516 0.60800971\nrun 0\n`;
     expect((await run(partial)).errors[0]).toMatch(/All pair coeffs are not set/);
     const longNoKspace = `${DIMER}pair_style buck6d/coul/gauss/long 0.9 0.9 12.0\n${BUCK.join('\n')}\nrun 0\n`;
-    expect((await run(longNoKspace)).errors[0]).toMatch(/requires a kspace style|needs a kspace style/);
+    expect((await run(longNoKspace)).errors[0]).toContain('Pair style requires a KSpace style');
   });
 
   it('refuses pair_modify shift and tail, which the doc says are not supported', async () => {

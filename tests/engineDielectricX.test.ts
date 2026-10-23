@@ -103,20 +103,27 @@ run 0
   });
 
   it('refuses a kspace style other than pppm/dielectric or msm/dielectric (native text)', async () => {
-    await expect(runScript(`${HEAD}pair_style coul/long/dielectric 8.0
+    const body = `pair_style coul/long/dielectric 8.0
 pair_coeff * *
 kspace_style ewald 1.0e-5
 compute ea all efield/atom
 run 0
-`)).rejects.toThrow(/Compute efield\/atom not supported by kspace style/);
+`;
+    // As native LAMMPS does (src/force.cpp Force::init at b332f28): the kspace init comes before the computes' init, so in
+    // the f f f box native stops on Ewald's boundary check first (measured with native LAMMPS)
+    await expect(runScript(`${HEAD}${body}`)).rejects.toThrow('Cannot use non-periodic boundaries with Ewald');
+    await expect(runScript(`${HEAD.replace('boundary f f f', 'boundary p p p')}${body}`)).rejects.toThrow(/Compute efield\/atom not supported by kspace style/);
   });
 
   it('refuses the lj/long/coul/long/dielectric pair (no efield in native compute efield/atom)', async () => {
-    await expect(runScript(`${HEAD}pair_style lj/long/coul/long/dielectric long long 8.0
+    const body = `pair_style lj/long/coul/long/dielectric long long 8.0
 pair_coeff * * 0.02 2.0
 kspace_style ewald/disp 1.0e-5
 compute ea all efield/atom
 run 0
-`)).rejects.toThrow(/Compute efield\/atom not supported by pair style/);
+`;
+    // the kspace init first, as above (measured with native LAMMPS: Cannot use non-periodic boundaries with EwaldDisp)
+    await expect(runScript(`${HEAD}${body}`)).rejects.toThrow('Cannot use non-periodic boundaries with EwaldDisp');
+    await expect(runScript(`${HEAD.replace('boundary f f f', 'boundary p p p')}${body}`)).rejects.toThrow(/Compute efield\/atom not supported by pair style/);
   });
 });

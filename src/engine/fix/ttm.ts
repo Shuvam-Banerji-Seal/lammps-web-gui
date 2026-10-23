@@ -150,18 +150,23 @@ export const parseTtmKeywords = (id: string, style: string, args: string[], outf
     if (used > 0) {
       i += used;
     } else if (key === 'set') {
+      // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp FixTTM::FixTTM at b332f28): if (iarg + 2 > narg) missing_cmd_args("fix {} set")
+      if (i + 2 > args.length) throw new StyleError(`Illegal fix ${style} set command: missing argument(s)`);
       const t = Number(args[i + 1]);
-      if (args[i + 1] === undefined || !Number.isFinite(t)) throw new StyleError(`fix ${id} ${style}: keyword set needs a temperature`);
+      if (!Number.isFinite(t)) throw new StyleError(`fix ${id} ${style}: keyword set needs a temperature`);
       // Measured with native LAMMPS (black box): set Tinit = 0 stops the run with an error that requires Tinit > 0.
       if (!(t > 0)) throw new StyleError(`fix ${id} ${style}: set Tinit must be > 0`);
       k.setT = t;
       i += 2;
     } else if (key === 'infile') {
-      if (args[i + 1] === undefined) throw new StyleError(`fix ${id} ${style}: keyword infile needs a file name`);
+      // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp FixTTM::FixTTM at b332f28): if (iarg + 2 > narg) missing_cmd_args("fix {} infile")
+      if (i + 2 > args.length) throw new StyleError(`Illegal fix ${style} infile command: missing argument(s)`);
       k.infile = args[i + 1];
       i += 2;
     } else if (key === 'outfile') {
       if (!outfileAllowed) throw new StyleError(`fix ${id} ${style} does not support the outfile keyword (use dump grid or restart instead)`);
+      // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp FixTTM::FixTTM at b332f28): if (iarg + 3 > narg) missing_cmd_args("fix {} outfile")
+      if (i + 3 > args.length) throw new StyleError(`Illegal fix ${style} outfile command: missing argument(s)`);
       const n = Number(args[i + 1]);
       if (!Number.isInteger(n) || n < 1 || args[i + 2] === undefined) throw new StyleError(`fix ${id} ${style}: outfile needs Nout (positive integer) and a file name`);
       k.outNevery = n;

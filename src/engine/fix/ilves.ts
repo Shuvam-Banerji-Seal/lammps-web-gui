@@ -209,7 +209,15 @@ export class FixIlves extends Fix {
         }
         continue;
       }
-      if (w === 'b' || w === 'a' || w === 't' || w === 'm') { mode = w; continue; }
+      if (w === 'b' || w === 'a' || w === 't' || w === 'm') {
+        // As native LAMMPS does (src/RIGID/fix_ilves.cpp FixIlves::FixIlves at b332f28): a selector must be followed by one or more values before the next selector or keyword
+        const nxt = args[k + 1];
+        if (nxt === undefined || nxt === 'b' || nxt === 'a' || nxt === 't' || nxt === 'm' || KEYWORDS.has(nxt)) {
+          throw new StyleError(`Fix ilves selector '${w}' needs one or more values`);
+        }
+        mode = w;
+        continue;
+      }
       if (!mode) throw new StyleError(`fix ilves: '${w}' must follow a constraint keyword b, a, t or m`);
       if (mode === 'm') this.masses.push(num(w, 'mass'));
       else (mode === 'b' ? this.bondTypes : mode === 'a' ? this.angleTypes : this.atomTypes).add(int(typeWord(sys.labels, mode === 'b' ? 'bond' : mode === 'a' ? 'angle' : 'atom', w), `${mode} type`));

@@ -17,7 +17,7 @@
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { StyleError, typeBounds } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { missingArgs, parseNum } from '../../engine/force/util';
 import {
   filterTopo, isRheoThermalStyle, massOf, pushTopo, RHEO_COND, RHEO_ESPH, RHEO_HEATFLOW, RHEO_STATUS, RHEO_TEMP,
 } from '../../engine/atoms';
@@ -69,12 +69,14 @@ export class FixRHEOThermal extends Fix {
     if (args.length < 1) throw new StyleError('Illegal fix command');
     let iarg = 0;
     const need = (k: number, what: string) => {
-      if (iarg + k >= args.length) throw new StyleError(`Illegal fix ${what}: missing arguments`);
+      if (iarg + k >= args.length) throw missingArgs(`fix ${what}`);
     };
     while (iarg < args.length) {
       const w = args[iarg];
       if (w === 'conductivity' || w === 'specific/heat' || w === 'Tfreeze' || w === 'latent/heat') {
-        need(3, `rheo/thermal ${w}`);
+        // As native LAMMPS does (src/RHEO/fix_rheo_thermal.cpp FixRHEOThermal::FixRHEOThermal at b332f28): the keyword
+        // needs its style word, then the constant keyword, then its value
+        need(2, `rheo/thermal ${w}`);
         const [lo, hi] = typeBounds(args[iarg + 1], n);
         if (args[iarg + 2] !== 'constant') throw new StyleError(`Illegal fix command, ${args[iarg + 2]}`);
         need(3, `rheo/thermal ${w} constant`);

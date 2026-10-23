@@ -109,6 +109,29 @@ export interface ImageOwner {
 
 const DEG = Math.PI / 180;
 
+/**
+ * The words each dump image keyword needs, the keyword included. As native LAMMPS does (src/GRAPHICS/dump_image.cpp
+ * DumpImage::DumpImage at b332f28): each keyword first checks "iarg+N > narg" and raises "Illegal dump image KEY command:
+ * missing argument(s)" before it reads its values.
+ */
+const IMAGE_KEYWORD_WORDS = new Map<string, number>([
+  ['atom', 2], ['adiam', 2], ['autobond', 3], ['bond', 3], ['grid', 2], ['line', 3], ['tri', 4], ['ellipsoid', 5],
+  ['body', 4], ['compute', 5], ['fix', 5], ['region', 4], ['size', 3], ['view', 3], ['up', 4], ['center', 5],
+  ['zoom', 2], ['box', 3], ['axes', 3], ['subbox', 3], ['shiny', 2], ['fsaa', 2], ['ssao', 4], ['depthcue', 5],
+  ['defocus', 4], ['outline', 4],
+]);
+
+/**
+ * The words each image-specific dump_modify keyword needs, the keyword included (dump_image.cpp
+ * DumpImage::modify_param at b332f28: "if (narg < 3) utils::missing_cmd_args(FLERR, \"dump_modify acolor\", error)").
+ */
+const MODIFY_IMAGE_WORDS = new Map<string, number>([
+  ['acolor', 3], ['adiam', 3], ['atrans', 3], ['bcolor', 3], ['bdiam', 3], ['btrans', 3], ['backcolor', 2],
+  ['backcolor2', 2], ['boxcolor', 2], ['boxtrans', 2], ['subboxtrans', 2], ['axestrans', 2], ['color', 3],
+  ['ccolor', 3], ['ctrans', 3], ['fcolor', 3], ['ftrans', 3], ['gtrans', 2], ['lights', 5], ['ssaosamples', 2],
+  ['specular', 2],
+]);
+
 /** dump image axes locations; null is "no", "yes" is the lower left corner. */
 type AxesLocation = 'center' | 'lowerleft' | 'lowerright' | 'upperleft' | 'upperright';
 const AXES_LOCATIONS = new Map<string, AxesLocation | null>([
@@ -378,6 +401,8 @@ export class ImageDump {
   private parse(a: string[]): void {
     for (let k = 0; k < a.length;) {
       const key = a[k];
+      const need = IMAGE_KEYWORD_WORDS.get(key);
+      if (need !== undefined && k + need > a.length) throw new StyleError(`Illegal dump image ${key} command: missing argument(s)`);
       switch (key) {
         case 'atom': {
           const v = a[k + 1];
@@ -500,6 +525,9 @@ export class ImageDump {
           const rgb = this.color(color);
           let drawstyle: 'filled' | 'frame' | 'transparent' | 'points' = 'filled', framediam = 0.5, opacity = 1, npoints = 0;
           let used = 4;
+          // the value words of each draw style (dump_image.cpp, "dump image region frame" / "points" / "transparent")
+          const styleWords = style === 'frame' || style === 'transparent' ? 5 : style === 'points' ? 6 : 0;
+          if (styleWords && k + styleWords > a.length) throw new StyleError(`Illegal dump image region ${style} command: missing argument(s)`);
           if (style === 'filled') { /* no value */ }
           else if (style === 'points') {
             // dump_image.cpp: "npoints" (>= 1) then the point "diameter" (> 0.0), six words in all with the style
@@ -569,6 +597,8 @@ export class ImageDump {
           if (loc === undefined) throw new StyleError(`dump ${this.id}: unknown dump image axes location '${a[k + 1] ?? ''}'`);
           if (loc === null) this.axes = null;
           else {
+            // a location other than no also takes the length and the diameter
+            if (k + 4 > a.length) throw new StyleError('Illegal dump image axes command: missing argument(s)');
             const len = this.num(a[k + 2], 'axes'), diam = this.num(a[k + 3], 'axes');
             if (!(len > 0)) throw new StyleError(`dump ${this.id}: invalid dump image axes length ${len}`);
             if (!(diam > 0)) throw new StyleError(`dump ${this.id}: invalid dump image axes diameter ${diam}`);
@@ -706,6 +736,8 @@ export class ImageDump {
       return out;
     };
     const colors = (w: string): Col[] => w.split('/').map((c) => this.color(c));
+    const need = MODIFY_IMAGE_WORDS.get(key);
+    if (need !== undefined && k + need > a.length) throw new StyleError(`Illegal dump_modify ${key} command: missing argument(s)`);
     switch (key) {
       case 'acolor': {
         const types = typeRange(a[k + 1]);
@@ -792,6 +824,7 @@ export class ImageDump {
           return 3;
         }
         // dump_modify color: rgbcolors[name] = {r, g, b} with the values as given (image.cpp add_color), no rounding
+        if (k + 5 > a.length) throw new StyleError('Illegal dump_modify color command: missing argument(s)');
         const c: Col = [this.num(a[k + 2], 'color'), this.num(a[k + 3], 'color'), this.num(a[k + 4], 'color')];
         this.setColor(name, c);
         return 5;

@@ -61,6 +61,8 @@ export class FixLangevinEff extends Fix {
       const key = args[k];
       switch (key) {
         case 'scale': {
+          // fix_langevin.cpp: if (iarg + 3 > narg) utils::missing_cmd_args(FLERR, "fix langevin scale", error);
+          if (k + 3 > args.length) throw new StyleError('Illegal fix langevin scale command: missing argument(s)');
           const t = Number(args[k + 1]), r = Number(args[k + 2]);
           if (!Number.isInteger(t) || t < 1 || t > s.ntypes) throw new StyleError(`Invalid fix langevin scale type. Must be 1 < type <= ${s.ntypes}`);
           this.ratio[t] = r;
@@ -68,6 +70,8 @@ export class FixLangevinEff extends Fix {
           break;
         }
         case 'tally': {
+          // fix_langevin.cpp: if (iarg + 2 > narg) utils::missing_cmd_args(FLERR, "fix langevin tally", error);
+          if (k + 2 > args.length) throw new StyleError('Illegal fix langevin tally command: missing argument(s)');
           const v = args[k + 1];
           if (v !== 'yes' && v !== 'no') throw new StyleError(`Illegal fix langevin ${key} value: ${v}`);
           tally = v === 'yes';

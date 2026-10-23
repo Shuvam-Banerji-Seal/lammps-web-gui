@@ -98,7 +98,9 @@ export class PairComb3 extends Pair {
 
   coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 4) throw new StyleError('usage: pair_coeff * * filename elem1 ... elemN (style comb3)');
+    // As native LAMMPS does (src/MANYBODY/pair_comb3.cpp PairComb3::coeff at b332f28): the element list is counted in
+    // map_element2type (pair.cpp) before the file is read, so a missing list gives the mapping-count error
+    if (args.length < 3) throw new StyleError('usage: pair_coeff * * filename elem1 ... elemN (style comb3)');
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError('the first 2 arguments of pair_coeff for style comb3 must be * *');
     const filename = args[2];
     const names = args.slice(3);

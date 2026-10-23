@@ -204,10 +204,9 @@ export class DihedralFourier extends DihedralVarLen {
     const m = parseInt_(args[1], 'm');
     if (m < 1) throw new StyleError('Incorrect number of terms arg for dihedral coefficients');
     if (2 + 3 * m < args.length) throw new StyleError('Incorrect number of arguments for dihedral coefficients');
+    // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_fourier.cpp at b332f28): too few words are not counted; each value
+    // is read in turn, so a missing one fails in utils::numeric with the NULL message.
     const vals = args.slice(2);
-    if (vals.length !== 3 * m) {
-      throw bondedCoeffArgs('dihedral', `dihedral_coeff fourier needs m K n d triplets: m=${m} requires ${3 * m} values, got ${vals.length}`);
-    }
     const packed: number[] = [];
     for (let i = 0; i < m; i++) {
       const K = parseNum(vals[3 * i], `K${i + 1}`);

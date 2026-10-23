@@ -180,6 +180,35 @@ export const substituteVariables = (
   return s;
 };
 
+/**
+ * The quote check that native reads a command line with, before any substitution: a '#' outside quotes starts a
+ * comment, and each single, double or triple quote needs its closing quote on the same line. As native LAMMPS does
+ * (src/input.cpp Input::parse at b332f28): "Unmatched single quote in command: {line}", "Unmatched triple quote in
+ * command: {line}" and "Unmatched double quote in command: {line}", with the whole line.
+ */
+export const checkQuotes = (text: string): void => {
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '#') return;
+    if (c === "'") {
+      const end = text.indexOf("'", i + 1);
+      if (end < 0) throw new Error(`Unmatched single quote in command: ${text}`);
+      i = end + 1;
+    } else if (c === '"') {
+      if (text.startsWith('"""', i)) {
+        const end = text.indexOf('"""', i + 3);
+        if (end < 0) throw new Error(`Unmatched triple quote in command: ${text}`);
+        i = end + 3;
+      } else {
+        const end = text.indexOf('"', i + 1);
+        if (end < 0) throw new Error(`Unmatched double quote in command: ${text}`);
+        i = end + 1;
+      }
+    } else i++;
+  }
+};
+
 /** Splits a substituted command into words, removing the quotes of quoted words. */
 export const tokenize = (text: string): string[] => {
   const words: string[] = [];

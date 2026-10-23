@@ -348,7 +348,9 @@ export class KSpacePPPMDisp extends KSpaceBase {
   private info6: Influence | null = null;
 
   settings(args: string[]): void {
-    if (args.length < 1) throw new StyleError('Illegal kspace_style pppm/disp command');
+    // As native LAMMPS does (src/KSPACE/pppm_disp.cpp PPPMDisp::settings at b332f28): "Illegal kspace_style {} command"
+    // with force->kspace_style, which the dielectric and tip4p variants share through this settings
+    if (args.length < 1) throw new StyleError(`Illegal kspace_style ${this.styleShown} command`);
     this.accuracyRel = Math.abs(parseNum(args[0], 'accuracy'));
     if (this.accuracyRel > 1.0) throw new StyleError(`Invalid relative accuracy ${this.accuracyRel} for kspace_style pppm/disp`);
     this.accuracy = this.accuracyRel;

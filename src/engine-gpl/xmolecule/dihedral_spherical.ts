@@ -73,8 +73,8 @@ export class DihedralSpherical extends Bonded {
 
   /**
    * dihedral_spherical.cpp coeff(): "narg < 4" and "nterms < 1" and the argument counts ("Incorrect number of arguments
-   * for dihedral coefficients", 2 + 10 nterms words including the type). Native only checks for too many words; too
-   * few would read past the argument list, so they are refused here with the same message.
+   * for dihedral coefficients", 2 + 10 nterms words including the type). Native only checks for too many words; a
+   * missing value is read as NULL and refused by utils::numeric.
    */
   coeff(args: string[], _ctx?: StyleContext): void {
     const narg = args.length;
@@ -82,7 +82,7 @@ export class DihedralSpherical extends Bonded {
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const nterms_one = parseInt1(args[1]);
     if (nterms_one < 1) throw new StyleError('Incorrect number of terms arg for dihedral coefficients');
-    if (narg !== 2 + PER_TERM * nterms_one) throw new StyleError('Incorrect number of arguments for dihedral coefficients');
+    if (narg > 2 + PER_TERM * nterms_one) throw new StyleError('Incorrect number of arguments for dihedral coefficients');
     for (let i = lo; i <= hi; i++) {
       this.nterms[i] = nterms_one;
       const arrs = Array.from({ length: PER_TERM }, () => new Float64Array(nterms_one));

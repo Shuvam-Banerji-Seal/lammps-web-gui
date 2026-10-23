@@ -21,6 +21,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { nativeOrder } from '../../engine/atoms';
 import type { CustomProp } from '../../engine/types';
@@ -67,7 +68,7 @@ export class FixNonaffineDisplacement extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     // native narg counts "fix ID group nonaffine/displacement": narg < 4 is fewer than one argument
-    if (args.length < 1) throw new StyleError('Illegal fix nonaffine/displacement command: missing arguments');
+    if (args.length < 1) throw missingArgs('fix nonaffine/displacement');
     this.nevery = inumeric(args[0]);
     // peratom_freq = nevery (the source's constructor)
     this.peratomFreq = this.nevery;
@@ -76,12 +77,12 @@ export class FixNonaffineDisplacement extends Fix {
     if (args[iarg] === 'integrated') {
       iarg += 1;
     } else if (args[iarg] === 'd2min') {
-      if (iarg + 1 >= args.length) throw new StyleError('Illegal fix nonaffine/displacement d2min command: missing argument');
+      if (iarg + 1 >= args.length) throw missingArgs('fix nonaffine/displacement d2min');
       this.d2min = true;
       const cs = args[iarg + 1];
       if (cs === 'type' || cs === 'radius') this.cutStyle = cs;
       else if (cs === 'custom') {
-        if (iarg + 2 >= args.length) throw new StyleError('Illegal fix nonaffine/displacement custom command: missing argument');
+        if (iarg + 2 >= args.length) throw missingArgs('fix nonaffine/displacement custom');
         if (sys.nb.multiStyle) throw new StyleError("Fix nonaffine/displacement with custom cutoff requires neighbor style 'bin' or 'nsq'");
         this.cutStyle = 'custom';
         const c = Number(args[iarg + 2]);
@@ -95,7 +96,7 @@ export class FixNonaffineDisplacement extends Fix {
     } else {
       throw new StyleError(`Illegal nonaffine displacement style ${args[iarg] ?? ''} in fix nonaffine/displacement`);
     }
-    if (iarg + 2 > args.length) throw new StyleError('Illegal fix nonaffine/displacement command: missing arguments');
+    if (iarg + 2 > args.length) throw missingArgs('fix nonaffine/displacement');
     let refStyle: RefStyle;
     let refTs = -1, updTs = -1, offTs = -1;
     if (args[iarg] === 'fixed') {
@@ -120,12 +121,12 @@ export class FixNonaffineDisplacement extends Fix {
     iarg += 2;
     while (iarg < args.length) {
       if (args[iarg] === 'z/min') {
-        if (iarg + 2 > args.length) throw new StyleError('Illegal fix nonaffine/displacement command: missing arguments');
+        if (iarg + 2 > args.length) throw missingArgs('fix nonaffine/displacement');
         this.zMin = inumeric(args[iarg + 1]);
         if (this.zMin < 0) throw new StyleError('Minimum coordination must be positive');
         iarg += 2;
       } else if (args[iarg] === 'intensive/d2min') {
-        if (iarg + 2 > args.length) throw new StyleError('Illegal fix nonaffine/displacement command: missing arguments');
+        if (iarg + 2 > args.length) throw missingArgs('fix nonaffine/displacement');
         this.intensive = logical(args[iarg + 1]);
         if (!this.d2min) throw new StyleError('Can only specify extensive/intensive d2min with style d2min');
         // native advances by one here, so its value is read next as a keyword (and stops the command)

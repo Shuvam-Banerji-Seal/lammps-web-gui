@@ -24,6 +24,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { ComputeSAED } from './compute_saed';
 import { reciprocalSpacing } from './compute_xrd';
@@ -115,36 +116,36 @@ export class FixSAEDVTK extends Fix {
     for (let k = 4; k < args.length;) {
       const kw = args[k];
       if (kw === 'file') {
-        if (k + 2 > args.length) throw new StyleError('Illegal fix saed/vtk command: file needs a file name');
+        if (k + 2 > args.length) throw missingArgs('fix saed/vtk file');
         fileName = args[k + 1];
         k += 2;
       } else if (kw === 'format') {
-        if (k + 2 > args.length) throw new StyleError('Illegal fix saed/vtk command: format needs legacy or xml');
+        if (k + 2 > args.length) throw missingArgs('fix saed/vtk format');
         if (args[k + 1] === 'legacy') xml = false;
         else if (args[k + 1] === 'xml') xml = true;
         else throw new StyleError(`Unknown fix saed/vtk format ${args[k + 1]}`);
         k += 2;
       } else if (kw === 'binary') {
-        if (k + 2 > args.length) throw new StyleError('Illegal fix saed/vtk command: binary needs yes or no');
+        if (k + 2 > args.length) throw missingArgs('fix saed/vtk binary');
         if (args[k + 1] === 'yes' || args[k + 1] === 'on' || args[k + 1] === 'true' || args[k + 1] === '1') {
           throw new StyleError('fix saed/vtk binary yes is not supported (the binary VTK payloads are not written by the engine)');
         }
         k += 2;
       } else if (kw === 'ave') {
-        if (k + 2 > args.length) throw new StyleError('Illegal fix saed/vtk command: ave needs one, running or window');
+        if (k + 2 > args.length) throw missingArgs('fix saed/vtk ave');
         const m = args[k + 1];
         if (m === 'one') ave = 'one';
         else if (m === 'running') ave = 'running';
         else if (m === 'window') {
           ave = 'window';
-          if (k + 3 > args.length) throw new StyleError('Illegal fix saed/vtk command: ave window needs M');
+          if (k + 3 > args.length) throw missingArgs('fix saed/vtk ave window');
           nwindow = intArg(args[k + 2], what);
           if (nwindow <= 0) throw new StyleError('Illegal fix saed/vtk command: ave window M must be positive');
           k += 1;
         } else throw new StyleError('Illegal fix saed/vtk command');
         k += 2;
       } else if (kw === 'start') {
-        if (k + 2 > args.length) throw new StyleError('Illegal fix saed/vtk command: start needs Nstart');
+        if (k + 2 > args.length) throw missingArgs('fix saed/vtk start');
         startStep = intArg(args[k + 1], what);
         k += 2;
       } else throw new StyleError('Illegal fix saed/vtk command');

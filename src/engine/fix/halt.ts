@@ -1,6 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
+import { missingArgs, parseNum } from '../force/util';
 import type { System } from '../system';
 import { formatNumber } from '../cformat';
 import { requestHalt } from '../run/halt';
@@ -72,7 +72,8 @@ export class FixHalt extends Fix {
       // As native LAMMPS does (src/fix_halt.cpp FixHalt::FixHalt at b332f28): a word that is not one of its keywords stops with "Unknown fix halt keyword".
       if (!['error', 'message', 'path', 'universe'].includes(key)) throw new StyleError(`Unknown fix halt keyword ${key}`);
       const v = args[k + 1];
-      if (v === undefined) throw new StyleError(`fix ${id} halt: keyword ${key} needs a value`);
+      // As native LAMMPS does (src/fix_halt.cpp FixHalt::FixHalt at b332f28): "Illegal fix halt {keyword} command: missing argument(s)"
+      if (v === undefined) throw missingArgs(`fix halt ${key}`);
       if (key === 'error') {
         if (v !== 'hard' && v !== 'soft' && v !== 'continue') throw new StyleError(`fix ${id} halt error must be hard, soft or continue`);
         error = v;

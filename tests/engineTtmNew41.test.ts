@@ -175,7 +175,7 @@ describe('ttm/thermal and ttm/cascade in the engine', () => {
   });
 
   it('ttm/thermal: the source keyword needs a value', async () => {
-    await expectError('fix 2 all ttm/thermal 11 p.in 2 2 2 set 1000 source', { 'p.in': props() }, /keyword source needs a value/);
+    await expectError('fix 2 all ttm/thermal 11 p.in 2 2 2 set 1000 source', { 'p.in': props() }, 'Illegal fix ttm/thermal source command: missing argument(s)');
   });
 
   it('ttm/thermal: an unknown keyword is an error', async () => {

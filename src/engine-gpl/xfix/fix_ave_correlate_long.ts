@@ -15,6 +15,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { globalScalar, parseRef, expandWildcards, type Ref } from '../../engine/refs';
 import { formatNumber } from '../../engine/cformat';
@@ -116,41 +117,41 @@ export class FixAveCorrelateLong extends Fix {
       const key = rest[iarg];
       const val = rest[iarg + 1];
       if (key === 'type') {
-        if (iarg + 2 > rest.length) throw new StyleError('Illegal fix ave/correlate/long command: type needs a value');
+        if (iarg + 2 > rest.length) throw missingArgs('fix ave/correlate/long type');
         if (!['auto', 'upper', 'lower', 'auto/upper', 'auto/lower', 'full', 'first'].includes(val)) {
           throw new StyleError(`Unknown fix ave/correlate/long type: ${val}`);
         }
         type = val as CorrType;
         iarg += 2;
       } else if (key === 'start') {
-        if (iarg + 2 > rest.length) throw new StyleError('Illegal fix ave/correlate/long command: start needs a value');
+        if (iarg + 2 > rest.length) throw missingArgs('fix ave/correlate/long start');
         startstep = inumeric(val);
         iarg += 2;
       } else if (key === 'ncorr') {
-        if (iarg + 2 > rest.length) throw new StyleError('Illegal fix ave/correlate/long command: ncorr needs a value');
+        if (iarg + 2 > rest.length) throw missingArgs('fix ave/correlate/long ncorr');
         numcorrelators = inumeric(val);
         iarg += 2;
       } else if (key === 'nlen') {
-        if (iarg + 2 > rest.length) throw new StyleError('Illegal fix ave/correlate/long command: nlen needs a value');
+        if (iarg + 2 > rest.length) throw missingArgs('fix ave/correlate/long nlen');
         p = inumeric(val);
         iarg += 2;
       } else if (key === 'ncount') {
-        if (iarg + 2 > rest.length) throw new StyleError('Illegal fix ave/correlate/long command: ncount needs a value');
+        if (iarg + 2 > rest.length) throw missingArgs('fix ave/correlate/long ncount');
         m = inumeric(val);
         iarg += 2;
       } else if (key === 'file') {
-        if (iarg + 2 > rest.length) throw new StyleError('Illegal fix ave/correlate/long command: file needs a value');
+        if (iarg + 2 > rest.length) throw missingArgs('fix ave/correlate/long file');
         fileName = val;
         iarg += 2;
       } else if (key === 'overwrite') {
         overwrite = true;
         iarg += 1;
       } else if (key === 'title1') {
-        if (iarg + 2 > rest.length) throw new StyleError('Illegal fix ave/correlate/long command: title1 needs a value');
+        if (iarg + 2 > rest.length) throw missingArgs('fix ave/correlate/long title1');
         title1 = val;
         iarg += 2;
       } else if (key === 'title2') {
-        if (iarg + 2 > rest.length) throw new StyleError('Illegal fix ave/correlate/long command: title2 needs a value');
+        if (iarg + 2 > rest.length) throw missingArgs('fix ave/correlate/long title2');
         title2 = val;
         iarg += 2;
       } else {

@@ -1116,6 +1116,7 @@ const buildReaction = (sys: System, id: number, r: ReactArgs, stabilization: boo
       k += 2;
     } else if (key === 'rescale_charges') {
       const w = o[k + 1];
+      if (w === undefined) throw new StyleError("Illegal fix bond/react command: 'rescale_charges' has too few arguments");
       if (w === 'no') rxn.rescaleFlag = false;
       else if (w === 'yes') {
         if (!reactant.t.q && !product.t.q) throw new StyleError('Illegal fix bond/react command: cannot use \'rescale_charges\' without atomic charges enabled');

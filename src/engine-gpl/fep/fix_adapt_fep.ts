@@ -19,10 +19,13 @@
 import { Fix } from '../../engine/fix/fix';
 import { Pair, StyleError, typeBounds } from '../../engine/force/types';
 import { hasChargeStyle, isSphereStyle } from '../../engine/atoms';
+import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { refreshChargeSums, reinitPair, resolvePairTable, setPairValue, typePairs, type PairTable } from './pair_table';
 
 const USAGE = 'usage: fix ID group-ID adapt/fep N keyword args ... keyword value ...';
+/** Words of each attribute keyword, as native's first argument loop counts them (src/FEP/fix_adapt_fep.cpp at b332f28). */
+const ATTRIBUTE_WORDS: Record<string, number> = { pair: 6, kspace: 2, atom: 4 };
 
 const logical = (key: string, w: string | undefined): boolean => {
   if (w !== 'yes' && w !== 'no') throw new StyleError(`fix adapt/fep keyword ${key} must be yes or no, got '${w ?? ''}'`);
@@ -66,6 +69,14 @@ export class FixAdaptFEP extends Fix {
     const n = Number(args[0]);
     if (args[0] === undefined || !Number.isInteger(n) || n < 0) throw new StyleError(`fix ${id} (adapt/fep): N must be a non-negative integer, got '${args[0] ?? ''}' (${USAGE})`);
     this.nevery = n;
+    // As native LAMMPS does (src/FEP/fix_adapt_fep.cpp FixAdaptFEP::FixAdaptFEP at b332f28): the leading attribute keywords
+    // are counted first, each checked for its own number of arguments ("Illegal fix adapt/fep atom command: missing argument(s)")
+    for (let p = 1; p < args.length; ) {
+      const need = ATTRIBUTE_WORDS[args[p]];
+      if (typeof need !== 'number') break;
+      if (p + need > args.length) throw missingArgs(`fix adapt/fep ${args[p]}`);
+      p += need;
+    }
     let k = 1;
     let nattr = 0;
     while (k < args.length) {

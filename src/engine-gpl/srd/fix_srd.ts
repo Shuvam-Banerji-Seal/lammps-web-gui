@@ -48,6 +48,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { FixDeform } from '../../engine/fix/deform';
 import { StyleError } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS } from '../../engine/atoms';
 import { bodyMotion, quatToMatrix, rotateVec } from '../../engine/compute/asphere';
@@ -283,7 +284,8 @@ export class FixSRD extends Fix {
     let overlap = false;
     let iarg = 5;
     const need = (k: number, key: string) => {
-      if (iarg + k > args.length) throw new StyleError(`Illegal fix srd ${key} keyword: missing argument`);
+      // As native LAMMPS does (src/SRD/fix_srd.cpp FixSRD::FixSRD at b332f28): "Illegal fix srd {keyword} command: missing argument(s)"
+      if (iarg + k > args.length) throw missingArgs(`fix srd ${key}`);
     };
     while (iarg < args.length) {
       const key = args[iarg];

@@ -15,7 +15,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { parseInt_ } from '../../engine/force/util';
+import { missingArgs, parseInt_ } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -122,14 +122,15 @@ export class FixPhonon extends Fix {
     for (let k = 5; k < args.length;) {
       const key = args[k];
       const val = args[k + 1];
-      if (val === undefined) throw new StyleError(`fix phonon keyword ${key} needs a value`);
+      // As native LAMMPS does (src/PHONON/fix_phonon.cpp FixPhonon::FixPhonon at b332f28): an unknown keyword is refused
+      // before its value is looked for; a known keyword without its value is "Illegal fix phonon {keyword} command: missing argument(s)"
+      if (key !== 'sysdim' && key !== 'nasr') throw new StyleError(`Unknown fix phonon keyword ${key}`);
+      if (val === undefined) throw missingArgs(`fix phonon ${key}`);
       if (key === 'sysdim') {
         sdim = parseInt_(val, 'fix phonon sysdim');
         if (sdim < 1) throw new StyleError('Illegal fix phonon command: sysdim should not be less than 1');
-      } else if (key === 'nasr') {
-        this.nasr = parseInt_(val, 'fix phonon nasr');
       } else {
-        throw new StyleError(`Unknown fix phonon keyword ${key}`);
+        this.nasr = parseInt_(val, 'fix phonon nasr');
       }
       k += 2;
     }

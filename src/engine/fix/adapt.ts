@@ -3,6 +3,7 @@ import { Fix } from './fix';
 import { Pair, PairParams, StyleError, typeBounds, type Bonded } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
 import { SimpleBonded } from '../force/bonded_util';
+import { missingArgs } from '../force/util';
 import { BondedHybrid } from '../force/bonded_hybrid';
 import type { System } from '../system';
 import type { SimState } from '../types';
@@ -123,6 +124,9 @@ const ADAPTABLE: Record<string, Adaptable> = {
 
 const USAGE = 'usage: fix ID group-ID adapt N attribute args ... keyword value ...';
 
+/** Words of each attribute keyword, as native's first argument loop counts them (src/fix_adapt.cpp at b332f28). */
+const ATTRIBUTE_WORDS: Record<string, number> = { pair: 6, kspace: 2, atom: 3, bond: 5, angle: 5, dihedral: 5, improper: 5 };
+
 type BondedKind = 'bond' | 'angle' | 'dihedral' | 'improper';
 const KIND_LABEL: Record<BondedKind, string> = { bond: 'Bond', angle: 'Angle', dihedral: 'Dihedral', improper: 'Improper' };
 
@@ -242,6 +246,14 @@ export class FixAdapt extends Fix {
       throw new StyleError(`fix ${id} (adapt): N must be a non-negative integer, got '${args[0] ?? ''}' (${USAGE})`);
     }
     this.nevery = n;
+    // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::FixAdapt at b332f28): the leading attribute keywords are
+    // counted first, each checked for its own number of arguments ("Illegal fix adapt pair command: missing argument(s)")
+    for (let p = 1; p < args.length; ) {
+      const need = ATTRIBUTE_WORDS[args[p]];
+      if (typeof need !== 'number') break;
+      if (p + need > args.length) throw missingArgs(`fix adapt ${args[p]}`);
+      p += need;
+    }
     let k = 1;
     let nattr = 0;
     while (k < args.length) {

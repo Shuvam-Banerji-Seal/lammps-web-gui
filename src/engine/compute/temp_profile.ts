@@ -1,6 +1,6 @@
 import { ComputeTemp } from './temp';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
+import { inumeric } from '../force/util';
 import type { System } from '../system';
 import { massOf } from '../atoms';
 
@@ -60,25 +60,28 @@ export class ComputeTempProfile extends ComputeTemp {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
     const usage = 'usage: compute ID group-ID temp/profile xflag yflag zflag binstyle args keyword value ...';
-    if (args.length < 5) throw new StyleError(usage);
-    const flags: number[] = [];
-    for (let k = 0; k < 3; k++) {
-      if (args[k] !== '0' && args[k] !== '1') throw new StyleError(`compute ${id} (temp/profile): ${['xflag', 'yflag', 'zflag'][k]} must be 0 or 1 (got '${args[k]}')`);
-      flags.push(Number(args[k]));
-    }
+    // As native LAMMPS does (src/compute_temp_profile.cpp ComputeTempProfile::ComputeTempProfile at b332f28): fewer
+    // than the three flags and a binstyle is "Illegal compute temp/profile command", and so is a binstyle whose values are missing.
+    if (args.length < 4) throw new StyleError('Illegal compute temp/profile command');
+    // xflag, yflag and zflag are read by utils::inumeric (any non-zero value turns the component on)
+    const flags = args.slice(0, 3).map((w) => (inumeric(w) !== 0 ? 1 : 0));
+    if (flags[2] && sys.dimension === 2) throw new StyleError('Compute temp/profile cannot use vz for 2d systemx');
     this.flags = [flags[0], flags[1], flags[2]] as [number, number, number];
     const style = args[3];
     const counts: Record<string, string[]> = { x: ['x'], y: ['y'], z: ['z'], xy: ['x', 'y'], yz: ['y', 'z'], xz: ['x', 'z'], xyz: ['x', 'y', 'z'] };
     const dims = counts[style];
-    if (!dims) throw new StyleError(`compute ${id} (temp/profile): binstyle must be x, y, z, xy, yz, xz or xyz (got '${style}')`);
+    if (!dims) throw new StyleError('Illegal compute temp/profile command');
+    if (args.length < 4 + dims.length) throw new StyleError('Illegal compute temp/profile command');
+    if (dims.includes('z') && sys.dimension === 2) throw new StyleError('Compute temp/profile cannot bin z for 2d systems');
     const nbin: Dims = { nx: 1, ny: 1, nz: 1 };
     let k = 4;
     for (const d of dims) {
-      const w = args[k++];
-      const v = Math.floor(parseNum(w, `compute ${id} (temp/profile) N${d}`));
-      if (!(v >= 1) || String(v) !== String(parseNum(w, 'N'))) throw new StyleError(`compute ${id} (temp/profile): N${d} must be a positive integer (got '${w}')`);
+      const v = inumeric(args[k++]);
       if (d === 'x') nbin.nx = v; else if (d === 'y') nbin.ny = v; else nbin.nz = v;
     }
+    if (nbin.nx * nbin.ny * nbin.nz <= 0) throw new StyleError('Illegal compute temp/profile command');
+    // native accepts two negative counts with a positive product; the engine's bins need positive counts
+    if (nbin.nx < 1 || nbin.ny < 1 || nbin.nz < 1) throw new StyleError(`compute ${id} (temp/profile): the bin counts must be positive`);
     this.nb = nbin;
     this.nbins = nbin.nx * nbin.ny * nbin.nz;
     this.binDims = [dims.includes('x'), dims.includes('y'), dims.includes('z')];

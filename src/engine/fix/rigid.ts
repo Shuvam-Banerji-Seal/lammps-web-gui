@@ -477,7 +477,8 @@ export class FixRigid extends Fix {
       } else if (key === 'gravity') {
         // docs.lammps.org/fix_rigid.html: "*gravity* values = gravity-ID", "gravity-ID = ID of fix gravity command to add gravitational forces"
         const gid = args[k + 1];
-        if (!gid) throw new StyleError(`fix ${style}: keyword gravity needs a gravity-ID (Illegal fix ${style} gravity command: missing argument(s))`);
+        // As native LAMMPS does (src/RIGID/fix_rigid_small.cpp FixRigidSmall::FixRigidSmall at b332f28): if (iarg+2 > narg) missing_cmd_args("fix {} gravity")
+        if (!gid) throw new StyleError(`Illegal fix ${style} gravity command: missing argument(s)`);
         this.gravityId = gid;
         k += 2;
       } else if (!(small ? RIGID_SMALL_KEYWORDS : RIGID_KEYWORDS).includes(key)) {

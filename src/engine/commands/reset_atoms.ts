@@ -1,5 +1,5 @@
 import type { Handler } from './args';
-import { int, yesno, keywords, initializing } from './args';
+import { int, yesno, keywords, initializing, missingArgs } from './args';
 import { StyleError } from '../force/types';
 import { hasMolecule, isMolecularStyle, nativeOrder } from '../atoms';
 import { gplHook } from '../gplHooks';
@@ -127,7 +127,8 @@ const resetIds = (sys: System, args: string[]): void => {
  */
 const resetImages = (sys: System, args: string[]): void => {
   const name = args[0];
-  if (name === undefined) throw new StyleError('usage: reset_atoms image group-ID');
+  // As native LAMMPS does (src/reset_atoms_image.cpp ResetAtomsImage::command at b332f28): "if (narg < 1) utils::missing_cmd_args(FLERR, \"reset_atoms image\", error)"
+  if (name === undefined) throw missingArgs('reset_atoms image');
   if (args.length > 1) throw new StyleError(`reset_atoms image: unexpected argument '${args[1]}'`);
   const s = sys.state;
   if (!isMolecularStyle(s.atomStyle)) throw new StyleError('reset_atoms image: the atom style has no bonds (reset_atoms image needs an atom style with bonds)');

@@ -21,7 +21,7 @@
 import { Pair, PairCompute, StyleError, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { ANGSTROM } from '../../engine/force/kspace/ewald';
-import { inumeric, parseNum } from '../../engine/force/util';
+import { inumeric, missingArgs, parseNum } from '../../engine/force/util';
 import { BUCKLED } from './angle_mesocnt';
 import { eunitOf } from './units';
 import { finf, fsemi, geometry, mesoConst, newGeoOut, newWeightOut, weight, type GeoOut, type MesoConst, type WeightOut } from './forces';
@@ -156,7 +156,8 @@ export class PairMesoCNT extends Pair {
 
   /** pair_coeff * * FILE end-type ... (the I and J of a manybody style are '*'). */
   coeff(args: string[], ctx: StyleContext): void {
-    if (args.length < 4) throw new StyleError('Illegal pair_coeff command: pair_coeff * * FILE end-types');
+    // As native LAMMPS does (src/MESONT/pair_mesocnt.cpp PairMesoCNT::coeff at b332f28): "narg < 4" is utils::missing_cmd_args
+    if (args.length < 4) throw missingArgs('pair_coeff');
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError('pair_coeff for pair style mesocnt needs * * (manybody)');
     this.visc = null;
     this.setPotential(args[2], args.slice(3), ctx);

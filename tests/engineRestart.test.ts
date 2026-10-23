@@ -159,6 +159,25 @@ describe('write_restart / read_restart round trip', () => {
   });
 });
 
+describe('write_restart keywords, as native LAMMPS (src/write_restart.cpp at b332f28)', () => {
+  // Measured with native LAMMPS: each line below gives the result named
+  it.each([
+    ['write_restart x.rst fileper 2', 'Cannot use write_restart fileper without % in restart file name'],
+    ['write_restart x.mpiio', 'MPI-IO files are no longer supported by LAMMPS'],
+    ['write_restart x.rst nfile', 'Illegal write_restart nfile command: missing argument(s)'],
+    ['write_restart x.rst bogus', 'Unknown write_restart keyword: bogus'],
+  ])('%s', async (line, message) => {
+    const { session } = newSession();
+    await expect(session.execute(`${LJ_BOX}${line}\n`)).rejects.toThrow(message);
+  });
+
+  it('accepts noinit, and needs a box first', async () => {
+    const { session } = newSession();
+    await expect(session.execute(`${LJ_BOX}write_restart x.rst noinit\n`)).resolves.toBeUndefined();
+    await expect(newSession().session.execute('units lj\nwrite_restart x.rst\n')).rejects.toThrow('Write_restart command before simulation box is defined');
+  });
+});
+
 describe('read_restart errors', () => {
   it('refuses to run after a box exists (native message)', async () => {
     const { session, files } = newSession();
@@ -292,7 +311,10 @@ minimize 1e-12 1e-12 7 100
 
   it('refuses per-processor files and malformed arguments', async () => {
     const { session } = newSession();
-    await expect(session.execute('restart 100 a.restart b.restart nfile 2\n')).rejects.toThrow(/nfile needs a '%' file name/);
+    // As native LAMMPS does (src/write_restart.cpp multiproc_options at b332f28)
+    await expect(session.execute('restart 100 a.restart b.restart nfile 2\n')).rejects.toThrow('Cannot use write_restart nfile without % in restart file name');
+    await expect(session.execute('restart 100 a.restart noinit\n')).resolves.toBeUndefined();
+    await expect(session.execute('restart 100 a.%.restart b.restart\n')).rejects.toThrow('Both restart files must use % or neither');
     await expect(session.execute('restart 100 a.%.restart\n')).rejects.toThrow(/one file per processor/);
     await expect(session.execute('restart v_nope poly.restart\n')).rejects.toThrow(/variable nope does not exist/);
     await expect(session.execute('restart -5 x\n')).rejects.toThrow(/integer >= 0/);

@@ -11,6 +11,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import { massOf, nativeOrder } from '../../engine/atoms';
 import { ramp } from '../../engine/fix/util';
 import { takeFixRecord } from '../../engine/fix/restartRecord';
@@ -45,7 +46,7 @@ export class FixBAOAB extends Fix {
     let zero = false;
     for (let k = 4; k < args.length;) {
       if (args[k] !== 'zero') throw new StyleError(`Unknown fix baoab keyword ${args[k]}`);
-      if (k + 1 >= args.length) throw new StyleError('Illegal fix baoab command: zero needs yes or no');
+      if (k + 1 >= args.length) throw missingArgs('fix baoab zero');
       if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError(`Illegal fix baoab zero value '${args[k + 1]}'`);
       zero = args[k + 1] === 'yes';
       k += 2;

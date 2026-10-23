@@ -251,7 +251,10 @@ describe('dihedral_style spherical', () => {
   it('refuses the wrong number of words (native message) and a non-positive nterms', () => {
     const st = new DihedralSpherical();
     st.allocate(1);
-    expect(() => st.coeff(['1', '1', '1', '1'], CTX_NOSYS)).toThrow(new StyleError('Incorrect number of arguments for dihedral coefficients'));
+    // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_spherical.cpp coeff at b332f28): too many words is the count
+    // error, too few reads past the end with utils::numeric
+    expect(() => st.coeff(['1', '1', ...Array(11).fill('1')], CTX_NOSYS)).toThrow(new StyleError('Incorrect number of arguments for dihedral coefficients'));
+    expect(() => st.coeff(['1', '1', '1', '1'], CTX_NOSYS)).toThrow(new StyleError('Expected floating point parameter instead of NULL or empty string in input script or data file'));
     expect(() => st.coeff(['1', '0', '1', '1'], CTX_NOSYS)).toThrow(new StyleError('Incorrect number of terms arg for dihedral coefficients'));
     expect(() => st.coeff(['1', '1'], CTX_NOSYS)).toThrow(new StyleError('Incorrect args for dihedral coefficients'));
   });

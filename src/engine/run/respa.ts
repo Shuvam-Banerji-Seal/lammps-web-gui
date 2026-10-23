@@ -65,6 +65,9 @@ export const parseRunStyleRespa = (a: readonly string[]): RespaSettings => {
   if (levels < 2 || levels > RESPA_MAX_LEVELS) {
     throw new StyleError(`run_style respa: the browser engine supports 2 to ${RESPA_MAX_LEVELS} levels (got ${levels})`);
   }
+  // As native LAMMPS does (src/respa.cpp Respa::Respa at b332f28): "if (narg < nlevels) error->all(FLERR, 1, "Not enough
+  // rRESPA loop factors provided")", where narg counts the level number too (so a[1..] has at least N words)
+  if (a.length - 1 < levels) throw new StyleError('Not enough rRESPA loop factors provided');
   const loops: number[] = [];
   for (let k = 0; k < levels - 1; k++) {
     const w = a[2 + k];

@@ -57,13 +57,13 @@ fix 5 all dt/reset 10 1.0e-5 0.01 0.1 emax 30 units box
 `)).resolves.toBeUndefined();
   });
 
-  it('refuses malformed arguments', async () => {
+  it('refuses malformed arguments as native does (src/fix_dt_reset.cpp at b332f28)', async () => {
     const base = 'units lj\natom_style atomic\nlattice fcc 0.8442\nregion box block 0 3 0 3 0 3\ncreate_box 1 box\ncreate_atoms 1 box\nmass 1 1.0\n';
-    await expect(session().s.execute(base + 'fix 5 all dt/reset 0 NULL NULL 0.1\n')).rejects.toThrow(/positive integer/);
-    await expect(session().s.execute(base + 'fix 5 all dt/reset 1 0.5 0.1 0.1\n')).rejects.toThrow(/Tmin must not exceed Tmax/);
-    await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0\n')).rejects.toThrow(/Xmax/);
-    await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0.1 emax -1\n')).rejects.toThrow(/emax/);
-    await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0.1 units metric\n')).rejects.toThrow(/units must be lattice or box/);
+    await expect(session().s.execute(base + 'fix 5 all dt/reset 0 NULL NULL 0.1\n')).rejects.toThrow('Illegal fix dt/reset command');
+    await expect(session().s.execute(base + 'fix 5 all dt/reset 1 0.5 0.1 0.1\n')).rejects.toThrow('Illegal fix dt/reset command');
+    await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0\n')).rejects.toThrow('Illegal fix dt/reset command');
+    await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0.1 emax -1\n')).rejects.toThrow('Illegal fix dt/reset command');
+    await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0.1 units metric\n')).rejects.toThrow('Illegal fix dt/reset command');
     await expect(session().s.execute(base + 'fix 5 all dt/reset 1 NULL NULL 0.1 foo 3\n')).rejects.toThrow('Illegal fix dt/reset command');
   });
 

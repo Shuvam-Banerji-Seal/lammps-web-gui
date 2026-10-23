@@ -283,6 +283,11 @@ export function parseGranularSpec(args: string[]): Spec {
   const need = (n: number, what: string) => {
     if (args.length < k + n) throw new StyleError(`pair_coeff granular: '${what}' needs ${n} arguments`);
   };
+  // As native LAMMPS does (src/GRANULAR/granular_model.cpp GranularModel::add_sub_model at b332f28): a sub-model with fewer
+  // coefficients left than it needs is "Insufficient arguments provided for <model> model".
+  const needModel = (n: number, model: string) => {
+    if (args.length < k + n) throw new StyleError(`Insufficient arguments provided for ${model} model`);
+  };
   const next = () => args[k++];
   while (k < args.length) {
     const kw = next();
@@ -308,11 +313,11 @@ export function parseGranularSpec(args: string[]): Spec {
       sp.tang = TANGS[t];
       tangSeen = true;
       if (sp.tang === 'linear_nohistory') {
-        need(2, 'tangential linear_nohistory');
+        needModel(2, t);
         sp.xgt = parseNum(next(), 'x_gamma_t');
         sp.mu = parseNum(next(), 'mu_s');
       } else {
-        need(3, `tangential ${t}`);
+        needModel(3, t);
         const ktw = next();
         if (ktw === 'NULL') {
           if (sp.tang === 'linear_history') throw new StyleError('pair_style granular: tangential linear_history needs a numeric k_t (NULL is for the mindlin models)');

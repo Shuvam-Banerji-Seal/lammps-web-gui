@@ -198,9 +198,9 @@ export abstract class KSpaceBase extends KSpace {
    * have no estimate for it).
    */
   settings(args: string[]): void {
-    if (args.length < 1) throw new StyleError(`Illegal kspace_style ${this.name} command: missing argument(s)`);
+    if (args.length < 1) throw new StyleError(`Illegal kspace_style ${this.styleShown} command: missing argument(s)`);
     this.accuracy = Math.abs(numeric(args[0]));
-    if (this.accuracy > 1) throw new StyleError(`Invalid relative accuracy ${formatNumber(this.accuracy, '%g')} for kspace_style ${this.name}`);
+    if (this.accuracy > 1) throw new StyleError(`Invalid relative accuracy ${formatNumber(this.accuracy, '%g')} for kspace_style ${this.styleShown}`);
     if (!(this.accuracy > 0)) throw new StyleError('kspace accuracy must be > 0');
   }
 
@@ -414,7 +414,7 @@ export class KSpaceEwald extends KSpaceBase {
 
   /** As native LAMMPS does (src/KSPACE/ewald.cpp Ewald::settings at b332f28): exactly one argument (the accuracy). */
   override settings(args: string[]): void {
-    if (args.length !== 1) throw new StyleError(`Illegal kspace_style ${this.name} command`);
+    if (args.length !== 1) throw new StyleError(`Illegal kspace_style ${this.styleShown} command`);
     super.settings(args);
   }
   kmaxUser: [number, number, number] | null = null;

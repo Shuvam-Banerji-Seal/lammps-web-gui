@@ -121,6 +121,9 @@ export class FixGJF extends Fix {
         if (vel !== 'vfull' && vel !== 'vhalf') throw new StyleError(`fix gjf vel must be vfull or vhalf, not '${vel}'`);
         k += 2;
       } else if (key === 'method') {
+        // As native LAMMPS does (src/EXTRA-FIX/fix_gjf.cpp FixGJF::FixGJF at b332f28): the method number is read with
+        // utils::inumeric first, so a missing number is "Expected integer parameter instead of NULL or empty string"
+        if (k + 1 >= args.length) throw new StyleError('Expected integer parameter instead of NULL or empty string in input script or data file');
         method = Number(args[k + 1]);
         if (method === 7) {
           // native: "method 7 c2"

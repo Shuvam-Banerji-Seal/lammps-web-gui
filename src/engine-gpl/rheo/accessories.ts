@@ -15,7 +15,7 @@
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { StyleError, typeBounds } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { missingArgs, parseNum } from '../../engine/force/util';
 import { isRheoThermalStyle, RHEO_ESPH, RHEO_PRESSURE, RHEO_RHO, RHEO_VISC } from '../../engine/atoms';
 import { pow as libmPow } from '../libm/pow';
 import { rheoModelOf, rheoProp, type RheoModel } from './model';
@@ -57,15 +57,15 @@ export class FixRHEOViscosity extends Fix {
     let iarg = 0;
     while (iarg < args.length) {
       const [lo, hi] = typeBounds(args[iarg], n);
-      if (iarg + 1 >= args.length) throw new StyleError('Illegal fix rheo/viscosity command: missing style');
+      if (iarg + 1 >= args.length) throw missingArgs('fix rheo/viscosity');
       if (args[iarg + 1] === 'constant') {
-        if (iarg + 2 >= args.length) throw new StyleError('Illegal fix rheo/viscosity constant: missing viscosity');
+        if (iarg + 2 >= args.length) throw missingArgs('fix rheo/viscosity constant');
         const eta = parseNum(args[iarg + 2], 'viscosity');
         if (eta < 0.0) throw new StyleError('The viscosity must be positive');
         for (let t = lo; t <= hi; t++) { this.eta[t] = eta; this.vstyle[t] = 1; }
         iarg += 3;
       } else if (args[iarg + 1] === 'power') {
-        if (iarg + 5 >= args.length) throw new StyleError('Illegal fix rheo/viscosity power: missing values');
+        if (iarg + 5 >= args.length) throw missingArgs('fix rheo/viscosity power');
         const eta = parseNum(args[iarg + 2], 'viscosity');
         const gd0 = parseNum(args[iarg + 3], 'gd0'), K = parseNum(args[iarg + 4], 'K'), np = parseNum(args[iarg + 5], 'n');
         if (eta < 0.0) throw new StyleError('The viscosity must be positive');
@@ -148,12 +148,13 @@ export class FixRHEOPressure extends Fix {
     this.pbackground = new Float64Array(n + 1);
     let iarg = 0;
     const value = (w: string | undefined, what: string): number => {
-      if (w === undefined) throw new StyleError(`Illegal fix rheo/pressure ${what}: missing value`);
+      // As native LAMMPS does (src/RHEO/fix_rheo_pressure.cpp FixRHEOPressure::FixRHEOPressure at b332f28): a keyword without its value is "Illegal fix rheo/pressure {keyword} command: missing argument(s)"
+      if (w === undefined) throw missingArgs(`fix rheo/pressure ${what}`);
       return parseNum(w, what);
     };
     while (iarg < args.length) {
       const [lo, hi] = typeBounds(args[iarg], n);
-      if (iarg + 1 >= args.length) throw new StyleError('Illegal fix rheo/pressure command: missing style');
+      if (iarg + 1 >= args.length) throw missingArgs('fix rheo/pressure');
       const st = args[iarg + 1];
       if (st === 'linear') {
         for (let t = lo; t <= hi; t++) this.pstyle[t] = LINEAR;

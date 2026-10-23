@@ -1,5 +1,6 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
+import { logical } from '../force/util';
 import { appendAtoms, buildAtomMap, hasCharge } from '../atoms';
 import type { SimState } from '../types';
 import { SHRINK_PAD, shrinkWrap } from '../domain';
@@ -62,11 +63,11 @@ export interface DumpReadSpec {
   wrapped: boolean;
 }
 
-const yn = (w: string | undefined, what: string): boolean => {
-  if (w === 'yes') return true;
-  if (w === 'no') return false;
-  throw new StyleError(`${what} must be yes or no, got '${w ?? ''}'`);
-};
+/** The words each read_dump keyword needs, the keyword included (read_dump.cpp fields_and_keywords at b332f28). */
+const READ_KEYWORD_WORDS = new Map<string, number>([
+  ['box', 2], ['timestep', 2], ['replace', 2], ['purge', 2], ['trim', 2], ['add', 2], ['label', 3], ['scaled', 2],
+  ['wrapped', 2], ['nfile', 2], ['format', 2],
+]);
 
 /**
  * Parses "field... keyword value ..." (read_dump.rst: "field = *x* or *y* or *z*
@@ -94,18 +95,23 @@ export const parseDumpSpec = (words: string[], what: string): DumpReadSpec => {
   }
   for (; k < words.length;) {
     const key = words[k];
+    // As native LAMMPS does (src/read_dump.cpp ReadDump::fields_and_keywords at b332f28): each keyword first checks
+    // "if (iarg+2 > narg) utils::missing_cmd_args(FLERR, "read_dump KEY", error)" (iarg+3 for label)
+    const need = READ_KEYWORD_WORDS.get(key);
+    if (need !== undefined && k + need > words.length) throw new StyleError(`Illegal read_dump ${key} command: missing argument(s)`);
     switch (key) {
-      case 'box': spec.box = yn(words[k + 1], `${what} box`); k += 2; break;
-      case 'timestep': spec.timestep = yn(words[k + 1], `${what} timestep`); spec.timestepGiven = true; k += 2; break;
-      case 'replace': spec.replace = yn(words[k + 1], `${what} replace`); k += 2; break;
-      case 'purge': spec.purge = yn(words[k + 1], `${what} purge`); k += 2; break;
-      case 'trim': spec.trim = yn(words[k + 1], `${what} trim`); k += 2; break;
-      case 'scaled': spec.scaled = yn(words[k + 1], `${what} scaled`); k += 2; break;
-      case 'wrapped': spec.wrapped = yn(words[k + 1], `${what} wrapped`); k += 2; break;
+      case 'box': spec.box = logical(words[k + 1]); k += 2; break;
+      case 'timestep': spec.timestep = logical(words[k + 1]); spec.timestepGiven = true; k += 2; break;
+      case 'replace': spec.replace = logical(words[k + 1]); k += 2; break;
+      case 'purge': spec.purge = logical(words[k + 1]); k += 2; break;
+      case 'trim': spec.trim = logical(words[k + 1]); k += 2; break;
+      case 'scaled': spec.scaled = logical(words[k + 1]); k += 2; break;
+      case 'wrapped': spec.wrapped = logical(words[k + 1]); k += 2; break;
       case 'add': {
+        // As native LAMMPS does (src/read_dump.cpp ReadDump::fields_and_keywords at b332f28): yes, no, true, false or keep
         const v = words[k + 1];
-        if (v !== 'yes' && v !== 'keep' && v !== 'no') throw new StyleError(`${what} add must be yes, keep or no, got '${v ?? ''}'`);
-        spec.add = v; k += 2; break;
+        if (v !== 'yes' && v !== 'keep' && v !== 'no' && v !== 'true' && v !== 'false') throw new StyleError(`Unknown read_dump add keyword ${v}`);
+        spec.add = v === 'true' ? 'yes' : v === 'false' ? 'no' : v; k += 2; break;
       }
       case 'label': {
         const f = words[k + 1], col = words[k + 2];

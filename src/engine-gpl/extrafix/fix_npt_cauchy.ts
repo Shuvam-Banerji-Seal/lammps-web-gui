@@ -213,6 +213,8 @@ export class FixNPTCauchy extends FixNH {
       return v;
     };
     const logical = (k: number, key: string): boolean => {
+      // fix_npt_cauchy.cpp: if (iarg+2 > narg) error->all(FLERR,"Illegal fix npt/cauchy command") before the value is read
+      if (args[k] === undefined) throw new StyleError('Illegal fix npt/cauchy command');
       if (args[k] !== 'yes' && args[k] !== 'no') throw new StyleError(`fix npt/cauchy ${key} must be yes or no`);
       return args[k] === 'yes';
     };

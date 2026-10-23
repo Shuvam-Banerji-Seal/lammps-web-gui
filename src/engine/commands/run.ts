@@ -243,6 +243,8 @@ const compressStyle = (style: string): { base: string; gzStyle: string | null } 
 const dump: Handler = ({ sys }, a) => {
   sys.state;
   const [id, group, style, every, file, ...cols] = a;
+  // As native LAMMPS does (src/output.cpp Output::add_dump at b332f28): "if (narg < 5) utils::missing_cmd_args(FLERR,"dump", error)"
+  if (a.length < 5) throw new StyleError('Illegal dump command: missing argument(s)');
   if (!id || !group || !style || !every || !file) throw new StyleError('usage: dump ID group-ID style N file [attributes]');
   if (sys.dumps.some((d) => d.id === id)) throw new StyleError(`reuse of dump ID '${id}' (undump it first)`);
   const { base, gzStyle } = compressStyle(style);

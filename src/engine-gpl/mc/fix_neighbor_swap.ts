@@ -23,6 +23,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { RanPark } from '../random_park';
 import { nativeOrder } from '../../engine/atoms';
@@ -113,7 +114,7 @@ export class FixNeighborSwap extends Fix {
         this.keFlag = v === 'yes';
         i += 2;
       } else if (key === 'types') {
-        if (i + 3 > args.length) throw new StyleError(`Illegal ${where} types: missing arguments`);
+        if (i + 3 > args.length) throw missingArgs(`${where} types`);
         if (this.diffFlag) throw new StyleError(`${where}: cannot use 'diff' and 'types' keywords together`);
         i++;
         this.typeList.length = 0;
@@ -129,7 +130,7 @@ export class FixNeighborSwap extends Fix {
         this.diffFlag = true;
         i += 2;
       } else if (key === 'rates') {
-        if (i + ntypes >= args.length) throw new StyleError(`Illegal ${where} rates: missing arguments`);
+        if (i + ntypes >= args.length) throw missingArgs(`${where} rates`);
         i++;
         let n = 0;
         while (i < args.length && !KEYWORDS.has(args[i])) {

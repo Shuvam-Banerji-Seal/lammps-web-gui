@@ -16,6 +16,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { buildSpecial, nativeOrder, type SpecialList } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
@@ -79,7 +80,7 @@ export class FixBondCreateAngle extends Fix {
     for (let i = 5; i < args.length;) {
       const key = args[i];
       const need = (k: number) => {
-        if (i + k > args.length) throw new StyleError(`Illegal fix bond/create command: ${key} needs ${k - 1} values`);
+        if (i + k > args.length) throw missingArgs(`fix bond/create/angle ${key}`);
       };
       if (key === 'iparam' || key === 'jparam') {
         need(3);

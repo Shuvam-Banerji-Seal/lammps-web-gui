@@ -55,9 +55,12 @@ describe('compute cnp/atom', () => {
 describe('compute temp/profile', () => {
 
   it('refuses bad flags, binstyles, bin counts and keywords', async () => {
-    expect((await run(`${LATTICE}compute tp all temp/profile 2 1 1 x 3\nrun 0\n`)).errors[0]).toMatch(/xflag must be 0 or 1/);
-    expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 w 3\nrun 0\n`)).errors[0]).toMatch(/binstyle must be x, y, z, xy, yz, xz or xyz/);
-    expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 x 2.5\nrun 0\n`)).errors[0]).toMatch(/Nx must be a positive integer/);
+    // As native LAMMPS does (src/compute_temp_profile.cpp at b332f28): the flags and bin counts are read by utils::inumeric
+    // (a flag of 2 turns the component on), an unknown binstyle and a bin product <= 0 are illegal
+    expect((await run(`${LATTICE}compute tp all temp/profile 2 1 1 x 3\nrun 0\n`)).errors).toEqual([]);
+    expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 w 3\nrun 0\n`)).errors[0]).toContain('Illegal compute temp/profile command');
+    expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 x 2.5\nrun 0\n`)).errors[0]).toContain("Expected integer parameter instead of '2.5' in input script or data file");
+    expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 x 0\nrun 0\n`)).errors[0]).toContain('Illegal compute temp/profile command');
     expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 x 3 out foo\nrun 0\n`)).errors[0]).toContain('Illegal compute temp/profile command');
     expect((await run(`${LATTICE}compute tp all temp/profile 1 1 1 x 3 extra 2\nrun 0\n`)).errors[0]).toContain('Illegal compute temp/profile command');
   });

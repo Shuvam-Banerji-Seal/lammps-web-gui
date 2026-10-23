@@ -1,0 +1,24 @@
+# oracle: pair hippo on the HIPPO water dimer with no key file (pair_coeff * * file.prm): the key file settings at their defaults (from w119amoeba_hippo_dimer).
+# oracle-inputs: w119amoeba_hippo_dimer.data w119amoeba_hippo_water.prm
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 skip=press,c_virial[1],c_virial[2],c_virial[3],c_virial[4],c_virial[5],c_virial[6]
+units           real
+boundary        s s s
+atom_style      amoeba
+bond_style      class2
+angle_style     amoeba
+dihedral_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w119amoeba_hippo_dimer.data fix amtype NULL "Tinker Types"
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+pair_style      hippo
+pair_coeff      * * w119amoeba_hippo_water.prm
+compute         p all pair hippo
+compute         virial all pressure NULL virial
+thermo_style    custom step pe evdwl c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] press c_virial[1] c_virial[2] c_virial[3] c_virial[4] c_virial[5] c_virial[6]
+thermo_modify   format float %.15g
+fix             1 all nve
+thermo          10
+run             0
+run             10

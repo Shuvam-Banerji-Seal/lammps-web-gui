@@ -142,6 +142,14 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
   } else if (bodystyle === 'custom') {
     throw new StyleError(`fix ${style}: bodystyle custom is not supported by the browser engine's native-parity rigid/nvt`);
   } else throw new StyleError(`Unknown fix ${style} mode ${bodystyle}`);
+  // Arguments the keyword at k still needs (native "if (iarg + N > narg)"). For the rigid styles the temp, iso, aniso,
+  // x, y and z checks print "Illegal fix {style} command" (fix_rigid.cpp); the /small styles and the tparam, couple,
+  // dilate and pchain keywords print "Illegal fix {style} {key} command: missing argument(s)" (fix_rigid_small.cpp).
+  const need = (n: number, key: string, bare: boolean) => {
+    if (k + n > args.length) {
+      throw new StyleError(bare && !small ? `Illegal fix ${style} command` : `Illegal fix ${style} ${key} command: missing argument(s)`);
+    }
+  };
   const onoff = (w: string | undefined) => {
     if (w !== 'on' && w !== 'off') throw new StyleError(`fix ${style}: force/torque flags must be on or off`);
     return w === 'on' ? 1 : 0;
@@ -162,6 +170,7 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
       k += 2;
     } else if (key === 'temp') {
       // fix_rigid.html: "temp values = Tstart Tstop Tperiod"
+      need(4, key, true);
       out.thermo.tstat = true;
       out.thermo.tStart = num(args[k + 1], 'temp Tstart');
       out.thermo.tStop = num(args[k + 2], 'temp Tstop');
@@ -169,24 +178,28 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
       k += 4;
     } else if (key === 'iso' || key === 'aniso') {
       // fix_rigid.cpp: iso sets pcouple = XYZ and the same settings on x, y and z (z dropped in 2d)
+      need(4, key, true);
       if (key === 'iso') pr.pcouple = 'xyz';
       const dims = dimension === 2 ? 2 : 3;
       for (let d = 0; d < dims; d++) pset(d, args[k + 1], args[k + 2], args[k + 3]);
       k += 4;
     } else if (key === 'x' || key === 'y' || key === 'z') {
+      need(4, key, true);
       pset(key === 'x' ? 0 : key === 'y' ? 1 : 2, args[k + 1], args[k + 2], args[k + 3]);
       k += 4;
     } else if (key === 'couple') {
+      need(2, key, false);
       const c = args[k + 1];
       if (c !== 'xyz' && c !== 'xy' && c !== 'yz' && c !== 'xz' && c !== 'none') throw new StyleError(`fix ${style} couple: must be xyz, xy, yz, xz or none, got '${c ?? ''}'`);
       pr.pcouple = c;
       k += 2;
     } else if (key === 'dilate') {
+      need(2, key, false);
       const g = args[k + 1];
-      if (g === undefined) throw new StyleError(`fix ${style}: keyword dilate needs all or a group ID`);
       if (g === 'all') { pr.allremap = true; pr.dilate = null; } else { pr.allremap = false; pr.dilate = g; }
       k += 2;
     } else if (key === 'pchain') {
+      need(2, key, false);
       pr.pChain = Math.trunc(num(args[k + 1], 'pchain'));
       k += 2;
     } else if (key === 'mol' && small) {
@@ -196,6 +209,7 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
       k += 2;
     } else if (key === 'tparam') {
       // fix_rigid.html: "tparam values = Tchain Titer Torder"
+      need(4, key, false);
       out.thermo.tChain = Math.trunc(num(args[k + 1], 'tparam Tchain'));
       out.thermo.tIter = Math.trunc(num(args[k + 2], 'tparam Titer'));
       out.thermo.tOrder = Math.trunc(num(args[k + 3], 'tparam Torder'));

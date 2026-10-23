@@ -92,8 +92,10 @@ export class PairReaxFF extends Pair {
     ctrl.lgflag = 0;
     ctrl.enobondsflag = 1;
     let iarg = 1;
-    const word = (w: string | undefined, what: string): string => {
-      if (w === undefined) throw new StyleError(`Illegal pair_style reaxff command: missing value for ${what}`);
+    // As native LAMMPS does (src/REAXFF/pair_reaxff.cpp PairReaxFF::settings at b332f28): a keyword with no value left
+    // fails the check "if (iarg+2 > narg) error->all(FLERR,"Illegal pair_style reaxff command")"
+    const word = (w: string | undefined): string => {
+      if (w === undefined) throw new StyleError('Illegal pair_style reaxff command');
       return w;
     };
     const logical = (w: string): boolean => {
@@ -105,27 +107,27 @@ export class PairReaxFF extends Pair {
       const key = args[iarg];
       const val = args[iarg + 1];
       switch (key) {
-        case 'checkqeq': this.qeqflag = logical(word(val, key)) ? 1 : 0; iarg += 2; break;
-        case 'enobonds': ctrl.enobondsflag = logical(word(val, key)) ? 1 : 0; iarg += 2; break;
+        case 'checkqeq': this.qeqflag = logical(word(val)) ? 1 : 0; iarg += 2; break;
+        case 'enobonds': ctrl.enobondsflag = logical(word(val)) ? 1 : 0; iarg += 2; break;
         case 'lgvdw':
-          if (logical(word(val, key))) throw new StyleError('pair_style reaxff keyword lgvdw yes is not ported (lgvdw is not supported)');
+          if (logical(word(val))) throw new StyleError('pair_style reaxff keyword lgvdw yes is not ported (lgvdw is not supported)');
           iarg += 2;
           break;
         case 'safezone': {
-          const sz = parseNum(word(val, key), 'safezone');
+          const sz = parseNum(word(val), 'safezone');
           if (sz < 0) throw new StyleError('Illegal pair_style reaxff safezone command');
           iarg += 2;
           break;
         }
         case 'mincap': {
-          const mc = Math.trunc(parseNum(word(val, key), 'mincap'));
+          const mc = Math.trunc(parseNum(word(val), 'mincap'));
           if (mc < 0) throw new StyleError('Illegal pair_style reaxff mincap command');
           void REAX_MIN_CAP;
           iarg += 2;
           break;
         }
         case 'minhbonds': {
-          const mh = Math.trunc(parseNum(word(val, key), 'minhbonds'));
+          const mh = Math.trunc(parseNum(word(val), 'minhbonds'));
           if (mh < 0) throw new StyleError('Illegal pair_style reaxff minhbonds command');
           iarg += 2;
           break;
@@ -133,7 +135,7 @@ export class PairReaxFF extends Pair {
         case 'list/blocking':
           throw new StyleError('pair_style reaxff keyword list/blocking is not ported');
         case 'tabulate': {
-          const t = Math.trunc(parseNum(word(val, key), 'tabulate'));
+          const t = Math.trunc(parseNum(word(val), 'tabulate'));
           if (t < 0) throw new StyleError('Illegal pair_style reaxff tabulate command');
           ctrl.tabulate = t;
           iarg += 2;

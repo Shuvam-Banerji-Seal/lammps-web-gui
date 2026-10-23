@@ -23,6 +23,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { buildAtomMap, hasMolecule, nativeOrder } from '../../engine/atoms';
 import { PairReaxFF } from './pair';
@@ -229,7 +230,7 @@ export class FixReaxFFSpecies extends Fix {
         }
         iarg += 4;
       } else if (key === 'element') {
-        if (iarg + this.ntypes + 1 > args.length) throw new StyleError('Illegal fix reaxff/species element command');
+        if (iarg + this.ntypes + 1 > args.length) throw missingArgs('fix reaxff/species element');
         this.userElements = args.slice(iarg + 1, iarg + 1 + this.ntypes);
         iarg += this.ntypes + 1;
       } else if (key === 'delete' || key === 'delete_rate_limit' || key === 'delete_subgroup' || key === 'position') {

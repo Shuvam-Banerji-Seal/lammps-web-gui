@@ -246,7 +246,7 @@ ${line}
     expect(await bad('fix 1 all spring bogus 1 2 3 4 5')).toMatch(/Unknown fix spring keyword bogus/);
     expect(await bad('fix 1 all spring tether 10.0 1 0 0')).toMatch(/Illegal fix spring command: missing argument/);
     expect(await bad('fix 1 all spring couple 10.0 1 0 0 0')).toMatch(/Incorrect number of arguments for couple mode/);
-    expect(await bad('fix 1 all spring tether 10.0 1 0 abc 0')).toMatch(/number or NULL/);
+    expect(await bad('fix 1 all spring tether 10.0 1 0 abc 0')).toMatch("Expected floating point parameter instead of 'abc'");
     expect(await bad('fix 1 all spring tether 10.0 1 0 0 0 9')).toMatch(/Incorrect number of arguments for tether mode/);
   });
 

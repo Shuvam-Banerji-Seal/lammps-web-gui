@@ -11,6 +11,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { nativeOrder } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
@@ -32,7 +33,8 @@ export class FixBondBreak extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 3) throw new StyleError('Illegal fix bond/break command');
-    const nevery = intArg(args[0], 'fix bond/break nevery');
+    // As native LAMMPS does (src/MC/fix_bond_break.cpp FixBondBreak::FixBondBreak at b332f28): utils::inumeric reads nevery
+    const nevery = inumeric(args[0]);
     if (nevery <= 0) throw new StyleError('Illegal fix bond/break command');
     this.nevery = nevery;
     this.vectorFlag = true;

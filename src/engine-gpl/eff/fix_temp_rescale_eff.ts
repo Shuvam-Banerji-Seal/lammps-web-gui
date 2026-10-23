@@ -9,6 +9,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle } from '../../engine/atoms';
 import { ownCompute, ramp, removeCompute, temperatureOf } from '../../engine/fix/util';
@@ -27,8 +28,12 @@ export class FixTempRescaleEff extends Fix {
     // As native LAMMPS does (src/EFF/fix_temp_rescale_eff.cpp FixTempRescaleEff::FixTempRescaleEff at b332f28): narg < 8 is refused and
     // the words after the four values are never read, so they are ignored
     if (args.length < 5) throw new StyleError('Illegal fix temp/rescale/eff command');
-    const nevery = Number(args[0]);
-    if (!Number.isInteger(nevery) || nevery <= 0) throw new StyleError('Illegal fix temp/rescale/eff command');
+    const nevery = inumeric(args[0]);
+    if (nevery <= 0) throw new StyleError('Illegal fix temp/rescale/eff command');
+    const tStart = numeric(args[1]);
+    const tStop = numeric(args[2]);
+    const tWindow = numeric(args[3]);
+    const fraction = numeric(args[4]);
     if (!isElectronStyle(sys.state.atomStyle)) throw new StyleError('Fix temp/rescale/eff requires atom style electron');
     this.nevery = nevery;
     // fix_temp_rescale_eff.cpp: global_freq = nevery
@@ -36,10 +41,10 @@ export class FixTempRescaleEff extends Fix {
     this.scalarFlag = true;
     this.extscalar = 1;
     this.ecouple = () => this.removed;
-    this.tStart = Number(args[1]);
-    this.tStop = Number(args[2]);
-    this.tWindow = Number(args[3]);
-    this.fraction = Number(args[4]);
+    this.tStart = tStart;
+    this.tStop = tStop;
+    this.tWindow = tWindow;
+    this.fraction = fraction;
     // fix temp/rescale/eff creates its compute temp/eff for the fix group (id = fix-ID + "_temp")
     this.tempId = `${id}_temp`;
     ownCompute(sys, this.tempId, group, 'temp/eff', []);

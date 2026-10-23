@@ -18,6 +18,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { Pair, StyleError, typeBounds } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import { hasChargeStyle, isSphereStyle } from '../../engine/atoms';
 import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
@@ -66,8 +67,10 @@ export class FixAdaptFEP extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const n = Number(args[0]);
-    if (args[0] === undefined || !Number.isInteger(n) || n < 0) throw new StyleError(`fix ${id} (adapt/fep): N must be a non-negative integer, got '${args[0] ?? ''}' (${USAGE})`);
+    // As native LAMMPS does (src/FEP/fix_adapt_fep.cpp FixAdaptFEP::FixAdaptFEP at b332f28): utils::inumeric reads the
+    // every value, and a negative one is refused with "Illegal fix adapt/fep every value".
+    const n = inumeric(args[0]);
+    if (n < 0) throw new StyleError(`Illegal fix adapt/fep every value ${n}`);
     this.nevery = n;
     // As native LAMMPS does (src/FEP/fix_adapt_fep.cpp FixAdaptFEP::FixAdaptFEP at b332f28): the leading attribute keywords
     // are counted first, each checked for its own number of arguments ("Illegal fix adapt/fep atom command: missing argument(s)")

@@ -19,6 +19,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import { massOf } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 import { RanMars } from '../random_mars';
@@ -46,7 +47,8 @@ export class FixPAFI extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 4) throw new StyleError(`Illegal fix pafi command (${USAGE})`);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_pafi.cpp FixPAFI::FixPAFI at b332f28): narg < 11 is "Illegal fix pafi command"
+    if (args.length < 7) throw new StyleError('Illegal fix pafi command');
     this.vectorFlag = true;
     this.sizeVector = 5;
     this.extvector = 0;
@@ -54,10 +56,8 @@ export class FixPAFI extends Fix {
     const pc = sys.compute(this.computeId);
     if (!pc.peratomFlag) throw new StyleError(`Compute ${this.computeId} for fix pafi does not calculate a local array`);
     if (pc.sizePeratomCols < 9) throw new StyleError(`Compute ${this.computeId} for fix pafi must have 9 fields per atom`);
-    const temperature = Number(args[1]), tPeriod = Number(args[2]), seed = Number(args[3]);
-    if (!Number.isFinite(temperature) || !Number.isFinite(tPeriod) || !Number.isFinite(seed)) {
-      throw new StyleError(`Illegal fix pafi command (${USAGE})`);
-    }
+    // utils::numeric reads the temperature and the period, utils::inumeric the seed
+    const temperature = numeric(args[1]), tPeriod = numeric(args[2]), seed = inumeric(args[3]);
     // fix_pafi.cpp constructor: gamma = 1/t_period/ftm2v, sqrtD = sqrt(24 kB T/(t_period dt mvv2e))/ftm2v
     const u = sys.state.units, dt = sys.state.dt;
     this.gamma = 1 / tPeriod / u.ftm2v;

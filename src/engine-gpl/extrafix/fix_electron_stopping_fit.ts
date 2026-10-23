@@ -13,6 +13,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 
 export class FixElectronStoppingFit extends Fix {
@@ -39,10 +40,11 @@ export class FixElectronStoppingFit extends Fix {
     this.dragFac2 = new Float64Array(ntypes + 1);
     const mvv2e = sys.state.units.mvv2e;
     for (let t = 1; t <= ntypes; t++) {
-      const eCoh = Number(args[3 * (t - 1)]);
-      const d1 = Number(args[3 * (t - 1) + 1]);
-      const d2 = Number(args[3 * (t - 1) + 2]);
-      if (![eCoh, d1, d2].every((x) => Number.isFinite(x))) throw new StyleError(`fix ${id} (electron/stopping/fit): non-numeric argument for type ${t}`);
+      // As native LAMMPS does (src/EXTRA-FIX/fix_electron_stopping_fit.cpp at b332f28): utils::numeric reads the three
+      // values of each type in turn.
+      const eCoh = numeric(args[3 * (t - 1)]);
+      const d1 = numeric(args[3 * (t - 1) + 1]);
+      const d2 = numeric(args[3 * (t - 1) + 2]);
       // the source: mvv = 2 E_coh / mvv2e; v_min^2 = mvv / m, v_max^2 = 2 mvv / m
       const mvv = (2.0 * eCoh) / mvv2e;
       const mass = sys.state.massByType[t];

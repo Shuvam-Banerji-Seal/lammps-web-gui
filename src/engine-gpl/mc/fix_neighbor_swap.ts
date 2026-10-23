@@ -23,22 +23,16 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { missingArgs } from '../../engine/force/util';
+import { inumeric, missingArgs, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { RanPark } from '../random_park';
 import { nativeOrder } from '../../engine/atoms';
 import { exp as libmExp } from '../libm/exp';
 
-const num = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || w === '' || !Number.isFinite(v)) throw new StyleError(`Illegal fix neighbor/swap command: ${what} must be a number, got '${w ?? ''}'`);
-  return v;
-};
-const int = (w: string | undefined, what: string): number => {
-  const v = num(w, what);
-  if (!Number.isInteger(v)) throw new StyleError(`Illegal fix neighbor/swap command: ${what} must be an integer, got '${w ?? ''}'`);
-  return v;
-};
+// As native LAMMPS does (src/MC/fix_neighbor_swap.cpp at b332f28): utils::numeric reads the real values and
+// utils::inumeric the integers, with the input-parser messages.
+const num = (w: string | undefined, _what: string): number => numeric(w);
+const int = (w: string | undefined, _what: string): number => inumeric(w);
 
 /** The keywords that end a 'types' or 'rates' list (native is_keyword). */
 const KEYWORDS = new Set(['region', 'ke', 'types', 'diff', 'rates']);

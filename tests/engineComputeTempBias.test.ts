@@ -103,8 +103,9 @@ describe('compute temp/partial', () => {
 
   it('rejects bad flags and argument counts', async () => {
     await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/partial 1 1`)).rejects.toThrow('Illegal compute temp/partial command');
-    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/partial 1 1 2`)).rejects.toThrow('must be 0 or 1');
-    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/partial 0 0 0`)).rejects.toThrow('all three flags are 0');
+    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/partial 1 1 2`)).rejects.toThrow('Illegal compute temp/partial command');
+    // As native LAMMPS does (src/compute_temp_partial.cpp dof_compute at b332f28): no active dimension gives dof 0 and T 0
+    await expect(runScript(`${TWO_ATOMS}\ncompute k all temp/partial 0 0 0`)).resolves.toBeDefined();
   });
 });
 

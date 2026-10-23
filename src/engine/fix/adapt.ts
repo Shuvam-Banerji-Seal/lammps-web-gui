@@ -3,7 +3,7 @@ import { Fix } from './fix';
 import { Pair, PairParams, StyleError, typeBounds, type Bonded } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
 import { SimpleBonded } from '../force/bonded_util';
-import { missingArgs } from '../force/util';
+import { inumeric, missingArgs } from '../force/util';
 import { BondedHybrid } from '../force/bonded_hybrid';
 import type { System } from '../system';
 import type { SimState } from '../types';
@@ -241,10 +241,10 @@ export class FixAdapt extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const n = Number(args[0]);
-    if (args[0] === undefined || !Number.isInteger(n) || n < 0) {
-      throw new StyleError(`fix ${id} (adapt): N must be a non-negative integer, got '${args[0] ?? ''}' (${USAGE})`);
-    }
+    // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::FixAdapt at b332f28): utils::inumeric reads the every value,
+    // and a negative one is refused with "Illegal fix adapt every value".
+    const n = inumeric(args[0]);
+    if (n < 0) throw new StyleError(`Illegal fix adapt every value ${n}`);
     this.nevery = n;
     // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::FixAdapt at b332f28): the leading attribute keywords are
     // counted first, each checked for its own number of arguments ("Illegal fix adapt pair command: missing argument(s)")

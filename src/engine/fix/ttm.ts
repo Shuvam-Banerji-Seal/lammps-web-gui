@@ -3,7 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { RanMars } from '../rng';
 import { nativeOrder } from '../atoms';
-import { missingArgs } from '../force/util';
+import { inumeric, missingArgs, numeric } from '../force/util';
 
 /*
  * fix ttm and fix ttm/grid — the two-temperature model. Written from the
@@ -94,36 +94,35 @@ export interface TtmParams {
 export const parseTtmArgs = (id: string, style: string, args: string[]): TtmParams => {
   // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp at b332f28)
   if (args.length < 10) throw missingArgs(`fix ${style}`);
-  const num = (w: string, what: string): number => {
-    const v = Number(w);
-    if (w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`fix ${id} ${style}: ${what} must be a number, got '${w}'`);
-    return v;
+  // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp FixTTM::FixTTM at b332f28): the seed and grid sizes are read with
+  // utils::inumeric and the other values with utils::numeric
+  return {
+    seed: inumeric(args[0]),
+    Ce: numeric(args[1]),
+    rhoE: numeric(args[2]),
+    kappa: numeric(args[3]),
+    gammaP: numeric(args[4]),
+    gammaS: numeric(args[5]),
+    v0: numeric(args[6]),
+    nx: inumeric(args[7]),
+    ny: inumeric(args[8]),
+    nz: inumeric(args[9]),
   };
-  const posInt = (w: string, what: string): number => {
-    const v = num(w, what);
-    if (!Number.isInteger(v) || v < 1) throw new StyleError(`fix ${id} ${style}: ${what} must be a positive integer, got '${w}'`);
-    return v;
-  };
-  const p: TtmParams = {
-    seed: posInt(args[0], 'seed'),
-    Ce: num(args[1], 'C_e'),
-    rhoE: num(args[2], 'rho_e'),
-    kappa: num(args[3], 'kappa_e'),
-    gammaP: num(args[4], 'gamma_p'),
-    gammaS: num(args[5], 'gamma_s'),
-    v0: num(args[6], 'v_0'),
-    nx: posInt(args[7], 'Nx'),
-    ny: posInt(args[8], 'Ny'),
-    nz: posInt(args[9], 'Nz'),
-  };
-  if (!(p.Ce > 0)) throw new StyleError(`fix ${id} ${style}: C_e must be > 0`);
-  if (!(p.rhoE > 0)) throw new StyleError(`fix ${id} ${style}: rho_e must be > 0`);
-  if (p.kappa < 0) throw new StyleError(`fix ${id} ${style}: kappa_e must be >= 0`);
-  // Measured with native LAMMPS (black box): gamma_p = 0 stops the run with an error that requires gamma_p > 0.
-  if (!(p.gammaP > 0)) throw new StyleError(`fix ${id} ${style}: gamma_p must be > 0`);
-  if (p.gammaS < 0) throw new StyleError(`fix ${id} ${style}: gamma_s must be >= 0`);
-  if (p.v0 < 0) throw new StyleError(`fix ${id} ${style}: v_0 must be >= 0`);
-  return p;
+};
+
+/**
+ * The value checks of fix ttm, ttm/grid and ttm/cascade, made after the keywords have been read, as native LAMMPS does
+ * (src/EXTRA-FIX/fix_ttm.cpp FixTTM::FixTTM at b332f28, "error check").
+ */
+export const checkTtmArgs = (style: string, p: TtmParams): void => {
+  if (p.seed <= 0) throw new StyleError(`Invalid random number seed in fix ${style} command`);
+  if (p.Ce <= 0) throw new StyleError(`Fix ${style} electronic_specific_heat must be > 0.0`);
+  if (p.rhoE <= 0) throw new StyleError(`Fix ${style} electronic_density must be > 0.0`);
+  if (p.kappa < 0) throw new StyleError(`Fix ${style} electronic_thermal_conductivity must be >= 0.0`);
+  if (p.gammaP <= 0) throw new StyleError(`Fix ${style} gamma_p must be > 0.0`);
+  if (p.gammaS < 0) throw new StyleError(`Fix ${style} gamma_s must be >= 0.0`);
+  if (p.v0 < 0) throw new StyleError(`Fix ${style} v_0 must be >= 0.0`);
+  if (p.nx <= 0 || p.ny <= 0 || p.nz <= 0) throw new StyleError(`Fix ${style} grid sizes must be all > 0`);
 };
 
 /** A style-specific keyword: returns the number of arguments it consumed, or 0 when the key is not its own. */
@@ -152,10 +151,9 @@ export const parseTtmKeywords = (id: string, style: string, args: string[], outf
     } else if (key === 'set') {
       // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp FixTTM::FixTTM at b332f28): if (iarg + 2 > narg) missing_cmd_args("fix {} set")
       if (i + 2 > args.length) throw new StyleError(`Illegal fix ${style} set command: missing argument(s)`);
-      const t = Number(args[i + 1]);
-      if (!Number.isFinite(t)) throw new StyleError(`fix ${id} ${style}: keyword set needs a temperature`);
-      // Measured with native LAMMPS (black box): set Tinit = 0 stops the run with an error that requires Tinit > 0.
-      if (!(t > 0)) throw new StyleError(`fix ${id} ${style}: set Tinit must be > 0`);
+      // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp at b332f28): utils::numeric, then Tinit > 0
+      const t = numeric(args[i + 1]);
+      if (t <= 0) throw new StyleError(`Fix ${style} initial temperature must be > 0.0`);
       k.setT = t;
       i += 2;
     } else if (key === 'infile') {
@@ -233,12 +231,14 @@ export interface TtmGrid {
 export interface TtmPositional extends TtmGrid {
   consumed: number;
   scalar: TtmParams | null;
+  /** The style's value checks, made after its keywords (native's "error check" follows the keyword loop). */
+  check: () => void;
 }
 
 /** The ttm positional arguments (ttm, ttm/grid, ttm/cascade): seed C_e rho_e kappa_e gamma_p gamma_s v_0 Nx Ny Nz. */
 export const ttmPositional = (id: string, style: string, args: string[]): TtmPositional => {
   const scalar = parseTtmArgs(id, style, args);
-  return { seed: scalar.seed, nx: scalar.nx, ny: scalar.ny, nz: scalar.nz, consumed: 10, scalar };
+  return { seed: scalar.seed, nx: scalar.nx, ny: scalar.ny, nz: scalar.nz, consumed: 10, scalar, check: () => checkTtmArgs(style, scalar) };
 };
 
 export type TtmStyle = 'ttm' | 'ttm/grid' | 'ttm/mod' | 'ttm/thermal' | 'ttm/cascade';
@@ -294,6 +294,7 @@ export class FixTTM extends Fix {
     this.p = { seed: P.seed, nx: P.nx, ny: P.ny, nz: P.nz };
     this.scalar = P.scalar;
     this.kw = parseTtmKeywords(id, style, args.slice(P.consumed), style === 'ttm' || style === 'ttm/thermal' || style === 'ttm/mod', keywords);
+    P.check();
     const nGrid = this.p.nx * this.p.ny * this.p.nz;
     const lx = s.box.hi[0] - s.box.lo[0], ly = s.box.hi[1] - s.box.lo[1], lz = s.box.hi[2] - s.box.lo[2];
     this.cellVolume = (lx / this.p.nx) * (ly / this.p.ny) * (lz / this.p.nz);

@@ -1,5 +1,6 @@
 import { ComputeTemp } from './temp';
 import { StyleError } from '../force/types';
+import { inumeric } from '../force/util';
 import type { System } from '../system';
 import { massOf } from '../atoms';
 import type { Region } from '../region';
@@ -78,14 +79,14 @@ export class ComputeTempPartial extends ComputeTemp {
     super(sys, id, group, []);
     if (args.length !== 3) throw new StyleError('usage: compute ID group-ID temp/partial xflag yflag zflag');
     const dim = sys.dimension;
-    const flags = args.map((w) => {
-      if (w !== '0' && w !== '1') throw new StyleError(`compute temp/partial: xflag/yflag/zflag must be 0 or 1 (got '${w}')`);
-      return w === '1';
-    });
+    // As native LAMMPS does (src/compute_temp_partial.cpp ComputeTempPartial::ComputeTempPartial at b332f28): utils::inumeric reads
+    // the three flags, then any value other than 0 or 1 stops with "Illegal compute temp/partial command"
+    const nums = args.map((w) => inumeric(w));
+    if (nums.some((v) => v !== 0 && v !== 1)) throw new StyleError('Illegal compute temp/partial command');
+    const flags = nums.map((v) => v === 1);
     this.inc = [dim > 0 && flags[0], dim > 1 && flags[1], dim > 2 && flags[2]];
     this.nper = flags.filter((f) => f).length;
     this.ninclude = (this.inc[0] ? 1 : 0) + (this.inc[1] ? 1 : 0) + (this.inc[2] ? 1 : 0);
-    if (this.ninclude === 0) throw new StyleError('compute temp/partial: all three flags are 0, no velocity component is left to thermostat');
   }
 
   /** As native LAMMPS does (src/compute_temp_partial.cpp dof_remove at b332f28): the excluded dimensions per atom. */
@@ -93,13 +94,15 @@ export class ComputeTempPartial extends ComputeTemp {
     return this.sys.dimension - this.nper;
   }
 
-  /** dof = ninclude * N - scaled extra/dof - fix-removed DOF ("dim parameter is adjusted"). */
+  /**
+   * As native LAMMPS does (src/compute_temp_partial.cpp dof_compute at b332f28): dof = nper N, less the extra and the
+   * fix-removed DOF spread evenly over the active dimensions (nper / dim of them); no active dimension gives dof 0.
+   */
   dofCompute(): void {
     const s = this.sys.state;
     let n = 0;
     for (let i = 0; i < s.n; i++) if (this.counted(i)) n++;
-    const extra = (this.extraDof * this.ninclude) / this.sys.dimension;
-    this.dof = this.ninclude * n - extra - this.sys.dofRemoved(this.groupBit);
+    this.dof = this.ninclude * n - (this.ninclude / this.sys.dimension) * (this.extraDof + this.sys.dofRemoved(this.groupBit));
   }
 
   protected computeScalar(): number {

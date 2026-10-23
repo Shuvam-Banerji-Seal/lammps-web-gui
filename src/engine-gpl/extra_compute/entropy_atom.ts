@@ -25,12 +25,12 @@ const logical = (w: string, what: string): boolean => {
   const v = w.toLowerCase();
   if (v === 'yes' || v === 'on' || v === 'true' || v === '1') return true;
   if (v === 'no' || v === 'off' || v === 'false' || v === '0') return false;
-  throw new StyleError(`Expected boolean parameter instead of '${w}' in ${what}`);
+  throw new StyleError(`Expected boolean parameter instead of '${w}' in input script or data file`);
 };
 
 const numeric = (w: string | undefined, what: string): number => {
   const v = Number(w);
-  if (w === undefined || w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`Expected floating point parameter instead of '${w ?? ''}' in ${what}`);
+  if (w === undefined || w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`Expected floating point parameter instead of '${w ?? ''}' in input script or data file`);
   return v;
 };
 

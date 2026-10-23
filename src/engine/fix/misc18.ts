@@ -4,6 +4,7 @@ import type { System } from '../system';
 import type { Region } from '../region';
 import { massOf } from '../atoms';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
+import { inumeric, numeric } from '../force/util';
 
 /*
  * Wave-18 external / constraint fixes: addtorque, drag, oneway. Written from
@@ -90,16 +91,11 @@ export class FixDrag extends Fix {
     if (args.length !== 5) throw new StyleError('usage: fix ID group-ID drag x y z fmag delta');
     for (let d = 0; d < 3; d++) {
       if (args[d] === 'NULL') { this.target[d] = null; continue; }
-      const val = Number(args[d]);
-      if (args[d].trim() === '' || !Number.isFinite(val)) {
-        throw new StyleError(`fix drag: ${'xyz'[d]} must be a number or NULL (coord to drag atoms towards), got '${args[d]}'`);
-      }
-      this.target[d] = val;
+      // As native LAMMPS does (src/EXTRA-FIX/fix_drag.cpp FixDrag::FixDrag at b332f28): utils::numeric unless NULL
+      this.target[d] = numeric(args[d]);
     }
-    this.fmag = Number(args[3]);
-    if (!Number.isFinite(this.fmag)) throw new StyleError(`fix drag: fmag must be a number (force units), got '${args[3]}'`);
-    this.delta = Number(args[4]);
-    if (!Number.isFinite(this.delta)) throw new StyleError(`fix drag: delta must be a number (distance units), got '${args[4]}'`);
+    this.fmag = numeric(args[3]);
+    this.delta = numeric(args[4]);
     this.vectorFlag = true;
     this.sizeVector = 3;
     this.extvector = 1;
@@ -172,8 +168,9 @@ export class FixOneway extends Fix {
     // As native LAMMPS does (src/EXTRA-FIX/fix_oneway.cpp FixOneWay::FixOneWay at b332f28): it reads N, region and
     // direction and needs at least six words in all; words after the direction are not read, so they are accepted.
     if (args.length < 3) throw new StyleError('usage: fix ID group-ID oneway N region-ID direction');
-    const n = Number(args[0]);
-    if (!Number.isInteger(n) || n < 1) throw new StyleError(`fix oneway: N must be a positive integer, got '${args[0]}'`);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_oneway.cpp at b332f28): N is read with utils::inumeric and must be >= 1
+    const n = inumeric(args[0]);
+    if (n < 1) throw new StyleError('Illegal fix oneway command');
     this.nevery = n;
     this.region = sys.region(args[1]);
     const dir = args[2];

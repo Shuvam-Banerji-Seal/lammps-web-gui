@@ -19,7 +19,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { nativeOrder } from '../../engine/atoms';
 import { PairHybrid } from '../../engine/force/pair/hybrid';
-import { argBounds } from './common';
+import { bounds } from '../../engine/force/util';
 
 type TermKind = 'pair' | 'tail' | 'kspace';
 
@@ -49,7 +49,8 @@ export class ComputeTI extends Compute {
     for (let iarg = 0; iarg < args.length; iarg += 4) {
       const kw = args[iarg];
       const kind: TermKind = kw === 'kspace' ? 'kspace' : kw === 'tail' ? 'tail' : 'pair';
-      const [ilo, ihi] = argBounds(args[iarg + 1], ntypes, 'compute ti');
+      // As native LAMMPS does (src/EXTRA-COMPUTE/compute_ti.cpp ComputeTI::ComputeTI at b332f28): utils::bounds over 1..ntypes
+      const [ilo, ihi] = bounds(args[iarg + 1], 1, ntypes);
       if (!args[iarg + 2].startsWith('v_') || !args[iarg + 3].startsWith('v_')) throw new StyleError('Illegal compute ti command');
       this.terms.push({ kind, pstyle: kw, ilo, ihi, var1: args[iarg + 2].slice(2), var2: args[iarg + 3].slice(2) });
     }

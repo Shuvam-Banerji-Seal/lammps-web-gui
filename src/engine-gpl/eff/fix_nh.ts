@@ -14,6 +14,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
 import { massOf } from '../../engine/atoms';
@@ -107,10 +108,12 @@ export class FixNHBase extends Fix {
         // As native LAMMPS does (src/fix_nh.cpp FixNH::FixNH at b332f28): if (iarg + 4 > narg) missing_cmd_args("fix {} temp")
         if (i + 4 > args.length) throw new StyleError(`Illegal fix ${style} temp command: missing argument(s)`);
         this.tstat = true;
-        this.tStart = Number(args[i + 1]);
-        this.tStop = Number(args[i + 2]);
-        this.tPeriod = Number(args[i + 3]);
-        if (!(this.tStart > 0) || !(this.tStop > 0)) throw new StyleError(`Target temperature for fix ${style} cannot be <= 0.0`);
+        // As native LAMMPS does (src/fix_nh.cpp at b332f28): each value is read with utils::numeric and checked before the next is read
+        this.tStart = numeric(args[i + 1]);
+        if (!(this.tStart > 0)) throw new StyleError(`Target temperature for fix ${style} cannot be <= 0.0`);
+        this.tStop = numeric(args[i + 2]);
+        if (!(this.tStop > 0)) throw new StyleError(`Target temperature for fix ${style} cannot be <= 0.0`);
+        this.tPeriod = numeric(args[i + 3]);
         if (!(this.tPeriod > 0)) throw new StyleError(`Temperature damping for fix ${style} cannot be <= 0.0`);
         i += 4;
       } else if (w === 'iso') {

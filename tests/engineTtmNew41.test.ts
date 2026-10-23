@@ -58,9 +58,11 @@ describe('ttm/thermal positional arguments', () => {
 
   it('rejects a short argument list, a bad seed and a bad grid size', () => {
     expect(() => parseThermalPositional('f', ['1', 'p', '2', '2'])).toThrow(/Illegal fix ttm\/thermal command: missing argument\(s\)/);
-    expect(() => parseThermalPositional('f', ['1.5', 'p', '2', '2', '2'])).toThrow(/seed must be a positive integer/);
-    expect(() => parseThermalPositional('f', ['1', 'p', '0', '2', '2'])).toThrow(/Nx must be a positive integer/);
-    expect(() => parseThermalPositional('f', ['1', 'p', '2', '2', '2.5'])).toThrow(/Nz must be a positive integer/);
+    expect(() => parseThermalPositional('f', ['1.5', 'p', '2', '2', '2'])).toThrow("Expected integer parameter instead of '1.5'");
+    // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_thermal.cpp at b332f28): the seed and grid sizes are checked after the keywords
+    expect(() => parseThermalPositional('f', ['1', 'p', '0', '2', '2']).check()).toThrow('Fix ttm grid sizes must be > 0');
+    expect(() => parseThermalPositional('f', ['0', 'p', '2', '2', '2']).check()).toThrow('Invalid random number seed in fix ttm/thermal command');
+    expect(() => parseThermalPositional('f', ['1', 'p', '2', '2', '2.5'])).toThrow("Expected integer parameter instead of '2.5'");
   });
 });
 
@@ -206,8 +208,9 @@ describe('ttm/thermal and ttm/cascade in the engine', () => {
 
   it('ttm/cascade: a negative offset is an error; gamma_p = 0 and gamma_s < 0 are errors (measured)', async () => {
     await expectError('fix 2 all ttm/cascade 77 1 1 0.5 20 0 2 2 2 2 set 1000 offset -1.0', {}, /time offset must be >= 0/);
-    await expectError('fix 2 all ttm/cascade 77 1 1 0.5 0 0 2 2 2 2 set 1000', {}, /gamma_p must be > 0/);
-    await expectError('fix 2 all ttm/cascade 77 1 1 0.5 20 -1 2 2 2 2 2 set 1000', {}, /gamma_s must be >= 0/);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp at b332f28): the value checks come after the keywords
+    await expectError('fix 2 all ttm/cascade 77 1 1 0.5 0 0 2 2 2 2 set 1000', {}, 'Fix ttm/cascade gamma_p must be > 0.0');
+    await expectError('fix 2 all ttm/cascade 77 1 1 0.5 20 -1 2 2 2 2 set 1000', {}, 'Fix ttm/cascade gamma_s must be >= 0.0');
   });
 
   it('ttm/cascade: a missing table file is an error, and so is a table that is not sorted', async () => {

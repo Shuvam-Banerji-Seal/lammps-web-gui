@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { SPIN_HBAR } from '../force/pair/spin_exchange';
+import { numeric } from '../force/util';
 import { spinContribute } from '../force/spin_book';
 
 /*
@@ -46,13 +47,8 @@ export class FixPrecessionSpin extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (!sys.state.sp) throw new StyleError('fix precession/spin requires atom_style spin');
-    const num = (w: string | undefined, what: string): number => {
-      // As native LAMMPS does (src/utils.cpp utils::numeric at b332f28): a value past the end of the line is NULL
-      if (w === undefined || w === '') throw new StyleError('Expected floating point parameter instead of NULL or empty string in input script or data file');
-      const v = Number(w);
-      if (!Number.isFinite(v)) throw new StyleError(`fix precession/spin: ${what} must be a number, got '${w}'`);
-      return v;
-    };
+    // As native LAMMPS does (src/utils.cpp utils::numeric at b332f28): a value past the end of the line is NULL
+    const num = (w: string | undefined, _what: string): number => numeric(w);
     // As native LAMMPS does (src/SPIN/fix_precession_spin.cpp FixPrecessionSpin::FixPrecessionSpin at b332f28): a style
     // whose first arguments are not all there is "Illegal fix precession/spin command"; the last values are read without
     // this check (past the end they are NULL, see num)

@@ -300,16 +300,14 @@ export class FixWallRegion extends Fix {
       throw new StyleError(this.wallStyle === 'morse' ? 'Illegal fix wall/region morse command' : 'Illegal fix wall/region command');
     }
     this.params = [];
+    // As native LAMMPS does (src/fix_wall_region.cpp FixWallRegion::FixWallRegion at b332f28): the parameters and the
+    // cutoff are read with utils::numeric, and a cutoff <= 0 is "Fix wall/region cutoff <= 0.0".
     for (let k = 0; k < nParams; k++) {
-      const v = Number(args[2 + k]);
-      if (args[2 + k].startsWith('v_') || !Number.isFinite(v)) {
-        throw new StyleError(`fix ${id} (wall/region): parameter '${args[2 + k]}' must be a number`);
-      }
-      this.params.push(v);
+      this.params.push(numeric(args[2 + k]));
     }
-    const cut = Number(args[args.length - 1]);
-    if (args[args.length - 1].startsWith('v_') || !(cut > 0)) {
-      throw new StyleError(`fix ${id} (wall/region): cutoff must be a number > 0, got '${args[args.length - 1]}'`);
+    const cut = numeric(args[args.length - 1]);
+    if (cut <= 0) {
+      throw new StyleError('Fix wall/region cutoff <= 0.0');
     }
     this.rc = cut;
     // fail early on a region this fix cannot use

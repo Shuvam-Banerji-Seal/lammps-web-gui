@@ -114,8 +114,8 @@ region box block 0 2 0 2 -0.5 0.5
 create_box 1 box
 compute pg all property/grid 2 2 2 id
 run 0
-`)).rejects.toThrow(/Nz must be 1/);
-    await expect(run(grid('pg', '2.5 2 3 id'))).rejects.toThrow(/positive integer/);
+`)).rejects.toThrow('Compute property/grid for 2d requires nz = 1');
+    await expect(run(grid('pg', '2.5 2 3 id'))).rejects.toThrow("Expected integer parameter instead of '2.5'");
   });
 });
 

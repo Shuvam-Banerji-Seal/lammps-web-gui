@@ -322,11 +322,12 @@ export class ComputeStressSpherical extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length !== 5) throw new StyleError(`compute ${id} stress/spherical: illegal number of arguments (usage: x0 y0 z0 bin_width Rmax)`);
-    this.x0 = Number(args[0]);
-    this.y0 = Number(args[1]);
-    this.z0 = Number(args[2]);
-    const bw = Number(args[3]);
-    this.Rmax = Number(args[4]);
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_spherical.cpp ComputeStressSpherical::ComputeStressSpherical at b332f28): utils::numeric reads x0 y0 z0 bin_width Rmax in turn
+    this.x0 = numeric(args[0]);
+    this.y0 = numeric(args[1]);
+    this.z0 = numeric(args[2]);
+    const bw = numeric(args[3]);
+    this.Rmax = numeric(args[4]);
     this.nbins = Math.trunc(this.Rmax / bw) + 1;
     this.width = this.Rmax / this.nbins;
     if (!(this.width > 0)) throw new StyleError(`compute ${id} stress/spherical: bin width must be > 0`);

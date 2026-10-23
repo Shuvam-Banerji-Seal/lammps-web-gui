@@ -19,6 +19,7 @@
 import { Fix } from '../../engine/fix/fix';
 import type { Region } from '../../engine/region';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 
 /** One torque component: NULL (left alone), a constant, or a v_name variable. */
@@ -55,9 +56,9 @@ export class FixSetTorqueAtom extends Fix {
   private parseComponent(w: string, what: string): Component {
     if (w === 'NULL') return { kind: 'null' };
     if (w.startsWith('v_')) return { kind: 'var', name: w.slice(2) };
-    const v = Number(w);
-    if (w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`fix settorque/atom: expected a number, NULL or v_name for ${what}, got '${w}'`);
-    return { kind: 'const', v };
+    // As native LAMMPS does (src/GRANULAR/fix_settorque_atom.cpp FixSetTorqueAtom::FixSetTorqueAtom at b332f28):
+    // utils::numeric reads a constant component.
+    return { kind: 'const', v: numeric(w) };
   }
 
   /** native init(): the variables must exist and be equal-style or atom-style. */

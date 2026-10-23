@@ -2,7 +2,8 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { RanPark } from '../rng';
 import { appendAtoms, deleteAtoms, hasChargeStyle, isMolecularStyle } from '../atoms';
-import { appendMolecule, num, posInt } from './pour';
+import { appendMolecule, num } from './pour';
+import { inumeric, numeric } from '../force/util';
 import { geometricCenter, rotationMatrix, type MoleculeTemplate } from '../molecule';
 import { BlockRegion, type Region } from '../region';
 import { newAccum, type Accum, type Bonded, type BondedCompute } from '../force/types';
@@ -175,10 +176,21 @@ export class FixWidom extends Fix {
     super(sys, id, group, args);
     if (sys.dimension !== 3) throw new StyleError('fix widom: only 3d simulations are supported');
     if (args.length < 5) throw new StyleError('usage: fix ID group-ID widom N M type seed T keyword values ...');
-    this.N = posInt(args[0], 'N');
-    this.M = posInt(args[1], 'M');
-    this.rng = new RanPark(posInt(args[3], 'seed'));
-    this.T = num(args[4], 'T');
+    // As native LAMMPS does (src/MC/fix_widom.cpp FixWidom::FixWidom at b332f28): N, M and the seed are read with
+    // utils::inumeric and T with utils::numeric, all before the checks
+    const nevery = inumeric(args[0]);
+    const M = inumeric(args[1]);
+    const seed = inumeric(args[3]);
+    const T = numeric(args[4]);
+    if (nevery <= 0) throw new StyleError(`Invalid fix widom every argument: ${nevery}`);
+    if (M < 0) throw new StyleError(`Invalid fix widom insertions argument: ${M}`);
+    if (seed <= 0) throw new StyleError(`Invalid fix widom seed argument: ${seed}`);
+    if (T < 0) throw new StyleError(`Invalid fix widom temperature argument: ${T}`);
+    if (M < 1) throw new StyleError(`fix: M must be a positive integer, got '${args[1]}'`);
+    this.N = nevery;
+    this.M = M;
+    this.rng = new RanPark(seed);
+    this.T = T;
     if (!(this.T > 0)) throw new StyleError('fix widom: T must be > 0');
     let molTemplateId: string | null = null;
     let regionId: string | null = null;

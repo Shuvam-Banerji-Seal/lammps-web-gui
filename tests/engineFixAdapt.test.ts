@@ -236,9 +236,9 @@ pair_coeff 2 2 0.5 1.1
 variable e equal 2.0
 `;
 
-  it('N must be a non-negative integer', async () => {
+  it('rejects a negative every value as native does', async () => {
     const r = await runScript(`${SYS1}\nvariable e equal 2.0\nfix 1 all adapt -1 pair lj/cut epsilon 1 1 v_e\n`);
-    expect(r.message).toMatch(/N must be a non-negative integer/);
+    expect(r.message).toContain('Illegal fix adapt every value -1');
   });
 
   it('at least one attribute is required', async () => {

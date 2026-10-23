@@ -291,13 +291,13 @@ export class FixLineforce extends Fix {
     if (args.length !== 3) throw new StyleError('usage: fix ID group-ID lineforce x y z');
     let len = 0;
     for (let d = 0; d < 3; d++) {
-      const v = Number(args[d]);
-      if (!Number.isFinite(v)) throw new StyleError(`fix lineforce: '${args[d]}' is not a number (x y z = direction of line as a 3-vector)`);
+      // As native LAMMPS does (src/fix_lineforce.cpp FixLineForce::FixLineForce at b332f28): read with utils::numeric
+      const v = numeric(args[d]);
       this.n[d] = v;
       len += v * v;
     }
     len = Math.sqrt(len);
-    if (!(len > 0)) throw new StyleError('fix lineforce: the line direction vector must be non-zero');
+    if (!(len > 0)) throw new StyleError('Illegal fix lineforce command');
     for (let d = 0; d < 3; d++) this.n[d] /= len;
   }
 
@@ -342,13 +342,13 @@ export class FixPlaneforce extends Fix {
     if (args.length !== 3) throw new StyleError('usage: fix ID group-ID planeforce x y z');
     let len = 0;
     for (let d = 0; d < 3; d++) {
-      const v = Number(args[d]);
-      if (!Number.isFinite(v)) throw new StyleError(`fix planeforce: '${args[d]}' is not a number (x y z = 3-vector that is normal to the plane)`);
+      // As native LAMMPS does (src/fix_planeforce.cpp FixPlaneForce::FixPlaneForce at b332f28): read with utils::numeric
+      const v = numeric(args[d]);
       this.n[d] = v;
       len += v * v;
     }
     len = Math.sqrt(len);
-    if (!(len > 0)) throw new StyleError('fix planeforce: the plane normal vector must be non-zero');
+    if (!(len > 0)) throw new StyleError('Illegal fix planeforce command');
     for (let d = 0; d < 3; d++) this.n[d] /= len;
   }
 
@@ -473,7 +473,7 @@ export class FixEfield extends Fix {
     this.fadd = new Float64Array(3 * s.n);
   }
 
-  private static parseComp(sys: System, w: string, what: string): EComp {
+  private static parseComp(sys: System, w: string, _what: string): EComp {
     if (w.startsWith('v_')) {
       const name = w.slice(2);
       const v = sys.vars.get(name);
@@ -482,9 +482,8 @@ export class FixEfield extends Fix {
       if (v.style === 'equal' || v.style === 'internal' || v.style === 'string') return { var: name, atom: false };
       throw new StyleError(`fix efield: a ${v.style}-style variable (${name}) cannot define an E-field component`);
     }
-    const num = Number(w);
-    if (!Number.isFinite(num)) throw new StyleError(`fix efield: ${what} must be a number or v_name (electric field units), got '${w}'`);
-    return { const: num };
+    // As native LAMMPS does (src/fix_efield.cpp FixEfield::FixEfield at b332f28): a component is read with utils::numeric
+    return { const: numeric(w) };
   }
 
   /** "The energy keyword specifies the name of an atom-style variable". */

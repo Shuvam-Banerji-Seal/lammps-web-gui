@@ -1,6 +1,6 @@
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { missingArgs } from '../force/util';
+import { inumeric, missingArgs } from '../force/util';
 import { FixTTM, type TtmKeywordHandler, type TtmPositional } from './ttm';
 
 /*
@@ -64,25 +64,16 @@ export interface ThermalPositional extends TtmPositional {
 
 /** The positional part: seed properties_file Nx Ny Nz. */
 export const parseThermalPositional = (id: string, args: string[]): ThermalPositional => {
-  const style = 'ttm/thermal';
-  // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_thermal.cpp at b332f28)
+  // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_thermal.cpp at b332f28): the integers are read with utils::inumeric,
+  // and the seed and grid sizes are checked after the keywords
   if (args.length < 5) throw missingArgs('fix ttm/thermal');
-  const seed = Number(args[0]);
-  if (!Number.isInteger(seed) || seed < 1) throw new StyleError(`fix ${id} ${style}: seed must be a positive integer, got '${args[0]}'`);
-  const dim = (w: string, what: string): number => {
-    const v = Number(w);
-    if (!Number.isInteger(v) || v < 1) throw new StyleError(`fix ${id} ${style}: ${what} must be a positive integer, got '${w}'`);
-    return v;
+  const seed = inumeric(args[0]);
+  const nx = inumeric(args[2]), ny = inumeric(args[3]), nz = inumeric(args[4]);
+  const check = (): void => {
+    if (seed <= 0) throw new StyleError('Invalid random number seed in fix ttm/thermal command');
+    if (nx <= 0 || ny <= 0 || nz <= 0) throw new StyleError('Fix ttm grid sizes must be > 0');
   };
-  return {
-    seed,
-    propsFile: args[1],
-    nx: dim(args[2], 'Nx'),
-    ny: dim(args[3], 'Ny'),
-    nz: dim(args[4], 'Nz'),
-    consumed: 5,
-    scalar: null,
-  };
+  return { seed, propsFile: args[1], nx, ny, nz, consumed: 5, scalar: null, check };
 };
 
 export interface ThermalCells {

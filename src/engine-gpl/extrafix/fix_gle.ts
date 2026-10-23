@@ -16,6 +16,7 @@
  * the restart of the auxiliary momenta and the global scalar (the source does not set scalar_flag either).
  */
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { Fix } from '../../engine/fix/fix';
 import { rampFraction } from '../../engine/fix/util';
@@ -142,21 +143,22 @@ export class FixGLE extends Fix {
     super(sys, id, group, args);
     this.timeIntegrate = true;
     if (args.length < 5) throw new StyleError('Illegal fix gle command. Expecting: fix <fix-ID> <group-ID> gle <ns> <Tstart> <Tstop> <seed> <Amatrix>');
-    const ns = Number(args[0]);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_gle.cpp FixGLE::FixGLE at b332f28): utils::inumeric reads ns, then
+    // utils::numeric the two temperatures and utils::inumeric the seed, and only then the A matrix file is read.
+    const ns = inumeric(args[0]);
     if (!Number.isInteger(ns) || ns < 1) throw new StyleError('Illegal fix gle number of auxiliary momenta (ns)');
     this.ns = ns;
     this.ns1sq = (ns + 1) * (ns + 1);
+    this.tStart = numeric(args[1]);
+    this.tStop = numeric(args[2]);
+    const seed = inumeric(args[3]);
+    if (seed <= 0) throw new StyleError('Illegal fix gle command');
     this.A = readDVector(sys.readFile(args[4]), this.ns1sq, 'fix gle A matrix', sys.state.units.style);
     this.C = new Float64Array(this.ns1sq);
     this.S = new Float64Array(this.ns1sq);
     this.T = new Float64Array(this.ns1sq);
     this.TT = new Float64Array(this.ns1sq);
     this.ST = new Float64Array(this.ns1sq);
-    this.tStart = Number(args[1]);
-    this.tStop = Number(args[2]);
-    if (!Number.isFinite(this.tStart) || !Number.isFinite(this.tStop)) throw new StyleError('Illegal fix gle temperature');
-    const seed = Number(args[3]);
-    if (!Number.isInteger(seed) || seed <= 0) throw new StyleError('Illegal fix gle command');
     // keyword pairs: noneq cmatrix, every nmts; other words are skipped (see below)
     let noneqFile: string | null = null;
     let every = 1;

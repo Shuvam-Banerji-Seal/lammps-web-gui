@@ -23,7 +23,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { missingArgs } from '../../engine/force/util';
+import { inumeric, missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { buildAtomMap, hasMolecule, nativeOrder } from '../../engine/atoms';
 import { PairReaxFF } from './pair';
@@ -77,7 +77,8 @@ export class FixReaxFFBonds extends Fix {
   constructor(sys: System, id: string, group: string, args: string[], private pairRef: () => PairReaxFF | null) {
     super(sys, id, group, args);
     if (args.length !== 2) throw new StyleError('Illegal fix reaxff/bonds command: expected Nevery and a file name');
-    this.nevery = intArg(args[0], 'Nevery');
+    // As native LAMMPS does (src/REAXFF/fix_reaxff_bonds.cpp at b332f28): utils::inumeric reads Nevery
+    this.nevery = inumeric(args[0]);
     if (this.nevery <= 0) throw new StyleError(`Illegal fix reaxff/bonds nevery value ${this.nevery}`);
     // fix_reaxff_bonds.cpp: global_freq = nevery
     this.globalFreq = this.nevery;
@@ -165,9 +166,10 @@ export class FixReaxFFSpecies extends Fix {
   constructor(sys: System, id: string, group: string, args: string[], private pairRef: () => PairReaxFF | null) {
     super(sys, id, group, args);
     if (args.length < 4) throw new StyleError('Illegal fix reaxff/species command: expected Nevery Nrepeat Nfreq filename');
-    this.nevery = intArg(args[0], 'Nevery');
-    this.nrepeat = intArg(args[1], 'Nrepeat');
-    this.nfreq = intArg(args[2], 'Nfreq');
+    // As native LAMMPS does (src/REAXFF/fix_reaxff_species.cpp at b332f28): utils::inumeric reads Nevery, Nrepeat, Nfreq
+    this.nevery = inumeric(args[0]);
+    this.nrepeat = inumeric(args[1]);
+    this.nfreq = inumeric(args[2]);
     this.globalFreq = this.nfreq;
     this.file = args[3];
     if (/\.(gz|bz2|zst|lz4|xz)$/.test(this.file)) throw new StyleError('fix reaxff/species with a compressed file name is not supported');

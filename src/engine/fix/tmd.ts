@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { ramp } from './util';
+import { inumeric, numeric } from '../force/util';
 import { massOf } from '../atoms';
 
 /*
@@ -135,11 +136,12 @@ export class FixTmd extends Fix {
     // As native LAMMPS does (src/EXTRA-FIX/fix_tmd.cpp FixTMD::FixTMD at b332f28): fewer than the three required words is
     // "Illegal fix tmd command"; with N = 0 any words after N are not read.
     if (args.length < 3) throw new StyleError('Illegal fix tmd command');
-    this.rhoFinal = Number(args[0]);
-    if (!Number.isFinite(this.rhoFinal)) throw new StyleError(`fix tmd: rho_final must be a number, got '${args[0]}'`);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_tmd.cpp FixTMD::FixTMD at b332f28): rho_final is read with utils::numeric
+    // and N with utils::inumeric; a negative value of either is "Illegal fix tmd command".
+    this.rhoFinal = numeric(args[0]);
     const fileName = args[1];
-    this.every = Number(args[2]);
-    if (!Number.isInteger(this.every) || this.every < 0) throw new StyleError(`fix tmd: N must be a non-negative integer, got '${args[2]}'`);
+    this.every = inumeric(args[2]);
+    if (this.rhoFinal < 0 || this.every < 0) throw new StyleError('Illegal fix tmd command');
     // "file2 = filename to write TMD statistics to (only needed if N > 0)"
     // native: "if (nfileevery && narg != 7)": the file2 word is required (and only then) when N > 0
     if (this.every > 0 && args.length !== 4) throw new StyleError('Illegal fix tmd command');

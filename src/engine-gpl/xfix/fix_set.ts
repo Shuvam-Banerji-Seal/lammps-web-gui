@@ -12,7 +12,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { missingArgs } from '../../engine/force/util';
+import { inumeric, missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { Ctx } from '../../engine/commands/args';
 
@@ -37,10 +37,12 @@ export class FixSet extends Fix {
     super(sys, id, group, args);
     // native: narg < 8 is missing arguments (the fix words are "fix ID group set Nevery rnflag style ID keyword values")
     if (args.length < 5) throw new StyleError('Illegal fix set command: missing arguments');
-    this.nevery = Number(args[0]);
-    if (!/^[+-]?\d+$/.test(args[0]) || this.nevery <= 0) throw new StyleError('Fix set Nevery must be > 0');
+    // As native LAMMPS does (src/fix_set.cpp FixSet::FixSet at b332f28): utils::inumeric reads Nevery and rnflag
+    this.nevery = inumeric(args[0]);
+    if (this.nevery <= 0) throw new StyleError('Fix set Nevery must be > 0');
     // rnflag is checked and kept natively, but it has no effect (see reneighborDue)
-    if (!/^[+-]?\d+$/.test(args[1]) || Number(args[1]) < 0 || Number(args[1]) > 1) throw new StyleError('Fix set rnflag must be 0/1');
+    const rnflag = inumeric(args[1]);
+    if (rnflag < 0 || rnflag > 1) throw new StyleError('Fix set rnflag must be 0/1');
     const rest = args.slice(2);
     if (rest.length < 2 || !STYLE_WORDS.includes(rest[0])) {
       throw new StyleError(`Unrecognized set or fix set command keyword ${rest[0] ?? ''}`);

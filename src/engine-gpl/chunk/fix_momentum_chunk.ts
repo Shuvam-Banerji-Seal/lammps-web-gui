@@ -15,16 +15,14 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { massOf, nativeOrder } from '../../engine/atoms';
 import type { ComputeChunkAtom } from '../../engine/compute/chunk';
 import { chunkOf, comCentres, comSums, omegaChunk, refreshChunk, vcmSums } from './chunk_native';
 
-const intArg = (w: string | undefined): number => {
-  const v = Number(w);
-  if (w === undefined || !Number.isInteger(v)) throw new StyleError(`Expected integer parameter instead of '${w ?? ''}' in input`);
-  return v;
-};
+// As native LAMMPS does (src/EXTRA-FIX/fix_momentum_chunk.cpp at b332f28): utils::inumeric reads each integer.
+const intArg = inumeric;
 
 export class FixMomentumChunk extends Fix {
   readonly style = 'momentum/chunk';

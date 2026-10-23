@@ -13,6 +13,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { DPD_THETA, DPD_UCOND, DPD_UMECH } from '../../engine/atoms';
 import { RxTableReader } from '../dpdrx/rx_table_reader';
@@ -76,10 +77,8 @@ const splint = (xa: Float64Array, ya: Float64Array, y2a: Float64Array, n: number
   return a * ya[klo] + b * ya[khi] + ((a * a * a - a) * y2a[klo] + (b * b * b - b) * y2a[khi]) * (h * h) / 6.0;
 };
 
-const intArg = (w: string | undefined, what: string): number => {
-  if (w === undefined || !/^[-+]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w ?? ''}' in ${what}`);
-  return Number(w);
-};
+// As native LAMMPS does (src/DPD-REACT/fix_eos_table.cpp FixEOStable::FixEOStable at b332f28): utils::inumeric reads the table length.
+const intArg = (w: string | undefined, _what: string): number => inumeric(w);
 
 export class FixEOStable extends Fix {
   readonly style = 'eos/table';

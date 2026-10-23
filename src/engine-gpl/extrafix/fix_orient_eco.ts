@@ -12,6 +12,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -55,12 +56,12 @@ export class FixOrientECO extends Fix {
     this.peratomFlag = true;
     this.sizePeratomCols = 2;
     this.energyGlobal = true;
-    this.u0 = Number(args[0]);
-    if (!Number.isFinite(this.u0)) throw new StyleError(`fix orient/eco: u0 must be a number, got '${args[0]}'`);
+    // As native LAMMPS does (src/ORIENT/fix_orient_eco.cpp FixOrientECO::FixOrientECO at b332f28): utils::numeric reads
+    // u0, eta and the cutoff in turn.
+    this.u0 = numeric(args[0]);
     this.sign = this.u0 >= 0.0 ? 1 : -1;
-    this.eta = Number(args[1]);
-    this.rCut = Number(args[2]);
-    if (!Number.isFinite(this.eta) || !Number.isFinite(this.rCut)) throw new StyleError('fix orient/eco: eta and cutoff must be numbers');
+    this.eta = numeric(args[1]);
+    this.rCut = numeric(args[2]);
     // the reference orientations: 18 numbers (six primitive lattice vectors, three components each), '#' comments allowed
     const text = sys.readFile(args[3]);
     const nums: number[] = [];

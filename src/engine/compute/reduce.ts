@@ -3,7 +3,7 @@ import { ComputeOrientorderAtom } from './orientorder';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { peratomValues, type Ref } from '../refs';
-import { bounds, inumeric } from '../force/util';
+import { bounds, inumeric, numeric } from '../force/util';
 import { ALL_GROUP_BIT } from '../atoms';
 import { CellList } from '../cellList';
 
@@ -604,7 +604,8 @@ export class ComputeCoordAtom extends Compute {
     }
     if (cstyle !== 'cutoff') throw new StyleError(`unknown compute coord/atom cstyle '${cstyle}' (use cutoff or orientorder)`);
     if (args.length < 2) throw new StyleError(`compute ${id} (coord/atom): the cutoff cstyle needs a cutoff distance`);
-    const cutoff = Number(args[1]);
+    // As native LAMMPS does (src/compute_coord_atom.cpp ComputeCoordAtom::ComputeCoordAtom at b332f28): utils::numeric reads the cutoff
+    const cutoff = numeric(args[1]);
     if (!Number.isFinite(cutoff) || cutoff <= 0) throw new StyleError(`compute ${id} (coord/atom): cutoff '${args[1]}' must be a positive number`);
     this.cutoff = cutoff;
     const ntypes = sys.state.ntypes;

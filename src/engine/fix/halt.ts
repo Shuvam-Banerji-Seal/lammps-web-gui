@@ -1,6 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { missingArgs, parseNum } from '../force/util';
+import { inumeric, missingArgs, parseNum } from '../force/util';
 import type { System } from '../system';
 import { formatNumber } from '../cformat';
 import { requestHalt } from '../run/halt';
@@ -45,8 +45,9 @@ export class FixHalt extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 4) throw new StyleError(`fix ${id} halt: usage: fix ID group-ID halt N attribute operator avalue [keyword value ...]`);
-    const n = parseNum(args[0], `fix ${id} halt N`);
-    if (!(n >= 1) || Math.floor(n) !== n) throw new StyleError(`fix ${id} halt: N must be an integer >= 1, got ${args[0]}`);
+    // As native LAMMPS does (src/fix_halt.cpp FixHalt::FixHalt at b332f28): N is read with utils::inumeric
+    const n = inumeric(args[0]);
+    if (n <= 0) throw new StyleError('Illegal fix halt command: nevery must be > 0');
     this.nevery = n;
     const attr = args[1];
     if (attr === 'tlimit') {

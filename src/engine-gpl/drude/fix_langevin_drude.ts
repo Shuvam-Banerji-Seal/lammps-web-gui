@@ -13,15 +13,10 @@
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, logical, numeric } from '../../engine/force/util';
 import { massOf } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
 import { DRUDE_TYPE, NOPOL_TYPE, drudeModelOf } from './drude_model';
-
-const num = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || w === '' || !Number.isFinite(v)) throw new StyleError(`Illegal fix langevin/drude ${what}: '${w ?? ''}'`);
-  return v;
-};
 
 export class FixLangevinDrude extends Fix {
   readonly style = 'langevin/drude';
@@ -37,21 +32,29 @@ export class FixLangevinDrude extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 6) throw new StyleError('Illegal fix langevin/drude command');
-    for (const w of [args[0], args[3]]) if (w.startsWith('v_')) throw new StyleError('fix langevin/drude: variable temperatures are not supported');
-    this.tCore = num(args[0], 'Tcore');
-    this.periodCore = num(args[1], 'period');
-    const seedCore = num(args[2], 'seed');
-    this.tDrude = num(args[3], 'Tdrude');
-    this.periodDrude = num(args[4], 'period');
-    const seedDrude = num(args[5], 'seed');
-    if (this.periodCore <= 0 || this.periodDrude <= 0) throw new StyleError('Fix langevin/drude period must be > 0.0');
-    if (seedCore <= 0 || seedDrude <= 0) throw new StyleError('Illegal langevin/drude seed');
+    // As native LAMMPS does (src/DRUDE/fix_langevin_drude.cpp FixLangevinDrude::FixLangevinDrude at b332f28): each
+    // temperature, period and seed is read in turn (utils::numeric / utils::inumeric), then the period and seed checks,
+    // then the zero keyword. A variable temperature (v_name) is read by native later; the browser engine refuses it
+    // only after all of native's checks.
+    const varCore = args[0].startsWith('v_');
+    const varDrude = args[3].startsWith('v_');
+    const tCore = varCore ? 0 : numeric(args[0]);
+    this.periodCore = numeric(args[1]);
+    const seedCore = inumeric(args[2]);
+    const tDrude = varDrude ? 0 : numeric(args[3]);
+    this.periodDrude = numeric(args[4]);
+    const seedDrude = inumeric(args[5]);
+    if (this.periodCore <= 0) throw new StyleError('Fix langevin/drude period must be > 0.0');
+    if (seedCore <= 0) throw new StyleError('Illegal langevin/drude seed');
+    if (this.periodDrude <= 0) throw new StyleError('Fix langevin/drude period must be > 0.0');
+    if (seedDrude <= 0) throw new StyleError('Illegal langevin/drude seed');
     for (let k = 6; k < args.length; k += 2) {
       if (args[k] !== 'zero' || args[k + 1] === undefined) throw new StyleError('Illegal fix langevin/drude command');
-      const yn = args[k + 1];
-      if (yn !== 'yes' && yn !== 'no') throw new StyleError(`Expected boolean parameter instead of '${yn}' in input script`);
-      this.zero = yn === 'yes';
+      this.zero = logical(args[k + 1]);
     }
+    if (varCore || varDrude) throw new StyleError('fix langevin/drude: variable temperatures are not supported');
+    this.tCore = tCore;
+    this.tDrude = tDrude;
     this.rngCore = new RanMars(seedCore);
     this.rngDrude = new RanMars(seedDrude);
   }

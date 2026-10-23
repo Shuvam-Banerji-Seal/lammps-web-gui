@@ -11,7 +11,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { missingArgs } from '../../engine/force/util';
+import { inumeric, logical, missingArgs, numeric } from '../../engine/force/util';
 import { massOf, nativeOrder } from '../../engine/atoms';
 import { ramp } from '../../engine/fix/util';
 import { takeFixRecord } from '../../engine/fix/restartRecord';
@@ -34,21 +34,22 @@ export class FixBAOAB extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 4) throw new StyleError('Illegal fix baoab command: usage fix ID group baoab Tstart Tstop damp seed [zero yes/no]');
-    this.tStart = Number(args[0]);
-    this.tStop = Number(args[1]);
-    const damp = Number(args[2]);
-    this.seed = Number(args[3]);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_baoab.cpp FixBAOAB::FixBAOAB at b332f28): utils::numeric reads the two
+    // temperatures and the damping time, utils::inumeric the seed, before the range checks.
+    this.tStart = numeric(args[0]);
+    this.tStop = numeric(args[1]);
+    const damp = numeric(args[2]);
+    this.seed = inumeric(args[3]);
     if (this.tStart < 0.0 || this.tStop < 0.0) throw new StyleError('Fix baoab temperatures must be >= 0');
     if (!(damp > 0.0)) throw new StyleError('Fix baoab damp must be > 0');
-    if (!Number.isInteger(this.seed) || this.seed <= 0) throw new StyleError('Fix baoab seed must be positive integer');
+    if (this.seed <= 0) throw new StyleError('Fix baoab seed must be positive integer');
     // gamma = 1/damp (damp is the relaxation time, like fix langevin)
     this.gamma = 1.0 / damp;
     let zero = false;
     for (let k = 4; k < args.length;) {
       if (args[k] !== 'zero') throw new StyleError(`Unknown fix baoab keyword ${args[k]}`);
       if (k + 1 >= args.length) throw missingArgs('fix baoab zero');
-      if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError(`Illegal fix baoab zero value '${args[k + 1]}'`);
-      zero = args[k + 1] === 'yes';
+      zero = logical(args[k + 1]);
       k += 2;
     }
     this.zeroFlag = zero;

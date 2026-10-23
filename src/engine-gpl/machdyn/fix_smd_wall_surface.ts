@@ -13,6 +13,7 @@
  * (native: "Always run for 0 timesteps directly after loading STL file!").
  */
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { appendAtoms } from '../../engine/atoms';
@@ -36,10 +37,12 @@ export class FixSMDWallSurface extends Fix {
     super(sys, id, group, args);
     if (args.length !== 3) throw new StyleError('Illegal number of arguments for fix smd/wall_surface');
     this.filename = args[0];
-    this.wallType = Number(args[1]);
-    this.wallMol = Number(args[2]);
-    if (!Number.isInteger(this.wallType) || this.wallType < 1) throw new StyleError(`Illegal fix smd/wall_surface particle type '${args[1]}'`);
-    if (!Number.isInteger(this.wallMol) || this.wallMol < WALL_MOLECULE_MIN) throw new StyleError('wall molcule id must be >= 65535');
+    // As native LAMMPS does (src/MACHDYN/fix_smd_wall_surface.cpp FixSMDWallSurface::FixSMDWallSurface at b332f28):
+    // utils::inumeric reads the particle type and the molecule id, then the molecule id is range-checked.
+    this.wallType = inumeric(args[1]);
+    this.wallMol = inumeric(args[2]);
+    if (this.wallMol < WALL_MOLECULE_MIN) throw new StyleError('wall molcule id must be >= 65535');
+    if (this.wallType < 1) throw new StyleError(`Illegal fix smd/wall_surface particle type '${args[1]}'`);
   }
 
   /** For minimization: setup as with dynamics (native min_setup). */

@@ -24,7 +24,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { missingArgs } from '../../engine/force/util';
+import { inumeric, missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { ComputeSAED } from './compute_saed';
 import { reciprocalSpacing } from './compute_xrd';
@@ -57,11 +57,8 @@ const xmlRows = (values: Float64Array, single: boolean, indent: number): string 
 };
 
 /** Parses a non-negative or positive integer keyword value; native utils::inumeric. */
-const intArg = (w: string | undefined, what: string): number => {
-  const n = Number(w);
-  if (w === undefined || w.trim() === '' || !Number.isInteger(n)) throw new StyleError(`Expected integer parameter instead of '${w ?? ''}' in ${what}`);
-  return n;
-};
+// As native LAMMPS does (src/DIFFRACTION/fix_saed_vtk.cpp at b332f28): utils::inumeric reads each integer.
+const intArg = (w: string | undefined, _what: string): number => inumeric(w);
 
 export class FixSAEDVTK extends Fix {
   readonly style = 'saed/vtk';

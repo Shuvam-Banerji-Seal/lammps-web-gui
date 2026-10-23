@@ -12,6 +12,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { isSmdStyle, SMD_DEFGRAD, SMD_VEST } from '../../engine/smd';
 import { cos as libmCos, sin as libmSin } from '../libm/sincos';
@@ -44,10 +45,11 @@ export class FixSMDMoveTriSurf extends Fix {
     if (!isSmdStyle(sys.state.atomStyle)) throw new StyleError('fix fix smd/move_tri_surf command requires atom_style smd');
     if (args.length < 1) throw new StyleError('Illegal number of arguments for fix fix smd/move_tri_surf command');
     let linear = false, wiggle = false, rotate = false;
+    // As native LAMMPS does (src/MACHDYN/fix_smd_move_triangulated_surface.cpp at b332f28): a missing value gives the
+    // keyword's message, a present one is read by utils::numeric.
     const num = (w: string | undefined, msg: string): number => {
-      const v = Number(w);
-      if (w === undefined || w.trim() === '' || !Number.isFinite(v)) throw new StyleError(msg);
-      return v;
+      if (w === undefined) throw new StyleError(msg);
+      return numeric(w);
     };
     for (let k = 0; k < args.length;) {
       const w = args[k];

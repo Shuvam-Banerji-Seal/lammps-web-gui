@@ -24,6 +24,7 @@
  */
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { exp as libmExp } from '../libm/exp';
 
@@ -85,11 +86,13 @@ export class ComputeSLCSAAtom extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length !== 8) throw new StyleError(`Illegal compute slcsa/atom command: expected 8 arguments (${USAGE})`);
-    const twojmax = Number(args[0]);
-    if (!Number.isInteger(twojmax) || twojmax < 0) throw new StyleError('Illegal compute slcsa/atom command: twojmax must be >= 0');
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_slcsa_atom.cpp ComputeSLCSAAtom::ComputeSLCSAAtom at b332f28): utils::inumeric
+    // reads twojmax and nclasses, then their range checks
+    const twojmax = inumeric(args[0]);
+    if (twojmax < 0) throw new StyleError('Illegal compute slcsa/atom command: twojmax must be >= 0');
     this.ncomps = computeNcomps(twojmax);
-    const nclasses = Number(args[1]);
-    if (!Number.isInteger(nclasses) || nclasses < 2) throw new StyleError('Illegal compute slcsa/atom command: nclasses must be greater than 1');
+    const nclasses = inumeric(args[1]);
+    if (nclasses < 2) throw new StyleError('Illegal compute slcsa/atom command: nclasses must be greater than 1');
     if (nclasses !== NCLASSES) throw new StyleError(`compute slcsa/atom: only nclasses ${NCLASSES} is supported (the native model reader is written for four classes)`);
 
     const ncomps = this.ncomps;

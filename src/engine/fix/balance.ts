@@ -1,6 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { missingArgs } from '../force/util';
+import { inumeric, missingArgs, numeric } from '../force/util';
 import type { System } from '../system';
 import type { CustomProp } from '../types';
 import { formatNumber } from '../cformat';
@@ -231,9 +231,12 @@ export class FixBalance extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    const nfreq = Number(args[0]);
-    this.thresh = Number(args[1]);
-    if (!Number.isInteger(nfreq) || nfreq < 0 || !Number.isFinite(this.thresh) || this.thresh <= 0) {
+    // As native LAMMPS does (src/fix_balance.cpp FixBalance::FixBalance at b332f28): utils::inumeric reads Nfreq (a
+    // negative value is "Illegal fix balance nevery value") and utils::numeric the threshold.
+    const nfreq = inumeric(args[0]);
+    if (nfreq < 0) throw new StyleError(`Illegal fix balance nevery value ${args[0]}`);
+    this.thresh = numeric(args[1]);
+    if (this.thresh <= 0) {
       throw new StyleError('usage: fix ID group-ID balance Nfreq thresh style args keyword args ...');
     }
     this.nfreq = nfreq;

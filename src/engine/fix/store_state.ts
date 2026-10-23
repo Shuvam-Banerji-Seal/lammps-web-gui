@@ -4,6 +4,7 @@ import type { System } from '../system';
 import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
 import { CUSTOM_ATTR, hasCharge, hasMolecule, massOf } from '../atoms';
 import { fillPeratomAttr, peratomAttrProblem } from '../compute/peratom';
+import { inumeric } from '../force/util';
 
 /*
  * fix ID group-ID store/state N input1 input2 ... [keyword value ...] — docs.lammps.org/fix_store_state.html:
@@ -92,8 +93,9 @@ export class FixStoreState extends Fix {
     super(sys, id, group, args);
     const what = `fix ${id} (store/state)`;
     if (args.length < 2) throw new StyleError(`usage: fix ${id} group-ID store/state N input1 input2 ... [keyword value ...]`);
-    this.nStore = Number(args[0]);
-    if (!Number.isInteger(this.nStore) || this.nStore < 0) throw new StyleError(`${what}: N must be an integer >= 0`);
+    // As native LAMMPS does (src/fix_store_state.cpp FixStoreState::FixStoreState at b332f28): N is read with utils::inumeric
+    this.nStore = inumeric(args[0]);
+    if (this.nStore < 0) throw new StyleError(`Invalid fix store/state N value ${this.nStore}`);
     let k = 1;
     const words: string[] = [];
     // As native LAMMPS does (src/fix_store_state.cpp at b332f28): the input loop ends at the first word that is neither an

@@ -108,7 +108,7 @@ fix h3 all halt 100 v_s |^ 0
     expect((await runText(`${BASE}\nfix h all halt 10 v_s > 1 error maybe\n`)).error).toMatch(/error must be hard, soft or continue/);
     expect((await runText(`${BASE}\nfix h all halt 10 v_s > 1 message maybe\n`)).error).toMatch(/message must be yes or no/);
     expect((await runText(`${BASE}\nfix h all halt 10 v_s > 1 color red\n`)).error).toMatch('Unknown fix halt keyword color');
-    expect((await runText(`${BASE}\nfix h all halt 0 v_s > 1\n`)).error).toMatch(/N must be an integer >= 1/);
+    expect((await runText(`${BASE}\nfix h all halt 0 v_s > 1\n`)).error).toMatch('Illegal fix halt command: nevery must be > 0');
     expect((await runText(`${BASE}\nfix h all halt 10 v_ > 1\n`)).error).toMatch(/missing variable name|attribute must be/);
   });
 

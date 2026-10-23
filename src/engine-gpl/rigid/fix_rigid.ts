@@ -17,6 +17,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError, typeBounds } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { isLineAtom, isTriAtom, massOf } from '../../engine/atoms';
 import { exyzToQ, transposeMatvec, matvec, angmomToOmega, omegaToAngmom, jacobi3, quatToMat, qToExyz, qconjugate, quatquat, qnormalize, snormalize3, inertiaEllipsoid, type V3, type Q4 } from './math_extra';
@@ -115,11 +116,10 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
     thermo: { tstat: false, tStart: 0, tStop: 0, tPeriod: 0, tChain: 10, tIter: 1, tOrder: 3 } as ThermostatKeywords,
     press: { pstat: false, pFlag: [0, 0, 0], pStart: [0, 0, 0], pStop: [0, 0, 0], pPeriod: [0, 0, 0], pcouple: 'none', allremap: true, dilate: null, pChain: 10 } as PressureKeywords,
   };
-  const num = (w: string | undefined, what: string): number => {
-    const v = Number(w);
-    if (w === undefined || w === '' || !Number.isFinite(v)) throw new StyleError(`fix ${style} ${what}: expected a number, got '${w ?? ''}'`);
-    return v;
-  };
+  // As native LAMMPS does (src/RIGID/fix_rigid.cpp at b332f28): the real-valued keywords are read with utils::numeric and
+  // the integer ones (pchain, tparam) with utils::inumeric
+  const num = (w: string | undefined, _what: string): number => numeric(w);
+  const intNum = (w: string | undefined, _what: string): number => inumeric(w);
   const pr = out.press;
   const pset = (d: number, a: string | undefined, b: string | undefined, c: string | undefined) => {
     pr.pStart[d] = num(a, `${style} Pstart`);
@@ -200,7 +200,7 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
       k += 2;
     } else if (key === 'pchain') {
       need(2, key, false);
-      pr.pChain = Math.trunc(num(args[k + 1], 'pchain'));
+      pr.pChain = intNum(args[k + 1], 'pchain');
       k += 2;
     } else if (key === 'mol' && small) {
       // fix_rigid.html: "The *mol* keyword can only be used with the *rigid/small* styles." (the template of fix deposit rigid)
@@ -210,9 +210,9 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
     } else if (key === 'tparam') {
       // fix_rigid.html: "tparam values = Tchain Titer Torder"
       need(4, key, false);
-      out.thermo.tChain = Math.trunc(num(args[k + 1], 'tparam Tchain'));
-      out.thermo.tIter = Math.trunc(num(args[k + 2], 'tparam Titer'));
-      out.thermo.tOrder = Math.trunc(num(args[k + 3], 'tparam Torder'));
+      out.thermo.tChain = intNum(args[k + 1], 'tparam Tchain');
+      out.thermo.tIter = intNum(args[k + 2], 'tparam Titer');
+      out.thermo.tOrder = intNum(args[k + 3], 'tparam Torder');
       k += 4;
     } else {
       // fix_rigid.cpp (keyword loop ends in "Illegal fix {} command") and fix_rigid_small.cpp (ends in

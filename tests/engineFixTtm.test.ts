@@ -113,7 +113,7 @@ run 1`, /gamma_p must be > 0/));
 
   it('rejects set with a non-positive temperature', () => expectError(`${BOX}
 fix 2 all ttm 1 1.0 1.0 0.0 1.0 0.0 2.0 2 2 2 set 0.0
-run 1`, /set Tinit must be > 0/));
+run 1`, /Fix ttm initial temperature must be > 0\.0/));
 
   it('rejects an unknown keyword', () => expectError(`${BOX}
 fix 2 all ttm 1 1.0 1.0 0.0 1.0 0.0 2.0 2 2 2 bogus 3
@@ -135,9 +135,10 @@ run 1`, /did not set all/, { 'g.init': INIT.split('\n').slice(0, 8).join('\n') +
 fix 2 all ttm 1 1.0 1.0 0.0 1.0 0.0 2.0 2 2 2 infile g.init
 run 1`, /must not be negative/, { 'g.init': INIT.replace('4000', '-4000') }));
 
-  it('needs a positive integer seed', () => expectError(`${BOX}
+  // As native LAMMPS does (src/EXTRA-FIX/fix_ttm.cpp at b332f28): the seed is checked after the keywords
+  it('needs a positive seed', () => expectError(`${BOX}
 fix 2 all ttm 0 1.0 1.0 0.0 1.0 0.0 2.0 2 2 2
-run 1`, /positive integer/));
+run 1`, /Invalid random number seed in fix ttm command/));
 });
 
 describe('fix ttm/mod parameter file', () => {

@@ -255,8 +255,8 @@ ${DUMP}
 
   it('rejects bad arguments', async () => {
     expect(errText(await runScript(box + 'fix d all drag 0 0 0 1\n'))).toContain('Illegal fix drag command');
-    expect(errText(await runScript(box + 'fix d all drag v_x 0 0 1 1\n'))).toContain('number or NULL');
-    expect(errText(await runScript(box + 'fix d all drag 0 0 0 abc 1\n'))).toContain('fmag');
+    expect(errText(await runScript(box + 'fix d all drag v_x 0 0 1 1\n'))).toContain("Expected floating point parameter instead of 'v_x'");
+    expect(errText(await runScript(box + 'fix d all drag 0 0 0 abc 1\n'))).toContain("Expected floating point parameter instead of 'abc'");
   });
 });
 
@@ -330,7 +330,7 @@ ${DUMP}
   });
 
   it('rejects bad arguments', async () => {
-    expect(errText(await runScript(box('all oneway 0 all x')))).toContain('positive integer');
+    expect(errText(await runScript(box('all oneway 0 all x')))).toContain('Illegal fix oneway command');
     expect(errText(await runScript(box('all oneway 1 nosuch x')))).toContain('nosuch');
     expect(errText(await runScript(box('all oneway 1 all q')))).toContain('direction');
   });

@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
+import { inumeric, parseNum } from '../force/util';
 import { globalScalar, parseRef, type Ref } from '../refs';
 
 /*
@@ -61,8 +61,10 @@ export class FixController extends Fix {
     if (args.length !== 8) {
       throw new StyleError(`fix ${id} controller: expected Nevery alpha Kp Ki Kd pvar setpoint cvar, got ${args.length} arguments`);
     }
-    const nevery = Math.trunc(parseNum(args[0], `fix ${id} controller Nevery`));
-    if (nevery < 1 || nevery !== parseNum(args[0], 'Nevery')) throw new StyleError(`fix ${id} controller: Nevery must be a positive integer, got ${args[0]}`);
+    // As native LAMMPS does (src/fix_controller.cpp FixController::FixController at b332f28, EXTRA-FIX): nevery is read
+    // with utils::inumeric and must be positive.
+    const nevery = inumeric(args[0]);
+    if (nevery <= 0) throw new StyleError(`Illegal fix controller nevery value ${nevery}`);
     this.nevery = nevery;
     this.alpha = parseNum(args[1], `fix ${id} controller alpha`);
     this.kp = parseNum(args[2], `fix ${id} controller Kp`);

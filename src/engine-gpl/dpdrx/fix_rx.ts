@@ -21,6 +21,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { FixPropertyAtom } from '../../engine/fix/property_atom';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { SimState } from '../../engine/types';
 import { DPD_THETA } from '../../engine/atoms';
@@ -577,14 +578,7 @@ export class FixRX extends Fix {
 }
 
 /** A keyword-argument integer (utils::inumeric). */
-const intArg = (w: string): number => {
-  if (!/^[-+]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}'`);
-  return Number(w);
-};
+const intArg = (w: string): number => inumeric(w);
 
 /** A keyword-argument number (utils::numeric). */
-const numArg = (w: string): number => {
-  const v = Number(w);
-  if (w === '' || !Number.isFinite(v)) throw new StyleError(`Expected floating-point parameter instead of '${w}'`);
-  return v;
-};
+const numArg = (w: string): number => numeric(w);

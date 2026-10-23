@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
+import { inumeric, parseNum } from '../force/util';
 import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
 import { massOf } from '../atoms';
 import { expandGridRefs, gridColumn, resolveGridRef, type GridRef } from '../grid';
@@ -146,12 +146,18 @@ export class FixAveGrid extends Fix {
     super(sys, id, group, args);
     const what = `fix ${id} ave/grid`;
     if (args.length < 7) throw new StyleError(`${what}: missing argument(s): Nevery Nrepeat Nfreq Nx Ny Nz value1 ...`);
-    this.nEvery = parseInt1(args[0], `${what} Nevery`, 1);
-    this.nRepeat = parseInt1(args[1], `${what} Nrepeat`, 1);
-    this.nFreq = parseInt1(args[2], `${what} Nfreq`, 1);
-    this.nx = parseInt1(args[3], `${what} Nx`, 1);
-    this.ny = parseInt1(args[4], `${what} Ny`, 1);
-    this.nz = parseInt1(args[5], `${what} Nz`, 1);
+    // As native LAMMPS does (src/fix_ave_grid.cpp FixAveGrid::FixAveGrid at b332f28): utils::inumeric reads each integer,
+    // then its range is checked
+    const atLeastOne = (v: number, w: string, name: string): number => {
+      if (v < 1) throw new StyleError(`${what} ${name} must be an integer >= 1, got '${w}'`);
+      return v;
+    };
+    this.nEvery = atLeastOne(inumeric(args[0]), args[0], 'Nevery');
+    this.nRepeat = atLeastOne(inumeric(args[1]), args[1], 'Nrepeat');
+    this.nFreq = atLeastOne(inumeric(args[2]), args[2], 'Nfreq');
+    this.nx = atLeastOne(inumeric(args[3]), args[3], 'Nx');
+    this.ny = atLeastOne(inumeric(args[4]), args[4], 'Ny');
+    this.nz = atLeastOne(inumeric(args[5]), args[5], 'Nz');
     if (this.nFreq % this.nEvery !== 0 || this.nRepeat * this.nEvery > this.nFreq) {
       throw new StyleError(`${what}: Inconsistent nevery/nrepeat/pergrid_nfreq values: Nfreq must be a multiple of Nevery and Nrepeat*Nevery must not exceed Nfreq`);
     }

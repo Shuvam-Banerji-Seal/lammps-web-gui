@@ -1,6 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { missingArgs } from '../force/util';
+import { inumeric, missingArgs } from '../force/util';
 import { RanPark } from '../rng';
 import { appendAtoms, maxAtomId, pushTopo, sphereMass, hasChargeStyle, hasDipoleStyle, hasRadiusStyle, hasRmassStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, SPHERE_DEFAULT_RADIUS } from '../atoms';
 import { BlockRegion, ConeRegion, type Param, type Region } from '../region';
@@ -379,8 +379,14 @@ export class FixPour extends Fix {
     if (args.length < 3) throw new StyleError('usage: fix ID group-ID pour N type seed keyword values ...');
     const twoD = sys.dimension === 2;
     this.twoD = twoD;
-    this.N = posInt(args[0], 'N');
-    this.rng = insertionStream(posInt(args[2], 'seed'));
+    // As native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour::FixPour at b332f28): N and seed are read with
+    // utils::inumeric, then checked (a value not positive is refused with native's message).
+    const nInsert = inumeric(args[0]);
+    const seed = inumeric(args[2]);
+    if (nInsert <= 0) throw new StyleError('Invalid number of inserted particles requested');
+    if (seed <= 0) throw new StyleError('Invalid fix pour seed value');
+    this.N = nInsert;
+    this.rng = insertionStream(seed);
     let region: string | null = null;
     let idNext = false;
     let molTemplateId: string | null = null;

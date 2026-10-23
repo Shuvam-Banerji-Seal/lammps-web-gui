@@ -220,8 +220,8 @@ describe('fix lineforce (docs.lammps.org/fix_lineforce.html)', () => {
 
   it('rejects wrong arg counts and zero vectors', async () => {
     expect((await runScript(oneAtom('fix l all lineforce 1 0'))).error?.message).toContain('Illegal fix lineforce command');
-    expect((await runScript(oneAtom('fix l all lineforce 0 0 0'))).error?.message).toContain('non-zero');
-    expect((await runScript(oneAtom('fix l all lineforce 1 x 0'))).error?.message).toContain('number');
+    expect((await runScript(oneAtom('fix l all lineforce 0 0 0'))).error?.message).toContain('Illegal fix lineforce command');
+    expect((await runScript(oneAtom('fix l all lineforce 1 x 0'))).error?.message).toContain("Expected floating point parameter instead of 'x'");
   });
 });
 
@@ -258,7 +258,7 @@ describe('fix planeforce (docs.lammps.org/fix_planeforce.html)', () => {
 
   it('rejects wrong arg counts and zero vectors', async () => {
     expect((await runScript(oneAtom('fix p all planeforce 1 0 0 0'))).error?.message).toContain('Illegal fix planeforce command');
-    expect((await runScript(oneAtom('fix p all planeforce 0 0 0'))).error?.message).toContain('non-zero');
+    expect((await runScript(oneAtom('fix p all planeforce 0 0 0'))).error?.message).toContain('Illegal fix planeforce command');
   });
 });
 

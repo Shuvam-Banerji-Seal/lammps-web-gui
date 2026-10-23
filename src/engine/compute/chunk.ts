@@ -889,10 +889,8 @@ export const parseComChunkWrap = (id: string, words: string[]): boolean => {
     // As native LAMMPS does (src/compute_com_chunk.cpp ComputeCOMChunk::ComputeCOMChunk at b332f28): "Unknown compute com/chunk keyword {}"
     if (words[k] !== 'wrap') throw new StyleError(`Unknown compute com/chunk keyword ${words[k]}`);
     if (k + 1 >= words.length) throw new StyleError(`compute ${id} (com/chunk): wrap needs a logical value (yes, true, on, 1, no, false, off or 0)`);
-    const v = words[++k];
-    if (v === 'yes' || v === 'true' || v === 'on' || v === '1') wrap = true;
-    else if (v === 'no' || v === 'false' || v === 'off' || v === '0') wrap = false;
-    else throw new StyleError(`compute ${id} (com/chunk): expected a boolean value for wrap, got '${v}'`);
+    // As native LAMMPS does (src/compute_com_chunk.cpp ComputeCOMChunk::ComputeCOMChunk at b332f28): wrapflag = utils::logical(...)
+    wrap = logical(words[++k]);
   }
   return wrap;
 };

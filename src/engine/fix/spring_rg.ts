@@ -3,6 +3,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
+import { numeric } from '../force/util';
 
 /*
  * fix spring/rg — written from docs.lammps.org/fix_spring_rg.html
@@ -36,12 +37,8 @@ import { massOf } from '../atoms';
  * fix_modify option applies, so the energy does not enter the thermo pe.
  */
 
-const num = (w: string | undefined, what: string): number => {
-  if (w === undefined || w.trim() === '') throw new StyleError(`fix spring/rg: missing ${what}`);
-  const v = Number(w);
-  if (!Number.isFinite(v)) throw new StyleError(`fix spring/rg: expected a number for ${what}, got '${w}'`);
-  return v;
-};
+// As native LAMMPS does (src/EXTRA-FIX/fix_spring_rg.cpp FixSpringRG::FixSpringRG at b332f28): K and RG0 are read with utils::numeric
+const num = (w: string | undefined, _what: string): number => numeric(w);
 
 export class FixSpringRG extends Fix {
   readonly style = 'spring/rg';

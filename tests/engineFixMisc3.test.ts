@@ -223,7 +223,7 @@ region uni union 2 sph sph_out units box
       ['fix 2 all wall/region sph foo 1 1 2.5', /unknown style 'foo'/],
       ['fix 2 all wall/region sph lj93 1 2.5', /Illegal fix wall\/region command: missing argument/],
       ['fix 2 all wall/region sph lj93 1 1', /Illegal fix wall\/region command: missing argument/],
-      ['fix 2 all wall/region sph lj93 1 1 0', /cutoff must be a number > 0/],
+      ['fix 2 all wall/region sph lj93 1 1 0', /Fix wall\/region cutoff <= 0\.0/],
       // fix_wall_region.cpp (morse branch, narg != 9) at b332f28
       ['fix 2 all wall/region sph morse 1 1 2.5', /Illegal fix wall\/region morse command/],
       // style colloid needs finite-size particles (fix_wall_region.cpp init at b332f28; measured with native LAMMPS: this
@@ -231,7 +231,7 @@ region uni union 2 sph sph_out units box
       ['fix 2 all wall/region sph colloid 1 1 2.5', /Fix wall\/region colloid requires atom attribute radius/],
       ['fix 2 all wall/region nowhere lj93 1 1 2.5', /region ID 'nowhere' does not exist/],
       ['fix 2 all wall/region uni lj93 1 1 2.5', /region style union is not supported/],
-      ['fix 2 all wall/region sph lj93 v_x 1 2.5', /must be a number/],
+      ['fix 2 all wall/region sph lj93 v_x 1 2.5', /Expected floating point parameter instead of 'v_x'/],
     ];
     for (const [line, re] of cases) {
       const r = await runScript(`${atom}${line}\nrun 0`);

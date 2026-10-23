@@ -1,7 +1,8 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { insertionStream, posInt } from './pour';
+import { insertionStream } from './pour';
+import { inumeric } from '../force/util';
 import type { RanPark } from '../rng';
 
 /*
@@ -55,10 +56,14 @@ export class FixEvaporate extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 4) throw new StyleError('usage: fix ID group-ID evaporate N M region-ID seed [molecule yes|no]');
-    this.N = posInt(args[0], 'N');
-    this.M = posInt(args[1], 'M');
+    // As native LAMMPS does (src/fix_evaporate.cpp FixEvaporate::FixEvaporate at b332f28): N, M and the seed are read
+    // with utils::inumeric, and N or M not positive is "Illegal fix evaporate command".
+    this.N = inumeric(args[0]);
+    this.M = inumeric(args[1]);
+    if (this.N <= 0 || this.M <= 0) throw new StyleError('Illegal fix evaporate command');
     this.regionId = args[2];
-    const seed = posInt(args[3], 'seed');
+    const seed = inumeric(args[3]);
+    if (seed <= 0) throw new StyleError('Illegal fix evaporate command');
     this.rng = insertionStream(seed);
     // As native LAMMPS does (src/fix_evaporate.cpp FixEvaporate::FixEvaporate at b332f28): the region is looked up before the keywords are read
     sys.region(this.regionId); // fail early on an unknown region

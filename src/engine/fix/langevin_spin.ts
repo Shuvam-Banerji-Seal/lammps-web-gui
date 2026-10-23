@@ -1,5 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { inumeric, numeric } from '../force/util';
 import type { System } from '../system';
 
 /*
@@ -27,10 +28,12 @@ export class FixLangevinSpin extends Fix {
     super(sys, id, group, args);
     if (!sys.state.sp) throw new StyleError('fix langevin/spin requires atom_style spin');
     if (args.length !== 3) throw new StyleError('usage: fix ID group-ID langevin/spin T Tdamp seed');
-    const T = Number(args[0]), damp = Number(args[1]), seed = Number(args[2]);
-    if (!Number.isFinite(T) || T < 0) throw new StyleError(`fix langevin/spin: T must be a non-negative number, got '${args[0]}'`);
-    if (!Number.isFinite(damp)) throw new StyleError(`fix langevin/spin: Tdamp must be a number, got '${args[1]}'`);
-    if (!Number.isInteger(seed) || seed <= 0) throw new StyleError(`fix langevin/spin: seed must be a positive integer, got '${args[2]}'`);
+    // As native LAMMPS does (src/SPIN/fix_langevin_spin.cpp FixLangevinSpin::FixLangevinSpin at b332f28): T and Tdamp
+    // are read with utils::numeric and seed with utils::inumeric, all before the checks; a negative T or Tdamp is
+    // "Illegal langevin/spin command".
+    const T = numeric(args[0]), damp = numeric(args[1]), seed = inumeric(args[2]);
+    if (damp < 0 || T < 0) throw new StyleError('Illegal langevin/spin command');
+    if (seed <= 0) throw new StyleError(`fix langevin/spin: seed must be a positive integer, got '${args[2]}'`);
     if (T > 0 && !this.supportsTemperature()) throw new StyleError('fix langevin/spin with T > 0 is not implemented in the browser engine (the random torque stream is not documented)');
     this.damp = damp;
     this.temp = T;

@@ -23,6 +23,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { ALL_GROUP_BIT, appendAtoms, deleteAtoms, nativeOrder } from '../../engine/atoms';
 import { RanPark } from '../random_park';
@@ -42,17 +43,11 @@ interface TargetTemperature { targetTemperature(): number }
 
 const isTarget = (f: unknown): f is TargetTemperature => typeof (f as Partial<TargetTemperature>)?.targetTemperature === 'function';
 
-const num = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || w === '' || !Number.isFinite(v)) throw new StyleError(`Illegal fix charge/regulation command: ${what} must be a number, got '${w ?? ''}'`);
-  return v;
-};
+// As native LAMMPS does (src/MC/fix_charge_regulation.cpp at b332f28): every number is read by utils::numeric and every
+// integer (types, nevery, nmc, seed, salt charges) by utils::inumeric, which give the native input-parser messages.
+const num = (w: string | undefined, _what: string): number => numeric(w);
 
-const int = (w: string | undefined, what: string): number => {
-  const v = num(w, what);
-  if (!Number.isInteger(v)) throw new StyleError(`Illegal fix charge/regulation command: ${what} must be an integer, got '${w ?? ''}'`);
-  return v;
-};
+const int = (w: string | undefined, _what: string): number => inumeric(w);
 
 /** utils::logical: yes/no, true/false, on/off, 1/0. */
 const logical = (w: string): boolean => {

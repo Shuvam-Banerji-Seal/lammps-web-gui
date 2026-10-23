@@ -20,6 +20,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { SimState } from '../../engine/types';
 import { DPD_THETA, DPD_UCOND, DPD_UMECH, DPD_UCHEM, DPD_UCG, DPD_UCGNEW } from '../../engine/atoms';
@@ -353,10 +354,8 @@ export class FixEOStableRX extends Fix {
 }
 
 /** A keyword-argument integer (utils::inumeric). */
-const intArg = (w: string): number => {
-  if (!/^[-+]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}'`);
-  return Number(w);
-};
+// As native LAMMPS does (src/DPD-REACT/fix_eos_table_rx.cpp at b332f28): utils::inumeric reads the integers.
+const intArg = (w: string): number => inumeric(w);
 
 /** A keyword-argument number (utils::numeric). */
 const numArg = (w: string): number => {

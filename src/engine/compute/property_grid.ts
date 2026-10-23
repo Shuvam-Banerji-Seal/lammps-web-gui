@@ -1,5 +1,6 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
+import { inumeric } from '../force/util';
 import type { System } from '../system';
 
 /*
@@ -76,15 +77,13 @@ export class ComputePropertyGrid extends Compute {
     super(sys, id, group, args);
     const what = `compute ${id} property/grid`;
     if (args.length < 4) throw new StyleError(`${what}: missing argument(s): Nx Ny Nz input1 ...`);
-    const dim = (w: string | undefined, name: string): number => {
-      const v = Number(w);
-      if (!Number.isInteger(v) || v < 1) throw new StyleError(`${what}: ${name} must be a positive integer, got '${w}'`);
-      return v;
-    };
-    this.nx = dim(args[0], 'Nx');
-    this.ny = dim(args[1], 'Ny');
-    this.nz = dim(args[2], 'Nz');
-    if (sys.dimension === 2 && this.nz !== 1) throw new StyleError(`${what}: for 2d simulations Nz must be 1`);
+    // As native LAMMPS does (src/compute_property_grid.cpp ComputePropertyGrid::ComputePropertyGrid at b332f28): utils::inumeric
+    // reads the three grid counts, then the 2d and positive-count checks
+    this.nx = inumeric(args[0]);
+    this.ny = inumeric(args[1]);
+    this.nz = inumeric(args[2]);
+    if (sys.dimension === 2 && this.nz !== 1) throw new StyleError('Compute property/grid for 2d requires nz = 1');
+    if (this.nx <= 0 || this.ny <= 0 || this.nz <= 0) throw new StyleError('All compute property/grid grid counts must be > 0');
     this.ncell = this.nx * this.ny * this.nz;
 
     const attrs: Attr[] = [];

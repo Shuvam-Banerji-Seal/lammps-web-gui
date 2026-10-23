@@ -24,7 +24,7 @@ const PI = Math.PI;
 
 const numeric = (w: string | undefined, what: string): number => {
   const v = Number(w);
-  if (w === undefined || w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`Expected floating point parameter instead of '${w ?? ''}' in ${what}`);
+  if (w === undefined || w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`Expected floating point parameter instead of '${w ?? ''}' in input script or data file`);
   return v;
 };
 

@@ -15,6 +15,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import { missingArgs } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { buildSpecial, nativeOrder, type SpecialList } from '../../engine/atoms';
@@ -52,7 +53,8 @@ export class FixBondCreate extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 5) throw new StyleError('Illegal fix bond/create command: missing arguments');
-    const nevery = intArg(args[0], 'fix bond/create nevery');
+    // As native LAMMPS does (src/MC/fix_bond_create.cpp FixBondCreate::FixBondCreate at b332f28): utils::inumeric reads nevery
+    const nevery = inumeric(args[0]);
     if (nevery <= 0) throw new StyleError(`Illegal fix bond/create nevery value ${nevery}`);
     this.nevery = nevery;
     this.vectorFlag = true;

@@ -14,7 +14,7 @@
 import type { System } from '../../engine/system';
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { appendAtoms } from '../../engine/atoms';
 
 export class FixAppendAtoms extends Fix {
@@ -42,14 +42,15 @@ export class FixAppendAtoms extends Fix {
         if (sys.state.box.boundary[2][1] !== 'm') throw new StyleError('Append boundary must be shrink/minimum');
       } else if (w === 'freq') {
         need(1);
-        const n = parseNum(args[k + 1], 'freq');
+        // As native LAMMPS does (src/SHOCK/fix_append_atoms.cpp at b332f28): utils::inumeric reads freq and the basis
+        const n = inumeric(args[k + 1]);
         if (!Number.isInteger(n) || n <= 0) throw new StyleError('Illegal fix append/atoms command: freq must be a positive integer');
         this.freq = n;
         k += 2;
       } else if (w === 'basis') {
         need(2);
-        const ib = parseNum(args[k + 1], 'basis');
-        const it = parseNum(args[k + 2], 'basis type');
+        const ib = inumeric(args[k + 1]);
+        const it = inumeric(args[k + 2]);
         if (!Number.isInteger(ib) || !Number.isInteger(it) || ib <= 0 || ib > this.basisType.length || it <= 0 || it > sys.state.ntypes) {
           throw new StyleError('Invalid basis setting in fix append/atoms command');
         }

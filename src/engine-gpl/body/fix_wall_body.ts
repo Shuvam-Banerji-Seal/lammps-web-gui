@@ -20,6 +20,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { BODY_RECORD, bodyRecordOffset, POLY_OFF } from '../../engine/bodies';
 import { quatToMatrix } from '../../engine/compute/asphere';
@@ -62,11 +63,8 @@ export class FixWallBody extends Fix {
     this.polyhedron = variant === 'polyhedron';
     this.style = `wall/body/${variant}`;
     if (args.length < 6) throw new StyleError(`Illegal fix ${this.style} command`);
-    const num = (w: string, what: string): number => {
-      const v = Number(w);
-      if (!Number.isFinite(v)) throw new StyleError(`Illegal fix ${this.style} ${what}: ${w}`);
-      return v;
-    };
+    // As native LAMMPS does (src/BODY/fix_wall_body_polygon.cpp at b332f28): utils::numeric for the numbers
+    const num = (w: string, _what: string): number => numeric(w);
     this.kn = num(args[0], 'k_n');
     this.cn = num(args[1], 'c_n');
     // native: c_t NULL is 0.5 c_n

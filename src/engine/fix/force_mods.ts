@@ -1,5 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { numeric } from '../force/util';
 import type { System } from '../system';
 import type { Region } from '../region';
 
@@ -36,10 +37,9 @@ const val = (r: Resolved, i: number): number => (r.kind === 'const' ? r.v : r.ki
 
 const parseComp = (sys: System, w: string | undefined, what: string, style: string, allowNull: boolean, equalOnly: boolean): Component => {
   if (w === undefined) throw new StyleError(`fix ${style}: missing ${what}`);
-  if (w === 'NULL') {
-    if (!allowNull) throw new StyleError(`fix ${style}: NULL is not valid for ${what} (expected a number or v_name)`);
-    return { kind: 'null' };
-  }
+  // As native LAMMPS does (src/fix_setforce.cpp, fix_aveforce.cpp, fix_addforce.cpp at b332f28): NULL is a value only
+  // where the style allows it; elsewhere it is read as a number and utils::numeric reports it.
+  if (w === 'NULL' && allowNull) return { kind: 'null' };
   if (w.startsWith('v_')) {
     const name = w.slice(2);
     const v = sys.vars.get(name);
@@ -49,9 +49,7 @@ const parseComp = (sys: System, w: string | undefined, what: string, style: stri
     }
     return { kind: 'var', name };
   }
-  const v = Number(w);
-  if (w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`fix ${style}: expected a number, NULL or v_name for ${what}, got '${w}'`);
-  return { kind: 'const', v };
+  return { kind: 'const', v: numeric(w) };
 };
 
 abstract class ForceModFix extends Fix {

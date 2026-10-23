@@ -68,8 +68,8 @@ describe('fix pour / fix deposit argument errors', () => {
   });
 
   it('pour rejects the seed 0 and a non-integer N', async () => {
-    expect((await run(`${header}region r block 0 3 0 3 0 1 side in units box\nfix 3 all pour 5 1 0 region r\n`)).error).toMatch(/seed must be a positive integer/);
-    expect((await run(`${header}region r block 0 3 0 3 0 1 side in units box\nfix 3 all pour 2.5 1 7 region r\n`)).error).toMatch(/N must be a positive integer/);
+    expect((await run(`${header}region r block 0 3 0 3 0 1 side in units box\nfix 3 all pour 5 1 0 region r\n`)).error).toMatch('Invalid fix pour seed value');
+    expect((await run(`${header}region r block 0 3 0 3 0 1 side in units box\nfix 3 all pour 2.5 1 7 region r\n`)).error).toMatch("Expected integer parameter instead of '2.5'");
   });
 
   it('pour mol requires an existing molecule template', async () => {

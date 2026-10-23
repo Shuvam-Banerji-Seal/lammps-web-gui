@@ -48,7 +48,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { FixDeform } from '../../engine/fix/deform';
 import { StyleError } from '../../engine/force/types';
-import { missingArgs } from '../../engine/force/util';
+import { inumeric, missingArgs, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS } from '../../engine/atoms';
 import { bodyMotion, quatToMatrix, rotateVec } from '../../engine/compute/asphere';
@@ -2384,17 +2384,11 @@ const lamda2xAll = (x: Float64Array, n: number, lo: number[], h: number[]): void
   }
 };
 
-const intArg = (w: string | undefined, what: string): number => {
-  const n = Number(w);
-  if (w === undefined || !Number.isInteger(n)) throw new StyleError(`Expected integer parameter for fix srd ${what}, got ${w ?? ''}`);
-  return n;
-};
+// As native LAMMPS does (src/SRD/fix_srd.cpp FixSRD::FixSRD at b332f28): utils::inumeric reads the integers and
+// utils::numeric the real values, with the input-parser messages.
+const intArg = (w: string | undefined, _what: string): number => inumeric(w);
 
-const numArg = (w: string | undefined, what: string): number => {
-  const n = Number(w);
-  if (w === undefined || !Number.isFinite(n)) throw new StyleError(`Expected floating point parameter for fix srd ${what}, got ${w ?? ''}`);
-  return n;
-};
+const numArg = (w: string | undefined, _what: string): number => numeric(w);
 
 const logicalArg = (w: string | undefined, what: string): boolean => {
   if (w === 'yes') return true;

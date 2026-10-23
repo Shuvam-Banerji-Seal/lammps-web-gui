@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { spinContribute, spinOwnerValue } from '../force/spin_book';
+import { numeric } from '../force/util';
 
 /*
  * fix ID group-ID setforce/spin fx fy fz — docs.lammps.org/fix_setforce.html: "Style *spin* suffix sets the
@@ -28,9 +29,8 @@ export class FixSetForceSpin extends Fix {
     this.comp = args.slice(0, 3).map((w) => {
       if (w === 'NULL') return null;
       if (w.startsWith('v_')) throw new StyleError(`fix setforce/spin: variables (${w}) are not implemented in the browser engine`);
-      const v = Number(w);
-      if (!Number.isFinite(v)) throw new StyleError(`fix setforce/spin: expected a number or NULL, got '${w}'`);
-      return v;
+      // As native LAMMPS does (src/SPIN/fix_setforce_spin.cpp, via FixSetForce at b332f28): utils::numeric
+      return numeric(w);
     });
   }
 

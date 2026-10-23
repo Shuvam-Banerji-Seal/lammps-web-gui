@@ -83,7 +83,7 @@ run 5`);
 describe('fix controller', () => {
   it('checks its argument count and Nevery', async () => {
     await expect(runScript(`${ONE_ATOM}\nvariable c internal 0\nfix f all controller 1 1 1 1 1 v_c 0.5`)).rejects.toThrow('Illegal fix controller command');
-    await expect(runScript(`${ONE_ATOM}\nvariable c internal 0\nfix f all controller 0 1 1 1 1 v_c 0.5 c`)).rejects.toThrow('Nevery must be a positive integer');
+    await expect(runScript(`${ONE_ATOM}\nvariable c internal 0\nfix f all controller 0 1 1 1 1 v_c 0.5 c`)).rejects.toThrow('Illegal fix controller nevery value 0');
   });
 
   it('checks the process variable reference', async () => {

@@ -12,6 +12,7 @@
  * The keyword xsph is refused: native LAMMPS stops with "XSPH is currently not available".
  */
 import { StyleError, type Pair } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { SMD_CONTACT, SMD_DESPH, SMD_ESPH, SMD_VEST } from '../../engine/smd';
@@ -49,15 +50,20 @@ export class FixSMDIntegrateUlsph extends Fix {
       const kw = args[k];
       if (kw === 'xsph') throw new StyleError('fix smd/integrate_ulsph keyword xsph is not available (native LAMMPS: "XSPH is currently not available")');
       if (kw === 'adjust_radius') {
+        // As native LAMMPS does (src/MACHDYN/fix_smd_integrate_ulsph.cpp FixSMDIntegrateUlsph::FixSMDIntegrateUlsph at
+        // b332f28): each of the three values is checked for presence, then read (utils::numeric for the factor,
+        // utils::inumeric for the two neighbour counts) before the next one.
+        if (k + 1 >= args.length) throw new StyleError('expected three numbers following adjust_radius: factor, min, max');
+        const factor = numeric(args[k + 1]);
+        if (k + 2 >= args.length) throw new StyleError('expected three numbers following adjust_radius: factor, min, max');
+        const minNn = inumeric(args[k + 2]);
         if (k + 3 >= args.length) throw new StyleError('expected three numbers following adjust_radius: factor, min, max');
-        const factor = Number(args[k + 1]), minNn = Number(args[k + 2]), maxNn = Number(args[k + 3]);
-        if (![factor, minNn, maxNn].every(Number.isFinite)) throw new StyleError('expected three numbers following adjust_radius: factor, min, max');
-        this.adjustRadius = { factor, minNn: Math.trunc(minNn), maxNn: Math.trunc(maxNn) };
+        const maxNn = inumeric(args[k + 3]);
+        this.adjustRadius = { factor, minNn, maxNn };
         k += 3;
       } else if (kw === 'limit_velocity') {
         if (k + 1 >= args.length) throw new StyleError('expected number following limit_velocity');
-        this.vlimit = Number(args[k + 1]);
-        if (!Number.isFinite(this.vlimit)) throw new StyleError(`illegal limit_velocity value '${args[k + 1]}'`);
+        this.vlimit = numeric(args[k + 1]);
         k += 1;
       } else {
         throw new StyleError(`Unknown fix smd/integrate_ulsph keyword: ${kw}`);

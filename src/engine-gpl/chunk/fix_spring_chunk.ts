@@ -16,6 +16,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { massOf, nativeOrder } from '../../engine/atoms';
 import { ComputeComChunk } from '../../engine/compute/chunk';
@@ -42,8 +43,8 @@ export class FixSpringChunk extends Fix {
     this.globalFreq = 1;
     this.extscalar = 1;
     this.energyGlobal = true;
-    this.k = Number(args[0]);
-    if (!Number.isFinite(this.k)) throw new StyleError(`Expected floating point parameter instead of '${args[0]}' for fix spring/chunk K`);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_spring_chunk.cpp at b332f28): utils::numeric reads the spring constant.
+    this.k = numeric(args[0]);
     this.idChunk = args[1];
     this.idCom = args[2];
     this.cchunk = chunkOf(sys, this.idChunk, 'spring/chunk');

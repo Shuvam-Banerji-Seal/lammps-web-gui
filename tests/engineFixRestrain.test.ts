@@ -254,7 +254,7 @@ describe('fix evaporate (fix_evaporate.html)', () => {
   it('argument errors name the problem', async () => {
     expect(await errorOf(`${sys}fix EV all evaporate 2 2 nosuch 5\nrun 1\n`)).toMatch(/nosuch/);
     expect(await errorOf(`${sys}region ev block 0 2 -10 10 -10 10 units box\nfix EV all evaporate 2 2 ev 5 molecule maybe\n`)).toMatch(/molecule/);
-    expect(await errorOf(`${sys}region ev block 0 2 -10 10 -10 10 units box\nfix EV all evaporate 0 2 ev 5\n`)).toMatch(/N/);
+    expect(await errorOf(`${sys}region ev block 0 2 -10 10 -10 10 units box\nfix EV all evaporate 0 2 ev 5\n`)).toMatch(/Illegal fix evaporate command/);
     expect(await errorOf(`${sys}region ev block 0 2 -10 10 -10 10 units box\nfix EV all evaporate 2 2 ev 5 bogus yes\n`)).toMatch(/Illegal fix evaporate command/);
   });
 });

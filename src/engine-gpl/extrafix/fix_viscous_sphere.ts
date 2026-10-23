@@ -9,6 +9,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 
 export class FixViscousSphere extends Fix {
@@ -23,10 +24,9 @@ export class FixViscousSphere extends Fix {
     super(sys, id, group, args);
     if (!sys.state.omega || !sys.state.torque) throw new StyleError('Fix viscous/sphere requires atom attribute omega');
     if (args.length < 1) throw new StyleError('Illegal fix viscous/sphere command');
-    this.gamma = Number(args[0]);
-    if (args[0].startsWith('v_') || !Number.isFinite(this.gamma)) {
-      throw new StyleError(`fix viscous/sphere: gamma must be a number (torque/angular velocity units), got '${args[0]}'`);
-    }
+    // As native LAMMPS does (src/EXTRA-FIX/fix_viscous_sphere.cpp FixViscousSphere::FixViscousSphere at b332f28):
+    // utils::numeric reads the damping gamma (a v_name is not read as a variable here).
+    this.gamma = numeric(args[0]);
     const s = sys.state;
     for (let k = 1; k < args.length;) {
       // As native LAMMPS does (src/EXTRA-FIX/fix_viscous_sphere.cpp FixViscousSphere::FixViscousSphere at b332f28): the only keyword is scale,

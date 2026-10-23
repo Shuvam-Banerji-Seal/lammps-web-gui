@@ -64,8 +64,11 @@ describe('fix ttm/mod registration and positional arguments', () => {
   it('takes seed, init_file and the grid (usage error otherwise)', () => {
     const p = parseTtmModPositional('f', ['5', 'p.txt', '4', '4', '4', 'set', '1000']);
     expect(p).toMatchObject({ seed: 5, initFile: 'p.txt', nx: 4, ny: 4, nz: 4, consumed: 5 });
-    expect(() => parseTtmModPositional('f', ['5', 'p.txt', '4', '4'])).toThrow(/usage: fix ID group-ID ttm\/mod/);
-    expect(() => parseTtmModPositional('f', ['0', 'p.txt', '4', '4', '4'])).toThrow(/seed must be a positive integer/);
+    // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_mod.cpp at b332f28)
+    expect(() => parseTtmModPositional('f', ['5', 'p.txt', '4', '4'])).toThrow('Illegal fix ttm/mod command: missing argument(s)');
+    expect(() => parseTtmModPositional('f', ['5', 'p.txt', '4', '0', '4']).check()).toThrow('Fix ttm/mod grid sizes must be > 0');
+    expect(() => parseTtmModPositional('f', ['-1', 'p.txt', '4', '4', '4']).check()).toThrow('Invalid random number seed -1 in fix ttm/mod command');
+    expect(() => parseTtmModPositional('f', ['0', 'p.txt', '4', '4', '4']).check()).toThrow('Invalid random number seed 0 in fix ttm/mod command');
   });
 });
 

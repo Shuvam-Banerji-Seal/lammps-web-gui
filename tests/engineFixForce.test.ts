@@ -72,7 +72,7 @@ run 0`);
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 region`)).error?.message).toMatch(/keyword 'region' needs a value/);
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 v_nope`)).error?.message).toMatch(/variable nope does not exist/);
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 region noregion`)).error?.message).toMatch(/region ID 'noregion' does not exist/);
-    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 yes`)).error?.message).toMatch(/expected a number, NULL or v_name/);
+    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 yes`)).error?.message).toMatch("Expected floating point parameter instead of 'yes'");
   });
 
   it('errors on a non-zero force during minimization, and allows zero', async () => {
@@ -152,7 +152,7 @@ run 1`);
   });
 
   it('rejects bad arguments', async () => {
-    expect((await runScript(`${BASE}\nfix 1 all addforce 1.0 NULL 0.0`)).error?.message).toMatch(/NULL is not valid/);
+    expect((await runScript(`${BASE}\nfix 1 all addforce 1.0 NULL 0.0`)).error?.message).toMatch("Expected floating point parameter instead of 'NULL'");
     expect((await runScript(`${BASE}\nvariable e atom 0.5*x*x\nfix 1 all addforce 1.0 0.0 0.0 energy v_e`)).error?.message)
       .toMatch(/energy keyword is not allowed when all force components are constants/);
     expect((await runScript(`${BASE}\nfix 1 all addforce 1.0 0.0 0.0 every 0`)).error?.message).toMatch(/every must be a positive integer/);

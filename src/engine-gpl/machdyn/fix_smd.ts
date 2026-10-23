@@ -33,12 +33,12 @@ const isVarName = (w: string): boolean => w.startsWith('v_');
 
 type Component = { kind: 'none' } | { kind: 'constant'; value: number } | { kind: 'equal'; name: string };
 
-const parseComponent = (w: string, what: string): Component => {
+const parseComponent = (w: string, _what: string): Component => {
   if (isVarName(w)) return { kind: 'equal', name: w.slice(2) };
   if (w === 'NULL') return { kind: 'none' };
-  const v = Number(w);
-  if (!Number.isFinite(v)) throw new StyleError(`Illegal fix smd/setvel ${what} value '${w}'`);
-  return { kind: 'constant', value: v };
+  // As native LAMMPS does (src/MACHDYN/fix_smd_setvel.cpp FixSMDSetVel::FixSMDSetVel at b332f28): utils::numeric reads
+  // a constant velocity component.
+  return { kind: 'constant', value: numeric(w) };
 };
 
 /** fix ID group smd/setvel vx vy vz [region ID] (docs.lammps.org/fix_smd_setvel.html). */

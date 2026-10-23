@@ -4,6 +4,7 @@ import type { System } from '../system';
 import { massOf, nativeOrder } from '../atoms';
 import { RanMars } from '../rng';
 import { libm } from '../libm';
+import { inumeric, numeric } from '../force/util';
 
 /*
  * fix wall/flow — docs.lammps.org/fix_wall_flow.html (fix_wall_flow.rst).
@@ -214,24 +215,23 @@ export class FixWallFlow extends Fix {
       throw new StyleError(`Illegal fix wall/flow argument: axis must by x or y or z, but ${axis} specified`);
     }
     this.dim = dimIdx as 0 | 1 | 2;
-    const vflow = Number(args[1]);
-    if (!Number.isFinite(vflow) || args[1].startsWith('v_')) {
-      throw new StyleError(`fix ${id} (wall/flow): vflow must be a number, got '${args[1]}'`);
-    }
+    // As native LAMMPS does (src/EXTRA-FIX/fix_wall_flow.cpp FixWallFlow::FixWallFlow at b332f28): utils::numeric for the
+    // velocity and temperature, utils::inumeric for the seed and the wall count
+    const vflow = numeric(args[1]);
     if (vflow === 0) throw new StyleError('Illegal fix wall/flow argument: velocity cannot be 0');
     if (vflow < 0) throw new StyleError('Illegal fix wall/flow argument: negative direction is not supported yet');
     this.vflow = vflow;
-    const temp = Number(args[2]);
-    if (!(temp > 0) || !Number.isFinite(temp) || args[2].startsWith('v_')) {
+    const temp = numeric(args[2]);
+    if (!(temp > 0)) {
       throw new StyleError(`fix ${id} (wall/flow): the flow temperature T must be a positive number, got '${args[2]}' (native LAMMPS gives NaN velocities for T = 0)`);
     }
     this.temp = temp;
-    const seed = Number(args[3]);
-    if (!Number.isInteger(seed) || seed < 1 || seed >= SEED_MAX) {
+    const seed = inumeric(args[3]);
+    if (seed < 1 || seed >= SEED_MAX) {
       throw new StyleError('Illegal fix wall/flow argument: random seed must be positive integer');
     }
-    const n = Number(args[4]);
-    if (!Number.isInteger(n) || n < 1) {
+    const n = inumeric(args[4]);
+    if (n < 1) {
       throw new StyleError('Illegal fix wall/flow argument: wall count must be positive integer');
     }
     // As native LAMMPS does (src/EXTRA-FIX/fix_wall_flow.cpp FixWallFlow::FixWallFlow at b332f28): the words after the

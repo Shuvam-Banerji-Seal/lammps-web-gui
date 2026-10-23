@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
+import { numeric } from '../force/util';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
 
 /*
@@ -75,20 +76,14 @@ import { parseNumOrVar, valueOf, type NumOrVar } from './util';
  * invoked by the :doc:`minimize <minimize>` command." Default: "none".
  */
 
-const num = (w: string | undefined, what: string): number => {
-  if (w === undefined) throw new StyleError(`missing ${what}`);
-  const v = Number(w);
-  if (!Number.isFinite(v)) throw new StyleError(`expected a number for ${what}, got '${w}'`);
-  return v;
-};
+// As native LAMMPS does (src/fix_spring.cpp FixSpring::FixSpring at b332f28): K and R0 are read with utils::numeric
+const num = (w: string | undefined, _what: string): number => numeric(w);
 
 /** 'x y z' words: a number or NULL = exclude that dimension. */
 const parseXYZ = (w: string | undefined, what: string): { value: number; on: boolean } => {
   if (w === undefined) throw new StyleError(`missing ${what}`);
   if (w === 'NULL') return { value: 0, on: false };
-  const v = Number(w);
-  if (!Number.isFinite(v)) throw new StyleError(`expected a number or NULL for ${what}, got '${w}'`);
-  return { value: v, on: true };
+  return { value: numeric(w), on: true };
 };
 
 export class FixSpring extends Fix {

@@ -1,5 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { inumeric, numeric } from '../force/util';
 import type { System } from '../system';
 import { ownCompute, removeCompute } from './util';
 import type { Compute } from '../compute/compute';
@@ -137,11 +138,9 @@ export class FixBoxRelax extends Fix {
       if (v === undefined) throw new StyleError(`fix box/relax: keyword '${what}' needs a value`);
       return v;
     };
-    const num = (w: string, what: string): number => {
-      const v = Number(w);
-      if (w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`fix box/relax: ${what} must be a number, got '${w}'`);
-      return v;
-    };
+    // As native LAMMPS does (src/fix_box_relax.cpp FixBoxRelax::FixBoxRelax at b332f28): the pressure targets are read
+    // with utils::numeric, whose message is the first error for a word that is not a number.
+    const num = (w: string, _what: string): number => numeric(w);
     const yesno = (w: string, what: string): void => {
       if (w !== 'yes' && w !== 'no') throw new StyleError(`fix box/relax: ${what} must be yes or no, got '${w}'`);
     };
@@ -188,8 +187,9 @@ export class FixBoxRelax extends Fix {
           k += 2; break;
         }
         case 'nreset': {
-          const v = num(need(k + 1, key), 'nreset');
-          if (!Number.isInteger(v) || v < 0) throw new StyleError('fix box/relax: nreset must be an integer >= 0');
+          // As native LAMMPS does (src/fix_box_relax.cpp at b332f28): nreset is read with utils::inumeric.
+          const v = inumeric(need(k + 1, key));
+          if (v < 0) throw new StyleError('fix box/relax: nreset must be an integer >= 0');
           this.nresetValue = v;
           k += 2; break;
         }

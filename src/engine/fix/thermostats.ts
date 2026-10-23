@@ -1,7 +1,7 @@
 import { Fix, fixModifyCompute } from './fix';
 import { takeFixRecord } from './restartRecord';
 import { StyleError } from '../force/types';
-import { missingArgs } from '../force/util';
+import { inumeric, missingArgs, numeric } from '../force/util';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { RanMars } from '../rng';
@@ -165,15 +165,15 @@ export class FixTempRescale extends RescaleFix {
     if (args.length < 5) throw missingArgs('fix temp/rescale');
     const energy = energyRestart(sys, id, this.style);
     if (energy !== undefined) this.exchanged = energy;
-    this.nevery = Number(args[0]);
-    if (!Number.isInteger(this.nevery) || this.nevery < 1) throw new StyleError('fix temp/rescale: N must be a positive integer');
+    // As native LAMMPS does (src/fix_temp_rescale.cpp FixTempRescale::FixTempRescale at b332f28): N is read with utils::inumeric
+    this.nevery = inumeric(args[0]);
+    if (this.nevery <= 0) throw new StyleError(`Invalid fix temp/rescale every argument: ${this.nevery}`);
     // fix_temp_rescale.cpp: global_freq = nevery
     this.globalFreq = this.nevery;
     this.tStart = parseNumOrVar(args[1], 'Tstart');
-    this.tStop = Number(args[2]);
-    this.window = Number(args[3]);
-    this.fraction = Number(args[4]);
-    if (![this.tStop, this.window, this.fraction].every(Number.isFinite)) throw new StyleError('fix temp/rescale: Tstop, window and fraction must be numbers');
+    this.tStop = numeric(args[2]);
+    this.window = numeric(args[3]);
+    this.fraction = numeric(args[4]);
   }
 
   endOfStep(): void {

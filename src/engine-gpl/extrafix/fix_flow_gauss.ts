@@ -9,6 +9,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { massOf, nativeOrder } from '../../engine/atoms';
 
@@ -29,8 +30,10 @@ export class FixFlowGauss extends Fix {
     // "a group which conserves momentum must also conserve particle number": dynamic groups are refused
     const flags: boolean[] = [];
     for (let k = 0; k < 3; k++) {
-      const t = Number(args[k]);
-      if (!(t === 0 || t === 1) || args[k] === '') throw new StyleError('Constraint flags must be 1 or 0');
+      // As native LAMMPS does (src/EXTRA-FIX/fix_flow_gauss.cpp FixFlowGauss::FixFlowGauss at b332f28): utils::inumeric
+      // reads each flag before the 1-or-0 check.
+      const t = inumeric(args[k]);
+      if (!(t === 0 || t === 1)) throw new StyleError('Constraint flags must be 1 or 0');
       flags.push(t === 1);
     }
     this.flow = [flags[0], flags[1], flags[2]];

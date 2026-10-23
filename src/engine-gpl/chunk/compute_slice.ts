@@ -15,16 +15,12 @@
  */
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 
 const ERR20 = '\nFor more information see https://docs.lammps.org/err0020';
 const REF = /^([cfv])_([A-Za-z0-9_\-/]+)(?:\[(\d+)\])?$/;
 
-const intArg = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || w.trim() === '' || !Number.isInteger(v)) throw new StyleError(`Expected integer parameter instead of '${w ?? ''}' for ${what}`);
-  return v;
-};
 
 /** One input: a global vector or array of a compute (c_), a fix (f_), or a vector-style variable (v_). */
 interface SliceValue {
@@ -44,9 +40,10 @@ export class ComputeSlice extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 4) throw new StyleError('Illegal compute slice command: missing argument(s)');
-    this.nstart = intArg(args[0], 'compute slice nstart');
-    this.nstop = intArg(args[1], 'compute slice nstop');
-    this.nskip = intArg(args[2], 'compute slice nskip');
+    // As native LAMMPS does (src/compute_slice.cpp ComputeSlice::ComputeSlice at b332f28): utils::inumeric reads nstart, nstop, nskip
+    this.nstart = inumeric(args[0]);
+    this.nstop = inumeric(args[1]);
+    this.nskip = inumeric(args[2]);
     if (this.nstart < 1) throw new StyleError(`Invalid compute slice nstart value ${this.nstart} < 1`);
     if (this.nstop < this.nstart) throw new StyleError(`Invalid compute slice nstop value ${this.nstop} < ${this.nstart}`);
     if (this.nskip < 1) throw new StyleError(`Invalid compute slice nskip value < 1: ${this.nskip}`);

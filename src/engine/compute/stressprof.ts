@@ -1,5 +1,6 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
+import { numeric } from '../force/util';
 import { massOf } from '../atoms';
 import type { System } from '../system';
 import { termForces, termRows } from './local';
@@ -380,6 +381,9 @@ export class ComputeStressMop extends Compute {
     super(sys, id, group, args);
     if (args.length < 3) throw new StyleError('usage: compute ID group-ID stress/mop dir pos keywords...');
     this.d = parseDim(args[0], `compute ${id} stress/mop`);
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_mop.cpp ComputeStressMop::ComputeStressMop at b332f28): a plane
+    // position that is not lower, upper or center is read by utils::numeric, before the keywords
+    if (!['lower', 'upper', 'center'].includes(args[1])) numeric(args[1]);
     this.pos = args[1];
     this.kws = args.slice(2);
     // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_mop.cpp ComputeStressMop::ComputeStressMop at b332f28): keywords are read in order and an unknown one stops with "Unknown compute stress/mop keyword".
@@ -427,8 +431,11 @@ export class ComputeStressMopProfile extends Compute {
     super(sys, id, group, args);
     if (args.length < 3) throw new StyleError('usage: compute ID group-ID stress/mop/profile dir origin delta keywords...');
     this.d = parseDim(args[0], `compute ${id} stress/mop/profile`);
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_mop_profile.cpp ComputeStressMopProfile::ComputeStressMopProfile at b332f28):
+    // origin and delta are read by utils::numeric (origin may also be lower, center or upper)
+    if (!['lower', 'center', 'upper'].includes(args[1])) numeric(args[1]);
     this.origin = args[1];
-    this.delta = Number(args[2]);
+    this.delta = numeric(args[2]);
     if (!(this.delta > 0)) throw new StyleError(`compute ${id} stress/mop/profile: delta must be positive (got ${args[2]})`);
     this.kws = args.slice(3);
     // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_mop_profile.cpp ComputeStressMopProfile::ComputeStressMopProfile at b332f28): an unknown keyword stops with "Unknown compute stress/mop/profile keyword".
@@ -495,12 +502,13 @@ export class ComputeStressCartesian extends Compute {
     super(sys, id, group, args);
     if (args.length < 4) throw new StyleError('usage: compute ID group-ID stress/cartesian dim1 bin_width1 dim2 bin_width2 [keywords]');
     const d1 = parseDim(args[0], `compute ${id} stress/cartesian`);
-    const w1 = Number(args[1]);
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_cartesian.cpp ComputeStressCartesian::ComputeStressCartesian at b332f28): utils::numeric reads each bin width
+    const w1 = numeric(args[1]);
     this.dims = [{ d: d1, width: w1 }];
     if (args[2] !== 'NULL') {
       const d2 = parseDim(args[2], `compute ${id} stress/cartesian`);
       if (d2 === d1) throw new StyleError(`compute ${id} stress/cartesian: dim1 and dim2 must differ`);
-      this.dims.push({ d: d2, width: Number(args[3]) });
+      this.dims.push({ d: d2, width: numeric(args[3]) });
     }
     for (const dm of this.dims) {
       if (!(dm.width > 0)) throw new StyleError(`compute ${id} stress/cartesian: bin width must be positive (got ${dm.width})`);

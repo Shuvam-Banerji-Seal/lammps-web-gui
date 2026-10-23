@@ -13,6 +13,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { FixNH } from '../../engine/fix/nh';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { ownCompute, removeCompute } from '../../engine/fix/util';
 import { ComputePressureGrem } from './compute_pressure_grem';
@@ -45,10 +46,10 @@ export class FixGrem extends Fix {
     if (args.length < 4) throw new StyleError('Illegal fix grem command');
     this.scalarFlag = true;
     this.extscalar = 0;
-    this.lambda = Number(args[0]);
-    this.eta = Number(args[1]);
-    this.h0 = Number(args[2]);
-    if (!Number.isFinite(this.lambda) || !Number.isFinite(this.eta) || !Number.isFinite(this.h0)) throw new StyleError('Illegal fix grem command');
+    // utils::numeric reads lambda, eta and h0 in turn (src/REPLICA/fix_grem.cpp at b332f28)
+    this.lambda = numeric(args[0]);
+    this.eta = numeric(args[1]);
+    this.h0 = numeric(args[2]);
     this.idNh = args[3];
     if (sys.dimension !== 3) throw new StyleError('fix grem is only supported in 3d');
     // the computes the source creates: temperature (all), pressure/grem, ke and pe (all)

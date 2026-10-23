@@ -12,6 +12,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { formatNumber } from '../../engine/cformat';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 /** The pair styles that give the charge forces of fix qeq/comb: pair_style comb (PairComb) and comb3 (PairComb3). */
 export interface ChargeForcePair {
@@ -43,8 +44,10 @@ export class FixQeqComb extends Fix {
     // As native LAMMPS does (src/MANYBODY/fix_qeq_comb.cpp FixQEQComb::FixQEQComb at b332f28): every argument error is
     // "Illegal fix qeq/comb command".
     if (args.length < 2) throw new StyleError('Illegal fix qeq/comb command');
-    this.nEvery = Math.trunc(Number(args[0]));
-    this.precision = Number(args[1]);
+    // As native LAMMPS does (src/MANYBODY/fix_qeq_comb.cpp at b332f28): utils::inumeric reads nevery and utils::numeric
+    // the precision, before the range check.
+    this.nEvery = inumeric(args[0]);
+    this.precision = numeric(args[1]);
     if (!(this.nEvery > 0) || !(this.precision > 0)) throw new StyleError('Illegal fix qeq/comb command');
     // fix_qeq_comb.cpp (b332f28): "file" takes a file name; the file is opened with "w" when the fix is created
     for (let k = 2; k < args.length;) {

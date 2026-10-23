@@ -79,7 +79,7 @@ describe('com/chunk wrap keyword parsing', () => {
 
   it('refuses other words, a missing value, unknown keywords and upper-case words', () => {
     for (const w of ['maybe', 'YES', 'Yes', 't', '2', '.true.']) {
-      expect(() => parseComChunkWrap('c', ['wrap', w])).toThrow(/expected a boolean value for wrap/);
+      expect(() => parseComChunkWrap('c', ['wrap', w])).toThrow(`Expected boolean parameter instead of '${w}'`);
     }
     expect(() => parseComChunkWrap('c', ['wrap'])).toThrow(/wrap needs a logical value/);
     // As native LAMMPS does (src/compute_com_chunk.cpp at b332f28, line 55): an unknown keyword is an error.
@@ -109,7 +109,7 @@ run 0
     const plain = await run(script('wrap no'), MOLECULAR);
     expect(close(plain.rows[0]['c_c[1][1]'] as number, 10)).toBe(true);
     const bad = await run(script('wrap maybe'), MOLECULAR);
-    expect(bad.error).toMatch(/expected a boolean value for wrap/);
+    expect(bad.error).toMatch("Expected boolean parameter instead of 'maybe'");
   });
 });
 

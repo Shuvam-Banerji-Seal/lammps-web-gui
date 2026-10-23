@@ -11,6 +11,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import { nativeOrder } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 import type { SurfaceContact } from '../../engine/region';
@@ -73,14 +74,11 @@ export class FixWallRegionEES extends Fix {
     super(sys, id, group, args);
     if (args.length !== 4) throw new StyleError('Illegal fix wall/region/ees command: usage fix ID group wall/region/ees region-ID epsilon sigma cutoff');
     this.regionId = args[0];
-    const nums = args.slice(1).map((w) => {
-      const v = Number(w);
-      if (w.startsWith('v_') || !Number.isFinite(v)) throw new StyleError(`fix wall/region/ees: '${w}' must be a number`);
-      return v;
-    });
-    this.epsilon = nums[0];
-    this.sigma = nums[1];
-    this.cutoff = nums[2];
+    // As native LAMMPS does (src/EXTRA-FIX/fix_wall_region_ees.cpp FixWallRegionEES::FixWallRegionEES at b332f28):
+    // utils::numeric reads epsilon, sigma and the cutoff in turn.
+    this.epsilon = numeric(args[1]);
+    this.sigma = numeric(args[2]);
+    this.cutoff = numeric(args[3]);
     this.scalarFlag = true;
     this.vectorFlag = true;
     this.sizeVector = 3;

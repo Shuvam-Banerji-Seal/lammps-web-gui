@@ -1,4 +1,5 @@
 import { StyleError } from '../force/types';
+import { inumeric, missingArgs } from '../force/util';
 import type { System } from '../system';
 import { FixTTM, type TtmPositional } from './ttm';
 import { libm } from '../libm';
@@ -73,22 +74,16 @@ export interface TtmModPositional extends TtmPositional {
 }
 
 export const parseTtmModPositional = (id: string, args: string[]): TtmModPositional => {
-  const style = 'ttm/mod';
-  if (args.length < 5) throw new StyleError(`usage: fix ID group-ID ttm/mod seed init_file Nx Ny Nz [keyword value ...]`);
-  const posInt = (w: string, what: string): number => {
-    const v = Number(w);
-    if (!Number.isInteger(v) || v < 1) throw new StyleError(`fix ${id} ${style}: ${what} must be a positive integer, got '${w}'`);
-    return v;
+  // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_mod.cpp FixTTMMod::FixTTMMod at b332f28): the integers are read with
+  // utils::inumeric, and the seed and grid sizes are checked after the keywords
+  if (args.length < 5) throw missingArgs('fix ttm/mod');
+  const seed = inumeric(args[0]);
+  const nx = inumeric(args[2]), ny = inumeric(args[3]), nz = inumeric(args[4]);
+  const check = (): void => {
+    if (seed <= 0) throw new StyleError(`Invalid random number seed ${seed} in fix ttm/mod command`);
+    if (nx <= 0 || ny <= 0 || nz <= 0) throw new StyleError('Fix ttm/mod grid sizes must be > 0');
   };
-  return {
-    seed: posInt(args[0], 'seed'),
-    initFile: args[1],
-    nx: posInt(args[2], 'Nx'),
-    ny: posInt(args[3], 'Ny'),
-    nz: posInt(args[4], 'Nz'),
-    consumed: 5,
-    scalar: null,
-  };
+  return { seed, initFile: args[1], nx, ny, nz, consumed: 5, scalar: null, check };
 };
 
 export interface TtmModParams {

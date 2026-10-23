@@ -245,11 +245,11 @@ export class FixRecenter extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 3) throw new StyleError('usage: fix ID group-ID recenter x y z keyword value ...');
-    this.spec = args.slice(0, 3).map((w, d) => {
+    this.spec = args.slice(0, 3).map((w) => {
       if (w === 'NULL') return { kind: 'null' as const };
       if (w === 'INIT') return { kind: 'init' as const };
-      const v = Number(w);
-      if (!Number.isFinite(v)) throw new StyleError(`fix recenter: x/y/z (${['x', 'y', 'z'][d]}) must be a coordinate, NULL or INIT, got '${w}'`);
+      // As native LAMMPS does (src/fix_recenter.cpp FixRecenter::FixRecenter at b332f28): utils::numeric unless NULL or INIT
+      const v = numeric(w);
       return { kind: 'num' as const, value: v };
     });
     this.unitsMode = 'lattice';

@@ -28,6 +28,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { MoleculeTemplate } from '../../engine/molecule';
 import { specialFromBonds } from '../../engine/molecule';
@@ -1060,15 +1061,19 @@ const parseReactBlock = (sys: System, a: string[], i: number): { r: ReactArgs; n
     validateVariable(sys, x.slice(2));
     return x.slice(2);
   };
+  // As native LAMMPS does (src/REACTION/fix_bond_react.cpp FixBondReact::FixBondReact at b332f28): each of Nevery, Rmin and
+  // Rmax is read in turn (utils::inumeric for Nevery, utils::numeric for the cutoffs) and then range-checked
   const neveryVar = varOf(a[i + 3]), rminVar = varOf(a[i + 4]), rmaxVar = varOf(a[i + 5]);
+  const nevery = neveryVar ? 1 : inumeric(a[i + 3]);
+  if (!neveryVar && nevery <= 0) throw new StyleError("Illegal fix bond/react command: 'Nevery' must be a positive integer");
+  const rmin = rminVar ? sys.equalVariable(rminVar) : numeric(a[i + 4]);
+  if (!(rmin >= 0)) throw new StyleError("Illegal fix bond/react command: 'Rmin' cannot be negative");
+  const rmax = rmaxVar ? sys.equalVariable(rmaxVar) : numeric(a[i + 5]);
+  if (!(rmax >= 0)) throw new StyleError("Illegal fix bond/react command: 'Rmax' cannot be negative");
   const r: ReactArgs = {
-    name: a[i + 1], group: a[i + 2], nevery: neveryVar ? 1 : Number(a[i + 3]),
-    rmin: rminVar ? sys.equalVariable(rminVar) : Number(a[i + 4]), rmax: rmaxVar ? sys.equalVariable(rmaxVar) : Number(a[i + 5]),
+    name: a[i + 1], group: a[i + 2], nevery, rmin, rmax,
     pre: a[i + 6], post: a[i + 7] ?? '', map: a[i + 8] ?? '', opts: [], neveryVar, rminVar, rmaxVar,
   };
-  if (!Number.isFinite(r.nevery) || r.nevery <= 0 || !Number.isInteger(r.nevery)) throw new StyleError("Illegal fix bond/react command: 'Nevery' must be a positive integer");
-  if (!(r.rmin >= 0)) throw new StyleError("Illegal fix bond/react command: 'Rmin' cannot be negative");
-  if (!(r.rmax >= 0)) throw new StyleError("Illegal fix bond/react command: 'Rmax' cannot be negative");
   let k = i + 9;
   while (k < a.length && a[k] !== 'react') r.opts.push(a[k++]);
   return { r, next: k };

@@ -1,6 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { inumeric, missingArgs, parseNum } from '../force/util';
+import { inumeric, logical, missingArgs, numeric } from '../force/util';
+import { argInfo, EQUAL_STYLES } from '../argInfo';
 import type { System } from '../system';
 import { formatNumber } from '../cformat';
 import { requestHalt } from '../run/halt';
@@ -44,7 +45,7 @@ export class FixHalt extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 4) throw new StyleError(`fix ${id} halt: usage: fix ID group-ID halt N attribute operator avalue [keyword value ...]`);
+    if (args.length < 4) throw missingArgs('fix halt');
     // As native LAMMPS does (src/fix_halt.cpp FixHalt::FixHalt at b332f28): N is read with utils::inumeric
     const n = inumeric(args[0]);
     if (n <= 0) throw new StyleError('Illegal fix halt command: nevery must be > 0');
@@ -56,16 +57,19 @@ export class FixHalt extends Fix {
     if (attr === 'diskfree') {
       throw new StyleError(`fix ${id} halt attribute diskfree is not supported by the browser engine: it reads the free space of the host file system (use a v_name variable instead)`);
     }
-    if (attr !== 'bondmax' && !attr.startsWith('v_')) {
-      throw new StyleError(`fix ${id} halt: attribute must be bondmax, tlimit, diskfree or v_name, got '${attr}'`);
-    }
-    if (attr.startsWith('v_') && attr.length === 2) throw new StyleError(`fix ${id} halt: missing variable name after v_`);
+    // As native LAMMPS does (src/fix_halt.cpp FixHalt::FixHalt at b332f28): bondmax, or a v_name (no index) of an existing
+    // equal-style variable; then the operator and avalue (utils::numeric)
+    if (attr.startsWith('v_')) {
+      const ai = argInfo(attr, 'v');
+      if (ai.which === 'unknown' || ai.which === 'none' || ai.dim !== 0) throw new StyleError(`Invalid fix halt attribute ${attr}`);
+      const v = sys.vars.get(ai.name);
+      if (!v) throw new StyleError(`Could not find fix halt variable name ${ai.name}`);
+      if (!EQUAL_STYLES.has(v.style)) throw new StyleError('Fix halt variable is not equal-style variable');
+    } else if (attr !== 'bondmax') throw new StyleError(`Unknown fix halt keyword ${attr}`);
     this.attribute = attr;
-    if (!(OPERATORS as readonly string[]).includes(args[2])) {
-      throw new StyleError(`fix ${id} halt: operator must be one of < <= > >= == != |^, got '${args[2]}'`);
-    }
+    if (!(OPERATORS as readonly string[]).includes(args[2])) throw new StyleError(`Invalid fix halt operator ${args[2]}`);
     this.op = args[2] as Operator;
-    this.avalue = parseNum(args[3], `fix ${id} halt avalue`);
+    this.avalue = numeric(args[3]);
     let error: 'hard' | 'soft' | 'continue' = 'soft';
     let message = true;
     for (let k = 4; k < args.length;) {
@@ -76,15 +80,15 @@ export class FixHalt extends Fix {
       // As native LAMMPS does (src/fix_halt.cpp FixHalt::FixHalt at b332f28): "Illegal fix halt {keyword} command: missing argument(s)"
       if (v === undefined) throw missingArgs(`fix halt ${key}`);
       if (key === 'error') {
-        if (v !== 'hard' && v !== 'soft' && v !== 'continue') throw new StyleError(`fix ${id} halt error must be hard, soft or continue`);
+        // native's message prints the keyword, not the value: "Unknown fix halt error condition error"
+        if (v !== 'hard' && v !== 'soft' && v !== 'continue') throw new StyleError(`Unknown fix halt error condition ${key}`);
         error = v;
       } else if (key === 'message') {
-        if (v !== 'yes' && v !== 'no') throw new StyleError(`fix ${id} halt message must be yes or no`);
-        message = v === 'yes';
+        message = logical(v);
       } else if (key === 'path') {
         throw new StyleError(`fix ${id} halt path is only used with attribute diskfree, which the browser engine does not support`);
       } else if (key === 'universe') {
-        if (v === 'yes') throw new StyleError(`fix ${id} halt universe yes is not supported by the browser engine (no multi-partition runs)`);
+        if (logical(v)) throw new StyleError(`fix ${id} halt universe yes is not supported by the browser engine (no multi-partition runs)`);
       }
       k += 2;
     }

@@ -37,7 +37,7 @@ describe('fix rigid', () => {
     expect((await run('fix 1 all rigid/small single'))?.message).toMatch(/Unknown fix rigid\/small body style single/);
     expect((await run('fix 1 all rigid molecule langevin 1 1 0 4567'))?.message).toMatch(/Fix rigid langevin period must be > 0\.0/);
     expect((await run('fix 1 all rigid molecule langevin 1 1 1 0'))?.message).toMatch(/Illegal fix rigid command/);
-    expect((await run('fix 1 all rigid custom v_b'))?.message).toMatch(/variable b does not exist/);
+    expect((await run('fix 1 all rigid custom v_b'))?.message).toMatch(/Variable b for fix rigid custom does not exist/);
     expect((await run('fix 1 all rigid/small molecule force * off off off'))?.message).toMatch('Unknown fix rigid/small keyword force');
     expect((await run('fix 1 all rigid molecule', 'set atom 27 mol 3'))?.message).toMatch(/two or more atoms/);
   });

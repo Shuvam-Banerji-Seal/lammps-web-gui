@@ -45,13 +45,14 @@ describe('fix rigid bodystyle custom', () => {
   });
 
   it('names fix property/atom when i_name is not defined', async () => {
-    expect(msg(await run('fix 1 all rigid custom i_bodyid'))).toMatch(/i_bodyid.*fix property\/atom/);
+    // native FixRigid::FixRigid (src/RIGID/fix_rigid.cpp at b332f28)
+    expect(msg(await run('fix 1 all rigid custom i_bodyid'))).toMatch('Fix rigid custom requires previously defined property/atom');
   });
 
   it('names an undefined or non-atom variable', async () => {
-    expect(msg(await run('fix 1 all rigid custom v_nope'))).toMatch(/variable nope does not exist/);
-    expect(msg(await run('fix 1 all rigid custom v_scal'))).toMatch(/v_scal|scal.*must be atom-style/);
-    expect(msg(await run('fix 1 all rigid custom bodyid'))).toMatch(/expected i_name or v_name/);
+    expect(msg(await run('fix 1 all rigid custom v_nope'))).toMatch('Variable nope for fix rigid custom does not exist');
+    expect(msg(await run('fix 1 all rigid custom v_scal'))).toMatch('Fix rigid custom variable scal is not atom-style variable');
+    expect(msg(await run('fix 1 all rigid custom bodyid'))).toMatch('Unsupported fix rigid custom property: bodyid');
   });
 
   it('rejects unknown bodystyles by name', async () => {

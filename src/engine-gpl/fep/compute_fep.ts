@@ -17,6 +17,7 @@
  * In this engine the pair tail correction is part of evdwl, so tail no removes it (etail / V) from both
  * energies; tail yes requires pair_modify tail yes, as in the native init().
  */
+import { EQUAL_STYLES } from '../../engine/argInfo';
 import { Compute } from '../../engine/compute/compute';
 import { Accum, Pair, StyleError, typeBounds } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
@@ -94,6 +95,10 @@ export class ComputeFEP extends Compute {
   init(): void {
     const s = this.sys.state;
     for (const p of this.perts) {
+      // compute_fep.cpp init: each perturbation's variable exists and is equal-style
+      const v = this.sys.vars.get(p.vname);
+      if (!v) throw new StyleError(`Variable name ${p.vname} for compute fep does not exist`);
+      if (!EQUAL_STYLES.has(v.style)) throw new StyleError(`Variable ${p.vname} for compute fep is of invalid style`);
       if (p.kind === 'pair') {
         p.table = resolvePairTable(this.sys, `compute ${this.id} (fep)`, p.pstyle, p.pparam);
         p.pairs = typePairs(p.iw, p.jw, s.ntypes, false);

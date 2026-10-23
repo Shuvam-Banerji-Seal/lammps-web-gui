@@ -194,7 +194,7 @@ mass 1 1.0
 fix t all addtorque 0.0 0.0 v_missing
 thermo 1
 run 0
-`))).toContain('missing');
+`))).toContain('Variable name for fix addtorque/group does not exist'); // native names no variable
   });
 });
 

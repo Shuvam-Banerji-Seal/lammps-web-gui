@@ -626,15 +626,17 @@ export class System {
 
   // ---------------------------------------------------------------- lookups
 
-  compute(id: string): Compute {
+  /** The compute with this ID; a missing one is an error with `missing` (the caller's native message) or a generic one. */
+  compute(id: string, missing?: string): Compute {
     const c = this.computes.find((x) => x.id === id);
-    if (!c) throw new StyleError(`compute ID '${id}' does not exist`);
+    if (!c) throw new StyleError(missing ?? `compute ID '${id}' does not exist`);
     return c;
   }
 
-  fix(id: string): Fix {
+  /** The fix with this ID; a missing one is an error with `missing` (the caller's native message) or a generic one. */
+  fix(id: string, missing?: string): Fix {
     const f = this.fixes.find((x) => x.id === id);
-    if (!f) throw new StyleError(`fix ID '${id}' does not exist`);
+    if (!f) throw new StyleError(missing ?? `fix ID '${id}' does not exist`);
     return f;
   }
 

@@ -26,36 +26,46 @@ export interface LocalOutput {
 
 export const localOutputOf = (sys: System, kind: 'c' | 'f', id: string): LocalOutput => (kind === 'c' ? sys.compute(id) : sys.fix(id));
 
-/** Expands the attributes of a dump local (dump ID group local N file attributes) into column names. */
-export const localDumpColumns = (sys: System, dumpId: string, words: string[]): string[] => {
-  if (!words.length) throw new StyleError(`dump ${dumpId} local needs attributes (index, c_ID or c_ID[I])`);
-  const out: string[] = [];
+/**
+ * Expands the attributes of a dump local (dump ID group local N file attributes) into column names. As native LAMMPS
+ * does (src/dump_local.cpp DumpLocal::DumpLocal and parse_fields at b332f28): a [*] wildcard is expanded as
+ * utils::expand_args does (over the columns of a global array, a per-atom array or a local array of an existing compute
+ * or fix; otherwise the word is left as it is and is no valid attribute), then each c_ID / f_ID is checked: it exists,
+ * computes local info, and is a vector or an array whose column is in range.
+ */
+export const localDumpColumns = (sys: System, _dumpId: string, words: string[]): string[] => {
+  if (!words.length) throw new StyleError('No dump local arguments specified');
+  const expanded: string[] = [];
   for (const w of words) {
+    const wm = /^([cf])_([A-Za-z0-9_]+)\[(\d*)\*(\d*)\]$/.exec(w);
+    if (!wm) { expanded.push(w); continue; }
+    const src = wm[1] === 'c' ? sys.computes.find((x) => x.id === wm[2]) : sys.fixes.find((x) => x.id === wm[2]);
+    const o = src as unknown as { arrayFlag?: boolean; sizeArrayCols?: number; peratomFlag?: boolean; sizePeratomCols?: number; localFlag?: boolean; sizeLocalCols?: number } | undefined;
+    const nmax = !o ? 0 : o.arrayFlag ? o.sizeArrayCols ?? 0 : o.peratomFlag && o.sizePeratomCols ? o.sizePeratomCols : o.localFlag && o.sizeLocalCols ? o.sizeLocalCols : 0;
+    if (!nmax) { expanded.push(w); continue; }
+    for (let k = wm[3] ? Number(wm[3]) : 1; k <= (wm[4] ? Number(wm[4]) : nmax); k++) expanded.push(`${wm[1]}_${wm[2]}[${k}]`);
+  }
+  const out: string[] = [];
+  for (const w of expanded) {
     if (w === 'index') {
       out.push(w);
       continue;
     }
-    const m = /^([cf])_([A-Za-z0-9_]+)(?:\[(\d+|\*)\])?$/.exec(w);
-    // As native LAMMPS does (src/dump_local.cpp at b332f28, DumpLocal::parse_fields): an unknown word is an invalid attribute
+    const m = /^([cf])_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(w);
     if (!m) throw new StyleError(`Invalid attribute ${w} in dump local command`);
     const kind = m[1] as 'c' | 'f';
+    const name = m[2];
     const what = kind === 'c' ? 'compute' : 'fix';
-    const comp = localOutputOf(sys, kind, m[2]);
-    if (!comp.localFlag) throw new StyleError(`dump ${dumpId} local: ${what} ${m[2]} does not calculate local values`);
+    const verb = kind === 'c' ? 'calculate' : 'compute';
+    const src = kind === 'c' ? sys.compute(name, `Could not find dump local compute ID ${name}`) : sys.fix(name, `Could not find dump local fix ID ${name}`);
+    const comp = src as unknown as LocalOutput;
+    if (!comp.localFlag) throw new StyleError(`Dump local ${what} ${name} does not compute local info`);
     const cols = comp.sizeLocalCols;
-    if (m[3] === undefined) {
-      if (cols !== 0) throw new StyleError(`dump ${dumpId} local: ${what} ${m[2]} does not calculate local vector`);
-      out.push(w);
-    } else {
-      if (cols === 0) throw new StyleError(`dump ${dumpId} local: ${what} ${m[2]} does not calculate local array`);
-      if (m[3] === '*') {
-        for (let k = 1; k <= cols; k++) out.push(`${kind}_${m[2]}[${k}]`);
-      } else {
-        const k = Number(m[3]);
-        if (k < 1 || k > cols) throw new StyleError(`dump ${dumpId} local: column ${k} of ${what} ${m[2]} is out of range 1..${cols}`);
-        out.push(w);
-      }
-    }
+    const k = m[3] === undefined ? 0 : Number(m[3]);
+    if (k === 0 && cols > 0) throw new StyleError(`Dump local ${what} ${name} does not ${verb} local vector`);
+    if (k > 0 && cols === 0) throw new StyleError(`Dump local ${what} ${name} does not ${verb} local array`);
+    if (k > 0 && k > cols) throw new StyleError(`Dump local ${what} ${name} vector is accessed out-of-range\nFor more information see https://docs.lammps.org/err0020`);
+    out.push(w);
   }
   return out;
 };

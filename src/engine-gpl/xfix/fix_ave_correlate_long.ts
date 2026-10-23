@@ -13,6 +13,8 @@
  * The keywords type (auto, upper, lower, auto/upper, auto/lower, full, first), start, ncorr, nlen, ncount, file,
  * overwrite, title1, title2 are implemented.
  */
+import { EQUAL_STYLES } from '../../engine/argInfo';
+import { errorUrl } from '../../engine/formula';
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import { missingArgs } from '../../engine/force/util';
@@ -174,24 +176,27 @@ export class FixAveCorrelateLong extends Fix {
 
     for (const r of this.refs) {
       if (r.kind === 'c') {
-        const c = sys.compute(r.id);
+        const c = sys.compute(r.id, `Compute ID ${r.id} for fix ave/correlate/long does not exist`);
         if (r.index === null && !c.scalarFlag) throw new StyleError(`Fix ave/correlate/long compute ${r.id} does not calculate a scalar`);
         if (r.index !== null && !c.vectorFlag) throw new StyleError(`Fix ave/correlate/long compute ${r.id} does not calculate a vector`);
         if (r.index !== null && r.index > c.sizeVector) {
-          throw new StyleError(`Fix ave/correlate/long compute ${r.id} vector is accessed out-of-range`);
+          throw new StyleError(`Fix ave/correlate/long compute ${r.id} vector is accessed out-of-range${errorUrl(20)}`);
         }
       } else if (r.kind === 'f') {
-        const f = sys.fix(r.id);
+        const f = sys.fix(r.id, `Fix ID ${r.id} for fix ave/correlate/long does not exist`);
         if (r.index === null && !f.scalarFlag) throw new StyleError(`Fix ave/correlate/long fix ${r.id} does not calculate a scalar`);
         if (r.index !== null && !f.vectorFlag) throw new StyleError(`Fix ave/correlate/long fix ${r.id} does not calculate a vector`);
         if (r.index !== null && r.index > f.sizeVector) {
-          throw new StyleError(`Fix ave/correlate/long fix ${r.id} vector is accessed out-of-range`);
+          throw new StyleError(`Fix ave/correlate/long fix ${r.id} vector is accessed out-of-range${errorUrl(20)}`);
         }
         if (f.globalFreq > 0 && nevery % f.globalFreq) {
-          throw new StyleError(`Fix ${r.id} for fix ave/correlate/long not computed at compatible time`);
+          throw new StyleError(`Fix ${r.id} for fix ave/correlate/long not computed at compatible time${errorUrl(7)}`);
         }
       } else {
-        if (r.index === null && !sys.vars.get(r.id)) throw new StyleError(`Variable name ${r.id} for fix ave/correlate/long does not exist`);
+        const v = sys.vars.get(r.id);
+        if (!v) throw new StyleError(`Variable name ${r.id} for fix ave/correlate/long does not exist`);
+        if (r.index === null && !EQUAL_STYLES.has(v.style)) throw new StyleError(`Fix ave/correlate/long variable ${r.id} is not equal-style variable`);
+        if (r.index !== null && v.style !== 'vector') throw new StyleError(`Fix ave/correlate/long variable ${r.id} is not vector-style variable`);
       }
     }
 

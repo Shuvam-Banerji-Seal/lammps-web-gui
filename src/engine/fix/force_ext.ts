@@ -4,7 +4,8 @@ import type { System } from '../system';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
 import { massOf, hasChargeStyle } from '../atoms';
 import { libm } from '../libm';
-import { inumeric, numeric } from '../force/util';
+import { inumeric, missingArgs, numeric } from '../force/util';
+import { EQUAL_STYLES } from '../argInfo';
 
 /*
  * Force-style fixes from wave "force_ext", written only from the LAMMPS
@@ -371,7 +372,7 @@ export class FixPlaneforce extends Fix {
 }
 
 /** One E-field component: a constant, or a variable (equal-style or atom-style). */
-type EComp = { const: number } | { var: string; atom: boolean };
+type EComp = { const: number } | { var: string };
 
 /**
  * fix ID group-ID efield ex ey ez keyword value ... —
@@ -425,44 +426,36 @@ export class FixEfield extends Fix {
   /** Per-atom force added by the last postForce, in LAMMPS force units. */
   private fadd: Float64Array = new Float64Array(0);
 
+  /** The style the native messages name (efield, or efield/tip4p for the wrapper of fix_efield_tip4p.ts). */
+  private readonly msgStyle: string;
+
   constructor(sys: System, id: string, group: string, args: string[], keywordStyle = 'efield') {
     super(sys, id, group, args);
-    const s = sys.state;
-    if (!hasChargeStyle(s.atomStyle)) {
-      throw new StyleError(`fix efield requires atoms that store a charge; atom_style ${s.atomStyle} does not (use atom_style charge or full)`);
-    }
-    if (args.length < 3) throw new StyleError('usage: fix ID group-ID efield ex ey ez keyword value ...');
-    this.comp = [FixEfield.parseComp(sys, args[0], 'ex'), FixEfield.parseComp(sys, args[1], 'ey'), FixEfield.parseComp(sys, args[2], 'ez')];
+    this.msgStyle = keywordStyle;
+    // As native LAMMPS does (src/fix_efield.cpp FixEfield::FixEfield at b332f28): the three components (a v_name, whose
+    // variable is looked up at init, or utils::numeric), then the keywords
+    if (args.length < 3) throw missingArgs(`fix ${keywordStyle}`);
+    this.comp = [FixEfield.parseComp(args[0]), FixEfield.parseComp(args[1]), FixEfield.parseComp(args[2])];
     this.allConst = this.comp.every((c) => 'const' in c);
-    // docs.lammps.org/fix_efield.html: "For point-dipoles, equal-style variables can be used, but atom-style
-    // variables are not currently supported, since they imply a spatial gradient in the electric field".
-    if (s.mu) {
-      if (!s.torque) throw new StyleError('fix efield: point dipoles need per-atom torque (use atom_style hybrid sphere dipole)');
-      // As native LAMMPS does (src/fix_efield.cpp init at b332f28): "Fix {} with dipoles cannot use atom-style variables"
-      if (this.comp.some((c) => 'atom' in c && c.atom)) throw new StyleError('Fix efield with dipoles cannot use atom-style variables');
-    }
     for (let k = 3; k < args.length; k += 2) {
       const key = args[k];
       const val = args[k + 1];
-      // As native LAMMPS does (src/fix_efield.cpp FixEfield::FixEfield at b332f28): the keyword is checked first, so an unknown keyword is reported even without a value
-      if (key !== 'region' && key !== 'energy' && key !== 'potential') throw new StyleError(`Unknown keyword for fix ${keywordStyle} command: ${key}`);
-      if (val === undefined) throw new StyleError(`fix efield keyword '${key}' needs a value`);
       if (key === 'region') {
-        // "region-ID = ID of region atoms must be in to have added force"
-        sys.region(val);
+        if (val === undefined) throw missingArgs(`fix ${keywordStyle} region`);
+        if (!sys.regions.has(val)) throw new StyleError(`Region ${val} for fix ${keywordStyle} does not exist`);
         this.regionId = val;
-      } else if (key === 'energy') {
-        if (this.allConst) throw new StyleError('fix efield: the energy keyword is not allowed if the added field is a constant vector');
-        if (this.potentialVar !== null) throw new StyleError('fix efield: when the potential keyword is specified, the energy keyword must not be used');
-        this.energyVar = FixEfield.atomVar(sys, val, 'energy');
-      } else if (key === 'potential') {
-        if (this.allConst) throw new StyleError('fix efield: the potential keyword is not allowed if the added field is a constant vector');
-        if (this.energyVar !== null) throw new StyleError('fix efield: when the potential keyword is specified, the energy keyword must not be used');
-        this.potentialVar = FixEfield.atomVar(sys, val, 'potential');
+      } else if (key === 'energy' || key === 'potential') {
+        // native's count message has no blank before the keyword ("fix efieldenergy"), and both keywords report a
+        // value that is no v_name as "energy command" naming the keyword
+        if (val === undefined) throw missingArgs(`fix ${keywordStyle}${key}`);
+        if (!val.startsWith('v_')) throw new StyleError(`Unsupported argument for fix ${keywordStyle} energy command: ${key}`);
+        if (key === 'energy') this.energyVar = val.slice(2);
+        else this.potentialVar = val.slice(2);
       } else {
-        throw new StyleError(`Unknown keyword for fix efield command: ${key}`);
+        throw new StyleError(`Unknown keyword for fix ${keywordStyle} command: ${key}`);
       }
     }
+    if (this.energyVar !== null && this.potentialVar !== null) throw new StyleError('Must not use energy and potential keywords at the same time with fix efield');
     this.scalarFlag = true;
     this.vectorFlag = true;
     this.sizeVector = 3;
@@ -470,30 +463,44 @@ export class FixEfield extends Fix {
     this.extvector = 1;
     this.energyGlobal = true;
     this.virialGlobal = true;
-    this.fadd = new Float64Array(3 * s.n);
+    this.fadd = new Float64Array(3 * sys.state.n);
   }
 
-  private static parseComp(sys: System, w: string, _what: string): EComp {
-    if (w.startsWith('v_')) {
-      const name = w.slice(2);
-      const v = sys.vars.get(name);
-      if (!v) throw new StyleError(`fix efield: variable ${name} is not defined`);
-      if (v.style === 'atom' || v.style === 'atomfile') return { var: name, atom: true };
-      if (v.style === 'equal' || v.style === 'internal' || v.style === 'string') return { var: name, atom: false };
-      throw new StyleError(`fix efield: a ${v.style}-style variable (${name}) cannot define an E-field component`);
-    }
-    // As native LAMMPS does (src/fix_efield.cpp FixEfield::FixEfield at b332f28): a component is read with utils::numeric
+  /** A component: a v_name (its style is found at init) or a number (utils::numeric). */
+  private static parseComp(w: string): EComp {
+    if (w.startsWith('v_')) return { var: w.slice(2) };
     return { const: numeric(w) };
   }
 
-  /** "The energy keyword specifies the name of an atom-style variable". */
-  private static atomVar(sys: System, w: string, key: string): string {
-    if (!w.startsWith('v_')) throw new StyleError(`fix efield ${key} value must be an atom-style variable (v_name), got '${w}'`);
-    const name = w.slice(2);
-    const v = sys.vars.get(name);
-    if (!v) throw new StyleError(`fix efield: variable ${name} is not defined`);
-    if (v.style !== 'atom') throw new StyleError(`fix efield ${key} variable ${name} must be atom-style, not ${v.style}-style`);
-    return name;
+  /**
+   * As native LAMMPS does (src/fix_efield.cpp FixEfield::init at b332f28): the atoms have charges or point dipoles; each
+   * component variable exists and is equal- or atom-style; the energy and potential variables are atom-style; the
+   * region exists; dipoles take no atom-style field, and a constant field takes no energy or potential variable.
+   */
+  init(): void {
+    const s = this.sys.state;
+    const st = this.msgStyle;
+    const qflag = hasChargeStyle(s.atomStyle);
+    const muflag = !!s.mu && !!s.torque;
+    if (!qflag && !muflag) throw new StyleError(`Fix ${st} requires atom attribute q or mu`);
+    ['x', 'y', 'z'].forEach((axis, d) => {
+      const c = this.comp[d];
+      if ('const' in c) return;
+      const v = this.sys.vars.get(c.var);
+      if (!v) throw new StyleError(`Variable ${c.var} for ${axis}-field in fix ${st} does not exist`);
+      if (!EQUAL_STYLES.has(v.style) && v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Variable ${c.var} for ${axis}-field in fix ${st} is invalid style`);
+    });
+    for (const [name, what] of [[this.energyVar, 'energy'], [this.potentialVar, 'potential']] as const) {
+      if (name === null) continue;
+      const v = this.sys.vars.get(name);
+      if (!v) throw new StyleError(`Variable ${name} for ${what} in fix ${st} does not exist`);
+      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Variable ${name} for ${what} in fix ${st} must be atom-style`);
+    }
+    if (this.regionId !== null && !this.sys.regions.has(this.regionId)) throw new StyleError(`Region ${this.regionId} for fix ${st} does not exist`);
+    const atomField = this.comp.some((c) => this.isAtomComp(c));
+    if (muflag && atomField) throw new StyleError(`Fix ${st} with dipoles cannot use atom-style variables`);
+    if (this.allConst && this.energyVar !== null) throw new StyleError(`Cannot use variable energy with constant efield in fix ${st}`);
+    if (this.allConst && this.potentialVar !== null) throw new StyleError(`Cannot use variable potential with constant efield in fix ${st}`);
   }
 
   /**
@@ -506,16 +513,26 @@ export class FixEfield extends Fix {
       comp: this.comp.map((c) => ({
         value: this.resolve(c),
         constant: 'const' in c,
-        atomStyle: !('const' in c) && c.atom,
+        atomStyle: this.isAtomComp(c),
       })),
       region: this.regionId,
     };
   }
 
+  /**
+   * A component given by an atom-style variable. The variable's style is read at the call, so the fixes that read the
+   * field before this fix's init (qeq/reaxff and the other charge-equilibration fixes) see it too.
+   */
+  private isAtomComp(c: EComp): boolean {
+    if ('const' in c) return false;
+    const v = this.sys.vars.get(c.var);
+    return v !== undefined && (v.style === 'atom' || v.style === 'atomfile');
+  }
+
   /** Resolves one component now: a number, or per-atom values. */
   private resolve(c: EComp): number | Float64Array {
     if ('const' in c) return c.const;
-    if (c.atom) return this.sys.atomVariable(c.var);
+    if (this.isAtomComp(c)) return this.sys.atomVariable(c.var);
     return this.sys.equalVariable(c.var);
   }
 

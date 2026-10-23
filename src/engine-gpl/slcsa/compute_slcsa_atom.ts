@@ -22,6 +22,7 @@
  *  - the native reader and the Mahalanobis arrays are fixed for four classes (nclasses-1 = 3 values per row), so any other
  *    nclasses is refused.
  */
+import { errorUrl } from '../../engine/formula';
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import { inumeric } from '../../engine/force/util';
@@ -95,6 +96,20 @@ export class ComputeSLCSAAtom extends Compute {
     if (nclasses < 2) throw new StyleError('Illegal compute slcsa/atom command: nclasses must be greater than 1');
     if (nclasses !== NCLASSES) throw new StyleError(`compute slcsa/atom: only nclasses ${NCLASSES} is supported (the native model reader is written for four classes)`);
 
+    // the descriptor, checked before the model files are read: a compute reference with at most one index, which
+    // exists, is per-atom, and is a vector (no index) or an array with that column
+    const m = /^c_([^[\]]+)(?:\[(\d+)\])?$/.exec(args[7]);
+    if (!m) throw new StyleError(`Invalid compute slcsa/atom argument: ${args[7]}`);
+    const src = sys.compute(m[1], `Compute ID ${m[1]} for compute slcsa/atom does not exist`);
+    if (!src.peratomFlag) throw new StyleError(`Compute slcsa/atom compute ${m[1]} does not calculate per-atom values`);
+    const col = m[2] === undefined ? 0 : Number(m[2]);
+    if (col === 0 && src.sizePeratomCols !== 0) throw new StyleError(`Compute slcsa/atom compute ${m[1]} does not calculate a per-atom vector`);
+    if (col > 0 && src.sizePeratomCols === 0) throw new StyleError(`Compute slcsa/atom compute ${m[1]} does not calculate a per-atom array`);
+    if (col > 0 && col > src.sizePeratomCols) throw new StyleError(`Compute slcsa/atom compute ${m[1]} array is accessed out-of-range${errorUrl(20)}`);
+    // the engine reads the descriptor columns 1..ncomps of the array
+    if (src.sizePeratomCols < this.ncomps) throw new StyleError(`compute slcsa/atom: compute ${m[1]} has ${src.sizePeratomCols} columns, the model needs ${this.ncomps}`);
+    this.source = src;
+
     const ncomps = this.ncomps;
     const meanVals = numbersOf(sys.readFile(args[2]), 'the database mean descriptor file');
     const ldaVals = numbersOf(sys.readFile(args[3]), 'the lda scalings file');
@@ -115,16 +130,6 @@ export class ComputeSLCSAAtom extends Compute {
       for (let k = 0; k < NRED * NRED; k++) this.icov[c * NRED * NRED + k] = take(mahaVals, mp, 1, 'the mahalanobis stats file')[0];
     }
 
-    // the descriptor: c_ID[N] names an array of per-atom values (native checks the same things)
-    const m = /^c_([^[\]]+)\[(\d+)\]$/.exec(args[7]);
-    if (!m) throw new StyleError(`Invalid compute slcsa/atom argument: ${args[7]} (expected c_ID[N])`);
-    const src = sys.compute(m[1]);
-    if (!src.peratomFlag) throw new StyleError(`Compute slcsa/atom compute ${m[1]} does not calculate per-atom values`);
-    const col = Number(m[2]);
-    if (src.sizePeratomCols === 0) throw new StyleError(`Compute slcsa/atom compute ${m[1]} does not calculate a per-atom array`);
-    if (col < 1 || col > src.sizePeratomCols) throw new StyleError(`Compute slcsa/atom compute ${m[1]} array is accessed out-of-range`);
-    if (src.sizePeratomCols < ncomps) throw new StyleError(`compute slcsa/atom: compute ${m[1]} has ${src.sizePeratomCols} columns, the model needs ${ncomps}`);
-    this.source = src;
 
     this.peratomFlag = true;
     this.sizePeratomCols = NCLASSES + 1;

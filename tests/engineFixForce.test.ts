@@ -70,8 +70,10 @@ run 0`);
     expect((await runScript(`${BASE}\nfix 1 all setforce 0.0 0.0`)).error?.message).toMatch(/Illegal fix setforce command: missing argument/);
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 foo 1`)).error?.message).toContain('Unknown fix setforce keyword: foo');
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 region`)).error?.message).toMatch(/keyword 'region' needs a value/);
-    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 v_nope`)).error?.message).toMatch(/variable nope does not exist/);
-    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 region noregion`)).error?.message).toMatch(/region ID 'noregion' does not exist/);
+    // Measured with native LAMMPS (b332f28): the variable is looked up at init, so a later definition is fine
+    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 v_nope\nrun 0`)).error?.message).toMatch(/Variable nope for fix setforce does not exist/);
+    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 v_later\nvariable later equal 0\nrun 0`)).error).toBeNull();
+    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 region noregion`)).error?.message).toMatch(/Region noregion for fix setforce does not exist/);
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 yes`)).error?.message).toMatch("Expected floating point parameter instead of 'yes'");
   });
 
@@ -153,13 +155,14 @@ run 1`);
 
   it('rejects bad arguments', async () => {
     expect((await runScript(`${BASE}\nfix 1 all addforce 1.0 NULL 0.0`)).error?.message).toMatch("Expected floating point parameter instead of 'NULL'");
-    expect((await runScript(`${BASE}\nvariable e atom 0.5*x*x\nfix 1 all addforce 1.0 0.0 0.0 energy v_e`)).error?.message)
-      .toMatch(/energy keyword is not allowed when all force components are constants/);
-    expect((await runScript(`${BASE}\nfix 1 all addforce 1.0 0.0 0.0 every 0`)).error?.message).toMatch(/every must be a positive integer/);
-    expect((await runScript(`${BASE}\nfix 1 all addforce 1.0 0.0 0.0 energy 1.0`)).error?.message).toMatch(/energy must be v_name/);
-    expect((await runScript(`${BASE}\nvariable e equal 0.5\nfix 1 all addforce v_e 0.0 0.0 energy v_e`)).error?.message)
-      .toMatch(/energy variable e must be atom-style/);
-    expect((await runScript(`${BASE}\nfix 1 all addforce v_nope 0.0 0.0`)).error?.message).toMatch(/variable nope does not exist/);
+    // Measured with native LAMMPS (b332f28; the variable checks are made at init)
+    expect((await runScript(`${BASE}\nvariable e atom 0.5*x*x\nfix 1 all addforce 1.0 0.0 0.0 energy v_e\nrun 0`)).error?.message)
+      .toMatch(/Cannot use variable energy with constant force in fix addforce/);
+    expect((await runScript(`${BASE}\nfix 1 all addforce 1.0 0.0 0.0 every 0`)).error?.message).toMatch(/Invalid fix addforce every argument: 0/);
+    expect((await runScript(`${BASE}\nfix 1 all addforce 1.0 0.0 0.0 energy 1.0`)).error?.message).toMatch(/Invalid fix addforce energy argument: 1\.0/);
+    expect((await runScript(`${BASE}\nvariable e equal 0.5\nfix 1 all addforce v_e 0.0 0.0 energy v_e\nrun 0`)).error?.message)
+      .toMatch(/Variable e for fix addforce is invalid style/);
+    expect((await runScript(`${BASE}\nfix 1 all addforce v_nope 0.0 0.0\nrun 0`)).error?.message).toMatch(/Variable nope for fix addforce does not exist/);
   });
 
   it('requires the energy keyword for variable forces during minimization', async () => {
@@ -167,7 +170,8 @@ run 1`);
 variable fxv atom 0.1*x
 fix 1 all addforce v_fxv 0.0 0.0
 minimize 1e-4 1e-4 10 10`);
-    expect(bad.error?.message).toMatch(/energy keyword is required/);
+    // native FixAddForce::init: "Must use variable energy with fix addforce"
+    expect(bad.error?.message).toMatch(/Must use variable energy with fix addforce/);
   });
 });
 
@@ -219,8 +223,10 @@ run 0`);
   it('rejects an atom-style variable (the page documents equal-style only)', async () => {
     const { error } = await runScript(`${BASE}
 variable fxv atom 0.1*x
-fix 1 all aveforce v_fxv 0.0 0.0`);
-    expect(error?.message).toMatch(/must be equal-style/);
+fix 1 all aveforce v_fxv 0.0 0.0
+run 0`);
+    // native FixAveForce::init names no variable
+    expect(error?.message).toMatch(/Variable for fix aveforce is invalid style/);
   });
 });
 

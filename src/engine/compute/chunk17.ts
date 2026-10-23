@@ -1,3 +1,4 @@
+import { errorUrl } from '../formula';
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import { missingArgs } from '../force/util';
@@ -680,6 +681,62 @@ const inputRefs = (sys: System, style: string, words: string[], context: 'vector
   return expandWildcards(sys, words, context).map((w) => parseRef(w));
 };
 
+/**
+ * The inputs of compute reduce/chunk, checked as native LAMMPS does (src/compute_reduce_chunk.cpp
+ * ComputeReduceChunk::ComputeReduceChunk at b332f28): each compute or fix exists and has a per-atom vector (no index)
+ * or a per-atom array with that column; each variable exists and is atom-style.
+ */
+const checkReduceChunkInputs = (sys: System, refs: Ref[]): void => {
+  for (const r of refs) {
+    if (r.kind === 'v') {
+      const v = sys.vars.get(r.id);
+      if (!v) throw new StyleError(`Variable name ${r.id} for compute reduce/chunk does not exist`);
+      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Compute reduce/chunk variable ${r.id} is not atom-style variable`);
+      continue;
+    }
+    if (r.kind !== 'c' && r.kind !== 'f') continue;
+    const what = r.kind === 'c' ? 'compute' : 'fix';
+    const src = r.kind === 'c' ? sys.compute(r.id, `Compute ID ${r.id} for compute reduce/chunk does not exist`) : sys.fix(r.id, `Fix ID ${r.id} for compute reduce/chunk does not exist`);
+    const k = r.index ?? 0;
+    if (!src.peratomFlag) throw new StyleError(`Compute reduce/chunk ${what} ${r.id} does not calculate per-atom values`);
+    if (k === 0 && src.sizePeratomCols !== 0) throw new StyleError(`Compute reduce/chunk ${what} ${r.id} does not calculate a per-atom vector`);
+    if (k > 0 && src.sizePeratomCols === 0) throw new StyleError(`Compute reduce/chunk ${what} ${r.id} does not calculate a per-atom array`);
+    if (k > 0 && k > src.sizePeratomCols) {
+      throw new StyleError(r.kind === 'c' ? `Compute reduce/chunk compute array ${r.id} is accessed out-of-range${errorUrl(20)}` : `Compute reduce/chunk fix ${r.id} array is accessed out-of-range${errorUrl(20)}`);
+    }
+  }
+};
+
+/**
+ * The inputs of compute chunk/spread/atom, checked as native LAMMPS does (src/compute_chunk_spread_atom.cpp
+ * ComputeChunkSpreadAtom::ComputeChunkSpreadAtom at b332f28): a compute exists, is a per-chunk compute (style ending in
+ * /chunk) and has a global vector (no index) or a global array with that column; a fix exists and has a global vector
+ * or array.
+ */
+const checkSpreadInputs = (sys: System, refs: Ref[]): void => {
+  for (const r of refs) {
+    const k = r.index ?? 0;
+    if (r.kind === 'c') {
+      const c = sys.compute(r.id, `Compute ID ${r.id} for compute chunk/spread/atom does not exist`);
+      if (!/\/chunk$/.test(c.style)) throw new StyleError(`Compute chunk/spread/atom compute ${r.id} does not calculate per-chunk values`);
+      if (k === 0) {
+        if (!c.vectorFlag) throw new StyleError(`Compute chunk/spread/atom compute ${r.id} does not calculate global vector`);
+      } else {
+        if (!c.arrayFlag) throw new StyleError(`Compute chunk/spread/atom compute ${r.id} does not calculate global array`);
+        if (k > c.sizeArrayCols) throw new StyleError(`Compute chunk/spread/atom compute ${r.id} array is accessed out-of-range${errorUrl(20)}`);
+      }
+    } else if (r.kind === 'f') {
+      const f = sys.fix(r.id, `Fix ID ${r.id} for compute chunk/spread/atom does not exist`);
+      if (k === 0) {
+        if (!f.vectorFlag) throw new StyleError(`Compute chunk/spread/atom ${r.id} fix does not calculate global vector`);
+      } else {
+        if (!f.arrayFlag) throw new StyleError(`Compute chunk/spread/atom ${r.id} fix does not calculate global array`);
+        if (k > f.sizeArrayCols) throw new StyleError(`Compute chunk/spread/atom fix ${r.id} array is accessed out-of-range${errorUrl(20)}`);
+      }
+    }
+  }
+};
+
 /*
  * compute ID group-ID reduce/chunk chunkID mode input1 input2 ... — docs.lammps.org/compute_reduce_chunk.html:
  *   "Define a calculation that reduces one or more per-atom vectors into
@@ -709,6 +766,7 @@ export class ComputeReduceChunk extends Compute {
     this.mode = mode;
     checkChunkInputWords('reduce/chunk', args.slice(2));
     this.refs = inputRefs(sys, `${id} (reduce/chunk)`, args.slice(2), 'peratom');
+    checkReduceChunkInputs(sys, this.refs);
     if (this.refs.length === 1) {
       this.vectorFlag = true;
     } else {
@@ -776,6 +834,7 @@ export class ComputeChunkSpreadAtom extends Compute {
     this.chunk = c;
     checkChunkInputWords('chunk/spread/atom', args.slice(1));
     this.refs = inputRefs(sys, `${id} (chunk/spread/atom)`, args.slice(1), 'vector');
+    checkSpreadInputs(sys, this.refs);
     this.peratomFlag = true;
     this.sizePeratomCols = this.refs.length === 1 ? 0 : this.refs.length;
   }

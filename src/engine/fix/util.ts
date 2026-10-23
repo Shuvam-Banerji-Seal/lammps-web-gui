@@ -2,6 +2,8 @@ import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { COMPUTE_STYLES } from '../styles';
 import { numeric } from '../force/util';
+import { StyleError } from '../force/types';
+import { EQUAL_STYLES } from '../argInfo';
 
 /*
  * Shared helpers for thermostat and barostat fixes.
@@ -33,6 +35,19 @@ export const parseNumOrVar = (w: string | undefined, _what: string): NumOrVar =>
 };
 
 export const valueOf = (sys: System, v: NumOrVar): number => (typeof v === 'number' ? v : sys.equalVariable(v.variable));
+
+/**
+ * The v_name values of a fix, checked when a run starts as native fixes check them in init(): each variable exists and
+ * is equal-style, with the fix's own native messages.
+ */
+export const checkEqualVariables = (sys: System, values: readonly NumOrVar[], missing: (name: string) => string, invalid: (name: string) => string): void => {
+  for (const v of values) {
+    if (typeof v === 'number') continue;
+    const def = sys.vars.get(v.variable);
+    if (!def) throw new StyleError(missing(v.variable));
+    if (!EQUAL_STYLES.has(def.style)) throw new StyleError(invalid(v.variable));
+  }
+};
 
 /**
  * Creates the fix's own compute (e.g. "compute fix-ID_temp group-ID temp"),

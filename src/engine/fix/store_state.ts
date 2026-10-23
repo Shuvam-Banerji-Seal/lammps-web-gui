@@ -1,4 +1,5 @@
 import { Fix } from './fix';
+import { errorUrl } from '../formula';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
@@ -153,6 +154,7 @@ export class FixStoreState extends Fix {
       this.sizePeratomCols = 0;
       this.frames = new Array(h.nrepeat).fill(null);
     }
+    this.checkRefs();
     this.alloc();
     // native constructor: end_of_step with kflag = 1 and cfv_flag = 0 (keyword attributes only), not with history
     if (!h) this.stepStore(true, false);
@@ -191,13 +193,35 @@ export class FixStoreState extends Fix {
       if (!this.sys.state.custom.has(name)) throw new StyleError(`Custom vector/array ${name} for fix store/state does not exist`);
       return { kind: 'custom', text: w };
     }
-    const r = parseRef(w, false);
-    if (r.kind === 'v') {
-      const v = this.sys.vars.get(r.id);
-      if (!v) throw new StyleError(`fix store/state: variable ${r.id} does not exist`);
-      if (v.style !== 'atom') throw new StyleError(`fix store/state: variable ${r.id} must be atom-style`);
+    return { kind: 'ref', text: w, ref: parseRef(w, false) };
+  }
+
+  /**
+   * The c_ID, f_ID and v_name inputs, checked after the keywords as native LAMMPS does (src/fix_store_state.cpp
+   * FixStoreState::FixStoreState "error check" at b332f28): each exists and has per-atom data of the shape the word asks
+   * for; a variable is atom-style.
+   */
+  private checkRefs(): void {
+    for (const inp of this.inputs) {
+      if (inp.kind !== 'ref' || !inp.ref) continue;
+      const r = inp.ref;
+      if (r.kind === 'v') {
+        const v = this.sys.vars.get(r.id);
+        if (!v) throw new StyleError(`Variable name ${r.id} for fix store/state does not exist`);
+        if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Fix store/state variable ${r.id} is not atom-style variable`);
+        continue;
+      }
+      if (r.kind !== 'c' && r.kind !== 'f') continue;
+      const what = r.kind === 'c' ? 'compute' : 'fix';
+      const src = r.kind === 'c' ? this.sys.compute(r.id, `Compute ID ${r.id} for fix store/state does not exist`) : this.sys.fix(r.id, `Fix ID ${r.id} for fix store/state does not exist`);
+      const k = r.index ?? 0;
+      if (!src.peratomFlag) throw new StyleError(`Fix store/state ${what} ${r.id} does not calculate per-atom values`);
+      if (k === 0 && src.sizePeratomCols !== 0) throw new StyleError(`Fix store/state ${what} ${r.id} does not calculate per-atom vector`);
+      if (k > 0 && src.sizePeratomCols === 0) throw new StyleError(`Fix store/state ${what} ${r.id} does not calculate per-atom array`);
+      if (k > 0 && k > src.sizePeratomCols) {
+        throw new StyleError(r.kind === 'c' ? `Fix store/state compute array ${r.id} is accessed out-of-range${errorUrl(20)}` : `Fix store/state fix ${r.id} array is accessed out-of-range${errorUrl(20)}`);
+      }
     }
-    return { kind: 'ref', text: w, ref: r };
   }
 
   private checkThreshVariable(): void {

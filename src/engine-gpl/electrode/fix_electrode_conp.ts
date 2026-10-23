@@ -14,6 +14,7 @@
  * accepted: it selects type-based neighbour lists, which change the Gaussian correction (electrode-electrode pairs are
  * left out of the vector list), and that is reproduced here; the other lists give the same results.
  */
+import { EQUAL_STYLES } from '../../engine/argInfo';
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
@@ -482,6 +483,18 @@ export class FixElectrodeConp extends Fix {
     const ks = this.kspaceOf!;
     this.evscale = s.units.qe2f / ks.qqrd2e;
     if (this.tfTypes) this.checkTfTypes();
+    // then the equal-style variables of the group potentials and of qtotal (setup_post_neighbor)
+    for (const name of this.psiVar) {
+      if (name === null) continue;
+      const v = this.sys.vars.get(name);
+      if (!v) throw new StyleError(`Variable '${name}' for fix ${this.style} does not exist`);
+      if (!EQUAL_STYLES.has(v.style)) throw new StyleError(`Variable '${name}' for fix ${this.style} is not equal-style`);
+    }
+    if (this.qtotalVar !== null) {
+      const v = this.sys.vars.get(this.qtotalVar);
+      if (!v) throw new StyleError(`Variable '${this.qtotalVar}' for fix electrode does not exist`);
+      if (!EQUAL_STYLES.has(v.style)) throw new StyleError(`Variable '${this.qtotalVar}' for fix electrode is not equal-style`);
+    }
     if (this.algo !== 'cg') {
       this.computeElastance();
       if (this.writeMat !== null) this.writeTable(this.writeMat, this.orderMatrix(this.elastance));

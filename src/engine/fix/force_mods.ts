@@ -1,6 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { numeric } from '../force/util';
+import { inumeric, numeric } from '../force/util';
+import { EQUAL_STYLES } from '../argInfo';
 import type { System } from '../system';
 import type { Region } from '../region';
 
@@ -35,20 +36,13 @@ type Resolved = { kind: 'null' } | { kind: 'const'; v: number } | { kind: 'vals'
 
 const val = (r: Resolved, i: number): number => (r.kind === 'const' ? r.v : r.kind === 'vals' ? r.v[i] : 0);
 
-const parseComp = (sys: System, w: string | undefined, what: string, style: string, allowNull: boolean, equalOnly: boolean): Component => {
+const parseComp = (w: string | undefined, what: string, style: string, allowNull: boolean): Component => {
   if (w === undefined) throw new StyleError(`fix ${style}: missing ${what}`);
   // As native LAMMPS does (src/fix_setforce.cpp, fix_aveforce.cpp, fix_addforce.cpp at b332f28): NULL is a value only
-  // where the style allows it; elsewhere it is read as a number and utils::numeric reports it.
+  // where the style allows it; elsewhere it is read as a number and utils::numeric reports it. A v_name is kept; the
+  // variable is looked up at init (ForceModFix.checkComponents).
   if (w === 'NULL' && allowNull) return { kind: 'null' };
-  if (w.startsWith('v_')) {
-    const name = w.slice(2);
-    const v = sys.vars.get(name);
-    if (!v) throw new StyleError(`fix ${style}: variable ${name} does not exist`);
-    if (equalOnly && (v.style === 'atom' || v.style === 'atomfile' || v.style === 'vector')) {
-      throw new StyleError(`fix ${style}: variable ${name} must be equal-style (is ${v.style})`);
-    }
-    return { kind: 'var', name };
-  }
+  if (w.startsWith('v_')) return { kind: 'var', name: w.slice(2) };
   return { kind: 'const', v: numeric(w) };
 };
 
@@ -67,24 +61,56 @@ abstract class ForceModFix extends Fix {
   }
 
   /** Parses `fx fy fz [keyword value ...]`; called from the subclass constructor. */
-  protected parse(style: string, args: string[], allowNull: boolean, equalOnly: boolean): void {
+  protected parse(style: string, args: string[], allowNull: boolean): void {
     if (args.length < 3) throw new StyleError(`usage: fix ID group ${style} fx fy fz [keyword value ...]`);
     this.comps = [
-      parseComp(this.sys, args[0], 'fx', style, allowNull, equalOnly),
-      parseComp(this.sys, args[1], 'fy', style, allowNull, equalOnly),
-      parseComp(this.sys, args[2], 'fz', style, allowNull, equalOnly),
+      parseComp(args[0], 'fx', style, allowNull),
+      parseComp(args[1], 'fy', style, allowNull),
+      parseComp(args[2], 'fz', style, allowNull),
     ];
     for (let k = 3; k < args.length; k += 2) {
       const key = args[k];
       const value = args[k + 1];
       if (value === undefined) throw new StyleError(`fix ${style} keyword '${key}' needs a value`);
       if (key === 'region') {
-        this.sys.region(value);
+        if (!this.sys.regions.has(value)) throw new StyleError(`Region ${value} for fix ${style} does not exist`);
         this.regionId = value;
       } else {
         this.keyword(key, value);
       }
     }
+  }
+
+  /**
+   * The component variables, checked when a run starts as native LAMMPS does (src/fix_setforce.cpp,
+   * fix_aveforce.cpp and fix_addforce.cpp init at b332f28): each exists and is equal-style (or atom-style where the
+   * style allows it), with native's messages (aveforce names no variable), then the region.
+   */
+  protected checkComponents(): void {
+    const st = this.style;
+    for (const c of this.comps) {
+      if (c.kind !== 'var') continue;
+      const v = this.sys.vars.get(c.name);
+      const equal = v !== undefined && EQUAL_STYLES.has(v.style);
+      const atom = v !== undefined && (v.style === 'atom' || v.style === 'atomfile');
+      if (st === 'aveforce') {
+        if (!v) throw new StyleError('Variable name for fix aveforce does not exist');
+        if (!equal) throw new StyleError('Variable for fix aveforce is invalid style');
+      } else {
+        if (!v) throw new StyleError(`Variable ${c.name} for fix ${st} does not exist`);
+        if (!equal && !atom) throw new StyleError(`Variable ${c.name} for fix ${st} is invalid style`);
+      }
+    }
+  }
+
+  /** Variables a style checks after the components (addforce: its energy variable). */
+  protected checkMoreVariables(): void {}
+
+  init(): void {
+    this.checkComponents();
+    this.checkMoreVariables();
+    if (this.regionId !== null && !this.sys.regions.has(this.regionId)) throw new StyleError(`Region ${this.regionId} for fix ${this.style} does not exist`);
+    this.regionObj = null;
   }
 
   /** A keyword other than region (subclass-specific); must throw for unknown ones. */
@@ -150,7 +176,7 @@ export class FixSetForce extends ForceModFix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    this.parse('setforce', args, true, false);
+    this.parse('setforce', args, true);
   }
 
   protected keyword(key: string, _value: string): void {
@@ -238,26 +264,21 @@ export class FixAddForce extends ForceModFix {
     this.extscalar = 1;
     this.energyGlobal = true;
     this.virialGlobal = true;
-    this.parse('addforce', args, false, false);
-    if (this.energyVar !== null && this.comps.every((c) => c.kind === 'const')) {
-      throw new StyleError('fix addforce: the energy keyword is not allowed when all force components are constants');
-    }
+    this.parse('addforce', args, false);
   }
 
   protected keyword(key: string, value: string): void {
+    // As native LAMMPS does (src/fix_addforce.cpp FixAddForce::FixAddForce at b332f28): every reads utils::inumeric (> 0),
+    // energy keeps a v_name (looked up at init)
     if (key === 'every') {
-      const n = Number(value);
-      if (!Number.isInteger(n) || n < 1) throw new StyleError(`fix addforce every must be a positive integer, got '${value}'`);
+      const n = inumeric(value);
+      if (n <= 0) throw new StyleError(`Invalid fix addforce every argument: ${n}`);
       this.nevery = n;
       return;
     }
     if (key === 'energy') {
-      if (!value.startsWith('v_')) throw new StyleError(`fix addforce energy must be v_name, got '${value}'`);
-      const name = value.slice(2);
-      const v = this.sys.vars.get(name);
-      if (!v) throw new StyleError(`fix addforce: variable ${name} does not exist`);
-      if (v.style !== 'atom') throw new StyleError(`fix addforce: energy variable ${name} must be atom-style (is ${v.style})`);
-      this.energyVar = name;
+      if (!value.startsWith('v_')) throw new StyleError(`Invalid fix addforce energy argument: ${value}`);
+      this.energyVar = value.slice(2);
       return;
     }
     // As native LAMMPS does (src/fix_addforce.cpp FixAddForce::FixAddForce at b332f28): "Unknown fix addforce keyword: {}".
@@ -295,12 +316,22 @@ export class FixAddForce extends ForceModFix {
   energy(): number { return this.energyTallied; }
   computeScalar(): number { return this.energyTallied; }
 
+  /** fix_addforce.cpp init: the energy variable exists and is atom-style; a variable energy needs a variable force. */
+  protected checkMoreVariables(): void {
+    if (this.energyVar !== null) {
+      const v = this.sys.vars.get(this.energyVar);
+      if (!v) throw new StyleError(`Variable ${this.energyVar} for fix addforce does not exist`);
+      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Variable ${this.energyVar} for fix addforce is invalid style`);
+      if (this.comps.every((c) => c.kind !== 'var')) throw new StyleError('Cannot use variable energy with constant force in fix addforce');
+    }
+  }
+
   minSetup(): void {
     // fix_addforce.html: "The *energy* keyword is required if the added force is
     // defined with one or more variables, and you are performing energy
-    // minimization via the "minimize" command."
+    // minimization via the "minimize" command." (native init: "Must use variable energy with fix addforce")
     if (this.energyVar === null && this.comps.some((c) => c.kind === 'var')) {
-      throw new StyleError(`fix ${this.id} addforce: the energy keyword is required when the force uses variables and minimize is performed`);
+      throw new StyleError('Must use variable energy with fix addforce');
     }
   }
 
@@ -340,7 +371,7 @@ export class FixAveForce extends ForceModFix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    this.parse('aveforce', args, true, true);
+    this.parse('aveforce', args, true);
   }
 
   protected keyword(_key: string, _value: string): void {

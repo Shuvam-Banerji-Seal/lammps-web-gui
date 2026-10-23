@@ -2,7 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
-import { parseNumOrVar, valueOf, type NumOrVar } from './util';
+import { checkEqualVariables, parseNumOrVar, valueOf, type NumOrVar } from './util';
 
 /*
  * fix addtorque/group — written from docs.lammps.org/fix_addtorque_group.html
@@ -125,6 +125,11 @@ export class FixAddTorqueGroup extends Fix {
     this.extscalar = 1;
     this.extvector = 1;
     this.energyGlobal = true;
+  }
+
+  /** fix_addtorque_group.cpp init: the variables exist and are equal-style (native names none of them). */
+  init(): void {
+    checkEqualVariables(this.sys, this.torque, () => 'Variable name for fix addtorque/group does not exist', () => 'Variable for fix addtorque/group is invalid style');
   }
 
   postForce(): void {

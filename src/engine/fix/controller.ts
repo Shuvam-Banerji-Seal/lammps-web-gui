@@ -1,7 +1,8 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { inumeric, parseNum } from '../force/util';
+import { inumeric, numeric } from '../force/util';
+import { argInfo, EQUAL_STYLES } from '../argInfo';
 import { globalScalar, parseRef, type Ref } from '../refs';
 
 /*
@@ -58,34 +59,52 @@ export class FixController extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 8) {
-      throw new StyleError(`fix ${id} controller: expected Nevery alpha Kp Ki Kd pvar setpoint cvar, got ${args.length} arguments`);
-    }
+    if (args.length !== 8) throw new StyleError('Illegal fix controller command');
     // As native LAMMPS does (src/fix_controller.cpp FixController::FixController at b332f28, EXTRA-FIX): nevery is read
     // with utils::inumeric and must be positive.
     const nevery = inumeric(args[0]);
     if (nevery <= 0) throw new StyleError(`Illegal fix controller nevery value ${nevery}`);
     this.nevery = nevery;
-    this.alpha = parseNum(args[1], `fix ${id} controller alpha`);
-    this.kp = parseNum(args[2], `fix ${id} controller Kp`);
-    this.ki = parseNum(args[3], `fix ${id} controller Ki`);
-    this.kd = parseNum(args[4], `fix ${id} controller Kd`);
-    if (/^[fcv]_/.test(args[5]) === false) throw new StyleError(`fix ${id} controller: pvar must be c_ID, c_ID[I], f_ID, f_ID[I] or v_name, got '${args[5]}'`);
+    this.alpha = numeric(args[1]);
+    this.kp = numeric(args[2]);
+    this.ki = numeric(args[3]);
+    this.kd = numeric(args[4]);
+    // the process variable: a compute, fix or variable reference without an index (native: argi.get_dim() != 0 is
+    // illegal, so c_ID[I] and f_ID[I] are refused although the doc page lists them). Measured with native LAMMPS:
+    // c_t[1] gives Illegal fix controller argument c_t[1].
+    const ai = argInfo(args[5]);
+    if (ai.which === 'unknown' || ai.which === 'none' || ai.dim !== 0) throw new StyleError(`Illegal fix controller argument ${args[5]}`);
     this.pvar = parseRef(args[5]);
-    this.setpoint = parseNum(args[6], `fix ${id} controller setpoint`);
+    this.setpoint = numeric(args[6]);
     this.cvar = args[7];
-    if (this.pvar.kind === 'v' && this.pvar.index !== null) {
-      throw new StyleError(`fix ${id} controller: pvar ${args[5]} must be an equal-style variable, not an element`);
+    this.checkVariables();
+  }
+
+  /**
+   * The process and control variables, as native LAMMPS checks them (src/EXTRA-FIX/fix_controller.cpp
+   * FixController::FixController and init at b332f28): the compute or fix gives a global scalar, the variable is
+   * equal-style, and the control variable is internal-style.
+   */
+  private checkVariables(): void {
+    const p = this.pvar;
+    if (p.kind === 'c') {
+      const c = this.sys.compute(p.id, `Compute ID ${p.id} for fix controller does not exist`);
+      if (!c.scalarFlag) throw new StyleError(`Fix controller compute ${p.id} does not calculate a global scalar or vector`);
+    } else if (p.kind === 'f') {
+      const f = this.sys.fix(p.id, `Fix ID ${p.id} for fix controller does not exist`);
+      if (!f.scalarFlag) throw new StyleError(`Fix controller fix ${p.id} does not calculate a global scalar or vector`);
+    } else {
+      const v = this.sys.vars.get(p.id);
+      if (!v) throw new StyleError(`Variable name ${p.id} for fix controller does not exist`);
+      if (!EQUAL_STYLES.has(v.style)) throw new StyleError(`Fix controller variable ${p.id} is not equal-style variable`);
     }
+    const def = this.sys.vars.get(this.cvar);
+    if (!def) throw new StyleError(`Variable name ${this.cvar} for fix controller does not exist`);
+    if (def.style !== 'internal') throw new StyleError(`Fix controller variable ${this.cvar} is not internal-style variable`);
   }
 
   init(): void {
-    const def = this.sys.vars.get(this.cvar);
-    if (!def) throw new StyleError(`fix ${this.id} controller: variable ${this.cvar} does not exist`);
-    if (def.style !== 'internal') throw new StyleError(`fix ${this.id} controller: variable ${this.cvar} is not internal-style`);
-    if (this.pvar.kind === 'v' && !this.sys.vars.has(this.pvar.id)) {
-      throw new StyleError(`fix ${this.id} controller: variable ${this.pvar.id} does not exist`);
-    }
+    this.checkVariables();
   }
 
   endOfStep(): void {

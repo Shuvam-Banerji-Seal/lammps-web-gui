@@ -21,7 +21,7 @@
  */
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../../engine/force/types';
-import { numeric } from '../../engine/force/util';
+import { bounds, numeric } from '../../engine/force/util';
 import { BondBPMBase, bondKey } from './bond_bpm';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
@@ -117,7 +117,7 @@ export class BondBpmPeri extends BondBPMBase {
     // As native LAMMPS does (src/BPM/bond_bpm_peri.cpp BondBPMPeri::coeff at b332f28): the type range is read first,
     // then each model checks its own argument count before utils::numeric reads its values.
     if (args.length < 2) throw bondedCoeffArgs('bond');
-    const [lo, hi] = this.bounds(args[0]);
+    const [lo, hi] = bounds(args[0], 1, this.ntypes);
     const model = MODEL_OF[args[1]];
     const num = (k: number): number => numeric(args[k]);
     let c = 0, kbulk = 0, gshear = 0, lamb = 0, tau = 0, yieldS = 0, cut = 0, s00 = 0, alpha = 0;
@@ -148,11 +148,6 @@ export class BondBpmPeri extends BondBPMBase {
     }
   }
 
-  private bounds(w: string): [number, number] {
-    const n = Number(w);
-    if (Number.isInteger(n) && n >= 1 && n <= this.ntypes) return [n, n];
-    throw new StyleError(`bond_style bpm/peri: bond type ${w} out of range`);
-  }
 
   init(ctx: StyleContext): void {
     for (let t = 1; t <= this.ntypes; t++) {

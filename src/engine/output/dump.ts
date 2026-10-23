@@ -1,7 +1,8 @@
 import { isSmdStyle } from '../smd';
 import type { System } from '../system';
 import { StyleError } from '../force/types';
-import { inumeric, numeric } from '../force/util';
+import { errorUrl } from '../formula';
+import { inumeric, missingArgs, numeric } from '../force/util';
 import { compileCFormat, checkCFormat, formatNumber, type ValueKind } from '../cformat';
 import { localDumpColumns, localColumnSource, localOutputOf } from '../compute/local_dump';
 import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
@@ -381,7 +382,11 @@ export class Dump {
     const m = /^([cf])_([A-Za-z0-9_]+)\[(\d*)\*(\d*)\]$/.exec(c);
     if (!m) return [c];
     const [, kind, id, lo, hi] = m;
-    const n = kind === 'c' ? this.sys.compute(id).sizePeratomCols : this.sys.fix(id).sizePeratomCols;
+    // As native utils::expand_args does (src/utils.cpp at b332f28): a wildcard of a compute or fix that does not exist is
+    // left as it is, and the column check then finds no valid attribute
+    const src = kind === 'c' ? this.sys.computes.find((x) => x.id === id) : this.sys.fixes.find((x) => x.id === id);
+    if (!src) return [c];
+    const n = src.sizePeratomCols;
     if (!n) throw new StyleError(`dump ${this.id}: ${c} has no per-atom array to expand`);
     const out: string[] = [];
     for (let k = lo ? Number(lo) : 1; k <= (hi ? Number(hi) : n); k++) out.push(`${kind}_${id}[${k}]`);
@@ -409,16 +414,47 @@ export class Dump {
     }
     const m = /^([cfv])_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(c);
     if (!m) throw new StyleError(`Invalid attribute ${c} in dump ${this.style} command`);
-    if (m[1] === 'c') {
-      const cp = this.sys.compute(m[2]);
-      if (!cp.peratomFlag) throw new StyleError(`dump ${this.id}: compute ${m[2]} does not compute per-atom info`);
-    } else if (m[1] === 'f') {
-      const f = this.sys.fix(m[2]);
-      if (!f.peratomFlag) throw new StyleError(`dump ${this.id}: fix ${m[2]} does not compute per-atom info`);
+    // As native LAMMPS does (src/dump_custom.cpp DumpCustom::parse_fields at b332f28): the reference exists, then its
+    // per-atom data, its vector or array shape and the column range
+    const [, kind, name, idx] = m;
+    const st = this.style;
+    if (kind === 'c' || kind === 'f') {
+      const what = kind === 'c' ? 'compute' : 'fix';
+      const src = kind === 'c' ? this.sys.compute(name, `Could not find dump ${st} compute ID: ${name}`) : this.sys.fix(name, `Could not find dump ${st} fix ID: ${name}`);
+      const verb = kind === 'c' ? 'calculate' : 'compute';
+      if (!src.peratomFlag) throw new StyleError(`Dump ${st} ${what} ${name} does not compute per-atom info`);
+      if (idx === undefined && src.sizePeratomCols > 0) throw new StyleError(`Dump ${st} ${what} ${name} does not ${verb} per-atom vector`);
+      if (idx !== undefined && src.sizePeratomCols === 0) throw new StyleError(`Dump ${st} ${what} ${name} does not ${verb} per-atom array`);
+      if (idx !== undefined && Number(idx) > src.sizePeratomCols) throw new StyleError(`Dump ${st} ${what} ${name} vector is accessed out-of-range${errorUrl(20)}`);
     } else {
-      const v = this.sys.vars.get(m[2]);
-      if (v && v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`dump ${this.id}: variable ${m[2]} is not atom-style`);
+      const v = this.sys.vars.get(name);
+      if (!v) throw new StyleError(`Could not find dump ${st} variable name ${name}`);
+      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Dump ${st} variable ${name} is not atom-style variable`);
     }
+  }
+
+  /**
+   * A c_ID, f_ID or v_name attribute of dump_modify thresh, checked as native LAMMPS does (src/dump_custom.cpp
+   * DumpCustom::modify_param at b332f28): it exists, has per-atom data of the shape the word asks for, and the column
+   * is in range.
+   */
+  private threshRefCheck(word: string): void {
+    const m = /^([cfv])_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(word);
+    if (!m) return;
+    const [, kind, name, idx] = m;
+    if (kind === 'v') {
+      const v = this.sys.vars.get(name);
+      if (!v) throw new StyleError(`Could not find dump modify variable name: ${name}`);
+      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Dump modify variable ${name} is not atom-style variable`);
+      return;
+    }
+    const what = kind === 'c' ? 'compute' : 'fix';
+    const src = kind === 'c' ? this.sys.compute(name, `Could not find dump modify compute ID ${name}`) : this.sys.fix(name, `Could not find dump modify fix ID: ${name}`);
+    const k = idx === undefined ? 0 : Number(idx);
+    if (!src.peratomFlag) throw new StyleError(`Dump modify ${what} ID ${name} does not compute per-atom info`);
+    if (k === 0 && src.sizePeratomCols > 0) throw new StyleError(`Dump modify ${what} ID ${name} does not compute per-atom vector`);
+    if (k > 0 && src.sizePeratomCols === 0) throw new StyleError(`Dump modify ${what} ID ${name} does not compute per-atom array`);
+    if (k > 0 && k > src.sizePeratomCols) throw new StyleError(`Dump modify ${what} ID ${name} vector is not large enough`);
   }
 
   /** dump_modify keywords. */
@@ -537,12 +573,22 @@ export class Dump {
           break;
         }
         case 'colname': {
+          // As native LAMMPS does (src/dump.cpp Dump::modify_params at b332f28): default, or a column number (negative
+          // counts from the end) or keyword and a name; a column that is not there (xyz and extxyz have none) is
+          // "Incorrect dump_modify arguments"
+          if (k + 2 > args.length) throw missingArgs('dump_modify colname');
           if (v === 'default') { this.colnames.clear(); k += 2; break; }
+          if (k + 3 > args.length) throw missingArgs('dump_modify colname');
           const name = args[k + 2];
-          if (name === undefined) throw new StyleError('dump_modify colname needs a column and a name');
-          // As native LAMMPS does (src/dump.cpp at b332f28): xyz and extxyz have no column names to change
-          if (this.style === 'xyz' || this.style === 'extxyz') throw new StyleError(`Incorrect dump_modify arguments: colname ${v} ${name}`);
-          this.colnames.set(this.columnIndex(v ?? ''), name);
+          const ncol = this.style === 'xyz' || this.style === 'extxyz' ? 0 : this.columns.length;
+          let icol = -1;
+          if (/^[+-]?\d+$/.test(v!)) {
+            icol = inumeric(v);
+            if (icol < 0) icol = ncol + icol + 1;
+            icol--;
+          } else if (ncol) icol = this.columns.indexOf(v!);
+          if (icol < 0 || icol >= ncol) throw new StyleError(`Incorrect dump_modify arguments: colname ${v} ${name}`);
+          this.colnames.set(icol, name);
           k += 3;
           break;
         }
@@ -561,6 +607,7 @@ export class Dump {
           if (v === 'none') { this.thresh = []; k += 2; break; }
           if (args.length < k + 4) throw new StyleError('Illegal dump_modify thresh command: missing argument(s)');
           if (!THRESH_ATTRS.has(v!) && !THRESH_REF.test(v!)) throw new StyleError(`Invalid dump_modify thresh attribute: ${v}`);
+          this.threshRefCheck(v!);
           const op = args[k + 2], val = args[k + 3];
           if (!['<', '<=', '>', '>=', '==', '!=', '|^'].includes(op ?? '')) throw new StyleError('Invalid dump_modify thresh operator');
           this.thresh.push({ col: v!, op: op!, value: val === 'LAST' ? 'LAST' : numArg(val, key) });

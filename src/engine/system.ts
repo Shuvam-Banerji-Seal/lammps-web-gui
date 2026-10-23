@@ -261,7 +261,7 @@ export class System {
 
   styleContext(): StyleContext {
     const freeze = this.fixes.find((f) => f.style === 'freeze');
-    return { s: this._state, readFile: (n, o) => this.readFile(n, o), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0, newtonPair: this.newtonPair, equalVariable: (n: string) => this.equalVariable(n), atomTypeWord: (w: string) => typeWord(this.labels, 'atom', w), unitStyle: this.units.style, pairUnsetText,
+    return { s: this._state, readFile: (n, o) => this.readFile(n, o), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0, newtonPair: this.newtonPair, equalVariable: (n: string) => this.equalVariable(n), atomTypeWord: (w: string) => typeWord(this.labels, 'atom', w), typeWord: (kind, w) => typeWord(this.labels, kind, w), unitStyle: this.units.style, pairUnsetText,
       pairNeedsQ: (style: string) => (this._state && !hasCharge(this._state) ? pairTable('pair_q', style) : null), xlattice: this.lattice ? this.lattice.spacing[0] : 1, addFix: (make) => this.addStyleFix(make), fixOf: (st) => this.fixes.find((f) => f.style === st) ?? null, fixById: (id) => this.fixes.find((f) => f.id === id) ?? null, initialBoxExpansion: this.initSmall, runSteps: () => ({ begin: this.run.beginStep, end: this.run.endStep }) };
   }
 

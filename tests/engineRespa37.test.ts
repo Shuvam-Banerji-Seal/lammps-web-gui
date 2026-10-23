@@ -119,17 +119,20 @@ describe('run_style respa parsing (run_style.html)', () => {
   });
 
   it('reads one level per hybrid sub-style', () => {
-    const p = parseRunStyleRespa(['respa', '3', '4', '2', 'bond', '1', 'hybrid', '2', '2', '1', 'kspace', '3']);
+    const p = parseRunStyleRespa(['respa', '3', '4', '2', 'bond', '1', 'hybrid', '2', '2', '1', 'kspace', '3'], { hybridStyles: 3 });
     expect(p.hybrid).toEqual([2, 2, 1]);
     expect(p.kspace).toBe(3);
     expect(p.pair).toBe(3);
   });
 
-  it('refuses the pair splitting keywords by name', () => {
-    for (const kw of ['inner', 'middle', 'outer']) {
-      const args = kw === 'outer' ? ['respa', '2', '2', 'outer', '2'] : ['respa', '2', '2', kw, '1', '5.0', '6.0'];
-      expect(() => parseRunStyleRespa(args)).toThrow(new RegExp(`'${kw}'`));
-    }
+  it('refuses the pair splitting keywords by name, after native checks of their combination', () => {
+    expect(() => parseRunStyleRespa(['respa', '2', '2', 'inner', '1', '4.0', '5.0', 'outer', '2'])).toThrow(/'inner'.*not supported/);
+    expect(() => parseRunStyleRespa(['respa', '2', '2', 'outer', '2', 'inner', '1', '4.0', '5.0'])).toThrow(/'outer'.*not supported/);
+    expect(() => parseRunStyleRespa(['respa', '3', '2', '2', 'middle', '2', '6.0', '7.0', 'inner', '1', '4.0', '5.0', 'outer', '3'])).toThrow(/'middle'.*not supported/);
+    // As native LAMMPS does (src/respa.cpp Respa::Respa at b332f28)
+    expect(() => parseRunStyleRespa(['respa', '2', '2', 'inner', '1', '4.0', '5.0'])).toThrow('Must set both respa inner and outer');
+    expect(() => parseRunStyleRespa(['respa', '2', '2', 'pair', '2', 'outer', '2'])).toThrow('Cannot set both respa pair and inner/middle/outer');
+    expect(() => parseRunStyleRespa(['respa', '2', '2', 'inner', '1', '5.0', '4.0', 'outer', '2'])).toThrow('Respa inner cutoffs are invalid');
   });
 
   it('refuses more than 4 levels, a missing loop factor, a level out of range, and hybrid with pair', () => {
@@ -138,7 +141,11 @@ describe('run_style respa parsing (run_style.html)', () => {
     // As native LAMMPS does (src/respa.cpp at b332f28)
     expect(() => parseRunStyleRespa(['respa', '3', '2'])).toThrow('Not enough rRESPA loop factors provided');
     expect(() => parseRunStyleRespa(['respa', '2', '2', 'pair', '3'])).toThrow(/level must be an integer 1 to 2/);
-    expect(() => parseRunStyleRespa(['respa', '2', '2', 'hybrid', '1', 'pair', '2'])).toThrow(/mutually exclusive/);
+    expect(() => parseRunStyleRespa(['respa', '2', '2', 'hybrid', '1', 'pair', '2'])).toThrow('Cannot use hybrid keyword without hybrid pair style');
+    expect(() => parseRunStyleRespa(['respa', '2', '2', 'hybrid', '1', 'pair', '2'], { hybridStyles: 1 })).toThrow('Cannot set respa hybrid and any of pair/inner/middle/outer');
+    expect(() => parseRunStyleRespa(['respa', '2', 'bogus'])).toThrow("Expected integer parameter instead of 'bogus' in input script or data file");
+    expect(() => parseRunStyleRespa(['respa', '2', '0'])).toThrow('Invalid rRESPA loop factor 0 for level 1');
+    expect(() => parseRunStyleRespa(['respa', '2', '2', 'bond', '2', 'angle', '1'])).toThrow('Invalid order of forces within respa levels');
     expect(() => parseRunStyleRespa(['respa', '2', '2', 'frob', '1'])).toThrow('Unknown run_style respa keyword frob');
   });
 });
@@ -189,7 +196,9 @@ run_style respa 2 2 hybrid 1
 fix 1 all nve
 run 1
 `);
-    expect(r.error?.message).toMatch(/hybrid gives 1 levels but pair_style hybrid\/overlay has 2 sub-styles/);
+    // Measured with native LAMMPS: with two sub-styles, hybrid 1 as the last words gives Expected integer parameter
+    // instead of NULL or empty string in input script or data file (native reads one word past the line)
+    expect(r.error?.message).toMatch(/Expected integer parameter instead of NULL or empty string in input script or data file/);
   });
 
   it('with every term on level 1 and one loop, respa is velocity Verlet: the same thermo as run_style verlet', async () => {

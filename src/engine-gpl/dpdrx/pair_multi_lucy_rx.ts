@@ -35,14 +35,16 @@ export class PairMultiLucyRX extends PairMultiLucy {
   private W = new Float64Array(0);
 
   settings(args: string[]): void {
+    // As native LAMMPS does (src/DPD-REACT/pair_multi_lucy_rx.cpp PairMultiLucyRX::settings at b332f28): the table
+    // style and length, then the keywords
     if (args.length < 2) throw new StyleError('Illegal pair_style command');
+    this.tableSettings([args[0], args[1]]);
     this.fractional = true;
     for (const w of args.slice(2)) {
       if (w === 'fractional') this.fractional = true;
       else if (w === 'molecular') this.fractional = false;
       else throw new StyleError('Illegal pair_style command');
     }
-    super.settings([args[0], args[1]]);
   }
 
   /** pair_multi_lucy_rx.cpp coeff: "I J filename keyword species1 species2 [cutoff]". */

@@ -16,7 +16,7 @@
  */
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { atomIndex } from '../../engine/force/bonded_util';
-import { fmtCoeff, parseNum } from '../../engine/force/util';
+import { fmtCoeff, inumeric, parseNum } from '../../engine/force/util';
 import { cos, sin } from '../libm/sincos';
 import { evTallyFour } from './ev';
 import { acos as libmAcos } from '../libm/acos';
@@ -41,12 +41,6 @@ const norm3safe = (v: number[]): void => {
   v[0] *= scale;
   v[1] *= scale;
   v[2] *= scale;
-};
-
-/** utils::inumeric for the nterms word. */
-const parseInt1 = (w: string | undefined): number => {
-  if (w === undefined || !/^[-+]?\d+$/.test(w.trim())) throw new StyleError(`expected an integer for nterms, got '${w ?? ''}'`);
-  return Number(w);
 };
 
 /** Number of coefficient values per term (the 10 after nterms). */
@@ -80,7 +74,7 @@ export class DihedralSpherical extends Bonded {
     const narg = args.length;
     if (narg < 4) throw new StyleError('Incorrect args for dihedral coefficients');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
-    const nterms_one = parseInt1(args[1]);
+    const nterms_one = inumeric(args[1]);
     if (nterms_one < 1) throw new StyleError('Incorrect number of terms arg for dihedral coefficients');
     if (narg > 2 + PER_TERM * nterms_one) throw new StyleError('Incorrect number of arguments for dihedral coefficients');
     for (let i = lo; i <= hi; i++) {

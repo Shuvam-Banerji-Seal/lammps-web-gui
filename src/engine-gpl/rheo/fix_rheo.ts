@@ -19,7 +19,7 @@ import { computeRheoInterface, rheoFpStore, storeRheoForces } from './compute_rh
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { StyleError, typeBounds } from '../../engine/force/types';
-import { inumeric, parseNum } from '../../engine/force/util';
+import { inumeric, missingArgs, numeric, parseNum } from '../../engine/force/util';
 import { massOf, RHEO_DRHO, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle } from '../../engine/atoms';
 import { computeRheoCoordination, computeRheoCorrections } from './compute_rheo_kernel';
 import { computeRheoRhoSum, computeRheoSurface } from './compute_rheo_surface';
@@ -70,13 +70,13 @@ export class FixRHEO extends Fix {
         shiftFlag = true;
         while (iarg + 1 < args.length) {
           if (args[iarg + 1] === 'exclude/type') {
-            if (iarg + 2 >= args.length) throw new StyleError('Illegal fix rheo shift exclude/type: missing types');
+            if (iarg + 2 >= args.length) throw missingArgs('fix rheo shift exclude/type');
             const [lo, hi] = typeBounds(args[iarg + 2], n);
             for (let t = lo; t <= hi; t++) shiftType[t] = 0;
             iarg += 2;
           } else if (args[iarg + 1] === 'scale/cross/type') {
             // fix_rheo.cpp: "scale/cross/type scale cmin rmin"
-            if (iarg + 4 >= args.length) throw new StyleError('Illegal fix rheo shift scale/cross/type command: missing argument(s)');
+            if (iarg + 4 >= args.length) throw missingArgs('fix rheo shift scale/cross/type');
             this.model.shiftCrossType = true;
             this.model.shiftScale = parseNum(args[iarg + 2], 'shift scale');
             this.model.shiftCmin = parseNum(args[iarg + 3], 'shift cmin');
@@ -88,23 +88,21 @@ export class FixRHEO extends Fix {
         }
       } else if (w === 'surface/detection') {
         // fix_rheo.cpp: "surface/detection coordination zmin_surface zmin_splash" or "divergence divr_surface zmin_splash"
-        if (iarg + 3 >= args.length) throw new StyleError('Illegal fix rheo surface/detection command: missing argument(s)');
+        if (iarg + 3 >= args.length) throw missingArgs('fix rheo surface/detection');
         const sstyle = args[iarg + 1];
-        if (sstyle !== 'coordination' && sstyle !== 'divergence') throw new StyleError(`Illegal surface/detection option in fix rheo, ${sstyle}`);
-        if ((sstyle === 'coordination' && !Number.isInteger(Number(args[iarg + 2]))) || !Number.isInteger(Number(args[iarg + 3]))) {
-          throw new StyleError('Expected integer parameter in fix rheo surface/detection');
-        }
         this.model.surfaceFlag = true;
-        if (sstyle === 'divergence') {
+        if (sstyle === 'coordination') {
+          this.model.zminSurface = inumeric(args[iarg + 2]);
+        } else if (sstyle === 'divergence') {
           this.model.surfaceDivr = true;
-          this.model.divrSurface = parseNum(args[iarg + 2], 'divr_surface');
-        } else this.model.zminSurface = Number(args[iarg + 2]);
-        this.model.zminSplash = Number(args[iarg + 3]);
+          this.model.divrSurface = numeric(args[iarg + 2]);
+        } else throw new StyleError(`Illegal surface/detection option in fix rheo, ${sstyle}`);
+        this.model.zminSplash = inumeric(args[iarg + 3]);
         iarg += 3;
       } else if (w === 'rho/sum') {
         // fix_rheo.cpp: optional "self/mass" (a particle uses its own mass in the summation)
         this.model.rhosumFlag = true;
-        if (iarg + 1 < args.length && args[iarg + 1] === 'self/mass') {
+        while (iarg + 1 < args.length && args[iarg + 1] === 'self/mass') {
           this.model.rhosumSelfMass = true;
           iarg += 1;
         }
@@ -117,7 +115,7 @@ export class FixRHEO extends Fix {
         this.model.interfaceFlag = true;
         rheoFpStore(sys.state);
       } else if (w === 'density') {
-        if (iarg + n >= args.length) throw new StyleError('Illegal fix rheo density: missing values');
+        if (iarg + n >= args.length) throw missingArgs('fix rheo density');
         for (let t = 1; t <= n; t++) {
           const r0 = parseNum(args[iarg + t], 'density');
           if (!(r0 > 0)) throw new StyleError('The equilibrium density must be greater than zero');
@@ -125,7 +123,7 @@ export class FixRHEO extends Fix {
         }
         iarg += n;
       } else if (w === 'speed/sound') {
-        if (iarg + n >= args.length) throw new StyleError('Illegal fix rheo speed/sound: missing values');
+        if (iarg + n >= args.length) throw missingArgs('fix rheo speed/sound');
         for (let t = 1; t <= n; t++) {
           const c = parseNum(args[iarg + t], 'speed of sound');
           this.model.csq[t] = c * c;

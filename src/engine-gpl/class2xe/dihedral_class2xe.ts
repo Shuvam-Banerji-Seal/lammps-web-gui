@@ -13,7 +13,7 @@
  */
 import { SimpleBonded, atomIndex, delta, TypeParams } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
-import { bondedVirial, StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { bondedVirial, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
 import { acos as libmAcos } from '../libm/acos';
@@ -69,6 +69,8 @@ export class DihedralClass2xe extends SimpleBonded {
     if (args.length < 2) throw new StyleError('Invalid coeffs for this dihedral style');
     const word = args[0];
     const kw = args[1];
+    // the type range is checked first (utils::bounds), and a word that is no keyword starts the main line
+    typeBounds(word, this.params.ntypes);
     if (kw in CROSS) {
       const g = this.group(kw);
       const vals = args.slice(2);
@@ -77,9 +79,6 @@ export class DihedralClass2xe extends SimpleBonded {
       for (const k of CROSS[kw].deg) nums[k] *= DEG2RAD;
       g.setRange(word, nums);
       return;
-    }
-    if (/[a-zA-Z]/.test(kw)) {
-      throw new StyleError(`unknown dihedral_coeff class2xe keyword '${kw}' (expected a numeric line or mbt, ebt, at, aat, bb13)`);
     }
     if (args.length !== 7) throw new StyleError('Incorrect args for dihedral coefficients');
     const nums = args.slice(1).map((w, k) => parseNum(w, MAIN_NAMES[k]));

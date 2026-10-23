@@ -15,7 +15,7 @@
  */
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
-import { parseNum, fmtCoeff } from '../../engine/force/util';
+import { fmtCoeff, inumeric, parseNum } from '../../engine/force/util';
 import { ANGSTROM } from '../../engine/force/kspace/ewald';
 import type { CustomProp } from '../../engine/types';
 import { chiralRadius, eunitOf } from './units';
@@ -74,8 +74,8 @@ export class AngleMesoCNT extends Bonded {
       kh = parseNum(args[3], 'kh');
     } else if (args[2] === 'C') {
       if (args.length !== 6) throw new StyleError("Incorrect number of args for 'C' preset in angle coefficients");
-      const n = Math.trunc(parseNum(args[3], 'n'));
-      const m = Math.trunc(parseNum(args[4], 'm'));
+      const n = inumeric(args[3]);
+      const m = inumeric(args[4]);
       const l = parseNum(args[5], 'l');
       const rAng = chiralRadius(n, m);
       const k = 63.80 * libmPow(rAng, 2.93) * eunit * ang;

@@ -11,7 +11,7 @@
  */
 import { SimpleBonded, atomIndex, delta } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type LocalStoreRequest } from '../../engine/force/types';
-import { logical } from '../../engine/force/util';
+import { inumeric, logical } from '../../engine/force/util';
 import { FixStoreLocal } from '../tracker/fix_store_local';
 import type { System } from '../../engine/system';
 import { nativeOrder } from '../../engine/atoms';
@@ -66,8 +66,7 @@ export abstract class BondBPMBase extends SimpleBonded {
         seen.add(key);
         const id = args[k + 1], freqWord = args[k + 2];
         if (id === undefined || freqWord === undefined) throw new StyleError('Illegal bond bpm command, store/local needs a fix ID and N');
-        const freq = Number(freqWord);
-        if (!Number.isInteger(freq) || freq <= 0) throw new StyleError(`Illegal bond bpm command, store/local N must be a positive integer (got '${freqWord}')`);
+        const freq = inumeric(freqWord);
         k += 3;
         const names: string[] = [];
         while (k < args.length && LOCAL_VALUES.has(args[k])) names.push(args[k++]);
@@ -75,6 +74,8 @@ export abstract class BondBPMBase extends SimpleBonded {
           throw new StyleError(`bond_style ${this.name} store/local value ${args[k]} is not supported by the browser engine (no property/atom reference positions)`);
         }
         if (!names.length) throw new StyleError('Storing local data must include at least one value to output');
+        // the fix STORE/LOCAL it creates refuses N <= 0 (src/fix_store_local.cpp at b332f28)
+        if (freq <= 0) throw new StyleError('Illegal fix STORE/LOCAL command');
         this.localSpec = { id, freq, names };
         continue;
       }

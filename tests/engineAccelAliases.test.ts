@@ -320,7 +320,8 @@ describe('suffix, package and aliased names: errors', () => {
 
   it('refuses an unknown package style', async () => {
     const r = await runScript('package bogus 4\n');
-    expect(r.error?.message).toMatch(/package style must be gpu, intel, kokkos or omp \(got 'bogus'\)/);
+    // As native LAMMPS does (src/input.cpp Input::package at b332f28)
+    expect(r.error?.message).toMatch(/Unknown package keyword: bogus/);
     expect((r.error as { command?: string } | null)?.command).toBe('package');
   });
 

@@ -4,6 +4,7 @@ import type { Fix } from '../fix/fix';
 import type { LevelSelect, PerAtomTerm } from '../force/forcefield';
 import { PairHybrid } from '../force/pair/hybrid';
 import { clearAccum, newAccum, StyleError, type Accum } from '../force/types';
+import { inumeric, missingArgs, numeric } from '../force/util';
 import { computeSetup, yieldNow, type RunHooks } from './verlet';
 import { restartDue } from '../commands/restart';
 import { haltRequested } from './halt';
@@ -55,67 +56,138 @@ export interface RespaSettings {
   readonly hybrid: readonly number[] | null;
 }
 
-const isInt = (w: string | undefined): boolean => w !== undefined && /^[0-9]+$/.test(w);
+/** What the run_style respa parser needs besides its words. */
+export interface RespaParseContext {
+  /** The number of sub-styles of a pair_style hybrid or hybrid/overlay, or null for another pair style (or none). */
+  hybridStyles?: number | null;
+  /** The log text ("Respa levels:") and warnings, as native prints them when the run style is set. */
+  log?: (text: string) => void;
+  warn?: (text: string) => void;
+}
 
-/** run_style respa N n1 ... nN-1 keyword values ... — parses the arguments after "respa". */
-export const parseRunStyleRespa = (a: readonly string[]): RespaSettings => {
-  // a[0] is "respa"
-  if (!isInt(a[1])) throw new StyleError('run_style respa: usage run_style respa N n1 ... nN-1 [keyword values ...] (N = number of levels)');
-  const levels = Number(a[1]);
-  if (levels < 2 || levels > RESPA_MAX_LEVELS) {
-    throw new StyleError(`run_style respa: the browser engine supports 2 to ${RESPA_MAX_LEVELS} levels (got ${levels})`);
-  }
-  // As native LAMMPS does (src/respa.cpp Respa::Respa at b332f28): "if (narg < nlevels) error->all(FLERR, 1, "Not enough
-  // rRESPA loop factors provided")", where narg counts the level number too (so a[1..] has at least N words)
-  if (a.length - 1 < levels) throw new StyleError('Not enough rRESPA loop factors provided');
+/**
+ * run_style respa N n1 ... nN-1 keyword values ... — parses the arguments after "respa". As native LAMMPS does
+ * (src/respa.cpp Respa::Respa at b332f28): N and the loop factors (utils::inumeric) with their checks, each keyword with
+ * its word count and values, the combination checks, the defaults, the "Respa levels:" listing, the order check and the
+ * warning for a level without forces. The engine then refuses what it does not implement: more than 4 levels or a
+ * single one, a level outside 1..N, and the inner/middle/outer pair splitting.
+ */
+export const parseRunStyleRespa = (a: readonly string[], ctx: RespaParseContext = {}): RespaSettings => {
+  // a[0] is "respa"; native's narg counts the words after it
+  const narg = a.length - 1;
+  if (narg < 1) throw missingArgs('run_style respa');
+  const nlevels = inumeric(a[1]);
+  if (nlevels < 1) throw new StyleError('Number of rRESPA levels must be >= 1');
+  if (narg < nlevels) throw new StyleError('Not enough rRESPA loop factors provided');
   const loops: number[] = [];
-  for (let k = 0; k < levels - 1; k++) {
-    const w = a[2 + k];
-    if (!isInt(w) || Number(w) < 1) throw new StyleError(`run_style respa: loop factor ${k + 1} must be a positive integer (got '${w ?? ''}'; ${levels - 1} loop factors are needed)`);
-    loops.push(Number(w));
+  for (let k = 1; k < nlevels; k++) {
+    const v = inumeric(a[1 + k]);
+    if (v <= 0) throw new StyleError(`Invalid rRESPA loop factor ${v} for level ${k}`);
+    loops.push(v);
   }
-  const kw: Partial<Record<'bond' | 'angle' | 'dihedral' | 'improper' | 'pair' | 'kspace', number>> = {};
+  // the levels as native keeps them (0-based, -1 when not set)
+  const lv = { bond: -1, angle: -1, dihedral: -1, improper: -1, pair: -1, kspace: -1, inner: -1, middle: -1, outer: -1 };
+  const typed: Partial<Record<keyof typeof lv, string>> = {};
+  const cutoff = [0, 0, 0, 0];
   let hybrid: number[] | null = null;
-  const levelOf = (key: string, w: string | undefined): number => {
-    if (!isInt(w) || Number(w) < 1 || Number(w) > levels) {
-      throw new StyleError(`run_style respa ${key}: the level must be an integer 1 to ${levels} (got '${w ?? ''}')`);
-    }
-    return Number(w);
-  };
-  for (let k = 2 + levels - 1; k < a.length;) {
+  const splitting: string[] = [];
+  for (let k = 1 + nlevels; k < a.length;) {
     const key = a[k];
     switch (key) {
-      case 'inner': case 'middle': case 'outer':
-        throw new StyleError(`run_style respa keyword '${key}' (pair splitting by distance) is not supported by the browser engine; use the pair keyword or the hybrid keyword`);
-      case 'bond': case 'angle': case 'dihedral': case 'improper': case 'pair': case 'kspace': {
-        if (kw[key] !== undefined) throw new StyleError(`run_style respa: keyword '${key}' is given more than once`);
-        kw[key] = levelOf(key, a[k + 1]);
+      case 'bond': case 'angle': case 'dihedral': case 'improper': case 'pair': case 'outer': case 'kspace':
+        if (k + 2 > a.length) throw missingArgs(`run_style respa ${key}`);
+        lv[key] = inumeric(a[k + 1]) - 1;
+        typed[key] = a[k + 1];
+        if (key === 'outer') splitting.push(key);
         k += 2;
         break;
-      }
+      case 'inner': case 'middle':
+        if (k + 4 > a.length) throw missingArgs(`run_style respa ${key}`);
+        lv[key] = inumeric(a[k + 1]) - 1;
+        typed[key] = a[k + 1];
+        cutoff[key === 'inner' ? 0 : 2] = numeric(a[k + 2]);
+        cutoff[key === 'inner' ? 1 : 3] = numeric(a[k + 3]);
+        splitting.push(key);
+        k += 4;
+        break;
       case 'hybrid': {
-        if (hybrid) throw new StyleError('run_style respa: keyword \'hybrid\' is given more than once');
+        // the hybrid keyword requires a hybrid pair style, and takes one level per sub-style
+        const n = ctx.hybridStyles;
+        if (n === undefined || n === null) throw new StyleError('Cannot use hybrid keyword without hybrid pair style');
+        if (k + n > a.length) throw missingArgs('run_style respa hybrid');
         hybrid = [];
+        for (let i = 0; i < n; i++) hybrid.push(inumeric(a[++k]) - 1);
         k++;
-        // one level per hybrid sub-style: the values run up to the next keyword
-        while (k < a.length && isInt(a[k])) { hybrid.push(levelOf('hybrid', a[k])); k++; }
-        if (hybrid.length === 0) throw new StyleError('run_style respa hybrid needs one level per pair_style hybrid sub-style');
         break;
       }
       default:
-        // As native LAMMPS does (src/respa.cpp at b332f28, Respa::Respa): "Unknown run_style respa keyword {}"
-        throw new StyleError(`Unknown run_style respa keyword ${key ?? ''}`);
+        throw new StyleError(`Unknown run_style respa keyword ${key}`);
     }
   }
-  if (hybrid && kw.pair !== undefined) throw new StyleError('run_style respa: the hybrid keyword and the pair keyword are mutually exclusive');
-  // docs.lammps.org/run_style.html defaults (see the header comment)
-  const bond = kw.bond ?? 1;
-  const angle = kw.angle ?? bond;
-  const dihedral = kw.dihedral ?? angle;
-  const improper = kw.improper ?? dihedral;
-  const pair = kw.pair ?? levels;
-  const kspace = kw.kspace ?? pair;
-  return { levels, loops, bond, angle, dihedral, improper, pair, kspace, hybrid };
+  const nhybrid = hybrid ? hybrid.length : 0;
+  if (lv.pair >= 0 && (lv.inner >= 0 || lv.middle >= 0 || lv.outer >= 0)) throw new StyleError('Cannot set both respa pair and inner/middle/outer');
+  if ((lv.inner >= 0 && lv.outer === -1) || (lv.outer >= 0 && lv.inner === -1)) throw new StyleError('Must set both respa inner and outer');
+  if (lv.middle >= 0 && lv.inner === -1) throw new StyleError('Cannot set respa middle without inner/outer');
+  if (nhybrid > 0 && (lv.pair >= 0 || lv.inner >= 0 || lv.middle >= 0 || lv.outer >= 0)) throw new StyleError('Cannot set respa hybrid and any of pair/inner/middle/outer');
+  // the defaults: bond innermost, angle as bond, dihedral as angle, improper as dihedral, pair outermost (without
+  // inner/middle/outer or hybrid), kspace as pair, as outer or as the largest hybrid level
+  if (lv.bond === -1) lv.bond = 0;
+  if (lv.angle === -1) lv.angle = lv.bond;
+  if (lv.dihedral === -1) lv.dihedral = lv.angle;
+  if (lv.improper === -1) lv.improper = lv.dihedral;
+  if (lv.pair === -1 && lv.inner === -1 && nhybrid < 1) lv.pair = nlevels - 1;
+  if (lv.kspace === -1 && lv.pair >= 0) lv.kspace = lv.pair;
+  if (lv.kspace === -1 && lv.pair === -1) {
+    if (nhybrid < 1) lv.kspace = lv.outer;
+    else for (const h of hybrid!) if (lv.kspace < h) lv.kspace = h;
+  }
+  let mesg = 'Respa levels:\n';
+  for (let i = 0; i < nlevels; i++) {
+    mesg += `  ${i + 1} =`;
+    for (const [term, name] of [['bond', 'bond'], ['angle', 'angle'], ['dihedral', 'dihedral'], ['improper', 'improper'], ['pair', 'pair'], ['inner', 'pair-inner'], ['middle', 'pair-middle'], ['outer', 'pair-outer']] as const) {
+      if (lv[term] === i) mesg += ` ${name}`;
+    }
+    for (let j = 0; j < nhybrid; j++) if (hybrid![j] === i) mesg += ` hybrid-${j + 1}`;
+    if (lv.kspace === i) mesg += ' kspace';
+    mesg += '\n';
+  }
+  ctx.log?.(mesg.slice(0, -1));
+  const disorder = () => new StyleError('Invalid order of forces within respa levels');
+  if (lv.angle < lv.bond || lv.dihedral < lv.angle || lv.improper < lv.dihedral) throw disorder();
+  if (lv.pair >= 0 && (lv.pair < lv.improper || lv.kspace < lv.pair)) throw disorder();
+  if (lv.pair === -1 && lv.middle === -1 && nhybrid < 1) {
+    if (lv.inner < lv.improper || lv.outer < lv.inner || lv.kspace < lv.outer) throw disorder();
+  }
+  if (lv.pair === -1 && lv.middle >= 0) {
+    if (lv.inner < lv.improper || lv.middle < lv.inner || lv.outer < lv.inner || lv.kspace < lv.outer) throw disorder();
+  }
+  let empty = false;
+  for (let i = 0; i < nlevels; i++) {
+    if (Object.values(lv).every((l) => l !== i)) empty = true;
+  }
+  if (empty) ctx.warn?.('One or more respa levels compute no forces');
+  if (lv.inner >= 0 && cutoff[1] < cutoff[0]) throw new StyleError('Respa inner cutoffs are invalid');
+  if (lv.middle >= 0 && (cutoff[3] < cutoff[2] || cutoff[2] < cutoff[1])) throw new StyleError('Respa middle cutoffs are invalid');
+
+  // what the browser engine implements
+  if (splitting.length) {
+    throw new StyleError(`run_style respa keyword '${splitting[0]}' (pair splitting by distance) is not supported by the browser engine; use the pair keyword or the hybrid keyword`);
+  }
+  if (nlevels < 2 || nlevels > RESPA_MAX_LEVELS) {
+    throw new StyleError(`run_style respa: the browser engine supports 2 to ${RESPA_MAX_LEVELS} levels (got ${nlevels})`);
+  }
+  const level = (key: string, l: number, w: string | undefined): number => {
+    if (l < 0 || l >= nlevels) throw new StyleError(`run_style respa ${key}: the level must be an integer 1 to ${nlevels} (got '${w ?? l + 1}')`);
+    return l + 1;
+  };
+  const one = (key: 'bond' | 'angle' | 'dihedral' | 'improper' | 'pair' | 'kspace'): number => level(key, lv[key], typed[key]);
+  return {
+    levels: nlevels, loops,
+    bond: one('bond'), angle: one('angle'), dihedral: one('dihedral'), improper: one('improper'),
+    // with hybrid native leaves the pair level unset (-1); the sub-style levels are used instead
+    pair: nhybrid > 0 ? nlevels : one('pair'), kspace: one('kspace'),
+    hybrid: hybrid ? hybrid.map((h) => level('hybrid', h, String(h + 1))) : null,
+  };
 };
 
 /** The integrator-capable fixes (fix/nve.ts, fix/nh.ts). */
@@ -205,7 +277,7 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
   // dihedral computes the 1-4 pair terms, so "if (r->level_pair >= 0 && (r->level_pair != r->level_dihedral))
   // error->all(FLERR, "Dihedral style charmm must be set to same r-RESPA level as 'pair'")"
   const dihedralName = ff.dihedral?.name;
-  if (ff.pair && (dihedralName === 'charmm' || dihedralName === 'charmmfsw') && cfg.dihedral !== cfg.pair) {
+  if (ff.pair && !cfg.hybrid && (dihedralName === 'charmm' || dihedralName === 'charmmfsw') && cfg.dihedral !== cfg.pair) {
     throw new StyleError(`Dihedral style ${dihedralName} must be set to same r-RESPA level as 'pair'`);
   }
 

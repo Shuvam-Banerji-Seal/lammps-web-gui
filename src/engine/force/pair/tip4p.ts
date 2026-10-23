@@ -1,7 +1,7 @@
-import { StyleError, type BondedEquilibria, type PairCompute, pairCoeffArgs } from '../types';
+import { StyleError, type BondedEquilibria, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut } from './lj_cut';
-import { parseNum } from '../util';
+import { inumeric, parseNum } from '../util';
 import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
 import { buildOwnedSites, tip4pAlpha, type OwnedSites, type Tip4pModel } from './tip4p_sites';
 import { libm } from '../../libm';
@@ -76,6 +76,25 @@ const coulLong = (rsq: number, qq: number, g: number, fc: number, poly: boolean,
   return { e, f: forcecoul / rsq };
 };
 
+/**
+ * The O and H atom types and the bond and angle types of the otype htype btype atype words of pair_style, read at each
+ * pair_coeff as native LAMMPS does (src/MOLECULE/pair_lj_cut_tip4p_cut.cpp coeff at b332f28, "set atom types from
+ * pair_style command"; utils::expand_type_int with verify, src/utils.cpp): a type label becomes its number, then the
+ * integer check and the range check ("Atom type 5 is out of bounds (1-2)"). The pair_style command keeps the words.
+ */
+export const tip4pTypes = (words: readonly string[], ctx: StyleContext | undefined): [number, number, number, number] => {
+  const s = ctx?.s;
+  const kinds = ['atom', 'atom', 'bond', 'angle'] as const;
+  const label = { atom: 'Atom', bond: 'Bond', angle: 'Angle' };
+  const nmax = { atom: s?.ntypes ?? 0, bond: s?.topo.nbondtypes ?? 0, angle: s?.topo.nangletypes ?? 0 };
+  const out = kinds.map((kind, i) => {
+    const t = inumeric(ctx?.typeWord ? ctx.typeWord(kind, words[i]) : words[i]);
+    if (t <= 0 || t > nmax[kind]) throw new StyleError(`${label[kind]} type ${t} is out of bounds (1-${nmax[kind]})`);
+    return t;
+  });
+  return [out[0], out[1], out[2], out[3]];
+};
+
 export class PairTIP4PBase extends PairLJCut {
   /** Set by the subclasses: LJ term present, long-range (kspace) Coulomb. */
   hasLJ = true;
@@ -86,6 +105,8 @@ export class PairTIP4PBase extends PairLJCut {
   htype = 0;
   btype = 0;
   atype = 0;
+  /** The otype htype btype atype words of pair_style, read at pair_coeff (tip4pTypes). */
+  typeWords: string[] = [];
   qdist = 0;
   cutCoul = 0;
   private alpha = Number.NaN;
@@ -107,10 +128,7 @@ export class PairTIP4PBase extends PairLJCut {
   settings(args: string[]): void {
     const counts = this.hasLJ ? [6, 7] : [6];
     if (!counts.includes(args.length)) throw new StyleError(`usage: pair_style ${this.name} otype htype btype atype qdist cutoff${this.hasLJ ? ' (cutoff2)' : ''}`);
-    this.otype = parseNum(args[0], 'otype');
-    this.htype = parseNum(args[1], 'htype');
-    this.btype = parseNum(args[2], 'btype');
-    this.atype = parseNum(args[3], 'atype');
+    this.typeWords = args.slice(0, 4);
     this.qdist = parseNum(args[4], 'qdist');
     const cut = parseNum(args[5], 'cutoff');
     if (!(this.qdist > 0)) throw new StyleError('qdist must be > 0');
@@ -123,15 +141,29 @@ export class PairTIP4PBase extends PairLJCut {
       this.cutGlobal = cut;
     }
     if (!(this.cutCoul > 0)) throw new StyleError('cutoffs must be > 0');
-    if (this.otype === this.htype) throw new StyleError('pair_style tip4p: O and H need different atom types');
   }
 
-  /** pair_coeff I J epsilon sigma [cutoff] (LJ); the Coulomb-only styles take "pair_coeff * *". */
-  coeff(args: string[]): void {
+  /** The atom, bond and angle types of the pair_style words (tip4pTypes), at each pair_coeff. */
+  protected setTypes(ctx: StyleContext | undefined): void {
+    // a style read from a native restart file has its types and no words (native: "unless we were restarted")
+    if (this.typeWords.length === 0) return;
+    [this.otype, this.htype, this.btype, this.atype] = tip4pTypes(this.typeWords, ctx);
+    if (this.otype === this.htype) throw new StyleError(`pair_style ${this.name}: O and H need different atom types`);
+  }
+
+  /**
+   * pair_coeff I J epsilon sigma [cutoff] (LJ); the Coulomb-only styles take "pair_coeff * *". As native LAMMPS does
+   * (src/MOLECULE/pair_tip4p_cut.cpp coeff at b332f28), tip4p/cut checks the word count before it reads the types.
+   */
+  coeff(args: string[], ctx?: StyleContext): void {
     if (!this.hasLJ) {
-      if (args.length !== 2) throw pairCoeffArgs(`usage: pair_coeff I J (${this.name} takes no coefficients)`);
+      const usage = () => pairCoeffArgs(`usage: pair_coeff I J (${this.name} takes no coefficients)`);
+      if (!this.coulLong && args.length !== 2) throw usage();
+      this.setTypes(ctx);
+      if (args.length !== 2) throw usage();
       return;
     }
+    this.setTypes(ctx);
     super.coeff(args);
   }
 

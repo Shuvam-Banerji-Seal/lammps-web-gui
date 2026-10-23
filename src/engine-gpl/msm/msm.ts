@@ -23,6 +23,7 @@
  */
 import { KSpaceBase, ANGSTROM, QELECTRON } from '../../engine/force/kspace/ewald';
 import { Pair, StyleError, type KSpaceCompute, type StyleContext } from '../../engine/force/types';
+import { inumeric, logical, numeric } from '../../engine/force/util';
 import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
 import { hasChargeStyle } from '../../engine/atoms';
@@ -64,21 +65,6 @@ interface Level {
   /** Per-atom virial grids v0..v5 (allocate_peratom), allocated when first needed. */
   v: Float64Array[] | null;
 }
-
-const numeric = (w: string | undefined, what: string): number => {
-  const v = Number(w);
-  if (w === undefined || w.trim() === '' || !Number.isFinite(v)) throw new StyleError(`Expected floating point parameter instead of '${w ?? ''}' in input script or data file (${what})`);
-  return v;
-};
-const inumeric = (w: string | undefined, what: string): number => {
-  if (w === undefined || !/^[+-]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w ?? ''}' in input script or data file (${what})`);
-  return Number(w);
-};
-const logical = (w: string | undefined, key: string): boolean => {
-  if (w === 'yes' || w === 'on' || w === 'true' || w === '1') return true;
-  if (w === 'no' || w === 'off' || w === 'false' || w === '0') return false;
-  throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' in input script or data file (kspace_modify ${key})`);
-};
 
 /** C++ static_cast<int> of a double (truncation toward zero). */
 const toInt = (x: number): number => Math.trunc(x);
@@ -145,7 +131,7 @@ export class KSpaceMSM extends KSpaceBase {
   /** MSM::settings: kspace_style msm accuracy (the relative accuracy, absolute value taken, at most 1). */
   settings(args: string[]): void {
     if (args.length < 1) throw new StyleError(`Illegal kspace_style ${this.styleShown} command: missing argument(s)`);
-    this.accuracy = Math.abs(numeric(args[0], 'accuracy'));
+    this.accuracy = Math.abs(numeric(args[0]));
     if (this.accuracy > 1.0) throw new StyleError(`Invalid relative accuracy ${this.accuracy} for kspace_style ${this.styleShown}`);
   }
 
@@ -153,26 +139,26 @@ export class KSpaceMSM extends KSpaceBase {
     switch (key) {
       case 'mesh': {
         if (values.length < 3) throw new StyleError('Illegal kspace_modify mesh command: missing argument(s)');
-        const m = [0, 1, 2].map((d) => inumeric(values[d], 'kspace_modify mesh')) as [number, number, number];
+        const m = [0, 1, 2].map((d) => inumeric(values[d])) as [number, number, number];
         if (m.every((v) => v === 0)) this.meshUser = null;
         else if (m.some((v) => v <= 0)) throw new StyleError('Kspace_modify mesh parameters must be all zero or all positive');
         else this.meshUser = m;
         return 3;
       }
-      case 'order': this.order = inumeric(values[0], 'kspace_modify order'); return 1;
-      case 'force': this.forceAbs = numeric(values[0], 'kspace_modify force'); return 1;
-      case 'cutoff/adjust': this.adjustCutoff = logical(values[0], key); return 1;
-      case 'pressure/scalar': this.scalarPressure = logical(values[0], key); return 1;
+      case 'order': this.order = inumeric(values[0]); return 1;
+      case 'force': this.forceAbs = numeric(values[0]); return 1;
+      case 'cutoff/adjust': this.adjustCutoff = logical(values[0]); return 1;
+      case 'pressure/scalar': this.scalarPressure = logical(values[0]); return 1;
       // kspace.cpp modify_params checks splittol (and its alias eigtol) for every solver; msm.cpp never reads it
       case 'splittol':
       case 'eigtol': {
-        const v = numeric(values[0], `kspace_modify ${key}`);
+        const v = numeric(values[0]);
         if (v >= 1.0) throw new StyleError('Kspace_modify splittol value must be smaller than one');
         return 1;
       }
       // kspace.cpp modify_params sets g_ewald (g_ewald_6) for every solver; MSM has no use for either
       case 'gewald':
-      case 'gewald/disp': numeric(values[0], `kspace_modify ${key}`); return 1;
+      case 'gewald/disp': numeric(values[0]); return 1;
       // slab (warned about and ignored at init), minorder, overlap and the FFT keywords: KSpaceBase
       default: return super.modify(key, values);
     }
@@ -1586,7 +1572,7 @@ export class KSpaceMSMCG extends KSpaceMSM {
   override settings(args: string[]): void {
     if (args.length < 1 || args.length > 2) throw new StyleError(`Illegal kspace_style ${this.styleShown} command`);
     super.settings(args.slice(0, 1));
-    this.smallq = args.length === 2 ? Math.abs(numeric(args[1], 'smallq')) : SMALLQ;
+    this.smallq = args.length === 2 ? Math.abs(numeric(args[1])) : SMALLQ;
   }
 
   /**

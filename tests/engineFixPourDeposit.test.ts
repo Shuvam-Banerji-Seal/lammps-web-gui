@@ -74,7 +74,8 @@ describe('fix pour / fix deposit argument errors', () => {
 
   it('pour mol requires an existing molecule template', async () => {
     const r = await run(`${header}region r block 0 3 0 3 0 1 side in units box\nfix 3 all pour 5 1 7 region r mol tmpl\nrun 1\n`);
-    expect(r.error).toMatch(/molecule template 'tmpl' does not exist/);
+    // native FixPour::options (src/GRANULAR/fix_pour.cpp at b332f28)
+    expect(r.error).toMatch(/Molecule template ID for fix pour does not exist/);
   });
 
   it('pour requires atom_style sphere and a gravity fix', async () => {

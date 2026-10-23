@@ -12,7 +12,7 @@
  */
 import { Pair, StyleError, typeBounds, type PairCompute, type PairConstructorWhere, type StyleContext, potentialFile } from '../../engine/force/types';
 import { atomHasFlag } from '../atom_flags';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 
 const PI = Math.PI;
@@ -152,12 +152,18 @@ export class PairMultiLucy extends Pair {
   }
 
   settings(args: string[]): void {
-    if (args.length !== 2) throw new StyleError('Illegal pair_style command (pair_style multi/lucy lookup|linear N)');
+    // As native LAMMPS does (src/DPD-REACT/pair_multi_lucy.cpp PairMultiLucy::settings at b332f28)
+    if (args.length !== 2) throw new StyleError('Illegal pair_style command');
+    this.tableSettings(args);
+  }
+
+  /** The table style and the table length (utils::inumeric, at least 2), as multi/lucy and multi/lucy/rx read them. */
+  protected tableSettings(args: string[]): void {
     if (args[0] === 'lookup') this.tabstyle = 'lookup';
     else if (args[0] === 'linear') this.tabstyle = 'linear';
-    else throw new StyleError(`Unknown table style '${args[0]}' in pair_style multi/lucy (lookup or linear)`);
-    const n = parseNum(args[1], 'N');
-    if (!Number.isInteger(n) || n < 2) throw new StyleError('Illegal number of pair table entries');
+    else throw new StyleError('Unknown table style in pair_style command');
+    const n = inumeric(args[1]);
+    if (n < 2) throw new StyleError('Illegal number of pair table entries');
     this.tablength = n;
     this.tables = [];
     if (this.ntypes > 0) this.allocate(this.ntypes);

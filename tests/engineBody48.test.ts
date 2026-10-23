@@ -149,7 +149,9 @@ describe('atom_style body and the refused styles', () => {
     await expect(newSession().execute('atom_style body rounded/polygon 2 6\n')).resolves.toBeUndefined(); // accepted since wave 49 (engineBodyPoly49.test.ts)
     await expect(newSession().execute('atom_style body rounded/polyhedron 2 6\n')).resolves.toBeUndefined(); // accepted (engineBodyPolyhedron.test.ts)
     await expect(newSession().execute('atom_style body dummy 2 6\n')).rejects.toThrow(/body dummy/);
-    await expect(newSession().execute('atom_style body nparticle -1 6\n')).rejects.toThrow(/usage: atom_style body/);
+    // As native LAMMPS does (src/BODY/body_nparticle.cpp at b332f28): Nmin must be > 0 and <= Nmax
+    await expect(newSession().execute('atom_style body nparticle -1 6\n')).rejects.toThrow(/Invalid body nparticle command/);
+    await expect(newSession().execute('atom_style body nparticle 2 bogus\n')).rejects.toThrow("Expected integer parameter instead of 'bogus' in input script or data file");
     await expect(newSession().execute('atom_style hybrid charge body nparticle 2 6\n')).rejects.toThrow(/body/);
   });
 

@@ -19,7 +19,7 @@
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { exp as libmExp } from '../libm/exp';
 
@@ -51,7 +51,7 @@ export class PairMorseSoft extends Pair {
 
   settings(args: string[]): void {
     if (args.length !== 3) throw new StyleError('usage: pair_style morse/soft nlambda shift_range cutoff');
-    this.nlambda = parseNum(args[0], 'nlambda');
+    this.nlambda = inumeric(args[0]);
     this.shiftRange = parseNum(args[1], 'shift_range');
     this.cutGlobal = parseNum(args[2], 'cutoff');
     if (!(this.cutGlobal > 0)) throw new StyleError('pair morse/soft: the cutoff must be > 0');

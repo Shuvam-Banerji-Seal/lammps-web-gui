@@ -15,9 +15,9 @@
  * - the radius used for the neighbour cutoff and the bounding sphere test is sqrt(a^2 + b^2 + c^2) for every particle (a
  * bound on the surface, not the C++ radius); the contact set does not depend on the bound, only the neighbour list does.
  */
-import { Pair, StyleError, tallyAtomXyz, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, pairCoeffArgs, tallyAtomXyz, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
-import { parseNum } from '../../engine/force/util';
+import { bounds, missingArgs, numeric, parseNum } from '../../engine/force/util';
 import { SUPER_BLOCK, SUPER_INERTIA } from '../../engine/superellipsoid';
 import type { SimState } from '../../engine/types';
 import {
@@ -134,9 +134,9 @@ export class PairGranularSuperellipsoid extends Pair {
   }
 
   coeff(args: string[]): void {
-    if (args.length < 3) throw new StyleError('Incorrect args for pair coefficients (usage: pair_coeff I J normal-model args tangential ...)');
-    const [ilo, ihi] = boundsOf(args[0], this.ntypes);
-    const [jlo, jhi] = boundsOf(args[1], this.ntypes);
+    if (args.length < 3) throw pairCoeffArgs('usage: pair_coeff I J normal-model args tangential ...');
+    const [ilo, ihi] = bounds(args[0], 1, this.ntypes);
+    const [jlo, jhi] = bounds(args[1], 1, this.ntypes);
     const sp = parseSpec(args.slice(2));
     const nt = this.ntypes + 1;
     for (let i = ilo; i <= ihi; i++) {
@@ -481,79 +481,63 @@ export class PairGranularSuperellipsoid extends Pair {
 
 const add3 = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 
-/** Type bounds "I", "*", "*n", "n*", "m*n" as in pair_coeff. */
-const boundsOf = (word: string, n: number): [number, number] => {
-  const bad = () => new StyleError(`invalid type '${word}' (expected 1..${n}, or a wildcard *, *n, n*, m*n)`);
-  if (word === '*') return [1, n];
-  const star = word.indexOf('*');
-  const num = (w: string) => {
-    if (!/^\d+$/.test(w)) throw bad();
-    return Number(w);
-  };
-  let lo: number, hi: number;
-  if (star < 0) lo = hi = num(word);
-  else {
-    const a = word.slice(0, star), b = word.slice(star + 1);
-    lo = a === '' ? 1 : num(a);
-    hi = b === '' ? n : num(b);
-  }
-  if (lo < 1 || hi > n || lo > hi) throw bad();
-  return [lo, hi];
-};
-
-/** The pair_coeff arguments after I and J: normal model, optional damping, tangential, cutoff and limit_damping. */
+/**
+ * The pair_coeff arguments after I and J: normal model, optional damping, tangential, cutoff and limit_damping. As
+ * native LAMMPS does (src/ASPHERE/pair_granular_superellipsoid.cpp PairGranularSuperellipsoid::coeff at b332f28): each
+ * model's word count, its values (utils::numeric) and checks, with native's messages.
+ */
 const parseSpec = (a: string[]): { spec: Spec; cutoff: number } => {
   const spec: Spec = { normal: HOOKE, kn: 0, gamman: 0, damping: -1, tangential: -1, kt: 0, xt: 0, xmu: 0, limitDamping: false };
   let cutoff = -1;
   let iarg = 0;
-  const need = (n: number, what: string) => {
-    if (iarg + n > a.length) throw new StyleError(`pair_coeff: missing arguments for ${what}`);
-  };
-  const num = (w: string | undefined, what: string): number => {
-    if (w === undefined || !Number.isFinite(Number(w))) throw new StyleError(`pair_coeff: ${what} needs a number`);
-    return Number(w);
+  const need = (n: number) => {
+    if (iarg + n > a.length) throw missingArgs('pair granular/superellipsoid');
   };
   if (a[iarg] === 'hooke' || a[iarg] === 'hertz') {
     spec.normal = a[iarg] === 'hooke' ? HOOKE : HERTZ;
-    need(3, a[iarg]);
-    spec.kn = num(a[iarg + 1], 'k_n');
-    spec.gamman = num(a[iarg + 2], 'eta_n0');
+    need(3);
+    spec.kn = numeric(a[iarg + 1]);
+    spec.gamman = numeric(a[iarg + 2]);
     if (spec.kn < 0 || spec.gamman < 0) throw new StyleError('Illegal linear normal model');
     iarg += 3;
   } else {
-    throw new StyleError(`Unknown normal model '${a[iarg] ?? ''}' for pair granular/superellipsoid (hooke or hertz)`);
+    throw new StyleError(`Unknown normal model ${a[iarg]}`);
   }
   while (iarg < a.length) {
     const w = a[iarg];
     if (w === 'tangential') {
-      const t = a[iarg + 1];
-      if (t !== 'linear_history' && t !== 'classic') throw new StyleError(`Unknown tangential model '${t ?? ''}' for pair granular/superellipsoid (linear_history or classic)`);
+      iarg++;
+      const t = a[iarg];
+      if (t !== 'linear_history' && t !== 'classic') throw new StyleError(`Unknown tangential model ${t ?? ''}`);
       spec.tangential = t === 'classic' ? CLASSIC : LINEAR_HISTORY;
-      need(4, t);
-      spec.kt = num(a[iarg + 2], 'k_t');
-      spec.xt = num(a[iarg + 3], 'x_gamma_t');
-      spec.xmu = num(a[iarg + 4], 'mu_s');
+      need(4);
+      spec.kt = numeric(a[iarg + 1]);
+      spec.xt = numeric(a[iarg + 2]);
+      spec.xmu = numeric(a[iarg + 3]);
       if (spec.kt < 0 || spec.xt < 0 || spec.xmu < 0) throw new StyleError('Illegal linear tangential model');
-      iarg += 5;
+      iarg += 4;
     } else if (w === 'damping') {
-      const d = a[iarg + 1];
+      iarg++;
+      const d = a[iarg];
       if (d === 'mass_velocity') spec.damping = MASS_VELOCITY;
       else if (d === 'viscoelastic') spec.damping = VISCOELASTIC;
-      else throw new StyleError(`Unknown damping model '${d ?? ''}' for pair granular/superellipsoid (mass_velocity or viscoelastic)`);
-      iarg += 2;
+      // native's message for an unknown damping model says "normal model"
+      else throw new StyleError(`Unknown normal model ${d ?? ''}`);
+      iarg += 1;
     } else if (w === 'rolling' || w === 'twisting' || w === 'heat') {
-      throw new StyleError(`${w[0].toUpperCase()}${w.slice(1)} models are not implemented for pair granular/superellipsoid (the LAMMPS style refuses them too)`);
+      throw new StyleError(`${w[0].toUpperCase()}${w.slice(1)} models not yet implemented for superellipsoids`);
     } else if (w === 'cutoff') {
-      cutoff = num(a[iarg + 1], 'cutoff');
+      if (iarg + 1 >= a.length) throw new StyleError('Illegal pair_coeff command, not enough parameters for cutoff keyword');
+      cutoff = numeric(a[iarg + 1]);
       iarg += 2;
     } else if (w === 'limit_damping') {
       spec.limitDamping = true;
       iarg += 1;
     } else {
-      // As native LAMMPS does (src/ASPHERE/pair_granular_superellipsoid.cpp PairGranularSuperellipsoid::coeff at b332f28): an unknown word stops with "Illegal pair_coeff command {word}".
       throw new StyleError(`Illegal pair_coeff command ${w}`);
     }
   }
+  // native leaves the tangential model unset (uninitialized) without the keyword; the engine requires it
   if (spec.tangential < 0) throw new StyleError('pair_coeff granular/superellipsoid needs the tangential keyword');
   if (spec.damping < 0) spec.damping = VISCOELASTIC;
   return { spec, cutoff };

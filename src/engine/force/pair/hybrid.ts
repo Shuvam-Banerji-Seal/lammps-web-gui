@@ -1,6 +1,6 @@
 import { Pair, StyleError, typeBounds, type BondedEquilibria, type KSpace, type PairCompute, type PairSep, type StyleContext, type PairConstructorWhere, newAccum, clearAccum, type Accum, pairCoeffArgs } from '../types';
 import { NEIGHMASK, type NeighList } from '../../neighbor';
-import { numeric } from '../util';
+import { inumeric, missingArgs, numeric } from '../util';
 import { removedStyleError } from '../../deprecated';
 import { unknownStyleError } from '../../nativeStyles';
 
@@ -241,8 +241,44 @@ export class PairHybrid extends Pair {
     return { sub: all[m - 1], used: 2 };
   }
 
+  /**
+   * The sub-style a pair_coeff line names (args[2], and its instance number in args[3] when the name is listed more
+   * than once), or null for "none". As native LAMMPS does (src/pair_hybrid.cpp PairHybrid::coeff, and
+   * src/pair_hybrid_overlay.cpp and pair_hybrid_scaled.cpp coeff at b332f28): hybrid requires an integer word
+   * (utils::is_integer) in the range of the listings; the other modes read it with utils::inumeric, and a number that
+   * matches no listing leaves the name unmatched.
+   */
+  private coeffSub(args: string[]): { sub: Sub | null; used: number } {
+    const name = args[2];
+    const all = this.subs.filter((s) => s.name === name);
+    const unknown = () => new StyleError(`Expected hybrid sub-style instead of ${name} in pair_coeff command`);
+    if (all.length > 1) {
+      if (this.mode === 'hybrid') {
+        const w = args[3] ?? '';
+        if (!/^[+-]?\d+$/.test(w)) {
+          throw new StyleError(`Pair style ${name} was listed multiple times, but there is no index in the pair_coeff command (expected 1-${all.length} but found ${w})`);
+        }
+        const mult = inumeric(w);
+        if (mult < 1 || mult > all.length) {
+          throw new StyleError(`Pair style ${name} was listed multiple times but its pair_coeff index of ${mult} is out of range (1-${all.length})`);
+        }
+        return { sub: all[mult - 1], used: 2 };
+      }
+      if (args.length < 4) throw pairCoeffArgs(`usage: pair_coeff I J ${name} N args (pair_style ${this.mode})`);
+      const mult = inumeric(args[3]);
+      const sub = all.find((s) => s.instance === mult);
+      if (!sub) throw unknown();
+      return { sub, used: 2 };
+    }
+    if (all.length === 1) return { sub: all[0], used: 1 };
+    if (name === 'none') return { sub: null, used: 1 };
+    throw unknown();
+  }
+
   coeff(args: string[], ctx: StyleContext): void {
-    if (args.length < 3) throw pairCoeffArgs(`usage: pair_coeff I J sub-style args (pair_style ${this.mode})`);
+    // As native LAMMPS does (src/pair_hybrid.cpp PairHybrid::coeff at b332f28): hybrid reports the missing words as
+    // utils::missing_cmd_args, the other modes as "Incorrect args for pair coefficients"
+    if (args.length < 3) throw this.mode === 'hybrid' ? missingArgs('pair_coeff') : pairCoeffArgs(`usage: pair_coeff I J sub-style args (pair_style ${this.mode})`);
     const n = this.ntypes;
     const [ilo, ihi] = typeBounds(args[0], n);
     const [jlo, jhi] = typeBounds(args[1], n);
@@ -250,12 +286,11 @@ export class PairHybrid extends Pair {
     for (let i = ilo; i <= ihi; i++) for (let j = Math.max(jlo, i); j <= jhi; j++) pairs.push([i, j]);
     if (pairs.length === 0 && ilo === ihi && jlo === jhi) pairs.push([jlo, ilo]);
     if (pairs.length === 0) throw new StyleError(`pair_coeff: no type pairs with I <= J in ${args[0]} ${args[1]}`);
-    if (args[2] === 'none') {
-      if (args.length !== 3) throw pairCoeffArgs('usage: pair_coeff I J none');
+    const { sub, used } = this.coeffSub(args);
+    if (!sub) {
       for (const [i, j] of pairs) this.assign(i, j, []);
       return;
     }
-    const { sub, used } = this.selectSub(args.slice(2), 'pair_coeff');
     const rest = args.slice(2 + used);
     sub.style.coeff([args[0], args[1], ...rest], ctx);
     sub.used = true;

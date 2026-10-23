@@ -1,6 +1,7 @@
 import { isSmdStyle } from '../smd';
 import type { System } from '../system';
 import { StyleError } from '../force/types';
+import { inumeric, numeric } from '../force/util';
 import { compileCFormat, checkCFormat, formatNumber, type ValueKind } from '../cformat';
 import { localDumpColumns, localColumnSource, localOutputOf } from '../compute/local_dump';
 import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
@@ -1077,14 +1078,7 @@ export class Dump {
   }
 }
 
-const intArg = (w: string | undefined, key: string): number => {
-  const n = Number(w);
-  if (w === undefined || !Number.isInteger(n)) throw new StyleError(`dump_modify ${key} needs an integer`);
-  return n;
-};
+// the dump_modify values, read as native's utils::inumeric and utils::numeric (src/dump.cpp modify_params at b332f28)
+const intArg = (w: string | undefined, _key: string): number => inumeric(w);
 
-const numArg = (w: string | undefined, key: string): number => {
-  const n = Number(w);
-  if (w === undefined || !Number.isFinite(n)) throw new StyleError(`dump_modify ${key} needs a number`);
-  return n;
-};
+const numArg = (w: string | undefined, _key: string): number => numeric(w);

@@ -15,7 +15,8 @@
  * energy and virial; the EW3DC slab correction. The coefficient sums of the dispersion and dipole terms are taken at
  * init (native coeff_sums_flag).
  */
-import { KSpaceBase, ANGSTROM, QELECTRON, modifyNoEffect } from '../../engine/force/kspace/ewald';
+import { KSpaceBase, ANGSTROM, QELECTRON, ignoredKeyword, modifyNoEffect } from '../../engine/force/kspace/ewald';
+import { inumeric, numeric } from '../../engine/force/util';
 import { Pair, StyleError, type KSpaceCompute, type StyleContext } from '../../engine/force/types';
 import type { SimState } from '../../engine/types';
 import { nativeOrder } from '../../engine/atoms';
@@ -127,34 +128,23 @@ export class KSpaceEwaldDisp extends KSpaceBase {
 
   modify(key: string, values: string[]): number {
     switch (key) {
-      case 'gewald/disp': {
-        const v = Number(values[0]);
-        if (!Number.isFinite(v)) throw new StyleError(`Expected floating point parameter instead of '${values[0] ?? ''}' for kspace_modify gewald/disp`);
-        this.gewaldUser6 = v;
-        return 1;
-      }
+      case 'gewald/disp': this.gewaldUser6 = numeric(values[0]); return 1;
       case 'mix/disp': {
         const v = values[0];
         if (v === 'pair') this.mixflag = 0;
         else if (v === 'geom') this.mixflag = 1;
         else if (v === 'none') this.mixflag = 2;
-        else throw new StyleError(`Unknown kspace_modify mix/disp option ${v ?? ''}`);
+        else throw new StyleError(`Unknown kspace_modify mix/disp flag ${v ?? ''}`);
         return 1;
       }
-      // kspace.cpp modify_params stores these for every solver; ewald_disp.cpp reads none of them
-      case 'kmax/ewald': return 3;
-      case 'mesh': case 'mesh/disp': return 3;
-      case 'order': case 'order/disp': case 'force/disp/real': case 'force/disp/kspace': return 1;
-      case 'splittol': case 'eigtol': {
-        if (Number(values[0]) >= 1.0) throw new StyleError('Kspace_modify splittol value must be smaller than one');
-        return 1;
-      }
-      case 'disp/auto': {
-        if (!['yes', 'no', 'on', 'off', 'true', 'false', '1', '0'].includes(values[0] ?? '')) {
-          throw new StyleError(`Expected boolean parameter instead of '${values[0] ?? ''}' for kspace_modify disp/auto`);
-        }
-        return 1;
-      }
+      // kspace.cpp modify_params reads these for every solver (utils::inumeric, numeric, logical, with its checks);
+      // ewald_disp.cpp uses none of them
+      case 'kmax/ewald':
+        if ([inumeric(values[0]), inumeric(values[1]), inumeric(values[2])].some((v) => v < 0)) throw new StyleError('Bad kspace_modify kmax/ewald parameter');
+        return 3;
+      case 'mesh': case 'mesh/disp': case 'order': case 'order/disp': case 'force/disp/real': case 'force/disp/kspace':
+      case 'splittol': case 'eigtol': case 'disp/auto':
+        return ignoredKeyword(key, values, 'ewald');
       case 'slab':
         if (values[0] === 'auto') throw new StyleError(`kspace_modify slab auto is not supported by kspace_style ${this.name} in the browser engine`);
         return super.modify(key, values);

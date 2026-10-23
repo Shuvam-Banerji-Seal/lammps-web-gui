@@ -1,5 +1,5 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral } from '../bonded_util';
-import { parseNum } from '../util';
+import { inumeric, parseNum } from '../util';
 import { StyleError, type BondedCompute, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
@@ -16,9 +16,11 @@ export class DihedralHarmonic extends SimpleBonded {
 
   protected parse(args: string[]): number[] {
     if (args.length !== 3) throw bondedCoeffArgs('dihedral', 'dihedral_coeff harmonic needs K d n');
-    const K = parseNum(args[0], 'K'), d = parseNum(args[1], 'd'), n = parseNum(args[2], 'n');
-    if (d !== 1 && d !== -1) throw new StyleError('dihedral harmonic d must be +1 or -1');
-    if (!Number.isInteger(n) || n < 0) throw new StyleError('dihedral harmonic n must be an integer >= 0');
+    // As native LAMMPS does (src/MOLECULE/dihedral_harmonic.cpp coeff at b332f28): K utils::numeric, d and n
+    // utils::inumeric, then the sign and multiplicity checks
+    const K = parseNum(args[0], 'K'), d = inumeric(args[1]), n = inumeric(args[2]);
+    if (d !== 1 && d !== -1) throw new StyleError('Incorrect sign arg for dihedral coefficients');
+    if (n < 0) throw new StyleError('Incorrect multiplicity arg for dihedral coefficients');
     return [K, d, n];
   }
 

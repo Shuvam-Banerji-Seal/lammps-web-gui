@@ -29,6 +29,7 @@
  * .vtp or .vtu (one piece file per processor and a .pvtp summary); compressed (.gz) files.
  */
 import { StyleError } from '../../engine/force/types';
+import { numeric } from '../../engine/force/util';
 import type { DumpVtkFactory, DumpVtkHost, DumpVtkStyle } from '../../engine/output/dump';
 import { VtkWriter, type VtkArray } from './vtk_writer';
 
@@ -76,11 +77,7 @@ const vectorName = (start: string): string => {
 };
 
 /** A floating point dump_modify value (native utils::numeric). */
-const numArg = (w: string | undefined, key: string): number => {
-  const n = Number(w);
-  if (w === undefined || w === '' || !Number.isFinite(n)) throw new StyleError(`Expected floating point parameter instead of '${w ?? ''}' in dump_modify ${key}`);
-  return n;
-};
+const numArg = (w: string | undefined, _key: string): number => numeric(w);
 
 /** dump_modify keywords dump vtk leaves to the core dump command (its every, first, delay and pad). */
 const CORE_KEYWORDS = new Set(['every', 'first', 'delay', 'pad']);

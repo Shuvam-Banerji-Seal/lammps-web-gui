@@ -1,6 +1,6 @@
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { inumeric, missingArgs } from '../force/util';
+import { inumeric, missingArgs, numeric } from '../force/util';
 import { FixTTM, type TtmKeywordHandler, type TtmPositional } from './ttm';
 
 /*
@@ -134,11 +134,9 @@ export class FixTTMThermal extends FixTTM {
     // Measured with native LAMMPS (black box): the source keyword takes one value (negative values are accepted).
     const handler: TtmKeywordHandler = (key, a, i) => {
       if (key !== 'source') return 0;
-      const v = Number(a[i + 1]);
-      // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_thermal.cpp FixTTMThermal::FixTTMThermal at b332f28): if (iarg + 2 > narg) missing_cmd_args("fix ttm/thermal source")
+      // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_thermal.cpp FixTTMThermal::FixTTMThermal at b332f28): if (iarg + 2 > narg) missing_cmd_args("fix ttm/thermal source"), then utils::numeric
       if (i + 2 > a.length) throw new StyleError('Illegal fix ttm/thermal source command: missing argument(s)');
-      if (!Number.isFinite(v)) throw new StyleError(`fix ${id} ttm/thermal: keyword source needs a value (energy/(time*volume))`);
-      kw.source = v;
+      kw.source = numeric(a[i + 1]);
       return 2;
     };
     super(sys, id, group, args, 'ttm/thermal', pos, handler);

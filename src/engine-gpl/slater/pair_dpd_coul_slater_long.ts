@@ -14,7 +14,7 @@
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
-import { fmtCoeff, parseNum } from '../../engine/force/util';
+import { fmtCoeff, parseInt_, parseNum } from '../../engine/force/util';
 import { RanMars } from '../random_mars';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { EPSILON, tallyXYZ } from '../dpd/pair_dpd';
@@ -53,7 +53,7 @@ export class PairDPDCoulSlaterLong extends Pair {
     if (args.length !== 5) throw new StyleError('Illegal pair_style command (dpd/coul/slater/long T cutoff seed lamda cutoff_coul)');
     this.temperature = parseNum(args[0], 'temperature');
     this.cutGlobal = parseNum(args[1], 'cutoff');
-    this.seed = parseNum(args[2], 'seed');
+    this.seed = parseInt_(args[2], 'seed');
     this.lamda = parseNum(args[3], 'lamda');
     this.cutCoul = parseNum(args[4], 'cutoff_coul');
     if (!(this.seed > 0)) throw new StyleError(`Invalid random seed ${args[2]} for pair_style dpd/coul/slater/long command`);

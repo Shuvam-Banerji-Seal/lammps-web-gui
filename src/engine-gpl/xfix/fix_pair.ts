@@ -17,6 +17,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { inumeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 
 /** Pair styles that expose per-atom fields to fix pair, with the fields each one provides (PairEAM::extract_peratom). */
@@ -59,15 +60,19 @@ export class FixPair extends Fix {
 
     // field/flag pairs; a flag of 1 needs a trigger scalar that no engine pair style extracts (native: "Fix pair pair
     // style cannot extract <field>_flag", which is the native error for a style with no such extract()).
+    // As native LAMMPS does (src/fix_pair.cpp FixPair::FixPair at b332f28): all field/flag pairs are read first (each
+    // flag with utils::inumeric, 0 or 1), then the trigger and field checks
     const rest = args.slice(2);
-    if (rest.length % 2 !== 0) {
-      throw new StyleError(`Illegal fix pair ${rest[rest.length - 1]} command: missing argument(s)`);
+    const flags: number[] = [];
+    for (let k = 0; k < rest.length; k += 2) {
+      if (k + 2 > rest.length) throw new StyleError(`Illegal fix pair ${rest[k]} command: missing argument(s)`);
+      const flag = inumeric(rest[k + 1]);
+      if (flag !== 0 && flag !== 1) throw new StyleError(`Illegal fix pair ${rest[k]} command flag: ${rest[k + 1]}`);
+      flags.push(flag);
     }
     for (let k = 0; k < rest.length; k += 2) {
       const field = rest[k];
-      const flag = rest[k + 1];
-      if (flag !== '0' && flag !== '1') throw new StyleError(`Illegal fix pair ${field} command flag: ${flag}`);
-      if (flag === '1') throw new StyleError(`Fix pair pair style cannot extract ${field}_flag`);
+      if (flags[k / 2] === 1) throw new StyleError(`Fix pair pair style cannot extract ${field}_flag`);
       if (!EAM_FIELDS.has(field)) {
         throw new StyleError(`Fix pair cannot extract property ${field} from pair style ${this.pairname}`);
       }

@@ -238,20 +238,14 @@ export class FixWallFlow extends Fix {
     // count must be the walls alone or the walls followed by a units pair, checked before any wall is read.
     const rest = args.length - 5;
     if (rest !== n && rest !== n + 2) throw new StyleError('Wrong fix wall/flow wall count');
-    for (let k = 0; k < n; k++) {
-      const w = args[5 + k];
-      const v = Number(w);
-      if (!Number.isFinite(v) || w.startsWith('v_')) {
-        throw new StyleError(`fix ${id} (wall/flow): wall position must be a number, got '${w}'`);
-      }
-      this.walls.push(v);
-    }
+    // the units pair is checked before the walls are read (utils::numeric)
     if (rest === n + 2) {
       if (args[args.length - 2] !== 'units') throw new StyleError('Wrong fix wall/flow units command');
       const v = args[args.length - 1];
       if (v !== 'lattice' && v !== 'box') throw new StyleError('Wrong fix wall/flow units command');
       this.unitsMode = v;
     }
+    for (let k = 0; k < n; k++) this.walls.push(numeric(args[5 + k]));
     this.rng = new RanMars(seed);
     this.rng.uniform(); // warm-up draw made when the fix is created (measured with native LAMMPS)
   }

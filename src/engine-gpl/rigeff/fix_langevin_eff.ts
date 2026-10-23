@@ -15,6 +15,7 @@
 import { Fix } from '../../engine/fix/fix';
 import type { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
+import { inumeric, logical, missingArgs, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { nativeOrder, ELECTRON_RFORCE, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle } from '../../engine/atoms';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from '../../engine/fix/util';
@@ -42,14 +43,15 @@ export class FixLangevinEff extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     const s = sys.state;
-    if (!isElectronStyle(s.atomStyle)) throw new StyleError('Fix langevin/eff requires atom style electron');
-    if (args.length < 4) throw new StyleError('Illegal fix langevin/eff command');
+    // the base constructor FixLangevin::FixLangevin (src/fix_langevin.cpp at b332f28) reads the arguments: Tstart (a
+    // number or v_name), Tstop and Tperiod (utils::numeric), seed (utils::inumeric), then the keywords
+    if (args.length < 4) throw missingArgs('fix langevin');
     this.tStart = parseNumOrVar(args[0], 'Tstart');
-    this.tStop = Number(args[1]);
-    this.tPeriod = Number(args[2]);
-    const seed = Number(args[3]);
-    if (!(this.tPeriod > 0.0)) throw new StyleError('Fix langevin period must be > 0.0');
-    if (!Number.isInteger(seed) || seed <= 0) throw new StyleError('Fix langevin seed value must be > 0');
+    this.tStop = numeric(args[1]);
+    this.tPeriod = numeric(args[2]);
+    const seed = inumeric(args[3]);
+    if (this.tPeriod <= 0.0) throw new StyleError('Fix langevin period must be > 0.0');
+    if (seed <= 0) throw new StyleError('Fix langevin seed value must be > 0');
     this.rng = new RanMars(seed);
     // Measured with native LAMMPS (black box, as in fix langevin): the stream starts one draw in, so the first draw is taken here.
     this.rng.uniform();
@@ -63,8 +65,8 @@ export class FixLangevinEff extends Fix {
         case 'scale': {
           // fix_langevin.cpp: if (iarg + 3 > narg) utils::missing_cmd_args(FLERR, "fix langevin scale", error);
           if (k + 3 > args.length) throw new StyleError('Illegal fix langevin scale command: missing argument(s)');
-          const t = Number(args[k + 1]), r = Number(args[k + 2]);
-          if (!Number.isInteger(t) || t < 1 || t > s.ntypes) throw new StyleError(`Invalid fix langevin scale type. Must be 1 < type <= ${s.ntypes}`);
+          const t = inumeric(args[k + 1]), r = numeric(args[k + 2]);
+          if (t < 1 || t > s.ntypes) throw new StyleError(`Invalid fix langevin scale type. Must be 1 < type <= ${s.ntypes}`);
           this.ratio[t] = r;
           k += 3;
           break;
@@ -72,9 +74,7 @@ export class FixLangevinEff extends Fix {
         case 'tally': {
           // fix_langevin.cpp: if (iarg + 2 > narg) utils::missing_cmd_args(FLERR, "fix langevin tally", error);
           if (k + 2 > args.length) throw new StyleError('Illegal fix langevin tally command: missing argument(s)');
-          const v = args[k + 1];
-          if (v !== 'yes' && v !== 'no') throw new StyleError(`Illegal fix langevin ${key} value: ${v}`);
-          tally = v === 'yes';
+          tally = logical(args[k + 1]);
           k += 2;
           break;
         }
@@ -90,6 +90,8 @@ export class FixLangevinEff extends Fix {
           throw new StyleError(`Unknown fix langevin keyword ${key}`);
       }
     }
+    // native has no atom style check (it reads the electron attributes); the engine requires them here
+    if (!isElectronStyle(s.atomStyle)) throw new StyleError('Fix langevin/eff requires atom style electron');
     this.tally = tally;
     this.scalarFlag = tally;
     this.extscalar = 1;

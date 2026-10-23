@@ -1,4 +1,5 @@
 import { StyleError } from '../force/types';
+import { numeric } from '../force/util';
 import type { System } from '../system';
 import { FixTTM, type TtmKeywordHandler } from './ttm';
 
@@ -136,12 +137,11 @@ export class FixTTMCascade extends FixTTM {
         return 1;
       }
       if (key === 'offset') {
-        const v = Number(a[i + 1]);
-        // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_cascade.cpp FixTTMCascade::FixTTMCascade at b332f28): missing_cmd_args("fix ttm/cascade offset")
+        // As native LAMMPS does (src/EXTRA-FIX/fix_ttm_cascade.cpp FixTTMCascade::FixTTMCascade at b332f28): the word
+        // count, then the time (utils::numeric), at least 0
         if (i + 2 > a.length) throw new StyleError('Illegal fix ttm/cascade offset command: missing argument(s)');
-        if (!Number.isFinite(v)) throw new StyleError(`fix ${id} ttm/cascade: keyword offset needs a time`);
-        // Measured with native LAMMPS (black box): a negative offset stops the run with an error.
-        if (v < 0) throw new StyleError(`fix ${id} ttm/cascade: time offset must be >= 0`);
+        const v = numeric(a[i + 1]);
+        if (v < 0) throw new StyleError('Fix ttm/cascade time_offset must be >= 0');
         data.offset = v;
         return 2;
       }

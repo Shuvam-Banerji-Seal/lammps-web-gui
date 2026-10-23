@@ -111,9 +111,11 @@ export const parseSnaArgs = (id: string, style: string, args: string[], ntypes: 
       return args[++k];
     };
     const flag = (): boolean => {
+      // utils::inumeric; the engine takes 0 or 1 (native compares some flags with 1 and others with 0)
       const w = value();
-      if (w !== '0' && w !== '1') throw new StyleError(`compute ${id} (${style}): ${kw} must be 0 or 1 (got '${w}')`);
-      return w === '1';
+      const v = parseInt_(w, kw);
+      if (v !== 0 && v !== 1) throw new StyleError(`compute ${id} (${style}): ${kw} must be 0 or 1 (got '${w}')`);
+      return v === 1;
     };
     const list = (): number[] => {
       const out: number[] = [];

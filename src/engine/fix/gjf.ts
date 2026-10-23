@@ -1,5 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { inumeric, numeric } from '../force/util';
 import type { System } from '../system';
 import { RanMars } from '../rng';
 import { takeFixRecord, type MarsRestart } from './restartRecord';
@@ -123,20 +124,18 @@ export class FixGJF extends Fix {
       } else if (key === 'method') {
         // As native LAMMPS does (src/EXTRA-FIX/fix_gjf.cpp FixGJF::FixGJF at b332f28): the method number is read with
         // utils::inumeric first, so a missing number is "Expected integer parameter instead of NULL or empty string"
-        if (k + 1 >= args.length) throw new StyleError('Expected integer parameter instead of NULL or empty string in input script or data file');
-        method = Number(args[k + 1]);
+        method = inumeric(args[k + 1]);
         if (method === 7) {
           // native: "method 7 c2"
           if (k + 2 >= args.length) throw new StyleError('Illegal fix gjf command for GJ-VII');
-          const c2 = Number(args[k + 2]);
-          if (!Number.isFinite(c2)) throw new StyleError(`Expected floating point parameter instead of '${args[k + 2]}' in input script or data file`);
+          const c2 = numeric(args[k + 2]);
           if (c2 < 0 || c2 > 1) throw new StyleError('Choice of c2 in GJ-VII must be 0≤c2≤1');
           this.c2Given = c2;
           k += 3;
           continue;
         }
         if (k + 1 >= args.length) throw new StyleError('Illegal fix gjf command');
-        if (!Number.isInteger(method) || method < 0 || method > 8) throw new StyleError('Invalid GJ method choice in gjf command');
+        if (method < 0 || method > 8) throw new StyleError('Invalid GJ method choice in gjf command');
         k += 2;
       } else {
         // As native LAMMPS does (src/EXTRA-FIX/fix_gjf.cpp FixGJF::FixGJF at b332f28): any other word is "Illegal fix gjf command"

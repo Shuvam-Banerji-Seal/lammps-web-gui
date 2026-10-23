@@ -9,7 +9,7 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
-import { numeric } from '../../engine/force/util';
+import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 
 export class FixViscousSphere extends Fix {
@@ -45,11 +45,10 @@ export class FixViscousSphere extends Fix {
         if (this.scaleVar) throw new StyleError('Must use only one style of scaling');
         if (k + 2 >= args.length) throw new StyleError('Illegal fix viscous/sphere command');
         this.scaleType ??= new Float64Array(s.ntypes + 1).fill(1);
-        const t = Number(args[k + 1]);
-        const r = Number(args[k + 2]);
-        if (!Number.isInteger(t) || t < 1 || t > s.ntypes) {
-          throw new StyleError(`Atom type ${args[k + 1]} out of range for fix viscous/sphere command:`);
-        }
+        // utils::inumeric type, utils::numeric ratio, then the type range
+        const t = inumeric(args[k + 1]);
+        const r = numeric(args[k + 2]);
+        if (t < 1 || t > s.ntypes) throw new StyleError(`Atom type ${t} out of range for fix viscous/sphere command:`);
         this.scaleType[t] = r;
         k += 3;
       }

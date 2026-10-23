@@ -4,7 +4,7 @@ import type { System } from '../system';
 import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
 import { CUSTOM_ATTR, hasCharge, hasMolecule, massOf } from '../atoms';
 import { fillPeratomAttr, peratomAttrProblem } from '../compute/peratom';
-import { inumeric } from '../force/util';
+import { inumeric, missingArgs, numeric } from '../force/util';
 
 /*
  * fix ID group-ID store/state N input1 input2 ... [keyword value ...] — docs.lammps.org/fix_store_state.html:
@@ -119,23 +119,21 @@ export class FixStoreState extends Fix {
         k += 2;
       } else if (kw === 'history') {
         if (k + 4 > args.length) throw new StyleError('Illegal fix store/state history command: missing argument(s)');
-        const v = args.slice(k + 1, k + 4).map((w) => {
-          if (!/^[-+]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}' in input script or data file`);
-          return Number(w);
-        });
+        const v = args.slice(k + 1, k + 4).map((w) => inumeric(w));
         this.history = { nevery: v[0], nrepeat: v[1], nfreq: v[2] };
         k += 4;
       } else if (kw === 'thresh') {
-        if (k + 4 > args.length) throw new StyleError(`${what}: keyword thresh needs three values`);
-        if (this.thresh) throw new StyleError(`${what}: the thresh keyword may be used only once`);
+        // As native LAMMPS does (src/fix_store_state.cpp FixStoreState::FixStoreState at b332f28): the word count, one
+        // use only, the v_ reference and its variable, the operator, then the value (utils::numeric)
+        if (k + 4 > args.length) throw missingArgs('fix store/state thresh');
+        if (this.thresh) throw new StyleError('The fix store/state thresh keyword may be used only once');
         const name = args[k + 1];
-        if (!name.startsWith('v_')) throw new StyleError(`${what}: no variable reference as first argument to thresh keyword`);
-        const op = args[k + 2];
-        if (!OPS.has(op)) throw new StyleError(`${what}: unsupported thresh comparison operator ${op}`);
-        const value = Number(args[k + 3]);
-        if (args[k + 3].trim() === '' || !Number.isFinite(value)) throw new StyleError(`${what}: invalid thresh value '${args[k + 3]}'`);
-        this.thresh = { name: name.slice(2), op, value };
+        if (!name.startsWith('v_')) throw new StyleError('No variable reference as first argument to thresh keyword');
+        this.thresh = { name: name.slice(2), op: '', value: 0 };
         this.checkThreshVariable();
+        const op = args[k + 2];
+        if (!OPS.has(op)) throw new StyleError(`Unsupported fix store/state thresh comparison operator ${op}`);
+        this.thresh = { name: name.slice(2), op, value: numeric(args[k + 3]) };
         k += 4;
       } else {
         throw new StyleError(`Unknown fix store/state keyword: ${kw}`);

@@ -1,6 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { parseNum } from '../force/util';
+import { inumeric, numeric, parseNum } from '../force/util';
 import type { System } from '../system';
 import type { SimState } from '../types';
 import { granularContact, heatFlowOf, mdrPairOf, newContactOut, parseGranularSpec, PairGranular, type ContactOut, type MdrApi, type MdrMaterialCore, type Pm } from '../force/pair/granular';
@@ -8,6 +8,26 @@ import { contactMassArray, HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
 
 /** The classic fstyles of fix wall/gran/region (hooke, hooke/history, hertz/history). */
 const CLASSIC_FSTYLES = ['hooke', 'hooke/history', 'hertz/history'] as const;
+
+/**
+ * The classic fstyle words (any fstyle but granular) as native LAMMPS reads them (src/GRANULAR/granular_model.cpp
+ * GranularModel::define_classic_model at b332f28): the word count, Kn Kt gamma_n gamma_t xmu (utils::numeric, NULL for
+ * the default Kt and gamma_t), dampflag (utils::inumeric; gamma_t is 0 without damping), the range check, and then the
+ * style name.
+ */
+const classicModel = (args: string[]): { kn: number; kt: number; gn: number; gt: number; xmu: number; dampflag: number } => {
+  if (args.length <= 6) throw new StyleError('Insufficient arguments provided for classic gran model command');
+  const kn = numeric(args[1]);
+  const kt = args[2] === 'NULL' ? (kn * 2) / 7 : numeric(args[2]);
+  const gn = numeric(args[3]);
+  let gt = args[4] === 'NULL' ? 0.5 * gn : numeric(args[4]);
+  const xmu = numeric(args[5]);
+  const dampflag = inumeric(args[6]);
+  if (dampflag === 0) gt = 0;
+  if (kn < 0 || kt < 0 || gn < 0 || gt < 0 || xmu < 0 || xmu > 10000 || dampflag < 0 || dampflag > 1) throw new StyleError('Illegal classic gran model command');
+  if (!(CLASSIC_FSTYLES as readonly string[]).includes(args[0])) throw new StyleError('Invalid classic gran model');
+  return { kn, kt, gn, gt, xmu, dampflag };
+};
 import { type Region, type SurfaceContact } from '../region';
 import { libm } from '../libm';
 
@@ -83,7 +103,6 @@ import { libm } from '../libm';
 type FStyle = 'hooke' | 'hooke/history' | 'hertz/history';
 type Dim = 0 | 1 | 2;
 const DIM_OF: Record<string, Dim> = { x: 0, y: 1, z: 2 };
-const STYLE_NAMES: readonly FStyle[] = ['hooke', 'hooke/history', 'hertz/history'];
 
 /** wiggle or shear motion of the walls (the same for every wall of the fix). */
 interface Motion {
@@ -113,7 +132,6 @@ export class FixWallGran extends Fix {
   private readonly hertz: boolean;
   private readonly history: boolean;
   private kn = 0; private kt = 0; private gn = 0; private gt = 0; private xmu = 0;
-  private dampflag = 0;
   private limitDamping = false;
   private readonly planes: Plane[] = [];
   private motion: Motion | null = null;
@@ -132,31 +150,14 @@ export class FixWallGran extends Fix {
     super(sys, id, group, args);
     const usage = 'usage: fix ID group-ID wall/gran fstyle fstyle_params wallstyle args [keyword values ...]';
     if (args.length < 1) throw new StyleError(usage);
+    // the registry sends fstyle granular to FixWallGranGranular
     const fs = args[0];
-    if (fs === 'granular') {
-      throw new StyleError('fix wall/gran granular (fstyle granular) is not supported yet; use hooke, hooke/history or hertz/history');
-    }
-    if (!(STYLE_NAMES as readonly string[]).includes(fs)) {
-      throw new StyleError(`fix ${id} wall/gran: unknown fstyle '${fs}' (hooke, hooke/history, hertz/history)`);
-    }
+    ({ kn: this.kn, kt: this.kt, gn: this.gn, gt: this.gt, xmu: this.xmu } = classicModel(args));
     this.fstyle = fs as FStyle;
     this.hertz = this.fstyle === 'hertz/history';
     this.history = this.fstyle !== 'hooke';
-    // fstyle_params: Kn Kt gamma_n gamma_t xmu dampflag [limit_damping]
-    if (args.length < 8) throw new StyleError(`${usage} (fstyle ${fs} needs Kn Kt gamma_n gamma_t xmu dampflag)`);
-    this.kn = parseNum(args[1], 'Kn');
-    this.kt = args[2] === 'NULL' ? (this.kn * 2) / 7 : parseNum(args[2], 'Kt');
-    this.gn = parseNum(args[3], 'gamma_n');
-    this.gt = args[4] === 'NULL' ? 0.5 * this.gn : parseNum(args[4], 'gamma_t');
-    this.xmu = parseNum(args[5], 'xmu');
-    if (args[6] !== '0' && args[6] !== '1') throw new StyleError(`fix ${id} wall/gran: dampflag must be 0 or 1, got '${args[6]}'`);
-    this.dampflag = Number(args[6]);
     let k = 7;
     if (args[k] === 'limit_damping') { this.limitDamping = true; k++; }
-    if (this.kn < 0 || this.kt < 0 || this.gn < 0 || this.gt < 0 || this.xmu < 0 || this.xmu > 10000) {
-      throw new StyleError(`fix ${id} wall/gran: Kn, Kt, gamma_n, gamma_t must be >= 0 and xmu in 0..1e4`);
-    }
-    if (this.dampflag === 0) this.gt = 0;
 
     // wallstyle args; the planar styles take lo hi (NULL allowed, not both)
     const ws = args[k++];
@@ -448,29 +449,17 @@ export class FixWallGranGranular extends Fix {
   constructor(sys: System, id: string, group: string, args: string[], regionMode: boolean) {
     super(sys, id, group, args);
     this.style = regionMode ? 'wall/gran/region' : 'wall/gran';
-    const classic = (CLASSIC_FSTYLES as readonly string[]).includes(args[0]);
-    if (args[0] !== 'granular' && !classic) throw new StyleError(`fix ${id} ${this.style}: expected fstyle granular or hooke, hooke/history, hertz/history`);
+    // native: every fstyle but granular is a classic model (classicModel)
+    const classic = args[0] !== 'granular';
     if (classic && !regionMode) throw new StyleError(`fix ${id} wall/gran: classic fstyle ${args[0]} is the plane legacy style (FixWallGran)`);
     let k = 1;
     let pmOut: Pm;
     if (classic) {
       // fstyle_params: Kn Kt gamma_n gamma_t xmu dampflag [limit_damping], then the wallstyle region ID
-      if (args.length < 8) throw new StyleError(`fix ${id} ${this.style} ${args[0]}: needs Kn Kt gamma_n gamma_t xmu dampflag`);
-      const kn = parseNum(args[1], 'Kn');
-      const kt = args[2] === 'NULL' ? (kn * 2) / 7 : parseNum(args[2], 'Kt');
-      const gn = parseNum(args[3], 'gamma_n');
-      const gt = args[4] === 'NULL' ? 0.5 * gn : parseNum(args[4], 'gamma_t');
-      const xmu = parseNum(args[5], 'xmu');
-      if (args[6] !== '0' && args[6] !== '1') throw new StyleError(`fix ${id} ${this.style}: dampflag must be 0 or 1, got '${args[6]}'`);
-      const dampflag = Number(args[6]);
+      const { kn, kt, gn, gt: gtEff, xmu } = classicModel(args);
       k = 7;
       let limit = false;
       if (args[k] === 'limit_damping') { limit = true; k++; }
-      if (kn < 0 || kt < 0 || gn < 0 || gt < 0 || xmu < 0 || xmu > 10000) {
-        throw new StyleError(`fix ${id} ${this.style}: Kn, Kt, gamma_n, gamma_t must be >= 0 and xmu in 0..1e4`);
-      }
-      const gtEff = dampflag === 0 ? 0 : gt;
-      if (gn === 0 && gtEff > 0) throw new StyleError(`fix ${id} ${this.style}: gamma_t > 0 needs gamma_n > 0 (the tangential damping scales with gamma_n)`);
       const hist = args[0] !== 'hooke';
       this.legacyHertz = args[0] === 'hertz/history';
       pmOut = {

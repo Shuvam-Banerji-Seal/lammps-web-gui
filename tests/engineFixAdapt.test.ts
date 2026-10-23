@@ -312,7 +312,7 @@ variable        e equal 2.0
 
   it('the value must be v_name', async () => {
     const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut epsilon 1 1 2.0\n`);
-    expect(r.message).toMatch(/expected v_name/);
+    expect(r.message).toMatch(/Argument must be variable not 2\.0/);
   });
 
   it('atom-style variables are rejected (equal-style only)', async () => {

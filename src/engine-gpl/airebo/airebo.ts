@@ -14,7 +14,7 @@
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  */
 import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { newRef, TOL, type ReboCore } from './rebo';
 import { bondorder } from './bondorder';
 import { sp } from './splines';
@@ -177,11 +177,9 @@ export class PairAIREBO extends Pair {
     }
     this.cutlj = parseNum(args[0], 'LJ cutoff');
     if (args.length >= 3) {
-      this.ljflag = parseInt(args[1], 10);
-      this.torflag = parseInt(args[2], 10);
-      if (String(this.ljflag) !== args[1] || String(this.torflag) !== args[2]) {
-        throw new StyleError(`Illegal pair_style ${this.name} flag: ljflag and torflag must be 0 or 1`);
-      }
+      // utils::inumeric; any nonzero value turns the term on (pair_airebo.cpp compute: "if (ljflag) FLJ(eflag)")
+      this.ljflag = inumeric(args[1]);
+      this.torflag = inumeric(args[2]);
     }
     if (args.length === 4) {
       this.sigcut = this.cutlj;

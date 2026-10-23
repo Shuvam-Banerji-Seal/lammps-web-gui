@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import type { SimState } from '../types';
 import { StyleError } from '../force/types';
+import { inumeric, numeric } from '../force/util';
 import { buildAtomMap, isEllipsoid, isLineAtom, isTriAtom, massOf, nativeOrder, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { termRows } from '../compute/local';
 import { SUPER_BLOCK } from '../superellipsoid';
@@ -385,11 +386,10 @@ export class ImageDump {
     return this.namedColor(w);
   }
 
-  private num(w: string, key: string): number {
+  /** A number (utils::numeric, as native's dump image keywords read them) or a v_name evaluated now. */
+  private num(w: string, _key: string): number {
     if (w.startsWith('v_')) return this.sys.equalVariable(w.slice(2));
-    const n = Number(w);
-    if (!Number.isFinite(n)) throw new StyleError(`dump ${this.id}: dump image ${key} needs a number`);
-    return n;
+    return numeric(w);
   }
 
   private color(w: string): Col {
@@ -413,25 +413,34 @@ export class ImageDump {
         }
         case 'adiam': this.adiamAll = this.num(a[k + 1], 'adiam'); k += 2; break;
         case 'size': {
-          const w = this.num(a[k + 1], 'size'), h = this.num(a[k + 2], 'size');
-          if (!(w > 0) || !(h > 0)) throw new StyleError(`dump ${this.id}: dump image size needs positive width and height`);
-          this.w = Math.trunc(w); this.h = Math.trunc(h);
+          // As native LAMMPS does (src/GRAPHICS/dump_image.cpp at b332f28): utils::inumeric width and height
+          const w = inumeric(a[k + 1]), h = inumeric(a[k + 2]);
+          if (w <= 0 || h <= 0) throw new StyleError('Illegal dump image dimensions');
+          this.w = w; this.h = h;
           k += 3;
           break;
         }
-        case 'view': this.theta = this.num(a[k + 1], 'view'); this.phi = this.num(a[k + 2], 'view'); k += 3; break;
+        case 'view': {
+          // native: theta (utils::numeric, 0 to 180) or a v_name, then phi
+          this.theta = this.num(a[k + 1], 'view');
+          if (!a[k + 1].startsWith('v_') && (this.theta < 0 || this.theta > 180)) throw new StyleError('Invalid dump image theta value');
+          this.phi = this.num(a[k + 2], 'view');
+          k += 3;
+          break;
+        }
         case 'up': this.up = [this.num(a[k + 1], 'up'), this.num(a[k + 2], 'up'), this.num(a[k + 3], 'up')]; k += 4; break;
         case 'center': {
           // center values = flag Cx Cy Cz ; flag is *s* or *d* (static/dynamic)
           const flag = a[k + 1];
-          if (flag !== 's' && flag !== 'd') throw new StyleError(`dump ${this.id}: dump image center flag must be s or d`);
+          if (flag !== 's' && flag !== 'd') throw new StyleError(`Unknown dump image center style ${flag}`);
           this.centerFrac = [this.num(a[k + 2], 'center'), this.num(a[k + 3], 'center'), this.num(a[k + 4], 'center')];
           k += 5;
           break;
         }
         case 'zoom': {
           const z = this.num(a[k + 1], 'zoom');
-          if (!(z > 0)) throw new StyleError(`dump ${this.id}: dump image zoom must be > 0`);
+          // native's message (sic): "Invail dump image zoom value {}"
+          if (!a[k + 1].startsWith('v_') && z <= 0) throw new StyleError(`Invail dump image zoom value ${z}`);
           this.zoom = z;
           k += 2;
           break;

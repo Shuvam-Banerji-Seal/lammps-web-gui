@@ -15,6 +15,7 @@
  *
  * Refused by name (StyleError): ptemp, drag (other than 0), and 2d boxes.
  */
+import { logical as readLogical, numeric } from '../../engine/force/util';
 import { FixNH } from '../../engine/fix/nh';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
@@ -207,16 +208,12 @@ export class FixNPTCauchy extends FixNH {
     let alpha = 0.001;
     let restartPK = false;
     const coreArgs: string[] = [];
-    const num = (k: number, key: string): number => {
-      const v = Number(args[k]);
-      if (args[k] === undefined || !Number.isFinite(v)) throw new StyleError(`fix npt/cauchy ${key}: expected a number`);
-      return v;
-    };
-    const logical = (k: number, key: string): boolean => {
+    // the values are read with utils::numeric and utils::logical (fix_npt_cauchy.cpp)
+    const num = (k: number, _key: string): number => numeric(args[k]);
+    const logical = (k: number, _key: string): boolean => {
       // fix_npt_cauchy.cpp: if (iarg+2 > narg) error->all(FLERR,"Illegal fix npt/cauchy command") before the value is read
       if (args[k] === undefined) throw new StyleError('Illegal fix npt/cauchy command');
-      if (args[k] !== 'yes' && args[k] !== 'no') throw new StyleError(`fix npt/cauchy ${key} must be yes or no`);
-      return args[k] === 'yes';
+      return readLogical(args[k]);
     };
     for (let k = 0; k < args.length;) {
       const key = args[k];

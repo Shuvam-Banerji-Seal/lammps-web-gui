@@ -15,7 +15,7 @@
  */
 import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
-import { parseNum } from '../../engine/force/util';
+import { parseInt_, parseNum } from '../../engine/force/util';
 import { EDPD_CV, EDPD_FLUX, EDPD_TEMP, isEdpdStyle } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
 import { NativePairOrder } from '../neighbor/nativeOrder';
@@ -45,7 +45,7 @@ export class PairEDPD extends Pair {
   settings(args: string[]): void {
     if (args.length !== 2) throw new StyleError('Illegal pair_style command');
     this.cutGlobal = parseNum(args[0], 'cutoff');
-    this.seed = parseNum(args[1], 'seed');
+    this.seed = parseInt_(args[1], 'seed');
     if (!(this.seed > 0) || !Number.isInteger(this.seed)) throw new StyleError('Invalid random number seed');
     // pair_edpd.cpp settings(): RanMars(seed + me) for the forces and RanMars(2 seed + me) for the heat exchange
     this.rng = new RanMars(this.seed % 900000000);

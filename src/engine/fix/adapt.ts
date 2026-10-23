@@ -3,7 +3,8 @@ import { Fix } from './fix';
 import { Pair, PairParams, StyleError, typeBounds, type Bonded } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
 import { SimpleBonded } from '../force/bonded_util';
-import { inumeric, missingArgs } from '../force/util';
+import { bounds, inumeric, missingArgs } from '../force/util';
+import { isNumericTypeWord, typeWord } from '../labelmap';
 import { BondedHybrid } from '../force/bonded_hybrid';
 import type { System } from '../system';
 import type { SimState } from '../types';
@@ -218,8 +219,6 @@ const yesNo = (key: string, w: string | undefined): boolean => {
   return w === 'yes';
 };
 
-const TYPE_WORD = /^(\*|\d+|\d*\*\d*)$/;
-
 /** True when the style or one of its hybrid sub-styles applies a tail correction. */
 const hasTail = (p: Pair): boolean => {
   if (p.tail) return true;
@@ -311,7 +310,8 @@ export class FixAdapt extends Fix {
   }
 
   private checkVariable(id: string, vw: string): void {
-    if (!vw.startsWith('v_')) throw new StyleError(`fix ${id} (adapt): expected v_name, got '${vw}'`);
+    // native FixAdapt::FixAdapt (src/fix_adapt.cpp at b332f28), for every attribute
+    if (!vw.startsWith('v_')) throw new StyleError(`Argument must be variable not ${vw}`);
     const name = vw.slice(2);
     const v = this.sys.vars.get(name);
     if (!v) throw new StyleError(`fix ${id} (adapt): variable ${name} does not exist`);
@@ -324,6 +324,15 @@ export class FixAdapt extends Fix {
     if (pstyle === undefined || pparam === undefined || iw === undefined || jw === undefined) {
       throw new StyleError(`fix ${id} (adapt): pair needs pstyle pparam I J v_name (${USAGE})`);
     }
+    // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::FixAdapt at b332f28): the two type ranges
+    // (utils::bounds_typelabel) and the v_ reference are checked when the fix is defined; the pair style and its
+    // parameter when the run starts (the engine checks them next)
+    const sys = this.sys;
+    for (const w of [iw, jw]) {
+      if (sys.labels.defined && !isNumericTypeWord(w)) inumeric(typeWord(sys.labels, 'atom', w));
+      else bounds(w, 1, sys.state.ntypes);
+    }
+    if (!vw.startsWith('v_')) throw new StyleError(`Argument must be variable not ${vw}`);
     const m = /^([^:]+)(?::(\d+))?$/.exec(pstyle);
     if (!m) throw new StyleError(`fix ${id} (adapt): pair style selection '${pstyle}' must be style or style:N (${USAGE})`);
     const base = m[1];
@@ -340,7 +349,6 @@ export class FixAdapt extends Fix {
     if (!entry.params.includes(lname)) {
       throw new StyleError(`fix ${id} (adapt): pair style ${base} parameter '${pparam}' cannot be adapted (supported: ${entry.params.join(', ')})`);
     }
-    if (!TYPE_WORD.test(iw) || !TYPE_WORD.test(jw)) throw new StyleError(`fix ${id} (adapt): invalid type pair '${iw} ${jw}' (${USAGE})`);
     this.checkVariable(id, vw);
     // the type ranges and the pair table are resolved at run start (resolve())
     this.pending.push({ pstyle: base, inst, pparam: lname, vname: vw.slice(2), iw, jw, reinit: entry.reinit });

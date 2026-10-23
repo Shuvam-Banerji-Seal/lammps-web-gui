@@ -1,7 +1,7 @@
 import { Fix, fixModifyCompute } from './fix';
 import { takeFixRecord } from './restartRecord';
 import { StyleError } from '../force/types';
-import { inumeric, missingArgs, numeric } from '../force/util';
+import { inumeric, logical, missingArgs, numeric } from '../force/util';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { RanMars } from '../rng';
@@ -122,13 +122,14 @@ export class FixTempBerendsen extends RescaleFix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 3) throw new StyleError('usage: fix ID group temp/berendsen Tstart Tstop Tdamp');
+    // As native LAMMPS does (src/fix_temp_berendsen.cpp FixTempBerendsen::FixTempBerendsen at b332f28)
+    if (args.length !== 3) throw new StyleError(`Illegal fix ${this.style} command: expected 6 arguments but found ${args.length + 3}`);
     const energy = energyRestart(sys, id, this.style);
     if (energy !== undefined) this.exchanged = energy;
     this.tStart = parseNumOrVar(args[0], 'Tstart');
-    this.tStop = Number(args[1]);
-    this.damp = Number(args[2]);
-    if (!Number.isFinite(this.tStop) || !(this.damp > 0)) throw new StyleError('fix temp/berendsen: Tstop must be a number and Tdamp > 0');
+    this.tStop = numeric(args[1]);
+    this.damp = numeric(args[2]);
+    if (this.damp <= 0) throw new StyleError('Fix temp/berendsen Tdamp period must be > 0.0');
   }
 
   endOfStep(): void {
@@ -257,13 +258,15 @@ export class FixLangevin extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 4) throw new StyleError('usage: fix ID group langevin Tstart Tstop damp seed [keywords]');
+    // As native LAMMPS does (src/fix_langevin.cpp FixLangevin::FixLangevin at b332f28): Tstart (a number or v_name),
+    // Tstop and damp (utils::numeric) and seed (utils::inumeric), then their checks
+    if (args.length < 4) throw missingArgs('fix langevin');
     this.tStart = parseNumOrVar(args[0], 'Tstart');
-    this.tStop = Number(args[1]);
-    this.damp = Number(args[2]);
-    const seed = Number(args[3]);
-    if (!Number.isFinite(this.tStop) || !(this.damp > 0)) throw new StyleError('fix langevin: Tstop must be a number and damp > 0');
-    if (!Number.isInteger(seed) || seed <= 0) throw new StyleError('fix langevin: seed must be a positive integer');
+    this.tStop = numeric(args[1]);
+    this.damp = numeric(args[2]);
+    const seed = inumeric(args[3]);
+    if (this.damp <= 0) throw new StyleError('Fix langevin period must be > 0.0');
+    if (seed <= 0) throw new StyleError('Fix langevin seed value must be > 0');
     this.rng = new RanMars(seed);
     // Measured with native LAMMPS (black box): the stream starts one draw in,
     // so the first draw is discarded (the draw is taken here, at fix creation).
@@ -273,31 +276,32 @@ export class FixLangevin extends Fix {
     for (let k = 4; k < args.length;) {
       const key = args[k];
       switch (key) {
+        // the keywords check their word count, then read their values (utils::numeric, inumeric, logical)
         case 'scale': {
-          const t = Number(args[k + 1]), r = Number(args[k + 2]);
-          if (!Number.isInteger(t) || t < 1 || t > s.ntypes || !(r > 0)) throw new StyleError('fix langevin scale needs a type and a ratio > 0');
+          if (k + 3 > args.length) throw missingArgs('fix langevin scale');
+          const t = inumeric(args[k + 1]), r = numeric(args[k + 2]);
+          if (t <= 0 || t > s.ntypes) throw new StyleError(`Invalid fix langevin scale type. Must be 1 < type <= ${s.ntypes}`);
           this.ratio[t] = r;
           k += 3;
           break;
         }
         case 'tally': case 'zero': {
-          if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError(`fix langevin ${key} must be yes or no`);
-          if (key === 'tally') this.tally = args[k + 1] === 'yes'; else this.zero = args[k + 1] === 'yes';
+          if (k + 2 > args.length) throw missingArgs(`fix langevin ${key}`);
+          if (key === 'tally') this.tally = logical(args[k + 1]); else this.zero = logical(args[k + 1]);
           k += 2;
           break;
         }
         case 'omega':
-          if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError('fix langevin omega must be yes or no');
-          this.omegaOn = args[k + 1] === 'yes';
+          if (k + 2 > args.length) throw missingArgs('fix langevin omega');
+          this.omegaOn = logical(args[k + 1]);
           k += 2;
           break;
         case 'angmom': {
-          // As native LAMMPS does (src/fix_langevin.cpp at b332f28): "no" gives ascale 0 and any other value is a
-          // numeric factor; a factor of 0 leaves the rotational thermostat off.
+          // "no" gives ascale 0 and any other value is a numeric factor; a factor of 0 leaves the rotational
+          // thermostat off
+          if (k + 2 > args.length) throw missingArgs('fix langevin angmom');
           const v = args[k + 1];
-          const a = v === 'no' ? 0 : Number(v);
-          if (!Number.isFinite(a) || a < 0) throw new StyleError(`fix langevin angmom must be 'no' or a factor >= 0 (got '${v}')`);
-          this.ascale = a;
+          this.ascale = v === 'no' ? 0 : numeric(v);
           k += 2;
           break;
         }

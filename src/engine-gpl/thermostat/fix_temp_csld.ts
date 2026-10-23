@@ -9,6 +9,7 @@
  * velocities and new gaussian ones at the target temperature. The draws are x, y, z per atom of the group, in
  * atom order, z included in 2d (as the source does).
  */
+import { inumeric, numeric } from '../../engine/force/util';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { RescaleFix } from '../../engine/fix/thermostats';
@@ -25,13 +26,14 @@ export class FixTempCSLD extends RescaleFix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 4) throw new StyleError('usage: fix ID group temp/csld Tstart Tstop Tdamp seed');
+    // As native LAMMPS does (src/EXTRA-FIX/fix_temp_csld.cpp at b332f28): Tstop and Tdamp utils::numeric, seed utils::inumeric, and the seed message with two blanks
+    if (args.length !== 4) throw new StyleError('Illegal fix temp/csld command');
     this.tStart = parseNumOrVar(args[0], 'Tstart');
-    this.tStop = Number(args[1]);
-    this.tPeriod = Number(args[2]);
-    const seed = Number(args[3]);
-    if (!Number.isFinite(this.tStop) || !(this.tPeriod > 0)) throw new StyleError('Illegal fix temp/csld command period value');
-    if (!Number.isInteger(seed) || seed <= 0) throw new StyleError('Illegal fix temp/csld command seed value');
+    this.tStop = numeric(args[1]);
+    this.tPeriod = numeric(args[2]);
+    const seed = inumeric(args[3]);
+    if (this.tPeriod <= 0) throw new StyleError('Illegal fix temp/csld command');
+    if (seed <= 0) throw new StyleError('Illegal fix temp/csld  command');
     this.rng = new RanMars(seed);
     const saved = takeFixRecord(sys, id, this.style)?.state as MarsEnergyRestart | undefined;
     if (saved) { this.exchanged = saved.energy; this.rng.setState(saved.rng); }

@@ -2,7 +2,7 @@ import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type Pair
 import type { SimState } from '../../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { contactMassArray } from '../../atoms';
-import { parseNum } from '../util';
+import { inumeric, numeric } from '../util';
 import { gplHook } from '../../gplHooks';
 
 /*
@@ -122,23 +122,23 @@ export class PairGran extends Pair {
   }
 
   settings(args: string[]): void {
-    if (args.length < 6 || args.length > 7) throw new StyleError(`usage: pair_style ${this.name} Kn Kt gamma_n gamma_t xmu dampflag [limit_damping]`);
-    this.kn = parseNum(args[0], 'Kn');
-    this.kt = args[1] === 'NULL' ? (this.kn * 2) / 7 : parseNum(args[1], 'Kt');
-    this.gn = parseNum(args[2], 'gamma_n');
-    this.gt = args[3] === 'NULL' ? 0.5 * this.gn : parseNum(args[3], 'gamma_t');
-    this.xmu = parseNum(args[4], 'xmu');
-    const d = args[5];
-    if (d !== '0' && d !== '1') throw new StyleError(`pair_style ${this.name}: dampflag must be 0 or 1, got '${d}'`);
-    this.dampflag = Number(d);
+    // As native LAMMPS does (src/GRANULAR/pair_gran_hooke_history.cpp PairGranHookeHistory::settings at b332f28): the
+    // values (utils::numeric, dampflag utils::inumeric, gamma_t 0 without damping), then one range check
+    const illegal = () => new StyleError('Illegal pair_style command');
+    if (args.length !== 6 && args.length !== 7) throw illegal();
+    this.kn = numeric(args[0]);
+    this.kt = args[1] === 'NULL' ? (this.kn * 2) / 7 : numeric(args[1]);
+    this.gn = numeric(args[2]);
+    this.gt = args[3] === 'NULL' ? 0.5 * this.gn : numeric(args[3]);
+    this.xmu = numeric(args[4]);
+    this.dampflag = inumeric(args[5]);
+    if (this.dampflag === 0) this.gt = 0;
+    this.limitDamping = false;
     if (args.length === 7) {
-      if (args[6] !== 'limit_damping') throw new StyleError(`pair_style ${this.name}: unknown keyword '${args[6]}' (only limit_damping)`);
+      if (args[6] !== 'limit_damping') throw illegal();
       this.limitDamping = true;
     }
-    if (this.kn < 0 || this.kt < 0 || this.gn < 0 || this.gt < 0 || this.xmu < 0 || this.xmu > 10000) {
-      throw new StyleError(`Illegal pair_style ${this.name} command: Kn, Kt, gamma_n, gamma_t must be >= 0 and xmu in 0..1e4`);
-    }
-    if (this.dampflag === 0) this.gt = 0;
+    if (this.kn < 0 || this.kt < 0 || this.gn < 0 || this.gt < 0 || this.xmu < 0 || this.xmu > 10000 || this.dampflag < 0 || this.dampflag > 1) throw illegal();
     this.shear.clear();
   }
 

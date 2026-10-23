@@ -19,7 +19,7 @@
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
-import { fmtCoeff, parseNum } from '../../engine/force/util';
+import { fmtCoeff, parseInt_, parseNum } from '../../engine/force/util';
 import { RanMars } from '../random_mars';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 
@@ -76,11 +76,11 @@ export class PairDPD extends Pair {
       this.tStop = parseNum(args[1], 't_stop');
       this.temperature = this.tStart;
       this.cutGlobal = parseNum(args[2], 'cutoff');
-      this.seed = parseNum(args[3], 'seed');
+      this.seed = parseInt_(args[3], 'seed');
     } else {
       this.temperature = parseNum(args[0], 'temperature');
       this.cutGlobal = parseNum(args[1], 'cutoff');
-      this.seed = parseNum(args[2], 'seed');
+      this.seed = parseInt_(args[2], 'seed');
     }
     // pair_dpd.cpp settings(): "if (seed <= 0) error->all(FLERR,"Illegal pair_style command");" then RanMars(seed + me)
     if (!(this.seed > 0)) throw new StyleError('Illegal pair_style command');

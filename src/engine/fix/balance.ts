@@ -1,6 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { inumeric, missingArgs, numeric } from '../force/util';
+import { inumeric, logical, missingArgs, numeric } from '../force/util';
 import type { System } from '../system';
 import type { CustomProp } from '../types';
 import { formatNumber } from '../cformat';
@@ -233,40 +233,48 @@ export class FixBalance extends Fix {
     super(sys, id, group, args);
     // As native LAMMPS does (src/fix_balance.cpp FixBalance::FixBalance at b332f28): utils::inumeric reads Nfreq (a
     // negative value is "Illegal fix balance nevery value") and utils::numeric the threshold.
+    if (args.length < 3) throw missingArgs('fix balance');
     const nfreq = inumeric(args[0]);
     if (nfreq < 0) throw new StyleError(`Illegal fix balance nevery value ${args[0]}`);
     this.thresh = numeric(args[1]);
-    if (this.thresh <= 0) {
-      throw new StyleError('usage: fix ID group-ID balance Nfreq thresh style args keyword args ...');
-    }
     this.nfreq = nfreq;
     let k = 2;
     const style = args[k++];
+    if (style !== 'shift' && style !== 'rcb' && style !== 'report') throw new StyleError(`Unknown fix balance style ${style}`);
+    // shift reads its dimstr (at most 3 characters), Niter (utils::inumeric, > 0) and stopthresh (utils::numeric, >= 1);
+    // report balances xyz (xy in 2d); then the dimstr is checked
+    let bstr = this.sys.dimension === 2 ? 'xy' : 'xyz';
     if (style === 'shift') {
-      // As native LAMMPS does (src/fix_balance.cpp FixBalance::FixBalance at b332f28): shift needs its dimstr, Niter and stopthresh
       if (k + 3 > args.length) throw missingArgs('fix balance shift');
-      const dims = args[k];
-      if (!dims || !/^[xyz]{1,3}$/.test(dims) || new Set(dims).size !== dims.length) throw new StyleError(`fix balance shift: dimstr '${dims ?? ''}' must contain x, y or z, each at most once`);
-      if (this.sys.dimension === 2 && dims.includes('z')) throw new StyleError('fix balance shift: cannot balance in z for a 2d simulation');
-      const niter = Number(args[k + 1]), stop = Number(args[k + 2]);
-      if (!Number.isInteger(niter) || niter < 1 || !Number.isFinite(stop)) throw new StyleError('usage: fix ID group-ID balance Nfreq thresh shift dimstr Niter stopthresh');
-      this.iterations = dims.length;
+      bstr = args[k];
+      if (bstr.length > 3) throw new StyleError(`Illegal fix balance shift argument ${bstr}`);
+      const niter = inumeric(args[k + 1]);
+      if (niter <= 0) throw new StyleError(`Illegal fix balance shift niter argument ${niter}`);
+      const stop = numeric(args[k + 2]);
+      if (stop < 1) throw new StyleError(`Illegal fix balance stop threshold argument ${stop}`);
+      this.iterations = bstr.length;
       k += 3;
-    } else if (style === 'rcb') {
-      if (sys.commStyle !== 'tiled') throw new StyleError('Fix balance rcb cannot be used with comm_style brick');
-      this.iterations = 0;
-    } else if (style === 'report') {
-      this.iterations = 0;
-    } else throw new StyleError(`fix balance: unknown style '${style ?? ''}' (shift, rcb or report)`);
+    } else this.iterations = 0;
+    if (style !== 'rcb') {
+      for (let i = 0; i < bstr.length; i++) {
+        const c = bstr[i];
+        if ((c !== 'x' && c !== 'y' && c !== 'z') || (c === 'z' && this.sys.dimension === 2) || bstr.indexOf(c, i + 1) >= 0) {
+          throw new StyleError(`Fix balance shift string ${bstr} is invalid`);
+        }
+      }
+    }
+    if (style === 'rcb' && sys.commStyle !== 'tiled') throw new StyleError('Fix balance rcb cannot be used with comm_style brick');
     while (k < args.length) {
       const key = args[k];
       if (key === 'weight') k = parseBalanceWeight(this.sys, args, k, this.actions);
       else if (key === 'sort') {
-        if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError('fix balance sort must be yes or no');
+        // Balance::options (src/balance.cpp at b332f28): utils::logical
+        if (k + 2 > args.length) throw missingArgs('(fix) balance sort');
+        logical(args[k + 1]);
         k += 2;
       } else if (key === 'out') {
         const name = args[k + 1];
-        if (name === undefined) throw new StyleError('Illegal fix balance out command: missing file name');
+        if (name === undefined) throw missingArgs('(fix) balance out');
         this.outFile = name;
         this.sys.writeFile(name, '', false);
         k += 2;

@@ -17,7 +17,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { parseNum } from '../../engine/force/util';
+import { parseInt_, parseNum } from '../../engine/force/util';
 import { FixEfield } from '../../engine/fix/force_ext';
 import { invertDense, invertSPD } from './electrode_math';
 import { MY_2PI, safeDerfcr } from './electrode_math';
@@ -207,12 +207,12 @@ export class FixElectrodeConp extends Fix {
           break;
         }
         case 'temp': {
-          if (!this.allowsTemp()) throw new StyleError(`temp keyword not available for fix ${this.styleName()}`);
           if (iarg + 3 >= args.length) throw new StyleError('Need three arguments after temp command');
+          if (!this.allowsTemp()) throw new StyleError(`temp keyword not available for fix ${this.styleName()}`);
           // force->boltz / force->qe2f * T (units: kB in energy per kelvin, qe2f: charge * field -> force)
           this.thermoTemp = sys.state.units.boltz / sys.state.units.qe2f * parseNum(args[iarg + 1], 'temp');
           this.thermoTime = parseNum(args[iarg + 2], 'temp time');
-          this.thermoInit = parseNum(args[iarg + 3], 'temp seed');
+          this.thermoInit = parseInt_(args[iarg + 3], 'temp seed');
           iarg += 4;
           break;
         }

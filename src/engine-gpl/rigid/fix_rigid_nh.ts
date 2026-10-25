@@ -725,17 +725,24 @@ const createComputes = (f: FixRigidNH, sys: System): void => {
   ownCompute(sys, `${f.id}_press`, 'all', 'pressure', [`${f.id}_temp`]);
 };
 
+/** p_start or p_stop below 0 in any dimension (the check of the small rigid npt and nph styles). */
+const negativePressure = (pr: { pStart: ArrayLike<number>; pStop: ArrayLike<number> }): boolean =>
+  [0, 1, 2].some((i) => pr.pStart[i] < 0.0 || pr.pStop[i] < 0.0);
+
 /** FixRigidNVT (fix_rigid_nvt.cpp): the Nose-Hoover chain on the translational and rotational kinetic energies. */
 export class FixRigidNVT extends FixRigidNH {
   constructor(sys: System, id: string, group: string, args: string[], style: string) {
     super(sys, id, group, args, style);
-    if (!this.thermo.tstat) throw new StyleError(`Did not set temperature for fix ${style}`);
+    // fix_rigid_nvt.cpp and fix_rigid_nvt_small.cpp constructors: the same checks, worded differently (the rigid/nvt
+    // t_iter message has two spaces)
+    const small = style.endsWith('/small');
+    if (!this.thermo.tstat) throw new StyleError(small ? 'Did not set temp for fix rigid/nvt/small' : `Did not set temperature for fix ${style}`);
     if (this.press.pstat) throw new StyleError(`fix ${style}: the pressure keywords (iso, aniso, x, y, z) are not ported; use rigid/npt`);
     if (this.thermo.tStart < 0.0 || this.thermo.tStop <= 0.0) throw new StyleError(`Target temperature for fix ${style} cannot be 0.0`);
     if (this.thermo.tPeriod <= 0.0) throw new StyleError(`Fix ${style} period must be > 0.0`);
-    if (this.thermo.tChain < 1) throw new StyleError(`Illegal fix ${style} command`);
-    if (this.thermo.tIter < 1) throw new StyleError(`Illegal fix ${style} command`);
-    if (this.thermo.tOrder !== 3 && this.thermo.tOrder !== 5) throw new StyleError(`Fix ${style} temperature order must be 3 or 5`);
+    if (this.thermo.tChain < 1) throw new StyleError(small ? 'Fix rigid nvt/small t_chain should not be less than 1' : `Illegal fix ${style} command`);
+    if (this.thermo.tIter < 1) throw new StyleError(small ? 'Fix rigid nvt/small t_iter should not be less than 1' : `Illegal fix ${style}  command`);
+    if (this.thermo.tOrder !== 3 && this.thermo.tOrder !== 5) throw new StyleError(small ? 'Fix rigid nvt/small t_order must be 3 or 5' : `Fix ${style} temperature order must be 3 or 5`);
   }
 }
 
@@ -743,12 +750,16 @@ export class FixRigidNVT extends FixRigidNH {
 export class FixRigidNPT extends FixRigidNH {
   constructor(sys: System, id: string, group: string, args: string[], style: string) {
     super(sys, id, group, args, style);
-    if (!this.thermo.tstat || !this.press.pstat) throw new StyleError(`Did not set temperature or pressure for fix ${style}`);
+    // fix_rigid_npt.cpp and fix_rigid_npt_small.cpp constructors: the small one also refuses a negative target pressure
+    // (and its t_iter check prints the t_chain message)
+    const small = style.endsWith('/small');
+    if (!this.thermo.tstat || !this.press.pstat) throw new StyleError(small ? 'Did not set temp or press for fix rigid/npt/small' : `Did not set temperature or pressure for fix ${style}`);
     if (this.thermo.tStart <= 0.0 || this.thermo.tStop <= 0.0) throw new StyleError(`Target temperature for fix ${style} cannot be 0.0`);
+    if (small && negativePressure(this.press)) throw new StyleError('Target pressure for fix rigid/npt/small cannot be < 0.0');
     if (this.thermo.tPeriod <= 0.0) throw new StyleError(`Fix ${style} period must be > 0.0`);
-    if (this.thermo.tChain < 1) throw new StyleError(`Illegal fix ${style} command`);
-    if (this.thermo.tIter < 1) throw new StyleError(`Illegal fix ${style} command`);
-    if (this.thermo.tOrder !== 3 && this.thermo.tOrder !== 5) throw new StyleError(`Fix ${style} temperature order must be 3 or 5`);
+    if (this.thermo.tChain < 1) throw new StyleError(small ? 'Fix rigid npt/small t_chain should not be less than 1' : `Illegal fix ${style} command`);
+    if (this.thermo.tIter < 1) throw new StyleError(small ? 'Fix rigid npt/small t_chain should not be less than 1' : `Illegal fix ${style} command`);
+    if (this.thermo.tOrder !== 3 && this.thermo.tOrder !== 5) throw new StyleError(small ? 'Fix rigid npt/small t_order must be 3 or 5' : `Fix ${style} temperature order must be 3 or 5`);
     this.computesOwned = true;
     createComputes(this, sys);
   }
@@ -758,6 +769,13 @@ export class FixRigidNPT extends FixRigidNH {
 export class FixRigidNPH extends FixRigidNH {
   constructor(sys: System, id: string, group: string, args: string[], style: string) {
     super(sys, id, group, args, style);
+    // fix_rigid_nph.cpp and fix_rigid_nph_small.cpp constructors: the small one names fix nph/small and refuses a
+    // negative target pressure (naming fix rigid/nph)
+    if (style.endsWith('/small')) {
+      if (!this.press.pstat) throw new StyleError('Pressure control must be used with fix nph/small');
+      if (this.thermo.tstat) throw new StyleError('Temperature control must not be used with fix nph/small');
+      if (negativePressure(this.press)) throw new StyleError('Target pressure for fix rigid/nph cannot be < 0.0');
+    }
     if (!this.press.pstat) throw new StyleError(`Did not set pressure for fix ${style}`);
     if (this.thermo.tstat) throw new StyleError(`Cannot set temperature for fix ${style}`);
     this.computesOwned = true;

@@ -217,7 +217,10 @@ export class FixShake extends Fix {
     this.tol = num(args[0], 'tol');
     this.maxIter = int(args[1], 'iter');
     int(args[2], 'N');
-    if (!(this.tol > 0) || this.maxIter < 1) throw new StyleError(`fix ${style}: tol must be > 0 and iter >= 1`);
+    // As native LAMMPS does (src/RIGID/fix_shake.cpp constructor at b332f28): the tolerance is not checked; with 0 the
+    // iterations stop when the multipliers no longer change, with a negative one after iter iterations. iter < 1 (no
+    // iteration of a cluster of three or more atoms, native keeps the starting multipliers) is not run by the engine
+    if (this.maxIter < 1) throw new StyleError(`fix ${style}: an iteration count below 1 (${this.maxIter}) is not run by the engine`);
     let mode = '';
     for (let k = 3; k < args.length; k++) {
       const w = args[k];

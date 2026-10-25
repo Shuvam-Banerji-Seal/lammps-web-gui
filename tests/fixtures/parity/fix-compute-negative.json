@@ -1,0 +1,2110 @@
+{
+ "matrix": "fix-compute-negative",
+ "about": "the first number of each fix and compute style (from word 4) replaced by -1",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w21adf_lj",
+   "line": 30,
+   "text": "compute a all adf -1 1 1 1 0.0 2.0 0.0 2.0 1 2 2 0.0 2.5 0.0 2.5 ordinate cosine",
+   "style": "compute adf",
+   "native": "ERROR: Illegal compute adf command"
+  },
+  {
+   "case": "w11struct_bonds",
+   "line": 26,
+   "text": "compute ag all aggregate/atom -1",
+   "style": "compute aggregate/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w227xc_ave_sphere",
+   "line": 15,
+   "text": "compute av all ave/sphere/atom cutoff -1",
+   "style": "compute ave/sphere/atom",
+   "native": "ERROR: Illegal compute ave/sphere/atom command"
+  },
+  {
+   "case": "w152body_local_nparticle",
+   "line": 17,
+   "text": "compute 1 all body/local id -1 2 3",
+   "style": "compute body/local",
+   "native": "ERROR: Invalid index in compute body/local command"
+  },
+  {
+   "case": "w26cgrid_born_run",
+   "line": 20,
+   "text": "compute bm all born/matrix numdiff -1 myvirial",
+   "style": "compute born/matrix",
+   "native": "ERROR: Illegal compute born/matrix command"
+  },
+  {
+   "case": "w11struct_hcp",
+   "line": 17,
+   "text": "compute ch all centro/atom -1",
+   "style": "compute centro/atom",
+   "native": "ERROR: Illegal neighbor value for compute centro/atom command"
+  },
+  {
+   "case": "w14temp_chunk_nvt",
+   "line": 19,
+   "text": "compute cx all chunk/atom bin/1d x lower -1",
+   "style": "compute chunk/atom",
+   "native": "ERROR: Illegal compute chunk/atom bin/1d command"
+  },
+  {
+   "case": "w11struct_bonds",
+   "line": 27,
+   "text": "compute cl all cluster/atom -1",
+   "style": "compute cluster/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w11struct_bcc",
+   "line": 17,
+   "text": "compute cna all cna/atom -1",
+   "style": "compute cna/atom",
+   "native": "ERROR: Illegal compute cna/atom command"
+  },
+  {
+   "case": "w48cb_cnp_tiny",
+   "line": 20,
+   "text": "compute cnp all cnp/atom -1",
+   "style": "compute cnp/atom",
+   "native": "ERROR: Illegal compute cnp/atom command"
+  },
+  {
+   "case": "w39cfs_wrap",
+   "line": 12,
+   "text": "compute c3 all com/chunk cc wrap -1",
+   "style": "compute com/chunk",
+   "native": "ERROR: Expected boolean parameter instead of '-1' in input script or data file"
+  },
+  {
+   "case": "w227xc_composition",
+   "line": 18,
+   "text": "compute comp all composition/atom cutoff -1",
+   "style": "compute composition/atom",
+   "native": "ERROR: Illegal compute composition/atom command"
+  },
+  {
+   "case": "w2cred_coord",
+   "line": 29,
+   "text": "compute c all coord/atom cutoff -1 1 2",
+   "style": "compute coord/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w227xc_efield_wolf",
+   "line": 24,
+   "text": "compute ef all efield/wolf/atom -1",
+   "style": "compute efield/wolf/atom",
+   "native": "ERROR: Compute efield/atom/wolf alpha value -1 is invalid"
+  },
+  {
+   "case": "w134cp_entropy_fe",
+   "line": 25,
+   "text": "compute c1 all entropy/atom -1 3.5",
+   "style": "compute entropy/atom",
+   "native": "ERROR: Illegal compute entropy/atom command; sigma must be positive"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 23,
+   "text": "compute 3 all erotate/rigid -1",
+   "style": "compute erotate/rigid",
+   "native": "ERROR: Fix ID -1 for compute erotate/rigid does not exist"
+  },
+  {
+   "case": "w13misc_event",
+   "line": 20,
+   "text": "compute ev all event/displace -1",
+   "style": "compute event/displace",
+   "native": "ERROR: Distance must be > 0 for compute event/displace"
+  },
+  {
+   "case": "w69fep_compute",
+   "line": 23,
+   "text": "compute FEP all fep -1 pair lj/cut/coul/long/soft lambda * * v_dlam atom charge 1 v_dq atom charge 2 v_mdq",
+   "style": "compute fep",
+   "native": "OK"
+  },
+  {
+   "case": "w155mx_fepta_tail",
+   "line": 19,
+   "text": "compute TA all fep/ta -1 yz 0.998 tail yes",
+   "style": "compute fep/ta",
+   "native": "OK"
+  },
+  {
+   "case": "w38gauss_example",
+   "line": 11,
+   "text": "compute mygridlocal all gaussian/grid/local grid -1 2 2 4.67637 0.5 0.5 0.1355 0.2",
+   "style": "compute gaussian/grid/local",
+   "native": "ERROR: All grid/local dimensions must be positive"
+  },
+  {
+   "case": "w41hb_ecut",
+   "line": 20,
+   "text": "compute ha all hbond/local -1 30.0 ogroup ogroup hgroup dist ehb",
+   "style": "compute hbond/local",
+   "native": "ERROR: Compute hbond/local distance cutoff must be > 0.0"
+  },
+  {
+   "case": "w12struct_hexorder",
+   "line": 21,
+   "text": "compute h4 all hexorder/atom degree -1 nnn 4 cutoff 1.2",
+   "style": "compute hexorder/atom",
+   "native": "ERROR: Illegal compute hexorder/atom command"
+  },
+  {
+   "case": "w385hma_anharmonic",
+   "line": 13,
+   "text": "compute hma all hma settemp anharmonic u p -1 cv",
+   "style": "compute hma",
+   "native": "OK"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 22,
+   "text": "compute 2 all ke/rigid -1",
+   "style": "compute ke/rigid",
+   "native": "ERROR: Fix ID -1 for compute ke/rigid does not exist"
+  },
+  {
+   "case": "w277ma_compute_mliap_ace",
+   "line": 16,
+   "text": "compute ace all mliap descriptor ace H_N_O_ccs.yace model linear gradgradflag -1",
+   "style": "compute mliap",
+   "native": "ERROR: Expected boolean parameter instead of '-1' in input script or data file",
+   "build": "ML-PACE"
+  },
+  {
+   "case": "w18cmisc",
+   "line": 29,
+   "text": "compute nb1 all nbond/atom bond/type -1",
+   "style": "compute nbond/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w5orient_q",
+   "line": 17,
+   "text": "compute q2 all orientorder/atom degrees -1 4 6 8 nnn NULL cutoff 1.5 wl yes",
+   "style": "compute orientorder/atom",
+   "native": "ERROR: Illegal compute orientorder/atom command"
+  },
+  {
+   "case": "w276cp_compute_pace_ace",
+   "line": 17,
+   "text": "compute pace all pace Cu-PBE-core-rep.ace -1 0",
+   "style": "compute pace",
+   "native": "OK",
+   "build": "ML-PACE"
+  },
+  {
+   "case": "w102il_tmd",
+   "line": 17,
+   "text": "compute 1 all pair sw/mod -1",
+   "style": "compute pair",
+   "native": "ERROR: Unknown compute pair keyword -1"
+  },
+  {
+   "case": "w194alc_alloy",
+   "line": 21,
+   "text": "compute pressure all pressure/alchemy -1",
+   "style": "compute pressure/alchemy",
+   "native": "ERROR: World variable count 2 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w227xc_pressure_cylinder",
+   "line": 16,
+   "text": "compute p all pressure/cylinder -1 6.5 4.0 0.5",
+   "style": "compute pressure/cylinder",
+   "native": "ERROR: Illegal compute stress/cylinder command"
+  },
+  {
+   "case": "w26cgrid_propgrid2d",
+   "line": 18,
+   "text": "compute pg all property/grid -1 4 1 id ix iy x y xc yc xs ys xsc ysc proc",
+   "style": "compute property/grid",
+   "native": "ERROR: All compute property/grid grid counts must be > 0"
+  },
+  {
+   "case": "w201pt_rmsd_group2",
+   "line": 18,
+   "text": "compute ptm upper ptm/atom fcc-hcp-ico -1 lower",
+   "style": "compute ptm/atom",
+   "native": "ERROR: Unrecognized compute style 'ptm/atom' is part of the PTM package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the PTM package, which no native build here has"
+  },
+  {
+   "case": "w227xc_rattlers_type",
+   "line": 15,
+   "text": "compute rat all rattlers/atom type -1 10",
+   "style": "compute rattlers/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w2cglob_rdf",
+   "line": 28,
+   "text": "compute rdf all rdf -1 1 1 1 2 cutoff 2.0",
+   "style": "compute rdf",
+   "native": "ERROR: Number of bins for compute rdf must be > 0"
+  },
+  {
+   "case": "w35reduce_bond",
+   "line": 18,
+   "text": "compute rrep all reduce max c_pl[1] c_pl[2] c_bl[1] replace -1 3 replace 2 3 inputs local",
+   "style": "compute reduce",
+   "native": "ERROR: Invalid compute reduce replace first column index -2"
+  },
+  {
+   "case": "w230re_rigid_small_local",
+   "line": 26,
+   "text": "compute 5 all rigid/local -1 id mol mass x y z xu yu zu vx vy vz fx fy fz angmomx angmomy angmomz quatw quati quatj quatk inertiax inertiay inertiaz",
+   "style": "compute rigid/local",
+   "native": "ERROR: FixRigidSmall ID -1 for compute rigid/local does not exist"
+  },
+  {
+   "case": "w134cp_saed_ni",
+   "line": 12,
+   "text": "compute SAED all saed -1 Ni Kmax 0.85 Zone 0 0 0 c 0.1 0.1 0.1 dR_Ewald 0.01 manual",
+   "style": "compute saed",
+   "native": "ERROR: Compute SAED: Wavelength must be greater than zero"
+  },
+  {
+   "case": "w171px_slcsa",
+   "line": 20,
+   "text": "compute slcsa all slcsa/atom -1 4 w171px_slcsa_mean_descriptor.dat w171px_slcsa_lda_scalings.dat w171px_slcsa_lr_decision.dat w171px_slcsa_lr_bias.dat w171px_slcsa_mahalanobis.dat c_bnnn[1]",
+   "style": "compute slcsa/atom",
+   "native": "ERROR: Illegal compute slcsa/atom command: twojmax must be >= 0"
+  },
+  {
+   "case": "w218ck_inertia_slice",
+   "line": 24,
+   "text": "compute sl all slice -1 6 1 c_ine",
+   "style": "compute slice",
+   "native": "ERROR: Invalid compute slice nstart value -1 < 1"
+  },
+  {
+   "case": "w8snap_sna",
+   "line": 18,
+   "text": "compute b all sna/atom -1 0.85 6 1.6 2.0 0.9 1.2 rmin0 0.1",
+   "style": "compute sna/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w15snap_grid",
+   "line": 17,
+   "text": "compute mygrid all sna/grid grid -1 2 2 1.0 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0 switchflag 1 bzeroflag 1",
+   "style": "compute sna/grid",
+   "native": "ERROR: All grid dimensions must be positive"
+  },
+  {
+   "case": "w15snap_grid_local",
+   "line": 18,
+   "text": "compute mygl all sna/grid/local grid -1 2 2 1.0 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0 switchflag 1 bzeroflag 1",
+   "style": "compute sna/grid/local",
+   "native": "ERROR: All grid/local dimensions must be positive"
+  },
+  {
+   "case": "w8snap_snad",
+   "line": 18,
+   "text": "compute d all snad/atom -1 0.85 3 1.6 2.0 0.9 1.2 rmin0 0.1",
+   "style": "compute snad/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w15snap_group",
+   "line": 17,
+   "text": "compute snap odd snap -1 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0.1",
+   "style": "compute snap",
+   "native": "OK"
+  },
+  {
+   "case": "w8snap_snav",
+   "line": 18,
+   "text": "compute d all snav/atom -1 0.85 3 1.6 2.0 0.9 1.2 rmin0 0.1",
+   "style": "compute snav/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w47sp_cart1d",
+   "line": 19,
+   "text": "compute p all stress/cartesian x -1 NULL 0",
+   "style": "compute stress/cartesian",
+   "native": "ERROR: Illegal compute stress/cartesian command. First bin width must be > 0"
+  },
+  {
+   "case": "w149cp_cyl",
+   "line": 15,
+   "text": "compute p all stress/cylinder -1 6.5 4.0 0.5",
+   "style": "compute stress/cylinder",
+   "native": "ERROR: Illegal compute stress/cylinder command"
+  },
+  {
+   "case": "w149cp_mop_setup",
+   "line": 24,
+   "text": "compute m3 half stress/mop y -1 pair kin",
+   "style": "compute stress/mop",
+   "native": "OK"
+  },
+  {
+   "case": "w416mop_bonded",
+   "line": 24,
+   "text": "compute mpp all stress/mop/profile x -1 2.0 bond angle dihedral",
+   "style": "compute stress/mop/profile",
+   "native": "ERROR: Origin of bins for compute stress/mop/profile is out of bounds"
+  },
+  {
+   "case": "w149cp_sph",
+   "line": 15,
+   "text": "compute p all stress/spherical -1 0 0 0.5 4.0",
+   "style": "compute stress/spherical",
+   "native": "OK"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 28,
+   "text": "compute c all tdpd/cc/atom -1",
+   "style": "compute tdpd/cc/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w14temp_chunk",
+   "line": 22,
+   "text": "compute tk all temp/chunk cy temp kecom adof -1 cdof 1.0",
+   "style": "compute temp/chunk",
+   "native": "OK"
+  },
+  {
+   "case": "w41nptp_bias",
+   "line": 12,
+   "text": "compute tp all temp/partial -1 1 1",
+   "style": "compute temp/partial",
+   "native": "ERROR: Illegal compute temp/partial command"
+  },
+  {
+   "case": "w48cb_tp_twobins",
+   "line": 14,
+   "text": "compute tp all temp/profile -1 0 0 x 2",
+   "style": "compute temp/profile",
+   "native": "OK"
+  },
+  {
+   "case": "w14temp_ramp",
+   "line": 16,
+   "text": "compute ra all temp/ramp vx -1 1.5 y 2 9 units box",
+   "style": "compute temp/ramp",
+   "native": "OK"
+  },
+  {
+   "case": "w227xc_ti_single",
+   "line": 21,
+   "text": "compute ti all ti lj/cut -1 v_f v_df",
+   "style": "compute ti",
+   "native": "ERROR: Invalid range string: -1"
+  },
+  {
+   "case": "w6voro_edge",
+   "line": 15,
+   "text": "compute v all voronoi/atom edge_histo -1",
+   "style": "compute voronoi/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w134cp_xrd_ni",
+   "line": 12,
+   "text": "compute XRD all xrd -1 Ni 2Theta 40 80 c 2 2 2 LP 1",
+   "style": "compute xrd",
+   "native": "ERROR: Compute SAED: Wavelength must be greater than zero"
+  },
+  {
+   "case": "w66units_accelcos_real",
+   "line": 21,
+   "text": "fix 2 all accelerate/cos -1",
+   "style": "fix accelerate/cos",
+   "native": "OK"
+  },
+  {
+   "case": "w65reaxq_acks2_field",
+   "line": 12,
+   "text": "fix 1 all acks2/reaxff -1 0.0 10.0 1.0e-6 reaxff maxiter 1000",
+   "style": "fix acks2/reaxff",
+   "native": "ERROR: Illegal fix qeq/reaxff command"
+  },
+  {
+   "case": "w9adapt_soft",
+   "line": 27,
+   "text": "fix 1 all adapt -1 pair soft a * * v_prefactor",
+   "style": "fix adapt",
+   "native": "ERROR: Illegal fix adapt every value -1"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 23,
+   "text": "fix ADAPT all adapt/fep -1 pair lj/cut/coul/long/soft lambda * * v_lam atom charge 1 v_q1 atom charge 2 v_q2",
+   "style": "fix adapt/fep",
+   "native": "ERROR: Illegal fix adapt/fep every value -1"
+  },
+  {
+   "case": "w437dyngroup_bpm_heat",
+   "line": 22,
+   "text": "fix 4 all add/heat linear -1 0.5",
+   "style": "fix add/heat",
+   "native": "OK"
+  },
+  {
+   "case": "w13misc_controller",
+   "line": 21,
+   "text": "fix push all addforce v_fc -1 0.0",
+   "style": "fix addforce",
+   "native": "OK"
+  },
+  {
+   "case": "w18fix_addtorque",
+   "line": 19,
+   "text": "fix 2 all addtorque -1 0.01 -0.015",
+   "style": "fix addtorque",
+   "native": "OK"
+  },
+  {
+   "case": "w228gs_addtorque",
+   "line": 22,
+   "text": "fix 2 all addtorque/atom -1 -0.2 v_tz every 2",
+   "style": "fix addtorque/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w66units_addtorqueg_real",
+   "line": 21,
+   "text": "fix 2 all addtorque/group -1 0.03 -0.02",
+   "style": "fix addtorque/group",
+   "native": "OK"
+  },
+  {
+   "case": "w62brown_alignquat",
+   "line": 15,
+   "text": "fix 3 all align/self quat -1",
+   "style": "fix align/self",
+   "native": "OK"
+  },
+  {
+   "case": "w142mx_append_atoms",
+   "line": 17,
+   "text": "fix 2 all append/atoms zhi freq -1 size 0.5",
+   "style": "fix append/atoms",
+   "native": "OK"
+  },
+  {
+   "case": "w339swap_semi_tail",
+   "line": 17,
+   "text": "fix sw all atom/swap -1 20 12345 1.0 types 1 2 semi-grand yes mu 0.0 0.3 ke yes",
+   "style": "fix atom/swap",
+   "native": "ERROR: Illegal fix atom/swap command nevery value"
+  },
+  {
+   "case": "w278ap_atom_weight",
+   "line": 21,
+   "text": "fix w all atom_weight/apip -1 1e-05 0.0004 3e-06 0 grp no_rescale",
+   "style": "fix atom_weight/apip",
+   "native": "ERROR: Fix atom_weight/apip: nevery > 0 required",
+   "build": "APIP"
+  },
+  {
+   "case": "w2avg_aveatom",
+   "line": 30,
+   "text": "fix 2 all ave/atom -1 5 10 vx vy v_ke",
+   "style": "fix ave/atom",
+   "native": "ERROR: Illegal fix ave/atom nevery value: -1"
+  },
+  {
+   "case": "w7chunk_mol",
+   "line": 25,
+   "text": "fix 3 all ave/chunk -1 1 5 cm vx norm all file molvx.txt",
+   "style": "fix ave/chunk",
+   "native": "ERROR: Illegal fix ave/chunk nevery value: -1"
+  },
+  {
+   "case": "w11gk_correlate",
+   "line": 17,
+   "text": "fix JJ all ave/correlate -1 10 40 c_p[4] c_p[5] c_p[6] type auto/upper ave running file pxy.corr",
+   "style": "fix ave/correlate",
+   "native": "ERROR: Illegal fix ave/correlate nevery value: -1"
+  },
+  {
+   "case": "w229xf_corrlong_auto",
+   "line": 18,
+   "text": "fix JJ all ave/correlate/long -1 40 c_p[4] c_p[5] type auto/upper file corrl_auto.dat",
+   "style": "fix ave/correlate/long",
+   "native": "ERROR: Illegal fix ave/correlate/long nevery value: -1"
+  },
+  {
+   "case": "w26cgrid_propgrid",
+   "line": 15,
+   "text": "fix ave all ave/grid -1 1 5 4 4 4 vx vy vz",
+   "style": "fix ave/grid",
+   "native": "ERROR: Illegal fix ave/grid nevery value: -1"
+  },
+  {
+   "case": "w11local_histo",
+   "line": 11,
+   "text": "fix h all ave/histo -1 1 1 0 3 5 c_bl mode vector file w11local_histo.histo",
+   "style": "fix ave/histo",
+   "native": "ERROR: Illegal fix ave/histo nevery value: -1"
+  },
+  {
+   "case": "w137cf_histw_global",
+   "line": 16,
+   "text": "fix h all ave/histo/weight -1 1 1 -2 2 8 c_r[1] c_r[2] mode scalar beyond end file w137cf_histw_global.histo",
+   "style": "fix ave/histo/weight",
+   "native": "ERROR: Illegal fix ave/histo/weight nevery value: -1"
+  },
+  {
+   "case": "w47pkg_moments_simple",
+   "line": 14,
+   "text": "fix 2 all ave/moments -1 60 30 v_toteng mean stddev variance skew kurtosis",
+   "style": "fix ave/moments",
+   "native": "ERROR: Illegal fix ave/moments nevery value: -1"
+  },
+  {
+   "case": "w89fix_avetime_nonorm",
+   "line": 15,
+   "text": "fix a all ave/time -1 2 4 c_p ave one",
+   "style": "fix ave/time",
+   "native": "ERROR: Illegal fix ave/time nevery value: -1"
+  },
+  {
+   "case": "w2fset_aveforce",
+   "line": 28,
+   "text": "fix 2 upper aveforce NULL -1 0.05",
+   "style": "fix aveforce",
+   "native": "OK"
+  },
+  {
+   "case": "w7bal_forced",
+   "line": 12,
+   "text": "fix 2 all balance -1 0.9 shift xy 5 1.05",
+   "style": "fix balance",
+   "native": "ERROR: Illegal fix balance nevery value -1"
+  },
+  {
+   "case": "w133mf_baoab_lj",
+   "line": 17,
+   "text": "fix 1 all baoab -1 1.0 1.0 12345 zero yes",
+   "style": "fix baoab",
+   "native": "ERROR: Fix baoab temperatures must be >= 0"
+  },
+  {
+   "case": "w156mx_bocs",
+   "line": 17,
+   "text": "fix 1 all bocs temp -1 300.0 100.0 cgiso 0.986 0.986 1000.0 analytic 66476.015 968 2 245030.10 8962.20",
+   "style": "fix bocs",
+   "native": "ERROR: Target temperature for fix bocs cannot be 0.0"
+  },
+  {
+   "case": "w139bc_break_prob",
+   "line": 16,
+   "text": "fix b all bond/break -1 1 1.2 prob 0.5 777",
+   "style": "fix bond/break",
+   "native": "ERROR: Illegal fix bond/break command"
+  },
+  {
+   "case": "w459dyngroup_bondcreate",
+   "line": 21,
+   "text": "fix bc dyn bond/create -1 1 1 1.6 1 prob 0.7 4321",
+   "style": "fix bond/create",
+   "native": "ERROR: Illegal fix bond/create nevery value -1"
+  },
+  {
+   "case": "w224mc_bondcreateangle",
+   "line": 15,
+   "text": "fix bc all bond/create/angle -1 1 1 2.0 1 aconstrain 100 180 prob 0.8 12345",
+   "style": "fix bond/create/angle",
+   "native": "ERROR: Illegal fix bond/create/angle nevery value -1"
+  },
+  {
+   "case": "w94react_nylon_unstab",
+   "line": 24,
+   "text": "fix myrxns all bond/react stabilization no react rxn1 all -1 0.0 2.9 mol1 mol2 w94react_nylon_stp1.map react rxn2 all 1 0.0 5.0 mol3 mol4 w94react_nylon_stp2.map rescale_charges yes",
+   "style": "fix bond/react",
+   "native": "ERROR: Illegal fix bond/react command: 'Nevery' must be a positive integer"
+  },
+  {
+   "case": "w224mc_bondswap_fene",
+   "line": 15,
+   "text": "fix bs all bond/swap -1 1.0 2.0 4321",
+   "style": "fix bond/swap",
+   "native": "ERROR: Illegal fix bond/swap command"
+  },
+  {
+   "case": "w10boxrelax_iso",
+   "line": 16,
+   "text": "fix 1 all box/relax iso -1",
+   "style": "fix box/relax",
+   "native": "OK"
+  },
+  {
+   "case": "w62brown_point3d",
+   "line": 12,
+   "text": "fix 1 all brownian -1 198098 rng gaussian gamma_t 2.0",
+   "style": "fix brownian",
+   "native": "ERROR: Fix brownian temp must be > 0.0"
+  },
+  {
+   "case": "w62brown_asphere3d",
+   "line": 13,
+   "text": "fix 1 all brownian/asphere -1 5 rng uniform gamma_r_eigen 1.0 2.0 3.0 gamma_t_eigen 1.0 2.0 3.0 rotation_temp 2.0",
+   "style": "fix brownian/asphere",
+   "native": "ERROR: Fix brownian/asphere temp must be > 0.0"
+  },
+  {
+   "case": "w62brown_sphere3dplanar",
+   "line": 13,
+   "text": "fix 1 all brownian/sphere -1 77 rng uniform gamma_t 3.0 gamma_r 1.0 planar_rotation",
+   "style": "fix brownian/sphere",
+   "native": "ERROR: Fix brownian/sphere temp must be > 0.0"
+  },
+  {
+   "case": "w349chreg_onlysalt_anion",
+   "line": 19,
+   "text": "fix chareg all charge/regulation -1 3 pIp 2.5 pIm 3.5 onlysalt yes 1 -2 tag yes lunit_nm 0.72 nevery 50 nmc 60 seed 2345 tempfixid fT",
+   "style": "fix charge/regulation",
+   "native": "ERROR: Illegal fix charge/regulation command"
+  },
+  {
+   "case": "w13misc_controller",
+   "line": 23,
+   "text": "fix ctl all controller -1 1.0 0.5 0.2 0.1 v_vcmx 0.5 fc",
+   "style": "fix controller",
+   "native": "ERROR: Illegal fix controller nevery value -1"
+  },
+  {
+   "case": "w228gs_cundall_var",
+   "line": 22,
+   "text": "fix 2 all damping/cundall -1 0.1 scale v_g",
+   "style": "fix damping/cundall",
+   "native": "OK"
+  },
+  {
+   "case": "w230re_temp_deform_eff",
+   "line": 15,
+   "text": "fix 2 all deform -1 x erate 0.001 y erate -0.0005 remap v",
+   "style": "fix deform",
+   "native": "ERROR: Fix deform Nevery must be >= 0"
+  },
+  {
+   "case": "w399dp_box_volume",
+   "line": 15,
+   "text": "fix 2 all deform/pressure -1 x wiggle 0.4 0.6 y pressure 0.5 0.1 box volume units box",
+   "style": "fix deform/pressure",
+   "native": "ERROR: Fix deform/pressure Nevery must be >= 0"
+  },
+  {
+   "case": "w7dep_global",
+   "line": 14,
+   "text": "fix 3 all deposit -1 1 2 777 region reg units box global 1.0 2.0 units box",
+   "style": "fix deposit",
+   "native": "OK"
+  },
+  {
+   "case": "w18fix_drag",
+   "line": 18,
+   "text": "fix 2 all drag -1 0.0 0.0 0.5 0.5",
+   "style": "fix drag",
+   "native": "OK"
+  },
+  {
+   "case": "w47pkg_dtreset_metal",
+   "line": 17,
+   "text": "fix 2 all dt/reset -1 NULL 0.0005 0.02 emax 10.0 units box",
+   "style": "fix dt/reset",
+   "native": "ERROR: Illegal fix dt/reset command"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 28,
+   "text": "fix 3 all edpd/source cuboid -1 1.5 0.0 6.0 3.0 6.0 0.01",
+   "style": "fix edpd/source",
+   "native": "OK"
+  },
+  {
+   "case": "w66units_efield_const_real",
+   "line": 23,
+   "text": "fix 2 all efield -1 -0.01 0.03",
+   "style": "fix efield",
+   "native": "OK"
+  },
+  {
+   "case": "w66units_lepton_efield_real",
+   "line": 23,
+   "text": "fix 2 all efield/lepton \"-0.05*x^2 - 0.3*y*z\" step -1",
+   "style": "fix efield/lepton",
+   "native": "OK"
+  },
+  {
+   "case": "w229xf_efield_tip4p",
+   "line": 20,
+   "text": "fix 3 all efield/tip4p -1 -0.2 0.5",
+   "style": "fix efield/tip4p",
+   "native": "OK"
+  },
+  {
+   "case": "w8ehex_region_dynamic",
+   "line": 20,
+   "text": "fix 2 all ehex -1 0.4 region hot",
+   "style": "fix ehex",
+   "native": "ERROR: Illegal fix ehex command"
+  },
+  {
+   "case": "w68elec_madelung_cg",
+   "line": 16,
+   "text": "fix conp bot electrode/conp -1 2 couple top 1 symm on algo cg 1e-6",
+   "style": "fix electrode/conp",
+   "native": "OK"
+  },
+  {
+   "case": "w68elec_conq_cg",
+   "line": 19,
+   "text": "fix q bot electrode/conq -1 2 couple top 0.2 symm on algo cg 1e-6",
+   "style": "fix electrode/conq",
+   "native": "OK"
+  },
+  {
+   "case": "w68elec_thermo",
+   "line": 19,
+   "text": "fix th bot electrode/thermo -1 2 couple top 1 temp 300 1 1234",
+   "style": "fix electrode/thermo",
+   "native": "OK"
+  },
+  {
+   "case": "w47pkg_elstop_cu",
+   "line": 18,
+   "text": "fix fel all electron/stopping -1 w47pkg_elstop_cu.table",
+   "style": "fix electron/stopping",
+   "native": "ERROR: Illegal fix electron/stopping command: Ecut <= 0"
+  },
+  {
+   "case": "w108xf_elfit_sisi",
+   "line": 18,
+   "text": "fix 3 all electron/stopping/fit -1 3.3e-3 4.0e-8",
+   "style": "fix electron/stopping/fit",
+   "native": "OK"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 32,
+   "text": "fix 3 all eos/cv -1",
+   "style": "fix eos/cv",
+   "native": "ERROR: EOS cv must be > 0.0"
+  },
+  {
+   "case": "w230re_eos_table",
+   "line": 23,
+   "text": "fix 3 all eos/table linear w230re_eos_table.txt -1 EOS_TABLE",
+   "style": "fix eos/table",
+   "native": "ERROR: Illegal number of eos/table entries"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 44,
+   "text": "fix 3 all eos/table/rx linear w160rx_table.eos -1 KEYWORD w160rx_thermo.dpdrx",
+   "style": "fix eos/table/rx",
+   "native": "ERROR: Illegal number of eos/table/rx entries"
+  },
+  {
+   "case": "w340deposit_tail",
+   "line": 20,
+   "text": "fix 3 all evaporate -1 1 ev 9113",
+   "style": "fix evaporate",
+   "native": "ERROR: Illegal fix evaporate command"
+  },
+  {
+   "case": "w229xf_ffl",
+   "line": 15,
+   "text": "fix 2 all ffl -1 1.2 0.6 4321",
+   "style": "fix ffl",
+   "native": "ERROR: Illegal fix ffl tau value, should be greater than 0"
+  },
+  {
+   "case": "w214fc_clusters_b",
+   "line": 28,
+   "text": "fix cor all filter/corotate b -1",
+   "style": "fix filter/corotate",
+   "native": "ERROR: Invalid bond type index for fix filter/corotate"
+  },
+  {
+   "case": "w133mf_flow_gauss_mod",
+   "line": 29,
+   "text": "fix GD left flow/gauss -1 0 0",
+   "style": "fix flow/gauss",
+   "native": "ERROR: Constraint flags must be 1 or 0"
+  },
+  {
+   "case": "w33gcmc_real_ins",
+   "line": 11,
+   "text": "fix mygcmc gcmcgroup gcmc -1 3 0 1 29494 300.0 50.0 1.0",
+   "style": "fix gcmc",
+   "native": "ERROR: Fix gcmc nevery value must be > 0"
+  },
+  {
+   "case": "w352gjf_method8",
+   "line": 20,
+   "text": "fix 1 all gjf -1 1.0 2.0 9182 method 8",
+   "style": "fix gjf",
+   "native": "OK"
+  },
+  {
+   "case": "w229xf_gld",
+   "line": 15,
+   "text": "fix 2 all gld -1 0.6 2 4321 pprony 0.5 0.3 0.8 1.5 zero yes",
+   "style": "fix gld",
+   "native": "ERROR: Fix gld start temperature must be >= 0"
+  },
+  {
+   "case": "w108xf_gle_lj_eq",
+   "line": 15,
+   "text": "fix 1 all gle -1 1.2 1.4 31415 gle_lj.A",
+   "style": "fix gle",
+   "native": "ERROR: Failed to allocate -393216 bytes for array gle:gle_s",
+   "skip": "native LAMMPS fails a memory allocation (Failed to allocate -393216 bytes for array gle:gle_s)"
+  },
+  {
+   "case": "w463dyngroup_isosurface",
+   "line": 22,
+   "text": "fix iso dyn graphics/isosurface -1 0.4 1.0 quality min filename w463iso.*.stl",
+   "style": "fix graphics/isosurface",
+   "native": "ERROR: Illegal fix graphics/isosurface nevery value -1"
+  },
+  {
+   "case": "w159gr_lines",
+   "line": 14,
+   "text": "fix l all graphics/lines -1 3 6 4",
+   "style": "fix graphics/lines",
+   "native": "ERROR: Illegal fix graphics/lines nevery value: -1"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 16,
+   "text": "fix 2 all gravity -1 spherical 0.0 -180.0",
+   "style": "fix gravity",
+   "native": "OK"
+  },
+  {
+   "case": "w108xf_grem_nvt",
+   "line": 13,
+   "text": "fix fxgREM all grem -1 -.01 -30000 fxnvt",
+   "style": "fix grem",
+   "native": "OK"
+  },
+  {
+   "case": "w49hy_halt_min",
+   "line": 20,
+   "text": "fix h all halt -1 v_s >= 21 error soft message no",
+   "style": "fix halt",
+   "native": "ERROR: Illegal fix halt command: nevery must be > 0"
+  },
+  {
+   "case": "w8ehex_heat",
+   "line": 20,
+   "text": "fix 2 all heat -1 0.2 region hot",
+   "style": "fix heat",
+   "native": "ERROR: Illegal fix heat command"
+  },
+  {
+   "case": "w437dyngroup_bpm_heat",
+   "line": 21,
+   "text": "fix 3 dyn2 heat/flow constant -1",
+   "style": "fix heat/flow",
+   "native": "ERROR: Illegal fix heat/flow constant command value"
+  },
+  {
+   "case": "w32hmc_accept",
+   "line": 15,
+   "text": "fix 2 all hmc -1 12345 1000000.0 resample yes",
+   "style": "fix hmc",
+   "native": "OK"
+  },
+  {
+   "case": "w49hy_rebond",
+   "line": 27,
+   "text": "fix HG mobile hyper/global -1 0.3 0.5 1.0",
+   "style": "fix hyper/global",
+   "native": "ERROR: Illegal fix hyper/global command"
+  },
+  {
+   "case": "w153hy_bound",
+   "line": 27,
+   "text": "fix HL mobile hyper/local -1 0.3 0.5 1.0 3.0 0.5 1.2 bound 0.3 reset 40",
+   "style": "fix hyper/local",
+   "native": "ERROR: Illegal fix hyper/local command"
+  },
+  {
+   "case": "w50il_chain",
+   "line": 14,
+   "text": "fix cons all ilves -1 25 0 b 1",
+   "style": "fix ilves",
+   "native": "ERROR: Fix ilves tolerance must be > 0"
+  },
+  {
+   "case": "w66units_indent_plane_real",
+   "line": 21,
+   "text": "fix 2 all indent -1 plane z 1.5 lo units box",
+   "style": "fix indent",
+   "native": "ERROR: Illegal fix indent force constant: -1"
+  },
+  {
+   "case": "w279ap_thermostat_shuffle",
+   "line": 16,
+   "text": "fix lambda all lambda/apip -1 1.5 time_averaged_zone 2.0 3.0 3 3 store_atomic_stats",
+   "style": "fix lambda/apip",
+   "native": "ERROR: fix lambda: Illegal or missing threshold values",
+   "build": "APIP"
+  },
+  {
+   "case": "w280ap_la_csp_static",
+   "line": 16,
+   "text": "fix la all lambda/la/csp/apip -1 2.0 3.0 5.0 fcc store_peratom 5",
+   "style": "fix lambda/la/csp/apip",
+   "native": "ERROR: 0 <= threshold_lo <= threshold_hi required",
+   "build": "APIP"
+  },
+  {
+   "case": "w279ap_thermostat_shuffle",
+   "line": 17,
+   "text": "fix lambda_thermostat all lambda_thermostat/apip N_rescaling -1 seed 1234",
+   "style": "fix lambda_thermostat/apip",
+   "native": "ERROR: fix lambda_thermostat/apip: rescaling_N_neighbours <= 1",
+   "build": "APIP"
+  },
+  {
+   "case": "w89fix_rigid_langevin",
+   "line": 14,
+   "text": "fix 2 all langevin -1 1.0 0.5 48279",
+   "style": "fix langevin",
+   "native": "OK"
+  },
+  {
+   "case": "w72drude_butane_lang",
+   "line": 36,
+   "text": "fix fLANG all langevin/drude -1 100.0 200611 1.0 20.0 260514 zero yes",
+   "style": "fix langevin/drude",
+   "native": "OK"
+  },
+  {
+   "case": "w230re_eff_langevin",
+   "line": 15,
+   "text": "fix 2 all langevin/eff -1 300.0 20.0 4321 tally yes scale 3 2.0",
+   "style": "fix langevin/eff",
+   "native": "OK"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 14,
+   "text": "fix 3 all langevin/spin -1 0.1 21",
+   "style": "fix langevin/spin",
+   "native": "ERROR: Illegal langevin/spin command"
+  },
+  {
+   "case": "w181px_lb_pits_sw",
+   "line": 20,
+   "text": "fix 1 all lb/fluid -1 1.0 1.0 dx 8.0 linearInit pressurebcx 0.01 npits 2 6 13 5 0 sw",
+   "style": "fix lb/fluid",
+   "native": "ERROR: Unrecognized fix style 'lb/fluid' is part of the LATBOLTZ package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the LATBOLTZ package, which no native build here has"
+  },
+  {
+   "case": "w132lb_momentum",
+   "line": 22,
+   "text": "fix 4 all lb/momentum -1 linear 1 1 1",
+   "style": "fix lb/momentum",
+   "native": "ERROR: Unrecognized fix style 'lb/fluid' is part of the LATBOLTZ package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the LATBOLTZ package, which no native build here has"
+  },
+  {
+   "case": "w66units_lineplane_real",
+   "line": 24,
+   "text": "fix 3 all lineforce -1 1.0 0.5",
+   "style": "fix lineforce",
+   "native": "OK"
+  },
+  {
+   "case": "w289mf_manifoldforce_min",
+   "line": 13,
+   "text": "fix mf all manifoldforce sphere -1",
+   "style": "fix manifoldforce",
+   "native": "ERROR: Fix manifoldforce requires min_style hftn or quickmin",
+   "build": "MANIFOLD"
+  },
+  {
+   "case": "w125sdpd_meso_move_rotate",
+   "line": 31,
+   "text": "fix 3 upper_wall meso/move rotate -1 0 0 0 0 1 2.0 units box",
+   "style": "fix meso/move",
+   "native": "OK"
+  },
+  {
+   "case": "w30molswap_keno",
+   "line": 18,
+   "text": "fix swap all mol/swap -1 1 1 2 12345 1e9 ke no",
+   "style": "fix mol/swap",
+   "native": "ERROR: Illegal fix mol/swap command"
+  },
+  {
+   "case": "w167om_fix2d",
+   "line": 17,
+   "text": "fix 2 all momentum -1 linear 1 1 0 angular",
+   "style": "fix momentum",
+   "native": "ERROR: Fix momentum nevery value must be > 0"
+  },
+  {
+   "case": "w218ck_fix_momentum",
+   "line": 28,
+   "text": "fix 2 all momentum/chunk -1 cm linear 1 1 1 angular rescale",
+   "style": "fix momentum/chunk",
+   "native": "ERROR: Illegal fix momentum/chunk command"
+  },
+  {
+   "case": "w17move_linear",
+   "line": 16,
+   "text": "fix 1 moved move linear -1 0.0 0.0 units box",
+   "style": "fix move",
+   "native": "OK"
+  },
+  {
+   "case": "w128shock_msst_lj",
+   "line": 16,
+   "text": "fix msst all msst z -1 q 10.0 mu 0.5 tscale 0.1",
+   "style": "fix msst",
+   "native": "ERROR: Illegal fix msst command"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 26,
+   "text": "fix 2 dyn2 mvv/dpd -1",
+   "style": "fix mvv/dpd",
+   "native": "OK"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 26,
+   "text": "fix 1 dyn mvv/edpd -1",
+   "style": "fix mvv/edpd",
+   "native": "OK"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 25,
+   "text": "fix 1 dyn mvv/tdpd -1",
+   "style": "fix mvv/tdpd",
+   "native": "OK"
+  },
+  {
+   "case": "w46neb_each",
+   "line": 20,
+   "text": "fix 2 all neb -1 parallel ideal",
+   "style": "fix neb",
+   "native": "ERROR: Illegal fix neb command"
+  },
+  {
+   "case": "w310gneb_cg",
+   "line": 18,
+   "text": "fix 3 all neb/spin -1",
+   "style": "fix neb/spin",
+   "native": "ERROR: Illegal fix neb command"
+  },
+  {
+   "case": "w460dyngroup_neighborswap",
+   "line": 26,
+   "text": "fix mc dyn neighbor/swap -1 5 12345 1.0 1.5 v types 2 1",
+   "style": "fix neighbor/swap",
+   "native": "ERROR: Illegal fix neighbor/swap command nevery value: -1"
+  },
+  {
+   "case": "w229xf_nonaffine",
+   "line": 16,
+   "text": "fix 2 all nonaffine/displacement -1 integrated fixed 20 z/min 0",
+   "style": "fix nonaffine/displacement",
+   "native": "ERROR: Illegal nevery value -1 in fix nonaffine/displacement"
+  },
+  {
+   "case": "w483nh_isochoric_2d",
+   "line": 14,
+   "text": "fix 1 all nph y -1 1.0 1.0 isochoric x",
+   "style": "fix nph",
+   "native": "OK"
+  },
+  {
+   "case": "w19nhasphere_nph",
+   "line": 39,
+   "text": "fix 1 all nph/asphere iso -1 0.5 2.0",
+   "style": "fix nph/asphere",
+   "native": "OK"
+  },
+  {
+   "case": "w126body_squares_nph",
+   "line": 16,
+   "text": "fix 1 all nph/body x -1 0.1 1.0 y 0.1 0.1 1.0 fixedpoint 0 0 0",
+   "style": "fix nph/body",
+   "native": "OK"
+  },
+  {
+   "case": "w367eff_nph_couple_xy",
+   "line": 14,
+   "text": "fix 1 all nph/eff x -1 0.0 1.0 y 0.0 0.0 1.0 z 0.0 0.0 1.0 couple xy pchain 1 mtk no",
+   "style": "fix nph/eff",
+   "native": "ERROR: Invalid fix nph/eff pressure settings"
+  },
+  {
+   "case": "w355dipole_nph_sphere",
+   "line": 21,
+   "text": "fix 1 all nph/sphere iso -1 0.5 1.0 update dipole",
+   "style": "fix nph/sphere",
+   "native": "OK"
+  },
+  {
+   "case": "w128shock_nphug_z",
+   "line": 15,
+   "text": "fix myhug all nphug temp -1 1.0 10.0 z 1.5 1.5 20.0",
+   "style": "fix nphug",
+   "native": "ERROR: Target temperature for fix nphug cannot be <= 0.0"
+  },
+  {
+   "case": "w481nh_isochoric_x",
+   "line": 13,
+   "text": "fix 1 all npt temp -1 1.0 0.5 z 2.0 2.0 1.0 isochoric x",
+   "style": "fix npt",
+   "native": "ERROR: Target temperature for fix npt cannot be <= 0.0"
+  },
+  {
+   "case": "w19nhasphere_npt",
+   "line": 39,
+   "text": "fix 1 all npt/asphere temp -1 1.0 0.5 iso 1.5 0.5 2.0",
+   "style": "fix npt/asphere",
+   "native": "ERROR: Target temperature for fix npt/asphere cannot be <= 0.0"
+  },
+  {
+   "case": "w126body_wall2d",
+   "line": 17,
+   "text": "fix 1 all npt/body temp -1 0.5 1.0 x 0.001 0.1 1.0 fixedpoint 0 0 0",
+   "style": "fix npt/body",
+   "native": "ERROR: Target temperature for fix npt/body cannot be <= 0.0"
+  },
+  {
+   "case": "w141cy_cauchy_basic",
+   "line": 18,
+   "text": "fix 1 all npt/cauchy temp -1 600.0 1.0 x 0.0 0.0 0.1 y 0.0 0.0 0.1 z 0.0 0.0 0.1 couple none alpha 0.001 continue no",
+   "style": "fix npt/cauchy",
+   "native": "ERROR: Target temperature for fix npt/cauchy cannot be 0.0"
+  },
+  {
+   "case": "w364eff_npt_aniso",
+   "line": 14,
+   "text": "fix 1 all npt/eff temp -1 300.0 0.5 aniso 0.0 0.0 1.0",
+   "style": "fix npt/eff",
+   "native": "ERROR: Target temperature for fix npt/eff cannot be <= 0.0"
+  },
+  {
+   "case": "w356dlm_npt_sphere",
+   "line": 22,
+   "text": "fix 1 all npt/sphere temp -1 0.8 0.5 iso 0.5 0.5 1.0 update dipole/dlm",
+   "style": "fix npt/sphere",
+   "native": "ERROR: Target temperature for fix npt/sphere cannot be <= 0.0"
+  },
+  {
+   "case": "w129uef_npt_biaxial",
+   "line": 18,
+   "text": "fix 1 all npt/uef temp -1 0.722 0.5 iso 10 10 5 erate 0.5 0.5 ext z",
+   "style": "fix npt/uef",
+   "native": "ERROR: Target temperature for fix npt/uef cannot be <= 0.0"
+  },
+  {
+   "case": "w16numdiff_forces",
+   "line": 15,
+   "text": "fix fd all numdiff -1 1e-6",
+   "style": "fix numdiff",
+   "native": "ERROR: Illegal fix numdiff command"
+  },
+  {
+   "case": "w16numdiff_virial",
+   "line": 15,
+   "text": "fix fd all numdiff/virial -1 1e-6",
+   "style": "fix numdiff/virial",
+   "native": "ERROR: Illegal fix numdiff command"
+  },
+  {
+   "case": "w57oxdna_langevin",
+   "line": 19,
+   "text": "fix 1 all nve/dotc/langevin -1 0.1 2.5 457145 angmom 10",
+   "style": "fix nve/dotc/langevin",
+   "native": "OK"
+  },
+  {
+   "case": "w2fmom_nvelimit",
+   "line": 27,
+   "text": "fix 1 all nve/limit -1",
+   "style": "fix nve/limit",
+   "native": "OK"
+  },
+  {
+   "case": "w282mf_sphere_energy",
+   "line": 9,
+   "text": "fix step all nve/manifold/rattle -1 10 sphere 10.0",
+   "style": "fix nve/manifold/rattle",
+   "native": "OK",
+   "build": "MANIFOLD"
+  },
+  {
+   "case": "w108xf_grem_nvt",
+   "line": 12,
+   "text": "fix fxnvt all nvt temp -1 300.0 1000.0",
+   "style": "fix nvt",
+   "native": "ERROR: Target temperature for fix nvt cannot be <= 0.0"
+  },
+  {
+   "case": "w19nhasphere_nvt",
+   "line": 39,
+   "text": "fix 1 all nvt/asphere temp -1 1.0 0.5",
+   "style": "fix nvt/asphere",
+   "native": "ERROR: Target temperature for fix nvt/asphere cannot be <= 0.0"
+  },
+  {
+   "case": "w126body_cubes_nvt",
+   "line": 15,
+   "text": "fix 1 all nvt/body temp -1 1.2 0.1",
+   "style": "fix nvt/body",
+   "native": "ERROR: Target temperature for fix nvt/body cannot be <= 0.0"
+  },
+  {
+   "case": "w63eff_ch4_nvt",
+   "line": 21,
+   "text": "fix 1 all nvt/eff temp -1 300.0 0.1",
+   "style": "fix nvt/eff",
+   "native": "ERROR: Target temperature for fix nvt/eff cannot be <= 0.0"
+  },
+  {
+   "case": "w286mf_nvt_ramp",
+   "line": 14,
+   "text": "fix step all nvt/manifold/rattle -1 20 sphere v_R temp 1.0 1.2 0.1 tchain 4",
+   "style": "fix nvt/manifold/rattle",
+   "native": "OK",
+   "build": "MANIFOLD"
+  },
+  {
+   "case": "w39nemd_nemd3d",
+   "line": 23,
+   "text": "fix 1 all nvt/sllod temp -1 1.0 1.0 tchain 1",
+   "style": "fix nvt/sllod",
+   "native": "ERROR: Target temperature for fix nvt/sllod cannot be <= 0.0"
+  },
+  {
+   "case": "w230re_eff_sllod",
+   "line": 15,
+   "text": "fix 2 all nvt/sllod/eff temp -1 300.0 10.0",
+   "style": "fix nvt/sllod/eff",
+   "native": "ERROR: Target temperature for fix nvt/sllod/eff cannot be <= 0.0"
+  },
+  {
+   "case": "w7nhs_disc",
+   "line": 19,
+   "text": "fix 1 all nvt/sphere temp -1 0.5 0.5 disc",
+   "style": "fix nvt/sphere",
+   "native": "ERROR: Target temperature for fix nvt/sphere cannot be <= 0.0"
+  },
+  {
+   "case": "w446dyngroup_nvt_uef",
+   "line": 19,
+   "text": "fix 1 dyn nvt/uef temp -1 0.8 0.5 erate -0.05 -0.05",
+   "style": "fix nvt/uef",
+   "native": "ERROR: Target temperature for fix nvt/uef cannot be <= 0.0"
+  },
+  {
+   "case": "w18fix_oneway",
+   "line": 18,
+   "text": "fix 2 all oneway -1 mid x",
+   "style": "fix oneway",
+   "native": "ERROR: Illegal fix oneway command"
+  },
+  {
+   "case": "w236or_bcc",
+   "line": 14,
+   "text": "fix or all orient/bcc -1 0 2.88 0.02 0.2 0.8 w236or_bcc_grain2.ori w236or_bcc_grain1.ori",
+   "style": "fix orient/bcc",
+   "native": "OK"
+  },
+  {
+   "case": "w133mf_orient_eco",
+   "line": 15,
+   "text": "fix eco all orient/eco -1 0.25 3.6 w133mf_sigma5.ori",
+   "style": "fix orient/eco",
+   "native": "OK"
+  },
+  {
+   "case": "w236or_fcc",
+   "line": 14,
+   "text": "fix or all orient/fcc -1 1 3.6 0.01 0.25 0.75 w236or_fcc_grain1.ori w236or_fcc_grain2.ori",
+   "style": "fix orient/fcc",
+   "native": "OK"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 33,
+   "text": "fix hp all pafi pa -1 0.01 434 overdamped yes com no",
+   "style": "fix pafi",
+   "native": "OK"
+  },
+  {
+   "case": "w229xf_pair",
+   "line": 16,
+   "text": "fix pr all pair -1 eam/alloy rho 0 fp 0",
+   "style": "fix pair",
+   "native": "ERROR: Illegal fix pair every value: -1"
+  },
+  {
+   "case": "w99phq_cu",
+   "line": 22,
+   "text": "fix 2 all phonon -1 100 1000 w99phq_cu.map w99phq_cu nasr 20",
+   "style": "fix phonon",
+   "native": "ERROR: Illegal fix phonon nevery value -1"
+  },
+  {
+   "case": "w192pimdl_obabo_pile_l",
+   "line": 20,
+   "text": "fix 1 all pimd/langevin ensemble nvt integrator obabo temp -1 sp 0.1924 thermostat PILE_L 1234",
+   "style": "fix pimd/langevin",
+   "native": "ERROR: World variable count 4 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w191pimd_nvt_nmpimd8",
+   "line": 19,
+   "text": "fix 1 all pimd/nvt method nmpimd fmass -1 sp 2.0 temp 300.0 nhc 3",
+   "style": "fix pimd/nvt",
+   "native": "ERROR: World variable count 8 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w66units_lineplane_real",
+   "line": 25,
+   "text": "fix 4 all planeforce -1 0.1 1.0",
+   "style": "fix planeforce",
+   "native": "OK"
+  },
+  {
+   "case": "w71diel_nopbc_gmres",
+   "line": 18,
+   "text": "fix 3 interface polarize/bem/gmres -1 1.0e-4",
+   "style": "fix polarize/bem/gmres",
+   "native": "ERROR: Illegal fix polarize/bem/gmres command"
+  },
+  {
+   "case": "w71diel_nopbc_icc",
+   "line": 18,
+   "text": "fix 3 interface polarize/bem/icc -1 1.0e-4",
+   "style": "fix polarize/bem/icc",
+   "native": "ERROR: Illegal fix polarize/bem/icc command"
+  },
+  {
+   "case": "w71diel_nopbc_dof",
+   "line": 18,
+   "text": "fix 3 interface polarize/functional -1 1.0e-4",
+   "style": "fix polarize/functional",
+   "native": "ERROR: Illegal fix polarize/functional command"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 19,
+   "text": "fix ins all pour -1 1 4767548 vol 0.2 50 diam range 0.5 1.0 region slab",
+   "style": "fix pour",
+   "native": "ERROR: Invalid number of inserted particles requested"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 13,
+   "text": "fix 2 all precession/spin zeeman -1 0 0 1",
+   "style": "fix precession/spin",
+   "native": "OK"
+  },
+  {
+   "case": "w89fix_pberend_iso",
+   "line": 14,
+   "text": "fix 2 all press/berendsen iso -1 1.0 1.0",
+   "style": "fix press/berendsen",
+   "native": "OK"
+  },
+  {
+   "case": "w229xf_press_langevin",
+   "line": 15,
+   "text": "fix 2 all press/langevin iso -1 1.5 0.5 temp 1.2 0.9 4321",
+   "style": "fix press/langevin",
+   "native": "OK"
+  },
+  {
+   "case": "w62brown_propelvel",
+   "line": 14,
+   "text": "fix 2 all propel/self velocity -1",
+   "style": "fix propel/self",
+   "native": "OK"
+  },
+  {
+   "case": "w6prop_read",
+   "line": 6,
+   "text": "fix pr all property/atom mol q i_tag d2_arr -1",
+   "style": "fix property/atom",
+   "native": "ERROR: Invalid array columns number -1 in fix property/atom"
+  },
+  {
+   "case": "w99phq_qbmsst_lj",
+   "line": 16,
+   "text": "fix shock all qbmsst z -1 q 10.0 tscale 0.1 damp 1.0 f_max 4.0 N_f 20 seed 35082 eta 1.0 beta 5 T_init 0.8",
+   "style": "fix qbmsst",
+   "native": "ERROR: Unrecognized fix style 'qbmsst' is part of the QTB package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the QTB package, which no native build here has"
+  },
+  {
+   "case": "w58comb_cu2o",
+   "line": 21,
+   "text": "fix 2 all qeq/comb -1 0.0001",
+   "style": "fix qeq/comb",
+   "native": "ERROR: Illegal fix qeq/comb command"
+  },
+  {
+   "case": "w140ct_limits",
+   "line": 17,
+   "text": "fix 1 all qeq/ctip -1 12.0 1.0e-8 100 coul/ctip cdamp 0.30 maxrepeat 10",
+   "style": "fix qeq/ctip",
+   "native": "ERROR: Illegal fix qeq command"
+  },
+  {
+   "case": "w36qeq_dyn_loose",
+   "line": 23,
+   "text": "fix q all qeq/dynamic -1 8 1.0e-3 200 w36qeq_param.qeq2",
+   "style": "fix qeq/dynamic",
+   "native": "ERROR: Illegal fix qeq command"
+  },
+  {
+   "case": "w36qeq_fire_tight",
+   "line": 23,
+   "text": "fix q all qeq/fire -1 8 1.0e-5 200 w36qeq_param.qeq2",
+   "style": "fix qeq/fire",
+   "native": "ERROR: Illegal fix qeq command"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 16,
+   "text": "fix q all qeq/point -1 20 1.0e-14 200 w32qeq_point.params",
+   "style": "fix qeq/point",
+   "native": "ERROR: Illegal fix qeq command"
+  },
+  {
+   "case": "w55reax_qeq_rdx_tight",
+   "line": 10,
+   "text": "fix 2 all qeq/reax -1 0.0 10.0 1e-12 w55reax_param.qeq",
+   "style": "fix qeq/reax",
+   "native": "ERROR: Illegal fix qeq/reaxff command"
+  },
+  {
+   "case": "w55reax_qeq_water",
+   "line": 11,
+   "text": "fix 1 all qeq/reaxff -1 0.0 10.0 1.0e-6 reaxff maxiter 400",
+   "style": "fix qeq/reaxff",
+   "native": "ERROR: Illegal fix qeq/reaxff command"
+  },
+  {
+   "case": "w65reaxq_qeqr_tight",
+   "line": 10,
+   "text": "fix 1 all qeq/rel/reaxff -1 0.0 10.0 1e-12 reaxff w65reaxq_gauss_exp.txt",
+   "style": "fix qeq/rel/reaxff",
+   "native": "ERROR: Illegal fix qeq/rel/reaxff command"
+  },
+  {
+   "case": "w32qeq_shield4",
+   "line": 22,
+   "text": "fix q all qeq/shielded -1 8 1.0e-14 200 w32qeq_shield.params",
+   "style": "fix qeq/shielded",
+   "native": "ERROR: Illegal fix qeq command"
+  },
+  {
+   "case": "w40qslat_maxiter",
+   "line": 26,
+   "text": "fix 1 all qeq/slater -1 12.0 1.0e-12 500 coul/streitz",
+   "style": "fix qeq/slater",
+   "native": "ERROR: Illegal fix qeq command"
+  },
+  {
+   "case": "w99phq_qtb_lj",
+   "line": 16,
+   "text": "fix 2 all qtb temp -1 damp 0.5 seed 35082 f_max 2.0 N_f 50",
+   "style": "fix qtb",
+   "native": "ERROR: Unrecognized fix style 'qtb' is part of the QTB package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the QTB package, which no native build here has"
+  },
+  {
+   "case": "w65reaxq_qtpie_tight",
+   "line": 10,
+   "text": "fix 1 all qtpie/reaxff -1 0.0 10.0 1e-12 reaxff w65reaxq_gauss_exp.txt",
+   "style": "fix qtpie/reaxff",
+   "native": "ERROR: Illegal fix qtpie/reaxff command"
+  },
+  {
+   "case": "w50rt_run0",
+   "line": 19,
+   "text": "fix 1 all rattle -1 20 0 b 1 a 1",
+   "style": "fix rattle",
+   "native": "OK"
+  },
+  {
+   "case": "w456dyngroup_reaxff_out",
+   "line": 21,
+   "text": "fix 4 dyn reaxff/bonds -1 bonds.dyn",
+   "style": "fix reaxff/bonds",
+   "native": "ERROR: Illegal fix reaxff/bonds nevery value -1"
+  },
+  {
+   "case": "w456dyngroup_reaxff_out",
+   "line": 22,
+   "text": "fix 3 dyn reaxff/species -1 1 5 species.dyn cutoff * * 0.9 element H C O N",
+   "style": "fix reaxff/species",
+   "native": "ERROR: Invalid fix reaxff/species nevery value -1"
+  },
+  {
+   "case": "w2fmom_recenter",
+   "line": 28,
+   "text": "fix 2 all recenter INIT -1 NULL units box",
+   "style": "fix recenter",
+   "native": "OK"
+  },
+  {
+   "case": "w11restrain_dihedral",
+   "line": 19,
+   "text": "fix R all restrain dihedral -1 2 3 4 0.0 20.0 60.0 mult 2 dihedral 1 2 3 5 5.0 5.0 -120.0 mult 3",
+   "style": "fix restrain",
+   "native": "OK",
+   "skip": "native looks atom ID -1 up as map_array[-1], outside its atom map (the engine refuses the ID)"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 22,
+   "text": "fix 1 all rheo -1 quintic 0 thermal",
+   "style": "fix rheo",
+   "native": "ERROR: Need to define fix rheo/pressure to use pair rheo"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 66,
+   "text": "fix 5 rbar rheo/oxidation -1 2 1.0",
+   "style": "fix rheo/oxidation",
+   "native": "ERROR: Illegal bond cutoff -1 in fix rheo/oxidation"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 24,
+   "text": "fix 3 all rheo/pressure * ideal/gas -1",
+   "style": "fix rheo/pressure",
+   "native": "ERROR: Must have one and only one instance of fix rheo/thermal defined"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 25,
+   "text": "fix 4 all rheo/thermal conductivity * constant -1 specific/heat * constant 1.0",
+   "style": "fix rheo/thermal",
+   "native": "ERROR: The conductivity must be positive"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 23,
+   "text": "fix 2 all rheo/viscosity * constant -1",
+   "style": "fix rheo/viscosity",
+   "native": "ERROR: The viscosity must be positive"
+  },
+  {
+   "case": "w48fb_rhok_npt",
+   "line": 25,
+   "text": "fix bias all rhok -1 0 0 4.0 1.0",
+   "style": "fix rhok",
+   "native": "OK"
+  },
+  {
+   "case": "w36rigid_lgv2d",
+   "line": 15,
+   "text": "fix 1 all rigid single langevin -1 0.7 0.5 246810",
+   "style": "fix rigid",
+   "native": "OK"
+  },
+  {
+   "case": "w56rnh_nph_iso",
+   "line": 48,
+   "text": "fix 1 all rigid/nph molecule iso -1 0.5 1.0",
+   "style": "fix rigid/nph",
+   "native": "OK"
+  },
+  {
+   "case": "w56rnh_nph_small",
+   "line": 48,
+   "text": "fix 1 all rigid/nph/small molecule iso -1 0.5 1.0",
+   "style": "fix rigid/nph/small",
+   "native": "ERROR: Target pressure for fix rigid/nph cannot be < 0.0"
+  },
+  {
+   "case": "w56rnh_npt_iso",
+   "line": 48,
+   "text": "fix 1 all rigid/npt molecule temp -1 1.0 0.5 iso 1.0 1.0 2.0",
+   "style": "fix rigid/npt",
+   "native": "ERROR: Target temperature for fix rigid/npt cannot be 0.0"
+  },
+  {
+   "case": "w431rigidnh_ellipsoid",
+   "line": 21,
+   "text": "fix 1 all rigid/npt/small molecule temp -1 1.5 1.0 iso 1.0 1.0 5.0",
+   "style": "fix rigid/npt/small",
+   "native": "ERROR: Target temperature for fix rigid/npt/small cannot be 0.0"
+  },
+  {
+   "case": "w179rg_nh_deform",
+   "line": 15,
+   "text": "fix 1 all rigid/nvt molecule temp -1 1.0 0.5",
+   "style": "fix rigid/nvt",
+   "native": "ERROR: Target temperature for fix rigid/nvt cannot be 0.0"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 21,
+   "text": "fix 1 all rigid/nvt/small molecule temp -1 1.2 0.5",
+   "style": "fix rigid/nvt/small",
+   "native": "ERROR: Target temperature for fix rigid/nvt/small cannot be 0.0"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 12,
+   "text": "fix 4 all rx w160rx_kinetics.dpdrx none dense lammps_rk4 -1",
+   "style": "fix rx",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w171px_saed_vtk_full",
+   "line": 18,
+   "text": "fix 2 all saed/vtk -1 2 4 c_SAED file w171px_saed_vtk_full",
+   "style": "fix saed/vtk",
+   "native": "ERROR: Illegal fix saed/vtk command"
+  },
+  {
+   "case": "w229xf_set",
+   "line": 21,
+   "text": "fix 2 all set -1 1 atom 1*108 type v_t2 vx v_t",
+   "style": "fix set",
+   "native": "ERROR: Fix set Nevery must be > 0"
+  },
+  {
+   "case": "deposit_rate_lattice",
+   "line": 17,
+   "text": "fix 0 sub setforce -1 0 0",
+   "style": "fix setforce",
+   "native": "OK"
+  },
+  {
+   "case": "w48sp2_setforce",
+   "line": 19,
+   "text": "fix 3 frozen setforce/spin -1 0.0 0.0",
+   "style": "fix setforce/spin",
+   "native": "OK"
+  },
+  {
+   "case": "w436dyngroup_sphere",
+   "line": 21,
+   "text": "fix 5 dyn2 settorque/atom -1 NULL 0.0",
+   "style": "fix settorque/atom",
+   "native": "ERROR: Variable tq for fix addtorque/atom does not exist"
+  },
+  {
+   "case": "w204sg_lj_generic",
+   "line": 17,
+   "text": "fix mc all sgcmc -1 0.1 1.0 0.3 randseed 2468",
+   "style": "fix sgcmc",
+   "native": "ERROR: Invalid number of MD timesteps -1"
+  },
+  {
+   "case": "w73shake_gil",
+   "line": 15,
+   "text": "fix shake bmi shake -1 20 0 b 1 2 a 1",
+   "style": "fix shake",
+   "native": "OK"
+  },
+  {
+   "case": "w229xf_smd_tether_cfor",
+   "line": 16,
+   "text": "fix 2 pull smd cfor -1 tether NULL NULL 1.0 0.0",
+   "style": "fix smd",
+   "native": "OK"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 43,
+   "text": "fix dtfix all smd/adjust_dt -1",
+   "style": "fix smd/adjust_dt",
+   "native": "OK"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 44,
+   "text": "fix integration_fix water smd/integrate_ulsph adjust_radius -1 10 15",
+   "style": "fix smd/integrate_ulsph",
+   "native": "OK"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 48,
+   "text": "fix mv surface smd/move_tri_surf *LINEAR -1 0.01 -0.03",
+   "style": "fix smd/move_tri_surf",
+   "native": "OK"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 64,
+   "text": "fix veltop_fix top smd/setvel -1 v_vel_up 0",
+   "style": "fix smd/setvel",
+   "native": "OK"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 40,
+   "text": "fix stl_surface_fix all smd/wall_surface w100smd_funnel_wall_cut.stl -1 65535",
+   "style": "fix smd/wall_surface",
+   "native": "OK",
+   "skip": "native creates the wall atoms with type -1, outside the atom types (the engine refuses the type)"
+  },
+  {
+   "case": "w2fspring_tether",
+   "line": 28,
+   "text": "fix 2 lower spring tether -1 NULL NULL 1.2 0.2",
+   "style": "fix spring",
+   "native": "OK"
+  },
+  {
+   "case": "w323spring_chunk_wrap",
+   "line": 27,
+   "text": "fix 2 all spring/chunk -1 cm com",
+   "style": "fix spring/chunk",
+   "native": "OK"
+  },
+  {
+   "case": "w11restrain_springrg",
+   "line": 16,
+   "text": "fix SRG all spring/rg -1 NULL",
+   "style": "fix spring/rg",
+   "native": "OK"
+  },
+  {
+   "case": "w2fspring_self",
+   "line": 28,
+   "text": "fix 2 upper spring/self -1 xy",
+   "style": "fix spring/self",
+   "native": "ERROR: Illegal force constant for fix spring/self command"
+  },
+  {
+   "case": "w79srd_pure",
+   "line": 29,
+   "text": "fix 1 all srd -1 NULL 1.0 0.25 49894 collision slip",
+   "style": "fix srd",
+   "native": "ERROR: Fix srd nevery value must be > 0"
+  },
+  {
+   "case": "w89fix_storestate_every",
+   "line": 14,
+   "text": "fix s all store/state -1 x y z vx",
+   "style": "fix store/state",
+   "native": "ERROR: Invalid fix store/state N value -1"
+  },
+  {
+   "case": "w261gs_screw_press",
+   "line": 12,
+   "text": "fix 1 all surface/local input stl -1 2 w151gs_surf.helix.stl flat 10.0",
+   "style": "fix surface/local",
+   "native": "ERROR: STL surface type must be >= 1"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 27,
+   "text": "fix 3 all tdpd/source -1 cuboid 0.0 1.5 0.0 6.0 3.0 6.0 0.01",
+   "style": "fix tdpd/source",
+   "native": "OK"
+  },
+  {
+   "case": "w89fix_berendsen_onedof",
+   "line": 15,
+   "text": "fix 2 one temp/berendsen -1 1.2 0.1",
+   "style": "fix temp/berendsen",
+   "native": "OK"
+  },
+  {
+   "case": "w89fix_csld_const",
+   "line": 14,
+   "text": "fix 2 all temp/csld -1 1.2 0.1 12345",
+   "style": "fix temp/csld",
+   "native": "OK"
+  },
+  {
+   "case": "w89fix_csvr_2d",
+   "line": 15,
+   "text": "fix 2 all temp/csvr -1 0.9 0.2 777",
+   "style": "fix temp/csvr",
+   "native": "OK"
+  },
+  {
+   "case": "w89fix_rescale_onedof",
+   "line": 15,
+   "text": "fix 2 one temp/rescale -1 1.2 1.2 0.02 0.5",
+   "style": "fix temp/rescale",
+   "native": "ERROR: Invalid fix temp/rescale every argument: -1"
+  },
+  {
+   "case": "w63eff_ch4_rescale",
+   "line": 22,
+   "text": "fix 2 all temp/rescale/eff -1 0.0 300.0 0.02 0.5",
+   "style": "fix temp/rescale/eff",
+   "native": "ERROR: Illegal fix temp/rescale/eff command"
+  },
+  {
+   "case": "w224mc_tfmc_com",
+   "line": 17,
+   "text": "fix mc all tfmc -1 0.6 12345 com 1 1 1",
+   "style": "fix tfmc",
+   "native": "ERROR: Fix tfmc displacement length must be > 0"
+  },
+  {
+   "case": "w11gk_thermcond",
+   "line": 17,
+   "text": "fix tc all thermal/conductivity -1 z 8 swap 2",
+   "style": "fix thermal/conductivity",
+   "native": "ERROR: Illegal fix thermal/conductivity command"
+  },
+  {
+   "case": "w48fb_ti_spring_tiny",
+   "line": 14,
+   "text": "fix f2 all ti/spring -1 4 3 function 1",
+   "style": "fix ti/spring",
+   "native": "ERROR: Illegal fix ti/spring command"
+  },
+  {
+   "case": "w48fb_tmd_mass",
+   "line": 24,
+   "text": "fix 2 all tmd -1 w48fb_tmd_mass_target.txt 0",
+   "style": "fix tmd",
+   "native": "ERROR: Illegal fix tmd command"
+  },
+  {
+   "case": "w14ttm_stop",
+   "line": 19,
+   "text": "fix 2 all ttm -1 1.0 1.0 1.0 20.0 3.0 2.5 2 2 2 infile w14ttm_stop.init",
+   "style": "fix ttm",
+   "native": "ERROR: Invalid random number seed in fix ttm command"
+  },
+  {
+   "case": "w41ttm_cas_cetab",
+   "line": 20,
+   "text": "fix 2 all ttm/cascade -1 3.0 2.0 0.5 20.0 0.0 2.0 2 2 2 infile w41ttm_cas.init cetab w41ttm_ce.tab offset 0.015",
+   "style": "fix ttm/cascade",
+   "native": "ERROR: Invalid random number seed in fix ttm/cascade command"
+  },
+  {
+   "case": "w421dump_grid_ttm",
+   "line": 20,
+   "text": "fix 2 all ttm/grid -1 0.001 1.0 0.01 20.0 0.0 2.0 2 2 2 infile w14ttm_grid.init",
+   "style": "fix ttm/grid",
+   "native": "ERROR: Invalid random number seed in fix ttm/grid command"
+  },
+  {
+   "case": "w43tm_si",
+   "line": 18,
+   "text": "fix twotemp all ttm/mod -1 w43tm_si.par 4 4 4 set 1000.0",
+   "style": "fix ttm/mod",
+   "native": "ERROR: Invalid random number seed -1 in fix ttm/mod command"
+  },
+  {
+   "case": "w41ttm_thermal4",
+   "line": 21,
+   "text": "fix 2 all ttm/thermal -1 w41ttm_thermal4.props 4 4 4 infile w41ttm_thermal4.init source 0.02",
+   "style": "fix ttm/thermal",
+   "native": "ERROR: Invalid random number seed in fix ttm/thermal command"
+  },
+  {
+   "case": "w7misc_vector",
+   "line": 17,
+   "text": "fix 3 all vector -1 c_ke",
+   "style": "fix vector",
+   "native": "ERROR: Invalid fix vector every argument: -1"
+  },
+  {
+   "case": "w11gk_viscosity",
+   "line": 14,
+   "text": "fix visc all viscosity -1 x z 8 swap 2",
+   "style": "fix viscosity",
+   "native": "ERROR: Illegal fix viscosity command"
+  },
+  {
+   "case": "w66units_viscous_real",
+   "line": 21,
+   "text": "fix 2 all viscous -1 scale 2 1.5",
+   "style": "fix viscous",
+   "native": "OK"
+  },
+  {
+   "case": "w228gs_viscous_nonlinear",
+   "line": 20,
+   "text": "fix 2 all viscous/nonlinear -1 0.05 velocity 0.1 0.0 0.0",
+   "style": "fix viscous/nonlinear",
+   "native": "ERROR: Fix viscous/nonlinear fluid density and viscosity must be > 0"
+  },
+  {
+   "case": "w133mf_viscous_sphere_var",
+   "line": 25,
+   "text": "fix 2 all viscous/sphere -1 scale v_g",
+   "style": "fix viscous/sphere",
+   "native": "OK"
+  },
+  {
+   "case": "w126body_wall2d",
+   "line": 19,
+   "text": "fix 3 all wall/body/polygon -1 50 50 yplane 0 24",
+   "style": "fix wall/body/polygon",
+   "native": "ERROR: Illegal fix wall/body/polygon argument -1"
+  },
+  {
+   "case": "w126body_cubes_wall",
+   "line": 17,
+   "text": "fix 3 all wall/body/polyhedron -1 50 50 zplane 0.0 NULL",
+   "style": "fix wall/body/polyhedron",
+   "native": "ERROR: Illegal fix wall/body/polyhedron argument -1"
+  },
+  {
+   "case": "w231co_wall_colloid",
+   "line": 24,
+   "text": "fix 2 all wall/colloid zlo -1 1.0 1.0 2.5 zhi EDGE 1.0 1.0 2.5",
+   "style": "fix wall/colloid",
+   "native": "OK"
+  },
+  {
+   "case": "w133mf_wall_ees",
+   "line": 16,
+   "text": "fix EES_substrate all wall/ees zhi EDGE -1 1 10 zlo EDGE 10 1 10",
+   "style": "fix wall/ees",
+   "native": "OK"
+  },
+  {
+   "case": "w38wflow_seam_single",
+   "line": 16,
+   "text": "fix 2 all wall/flow x -1 1.0 12345 2 3.0 7.0 units box",
+   "style": "fix wall/flow",
+   "native": "ERROR: Illegal fix wall/flow argument: negative direction is not supported yet"
+  },
+  {
+   "case": "w7pour_fewer",
+   "line": 15,
+   "text": "fix 4 all wall/gran hooke -1 700.0 50.0 30.0 0.5 1 zplane -4.0 NULL",
+   "style": "fix wall/gran",
+   "native": "ERROR: Illegal classic gran model command"
+  },
+  {
+   "case": "w13gran_region_hertz",
+   "line": 24,
+   "text": "fix 3 all wall/gran/region hertz/history -1 1000.0 0.4 0.3 0.6 1 region reg",
+   "style": "fix wall/gran/region",
+   "native": "ERROR: Illegal classic gran model command"
+  },
+  {
+   "case": "w231co_lubricateU_wall",
+   "line": 20,
+   "text": "fix 2 all wall/harmonic zlo EDGE -1 1.0 0.9 zhi EDGE 1.0 1.0 0.9",
+   "style": "fix wall/harmonic",
+   "native": "OK"
+  },
+  {
+   "case": "w40wh_3d_pair",
+   "line": 21,
+   "text": "fix 2 outer wall/harmonic/outside xlo -1 2.0 0.0 2.0 xhi 6.5 2.0 0.0 1.2 units box",
+   "style": "fix wall/harmonic/outside",
+   "native": "OK"
+  },
+  {
+   "case": "w435dyngroup_fixes",
+   "line": 18,
+   "text": "fix 3 dyn wall/harmonic/returned zhi EDGE -1 1.0 1.5",
+   "style": "fix wall/harmonic/returned",
+   "native": "OK"
+  },
+  {
+   "case": "w16lepton_wall",
+   "line": 17,
+   "text": "fix w1 all wall/lepton xlo EDGE \"k*(r-rc)^2; k=1.0\" -1",
+   "style": "fix wall/lepton",
+   "native": "ERROR: Fix wall/lepton cutoff <= 0.0 for xlo wall"
+  },
+  {
+   "case": "w2wall_lj1043",
+   "line": 29,
+   "text": "fix 2 all wall/lj1043 zlo EDGE -1 1.0 2.5 zhi EDGE 1.0 1.0 2.5",
+   "style": "fix wall/lj1043",
+   "native": "OK"
+  },
+  {
+   "case": "w2wall_lj126",
+   "line": 29,
+   "text": "fix 2 all wall/lj126 zlo EDGE -1 1.0 2.5 zhi EDGE 1.0 1.0 2.5",
+   "style": "fix wall/lj126",
+   "native": "OK"
+  },
+  {
+   "case": "w231co_lubricate_walls",
+   "line": 18,
+   "text": "fix 2 all wall/lj93 zlo -1 1.0 1.0 1.0 zhi 8.0 1.0 1.0 1.0",
+   "style": "fix wall/lj93",
+   "native": "OK"
+  },
+  {
+   "case": "w2wall_morse",
+   "line": 29,
+   "text": "fix 2 all wall/morse zlo EDGE -1 2.0 1.0 2.5 zhi EDGE 1.0 2.0 1.0 2.5",
+   "style": "fix wall/morse",
+   "native": "OK"
+  },
+  {
+   "case": "w142mx_wall_piston",
+   "line": 17,
+   "text": "fix 2 all wall/piston zlo pos -1 vel 0.5 temp 1.0 0.5 1234 1.0 units box",
+   "style": "fix wall/piston",
+   "native": "OK"
+  },
+  {
+   "case": "w7misc_stochastic",
+   "line": 23,
+   "text": "fix 2 lo wall/reflect/stochastic diffusive -1 zlo 0.0 1.0 0 0 0 units box",
+   "style": "fix wall/reflect/stochastic",
+   "native": "ERROR: Random seed must be a positive number"
+  },
+  {
+   "case": "w22rwall_region_union",
+   "line": 17,
+   "text": "fix 2 all wall/region U lj93 -1 0.3 2.5",
+   "style": "fix wall/region",
+   "native": "OK"
+  },
+  {
+   "case": "w133mf_region_ees",
+   "line": 15,
+   "text": "fix EES_block all wall/region/ees the_wall -1 1. 20",
+   "style": "fix wall/region/ees",
+   "native": "OK"
+  },
+  {
+   "case": "w16walltable_linear",
+   "line": 14,
+   "text": "fix 2 all wall/table linear -1 zlo EDGE w16walltable.dat HARMONIC 2.5 zhi EDGE w16walltable.dat LJ126 2.5",
+   "style": "fix wall/table",
+   "native": "ERROR: Illegal number of fix wall/table table entries"
+  },
+  {
+   "case": "w30widom_atom",
+   "line": 14,
+   "text": "fix w all widom -1 3 2 12345 1.0",
+   "style": "fix widom",
+   "native": "ERROR: Invalid fix widom every argument: -1"
+  }
+ ]
+}

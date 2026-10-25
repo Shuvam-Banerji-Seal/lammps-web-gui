@@ -94,11 +94,6 @@ const isValueWord = (w: string): boolean =>
 /** Keeps an atom just outside the box from rounding toward cell 0 (fix_ave_grid.cpp OFFSET). */
 const OFFSET = 16384;
 
-const parseInt1 = (w: string | undefined, what: string, min: number): number => {
-  const v = parseNum(w, what);
-  if (!Number.isInteger(v) || v < min) throw new StyleError(`${what} must be an integer >= ${min}, got '${w}'`);
-  return v;
-};
 
 export class FixAveGrid extends Fix {
   readonly style = 'ave/grid';
@@ -146,26 +141,20 @@ export class FixAveGrid extends Fix {
     super(sys, id, group, args);
     const what = `fix ${id} ave/grid`;
     if (args.length < 7) throw new StyleError(`${what}: missing argument(s): Nevery Nrepeat Nfreq Nx Ny Nz value1 ...`);
-    // As native LAMMPS does (src/fix_ave_grid.cpp FixAveGrid::FixAveGrid at b332f28): utils::inumeric reads each integer,
-    // then its range is checked
-    const atLeastOne = (v: number, w: string, name: string): number => {
-      if (v < 1) throw new StyleError(`${what} ${name} must be an integer >= 1, got '${w}'`);
-      return v;
-    };
-    this.nEvery = atLeastOne(inumeric(args[0]), args[0], 'Nevery');
-    this.nRepeat = atLeastOne(inumeric(args[1]), args[1], 'Nrepeat');
-    this.nFreq = atLeastOne(inumeric(args[2]), args[2], 'Nfreq');
-    this.nx = atLeastOne(inumeric(args[3]), args[3], 'Nx');
-    this.ny = atLeastOne(inumeric(args[4]), args[4], 'Ny');
-    this.nz = atLeastOne(inumeric(args[5]), args[5], 'Nz');
-    if (this.nFreq % this.nEvery !== 0 || this.nRepeat * this.nEvery > this.nFreq) {
-      throw new StyleError(`${what}: Inconsistent nevery/nrepeat/pergrid_nfreq values: Nfreq must be a multiple of Nevery and Nrepeat*Nevery must not exceed Nfreq`);
-    }
+    // As native LAMMPS does (src/fix_ave_grid.cpp FixAveGrid::FixAveGrid at b332f28): utils::inumeric reads Nevery, Nrepeat
+    // and Nfreq, whose ranges are checked at once; the grid counts are read too and checked after the keywords
+    this.nEvery = inumeric(args[0]);
+    this.nRepeat = inumeric(args[1]);
+    this.nFreq = inumeric(args[2]);
+    if (this.nEvery <= 0) throw new StyleError(`Illegal fix ave/grid nevery value: ${this.nEvery}`);
+    if (this.nRepeat <= 0) throw new StyleError(`Illegal fix ave/grid nrepeat value: ${this.nRepeat}`);
+    if (this.nFreq <= 0) throw new StyleError(`Illegal fix ave/grid pergrid freq value: ${this.nFreq}`);
+    if (this.nFreq % this.nEvery !== 0 || this.nRepeat * this.nEvery > this.nFreq) throw new StyleError('Inconsistent fix ave/grid nevery/nrepeat/pergrid_nfreq values');
+    this.nx = inumeric(args[3]);
+    this.ny = inumeric(args[4]);
+    this.nz = inumeric(args[5]);
     this.nevery = this.nEvery;
-    this.ncell = this.nx * this.ny * this.nz;
     this.adof = sys.dimension;
-
-    if (this.sys.dimension === 2 && this.nz !== 1) throw new StyleError(`${what}: for 2d simulations Nz must be 1`);
 
     // values, then keywords
     let k = 6;
@@ -179,45 +168,57 @@ export class FixAveGrid extends Fix {
     }
     this.modeGrid = this.cols.some((c) => c.t === 'grid');
     if (this.modeGrid && this.cols.some((c) => c.t !== 'grid')) throw new StyleError('Fix ave/grid cannot operate on per-atom and per-grid values together');
-    for (const c of this.cols) {
-      if (c.t !== 'grid') continue;
-      const src = c.ref.kind === 'c' ? sys.compute(c.ref.id) : sys.fix(c.ref.id);
-      const [gx, gy, gz] = src.gridSize(c.ref.igrid);
-      if (gx !== this.nx || gy !== this.ny || (sys.dimension === 3 && gz !== this.nz)) throw new StyleError('Fix ave/grid value grid sizes do not match');
-    }
+    let biasId: string | null = null;
 
     while (k < args.length) {
       const key = args[k];
       if (!KEYWORDS.has(key)) throw new StyleError(`Unknown fix ave/grid keyword: ${key}`);
       const val = args[k + 1];
-      if (val === undefined) throw new StyleError(`${what}: keyword ${key} needs a value`);
+      // As native LAMMPS does (src/fix_ave_grid.cpp at b332f28): a keyword without its value, then each value's message
+      if (val === undefined) throw new StyleError(`Illegal fix ave/grid ${key} command: missing argument(s)`);
       k += 2;
       if (key === 'discard') {
         // As native LAMMPS does (src/fix_ave_grid.cpp at b332f28)
         if (val !== 'yes' && val !== 'no') throw new StyleError(`Illegal fix ave/grid discard argument: ${val}`);
         this.discard = val === 'yes';
       } else if (key === 'norm') {
-        if (val !== 'all' && val !== 'sample' && val !== 'none') throw new StyleError(`${what}: norm must be all, sample or none, got '${val}'`);
+        if (val !== 'all' && val !== 'sample' && val !== 'none') throw new StyleError(`Illegal fix ave/grid norm argument: ${val}`);
         this.norm = val;
       } else if (key === 'ave') {
         if (val === 'one' || val === 'running') this.aveMode = val;
         else if (val === 'window') {
           this.aveMode = 'window';
-          this.windowM = parseInt1(args[k], `${what} ave window M`, 1);
+          if (args[k] === undefined) throw new StyleError('Illegal fix ave/grid ave window command: missing argument(s)');
+          this.windowM = inumeric(args[k]);
+          if (this.windowM <= 0) throw new StyleError(`Illegal fix ave/grid ave window argument: ${args[k]}`);
           k++;
-        } else throw new StyleError(`${what}: ave must be one, running or window, got '${val}'`);
+        } else throw new StyleError(`Illegal fix ave/grid ave argument: ${val}`);
       } else if (key === 'bias') {
-        const c = sys.computes.find((x) => x.id === val);
-        if (!c) throw new StyleError(`Could not find compute ID ${val} for temperature bias`);
-        if (!c.tempFlag) throw new StyleError(`Bias compute ID ${val} does not calculate temperature`);
-        if (!c.hasBias()) throw new StyleError(`Bias compute ID ${val} does not calculate a velocity bias`);
-        this.biasId = val;
+        biasId = val;
       } else if (key === 'adof') {
         this.adof = parseNum(val, `${what} adof`);
       } else if (key === 'cdof') {
         this.cdof = parseNum(val, `${what} cdof`);
       }
     }
+    // As native LAMMPS does (src/fix_ave_grid.cpp at b332f28): after the keywords, the grid size, the 2d grid, the bias
+    // compute, then (with the other per-grid checks) the grid size of each per-grid value
+    if (this.nx < 1 || this.ny < 1 || this.nz < 1) throw new StyleError('Invalid fix ave/grid grid size');
+    if (sys.dimension === 2 && this.nz !== 1) throw new StyleError('Fix ave/grid grid Nz must be 1 for 2d simulation');
+    if (biasId !== null) {
+      const c = sys.computes.find((x) => x.id === biasId);
+      if (!c) throw new StyleError(`Could not find compute ID ${biasId} for temperature bias`);
+      if (!c.tempFlag) throw new StyleError(`Bias compute ID ${biasId} does not calculate temperature`);
+      if (!c.hasBias()) throw new StyleError(`Bias compute ID ${biasId} does not calculate a velocity bias`);
+      this.biasId = biasId;
+    }
+    for (const c of this.cols) {
+      if (c.t !== 'grid') continue;
+      const src = c.ref.kind === 'c' ? sys.compute(c.ref.id) : sys.fix(c.ref.id);
+      const [gx, gy, gz] = src.gridSize(c.ref.igrid);
+      if (gx !== this.nx || gy !== this.ny || (sys.dimension === 3 && gz !== this.nz)) throw new StyleError('Fix ave/grid value grid sizes do not match');
+    }
+    this.ncell = this.nx * this.ny * this.nz;
     const ncol = this.cols.length;
     this.data = new Float64Array(this.ncell * ncol);
     this.count = new Float64Array(this.ncell);

@@ -20,6 +20,7 @@ import { appendAtoms } from '../../engine/atoms';
 export class FixAppendAtoms extends Fix {
   readonly style = 'append/atoms';
   private freq = 0;
+  private freqGiven = false;
   private size = 0;
   private scaleflag = true;
   private zhiflag = false;
@@ -42,10 +43,10 @@ export class FixAppendAtoms extends Fix {
         if (sys.state.box.boundary[2][1] !== 'm') throw new StyleError('Append boundary must be shrink/minimum');
       } else if (w === 'freq') {
         need(1);
-        // As native LAMMPS does (src/SHOCK/fix_append_atoms.cpp at b332f28): utils::inumeric reads freq and the basis
-        const n = inumeric(args[k + 1]);
-        if (!Number.isInteger(n) || n <= 0) throw new StyleError('Illegal fix append/atoms command: freq must be a positive integer');
-        this.freq = n;
+        // As native LAMMPS does (src/SHOCK/fix_append_atoms.cpp at b332f28): utils::inumeric reads freq and the basis, with
+        // no range check (a negative freq divides every step; 0 is refused when the fix runs, see freqDue)
+        this.freq = inumeric(args[k + 1]);
+        this.freqGiven = true;
         k += 2;
       } else if (w === 'basis') {
         need(2);
@@ -75,7 +76,7 @@ export class FixAppendAtoms extends Fix {
       }
     }
     if (!this.zhiflag) throw new StyleError('fix append/atoms needs the zhi face');
-    if (this.freq <= 0) throw new StyleError('Illegal fix append/atoms command: freq is required');
+    if (!this.freqGiven) throw new StyleError('Illegal fix append/atoms command: freq is required');
     // units lattice (the default): the size is in lattice spacings along z
     if (this.scaleflag) this.size *= lat.spacing[2];
   }
@@ -97,6 +98,12 @@ export class FixAppendAtoms extends Fix {
 
   /** The new atoms come on the steps that are multiples of freq (initial_integrate forces a neighbor list build). */
   reneighborDue(step: number): boolean {
+    return this.freqDue(step);
+  }
+
+  /** step % freq == 0, as native tests it; native divides by zero (and stops) with freq 0, which the engine refuses. */
+  private freqDue(step: number): boolean {
+    if (this.freq === 0) throw new StyleError('fix append/atoms freq 0: native LAMMPS divides by zero here');
     return step % this.freq === 0;
   }
 
@@ -108,7 +115,7 @@ export class FixAppendAtoms extends Fix {
   preExchange(): void {
     const sys = this.sys;
     const s = sys.state;
-    if (s.step % this.freq !== 0) return;
+    if (!this.freqDue(s.step)) return;
     const lat = sys.lattice!;
     const lo = s.box.lo, hi = s.box.hi;
     const zlo = hi[2], zhi = hi[2] + this.size;

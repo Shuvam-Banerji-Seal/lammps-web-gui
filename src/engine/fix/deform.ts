@@ -216,7 +216,10 @@ export class FixDeform extends Fix {
     super(sys, id, group, args);
     const n = int(args[0], 'fix deform N');
     // fix_deform.rst: "For N > 0, the box is updated at the end of the time step every N steps. For N = 0, the box is updated immediately after position updates on every time step."
-    if (n < 0) throw new StyleError(`fix deform: N must be zero or a positive step interval (got '${args[0]}')`);
+    // As native LAMMPS does (src/fix_deform.cpp FixDeform::FixDeform and options() at b332f28): the messages name the
+    // style as invoked (deform or deform/pressure)
+    const style = child ? child.name : 'deform';
+    if (n < 0) throw new StyleError(`Fix ${style} Nevery must be >= 0`);
     this.nevery = n;
     let units: string | null = null;
     // first pass: keywords (they may follow any parameter sequence)
@@ -243,16 +246,16 @@ export class FixDeform extends Fix {
         // As native LAMMPS does (src/fix_deform.cpp FixDeform::options at b332f28): "Illegal fix {style} {keyword} command: missing argument(s)"
         if (val === undefined) throw missingArgs(`fix ${child ? child.name : 'deform'} ${w}`);
         if (w === 'remap') {
-          if (val !== 'x' && val !== 'v' && val !== 'none') throw new StyleError(`fix deform: remap must be x, v or none (got '${val}')`);
+          if (val !== 'x' && val !== 'v' && val !== 'none') throw new StyleError(`Illegal fix ${style} remap command: ${val}`);
           this.remapMode = val;
         } else if (w === 'flip') {
           this.flip = yesno(val, 'fix deform flip');
         } else if (w === 'units') {
-          if (val !== 'lattice' && val !== 'box') throw new StyleError(`fix deform: units must be lattice or box (got '${val}')`);
+          if (val !== 'lattice' && val !== 'box') throw new StyleError(`Illegal fix ${style} units command: ${val}`);
           units = val;
         } else {
-          // fix_deform.cpp options(): "Unknown fix {} keyword: {}" (the keyword is one of fix deform/pressure)
-          throw new StyleError(`Unknown fix deform keyword: ${w} (a fix deform/pressure keyword)`);
+          // a fix deform/pressure keyword given to fix deform
+          throw new StyleError(`Unknown fix ${style} keyword: ${w}`);
         }
         k += 2;
         continue;

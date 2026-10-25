@@ -128,7 +128,10 @@ export class FixLangevinEff extends Fix {
   /** fix_langevin_eff.cpp compute_target: the constant or equal-style target and its square root. */
   private computeTarget(): void {
     const tt = typeof this.tStart === 'number' ? ramp(this.sys, this.tStart, this.tStop) : valueOf(this.sys, this.tStart);
-    if (tt < 0.0) throw new StyleError('Fix langevin/eff variable returned negative temperature');
+    // only a variable's negative value is an error; a negative constant target gives NaN random forces (sqrt), which
+    // native runs with and the engine refuses once steps are run (a run 0 ends normally, as natively)
+    if (tt < 0.0 && typeof this.tStart !== 'number') throw new StyleError('Fix langevin/eff variable returned negative temperature');
+    if (tt < 0.0 && this.sys.run.lastStep > this.sys.run.firstStep) throw new StyleError(`fix ${this.id} langevin/eff: the negative target temperature ${tt} gives NaN forces in native LAMMPS; the engine does not run it`);
     this.tsqrt = Math.sqrt(tt);
   }
 

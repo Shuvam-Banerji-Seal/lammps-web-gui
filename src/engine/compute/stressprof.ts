@@ -1,6 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
-import { numeric } from '../force/util';
+import { cInt, numeric } from '../force/util';
+import { formatNumber } from '../cformat';
 import { massOf } from '../atoms';
 import type { System } from '../system';
 import { termForces, termRows } from './local';
@@ -423,23 +424,24 @@ export class ComputeStressMop extends Compute {
 export class ComputeStressMopProfile extends Compute {
   readonly style = 'stress/mop/profile';
   private readonly d: number;
-  private readonly origin: string;
   private readonly delta: number;
   private readonly kws: string[];
+  /** the bin (plane) positions, set when the compute is defined (native setup_bins) */
+  private readonly bins: number[];
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 3) throw new StyleError('usage: compute ID group-ID stress/mop/profile dir origin delta keywords...');
     this.d = parseDim(args[0], `compute ${id} stress/mop/profile`);
     // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_mop_profile.cpp ComputeStressMopProfile::ComputeStressMopProfile at b332f28):
-    // origin and delta are read by utils::numeric (origin may also be lower, center or upper)
-    if (!['lower', 'center', 'upper'].includes(args[1])) numeric(args[1]);
-    this.origin = args[1];
+    // origin lower, center or upper is taken from the box now, else origin and delta are read by utils::numeric
+    const box = sys.state.box, d = this.d;
+    const origin = args[1] === 'lower' ? box.lo[d] : args[1] === 'center' ? 0.5 * (box.lo[d] + box.hi[d]) : args[1] === 'upper' ? box.hi[d] : numeric(args[1]);
     this.delta = numeric(args[2]);
-    if (!(this.delta > 0)) throw new StyleError(`compute ${id} stress/mop/profile: delta must be positive (got ${args[2]})`);
     this.kws = args.slice(3);
     // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_mop_profile.cpp ComputeStressMopProfile::ComputeStressMopProfile at b332f28): an unknown keyword stops with "Unknown compute stress/mop/profile keyword".
     for (const w of this.kws) if (!MOP_KEYWORDS.includes(w)) throw new StyleError(`Unknown compute stress/mop/profile keyword ${w}`);
+    this.bins = this.setupBins(origin);
     refuseStress(sys, id, 'stress/mop/profile', this.kws);
     this.arrayFlag = true;
     this.sizeArrayCols = 1 + 3 * this.kws.length;
@@ -447,26 +449,30 @@ export class ComputeStressMopProfile extends Compute {
 
   init(): void {
     refuseStress(this.sys, this.id, 'stress/mop/profile', this.kws);
-    this.sizeArrayRows = this.planes().length;
+    this.sizeArrayRows = this.bins.length;
     this.array = new Float64Array(this.sizeArrayRows * this.sizeArrayCols);
   }
 
-  /** Planes origin + k delta inside [lo, hi] (measured natively, see the header comment). */
-  private planes(): number[] {
-    const s = this.sys.state;
-    const lo = s.box.lo[this.d], hi = s.box.hi[this.d];
-    const o = planeValue(this.sys, this.d, this.origin);
-    const kmin = Math.ceil((lo - o) / this.delta - 1e-10);
-    const kmax = Math.floor((hi - o) / this.delta + 1e-10);
-    const out: number[] = [];
-    for (let k = kmin; k <= kmax; k++) out.push(o + k * this.delta);
-    return out;
+  /**
+   * As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_mop_profile.cpp setup_bins at b332f28, called by the
+   * constructor): an origin outside the box is refused; the lowest plane is origin - n delta with n the C int of
+   * (origin - lo) / delta, the highest origin + m delta likewise, and the bin count the C int of their span / delta + 1.5.
+   */
+  private setupBins(origin: number): number[] {
+    const box = this.sys.state.box, d = this.d;
+    if (origin > box.hi[d] || origin < box.lo[d]) throw new StyleError('Origin of bins for compute stress/mop/profile is out of bounds');
+    if (!(this.delta > 0)) throw new StyleError(`compute ${this.id} stress/mop/profile: delta must be positive (got ${this.delta})`);
+    const inv = 1.0 / this.delta;
+    const lo = origin - cInt((origin - box.lo[d]) * inv) * this.delta;
+    const hi = origin + cInt((box.hi[d] - origin) * inv) * this.delta;
+    const nbins = cInt((hi - lo) * inv + 1.5);
+    return Array.from({ length: nbins }, (_, i) => lo + i * this.delta);
   }
 
   protected computeArray(): void {
     const sys = this.sys;
     refuseStress(sys, this.id, 'stress/mop/profile', this.kws);
-    const planes = this.planes();
+    const planes = this.bins;
     const pairs = collectPairs(sys, this.groupBit, 'either');
     const terms = mopTerms(sys, this.groupBit, mopBondedKinds(sys, this.kws));
     const ncol = this.sizeArrayCols;
@@ -491,7 +497,8 @@ export class ComputeStressMopProfile extends Compute {
  */
 export class ComputeStressCartesian extends Compute {
   readonly style = 'stress/cartesian';
-  private readonly dims: { d: number; width: number }[];
+  /** each binned dimension, with native's bin count (fixed when the compute is defined) */
+  private readonly dims: { d: number; n: number }[];
   private axes: Axis[] = [];
   private readonly withKe: boolean;
   private readonly withPair: boolean;
@@ -501,18 +508,29 @@ export class ComputeStressCartesian extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length < 4) throw new StyleError('usage: compute ID group-ID stress/cartesian dim1 bin_width1 dim2 bin_width2 [keywords]');
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_cartesian.cpp ComputeStressCartesian::ComputeStressCartesian
+    // at b332f28): each bin width is read by utils::numeric, the bin count is the C int of box length / width, the width
+    // becomes box length / count (logged when that moves it by more than 1e-10), and only then is a width <= 0 or
+    // larger than the box refused; a width of 0 gives an infinite count, INT_MIN, so a negative width
+    const box = sys.state.box;
+    const bins = (d: number, word: string, which: 'First' | 'Second'): number => {
+      const width = numeric(word);
+      const len = box.hi[d] - box.lo[d];
+      const n = cInt(len / width);
+      const adjusted = len / n;
+      if (Math.abs(adjusted - width) > 1e-10) sys.log(`Adjusting ${which.toLowerCase()} bin width for compute stress/cartesian from ${formatNumber(width, '%.6f')} to ${formatNumber(adjusted, '%.6f')}`);
+      if (adjusted <= 0) throw new StyleError(`Illegal compute stress/cartesian command. ${which} bin width must be > 0`);
+      if (adjusted > len) throw new StyleError(`Illegal compute stress/cartesian command. ${which} bin width > box${which === 'First' ? '.' : ''}`);
+      return n;
+    };
     const d1 = parseDim(args[0], `compute ${id} stress/cartesian`);
-    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_cartesian.cpp ComputeStressCartesian::ComputeStressCartesian at b332f28): utils::numeric reads each bin width
-    const w1 = numeric(args[1]);
-    this.dims = [{ d: d1, width: w1 }];
+    this.dims = [{ d: d1, n: bins(d1, args[1], 'First') }];
     if (args[2] !== 'NULL') {
       const d2 = parseDim(args[2], `compute ${id} stress/cartesian`);
       if (d2 === d1) throw new StyleError(`compute ${id} stress/cartesian: dim1 and dim2 must differ`);
-      this.dims.push({ d: d2, width: numeric(args[3]) });
+      this.dims.push({ d: d2, n: bins(d2, args[3], 'Second') });
     }
-    for (const dm of this.dims) {
-      if (!(dm.width > 0)) throw new StyleError(`compute ${id} stress/cartesian: bin width must be positive (got ${dm.width})`);
-    }
+    if (this.dims.reduce((p, dm) => p * dm.n, 1) > 2147483647) throw new StyleError('Too many bins in compute stress/cartesian');
     const kw = args.slice(4);
     for (const w of kw) {
       // As native LAMMPS does (src/EXTRA-COMPUTE/compute_stress_cartesian.cpp ComputeStressCartesian::ComputeStressCartesian at b332f28): an unknown keyword stops with "Unknown compute stress/cartesian keyword".
@@ -524,16 +542,14 @@ export class ComputeStressCartesian extends Compute {
     this.withBond = !this.explicit || kw.includes('bond');
     this.arrayFlag = true;
     this.sizeArrayCols = this.dims.length === 1 ? 8 : 9;
-    if (sys.hasBox) this.resolve();
+    this.resolve();
   }
 
-  /** Bins follow the box (nbins = floor(L / b), width L / nbins); resolved when the box exists. */
+  /** The bins of each dimension: native's count, over the box as it is now (width L / count). */
   private resolve(): void {
     const s = this.sys.state;
-    this.axes = this.dims.map(({ d, width }) => {
+    this.axes = this.dims.map(({ d, n }) => {
       const L = s.box.hi[d] - s.box.lo[d];
-      const n = Math.floor(L / width + 1e-10);
-      if (n < 1) throw new StyleError(`compute ${this.id} stress/cartesian: bin width ${width} is larger than the box length ${L}`);
       return { d, lo: s.box.lo[d], w: L / n, n, periodic: s.box.periodic[d] };
     });
     this.sizeArrayRows = this.axes.reduce((p, a) => p * a.n, 1);

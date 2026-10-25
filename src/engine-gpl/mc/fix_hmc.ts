@@ -139,8 +139,8 @@ export class FixHmc extends Fix {
     // with N and the seed only, native reads the missing arg[5] as NULL
     if (args.length < 3) throw new StyleError('Expected floating point parameter instead of NULL or empty string in input script or data file');
     this.nevery = intArg(args[0]);
-    // native reads N without a check and takes ntimestep % nevery; N < 1 is refused here instead of dividing by zero
-    if (this.nevery < 1) throw new StyleError(`Illegal fix hmc command: N must be a positive integer, got ${this.nevery}`);
+    // native reads N without a check: a negative N divides every step (ntimestep % N == 0); N 0 divides by zero at the
+    // end-of-step test of the first step, where the engine stops instead (setup)
     const seed = intArg(args[1]);
     const temp = numArg(args[2]);
     if (seed <= 0) throw new StyleError('Fix hmc seed must be > 0');
@@ -324,6 +324,9 @@ export class FixHmc extends Fix {
 
   /** FixHMC::setup: draw velocities, PE and KE of the start, save the state (every run). */
   setup(): void {
+    if (this.nevery === 0 && this.sys.run.lastStep > this.sys.run.firstStep) {
+      throw new StyleError('Fix hmc N is 0: native LAMMPS divides by zero at its end-of-step test (Modify::end_of_step)');
+    }
     // native: fix_rigid->setup first (the engine's rigid fix, defined before this one, has run its setup), then the atom
     // velocities, then with the rigid keyword the bodies' momenta
     this.randomVelocities();

@@ -424,9 +424,12 @@ export class FixLangevin extends Fix {
       }
     } else {
       const tt = this.targetTemperature();
-      if (tt < 0) {
-        throw new StyleError(typeof this.tStart === 'number' ? `fix ${this.id} langevin: target temperature is negative` : 'Fix langevin variable returned negative temperature');
-      }
+      // As native LAMMPS does (src/fix_langevin.cpp compute_target at b332f28): only a variable's negative value is an
+      // error; a negative constant target is taken as is, and its square root makes the random forces NaN. Measured
+      // with native LAMMPS: run 0 ends normally and a run with steps prints nan for temp, etotal and press, which the
+      // engine refuses to run
+      if (tt < 0 && typeof this.tStart !== 'number') throw new StyleError('Fix langevin variable returned negative temperature');
+      if (tt < 0 && sys.run.lastStep > sys.run.firstStep) throw new StyleError(`fix ${this.id} langevin: the negative target temperature ${tt} gives NaN forces in native LAMMPS; the engine does not run it`);
       tsqrt = Math.sqrt(tt);
     }
     const zero = this.zero;

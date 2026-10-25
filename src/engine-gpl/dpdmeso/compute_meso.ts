@@ -42,9 +42,9 @@ export class ComputeTDPDCCAtom extends Compute {
     super(sys, id, group, args);
     if (args.length !== 1) throw new StyleError('Number of arguments for compute tdpd/cc/atom command != 4');
     if (!isTdpdStyle(sys.state.atomStyle)) throw new StyleError('compute tdpd/cc/atom command requires atom_style tdpd');
+    // the index is read by utils::inumeric with no range check (as the constructor does); native reads cc[i][index-1]
+    // outside the species when it is out of range, which the engine refuses when the compute is evaluated
     this.index = parseInt_(args[0], 'index');
-    const nsp = tdpdSpecies(sys.state.atomStyle);
-    if (this.index < 1 || this.index > nsp) throw new StyleError(`compute tdpd/cc/atom: index ${args[0]} is not a species 1..${nsp}`);
     this.peratomFlag = true;
     this.sizePeratomCols = 0;
   }
@@ -52,6 +52,7 @@ export class ComputeTDPDCCAtom extends Compute {
   protected computePeratom(): void {
     const s = this.sys.state;
     const nsp = tdpdSpecies(s.atomStyle);
+    if (this.index < 1 || this.index > nsp) throw new StyleError(`compute tdpd/cc/atom: index ${this.index} is not a species 1..${nsp} (native LAMMPS reads outside its array)`);
     const cc = s.custom.get(TDPD_CC)!.data;
     this.vectorAtom = new Float64Array(s.n);
     for (let i = 0; i < s.n; i++) if (s.mask[i] & this.groupBit) this.vectorAtom[i] = cc[nsp * i + this.index - 1];

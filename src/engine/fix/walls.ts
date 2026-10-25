@@ -253,7 +253,13 @@ export abstract class FixWallBase extends Fix {
           continue;
         }
         const r = w.lo ? s.x[3 * i + d] - coord[k] : coord[k] - s.x[3 * i + d];
-        if (r <= 0) throw new StyleError(`Particle on or inside fix ${this.id} ${this.wallStyle} surface`);
+        // As native LAMMPS does (src/fix_wall_lj93.cpp, fix_wall_lj126.cpp, fix_wall_harmonic.cpp, fix_wall_morse.cpp and
+        // fix_wall_lj1043.cpp wall_particle at b332f28): an atom on or behind the wall stops the run with "Particle on or
+        // inside fix wall surface", except for wall/lj1043, which skips it
+        if (r <= 0) {
+          if (this.wallStyle === 'wall/lj1043') continue;
+          throw new StyleError('Particle on or inside fix wall surface');
+        }
         if (r >= w.cutoff) continue;
         // F = -dE/dr, pointing away from the wall; sign flips the axis for hi walls
         const f = this.forceAt(r, w);

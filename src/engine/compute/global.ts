@@ -347,7 +347,8 @@ export class ComputeRDF extends Compute {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     this.nbin = parseInt_(args[0], 'compute rdf Nbin');
-    if (this.nbin < 1) throw new StyleError(`compute rdf Nbin must be >= 1 (got ${args[0]})`);
+    // As native LAMMPS does (src/compute_rdf.cpp ComputeRDF::ComputeRDF at b332f28)
+    if (this.nbin < 1) throw new StyleError('Number of bins for compute rdf must be > 0');
     // As native LAMMPS does (src/compute_rdf.cpp ComputeRDF::ComputeRDF at b332f28): after the first "cutoff" only "cutoff value" pairs are read, then the atom-type words must come in pairs
     const cutAt = args.indexOf('cutoff', 1);
     if (cutAt >= 0) {

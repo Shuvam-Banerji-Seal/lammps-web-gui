@@ -41,7 +41,9 @@ export class ComputeCnpAtom extends Compute {
     super(sys, id, group, args);
     if (args.length !== 1) throw new StyleError(`compute ${id} (cnp/atom): usage: compute ID group-ID cnp/atom cutoff`);
     const v = parseNum(args[0], `compute ${id} (cnp/atom) cutoff`);
-    if (!(v > 0)) throw new StyleError(`compute ${id} (cnp/atom): cutoff must be > 0 (got ${args[0]})`);
+    // As native LAMMPS does (src/EXTRA-COMPUTE/compute_cnp_atom.cpp ComputeCNPAtom::ComputeCNPAtom at b332f28): only a
+    // negative cutoff is refused (a cutoff of 0 finds no neighbours)
+    if (v < 0) throw new StyleError('Illegal compute cnp/atom command');
     this.cut = v;
   }
 

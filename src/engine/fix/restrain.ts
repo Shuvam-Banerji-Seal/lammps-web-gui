@@ -147,7 +147,6 @@ export class FixRestrain extends Fix {
     }
     if (!this.terms.length) throw new StyleError(ILLEGAL);
     for (const t of this.terms) {
-      if (t.atoms.some((a) => !Number.isInteger(a) || a <= 0)) throw new StyleError(`fix restrain ${t.kind}: atom IDs must be positive integers`);
       if (t.kind === 'bond' || t.kind === 'lbound') {
         if (t.atoms[0] === t.atoms[1]) throw new StyleError(`fix restrain ${t.kind}: the two atoms must differ`);
       }
@@ -163,10 +162,21 @@ export class FixRestrain extends Fix {
     const s = this.sys.state;
     const g = this.sys.geom;
     const map = buildAtomMap(s);
-    const idx = (id: number, kind: string): number => {
-      const i = id < map.length ? map[id] : -1;
-      if (i < 0) throw new StyleError(`fix restrain ${kind}: atom ${id} missing`);
-      return i;
+    const newtonBond = this.sys.newtonBond;
+    /**
+     * As native LAMMPS does (src/fix_restrain.cpp restrain_bond, restrain_lbound, restrain_angle and restrain_dihedral at
+     * b332f28), on one process: the term's atoms are looked up by ID (no atom has ID 0). With newton_bond on, a term
+     * whose second atom is missing is skipped and any other missing atom stops the run; with newton_bond off, a term
+     * with every atom missing is skipped and one with some missing stops. Native looks a negative ID up outside its
+     * atom map, which the engine refuses.
+     */
+    const lookup = (t: Term): number[] | null => {
+      const neg = t.atoms.find((a) => a < 0);
+      if (neg !== undefined) throw new StyleError(`fix restrain ${t.kind}: atom ID ${neg} is negative (native LAMMPS looks it up outside its atom map)`);
+      const ii = t.atoms.map((id) => (id < map.length ? map[id] : -1));
+      if (newtonBond ? ii[1] < 0 : ii.every((i) => i < 0)) return null;
+      if (ii.some((i) => i < 0)) throw new StyleError(`Restrain atoms ${t.atoms.join(' ')} missing on proc 0 at step ${s.step}`);
+      return ii;
     };
     const f = s.f, x = s.x;
     const d = [0, 0, 0];
@@ -175,7 +185,9 @@ export class FixRestrain extends Fix {
     for (const t of this.terms) {
       const { k, r0 } = this.current(t);
       if (t.kind === 'bond' || t.kind === 'lbound') {
-        const i = idx(t.atoms[0], t.kind), j = idx(t.atoms[1], t.kind);
+        const ii = lookup(t);
+        if (!ii) continue;
+        const [i, j] = ii;
         for (let c = 0; c < 3; c++) d[c] = x[3 * j + c] - x[3 * i + c];
         g.minimumImage(d);
         const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
@@ -193,7 +205,9 @@ export class FixRestrain extends Fix {
           }
         }
       } else if (t.kind === 'angle') {
-        const i = idx(t.atoms[0], 'angle'), j = idx(t.atoms[1], 'angle'), kk = idx(t.atoms[2], 'angle');
+        const ii = lookup(t);
+        if (!ii) continue;
+        const [i, j, kk] = ii;
         const u = [0, 0, 0], v = [0, 0, 0];
         for (let c = 0; c < 3; c++) { u[c] = x[3 * i + c] - x[3 * j + c]; v[c] = x[3 * kk + c] - x[3 * j + c]; }
         g.minimumImage(u);
@@ -220,7 +234,8 @@ export class FixRestrain extends Fix {
         }
       } else {
         // dihedral: geometry from the engine's bonded helpers (import only)
-        const atoms = t.atoms.map((id, o) => idx(id, `dihedral atom ${o + 1}`));
+        const atoms = lookup(t);
+        if (!atoms) continue;
         const shim = { s, geom: g } as unknown as BondedCompute;
         const grad = new Array(12).fill(0), rel = new Array(12).fill(0);
         const phi = dihedralGeometry(shim, atoms[0], atoms[1], atoms[2], atoms[3], grad, rel);

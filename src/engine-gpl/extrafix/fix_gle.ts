@@ -146,7 +146,9 @@ export class FixGLE extends Fix {
     // As native LAMMPS does (src/EXTRA-FIX/fix_gle.cpp FixGLE::FixGLE at b332f28): utils::inumeric reads ns, then
     // utils::numeric the two temperatures and utils::inumeric the seed, and only then the A matrix file is read.
     const ns = inumeric(args[0]);
-    if (!Number.isInteger(ns) || ns < 1) throw new StyleError('Illegal fix gle number of auxiliary momenta (ns)');
+    // ns 0 (no auxiliary momenta) runs; a negative ns makes native fail to allocate the per-atom array gle:gle_s (a size
+    // that depends on its memory growth), which the engine refuses with its own message
+    if (ns < 0) throw new StyleError('Illegal fix gle number of auxiliary momenta (ns)');
     this.ns = ns;
     this.ns1sq = (ns + 1) * (ns + 1);
     this.tStart = numeric(args[1]);

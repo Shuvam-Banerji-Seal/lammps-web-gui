@@ -45,7 +45,7 @@ describe('fix deform N = 0 and erate/rescale', () => {
 
   it('rejects a negative N', async () => {
     const { error } = await runScript(`${BOX}\n${SLLOD}\nfix 2 all deform -1 xy erate 0.05 remap v\nrun 1\n`);
-    expect(error).toMatch(/N must be zero or a positive step interval/);
+    expect(error).toContain('Fix deform Nevery must be >= 0');
   });
 
   it('refuses the variable style with N = 0 (native: "Fix deform cannot use the variable style with nevery = 0")', async () => {

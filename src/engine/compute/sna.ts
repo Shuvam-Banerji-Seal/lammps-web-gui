@@ -6,6 +6,16 @@ import { CellList } from '../cellList';
 import { libm } from '../libm';
 
 /**
+ * rcutfac is read by utils::numeric with no check, as native LAMMPS does (src/ML-SNAP/compute_sna_atom.cpp and
+ * compute_snap.cpp constructors at b332f28), so a compute defined with rcutfac <= 0 is accepted. With 0 no neighbour is
+ * inside the cutoff. Native evaluates a negative rcutfac with the neighbours inside |rcutfac| (R_i + R_j) and a negative
+ * switching cutoff, which the engine does not reproduce: it refuses to evaluate such a compute.
+ */
+export const checkRcutfac = (id: string, style: string, rcutfac: number): void => {
+  if (rcutfac < 0) throw new StyleError(`compute ${id} (${style}): a negative rcutfac (${rcutfac}) is not evaluated by the engine`);
+};
+
+/**
  * Cutoff of the cell list for the neighbour tests of sna/atom, snap and sna/grid: every test accepts r < Rii with
  * Rii = rcutfac * (R_i + R_k) <= 2 * rcutfac * max radius, and the keyword nnn cutoff stays inside the pair cutoff.
  */
@@ -256,7 +266,6 @@ export class ComputeSnaAtom extends Compute {
     const need = 3 + 2 * ntypes;
     if (args.length < need) throw new StyleError(`Illegal compute ${style} command`);
     this.rcutfac = parseNum(args[0], `compute ${id} (sna/atom) rcutfac`);
-    if (!(this.rcutfac > 0)) throw new StyleError(`compute ${id} (sna/atom): rcutfac must be positive (got ${args[0]})`);
     this.rfac0 = parseNum(args[1], `compute ${id} (sna/atom) rfac0`);
     const tj = parseInt_(args[2], `compute ${id} (sna/atom) twojmax`);
     if (tj < 0) throw new StyleError(`compute ${id} (sna/atom): twojmax must be a non-negative integer (got ${args[2]})`);
@@ -455,6 +464,7 @@ export class ComputeSnaAtom extends Compute {
   }
 
   protected computePeratom(): void {
+    checkRcutfac(this.id, this.style, this.rcutfac);
     this.sys.forces();
     const sys = this.sys;
     const s = sys.state;
@@ -889,6 +899,7 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
   }
 
   protected override computePeratom(): void {
+    checkRcutfac(this.id, this.style, this.rcutfac);
     this.sys.forces();
     const sys = this.sys;
     const s = sys.state;

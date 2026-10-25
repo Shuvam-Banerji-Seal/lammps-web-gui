@@ -95,7 +95,10 @@ describe('DPD-MESO styles: refusals', () => {
     await expect(newSession().session.execute(`${headFor('edpd')}create_atoms 1 single 1 1 1\nfix s all edpd/source blob 0.1\n`)).rejects.toThrow(/Illegal fix edpd\/source command option blob/);
   });
 
-  it('keeps tdpd species indices inside the atom style', async () => {
-    await expect(newSession().session.execute(`${headFor('tdpd 2')}create_atoms 1 single 1 1 1\nfix s all tdpd/source 3 cuboid 0 0 0 1 1 1 0.1\n`)).rejects.toThrow(/cc index 3 is not a species/);
+  it('accepts any tdpd species index when the fix and compute are defined, and refuses one outside the style when used', async () => {
+    // Measured with native LAMMPS: an index outside the species (0, -1) is accepted at definition, and run 0 ends OK;
+    // native reads and writes outside its arrays when they are used, which the engine refuses
+    await expect(newSession().session.execute(`${headFor('tdpd 2')}create_atoms 1 single 1 1 1\nfix s all tdpd/source 3 cuboid 0 0 0 1 1 1 0.1\ncompute c all tdpd/cc/atom 0\n`)).resolves.toBeUndefined();
+    await expect(newSession().session.execute(`${headFor('tdpd 2')}create_atoms 1 single 1 1 1\nmass 1 1.0\nfix s all tdpd/source 3 cuboid 0 0 0 1 1 1 0.1\nfix i all nve\nrun 1\n`)).rejects.toThrow(/cc index 3 is not a species 1..2/);
   });
 });

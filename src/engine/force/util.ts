@@ -93,6 +93,12 @@ export const inumeric = (w: string | undefined): number => {
 };
 
 /**
+ * A C (int) conversion of a double as native LAMMPS's x86-64 build does it (cvttsd2si): the value truncated toward
+ * zero, and INT_MIN for NaN or a value outside int (an infinite bin count from a zero width, for example).
+ */
+export const cInt = (v: number): number => (v > -2147483649 && v < 2147483648 ? Math.trunc(v) : -2147483648);
+
+/**
  * utils::bounds: a range "N", "*", "*N", "M*" or "M*N" over nmin..nmax, with native's messages (src/utils.cpp at
  * b332f28; a number is read as std::stol reads it, up to the first character that is not a digit).
  */

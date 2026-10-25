@@ -76,11 +76,12 @@ export class FixACKS2ReaxFF extends Fix {
     super(sys, id, group, args);
     this.scalarFlag = true;
     this.extscalar = 0;
-    // narg of LAMMPS is 8..12 with "fix ID group style" in front: 5..9 arguments here (as fix qeq/reaxff)
-    if (args.length < 5 || args.length > 9) throw new StyleError('Illegal fix acks2/reaxff command');
+    // narg of LAMMPS is 8..12 with "fix ID group style" in front: 5..9 arguments here; the word count and Nevery are
+    // checked by the FixQEqReaxFF constructor, whose messages name fix qeq/reaxff
+    if (args.length < 5 || args.length > 9) throw new StyleError('Illegal fix qeq/reaxff command');
     this.pairRef()?.attachAcks2(() => this.sVec);
     this.nevery = inumeric(args[0]);
-    if (this.nevery <= 0) throw new StyleError('Illegal fix acks2/reaxff command');
+    if (this.nevery <= 0) throw new StyleError('Illegal fix qeq/reaxff command');
     this.swa = numeric(args[1]);
     this.swb = numeric(args[2]);
     this.tolerance = numeric(args[3]);

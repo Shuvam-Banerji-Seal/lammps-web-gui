@@ -277,11 +277,10 @@ describe('compute coord/atom', () => {
     await expect(runScript(`${TWO_ATOMS}\ncompute q all orientorder/atom components 6\ncompute c all coord/atom orientorder q 1.0`)).rejects.toThrow('Compute coord/atom threshold not between -1 and 1');
     await expect(runScript(`${TWO_ATOMS}\ncompute q all orientorder/atom components 6\ncompute c all coord/atom orientorder q 0.5 extra`)).rejects.toThrow('Illegal compute coord/atom command');
     await expect(runScript(`${TWO_ATOMS}\ncompute q all orientorder/atom\ncompute c all coord/atom orientorder q 0.5\nthermo_style custom step c_c[1]\nrun 0`)).rejects.toThrow('requires components option');
-    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom weird 1.0`)).rejects.toThrow("unknown compute coord/atom cstyle 'weird'");
+    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom weird 1.0`)).rejects.toThrow('Invalid cstyle in compute coord/atom');
     await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff`)).rejects.toThrow('Illegal compute coord/atom command');
-    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff -1.0`)).rejects.toThrow('must be a positive number');
     await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff 0.8 3`)).rejects.toThrow('Numeric index 3 is out of bounds (1-2)');
     await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff 0.8 2*1`)).rejects.toThrow('Numeric index 2 is out of bounds (1-1)');
-    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff 0.8 1 group two`)).rejects.toThrow('group keyword must come before the typeN values');
+    await expect(runScript(`${TWO_ATOMS}\ncompute c all coord/atom cutoff 0.8 1 group two`)).rejects.toThrow('Invalid range string: group');
   });
 });

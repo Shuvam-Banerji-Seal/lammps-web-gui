@@ -251,8 +251,10 @@ ${line}
   });
 
   it('rejects a bad dir and an undefined or unsupported K variable', async () => {
-    expect(await bad('fix 1 all spring/self 10.0 q')).toMatch(/dir must be/);
-    expect(await bad('fix 1 all spring/self v_novar')).toMatch(/not defined/);
-    expect(await bad('variable s string 5\nfix 1 all spring/self v_s')).toMatch(/equal-style or atom-style/);
+    // as src/fix_spring_self.cpp at b332f28: the direction at the fix command, the variable at init
+    expect(await bad('fix 1 all spring/self 10.0 q')).toMatch(/Illegal fix spring\/self command/);
+    expect(await bad('fix 1 all spring/self 0.0')).toMatch(/Illegal force constant for fix spring\/self command/);
+    expect(await bad('fix 1 all spring/self v_novar\nrun 0')).toMatch(/Variable novar for fix spring\/self does not exist/);
+    expect(await bad('variable s string 5\nfix 1 all spring/self v_s\nrun 0')).toMatch(/Variable s for fix spring\/self is invalid style/);
   });
 });

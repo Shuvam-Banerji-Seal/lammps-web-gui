@@ -36,6 +36,15 @@ engine with it (the cases are split over the shard files tests/engineOracle*.tes
 matches all of them). Put `thermo_modify format float %.15g` after `thermo_style`. Measured native behaviour is written in
 comments as "Measured with native LAMMPS: ..." without quote marks; quote marks are for doc text only.
 
+Parity matrices check how each style reads a changed word (a bad number, 0, -1, ...) against native LAMMPS: a matrix
+in `tests/parityMatrices.ts` takes one line per style from the oracle cases, changes one word and runs 0 steps.
+`LMP=/home/roy/.local/bin/lmp LMP_BUILDS=ML-PACE=/path/lmp,APIP=/path/lmp,... node scripts/parity/run-parity.mjs
+[matrix]` writes the native results to `tests/fixtures/parity/<matrix>.json` (rows needing a package run on the build
+listed for it), and `tests/engineParity.<matrix>.test.ts` checks that the engine gives the same first ERROR line, or
+none. A row is skipped, with the reason in the fixture, when native crashes, fails an allocation, has undefined
+behaviour (listed per style in the matrix) or needs a package no native build has. A new matrix is a `MATRICES` entry,
+its fixture and a one-line suite file; keep these checks in the repo, not in scratch files.
+
 LAMMPS is open source: read its C++ (github.com/lammps/lammps at `b332f28`) to find the exact behaviour before
 implementing, in core fixes as well as ports. Native runs are the check, not the way to discover a rule. Where the
 code goes is rule 7: logic translated from the C++ lives in `src/engine-gpl/`; a core fix is written in the engine's
@@ -62,6 +71,7 @@ b332f28): ...").
 | `src/components/*.tsx` | three.js scene pieces (instanced meshes, camera, box, labels) |
 | `src/workers/` | Parser and analysis Web Workers |
 | `tests/*.test.ts` | Vitest suites, one per module |
+| `tests/parityMatrices.ts`, `scripts/parity/`, `tests/fixtures/parity/` | Parity matrices: row generators, the native runner and its results (suites `tests/engineParity.*.test.ts`) |
 | `third_party/lammps/` | Unmodified LAMMPS potential files (GPL-2.0, own `LICENSE` and `README.md`; not under this project's licence). Data only: rule 7 still forbids LAMMPS source code |
 | `src/engine-gpl/` | Styles ported from the LAMMPS C++ source (GPL-2.0, own `LICENSE` and `README.md`; each file names its LAMMPS source file and commit). Registered through `src/engine/lazyStyles.ts` only (rule 7) |
 

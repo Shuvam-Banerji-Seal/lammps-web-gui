@@ -2,7 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseInt_ } from '../force/util';
-import { rawBispectrum, WignerTables, snaBinCut, type Cmat } from './sna';
+import { checkRcutfac, rawBispectrum, WignerTables, snaBinCut, type Cmat } from './sna';
 import { CellList } from '../cellList';
 import {
   parseSnaArgs, cutoffFactor, innerSwitch, cayleyKlein, quadraticTerms, checkCutoff, type SnaParams,
@@ -46,7 +46,9 @@ const parseGrid = (id: string, style: string, args: string[], ntypes: number): G
     throw new StyleError(`compute ${id} (${style}): expects 'grid nx ny nz rcutfac rfac0 twojmax ...'`);
   }
   const dims = [1, 2, 3].map((k) => parseInt_(args[k], `compute ${id} (${style}) grid ${'nxyz'[k - 1]}`));
-  for (const d of dims) if (!(d >= 1)) throw new StyleError(`compute ${id} (${style}): grid counts must be positive integers (got ${dims.join(' ')})`);
+  // As native LAMMPS does (src/ML-SNAP/compute_grid.cpp and compute_grid_local.cpp constructors at b332f28): the three
+  // counts are read, then any count <= 0 is refused
+  if (dims.some((d) => d <= 0)) throw new StyleError(style.endsWith('/local') ? 'All grid/local dimensions must be positive' : 'All grid dimensions must be positive');
   const o = parseSnaArgs(id, style, args.slice(4), ntypes, false);
   return { nx: dims[0], ny: dims[1], nz: dims[2], p: o.p };
 };
@@ -147,6 +149,7 @@ export class ComputeSnaGrid extends Compute {
   }
 
   protected computeArray(): void {
+    checkRcutfac(this.id, this.style, this.spec.p.rcutfac);
     const ev = new GridEvaluator(this.sys, this.id, this.style, this.groupBit, this.spec);
     ev.evaluate();
     this.array = ev.points;
@@ -165,6 +168,7 @@ export class ComputeSnaGridLocal extends Compute {
   }
 
   protected computeLocal(): Float64Array<ArrayBuffer> {
+    checkRcutfac(this.id, this.style, this.spec.p.rcutfac);
     const ev = new GridEvaluator(this.sys, this.id, this.style, this.groupBit, this.spec);
     ev.evaluate();
     // global indexes ix iy iz, then the coordinates and the bispectrum components of the sna/grid row

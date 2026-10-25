@@ -172,7 +172,8 @@ export class FixWallLepton extends Fix {
         const w = walls[k];
         const d = w.dim;
         const r = w.lo ? s.x[3 * i + d] - coord[k] : coord[k] - s.x[3 * i + d];
-        if (r <= 0) throw new StyleError(`Particle on or inside fix ${this.id} wall/lepton surface`);
+        // src/LEPTON/fix_wall_lepton.cpp wall_particle at b332f28: "Particle on or inside fix {style} surface"
+        if (r <= 0) throw new StyleError('Particle on or inside fix wall/lepton surface');
         if (r >= w.cutoff) continue;
         w.env[0] = r;
         const dEdr = w.prog.deriv[0](w.env);

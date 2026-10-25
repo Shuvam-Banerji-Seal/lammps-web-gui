@@ -32,10 +32,12 @@ const run = async (script: string): Promise<{ errors: string[]; thermo: ThermoRo
 };
 
 describe('compute cnp/atom', () => {
-  it('needs exactly one cutoff argument and a positive cutoff', async () => {
+  it('needs exactly one cutoff argument, not negative', async () => {
     expect((await run(`${LATTICE}compute c all cnp/atom\nrun 0\n`)).errors[0]).toMatch(/Illegal compute cnp\/atom command/);
     expect((await run(`${LATTICE}compute c all cnp/atom 3.0 3.0\nrun 0\n`)).errors[0]).toMatch(/Illegal compute cnp\/atom command/);
-    expect((await run(`${LATTICE}compute c all cnp/atom 0\nrun 0\n`)).errors[0]).toMatch(/cutoff must be > 0/);
+    // Measured with native LAMMPS: a cutoff of 0 is accepted, a negative one is not
+    expect((await run(`${LATTICE}compute c all cnp/atom 0\nrun 0\n`)).errors).toEqual([]);
+    expect((await run(`${LATTICE}compute c all cnp/atom -1\nrun 0\n`)).errors[0]).toMatch(/Illegal compute cnp\/atom command/);
   });
 
   it('is zero on a perfect fcc crystal and zero outside the group', async () => {

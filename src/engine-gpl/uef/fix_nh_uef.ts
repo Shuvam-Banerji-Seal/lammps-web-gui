@@ -168,7 +168,8 @@ export class FixNHUef extends FixNH {
     if (variant === 'nvt' && parsed.hasPress) throw new StyleError(`Pressure control can't be used with fix ${name}`);
     if (variant === 'npt' && !parsed.hasPress) throw new StyleError(`Pressure control must be used with fix ${name}`);
     if (parsed.tilt) throw new StyleError('Only normal stresses can be controlled with fix/nvt/npt/uef');
-    super(sys, id, group, parsed.rest, variant);
+    // FixNH's messages name the style as invoked (nvt/uef, npt/uef)
+    super(sys, id, group, parsed.rest, variant, name);
     this.style = name;
     this.erate = parsed.erate;
     this.strain = parsed.strain;

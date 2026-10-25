@@ -276,7 +276,7 @@ describe('compute rdf', () => {
   });
 
   it('rejects bad arguments', async () => {
-    await expect(runScript(`${RDF_SYSTEM}\ncompute r all rdf 0 1 1 cutoff 5.0`)).rejects.toThrow('Nbin must be >= 1');
+    await expect(runScript(`${RDF_SYSTEM}\ncompute r all rdf 0 1 1 cutoff 5.0`)).rejects.toThrow('Number of bins for compute rdf must be > 0');
     await expect(runScript(`${RDF_SYSTEM}\ncompute r all rdf 1 1 3 cutoff 5.0`)).rejects.toThrow('out of range');
     await expect(runScript(`${RDF_SYSTEM}\ncompute r all rdf 1 1 cutoff 5.0`)).rejects.toThrow('in pairs');
     await expect(runScript(`${RDF_SYSTEM}\ncompute r all rdf 1 1 1 cutoff 0`)).rejects.toThrow('cutoff must be > 0');

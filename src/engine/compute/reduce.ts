@@ -586,7 +586,8 @@ export class ComputeCoordAtom extends Compute {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 1) throw new StyleError(`usage: compute ${id} group-ID coord/atom cutoff cutoff [group group2-ID] typeN ...`);
+    // As native LAMMPS does (src/compute_coord_atom.cpp ComputeCoordAtom::ComputeCoordAtom at b332f28): two words at least
+    if (args.length < 2) throw new StyleError('Illegal compute coord/atom command');
     const cstyle = args[0];
     if (cstyle === 'orientorder') {
       // native's checks and texts (compute_coord_atom.cpp constructor)
@@ -602,24 +603,23 @@ export class ComputeCoordAtom extends Compute {
       this.ranges = [[1, sys.state.ntypes]];
       return;
     }
-    if (cstyle !== 'cutoff') throw new StyleError(`unknown compute coord/atom cstyle '${cstyle}' (use cutoff or orientorder)`);
-    if (args.length < 2) throw new StyleError(`compute ${id} (coord/atom): the cutoff cstyle needs a cutoff distance`);
-    // As native LAMMPS does (src/compute_coord_atom.cpp ComputeCoordAtom::ComputeCoordAtom at b332f28): utils::numeric reads the cutoff
-    const cutoff = numeric(args[1]);
-    if (!Number.isFinite(cutoff) || cutoff <= 0) throw new StyleError(`compute ${id} (coord/atom): cutoff '${args[1]}' must be a positive number`);
-    this.cutoff = cutoff;
+    if (cstyle !== 'cutoff') throw new StyleError('Invalid cstyle in compute coord/atom');
+    // utils::numeric reads the cutoff and takes any value: only its square (cutsq) is used, so a negative cutoff acts as
+    // its magnitude and 0 counts nothing. "group group2-ID" is read only right after the cutoff and with a word after
+    // it; each later word is a type range read by utils::bounds over 1..ntypes, low > high refused
+    this.cutoff = Math.abs(numeric(args[1]));
     const ntypes = sys.state.ntypes;
     const ranges: Array<readonly [number, number]> = [];
-    for (let k = 2; k < args.length; k++) {
-      if (args[k] === 'group') {
-        if (ranges.length) throw new StyleError(`compute ${id} (coord/atom): the group keyword must come before the typeN values`);
-        if (k + 1 >= args.length) throw new StyleError(`compute ${id} (coord/atom): the group keyword needs a group2-ID`);
-        this.group2Bit = sys.groups.bit(args[k + 1]);
-        k++;
-        continue;
-      }
-      // As native LAMMPS does (src/compute_coord_atom.cpp at b332f28): each typeN word is read by utils::bounds over 1..ntypes
-      ranges.push(bounds(args[k], 1, ntypes));
+    let k = 2;
+    if (args.length > 3 && args[2] === 'group') {
+      if (sys.groups.find(args[3]) < 0) throw new StyleError(`Group ID ${args[3]} requested by compute coord/atom does not exist`);
+      this.group2Bit = sys.groups.bit(args[3]);
+      k = 4;
+    }
+    for (; k < args.length; k++) {
+      const r = bounds(args[k], 1, ntypes);
+      if (r[0] > r[1]) throw new StyleError('Illegal compute coord/atom command');
+      ranges.push(r);
     }
     this.ranges = ranges.length ? ranges : ([[1, ntypes]] as const); // no typeN: "includes atoms of all types"
     if (this.ranges.length > 1) this.sizePeratomCols = this.ranges.length; // else per-atom vector

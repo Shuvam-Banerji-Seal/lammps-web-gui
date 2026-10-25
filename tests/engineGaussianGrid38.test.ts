@@ -82,7 +82,7 @@ describe('compute gaussian/grid/local', () => {
     // native message: Illegal compute gaussian/grid/local command (one width missing for two types)
     await fails('compute g all gaussian/grid/local grid 2 2 2 1.0 1.0 1.0 0.5', /Illegal compute gaussian\/grid\/local command/);
     // native message: All grid/local dimensions must be positive
-    await fails('compute g all gaussian/grid/local grid 0 2 2 1.0 1.0 1.0 0.5 0.5', /grid counts must be positive integers/);
+    await fails('compute g all gaussian/grid/local grid 0 2 2 1.0 1.0 1.0 0.5 0.5', /All grid\/local dimensions must be positive/);
     // native message: Expected integer parameter instead of '2.5'
     await fails('compute g all gaussian/grid/local grid 2.5 2 2 1.0 1.0 1.0 0.5 0.5', /Expected integer parameter instead of/);
     // native message: Gaussian width for type 1 must be > 0

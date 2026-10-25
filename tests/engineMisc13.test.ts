@@ -144,14 +144,14 @@ run 3`);
 describe('fix ave/grid', () => {
   it('checks its arguments', async () => {
     const base = `${ONE_ATOM}\n`;
-    await expect(runScript(`${base}fix a all ave/grid 2 1 3 2 2 2 vx`)).rejects.toThrow('Inconsistent nevery/nrepeat/pergrid_nfreq values');
-    await expect(runScript(`${base}fix a all ave/grid 1 3 2 2 2 2 vx`)).rejects.toThrow('Inconsistent nevery/nrepeat/pergrid_nfreq values');
-    await expect(runScript(`${base}fix a all ave/grid 1 1 1 0 2 2 vx`)).rejects.toThrow('Nx must be an integer >= 1');
+    await expect(runScript(`${base}fix a all ave/grid 2 1 3 2 2 2 vx`)).rejects.toThrow('Inconsistent fix ave/grid nevery/nrepeat/pergrid_nfreq values');
+    await expect(runScript(`${base}fix a all ave/grid 1 3 2 2 2 2 vx`)).rejects.toThrow('Inconsistent fix ave/grid nevery/nrepeat/pergrid_nfreq values');
+    await expect(runScript(`${base}fix a all ave/grid 1 1 1 0 2 2 vx`)).rejects.toThrow('Invalid fix ave/grid grid size');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2`)).rejects.toThrow('missing argument');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 xyz`)).rejects.toThrow('No values in fix ave/grid command');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx bias tb`)).rejects.toThrow('Could not find compute ID tb for temperature bias');
-    await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx norm bogus`)).rejects.toThrow('norm must be all, sample or none');
-    await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx ave window 0`)).rejects.toThrow('ave window M must be an integer >= 1');
+    await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx norm bogus`)).rejects.toThrow('Illegal fix ave/grid norm argument: bogus');
+    await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx ave window 0`)).rejects.toThrow('Illegal fix ave/grid ave window argument: 0');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx discard maybe`)).rejects.toThrow('Illegal fix ave/grid discard argument: maybe');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 vx foo 1`)).rejects.toThrow('Unknown fix ave/grid keyword: foo');
     await expect(runScript(`${base}fix a all ave/grid 1 1 1 2 2 2 c_nope:grid:data`)).rejects.toThrow('Fix ave/grid compute ID nope not found');
@@ -160,7 +160,7 @@ describe('fix ave/grid', () => {
 
   it('rejects Nz other than 1 in a 2d system', async () => {
     await expect(runScript(`units lj\natom_style atomic\ndimension 2\nregion box block 0 4 0 4 -0.5 0.5\ncreate_box 1 box\ncreate_atoms 1 single 1 1 0 units box\nmass 1 1\npair_style zero 2.5\npair_coeff * *\nfix a all ave/grid 1 1 1 2 2 2 vx`))
-      .rejects.toThrow('for 2d simulations Nz must be 1');
+      .rejects.toThrow('Fix ave/grid grid Nz must be 1 for 2d simulation');
   });
 
   it('has no global output, so f_ID[i][j] is refused', async () => {

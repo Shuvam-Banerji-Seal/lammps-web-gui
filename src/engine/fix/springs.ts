@@ -4,6 +4,7 @@ import type { System } from '../system';
 import { massOf } from '../atoms';
 import { numeric } from '../force/util';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
+import { EQUAL_STYLES } from '../argInfo';
 
 /*
  * fix spring and fix spring/self — force-adding fixes written from their doc
@@ -246,23 +247,18 @@ export class FixSpringSelf extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length > 2) throw new StyleError('usage: fix ID group spring/self K [dir]');
+    // As native LAMMPS does (src/fix_spring_self.cpp FixSpringSelf::FixSpringSelf at b332f28): one or two words; a constant
+    // K <= 0 is refused (a v_name K is checked at init); an unknown direction is "Illegal fix spring/self command"
+    if (args.length < 1 || args.length > 2) throw new StyleError('Illegal fix spring/self command');
     this.k = parseNumOrVar(args[0], 'K');
-    if (typeof this.k !== 'number') {
-      const v = sys.vars.get(this.k.variable);
-      if (!v) throw new StyleError(`fix spring/self: variable ${this.k.variable} is not defined`);
-      if (v.style === 'atom') this.kIsAtom = true;
-      else if (v.style !== 'equal') {
-        throw new StyleError(`fix spring/self: variable ${this.k.variable} must be equal-style or atom-style, not ${v.style}`);
-      }
-    }
+    if (typeof this.k === 'number' && this.k <= 0.0) throw new StyleError('Illegal force constant for fix spring/self command');
     const dir = args[1] ?? 'xyz';
     const table: Record<string, [boolean, boolean, boolean]> = {
       xyz: [true, true, true], xy: [true, true, false], xz: [true, false, true], yz: [false, true, true],
       x: [true, false, false], y: [false, true, false], z: [false, false, true],
     };
     const d = table[dir];
-    if (!d) throw new StyleError(`fix spring/self dir must be xyz, xy, xz, yz, x, y or z, got '${dir}'`);
+    if (!d) throw new StyleError('Illegal fix spring/self command');
     this.dims = d;
     this.scalarFlag = true;
     this.extscalar = 1;
@@ -274,6 +270,17 @@ export class FixSpringSelf extends Fix {
       sys.geom.unwrap(s.x, s.image, i, p);
       this.x0[3 * i] = p[0]; this.x0[3 * i + 1] = p[1]; this.x0[3 * i + 2] = p[2];
     }
+  }
+
+  /** As native LAMMPS does (src/fix_spring_self.cpp FixSpringSelf::init at b332f28): a v_name K must exist and be equal- or atom-style. */
+  init(): void {
+    if (typeof this.k === 'number') return;
+    const name = this.k.variable;
+    const v = this.sys.vars.get(name);
+    if (!v) throw new StyleError(`Variable ${name} for fix spring/self does not exist`);
+    if (EQUAL_STYLES.has(v.style)) this.kIsAtom = false;
+    else if (v.style === 'atom') this.kIsAtom = true;
+    else throw new StyleError(`Variable ${name} for fix spring/self is invalid style`);
   }
 
   postForce(): void {

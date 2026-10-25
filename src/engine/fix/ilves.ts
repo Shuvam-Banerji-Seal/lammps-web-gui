@@ -5,7 +5,8 @@ import type { System } from '../system';
 import type { TopoList } from '../types';
 import { int, num } from '../commands/args';
 import { typeWord } from '../labelmap';
-import { massOf } from '../atoms';
+import { isMolecularStyle, massOf } from '../atoms';
+import { missingArgs } from '../force/util';
 import { libm } from '../libm';
 
 /*
@@ -182,11 +183,16 @@ export class FixIlves extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length < 4) throw new StyleError('usage: fix ID group ilves tol iter N constraint values ... [mode|linearangle|kbond|store]');
+    // As native LAMMPS does (src/EXTRA-FIX/fix_ilves.cpp FixIlves::FixIlves at b332f28): the word count, a molecular atom
+    // style, then tol, iter and N, then their ranges
+    if (args.length < 4) throw missingArgs('fix ilves');
+    if (!isMolecularStyle(sys.state.atomStyle)) throw new StyleError('Fix ilves requires a molecular atom style with bond topology');
     this.tol = num(args[0], 'tol');
     this.maxIter = int(args[1], 'iter');
     int(args[2], 'N');
-    if (!(this.tol > 0) || this.maxIter < 1) throw new StyleError('fix ilves: tol must be > 0 and iter >= 1');
+    // As native LAMMPS does (src/EXTRA-FIX/fix_ilves.cpp FixIlves::FixIlves at b332f28)
+    if (this.tol <= 0.0) throw new StyleError('Fix ilves tolerance must be > 0');
+    if (this.maxIter <= 0) throw new StyleError('Fix ilves iteration count must be > 0');
     let mode = '';
     for (let k = 3; k < args.length; k++) {
       const w = args[k];

@@ -27,7 +27,7 @@
  */
 import { FixNH } from '../../engine/fix/nh';
 import { StyleError } from '../../engine/force/types';
-import { parseNum } from '../../engine/force/util';
+import { numeric, parseNum } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { ComputePressure } from '../../engine/compute/pressure';
 import { ComputePressureBocs } from './compute_pressure_bocs';
@@ -43,11 +43,17 @@ function translate(sys: System, args: string[]): { npt: string[]; basis: { phi: 
       if (k + count > args.length) throw new StyleError(msg);
     };
     switch (key) {
-      case 'temp':
-        need(4, 'Illegal fix bocs command: temp needs Tstart Tstop Tdamp');
+      case 'temp': {
+        // as fix_bocs.cpp reads temp: missing words, the three numbers (utils::numeric), then its own message for a
+        // target temperature <= 0 (no damping check)
+        need(4, 'Illegal fix bocs temp command: missing argument(s)');
+        const t0 = numeric(args[k + 1]), t1 = numeric(args[k + 2]);
+        numeric(args[k + 3]);
+        if (t0 <= 0.0 || t1 <= 0.0) throw new StyleError('Target temperature for fix bocs cannot be 0.0');
         npt.push(...args.slice(k, k + 4));
         k += 4;
         break;
+      }
       case 'iso':
         throw new StyleError('Illegal fix bocs command. Pressure fix must be cgiso . Use regular fix bocs for iso');
       case 'cgiso': {

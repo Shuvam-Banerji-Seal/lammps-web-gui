@@ -161,7 +161,8 @@ write_dump all custom mom_no.dump id vx vy vz
     const cases: [string, RegExp][] = [
       [`fix h all hmc 1 12345 1.0 bogus\n`, /Unknown fix hmc keyword bogus/],
       [`fix h all hmc 1 12345\n`, /Expected floating point parameter instead of NULL or empty string/],
-      [`fix h all hmc 0 12345 1.0\n`, /N must be a positive integer/],
+      // N 0: native divides by zero (SIGFPE) at the end-of-step test of step 1; the engine stops with its own message
+      [`fix h all hmc 0 12345 1.0\n`, /Fix hmc N is 0: native LAMMPS divides by zero/],
       [`fix h all hmc 1 0 1.0\n`, /Fix hmc seed must be > 0/],
       [`fix h all hmc 1 12345 -1.0\n`, /Fix hmc temperature must be > 0.0/],
       [`fix h all hmc 1 12345 1.0 resample maybe\n`, /Expected boolean parameter instead of 'maybe'/],

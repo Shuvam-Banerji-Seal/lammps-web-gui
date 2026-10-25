@@ -77,7 +77,9 @@ const parseSpec = (id: string, style: string, args: string[], ntypes: number): G
     throw new StyleError(`compute ${id} (${style}): expects 'grid nx ny nz rcutfac R_1 .. R_${ntypes} sigma_1 .. sigma_${ntypes}' (${ntypes} types)`);
   }
   const dims = [1, 2, 3].map((k) => parseInt_(args[k], `compute ${id} (${style}) grid ${'nxyz'[k - 1]}`));
-  for (const d of dims) if (!(d >= 1)) throw new StyleError(`compute ${id} (${style}): grid counts must be positive integers (got ${dims.join(' ')})`);
+  // As native LAMMPS does (src/ML-SNAP/compute_grid.cpp and compute_grid_local.cpp constructors at b332f28): the three
+  // counts are read, then any count <= 0 is refused
+  if (dims.some((d) => d <= 0)) throw new StyleError(style.endsWith('/local') ? 'All grid/local dimensions must be positive' : 'All grid dimensions must be positive');
   const rcutfac = parseNum(args[4], `compute ${id} (${style}) rcutfac`);
   const radius: number[] = [];
   const sigma: number[] = [];

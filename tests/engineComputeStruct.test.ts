@@ -97,8 +97,9 @@ describe('compute cna/atom', () => {
     }
     let e = await errorOf(`${FCC}\ncompute n all cna/atom\nrun 0\n`);
     expect((e as Error).message).toMatch(/Illegal compute cna\/atom command/);
+    // Measured with native LAMMPS: a negative cutoff is refused, 0 is accepted
     e = await errorOf(`${FCC}\ncompute n all cna/atom -1.0\nrun 0\n`);
-    expect((e as Error).message).toMatch(/cutoff must be > 0/);
+    expect((e as Error).message).toMatch(/Illegal compute cna\/atom command/);
   });
 });
 

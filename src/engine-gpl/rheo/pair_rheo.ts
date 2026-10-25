@@ -118,8 +118,12 @@ export class PairRHEO extends Pair {
 
   compute(pc: PairCompute): void {
     const m: RheoModel | undefined = rheoModelOf(pc.s);
+    // pair_rheo.cpp setup(), which runs before any fix's setup: fix rheo, fix rheo/pressure (it registers its equation
+    // of state with the model when defined), fix rheo/thermal when fix rheo has the thermal keyword (it registers at
+    // init), then the cutoffs
     if (!m) throw new StyleError('Need to define fix rheo to use pair rheo');
-    // pair_rheo.cpp setup(): "Pair rheo cutoff X does not agree with fix rheo cutoff Y"
+    if (!m.pressureEos) throw new StyleError('Need to define fix rheo/pressure to use pair rheo');
+    if (m.thermalFlag && !m.thermal) throw new StyleError('Must have one and only one instance of fix rheo/thermal defined');
     if (this.cutk !== m.cut) throw new StyleError(`Pair rheo cutoff ${this.cutk} does not agree with fix rheo cutoff ${m.cut}`);
     // pair_rheo.cpp setup(): "Pair RHEO requires ghost atoms store velocity"
     if (!this.ghostVelocity) throw new StyleError('Pair RHEO requires ghost atoms store velocity\n(use comm_modify vel yes)');
@@ -144,7 +148,6 @@ export class PairRHEO extends Pair {
     drho.fill(0, 0, nlocal);
     // thermal terms (pair_rheo.cpp thermal_flag): the temperature, conductivity and heat flow of fix rheo/thermal
     const thermal = m.thermalFlag ? m.thermal : null;
-    if (m.thermalFlag && !thermal) throw new StyleError('Must have one and only one instance of fix rheo/thermal defined');
     const temp = m.thermalFlag ? rheoProp(s, RHEO_TEMP) : null, cond = m.thermalFlag ? rheoProp(s, RHEO_COND) : null;
     const heatflow = m.thermalFlag ? rheoProp(s, RHEO_HEATFLOW) : null;
     if (heatflow) heatflow.fill(0, 0, nlocal);

@@ -21,6 +21,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import { numeric } from '../../engine/force/util';
+import { fmtShortest } from '../../engine/cformat';
 import type { System } from '../../engine/system';
 import { BODY_RECORD, bodyRecordOffset, POLY_OFF } from '../../engine/bodies';
 import { quatToMatrix } from '../../engine/compute/asphere';
@@ -63,13 +64,17 @@ export class FixWallBody extends Fix {
     this.polyhedron = variant === 'polyhedron';
     this.style = `wall/body/${variant}`;
     if (args.length < 6) throw new StyleError(`Illegal fix ${this.style} command`);
-    // As native LAMMPS does (src/BODY/fix_wall_body_polygon.cpp at b332f28): utils::numeric for the numbers
+    // As native LAMMPS does (src/BODY/fix_wall_body_polygon.cpp and fix_wall_body_polyhedron.cpp at b332f28): utils::numeric
+    // for the numbers; k_n, c_n and c_t (NULL is 0.5 c_n) must not be negative, each checked as it is read
     const num = (w: string, _what: string): number => numeric(w);
-    this.kn = num(args[0], 'k_n');
-    this.cn = num(args[1], 'c_n');
-    // native: c_t NULL is 0.5 c_n
-    this.ct = args[2] === 'NULL' ? 0.5 * this.cn : num(args[2], 'c_t');
-    
+    const notNegative = (v: number): number => {
+      if (v < 0.0) throw new StyleError(`Illegal fix ${this.style} argument ${fmtShortest(v, false)}`);
+      return v;
+    };
+    this.kn = notNegative(num(args[0], 'k_n'));
+    this.cn = notNegative(num(args[1], 'c_n'));
+    this.ct = notNegative(args[2] === 'NULL' ? 0.5 * this.cn : num(args[2], 'c_t'));
+
     if (args[3] === 'xplane') this.dim = 0;
     else if (args[3] === 'yplane') this.dim = 1;
     else if (args[3] === 'zplane' && this.polyhedron) this.dim = 2;

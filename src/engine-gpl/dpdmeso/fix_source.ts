@@ -114,7 +114,8 @@ export class FixTDPDSource extends FixSourceBase {
     if (args.length < 2) throw new StyleError('Illegal fix tdpd/source command');
     const nsp = tdpdSpecies(sys.state.atomStyle);
     if (!nsp) throw new StyleError('Fix tdpd/source requires atom style tdpd');
-    if (idx < 1 || idx > nsp) throw new StyleError(`Illegal fix tdpd/source command (cc index ${args[0]} is not a species 1..${nsp})`);
+    // no range check (as the constructor does): native adds to cc_flux[i][cc_index-1] outside the species when the index
+    // is out of range, which the engine refuses when the source is applied
     this.ccIndex = idx;
     this.parseForm(args, 1, 'tdpd/source');
   }
@@ -129,6 +130,7 @@ export class FixTDPDSource extends FixSourceBase {
   postForce(): void {
     const s = this.sys.state;
     const nsp = tdpdSpecies(s.atomStyle);
+    if (this.ccIndex < 1 || this.ccIndex > nsp) throw new StyleError(`fix tdpd/source: cc index ${this.ccIndex} is not a species 1..${nsp} (native LAMMPS writes outside its array)`);
     const flux = s.custom.get(TDPD_CC_FLUX)!.data;
     for (let i = 0; i < s.n; i++) {
       if (!this.inGroup(i)) continue;

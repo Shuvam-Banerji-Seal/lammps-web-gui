@@ -61,7 +61,8 @@ export class FixBondCreateAngle extends Fix {
     // As native LAMMPS does (src/MC/fix_bond_create.cpp FixBondCreate::FixBondCreate at b332f28, which bond/create/angle
     // uses): utils::inumeric reads nevery
     const nevery = inumeric(args[0]);
-    if (nevery <= 0) throw new StyleError(`Illegal fix bond/create nevery value ${nevery}`);
+    // the message names the style as invoked (src/MC/fix_bond_create.cpp at b332f28: "Illegal fix {} nevery value {}")
+    if (nevery <= 0) throw new StyleError(`Illegal fix bond/create/angle nevery value ${nevery}`);
     this.nevery = nevery;
     this.vectorFlag = true;
     this.sizeVector = 2;

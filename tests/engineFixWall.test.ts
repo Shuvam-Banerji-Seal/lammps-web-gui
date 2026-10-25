@@ -322,7 +322,7 @@ describe('fix wall errors', () => {
     const on = await runScript(`${BASE}
 fix 1 all wall/lj93 zlo 2.0 1.0 1.0 2.5 units box
 run 0`);
-    expect(on.error?.message).toMatch(/Particle on or inside fix 1 wall\/lj93 surface/);
+    expect(on.error?.message).toMatch(/Particle on or inside fix wall surface/);
     const behind = await runScript(`units           lj
 atom_style      atomic
 boundary        p p f
@@ -332,7 +332,7 @@ create_atoms    1 single 5 5 3.5
 mass            1 1.0
 fix 1 all wall/lj93 zhi 3.0 1.0 1.0 2.5 units box
 run 0`);
-    expect(behind.error?.message).toMatch(/Particle on or inside fix 1 wall\/lj93 surface/);
+    expect(behind.error?.message).toMatch(/Particle on or inside fix wall surface/);
   });
 
   it('rejects bad arguments', async () => {

@@ -2,7 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNum, parseInt_ } from '../force/util';
-import { buildTriples, rawBispectrum, adjointBispectrum, WignerTables, snaBinCut, type Triple, type Cmat, type Grad } from './sna';
+import { buildTriples, checkRcutfac, rawBispectrum, adjointBispectrum, WignerTables, snaBinCut, type Triple, type Cmat, type Grad } from './sna';
 import { CellList } from '../cellList';
 import { libm } from '../libm';
 import { fmtShortest } from '../cformat';
@@ -88,7 +88,6 @@ export const parseSnaArgs = (id: string, style: string, args: string[], ntypes: 
   const need = 3 + 2 * ntypes;
   if (args.length < need) throw new StyleError(`Illegal compute ${style} command`);
   const rcutfac = parseNum(args[0], `compute ${id} (${style}) rcutfac`);
-  if (!(rcutfac > 0)) throw new StyleError(`compute ${id} (${style}): rcutfac must be positive (got ${args[0]})`);
   const rfac0 = parseNum(args[1], `compute ${id} (${style}) rfac0`);
   const twojmax = parseInt_(args[2], `compute ${id} (${style}) twojmax`);
   if (twojmax < 0) throw new StyleError(`compute ${id} (${style}): twojmax must be a non-negative integer (got ${args[2]})`);
@@ -266,6 +265,7 @@ export class ComputeSnap extends Compute {
   }
 
   protected computeArray(): void {
+    checkRcutfac(this.id, this.style, this.p.rcutfac);
     const sys = this.sys;
     const s = sys.state;
     const nb = sys.nb;

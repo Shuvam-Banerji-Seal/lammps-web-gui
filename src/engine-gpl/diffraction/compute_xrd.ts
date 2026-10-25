@@ -16,6 +16,7 @@
  */
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
+import { cInt } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { ASF_XRD, XRD_TYPE_LIST } from './asf_xrd';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -126,12 +127,15 @@ export class ComputeXRD extends Compute {
     const prdInv = reciprocalSpacing(sys, manual, 'Compute XRD');
     this.dK = [prdInv[0] * c[0], prdInv[1] * c[1], prdInv[2] * c[2]];
     this.knmax = [0, 0, 0];
-    for (let d = 0; d < 3; d++) this.knmax[d] = Math.ceil(kmax / this.dK[d]);
+    // native (int) ceil(Kmax / dK): on x86-64 a value outside int (lambda 0 makes Kmax infinite) converts to INT_MIN,
+    // and -Knmax wraps to INT_MIN too, so each loop runs once (measured with native LAMMPS: lambda 0 gives no rows)
+    for (let d = 0; d < 3; d++) this.knmax[d] = cInt(Math.ceil(kmax / this.dK[d]));
+    const lo = (d: number): number => (-this.knmax[d]) | 0;
     // rows: the reciprocal points whose Bragg angle is inside the 2Theta window (native order: i outer, k inner)
     const found: number[] = [];
-    for (let i = -this.knmax[0]; i <= this.knmax[0]; i++) {
-      for (let j = -this.knmax[1]; j <= this.knmax[1]; j++) {
-        for (let k = -this.knmax[2]; k <= this.knmax[2]; k++) {
+    for (let i = lo(0); i <= this.knmax[0]; i++) {
+      for (let j = lo(1); j <= this.knmax[1]; j++) {
+        for (let k = lo(2); k <= this.knmax[2]; k++) {
           const Kx = i * this.dK[0], Ky = j * this.dK[1], Kz = k * this.dK[2];
           const dinv2 = Kx * Kx + Ky * Ky + Kz * Kz;
           if (4 >= dinv2 * this.lambda * this.lambda) {

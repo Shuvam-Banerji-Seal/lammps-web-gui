@@ -41,13 +41,11 @@ export class FixGraphicsLines extends Fix {
     this.nrepeat = parseInteger(args[1], `fix ${id} graphics/lines Nrepeat`);
     this.nfreq = parseInteger(args[2], `fix ${id} graphics/lines Nfreq`);
     this.nlength = parseInteger(args[3], `fix ${id} graphics/lines Nlength`);
-    if (this.nevery <= 0) throw new StyleError(`fix ${id} graphics/lines: illegal Nevery value ${this.nevery}`);
-    if (this.nrepeat <= 0) throw new StyleError(`fix ${id} graphics/lines: illegal Nrepeat value ${this.nrepeat}`);
-    if (this.nfreq <= 0) throw new StyleError(`fix ${id} graphics/lines: illegal Nfreq value ${this.nfreq}`);
-    if (this.nlength <= 0) throw new StyleError(`fix ${id} graphics/lines: illegal Nlength value ${this.nlength}`);
-    if (this.nfreq % this.nevery || this.nrepeat * this.nevery > this.nfreq) {
-      throw new StyleError(`fix ${id} graphics/lines: inconsistent Nevery/Nrepeat/Nfreq values (Nfreq must be a multiple of Nevery and Nrepeat*Nevery <= Nfreq)`);
-    }
+    if (this.nevery <= 0) throw new StyleError(`Illegal fix graphics/lines nevery value: ${this.nevery}`);
+    if (this.nrepeat <= 0) throw new StyleError(`Illegal fix graphics/lines nrepeat value: ${this.nrepeat}`);
+    if (this.nfreq <= 0) throw new StyleError(`Illegal fix graphics/lines nfreq value: ${this.nfreq}`);
+    if (this.nlength <= 0) throw new StyleError(`Illegal fix graphics/lines nlength value: ${this.nlength}`);
+    if (this.nfreq % this.nevery || this.nrepeat * this.nevery > this.nfreq) throw new StyleError('Inconsistent fix graphics/lines nevery/nrepeat/nfreq values');
     this.scalarFlag = true;
     this.extscalar = 0;
   }

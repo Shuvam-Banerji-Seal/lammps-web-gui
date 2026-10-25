@@ -62,12 +62,17 @@ const checkGhostShell = (sys: System, id: string, style: string, cut: number): v
   }
 };
 
-/** Positive-cutoff argument of the cutoff-based styles. */
+/**
+ * The cutoff argument of the cutoff-based styles, read by utils::numeric. As native LAMMPS does (src/compute_cna_atom.cpp
+ * and src/compute_cluster_atom.cpp, compute_aggregate_atom.cpp constructors at b332f28): cna/atom refuses a negative
+ * cutoff with "Illegal compute cna/atom command"; cluster/atom and aggregate/atom take any value, and as only its square
+ * (cutsq) is used, a negative cutoff acts as its magnitude. A cutoff of 0 finds no neighbours.
+ */
 const parseCutoff = (w: string | undefined, id: string, style: string): number => {
   if (w === undefined) throw new StyleError(`compute ${id} (${style}) needs a cutoff distance`);
   const v = parseNum(w, `compute ${id} (${style}) cutoff`);
-  if (!(v > 0)) throw new StyleError(`compute ${id} (${style}): cutoff must be > 0 (got ${w})`);
-  return v;
+  if (style === 'cna/atom' && v < 0) throw new StyleError('Illegal compute cna/atom command');
+  return Math.abs(v);
 };
 
 /** Owned + ghost neighbours of owned atom i within cut (self excluded), in xall order. */

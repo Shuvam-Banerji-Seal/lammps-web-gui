@@ -269,7 +269,7 @@ run 0`)).rejects.toThrow(/compute stress\/mop does not account for the selected 
   });
 
   it('a bin width larger than the box is rejected', async () => {
-    await expect(runScript(`${TWO}\ncompute c all stress/cartesian x 20.0 NULL 0\nrun 0`)).rejects.toThrow(/larger than the box/);
+    await expect(runScript(`${TWO}\ncompute c all stress/cartesian x 20.0 NULL 0\nrun 0`)).rejects.toThrow('Illegal compute stress/cartesian command. First bin width > box.');
   });
 
   it('stress/cartesian bond: a stretched bond is split between the bins it crosses (and is in the default keywords)', async () => {

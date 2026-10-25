@@ -37,7 +37,7 @@
 import { StyleError, type KSpaceCompute, type StyleContext, type Pair } from '../../engine/force/types';
 import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
-import { parseNum } from '../../engine/force/util';
+import { logical, parseNum } from '../../engine/force/util';
 import { KSpaceBase } from '../../engine/force/kspace/ewald';
 import { PairLJLongCoulLong } from '../../engine/force/pair/lj_long';
 import { PairBuckLongCoulLong } from '../csdiel/buck_long';
@@ -398,7 +398,8 @@ export class KSpacePPPMDisp extends KSpaceBase {
       case 'disp/auto':
         // native: auto_disp_flag only lifts the "no parameters set" error of PPPMDisp::init (pppm_disp.cpp:349);
         // the estimate below is the same either way
-        this.autoDisp = values[0] === 'yes';
+        // kspace.cpp modify_params: utils::logical
+        this.autoDisp = logical(values[0]);
         return 1;
       case 'diff':
         if (values[0] === 'ad') throw new StyleError('kspace_modify diff ad is not ported for kspace_style pppm/disp (the ik solver only)');

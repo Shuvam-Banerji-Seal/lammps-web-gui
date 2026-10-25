@@ -1,0 +1,2303 @@
+{
+ "matrix": "coeff-word",
+ "about": "the first number after the type words of each coefficient line replaced by the word bogus",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w225cm_angle_write_charmm",
+   "line": 12,
+   "text": "angle_coeff 1 bogus 109.5 5.0 1.8",
+   "style": "angle_coeff charmm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w35c2angle_coeff",
+   "line": 12,
+   "text": "angle_coeff 1 bogus 22.0 2.5 -0.4",
+   "style": "angle_coeff class2",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 10,
+   "text": "angle_coeff 1 bogus 40.0 -5.0 2.0 -0.5 0.1",
+   "style": "angle_coeff class2/p6",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w145pr_angle_class2xe",
+   "line": 18,
+   "text": "angle_coeff 1 bogus 41.453 -10.604 5.129",
+   "style": "angle_coeff class2xe",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_angle_cosine",
+   "line": 14,
+   "text": "angle_coeff 1 bogus",
+   "style": "angle_coeff cosine",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 10,
+   "text": "angle_coeff 1 bogus 4 120.0",
+   "style": "angle_coeff cosine/buck6d",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w87bond_angle_cosdelta_linear",
+   "line": 11,
+   "text": "angle_coeff * bogus 110",
+   "style": "angle_coeff cosine/delta",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w87bond_angle_cosper_linear",
+   "line": 11,
+   "text": "angle_coeff * bogus 1 2",
+   "style": "angle_coeff cosine/periodic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w87bond_angle_cosshift_exact",
+   "line": 11,
+   "text": "angle_coeff * bogus 110",
+   "style": "angle_coeff cosine/shift",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w217xb_angle_cosine_shift_exp",
+   "line": 16,
+   "text": "angle_coeff 1 bogus 110.0 2.0",
+   "style": "angle_coeff cosine/shift/exp",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_angle_cosine_squared",
+   "line": 14,
+   "text": "angle_coeff 1 bogus 109.5",
+   "style": "angle_coeff cosine/squared",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w18angle_csr",
+   "line": 14,
+   "text": "angle_coeff 1 bogus 109.5",
+   "style": "angle_coeff cosine/squared/restricted",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 15,
+   "text": "angle_coeff 1 bogus 100.0 100.0 1.25 1.25 107.0",
+   "style": "angle_coeff cross",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w235mx_angle_dipole",
+   "line": 13,
+   "text": "angle_coeff 1 bogus 60.0",
+   "style": "angle_coeff dipole",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 11,
+   "text": "angle_coeff * bogus 1 1 0",
+   "style": "angle_coeff fourier",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_angle_fourier_simple",
+   "line": 14,
+   "text": "angle_coeff 1 bogus -1.0 2.0",
+   "style": "angle_coeff fourier/simple",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 14,
+   "text": "angle_coeff 1 bogus 2 1.0 0.3 110.0 1.0 0.3 132.0",
+   "style": "angle_coeff gaussian",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 10,
+   "text": "angle_coeff 1 bogus 110.0",
+   "style": "angle_coeff harmonic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w54accel_bonded",
+   "line": 18,
+   "text": "angle_coeff 1 bogus 110.0",
+   "style": "angle_coeff harmonic/omp",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w104cf_angle_hybrid_p6",
+   "line": 14,
+   "text": "angle_coeff 1 class2/p6 bogus 40.0 -10.0 5.0 -2.0 1.0",
+   "style": "angle_coeff hybrid class2/p6",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w104cf_angle_hybrid_p6",
+   "line": 17,
+   "text": "angle_coeff 2 cosine bogus",
+   "style": "angle_coeff hybrid cosine",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 14,
+   "text": "angle_coeff * harmonic bogus 109.5",
+   "style": "angle_coeff hybrid harmonic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w16lepton_bonded",
+   "line": 14,
+   "text": "angle_coeff 1 bogus \"40.0*theta^2 + 2*sin(theta)\"",
+   "style": "angle_coeff lepton",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 11,
+   "text": "angle_coeff 1 buckling C bogus 10 10",
+   "style": "angle_coeff mesocnt",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w18angle_mm3",
+   "line": 14,
+   "text": "angle_coeff 1 bogus 109.5",
+   "style": "angle_coeff mm3",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w217xb_angle_mwlc",
+   "line": 16,
+   "text": "angle_coeff 1 bogus 1.0 1.5 300.0",
+   "style": "angle_coeff mwlc",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_angle_quartic",
+   "line": 14,
+   "text": "angle_coeff 1 bogus 40.0 -10.0 5.0",
+   "style": "angle_coeff quartic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 14,
+   "text": "angle_coeff 1 bogus 180.0",
+   "style": "angle_coeff sdk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 14,
+   "text": "angle_coeff 1 bogus 180.0",
+   "style": "angle_coeff spica",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_angle_zero",
+   "line": 14,
+   "text": "angle_coeff * bogus",
+   "style": "angle_coeff zero",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 27,
+   "text": "bond_coeff 1 pmb bogus 0.0015001 0.0005 0.25",
+   "style": "bond_coeff bpm/peri",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w53bpm_rot_chain",
+   "line": 13,
+   "text": "bond_coeff 1 bogus 0 0 0 0.5 1.0 1.0 1.0 0.0 0.0 0.0 0.0",
+   "style": "bond_coeff bpm/rotational",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w51bpm_spring_compress",
+   "line": 10,
+   "text": "bond_coeff 1 bogus 0.1 0.5",
+   "style": "bond_coeff bpm/spring",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w59bpm_plastic",
+   "line": 23,
+   "text": "bond_coeff 1 bogus 0.5 0.2 0.1",
+   "style": "bond_coeff bpm/spring/plastic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w59bpm_zero",
+   "line": 23,
+   "text": "bond_coeff 1 bogus",
+   "style": "bond_coeff bpm/zero",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w35c2angle_coeff",
+   "line": 10,
+   "text": "bond_coeff 1 bogus 95.0 -25.0 6.0",
+   "style": "bond_coeff class2",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_bond_fene_stretched",
+   "line": 9,
+   "text": "bond_coeff 1 bogus 1.5 1.0 1.0",
+   "style": "bond_coeff fene",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_bond_fene_expand_stretched",
+   "line": 9,
+   "text": "bond_coeff 1 bogus 1.4 1.0 1.0 0.1",
+   "style": "bond_coeff fene/expand",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w217xb_bond_fene_nm",
+   "line": 14,
+   "text": "bond_coeff 1 bogus 2.0 1.0 1.6 12 6",
+   "style": "bond_coeff fene/nm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 12,
+   "text": "bond_coeff 1 bogus 2 1.0 0.25 1.05 1.0 0.25 1.40",
+   "style": "bond_coeff gaussian",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_bond_gromos",
+   "line": 12,
+   "text": "bond_coeff 1 bogus 1.05",
+   "style": "bond_coeff gromos",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 8,
+   "text": "bond_coeff 1 bogus 1.0",
+   "style": "bond_coeff harmonic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w54accel_bonded",
+   "line": 15,
+   "text": "bond_coeff 1 bogus 1.1",
+   "style": "bond_coeff harmonic/omp",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w217xb_harmonic_restrain",
+   "line": 14,
+   "text": "bond_coeff 1 bogus",
+   "style": "bond_coeff harmonic/restrain",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift",
+   "line": 12,
+   "text": "bond_coeff 1 bogus 1.05 2.0",
+   "style": "bond_coeff harmonic/shift",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift_cut",
+   "line": 12,
+   "text": "bond_coeff 1 bogus 1.05 2.0",
+   "style": "bond_coeff harmonic/shift/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 55,
+   "text": "bond_coeff 1 bpm/spring bogus 1.0 1.0",
+   "style": "bond_coeff hybrid bpm/spring",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 10,
+   "text": "bond_coeff 1 harmonic bogus 1.05",
+   "style": "bond_coeff hybrid harmonic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 11,
+   "text": "bond_coeff * morse bogus 2.0 1.1",
+   "style": "bond_coeff hybrid morse",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 56,
+   "text": "bond_coeff 2 rheo/shell bogus 0.2 0.1",
+   "style": "bond_coeff hybrid rheo/shell",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w16lepton_vref",
+   "line": 10,
+   "text": "bond_coeff 1 bogus \"120.0*r^2 + 10*r^3\"",
+   "style": "bond_coeff lepton",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 9,
+   "text": "bond_coeff 1 C bogus 10 16",
+   "style": "bond_coeff mesocnt",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w118yaff_bond_mm3",
+   "line": 13,
+   "text": "bond_coeff 1 bogus 1.05",
+   "style": "bond_coeff mm3",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_bond_morse",
+   "line": 12,
+   "text": "bond_coeff 1 bogus 2.0 1.05",
+   "style": "bond_coeff morse",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_bond_nonlinear",
+   "line": 12,
+   "text": "bond_coeff 1 bogus 1.05 1.5",
+   "style": "bond_coeff nonlinear",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna_excv_bond",
+   "line": 14,
+   "text": "bond_coeff * bogus 0.25 0.7525",
+   "style": "bond_coeff oxdna/fene",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 15,
+   "text": "bond_coeff * bogus 0.25 0.7564",
+   "style": "bond_coeff oxdna2/fene",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 15,
+   "text": "bond_coeff * bogus 0.25 0.761070781051",
+   "style": "bond_coeff oxrna2/fene",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w235mx_quartic_break",
+   "line": 31,
+   "text": "bond_coeff 1 bogus -0.55 0.25 1.3 34.6878",
+   "style": "bond_coeff quartic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 14,
+   "text": "bond_coeff 1 bogus 50.0 -10.0 5.0 2.0 0.3",
+   "style": "bond_coeff quartic/exp",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w235mx_bond_special",
+   "line": 36,
+   "text": "bond_coeff 1 bogus 0.8",
+   "style": "bond_coeff special",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ba_bond_zero",
+   "line": 12,
+   "text": "bond_coeff * bogus",
+   "style": "bond_coeff zero",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 12,
+   "text": "dihedral_coeff 1 bogus 3 45 0.0",
+   "style": "dihedral_coeff charmm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w13dihcharmm_fsw",
+   "line": 11,
+   "text": "dihedral_coeff 1 bogus 1 180 1.0",
+   "style": "dihedral_coeff charmmfsw",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w87bond_class2_trans",
+   "line": 15,
+   "text": "dihedral_coeff * bogus 75 100 70 80 60",
+   "style": "dihedral_coeff class2",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 25,
+   "text": "dihedral_coeff 1 bogus 75.0 70.0 100.0 80.0 60.0",
+   "style": "dihedral_coeff class2xe",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_cse",
+   "line": 12,
+   "text": "dihedral_coeff 1 bogus 30 3.0",
+   "style": "dihedral_coeff cosine/shift/exp",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 17,
+   "text": "dihedral_coeff 1 bogus 120",
+   "style": "dihedral_coeff cosine/squared/restricted",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_fourier",
+   "line": 12,
+   "text": "dihedral_coeff 1 bogus 0.8 1 30 0.5 3 -60",
+   "style": "dihedral_coeff fourier",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 12,
+   "text": "dihedral_coeff 1 bogus 1 0",
+   "style": "dihedral_coeff harmonic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 12,
+   "text": "dihedral_coeff 1 bogus 0.4 -0.6",
+   "style": "dihedral_coeff helix",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 17,
+   "text": "dihedral_coeff 1 harmonic bogus -1 3",
+   "style": "dihedral_coeff hybrid harmonic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_mh",
+   "line": 12,
+   "text": "dihedral_coeff 1 bogus -0.7 0.45 0.3 -0.2",
+   "style": "dihedral_coeff multi/harmonic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_nharm",
+   "line": 12,
+   "text": "dihedral_coeff 1 bogus 0.9 -0.4 0.25 0.1",
+   "style": "dihedral_coeff nharmonic",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_opls",
+   "line": 12,
+   "text": "dihedral_coeff 1 bogus -0.3 0.6 0.1",
+   "style": "dihedral_coeff opls",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_quad",
+   "line": 12,
+   "text": "dihedral_coeff 1 bogus 100",
+   "style": "dihedral_coeff quadratic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w217xb_dihedral_spherical",
+   "line": 19,
+   "text": "dihedral_coeff 1 bogus 2.861 1 124 1 1 90.0 0 1 90.0 0 -0.5 2 60 0.5 2 45 1 1 30 0.2",
+   "style": "dihedral_coeff spherical",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w216tb_dihedral_cut_spline",
+   "line": 11,
+   "text": "dihedral_coeff 1 aat bogus 95.0 125.0 w216tb_dihedral.table DNOF",
+   "style": "dihedral_coeff table/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w225cm_write_coeff_class2",
+   "line": 32,
+   "text": "improper_coeff 1 bogus 0",
+   "style": "improper_coeff class2",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1imp_cossq",
+   "line": 17,
+   "text": "improper_coeff 1 bogus 15.0",
+   "style": "improper_coeff cossq",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w120cf_improper_cvff_planar",
+   "line": 11,
+   "text": "improper_coeff 1 bogus 1 2",
+   "style": "improper_coeff cvff",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1imp_distance",
+   "line": 17,
+   "text": "improper_coeff 1 bogus 10.0",
+   "style": "improper_coeff distance",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 18,
+   "text": "improper_coeff 1 bogus 0.15",
+   "style": "improper_coeff distharm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w87bond_fourier_default",
+   "line": 17,
+   "text": "improper_coeff 1 bogus 1 1 0",
+   "style": "improper_coeff fourier",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w120cf_improper_planar",
+   "line": 11,
+   "text": "improper_coeff 1 bogus 10.0",
+   "style": "improper_coeff harmonic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 20,
+   "text": "improper_coeff 1 harmonic bogus 20.0",
+   "style": "improper_coeff hybrid harmonic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w120cf_improper_inversion_planar",
+   "line": 11,
+   "text": "improper_coeff 1 bogus 10.0",
+   "style": "improper_coeff inversion/harmonic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w217xb_improper_ring",
+   "line": 20,
+   "text": "improper_coeff 1 bogus 70.5",
+   "style": "improper_coeff ring",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w18dihimp_sqdistharm",
+   "line": 18,
+   "text": "improper_coeff 1 bogus 0.0225",
+   "style": "improper_coeff sqdistharm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w87bond_umbrella_flip_w0zero",
+   "line": 17,
+   "text": "improper_coeff 1 bogus 0",
+   "style": "improper_coeff umbrella",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w10atm_pure",
+   "line": 21,
+   "text": "pair_coeff 1 1 bogus 0.064",
+   "style": "pair_coeff atm",
+   "native": "ERROR: Invalid range string: bogus"
+  },
+  {
+   "case": "w219xp_beck",
+   "line": 15,
+   "text": "pair_coeff 1 1 bogus 0.5 1.0 2.0 0.5",
+   "style": "pair_coeff beck",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w48bd_free",
+   "line": 10,
+   "text": "pair_coeff * * bogus 1.0",
+   "style": "pair_coeff body/nparticle",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w50bc_static",
+   "line": 9,
+   "text": "pair_coeff * * bogus 2",
+   "style": "pair_coeff body/rounded/polygon",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w126body_cubes_wall",
+   "line": 11,
+   "text": "pair_coeff * * bogus 1",
+   "style": "pair_coeff body/rounded/polyhedron",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1buck_born",
+   "line": 21,
+   "text": "pair_coeff * * bogus 0.1 1.0 1.0 0.5",
+   "style": "pair_coeff born",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w18borncoul_dsf",
+   "line": 23,
+   "text": "pair_coeff 1 1 bogus 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/dsf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w21borncs_dsf",
+   "line": 9,
+   "text": "pair_coeff * * bogus 1.0 0.0 0.0 0.0",
+   "style": "pair_coeff born/coul/dsf/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w3coullong_born",
+   "line": 22,
+   "text": "pair_coeff * * bogus 0.3 3.0 500.0 1000.0",
+   "style": "pair_coeff born/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w9pair_born_cs",
+   "line": 9,
+   "text": "pair_coeff 1 1 bogus 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/long/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w209ms_born",
+   "line": 25,
+   "text": "pair_coeff 1 1 bogus 0.317 2.340 1.048553 -0.49935",
+   "style": "pair_coeff born/coul/msm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w18borncoul_wolf",
+   "line": 23,
+   "text": "pair_coeff 1 1 bogus 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/wolf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w21borncs_wolf",
+   "line": 9,
+   "text": "pair_coeff * * bogus 1.0 0.0 0.0 0.0",
+   "style": "pair_coeff born/coul/wolf/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w219xp_born_gauss",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 2.0 0.5 1.5 1.0",
+   "style": "pair_coeff born/gauss",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 23,
+   "text": "pair_coeff * * bogus 0.0015001",
+   "style": "pair_coeff bpm/peri",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w51bpm_pair_anh",
+   "line": 8,
+   "text": "pair_coeff 1 1 bogus 1.0 0.5 2.0",
+   "style": "pair_coeff bpm/spring",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1buck_buck",
+   "line": 21,
+   "text": "pair_coeff * * bogus 0.15 1.0",
+   "style": "pair_coeff buck",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1buck_buck_coul_cut",
+   "line": 23,
+   "text": "pair_coeff * * bogus 0.15 1.0",
+   "style": "pair_coeff buck/coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w3coullong_buck",
+   "line": 22,
+   "text": "pair_coeff * * bogus 0.27 900.0",
+   "style": "pair_coeff buck/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w9pair_buck_cs",
+   "line": 9,
+   "text": "pair_coeff 1 1 bogus 0.25 20.0",
+   "style": "pair_coeff buck/coul/long/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w209ms_buck",
+   "line": 25,
+   "text": "pair_coeff 1 1 bogus 0.30 1.0",
+   "style": "pair_coeff buck/coul/msm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 7,
+   "text": "pair_coeff * * bogus 0.3 0.5",
+   "style": "pair_coeff buck/long/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w219xp_buck_mdf",
+   "line": 15,
+   "text": "pair_coeff 1 1 bogus 0.3 0.02",
+   "style": "pair_coeff buck/mdf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 15,
+   "text": "pair_coeff 1 1 bogus 3.3 600.0 5.0 0.7",
+   "style": "pair_coeff buck6d/coul/gauss/dsf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 17,
+   "text": "pair_coeff 1 1 bogus 3.3 600.0 5.0 0.7",
+   "style": "pair_coeff buck6d/coul/gauss/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w5colloid_mix",
+   "line": 21,
+   "text": "pair_coeff 1 1 bogus 1.0 5.0 5.0 12.0",
+   "style": "pair_coeff colloid",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w219xp_cosine_squared",
+   "line": 15,
+   "text": "pair_coeff 1 1 bogus 1.0 2.0",
+   "style": "pair_coeff cosine/squared",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1coul_cut",
+   "line": 24,
+   "text": "pair_coeff 2 2 bogus",
+   "style": "pair_coeff coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_coulcutsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus",
+   "style": "pair_coeff coul/cut/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_gapsys_coul",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus",
+   "style": "pair_coeff coul/cut/soft/gapsys",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1coul_data",
+   "line": 31,
+   "text": "pair_coeff 2 2 bogus",
+   "style": "pair_coeff coul/debye",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w49pb_coul_diel_dimer",
+   "line": 14,
+   "text": "pair_coeff 1 1 bogus 1.375 0.112",
+   "style": "pair_coeff coul/diel",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_coullongsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus",
+   "style": "pair_coeff coul/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w219xp_coul_slater_cut",
+   "line": 18,
+   "text": "pair_coeff 1 2 bogus",
+   "style": "pair_coeff coul/slater/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w77dpd_noise_dpd3d_nosort",
+   "line": 15,
+   "text": "pair_coeff * * bogus 4.5",
+   "style": "pair_coeff dpd",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 19,
+   "text": "pair_coeff 1 1 bogus 4.5 no 1",
+   "style": "pair_coeff dpd/coul/slater/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w77dpd_noise_ext3d",
+   "line": 14,
+   "text": "pair_coeff * * bogus 4.5 4.53 0.5 0.53 1.0",
+   "style": "pair_coeff dpd/ext",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w319dpd_ext_tstat_ramp",
+   "line": 12,
+   "text": "pair_coeff 1 1 bogus 10.0 0.5 0.5 10.0",
+   "style": "pair_coeff dpd/ext/tstat",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w95dreact_dpdvv_1000",
+   "line": 15,
+   "text": "pair_coeff 1 1 bogus 0.022 8.60",
+   "style": "pair_coeff dpd/fdt",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 0.022 3.2E-05 10.00",
+   "style": "pair_coeff dpd/fdt/energy",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w77dpd_noise_tstat_spce",
+   "line": 12,
+   "text": "pair_coeff 1 1 bogus 10.0",
+   "style": "pair_coeff dpd/tstat",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w235mx_dsmc_gas",
+   "line": 17,
+   "text": "pair_coeff 1 1 bogus",
+   "style": "pair_coeff dsmc",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w110effecp_sic",
+   "line": 11,
+   "text": "pair_coeff 1 s bogus 2.283269 0.814857",
+   "style": "pair_coeff eff/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1misc_gauss",
+   "line": 21,
+   "text": "pair_coeff * * bogus 0.9",
+   "style": "pair_coeff gauss",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w49pb_gauss_cut_dimer",
+   "line": 14,
+   "text": "pair_coeff 1 1 bogus 3.2 0.7 6.0",
+   "style": "pair_coeff gauss/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w431rigidnh_ellipsoid",
+   "line": 17,
+   "text": "pair_coeff 1 1 bogus 1.0 1.0 0.5 0.2 1.0 0.5 0.2",
+   "style": "pair_coeff gayberne",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w15gran_mdr_pair",
+   "line": 18,
+   "text": "pair_coeff * * mdr bogus 0.3 1000.0 0.0 0.0 0.2 damping mdr 1 tangential linear_history 300.0 0.5 0.4",
+   "style": "pair_coeff granular",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w80superell_ellipsoid_gran",
+   "line": 25,
+   "text": "pair_coeff * * hooke bogus 0.0 tangential linear_history 285 0.0 0.5 damping mass_velocity",
+   "style": "pair_coeff granular/superellipsoid",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w17harmcut",
+   "line": 12,
+   "text": "pair_coeff 1 1 bogus 1.3",
+   "style": "pair_coeff harmonic/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w225cm_write_coeff_hybrid",
+   "line": 13,
+   "text": "pair_coeff 2 2 coul/cut bogus",
+   "style": "pair_coeff hybrid coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w206sr_srp_mid",
+   "line": 17,
+   "text": "pair_coeff 1 1 dpd bogus 4.5 1.0",
+   "style": "pair_coeff hybrid dpd",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 12,
+   "text": "pair_coeff 1 1 granular hooke bogus 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity",
+   "style": "pair_coeff hybrid granular",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w225cm_write_coeff_hybrid",
+   "line": 11,
+   "text": "pair_coeff 1 1 lj/cut bogus 3.40",
+   "style": "pair_coeff hybrid lj/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w109tip_hybrid",
+   "line": 10,
+   "text": "pair_coeff 1 1 lj/cut/coul/long bogus 3.1589",
+   "style": "pair_coeff hybrid lj/cut/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_ccco",
+   "line": 28,
+   "text": "pair_coeff 2 7 lj/cut/coul/long/soft bogus 1.870829 1.0",
+   "style": "pair_coeff hybrid lj/cut/coul/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w109tip_hybrid",
+   "line": 11,
+   "text": "pair_coeff 1 2 lj/cut/tip4p/long bogus 1.0",
+   "style": "pair_coeff hybrid lj/cut/tip4p/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w109tip_fep",
+   "line": 18,
+   "text": "pair_coeff 3 3 lj/cut/tip4p/long/soft bogus 3.1644 1.0",
+   "style": "pair_coeff hybrid lj/cut/tip4p/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w104cf_sds_hybrid",
+   "line": 12,
+   "text": "pair_coeff 1 1 lj/sdk lj9_6 bogus 4.3210",
+   "style": "pair_coeff hybrid lj/sdk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w417born_pair",
+   "line": 65,
+   "text": "pair_coeff 1 2 lj96/cut bogus 1.05",
+   "style": "pair_coeff hybrid lj96/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_hybrid_tally",
+   "line": 14,
+   "text": "pair_coeff 2 2 morse bogus 1.5 1.2",
+   "style": "pair_coeff hybrid morse",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w342press_hybrid_types",
+   "line": 12,
+   "text": "pair_coeff 2 2 soft bogus",
+   "style": "pair_coeff hybrid soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w83sph_cavity",
+   "line": 31,
+   "text": "pair_coeff * * sph/taitwater/morris bogus 0.1 1.0e-3 6.5e-5",
+   "style": "pair_coeff hybrid sph/taitwater/morris",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w206sr_srp_mid",
+   "line": 19,
+   "text": "pair_coeff 2 2 srp bogus",
+   "style": "pair_coeff hybrid srp",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 13,
+   "text": "pair_coeff 1 2 surf/granular hooke bogus 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity",
+   "style": "pair_coeff hybrid surf/granular",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "hybrid_molecular",
+   "line": 10,
+   "text": "pair_coeff * * lj/cut bogus 0.5 0.9",
+   "style": "pair_coeff hybrid/molecular lj/cut",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w10atm_overlay",
+   "line": 22,
+   "text": "pair_coeff 1 1 atm bogus 0.064",
+   "style": "pair_coeff hybrid/overlay atm",
+   "native": "ERROR: Invalid range string: bogus"
+  },
+  {
+   "case": "w166px_bondval_bto",
+   "line": 21,
+   "text": "pair_coeff 1 1 bondval bogus 5.0000000 0.5973900 2.0000000 8.0000000",
+   "style": "pair_coeff hybrid/overlay bondval",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w166px_bondval_bto",
+   "line": 27,
+   "text": "pair_coeff 1 1 bondval/vec bogus 5.0000000 0.0842900 0.1156100 8.0000000",
+   "style": "pair_coeff hybrid/overlay bondval/vec",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w38nb3b_napo3",
+   "line": 24,
+   "text": "pair_coeff 1 1 buck bogus 0.905598 0.0",
+   "style": "pair_coeff hybrid/overlay buck",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w99phq_quartz_qbmsst",
+   "line": 44,
+   "text": "pair_coeff 1 1 buck/coul/long bogus 1.0 0.0",
+   "style": "pair_coeff hybrid/overlay buck/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w49pb_gauss_diel_md",
+   "line": 30,
+   "text": "pair_coeff 1 1 coul/diel bogus 1.375 0.112",
+   "style": "pair_coeff hybrid/overlay coul/diel",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w102il_ilp_grhbn_tersoff",
+   "line": 17,
+   "text": "pair_coeff 1 1 coul/shield bogus",
+   "style": "pair_coeff hybrid/overlay coul/shield",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w72drude_eglycol0",
+   "line": 43,
+   "text": "pair_coeff 2 4 coul/tt bogus 1.0",
+   "style": "pair_coeff hybrid/overlay coul/tt",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w130pr_slater_hybrid_dpd",
+   "line": 17,
+   "text": "pair_coeff * * dpd bogus 4.5",
+   "style": "pair_coeff hybrid/overlay dpd",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 40,
+   "text": "pair_coeff * * dpd/fdt/energy bogus 0.05 10.0 16.00",
+   "style": "pair_coeff hybrid/overlay dpd/fdt/energy",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w130pr_e3b_tip4p2005",
+   "line": 15,
+   "text": "pair_coeff * * e3b preset bogus",
+   "style": "pair_coeff hybrid/overlay e3b",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w160rx_dpdrx_fluid",
+   "line": 41,
+   "text": "pair_coeff * * exp6/rx w160rx_params.exp6 1fluid 1fluid exponent bogus 1.0 16.00",
+   "style": "pair_coeff hybrid/overlay exp6/rx",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w49pb_gauss_diel_md",
+   "line": 27,
+   "text": "pair_coeff 1 1 gauss/cut bogus 3.1 0.6 3.4",
+   "style": "pair_coeff hybrid/overlay gauss/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w14hbond_lj",
+   "line": 13,
+   "text": "pair_coeff 1 3 hbond/dreiding/lj bogus i 2.0 2.2",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/lj",
+   "native": "ERROR: Invalid range string: bogus"
+  },
+  {
+   "case": "w14hbond_offset",
+   "line": 14,
+   "text": "pair_coeff 1 3 hbond/dreiding/lj/angleoffset bogus i 2.0 2.2",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/lj/angleoffset",
+   "native": "ERROR: Invalid range string: bogus"
+  },
+  {
+   "case": "w14hbond_morse",
+   "line": 13,
+   "text": "pair_coeff 1 3 hbond/dreiding/morse bogus i 3.0 1.2 2.5",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/morse",
+   "native": "ERROR: Invalid range string: bogus"
+  },
+  {
+   "case": "w14hbond_offset",
+   "line": 15,
+   "text": "pair_coeff 1 5 hbond/dreiding/morse/angleoffset bogus i 2.0 1.5 2.2 2 3.0 4.5 90.0 160.0",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/morse/angleoffset",
+   "native": "ERROR: Invalid range string: bogus"
+  },
+  {
+   "case": "w50bd_charmm_morse",
+   "line": 17,
+   "text": "pair_coeff 1 1 lj/charmm/coul/long bogus 3.0 0.05 3.5",
+   "style": "pair_coeff hybrid/overlay lj/charmm/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_neigh_trim",
+   "line": 10,
+   "text": "pair_coeff * * lj/cut bogus 1.0 1.0",
+   "style": "pair_coeff hybrid/overlay lj/cut",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w371tgnh_couple_xy",
+   "line": 24,
+   "text": "pair_coeff 1 1 lj/cut/coul/cut bogus 3.500000",
+   "style": "pair_coeff hybrid/overlay lj/cut/coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w49pb_gauss_diel_example",
+   "line": 26,
+   "text": "pair_coeff 1 1 lj/cut/coul/long bogus 1.775 3.268",
+   "style": "pair_coeff hybrid/overlay lj/cut/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w130pr_e3b_tip4p2005",
+   "line": 13,
+   "text": "pair_coeff * * lj/cut/tip4p/long bogus 0.0",
+   "style": "pair_coeff hybrid/overlay lj/cut/tip4p/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w219xp_hybrid_overlay",
+   "line": 13,
+   "text": "pair_coeff * * lj/mdf bogus 1.0",
+   "style": "pair_coeff hybrid/overlay lj/mdf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w104cf_sds_overlay_unset",
+   "line": 13,
+   "text": "pair_coeff 1 1 lj/sdk lj9_6 bogus 4.3210",
+   "style": "pair_coeff hybrid/overlay lj/sdk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 17,
+   "text": "pair_coeff 1 1 mdpd bogus 25 18.0 1.0 0.75",
+   "style": "pair_coeff hybrid/overlay mdpd",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 16,
+   "text": "pair_coeff 1 1 mdpd/rhosum bogus",
+   "style": "pair_coeff hybrid/overlay mdpd/rhosum",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w50bd_charmm_momb",
+   "line": 16,
+   "text": "pair_coeff * * momb bogus 1.0 1.0 10.0 2.3",
+   "style": "pair_coeff hybrid/overlay momb",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w37respa_hybrid",
+   "line": 13,
+   "text": "pair_coeff * * morse bogus 1.6 1.1 3.0",
+   "style": "pair_coeff hybrid/overlay morse",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w162rx_lucy_h2",
+   "line": 41,
+   "text": "pair_coeff * * multi/lucy/rx w162rx_lucy.table RXLUCY h2 1fluid bogus",
+   "style": "pair_coeff hybrid/overlay multi/lucy/rx",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna_duplex2_full",
+   "line": 23,
+   "text": "pair_coeff * * oxdna/coaxstk bogus 0.4 0.6 0.22 0.58 2.0 2.541592653589793 0.65 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 2.0 -0.65 2.0 -0.65",
+   "style": "pair_coeff hybrid/overlay oxdna/coaxstk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna_excv_stk",
+   "line": 18,
+   "text": "pair_coeff * * oxdna/excv bogus 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32",
+   "style": "pair_coeff hybrid/overlay oxdna/excv",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna_hbond_duplex",
+   "line": 19,
+   "text": "pair_coeff * * oxdna/hbond seqav bogus 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45",
+   "style": "pair_coeff hybrid/overlay oxdna/hbond",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna_excv_stk",
+   "line": 19,
+   "text": "pair_coeff * * oxdna/stk seqav bogus 1.3448 2.6568 6.0 0.4 0.9 0.32 0.75 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 2.0 0.65 2.0 0.65",
+   "style": "pair_coeff hybrid/overlay oxdna/stk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna_xstk_duplex",
+   "line": 22,
+   "text": "pair_coeff * * oxdna/xstk bogus 0.575 0.675 0.495 0.655 2.25 0.791592653589793 0.58 1.7 1.0 0.68 1.7 1.0 0.68 1.5 0 0.65 1.7 0.875 0.68 1.7 0.875 0.68",
+   "style": "pair_coeff hybrid/overlay oxdna/xstk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 24,
+   "text": "pair_coeff * * oxdna2/coaxstk bogus 0.4 0.6 0.22 0.58 2.0 2.891592653589793 0.65 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 40.0 3.116592653589793",
+   "style": "pair_coeff hybrid/overlay oxdna2/coaxstk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna2_dh",
+   "line": 19,
+   "text": "pair_coeff * * oxdna2/dh bogus 0.2 0.815",
+   "style": "pair_coeff hybrid/overlay oxdna2/dh",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna2_dh",
+   "line": 18,
+   "text": "pair_coeff * * oxdna2/excv bogus 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32",
+   "style": "pair_coeff hybrid/overlay oxdna2/excv",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 20,
+   "text": "pair_coeff * * oxdna2/hbond seqav bogus 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45",
+   "style": "pair_coeff hybrid/overlay oxdna2/hbond",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 19,
+   "text": "pair_coeff * * oxdna2/stk seqav bogus 1.3523 2.6717 6.0 0.4 0.9 0.32 0.75 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 2.0 0.65 2.0 0.65",
+   "style": "pair_coeff hybrid/overlay oxdna2/stk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 23,
+   "text": "pair_coeff * * oxdna2/xstk bogus 0.575 0.675 0.495 0.655 2.25 0.791592653589793 0.58 1.7 1.0 0.68 1.7 1.0 0.68 1.5 0 0.65 1.7 0.875 0.68 1.7 0.875 0.68",
+   "style": "pair_coeff hybrid/overlay oxdna2/xstk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 26,
+   "text": "pair_coeff * * oxdna3/dh bogus 0.2 oxdna3_lj.cgdna",
+   "style": "pair_coeff hybrid/overlay oxdna3/dh",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 20,
+   "text": "pair_coeff * * oxdna3/stk bogus oxdna3_lj.cgdna",
+   "style": "pair_coeff hybrid/overlay oxdna3/stk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 25,
+   "text": "pair_coeff * * oxrna2/coaxstk bogus 0.5 0.6 0.42 0.58 2.0 2.592 0.65 1.3 0.151 0.8 0.9 0.685 0.95 0.9 0.685 0.95 2.0 -0.65 2.0 -0.65",
+   "style": "pair_coeff hybrid/overlay oxrna2/coaxstk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 26,
+   "text": "pair_coeff * * oxrna2/dh bogus 0.5 1.02455",
+   "style": "pair_coeff hybrid/overlay oxrna2/dh",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 18,
+   "text": "pair_coeff * * oxrna2/excv bogus 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32",
+   "style": "pair_coeff hybrid/overlay oxrna2/excv",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 20,
+   "text": "pair_coeff * * oxrna2/hbond seqdep bogus 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45",
+   "style": "pair_coeff hybrid/overlay oxrna2/hbond",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 19,
+   "text": "pair_coeff * * oxrna2/stk seqdep bogus 1.40206 2.77 6.0 0.43 0.93 0.35 0.78 0.9 0 0.95 0.9 0 0.95 1.3 0 0.8 1.3 0 0.8 2.0 0.65 2.0 0.65",
+   "style": "pair_coeff hybrid/overlay oxrna2/stk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 24,
+   "text": "pair_coeff * * oxrna2/xstk bogus 0.5 0.6 0.42 0.58 2.25 0.505 0.58 1.7 1.266 0.68 1.7 1.266 0.68 1.7 0.309 0.68 1.7 0.309 0.68",
+   "style": "pair_coeff hybrid/overlay oxrna2/xstk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w48pb_pedone_melt",
+   "line": 20,
+   "text": "pair_coeff 1 2 pedone bogus 2.241334 2.923245 5.0",
+   "style": "pair_coeff hybrid/overlay pedone",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w96rheo_thermal_react",
+   "line": 24,
+   "text": "pair_coeff * * rheo/solid bogus 1.0 1.0",
+   "style": "pair_coeff hybrid/overlay rheo/solid",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w43ad_snap_scale",
+   "line": 23,
+   "text": "pair_coeff * * snap bogus Ni_Zuo_JPCA2020.snapcoeff Ni_Zuo_JPCA2020.snapparam Ni Ni",
+   "style": "pair_coeff hybrid/overlay snap",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w83sph_shock3d",
+   "line": 23,
+   "text": "pair_coeff * * sph/idealgas bogus 4.0",
+   "style": "pair_coeff hybrid/overlay sph/idealgas",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w83sph_shock3d",
+   "line": 22,
+   "text": "pair_coeff * * sph/rhosum bogus",
+   "style": "pair_coeff hybrid/overlay sph/rhosum",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w103spin_dipole_cut_frozen",
+   "line": 16,
+   "text": "pair_coeff * * spin/dipole/cut bogus",
+   "style": "pair_coeff hybrid/overlay spin/dipole/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w272sp_pppm_spin_peatom",
+   "line": 17,
+   "text": "pair_coeff * * spin/dipole/long bogus",
+   "style": "pair_coeff hybrid/overlay spin/dipole/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w48sp2_bfo_hybrid",
+   "line": 18,
+   "text": "pair_coeff * * spin/dmi dmi bogus 0.00005 1.0 1.0 1.0",
+   "style": "pair_coeff hybrid/overlay spin/dmi",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w48sp2_bfo_hybrid",
+   "line": 16,
+   "text": "pair_coeff * * spin/exchange exchange bogus -0.01575 0.0 1.965",
+   "style": "pair_coeff hybrid/overlay spin/exchange",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w48sp2_hybrid",
+   "line": 22,
+   "text": "pair_coeff * * spin/exchange/biquadratic biquadratic bogus 0.03 0.01 1.7 0.02 0.04 1.2",
+   "style": "pair_coeff hybrid/overlay spin/exchange/biquadratic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w48sp2_bfo_hybrid",
+   "line": 17,
+   "text": "pair_coeff * * spin/magelec magelec bogus 0.000109 1.0 1.0 1.0",
+   "style": "pair_coeff hybrid/overlay spin/magelec",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w103spin_neel_frozen",
+   "line": 16,
+   "text": "pair_coeff * * spin/neel neel bogus 0.02 0.3 1.841 0.05 0.2 1.2",
+   "style": "pair_coeff hybrid/overlay spin/neel",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w102il_tmd",
+   "line": 13,
+   "text": "pair_coeff * * sw/mod bogus tmd.sw.mod Mo S S NULL NULL NULL",
+   "style": "pair_coeff hybrid/overlay sw/mod",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w38nb3b_napo3",
+   "line": 21,
+   "text": "pair_coeff 1 3 table w38nb3b_Table_NP.dat Pair_P-O bogus",
+   "style": "pair_coeff hybrid/overlay table",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 41,
+   "text": "pair_coeff * * table/rx w162rx_table.table RXPAIR rdx h2 bogus",
+   "style": "pair_coeff hybrid/overlay table/rx",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w371tgnh_couple_xy",
+   "line": 31,
+   "text": "pair_coeff 1 * thole bogus",
+   "style": "pair_coeff hybrid/overlay thole",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w142mx_tracker",
+   "line": 18,
+   "text": "pair_coeff * * tracker bogus",
+   "style": "pair_coeff hybrid/overlay tracker",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "hybrid_scaled",
+   "line": 21,
+   "text": "pair_coeff * * lj/cut bogus 1.0 1.0",
+   "style": "pair_coeff hybrid/scaled lj/cut",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w219xp_lennard_mdf",
+   "line": 15,
+   "text": "pair_coeff 1 1 bogus 4.0",
+   "style": "pair_coeff lennard/mdf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w16lepton_shift",
+   "line": 14,
+   "text": "pair_coeff * * \"4.0*((1.0/r)^12 - (1.0/r)^6)\" bogus",
+   "style": "pair_coeff lepton",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w16lepton_coul",
+   "line": 19,
+   "text": "pair_coeff 1 1 \"qi*qj/r + 4.0*((1.0/r)^12-(1.0/r)^6)\" bogus",
+   "style": "pair_coeff lepton/coul",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w16lepton_sphere",
+   "line": 16,
+   "text": "pair_coeff 1 * \"k*((r-r0)^2*step(r0-r)); k=20; r0=radi+radj\" bogus",
+   "style": "pair_coeff lepton/sphere",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w105cf_erotate_line",
+   "line": 12,
+   "text": "pair_coeff * * bogus 0.25 1.0 0.25 2.5",
+   "style": "pair_coeff line/lj",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 11,
+   "text": "pair_coeff * * bogus 1.0",
+   "style": "pair_coeff lj/charmm/coul/charmm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w3charmm_implicit",
+   "line": 22,
+   "text": "pair_coeff 1 1 bogus 3.405",
+   "style": "pair_coeff lj/charmm/coul/charmm/implicit",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w13dihcharmm_long",
+   "line": 15,
+   "text": "pair_coeff 1 1 bogus 3.0 0.05 3.5",
+   "style": "pair_coeff lj/charmm/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_charmmsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus 1.0 0.5",
+   "style": "pair_coeff lj/charmm/coul/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w209ms_charmm_water",
+   "line": 9,
+   "text": "pair_coeff 1 1 bogus 3.1589",
+   "style": "pair_coeff lj/charmm/coul/msm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 11,
+   "text": "pair_coeff 1 1 bogus 3.0 0.05 3.5",
+   "style": "pair_coeff lj/charmmfsw/coul/charmmfsh",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 14,
+   "text": "pair_coeff 1 1 bogus 3.0 0.05 3.5",
+   "style": "pair_coeff lj/charmmfsw/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ljx_class2",
+   "line": 21,
+   "text": "pair_coeff 1 1 bogus 1.0",
+   "style": "pair_coeff lj/class2",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w51cs_c2cut_run",
+   "line": 23,
+   "text": "pair_coeff * * bogus 1.0 8.0 7.0",
+   "style": "pair_coeff lj/class2/coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_class2cutsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus 1.0 0.5",
+   "style": "pair_coeff lj/class2/coul/cut/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w51cs_c2long_run",
+   "line": 23,
+   "text": "pair_coeff 1 1 bogus 3.0",
+   "style": "pair_coeff lj/class2/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w226cs_class2",
+   "line": 7,
+   "text": "pair_coeff * * bogus 2.5",
+   "style": "pair_coeff lj/class2/coul/long/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w17soft_class2",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus 1.0 0.5",
+   "style": "pair_coeff lj/class2/coul/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_class2soft",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.0 0.5",
+   "style": "pair_coeff lj/class2/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_shift_lj_cubic",
+   "line": 10,
+   "text": "pair_coeff * * bogus 1.0",
+   "style": "pair_coeff lj/cubic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_nofdotr",
+   "line": 10,
+   "text": "pair_coeff * * bogus 1.0",
+   "style": "pair_coeff lj/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 6,
+   "text": "pair_coeff * * bogus 1.1",
+   "style": "pair_coeff lj/cut/coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w243de_efield_cutcoul",
+   "line": 9,
+   "text": "pair_coeff * * bogus 2.0",
+   "style": "pair_coeff lj/cut/coul/cut/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w17soft_coul",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus 1.0 0.5",
+   "style": "pair_coeff lj/cut/coul/cut/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1lcoul_debye",
+   "line": 23,
+   "text": "pair_coeff 1 1 bogus 1.0",
+   "style": "pair_coeff lj/cut/coul/debye",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w226cs_diel_debye",
+   "line": 7,
+   "text": "pair_coeff * * bogus 2.0",
+   "style": "pair_coeff lj/cut/coul/debye/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1lcoul_special_dsf",
+   "line": 10,
+   "text": "pair_coeff * * bogus 0.9",
+   "style": "pair_coeff lj/cut/coul/dsf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w244es_ljfluid",
+   "line": 16,
+   "text": "pair_coeff * * bogus 2.6",
+   "style": "pair_coeff lj/cut/coul/esp",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w75pppmslab_madelung_lowacc",
+   "line": 9,
+   "text": "pair_coeff * * bogus 1",
+   "style": "pair_coeff lj/cut/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w226cs_ljcoul_t12",
+   "line": 7,
+   "text": "pair_coeff * * bogus 2.5",
+   "style": "pair_coeff lj/cut/coul/long/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w243de_efield_ljlong_pppm",
+   "line": 9,
+   "text": "pair_coeff * * bogus 2.0",
+   "style": "pair_coeff lj/cut/coul/long/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w54accel_charged",
+   "line": 25,
+   "text": "pair_coeff 1 1 bogus 2.35",
+   "style": "pair_coeff lj/cut/coul/long/omp",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 11,
+   "text": "pair_coeff 1 1 bogus 3.0 1.0",
+   "style": "pair_coeff lj/cut/coul/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 9,
+   "text": "pair_coeff 1 1 bogus 3.1589",
+   "style": "pair_coeff lj/cut/coul/msm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w243de_efield_ljcoulmsm",
+   "line": 9,
+   "text": "pair_coeff * * bogus 2.0",
+   "style": "pair_coeff lj/cut/coul/msm/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1lcoul_special_wolf",
+   "line": 10,
+   "text": "pair_coeff * * bogus 0.9",
+   "style": "pair_coeff lj/cut/coul/wolf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w41sm_dipole_mol",
+   "line": 13,
+   "text": "pair_coeff 1 1 bogus 1.0",
+   "style": "pair_coeff lj/cut/dipole/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w44dl_static_auto",
+   "line": 20,
+   "text": "pair_coeff * * bogus 1.0",
+   "style": "pair_coeff lj/cut/dipole/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w54accel_melt",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.0 2.5",
+   "style": "pair_coeff lj/cut/omp",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w17soft_tail",
+   "line": 14,
+   "text": "pair_coeff 1 1 bogus 1.0 0.6",
+   "style": "pair_coeff lj/cut/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_gapsys_lj",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.0 0.5",
+   "style": "pair_coeff lj/cut/soft/gapsys",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w220xp_ljcutsphere",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus",
+   "style": "pair_coeff lj/cut/sphere",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w72drude_toluene_lang",
+   "line": 21,
+   "text": "pair_coeff 1 1 bogus 3.550000 1.620000",
+   "style": "pair_coeff lj/cut/thole/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 9,
+   "text": "pair_coeff 1 1 bogus 3.1589",
+   "style": "pair_coeff lj/cut/tip4p/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 8,
+   "text": "pair_coeff 1 1 bogus 3.1589",
+   "style": "pair_coeff lj/cut/tip4p/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 125,
+   "text": "pair_coeff 1 1 bogus 3.1655 0.5",
+   "style": "pair_coeff lj/cut/tip4p/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_expand_shift01",
+   "line": 10,
+   "text": "pair_coeff * * bogus 1.0 0.1",
+   "style": "pair_coeff lj/expand",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w220xp_ljexpandcoullong_special",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.0 0.1",
+   "style": "pair_coeff lj/expand/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w220xp_ljexpandsphere",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus 0.3",
+   "style": "pair_coeff lj/expand/sphere",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ljx_gromacs",
+   "line": 21,
+   "text": "pair_coeff 1 1 bogus 1.0",
+   "style": "pair_coeff lj/gromacs",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w220xp_gromacs",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.0",
+   "style": "pair_coeff lj/gromacs/coul/gromacs",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 7,
+   "text": "pair_coeff 1 1 bogus 1.0",
+   "style": "pair_coeff lj/long/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 7,
+   "text": "pair_coeff * * bogus 2.0",
+   "style": "pair_coeff lj/long/coul/long/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 17,
+   "text": "pair_coeff * * bogus 1.0",
+   "style": "pair_coeff lj/long/dipole/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 10,
+   "text": "pair_coeff 1 1 bogus 3.1589",
+   "style": "pair_coeff lj/long/tip4p/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w219xp_lj_mdf",
+   "line": 15,
+   "text": "pair_coeff 1 1 bogus 1.0",
+   "style": "pair_coeff lj/mdf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w220xp_lj_pirani",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 2.0 1.0 1.0 1.0",
+   "style": "pair_coeff lj/pirani",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w6relres_mixed",
+   "line": 21,
+   "text": "pair_coeff 1 1 bogus 1.0 0.5 1.2 1.3 1.6 1.9 2.4",
+   "style": "pair_coeff lj/relres",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 7,
+   "text": "pair_coeff 1 1 lj12_6 bogus 1.1 9.0",
+   "style": "pair_coeff lj/sdk",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w51cs_sdklong_dimer",
+   "line": 33,
+   "text": "pair_coeff 1 1 lj9_6 bogus 1.1 9.0",
+   "style": "pair_coeff lj/sdk/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w9pair_ljsf",
+   "line": 23,
+   "text": "pair_coeff 1 1 bogus 1.0",
+   "style": "pair_coeff lj/sf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w19dipole_special",
+   "line": 39,
+   "text": "pair_coeff * * bogus 1.0",
+   "style": "pair_coeff lj/sf/dipole/sf",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_tail_lj_smooth",
+   "line": 10,
+   "text": "pair_coeff * * bogus 1.0",
+   "style": "pair_coeff lj/smooth",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_shift_lj_smooth_linear",
+   "line": 10,
+   "text": "pair_coeff * * bogus 1.0",
+   "style": "pair_coeff lj/smooth/linear",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 7,
+   "text": "pair_coeff 1 1 lj12_6 bogus 1.1 9.0",
+   "style": "pair_coeff lj/spica",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w51cs_spicalong_run",
+   "line": 23,
+   "text": "pair_coeff 1 1 lj9_6 bogus 3.0 8.0",
+   "style": "pair_coeff lj/spica/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 21,
+   "text": "pair_coeff 1 1 lj9_6 bogus 3.2",
+   "style": "pair_coeff lj/spica/coul/msm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ljv_lj96",
+   "line": 21,
+   "text": "pair_coeff 1 1 bogus 1.0",
+   "style": "pair_coeff lj96/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w157mt_bond_angle",
+   "line": 12,
+   "text": "pair_coeff * * w157mt_C_10_10_coarse.mesocnt bogus",
+   "style": "pair_coeff mesocnt",
+   "native": "ERROR: Expected integer parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w157mt_viscous",
+   "line": 16,
+   "text": "pair_coeff * * w157mt_C_10_10_coarse.mesocnt bogus 1.0 0.1 1",
+   "style": "pair_coeff mesocnt/viscous",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w1ljx_mie",
+   "line": 21,
+   "text": "pair_coeff 1 1 bogus 1.0 12.0 6.0",
+   "style": "pair_coeff mie/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w49pb_momb_md",
+   "line": 23,
+   "text": "pair_coeff 1 1 bogus 1.2 2.5 10.2847 2.361",
+   "style": "pair_coeff momb",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_tail_morse",
+   "line": 10,
+   "text": "pair_coeff * * bogus 1.2 1.0 2.5",
+   "style": "pair_coeff morse",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w220xp_morse_smooth_linear",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.5 1.1",
+   "style": "pair_coeff morse/smooth/linear",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_morse",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.5 1.1 1.0",
+   "style": "pair_coeff morse/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w142mx_multi_lucy_lookup",
+   "line": 26,
+   "text": "pair_coeff * * w142mx_multilucy.table KEYWORD bogus",
+   "style": "pair_coeff multi/lucy",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w220xp_nm_cut",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.1 8 4",
+   "style": "pair_coeff nm/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_cut",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus 1.1 8 4",
+   "style": "pair_coeff nm/cut/coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_long",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.1 8 4",
+   "style": "pair_coeff nm/cut/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w220xp_nm_cut_split_tail",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.3 8 4",
+   "style": "pair_coeff nm/cut/split",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 13,
+   "text": "pair_coeff * * bogus 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32",
+   "style": "pair_coeff oxdna/excv",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 18,
+   "text": "pair_coeff * * bogus 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32",
+   "style": "pair_coeff oxdna2/excv",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w48pb_pedone_triclinic",
+   "line": 23,
+   "text": "pair_coeff 1 1 bogus 2.241334 2.923245 5.0",
+   "style": "pair_coeff pedone",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w107peri_eps_block",
+   "line": 13,
+   "text": "pair_coeff * * bogus 14.9e9 0.0015001 0.0005 0.25 10.0e8",
+   "style": "pair_coeff peri/eps",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w22peri_lps_data",
+   "line": 10,
+   "text": "pair_coeff * * bogus 7.0e9 0.0015001 0.0005 0.25",
+   "style": "pair_coeff peri/lps",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w22peri_pmb_data",
+   "line": 10,
+   "text": "pair_coeff * * bogus 0.0015001 0.0005 0.25",
+   "style": "pair_coeff peri/pmb",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w107peri_ves_block",
+   "line": 13,
+   "text": "pair_coeff * * bogus 14.9e9 0.0015001 0.0005 0.25 0.5 0.001",
+   "style": "pair_coeff peri/ves",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w133mf_region_ees",
+   "line": 13,
+   "text": "pair_coeff 1 1 bogus 1.0 0.5 0.5 4 0.5 0.5 4 1",
+   "style": "pair_coeff resquared",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w96rheo_pair_solid",
+   "line": 21,
+   "text": "pair_coeff * * bogus 1.3 0.5",
+   "style": "pair_coeff rheo/solid",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_shift_soft",
+   "line": 10,
+   "text": "pair_coeff * * bogus",
+   "style": "pair_coeff soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 20,
+   "text": "pair_coeff 1 1 bogus 2.0e-2",
+   "style": "pair_coeff sph/heatconduction",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w228gs_sph_lj",
+   "line": 10,
+   "text": "pair_coeff * * bogus 1.3",
+   "style": "pair_coeff sph/lj",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 17,
+   "text": "pair_coeff * * bogus",
+   "style": "pair_coeff spin/dipole/long",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w48sp2_dmi",
+   "line": 21,
+   "text": "pair_coeff * * dmi bogus 0.001 1.0 2.0 -0.5",
+   "style": "pair_coeff spin/dmi",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w47spin_moving2",
+   "line": 14,
+   "text": "pair_coeff * * exchange bogus 0.02726 0.2171 1.841 offset yes",
+   "style": "pair_coeff spin/exchange",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w48sp2_biquad",
+   "line": 21,
+   "text": "pair_coeff * * biquadratic bogus 0.05 0.03 1.48 0.07 0.02 1.9 offset no",
+   "style": "pair_coeff spin/exchange/biquadratic",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w48sp2_magelec",
+   "line": 21,
+   "text": "pair_coeff * * magelec bogus 0.00109 1.0 1.0 1.0",
+   "style": "pair_coeff spin/magelec",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w3table_linear",
+   "line": 20,
+   "text": "pair_coeff 1 1 w3table_lj.table LJ11 bogus",
+   "style": "pair_coeff table",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 18,
+   "text": "pair_coeff 1 1 bogus 4.5 0.41 1.58 1.58 1.0 1.0E-5 2.0 3.0 1.0E-5 2.0",
+   "style": "pair_coeff tdpd",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 123,
+   "text": "pair_coeff 1 1 bogus",
+   "style": "pair_coeff tip4p/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w61tri_pair",
+   "line": 9,
+   "text": "pair_coeff * * bogus 0.3 4.0",
+   "style": "pair_coeff tri/lj",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w219xp_ufm",
+   "line": 16,
+   "text": "pair_coeff 1 1 bogus 1.0",
+   "style": "pair_coeff ufm",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w219xp_wf_cut",
+   "line": 15,
+   "text": "pair_coeff 1 1 bogus 1.0 1 2",
+   "style": "pair_coeff wf/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 21,
+   "text": "pair_coeff * * bogus 1.0 4 3 0.0 2.6",
+   "style": "pair_coeff ylz",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w88pair_tail_yukawa",
+   "line": 10,
+   "text": "pair_coeff * * bogus 2.5",
+   "style": "pair_coeff yukawa",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w5yukawa_colloid",
+   "line": 21,
+   "text": "pair_coeff 1 1 bogus",
+   "style": "pair_coeff yukawa/colloid",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  },
+  {
+   "case": "w15snap_grid_local",
+   "line": 17,
+   "text": "pair_coeff * * bogus 73",
+   "style": "pair_coeff zbl",
+   "native": "ERROR: Expected floating point parameter instead of 'bogus' in input script or data file"
+  }
+ ]
+}

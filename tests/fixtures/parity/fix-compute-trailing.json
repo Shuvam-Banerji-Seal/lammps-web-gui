@@ -1,0 +1,3102 @@
+{
+ "matrix": "fix-compute-trailing",
+ "about": "an extra word after each fix and compute style line",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w227xc_ackland_bcc_legacy",
+   "line": 19,
+   "text": "compute ack all ackland/atom legacy yes extra",
+   "style": "compute ackland/atom",
+   "native": "ERROR: Illegal compute ackland/atom command"
+  },
+  {
+   "case": "w21adf_lj",
+   "line": 30,
+   "text": "compute a all adf 8 1 1 1 0.0 2.0 0.0 2.0 1 2 2 0.0 2.5 0.0 2.5 ordinate cosine extra",
+   "style": "compute adf",
+   "native": "ERROR: Unknown compute adf keyword extra"
+  },
+  {
+   "case": "w11struct_bonds",
+   "line": 26,
+   "text": "compute ag all aggregate/atom 2.6 extra",
+   "style": "compute aggregate/atom",
+   "native": "ERROR: Illegal compute aggregate/atom command"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 17,
+   "text": "compute ca all angle extra",
+   "style": "compute angle",
+   "native": "ERROR: Illegal compute angle command"
+  },
+  {
+   "case": "w11local_angle_dihedral",
+   "line": 16,
+   "text": "compute al all angle/local theta eng extra",
+   "style": "compute angle/local",
+   "native": "ERROR: Illegal compute angle/local command"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 18,
+   "text": "compute ang all angmom/chunk cb extra",
+   "style": "compute angmom/chunk",
+   "native": "ERROR: Illegal compute angmom/chunk command"
+  },
+  {
+   "case": "w227xc_ave_sphere",
+   "line": 15,
+   "text": "compute av all ave/sphere/atom cutoff 1.6 extra",
+   "style": "compute ave/sphere/atom",
+   "native": "ERROR: Illegal compute ave/sphere/atom command"
+  },
+  {
+   "case": "w134cp_basal_hcp",
+   "line": 25,
+   "text": "compute b all basal/atom extra",
+   "style": "compute basal/atom",
+   "native": "ERROR: Illegal compute basal/atom command"
+  },
+  {
+   "case": "w152body_local_vector",
+   "line": 17,
+   "text": "compute 1 all body/local type extra",
+   "style": "compute body/local",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 16,
+   "text": "compute cb all bond extra",
+   "style": "compute bond",
+   "native": "ERROR: Illegal compute bond command"
+  },
+  {
+   "case": "w11local_histo",
+   "line": 10,
+   "text": "compute bl all bond/local dist extra",
+   "style": "compute bond/local",
+   "native": "ERROR: Unknown compute bond/local keyword: extra"
+  },
+  {
+   "case": "w26cgrid_born_run",
+   "line": 20,
+   "text": "compute bm all born/matrix numdiff 1.0e-6 myvirial extra",
+   "style": "compute born/matrix",
+   "native": "OK"
+  },
+  {
+   "case": "w11struct_perfect",
+   "line": 12,
+   "text": "compute cf all centro/atom fcc extra",
+   "style": "compute centro/atom",
+   "native": "ERROR: Illegal compute centro/atom command1"
+  },
+  {
+   "case": "w247cs_dihtable",
+   "line": 17,
+   "text": "compute cs all centroid/stress/atom NULL extra",
+   "style": "compute centroid/stress/atom",
+   "native": "ERROR: Illegal compute centroid/stress/atom command"
+  },
+  {
+   "case": "w17chunk_pointdipole",
+   "line": 13,
+   "text": "compute cc all chunk/atom type extra",
+   "style": "compute chunk/atom",
+   "native": "ERROR: Unknown compute chunk/atom keyword extra"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 16,
+   "text": "compute spr all chunk/spread/atom cb c_rs[1] c_rs[2] extra",
+   "style": "compute chunk/spread/atom",
+   "native": "ERROR: Illegal compute chunk/spread/atom argument: extra"
+  },
+  {
+   "case": "w11struct_bonds",
+   "line": 27,
+   "text": "compute cl all cluster/atom 2.6 extra",
+   "style": "compute cluster/atom",
+   "native": "ERROR: Illegal compute cluster/atom command"
+  },
+  {
+   "case": "w11struct_bcc",
+   "line": 17,
+   "text": "compute cna all cna/atom 3.46 extra",
+   "style": "compute cna/atom",
+   "native": "ERROR: Illegal compute cna/atom command"
+  },
+  {
+   "case": "w48cb_cnp_tiny",
+   "line": 20,
+   "text": "compute cnp all cnp/atom 3.0 extra",
+   "style": "compute cnp/atom",
+   "native": "ERROR: Illegal compute cnp/atom command"
+  },
+  {
+   "case": "w2cglob_com_gyr",
+   "line": 28,
+   "text": "compute cm upper com extra",
+   "style": "compute com",
+   "native": "ERROR: Illegal compute com command"
+  },
+  {
+   "case": "w39cfs_wrap_tri",
+   "line": 9,
+   "text": "compute c0 all com/chunk cc extra",
+   "style": "compute com/chunk",
+   "native": "ERROR: Unknown compute com/chunk keyword extra"
+  },
+  {
+   "case": "w227xc_composition",
+   "line": 18,
+   "text": "compute comp all composition/atom cutoff 1.6 extra",
+   "style": "compute composition/atom",
+   "native": "ERROR: Illegal compute composition/atom command"
+  },
+  {
+   "case": "w228gs_contact_atom",
+   "line": 20,
+   "text": "compute c all contact/atom extra",
+   "style": "compute contact/atom",
+   "native": "ERROR: Compute contact/atom group2 ID extra does not exist"
+  },
+  {
+   "case": "w2cred_coord",
+   "line": 29,
+   "text": "compute c all coord/atom cutoff 1.3 1 2 extra",
+   "style": "compute coord/atom",
+   "native": "ERROR: Invalid range string: extra"
+  },
+  {
+   "case": "w18cmisc",
+   "line": 37,
+   "text": "compute ct all count/type atom extra",
+   "style": "compute count/type",
+   "native": "ERROR: Incorrect number of args for compute count/type command"
+  },
+  {
+   "case": "w22peri_pmb_data",
+   "line": 13,
+   "text": "compute 1 all damage/atom extra",
+   "style": "compute damage/atom",
+   "native": "ERROR: Illegal compute damage/atom command"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 18,
+   "text": "compute cd all dihedral extra",
+   "style": "compute dihedral",
+   "native": "ERROR: Illegal compute dihedral command"
+  },
+  {
+   "case": "w11local_angle_dihedral",
+   "line": 18,
+   "text": "compute dl all dihedral/local phi extra",
+   "style": "compute dihedral/local",
+   "native": "ERROR: Illegal compute dihedral/local command"
+  },
+  {
+   "case": "w22peri_lps_block",
+   "line": 22,
+   "text": "compute 3 all dilatation/atom extra",
+   "style": "compute dilatation/atom",
+   "native": "ERROR: Illegal compute dilatation/atom command"
+  },
+  {
+   "case": "w17chunk_pointdipole",
+   "line": 14,
+   "text": "compute d all dipole extra",
+   "style": "compute dipole",
+   "native": "ERROR: Illegal compute dipole command"
+  },
+  {
+   "case": "w17chunk_pointdipole",
+   "line": 16,
+   "text": "compute dc all dipole/chunk cc extra",
+   "style": "compute dipole/chunk",
+   "native": "ERROR: Illegal compute dipole/chunk command"
+  },
+  {
+   "case": "w208dt_dipole_tip4p",
+   "line": 24,
+   "text": "compute dt all dipole/tip4p extra",
+   "style": "compute dipole/tip4p",
+   "native": "ERROR: Illegal compute dipole/tip4p command"
+  },
+  {
+   "case": "w208dt_dipole_tip4p",
+   "line": 28,
+   "text": "compute dc first dipole/tip4p/chunk mol extra",
+   "style": "compute dipole/tip4p/chunk",
+   "native": "ERROR: Illegal compute dipole/tip4p/chunk command"
+  },
+  {
+   "case": "w2cred_displace",
+   "line": 29,
+   "text": "compute d all displace/atom extra",
+   "style": "compute displace/atom",
+   "native": "ERROR: Illegal compute displace/atom command"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 23,
+   "text": "compute dpdU all dpd extra",
+   "style": "compute dpd",
+   "native": "ERROR: Illegal compute dpd command"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 47,
+   "text": "compute dpdUatom all dpd/atom extra",
+   "style": "compute dpd/atom",
+   "native": "ERROR: Illegal compute dpd/atom command"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 29,
+   "text": "compute t all edpd/temp/atom extra",
+   "style": "compute edpd/temp/atom",
+   "native": "ERROR: Number of arguments for compute edpd/temp/atom command != 3"
+  },
+  {
+   "case": "w243de_efield_cutcoul",
+   "line": 13,
+   "text": "compute ef all efield/atom extra",
+   "style": "compute efield/atom",
+   "native": "ERROR: Illegal compute efield/atom command"
+  },
+  {
+   "case": "w227xc_efield_wolf",
+   "line": 24,
+   "text": "compute ef all efield/wolf/atom 0.25 extra",
+   "style": "compute efield/wolf/atom",
+   "native": "ERROR: Unknown compute efield/wolf/atom keyword: extra"
+  },
+  {
+   "case": "w134cp_entropy_fe",
+   "line": 25,
+   "text": "compute c1 all entropy/atom 0.25 3.5 extra",
+   "style": "compute entropy/atom",
+   "native": "ERROR: Illegal compute entropy/atom command"
+  },
+  {
+   "case": "w105cf_erotate_tri",
+   "line": 12,
+   "text": "compute 1 all erotate/asphere extra",
+   "style": "compute erotate/asphere",
+   "native": "ERROR: Illegal compute erotate/asphere command"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 23,
+   "text": "compute 3 all erotate/rigid 1 extra",
+   "style": "compute erotate/rigid",
+   "native": "ERROR: Illegal compute erotate/rigid command"
+  },
+  {
+   "case": "w84lang_omega_sphere",
+   "line": 17,
+   "text": "compute er all erotate/sphere extra",
+   "style": "compute erotate/sphere",
+   "native": "ERROR: Illegal compute erotate/sphere command"
+  },
+  {
+   "case": "w18cerot",
+   "line": 25,
+   "text": "compute era all erotate/sphere/atom extra",
+   "style": "compute erotate/sphere/atom",
+   "native": "ERROR: Illegal compute erotate/sphere//atom command"
+  },
+  {
+   "case": "w13misc_event",
+   "line": 20,
+   "text": "compute ev all event/displace 0.1 extra",
+   "style": "compute event/displace",
+   "native": "ERROR: Illegal compute event/displace command"
+  },
+  {
+   "case": "w228gs_fabric",
+   "line": 23,
+   "text": "compute f all fabric radius contact branch force/normal force/tangential type/include 1,2 1,2 extra",
+   "style": "compute fabric",
+   "native": "ERROR: Illegal compute fabric command"
+  },
+  {
+   "case": "w69fep_compute",
+   "line": 23,
+   "text": "compute FEP all fep 300.0 pair lj/cut/coul/long/soft lambda * * v_dlam atom charge 1 v_dq atom charge 2 v_mdq extra",
+   "style": "compute fep",
+   "native": "ERROR: Illegal optional keyword in compute fep"
+  },
+  {
+   "case": "w155mx_fepta_tail",
+   "line": 19,
+   "text": "compute TA all fep/ta 120.0 yz 0.998 tail yes extra",
+   "style": "compute fep/ta",
+   "native": "ERROR: Illegal optional keyword in compute fep/ta"
+  },
+  {
+   "case": "w47ta_spce_force",
+   "line": 17,
+   "text": "compute c1 one force/tally all extra",
+   "style": "compute force/tally",
+   "native": "OK"
+  },
+  {
+   "case": "w11struct_bonds",
+   "line": 24,
+   "text": "compute fr all fragment/atom extra",
+   "style": "compute fragment/atom",
+   "native": "ERROR: Unknown compute fragment/atom keyword extra"
+  },
+  {
+   "case": "w166px_frenkel_bcc",
+   "line": 27,
+   "text": "compute fr all frenkel extra",
+   "style": "compute frenkel",
+   "native": "ERROR: Unknown compute frenkel keyword: extra"
+  },
+  {
+   "case": "w38gauss_example",
+   "line": 11,
+   "text": "compute mygridlocal all gaussian/grid/local grid 2 2 2 4.67637 0.5 0.5 0.1355 0.2 extra",
+   "style": "compute gaussian/grid/local",
+   "native": "OK"
+  },
+  {
+   "case": "w322ga_wildcard",
+   "line": 26,
+   "text": "compute gat all global/atom c_mid c_vcm[*] extra",
+   "style": "compute global/atom",
+   "native": "ERROR: Illegal compute global/atom global property: extra"
+  },
+  {
+   "case": "w88pair_hybrid_tally",
+   "line": 16,
+   "text": "compute cgg all group/group all pair yes extra",
+   "style": "compute group/group",
+   "native": "ERROR: Illegal compute group/group command"
+  },
+  {
+   "case": "w2cglob_com_gyr",
+   "line": 29,
+   "text": "compute g all gyration extra",
+   "style": "compute gyration",
+   "native": "ERROR: Illegal compute gyration command"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 19,
+   "text": "compute gy all gyration/chunk cb extra",
+   "style": "compute gyration/chunk",
+   "native": "ERROR: Illegal compute gyration/chunk command"
+  },
+  {
+   "case": "w17chunk_shape",
+   "line": 24,
+   "text": "compute gsh all gyration/shape gyr extra",
+   "style": "compute gyration/shape",
+   "native": "ERROR: Illegal compute gyration/shape command"
+  },
+  {
+   "case": "w17chunk_shape",
+   "line": 26,
+   "text": "compute gshc all gyration/shape/chunk gyt extra",
+   "style": "compute gyration/shape/chunk",
+   "native": "ERROR: Illegal compute gyration/shape/chunk command"
+  },
+  {
+   "case": "w41hb_ecut",
+   "line": 20,
+   "text": "compute ha all hbond/local 3.3 30.0 ogroup ogroup hgroup dist ehb extra",
+   "style": "compute hbond/local",
+   "native": "ERROR: Unknown compute hbond/local keyword extra"
+  },
+  {
+   "case": "w11gk_heatflux",
+   "line": 17,
+   "text": "compute flux all heat/flux myKE myPE myStress extra",
+   "style": "compute heat/flux",
+   "native": "ERROR: Illegal compute heat/flux command"
+  },
+  {
+   "case": "w239ht_lj_static",
+   "line": 31,
+   "text": "compute hf odd heat/flux/tally even extra",
+   "style": "compute heat/flux/tally",
+   "native": "OK"
+  },
+  {
+   "case": "w239ht_lj_static",
+   "line": 32,
+   "text": "compute hv odd heat/flux/virial/tally even extra",
+   "style": "compute heat/flux/virial/tally",
+   "native": "OK"
+  },
+  {
+   "case": "w12struct_hexorder",
+   "line": 20,
+   "text": "compute h6 all hexorder/atom extra",
+   "style": "compute hexorder/atom",
+   "native": "ERROR: Illegal compute hexorder/atom command"
+  },
+  {
+   "case": "w387hma_cv_ljcut",
+   "line": 13,
+   "text": "compute hma all hma settemp u cv extra",
+   "style": "compute hma",
+   "native": "ERROR: Unknown compute hma keyword extra"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 19,
+   "text": "compute ci all improper extra",
+   "style": "compute improper",
+   "native": "ERROR: Illegal compute improper command"
+  },
+  {
+   "case": "w11local_angle_dihedral",
+   "line": 20,
+   "text": "compute il all improper/local chi extra",
+   "style": "compute improper/local",
+   "native": "ERROR: Unknown compute improper/local keyword extra"
+  },
+  {
+   "case": "w322ga_wildcard",
+   "line": 24,
+   "text": "compute ine all inertia extra",
+   "style": "compute inertia",
+   "native": "ERROR: Illegal compute inertia command"
+  },
+  {
+   "case": "w39cfs_ell",
+   "line": 74,
+   "text": "compute I all inertia/chunk cc extra",
+   "style": "compute inertia/chunk",
+   "native": "ERROR: Illegal compute inertia/chunk command"
+  },
+  {
+   "case": "w105cf_erotate_line",
+   "line": 16,
+   "text": "compute 2 all ke extra",
+   "style": "compute ke",
+   "native": "ERROR: Illegal compute ke command"
+  },
+  {
+   "case": "w33gcmc_lj_acc",
+   "line": 12,
+   "text": "compute k all ke/atom extra",
+   "style": "compute ke/atom",
+   "native": "ERROR: Illegal compute ke/atom command"
+  },
+  {
+   "case": "w63eff_ch4_rescale",
+   "line": 14,
+   "text": "compute keatom all ke/atom/eff extra",
+   "style": "compute ke/atom/eff",
+   "native": "ERROR: Illegal compute ke/atom/eff command"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 22,
+   "text": "compute 2 all ke/rigid 1 extra",
+   "style": "compute ke/rigid",
+   "native": "ERROR: Illegal compute ke/rigid command"
+  },
+  {
+   "case": "w277ma_compute_mliap_ace",
+   "line": 16,
+   "text": "compute ace all mliap descriptor ace H_N_O_ccs.yace model linear gradgradflag 1 extra",
+   "style": "compute mliap",
+   "native": "ERROR: Unknown compute mliap keyword extra",
+   "build": "ML-PACE"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 21,
+   "text": "compute mom all momentum extra",
+   "style": "compute momentum",
+   "native": "ERROR: Illegal compute momentum command"
+  },
+  {
+   "case": "w62brown_point3d",
+   "line": 13,
+   "text": "compute msd all msd extra",
+   "style": "compute msd",
+   "native": "ERROR: Unknown compute msd keyword: extra"
+  },
+  {
+   "case": "w7chunk_msd",
+   "line": 27,
+   "text": "compute msd all msd/chunk cm extra",
+   "style": "compute msd/chunk",
+   "native": "ERROR: Incorrect number of arguments for compute msd/chunk"
+  },
+  {
+   "case": "w53bpm_rot_chain",
+   "line": 14,
+   "text": "compute nb all nbond/atom extra",
+   "style": "compute nbond/atom",
+   "native": "ERROR: Unknown compute nbond/atom command extra"
+  },
+  {
+   "case": "w39cfs_ell",
+   "line": 75,
+   "text": "compute W all omega/chunk cc extra",
+   "style": "compute omega/chunk",
+   "native": "ERROR: Illegal compute omega/chunk command"
+  },
+  {
+   "case": "w5orient_q",
+   "line": 16,
+   "text": "compute q1 all orientorder/atom extra",
+   "style": "compute orientorder/atom",
+   "native": "ERROR: Illegal compute orientorder/atom command"
+  },
+  {
+   "case": "w276cp_compute_pace_ace",
+   "line": 17,
+   "text": "compute pace all pace Cu-PBE-core-rep.ace 0 0 extra",
+   "style": "compute pace",
+   "native": "OK",
+   "build": "ML-PACE"
+  },
+  {
+   "case": "w250d3_bjm_overlay",
+   "line": 16,
+   "text": "compute d3 all pair dispersion/d3 extra",
+   "style": "compute pair",
+   "native": "ERROR: Unknown compute pair keyword extra"
+  },
+  {
+   "case": "w47pl_special",
+   "line": 13,
+   "text": "compute pl all pair/local eng force extra",
+   "style": "compute pair/local",
+   "native": "ERROR: Unknown compute pair/local keyword: extra"
+  },
+  {
+   "case": "w89fix_avetime_nonorm",
+   "line": 14,
+   "text": "compute p all pe extra",
+   "style": "compute pe",
+   "native": "ERROR: Unknown compute pe keyword extra"
+  },
+  {
+   "case": "w11gk_heatflux",
+   "line": 15,
+   "text": "compute myPE all pe/atom extra",
+   "style": "compute pe/atom",
+   "native": "ERROR: Illegal compute pe/atom command"
+  },
+  {
+   "case": "w228gs_pe_mol_tally",
+   "line": 21,
+   "text": "compute pm all pe/mol/tally half extra",
+   "style": "compute pe/mol/tally",
+   "native": "OK"
+  },
+  {
+   "case": "w47ta_spce_pe",
+   "line": 19,
+   "text": "compute c1 oxy pe/tally hyd extra",
+   "style": "compute pe/tally",
+   "native": "OK"
+  },
+  {
+   "case": "w240pl_block",
+   "line": 22,
+   "text": "compute 1 all plasticity/atom extra",
+   "style": "compute plasticity/atom",
+   "native": "ERROR: Illegal compute plasticity/atom command"
+  },
+  {
+   "case": "w155mx_podatom_ta",
+   "line": 20,
+   "text": "compute ld all pod/atom w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta extra",
+   "style": "compute pod/atom",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w177px_pod_example",
+   "line": 19,
+   "text": "compute gdd all pod/global w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta Ta extra",
+   "style": "compute pod/global",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w177px_pod_example",
+   "line": 21,
+   "text": "compute ldd all pod/local w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta Ta extra",
+   "style": "compute pod/local",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w171px_podd_ta",
+   "line": 17,
+   "text": "compute dd all podd/atom w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta extra",
+   "style": "compute podd/atom",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w62brown_propelvel",
+   "line": 16,
+   "text": "compute press all pressure NULL virial extra",
+   "style": "compute pressure",
+   "native": "ERROR: Unknown compute pressure keyword extra"
+  },
+  {
+   "case": "w194alc_alloy",
+   "line": 21,
+   "text": "compute pressure all pressure/alchemy 2 extra",
+   "style": "compute pressure/alchemy",
+   "native": "ERROR: World variable count 2 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w227xc_pressure_cylinder",
+   "line": 16,
+   "text": "compute p all pressure/cylinder 0.3 6.5 4.0 0.5 extra",
+   "style": "compute pressure/cylinder",
+   "native": "ERROR: Illegal compute stress/cylinder command"
+  },
+  {
+   "case": "w35mesh_qrand",
+   "line": 9,
+   "text": "compute r all property/atom radius extra",
+   "style": "compute property/atom",
+   "native": "ERROR: Invalid keyword extra for atom style sphere in compute property/atom command"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 15,
+   "text": "compute cnt all property/chunk cb count extra",
+   "style": "compute property/chunk",
+   "native": "ERROR: Unkown keyword extra in compute property/chunk command"
+  },
+  {
+   "case": "w26cgrid_propgrid2d",
+   "line": 18,
+   "text": "compute pg all property/grid 5 4 1 id ix iy x y xc yc xs ys xsc ysc proc extra",
+   "style": "compute property/grid",
+   "native": "ERROR: Unknown compute property/grid keyword: extra"
+  },
+  {
+   "case": "w11local_bond",
+   "line": 11,
+   "text": "compute bp all property/local batom1 batom2 btype extra",
+   "style": "compute property/local",
+   "native": "ERROR: Unknown compute property/local keyword: extra"
+  },
+  {
+   "case": "w201pt_rmsd_group2",
+   "line": 18,
+   "text": "compute ptm upper ptm/atom fcc-hcp-ico 0.05 lower extra",
+   "style": "compute ptm/atom",
+   "native": "ERROR: Unrecognized compute style 'ptm/atom' is part of the PTM package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the PTM package, which no native build here has"
+  },
+  {
+   "case": "w227xc_rattlers_type",
+   "line": 15,
+   "text": "compute rat all rattlers/atom type 3 10 extra",
+   "style": "compute rattlers/atom",
+   "native": "ERROR: Illegal compute rattlers/atom command"
+  },
+  {
+   "case": "w2cglob_rdf",
+   "line": 28,
+   "text": "compute rdf all rdf 20 1 1 1 2 cutoff 2.0 extra",
+   "style": "compute rdf",
+   "native": "ERROR: Unknown compute rdf keyword extra"
+  },
+  {
+   "case": "w149cp_rxatom",
+   "line": 13,
+   "text": "compute bonds all reaxff/atom bonds yes extra",
+   "style": "compute reaxff/atom",
+   "native": "ERROR: Illegal compute reaxff/atom command"
+  },
+  {
+   "case": "w33gcmc_lj_acc",
+   "line": 13,
+   "text": "compute ks all reduce sum c_k extra",
+   "style": "compute reduce",
+   "native": "ERROR: Unknown compute reduce keyword: extra"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 13,
+   "text": "compute rs all reduce/chunk cb sum c_pa[1] c_pa[2] extra",
+   "style": "compute reduce/chunk",
+   "native": "ERROR: Illegal compute reduce/chunk argument: extra"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 28,
+   "text": "compute P all rheo/property/atom temperature energy pressure extra",
+   "style": "compute rheo/property/atom",
+   "native": "ERROR: Invalid keyword extra for atom style rheo/thermal in compute rheo/property/atom command"
+  },
+  {
+   "case": "w230re_rigid_small_local",
+   "line": 26,
+   "text": "compute 5 all rigid/local 1 id mol mass x y z xu yu zu vx vy vz fx fy fz angmomx angmomy angmomz quatw quati quatj quatk inertiax inertiay inertiaz extra",
+   "style": "compute rigid/local",
+   "native": "ERROR: Invalid keyword in compute rigid/local command"
+  },
+  {
+   "case": "w134cp_saed_ni",
+   "line": 12,
+   "text": "compute SAED all saed 0.0251 Ni Kmax 0.85 Zone 0 0 0 c 0.1 0.1 0.1 dR_Ewald 0.01 manual extra",
+   "style": "compute saed",
+   "native": "ERROR: Illegal Compute SAED Command"
+  },
+  {
+   "case": "w171px_slcsa",
+   "line": 20,
+   "text": "compute slcsa all slcsa/atom 8 4 w171px_slcsa_mean_descriptor.dat w171px_slcsa_lda_scalings.dat w171px_slcsa_lr_decision.dat w171px_slcsa_lr_bias.dat w171px_slcsa_mahalanobis.dat c_bnnn[1] extra",
+   "style": "compute slcsa/atom",
+   "native": "ERROR: Illegal compute slcsa/atom command: missing argument(s)"
+  },
+  {
+   "case": "w218ck_inertia_slice",
+   "line": 24,
+   "text": "compute sl all slice 1 6 1 c_ine extra",
+   "style": "compute slice",
+   "native": "ERROR: Illegal compute slice argument: extra"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 85,
+   "text": "compute damage all smd/damage extra",
+   "style": "compute smd/damage",
+   "native": "ERROR: Illegal compute smd/damage command"
+  },
+  {
+   "case": "w230re_smd_tlsph_defgrad",
+   "line": 85,
+   "text": "compute hg tlsph smd/hourglass/error extra",
+   "style": "compute smd/hourglass/error",
+   "native": "ERROR: Illegal compute smd/hourglass_error command"
+  },
+  {
+   "case": "w100smd_rubber_rings",
+   "line": 54,
+   "text": "compute eint all smd/internal/energy extra",
+   "style": "compute smd/internal/energy",
+   "native": "ERROR: Illegal compute smd/internal/energy command"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 78,
+   "text": "compute p all smd/plastic/strain extra",
+   "style": "compute smd/plastic/strain",
+   "native": "ERROR: Illegal compute smd/plastic/strain command"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 79,
+   "text": "compute epsdot all smd/plastic/strain/rate extra",
+   "style": "compute smd/plastic/strain/rate",
+   "native": "ERROR: Illegal compute smd/plastic/strain/rate command"
+  },
+  {
+   "case": "w230re_smd_tlsph_defgrad",
+   "line": 84,
+   "text": "compute dg tlsph smd/tlsph/defgrad extra",
+   "style": "compute smd/tlsph/defgrad",
+   "native": "ERROR: Illegal compute smd/tlsph/defgrad command"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 77,
+   "text": "compute dt_atom all smd/tlsph/dt extra",
+   "style": "compute smd/tlsph/dt",
+   "native": "ERROR: Illegal compute smd/tlsph/dt command"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 83,
+   "text": "compute nn all smd/tlsph/num/neighs extra",
+   "style": "compute smd/tlsph/num/neighs",
+   "native": "ERROR: Illegal compute smd/tlsph/num/neighs command"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 84,
+   "text": "compute shape all smd/tlsph/shape extra",
+   "style": "compute smd/tlsph/shape",
+   "native": "ERROR: Illegal compute smd/tlsph/shape command"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 82,
+   "text": "compute E all smd/tlsph/strain extra",
+   "style": "compute smd/tlsph/strain",
+   "native": "ERROR: Illegal compute smd/tlsph/strain command"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 81,
+   "text": "compute D all smd/tlsph/strain/rate extra",
+   "style": "compute smd/tlsph/strain/rate",
+   "native": "ERROR: Illegal compute smd/tlsph/strain/rate command"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 80,
+   "text": "compute S all smd/tlsph/stress extra",
+   "style": "compute smd/tlsph/stress",
+   "native": "ERROR: Illegal compute smd/tlsph/stress command"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 45,
+   "text": "compute tv surface smd/triangle/vertices extra",
+   "style": "compute smd/triangle/vertices",
+   "native": "ERROR: Illegal compute smd/triangle/vertices command"
+  },
+  {
+   "case": "w8snap_sna",
+   "line": 18,
+   "text": "compute b all sna/atom 1.1 0.85 6 1.6 2.0 0.9 1.2 rmin0 0.1 extra",
+   "style": "compute sna/atom",
+   "native": "ERROR: Illegal compute sna/atom command"
+  },
+  {
+   "case": "w15snap_grid",
+   "line": 17,
+   "text": "compute mygrid all sna/grid grid 2 2 2 1.0 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0 switchflag 1 bzeroflag 1 extra",
+   "style": "compute sna/grid",
+   "native": "ERROR: Illegal compute sna/grid command"
+  },
+  {
+   "case": "w15snap_grid_local",
+   "line": 18,
+   "text": "compute mygl all sna/grid/local grid 2 2 2 1.0 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0 switchflag 1 bzeroflag 1 extra",
+   "style": "compute sna/grid/local",
+   "native": "ERROR: Illegal compute sna/grid/local command"
+  },
+  {
+   "case": "w8snap_snad",
+   "line": 18,
+   "text": "compute d all snad/atom 1.1 0.85 3 1.6 2.0 0.9 1.2 rmin0 0.1 extra",
+   "style": "compute snad/atom",
+   "native": "ERROR: Illegal compute snad/atom command"
+  },
+  {
+   "case": "w15snap_group",
+   "line": 17,
+   "text": "compute snap odd snap 1.0 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0.1 extra",
+   "style": "compute snap",
+   "native": "ERROR: Illegal compute snap command"
+  },
+  {
+   "case": "w8snap_snav",
+   "line": 18,
+   "text": "compute d all snav/atom 1.1 0.85 3 1.6 2.0 0.9 1.2 rmin0 0.1 extra",
+   "style": "compute snav/atom",
+   "native": "ERROR: Illegal compute snav/atom command"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 24,
+   "text": "compute ie_atom all sph/e/atom extra",
+   "style": "compute sph/e/atom",
+   "native": "ERROR: Number of arguments for compute sph/e/atom command != 3"
+  },
+  {
+   "case": "w83sph_shock3d",
+   "line": 25,
+   "text": "compute rhoatom all sph/rho/atom extra",
+   "style": "compute sph/rho/atom",
+   "native": "ERROR: Illegal compute sph/rho/atom command"
+  },
+  {
+   "case": "w228gs_sph_lj",
+   "line": 11,
+   "text": "compute t all sph/t/atom extra",
+   "style": "compute sph/t/atom",
+   "native": "ERROR: Number of arguments for compute sph/t/atom command != 3"
+  },
+  {
+   "case": "w47spin_moving2",
+   "line": 17,
+   "text": "compute s all spin extra",
+   "style": "compute spin",
+   "native": "OK"
+  },
+  {
+   "case": "w11gk_heatflux",
+   "line": 16,
+   "text": "compute myStress all stress/atom NULL virial extra",
+   "style": "compute stress/atom",
+   "native": "ERROR: Illegal compute stress/atom command"
+  },
+  {
+   "case": "w47sp_cart1d",
+   "line": 19,
+   "text": "compute p all stress/cartesian x 1.5 NULL 0 extra",
+   "style": "compute stress/cartesian",
+   "native": "ERROR: Unknown compute stress/cartesian keyword: extra"
+  },
+  {
+   "case": "w149cp_cyl",
+   "line": 15,
+   "text": "compute p all stress/cylinder 0.3 6.5 4.0 0.5 extra",
+   "style": "compute stress/cylinder",
+   "native": "ERROR: Illegal compute stress/cylinder command"
+  },
+  {
+   "case": "w149cp_mop_setup",
+   "line": 22,
+   "text": "compute m1 all stress/mop x center kin conf extra",
+   "style": "compute stress/mop",
+   "native": "ERROR: Unknown compute stress/mop keyword extra"
+  },
+  {
+   "case": "w416mop_bonded",
+   "line": 24,
+   "text": "compute mpp all stress/mop/profile x 0.0 2.0 bond angle dihedral extra",
+   "style": "compute stress/mop/profile",
+   "native": "ERROR: Unknown compute stress/mop/profile keyword extra"
+  },
+  {
+   "case": "w149cp_sph",
+   "line": 15,
+   "text": "compute p all stress/spherical 0 0 0 0.5 4.0 extra",
+   "style": "compute stress/spherical",
+   "native": "ERROR: Illegal compute stress/spherical command. Illegal number of arguments."
+  },
+  {
+   "case": "w47ta_spce_stress",
+   "line": 18,
+   "text": "compute c1 one stress/tally all extra",
+   "style": "compute stress/tally",
+   "native": "OK"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 28,
+   "text": "compute c all tdpd/cc/atom 1 extra",
+   "style": "compute tdpd/cc/atom",
+   "native": "ERROR: Number of arguments for compute tdpd/cc/atom command != 4"
+  },
+  {
+   "case": "w89fix_avetime_vec",
+   "line": 15,
+   "text": "compute t all temp extra",
+   "style": "compute temp",
+   "native": "ERROR: Illegal compute temp command"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 16,
+   "text": "compute rott all temp/asphere bias ali extra",
+   "style": "compute temp/asphere",
+   "native": "ERROR: Unknown compute temp/asphere keyword extra"
+  },
+  {
+   "case": "w126body_cubes_nvt",
+   "line": 16,
+   "text": "compute tb all temp/body extra",
+   "style": "compute temp/body",
+   "native": "ERROR: Unknown compute temp/body keyword extra"
+  },
+  {
+   "case": "w14temp_chunk_nvt",
+   "line": 21,
+   "text": "compute tn all temp/chunk cx com yes extra",
+   "style": "compute temp/chunk",
+   "native": "ERROR: Illegal compute temp/chunk command"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 15,
+   "text": "compute ali all temp/com extra",
+   "style": "compute temp/com",
+   "native": "ERROR: Compute temp/com command requires exactly 3 arguments"
+  },
+  {
+   "case": "w26velbias_create_cs",
+   "line": 14,
+   "text": "compute CStemp all temp/cs cores shells extra",
+   "style": "compute temp/cs",
+   "native": "ERROR: Illegal compute temp/cs command"
+  },
+  {
+   "case": "w400dp_remap_v",
+   "line": 16,
+   "text": "compute tdef all temp/deform extra",
+   "style": "compute temp/deform",
+   "native": "ERROR: Unknown compute temp/deform keyword: extra"
+  },
+  {
+   "case": "w230re_temp_deform_eff",
+   "line": 16,
+   "text": "compute tdef all temp/deform/eff extra",
+   "style": "compute temp/deform/eff",
+   "native": "ERROR: Unknown compute temp/deform/eff keyword: extra"
+  },
+  {
+   "case": "w72drude_swm4_lang",
+   "line": 44,
+   "text": "compute TEMP all temp/drude extra",
+   "style": "compute temp/drude",
+   "native": "ERROR: Incorrect number of arguments for compute temp/drude"
+  },
+  {
+   "case": "w230re_eff_langevin",
+   "line": 16,
+   "text": "compute effTemp all temp/eff extra",
+   "style": "compute temp/eff",
+   "native": "OK"
+  },
+  {
+   "case": "w41nptp_bias",
+   "line": 12,
+   "text": "compute tp all temp/partial 0 1 1 extra",
+   "style": "compute temp/partial",
+   "native": "ERROR: Illegal compute temp/partial command"
+  },
+  {
+   "case": "w48cb_tp_twobins",
+   "line": 14,
+   "text": "compute tp all temp/profile 1 0 0 x 2 extra",
+   "style": "compute temp/profile",
+   "native": "ERROR: Illegal compute temp/profile command"
+  },
+  {
+   "case": "w14temp_ramp",
+   "line": 16,
+   "text": "compute ra all temp/ramp vx -1.0 1.5 y 2 9 units box extra",
+   "style": "compute temp/ramp",
+   "native": "ERROR: Illegal compute temp/ramp command"
+  },
+  {
+   "case": "w8ehex_heat",
+   "line": 22,
+   "text": "compute th all temp/region hot extra",
+   "style": "compute temp/region",
+   "native": "ERROR: Illegal compute temp/region command"
+  },
+  {
+   "case": "w63eff_h2_region",
+   "line": 15,
+   "text": "compute regionT sub temp/region/eff part extra",
+   "style": "compute temp/region/eff",
+   "native": "ERROR: Illegal compute temp/region/eff command"
+  },
+  {
+   "case": "w227xc_temp_rotate",
+   "line": 18,
+   "text": "compute rot all temp/rotate extra",
+   "style": "compute temp/rotate",
+   "native": "ERROR: Illegal compute temp/rotate command"
+  },
+  {
+   "case": "w4sphere_disc",
+   "line": 19,
+   "text": "compute ts all temp/sphere extra",
+   "style": "compute temp/sphere",
+   "native": "ERROR: Unknown compute temp/sphere keyword extra"
+  },
+  {
+   "case": "w227xc_ti_single",
+   "line": 21,
+   "text": "compute ti all ti lj/cut 1 v_f v_df extra",
+   "style": "compute ti",
+   "native": "ERROR: Illegal compute ti command"
+  },
+  {
+   "case": "w218ck_chunk_vcm_torque_vacf",
+   "line": 26,
+   "text": "compute tq all torque/chunk cm extra",
+   "style": "compute torque/chunk",
+   "native": "ERROR: Illegal compute torque/chunk command"
+  },
+  {
+   "case": "w2cglob_msd_vacf",
+   "line": 29,
+   "text": "compute v lower vacf extra",
+   "style": "compute vacf",
+   "native": "ERROR: Compute vacf does not accept any arguments"
+  },
+  {
+   "case": "w218ck_chunk_vcm_torque_vacf",
+   "line": 27,
+   "text": "compute vac all vacf/chunk cm extra",
+   "style": "compute vacf/chunk",
+   "native": "ERROR: Incorrect number of arguments for compute vacf/chunk"
+  },
+  {
+   "case": "w322ga_wildcard",
+   "line": 23,
+   "text": "compute vcm all vcm/chunk cm extra",
+   "style": "compute vcm/chunk",
+   "native": "ERROR: Illegal compute vcm/chunk command"
+  },
+  {
+   "case": "w14flow_cos",
+   "line": 23,
+   "text": "compute cos all viscosity/cos extra",
+   "style": "compute viscosity/cos",
+   "native": "ERROR: Illegal compute viscosity/cos command"
+  },
+  {
+   "case": "w31voronp_single",
+   "line": 12,
+   "text": "compute v all voronoi/atom surface all extra",
+   "style": "compute voronoi/atom",
+   "native": "ERROR: Illegal compute voronoi/atom command"
+  },
+  {
+   "case": "w134cp_xrd_ni",
+   "line": 12,
+   "text": "compute XRD all xrd 1.541838 Ni 2Theta 40 80 c 2 2 2 LP 1 extra",
+   "style": "compute xrd",
+   "native": "ERROR: Illegal Compute XRD Command"
+  },
+  {
+   "case": "w66units_accelcos_real",
+   "line": 21,
+   "text": "fix 2 all accelerate/cos 0.001 extra",
+   "style": "fix accelerate/cos",
+   "native": "OK"
+  },
+  {
+   "case": "w65reaxq_acks2_field",
+   "line": 12,
+   "text": "fix 1 all acks2/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 1000 extra",
+   "style": "fix acks2/reaxff",
+   "native": "ERROR: Illegal fix acks2/reaxff command"
+  },
+  {
+   "case": "w9adapt_soft",
+   "line": 27,
+   "text": "fix 1 all adapt 1 pair soft a * * v_prefactor extra",
+   "style": "fix adapt",
+   "native": "ERROR: Unknown fix adapt keyword extra"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 23,
+   "text": "fix ADAPT all adapt/fep 20 pair lj/cut/coul/long/soft lambda * * v_lam atom charge 1 v_q1 atom charge 2 v_q2 extra",
+   "style": "fix adapt/fep",
+   "native": "ERROR: Illegal fix adapt/fep command"
+  },
+  {
+   "case": "w437dyngroup_bpm_heat",
+   "line": 22,
+   "text": "fix 4 all add/heat linear 3.0 0.5 extra",
+   "style": "fix add/heat",
+   "native": "ERROR: Illegal fix add/heat command: missing argument(s)"
+  },
+  {
+   "case": "w13misc_controller",
+   "line": 21,
+   "text": "fix push all addforce v_fc 0.0 0.0 extra",
+   "style": "fix addforce",
+   "native": "ERROR: Unknown fix addforce keyword: extra"
+  },
+  {
+   "case": "w18fix_addtorque",
+   "line": 19,
+   "text": "fix 2 all addtorque 0.02 0.01 -0.015 extra",
+   "style": "fix addtorque",
+   "native": "ERROR: Illegal fix addtorque/group command"
+  },
+  {
+   "case": "w228gs_addtorque",
+   "line": 22,
+   "text": "fix 2 all addtorque/atom 0.1 -0.2 v_tz every 2 extra",
+   "style": "fix addtorque/atom",
+   "native": "ERROR: Unknown fix addtorque/atom keyword: extra"
+  },
+  {
+   "case": "w66units_addtorqueg_real",
+   "line": 21,
+   "text": "fix 2 all addtorque/group 0.05 0.03 -0.02 extra",
+   "style": "fix addtorque/group",
+   "native": "ERROR: Illegal fix addtorque/group command"
+  },
+  {
+   "case": "w194alc_alloy",
+   "line": 20,
+   "text": "fix 2 all alchemy v_ramp extra",
+   "style": "fix alchemy",
+   "native": "ERROR: World variable count 2 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w62brown_alignquat",
+   "line": 15,
+   "text": "fix 3 all align/self quat 0.1 extra",
+   "style": "fix align/self",
+   "native": "ERROR: Incorrect number of fix align/self arguments"
+  },
+  {
+   "case": "w119amoeba_ub",
+   "line": 17,
+   "text": "fix bit all amoeba/bitorsion w119amoeba_ub_bitorsion.data extra",
+   "style": "fix amoeba/bitorsion",
+   "native": "ERROR: Illegal fix amoeba/bitorsion command"
+  },
+  {
+   "case": "w119amoeba_ub",
+   "line": 15,
+   "text": "fix pit all amoeba/pitorsion extra",
+   "style": "fix amoeba/pitorsion",
+   "native": "ERROR: Illegal fix amoeba/pitorsion command"
+  },
+  {
+   "case": "w142mx_append_atoms",
+   "line": 17,
+   "text": "fix 2 all append/atoms zhi freq 20 size 0.5 extra",
+   "style": "fix append/atoms",
+   "native": "ERROR: Illegal fix append/atoms command"
+  },
+  {
+   "case": "w339swap_semi_tail",
+   "line": 17,
+   "text": "fix sw all atom/swap 5 20 12345 1.0 types 1 2 semi-grand yes mu 0.0 0.3 ke yes extra",
+   "style": "fix atom/swap",
+   "native": "ERROR: Illegal fix atom/swap command"
+  },
+  {
+   "case": "w278ap_atom_weight",
+   "line": 21,
+   "text": "fix w all atom_weight/apip 2 1e-05 0.0004 3e-06 0 grp no_rescale extra",
+   "style": "fix atom_weight/apip",
+   "native": "ERROR: Fix atom_weight/apip: unknown argument extra",
+   "build": "APIP"
+  },
+  {
+   "case": "w2avg_aveatom",
+   "line": 30,
+   "text": "fix 2 all ave/atom 2 5 10 vx vy v_ke extra",
+   "style": "fix ave/atom",
+   "native": "ERROR: Invalid fix ave/atom argument: extra"
+  },
+  {
+   "case": "w7chunk_mol",
+   "line": 25,
+   "text": "fix 3 all ave/chunk 5 1 5 cm vx norm all file molvx.txt extra",
+   "style": "fix ave/chunk",
+   "native": "ERROR: Unknown fix ave/chunk keyword: extra"
+  },
+  {
+   "case": "w11gk_correlate",
+   "line": 17,
+   "text": "fix JJ all ave/correlate 2 10 40 c_p[4] c_p[5] c_p[6] type auto/upper ave running file pxy.corr extra",
+   "style": "fix ave/correlate",
+   "native": "ERROR: Unkown fix ave/correlate keyword: extra"
+  },
+  {
+   "case": "w229xf_corrlong_auto",
+   "line": 18,
+   "text": "fix JJ all ave/correlate/long 2 40 c_p[4] c_p[5] type auto/upper file corrl_auto.dat extra",
+   "style": "fix ave/correlate/long",
+   "native": "ERROR: Unknown fix ave/correlate/long keyword: extra"
+  },
+  {
+   "case": "w26cgrid_propgrid",
+   "line": 15,
+   "text": "fix ave all ave/grid 5 1 5 4 4 4 vx vy vz extra",
+   "style": "fix ave/grid",
+   "native": "ERROR: Unknown fix ave/grid keyword: extra"
+  },
+  {
+   "case": "w11local_histo",
+   "line": 11,
+   "text": "fix h all ave/histo 1 1 1 0 3 5 c_bl mode vector file w11local_histo.histo extra",
+   "style": "fix ave/histo",
+   "native": "ERROR: Unknown fix ave/histo option: extra"
+  },
+  {
+   "case": "w137cf_histw_global",
+   "line": 16,
+   "text": "fix h all ave/histo/weight 1 1 1 -2 2 8 c_r[1] c_r[2] mode scalar beyond end file w137cf_histw_global.histo extra",
+   "style": "fix ave/histo/weight",
+   "native": "ERROR: Unknown fix ave/histo/weight option: extra"
+  },
+  {
+   "case": "w47pkg_moments_simple",
+   "line": 14,
+   "text": "fix 2 all ave/moments 5 60 30 v_toteng mean stddev variance skew kurtosis extra",
+   "style": "fix ave/moments",
+   "native": "ERROR: Unknown fix ave/moments keyword extra"
+  },
+  {
+   "case": "w89fix_avetime_nonorm",
+   "line": 15,
+   "text": "fix a all ave/time 2 2 4 c_p ave one extra",
+   "style": "fix ave/time",
+   "native": "ERROR: Unknown fix ave/time keyword extra"
+  },
+  {
+   "case": "w2fset_aveforce",
+   "line": 28,
+   "text": "fix 2 upper aveforce NULL 0.0 0.05 extra",
+   "style": "fix aveforce",
+   "native": "ERROR: Illegal fix aveforce command"
+  },
+  {
+   "case": "w7bal_forced",
+   "line": 12,
+   "text": "fix 2 all balance 10 0.9 shift xy 5 1.05 extra",
+   "style": "fix balance",
+   "native": "ERROR: Unknown (fix) balance keyword extra"
+  },
+  {
+   "case": "w133mf_baoab_lj",
+   "line": 17,
+   "text": "fix 1 all baoab 1.0 1.0 1.0 12345 zero yes extra",
+   "style": "fix baoab",
+   "native": "ERROR: Unknown fix baoab keyword extra"
+  },
+  {
+   "case": "w156mx_bocs",
+   "line": 17,
+   "text": "fix 1 all bocs temp 300.0 300.0 100.0 cgiso 0.986 0.986 1000.0 analytic 66476.015 968 2 245030.10 8962.20 extra",
+   "style": "fix bocs",
+   "native": "ERROR: Illegal fix bocs command: unrecognized keyword extra"
+  },
+  {
+   "case": "w139bc_break_prob",
+   "line": 16,
+   "text": "fix b all bond/break 5 1 1.2 prob 0.5 777 extra",
+   "style": "fix bond/break",
+   "native": "ERROR: Illegal fix bond/break command"
+  },
+  {
+   "case": "w459dyngroup_bondcreate",
+   "line": 21,
+   "text": "fix bc dyn bond/create 2 1 1 1.6 1 prob 0.7 4321 extra",
+   "style": "fix bond/create",
+   "native": "ERROR: Unknown fix bond/create keyword extra"
+  },
+  {
+   "case": "w224mc_bondcreateangle",
+   "line": 15,
+   "text": "fix bc all bond/create/angle 2 1 1 2.0 1 aconstrain 100 180 prob 0.8 12345 extra",
+   "style": "fix bond/create/angle",
+   "native": "ERROR: Unknown fix bond/create/angle keyword extra"
+  },
+  {
+   "case": "w94react_nylon_unstab",
+   "line": 24,
+   "text": "fix myrxns all bond/react stabilization no react rxn1 all 1 0.0 2.9 mol1 mol2 w94react_nylon_stp1.map react rxn2 all 1 0.0 5.0 mol3 mol4 w94react_nylon_stp2.map rescale_charges yes extra",
+   "style": "fix bond/react",
+   "native": "ERROR: Illegal fix bond/react command: unknown keyword"
+  },
+  {
+   "case": "w224mc_bondswap_fene",
+   "line": 15,
+   "text": "fix bs all bond/swap 2 1.0 2.0 4321 extra",
+   "style": "fix bond/swap",
+   "native": "ERROR: Illegal fix bond/swap command"
+  },
+  {
+   "case": "w10boxrelax_iso",
+   "line": 16,
+   "text": "fix 1 all box/relax iso 0.0 extra",
+   "style": "fix box/relax",
+   "native": "ERROR: Unknown fix box/relax keyword extra"
+  },
+  {
+   "case": "w62brown_point3d",
+   "line": 12,
+   "text": "fix 1 all brownian 5.0 198098 rng gaussian gamma_t 2.0 extra",
+   "style": "fix brownian",
+   "native": "ERROR: Unknown fix brownian keyword extra"
+  },
+  {
+   "case": "w62brown_asphere3d",
+   "line": 13,
+   "text": "fix 1 all brownian/asphere 1.0 5 rng uniform gamma_r_eigen 1.0 2.0 3.0 gamma_t_eigen 1.0 2.0 3.0 rotation_temp 2.0 extra",
+   "style": "fix brownian/asphere",
+   "native": "ERROR: Unknown fix brownian/asphere keyword extra"
+  },
+  {
+   "case": "w62brown_sphere3dplanar",
+   "line": 13,
+   "text": "fix 1 all brownian/sphere 1.0 77 rng uniform gamma_t 3.0 gamma_r 1.0 planar_rotation extra",
+   "style": "fix brownian/sphere",
+   "native": "ERROR: Unknown fix brownian/sphere keyword extra"
+  },
+  {
+   "case": "w349chreg_onlysalt_anion",
+   "line": 19,
+   "text": "fix chareg all charge/regulation 2 3 pIp 2.5 pIm 3.5 onlysalt yes 1 -2 tag yes lunit_nm 0.72 nevery 50 nmc 60 seed 2345 tempfixid fT extra",
+   "style": "fix charge/regulation",
+   "native": "ERROR: Illegal fix charge/regulation command"
+  },
+  {
+   "case": "w15cmap_run",
+   "line": 7,
+   "text": "fix cmap all cmap w15cmap_grid.txt extra",
+   "style": "fix cmap",
+   "native": "ERROR: Illegal fix cmap command"
+  },
+  {
+   "case": "w13misc_controller",
+   "line": 23,
+   "text": "fix ctl all controller 10 1.0 0.5 0.2 0.1 v_vcmx 0.5 fc extra",
+   "style": "fix controller",
+   "native": "ERROR: Illegal fix controller command"
+  },
+  {
+   "case": "w228gs_cundall_var",
+   "line": 22,
+   "text": "fix 2 all damping/cundall 0.2 0.1 scale v_g extra",
+   "style": "fix damping/cundall",
+   "native": "ERROR: Illegal fix damping/cundall command"
+  },
+  {
+   "case": "w230re_temp_deform_eff",
+   "line": 15,
+   "text": "fix 2 all deform 1 x erate 0.001 y erate -0.0005 remap v extra",
+   "style": "fix deform",
+   "native": "ERROR: Unknown fix deform keyword: extra"
+  },
+  {
+   "case": "w399dp_box_volume",
+   "line": 15,
+   "text": "fix 2 all deform/pressure 1 x wiggle 0.4 0.6 y pressure 0.5 0.1 box volume units box extra",
+   "style": "fix deform/pressure",
+   "native": "ERROR: Unknown fix deform/pressure keyword: extra"
+  },
+  {
+   "case": "w7dep_global",
+   "line": 14,
+   "text": "fix 3 all deposit 5 1 2 777 region reg units box global 1.0 2.0 units box extra",
+   "style": "fix deposit",
+   "native": "ERROR: Illegal fix deposit command"
+  },
+  {
+   "case": "w230re_eos_table",
+   "line": 21,
+   "text": "fix 1 all dpd/energy extra",
+   "style": "fix dpd/energy",
+   "native": "ERROR: Illegal fix dpd/energy command"
+  },
+  {
+   "case": "w18fix_drag",
+   "line": 18,
+   "text": "fix 2 all drag 0.0 0.0 0.0 0.5 0.5 extra",
+   "style": "fix drag",
+   "native": "ERROR: Illegal fix drag command"
+  },
+  {
+   "case": "w72drude_swm4_lang",
+   "line": 33,
+   "text": "fix DRUDE all drude C N N D extra",
+   "style": "fix drude",
+   "native": "ERROR: Incorrect number of arguments (8 instead of 7) for fix drude command"
+  },
+  {
+   "case": "w72drude_butane_nh",
+   "line": 38,
+   "text": "fix fDIRECT all drude/transform/direct extra",
+   "style": "fix drude/transform/direct",
+   "native": "ERROR: Illegal fix drude/transform command"
+  },
+  {
+   "case": "w72drude_butane_nh",
+   "line": 41,
+   "text": "fix fINVERSE all drude/transform/inverse extra",
+   "style": "fix drude/transform/inverse",
+   "native": "ERROR: Illegal fix drude/transform command"
+  },
+  {
+   "case": "w47pkg_dtreset_metal",
+   "line": 17,
+   "text": "fix 2 all dt/reset 1 NULL 0.0005 0.02 emax 10.0 units box extra",
+   "style": "fix dt/reset",
+   "native": "ERROR: Illegal fix dt/reset command"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 28,
+   "text": "fix 3 all edpd/source cuboid 0.0 1.5 0.0 6.0 3.0 6.0 0.01 extra",
+   "style": "fix edpd/source",
+   "native": "ERROR: Illegal fix edpd/source command (6 args for cuboid)"
+  },
+  {
+   "case": "w66units_efield_const_real",
+   "line": 23,
+   "text": "fix 2 all efield 0.02 -0.01 0.03 extra",
+   "style": "fix efield",
+   "native": "ERROR: Unknown keyword for fix efield command: extra"
+  },
+  {
+   "case": "w66units_lepton_efield_real",
+   "line": 23,
+   "text": "fix 2 all efield/lepton \"-0.05*x^2 - 0.3*y*z\" step 1e-3 extra",
+   "style": "fix efield/lepton",
+   "native": "ERROR: Unknown keyword for fix efield/lepton command: extra"
+  },
+  {
+   "case": "w229xf_efield_tip4p",
+   "line": 20,
+   "text": "fix 3 all efield/tip4p 0.3 -0.2 0.5 extra",
+   "style": "fix efield/tip4p",
+   "native": "ERROR: Unknown keyword for fix efield/tip4p command: extra"
+  },
+  {
+   "case": "w8ehex_region_dynamic",
+   "line": 20,
+   "text": "fix 2 all ehex 5 0.4 region hot extra",
+   "style": "fix ehex",
+   "native": "ERROR: Illegal fix ehex keyword"
+  },
+  {
+   "case": "w68elec_madelung_cg",
+   "line": 16,
+   "text": "fix conp bot electrode/conp 0 2 couple top 1 symm on algo cg 1e-6 extra",
+   "style": "fix electrode/conp",
+   "native": "ERROR: Unknown keyword extra for fix electrode/conp command"
+  },
+  {
+   "case": "w68elec_conq_cg",
+   "line": 19,
+   "text": "fix q bot electrode/conq -0.2 2 couple top 0.2 symm on algo cg 1e-6 extra",
+   "style": "fix electrode/conq",
+   "native": "ERROR: Unknown keyword extra for fix electrode/conq command"
+  },
+  {
+   "case": "w68elec_thermo",
+   "line": 19,
+   "text": "fix th bot electrode/thermo 0 2 couple top 1 temp 300 1 1234 extra",
+   "style": "fix electrode/thermo",
+   "native": "ERROR: Unknown keyword extra for fix electrode/thermo command"
+  },
+  {
+   "case": "w47pkg_elstop_cu",
+   "line": 18,
+   "text": "fix fel all electron/stopping 10.0 w47pkg_elstop_cu.table extra",
+   "style": "fix electron/stopping",
+   "native": "ERROR: Illegal fix electron/stopping command: unknown argument"
+  },
+  {
+   "case": "w108xf_elfit_sisi",
+   "line": 18,
+   "text": "fix 3 all electron/stopping/fit 4.63 3.3e-3 4.0e-8 extra",
+   "style": "fix electron/stopping/fit",
+   "native": "OK"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 21,
+   "text": "fix 3 all enforce2d extra",
+   "style": "fix enforce2d",
+   "native": "ERROR: Illegal fix enforce2d command"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 32,
+   "text": "fix 3 all eos/cv 0.0005 extra",
+   "style": "fix eos/cv",
+   "native": "ERROR: Illegal fix eos/cv command"
+  },
+  {
+   "case": "w230re_eos_table",
+   "line": 23,
+   "text": "fix 3 all eos/table linear w230re_eos_table.txt 200 EOS_TABLE extra",
+   "style": "fix eos/table",
+   "native": "ERROR: Illegal fix eos/table command"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 44,
+   "text": "fix 3 all eos/table/rx linear w160rx_table.eos 201 KEYWORD w160rx_thermo.dpdrx extra",
+   "style": "fix eos/table/rx",
+   "native": "ERROR: Illegal fix eos/table/rx command"
+  },
+  {
+   "case": "w340deposit_tail",
+   "line": 20,
+   "text": "fix 3 all evaporate 7 1 ev 9113 extra",
+   "style": "fix evaporate",
+   "native": "ERROR: Illegal fix evaporate command"
+  },
+  {
+   "case": "w229xf_ffl",
+   "line": 15,
+   "text": "fix 2 all ffl 0.5 1.2 0.6 4321 extra",
+   "style": "fix ffl",
+   "native": "ERROR: Illegal fix ffl flip type, only accepts : rescale - hard - soft - no_flip"
+  },
+  {
+   "case": "w214fc_clusters_b",
+   "line": 28,
+   "text": "fix cor all filter/corotate b 3 extra",
+   "style": "fix filter/corotate",
+   "native": "OK"
+  },
+  {
+   "case": "w133mf_flow_gauss_mod",
+   "line": 29,
+   "text": "fix GD left flow/gauss 1 0 0 extra",
+   "style": "fix flow/gauss",
+   "native": "ERROR: Illegal fix flow/gauss command"
+  },
+  {
+   "case": "w4gran_freeze",
+   "line": 30,
+   "text": "fix 3 frz freeze extra",
+   "style": "fix freeze",
+   "native": "ERROR: Illegal fix freeze command"
+  },
+  {
+   "case": "w33gcmc_real_ins",
+   "line": 11,
+   "text": "fix mygcmc gcmcgroup gcmc 1 3 0 1 29494 300.0 50.0 1.0 extra",
+   "style": "fix gcmc",
+   "native": "ERROR: Unknown fix gcmc keyword extra"
+  },
+  {
+   "case": "w352gjf_method8",
+   "line": 20,
+   "text": "fix 1 all gjf 1.0 1.0 2.0 9182 method 8 extra",
+   "style": "fix gjf",
+   "native": "ERROR: Illegal fix gjf command"
+  },
+  {
+   "case": "w229xf_gld",
+   "line": 15,
+   "text": "fix 2 all gld 1.2 0.6 2 4321 pprony 0.5 0.3 0.8 1.5 zero yes extra",
+   "style": "fix gld",
+   "native": "ERROR: Illegal fix gld command"
+  },
+  {
+   "case": "w108xf_gle_lj_eq",
+   "line": 15,
+   "text": "fix 1 all gle 6 1.2 1.4 31415 gle_lj.A extra",
+   "style": "fix gle",
+   "native": "OK"
+  },
+  {
+   "case": "w463dyngroup_isosurface",
+   "line": 22,
+   "text": "fix iso dyn graphics/isosurface 5 0.4 1.0 quality min filename w463iso.*.stl extra",
+   "style": "fix graphics/isosurface",
+   "native": "ERROR: Unknown fix graphics/isosurface keyword extra"
+  },
+  {
+   "case": "w159gr_lines",
+   "line": 14,
+   "text": "fix l all graphics/lines 2 3 6 4 extra",
+   "style": "fix graphics/lines",
+   "native": "OK"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 16,
+   "text": "fix 2 all gravity 1.0 spherical 0.0 -180.0 extra",
+   "style": "fix gravity",
+   "native": "ERROR: Illegal fix gravity command"
+  },
+  {
+   "case": "w108xf_grem_nvt",
+   "line": 13,
+   "text": "fix fxgREM all grem 400 -.01 -30000 fxnvt extra",
+   "style": "fix grem",
+   "native": "OK"
+  },
+  {
+   "case": "w49hy_halt_min",
+   "line": 20,
+   "text": "fix h all halt 1 v_s >= 21 error soft message no extra",
+   "style": "fix halt",
+   "native": "ERROR: Unknown fix halt keyword extra"
+  },
+  {
+   "case": "w8ehex_heat",
+   "line": 20,
+   "text": "fix 2 all heat 1 0.2 region hot extra",
+   "style": "fix heat",
+   "native": "ERROR: Illegal fix heat command"
+  },
+  {
+   "case": "w437dyngroup_bpm_heat",
+   "line": 21,
+   "text": "fix 3 dyn2 heat/flow constant 2.0 extra",
+   "style": "fix heat/flow",
+   "native": "ERROR: Illegal fix heat/flow constant command"
+  },
+  {
+   "case": "w32hmc_accept",
+   "line": 15,
+   "text": "fix 2 all hmc 5 12345 1000000.0 resample yes extra",
+   "style": "fix hmc",
+   "native": "ERROR: Unknown fix hmc keyword extra"
+  },
+  {
+   "case": "w49hy_rebond",
+   "line": 27,
+   "text": "fix HG mobile hyper/global 1.5 0.3 0.5 1.0 extra",
+   "style": "fix hyper/global",
+   "native": "ERROR: Illegal fix hyper/global command"
+  },
+  {
+   "case": "w153hy_bound",
+   "line": 27,
+   "text": "fix HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 1.2 bound 0.3 reset 40 extra",
+   "style": "fix hyper/local",
+   "native": "ERROR: Illegal fix hyper/local command"
+  },
+  {
+   "case": "w50il_chain",
+   "line": 14,
+   "text": "fix cons all ilves 1.0e-4 25 0 b 1 extra",
+   "style": "fix ilves",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w66units_indent_plane_real",
+   "line": 21,
+   "text": "fix 2 all indent 2.0 plane z 1.5 lo units box extra",
+   "style": "fix indent",
+   "native": "ERROR: Unknown fix indent argument: extra"
+  },
+  {
+   "case": "w279ap_thermostat_shuffle",
+   "line": 16,
+   "text": "fix lambda all lambda/apip 0.5 1.5 time_averaged_zone 2.0 3.0 3 3 store_atomic_stats extra",
+   "style": "fix lambda/apip",
+   "native": "ERROR: fix lambda/apip: unknown argument extra",
+   "build": "APIP"
+  },
+  {
+   "case": "w280ap_la_csp_static",
+   "line": 16,
+   "text": "fix la all lambda/la/csp/apip 0.7 2.0 3.0 5.0 fcc store_peratom 5 extra",
+   "style": "fix lambda/la/csp/apip",
+   "native": "ERROR: unknown argument extra",
+   "build": "APIP"
+  },
+  {
+   "case": "w279ap_thermostat_shuffle",
+   "line": 17,
+   "text": "fix lambda_thermostat all lambda_thermostat/apip N_rescaling 3 seed 1234 extra",
+   "style": "fix lambda_thermostat/apip",
+   "native": "ERROR: fix lambda_thermostat/apip: unknown argument extra",
+   "build": "APIP"
+  },
+  {
+   "case": "w89fix_rigid_langevin",
+   "line": 14,
+   "text": "fix 2 all langevin 1.0 1.0 0.5 48279 extra",
+   "style": "fix langevin",
+   "native": "ERROR: Unknown fix langevin keyword extra"
+  },
+  {
+   "case": "w72drude_butane_lang",
+   "line": 36,
+   "text": "fix fLANG all langevin/drude 260.0 100.0 200611 1.0 20.0 260514 zero yes extra",
+   "style": "fix langevin/drude",
+   "native": "ERROR: Illegal fix langevin/drude command"
+  },
+  {
+   "case": "w230re_eff_langevin",
+   "line": 15,
+   "text": "fix 2 all langevin/eff 300.0 300.0 20.0 4321 tally yes scale 3 2.0 extra",
+   "style": "fix langevin/eff",
+   "native": "ERROR: Unknown fix langevin keyword extra"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 14,
+   "text": "fix 3 all langevin/spin 0.0 0.1 21 extra",
+   "style": "fix langevin/spin",
+   "native": "ERROR: Illegal langevin/spin command"
+  },
+  {
+   "case": "w181px_lb_pits_sw",
+   "line": 20,
+   "text": "fix 1 all lb/fluid 1 1.0 1.0 dx 8.0 linearInit pressurebcx 0.01 npits 2 6 13 5 0 sw extra",
+   "style": "fix lb/fluid",
+   "native": "ERROR: Unrecognized fix style 'lb/fluid' is part of the LATBOLTZ package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the LATBOLTZ package, which no native build here has"
+  },
+  {
+   "case": "w132lb_momentum",
+   "line": 22,
+   "text": "fix 4 all lb/momentum 50 linear 1 1 1 extra",
+   "style": "fix lb/momentum",
+   "native": "ERROR: Unrecognized fix style 'lb/fluid' is part of the LATBOLTZ package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the LATBOLTZ package, which no native build here has"
+  },
+  {
+   "case": "w181px_lb_pits_sw",
+   "line": 21,
+   "text": "fix 2 all lb/viscous extra",
+   "style": "fix lb/viscous",
+   "native": "ERROR: Unrecognized fix style 'lb/fluid' is part of the LATBOLTZ package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the LATBOLTZ package, which no native build here has"
+  },
+  {
+   "case": "w66units_lineplane_real",
+   "line": 24,
+   "text": "fix 3 all lineforce 1.0 1.0 0.5 extra",
+   "style": "fix lineforce",
+   "native": "ERROR: Illegal fix lineforce command"
+  },
+  {
+   "case": "w289mf_manifoldforce_min",
+   "line": 13,
+   "text": "fix mf all manifoldforce sphere 10.0 extra",
+   "style": "fix manifoldforce",
+   "native": "ERROR: Fix manifoldforce requires min_style hftn or quickmin",
+   "build": "MANIFOLD"
+  },
+  {
+   "case": "w125sdpd_meso_move_rotate",
+   "line": 31,
+   "text": "fix 3 upper_wall meso/move rotate 0 0 0 0 0 1 2.0 units box extra",
+   "style": "fix meso/move",
+   "native": "ERROR: Illegal fix meso/move command"
+  },
+  {
+   "case": "w30molswap_keno",
+   "line": 18,
+   "text": "fix swap all mol/swap 1 1 1 2 12345 1e9 ke no extra",
+   "style": "fix mol/swap",
+   "native": "ERROR: Illegal fix mol/swap command"
+  },
+  {
+   "case": "w167om_fix2d",
+   "line": 17,
+   "text": "fix 2 all momentum 1 linear 1 1 0 angular extra",
+   "style": "fix momentum",
+   "native": "ERROR: Unknown fix momentum keyword extra"
+  },
+  {
+   "case": "w218ck_fix_momentum",
+   "line": 28,
+   "text": "fix 2 all momentum/chunk 3 cm linear 1 1 1 angular rescale extra",
+   "style": "fix momentum/chunk",
+   "native": "ERROR: Illegal fix momentum/chunk command"
+  },
+  {
+   "case": "w17move_linear",
+   "line": 16,
+   "text": "fix 1 moved move linear 0.5 0.0 0.0 units box extra",
+   "style": "fix move",
+   "native": "ERROR: Unknown fix move keyword extra"
+  },
+  {
+   "case": "w128shock_msst_lj",
+   "line": 16,
+   "text": "fix msst all msst z 1.5 q 10.0 mu 0.5 tscale 0.1 extra",
+   "style": "fix msst",
+   "native": "ERROR: Illegal fix msst command"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 25,
+   "text": "fix 1 dyn mvv/dpd extra",
+   "style": "fix mvv/dpd",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 26,
+   "text": "fix 1 dyn mvv/edpd 0.5 extra",
+   "style": "fix mvv/edpd",
+   "native": "OK"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 25,
+   "text": "fix 1 dyn mvv/tdpd 0.5 extra",
+   "style": "fix mvv/tdpd",
+   "native": "OK"
+  },
+  {
+   "case": "w46neb_each",
+   "line": 20,
+   "text": "fix 2 all neb 1.0 parallel ideal extra",
+   "style": "fix neb",
+   "native": "ERROR: Illegal fix neb command"
+  },
+  {
+   "case": "w310gneb_cg",
+   "line": 18,
+   "text": "fix 3 all neb/spin 1.0 extra",
+   "style": "fix neb/spin",
+   "native": "ERROR: Illegal fix neb/spin command"
+  },
+  {
+   "case": "w460dyngroup_neighborswap",
+   "line": 26,
+   "text": "fix mc dyn neighbor/swap 2 5 12345 1.0 1.5 v types 2 1 extra",
+   "style": "fix neighbor/swap",
+   "native": "ERROR: Too many arguments to fix neighbor/swap types"
+  },
+  {
+   "case": "w229xf_nonaffine",
+   "line": 16,
+   "text": "fix 2 all nonaffine/displacement 5 integrated fixed 20 z/min 0 extra",
+   "style": "fix nonaffine/displacement",
+   "native": "ERROR: Illegal keyword extra in fix nonaffine/displacement"
+  },
+  {
+   "case": "w483nh_isochoric_2d",
+   "line": 14,
+   "text": "fix 1 all nph y 1.0 1.0 1.0 isochoric x extra",
+   "style": "fix nph",
+   "native": "ERROR: Unknown fix nph keyword: extra"
+  },
+  {
+   "case": "w19nhasphere_nph",
+   "line": 39,
+   "text": "fix 1 all nph/asphere iso 1.5 0.5 2.0 extra",
+   "style": "fix nph/asphere",
+   "native": "ERROR: Unknown fix nph/asphere keyword: extra"
+  },
+  {
+   "case": "w126body_squares_nph",
+   "line": 16,
+   "text": "fix 1 all nph/body x 0.1 0.1 1.0 y 0.1 0.1 1.0 fixedpoint 0 0 0 extra",
+   "style": "fix nph/body",
+   "native": "ERROR: Unknown fix nph/body keyword: extra"
+  },
+  {
+   "case": "w367eff_nph_couple_xy",
+   "line": 14,
+   "text": "fix 1 all nph/eff x 0.0 0.0 1.0 y 0.0 0.0 1.0 z 0.0 0.0 1.0 couple xy pchain 1 mtk no extra",
+   "style": "fix nph/eff",
+   "native": "ERROR: Unknown fix nph/eff keyword: extra"
+  },
+  {
+   "case": "w355dipole_nph_sphere",
+   "line": 21,
+   "text": "fix 1 all nph/sphere iso 0.5 0.5 1.0 update dipole extra",
+   "style": "fix nph/sphere",
+   "native": "ERROR: Unknown fix nph/sphere keyword: extra"
+  },
+  {
+   "case": "w128shock_nphug_z",
+   "line": 15,
+   "text": "fix myhug all nphug temp 1.0 1.0 10.0 z 1.5 1.5 20.0 extra",
+   "style": "fix nphug",
+   "native": "ERROR: Unknown fix nphug keyword: extra"
+  },
+  {
+   "case": "w481nh_isochoric_x",
+   "line": 13,
+   "text": "fix 1 all npt temp 1.0 1.0 0.5 z 2.0 2.0 1.0 isochoric x extra",
+   "style": "fix npt",
+   "native": "ERROR: Unknown fix npt keyword: extra"
+  },
+  {
+   "case": "w19nhasphere_npt",
+   "line": 39,
+   "text": "fix 1 all npt/asphere temp 1.0 1.0 0.5 iso 1.5 0.5 2.0 extra",
+   "style": "fix npt/asphere",
+   "native": "ERROR: Unknown fix npt/asphere keyword: extra"
+  },
+  {
+   "case": "w126body_wall2d",
+   "line": 17,
+   "text": "fix 1 all npt/body temp 0.5 0.5 1.0 x 0.001 0.1 1.0 fixedpoint 0 0 0 extra",
+   "style": "fix npt/body",
+   "native": "ERROR: Unknown fix npt/body keyword: extra"
+  },
+  {
+   "case": "w141cy_cauchy_basic",
+   "line": 18,
+   "text": "fix 1 all npt/cauchy temp 600.0 600.0 1.0 x 0.0 0.0 0.1 y 0.0 0.0 0.1 z 0.0 0.0 0.1 couple none alpha 0.001 continue no extra",
+   "style": "fix npt/cauchy",
+   "native": "ERROR: Illegal fix npt/cauchy command"
+  },
+  {
+   "case": "w364eff_npt_aniso",
+   "line": 14,
+   "text": "fix 1 all npt/eff temp 300.0 300.0 0.5 aniso 0.0 0.0 1.0 extra",
+   "style": "fix npt/eff",
+   "native": "ERROR: Unknown fix npt/eff keyword: extra"
+  },
+  {
+   "case": "w356dlm_npt_sphere",
+   "line": 22,
+   "text": "fix 1 all npt/sphere temp 0.8 0.8 0.5 iso 0.5 0.5 1.0 update dipole/dlm extra",
+   "style": "fix npt/sphere",
+   "native": "ERROR: Unknown fix npt/sphere keyword: extra"
+  },
+  {
+   "case": "w129uef_npt_biaxial",
+   "line": 18,
+   "text": "fix 1 all npt/uef temp 0.722 0.722 0.5 iso 10 10 5 erate 0.5 0.5 ext z extra",
+   "style": "fix npt/uef",
+   "native": "ERROR: Unknown fix npt/uef keyword: extra"
+  },
+  {
+   "case": "w16numdiff_forces",
+   "line": 15,
+   "text": "fix fd all numdiff 1 1e-6 extra",
+   "style": "fix numdiff",
+   "native": "OK"
+  },
+  {
+   "case": "w16numdiff_virial",
+   "line": 15,
+   "text": "fix fd all numdiff/virial 1 1e-6 extra",
+   "style": "fix numdiff/virial",
+   "native": "OK"
+  },
+  {
+   "case": "w47ds_legend",
+   "line": 9,
+   "text": "fix 1 all nve extra",
+   "style": "fix nve",
+   "native": "ERROR: Unsupported additional arguments for fix nve"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 31,
+   "text": "fix 2 all nve/asphere extra",
+   "style": "fix nve/asphere",
+   "native": "OK"
+  },
+  {
+   "case": "w19asphere_noforce",
+   "line": 19,
+   "text": "fix 1 all nve/asphere/noforce extra",
+   "style": "fix nve/asphere/noforce",
+   "native": "ERROR: Illegal fix nve/noforce command: missing argument(s)"
+  },
+  {
+   "case": "w48bd_free",
+   "line": 11,
+   "text": "fix 1 all nve/body extra",
+   "style": "fix nve/body",
+   "native": "OK"
+  },
+  {
+   "case": "w53bpm_rot_chain",
+   "line": 16,
+   "text": "fix 1 all nve/bpm/sphere extra",
+   "style": "fix nve/bpm/sphere",
+   "native": "ERROR: Illegal fix nve/bpm/sphere keyword extra"
+  },
+  {
+   "case": "w57oxdna_nvedot",
+   "line": 19,
+   "text": "fix 1 all nve/dot extra",
+   "style": "fix nve/dot",
+   "native": "OK"
+  },
+  {
+   "case": "w57oxdna_langevin",
+   "line": 19,
+   "text": "fix 1 all nve/dotc/langevin 0.1 0.1 2.5 457145 angmom 10 extra",
+   "style": "fix nve/dotc/langevin",
+   "native": "ERROR: Illegal fix nve/dotc/langevin command"
+  },
+  {
+   "case": "w230re_eff_langevin",
+   "line": 14,
+   "text": "fix 1 all nve/eff extra",
+   "style": "fix nve/eff",
+   "native": "OK"
+  },
+  {
+   "case": "w2fmom_nvelimit",
+   "line": 27,
+   "text": "fix 1 all nve/limit 0.0012 extra",
+   "style": "fix nve/limit",
+   "native": "ERROR: Illegal fix nve/limit command: missing argument(s)"
+  },
+  {
+   "case": "w61line_pair",
+   "line": 14,
+   "text": "fix 1 lns nve/line extra",
+   "style": "fix nve/line",
+   "native": "ERROR: Illegal fix nve/line command"
+  },
+  {
+   "case": "w282mf_sphere_energy",
+   "line": 9,
+   "text": "fix step all nve/manifold/rattle 1e-6 10 sphere 10.0 extra",
+   "style": "fix nve/manifold/rattle",
+   "native": "ERROR: Error parsing arg \"extra\".",
+   "build": "MANIFOLD"
+  },
+  {
+   "case": "w231co_lubricateU_flaglog0",
+   "line": 18,
+   "text": "fix 1 all nve/noforce extra",
+   "style": "fix nve/noforce",
+   "native": "ERROR: Illegal fix nve/noforce command: missing argument(s)"
+  },
+  {
+   "case": "w54accel_melt",
+   "line": 19,
+   "text": "fix 1 all nve/omp extra",
+   "style": "fix nve/omp",
+   "native": "OK"
+  },
+  {
+   "case": "w36mol_diam",
+   "line": 12,
+   "text": "fix 1 all nve/sphere extra",
+   "style": "fix nve/sphere",
+   "native": "ERROR: Unknown keyword in fix nve/sphere command: extra"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 15,
+   "text": "fix 1 all nve/spin lattice frozen extra",
+   "style": "fix nve/spin",
+   "native": "ERROR: Illegal fix/nve/spin command"
+  },
+  {
+   "case": "w61tri_pair",
+   "line": 15,
+   "text": "fix 1 tri3 nve/tri extra",
+   "style": "fix nve/tri",
+   "native": "ERROR: Illegal fix nve/tri command"
+  },
+  {
+   "case": "w229xf_nvk",
+   "line": 14,
+   "text": "fix 1 all nvk extra",
+   "style": "fix nvk",
+   "native": "OK"
+  },
+  {
+   "case": "w108xf_grem_nvt",
+   "line": 12,
+   "text": "fix fxnvt all nvt temp 300.0 300.0 1000.0 extra",
+   "style": "fix nvt",
+   "native": "ERROR: Unknown fix nvt keyword: extra"
+  },
+  {
+   "case": "w19nhasphere_nvt",
+   "line": 39,
+   "text": "fix 1 all nvt/asphere temp 1.0 1.0 0.5 extra",
+   "style": "fix nvt/asphere",
+   "native": "ERROR: Unknown fix nvt/asphere keyword: extra"
+  },
+  {
+   "case": "w126body_cubes_nvt",
+   "line": 15,
+   "text": "fix 1 all nvt/body temp 1.2 1.2 0.1 extra",
+   "style": "fix nvt/body",
+   "native": "ERROR: Unknown fix nvt/body keyword: extra"
+  },
+  {
+   "case": "w63eff_ch4_nvt",
+   "line": 21,
+   "text": "fix 1 all nvt/eff temp 300.0 300.0 0.1 extra",
+   "style": "fix nvt/eff",
+   "native": "ERROR: Unknown fix nvt/eff keyword: extra"
+  },
+  {
+   "case": "w286mf_nvt_ramp",
+   "line": 14,
+   "text": "fix step all nvt/manifold/rattle 1e-8 20 sphere v_R temp 1.0 1.2 0.1 tchain 4 extra",
+   "style": "fix nvt/manifold/rattle",
+   "native": "ERROR: Error parsing arg \"extra\".",
+   "build": "MANIFOLD"
+  },
+  {
+   "case": "w39nemd_nemd3d",
+   "line": 23,
+   "text": "fix 1 all nvt/sllod temp 1.0 1.0 1.0 tchain 1 extra",
+   "style": "fix nvt/sllod",
+   "native": "ERROR: Unknown fix nvt/sllod keyword: extra"
+  },
+  {
+   "case": "w230re_eff_sllod",
+   "line": 15,
+   "text": "fix 2 all nvt/sllod/eff temp 300.0 300.0 10.0 extra",
+   "style": "fix nvt/sllod/eff",
+   "native": "ERROR: Unknown fix nvt/sllod/eff keyword: extra"
+  },
+  {
+   "case": "w7nhs_disc",
+   "line": 19,
+   "text": "fix 1 all nvt/sphere temp 0.8 0.5 0.5 disc extra",
+   "style": "fix nvt/sphere",
+   "native": "ERROR: Unknown fix nvt/sphere keyword: extra"
+  },
+  {
+   "case": "w446dyngroup_nvt_uef",
+   "line": 19,
+   "text": "fix 1 dyn nvt/uef temp 0.722 0.8 0.5 erate -0.05 -0.05 extra",
+   "style": "fix nvt/uef",
+   "native": "ERROR: Unknown fix nvt/uef keyword: extra"
+  },
+  {
+   "case": "w18fix_oneway",
+   "line": 18,
+   "text": "fix 2 all oneway 5 mid x extra",
+   "style": "fix oneway",
+   "native": "OK"
+  },
+  {
+   "case": "w236or_bcc",
+   "line": 14,
+   "text": "fix or all orient/bcc 0 0 2.88 0.02 0.2 0.8 w236or_bcc_grain2.ori w236or_bcc_grain1.ori extra",
+   "style": "fix orient/bcc",
+   "native": "ERROR: Illegal fix orient/bcc command"
+  },
+  {
+   "case": "w133mf_orient_eco",
+   "line": 15,
+   "text": "fix eco all orient/eco 0.08 0.25 3.6 w133mf_sigma5.ori extra",
+   "style": "fix orient/eco",
+   "native": "ERROR: Illegal fix orient/eco command"
+  },
+  {
+   "case": "w236or_fcc",
+   "line": 14,
+   "text": "fix or all orient/fcc 0 1 3.6 0.01 0.25 0.75 w236or_fcc_grain1.ori w236or_fcc_grain2.ori extra",
+   "style": "fix orient/fcc",
+   "native": "ERROR: Illegal fix orient/fcc command"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 33,
+   "text": "fix hp all pafi pa 500.0 0.01 434 overdamped yes com no extra",
+   "style": "fix pafi",
+   "native": "ERROR: Illegal fix pafi command"
+  },
+  {
+   "case": "w229xf_pair",
+   "line": 16,
+   "text": "fix pr all pair 1 eam/alloy rho 0 fp 0 extra",
+   "style": "fix pair",
+   "native": "ERROR: Illegal fix pair extra command: missing argument(s)"
+  },
+  {
+   "case": "w99phq_cu",
+   "line": 22,
+   "text": "fix 2 all phonon 10 100 1000 w99phq_cu.map w99phq_cu nasr 20 extra",
+   "style": "fix phonon",
+   "native": "ERROR: Unknown fix phonon keyword extra"
+  },
+  {
+   "case": "w192pimdl_obabo_pile_l",
+   "line": 20,
+   "text": "fix 1 all pimd/langevin ensemble nvt integrator obabo temp 1.00888 sp 0.1924 thermostat PILE_L 1234 extra",
+   "style": "fix pimd/langevin",
+   "native": "ERROR: World variable count 4 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w191pimd_nvt_nmpimd8",
+   "line": 19,
+   "text": "fix 1 all pimd/nvt method nmpimd fmass 0.5 sp 2.0 temp 300.0 nhc 3 extra",
+   "style": "fix pimd/nvt",
+   "native": "ERROR: World variable count 8 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w66units_lineplane_real",
+   "line": 25,
+   "text": "fix 4 all planeforce 0.2 0.1 1.0 extra",
+   "style": "fix planeforce",
+   "native": "ERROR: Illegal fix planeforce command"
+  },
+  {
+   "case": "w71diel_nopbc_gmres",
+   "line": 18,
+   "text": "fix 3 interface polarize/bem/gmres 1 1.0e-4 extra",
+   "style": "fix polarize/bem/gmres",
+   "native": "OK"
+  },
+  {
+   "case": "w71diel_nopbc_icc",
+   "line": 18,
+   "text": "fix 3 interface polarize/bem/icc 1 1.0e-4 extra",
+   "style": "fix polarize/bem/icc",
+   "native": "OK"
+  },
+  {
+   "case": "w71diel_nopbc_dof",
+   "line": 18,
+   "text": "fix 3 interface polarize/functional 1 1.0e-4 extra",
+   "style": "fix polarize/functional",
+   "native": "OK"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 19,
+   "text": "fix ins all pour 20 1 4767548 vol 0.2 50 diam range 0.5 1.0 region slab extra",
+   "style": "fix pour",
+   "native": "ERROR: Illegal fix pour command argument: extra"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 13,
+   "text": "fix 2 all precession/spin zeeman 10.0 0 0 1 extra",
+   "style": "fix precession/spin",
+   "native": "ERROR: Illegal precession/spin command"
+  },
+  {
+   "case": "w89fix_pberend_iso",
+   "line": 14,
+   "text": "fix 2 all press/berendsen iso 1.0 1.0 1.0 extra",
+   "style": "fix press/berendsen",
+   "native": "ERROR: Illegal fix press/berendsen command"
+  },
+  {
+   "case": "w229xf_press_langevin",
+   "line": 15,
+   "text": "fix 2 all press/langevin iso 0.5 1.5 0.5 temp 1.2 0.9 4321 extra",
+   "style": "fix press/langevin",
+   "native": "ERROR: Unknown fix press/langevin keyword: extra"
+  },
+  {
+   "case": "w62brown_propelvel",
+   "line": 14,
+   "text": "fix 2 all propel/self velocity 4.0 extra",
+   "style": "fix propel/self",
+   "native": "ERROR: Incorrect number of fix propel/self arguments"
+  },
+  {
+   "case": "w6prop_read",
+   "line": 6,
+   "text": "fix pr all property/atom mol q i_tag d2_arr 2 extra",
+   "style": "fix property/atom",
+   "native": "ERROR: Illegal fix property/atom command"
+  },
+  {
+   "case": "w99phq_qbmsst_lj",
+   "line": 16,
+   "text": "fix shock all qbmsst z 1.5 q 10.0 tscale 0.1 damp 1.0 f_max 4.0 N_f 20 seed 35082 eta 1.0 beta 5 T_init 0.8 extra",
+   "style": "fix qbmsst",
+   "native": "ERROR: Unrecognized fix style 'qbmsst' is part of the QTB package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the QTB package, which no native build here has"
+  },
+  {
+   "case": "w58comb_cu2o",
+   "line": 21,
+   "text": "fix 2 all qeq/comb 1 0.0001 extra",
+   "style": "fix qeq/comb",
+   "native": "ERROR: Illegal fix qeq/comb command"
+  },
+  {
+   "case": "w140ct_limits",
+   "line": 17,
+   "text": "fix 1 all qeq/ctip 1 12.0 1.0e-8 100 coul/ctip cdamp 0.30 maxrepeat 10 extra",
+   "style": "fix qeq/ctip",
+   "native": "ERROR: Unknown fix qeq/ctip keyword: extra"
+  },
+  {
+   "case": "w36qeq_dyn_loose",
+   "line": 23,
+   "text": "fix q all qeq/dynamic 1 8 1.0e-3 200 w36qeq_param.qeq2 extra",
+   "style": "fix qeq/dynamic",
+   "native": "ERROR: Unknown fix qeq/dynamic keyword: extra"
+  },
+  {
+   "case": "w36qeq_fire_tight",
+   "line": 23,
+   "text": "fix q all qeq/fire 1 8 1.0e-5 200 w36qeq_param.qeq2 extra",
+   "style": "fix qeq/fire",
+   "native": "ERROR: Unknown fix qeq/fire keyword: extra"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 16,
+   "text": "fix q all qeq/point 1 20 1.0e-14 200 w32qeq_point.params extra",
+   "style": "fix qeq/point",
+   "native": "ERROR: Illegal fix qeq/point command"
+  },
+  {
+   "case": "w55reax_qeq_rdx_tight",
+   "line": 10,
+   "text": "fix 2 all qeq/reax 1 0.0 10.0 1e-12 w55reax_param.qeq extra",
+   "style": "fix qeq/reax",
+   "native": "ERROR: Illegal fix qeq/reax command"
+  },
+  {
+   "case": "w55reax_qeq_water",
+   "line": 11,
+   "text": "fix 1 all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400 extra",
+   "style": "fix qeq/reaxff",
+   "native": "ERROR: Illegal fix qeq/reaxff command"
+  },
+  {
+   "case": "w65reaxq_qeqr_tight",
+   "line": 10,
+   "text": "fix 1 all qeq/rel/reaxff 1 0.0 10.0 1e-12 reaxff w65reaxq_gauss_exp.txt extra",
+   "style": "fix qeq/rel/reaxff",
+   "native": "ERROR: Illegal fix qeq/rel/reaxff command"
+  },
+  {
+   "case": "w32qeq_shield4",
+   "line": 22,
+   "text": "fix q all qeq/shielded 1 8 1.0e-14 200 w32qeq_shield.params extra",
+   "style": "fix qeq/shielded",
+   "native": "ERROR: Illegal fix qeq/shielded command"
+  },
+  {
+   "case": "w40qslat_maxiter",
+   "line": 26,
+   "text": "fix 1 all qeq/slater 2 12.0 1.0e-12 500 coul/streitz extra",
+   "style": "fix qeq/slater",
+   "native": "ERROR: Unknown fix qeq/slater keyword: extra"
+  },
+  {
+   "case": "w99phq_qtb_lj",
+   "line": 16,
+   "text": "fix 2 all qtb temp 0.8 damp 0.5 seed 35082 f_max 2.0 N_f 50 extra",
+   "style": "fix qtb",
+   "native": "ERROR: Unrecognized fix style 'qtb' is part of the QTB package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the QTB package, which no native build here has"
+  },
+  {
+   "case": "w65reaxq_qtpie_tight",
+   "line": 10,
+   "text": "fix 1 all qtpie/reaxff 1 0.0 10.0 1e-12 reaxff w65reaxq_gauss_exp.txt extra",
+   "style": "fix qtpie/reaxff",
+   "native": "ERROR: Illegal fix qtpie/reaxff command"
+  },
+  {
+   "case": "w50rt_run0",
+   "line": 19,
+   "text": "fix 1 all rattle 0.0001 20 0 b 1 a 1 extra",
+   "style": "fix rattle",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w456dyngroup_reaxff_out",
+   "line": 21,
+   "text": "fix 4 dyn reaxff/bonds 5 bonds.dyn extra",
+   "style": "fix reaxff/bonds",
+   "native": "ERROR: Fix reaxff/bonds expected 5 arguments but got 6"
+  },
+  {
+   "case": "w456dyngroup_reaxff_out",
+   "line": 22,
+   "text": "fix 3 dyn reaxff/species 5 1 5 species.dyn cutoff * * 0.9 element H C O N extra",
+   "style": "fix reaxff/species",
+   "native": "ERROR: Unknown fix reaxff/species keyword: extra"
+  },
+  {
+   "case": "w2fmom_recenter",
+   "line": 28,
+   "text": "fix 2 all recenter INIT 2.5 NULL units box extra",
+   "style": "fix recenter",
+   "native": "ERROR: Unknown fix recenter keyword extra"
+  },
+  {
+   "case": "w11restrain_dihedral",
+   "line": 19,
+   "text": "fix R all restrain dihedral 1 2 3 4 0.0 20.0 60.0 mult 2 dihedral 1 2 3 5 5.0 5.0 -120.0 mult 3 extra",
+   "style": "fix restrain",
+   "native": "ERROR: Illegal fix restrain command"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 22,
+   "text": "fix 1 all rheo 3.0 quintic 0 thermal extra",
+   "style": "fix rheo",
+   "native": "ERROR: Illegal fix rheo command: extra"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 66,
+   "text": "fix 5 rbar rheo/oxidation 1.5 2 1.0 extra",
+   "style": "fix rheo/oxidation",
+   "native": "ERROR: Illegal fix rheo/oxidation command"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 24,
+   "text": "fix 3 all rheo/pressure * ideal/gas 1.4 extra",
+   "style": "fix rheo/pressure",
+   "native": "ERROR: Invalid range string: extra"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 25,
+   "text": "fix 4 all rheo/thermal conductivity * constant 0.1 specific/heat * constant 1.0 extra",
+   "style": "fix rheo/thermal",
+   "native": "ERROR: Unknown fix rheo/thermal keyword: extra"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 23,
+   "text": "fix 2 all rheo/viscosity * constant 0.05 extra",
+   "style": "fix rheo/viscosity",
+   "native": "ERROR: Invalid range string: extra"
+  },
+  {
+   "case": "w48fb_rhok_npt",
+   "line": 25,
+   "text": "fix bias all rhok 1 0 0 4.0 1.0 extra",
+   "style": "fix rhok",
+   "native": "ERROR: Illegal fix rhoKUmbrella command"
+  },
+  {
+   "case": "w89fix_rigid_langevin",
+   "line": 13,
+   "text": "fix 1 all rigid single extra",
+   "style": "fix rigid",
+   "native": "ERROR: Illegal fix rigid command"
+  },
+  {
+   "case": "w123q_meso_disk",
+   "line": 30,
+   "text": "fix 2 sphere rigid/meso single extra",
+   "style": "fix rigid/meso",
+   "native": "ERROR: Illegal fix rigid/meso command"
+  },
+  {
+   "case": "w56rnh_nph_iso",
+   "line": 48,
+   "text": "fix 1 all rigid/nph molecule iso 0.5 0.5 1.0 extra",
+   "style": "fix rigid/nph",
+   "native": "ERROR: Illegal fix rigid/nph command"
+  },
+  {
+   "case": "w56rnh_nph_small",
+   "line": 48,
+   "text": "fix 1 all rigid/nph/small molecule iso 0.5 0.5 1.0 extra",
+   "style": "fix rigid/nph/small",
+   "native": "ERROR: Unknown fix rigid/nph/small keyword extra"
+  },
+  {
+   "case": "w56rnh_npt_iso",
+   "line": 48,
+   "text": "fix 1 all rigid/npt molecule temp 1.0 1.0 0.5 iso 1.0 1.0 2.0 extra",
+   "style": "fix rigid/npt",
+   "native": "ERROR: Illegal fix rigid/npt command"
+  },
+  {
+   "case": "w431rigidnh_ellipsoid",
+   "line": 21,
+   "text": "fix 1 all rigid/npt/small molecule temp 1.5 1.5 1.0 iso 1.0 1.0 5.0 extra",
+   "style": "fix rigid/npt/small",
+   "native": "ERROR: Unknown fix rigid/npt/small keyword extra"
+  },
+  {
+   "case": "w474rigid_nve_ellipsoids",
+   "line": 14,
+   "text": "fix 1 all rigid/nve molecule extra",
+   "style": "fix rigid/nve",
+   "native": "ERROR: Illegal fix rigid/nve command"
+  },
+  {
+   "case": "w251rg_nve_small",
+   "line": 48,
+   "text": "fix 1 all rigid/nve/small molecule extra",
+   "style": "fix rigid/nve/small",
+   "native": "ERROR: Unknown fix rigid/nve/small keyword extra"
+  },
+  {
+   "case": "w179rg_nh_deform",
+   "line": 15,
+   "text": "fix 1 all rigid/nvt molecule temp 1.0 1.0 0.5 extra",
+   "style": "fix rigid/nvt",
+   "native": "ERROR: Illegal fix rigid/nvt command"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 21,
+   "text": "fix 1 all rigid/nvt/small molecule temp 1.2 1.2 0.5 extra",
+   "style": "fix rigid/nvt/small",
+   "native": "ERROR: Unknown fix rigid/nvt/small keyword extra"
+  },
+  {
+   "case": "w37grav_double",
+   "line": 12,
+   "text": "fix rigidfix all rigid/small molecule gravity gravfix extra",
+   "style": "fix rigid/small",
+   "native": "ERROR: Unknown fix rigid/small keyword extra"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 12,
+   "text": "fix 4 all rx w160rx_kinetics.dpdrx none dense lammps_rk4 1 extra",
+   "style": "fix rx",
+   "native": "ERROR: Too many arguments (9) for RK4 solver"
+  },
+  {
+   "case": "w171px_saed_vtk_full",
+   "line": 18,
+   "text": "fix 2 all saed/vtk 2 2 4 c_SAED file w171px_saed_vtk_full extra",
+   "style": "fix saed/vtk",
+   "native": "ERROR: Illegal fix saed/vtk command"
+  },
+  {
+   "case": "w229xf_set",
+   "line": 21,
+   "text": "fix 2 all set 10 1 atom 1*108 type v_t2 vx v_t extra",
+   "style": "fix set",
+   "native": "ERROR: Unrecognized set or fix set command keyword extra"
+  },
+  {
+   "case": "deposit_rate_lattice",
+   "line": 17,
+   "text": "fix 0 sub setforce 0 0 0 extra",
+   "style": "fix setforce",
+   "native": "ERROR: Unknown fix setforce keyword: extra"
+  },
+  {
+   "case": "w48sp2_setforce",
+   "line": 19,
+   "text": "fix 3 frozen setforce/spin 0.0 0.0 0.0 extra",
+   "style": "fix setforce/spin",
+   "native": "ERROR: Unknown fix setforce keyword: extra"
+  },
+  {
+   "case": "w436dyngroup_sphere",
+   "line": 21,
+   "text": "fix 5 dyn2 settorque/atom 0.0 NULL 0.0 extra",
+   "style": "fix settorque/atom",
+   "native": "ERROR: Unknown fix settorque/atom keyword: extra"
+  },
+  {
+   "case": "w204sg_lj_generic",
+   "line": 17,
+   "text": "fix mc all sgcmc 5 0.1 1.0 0.3 randseed 2468 extra",
+   "style": "fix sgcmc",
+   "native": "ERROR: Unknown fix sgcmc keyword: extra"
+  },
+  {
+   "case": "w73shake_gil",
+   "line": 15,
+   "text": "fix shake bmi shake 1e-4 20 0 b 1 2 a 1 extra",
+   "style": "fix shake",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w95dreact_shardlow_dpd_1000",
+   "line": 27,
+   "text": "fix 1 all shardlow extra",
+   "style": "fix shardlow",
+   "native": "ERROR: Illegal fix shardlow command"
+  },
+  {
+   "case": "w229xf_smd_tether_cfor",
+   "line": 16,
+   "text": "fix 2 pull smd cfor 0.3 tether NULL NULL 1.0 0.0 extra",
+   "style": "fix smd",
+   "native": "OK"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 43,
+   "text": "fix dtfix all smd/adjust_dt 0.1 extra",
+   "style": "fix smd/adjust_dt",
+   "native": "ERROR: Illegal fix smd/adjust_dt command"
+  },
+  {
+   "case": "w100smd_rubber_rings",
+   "line": 53,
+   "text": "fix integration_fix tlsph smd/integrate_tlsph extra",
+   "style": "fix smd/integrate_tlsph",
+   "native": "ERROR: Unknown fix smd/integrate_tlsph keyword: extra"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 44,
+   "text": "fix integration_fix water smd/integrate_ulsph adjust_radius 1.01 10 15 extra",
+   "style": "fix smd/integrate_ulsph",
+   "native": "ERROR: Unknown fix smd/integrate_ulsph keyword: extra"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 48,
+   "text": "fix mv surface smd/move_tri_surf *LINEAR 0.02 0.01 -0.03 extra",
+   "style": "fix smd/move_tri_surf",
+   "native": "ERROR: Unknown fix smd/move_tri_surf keyword: extra"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 64,
+   "text": "fix veltop_fix top smd/setvel 0 v_vel_up 0 extra",
+   "style": "fix smd/setvel",
+   "native": "ERROR: Illegal fix setvelocity command"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 40,
+   "text": "fix stl_surface_fix all smd/wall_surface w100smd_funnel_wall_cut.stl 2 65535 extra",
+   "style": "fix smd/wall_surface",
+   "native": "ERROR: Illegal number of arguments for fix smd/wall_surface"
+  },
+  {
+   "case": "w228gs_sph_lj",
+   "line": 13,
+   "text": "fix 2 all sph extra",
+   "style": "fix sph",
+   "native": "ERROR: Illegal number of arguments for fix sph command"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 30,
+   "text": "fix integrate_fix all sph/stationary extra",
+   "style": "fix sph/stationary",
+   "native": "ERROR: Illegal number of arguments for fix sph/stationary command"
+  },
+  {
+   "case": "w2fspring_tether",
+   "line": 28,
+   "text": "fix 2 lower spring tether 10.0 NULL NULL 1.2 0.2 extra",
+   "style": "fix spring",
+   "native": "ERROR: Incorrect number of arguments for tether mode"
+  },
+  {
+   "case": "w323spring_chunk_wrap",
+   "line": 27,
+   "text": "fix 2 all spring/chunk 2.0 cm com extra",
+   "style": "fix spring/chunk",
+   "native": "ERROR: Illegal fix spring/chunk command: missing argument(s)"
+  },
+  {
+   "case": "w11restrain_springrg",
+   "line": 16,
+   "text": "fix SRG all spring/rg 5.0 NULL extra",
+   "style": "fix spring/rg",
+   "native": "ERROR: Illegal fix spring/rg command"
+  },
+  {
+   "case": "w2fspring_self",
+   "line": 28,
+   "text": "fix 2 upper spring/self 10.0 xy extra",
+   "style": "fix spring/self",
+   "native": "ERROR: Illegal fix spring/self command"
+  },
+  {
+   "case": "w79srd_pure",
+   "line": 29,
+   "text": "fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip extra",
+   "style": "fix srd",
+   "native": "ERROR: Unknown fix srd keyword extra"
+  },
+  {
+   "case": "w323spring_chunk_wrap",
+   "line": 28,
+   "text": "fix 3 all store/force extra",
+   "style": "fix store/force",
+   "native": "OK"
+  },
+  {
+   "case": "w89fix_storestate_every",
+   "line": 14,
+   "text": "fix s all store/state 5 x y z vx extra",
+   "style": "fix store/state",
+   "native": "ERROR: Unknown fix store/state keyword: extra"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 17,
+   "text": "fix fsl all surface/local extra",
+   "style": "fix surface/local",
+   "native": "ERROR: Unknown fix surface/local keyword: extra"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 27,
+   "text": "fix 3 all tdpd/source 1 cuboid 0.0 1.5 0.0 6.0 3.0 6.0 0.01 extra",
+   "style": "fix tdpd/source",
+   "native": "ERROR: Illegal fix tdpd/source command (7 args for cuboid)"
+  },
+  {
+   "case": "w89fix_berendsen_onedof",
+   "line": 15,
+   "text": "fix 2 one temp/berendsen 1.2 1.2 0.1 extra",
+   "style": "fix temp/berendsen",
+   "native": "ERROR: Illegal fix temp/berendsen command: expected 6 arguments but found 7"
+  },
+  {
+   "case": "w89fix_csld_const",
+   "line": 14,
+   "text": "fix 2 all temp/csld 1.2 1.2 0.1 12345 extra",
+   "style": "fix temp/csld",
+   "native": "ERROR: Illegal fix temp/csld command"
+  },
+  {
+   "case": "w89fix_csvr_2d",
+   "line": 15,
+   "text": "fix 2 all temp/csvr 0.9 0.9 0.2 777 extra",
+   "style": "fix temp/csvr",
+   "native": "ERROR: Incorrect number of arguments for fix temp/csvr command"
+  },
+  {
+   "case": "w89fix_rescale_onedof",
+   "line": 15,
+   "text": "fix 2 one temp/rescale 1 1.2 1.2 0.02 0.5 extra",
+   "style": "fix temp/rescale",
+   "native": "OK"
+  },
+  {
+   "case": "w63eff_ch4_rescale",
+   "line": 22,
+   "text": "fix 2 all temp/rescale/eff 2 0.0 300.0 0.02 0.5 extra",
+   "style": "fix temp/rescale/eff",
+   "native": "OK"
+  },
+  {
+   "case": "w224mc_tfmc_com",
+   "line": 17,
+   "text": "fix mc all tfmc 0.05 0.6 12345 com 1 1 1 extra",
+   "style": "fix tfmc",
+   "native": "ERROR: Illegal fix tfmc command"
+  },
+  {
+   "case": "w11gk_thermcond",
+   "line": 17,
+   "text": "fix tc all thermal/conductivity 10 z 8 swap 2 extra",
+   "style": "fix thermal/conductivity",
+   "native": "ERROR: Illegal fix thermal/conductivity command"
+  },
+  {
+   "case": "w48fb_ti_spring_tiny",
+   "line": 14,
+   "text": "fix f2 all ti/spring 3.0 4 3 function 1 extra",
+   "style": "fix ti/spring",
+   "native": "ERROR: Illegal fix ti/spring command"
+  },
+  {
+   "case": "w48fb_tmd_mass",
+   "line": 24,
+   "text": "fix 2 all tmd 0.5 w48fb_tmd_mass_target.txt 0 extra",
+   "style": "fix tmd",
+   "native": "OK"
+  },
+  {
+   "case": "w14ttm_stop",
+   "line": 19,
+   "text": "fix 2 all ttm 4242 1.0 1.0 1.0 20.0 3.0 2.5 2 2 2 infile w14ttm_stop.init extra",
+   "style": "fix ttm",
+   "native": "ERROR: Unknown fix ttm keyword extra"
+  },
+  {
+   "case": "w41ttm_cas_cetab",
+   "line": 20,
+   "text": "fix 2 all ttm/cascade 77 3.0 2.0 0.5 20.0 0.0 2.0 2 2 2 infile w41ttm_cas.init cetab w41ttm_ce.tab offset 0.015 extra",
+   "style": "fix ttm/cascade",
+   "native": "ERROR: Unknown fix ttm/cascade keyword extra"
+  },
+  {
+   "case": "w421dump_grid_ttm",
+   "line": 20,
+   "text": "fix 2 all ttm/grid 777 0.001 1.0 0.01 20.0 0.0 2.0 2 2 2 infile w14ttm_grid.init extra",
+   "style": "fix ttm/grid",
+   "native": "ERROR: Unknown fix ttm/grid keyword extra"
+  },
+  {
+   "case": "w43tm_si",
+   "line": 18,
+   "text": "fix twotemp all ttm/mod 1354684 w43tm_si.par 4 4 4 set 1000.0 extra",
+   "style": "fix ttm/mod",
+   "native": "ERROR: Unknown fix ttm/mod keyword extra"
+  },
+  {
+   "case": "w41ttm_thermal4",
+   "line": 21,
+   "text": "fix 2 all ttm/thermal 99 w41ttm_thermal4.props 4 4 4 infile w41ttm_thermal4.init source 0.02 extra",
+   "style": "fix ttm/thermal",
+   "native": "ERROR: Unknown fix ttm/thermal keyword extra"
+  },
+  {
+   "case": "w7misc_vector",
+   "line": 17,
+   "text": "fix 3 all vector 5 c_ke extra",
+   "style": "fix vector",
+   "native": "ERROR: Unknown fix vector keyword: extra"
+  },
+  {
+   "case": "w11gk_viscosity",
+   "line": 14,
+   "text": "fix visc all viscosity 10 x z 8 swap 2 extra",
+   "style": "fix viscosity",
+   "native": "ERROR: Illegal fix viscosity command"
+  },
+  {
+   "case": "w66units_viscous_real",
+   "line": 21,
+   "text": "fix 2 all viscous 0.5 scale 2 1.5 extra",
+   "style": "fix viscous",
+   "native": "ERROR: Illegal fix viscous command"
+  },
+  {
+   "case": "w228gs_viscous_nonlinear",
+   "line": 20,
+   "text": "fix 2 all viscous/nonlinear 1.2 0.05 velocity 0.1 0.0 0.0 extra",
+   "style": "fix viscous/nonlinear",
+   "native": "ERROR: Illegal fix viscous/nonlinear command"
+  },
+  {
+   "case": "w133mf_viscous_sphere_var",
+   "line": 25,
+   "text": "fix 2 all viscous/sphere 0.3 scale v_g extra",
+   "style": "fix viscous/sphere",
+   "native": "ERROR: Illegal fix viscous/sphere command"
+  },
+  {
+   "case": "w126body_wall2d",
+   "line": 19,
+   "text": "fix 3 all wall/body/polygon 2000 50 50 yplane 0 24 extra",
+   "style": "fix wall/body/polygon",
+   "native": "ERROR: Unknown fix wall/body/polygon keyword extra"
+  },
+  {
+   "case": "w126body_cubes_wall",
+   "line": 17,
+   "text": "fix 3 all wall/body/polyhedron 2000 50 50 zplane 0.0 NULL extra",
+   "style": "fix wall/body/polyhedron",
+   "native": "ERROR: Unknown fix wall/body/polyhedron keyword extra"
+  },
+  {
+   "case": "w231co_wall_colloid",
+   "line": 24,
+   "text": "fix 2 all wall/colloid zlo 0.0 1.0 1.0 2.5 zhi EDGE 1.0 1.0 2.5 extra",
+   "style": "fix wall/colloid",
+   "native": "ERROR: Illegal fix wall/colloid command"
+  },
+  {
+   "case": "w133mf_wall_ees",
+   "line": 16,
+   "text": "fix EES_substrate all wall/ees zhi EDGE 10 1 10 zlo EDGE 10 1 10 extra",
+   "style": "fix wall/ees",
+   "native": "ERROR: Illegal fix wall/ees command"
+  },
+  {
+   "case": "w38wflow_seam_single",
+   "line": 16,
+   "text": "fix 2 all wall/flow x 0.5 1.0 12345 2 3.0 7.0 units box extra",
+   "style": "fix wall/flow",
+   "native": "ERROR: Wrong fix wall/flow wall count"
+  },
+  {
+   "case": "w7pour_fewer",
+   "line": 15,
+   "text": "fix 4 all wall/gran hooke 2000.0 700.0 50.0 30.0 0.5 1 zplane -4.0 NULL extra",
+   "style": "fix wall/gran",
+   "native": "ERROR: Illegal fix wall/gran command"
+  },
+  {
+   "case": "w13gran_region_hertz",
+   "line": 24,
+   "text": "fix 3 all wall/gran/region hertz/history 2000.0 1000.0 0.4 0.3 0.6 1 region reg extra",
+   "style": "fix wall/gran/region",
+   "native": "ERROR: Illegal fix wall/gran command"
+  },
+  {
+   "case": "w231co_lubricateU_wall",
+   "line": 20,
+   "text": "fix 2 all wall/harmonic zlo EDGE 1.0 1.0 0.9 zhi EDGE 1.0 1.0 0.9 extra",
+   "style": "fix wall/harmonic",
+   "native": "ERROR: Illegal fix wall/harmonic command"
+  },
+  {
+   "case": "w40wh_3d_pair",
+   "line": 21,
+   "text": "fix 2 outer wall/harmonic/outside xlo 1.0 2.0 0.0 2.0 xhi 6.5 2.0 0.0 1.2 units box extra",
+   "style": "fix wall/harmonic/outside",
+   "native": "ERROR: Illegal fix wall/harmonic/outside command"
+  },
+  {
+   "case": "w435dyngroup_fixes",
+   "line": 18,
+   "text": "fix 3 dyn wall/harmonic/returned zhi EDGE 2.0 1.0 1.5 extra",
+   "style": "fix wall/harmonic/returned",
+   "native": "ERROR: Illegal fix wall/harmonic/returned command"
+  },
+  {
+   "case": "w16lepton_wall",
+   "line": 17,
+   "text": "fix w1 all wall/lepton xlo EDGE \"k*(r-rc)^2; k=1.0\" 2.5 extra",
+   "style": "fix wall/lepton",
+   "native": "ERROR: Illegal fix wall/lepton command"
+  },
+  {
+   "case": "w2wall_lj1043",
+   "line": 29,
+   "text": "fix 2 all wall/lj1043 zlo EDGE 1.0 1.0 2.5 zhi EDGE 1.0 1.0 2.5 extra",
+   "style": "fix wall/lj1043",
+   "native": "ERROR: Illegal fix wall/lj1043 command"
+  },
+  {
+   "case": "w2wall_lj126",
+   "line": 29,
+   "text": "fix 2 all wall/lj126 zlo EDGE 1.0 1.0 2.5 zhi EDGE 1.0 1.0 2.5 extra",
+   "style": "fix wall/lj126",
+   "native": "ERROR: Illegal fix wall/lj126 command"
+  },
+  {
+   "case": "w231co_lubricate_walls",
+   "line": 18,
+   "text": "fix 2 all wall/lj93 zlo -1.0 1.0 1.0 1.0 zhi 8.0 1.0 1.0 1.0 extra",
+   "style": "fix wall/lj93",
+   "native": "ERROR: Illegal fix wall/lj93 command"
+  },
+  {
+   "case": "w2wall_morse",
+   "line": 29,
+   "text": "fix 2 all wall/morse zlo EDGE 1.0 2.0 1.0 2.5 zhi EDGE 1.0 2.0 1.0 2.5 extra",
+   "style": "fix wall/morse",
+   "native": "ERROR: Illegal fix wall/morse command"
+  },
+  {
+   "case": "w142mx_wall_piston",
+   "line": 17,
+   "text": "fix 2 all wall/piston zlo pos -0.5 vel 0.5 temp 1.0 0.5 1234 1.0 units box extra",
+   "style": "fix wall/piston",
+   "native": "ERROR: Illegal fix wall/piston command"
+  },
+  {
+   "case": "w48fb_addtorque_ball",
+   "line": 21,
+   "text": "fix 2 all wall/reflect xlo EDGE xhi EDGE ylo EDGE yhi EDGE zlo EDGE zhi EDGE extra",
+   "style": "fix wall/reflect",
+   "native": "ERROR: Unknown fix wall/reflect keyword: extra"
+  },
+  {
+   "case": "w7misc_stochastic",
+   "line": 23,
+   "text": "fix 2 lo wall/reflect/stochastic diffusive 4242 zlo 0.0 1.0 0 0 0 units box extra",
+   "style": "fix wall/reflect/stochastic",
+   "native": "ERROR: Illegal fix wall/reflect/stochastic command"
+  },
+  {
+   "case": "w22rwall_region_union",
+   "line": 17,
+   "text": "fix 2 all wall/region U lj93 0.1 0.3 2.5 extra",
+   "style": "fix wall/region",
+   "native": "ERROR: Illegal fix wall/region command"
+  },
+  {
+   "case": "w133mf_region_ees",
+   "line": 15,
+   "text": "fix EES_block all wall/region/ees the_wall 10. 1. 20 extra",
+   "style": "fix wall/region/ees",
+   "native": "ERROR: Illegal fix wall/region/ees command"
+  },
+  {
+   "case": "w231co_wall_srd",
+   "line": 24,
+   "text": "fix 3 all wall/srd xlo EDGE xhi EDGE extra",
+   "style": "fix wall/srd",
+   "native": "ERROR: Unknown fix wall/srd keyword extra"
+  },
+  {
+   "case": "w16walltable_linear",
+   "line": 14,
+   "text": "fix 2 all wall/table linear 201 zlo EDGE w16walltable.dat HARMONIC 2.5 zhi EDGE w16walltable.dat LJ126 2.5 extra",
+   "style": "fix wall/table",
+   "native": "ERROR: Illegal fix wall/table command"
+  },
+  {
+   "case": "w30widom_atom",
+   "line": 14,
+   "text": "fix w all widom 2 3 2 12345 1.0 extra",
+   "style": "fix widom",
+   "native": "ERROR: Illegal fix widom command"
+  }
+ ]
+}

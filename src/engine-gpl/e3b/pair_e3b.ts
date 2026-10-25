@@ -101,9 +101,10 @@ export class PairE3B extends Pair {
         case 'bondL': bondL = parseNum(need(key, iarg++), key); break;
         case 'E2': this.e2 = parseNum(need(key, iarg++), key); break;
         case 'K2': this.k2 = parseNum(need(key, iarg++), key); break;
-        case 'neigh': parseNum(need(key, iarg++), key); break; // neighbor-storage size of the source; no effect here
+        // pair_e3b.cpp: neigh and preset are read by utils::inumeric
+        case 'neigh': inumeric(need(key, iarg++)); break; // neighbor-storage size of the source; no effect here
         case 'preset': {
-          const flag = parseNum(need(key, iarg++), key);
+          const flag = inumeric(need(key, iarg++));
           if (presetSeen) throw new StyleError('Cannot request two different sets of preset parameters');
           presetSeen = true;
           const p = this.presetParams(flag, ctx);

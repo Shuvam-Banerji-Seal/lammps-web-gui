@@ -40,7 +40,8 @@ interface Case { name: string; text: string }
 
 export interface MatrixDef {
   about: string;
-  rows: (cases: Case[]) => ParityRow[];
+  /** the rows, from the oracle cases (smallest first) and the oracle directory */
+  rows: (cases: Case[], oracleDir: string) => ParityRow[];
   /**
    * Rows (by style) whose native result comes from undefined behaviour, with the reason: native reads or writes outside
    * its arrays, so its result is not a rule the engine can follow. The runner marks them skip.
@@ -61,51 +62,206 @@ export const oracleCases = (dir: string): Case[] =>
     .sort((a, b) => a.size - b.size || (a.f < b.f ? -1 : a.f > b.f ? 1 : 0))
     .map(({ f }) => ({ name: f.slice(0, -3), text: readFileSync(join(dir, f), 'utf8') }));
 
+/** The words of a line before any comment; a line that continues (&) or substitutes variables ($) gives null. */
+const words = (line: string): string[] | null => {
+  const code = line.split('#')[0];
+  if (code.includes('&') || code.includes('$')) return null;
+  const w = code.trim().split(/\s+/).filter((x) => x !== '');
+  return w.length ? w : null;
+};
+
+/** The key of a line (one row per key), or null when the line is not taken. */
+type LineKey = (w: string[], lines: string[], i: number) => string | null;
+/** The changed words of a line (with the lines of its case), or null when the change does not apply to it. */
+type Change = (w: string[], lines: string[]) => string[] | null;
+
 /**
- * The first fix or compute line of each style whose words from word 4 on hold a number, with that number replaced
- * by `value`.
+ * A matrix: for each key, the first line (smallest case first, then in order) that has the key and to which the change
+ * applies. A case is read only up to its first include, jump, label, next or read_restart line; a line continued with &,
+ * the lines continuing it, and the lines of a triple-quoted block are not taken.
  */
-const fixComputeFirstNumber = (value: string) => (cases: Case[]): ParityRow[] => {
+const pick = (keyOf: LineKey, change: Change) => (cases: Case[]): ParityRow[] => {
   const rows = new Map<string, ParityRow>();
   for (const c of cases) {
     const lines = c.text.split('\n');
+    let continued = false, quoted = false;
     for (let i = 0; i < lines.length; i++) {
+      if (FLOW.test(lines[i])) break;
       const code = lines[i].split('#')[0];
-      const m = /^\s*(fix|compute)\s+\S+\s+\S+\s+(\S+)/.exec(code);
-      if (!m) continue;
-      const style = `${m[1]} ${m[2]}`;
-      if (rows.has(style) || code.includes('&') || code.includes('$')) continue;
-      if (lines.slice(0, i + 1).some((l) => FLOW.test(l))) continue;
-      const w = code.trim().split(/\s+/);
-      const k = w.findIndex((x, j) => j >= 4 && NUMBER.test(x));
-      if (k < 0) continue;
-      w[k] = value;
-      rows.set(style, { case: c.name, line: i, text: w.join(' '), style });
+      const inBlock = continued || quoted || code.includes('"""');
+      continued = code.trimEnd().endsWith('&');
+      if ((code.split('"""').length - 1) % 2 === 1) quoted = !quoted;
+      if (inBlock) continue;
+      const w = words(lines[i]);
+      if (!w) continue;
+      const key = keyOf(w, lines, i);
+      if (key === null || rows.has(key)) continue;
+      const changed = change(w, lines);
+      if (changed) rows.set(key, { case: c.name, line: i, text: changed.join(' '), style: key });
     }
   }
   return [...rows.values()].sort((a, b) => (a.style < b.style ? -1 : a.style > b.style ? 1 : 0));
 };
 
+/** A fix or compute line: "fix <style>" or "compute <style>". */
+const fixComputeKey: LineKey = (w) => ((w[0] === 'fix' || w[0] === 'compute') && w.length >= 4 ? `${w[0]} ${w[3]}` : null);
+
+/** The first number from word `from` on replaced by `value`. */
+const firstNumber = (from: number, value: string): Change => (w, _lines) => {
+  const k = w.findIndex((x, j) => j >= from && NUMBER.test(x));
+  return k < 0 ? null : w.map((x, j) => (j === k ? value : x));
+};
+
+/** Commands that are not checked: control flow, variables and output only. */
+const SKIP = new Set(['variable', 'print', 'if', 'label', 'jump', 'next', 'include', 'shell', 'python', 'run', 'rerun', 'minimize', 'log', 'echo', 'quit', 'clear']);
+const COEFF = new Set(['pair_coeff', 'bond_coeff', 'angle_coeff', 'dihedral_coeff', 'improper_coeff']);
+/** The word that names a command's variant (its style or keyword), when it is not word 1 of a *_style or *_modify line. */
+const VARIANT: Record<string, number> = {
+  region: 2, dump: 3, dump_modify: 2, group: 2, velocity: 2, displace_atoms: 2, create_atoms: 1, delete_atoms: 1,
+  lattice: 1, set: 3, fix_modify: 2, compute_modify: 2, change_box: 2, read_data: 2, create_box: 2, write_data: 2,
+};
+
+/**
+ * A coefficient line: "<command> <style>" with the style of the last *_style line before it (and the sub-style named on
+ * the line under a hybrid style, word 3 of pair_coeff or word 2 of the others).
+ */
+const coeffKey: LineKey = (w, lines, i) => {
+  if (!COEFF.has(w[0])) return null;
+  const kind = w[0].replace('_coeff', '_style');
+  let style: string | null = null;
+  for (let j = i - 1; j >= 0 && style === null; j--) {
+    const v = words(lines[j]);
+    if (v && v[0] === kind && v.length > 1) style = v[1];
+  }
+  if (style === null) return null;
+  const sub = w[0] === 'pair_coeff' ? w[3] : w[2];
+  return style.startsWith('hybrid') && sub !== undefined ? `${w[0]} ${style} ${sub}` : `${w[0]} ${style}`;
+};
+
+/** Any other command: "<command> <variant>" (its style or keyword, see VARIANT), or the command alone. */
+const commandKey: LineKey = (w) => {
+  if (!/^[a-z][a-z_0-9]*$/.test(w[0]) || SKIP.has(w[0]) || COEFF.has(w[0]) || w[0] === 'fix' || w[0] === 'compute') return null;
+  const at = VARIANT[w[0]] ?? (w[0].endsWith('_style') || w[0].endsWith('_modify') ? 1 : -1);
+  return at >= 0 && w[at] !== undefined ? `${w[0]} ${w[at]}` : w[0];
+};
+
+/** Any line that is checked: a fix or compute, a coefficient line or another command. */
+const lineKey: LineKey = (w, lines, i) => fixComputeKey(w, lines, i) ?? coeffKey(w, lines, i) ?? commandKey(w, lines, i);
+
+const trailing: Change = (w) => [...w, 'extra'];
+/** The last word dropped, when at least `keep` words remain. */
+const truncated = (keep: number): Change => (w) => (w.length > keep ? w.slice(0, -1) : null);
+/** The last number from word `from` on replaced by `value`. */
+const lastNumber = (from: number, value: string): Change => (w) => {
+  let k = -1;
+  for (let j = w.length - 1; j >= from && k < 0; j--) if (NUMBER.test(w[j])) k = j;
+  return k < 0 ? null : w.map((x, j) => (j === k ? value : x));
+};
+/** The first number after the type words of a coefficient line (pair_coeff I J ..., the others N ...). */
+const coeffNumber = (value: string): Change => (w, lines) => firstNumber(w[0] === 'pair_coeff' ? 3 : 2, value)(w, lines);
+/** The word at index k replaced (when the line has it). */
+const wordAt = (k: number, value: string): Change => (w, _lines) => (w[k] !== undefined ? w.map((x, j) => (j === k ? value : x)) : null);
+
+/** The group-ID word of the commands that name one, or -1. */
+const groupWord = (w: string[]): number => {
+  if (w[0] === 'fix' || w[0] === 'compute' || w[0] === 'dump') return 2;
+  if (w[0] === 'velocity' || w[0] === 'displace_atoms') return 1;
+  if ((w[0] === 'delete_atoms' || w[0] === 'set') && w[1] === 'group') return 2;
+  return -1;
+};
+const groupKey: LineKey = (w, lines, i) => (groupWord(w) >= 0 ? lineKey(w, lines, i) : null);
+const badGroup: Change = (w, lines) => wordAt(groupWord(w), 'nogroup')(w, lines);
+
+/** The first c_ID, f_ID or v_name reference (not in a variable definition) replaced by c_nosuch, f_nosuch or v_nosuch. */
+const REF = /^([cfv])_[A-Za-z0-9_]/;
+const badReference: Change = (w) => {
+  const k = w.findIndex((x, j) => j >= 1 && REF.test(x));
+  return k < 0 ? null : w.map((x, j) => (j === k ? `${x[0]}_nosuch` : x));
+};
+
+/** The atom-type word of a coefficient line (the first type), of mass, or of create_atoms. */
+const typeWord = (w: string[]): number => (COEFF.has(w[0]) || w[0] === 'mass' || w[0] === 'create_atoms' ? 1 : -1);
+const typeKey: LineKey = (w, lines, i) => (typeWord(w) >= 0 && NUMBER.test(w[1] ?? '') ? lineKey(w, lines, i) : null);
+
+/** The first yes/no/on/off value after word 1 replaced by maybe. */
+const LOGICAL = new Set(['yes', 'no', 'on', 'off']);
+const badLogical: Change = (w) => {
+  const k = w.findIndex((x, j) => j >= 2 && LOGICAL.has(x));
+  return k < 0 ? null : w.map((x, j) => (j === k ? 'maybe' : x));
+};
+
+/** The word after a region keyword (not the region command itself) replaced by noregion. */
+const badRegion: Change = (w) => {
+  if (w[0] === 'region') return null;
+  const k = w.findIndex((x, j) => j >= 1 && w[j - 1] === 'region');
+  return k < 0 ? null : w.map((x, j) => (j === k ? 'noregion' : x));
+};
+
+/**
+ * The input file names of a case: its oracle-inputs, oracle-potentials and oracle-examples (base names), and the files of
+ * the oracle directory (a case may name one without a directive).
+ */
+const caseFileNames = (lines: string[], oracleFiles: Set<string>): Set<string> => {
+  const names = new Set(oracleFiles);
+  for (const l of lines) {
+    const m = /^#\s*oracle-(inputs|potentials|examples):(.*)$/.exec(l);
+    if (m) for (const f of m[2].trim().split(/\s+/)) if (f) names.add(f.split('/').pop()!);
+  }
+  return names;
+};
+
+/** Lines that write a file (their file names are outputs, not inputs). */
+const WRITERS = new Set(['write_data', 'write_dump', 'write_restart', 'write_coeff', 'dump', 'log']);
+const fileKey: LineKey = (w, lines, i) => (WRITERS.has(w[0]) ? null : lineKey(w, lines, i));
+
+/** The first word (after word 0) that names an input file of the case replaced by nofile.txt. */
+const badFile = (oracleFiles: Set<string>): Change => (w, lines) => {
+  const names = caseFileNames(lines, oracleFiles);
+  const k = w.findIndex((x, j) => j >= 1 && names.has(x));
+  return k < 0 ? null : w.map((x, j) => (j === k ? 'nofile.txt' : x));
+};
+
 export const MATRICES: Record<string, MatrixDef> = {
   'fix-compute-word': {
     about: 'the first number of each fix and compute style (from word 4) replaced by the word bogus',
-    rows: fixComputeFirstNumber('bogus'),
+    rows: pick(fixComputeKey, firstNumber(4, 'bogus')),
   },
   'fix-compute-zero': {
     about: 'the first number of each fix and compute style (from word 4) replaced by 0',
-    rows: fixComputeFirstNumber('0'),
+    rows: pick(fixComputeKey, firstNumber(4, '0')),
     undefined: {
       'fix smd/wall_surface': 'native creates the wall atoms with type 0, outside the atom types (the engine refuses the type)',
     },
   },
   'fix-compute-negative': {
     about: 'the first number of each fix and compute style (from word 4) replaced by -1',
-    rows: fixComputeFirstNumber('-1'),
+    rows: pick(fixComputeKey, firstNumber(4, '-1')),
     undefined: {
       'fix restrain': 'native looks atom ID -1 up as map_array[-1], outside its atom map (the engine refuses the ID)',
       'fix smd/wall_surface': 'native creates the wall atoms with type -1, outside the atom types (the engine refuses the type)',
     },
   },
+  'fix-compute-trailing': { about: 'an extra word after each fix and compute style line', rows: pick(fixComputeKey, trailing) },
+  'command-trailing': { about: 'an extra word after each other command (one line per command and style)', rows: pick(commandKey, trailing) },
+  'coeff-trailing': { about: 'an extra word after each coefficient line (one line per style)', rows: pick(coeffKey, trailing) },
+  'fix-compute-truncated': { about: 'the last word of each fix and compute style line dropped', rows: pick(fixComputeKey, truncated(4)) },
+  'command-truncated': { about: 'the last word of each other command dropped', rows: pick(commandKey, truncated(1)) },
+  'coeff-truncated': { about: 'the last word of each coefficient line dropped', rows: pick(coeffKey, truncated(2)) },
+  'command-word': { about: 'the first number of each other command (from word 1) replaced by the word bogus', rows: pick(commandKey, firstNumber(1, 'bogus')) },
+  'coeff-word': { about: 'the first number after the type words of each coefficient line replaced by the word bogus', rows: pick(coeffKey, coeffNumber('bogus')) },
+  'fix-compute-last-word': { about: 'the last number of each fix and compute style line replaced by the word bogus', rows: pick(fixComputeKey, lastNumber(4, 'bogus')) },
+  'group-id': { about: 'the group ID of each fix, compute, dump, velocity, displace_atoms, delete_atoms group and set group line replaced by nogroup', rows: pick(groupKey, badGroup) },
+  'reference': { about: 'the first c_ID, f_ID or v_name reference of each line replaced by c_nosuch, f_nosuch or v_nosuch', rows: pick(lineKey, badReference) },
+  'type': {
+    about: 'the atom type of each coefficient, mass and create_atoms line replaced by 99',
+    rows: pick(typeKey, wordAt(1, '99')),
+    undefined: {
+      'pair_coeff eff/cut': 'native reads ecp_type[99] past its per-type array for the ECP line (the engine refuses the type)',
+    },
+  },
+  'yes-no': { about: 'the first yes, no, on or off value of each line replaced by maybe', rows: pick(lineKey, badLogical) },
+  'region-id': { about: 'the region ID after a region keyword replaced by noregion', rows: pick(lineKey, badRegion) },
+  'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };
 
 /** The row's input: the case up to its line (without the # oracle header lines), the replacing line, then run 0. */

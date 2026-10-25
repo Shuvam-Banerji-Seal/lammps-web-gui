@@ -1,0 +1,1065 @@
+{
+ "matrix": "file-name",
+ "about": "the first input file name of each line replaced by nofile.txt",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w216tb_angle_linear",
+   "line": 10,
+   "text": "angle_coeff 1 nofile.txt ANG1",
+   "style": "angle_coeff table",
+   "native": "ERROR: cannot open angle table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 16,
+   "text": "bond_coeff * oxdna3/fene nofile.txt",
+   "style": "bond_coeff hybrid oxdna3/fene",
+   "native": "ERROR: cannot open oxdna3 potential potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w216tb_bond_linear",
+   "line": 10,
+   "text": "bond_coeff 1 nofile.txt BLIN",
+   "style": "bond_coeff table",
+   "native": "ERROR: cannot open bond table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w277ma_compute_mliap_ace",
+   "line": 16,
+   "text": "compute ace all mliap descriptor ace nofile.txt model linear gradgradflag 1",
+   "style": "compute mliap",
+   "native": "CRASH rc=1",
+   "build": "ML-PACE",
+   "skip": "native LAMMPS crashes (CRASH rc=1)"
+  },
+  {
+   "case": "w276cp_compute_pace_ace",
+   "line": 17,
+   "text": "compute pace all pace nofile.txt 0 0",
+   "style": "compute pace",
+   "native": "CRASH rc=1",
+   "build": "ML-PACE",
+   "skip": "native LAMMPS crashes (CRASH rc=1)"
+  },
+  {
+   "case": "w155mx_podatom_ta",
+   "line": 20,
+   "text": "compute ld all pod/atom nofile.txt w128pod_Ta_coeff.pod Ta",
+   "style": "compute pod/atom",
+   "native": "ERROR: Cannot open POD coefficient file nofile.txt:"
+  },
+  {
+   "case": "w177px_pod_example",
+   "line": 19,
+   "text": "compute gdd all pod/global nofile.txt w128pod_Ta_coeff.pod Ta Ta",
+   "style": "compute pod/global",
+   "native": "ERROR: Cannot open POD coefficient file nofile.txt:"
+  },
+  {
+   "case": "w177px_pod_example",
+   "line": 21,
+   "text": "compute ldd all pod/local nofile.txt w128pod_Ta_coeff.pod Ta Ta",
+   "style": "compute pod/local",
+   "native": "ERROR: Cannot open POD coefficient file nofile.txt:"
+  },
+  {
+   "case": "w171px_podd_ta",
+   "line": 17,
+   "text": "compute dd all podd/atom nofile.txt w128pod_Ta_coeff.pod Ta",
+   "style": "compute podd/atom",
+   "native": "ERROR: Cannot open POD coefficient file nofile.txt:"
+  },
+  {
+   "case": "w171px_slcsa",
+   "line": 20,
+   "text": "compute slcsa all slcsa/atom 8 4 nofile.txt w171px_slcsa_lda_scalings.dat w171px_slcsa_lr_decision.dat w171px_slcsa_lr_bias.dat w171px_slcsa_mahalanobis.dat c_bnnn[1]",
+   "style": "compute slcsa/atom",
+   "native": "ERROR: cannot open database mean descriptor file potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w35mesh_tri",
+   "line": 7,
+   "text": "create_atoms 1 mesh nofile.txt meshmode bisect 1.0 units box",
+   "style": "create_atoms 1",
+   "native": "ERROR: Cannot open STL file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w35mesh_qrand",
+   "line": 8,
+   "text": "create_atoms 2 mesh nofile.txt meshmode qrand 0.1 units box radscale 0.9",
+   "style": "create_atoms 2",
+   "native": "ERROR: Cannot open STL file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w216tb_dihedral_linear_nof",
+   "line": 10,
+   "text": "dihedral_coeff 1 nofile.txt DNOF",
+   "style": "dihedral_coeff table",
+   "native": "ERROR: cannot open dihedral table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w216tb_dihedral_cut_spline",
+   "line": 11,
+   "text": "dihedral_coeff 1 aat 1.5 95.0 125.0 nofile.txt DNOF",
+   "style": "dihedral_coeff table/cut",
+   "native": "ERROR: cannot open dihedral table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w119amoeba_ub",
+   "line": 17,
+   "text": "fix bit all amoeba/bitorsion nofile.txt",
+   "style": "fix amoeba/bitorsion",
+   "native": "ERROR: Cannot open fix amoeba/bitorsion file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w94react_nylon_unstab",
+   "line": 24,
+   "text": "fix myrxns all bond/react stabilization no react rxn1 all 1 0.0 2.9 mol1 mol2 nofile.txt react rxn2 all 1 0.0 5.0 mol3 mol4 w94react_nylon_stp2.map rescale_charges yes",
+   "style": "fix bond/react",
+   "native": "ERROR: Fix bond/react: Cannot open map file nofile.txt"
+  },
+  {
+   "case": "w15cmap_run",
+   "line": 7,
+   "text": "fix cmap all cmap nofile.txt",
+   "style": "fix cmap",
+   "native": "ERROR: cannot open cmap grid potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w47pkg_elstop_cu",
+   "line": 18,
+   "text": "fix fel all electron/stopping 10.0 nofile.txt",
+   "style": "fix electron/stopping",
+   "native": "ERROR: cannot open electron stopping data table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w230re_eos_table",
+   "line": 23,
+   "text": "fix 3 all eos/table linear nofile.txt 200 EOS_TABLE",
+   "style": "fix eos/table",
+   "native": "ERROR: cannot open eos/table table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 44,
+   "text": "fix 3 all eos/table/rx linear nofile.txt 201 KEYWORD w160rx_thermo.dpdrx",
+   "style": "fix eos/table/rx",
+   "native": "ERROR: cannot open eos/table/rx table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w108xf_gle_lj_eq",
+   "line": 15,
+   "text": "fix 1 all gle 6 1.2 1.4 31415 nofile.txt",
+   "style": "fix gle",
+   "native": "ERROR: cannot open fix gle A matrix potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w236or_bcc",
+   "line": 14,
+   "text": "fix or all orient/bcc 0 0 2.88 0.02 0.2 0.8 nofile.txt w236or_bcc_grain1.ori",
+   "style": "fix orient/bcc",
+   "native": "ERROR: cannot open fix orient/bcc potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w133mf_orient_eco",
+   "line": 15,
+   "text": "fix eco all orient/eco 0.08 0.25 3.6 nofile.txt",
+   "style": "fix orient/eco",
+   "native": "ERROR: cannot open fix orient/eco potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w236or_fcc",
+   "line": 14,
+   "text": "fix or all orient/fcc 0 1 3.6 0.01 0.25 0.75 nofile.txt w236or_fcc_grain2.ori",
+   "style": "fix orient/fcc",
+   "native": "ERROR: cannot open fix orient/fcc potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w99phq_cu",
+   "line": 22,
+   "text": "fix 2 all phonon 10 100 1000 nofile.txt w99phq_cu nasr 20",
+   "style": "fix phonon",
+   "native": "ERROR: Cannot open input map file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w36qeq_dyn_loose",
+   "line": 23,
+   "text": "fix q all qeq/dynamic 1 8 1.0e-3 200 nofile.txt",
+   "style": "fix qeq/dynamic",
+   "native": "ERROR: Cannot open fix qeq parameter file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w36qeq_fire_tight",
+   "line": 23,
+   "text": "fix q all qeq/fire 1 8 1.0e-5 200 nofile.txt",
+   "style": "fix qeq/fire",
+   "native": "ERROR: Cannot open fix qeq parameter file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 16,
+   "text": "fix q all qeq/point 1 20 1.0e-14 200 nofile.txt",
+   "style": "fix qeq/point",
+   "native": "ERROR: Cannot open fix qeq parameter file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w55reax_qeq_rdx_tight",
+   "line": 10,
+   "text": "fix 2 all qeq/reax 1 0.0 10.0 1e-12 nofile.txt",
+   "style": "fix qeq/reax",
+   "native": "ERROR: Unknown fix qeq/reaxff keyword nofile.txt"
+  },
+  {
+   "case": "w65reaxq_qeqr_tight",
+   "line": 10,
+   "text": "fix 1 all qeq/rel/reaxff 1 0.0 10.0 1e-12 reaxff nofile.txt",
+   "style": "fix qeq/rel/reaxff",
+   "native": "ERROR: Fix qtpie/reaxff: could not open gauss file: 'nofile.txt'"
+  },
+  {
+   "case": "w32qeq_shield4",
+   "line": 22,
+   "text": "fix q all qeq/shielded 1 8 1.0e-14 200 nofile.txt",
+   "style": "fix qeq/shielded",
+   "native": "ERROR: Cannot open fix qeq parameter file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w40qslat_qfile",
+   "line": 27,
+   "text": "fix 1 all qeq/slater 1 12.0 1.0e-12 500 nofile.txt",
+   "style": "fix qeq/slater",
+   "native": "ERROR: Cannot open fix qeq parameter file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w65reaxq_qtpie_tight",
+   "line": 10,
+   "text": "fix 1 all qtpie/reaxff 1 0.0 10.0 1e-12 reaxff nofile.txt",
+   "style": "fix qtpie/reaxff",
+   "native": "ERROR: Fix qtpie/reaxff: could not open gauss file: 'nofile.txt'"
+  },
+  {
+   "case": "w6rigid_infile",
+   "line": 11,
+   "text": "fix 1 all rigid custom v_bid infile nofile.txt",
+   "style": "fix rigid",
+   "native": "ERROR: Cannot open fix rigid infile nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 12,
+   "text": "fix 4 all rx nofile.txt none dense lammps_rk4 1",
+   "style": "fix rx",
+   "native": "ERROR: cannot open rx potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 40,
+   "text": "fix stl_surface_fix all smd/wall_surface nofile.txt 2 65535",
+   "style": "fix smd/wall_surface",
+   "native": "ERROR: Error reading triangles from file nofile.txt: Cannot open STL file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w261gs_screw_press",
+   "line": 12,
+   "text": "fix 1 all surface/local input stl 3 2 nofile.txt flat 10.0",
+   "style": "fix surface/local",
+   "native": "ERROR: Cannot open STL file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w48fb_tmd_mass",
+   "line": 24,
+   "text": "fix 2 all tmd 0.5 nofile.txt 0",
+   "style": "fix tmd",
+   "native": "ERROR: Cannot open file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w14ttm_stop",
+   "line": 19,
+   "text": "fix 2 all ttm 4242 1.0 1.0 1.0 20.0 3.0 2.5 2 2 2 infile nofile.txt",
+   "style": "fix ttm",
+   "native": "ERROR: cannot open electron temperature grid potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w41ttm_cas_cetab",
+   "line": 20,
+   "text": "fix 2 all ttm/cascade 77 3.0 2.0 0.5 20.0 0.0 2.0 2 2 2 infile nofile.txt cetab w41ttm_ce.tab offset 0.015",
+   "style": "fix ttm/cascade",
+   "native": "ERROR: Cannot open grid file: nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w421dump_grid_ttm",
+   "line": 20,
+   "text": "fix 2 all ttm/grid 777 0.001 1.0 0.01 20.0 0.0 2.0 2 2 2 infile nofile.txt",
+   "style": "fix ttm/grid",
+   "native": "ERROR: Cannot open grid file: nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w43tm_si",
+   "line": 18,
+   "text": "fix twotemp all ttm/mod 1354684 nofile.txt 4 4 4 set 1000.0",
+   "style": "fix ttm/mod",
+   "native": "ERROR: cannot open ttm/mod parameter potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w41ttm_thermal4",
+   "line": 21,
+   "text": "fix 2 all ttm/thermal 99 nofile.txt 4 4 4 infile w41ttm_thermal4.init source 0.02",
+   "style": "fix ttm/thermal",
+   "native": "ERROR: cannot open electron property grid potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w16walltable_linear",
+   "line": 14,
+   "text": "fix 2 all wall/table linear 201 zlo EDGE nofile.txt HARMONIC 2.5 zhi EDGE w16walltable.dat LJ126 2.5",
+   "style": "fix wall/table",
+   "native": "ERROR: cannot open fix wall/table table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w225cm_write_molecule",
+   "line": 8,
+   "text": "molecule water nofile.txt",
+   "style": "molecule",
+   "native": "ERROR: Cannot open molecule file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w46neb_tiny",
+   "line": 24,
+   "text": "neb 0.0 0.01 20 20 10 final nofile.txt",
+   "style": "neb",
+   "native": "ERROR: Cannot use NEB with a single replica"
+  },
+  {
+   "case": "w222me_adp_ni",
+   "line": 13,
+   "text": "pair_coeff * * nofile.txt Ni",
+   "style": "pair_coeff adp",
+   "native": "ERROR: cannot open adp potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w52airebo_airebo_00",
+   "line": 10,
+   "text": "pair_coeff * * nofile.txt C H",
+   "style": "pair_coeff airebo",
+   "native": "ERROR: cannot open airebo potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w147ab_airebo_bc",
+   "line": 10,
+   "text": "pair_coeff * * nofile.txt C H",
+   "style": "pair_coeff airebo/bc",
+   "native": "ERROR: cannot open airebo potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w52airebo_morse_11",
+   "line": 10,
+   "text": "pair_coeff * * nofile.txt C H",
+   "style": "pair_coeff airebo/morse",
+   "native": "ERROR: cannot open airebo/morse potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "amoeba_dimer_nokey",
+   "line": 15,
+   "text": "pair_coeff * * nofile.txt",
+   "style": "pair_coeff amoeba",
+   "native": "ERROR: Cannot open AMOEBA PRM file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w233bo_alcu",
+   "line": 17,
+   "text": "pair_coeff * * nofile.txt Al Cu",
+   "style": "pair_coeff bop",
+   "native": "ERROR: cannot open BOP potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w58comb_si0",
+   "line": 13,
+   "text": "pair_coeff * * nofile.txt Si",
+   "style": "pair_coeff comb",
+   "native": "ERROR: cannot open comb potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w158cb_cu",
+   "line": 15,
+   "text": "pair_coeff * * nofile.txt Cu",
+   "style": "pair_coeff comb3",
+   "native": "ERROR: cannot open COMB3 potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w43st_dsf_alone",
+   "line": 19,
+   "text": "pair_coeff * * nofile.txt Al O",
+   "style": "pair_coeff coul/streitz",
+   "native": "ERROR: cannot open coul/streitz potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 10,
+   "text": "pair_coeff * * nofile.txt",
+   "style": "pair_coeff eam",
+   "native": "ERROR: cannot open eam potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w47pkg_dtreset_metal",
+   "line": 12,
+   "text": "pair_coeff * * nofile.txt Cu",
+   "style": "pair_coeff eam/alloy",
+   "native": "ERROR: cannot open eam/alloy potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w222me_eamcd_fecr",
+   "line": 15,
+   "text": "pair_coeff * * nofile.txt Fe Cr",
+   "style": "pair_coeff eam/cd",
+   "native": "ERROR: cannot open eam/alloy potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w222me_eamcdold_fecr",
+   "line": 15,
+   "text": "pair_coeff * * nofile.txt Fe Cr",
+   "style": "pair_coeff eam/cd/old",
+   "native": "ERROR: cannot open eam/alloy potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w204sg_fs_vcsgc",
+   "line": 12,
+   "text": "pair_coeff * * nofile.txt Fe V",
+   "style": "pair_coeff eam/fs",
+   "native": "ERROR: cannot open eam/fs potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w222me_eamhe_pdhhe",
+   "line": 17,
+   "text": "pair_coeff * * nofile.txt Pd H He",
+   "style": "pair_coeff eam/he",
+   "native": "ERROR: cannot open eam/he potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w99phq_cu",
+   "line": 13,
+   "text": "pair_coeff * * nofile.txt",
+   "style": "pair_coeff eam/opt",
+   "native": "ERROR: cannot open eam potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w48pb_edip_diamond",
+   "line": 28,
+   "text": "pair_coeff * * nofile.txt Si",
+   "style": "pair_coeff edip",
+   "native": "ERROR: cannot open edip potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w48pb_edip_sic_example",
+   "line": 10,
+   "text": "pair_coeff * * nofile.txt Si C",
+   "style": "pair_coeff edip/multi",
+   "native": "ERROR: cannot open edip potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w14eim_one",
+   "line": 11,
+   "text": "pair_coeff * * Qa nofile.txt Qa",
+   "style": "pair_coeff eim",
+   "native": "ERROR: cannot open eim potential file nofile.txt"
+  },
+  {
+   "case": "w145pr_pair_extep",
+   "line": 13,
+   "text": "pair_coeff * * nofile.txt B N",
+   "style": "pair_coeff extep",
+   "native": "ERROR: cannot open ExTeP potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w223mb_gw",
+   "line": 20,
+   "text": "pair_coeff * * nofile.txt Si C",
+   "style": "pair_coeff gw",
+   "native": "ERROR: cannot open gw potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w223mb_gw_zbl",
+   "line": 20,
+   "text": "pair_coeff * * nofile.txt Si C",
+   "style": "pair_coeff gw/zbl",
+   "native": "ERROR: cannot open gw/zbl potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "hippo_dimer_nokey",
+   "line": 15,
+   "text": "pair_coeff * * nofile.txt",
+   "style": "pair_coeff hippo",
+   "native": "ERROR: Cannot open HIPPO PRM file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_aip_water",
+   "line": 19,
+   "text": "pair_coeff * * aip/water/2dm nofile.txt C Ow Hw",
+   "style": "pair_coeff hybrid/overlay aip/water/2dm",
+   "native": "ERROR: cannot open aip/water/2dm potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w140ct_limits",
+   "line": 16,
+   "text": "pair_coeff * * coul/ctip nofile.txt Ni O",
+   "style": "pair_coeff hybrid/overlay coul/ctip",
+   "native": "ERROR: cannot open coul/ctip potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w40qslat_streitz_cut",
+   "line": 13,
+   "text": "pair_coeff * * coul/streitz nofile.txt Al O",
+   "style": "pair_coeff hybrid/overlay coul/streitz",
+   "native": "ERROR: cannot open coul/streitz potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_drip_c",
+   "line": 10,
+   "text": "pair_coeff * * drip nofile.txt C",
+   "style": "pair_coeff hybrid/overlay drip",
+   "native": "ERROR: cannot open drip potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_saip_gold_gr",
+   "line": 14,
+   "text": "pair_coeff 1 1 eam nofile.txt",
+   "style": "pair_coeff hybrid/overlay eam",
+   "native": "ERROR: cannot open eam potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w40qslat_streitz_cut",
+   "line": 14,
+   "text": "pair_coeff * * eam/alloy nofile.txt Al O",
+   "style": "pair_coeff hybrid/overlay eam/alloy",
+   "native": "ERROR: cannot open eam/alloy potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 17,
+   "text": "pair_coeff * * eam/apip nofile.txt",
+   "style": "pair_coeff hybrid/overlay eam/apip",
+   "native": "ERROR: cannot open eam potential file nofile.txt: No such file or directory",
+   "build": "APIP"
+  },
+  {
+   "case": "w140ct_limits",
+   "line": 15,
+   "text": "pair_coeff * * eam/fs nofile.txt Ni O",
+   "style": "pair_coeff hybrid/overlay eam/fs",
+   "native": "ERROR: cannot open eam/fs potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 16,
+   "text": "pair_coeff * * eam/fs/apip nofile.txt Cu",
+   "style": "pair_coeff hybrid/overlay eam/fs/apip",
+   "native": "ERROR: cannot open eam/fs potential file nofile.txt: No such file or directory",
+   "build": "APIP"
+  },
+  {
+   "case": "w160rx_dpdrx_fluid",
+   "line": 41,
+   "text": "pair_coeff * * exp6/rx nofile.txt 1fluid 1fluid exponent 1.0 1.0 16.00",
+   "style": "pair_coeff hybrid/overlay exp6/rx",
+   "native": "ERROR: cannot open exp6/rx potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_ilp_gr_rebo",
+   "line": 17,
+   "text": "pair_coeff * * ilp/graphene/hbn nofile.txt C C",
+   "style": "pair_coeff hybrid/overlay ilp/graphene/hbn",
+   "native": "ERROR: cannot open ilp/graphene/hbn potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_tmd",
+   "line": 15,
+   "text": "pair_coeff * * ilp/tmd nofile.txt Mo S S Mo S S",
+   "style": "pair_coeff hybrid/overlay ilp/tmd",
+   "native": "ERROR: cannot open ilp/tmd potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_kcf_bilayer",
+   "line": 14,
+   "text": "pair_coeff * * kolmogorov/crespi/full nofile.txt C C",
+   "style": "pair_coeff hybrid/overlay kolmogorov/crespi/full",
+   "native": "ERROR: cannot open kolmogorov/crespi/full potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_kcz_bilayer",
+   "line": 14,
+   "text": "pair_coeff 1 2 kolmogorov/crespi/z nofile.txt C C",
+   "style": "pair_coeff hybrid/overlay kolmogorov/crespi/z",
+   "native": "ERROR: cannot open kolmogorov/crespi/z potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w112ld_basic_ldd",
+   "line": 17,
+   "text": "pair_coeff * * ldd nofile.txt A",
+   "style": "pair_coeff hybrid/overlay ldd",
+   "native": "ERROR: Cannot open ldd potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_leb_2particles",
+   "line": 17,
+   "text": "pair_coeff 1 2 lebedeva/z nofile.txt C C",
+   "style": "pair_coeff hybrid/overlay lebedeva/z",
+   "native": "ERROR: cannot open lebedeva/z potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w112ld_methanol_implicit",
+   "line": 12,
+   "text": "pair_coeff * * local/density nofile.txt",
+   "style": "pair_coeff hybrid/overlay local/density",
+   "native": "ERROR: cannot open local/density potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w162rx_lucy_h2",
+   "line": 41,
+   "text": "pair_coeff * * multi/lucy/rx nofile.txt RXLUCY h2 1fluid 16.00",
+   "style": "pair_coeff hybrid/overlay multi/lucy/rx",
+   "native": "ERROR: cannot open multi/lucy/rx table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w10nb3b_hybrid",
+   "line": 24,
+   "text": "pair_coeff * * nb3b/harmonic nofile.txt Si C NULL",
+   "style": "pair_coeff hybrid/overlay nb3b/harmonic",
+   "native": "ERROR: cannot open nb3n/harmonic potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w38nb3b_hybrid",
+   "line": 14,
+   "text": "pair_coeff * * nb3b/screened nofile.txt P NULL O",
+   "style": "pair_coeff hybrid/overlay nb3b/screened",
+   "native": "ERROR: cannot open nb3b/screened potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 25,
+   "text": "pair_coeff * * oxdna3/coaxstk nofile.txt",
+   "style": "pair_coeff hybrid/overlay oxdna3/coaxstk",
+   "native": "ERROR: cannot open oxdna potential potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 26,
+   "text": "pair_coeff * * oxdna3/dh 0.1 0.2 nofile.txt",
+   "style": "pair_coeff hybrid/overlay oxdna3/dh",
+   "native": "ERROR: Expected floating point parameter instead of 'nofile.txt' in input script or data file"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 19,
+   "text": "pair_coeff * * oxdna3/excv nofile.txt",
+   "style": "pair_coeff hybrid/overlay oxdna3/excv",
+   "native": "ERROR: cannot open oxdna3 potential potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 21,
+   "text": "pair_coeff * * oxdna3/hbond nofile.txt",
+   "style": "pair_coeff hybrid/overlay oxdna3/hbond",
+   "native": "ERROR: cannot open oxdna3 potential potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 20,
+   "text": "pair_coeff * * oxdna3/stk 0.1 nofile.txt",
+   "style": "pair_coeff hybrid/overlay oxdna3/stk",
+   "native": "ERROR: cannot open oxdna3 potential potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 24,
+   "text": "pair_coeff * * oxdna3/xstk nofile.txt",
+   "style": "pair_coeff hybrid/overlay oxdna3/xstk",
+   "native": "ERROR: cannot open oxdna3 potential potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 17,
+   "text": "pair_coeff * * pace/apip nofile.txt Cu",
+   "style": "pair_coeff hybrid/overlay pace/apip",
+   "native": "CRASH rc=1",
+   "build": "APIP",
+   "skip": "native LAMMPS crashes (CRASH rc=1)"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 30,
+   "text": "pair_coeff * * pace/fast/apip nofile.txt Cu",
+   "style": "pair_coeff hybrid/overlay pace/fast/apip",
+   "native": "CRASH rc=1",
+   "build": "APIP",
+   "skip": "native LAMMPS crashes (CRASH rc=1)"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 18,
+   "text": "pair_coeff * * pace/precise/apip nofile.txt Cu",
+   "style": "pair_coeff hybrid/overlay pace/precise/apip",
+   "native": "CRASH rc=1",
+   "build": "APIP",
+   "skip": "native LAMMPS crashes (CRASH rc=1)"
+  },
+  {
+   "case": "w102il_kcz_rebo_bilayer",
+   "line": 13,
+   "text": "pair_coeff * * rebo nofile.txt C C",
+   "style": "pair_coeff hybrid/overlay rebo",
+   "native": "ERROR: cannot open rebo potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_saip_gold_gr",
+   "line": 16,
+   "text": "pair_coeff * * saip/metal nofile.txt Au C",
+   "style": "pair_coeff hybrid/overlay saip/metal",
+   "native": "ERROR: cannot open saip/metal potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_saip_au_mos2",
+   "line": 18,
+   "text": "pair_coeff * * saip/metal/tmd nofile.txt Au S Mo S",
+   "style": "pair_coeff hybrid/overlay saip/metal/tmd",
+   "native": "ERROR: cannot open saip/metal/tmd potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w43ad_snap_scale",
+   "line": 23,
+   "text": "pair_coeff * * snap 1 nofile.txt Ni_Zuo_JPCA2020.snapparam Ni Ni",
+   "style": "pair_coeff hybrid/overlay snap",
+   "native": "ERROR: Cannot open SNAP coefficient file nofile.txt:"
+  },
+  {
+   "case": "w49mt_spce_sw",
+   "line": 12,
+   "text": "pair_coeff * * sw/angle/table nofile.txt type",
+   "style": "pair_coeff hybrid/overlay sw/angle/table",
+   "native": "ERROR: cannot open sw potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_tmd",
+   "line": 13,
+   "text": "pair_coeff * * sw/mod 1 nofile.txt Mo S S NULL NULL NULL",
+   "style": "pair_coeff hybrid/overlay sw/mod",
+   "native": "ERROR: cannot open sw potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w49mt_spce_sw",
+   "line": 11,
+   "text": "pair_coeff 1 1 table nofile.txt VOTCA",
+   "style": "pair_coeff hybrid/overlay table",
+   "native": "ERROR: cannot open pair table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 41,
+   "text": "pair_coeff * * table/rx nofile.txt RXPAIR rdx h2 16.00",
+   "style": "pair_coeff hybrid/overlay table/rx",
+   "native": "ERROR: cannot open pair table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w102il_ilp_grhbn_tersoff",
+   "line": 15,
+   "text": "pair_coeff * * tersoff nofile.txt B N NULL",
+   "style": "pair_coeff hybrid/overlay tersoff",
+   "native": "ERROR: cannot open tersoff potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w140ct_gan_dsf",
+   "line": 30,
+   "text": "pair_coeff * * tersoff/mod nofile.txt Ga N",
+   "style": "pair_coeff hybrid/overlay tersoff/mod",
+   "native": "ERROR: cannot open tersoff/mod potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w49mt_spce2",
+   "line": 14,
+   "text": "pair_coeff * * threebody/table nofile.txt type1 type2",
+   "style": "pair_coeff hybrid/overlay threebody/table",
+   "native": "ERROR: cannot open threebody potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w234lc_diamond",
+   "line": 13,
+   "text": "pair_coeff * * nofile.txt C",
+   "style": "pair_coeff lcbop",
+   "native": "ERROR: cannot open LCBOP potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w112ld_benzene_ld",
+   "line": 11,
+   "text": "pair_coeff * * nofile.txt",
+   "style": "pair_coeff local/density",
+   "native": "ERROR: cannot open local/density potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w33meamtrip_dim",
+   "line": 13,
+   "text": "pair_coeff * * nofile.txt A B w33meamtrip_b1.meam A B",
+   "style": "pair_coeff meam",
+   "native": "ERROR: Cannot open MEAM library file"
+  },
+  {
+   "case": "w128ms_msmeam",
+   "line": 17,
+   "text": "pair_coeff * * nofile.txt H Ga4 w128ms_HGa.msmeam H Ga4",
+   "style": "pair_coeff meam/ms",
+   "native": "ERROR: Cannot open MS-MEAM library file"
+  },
+  {
+   "case": "w47ms_si_min",
+   "line": 15,
+   "text": "pair_coeff * * nofile.txt Si",
+   "style": "pair_coeff meam/spline",
+   "native": "ERROR: cannot open meam/spline potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w47ms_sw_ti_run",
+   "line": 19,
+   "text": "pair_coeff * * nofile.txt Ti",
+   "style": "pair_coeff meam/sw/spline",
+   "native": "ERROR: cannot open meam/sw/spline potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w157mt_bond_angle",
+   "line": 12,
+   "text": "pair_coeff * * nofile.txt 1",
+   "style": "pair_coeff mesocnt",
+   "native": "ERROR: cannot open mesocnt potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w157mt_viscous",
+   "line": 16,
+   "text": "pair_coeff * * nofile.txt 0.05 1.0 0.1 1",
+   "style": "pair_coeff mesocnt/viscous",
+   "native": "ERROR: cannot open mesocnt potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w142mx_multi_lucy_lookup",
+   "line": 26,
+   "text": "pair_coeff * * nofile.txt KEYWORD 16.00",
+   "style": "pair_coeff multi/lucy",
+   "native": "ERROR: cannot open multi/lucy table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w10nb3b_harmonic",
+   "line": 22,
+   "text": "pair_coeff * * nofile.txt Si C",
+   "style": "pair_coeff nb3b/harmonic",
+   "native": "ERROR: cannot open nb3n/harmonic potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w38nb3b_screened_random",
+   "line": 14,
+   "text": "pair_coeff * * nofile.txt P O Si",
+   "style": "pair_coeff nb3b/screened",
+   "native": "ERROR: cannot open nb3b/screened potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w270ya_pace_yace_cu",
+   "line": 15,
+   "text": "pair_coeff * * nofile.txt Cu",
+   "style": "pair_coeff pace",
+   "native": "CRASH rc=1",
+   "build": "ML-PACE",
+   "skip": "native LAMMPS crashes (CRASH rc=1)"
+  },
+  {
+   "case": "w128pod_ta_static",
+   "line": 18,
+   "text": "pair_coeff * * nofile.txt w128pod_Ta_coeff.pod Ta",
+   "style": "pair_coeff pod",
+   "native": "ERROR: Cannot open POD coefficient file nofile.txt:"
+  },
+  {
+   "case": "w223mb_poly_cuta_eam",
+   "line": 20,
+   "text": "pair_coeff * * nofile.txt Cu Ta",
+   "style": "pair_coeff polymorphic",
+   "native": "ERROR: cannot open polymorphic potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w55reax_water",
+   "line": 9,
+   "text": "pair_coeff * * nofile.txt H O",
+   "style": "pair_coeff reaxff",
+   "native": "ERROR: The ReaxFF parameter file nofile.txt cannot be opened: No such file or directory"
+  },
+  {
+   "case": "w52airebo_rebo_ethane",
+   "line": 9,
+   "text": "pair_coeff * * nofile.txt C H",
+   "style": "pair_coeff rebo",
+   "native": "ERROR: cannot open rebo potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w115p_rebomos",
+   "line": 11,
+   "text": "pair_coeff * * nofile.txt Mo S S",
+   "style": "pair_coeff rebomos",
+   "native": "ERROR: cannot open rebomos potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w189sq_al2o3",
+   "line": 21,
+   "text": "pair_coeff * * nofile.txt O Al",
+   "style": "pair_coeff smtbq",
+   "native": "ERROR: Cannot open SMTBQ potential file nofile.txt",
+   "build": "SMTBQ"
+  },
+  {
+   "case": "w33snapchem_pair",
+   "line": 16,
+   "text": "pair_coeff * * nofile.txt w33snapchem_InP.snapparam In P",
+   "style": "pair_coeff snap",
+   "native": "ERROR: Cannot open SNAP coefficient file nofile.txt:"
+  },
+  {
+   "case": "w2tsw_sw",
+   "line": 19,
+   "text": "pair_coeff * * nofile.txt Si",
+   "style": "pair_coeff sw",
+   "native": "ERROR: cannot open sw potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w49mt_swang_spline",
+   "line": 16,
+   "text": "pair_coeff * * nofile.txt type",
+   "style": "pair_coeff sw/angle/table",
+   "native": "ERROR: cannot open sw potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w22pot_sw_mod_mos",
+   "line": 21,
+   "text": "pair_coeff * * nofile.txt Mo S",
+   "style": "pair_coeff sw/mod",
+   "native": "ERROR: cannot open sw potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w113cf_benzene_table_spline",
+   "line": 10,
+   "text": "pair_coeff 1 1 nofile.txt PairBB",
+   "style": "pair_coeff table",
+   "native": "ERROR: cannot open pair table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w2tsw_tersoff",
+   "line": 19,
+   "text": "pair_coeff * * nofile.txt Si",
+   "style": "pair_coeff tersoff",
+   "native": "ERROR: cannot open tersoff potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w22pot_tersoff_mod_si",
+   "line": 18,
+   "text": "pair_coeff * * nofile.txt Si",
+   "style": "pair_coeff tersoff/mod",
+   "native": "ERROR: cannot open tersoff/mod potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w22pot_tersoff_modc_si",
+   "line": 18,
+   "text": "pair_coeff * * nofile.txt Si",
+   "style": "pair_coeff tersoff/mod/c",
+   "native": "ERROR: cannot open tersoff/mod/c potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w223mb_tersoff_table_si",
+   "line": 17,
+   "text": "pair_coeff * * nofile.txt Si",
+   "style": "pair_coeff tersoff/table",
+   "native": "ERROR: cannot open tersoff/table potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w108xf_elfit_sisi",
+   "line": 11,
+   "text": "pair_coeff * * nofile.txt Si",
+   "style": "pair_coeff tersoff/zbl",
+   "native": "ERROR: cannot open tersoff/zbl potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w49mt_tri_edge",
+   "line": 14,
+   "text": "pair_coeff * * nofile.txt type",
+   "style": "pair_coeff threebody/table",
+   "native": "ERROR: cannot open threebody potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w146uf3_nb3b",
+   "line": 13,
+   "text": "pair_coeff * * nofile.txt Nb",
+   "style": "pair_coeff uf3",
+   "native": "ERROR: Cannot open UF3 potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w5vash_si",
+   "line": 19,
+   "text": "pair_coeff * * nofile.txt Si",
+   "style": "pair_coeff vashishta",
+   "native": "ERROR: cannot open vashishta potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w472vashtable_runs",
+   "line": 13,
+   "text": "pair_coeff * * nofile.txt In P",
+   "style": "pair_coeff vashishta/table",
+   "native": "ERROR: cannot open vashishta potential file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w235mx_list",
+   "line": 16,
+   "text": "pair_style hybrid/overlay lj/cut 1.5 list nofile.txt 2.0",
+   "style": "pair_style hybrid/overlay",
+   "native": "ERROR: Error opening pair list coeffs file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w37so3_dimer",
+   "line": 12,
+   "text": "pair_style mliap model linear nofile.txt descriptor so3 w37so3_dimer.mliap.descriptor",
+   "style": "pair_style mliap",
+   "native": "ERROR: Cannot open MLIAPModel coeff file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w55reax_rdx_default",
+   "line": 8,
+   "text": "pair_style reaxff nofile.txt checkqeq no",
+   "style": "pair_style reaxff",
+   "native": "ERROR: cannot open ReaxFF control file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w47qm_fire",
+   "line": 4,
+   "text": "read_data nofile.txt",
+   "style": "read_data",
+   "native": "ERROR: Cannot open file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w224mc_bondcreateangle",
+   "line": 6,
+   "text": "read_data nofile.txt extra/bond/per/atom 6 extra/angle/per/atom 6 extra/special/per/atom 8",
+   "style": "read_data extra/bond/per/atom",
+   "native": "ERROR: Cannot open file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w224mc_bondswap_fene_angle",
+   "line": 6,
+   "text": "read_data nofile.txt extra/special/per/atom 8",
+   "style": "read_data extra/special/per/atom",
+   "native": "ERROR: Cannot open file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w6prop_read",
+   "line": 7,
+   "text": "read_data nofile.txt fix pr NULL Props",
+   "style": "read_data fix",
+   "native": "ERROR: Cannot open file nofile.txt: No such file or directory"
+  },
+  {
+   "case": "w9rerun_boxadd",
+   "line": 13,
+   "text": "read_dump nofile.txt 10 x y z vx vy vz ix iy iz box no add yes",
+   "style": "read_dump",
+   "native": "ERROR: Cannot open file nofile.txt: No such file or directory"
+  }
+ ]
+}

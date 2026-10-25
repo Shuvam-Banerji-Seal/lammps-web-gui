@@ -12,7 +12,7 @@
  * index); a ghost neighbour contributes only the terms of atom i (the owner of the ghost adds the others). An atom
  * whose lambda and whose neighbours' lambdas are all zero is skipped (lambda_required NO_SIMPLE).
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, potentialFile, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { NativeFullOrder } from '../neighbor/nativeOrder';
 import { buildTables, interpolate, openPotential, parseInteger, parseReal, readFs, type EamFile, type EamTables, type Spline } from '../manyeam/potential';
@@ -208,7 +208,8 @@ export class PairEAMAPIP extends Pair {
     const [jlo, jhi] = this.bounds(args[1]);
     let ifuncfl = this.funcfl.findIndex((f) => f.file === args[2]);
     if (ifuncfl < 0) {
-      this.funcfl.push(readFuncfl(ctx.readFile(args[2]), args[2], ctx));
+      // PairEAMAPIP::read_file: PotentialFileReader(lmp, filename, "eam")
+      this.funcfl.push(readFuncfl(ctx.readFile(args[2], potentialFile('eam')), args[2], ctx));
       ifuncfl = this.funcfl.length - 1;
     }
     let count = 0;
@@ -457,7 +458,8 @@ export class PairEAMFSAPIP extends PairEAMAPIP {
   override coeff(args: string[], ctx: StyleContext): void {
     const ntypes = this.ntypes;
     if (args.length !== 3 + ntypes) throw new StyleError('Number of element to type mappings does not match number of atom types');
-    const file = readFs(ctx.readFile(args[2]), args[2], ctx, false);
+    // PairEAMFSAPIP::read_file: PotentialFileReader(lmp, filename, "eam/fs")
+    const file = readFs(ctx.readFile(args[2], potentialFile('eam/fs')), args[2], ctx, false);
     this.fsFile = file;
     this.funcfl = [];
     const map = new Int32Array(ntypes + 1).fill(-1);

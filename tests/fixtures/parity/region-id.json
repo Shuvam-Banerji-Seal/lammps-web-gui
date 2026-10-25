@@ -1,0 +1,217 @@
+{
+ "matrix": "region-id",
+ "about": "the region ID after a region keyword replaced by noregion",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w475rigid_dipole",
+   "line": 13,
+   "text": "create_atoms 0 region noregion mol mymol 71328",
+   "style": "create_atoms 0",
+   "native": "ERROR: Create_atoms region noregion does not exist"
+  },
+  {
+   "case": "w16walltable_linear",
+   "line": 10,
+   "text": "create_atoms 1 region noregion",
+   "style": "create_atoms 1",
+   "native": "ERROR: Create_atoms region noregion does not exist"
+  },
+  {
+   "case": "w16lepton_coul",
+   "line": 9,
+   "text": "create_atoms 2 region noregion",
+   "style": "create_atoms 2",
+   "native": "ERROR: Create_atoms region noregion does not exist"
+  },
+  {
+   "case": "w83sph_cavity",
+   "line": 18,
+   "text": "create_atoms 3 region noregion",
+   "style": "create_atoms 3",
+   "native": "ERROR: Create_atoms region noregion does not exist"
+  },
+  {
+   "case": "w79srd_overlap",
+   "line": 37,
+   "text": "create_atoms 4 region noregion",
+   "style": "create_atoms 4",
+   "native": "ERROR: Create_atoms region noregion does not exist"
+  },
+  {
+   "case": "w48cb_cnp_fcc",
+   "line": 16,
+   "text": "delete_atoms region noregion",
+   "style": "delete_atoms region",
+   "native": "ERROR: Could not find delete_atoms region ID noregion"
+  },
+  {
+   "case": "w196vtk_modify",
+   "line": 18,
+   "text": "dump_modify d element Ar Kr label cells double yes pad 3 region noregion thresh type == 2",
+   "style": "dump_modify element",
+   "native": "ERROR: Dump_modify region noregion does not exist"
+  },
+  {
+   "case": "w224mc_atomswap_region",
+   "line": 19,
+   "text": "fix sw all atom/swap 5 20 12345 1.0 types 1 2 region noregion ke yes",
+   "style": "fix atom/swap",
+   "native": "ERROR: Region noregion for fix atom/swap does not exist"
+  },
+  {
+   "case": "w7dep_global",
+   "line": 14,
+   "text": "fix 3 all deposit 5 1 2 777 region noregion units box global 1.0 2.0 units box",
+   "style": "fix deposit",
+   "native": "ERROR: Region ID noregion for fix deposit does not exist"
+  },
+  {
+   "case": "w93meso_edpd_region",
+   "line": 38,
+   "text": "fix upper all edpd/source region noregion 0.011",
+   "style": "fix edpd/source",
+   "native": "ERROR: Region noregion for fix edpd/source does not exist"
+  },
+  {
+   "case": "w16lepton_efield",
+   "line": 21,
+   "text": "fix ex2 all efield/lepton \"0.3*x*y - 0.1*z^2\" region noregion",
+   "style": "fix efield/lepton",
+   "native": "ERROR: Region noregion for fix efield/lepton does not exist"
+  },
+  {
+   "case": "w8ehex_region_dynamic",
+   "line": 20,
+   "text": "fix 2 all ehex 5 0.4 region noregion",
+   "style": "fix ehex",
+   "native": "ERROR: Region noregion for fix ehex does not exist"
+  },
+  {
+   "case": "w47pkg_elstop_region",
+   "line": 19,
+   "text": "fix fel all electron/stopping 10.0 w47pkg_elstop_cu.table region noregion minneigh 0",
+   "style": "fix electron/stopping",
+   "native": "ERROR: Region noregion for fix electron/stopping does not exist"
+  },
+  {
+   "case": "w198wr_gcmc_region",
+   "line": 14,
+   "text": "fix g all gcmc 1 4 0 1 81723 1.3 -2.0 0.3 region noregion",
+   "style": "fix gcmc",
+   "native": "ERROR: Region noregion for fix gcmc does not exist"
+  },
+  {
+   "case": "w8ehex_heat",
+   "line": 20,
+   "text": "fix 2 all heat 1 0.2 region noregion",
+   "style": "fix heat",
+   "native": "ERROR: Region noregion for fix heat does not exist"
+  },
+  {
+   "case": "w199vo_mc_rates",
+   "line": 25,
+   "text": "fix mc all neighbor/swap 3 4 777 1.0 1.2 v diff 2 region noregion rates 1.0 0.7 ke yes",
+   "style": "fix neighbor/swap",
+   "native": "ERROR: Region ID noregion for fix neighbor/swap does not exist"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 19,
+   "text": "fix ins all pour 20 1 4767548 vol 0.2 50 diam range 0.5 1.0 region noregion",
+   "style": "fix pour",
+   "native": "ERROR: Fix pour region noregion does not exist"
+  },
+  {
+   "case": "w166px_settorque_wire",
+   "line": 56,
+   "text": "fix 4 loaded settorque/atom NULL v_ty v_tzat region noregion",
+   "style": "fix settorque/atom",
+   "native": "ERROR: Region noregion for fix settorque/atom does not exist"
+  },
+  {
+   "case": "w13gran_region_hertz",
+   "line": 24,
+   "text": "fix 3 all wall/gran/region hertz/history 2000.0 1000.0 0.4 0.3 0.6 1 region noregion",
+   "style": "fix wall/gran/region",
+   "native": "ERROR: Region noregion for fix wall/gran/region does not exist"
+  },
+  {
+   "case": "w30widom_region",
+   "line": 16,
+   "text": "fix w all widom 1 2 2 12345 1.0 region noregion",
+   "style": "fix widom",
+   "native": "ERROR: Region noregion for fix widom does not exist"
+  },
+  {
+   "case": "w114cf_nvt_dyn_region",
+   "line": 14,
+   "text": "group hot dynamic all region noregion every 5",
+   "style": "group dynamic",
+   "native": "ERROR: Region noregion for dynamic group hot does not exist"
+  },
+  {
+   "case": "w52rng_type_ratio",
+   "line": 10,
+   "text": "group left region noregion",
+   "style": "group region",
+   "native": "ERROR: Region noregion for group region does not exist"
+  },
+  {
+   "case": "w248pt_partition",
+   "line": 7,
+   "text": "partition yes 1 region noregion block 0 3 0 3 0 3",
+   "style": "partition",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w225cm_region2vmd",
+   "line": 17,
+   "text": "region2vmd r2v_blocks.tcl color red material Glossy region noregion region rmov",
+   "style": "region2vmd",
+   "native": "ERROR: Region noregion does not exist"
+  },
+  {
+   "case": "group_group_kspace_pppm_cg_tri",
+   "line": 17,
+   "text": "set region noregion charge 0.3",
+   "style": "set charge",
+   "native": "ERROR: Set region noregion does not exist"
+  },
+  {
+   "case": "w8group_dynamic_prop",
+   "line": 30,
+   "text": "set region noregion i_flag 1",
+   "style": "set i_flag",
+   "native": "ERROR: Set region noregion does not exist"
+  },
+  {
+   "case": "w96rheo_thermal_melt",
+   "line": 20,
+   "text": "set region noregion rheo/status 1",
+   "style": "set rheo/status",
+   "native": "ERROR: Set region noregion does not exist"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 15,
+   "text": "set region noregion sph/e 1.0",
+   "style": "set sph/e",
+   "native": "ERROR: Set region noregion does not exist"
+  },
+  {
+   "case": "w49pb_pppm_diel1",
+   "line": 11,
+   "text": "set region noregion type 2",
+   "style": "set type",
+   "native": "ERROR: Set region noregion does not exist"
+  },
+  {
+   "case": "w131cf_ljlong_pair_cut",
+   "line": 8,
+   "text": "set region noregion type/fraction 2 0.5 4321",
+   "style": "set type/fraction",
+   "native": "ERROR: Set region noregion does not exist"
+  }
+ ]
+}

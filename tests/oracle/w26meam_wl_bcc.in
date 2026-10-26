@@ -1,7 +1,7 @@
 # oracle: pair_style meam, library WL entry (bcc, ibar = 3, nn2 = 1, erose_form 2, Cmin 0.49), displaced bcc cell, velocities from atom-style variables, 50 steps of nve
 # oracle-potentials: library.meam WL.meam
-# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-8
-# The off-diagonal pyz is left out: it is about 1% of pxx, so a pressure error of the size measured on the diagonal (1e-6 relative) is up to 1e-4 relative on pyz.
+# oracle-compare: thermo=all atoms=all abs=1e-8
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.8e-14, atoms 1.6e-14. The off-diagonal pyz is left out of the thermo columns.
 units           metal
 atom_style      atomic
 lattice         bcc 3.1639

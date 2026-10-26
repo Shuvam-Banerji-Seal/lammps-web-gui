@@ -1,5 +1,5 @@
 # oracle: kspace_style ewald with the dielectric command (0.4255) on a periodic lj/cut/coul/long dimer; the G-ewald estimate and the kspace sum must follow native (the reference force is qqr2e, not qqrd2e)
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all abs=1e-9
 units real
 atom_style full
 boundary p p p

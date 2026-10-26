@@ -1,7 +1,7 @@
 # oracle: DRUDE swm4-ndp water, Langevin variant with rigid/nph/small (examples/PACKAGES/drude/swm4-ndp/in.swm4-ndp.lang) cut down to 10 molecules, 40 steps; langevin/drude, rigid/nph/small, delete_bonds
 # oracle-inputs: w72drude_data.swm4-ndp_10
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
-# Measured with native LAMMPS (black box): max relative error 6.3e-8 (thermo pe, step 40); per-atom forces 3e-8. delete_bonds without remove keeps the bonds in the special lists (native: the 1-2 exclusion stays after delete_bonds).
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-10
+# Measured with native LAMMPS (black box): max relative error 1.9e-9 (thermo), per-atom state 2.7e-9. delete_bonds without remove keeps the bonds in the special lists (native: the 1-2 exclusion stays after delete_bonds).
 units real
 boundary p p p
 

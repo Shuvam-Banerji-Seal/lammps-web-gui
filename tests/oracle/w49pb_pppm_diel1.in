@@ -1,5 +1,5 @@
 # oracle: kspace_style pppm with dielectric 1.0 on the system of w49pb_pppm_dielectric (control)
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all abs=1e-9
 units real
 atom_style full
 lattice sc 4.0

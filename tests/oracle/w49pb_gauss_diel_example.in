@@ -1,5 +1,5 @@
 # oracle: cut-down of examples/PACKAGES/gauss_diel/in.gauss-diel: hybrid/overlay lj/cut 3.5, lj/cut/coul/long 8.0, gauss/cut 3.4 and coul/diel 2.5 with pair_modify shift yes and dielectric 0.4255 on a periodic 12-atom cell, kspace ewald, run 0
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all abs=1e-9
 units           real
 atom_style      full
 boundary        p p p

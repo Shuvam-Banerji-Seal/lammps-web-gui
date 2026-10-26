@@ -1,9 +1,9 @@
-# oracle-tolerance: pe agrees to 1e-12 relative; the pressure (about 0.002 bar-units in metal units, a near-zero stress at the ideal state) agrees to 3e-9 absolute, which the rel 1e-6 abs 1e-7 window covers
+# oracle-tolerance: pe agrees to 1e-12 relative; the pressure (about 0.002 bar-units in metal units, a near-zero stress at the ideal state) agrees to 3e-9 absolute, which the rel 1e-7 abs 1e-7 window covers
 # oracle: pair_style meam, 108-atom periodic hcp Ti crystal (4-atom orthorhombic cell, 3x3x3 cells, a1 = a, a2 = sqrt3 a, a3 = c, hcp basis) with nn2(1,1) = 1, parameters w47mn_ti.meam (Ti of FeTiClibrary.meam), five states (a, c/a): ideal c/a at 2.92, 2.70 and 3.10 A, and c/a 1.55 and 1.70 at 2.92 and 2.80 A
 # oracle: the 6 second-neighbour atoms at sqrt2 a and the reference structure of the hcp 2NN recurrence; the native energies are the black-box values in this file
 # oracle-potentials: FeTiClibrary.meam
 # oracle-inputs: w47mn_ti.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-7
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-7
 clear
 units           metal
 atom_style      atomic

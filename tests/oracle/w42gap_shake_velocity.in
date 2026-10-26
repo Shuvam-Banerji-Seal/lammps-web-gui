@@ -1,7 +1,7 @@
 # oracle: SPC/E-like water (64 molecules): fix shake on the O-H bonds and H-O-H angle, then velocity create before the first run (the temperature compute's dof must already exclude the constraints), run 0 and run 20 with nve
 # oracle-inputs: w42gap_spce64.data
-# oracle-compare: thermo=all atoms=none rel=1e-4 abs=1e-9 skip=press
-# oracle-tolerance: the step-0 temperature and kinetic energy (velocity create with the shake dof) match to the last bit; the step-0 pe differs by 8e-9 relative and the 10-step dynamics by 1e-6 to 1e-5, because the engine's SHAKE solve (Newton, stop at the user tolerance) does not reproduce native's constraint positions (step-0 positions differ by up to 3e-5 A); the pressure is skipped for the same reason (1.6e-4 relative at step 0)
+# oracle-compare: thermo=all atoms=none abs=1e-9
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.8e-12 (atoms not compared).
 units           real
 atom_style      full
 read_data       w42gap_spce64.data

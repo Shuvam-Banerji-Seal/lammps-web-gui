@@ -1,7 +1,7 @@
 # oracle: pair_style meam, library Bi entry (sc, ibar = -5, nn2 = 1, erose_form 0, Cmin 0.68, Cmax 1.70), displaced sc cell, velocities from atom-style variables, 50 steps of nve
 # oracle-potentials: library.meam Bi.meam
-# oracle-compare: thermo=all atoms=all rel=5e-4 abs=1e-8
-# Measured with native LAMMPS (black box): pe agrees to 7e-9 relative at every row, but the 2NN sc pair term of the engine differs from native's at that level (not from the series truncation: 5 terms and 500 give the same pe), and the derivative of the phi table (what the forces use, as for every MEAM pair term) turns that into up to 2e-4 relative on the pressure components and 1.5e-5 on ke over 50 steps, hence rel 5e-4. The off-diagonal pyz is left out (about 1% of pxx).
+# oracle-compare: thermo=all atoms=all abs=1e-8
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2e-14, atoms 9.9e-16. The off-diagonal pyz is left out of the thermo columns.
 units           metal
 atom_style      atomic
 lattice         sc 3.27

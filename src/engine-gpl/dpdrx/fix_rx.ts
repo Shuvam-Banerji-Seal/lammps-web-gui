@@ -21,7 +21,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { FixPropertyAtom } from '../../engine/fix/property_atom';
 import { StyleError, potentialFile } from '../../engine/force/types';
-import { inumeric, numeric } from '../../engine/force/util';
+import { inumeric, logical, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { SimState } from '../../engine/types';
 import { DPD_THETA } from '../../engine/atoms';
@@ -567,12 +567,9 @@ export class FixRX extends Fix {
   /** fix_modify rx_chemistry on|off (fix_rx.cpp modify_param); other keywords go to the base class. */
   modify(key: string, values: string[]): number {
     if (key !== 'rx_chemistry') return super.modify(key, values);
-    const w = values[0];
-    if (w === undefined) throw new StyleError('Illegal fix_modify rx_chemistry command');
-    const on = ['yes', 'on', 'true', '1'].includes(w);
-    const off = ['no', 'off', 'false', '0'].includes(w);
-    if (!on && !off) throw new StyleError(`Expected boolean parameter instead of '${w}' for fix_modify rx_chemistry`);
-    this.skipChemistry = !on;
+    // fix_rx.cpp modify_param: utils::logical reads the value
+    if (values[0] === undefined) throw new StyleError('Illegal fix_modify rx_chemistry command');
+    this.skipChemistry = !logical(values[0]);
     return 1;
   }
 }

@@ -1068,6 +1068,14 @@ const checkCreateAtomsArgs = (sys: System, a: string[]): void => {
     }
   }
   if (!mol && (ntype <= 0 || ntype > s.ntypes)) throw new StyleError('Invalid atom type in create_atoms command');
+  if (mol) {
+    // As native LAMMPS does (src/create_atoms.cpp at b332f28): the type offset plus the largest type of the (first)
+    // molecule must be an atom type
+    const onemol = sys.molecules.get(mol)![0];
+    let maxType = 0;
+    for (let i = 0; i < onemol.type.length; i++) if (onemol.type[i] > maxType) maxType = onemol.type[i];
+    if (ntype + maxType <= 0 || ntype + maxType > s.ntypes) throw new StyleError('Invalid atom type in create_atoms mol command');
+  }
   if (style === 'mesh' && mol) throw new StyleError("Create_atoms mesh is not compatible with the 'mol' option");
   if (style === 'mesh' && units !== 'box') throw new StyleError("Create_atoms mesh must use 'units box' option");
   if ((vstr === null) !== (sets.length === 0)) throw new StyleError('Incomplete use of variables in create_atoms command');

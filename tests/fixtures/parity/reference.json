@@ -1,0 +1,622 @@
+{
+ "matrix": "reference",
+ "about": "the first c_ID, f_ID or v_name reference of each line replaced by c_nosuch, f_nosuch or v_nosuch",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w343local_vname",
+   "line": 27,
+   "text": "compute al all angle/local theta v_nosuch eng set theta t",
+   "style": "compute angle/local",
+   "native": "ERROR: Variable name for compute angle/local does not exist"
+  },
+  {
+   "case": "w343local_vname",
+   "line": 26,
+   "text": "compute bl all bond/local dist v_nosuch set dist d",
+   "style": "compute bond/local",
+   "native": "ERROR: Variable name nosuch for compute bond/local does not exist"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 16,
+   "text": "compute spr all chunk/spread/atom cb c_nosuch c_rs[2]",
+   "style": "compute chunk/spread/atom",
+   "native": "ERROR: Compute ID nosuch for compute chunk/spread/atom does not exist"
+  },
+  {
+   "case": "w343local_vname",
+   "line": 28,
+   "text": "compute dl all dihedral/local v_nosuch phi set phi p",
+   "style": "compute dihedral/local",
+   "native": "ERROR: Variable name for compute dihedral/local does not exist"
+  },
+  {
+   "case": "w69fep_compute",
+   "line": 23,
+   "text": "compute FEP all fep 300.0 pair lj/cut/coul/long/soft lambda * * v_nosuch atom charge 1 v_dq atom charge 2 v_mdq",
+   "style": "compute fep",
+   "native": "ERROR: Variable name nosuch for compute fep does not exist"
+  },
+  {
+   "case": "w322ga_wildcard",
+   "line": 26,
+   "text": "compute gat all global/atom c_nosuch c_vcm[*]",
+   "style": "compute global/atom",
+   "native": "ERROR: Compute ID nosuch for compute global/atom index"
+  },
+  {
+   "case": "w33gcmc_lj_acc",
+   "line": 13,
+   "text": "compute ks all reduce sum c_nosuch",
+   "style": "compute reduce",
+   "native": "ERROR: Compute ID nosuch for compute reduce does not exist"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 13,
+   "text": "compute rs all reduce/chunk cb sum c_nosuch c_pa[2]",
+   "style": "compute reduce/chunk",
+   "native": "ERROR: Compute ID nosuch for compute reduce/chunk does not exist"
+  },
+  {
+   "case": "w171px_slcsa",
+   "line": 20,
+   "text": "compute slcsa all slcsa/atom 8 4 w171px_slcsa_mean_descriptor.dat w171px_slcsa_lda_scalings.dat w171px_slcsa_lr_decision.dat w171px_slcsa_lr_bias.dat w171px_slcsa_mahalanobis.dat c_nosuch",
+   "style": "compute slcsa/atom",
+   "native": "ERROR: Compute ID nosuch for compute slcsa/atom does not exist"
+  },
+  {
+   "case": "w218ck_inertia_slice",
+   "line": 24,
+   "text": "compute sl all slice 1 6 1 c_nosuch",
+   "style": "compute slice",
+   "native": "ERROR: Compute ID nosuch for compute slice does not exist"
+  },
+  {
+   "case": "w227xc_ti_single",
+   "line": 21,
+   "text": "compute ti all ti lj/cut 1 v_nosuch v_df",
+   "style": "compute ti",
+   "native": "ERROR: Variable name for compute ti does not exist"
+  },
+  {
+   "case": "w31voronp_radius",
+   "line": 17,
+   "text": "compute v all voronoi/atom radius v_nosuch",
+   "style": "compute voronoi/atom",
+   "native": "OK"
+  },
+  {
+   "case": "w49pb_pppm_diel1",
+   "line": 15,
+   "text": "displace_atoms all move v_nosuch v_dy 0.0 units box",
+   "style": "displace_atoms move",
+   "native": "ERROR: Variable nosuch for displace_atoms move does not exist"
+  },
+  {
+   "case": "w215cfg_dump",
+   "line": 19,
+   "text": "dump 1 all cfg 20 s.*.cfg mass type xs ys zs id vx c_nosuch c_s[2]",
+   "style": "dump cfg",
+   "native": "ERROR: Could not find dump cfg compute ID: nosuch"
+  },
+  {
+   "case": "w31voronp_single",
+   "line": 15,
+   "text": "dump d all custom 1 w31voronp_single.dump id type x y z c_nosuch c_v[2] c_v[3]",
+   "style": "dump custom",
+   "native": "ERROR: Could not find dump custom compute ID: nosuch"
+  },
+  {
+   "case": "w422dump_grid_tri",
+   "line": 11,
+   "text": "dump 1 all grid 1 tri.dump c_nosuch",
+   "style": "dump grid",
+   "native": "ERROR: Grid ID nosuch must be 3 strings separated by 2 ':'characters"
+  },
+  {
+   "case": "w423dump_grid_2d",
+   "line": 20,
+   "text": "dump 2 all grid/vtk 40 v2d.*.vtr f_nosuch f_ag:grid:data[2] f_ag:grid:data[3]",
+   "style": "dump grid/vtk",
+   "native": "ERROR: Grid ID nosuch must be 3 strings separated by 2 ':'characters"
+  },
+  {
+   "case": "w11local_bond",
+   "line": 12,
+   "text": "dump 1 all local 1 w11local_bond.local index c_nosuch c_bp[*]",
+   "style": "dump local",
+   "native": "ERROR: Could not find dump local compute ID nosuch"
+  },
+  {
+   "case": "w471dump_thresh_last",
+   "line": 29,
+   "text": "dump_modify e append yes thresh v_nosuch < LAST thresh type == 1",
+   "style": "dump_modify append",
+   "native": "ERROR: Could not find dump modify variable name: nosuch"
+  },
+  {
+   "case": "w215cfg_dump",
+   "line": 20,
+   "text": "dump_modify 1 element Ar Kr colname c_nosuch epot format float %.10g",
+   "style": "dump_modify element",
+   "native": "ERROR: Incorrect dump_modify arguments: colname c_nosuch epot"
+  },
+  {
+   "case": "w471dump_thresh_last",
+   "line": 19,
+   "text": "dump_modify d thresh v_nosuch > LAST",
+   "style": "dump_modify thresh",
+   "native": "ERROR: Could not find dump modify variable name: nosuch"
+  },
+  {
+   "case": "w9adapt_soft",
+   "line": 27,
+   "text": "fix 1 all adapt 1 pair soft a * * v_nosuch",
+   "style": "fix adapt",
+   "native": "ERROR: Variable name nosuch for fix adapt does not exist"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 23,
+   "text": "fix ADAPT all adapt/fep 20 pair lj/cut/coul/long/soft lambda * * v_nosuch atom charge 1 v_q1 atom charge 2 v_q2",
+   "style": "fix adapt/fep",
+   "native": "ERROR: Variable name nosuch for fix adapt/fep does not exist"
+  },
+  {
+   "case": "w13misc_controller",
+   "line": 21,
+   "text": "fix push all addforce v_nosuch 0.0 0.0",
+   "style": "fix addforce",
+   "native": "ERROR: Variable nosuch for fix addforce does not exist"
+  },
+  {
+   "case": "w228gs_addtorque",
+   "line": 22,
+   "text": "fix 2 all addtorque/atom 0.1 -0.2 v_nosuch every 2",
+   "style": "fix addtorque/atom",
+   "native": "ERROR: Variable nosuch for fix addtorque/atom does not exist"
+  },
+  {
+   "case": "w48fb_addtorque_pair",
+   "line": 24,
+   "text": "fix 4 pair addtorque/group 2.0 0.5 v_nosuch",
+   "style": "fix addtorque/group",
+   "native": "ERROR: Variable name for fix addtorque/group does not exist"
+  },
+  {
+   "case": "w194alc_alloy",
+   "line": 20,
+   "text": "fix 2 all alchemy v_nosuch",
+   "style": "fix alchemy",
+   "native": "ERROR: World variable count 2 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w2avg_aveatom",
+   "line": 30,
+   "text": "fix 2 all ave/atom 2 5 10 vx vy v_nosuch",
+   "style": "fix ave/atom",
+   "native": "ERROR: Variable name nosuch for fix ave/atom does not exist"
+  },
+  {
+   "case": "w93meso_edpd_region",
+   "line": 47,
+   "text": "fix stat all ave/chunk 1 50 50 ccT c_nosuch density/number norm sample file temp.profile",
+   "style": "fix ave/chunk",
+   "native": "ERROR: Compute ID nosuch for fix ave/chunk does not exist"
+  },
+  {
+   "case": "w11gk_correlate",
+   "line": 17,
+   "text": "fix JJ all ave/correlate 2 10 40 c_nosuch c_p[5] c_p[6] type auto/upper ave running file pxy.corr",
+   "style": "fix ave/correlate",
+   "native": "ERROR: Compute ID nosuch for fix ave/correlate does not exist"
+  },
+  {
+   "case": "w229xf_corrlong_auto",
+   "line": 18,
+   "text": "fix JJ all ave/correlate/long 2 40 c_nosuch c_p[5] type auto/upper file corrl_auto.dat",
+   "style": "fix ave/correlate/long",
+   "native": "ERROR: Compute ID nosuch for fix ave/correlate/long does not exist"
+  },
+  {
+   "case": "w424avegrid_pergrid",
+   "line": 24,
+   "text": "fix te all ave/grid 1 3 3 2 2 2 f_nosuch c_pg:grid:data[2]",
+   "style": "fix ave/grid",
+   "native": "ERROR: Fix ave/grid cannot operate on per-atom and per-grid values together"
+  },
+  {
+   "case": "w11local_histo",
+   "line": 11,
+   "text": "fix h all ave/histo 1 1 1 0 3 5 c_nosuch mode vector file w11local_histo.histo",
+   "style": "fix ave/histo",
+   "native": "ERROR: Compute ID nosuch for fix ave/histo does not exist"
+  },
+  {
+   "case": "w137cf_histw_global",
+   "line": 16,
+   "text": "fix h all ave/histo/weight 1 1 1 -2 2 8 c_nosuch c_r[2] mode scalar beyond end file w137cf_histw_global.histo",
+   "style": "fix ave/histo/weight",
+   "native": "ERROR: Compute ID nosuch for fix ave/histo/weight does not exist"
+  },
+  {
+   "case": "w47pkg_moments_simple",
+   "line": 14,
+   "text": "fix 2 all ave/moments 5 60 30 v_nosuch mean stddev variance skew kurtosis",
+   "style": "fix ave/moments",
+   "native": "ERROR: Variable name nosuch for fix ave/moments does not exist"
+  },
+  {
+   "case": "w89fix_avetime_nonorm",
+   "line": 15,
+   "text": "fix a all ave/time 2 2 4 c_nosuch ave one",
+   "style": "fix ave/time",
+   "native": "ERROR: Compute ID nosuch for fix ave/time does not exist"
+  },
+  {
+   "case": "w137cf_react_prob_var",
+   "line": 24,
+   "text": "fix myrxns all bond/react stabilization yes statted_grp .03 react rxn1 all 1 0.0 2.9 mol1 mol2 w94react_nylon_stp1.map prob v_nosuch 1234 react rxn2 all 1 0.0 5.0 mol3 mol4 w94react_nylon_stp2.map rescale_charges yes",
+   "style": "fix bond/react",
+   "native": "ERROR: Fix bond/react: Variable name nosuch does not exist"
+  },
+  {
+   "case": "w13misc_controller",
+   "line": 23,
+   "text": "fix ctl all controller 10 1.0 0.5 0.2 0.1 v_nosuch 0.5 fc",
+   "style": "fix controller",
+   "native": "ERROR: Variable name nosuch for fix controller does not exist"
+  },
+  {
+   "case": "w228gs_cundall_var",
+   "line": 22,
+   "text": "fix 2 all damping/cundall 0.2 0.1 scale v_nosuch",
+   "style": "fix damping/cundall",
+   "native": "ERROR: Variable name nosuch for fix damping/cundall does not exist"
+  },
+  {
+   "case": "w3deform_wiggle_var",
+   "line": 23,
+   "text": "fix 2 all deform 1 x wiggle 0.2 0.08 z variable v_nosuch v_dv",
+   "style": "fix deform",
+   "native": "ERROR: Variable name nosuch for fix deform does not exist"
+  },
+  {
+   "case": "w66units_efield_atomvar_real",
+   "line": 24,
+   "text": "fix 2 all efield v_nosuch -0.01 0.03",
+   "style": "fix efield",
+   "native": "ERROR: Variable nosuch for x-field in fix efield does not exist"
+  },
+  {
+   "case": "w68elec_planar_ffield_ewald",
+   "line": 24,
+   "text": "fix conp bot electrode/conp 0 1.979 couple top v_nosuch symm on ffield yes",
+   "style": "fix electrode/conp",
+   "native": "ERROR: Variable 'nosuch' for fix electrode/conp does not exist"
+  },
+  {
+   "case": "w213iso_props",
+   "line": 20,
+   "text": "fix iso all graphics/isosurface 5 0.4 1.0 quality min property c_nosuch filename w213iso_ke.*.stl",
+   "style": "fix graphics/isosurface",
+   "native": "ERROR: Compute ID nosuch for fix graphics/isosurface does not exist"
+  },
+  {
+   "case": "w49hy_halt_min",
+   "line": 20,
+   "text": "fix h all halt 1 v_nosuch >= 21 error soft message no",
+   "style": "fix halt",
+   "native": "ERROR: Could not find fix halt variable name nosuch"
+  },
+  {
+   "case": "w60fix_indent_side_in",
+   "line": 18,
+   "text": "fix 2 all indent 2.0 sphere 0.0 v_nosuch 0.0 3.5 units lattice side in",
+   "style": "fix indent",
+   "native": "ERROR: Variable nosuch for fix indent does not exist"
+  },
+  {
+   "case": "w331lang_atom_temp",
+   "line": 18,
+   "text": "fix 1 all langevin v_nosuch 1.0 2.0 9182 tally yes scale 2 1.5",
+   "style": "fix langevin",
+   "native": "ERROR: Variable name nosuch for fix langevin does not exist"
+  },
+  {
+   "case": "meso_move_variable",
+   "line": 33,
+   "text": "fix 3 upper_wall meso/move variable v_nosuch NULL NULL v_vx NULL NULL",
+   "style": "fix meso/move",
+   "native": "ERROR: Variable name for fix meso/move does not exist"
+  },
+  {
+   "case": "move_variable_2d",
+   "line": 20,
+   "text": "fix 1 strip move variable v_nosuch NULL NULL NULL v_vy NULL",
+   "style": "fix move",
+   "native": "ERROR: Variable name nosuch for fix move does not exist"
+  },
+  {
+   "case": "w286mf_nvt_ramp",
+   "line": 14,
+   "text": "fix step all nvt/manifold/rattle 1e-8 20 sphere v_nosuch temp 1.0 1.2 0.1 tchain 4",
+   "style": "fix nvt/manifold/rattle",
+   "native": "ERROR: Variable name for fix nve/manifold/rattle does not exist",
+   "build": "MANIFOLD"
+  },
+  {
+   "case": "w99phq_qbmsst_lj",
+   "line": 16,
+   "text": "fix shock all qbmsst z 1.5 q 10.0 tscale 0.1 damp 1.0 f_nosuch 4.0 N_f 20 seed 35082 eta 1.0 beta 5 T_init 0.8",
+   "style": "fix qbmsst",
+   "native": "ERROR: Unrecognized fix style 'qbmsst' is part of the QTB package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the QTB package, which no native build here has"
+  },
+  {
+   "case": "w99phq_qtb_lj",
+   "line": 16,
+   "text": "fix 2 all qtb temp 0.8 damp 0.5 seed 35082 f_nosuch 2.0 N_f 50",
+   "style": "fix qtb",
+   "native": "ERROR: Unrecognized fix style 'qtb' is part of the QTB package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the QTB package, which no native build here has"
+  },
+  {
+   "case": "w266rg_custom_trunc",
+   "line": 13,
+   "text": "fix 1 all rigid custom v_nosuch",
+   "style": "fix rigid",
+   "native": "ERROR: Variable nosuch for fix rigid custom does not exist"
+  },
+  {
+   "case": "w171px_saed_vtk_full",
+   "line": 18,
+   "text": "fix 2 all saed/vtk 2 2 4 c_nosuch file w171px_saed_vtk_full",
+   "style": "fix saed/vtk",
+   "native": "ERROR: Compute ID nosuch for fix saed/vtk does not exist or is of incorrect style"
+  },
+  {
+   "case": "w229xf_set",
+   "line": 21,
+   "text": "fix 2 all set 10 1 atom 1*108 type v_nosuch vx v_t",
+   "style": "fix set",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w2fset_setforce",
+   "line": 29,
+   "text": "fix 2 lower setforce 0.0 NULL v_nosuch",
+   "style": "fix setforce",
+   "native": "ERROR: Variable nosuch for fix setforce does not exist"
+  },
+  {
+   "case": "w166px_settorque_wire",
+   "line": 56,
+   "text": "fix 4 loaded settorque/atom NULL v_nosuch v_tzat region reg2",
+   "style": "fix settorque/atom",
+   "native": "ERROR: Variable nosuch for fix settorque/atom does not exist"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 64,
+   "text": "fix veltop_fix top smd/setvel 0 v_nosuch 0",
+   "style": "fix smd/setvel",
+   "native": "ERROR: Variable name for fix setvelocity does not exist"
+  },
+  {
+   "case": "w165mc_store_com",
+   "line": 18,
+   "text": "fix t all store/state 2 xu yu zu com no thresh v_nosuch > 0.5",
+   "style": "fix store/state",
+   "native": "ERROR: Variable name nosuch for fix store/state thresh does not exist"
+  },
+  {
+   "case": "w7misc_vector",
+   "line": 17,
+   "text": "fix 3 all vector 5 c_nosuch",
+   "style": "fix vector",
+   "native": "ERROR: Compute ID nosuch for fix vector does not exist"
+  },
+  {
+   "case": "w133mf_viscous_sphere_var",
+   "line": 25,
+   "text": "fix 2 all viscous/sphere 0.3 scale v_nosuch",
+   "style": "fix viscous/sphere",
+   "native": "ERROR: Variable name nosuch for fix viscous/sphere does not exist"
+  },
+  {
+   "case": "w41sm_wallgran_var",
+   "line": 19,
+   "text": "fix 3 all wall/gran hooke/history 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 v_nosuch",
+   "style": "fix wall/gran",
+   "native": "ERROR: Variable nosuch for fix wall/gran wall position does not exist"
+  },
+  {
+   "case": "w38heat_pour",
+   "line": 69,
+   "text": "fix 5 all wall/gran/region granular hertz/material 1e5 0.1 0.3 tangential mindlin NULL 1.0 0.5 damping tsuji heat area 5.0 region bottom_wall temperature v_nosuch",
+   "style": "fix wall/gran/region",
+   "native": "ERROR: Variable nosuch for fix wall/gran does not exist"
+  },
+  {
+   "case": "w231co_lubricate_walls_moving",
+   "line": 19,
+   "text": "fix 2 all wall/lj93 zlo -1.0 1.0 1.0 1.0 zhi v_nosuch 1.0 1.0 1.0",
+   "style": "fix wall/lj93",
+   "native": "ERROR: Variable name for fix wall does not exist"
+  },
+  {
+   "case": "w231co_wall_srd_move",
+   "line": 25,
+   "text": "fix 3 all wall/srd xlo EDGE xhi v_nosuch",
+   "style": "fix wall/srd",
+   "native": "ERROR: Variable nosuch for fix wall/srd does not exist"
+  },
+  {
+   "case": "w270ya_pace_yace_c",
+   "line": 17,
+   "text": "pair_coeff * * c_nosuch C",
+   "style": "pair_coeff pace",
+   "native": "CRASH rc=1",
+   "build": "ML-PACE",
+   "skip": "native LAMMPS crashes (CRASH rc=1)"
+  },
+  {
+   "case": "hybrid_scaled",
+   "line": 20,
+   "text": "pair_style hybrid/scaled v_nosuch lj/cut 2.5 0.4 lj/cut 2.0",
+   "style": "pair_style hybrid/scaled",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w22rwall_gran_move",
+   "line": 10,
+   "text": "region A block -4 4 -4 4 0 6 side in units box move v_nosuch NULL NULL",
+   "style": "region block",
+   "native": "ERROR: Variable nosuch for region block A does not exist"
+  },
+  {
+   "case": "w225cm_region2vmd",
+   "line": 13,
+   "text": "region rcylz cylinder z 2.0 1.5 0.33333333333 -1.0 2.75 move v_nosuch v_my v_mz",
+   "style": "region cylinder",
+   "native": "ERROR: Variable nosuch for region cylinder rcylz does not exist"
+  },
+  {
+   "case": "w31plane_rotate",
+   "line": 16,
+   "text": "region pl plane 0.0 0.0 0.0 1.0 0.0 0.0 side in rotate v_nosuch 0.0 0.0 0.0 0.0 0.0 1.0",
+   "style": "region plane",
+   "native": "ERROR: Variable nosuch for region plane pl does not exist"
+  },
+  {
+   "case": "w225cm_region2vmd",
+   "line": 11,
+   "text": "region rsph sphere 1.3 2.2 1.1 0.9 move v_nosuch v_my v_mz",
+   "style": "region sphere",
+   "native": "ERROR: Variable nosuch for region sphere rsph does not exist"
+  },
+  {
+   "case": "w23asph2d_nve",
+   "line": 24,
+   "text": "set group all angmom v_nosuch v_ly v_lz",
+   "style": "set angmom",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w278ap_mixed",
+   "line": 10,
+   "text": "set group all apip/lambda v_nosuch",
+   "style": "set apip/lambda",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist",
+   "build": "APIP"
+  },
+  {
+   "case": "w9restart_propatom",
+   "line": 21,
+   "text": "set atom * charge v_nosuch",
+   "style": "set charge",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w9restart_propatom",
+   "line": 19,
+   "text": "set atom * d2_vec[1] v_nosuch",
+   "style": "set d2_vec[1]",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 21,
+   "text": "set group all d_nx v_nosuch",
+   "style": "set d_nx",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 22,
+   "text": "set group all d_ny v_nosuch",
+   "style": "set d_ny",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 23,
+   "text": "set group all d_nz v_nosuch",
+   "style": "set d_nz",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w9restart_propatom",
+   "line": 18,
+   "text": "set atom * d_val v_nosuch",
+   "style": "set d_val",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w23eflep_dipole",
+   "line": 14,
+   "text": "set group all dipole v_nosuch v_my v_mz",
+   "style": "set dipole",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w9restart_propatom",
+   "line": 17,
+   "text": "set atom * i_flag v_nosuch",
+   "style": "set i_flag",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w6prop_basic",
+   "line": 14,
+   "text": "set group all mass v_nosuch",
+   "style": "set mass",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 11,
+   "text": "set group all mol v_nosuch",
+   "style": "set mol",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w4sphere_disc",
+   "line": 12,
+   "text": "set group all omega 0.0 0.0 v_nosuch",
+   "style": "set omega",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w19gb_dyn",
+   "line": 17,
+   "text": "set group all quat v_nosuch v_ay v_az v_th",
+   "style": "set quat",
+   "native": "ERROR: Variable name v_nosuch for set command does not exist"
+  },
+  {
+   "case": "w30widom_atom",
+   "line": 15,
+   "text": "thermo_style custom step f_nosuch f_w[2] f_w[3]",
+   "style": "thermo_style custom",
+   "native": "ERROR: Could not find thermo custom fix ID: nosuch"
+  },
+  {
+   "case": "w18fix_oneway",
+   "line": 14,
+   "text": "velocity all set v_nosuch v_vy v_vz",
+   "style": "velocity set",
+   "native": "ERROR: Variable name for velocity set does not exist"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 19,
+   "text": "write_dump all custom w48sp2_langevin0.dump id c_nosuch c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] c_p[8] c_p[9] c_p[10] modify format float %.15g",
+   "style": "write_dump",
+   "native": "ERROR: Could not find dump custom compute ID: nosuch"
+  }
+ ]
+}

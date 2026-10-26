@@ -66,7 +66,7 @@ for (const name of process.argv.length > 2 ? process.argv.slice(2) : Object.keys
   const def = MATRICES[name];
   if (!def) throw new Error(`unknown matrix ${name} (${Object.keys(MATRICES).join(', ')})`);
   let lammps = 'unknown';
-  const rows = await pool(def.rows(cases), JOBS, async (row) => {
+  const rows = await pool(def.rows(cases, join(ROOT, 'tests/oracle')), JOBS, async (row) => {
     const input = parityInput(text[row.case], row);
     const files = parityFiles(ROOT, text[row.case], input);
     const first = await runNative(LMP, input, files);

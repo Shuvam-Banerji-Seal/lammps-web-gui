@@ -1,0 +1,861 @@
+{
+ "matrix": "yes-no",
+ "about": "the first yes, no, on or off value of each line replaced by maybe",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w16numdiff_virial",
+   "line": 3,
+   "text": "atom_modify map maybe",
+   "style": "atom_modify map",
+   "native": "ERROR: Illegal atom_modify map command argument maybe"
+  },
+  {
+   "case": "w53bpm_rot_damp",
+   "line": 13,
+   "text": "bond_style bpm/rotational normalize maybe smooth no frame particle damping dem",
+   "style": "bond_style bpm/rotational",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w51bpm_spring_nobreak",
+   "line": 9,
+   "text": "bond_style bpm/spring break maybe smooth no",
+   "style": "bond_style bpm/spring",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w59bpm_plastic_norm",
+   "line": 22,
+   "text": "bond_style bpm/spring/plastic normalize maybe smooth no",
+   "style": "bond_style bpm/spring/plastic",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w207sr_react_break",
+   "line": 12,
+   "text": "comm_modify cutoff 4.0 vel maybe",
+   "style": "comm_modify cutoff",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w95dreact_dpdvv_1000",
+   "line": 11,
+   "text": "comm_modify mode single vel maybe",
+   "style": "comm_modify mode",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 5,
+   "text": "comm_modify vel maybe",
+   "style": "comm_modify vel",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w227xc_ackland_bcc_legacy",
+   "line": 19,
+   "text": "compute ack all ackland/atom legacy maybe",
+   "style": "compute ackland/atom",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w11struct_perfect",
+   "line": 13,
+   "text": "compute ax all centro/atom fcc axes maybe",
+   "style": "compute centro/atom",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w39cfs_wrap_tri",
+   "line": 8,
+   "text": "compute cc all chunk/atom molecule compress maybe",
+   "style": "compute chunk/atom",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w39cfs_wrap_tri",
+   "line": 10,
+   "text": "compute c1 all com/chunk cc wrap maybe",
+   "style": "compute com/chunk",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w134cp_entropy_fe",
+   "line": 26,
+   "text": "compute c2 all entropy/atom 0.25 3.5 local maybe",
+   "style": "compute entropy/atom",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w155mx_fepta_tail",
+   "line": 19,
+   "text": "compute TA all fep/ta 120.0 yz 0.998 tail maybe",
+   "style": "compute fep/ta",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w11struct_bonds",
+   "line": 25,
+   "text": "compute fs all fragment/atom single maybe",
+   "style": "compute fragment/atom",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w88pair_hybrid_tally",
+   "line": 16,
+   "text": "compute cgg all group/group all pair maybe",
+   "style": "compute group/group",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w2cglob_msd_vacf",
+   "line": 28,
+   "text": "compute m all msd com maybe",
+   "style": "compute msd",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w5orient_q",
+   "line": 17,
+   "text": "compute q2 all orientorder/atom degrees 3 4 6 8 nnn NULL cutoff 1.5 wl maybe",
+   "style": "compute orientorder/atom",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w149cp_rxatom",
+   "line": 13,
+   "text": "compute bonds all reaxff/atom bonds maybe",
+   "style": "compute reaxff/atom",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w14temp_chunk_nvt",
+   "line": 21,
+   "text": "compute tn all temp/chunk cx com maybe",
+   "style": "compute temp/chunk",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w199vo_mixed",
+   "line": 16,
+   "text": "compute v all voronoi/atom neighbors maybe",
+   "style": "compute voronoi/atom",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w349chreg_onlysalt_anion",
+   "line": 16,
+   "text": "compute_modify dtemp dynamic/dof maybe",
+   "style": "compute_modify dynamic/dof",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w11struct_hcp",
+   "line": 12,
+   "text": "delete_atoms group vac compress maybe",
+   "style": "delete_atoms group",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w85setup_del_approx2",
+   "line": 8,
+   "text": "delete_atoms random fraction 0.5 maybe all NULL 777",
+   "style": "delete_atoms random",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w166px_frenkel_bcc",
+   "line": 21,
+   "text": "delete_atoms region hole compress maybe",
+   "style": "delete_atoms region",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w29dump_image",
+   "line": 11,
+   "text": "dump im all image 1 img.*.ppm type type size 64 64 box maybe 0.02 view 90 0",
+   "style": "dump image",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w471dump_thresh_last",
+   "line": 29,
+   "text": "dump_modify e append maybe thresh v_g < LAST thresh type == 1",
+   "style": "dump_modify append",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w420dump_grid",
+   "line": 25,
+   "text": "dump_modify 5 double maybe",
+   "style": "dump_modify double",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w196vtk_modify",
+   "line": 18,
+   "text": "dump_modify d element Ar Kr label cells double maybe pad 3 region half thresh type == 2",
+   "style": "dump_modify element",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w100smd_aluminum_strip",
+   "line": 121,
+   "text": "dump_modify dump_id first maybe",
+   "style": "dump_modify first",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w421dump_grid_ttm",
+   "line": 25,
+   "text": "dump_modify 2 header maybe",
+   "style": "dump_modify header",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w19trigen_general",
+   "line": 13,
+   "text": "dump_modify 1 triclinic/general maybe",
+   "style": "dump_modify triclinic/general",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w421dump_grid_ttm",
+   "line": 23,
+   "text": "dump_modify 1 units maybe time yes format float %.12g",
+   "style": "dump_modify units",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w99phq_dynmat_silicon",
+   "line": 16,
+   "text": "dynamical_matrix all eskm 0.000001 file dynmat.dat binary maybe",
+   "style": "dynamical_matrix",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w9adapt_charge",
+   "line": 28,
+   "text": "fix 1 all adapt 1 atom charge v_qf scale maybe",
+   "style": "fix adapt",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w384adaptfep_diameter",
+   "line": 19,
+   "text": "fix 1 all adapt/fep 1 atom diameter 1 v_d reset maybe",
+   "style": "fix adapt/fep",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 71,
+   "text": "fix 10 floor add/heat constant 0 overwrite maybe",
+   "style": "fix add/heat",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w339swap_semi_tail",
+   "line": 17,
+   "text": "fix sw all atom/swap 5 20 12345 1.0 types 1 2 semi-grand maybe mu 0.0 0.3 ke yes",
+   "style": "fix atom/swap",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w426avegrid_discard",
+   "line": 17,
+   "text": "fix ak all ave/grid 1 1 1 2 3 3 density/number vx discard maybe",
+   "style": "fix ave/grid",
+   "native": "ERROR: Illegal fix ave/grid discard argument: maybe"
+  },
+  {
+   "case": "w133mf_baoab_lj",
+   "line": 17,
+   "text": "fix 1 all baoab 1.0 1.0 1.0 12345 zero maybe",
+   "style": "fix baoab",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w94react_nylon_unstab",
+   "line": 24,
+   "text": "fix myrxns all bond/react stabilization maybe react rxn1 all 1 0.0 2.9 mol1 mol2 w94react_nylon_stp1.map react rxn2 all 1 0.0 5.0 mol3 mol4 w94react_nylon_stp2.map rescale_charges yes",
+   "style": "fix bond/react",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w349chreg_onlysalt_anion",
+   "line": 19,
+   "text": "fix chareg all charge/regulation 2 3 pIp 2.5 pIm 3.5 onlysalt maybe 1 -2 tag yes lunit_nm 0.72 nevery 50 nmc 60 seed 2345 tempfixid fT",
+   "style": "fix charge/regulation",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w229xf_deform_pressure_couple",
+   "line": 15,
+   "text": "fix 2 all deform/pressure 10 x pressure 0.5 0.05 couple xyz max/rate 0.02 normalize/pressure maybe units box",
+   "style": "fix deform/pressure",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w68elec_madelung_cg",
+   "line": 16,
+   "text": "fix conp bot electrode/conp 0 2 couple top 1 symm maybe algo cg 1e-6",
+   "style": "fix electrode/conp",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w68elec_conq_cg",
+   "line": 19,
+   "text": "fix q bot electrode/conq -0.2 2 couple top 0.2 symm maybe algo cg 1e-6",
+   "style": "fix electrode/conq",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w11restrain_evaporate",
+   "line": 32,
+   "text": "fix EV all2 evaporate 4 2 ev 20243 molecule maybe",
+   "style": "fix evaporate",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w133mf_flow_gauss_kw",
+   "line": 29,
+   "text": "fix GD left flow/gauss 1 1 0 energy maybe",
+   "style": "fix flow/gauss",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w229xf_gld",
+   "line": 15,
+   "text": "fix 2 all gld 1.2 0.6 2 4321 pprony 0.5 0.3 0.8 1.5 zero maybe",
+   "style": "fix gld",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w49hy_halt_min",
+   "line": 20,
+   "text": "fix h all halt 1 v_s >= 21 error soft message maybe",
+   "style": "fix halt",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w32hmc_accept",
+   "line": 15,
+   "text": "fix 2 all hmc 5 12345 1000000.0 resample maybe",
+   "style": "fix hmc",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w84lang_omega_sphere",
+   "line": 16,
+   "text": "fix 2 all langevin 1.0 1.0 1.0 9182 omega maybe",
+   "style": "fix langevin",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w72drude_butane_lang",
+   "line": 36,
+   "text": "fix fLANG all langevin/drude 260.0 100.0 200611 1.0 20.0 260514 zero maybe",
+   "style": "fix langevin/drude",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w230re_eff_langevin",
+   "line": 15,
+   "text": "fix 2 all langevin/eff 300.0 300.0 20.0 4321 tally maybe scale 3 2.0",
+   "style": "fix langevin/eff",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w30molswap_keno",
+   "line": 18,
+   "text": "fix swap all mol/swap 1 1 1 2 12345 1e9 ke maybe",
+   "style": "fix mol/swap",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w128shock_msst_params",
+   "line": 16,
+   "text": "fix msst all msst x 1.2 q 5.0 mu 0.3 p0 0.5 v0 300.0 e0 -400.0 tscale 0.5 dftb maybe beta 0.5",
+   "style": "fix msst",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w199vo_mc_rates",
+   "line": 25,
+   "text": "fix mc all neighbor/swap 3 4 777 1.0 1.2 v diff 2 region right rates 1.0 0.7 ke maybe",
+   "style": "fix neighbor/swap",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w367eff_nph_couple_xy",
+   "line": 14,
+   "text": "fix 1 all nph/eff x 0.0 0.0 1.0 y 0.0 0.0 1.0 z 0.0 0.0 1.0 couple xy pchain 1 mtk maybe",
+   "style": "fix nph/eff",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w41nptp_x3d_mtkno",
+   "line": 18,
+   "text": "fix 1 all npt temp 1.5 1.5 0.5 x 2.0 0.5 2.0 mtk maybe",
+   "style": "fix npt",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w141cy_cauchy_basic",
+   "line": 18,
+   "text": "fix 1 all npt/cauchy temp 600.0 600.0 1.0 x 0.0 0.0 0.1 y 0.0 0.0 0.1 z 0.0 0.0 0.1 couple none alpha 0.001 continue maybe",
+   "style": "fix npt/cauchy",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w39nemd_n0_nocheck",
+   "line": 22,
+   "text": "fix 1 all nvt/sllod temp 1.0 1.0 0.1 kick maybe",
+   "style": "fix nvt/sllod",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w230re_eff_sllod_peculiar",
+   "line": 15,
+   "text": "fix 2 all nvt/sllod/eff temp 300.0 300.0 10.0 peculiar maybe",
+   "style": "fix nvt/sllod/eff",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 33,
+   "text": "fix hp all pafi pa 500.0 0.01 434 overdamped maybe com no",
+   "style": "fix pafi",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w192pimdl_baoab_pile_l",
+   "line": 20,
+   "text": "fix 1 all pimd/langevin ensemble nvt integrator baoab temp 1.00888 sp 0.1924 thermostat PILE_L 1234 tau 0.5 fixcom maybe",
+   "style": "fix pimd/langevin",
+   "native": "ERROR: World variable count 4 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w404pl_flip",
+   "line": 16,
+   "text": "fix 2 all press/langevin x 0.5 0.5 1.0 y 0.5 0.5 1.0 yz -60.0 -60.0 0.2 temp 1.0 1.0 4321 flip maybe",
+   "style": "fix press/langevin",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w473rigid_ellipsoids",
+   "line": 8,
+   "text": "fix prop all property/atom mol ghost maybe",
+   "style": "fix property/atom",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "rigid_force_torque",
+   "line": 48,
+   "text": "fix 1 all rigid molecule force 1*9 maybe on on torque 10* on off off",
+   "style": "fix rigid",
+   "native": "ERROR: Illegal fix rigid command"
+  },
+  {
+   "case": "w204sg_fs_atomic",
+   "line": 16,
+   "text": "fix mc all sgcmc 10 0.2 600 0.2 randseed 98765 window_moves 4 atomic/energy maybe",
+   "style": "fix sgcmc",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w41sm_shake_store",
+   "line": 46,
+   "text": "fix 2 all shake 1.0e-12 200 0 b 1 2 3 4 a 1 store maybe",
+   "style": "fix shake",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w79srd_tstat",
+   "line": 29,
+   "text": "fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat maybe",
+   "style": "fix srd",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w165mc_store_com",
+   "line": 17,
+   "text": "fix c all store/state 0 xu yu zu com maybe",
+   "style": "fix store/state",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w38gcr_one_last",
+   "line": 24,
+   "text": "fix_modify myrigid dynamic/dof maybe",
+   "style": "fix_modify dynamic/dof",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w37grav_rigid",
+   "line": 13,
+   "text": "fix_modify gravfix energy maybe",
+   "style": "fix_modify energy",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w39nemd_kick_modify",
+   "line": 25,
+   "text": "fix_modify 3 kick maybe",
+   "style": "fix_modify kick",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 55,
+   "text": "fix_modify 4 rx_chemistry maybe",
+   "style": "fix_modify rx_chemistry",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w62brown_propelvel",
+   "line": 15,
+   "text": "fix_modify 2 virial maybe",
+   "style": "fix_modify virial",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w51km_dipole_noeffect",
+   "line": 22,
+   "text": "kspace_modify collective maybe nonblocking yes fftbench yes overlap no minorder 2 cutoff/adjust yes",
+   "style": "kspace_modify collective",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w84lang_kspace_compute_no",
+   "line": 19,
+   "text": "kspace_modify compute maybe",
+   "style": "kspace_modify compute",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w161pd_lj_auto",
+   "line": 12,
+   "text": "kspace_modify disp/auto maybe",
+   "style": "kspace_modify disp/auto",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w477kspace_modify_ignored",
+   "line": 20,
+   "text": "kspace_modify force/disp/real 1e-4 splittol 0.5 disp/auto maybe amat onestep wire 3.0",
+   "style": "kspace_modify force/disp/real",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w51km_disp_noeffect",
+   "line": 10,
+   "text": "kspace_modify gewald 0.4 gewald/disp 0.4 collective maybe fftbench yes overlap no minorder 2 cutoff/adjust yes",
+   "style": "kspace_modify gewald",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 18,
+   "text": "kspace_modify order 8 pressure/scalar maybe",
+   "style": "kspace_modify order",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w209ms_nacl_tensor",
+   "line": 30,
+   "text": "kspace_modify pressure/scalar maybe cutoff/adjust no order 6",
+   "style": "kspace_modify pressure/scalar",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w298neb_fire_climb_ebf",
+   "line": 25,
+   "text": "min_modify alpha0 0.10 integrator verlet abcfire maybe",
+   "style": "min_modify alpha0",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w47qm_firedelay",
+   "line": 10,
+   "text": "min_modify dmax 0.005 initialdelay maybe",
+   "style": "min_modify dmax",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w40ksp_bin_hash",
+   "line": 27,
+   "text": "neigh_modify bin/hash maybe",
+   "style": "neigh_modify bin/hash",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w477kspace_modify_ignored",
+   "line": 21,
+   "text": "neigh_modify binsize -1 every 1 delay 0 check maybe",
+   "style": "neigh_modify binsize",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w99phq_quartz_qbmsst",
+   "line": 52,
+   "text": "neigh_modify check maybe every 1 delay 0 page 100000 one 2000",
+   "style": "neigh_modify check",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w26cgrid_propgrid2d",
+   "line": 13,
+   "text": "neigh_modify delay 0 every 20 check maybe",
+   "style": "neigh_modify delay",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w52rng_geom_data",
+   "line": 10,
+   "text": "neigh_modify every 20 delay 0 check maybe",
+   "style": "neigh_modify every",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w472vashtable_runs",
+   "line": 15,
+   "text": "neigh_modify once maybe every 1 delay 0 check yes",
+   "style": "neigh_modify once",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w51bpm_pair_anh",
+   "line": 5,
+   "text": "newton on maybe",
+   "style": "newton",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 19,
+   "text": "pair_coeff 1 1 78 4.5 maybe 1",
+   "style": "pair_coeff dpd/coul/slater/long",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w162rx_lucy_lookup",
+   "line": 41,
+   "text": "pair_coeff * * multi/lucy/rx w162rx_lucy.table RXLUCY no2 maybe 16.00",
+   "style": "pair_coeff hybrid/overlay multi/lucy/rx",
+   "native": "ERROR: Pair_multi_lucy_rx site2 is invalid."
+  },
+  {
+   "case": "w57oxdna2_dh_half",
+   "line": 19,
+   "text": "pair_coeff * * oxdna2/dh 0.1 0.2 0.815 half_charged_ends maybe",
+   "style": "pair_coeff hybrid/overlay oxdna2/dh",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w48sp2_hybrid",
+   "line": 21,
+   "text": "pair_coeff * * spin/exchange exchange 4.0 0.02726 0.2171 1.841 offset maybe",
+   "style": "pair_coeff hybrid/overlay spin/exchange",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w47spin_moving2",
+   "line": 14,
+   "text": "pair_coeff * * exchange 4.0 0.02726 0.2171 1.841 offset maybe",
+   "style": "pair_coeff spin/exchange",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w48sp2_biquad",
+   "line": 21,
+   "text": "pair_coeff * * biquadratic 4.0 0.05 0.03 1.48 0.07 0.02 1.9 offset maybe",
+   "style": "pair_coeff spin/exchange/biquadratic",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w88pair_compute_no_tail",
+   "line": 11,
+   "text": "pair_modify compute maybe tail yes",
+   "style": "pair_modify compute",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "lj_2types_tail",
+   "line": 15,
+   "text": "pair_modify mix arithmetic tail maybe",
+   "style": "pair_modify mix",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w88pair_neigh_trim",
+   "line": 12,
+   "text": "pair_modify neigh/trim maybe",
+   "style": "pair_modify neigh/trim",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w88pair_hybrid_tally",
+   "line": 15,
+   "text": "pair_modify pair lj/cut compute/tally maybe",
+   "style": "pair_modify pair",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 11,
+   "text": "pair_modify shift maybe",
+   "style": "pair_modify shift",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w130pr_e3b_tip4p2005",
+   "line": 9,
+   "text": "pair_modify table 0 table/disp 0 shift maybe",
+   "style": "pair_modify table",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w88pair_tail_lj_smooth",
+   "line": 11,
+   "text": "pair_modify tail maybe",
+   "style": "pair_modify tail",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w51bpm_pair_anh",
+   "line": 7,
+   "text": "pair_style bpm/spring anharmonic maybe",
+   "style": "pair_style bpm/spring",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w206sr_srp_min",
+   "line": 16,
+   "text": "pair_style hybrid dpd 1.0 1.0 373692 srp 0.8 * min exclude maybe",
+   "style": "pair_style hybrid",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 5,
+   "text": "pair_style lj/long/coul/long long maybe 2.5",
+   "style": "pair_style lj/long/coul/long",
+   "native": "ERROR: Illegal pair_style lj/long/coul/long command"
+  },
+  {
+   "case": "w55reax_water",
+   "line": 8,
+   "text": "pair_style reaxff NULL checkqeq maybe",
+   "style": "pair_style reaxff",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w9rerun_boxadd",
+   "line": 13,
+   "text": "read_dump w9rerun_readdump.dump 10 x y z vx vy vz ix iy iz box maybe add yes",
+   "style": "read_dump",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w143cf_reset_sort",
+   "line": 19,
+   "text": "reset_atoms id sort maybe",
+   "style": "reset_atoms",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w119amoeba_angle",
+   "line": 14,
+   "text": "special_bonds lj/coul 0.5 0.5 0.5 one/five maybe",
+   "style": "special_bonds",
+   "native": "ERROR: Illegal special_bonds command"
+  },
+  {
+   "case": "w71diel_nopbc_icc",
+   "line": 21,
+   "text": "thermo_modify flush maybe format float %.15g",
+   "style": "thermo_modify flush",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w104cf_reset_id",
+   "line": 12,
+   "text": "thermo_modify format float %.15g norm maybe",
+   "style": "thermo_modify format",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w92rig2d_pour",
+   "line": 28,
+   "text": "thermo_modify lost ignore norm maybe temp Tsphere format float %.15g",
+   "style": "thermo_modify lost",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w89fix_avetime_nonorm",
+   "line": 17,
+   "text": "thermo_modify norm maybe format float %.15g",
+   "style": "thermo_modify norm",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w19trigen_thermo",
+   "line": 10,
+   "text": "thermo_modify triclinic/general maybe",
+   "style": "thermo_modify triclinic/general",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w241to_lj_fold",
+   "line": 23,
+   "text": "third_order all regular 0.01 file w241to_lj_fold.dat fold maybe",
+   "style": "third_order",
+   "native": "ERROR: Illegal input for Third Order fold option"
+  },
+  {
+   "case": "w49hy_halt_min",
+   "line": 23,
+   "text": "timer timeout maybe",
+   "style": "timer",
+   "native": "ERROR: Illegal timeout time: timeout"
+  },
+  {
+   "case": "w47pkg_dtreset_metal",
+   "line": 13,
+   "text": "velocity all create 300 42534 mom maybe rot yes",
+   "style": "velocity create",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w85setup_vel_sum",
+   "line": 19,
+   "text": "velocity all ramp vz -1 1 z 1 3 units box sum maybe",
+   "style": "velocity ramp",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w26velbias_create_cs",
+   "line": 22,
+   "text": "velocity all scale 1427.0 bias maybe temp CStemp",
+   "style": "velocity scale",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w22peri_pmb_data",
+   "line": 11,
+   "text": "velocity all set 0.0 0.0 0.0 sum maybe units box",
+   "style": "velocity set",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  },
+  {
+   "case": "w85setup_vel_sum",
+   "line": 23,
+   "text": "velocity all zero linear sum maybe",
+   "style": "velocity zero",
+   "native": "ERROR: Expected boolean parameter instead of 'maybe' in input script or data file"
+  }
+ ]
+}

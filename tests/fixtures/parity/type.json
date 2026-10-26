@@ -1,0 +1,2115 @@
+{
+ "matrix": "type",
+ "about": "the atom type of each coefficient, mass and create_atoms line replaced by 99",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w225cm_angle_write_charmm",
+   "line": 12,
+   "text": "angle_coeff 99 50.0 109.5 5.0 1.8",
+   "style": "angle_coeff charmm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w35c2angle_coeff",
+   "line": 12,
+   "text": "angle_coeff 99 108.0 22.0 2.5 -0.4",
+   "style": "angle_coeff class2",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 10,
+   "text": "angle_coeff 99 110.0 40.0 -5.0 2.0 -0.5 0.1",
+   "style": "angle_coeff class2/p6",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w145pr_angle_class2xe",
+   "line": 18,
+   "text": "angle_coeff 99 110.77 41.453 -10.604 5.129",
+   "style": "angle_coeff class2xe",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_angle_cosine",
+   "line": 14,
+   "text": "angle_coeff 99 40.0",
+   "style": "angle_coeff cosine",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 10,
+   "text": "angle_coeff 99 1.978350 4 120.0",
+   "style": "angle_coeff cosine/buck6d",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_angle_cosine_delta",
+   "line": 14,
+   "text": "angle_coeff 99 40.0 109.5",
+   "style": "angle_coeff cosine/delta",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_angle_cosine_periodic",
+   "line": 14,
+   "text": "angle_coeff 99 20.0 1 3",
+   "style": "angle_coeff cosine/periodic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_angle_cosine_shift",
+   "line": 14,
+   "text": "angle_coeff 99 10.0 109.5",
+   "style": "angle_coeff cosine/shift",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w217xb_angle_cosine_shift_exp",
+   "line": 16,
+   "text": "angle_coeff 99 10.0 110.0 2.0",
+   "style": "angle_coeff cosine/shift/exp",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_angle_cosine_squared",
+   "line": 14,
+   "text": "angle_coeff 99 40.0 109.5",
+   "style": "angle_coeff cosine/squared",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w18angle_csr",
+   "line": 14,
+   "text": "angle_coeff 99 40.0 109.5",
+   "style": "angle_coeff cosine/squared/restricted",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 15,
+   "text": "angle_coeff 99 200.0 100.0 100.0 1.25 1.25 107.0",
+   "style": "angle_coeff cross",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w235mx_angle_dipole",
+   "line": 13,
+   "text": "angle_coeff 99 2.0 60.0",
+   "style": "angle_coeff dipole",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w1ba_angle_fourier",
+   "line": 14,
+   "text": "angle_coeff 99 30.0 0.5 0.3 0.2",
+   "style": "angle_coeff fourier",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_angle_fourier_simple",
+   "line": 14,
+   "text": "angle_coeff 99 20.0 -1.0 2.0",
+   "style": "angle_coeff fourier/simple",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 14,
+   "text": "angle_coeff 99 1.0 2 1.0 0.3 110.0 1.0 0.3 132.0",
+   "style": "angle_coeff gaussian",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 10,
+   "text": "angle_coeff 99 10.0 110.0",
+   "style": "angle_coeff harmonic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w54accel_bonded",
+   "line": 18,
+   "text": "angle_coeff 99 30.0 110.0",
+   "style": "angle_coeff harmonic/omp",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w104cf_angle_hybrid_p6",
+   "line": 14,
+   "text": "angle_coeff 99 class2/p6 109.5 40.0 -10.0 5.0 -2.0 1.0",
+   "style": "angle_coeff hybrid class2/p6",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w104cf_angle_hybrid_p6",
+   "line": 17,
+   "text": "angle_coeff 99 cosine 25.0",
+   "style": "angle_coeff hybrid cosine",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w16lepton_bonded",
+   "line": 14,
+   "text": "angle_coeff 99 109.5 \"40.0*theta^2 + 2*sin(theta)\"",
+   "style": "angle_coeff lepton",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 11,
+   "text": "angle_coeff 99 buckling C 10 10 10",
+   "style": "angle_coeff mesocnt",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w18angle_mm3",
+   "line": 14,
+   "text": "angle_coeff 99 40.0 109.5",
+   "style": "angle_coeff mm3",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w217xb_angle_mwlc",
+   "line": 16,
+   "text": "angle_coeff 99 2.0 1.0 1.5 300.0",
+   "style": "angle_coeff mwlc",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_angle_quartic",
+   "line": 14,
+   "text": "angle_coeff 99 109.5 40.0 -10.0 5.0",
+   "style": "angle_coeff quartic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 14,
+   "text": "angle_coeff 99 0.0 180.0",
+   "style": "angle_coeff sdk",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 14,
+   "text": "angle_coeff 99 0.0 180.0",
+   "style": "angle_coeff spica",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w216tb_angle_linear",
+   "line": 10,
+   "text": "angle_coeff 99 w216tb_angle.table ANG1",
+   "style": "angle_coeff table",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w119amoeba_atoms",
+   "line": 16,
+   "text": "angle_coeff 99",
+   "style": "angle_coeff zero",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 27,
+   "text": "bond_coeff 99 pmb 1.6863e13 0.0015001 0.0005 0.25",
+   "style": "bond_coeff bpm/peri",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w53bpm_rot_chain",
+   "line": 13,
+   "text": "bond_coeff 99 1.0 0 0 0 0.5 1.0 1.0 1.0 0.0 0.0 0.0 0.0",
+   "style": "bond_coeff bpm/rotational",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w51bpm_spring_compress",
+   "line": 10,
+   "text": "bond_coeff 99 1.0 0.1 0.5",
+   "style": "bond_coeff bpm/spring",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w59bpm_plastic",
+   "line": 23,
+   "text": "bond_coeff 99 1.0 0.5 0.2 0.1",
+   "style": "bond_coeff bpm/spring/plastic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w59bpm_zero",
+   "line": 23,
+   "text": "bond_coeff 99 0.2",
+   "style": "bond_coeff bpm/zero",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w35c2angle_coeff",
+   "line": 10,
+   "text": "bond_coeff 99 1.02 95.0 -25.0 6.0",
+   "style": "bond_coeff class2",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_bond_fene_stretched",
+   "line": 9,
+   "text": "bond_coeff 99 30.0 1.5 1.0 1.0",
+   "style": "bond_coeff fene",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_bond_fene_expand_stretched",
+   "line": 9,
+   "text": "bond_coeff 99 30.0 1.4 1.0 1.0 0.1",
+   "style": "bond_coeff fene/expand",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w217xb_bond_fene_nm",
+   "line": 14,
+   "text": "bond_coeff 99 30.0 2.0 1.0 1.6 12 6",
+   "style": "bond_coeff fene/nm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 12,
+   "text": "bond_coeff 99 1.0 2 1.0 0.25 1.05 1.0 0.25 1.40",
+   "style": "bond_coeff gaussian",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_bond_gromos",
+   "line": 12,
+   "text": "bond_coeff 99 80.0 1.05",
+   "style": "bond_coeff gromos",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 8,
+   "text": "bond_coeff 99 100.0 1.0",
+   "style": "bond_coeff harmonic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w54accel_bonded",
+   "line": 15,
+   "text": "bond_coeff 99 80.0 1.1",
+   "style": "bond_coeff harmonic/omp",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w217xb_harmonic_restrain",
+   "line": 14,
+   "text": "bond_coeff 99 50.0",
+   "style": "bond_coeff harmonic/restrain",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift",
+   "line": 12,
+   "text": "bond_coeff 99 10.0 1.05 2.0",
+   "style": "bond_coeff harmonic/shift",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift_cut",
+   "line": 12,
+   "text": "bond_coeff 99 10.0 1.05 2.0",
+   "style": "bond_coeff harmonic/shift/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 55,
+   "text": "bond_coeff 99 bpm/spring 1.0 1.0 1.0",
+   "style": "bond_coeff hybrid bpm/spring",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 10,
+   "text": "bond_coeff 99 harmonic 120.0 1.05",
+   "style": "bond_coeff hybrid harmonic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 56,
+   "text": "bond_coeff 99 rheo/shell 0.2 0.2 0.1",
+   "style": "bond_coeff hybrid rheo/shell",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w16lepton_vref",
+   "line": 10,
+   "text": "bond_coeff 99 1.05 \"120.0*r^2 + 10*r^3\"",
+   "style": "bond_coeff lepton",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 9,
+   "text": "bond_coeff 99 C 10 10 16",
+   "style": "bond_coeff mesocnt",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w118yaff_bond_mm3",
+   "line": 13,
+   "text": "bond_coeff 99 120.0 1.05",
+   "style": "bond_coeff mm3",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_bond_morse",
+   "line": 12,
+   "text": "bond_coeff 99 1.0 2.0 1.05",
+   "style": "bond_coeff morse",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ba_bond_nonlinear",
+   "line": 12,
+   "text": "bond_coeff 99 50.0 1.05 1.5",
+   "style": "bond_coeff nonlinear",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w235mx_quartic_break",
+   "line": 31,
+   "text": "bond_coeff 99 1200 -0.55 0.25 1.3 34.6878",
+   "style": "bond_coeff quartic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 14,
+   "text": "bond_coeff 99 1.1 50.0 -10.0 5.0 2.0 0.3",
+   "style": "bond_coeff quartic/exp",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w235mx_bond_special",
+   "line": 36,
+   "text": "bond_coeff 99 0.5 0.8",
+   "style": "bond_coeff special",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w216tb_bond_linear",
+   "line": 10,
+   "text": "bond_coeff 99 w216tb_bond.table BLIN",
+   "style": "bond_coeff table",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w119amoeba_atoms",
+   "line": 15,
+   "text": "bond_coeff 99",
+   "style": "bond_coeff zero",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w36mol_diam",
+   "line": 14,
+   "text": "create_atoms 99 single 5 5 5 mol md 12345 units box",
+   "style": "create_atoms 0",
+   "native": "ERROR: Invalid atom type in create_atoms mol command"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 7,
+   "text": "create_atoms 99 box",
+   "style": "create_atoms 1",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 24,
+   "text": "create_atoms 99 single 9 3 0.5",
+   "style": "create_atoms 10",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 25,
+   "text": "create_atoms 99 single 1 5 0.5",
+   "style": "create_atoms 11",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 26,
+   "text": "create_atoms 99 single 3 5 0.5",
+   "style": "create_atoms 12",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 27,
+   "text": "create_atoms 99 single 5 5 0.5",
+   "style": "create_atoms 13",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 28,
+   "text": "create_atoms 99 single 7 5 0.5",
+   "style": "create_atoms 14",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 29,
+   "text": "create_atoms 99 single 9 5 0.5",
+   "style": "create_atoms 15",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 30,
+   "text": "create_atoms 99 single 1 7 0.5",
+   "style": "create_atoms 16",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 31,
+   "text": "create_atoms 99 single 3 7 0.5",
+   "style": "create_atoms 17",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 32,
+   "text": "create_atoms 99 single 5 7 0.5",
+   "style": "create_atoms 18",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 33,
+   "text": "create_atoms 99 single 7 7 0.5",
+   "style": "create_atoms 19",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w29dump_image",
+   "line": 7,
+   "text": "create_atoms 99 single 5.0 7.0 5.0",
+   "style": "create_atoms 2",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 34,
+   "text": "create_atoms 99 single 9 7 0.5",
+   "style": "create_atoms 20",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 35,
+   "text": "create_atoms 99 single 1 9 0.5",
+   "style": "create_atoms 21",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 36,
+   "text": "create_atoms 99 single 3 9 0.5",
+   "style": "create_atoms 22",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 37,
+   "text": "create_atoms 99 single 5 9 0.5",
+   "style": "create_atoms 23",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 38,
+   "text": "create_atoms 99 single 7 9 0.5",
+   "style": "create_atoms 24",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 39,
+   "text": "create_atoms 99 single 9 9 0.5",
+   "style": "create_atoms 25",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w38nb3b_screened_random",
+   "line": 11,
+   "text": "create_atoms 99 random 20 9133 box overlap 1.6 maxtry 200",
+   "style": "create_atoms 3",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w79srd_overlap",
+   "line": 37,
+   "text": "create_atoms 99 region plane",
+   "style": "create_atoms 4",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 19,
+   "text": "create_atoms 99 single 9 1 0.5",
+   "style": "create_atoms 5",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 20,
+   "text": "create_atoms 99 single 1 3 0.5",
+   "style": "create_atoms 6",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 21,
+   "text": "create_atoms 99 single 3 3 0.5",
+   "style": "create_atoms 7",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 22,
+   "text": "create_atoms 99 single 5 3 0.5",
+   "style": "create_atoms 8",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 23,
+   "text": "create_atoms 99 single 7 3 0.5",
+   "style": "create_atoms 9",
+   "native": "ERROR: Invalid atom type in create_atoms command"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 12,
+   "text": "dihedral_coeff 99 1.3 3 45 0.0",
+   "style": "dihedral_coeff charmm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w13dihcharmm_fsw",
+   "line": 11,
+   "text": "dihedral_coeff 99 0.2 1 180 1.0",
+   "style": "dihedral_coeff charmmfsw",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w35c2dih_coeff",
+   "line": 12,
+   "text": "dihedral_coeff 99 100.0 75.0 70.0 100.0 80.0 60.0",
+   "style": "dihedral_coeff class2",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 25,
+   "text": "dihedral_coeff 99 100.0 75.0 70.0 100.0 80.0 60.0",
+   "style": "dihedral_coeff class2xe",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w76dih_fine_cse",
+   "line": 12,
+   "text": "dihedral_coeff 99 2.0 30 3.0",
+   "style": "dihedral_coeff cosine/shift/exp",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 17,
+   "text": "dihedral_coeff 99 0.0 120",
+   "style": "dihedral_coeff cosine/squared/restricted",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w76dih_fine_fourier",
+   "line": 12,
+   "text": "dihedral_coeff 99 2 0.8 1 30 0.5 3 -60",
+   "style": "dihedral_coeff fourier",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 12,
+   "text": "dihedral_coeff 99 1.0 1 0",
+   "style": "dihedral_coeff harmonic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 12,
+   "text": "dihedral_coeff 99 0.9 0.4 -0.6",
+   "style": "dihedral_coeff helix",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 17,
+   "text": "dihedral_coeff 99 harmonic 1.5 -1 3",
+   "style": "dihedral_coeff hybrid harmonic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 18,
+   "text": "dihedral_coeff 99 zero",
+   "style": "dihedral_coeff hybrid zero",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w16lepton_bonded",
+   "line": 16,
+   "text": "dihedral_coeff 99 \"1.5*(1+cos(2*phi)) + 0.1*phi\"",
+   "style": "dihedral_coeff lepton",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w76dih_fine_mh",
+   "line": 12,
+   "text": "dihedral_coeff 99 1.1 -0.7 0.45 0.3 -0.2",
+   "style": "dihedral_coeff multi/harmonic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w76dih_fine_nharm",
+   "line": 12,
+   "text": "dihedral_coeff 99 4 0.9 -0.4 0.25 0.1",
+   "style": "dihedral_coeff nharmonic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w76dih_fine_opls",
+   "line": 12,
+   "text": "dihedral_coeff 99 1.2 -0.3 0.6 0.1",
+   "style": "dihedral_coeff opls",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w76dih_fine_quad",
+   "line": 12,
+   "text": "dihedral_coeff 99 0.8 100",
+   "style": "dihedral_coeff quadratic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w217xb_dihedral_spherical",
+   "line": 19,
+   "text": "dihedral_coeff 99 2 2.861 1 124 1 1 90.0 0 1 90.0 0 -0.5 2 60 0.5 2 45 1 1 30 0.2",
+   "style": "dihedral_coeff spherical",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w216tb_dihedral_linear_nof",
+   "line": 10,
+   "text": "dihedral_coeff 99 w216tb_dihedral.table DNOF",
+   "style": "dihedral_coeff table",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w216tb_dihedral_cut_spline",
+   "line": 11,
+   "text": "dihedral_coeff 99 aat 1.5 95.0 125.0 w216tb_dihedral.table DNOF",
+   "style": "dihedral_coeff table/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w225cm_write_coeff_class2",
+   "line": 32,
+   "text": "improper_coeff 99 100.0 0",
+   "style": "improper_coeff class2",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w1imp_cossq",
+   "line": 17,
+   "text": "improper_coeff 99 4.0 15.0",
+   "style": "improper_coeff cossq",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w120cf_improper_cvff_planar",
+   "line": 11,
+   "text": "improper_coeff 99 150.0 1 2",
+   "style": "improper_coeff cvff",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w1imp_distance",
+   "line": 17,
+   "text": "improper_coeff 99 30.0 10.0",
+   "style": "improper_coeff distance",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 18,
+   "text": "improper_coeff 99 25.0 0.15",
+   "style": "improper_coeff distharm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w87bond_fourier_default",
+   "line": 17,
+   "text": "improper_coeff 99 20 1 1 0",
+   "style": "improper_coeff fourier",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w120cf_improper_planar",
+   "line": 11,
+   "text": "improper_coeff 99 150.0 10.0",
+   "style": "improper_coeff harmonic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 20,
+   "text": "improper_coeff 99 harmonic 12.0 20.0",
+   "style": "improper_coeff hybrid harmonic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 21,
+   "text": "improper_coeff 99 none",
+   "style": "improper_coeff hybrid none",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w120cf_improper_inversion_planar",
+   "line": 11,
+   "text": "improper_coeff 99 150.0 10.0",
+   "style": "improper_coeff inversion/harmonic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w217xb_improper_ring",
+   "line": 20,
+   "text": "improper_coeff 99 80.0 70.5",
+   "style": "improper_coeff ring",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w18dihimp_sqdistharm",
+   "line": 18,
+   "text": "improper_coeff 99 25.0 0.0225",
+   "style": "improper_coeff sqdistharm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w87bond_umbrella_flip_w0zero",
+   "line": 17,
+   "text": "improper_coeff 99 8 0",
+   "style": "improper_coeff umbrella",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w85setup_ca_overlap",
+   "line": 7,
+   "text": "mass 99 1.0",
+   "style": "mass",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w10atm_pure",
+   "line": 21,
+   "text": "pair_coeff 99 1 1 0.064",
+   "style": "pair_coeff atm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w219xp_beck",
+   "line": 15,
+   "text": "pair_coeff 99 1 1.0 0.5 1.0 2.0 0.5",
+   "style": "pair_coeff beck",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w48bd_one_body",
+   "line": 12,
+   "text": "pair_coeff 99 2 0.8 1.1",
+   "style": "pair_coeff body/nparticle",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1buck_born",
+   "line": 22,
+   "text": "pair_coeff 99 2 0.8 0.12 1.05 0.8 0.4",
+   "style": "pair_coeff born",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w18borncoul_dsf",
+   "line": 23,
+   "text": "pair_coeff 99 1 6.08 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/dsf",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w21borncs_dsf",
+   "line": 10,
+   "text": "pair_coeff 99 1 6.08 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/dsf/cs",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w9pair_born_cs",
+   "line": 9,
+   "text": "pair_coeff 99 1 6.08 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/long/cs",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w209ms_born",
+   "line": 25,
+   "text": "pair_coeff 99 1 0.263690 0.317 2.340 1.048553 -0.49935",
+   "style": "pair_coeff born/coul/msm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w18borncoul_wolf",
+   "line": 23,
+   "text": "pair_coeff 99 1 6.08 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/wolf",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w21borncs_wolf",
+   "line": 10,
+   "text": "pair_coeff 99 1 6.08 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/wolf/cs",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w219xp_born_gauss",
+   "line": 16,
+   "text": "pair_coeff 99 1 2.0 2.0 0.5 1.5 1.0",
+   "style": "pair_coeff born/gauss",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w51bpm_pair_anh",
+   "line": 8,
+   "text": "pair_coeff 99 1 1.0 1.0 0.5 2.0",
+   "style": "pair_coeff bpm/spring",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w1buck_buck",
+   "line": 22,
+   "text": "pair_coeff 99 2 800.0 0.16 1.2 2.2",
+   "style": "pair_coeff buck",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1buck_buck_coul_cut",
+   "line": 24,
+   "text": "pair_coeff 99 2 700.0 0.155 1.1 2.3 2.8",
+   "style": "pair_coeff buck/coul/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w3coullong_buck",
+   "line": 23,
+   "text": "pair_coeff 99 2 45000.0 0.28 850.0",
+   "style": "pair_coeff buck/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w9pair_buck_cs",
+   "line": 9,
+   "text": "pair_coeff 99 1 1000.0 0.25 20.0",
+   "style": "pair_coeff buck/coul/long/cs",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w209ms_buck",
+   "line": 25,
+   "text": "pair_coeff 99 1 488.0 0.30 1.0",
+   "style": "pair_coeff buck/coul/msm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w253pd_buck",
+   "line": 17,
+   "text": "pair_coeff 99 1 10.0 0.35 1.0",
+   "style": "pair_coeff buck/long/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w219xp_buck_mdf",
+   "line": 15,
+   "text": "pair_coeff 99 1 5.0 0.3 0.02",
+   "style": "pair_coeff buck/mdf",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 15,
+   "text": "pair_coeff 99 1 1200.0 3.3 600.0 5.0 0.7",
+   "style": "pair_coeff buck6d/coul/gauss/dsf",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-4)"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 17,
+   "text": "pair_coeff 99 1 1200.0 3.3 600.0 5.0 0.7",
+   "style": "pair_coeff buck6d/coul/gauss/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-4)"
+  },
+  {
+   "case": "w5colloid_mix",
+   "line": 21,
+   "text": "pair_coeff 99 1 144.0 1.0 5.0 5.0 12.0",
+   "style": "pair_coeff colloid",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w219xp_cosine_squared",
+   "line": 15,
+   "text": "pair_coeff 99 1 1.0 1.0 2.0",
+   "style": "pair_coeff cosine/squared",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1coul_cut",
+   "line": 24,
+   "text": "pair_coeff 99 2 2.0",
+   "style": "pair_coeff coul/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w69fep_coulcutsoft",
+   "line": 18,
+   "text": "pair_coeff 99 1 0.5",
+   "style": "pair_coeff coul/cut/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w69fep_gapsys_coul",
+   "line": 18,
+   "text": "pair_coeff 99 1 0.5",
+   "style": "pair_coeff coul/cut/soft/gapsys",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1coul_data",
+   "line": 31,
+   "text": "pair_coeff 99 2 2.0",
+   "style": "pair_coeff coul/debye",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w49pb_coul_diel_dimer",
+   "line": 14,
+   "text": "pair_coeff 99 1 78.0 1.375 0.112",
+   "style": "pair_coeff coul/diel",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w69fep_coullongsoft",
+   "line": 18,
+   "text": "pair_coeff 99 1 0.5",
+   "style": "pair_coeff coul/long/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w219xp_coul_slater_cut",
+   "line": 18,
+   "text": "pair_coeff 99 2 2.2",
+   "style": "pair_coeff coul/slater/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 19,
+   "text": "pair_coeff 99 1 78 4.5 no 1",
+   "style": "pair_coeff dpd/coul/slater/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w319dpd_ext_tstat_ramp",
+   "line": 12,
+   "text": "pair_coeff 99 1 20.0 10.0 0.5 0.5 10.0",
+   "style": "pair_coeff dpd/ext/tstat",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w95dreact_dpdvv_1000",
+   "line": 15,
+   "text": "pair_coeff 99 1 0.075 0.022 8.60",
+   "style": "pair_coeff dpd/fdt",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 16,
+   "text": "pair_coeff 99 1 0.075 0.022 3.2E-05 10.00",
+   "style": "pair_coeff dpd/fdt/energy",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w77dpd_noise_tstat_spce",
+   "line": 12,
+   "text": "pair_coeff 99 1 10.0 10.0",
+   "style": "pair_coeff dpd/tstat",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w235mx_dsmc_gas",
+   "line": 17,
+   "text": "pair_coeff 99 1 1.0",
+   "style": "pair_coeff dsmc",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w47ls_cucg",
+   "line": 9,
+   "text": "pair_coeff 99 1 Cu_u3.eam",
+   "style": "pair_coeff eam",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w110effecp_sic",
+   "line": 11,
+   "text": "pair_coeff 99 s 0.320852 2.283269 0.814857",
+   "style": "pair_coeff eff/cut",
+   "native": "ERROR: Neighbor list overflow, boost neigh_modify one",
+   "skip": "native reads ecp_type[99] past its per-type array for the ECP line (the engine refuses the type)"
+  },
+  {
+   "case": "w1misc_gauss",
+   "line": 22,
+   "text": "pair_coeff 99 2 1.2 0.8 2.2",
+   "style": "pair_coeff gauss",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w49pb_gauss_cut_dimer",
+   "line": 14,
+   "text": "pair_coeff 99 1 1.5 3.2 0.7 6.0",
+   "style": "pair_coeff gauss/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w431rigidnh_ellipsoid",
+   "line": 17,
+   "text": "pair_coeff 99 1 1.0 1.0 1.0 0.5 0.2 1.0 0.5 0.2",
+   "style": "pair_coeff gayberne",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w53bpm_impact_cut",
+   "line": 12,
+   "text": "pair_coeff 99 1",
+   "style": "pair_coeff gran/hooke/history",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w38heat_mixed_none",
+   "line": 21,
+   "text": "pair_coeff 99 1 hooke 2000.0 0.0 tangential linear_nohistory 0.0 0.0 heat none",
+   "style": "pair_coeff granular",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w17harmcut",
+   "line": 12,
+   "text": "pair_coeff 99 1 5.0 1.3",
+   "style": "pair_coeff harmonic/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w225cm_write_coeff_hybrid",
+   "line": 13,
+   "text": "pair_coeff 99 2 coul/cut 9.5",
+   "style": "pair_coeff hybrid coul/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w104cf_sds_hybrid",
+   "line": 11,
+   "text": "pair_coeff 99 3 coul/long",
+   "style": "pair_coeff hybrid coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w206sr_srp_mid",
+   "line": 17,
+   "text": "pair_coeff 99 1 dpd 60.0 4.5 1.0",
+   "style": "pair_coeff hybrid dpd",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w174mx_pn_hybrid",
+   "line": 28,
+   "text": "pair_coeff 99 1 gran/hooke/history",
+   "style": "pair_coeff hybrid gran/hooke/history",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 12,
+   "text": "pair_coeff 99 1 granular hooke 4000.0 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity",
+   "style": "pair_coeff hybrid granular",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w225cm_write_coeff_hybrid",
+   "line": 11,
+   "text": "pair_coeff 99 1 lj/cut 0.10 3.40",
+   "style": "pair_coeff hybrid lj/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w109tip_hybrid",
+   "line": 10,
+   "text": "pair_coeff 99 1 lj/cut/coul/long 0.1852 3.1589",
+   "style": "pair_coeff hybrid lj/cut/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w69fep_ccco",
+   "line": 28,
+   "text": "pair_coeff 99 7 lj/cut/coul/long/soft 0.000000 1.870829 1.0",
+   "style": "pair_coeff hybrid lj/cut/coul/long/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-8)"
+  },
+  {
+   "case": "w109tip_hybrid",
+   "line": 11,
+   "text": "pair_coeff 99 2 lj/cut/tip4p/long 0.0 1.0",
+   "style": "pair_coeff hybrid lj/cut/tip4p/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w109tip_fep",
+   "line": 18,
+   "text": "pair_coeff 99 3 lj/cut/tip4p/long/soft 0.1628 3.1644 1.0",
+   "style": "pair_coeff hybrid lj/cut/tip4p/long/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-4)"
+  },
+  {
+   "case": "w104cf_sds_hybrid",
+   "line": 12,
+   "text": "pair_coeff 99 1 lj/sdk lj9_6 0.7000 4.3210",
+   "style": "pair_coeff hybrid lj/sdk",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w417born_pair",
+   "line": 65,
+   "text": "pair_coeff 99 2 lj96/cut 0.9 1.05",
+   "style": "pair_coeff hybrid lj96/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w88pair_hybrid_tally",
+   "line": 14,
+   "text": "pair_coeff 99 2 morse 0.1 1.5 1.2",
+   "style": "pair_coeff hybrid morse",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 14,
+   "text": "pair_coeff 99 2 none",
+   "style": "pair_coeff hybrid none",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w342press_hybrid_types",
+   "line": 12,
+   "text": "pair_coeff 99 2 soft 10.0",
+   "style": "pair_coeff hybrid soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w206sr_srp_mid",
+   "line": 19,
+   "text": "pair_coeff 99 2 srp 100.0",
+   "style": "pair_coeff hybrid srp",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 13,
+   "text": "pair_coeff 99 2 surf/granular hooke 4000.0 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity",
+   "style": "pair_coeff hybrid surf/granular",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "hybrid_molecular",
+   "line": 12,
+   "text": "pair_coeff 99 3 lj/cut 1 0.8 1.0",
+   "style": "pair_coeff hybrid/molecular lj/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w10atm_overlay",
+   "line": 22,
+   "text": "pair_coeff 99 1 atm 1 0.064",
+   "style": "pair_coeff hybrid/overlay atm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w166px_bondval_bto",
+   "line": 21,
+   "text": "pair_coeff 99 1 bondval 0.0000000 5.0000000 0.5973900 2.0000000 8.0000000",
+   "style": "pair_coeff hybrid/overlay bondval",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w166px_bondval_bto",
+   "line": 27,
+   "text": "pair_coeff 99 1 bondval/vec 0.0000000 5.0000000 0.0842900 0.1156100 8.0000000",
+   "style": "pair_coeff hybrid/overlay bondval/vec",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w38nb3b_napo3",
+   "line": 24,
+   "text": "pair_coeff 99 1 buck 5.093669 0.905598 0.0",
+   "style": "pair_coeff hybrid/overlay buck",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w99phq_quartz_qbmsst",
+   "line": 44,
+   "text": "pair_coeff 99 1 buck/coul/long 0.0 1.0 0.0",
+   "style": "pair_coeff hybrid/overlay buck/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w49pb_gauss_diel_md",
+   "line": 30,
+   "text": "pair_coeff 99 1 coul/diel 78.0 1.375 0.112",
+   "style": "pair_coeff hybrid/overlay coul/diel",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w102il_ilp_grhbn_tersoff",
+   "line": 17,
+   "text": "pair_coeff 99 1 coul/shield 0.70",
+   "style": "pair_coeff hybrid/overlay coul/shield",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w72drude_eglycol0",
+   "line": 43,
+   "text": "pair_coeff 99 4 coul/tt 4.5 1.0",
+   "style": "pair_coeff hybrid/overlay coul/tt",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-6)"
+  },
+  {
+   "case": "w102il_saip_gold_gr",
+   "line": 14,
+   "text": "pair_coeff 99 1 eam Au_u3.eam",
+   "style": "pair_coeff hybrid/overlay eam",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w49pb_gauss_diel_md",
+   "line": 27,
+   "text": "pair_coeff 99 1 gauss/cut 0.2 3.1 0.6 3.4",
+   "style": "pair_coeff hybrid/overlay gauss/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w14hbond_lj",
+   "line": 13,
+   "text": "pair_coeff 99 3 hbond/dreiding/lj 2 i 2.0 2.2",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/lj",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-5)"
+  },
+  {
+   "case": "w14hbond_offset",
+   "line": 14,
+   "text": "pair_coeff 99 3 hbond/dreiding/lj/angleoffset 2 i 2.0 2.2",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/lj/angleoffset",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-5)"
+  },
+  {
+   "case": "w14hbond_morse",
+   "line": 13,
+   "text": "pair_coeff 99 3 hbond/dreiding/morse 2 i 3.0 1.2 2.5",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/morse",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-5)"
+  },
+  {
+   "case": "w14hbond_offset",
+   "line": 15,
+   "text": "pair_coeff 99 5 hbond/dreiding/morse/angleoffset 2 i 2.0 1.5 2.2 2 3.0 4.5 90.0 160.0",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/morse/angleoffset",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-5)"
+  },
+  {
+   "case": "w102il_kcz_bilayer",
+   "line": 14,
+   "text": "pair_coeff 99 2 kolmogorov/crespi/z CC.KC C C",
+   "style": "pair_coeff hybrid/overlay kolmogorov/crespi/z",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w102il_leb_2particles",
+   "line": 17,
+   "text": "pair_coeff 99 2 lebedeva/z CC.Lebedeva C C",
+   "style": "pair_coeff hybrid/overlay lebedeva/z",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w50bd_charmm_morse",
+   "line": 17,
+   "text": "pair_coeff 99 1 lj/charmm/coul/long 0.1 3.0 0.05 3.5",
+   "style": "pair_coeff hybrid/overlay lj/charmm/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w37respa_hybrid",
+   "line": 12,
+   "text": "pair_coeff 99 3 lj/cut 0.8 1.0",
+   "style": "pair_coeff hybrid/overlay lj/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w371tgnh_couple_xy",
+   "line": 24,
+   "text": "pair_coeff 99 1 lj/cut/coul/cut 0.065997 3.500000",
+   "style": "pair_coeff hybrid/overlay lj/cut/coul/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-5)"
+  },
+  {
+   "case": "w49pb_gauss_diel_example",
+   "line": 26,
+   "text": "pair_coeff 99 1 lj/cut/coul/long 0.5 1.775 3.268",
+   "style": "pair_coeff hybrid/overlay lj/cut/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w130pr_e3b_tip4p2005",
+   "line": 14,
+   "text": "pair_coeff 99 1 lj/cut/tip4p/long 0.1852 3.1589",
+   "style": "pair_coeff hybrid/overlay lj/cut/tip4p/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w104cf_sds_overlay_unset",
+   "line": 13,
+   "text": "pair_coeff 99 1 lj/sdk lj9_6 0.7000 4.3210",
+   "style": "pair_coeff hybrid/overlay lj/sdk",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 17,
+   "text": "pair_coeff 99 1 mdpd -40 25 18.0 1.0 0.75",
+   "style": "pair_coeff hybrid/overlay mdpd",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 16,
+   "text": "pair_coeff 99 1 mdpd/rhosum 0.75",
+   "style": "pair_coeff hybrid/overlay mdpd/rhosum",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w341press_pair_hybrid",
+   "line": 16,
+   "text": "pair_coeff 99 2 morse 0.3 2.0 1.1",
+   "style": "pair_coeff hybrid/overlay morse",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "hybrid_overlay_coul",
+   "line": 32,
+   "text": "pair_coeff 99 3 none",
+   "style": "pair_coeff hybrid/overlay none",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w57oxdna_hbond_duplex",
+   "line": 20,
+   "text": "pair_coeff 99 4 oxdna/hbond seqav 1.077 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45",
+   "style": "pair_coeff hybrid/overlay oxdna/hbond",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-4)"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 21,
+   "text": "pair_coeff 99 4 oxdna2/hbond seqav 1.0678 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45",
+   "style": "pair_coeff hybrid/overlay oxdna2/hbond",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-4)"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 22,
+   "text": "pair_coeff 99 4 oxdna3/hbond oxdna3_lj.cgdna",
+   "style": "pair_coeff hybrid/overlay oxdna3/hbond",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-4)"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 21,
+   "text": "pair_coeff 99 4 oxrna2/hbond seqdep 0.870439 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45",
+   "style": "pair_coeff hybrid/overlay oxrna2/hbond",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-4)"
+  },
+  {
+   "case": "w48pb_pedone_melt",
+   "line": 20,
+   "text": "pair_coeff 99 2 pedone 0.030211 2.241334 2.923245 5.0",
+   "style": "pair_coeff hybrid/overlay pedone",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w49mt_spce_sw",
+   "line": 11,
+   "text": "pair_coeff 99 1 table w49mt_table_CG_CG.txt VOTCA",
+   "style": "pair_coeff hybrid/overlay table",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w371tgnh_couple_xy",
+   "line": 31,
+   "text": "pair_coeff 99 * thole 1.368000",
+   "style": "pair_coeff hybrid/overlay thole",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-5)"
+  },
+  {
+   "case": "hybrid_scaled",
+   "line": 22,
+   "text": "pair_coeff 99 2 lj/cut 2 0.7 1.1",
+   "style": "pair_coeff hybrid/scaled lj/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w219xp_lennard_mdf",
+   "line": 15,
+   "text": "pair_coeff 99 1 4.0 4.0",
+   "style": "pair_coeff lennard/mdf",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w16lepton_bonded",
+   "line": 11,
+   "text": "pair_coeff 99 3 \"0.8*(sig/r)^6; sig=1.0\" 1.8",
+   "style": "pair_coeff lepton",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w16lepton_coul",
+   "line": 19,
+   "text": "pair_coeff 99 1 \"qi*qj/r + 4.0*((1.0/r)^12-(1.0/r)^6)\" 2.0",
+   "style": "pair_coeff lepton/coul",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w16lepton_sphere",
+   "line": 16,
+   "text": "pair_coeff 99 * \"k*((r-r0)^2*step(r0-r)); k=20; r0=radi+radj\" 2.0",
+   "style": "pair_coeff lepton/sphere",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w79srd_line",
+   "line": 40,
+   "text": "pair_coeff 99 1 1.0 1.0 1.0 1.0 2.5",
+   "style": "pair_coeff line/lj",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w13dihcharmm_charmm",
+   "line": 15,
+   "text": "pair_coeff 99 1 0.1 3.0 0.05 3.5",
+   "style": "pair_coeff lj/charmm/coul/charmm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w3charmm_implicit",
+   "line": 22,
+   "text": "pair_coeff 99 1 0.238 3.405",
+   "style": "pair_coeff lj/charmm/coul/charmm/implicit",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w13dihcharmm_long",
+   "line": 15,
+   "text": "pair_coeff 99 1 0.1 3.0 0.05 3.5",
+   "style": "pair_coeff lj/charmm/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w69fep_charmmsoft",
+   "line": 18,
+   "text": "pair_coeff 99 1 1.0 1.0 0.5",
+   "style": "pair_coeff lj/charmm/coul/long/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w209ms_charmm_water",
+   "line": 9,
+   "text": "pair_coeff 99 1 0.1852 3.1589",
+   "style": "pair_coeff lj/charmm/coul/msm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 11,
+   "text": "pair_coeff 99 1 0.1 3.0 0.05 3.5",
+   "style": "pair_coeff lj/charmmfsw/coul/charmmfsh",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 14,
+   "text": "pair_coeff 99 1 0.1 3.0 0.05 3.5",
+   "style": "pair_coeff lj/charmmfsw/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ljx_class2",
+   "line": 21,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/class2",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w51cs_c2cut_dimer",
+   "line": 33,
+   "text": "pair_coeff 99 1 1.0 1.0 9.0 8.0",
+   "style": "pair_coeff lj/class2/coul/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w69fep_class2cutsoft",
+   "line": 18,
+   "text": "pair_coeff 99 1 1.0 1.0 0.5",
+   "style": "pair_coeff lj/class2/coul/cut/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w51cs_c2long_run",
+   "line": 23,
+   "text": "pair_coeff 99 1 0.4 3.0",
+   "style": "pair_coeff lj/class2/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w17soft_class2",
+   "line": 18,
+   "text": "pair_coeff 99 1 1.0 1.0 0.5",
+   "style": "pair_coeff lj/class2/coul/long/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w69fep_class2soft",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 1.0 0.5",
+   "style": "pair_coeff lj/class2/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ljx_cubic",
+   "line": 21,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/cubic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w47qm_fire",
+   "line": 6,
+   "text": "pair_coeff 99 1 1.0 1.0 2.5",
+   "style": "pair_coeff lj/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w255pw_coulcut_q",
+   "line": 10,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/cut/coul/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w71diel_nopbc_icc",
+   "line": 15,
+   "text": "pair_coeff 99 1 0.0 1.0",
+   "style": "pair_coeff lj/cut/coul/cut/dielectric",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w17soft_coul",
+   "line": 18,
+   "text": "pair_coeff 99 1 1.0 1.0 0.5",
+   "style": "pair_coeff lj/cut/coul/cut/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1lcoul_debye",
+   "line": 23,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/cut/coul/debye",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1lcoul_special_dsf",
+   "line": 11,
+   "text": "pair_coeff 99 3 0.8 1.0",
+   "style": "pair_coeff lj/cut/coul/dsf",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w50rt_run0",
+   "line": 9,
+   "text": "pair_coeff 99 1 0.15535 3.166",
+   "style": "pair_coeff lj/cut/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w71diel_confined_icc",
+   "line": 19,
+   "text": "pair_coeff 99 1 0.0 1.0",
+   "style": "pair_coeff lj/cut/coul/long/dielectric",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w54accel_charged",
+   "line": 25,
+   "text": "pair_coeff 99 1 0.0100 2.35",
+   "style": "pair_coeff lj/cut/coul/long/omp",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 11,
+   "text": "pair_coeff 99 1 0.1 3.0 1.0",
+   "style": "pair_coeff lj/cut/coul/long/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 9,
+   "text": "pair_coeff 99 1 0.1852 3.1589",
+   "style": "pair_coeff lj/cut/coul/msm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w210md_confined_gmres",
+   "line": 18,
+   "text": "pair_coeff 99 1 0.0 1.0",
+   "style": "pair_coeff lj/cut/coul/msm/dielectric",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w1lcoul_special_wolf",
+   "line": 11,
+   "text": "pair_coeff 99 3 0.8 1.0",
+   "style": "pair_coeff lj/cut/coul/wolf",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-3)"
+  },
+  {
+   "case": "w41sm_dipole_mol",
+   "line": 13,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/cut/dipole/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w168pq_nonneutral",
+   "line": 19,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/cut/dipole/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w54accel_melt",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 1.0 2.5",
+   "style": "pair_coeff lj/cut/omp",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w17soft_tail",
+   "line": 14,
+   "text": "pair_coeff 99 1 1.0 1.0 0.6",
+   "style": "pair_coeff lj/cut/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w69fep_gapsys_lj",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 1.0 0.5",
+   "style": "pair_coeff lj/cut/soft/gapsys",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w220xp_ljcutsphere",
+   "line": 18,
+   "text": "pair_coeff 99 1 1.0",
+   "style": "pair_coeff lj/cut/sphere",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w72drude_toluene_lang",
+   "line": 21,
+   "text": "pair_coeff 99 1 0.069998 3.550000 1.620000",
+   "style": "pair_coeff lj/cut/thole/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-12)"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 9,
+   "text": "pair_coeff 99 1 0.1852 3.1589",
+   "style": "pair_coeff lj/cut/tip4p/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 8,
+   "text": "pair_coeff 99 1 0.1852 3.1589",
+   "style": "pair_coeff lj/cut/tip4p/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 125,
+   "text": "pair_coeff 99 1 0.1554 3.1655 0.5",
+   "style": "pair_coeff lj/cut/tip4p/long/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w88pair_expand_shift_type",
+   "line": 10,
+   "text": "pair_coeff 99 1 1.0 1.0 0.0",
+   "style": "pair_coeff lj/expand",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w220xp_ljexpandcoullong_special",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 1.0 0.1",
+   "style": "pair_coeff lj/expand/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w220xp_ljexpandsphere",
+   "line": 18,
+   "text": "pair_coeff 99 1 1.0 0.3",
+   "style": "pair_coeff lj/expand/sphere",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ljx_gromacs",
+   "line": 21,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/gromacs",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w220xp_gromacs",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/gromacs/coul/gromacs",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 7,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/long/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w250pd_ljlong_arith",
+   "line": 16,
+   "text": "pair_coeff 99 1 0.02 2.0",
+   "style": "pair_coeff lj/long/coul/long/dielectric",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 10,
+   "text": "pair_coeff 99 1 0.1852 3.1589",
+   "style": "pair_coeff lj/long/tip4p/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w219xp_lj_mdf",
+   "line": 15,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/mdf",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w220xp_lj_pirani",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 2.0 1.0 1.0 1.0",
+   "style": "pair_coeff lj/pirani",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w6relres_mixed",
+   "line": 21,
+   "text": "pair_coeff 99 1 1.0 1.0 0.5 1.2 1.3 1.6 1.9 2.4",
+   "style": "pair_coeff lj/relres",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 7,
+   "text": "pair_coeff 99 1 lj12_6 1.0 1.1 9.0",
+   "style": "pair_coeff lj/sdk",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w51cs_sdklong_dimer",
+   "line": 33,
+   "text": "pair_coeff 99 1 lj9_6 1.0 1.1 9.0",
+   "style": "pair_coeff lj/sdk/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w9pair_ljsf",
+   "line": 23,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/sf",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w18dipole_sf",
+   "line": 34,
+   "text": "pair_coeff 99 2 0.8 1.1 2.2 2.5 scale 0.5",
+   "style": "pair_coeff lj/sf/dipole/sf",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ljv_lj_smooth",
+   "line": 21,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/smooth",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ljv_lj_smooth_linear",
+   "line": 21,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj/smooth/linear",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 7,
+   "text": "pair_coeff 99 1 lj12_6 1.0 1.1 9.0",
+   "style": "pair_coeff lj/spica",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w51cs_spicalong_run",
+   "line": 23,
+   "text": "pair_coeff 99 1 lj9_6 0.4 3.0 8.0",
+   "style": "pair_coeff lj/spica/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 21,
+   "text": "pair_coeff 99 1 lj9_6 0.40 3.2",
+   "style": "pair_coeff lj/spica/coul/msm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ljv_lj96",
+   "line": 21,
+   "text": "pair_coeff 99 1 1.0 1.0",
+   "style": "pair_coeff lj96/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1ljx_mie",
+   "line": 21,
+   "text": "pair_coeff 99 1 1.0 1.0 12.0 6.0",
+   "style": "pair_coeff mie/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w49pb_momb_md",
+   "line": 23,
+   "text": "pair_coeff 99 1 0.3 1.2 2.5 10.2847 2.361",
+   "style": "pair_coeff momb",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1buck_morse",
+   "line": 22,
+   "text": "pair_coeff 99 2 0.8 2.8 1.15 2.2",
+   "style": "pair_coeff morse",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w220xp_morse_smooth_linear",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 1.5 1.1",
+   "style": "pair_coeff morse/smooth/linear",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w69fep_morse",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 1.5 1.1 1.0",
+   "style": "pair_coeff morse/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w220xp_nm_cut",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 1.1 8 4",
+   "style": "pair_coeff nm/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_cut",
+   "line": 18,
+   "text": "pair_coeff 99 1 1.0 1.1 8 4",
+   "style": "pair_coeff nm/cut/coul/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_long",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 1.1 8 4",
+   "style": "pair_coeff nm/cut/coul/long",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w220xp_nm_cut_split_tail",
+   "line": 16,
+   "text": "pair_coeff 99 1 1.0 1.3 8 4",
+   "style": "pair_coeff nm/cut/split",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w48pb_pedone_triclinic",
+   "line": 23,
+   "text": "pair_coeff 99 1 0.030211 2.241334 2.923245 5.0",
+   "style": "pair_coeff pedone",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w133mf_region_ees",
+   "line": 13,
+   "text": "pair_coeff 99 1 10.0 1.0 0.5 0.5 4 0.5 0.5 4 1",
+   "style": "pair_coeff resquared",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w1misc_soft",
+   "line": 22,
+   "text": "pair_coeff 99 2 15.0 1.1",
+   "style": "pair_coeff soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 20,
+   "text": "pair_coeff 99 1 1.0e-4 2.0e-2",
+   "style": "pair_coeff sph/heatconduction",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w48sp2_dmi",
+   "line": 24,
+   "text": "pair_coeff 99 1 dmi 3.5 0.0021 0.0 0.0 2.0",
+   "style": "pair_coeff spin/dmi",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w48sp2_biquad",
+   "line": 25,
+   "text": "pair_coeff 99 1 biquadratic 3.5 -0.01 0.0 1.9 0.0 0.1 19 offset yes",
+   "style": "pair_coeff spin/exchange/biquadratic",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w113cf_benzene_table_spline",
+   "line": 10,
+   "text": "pair_coeff 99 1 w113cf_benzene_water.pair.table PairBB",
+   "style": "pair_coeff table",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 18,
+   "text": "pair_coeff 99 1 18.75 4.5 0.41 1.58 1.58 1.0 1.0E-5 2.0 3.0 1.0E-5 2.0",
+   "style": "pair_coeff tdpd",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 123,
+   "text": "pair_coeff 99 1 0.5",
+   "style": "pair_coeff tip4p/long/soft",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w79rigid_tri",
+   "line": 10,
+   "text": "pair_coeff 99 1 0.1 1.0",
+   "style": "pair_coeff tri/lj",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-1)"
+  },
+  {
+   "case": "w219xp_ufm",
+   "line": 16,
+   "text": "pair_coeff 99 1 0.5 1.0",
+   "style": "pair_coeff ufm",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w219xp_wf_cut",
+   "line": 15,
+   "text": "pair_coeff 99 1 1.0 1.0 1 2",
+   "style": "pair_coeff wf/cut",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w1misc_yukawa",
+   "line": 22,
+   "text": "pair_coeff 99 2 25.0 2.3",
+   "style": "pair_coeff yukawa",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w5yukawa_colloid",
+   "line": 21,
+   "text": "pair_coeff 99 1 100.0",
+   "style": "pair_coeff yukawa/colloid",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  },
+  {
+   "case": "w3zbl_zbl",
+   "line": 20,
+   "text": "pair_coeff 99 1 29.0 29.0",
+   "style": "pair_coeff zbl",
+   "native": "ERROR: Numeric index 99 is out of bounds (1-2)"
+  }
+ ]
+}

@@ -1,6 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { inumeric, numeric } from '../force/util';
+import { inumeric, missingArgs, numeric } from '../force/util';
 import { EQUAL_STYLES } from '../argInfo';
 import type { System } from '../system';
 import type { Region } from '../region';
@@ -68,11 +68,13 @@ abstract class ForceModFix extends Fix {
       parseComp(args[1], 'fy', style, allowNull),
       parseComp(args[2], 'fz', style, allowNull),
     ];
+    // As native LAMMPS does (src/fix_setforce.cpp, fix_aveforce.cpp and fix_addforce.cpp constructors at b332f28): each
+    // keyword in turn; an unknown word is refused before a missing value is looked for
     for (let k = 3; k < args.length; k += 2) {
       const key = args[k];
       const value = args[k + 1];
-      if (value === undefined) throw new StyleError(`fix ${style} keyword '${key}' needs a value`);
       if (key === 'region') {
+        if (value === undefined) throw this.missingValue(key);
         if (!this.sys.regions.has(value)) throw new StyleError(`Region ${value} for fix ${style} does not exist`);
         this.regionId = value;
       } else {
@@ -114,8 +116,13 @@ abstract class ForceModFix extends Fix {
   }
 
   /** A keyword other than region (subclass-specific); must throw for unknown ones. */
-  protected keyword(key: string, _value: string): void {
+  protected keyword(key: string, _value: string | undefined): void {
     throw new StyleError(`unknown fix ${this.style} keyword '${key}'`);
+  }
+
+  /** A keyword without its value: "Illegal fix {style} {keyword} command: missing argument(s)" (aveforce overrides). */
+  protected missingValue(key: string): StyleError {
+    return missingArgs(`fix ${this.style} ${key}`);
   }
 
   /** True when atom i is in the fix group and (with the region keyword) the region. */
@@ -179,7 +186,7 @@ export class FixSetForce extends ForceModFix {
     this.parse('setforce', args, true);
   }
 
-  protected keyword(key: string, _value: string): void {
+  protected keyword(key: string, _value: string | undefined): void {
     // As native LAMMPS does (src/fix_setforce.cpp FixSetForce::FixSetForce at b332f28): "Unknown fix setforce keyword: {}".
     throw new StyleError(`Unknown fix setforce keyword: ${key}`);
   }
@@ -267,16 +274,18 @@ export class FixAddForce extends ForceModFix {
     this.parse('addforce', args, false);
   }
 
-  protected keyword(key: string, value: string): void {
+  protected keyword(key: string, value: string | undefined): void {
     // As native LAMMPS does (src/fix_addforce.cpp FixAddForce::FixAddForce at b332f28): every reads utils::inumeric (> 0),
-    // energy keeps a v_name (looked up at init)
+    // energy keeps a v_name (looked up at init); an unknown word comes before a missing value
     if (key === 'every') {
+      if (value === undefined) throw this.missingValue(key);
       const n = inumeric(value);
       if (n <= 0) throw new StyleError(`Invalid fix addforce every argument: ${n}`);
       this.nevery = n;
       return;
     }
     if (key === 'energy') {
+      if (value === undefined) throw this.missingValue(key);
       if (!value.startsWith('v_')) throw new StyleError(`Invalid fix addforce energy argument: ${value}`);
       this.energyVar = value.slice(2);
       return;
@@ -374,10 +383,15 @@ export class FixAveForce extends ForceModFix {
     this.parse('aveforce', args, true);
   }
 
-  protected keyword(_key: string, _value: string): void {
+  protected keyword(_key: string, _value: string | undefined): void {
     // As native LAMMPS does (src/fix_aveforce.cpp FixAveForce::FixAveForce at b332f28): any keyword other than region
     // gives "Illegal fix aveforce command".
     throw new StyleError('Illegal fix aveforce command');
+  }
+
+  /** fix_aveforce.cpp: region without its value is "Illegal fix aveforce command" too. */
+  protected missingValue(_key: string): StyleError {
+    return new StyleError('Illegal fix aveforce command');
   }
 
   postForce(): void {

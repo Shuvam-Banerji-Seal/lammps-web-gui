@@ -69,7 +69,7 @@ run 0`);
   it('rejects bad arguments', async () => {
     expect((await runScript(`${BASE}\nfix 1 all setforce 0.0 0.0`)).error?.message).toMatch(/Illegal fix setforce command: missing argument/);
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 foo 1`)).error?.message).toContain('Unknown fix setforce keyword: foo');
-    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 region`)).error?.message).toMatch(/keyword 'region' needs a value/);
+    expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 0 region`)).error?.message).toMatch(/Illegal fix setforce region command: missing argument\(s\)/);
     // Measured with native LAMMPS (b332f28): the variable is looked up at init, so a later definition is fine
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 v_nope\nrun 0`)).error?.message).toMatch(/Variable nope for fix setforce does not exist/);
     expect((await runScript(`${BASE}\nfix 1 all setforce 0 0 v_later\nvariable later equal 0\nrun 0`)).error).toBeNull();

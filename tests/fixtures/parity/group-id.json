@@ -1,0 +1,3551 @@
+{
+ "matrix": "group-id",
+ "about": "the group ID of each fix, compute, dump, velocity, displace_atoms, delete_atoms group and set group line replaced by nogroup",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w227xc_ackland_bcc_legacy",
+   "line": 19,
+   "text": "compute ack nogroup ackland/atom legacy yes",
+   "style": "compute ackland/atom",
+   "native": "ERROR: Group ID nogroup requested by compute ackland/atom does not exist"
+  },
+  {
+   "case": "w21adf_lj",
+   "line": 30,
+   "text": "compute a nogroup adf 8 1 1 1 0.0 2.0 0.0 2.0 1 2 2 0.0 2.5 0.0 2.5 ordinate cosine",
+   "style": "compute adf",
+   "native": "ERROR: Group ID nogroup requested by compute adf does not exist"
+  },
+  {
+   "case": "w11struct_bonds",
+   "line": 26,
+   "text": "compute ag nogroup aggregate/atom 2.6",
+   "style": "compute aggregate/atom",
+   "native": "ERROR: Group ID nogroup requested by compute aggregate/atom does not exist"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 17,
+   "text": "compute ca nogroup angle",
+   "style": "compute angle",
+   "native": "ERROR: Group ID nogroup requested by compute angle does not exist"
+  },
+  {
+   "case": "w11local_angle_dihedral",
+   "line": 16,
+   "text": "compute al nogroup angle/local theta eng",
+   "style": "compute angle/local",
+   "native": "ERROR: Group ID nogroup requested by compute angle/local does not exist"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 18,
+   "text": "compute ang nogroup angmom/chunk cb",
+   "style": "compute angmom/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute angmom/chunk does not exist"
+  },
+  {
+   "case": "w227xc_ave_sphere",
+   "line": 15,
+   "text": "compute av nogroup ave/sphere/atom cutoff 1.6",
+   "style": "compute ave/sphere/atom",
+   "native": "ERROR: Group ID nogroup requested by compute ave/sphere/atom does not exist"
+  },
+  {
+   "case": "w134cp_basal_hcp",
+   "line": 25,
+   "text": "compute b nogroup basal/atom",
+   "style": "compute basal/atom",
+   "native": "ERROR: Group ID nogroup requested by compute basal/atom does not exist"
+  },
+  {
+   "case": "w152body_local_vector",
+   "line": 17,
+   "text": "compute 1 nogroup body/local type",
+   "style": "compute body/local",
+   "native": "ERROR: Group ID nogroup requested by compute body/local does not exist"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 16,
+   "text": "compute cb nogroup bond",
+   "style": "compute bond",
+   "native": "ERROR: Group ID nogroup requested by compute bond does not exist"
+  },
+  {
+   "case": "w11local_histo",
+   "line": 10,
+   "text": "compute bl nogroup bond/local dist",
+   "style": "compute bond/local",
+   "native": "ERROR: Group ID nogroup requested by compute bond/local does not exist"
+  },
+  {
+   "case": "w26cgrid_born_run",
+   "line": 20,
+   "text": "compute bm nogroup born/matrix numdiff 1.0e-6 myvirial",
+   "style": "compute born/matrix",
+   "native": "ERROR: Group ID nogroup requested by compute born/matrix does not exist"
+  },
+  {
+   "case": "w11struct_perfect",
+   "line": 12,
+   "text": "compute cf nogroup centro/atom fcc",
+   "style": "compute centro/atom",
+   "native": "ERROR: Group ID nogroup requested by compute centro/atom does not exist"
+  },
+  {
+   "case": "w247cs_dihtable",
+   "line": 17,
+   "text": "compute cs nogroup centroid/stress/atom NULL",
+   "style": "compute centroid/stress/atom",
+   "native": "ERROR: Group ID nogroup requested by compute centroid/stress/atom does not exist"
+  },
+  {
+   "case": "w17chunk_pointdipole",
+   "line": 13,
+   "text": "compute cc nogroup chunk/atom type",
+   "style": "compute chunk/atom",
+   "native": "ERROR: Group ID nogroup requested by compute chunk/atom does not exist"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 16,
+   "text": "compute spr nogroup chunk/spread/atom cb c_rs[1] c_rs[2]",
+   "style": "compute chunk/spread/atom",
+   "native": "ERROR: Group ID nogroup requested by compute chunk/spread/atom does not exist"
+  },
+  {
+   "case": "w11struct_bonds",
+   "line": 27,
+   "text": "compute cl nogroup cluster/atom 2.6",
+   "style": "compute cluster/atom",
+   "native": "ERROR: Group ID nogroup requested by compute cluster/atom does not exist"
+  },
+  {
+   "case": "w11struct_bcc",
+   "line": 17,
+   "text": "compute cna nogroup cna/atom 3.46",
+   "style": "compute cna/atom",
+   "native": "ERROR: Group ID nogroup requested by compute cna/atom does not exist"
+  },
+  {
+   "case": "w48cb_cnp_tiny",
+   "line": 20,
+   "text": "compute cnp nogroup cnp/atom 3.0",
+   "style": "compute cnp/atom",
+   "native": "ERROR: Group ID nogroup requested by compute cnp/atom does not exist"
+  },
+  {
+   "case": "w2cglob_com_gyr",
+   "line": 28,
+   "text": "compute cm nogroup com",
+   "style": "compute com",
+   "native": "ERROR: Group ID nogroup requested by compute com does not exist"
+  },
+  {
+   "case": "w39cfs_wrap_tri",
+   "line": 9,
+   "text": "compute c0 nogroup com/chunk cc",
+   "style": "compute com/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute com/chunk does not exist"
+  },
+  {
+   "case": "w227xc_composition",
+   "line": 18,
+   "text": "compute comp nogroup composition/atom cutoff 1.6",
+   "style": "compute composition/atom",
+   "native": "ERROR: Group ID nogroup requested by compute composition/atom does not exist"
+  },
+  {
+   "case": "w228gs_contact_atom",
+   "line": 20,
+   "text": "compute c nogroup contact/atom",
+   "style": "compute contact/atom",
+   "native": "ERROR: Group ID nogroup requested by compute contact/atom does not exist"
+  },
+  {
+   "case": "w2cred_coord",
+   "line": 29,
+   "text": "compute c nogroup coord/atom cutoff 1.3 1 2",
+   "style": "compute coord/atom",
+   "native": "ERROR: Group ID nogroup requested by compute coord/atom does not exist"
+  },
+  {
+   "case": "w18cmisc",
+   "line": 37,
+   "text": "compute ct nogroup count/type atom",
+   "style": "compute count/type",
+   "native": "ERROR: Group ID nogroup requested by compute count/type does not exist"
+  },
+  {
+   "case": "w22peri_pmb_data",
+   "line": 13,
+   "text": "compute 1 nogroup damage/atom",
+   "style": "compute damage/atom",
+   "native": "ERROR: Group ID nogroup requested by compute damage/atom does not exist"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 18,
+   "text": "compute cd nogroup dihedral",
+   "style": "compute dihedral",
+   "native": "ERROR: Group ID nogroup requested by compute dihedral does not exist"
+  },
+  {
+   "case": "w11local_angle_dihedral",
+   "line": 18,
+   "text": "compute dl nogroup dihedral/local phi",
+   "style": "compute dihedral/local",
+   "native": "ERROR: Group ID nogroup requested by compute dihedral/local does not exist"
+  },
+  {
+   "case": "w22peri_lps_block",
+   "line": 22,
+   "text": "compute 3 nogroup dilatation/atom",
+   "style": "compute dilatation/atom",
+   "native": "ERROR: Group ID nogroup requested by compute dilatation/atom does not exist"
+  },
+  {
+   "case": "w17chunk_pointdipole",
+   "line": 14,
+   "text": "compute d nogroup dipole",
+   "style": "compute dipole",
+   "native": "ERROR: Group ID nogroup requested by compute dipole does not exist"
+  },
+  {
+   "case": "w17chunk_pointdipole",
+   "line": 16,
+   "text": "compute dc nogroup dipole/chunk cc",
+   "style": "compute dipole/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute dipole/chunk does not exist"
+  },
+  {
+   "case": "w208dt_dipole_tip4p",
+   "line": 24,
+   "text": "compute dt nogroup dipole/tip4p",
+   "style": "compute dipole/tip4p",
+   "native": "ERROR: Group ID nogroup requested by compute dipole/tip4p does not exist"
+  },
+  {
+   "case": "w208dt_dipole_tip4p",
+   "line": 28,
+   "text": "compute dc nogroup dipole/tip4p/chunk mol",
+   "style": "compute dipole/tip4p/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute dipole/tip4p/chunk does not exist"
+  },
+  {
+   "case": "w2cred_displace",
+   "line": 29,
+   "text": "compute d nogroup displace/atom",
+   "style": "compute displace/atom",
+   "native": "ERROR: Group ID nogroup requested by compute displace/atom does not exist"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 23,
+   "text": "compute dpdU nogroup dpd",
+   "style": "compute dpd",
+   "native": "ERROR: Group ID nogroup requested by compute dpd does not exist"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 47,
+   "text": "compute dpdUatom nogroup dpd/atom",
+   "style": "compute dpd/atom",
+   "native": "ERROR: Group ID nogroup requested by compute dpd/atom does not exist"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 29,
+   "text": "compute t nogroup edpd/temp/atom",
+   "style": "compute edpd/temp/atom",
+   "native": "ERROR: Group ID nogroup requested by compute edpd/temp/atom does not exist"
+  },
+  {
+   "case": "w243de_efield_cutcoul",
+   "line": 13,
+   "text": "compute ef nogroup efield/atom",
+   "style": "compute efield/atom",
+   "native": "ERROR: Group ID nogroup requested by compute efield/atom does not exist"
+  },
+  {
+   "case": "w227xc_efield_wolf",
+   "line": 24,
+   "text": "compute ef nogroup efield/wolf/atom 0.25",
+   "style": "compute efield/wolf/atom",
+   "native": "ERROR: Group ID nogroup requested by compute efield/wolf/atom does not exist"
+  },
+  {
+   "case": "w134cp_entropy_fe",
+   "line": 25,
+   "text": "compute c1 nogroup entropy/atom 0.25 3.5",
+   "style": "compute entropy/atom",
+   "native": "ERROR: Group ID nogroup requested by compute entropy/atom does not exist"
+  },
+  {
+   "case": "w105cf_erotate_tri",
+   "line": 12,
+   "text": "compute 1 nogroup erotate/asphere",
+   "style": "compute erotate/asphere",
+   "native": "ERROR: Group ID nogroup requested by compute erotate/asphere does not exist"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 23,
+   "text": "compute 3 nogroup erotate/rigid 1",
+   "style": "compute erotate/rigid",
+   "native": "ERROR: Group ID nogroup requested by compute erotate/rigid does not exist"
+  },
+  {
+   "case": "w84lang_omega_sphere",
+   "line": 17,
+   "text": "compute er nogroup erotate/sphere",
+   "style": "compute erotate/sphere",
+   "native": "ERROR: Group ID nogroup requested by compute erotate/sphere does not exist"
+  },
+  {
+   "case": "w18cerot",
+   "line": 25,
+   "text": "compute era nogroup erotate/sphere/atom",
+   "style": "compute erotate/sphere/atom",
+   "native": "ERROR: Group ID nogroup requested by compute erotate/sphere/atom does not exist"
+  },
+  {
+   "case": "w13misc_event",
+   "line": 20,
+   "text": "compute ev nogroup event/displace 0.1",
+   "style": "compute event/displace",
+   "native": "ERROR: Group ID nogroup requested by compute event/displace does not exist"
+  },
+  {
+   "case": "w228gs_fabric",
+   "line": 23,
+   "text": "compute f nogroup fabric radius contact branch force/normal force/tangential type/include 1,2 1,2",
+   "style": "compute fabric",
+   "native": "ERROR: Group ID nogroup requested by compute fabric does not exist"
+  },
+  {
+   "case": "w69fep_compute",
+   "line": 23,
+   "text": "compute FEP nogroup fep 300.0 pair lj/cut/coul/long/soft lambda * * v_dlam atom charge 1 v_dq atom charge 2 v_mdq",
+   "style": "compute fep",
+   "native": "ERROR: Group ID nogroup requested by compute fep does not exist"
+  },
+  {
+   "case": "w155mx_fepta_tail",
+   "line": 19,
+   "text": "compute TA nogroup fep/ta 120.0 yz 0.998 tail yes",
+   "style": "compute fep/ta",
+   "native": "ERROR: Group ID nogroup requested by compute fep/ta does not exist"
+  },
+  {
+   "case": "w47ta_spce_force",
+   "line": 17,
+   "text": "compute c1 nogroup force/tally all",
+   "style": "compute force/tally",
+   "native": "ERROR: Group ID nogroup requested by compute force/tally does not exist"
+  },
+  {
+   "case": "w11struct_bonds",
+   "line": 24,
+   "text": "compute fr nogroup fragment/atom",
+   "style": "compute fragment/atom",
+   "native": "ERROR: Group ID nogroup requested by compute fragment/atom does not exist"
+  },
+  {
+   "case": "w166px_frenkel_bcc",
+   "line": 27,
+   "text": "compute fr nogroup frenkel",
+   "style": "compute frenkel",
+   "native": "ERROR: Group ID nogroup requested by compute frenkel does not exist"
+  },
+  {
+   "case": "w38gauss_example",
+   "line": 11,
+   "text": "compute mygridlocal nogroup gaussian/grid/local grid 2 2 2 4.67637 0.5 0.5 0.1355 0.2",
+   "style": "compute gaussian/grid/local",
+   "native": "ERROR: Group ID nogroup requested by compute gaussian/grid/local does not exist"
+  },
+  {
+   "case": "w322ga_wildcard",
+   "line": 26,
+   "text": "compute gat nogroup global/atom c_mid c_vcm[*]",
+   "style": "compute global/atom",
+   "native": "ERROR: Group ID nogroup requested by compute global/atom does not exist"
+  },
+  {
+   "case": "w88pair_hybrid_tally",
+   "line": 16,
+   "text": "compute cgg nogroup group/group all pair yes",
+   "style": "compute group/group",
+   "native": "ERROR: Group ID nogroup requested by compute group/group does not exist"
+  },
+  {
+   "case": "w2cglob_com_gyr",
+   "line": 29,
+   "text": "compute g nogroup gyration",
+   "style": "compute gyration",
+   "native": "ERROR: Group ID nogroup requested by compute gyration does not exist"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 19,
+   "text": "compute gy nogroup gyration/chunk cb",
+   "style": "compute gyration/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute gyration/chunk does not exist"
+  },
+  {
+   "case": "w17chunk_shape",
+   "line": 24,
+   "text": "compute gsh nogroup gyration/shape gyr",
+   "style": "compute gyration/shape",
+   "native": "ERROR: Group ID nogroup requested by compute gyration/shape does not exist"
+  },
+  {
+   "case": "w17chunk_shape",
+   "line": 26,
+   "text": "compute gshc nogroup gyration/shape/chunk gyt",
+   "style": "compute gyration/shape/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute gyration/shape/chunk does not exist"
+  },
+  {
+   "case": "w41hb_ecut",
+   "line": 20,
+   "text": "compute ha nogroup hbond/local 3.3 30.0 ogroup ogroup hgroup dist ehb",
+   "style": "compute hbond/local",
+   "native": "ERROR: Group ID nogroup requested by compute hbond/local does not exist"
+  },
+  {
+   "case": "w11gk_heatflux",
+   "line": 17,
+   "text": "compute flux nogroup heat/flux myKE myPE myStress",
+   "style": "compute heat/flux",
+   "native": "ERROR: Group ID nogroup requested by compute heat/flux does not exist"
+  },
+  {
+   "case": "w239ht_lj_static",
+   "line": 31,
+   "text": "compute hf nogroup heat/flux/tally even",
+   "style": "compute heat/flux/tally",
+   "native": "ERROR: Group ID nogroup requested by compute heat/flux/tally does not exist"
+  },
+  {
+   "case": "w239ht_lj_static",
+   "line": 32,
+   "text": "compute hv nogroup heat/flux/virial/tally even",
+   "style": "compute heat/flux/virial/tally",
+   "native": "ERROR: Group ID nogroup requested by compute heat/flux/virial/tally does not exist"
+  },
+  {
+   "case": "w12struct_hexorder",
+   "line": 20,
+   "text": "compute h6 nogroup hexorder/atom",
+   "style": "compute hexorder/atom",
+   "native": "ERROR: Group ID nogroup requested by compute hexorder/atom does not exist"
+  },
+  {
+   "case": "w387hma_cv_ljcut",
+   "line": 13,
+   "text": "compute hma nogroup hma settemp u cv",
+   "style": "compute hma",
+   "native": "ERROR: Group ID nogroup requested by compute hma does not exist"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 19,
+   "text": "compute ci nogroup improper",
+   "style": "compute improper",
+   "native": "ERROR: Group ID nogroup requested by compute improper does not exist"
+  },
+  {
+   "case": "w11local_angle_dihedral",
+   "line": 20,
+   "text": "compute il nogroup improper/local chi",
+   "style": "compute improper/local",
+   "native": "ERROR: Group ID nogroup requested by compute improper/local does not exist"
+  },
+  {
+   "case": "w322ga_wildcard",
+   "line": 24,
+   "text": "compute ine nogroup inertia",
+   "style": "compute inertia",
+   "native": "ERROR: Group ID nogroup requested by compute inertia does not exist"
+  },
+  {
+   "case": "w39cfs_ell",
+   "line": 74,
+   "text": "compute I nogroup inertia/chunk cc",
+   "style": "compute inertia/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute inertia/chunk does not exist"
+  },
+  {
+   "case": "w105cf_erotate_line",
+   "line": 16,
+   "text": "compute 2 nogroup ke",
+   "style": "compute ke",
+   "native": "ERROR: Group ID nogroup requested by compute ke does not exist"
+  },
+  {
+   "case": "w33gcmc_lj_acc",
+   "line": 12,
+   "text": "compute k nogroup ke/atom",
+   "style": "compute ke/atom",
+   "native": "ERROR: Group ID nogroup requested by compute ke/atom does not exist"
+  },
+  {
+   "case": "w63eff_ch4_rescale",
+   "line": 14,
+   "text": "compute keatom nogroup ke/atom/eff",
+   "style": "compute ke/atom/eff",
+   "native": "ERROR: Group ID nogroup requested by compute ke/atom/eff does not exist"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 22,
+   "text": "compute 2 nogroup ke/rigid 1",
+   "style": "compute ke/rigid",
+   "native": "ERROR: Group ID nogroup requested by compute ke/rigid does not exist"
+  },
+  {
+   "case": "w277ma_compute_mliap_ace",
+   "line": 16,
+   "text": "compute ace nogroup mliap descriptor ace H_N_O_ccs.yace model linear gradgradflag 1",
+   "style": "compute mliap",
+   "native": "ERROR: Group ID nogroup requested by compute mliap does not exist"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 21,
+   "text": "compute mom nogroup momentum",
+   "style": "compute momentum",
+   "native": "ERROR: Group ID nogroup requested by compute momentum does not exist"
+  },
+  {
+   "case": "w62brown_point3d",
+   "line": 13,
+   "text": "compute msd nogroup msd",
+   "style": "compute msd",
+   "native": "ERROR: Group ID nogroup requested by compute msd does not exist"
+  },
+  {
+   "case": "w7chunk_msd",
+   "line": 27,
+   "text": "compute msd nogroup msd/chunk cm",
+   "style": "compute msd/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute msd/chunk does not exist"
+  },
+  {
+   "case": "w53bpm_rot_chain",
+   "line": 14,
+   "text": "compute nb nogroup nbond/atom",
+   "style": "compute nbond/atom",
+   "native": "ERROR: Group ID nogroup requested by compute nbond/atom does not exist"
+  },
+  {
+   "case": "w39cfs_ell",
+   "line": 75,
+   "text": "compute W nogroup omega/chunk cc",
+   "style": "compute omega/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute omega/chunk does not exist"
+  },
+  {
+   "case": "w5orient_q",
+   "line": 16,
+   "text": "compute q1 nogroup orientorder/atom",
+   "style": "compute orientorder/atom",
+   "native": "ERROR: Group ID nogroup requested by compute orientorder/atom does not exist"
+  },
+  {
+   "case": "w276cp_compute_pace_ace",
+   "line": 17,
+   "text": "compute pace nogroup pace Cu-PBE-core-rep.ace 0 0",
+   "style": "compute pace",
+   "native": "ERROR: Group ID nogroup requested by compute pace does not exist",
+   "build": "ML-PACE"
+  },
+  {
+   "case": "w250d3_bjm_overlay",
+   "line": 16,
+   "text": "compute d3 nogroup pair dispersion/d3",
+   "style": "compute pair",
+   "native": "ERROR: Group ID nogroup requested by compute pair does not exist"
+  },
+  {
+   "case": "w47pl_special",
+   "line": 13,
+   "text": "compute pl nogroup pair/local eng force",
+   "style": "compute pair/local",
+   "native": "ERROR: Group ID nogroup requested by compute pair/local does not exist"
+  },
+  {
+   "case": "w89fix_avetime_nonorm",
+   "line": 14,
+   "text": "compute p nogroup pe",
+   "style": "compute pe",
+   "native": "ERROR: Group ID nogroup requested by compute pe does not exist"
+  },
+  {
+   "case": "w11gk_heatflux",
+   "line": 15,
+   "text": "compute myPE nogroup pe/atom",
+   "style": "compute pe/atom",
+   "native": "ERROR: Group ID nogroup requested by compute pe/atom does not exist"
+  },
+  {
+   "case": "w228gs_pe_mol_tally",
+   "line": 21,
+   "text": "compute pm nogroup pe/mol/tally half",
+   "style": "compute pe/mol/tally",
+   "native": "ERROR: Group ID nogroup requested by compute pe/mol/tally does not exist"
+  },
+  {
+   "case": "w47ta_spce_pe",
+   "line": 19,
+   "text": "compute c1 nogroup pe/tally hyd",
+   "style": "compute pe/tally",
+   "native": "ERROR: Group ID nogroup requested by compute pe/tally does not exist"
+  },
+  {
+   "case": "w240pl_block",
+   "line": 22,
+   "text": "compute 1 nogroup plasticity/atom",
+   "style": "compute plasticity/atom",
+   "native": "ERROR: Group ID nogroup requested by compute plasticity/atom does not exist"
+  },
+  {
+   "case": "w155mx_podatom_ta",
+   "line": 20,
+   "text": "compute ld nogroup pod/atom w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta",
+   "style": "compute pod/atom",
+   "native": "ERROR: Group ID nogroup requested by compute pod/atom does not exist"
+  },
+  {
+   "case": "w177px_pod_example",
+   "line": 19,
+   "text": "compute gdd nogroup pod/global w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta Ta",
+   "style": "compute pod/global",
+   "native": "ERROR: Group ID nogroup requested by compute pod/global does not exist"
+  },
+  {
+   "case": "w177px_pod_example",
+   "line": 21,
+   "text": "compute ldd nogroup pod/local w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta Ta",
+   "style": "compute pod/local",
+   "native": "ERROR: Group ID nogroup requested by compute pod/local does not exist"
+  },
+  {
+   "case": "w171px_podd_ta",
+   "line": 17,
+   "text": "compute dd nogroup podd/atom w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta",
+   "style": "compute podd/atom",
+   "native": "ERROR: Group ID nogroup requested by compute podd/atom does not exist"
+  },
+  {
+   "case": "w62brown_propelvel",
+   "line": 16,
+   "text": "compute press nogroup pressure NULL virial",
+   "style": "compute pressure",
+   "native": "ERROR: Group ID nogroup requested by compute pressure does not exist"
+  },
+  {
+   "case": "w194alc_alloy",
+   "line": 21,
+   "text": "compute pressure nogroup pressure/alchemy 2",
+   "style": "compute pressure/alchemy",
+   "native": "ERROR: World variable count 2 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w227xc_pressure_cylinder",
+   "line": 16,
+   "text": "compute p nogroup pressure/cylinder 0.3 6.5 4.0 0.5",
+   "style": "compute pressure/cylinder",
+   "native": "ERROR: Group ID nogroup requested by compute pressure/cylinder does not exist"
+  },
+  {
+   "case": "w35mesh_qrand",
+   "line": 9,
+   "text": "compute r nogroup property/atom radius",
+   "style": "compute property/atom",
+   "native": "ERROR: Group ID nogroup requested by compute property/atom does not exist"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 15,
+   "text": "compute cnt nogroup property/chunk cb count",
+   "style": "compute property/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute property/chunk does not exist"
+  },
+  {
+   "case": "w26cgrid_propgrid2d",
+   "line": 18,
+   "text": "compute pg nogroup property/grid 5 4 1 id ix iy x y xc yc xs ys xsc ysc proc",
+   "style": "compute property/grid",
+   "native": "ERROR: Group ID nogroup requested by compute property/grid does not exist"
+  },
+  {
+   "case": "w11local_bond",
+   "line": 11,
+   "text": "compute bp nogroup property/local batom1 batom2 btype",
+   "style": "compute property/local",
+   "native": "ERROR: Group ID nogroup requested by compute property/local does not exist"
+  },
+  {
+   "case": "w201pt_rmsd_group2",
+   "line": 18,
+   "text": "compute ptm nogroup ptm/atom fcc-hcp-ico 0.05 lower",
+   "style": "compute ptm/atom",
+   "native": "ERROR: Unrecognized compute style 'ptm/atom' is part of the PTM package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the PTM package, which no native build here has"
+  },
+  {
+   "case": "w227xc_rattlers_type",
+   "line": 15,
+   "text": "compute rat nogroup rattlers/atom type 3 10",
+   "style": "compute rattlers/atom",
+   "native": "ERROR: Group ID nogroup requested by compute rattlers/atom does not exist"
+  },
+  {
+   "case": "w2cglob_rdf",
+   "line": 28,
+   "text": "compute rdf nogroup rdf 20 1 1 1 2 cutoff 2.0",
+   "style": "compute rdf",
+   "native": "ERROR: Group ID nogroup requested by compute rdf does not exist"
+  },
+  {
+   "case": "w149cp_rxatom",
+   "line": 13,
+   "text": "compute bonds nogroup reaxff/atom bonds yes",
+   "style": "compute reaxff/atom",
+   "native": "ERROR: Group ID nogroup requested by compute reaxff/atom does not exist"
+  },
+  {
+   "case": "w33gcmc_lj_acc",
+   "line": 13,
+   "text": "compute ks nogroup reduce sum c_k",
+   "style": "compute reduce",
+   "native": "ERROR: Group ID nogroup requested by compute reduce does not exist"
+  },
+  {
+   "case": "w17chunk_bin",
+   "line": 13,
+   "text": "compute rs nogroup reduce/chunk cb sum c_pa[1] c_pa[2]",
+   "style": "compute reduce/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute reduce/chunk does not exist"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 28,
+   "text": "compute P nogroup rheo/property/atom temperature energy pressure",
+   "style": "compute rheo/property/atom",
+   "native": "ERROR: Group ID nogroup requested by compute rheo/property/atom does not exist"
+  },
+  {
+   "case": "w230re_rigid_small_local",
+   "line": 26,
+   "text": "compute 5 nogroup rigid/local 1 id mol mass x y z xu yu zu vx vy vz fx fy fz angmomx angmomy angmomz quatw quati quatj quatk inertiax inertiay inertiaz",
+   "style": "compute rigid/local",
+   "native": "ERROR: Group ID nogroup requested by compute rigid/local does not exist"
+  },
+  {
+   "case": "w134cp_saed_ni",
+   "line": 12,
+   "text": "compute SAED nogroup saed 0.0251 Ni Kmax 0.85 Zone 0 0 0 c 0.1 0.1 0.1 dR_Ewald 0.01 manual",
+   "style": "compute saed",
+   "native": "ERROR: Group ID nogroup requested by compute saed does not exist"
+  },
+  {
+   "case": "w171px_slcsa",
+   "line": 20,
+   "text": "compute slcsa nogroup slcsa/atom 8 4 w171px_slcsa_mean_descriptor.dat w171px_slcsa_lda_scalings.dat w171px_slcsa_lr_decision.dat w171px_slcsa_lr_bias.dat w171px_slcsa_mahalanobis.dat c_bnnn[1]",
+   "style": "compute slcsa/atom",
+   "native": "ERROR: Group ID nogroup requested by compute slcsa/atom does not exist"
+  },
+  {
+   "case": "w218ck_inertia_slice",
+   "line": 24,
+   "text": "compute sl nogroup slice 1 6 1 c_ine",
+   "style": "compute slice",
+   "native": "ERROR: Group ID nogroup requested by compute slice does not exist"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 85,
+   "text": "compute damage nogroup smd/damage",
+   "style": "compute smd/damage",
+   "native": "ERROR: Group ID nogroup requested by compute smd/damage does not exist"
+  },
+  {
+   "case": "w230re_smd_tlsph_defgrad",
+   "line": 85,
+   "text": "compute hg nogroup smd/hourglass/error",
+   "style": "compute smd/hourglass/error",
+   "native": "ERROR: Group ID nogroup requested by compute smd/hourglass/error does not exist"
+  },
+  {
+   "case": "w100smd_rubber_rings",
+   "line": 54,
+   "text": "compute eint nogroup smd/internal/energy",
+   "style": "compute smd/internal/energy",
+   "native": "ERROR: Group ID nogroup requested by compute smd/internal/energy does not exist"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 78,
+   "text": "compute p nogroup smd/plastic/strain",
+   "style": "compute smd/plastic/strain",
+   "native": "ERROR: Group ID nogroup requested by compute smd/plastic/strain does not exist"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 79,
+   "text": "compute epsdot nogroup smd/plastic/strain/rate",
+   "style": "compute smd/plastic/strain/rate",
+   "native": "ERROR: Group ID nogroup requested by compute smd/plastic/strain/rate does not exist"
+  },
+  {
+   "case": "w230re_smd_tlsph_defgrad",
+   "line": 84,
+   "text": "compute dg nogroup smd/tlsph/defgrad",
+   "style": "compute smd/tlsph/defgrad",
+   "native": "ERROR: Group ID nogroup requested by compute smd/tlsph/defgrad does not exist"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 77,
+   "text": "compute dt_atom nogroup smd/tlsph/dt",
+   "style": "compute smd/tlsph/dt",
+   "native": "ERROR: Group ID nogroup requested by compute smd/tlsph/dt does not exist"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 83,
+   "text": "compute nn nogroup smd/tlsph/num/neighs",
+   "style": "compute smd/tlsph/num/neighs",
+   "native": "ERROR: Group ID nogroup requested by compute smd/tlsph/num/neighs does not exist"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 84,
+   "text": "compute shape nogroup smd/tlsph/shape",
+   "style": "compute smd/tlsph/shape",
+   "native": "ERROR: Group ID nogroup requested by compute smd/tlsph/shape does not exist"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 82,
+   "text": "compute E nogroup smd/tlsph/strain",
+   "style": "compute smd/tlsph/strain",
+   "native": "ERROR: Group ID nogroup requested by compute smd/tlsph/strain does not exist"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 81,
+   "text": "compute D nogroup smd/tlsph/strain/rate",
+   "style": "compute smd/tlsph/strain/rate",
+   "native": "ERROR: Group ID nogroup requested by compute smd/tlsph/strain/rate does not exist"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 80,
+   "text": "compute S nogroup smd/tlsph/stress",
+   "style": "compute smd/tlsph/stress",
+   "native": "ERROR: Group ID nogroup requested by compute smd/tlsph/stress does not exist"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 45,
+   "text": "compute tv nogroup smd/triangle/vertices",
+   "style": "compute smd/triangle/vertices",
+   "native": "ERROR: Group ID nogroup requested by compute smd/triangle/vertices does not exist"
+  },
+  {
+   "case": "w8snap_sna",
+   "line": 18,
+   "text": "compute b nogroup sna/atom 1.1 0.85 6 1.6 2.0 0.9 1.2 rmin0 0.1",
+   "style": "compute sna/atom",
+   "native": "ERROR: Group ID nogroup requested by compute sna/atom does not exist"
+  },
+  {
+   "case": "w15snap_grid",
+   "line": 17,
+   "text": "compute mygrid nogroup sna/grid grid 2 2 2 1.0 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0 switchflag 1 bzeroflag 1",
+   "style": "compute sna/grid",
+   "native": "ERROR: Group ID nogroup requested by compute sna/grid does not exist"
+  },
+  {
+   "case": "w15snap_grid_local",
+   "line": 18,
+   "text": "compute mygl nogroup sna/grid/local grid 2 2 2 1.0 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0 switchflag 1 bzeroflag 1",
+   "style": "compute sna/grid/local",
+   "native": "ERROR: Group ID nogroup requested by compute sna/grid/local does not exist"
+  },
+  {
+   "case": "w8snap_snad",
+   "line": 18,
+   "text": "compute d nogroup snad/atom 1.1 0.85 3 1.6 2.0 0.9 1.2 rmin0 0.1",
+   "style": "compute snad/atom",
+   "native": "ERROR: Group ID nogroup requested by compute snad/atom does not exist"
+  },
+  {
+   "case": "w15snap_group",
+   "line": 17,
+   "text": "compute snap nogroup snap 1.0 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0.1",
+   "style": "compute snap",
+   "native": "ERROR: Group ID nogroup requested by compute snap does not exist"
+  },
+  {
+   "case": "w8snap_snav",
+   "line": 18,
+   "text": "compute d nogroup snav/atom 1.1 0.85 3 1.6 2.0 0.9 1.2 rmin0 0.1",
+   "style": "compute snav/atom",
+   "native": "ERROR: Group ID nogroup requested by compute snav/atom does not exist"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 24,
+   "text": "compute ie_atom nogroup sph/e/atom",
+   "style": "compute sph/e/atom",
+   "native": "ERROR: Group ID nogroup requested by compute sph/e/atom does not exist"
+  },
+  {
+   "case": "w83sph_shock3d",
+   "line": 25,
+   "text": "compute rhoatom nogroup sph/rho/atom",
+   "style": "compute sph/rho/atom",
+   "native": "ERROR: Group ID nogroup requested by compute sph/rho/atom does not exist"
+  },
+  {
+   "case": "w228gs_sph_lj",
+   "line": 11,
+   "text": "compute t nogroup sph/t/atom",
+   "style": "compute sph/t/atom",
+   "native": "ERROR: Group ID nogroup requested by compute sph/t/atom does not exist"
+  },
+  {
+   "case": "w47spin_moving2",
+   "line": 17,
+   "text": "compute s nogroup spin",
+   "style": "compute spin",
+   "native": "ERROR: Group ID nogroup requested by compute spin does not exist"
+  },
+  {
+   "case": "w11gk_heatflux",
+   "line": 16,
+   "text": "compute myStress nogroup stress/atom NULL virial",
+   "style": "compute stress/atom",
+   "native": "ERROR: Group ID nogroup requested by compute stress/atom does not exist"
+  },
+  {
+   "case": "w47sp_cart1d",
+   "line": 19,
+   "text": "compute p nogroup stress/cartesian x 1.5 NULL 0",
+   "style": "compute stress/cartesian",
+   "native": "ERROR: Group ID nogroup requested by compute stress/cartesian does not exist"
+  },
+  {
+   "case": "w149cp_cyl",
+   "line": 15,
+   "text": "compute p nogroup stress/cylinder 0.3 6.5 4.0 0.5",
+   "style": "compute stress/cylinder",
+   "native": "ERROR: Group ID nogroup requested by compute stress/cylinder does not exist"
+  },
+  {
+   "case": "w149cp_mop_setup",
+   "line": 22,
+   "text": "compute m1 nogroup stress/mop x center kin conf",
+   "style": "compute stress/mop",
+   "native": "ERROR: Group ID nogroup requested by compute stress/mop does not exist"
+  },
+  {
+   "case": "w416mop_bonded",
+   "line": 24,
+   "text": "compute mpp nogroup stress/mop/profile x 0.0 2.0 bond angle dihedral",
+   "style": "compute stress/mop/profile",
+   "native": "ERROR: Group ID nogroup requested by compute stress/mop/profile does not exist"
+  },
+  {
+   "case": "w149cp_sph",
+   "line": 15,
+   "text": "compute p nogroup stress/spherical 0 0 0 0.5 4.0",
+   "style": "compute stress/spherical",
+   "native": "ERROR: Group ID nogroup requested by compute stress/spherical does not exist"
+  },
+  {
+   "case": "w47ta_spce_stress",
+   "line": 18,
+   "text": "compute c1 nogroup stress/tally all",
+   "style": "compute stress/tally",
+   "native": "ERROR: Group ID nogroup requested by compute stress/tally does not exist"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 28,
+   "text": "compute c nogroup tdpd/cc/atom 1",
+   "style": "compute tdpd/cc/atom",
+   "native": "ERROR: Group ID nogroup requested by compute tdpd/cc/atom does not exist"
+  },
+  {
+   "case": "w89fix_avetime_vec",
+   "line": 15,
+   "text": "compute t nogroup temp",
+   "style": "compute temp",
+   "native": "ERROR: Group ID nogroup requested by compute temp does not exist"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 16,
+   "text": "compute rott nogroup temp/asphere bias ali",
+   "style": "compute temp/asphere",
+   "native": "ERROR: Group ID nogroup requested by compute temp/asphere does not exist"
+  },
+  {
+   "case": "w126body_cubes_nvt",
+   "line": 16,
+   "text": "compute tb nogroup temp/body",
+   "style": "compute temp/body",
+   "native": "ERROR: Group ID nogroup requested by compute temp/body does not exist"
+  },
+  {
+   "case": "w14temp_chunk_nvt",
+   "line": 21,
+   "text": "compute tn nogroup temp/chunk cx com yes",
+   "style": "compute temp/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute temp/chunk does not exist"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 15,
+   "text": "compute ali nogroup temp/com",
+   "style": "compute temp/com",
+   "native": "ERROR: Group ID nogroup requested by compute temp/com does not exist"
+  },
+  {
+   "case": "w26velbias_create_cs",
+   "line": 14,
+   "text": "compute CStemp nogroup temp/cs cores shells",
+   "style": "compute temp/cs",
+   "native": "ERROR: Group ID nogroup requested by compute temp/cs does not exist"
+  },
+  {
+   "case": "w400dp_remap_v",
+   "line": 16,
+   "text": "compute tdef nogroup temp/deform",
+   "style": "compute temp/deform",
+   "native": "ERROR: Group ID nogroup requested by compute temp/deform does not exist"
+  },
+  {
+   "case": "w230re_temp_deform_eff",
+   "line": 16,
+   "text": "compute tdef nogroup temp/deform/eff",
+   "style": "compute temp/deform/eff",
+   "native": "ERROR: Group ID nogroup requested by compute temp/deform/eff does not exist"
+  },
+  {
+   "case": "w72drude_swm4_lang",
+   "line": 44,
+   "text": "compute TEMP nogroup temp/drude",
+   "style": "compute temp/drude",
+   "native": "ERROR: Group ID nogroup requested by compute temp/drude does not exist"
+  },
+  {
+   "case": "w230re_eff_langevin",
+   "line": 16,
+   "text": "compute effTemp nogroup temp/eff",
+   "style": "compute temp/eff",
+   "native": "ERROR: Group ID nogroup requested by compute temp/eff does not exist"
+  },
+  {
+   "case": "w41nptp_bias",
+   "line": 12,
+   "text": "compute tp nogroup temp/partial 0 1 1",
+   "style": "compute temp/partial",
+   "native": "ERROR: Group ID nogroup requested by compute temp/partial does not exist"
+  },
+  {
+   "case": "w48cb_tp_twobins",
+   "line": 14,
+   "text": "compute tp nogroup temp/profile 1 0 0 x 2",
+   "style": "compute temp/profile",
+   "native": "ERROR: Group ID nogroup requested by compute temp/profile does not exist"
+  },
+  {
+   "case": "w14temp_ramp",
+   "line": 16,
+   "text": "compute ra nogroup temp/ramp vx -1.0 1.5 y 2 9 units box",
+   "style": "compute temp/ramp",
+   "native": "ERROR: Group ID nogroup requested by compute temp/ramp does not exist"
+  },
+  {
+   "case": "w8ehex_heat",
+   "line": 22,
+   "text": "compute th nogroup temp/region hot",
+   "style": "compute temp/region",
+   "native": "ERROR: Group ID nogroup requested by compute temp/region does not exist"
+  },
+  {
+   "case": "w63eff_h2_region",
+   "line": 15,
+   "text": "compute regionT nogroup temp/region/eff part",
+   "style": "compute temp/region/eff",
+   "native": "ERROR: Group ID nogroup requested by compute temp/region/eff does not exist"
+  },
+  {
+   "case": "w227xc_temp_rotate",
+   "line": 18,
+   "text": "compute rot nogroup temp/rotate",
+   "style": "compute temp/rotate",
+   "native": "ERROR: Group ID nogroup requested by compute temp/rotate does not exist"
+  },
+  {
+   "case": "w4sphere_disc",
+   "line": 19,
+   "text": "compute ts nogroup temp/sphere",
+   "style": "compute temp/sphere",
+   "native": "ERROR: Group ID nogroup requested by compute temp/sphere does not exist"
+  },
+  {
+   "case": "w227xc_ti_single",
+   "line": 21,
+   "text": "compute ti nogroup ti lj/cut 1 v_f v_df",
+   "style": "compute ti",
+   "native": "ERROR: Group ID nogroup requested by compute ti does not exist"
+  },
+  {
+   "case": "w218ck_chunk_vcm_torque_vacf",
+   "line": 26,
+   "text": "compute tq nogroup torque/chunk cm",
+   "style": "compute torque/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute torque/chunk does not exist"
+  },
+  {
+   "case": "w2cglob_msd_vacf",
+   "line": 29,
+   "text": "compute v nogroup vacf",
+   "style": "compute vacf",
+   "native": "ERROR: Group ID nogroup requested by compute vacf does not exist"
+  },
+  {
+   "case": "w218ck_chunk_vcm_torque_vacf",
+   "line": 27,
+   "text": "compute vac nogroup vacf/chunk cm",
+   "style": "compute vacf/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute vacf/chunk does not exist"
+  },
+  {
+   "case": "w322ga_wildcard",
+   "line": 23,
+   "text": "compute vcm nogroup vcm/chunk cm",
+   "style": "compute vcm/chunk",
+   "native": "ERROR: Group ID nogroup requested by compute vcm/chunk does not exist"
+  },
+  {
+   "case": "w14flow_cos",
+   "line": 23,
+   "text": "compute cos nogroup viscosity/cos",
+   "style": "compute viscosity/cos",
+   "native": "ERROR: Group ID nogroup requested by compute viscosity/cos does not exist"
+  },
+  {
+   "case": "w31voronp_single",
+   "line": 12,
+   "text": "compute v nogroup voronoi/atom surface all",
+   "style": "compute voronoi/atom",
+   "native": "ERROR: Group ID nogroup requested by compute voronoi/atom does not exist"
+  },
+  {
+   "case": "w134cp_xrd_ni",
+   "line": 12,
+   "text": "compute XRD nogroup xrd 1.541838 Ni 2Theta 40 80 c 2 2 2 LP 1",
+   "style": "compute xrd",
+   "native": "ERROR: Group ID nogroup requested by compute xrd does not exist"
+  },
+  {
+   "case": "w48cb_cnp_tiny",
+   "line": 11,
+   "text": "delete_atoms group nogroup",
+   "style": "delete_atoms group",
+   "native": "ERROR: Group ID nogroup requested by delete_atoms does not exist"
+  },
+  {
+   "case": "w49pb_pppm_diel1",
+   "line": 15,
+   "text": "displace_atoms nogroup move v_dx v_dy 0.0 units box",
+   "style": "displace_atoms move",
+   "native": "ERROR: Could not find display_atoms group nogroup"
+  },
+  {
+   "case": "w85setup_disp_random",
+   "line": 8,
+   "text": "displace_atoms nogroup random 0.02 0.02 0.02 4242 units lattice",
+   "style": "displace_atoms random",
+   "native": "ERROR: Could not find display_atoms group nogroup"
+  },
+  {
+   "case": "w19ellipsoid",
+   "line": 16,
+   "text": "displace_atoms nogroup rotate 3 3 1 0.3 0.4 1 33 units box",
+   "style": "displace_atoms rotate",
+   "native": "ERROR: Could not find display_atoms group nogroup"
+  },
+  {
+   "case": "dump_formats",
+   "line": 12,
+   "text": "dump 1 nogroup atom 10 d.atom",
+   "style": "dump atom",
+   "native": "ERROR: Could not find dump group ID: nogroup"
+  },
+  {
+   "case": "w215cfg_dump",
+   "line": 19,
+   "text": "dump 1 nogroup cfg 20 s.*.cfg mass type xs ys zs id vx c_pe c_s[2]",
+   "style": "dump cfg",
+   "native": "ERROR: Could not find dump group ID: nogroup"
+  },
+  {
+   "case": "dump_formats",
+   "line": 13,
+   "text": "dump 2 nogroup custom 10 d.custom id type x y z xu vx fx mass ix",
+   "style": "dump custom",
+   "native": "ERROR: Could not find dump group ID: nogroup"
+  },
+  {
+   "case": "w422dump_grid_tri",
+   "line": 11,
+   "text": "dump 1 nogroup grid 1 tri.dump c_pg:grid:data[*]",
+   "style": "dump grid",
+   "native": "ERROR: Could not find dump group ID: nogroup"
+  },
+  {
+   "case": "w423dump_grid_2d",
+   "line": 20,
+   "text": "dump 2 nogroup grid/vtk 40 v2d.*.vtr f_ag:grid:data[1] f_ag:grid:data[2] f_ag:grid:data[3]",
+   "style": "dump grid/vtk",
+   "native": "ERROR: Could not find dump group ID: nogroup"
+  },
+  {
+   "case": "w29dump_image",
+   "line": 11,
+   "text": "dump im nogroup image 1 img.*.ppm type type size 64 64 box no 0.02 view 90 0",
+   "style": "dump image",
+   "native": "ERROR: Could not find dump group ID: nogroup"
+  },
+  {
+   "case": "w11local_bond",
+   "line": 12,
+   "text": "dump 1 nogroup local 1 w11local_bond.local index c_bl[*] c_bp[*]",
+   "style": "dump local",
+   "native": "ERROR: Could not find dump group ID: nogroup"
+  },
+  {
+   "case": "w196vtk_xml",
+   "line": 14,
+   "text": "dump d nogroup vtk 10 dump*.vtp id type vx vy vz fx fy fz",
+   "style": "dump vtk",
+   "native": "ERROR: Could not find dump group ID: nogroup"
+  },
+  {
+   "case": "dump_formats",
+   "line": 14,
+   "text": "dump 3 nogroup xyz 10 d.xyz",
+   "style": "dump xyz",
+   "native": "ERROR: Could not find dump group ID: nogroup"
+  },
+  {
+   "case": "w66units_accelcos_real",
+   "line": 21,
+   "text": "fix 2 nogroup accelerate/cos 0.001",
+   "style": "fix accelerate/cos",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w65reaxq_acks2_field",
+   "line": 12,
+   "text": "fix 1 nogroup acks2/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 1000",
+   "style": "fix acks2/reaxff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w9adapt_soft",
+   "line": 27,
+   "text": "fix 1 nogroup adapt 1 pair soft a * * v_prefactor",
+   "style": "fix adapt",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 23,
+   "text": "fix ADAPT nogroup adapt/fep 20 pair lj/cut/coul/long/soft lambda * * v_lam atom charge 1 v_q1 atom charge 2 v_q2",
+   "style": "fix adapt/fep",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w437dyngroup_bpm_heat",
+   "line": 22,
+   "text": "fix 4 nogroup add/heat linear 3.0 0.5",
+   "style": "fix add/heat",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w13misc_controller",
+   "line": 21,
+   "text": "fix push nogroup addforce v_fc 0.0 0.0",
+   "style": "fix addforce",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w18fix_addtorque",
+   "line": 19,
+   "text": "fix 2 nogroup addtorque 0.02 0.01 -0.015",
+   "style": "fix addtorque",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w228gs_addtorque",
+   "line": 22,
+   "text": "fix 2 nogroup addtorque/atom 0.1 -0.2 v_tz every 2",
+   "style": "fix addtorque/atom",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w66units_addtorqueg_real",
+   "line": 21,
+   "text": "fix 2 nogroup addtorque/group 0.05 0.03 -0.02",
+   "style": "fix addtorque/group",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w194alc_alloy",
+   "line": 20,
+   "text": "fix 2 nogroup alchemy v_ramp",
+   "style": "fix alchemy",
+   "native": "ERROR: World variable count 2 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w62brown_alignquat",
+   "line": 15,
+   "text": "fix 3 nogroup align/self quat 0.1",
+   "style": "fix align/self",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w119amoeba_ub",
+   "line": 17,
+   "text": "fix bit nogroup amoeba/bitorsion w119amoeba_ub_bitorsion.data",
+   "style": "fix amoeba/bitorsion",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w119amoeba_ub",
+   "line": 15,
+   "text": "fix pit nogroup amoeba/pitorsion",
+   "style": "fix amoeba/pitorsion",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w142mx_append_atoms",
+   "line": 17,
+   "text": "fix 2 nogroup append/atoms zhi freq 20 size 0.5",
+   "style": "fix append/atoms",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w339swap_semi_tail",
+   "line": 17,
+   "text": "fix sw nogroup atom/swap 5 20 12345 1.0 types 1 2 semi-grand yes mu 0.0 0.3 ke yes",
+   "style": "fix atom/swap",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w278ap_atom_weight",
+   "line": 21,
+   "text": "fix w nogroup atom_weight/apip 2 1e-05 0.0004 3e-06 0 grp no_rescale",
+   "style": "fix atom_weight/apip",
+   "native": "ERROR: Could not find fix group ID nogroup",
+   "build": "APIP"
+  },
+  {
+   "case": "w2avg_aveatom",
+   "line": 30,
+   "text": "fix 2 nogroup ave/atom 2 5 10 vx vy v_ke",
+   "style": "fix ave/atom",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w7chunk_mol",
+   "line": 25,
+   "text": "fix 3 nogroup ave/chunk 5 1 5 cm vx norm all file molvx.txt",
+   "style": "fix ave/chunk",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w11gk_correlate",
+   "line": 17,
+   "text": "fix JJ nogroup ave/correlate 2 10 40 c_p[4] c_p[5] c_p[6] type auto/upper ave running file pxy.corr",
+   "style": "fix ave/correlate",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w229xf_corrlong_auto",
+   "line": 18,
+   "text": "fix JJ nogroup ave/correlate/long 2 40 c_p[4] c_p[5] type auto/upper file corrl_auto.dat",
+   "style": "fix ave/correlate/long",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w26cgrid_propgrid",
+   "line": 15,
+   "text": "fix ave nogroup ave/grid 5 1 5 4 4 4 vx vy vz",
+   "style": "fix ave/grid",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w11local_histo",
+   "line": 11,
+   "text": "fix h nogroup ave/histo 1 1 1 0 3 5 c_bl mode vector file w11local_histo.histo",
+   "style": "fix ave/histo",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w137cf_histw_global",
+   "line": 16,
+   "text": "fix h nogroup ave/histo/weight 1 1 1 -2 2 8 c_r[1] c_r[2] mode scalar beyond end file w137cf_histw_global.histo",
+   "style": "fix ave/histo/weight",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w47pkg_moments_simple",
+   "line": 14,
+   "text": "fix 2 nogroup ave/moments 5 60 30 v_toteng mean stddev variance skew kurtosis",
+   "style": "fix ave/moments",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w89fix_avetime_nonorm",
+   "line": 15,
+   "text": "fix a nogroup ave/time 2 2 4 c_p ave one",
+   "style": "fix ave/time",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w2fset_aveforce",
+   "line": 28,
+   "text": "fix 2 nogroup aveforce NULL 0.0 0.05",
+   "style": "fix aveforce",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w7bal_forced",
+   "line": 12,
+   "text": "fix 2 nogroup balance 10 0.9 shift xy 5 1.05",
+   "style": "fix balance",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w133mf_baoab_lj",
+   "line": 17,
+   "text": "fix 1 nogroup baoab 1.0 1.0 1.0 12345 zero yes",
+   "style": "fix baoab",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w156mx_bocs",
+   "line": 17,
+   "text": "fix 1 nogroup bocs temp 300.0 300.0 100.0 cgiso 0.986 0.986 1000.0 analytic 66476.015 968 2 245030.10 8962.20",
+   "style": "fix bocs",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w139bc_break_prob",
+   "line": 16,
+   "text": "fix b nogroup bond/break 5 1 1.2 prob 0.5 777",
+   "style": "fix bond/break",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w459dyngroup_bondcreate",
+   "line": 21,
+   "text": "fix bc nogroup bond/create 2 1 1 1.6 1 prob 0.7 4321",
+   "style": "fix bond/create",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w224mc_bondcreateangle",
+   "line": 15,
+   "text": "fix bc nogroup bond/create/angle 2 1 1 2.0 1 aconstrain 100 180 prob 0.8 12345",
+   "style": "fix bond/create/angle",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w94react_nylon_unstab",
+   "line": 24,
+   "text": "fix myrxns nogroup bond/react stabilization no react rxn1 all 1 0.0 2.9 mol1 mol2 w94react_nylon_stp1.map react rxn2 all 1 0.0 5.0 mol3 mol4 w94react_nylon_stp2.map rescale_charges yes",
+   "style": "fix bond/react",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w224mc_bondswap_fene",
+   "line": 15,
+   "text": "fix bs nogroup bond/swap 2 1.0 2.0 4321",
+   "style": "fix bond/swap",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w10boxrelax_iso",
+   "line": 16,
+   "text": "fix 1 nogroup box/relax iso 0.0",
+   "style": "fix box/relax",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w62brown_point3d",
+   "line": 12,
+   "text": "fix 1 nogroup brownian 5.0 198098 rng gaussian gamma_t 2.0",
+   "style": "fix brownian",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w62brown_asphere3d",
+   "line": 13,
+   "text": "fix 1 nogroup brownian/asphere 1.0 5 rng uniform gamma_r_eigen 1.0 2.0 3.0 gamma_t_eigen 1.0 2.0 3.0 rotation_temp 2.0",
+   "style": "fix brownian/asphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w62brown_sphere3dplanar",
+   "line": 13,
+   "text": "fix 1 nogroup brownian/sphere 1.0 77 rng uniform gamma_t 3.0 gamma_r 1.0 planar_rotation",
+   "style": "fix brownian/sphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w349chreg_onlysalt_anion",
+   "line": 19,
+   "text": "fix chareg nogroup charge/regulation 2 3 pIp 2.5 pIm 3.5 onlysalt yes 1 -2 tag yes lunit_nm 0.72 nevery 50 nmc 60 seed 2345 tempfixid fT",
+   "style": "fix charge/regulation",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w15cmap_run",
+   "line": 7,
+   "text": "fix cmap nogroup cmap w15cmap_grid.txt",
+   "style": "fix cmap",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w13misc_controller",
+   "line": 23,
+   "text": "fix ctl nogroup controller 10 1.0 0.5 0.2 0.1 v_vcmx 0.5 fc",
+   "style": "fix controller",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w228gs_cundall_var",
+   "line": 22,
+   "text": "fix 2 nogroup damping/cundall 0.2 0.1 scale v_g",
+   "style": "fix damping/cundall",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_temp_deform_eff",
+   "line": 15,
+   "text": "fix 2 nogroup deform 1 x erate 0.001 y erate -0.0005 remap v",
+   "style": "fix deform",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w399dp_box_volume",
+   "line": 15,
+   "text": "fix 2 nogroup deform/pressure 1 x wiggle 0.4 0.6 y pressure 0.5 0.1 box volume units box",
+   "style": "fix deform/pressure",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w7dep_global",
+   "line": 14,
+   "text": "fix 3 nogroup deposit 5 1 2 777 region reg units box global 1.0 2.0 units box",
+   "style": "fix deposit",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_eos_table",
+   "line": 21,
+   "text": "fix 1 nogroup dpd/energy",
+   "style": "fix dpd/energy",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w18fix_drag",
+   "line": 18,
+   "text": "fix 2 nogroup drag 0.0 0.0 0.0 0.5 0.5",
+   "style": "fix drag",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w72drude_swm4_lang",
+   "line": 33,
+   "text": "fix DRUDE nogroup drude C N N D",
+   "style": "fix drude",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w72drude_butane_nh",
+   "line": 38,
+   "text": "fix fDIRECT nogroup drude/transform/direct",
+   "style": "fix drude/transform/direct",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w72drude_butane_nh",
+   "line": 41,
+   "text": "fix fINVERSE nogroup drude/transform/inverse",
+   "style": "fix drude/transform/inverse",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w47pkg_dtreset_metal",
+   "line": 17,
+   "text": "fix 2 nogroup dt/reset 1 NULL 0.0005 0.02 emax 10.0 units box",
+   "style": "fix dt/reset",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 28,
+   "text": "fix 3 nogroup edpd/source cuboid 0.0 1.5 0.0 6.0 3.0 6.0 0.01",
+   "style": "fix edpd/source",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w66units_efield_const_real",
+   "line": 23,
+   "text": "fix 2 nogroup efield 0.02 -0.01 0.03",
+   "style": "fix efield",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w66units_lepton_efield_real",
+   "line": 23,
+   "text": "fix 2 nogroup efield/lepton \"-0.05*x^2 - 0.3*y*z\" step 1e-3",
+   "style": "fix efield/lepton",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w229xf_efield_tip4p",
+   "line": 20,
+   "text": "fix 3 nogroup efield/tip4p 0.3 -0.2 0.5",
+   "style": "fix efield/tip4p",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w8ehex_region_dynamic",
+   "line": 20,
+   "text": "fix 2 nogroup ehex 5 0.4 region hot",
+   "style": "fix ehex",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w68elec_madelung_cg",
+   "line": 16,
+   "text": "fix conp nogroup electrode/conp 0 2 couple top 1 symm on algo cg 1e-6",
+   "style": "fix electrode/conp",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w68elec_conq_cg",
+   "line": 19,
+   "text": "fix q nogroup electrode/conq -0.2 2 couple top 0.2 symm on algo cg 1e-6",
+   "style": "fix electrode/conq",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w68elec_thermo",
+   "line": 19,
+   "text": "fix th nogroup electrode/thermo 0 2 couple top 1 temp 300 1 1234",
+   "style": "fix electrode/thermo",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w47pkg_elstop_cu",
+   "line": 18,
+   "text": "fix fel nogroup electron/stopping 10.0 w47pkg_elstop_cu.table",
+   "style": "fix electron/stopping",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w108xf_elfit_sisi",
+   "line": 18,
+   "text": "fix 3 nogroup electron/stopping/fit 4.63 3.3e-3 4.0e-8",
+   "style": "fix electron/stopping/fit",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 21,
+   "text": "fix 3 nogroup enforce2d",
+   "style": "fix enforce2d",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 32,
+   "text": "fix 3 nogroup eos/cv 0.0005",
+   "style": "fix eos/cv",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_eos_table",
+   "line": 23,
+   "text": "fix 3 nogroup eos/table linear w230re_eos_table.txt 200 EOS_TABLE",
+   "style": "fix eos/table",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 44,
+   "text": "fix 3 nogroup eos/table/rx linear w160rx_table.eos 201 KEYWORD w160rx_thermo.dpdrx",
+   "style": "fix eos/table/rx",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w340deposit_tail",
+   "line": 20,
+   "text": "fix 3 nogroup evaporate 7 1 ev 9113",
+   "style": "fix evaporate",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w229xf_ffl",
+   "line": 15,
+   "text": "fix 2 nogroup ffl 0.5 1.2 0.6 4321",
+   "style": "fix ffl",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w214fc_clusters_b",
+   "line": 28,
+   "text": "fix cor nogroup filter/corotate b 3",
+   "style": "fix filter/corotate",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w133mf_flow_gauss_mod",
+   "line": 29,
+   "text": "fix GD nogroup flow/gauss 1 0 0",
+   "style": "fix flow/gauss",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w4gran_freeze",
+   "line": 30,
+   "text": "fix 3 nogroup freeze",
+   "style": "fix freeze",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w33gcmc_real_ins",
+   "line": 11,
+   "text": "fix mygcmc nogroup gcmc 1 3 0 1 29494 300.0 50.0 1.0",
+   "style": "fix gcmc",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w352gjf_method8",
+   "line": 20,
+   "text": "fix 1 nogroup gjf 1.0 1.0 2.0 9182 method 8",
+   "style": "fix gjf",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w229xf_gld",
+   "line": 15,
+   "text": "fix 2 nogroup gld 1.2 0.6 2 4321 pprony 0.5 0.3 0.8 1.5 zero yes",
+   "style": "fix gld",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w108xf_gle_lj_eq",
+   "line": 15,
+   "text": "fix 1 nogroup gle 6 1.2 1.4 31415 gle_lj.A",
+   "style": "fix gle",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w463dyngroup_isosurface",
+   "line": 22,
+   "text": "fix iso nogroup graphics/isosurface 5 0.4 1.0 quality min filename w463iso.*.stl",
+   "style": "fix graphics/isosurface",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w159gr_lines",
+   "line": 14,
+   "text": "fix l nogroup graphics/lines 2 3 6 4",
+   "style": "fix graphics/lines",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 16,
+   "text": "fix 2 nogroup gravity 1.0 spherical 0.0 -180.0",
+   "style": "fix gravity",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w108xf_grem_nvt",
+   "line": 13,
+   "text": "fix fxgREM nogroup grem 400 -.01 -30000 fxnvt",
+   "style": "fix grem",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w49hy_halt_min",
+   "line": 20,
+   "text": "fix h nogroup halt 1 v_s >= 21 error soft message no",
+   "style": "fix halt",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w8ehex_heat",
+   "line": 20,
+   "text": "fix 2 nogroup heat 1 0.2 region hot",
+   "style": "fix heat",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w437dyngroup_bpm_heat",
+   "line": 21,
+   "text": "fix 3 nogroup heat/flow constant 2.0",
+   "style": "fix heat/flow",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w32hmc_accept",
+   "line": 15,
+   "text": "fix 2 nogroup hmc 5 12345 1000000.0 resample yes",
+   "style": "fix hmc",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w49hy_rebond",
+   "line": 27,
+   "text": "fix HG nogroup hyper/global 1.5 0.3 0.5 1.0",
+   "style": "fix hyper/global",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w153hy_bound",
+   "line": 27,
+   "text": "fix HL nogroup hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 1.2 bound 0.3 reset 40",
+   "style": "fix hyper/local",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w50il_chain",
+   "line": 14,
+   "text": "fix cons nogroup ilves 1.0e-4 25 0 b 1",
+   "style": "fix ilves",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w66units_indent_plane_real",
+   "line": 21,
+   "text": "fix 2 nogroup indent 2.0 plane z 1.5 lo units box",
+   "style": "fix indent",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w279ap_thermostat_shuffle",
+   "line": 16,
+   "text": "fix lambda nogroup lambda/apip 0.5 1.5 time_averaged_zone 2.0 3.0 3 3 store_atomic_stats",
+   "style": "fix lambda/apip",
+   "native": "ERROR: Could not find fix group ID nogroup",
+   "build": "APIP"
+  },
+  {
+   "case": "w280ap_la_csp_static",
+   "line": 16,
+   "text": "fix la nogroup lambda/la/csp/apip 0.7 2.0 3.0 5.0 fcc store_peratom 5",
+   "style": "fix lambda/la/csp/apip",
+   "native": "ERROR: Could not find fix group ID nogroup",
+   "build": "APIP"
+  },
+  {
+   "case": "w279ap_thermostat_shuffle",
+   "line": 17,
+   "text": "fix lambda_thermostat nogroup lambda_thermostat/apip N_rescaling 3 seed 1234",
+   "style": "fix lambda_thermostat/apip",
+   "native": "ERROR: Could not find fix group ID nogroup",
+   "build": "APIP"
+  },
+  {
+   "case": "w89fix_rigid_langevin",
+   "line": 14,
+   "text": "fix 2 nogroup langevin 1.0 1.0 0.5 48279",
+   "style": "fix langevin",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w72drude_butane_lang",
+   "line": 36,
+   "text": "fix fLANG nogroup langevin/drude 260.0 100.0 200611 1.0 20.0 260514 zero yes",
+   "style": "fix langevin/drude",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_eff_langevin",
+   "line": 15,
+   "text": "fix 2 nogroup langevin/eff 300.0 300.0 20.0 4321 tally yes scale 3 2.0",
+   "style": "fix langevin/eff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 14,
+   "text": "fix 3 nogroup langevin/spin 0.0 0.1 21",
+   "style": "fix langevin/spin",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w181px_lb_pits_sw",
+   "line": 20,
+   "text": "fix 1 nogroup lb/fluid 1 1.0 1.0 dx 8.0 linearInit pressurebcx 0.01 npits 2 6 13 5 0 sw",
+   "style": "fix lb/fluid",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w132lb_momentum",
+   "line": 22,
+   "text": "fix 4 nogroup lb/momentum 50 linear 1 1 1",
+   "style": "fix lb/momentum",
+   "native": "ERROR: Unrecognized fix style 'lb/fluid' is part of the LATBOLTZ package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the LATBOLTZ package, which no native build here has"
+  },
+  {
+   "case": "w181px_lb_pits_sw",
+   "line": 21,
+   "text": "fix 2 nogroup lb/viscous",
+   "style": "fix lb/viscous",
+   "native": "ERROR: Unrecognized fix style 'lb/fluid' is part of the LATBOLTZ package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the LATBOLTZ package, which no native build here has"
+  },
+  {
+   "case": "w66units_lineplane_real",
+   "line": 24,
+   "text": "fix 3 nogroup lineforce 1.0 1.0 0.5",
+   "style": "fix lineforce",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w289mf_manifoldforce_min",
+   "line": 13,
+   "text": "fix mf nogroup manifoldforce sphere 10.0",
+   "style": "fix manifoldforce",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w125sdpd_meso_move_rotate",
+   "line": 31,
+   "text": "fix 3 nogroup meso/move rotate 0 0 0 0 0 1 2.0 units box",
+   "style": "fix meso/move",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w30molswap_keno",
+   "line": 18,
+   "text": "fix swap nogroup mol/swap 1 1 1 2 12345 1e9 ke no",
+   "style": "fix mol/swap",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w167om_fix2d",
+   "line": 17,
+   "text": "fix 2 nogroup momentum 1 linear 1 1 0 angular",
+   "style": "fix momentum",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w218ck_fix_momentum",
+   "line": 28,
+   "text": "fix 2 nogroup momentum/chunk 3 cm linear 1 1 1 angular rescale",
+   "style": "fix momentum/chunk",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w17move_linear",
+   "line": 16,
+   "text": "fix 1 nogroup move linear 0.5 0.0 0.0 units box",
+   "style": "fix move",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w128shock_msst_lj",
+   "line": 16,
+   "text": "fix msst nogroup msst z 1.5 q 10.0 mu 0.5 tscale 0.1",
+   "style": "fix msst",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 25,
+   "text": "fix 1 nogroup mvv/dpd",
+   "style": "fix mvv/dpd",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 26,
+   "text": "fix 1 nogroup mvv/edpd 0.5",
+   "style": "fix mvv/edpd",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 25,
+   "text": "fix 1 nogroup mvv/tdpd 0.5",
+   "style": "fix mvv/tdpd",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w46neb_each",
+   "line": 20,
+   "text": "fix 2 nogroup neb 1.0 parallel ideal",
+   "style": "fix neb",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w310gneb_cg",
+   "line": 18,
+   "text": "fix 3 nogroup neb/spin 1.0",
+   "style": "fix neb/spin",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w460dyngroup_neighborswap",
+   "line": 26,
+   "text": "fix mc nogroup neighbor/swap 2 5 12345 1.0 1.5 v types 2 1",
+   "style": "fix neighbor/swap",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w229xf_nonaffine",
+   "line": 16,
+   "text": "fix 2 nogroup nonaffine/displacement 5 integrated fixed 20 z/min 0",
+   "style": "fix nonaffine/displacement",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w483nh_isochoric_2d",
+   "line": 14,
+   "text": "fix 1 nogroup nph y 1.0 1.0 1.0 isochoric x",
+   "style": "fix nph",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w19nhasphere_nph",
+   "line": 39,
+   "text": "fix 1 nogroup nph/asphere iso 1.5 0.5 2.0",
+   "style": "fix nph/asphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w126body_squares_nph",
+   "line": 16,
+   "text": "fix 1 nogroup nph/body x 0.1 0.1 1.0 y 0.1 0.1 1.0 fixedpoint 0 0 0",
+   "style": "fix nph/body",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w367eff_nph_couple_xy",
+   "line": 14,
+   "text": "fix 1 nogroup nph/eff x 0.0 0.0 1.0 y 0.0 0.0 1.0 z 0.0 0.0 1.0 couple xy pchain 1 mtk no",
+   "style": "fix nph/eff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w355dipole_nph_sphere",
+   "line": 21,
+   "text": "fix 1 nogroup nph/sphere iso 0.5 0.5 1.0 update dipole",
+   "style": "fix nph/sphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w128shock_nphug_z",
+   "line": 15,
+   "text": "fix myhug nogroup nphug temp 1.0 1.0 10.0 z 1.5 1.5 20.0",
+   "style": "fix nphug",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w481nh_isochoric_x",
+   "line": 13,
+   "text": "fix 1 nogroup npt temp 1.0 1.0 0.5 z 2.0 2.0 1.0 isochoric x",
+   "style": "fix npt",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w19nhasphere_npt",
+   "line": 39,
+   "text": "fix 1 nogroup npt/asphere temp 1.0 1.0 0.5 iso 1.5 0.5 2.0",
+   "style": "fix npt/asphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w126body_wall2d",
+   "line": 17,
+   "text": "fix 1 nogroup npt/body temp 0.5 0.5 1.0 x 0.001 0.1 1.0 fixedpoint 0 0 0",
+   "style": "fix npt/body",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w141cy_cauchy_basic",
+   "line": 18,
+   "text": "fix 1 nogroup npt/cauchy temp 600.0 600.0 1.0 x 0.0 0.0 0.1 y 0.0 0.0 0.1 z 0.0 0.0 0.1 couple none alpha 0.001 continue no",
+   "style": "fix npt/cauchy",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w364eff_npt_aniso",
+   "line": 14,
+   "text": "fix 1 nogroup npt/eff temp 300.0 300.0 0.5 aniso 0.0 0.0 1.0",
+   "style": "fix npt/eff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w356dlm_npt_sphere",
+   "line": 22,
+   "text": "fix 1 nogroup npt/sphere temp 0.8 0.8 0.5 iso 0.5 0.5 1.0 update dipole/dlm",
+   "style": "fix npt/sphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w129uef_npt_biaxial",
+   "line": 18,
+   "text": "fix 1 nogroup npt/uef temp 0.722 0.722 0.5 iso 10 10 5 erate 0.5 0.5 ext z",
+   "style": "fix npt/uef",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w16numdiff_forces",
+   "line": 15,
+   "text": "fix fd nogroup numdiff 1 1e-6",
+   "style": "fix numdiff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w16numdiff_virial",
+   "line": 15,
+   "text": "fix fd nogroup numdiff/virial 1 1e-6",
+   "style": "fix numdiff/virial",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w47ds_legend",
+   "line": 9,
+   "text": "fix 1 nogroup nve",
+   "style": "fix nve",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 31,
+   "text": "fix 2 nogroup nve/asphere",
+   "style": "fix nve/asphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w19asphere_noforce",
+   "line": 19,
+   "text": "fix 1 nogroup nve/asphere/noforce",
+   "style": "fix nve/asphere/noforce",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w48bd_free",
+   "line": 11,
+   "text": "fix 1 nogroup nve/body",
+   "style": "fix nve/body",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w53bpm_rot_chain",
+   "line": 16,
+   "text": "fix 1 nogroup nve/bpm/sphere",
+   "style": "fix nve/bpm/sphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w57oxdna_nvedot",
+   "line": 19,
+   "text": "fix 1 nogroup nve/dot",
+   "style": "fix nve/dot",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w57oxdna_langevin",
+   "line": 19,
+   "text": "fix 1 nogroup nve/dotc/langevin 0.1 0.1 2.5 457145 angmom 10",
+   "style": "fix nve/dotc/langevin",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_eff_langevin",
+   "line": 14,
+   "text": "fix 1 nogroup nve/eff",
+   "style": "fix nve/eff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w2fmom_nvelimit",
+   "line": 27,
+   "text": "fix 1 nogroup nve/limit 0.0012",
+   "style": "fix nve/limit",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w61line_pair",
+   "line": 14,
+   "text": "fix 1 nogroup nve/line",
+   "style": "fix nve/line",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w282mf_sphere_energy",
+   "line": 9,
+   "text": "fix step nogroup nve/manifold/rattle 1e-6 10 sphere 10.0",
+   "style": "fix nve/manifold/rattle",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w231co_lubricateU_flaglog0",
+   "line": 18,
+   "text": "fix 1 nogroup nve/noforce",
+   "style": "fix nve/noforce",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w54accel_melt",
+   "line": 19,
+   "text": "fix 1 nogroup nve/omp",
+   "style": "fix nve/omp",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w36mol_diam",
+   "line": 12,
+   "text": "fix 1 nogroup nve/sphere",
+   "style": "fix nve/sphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 15,
+   "text": "fix 1 nogroup nve/spin lattice frozen",
+   "style": "fix nve/spin",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w61tri_pair",
+   "line": 15,
+   "text": "fix 1 nogroup nve/tri",
+   "style": "fix nve/tri",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w229xf_nvk",
+   "line": 14,
+   "text": "fix 1 nogroup nvk",
+   "style": "fix nvk",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w108xf_grem_nvt",
+   "line": 12,
+   "text": "fix fxnvt nogroup nvt temp 300.0 300.0 1000.0",
+   "style": "fix nvt",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w19nhasphere_nvt",
+   "line": 39,
+   "text": "fix 1 nogroup nvt/asphere temp 1.0 1.0 0.5",
+   "style": "fix nvt/asphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w126body_cubes_nvt",
+   "line": 15,
+   "text": "fix 1 nogroup nvt/body temp 1.2 1.2 0.1",
+   "style": "fix nvt/body",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w63eff_ch4_nvt",
+   "line": 21,
+   "text": "fix 1 nogroup nvt/eff temp 300.0 300.0 0.1",
+   "style": "fix nvt/eff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w286mf_nvt_ramp",
+   "line": 14,
+   "text": "fix step nogroup nvt/manifold/rattle 1e-8 20 sphere v_R temp 1.0 1.2 0.1 tchain 4",
+   "style": "fix nvt/manifold/rattle",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w39nemd_nemd3d",
+   "line": 23,
+   "text": "fix 1 nogroup nvt/sllod temp 1.0 1.0 1.0 tchain 1",
+   "style": "fix nvt/sllod",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_eff_sllod",
+   "line": 15,
+   "text": "fix 2 nogroup nvt/sllod/eff temp 300.0 300.0 10.0",
+   "style": "fix nvt/sllod/eff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w7nhs_disc",
+   "line": 19,
+   "text": "fix 1 nogroup nvt/sphere temp 0.8 0.5 0.5 disc",
+   "style": "fix nvt/sphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w446dyngroup_nvt_uef",
+   "line": 19,
+   "text": "fix 1 nogroup nvt/uef temp 0.722 0.8 0.5 erate -0.05 -0.05",
+   "style": "fix nvt/uef",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w18fix_oneway",
+   "line": 18,
+   "text": "fix 2 nogroup oneway 5 mid x",
+   "style": "fix oneway",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w236or_bcc",
+   "line": 14,
+   "text": "fix or nogroup orient/bcc 0 0 2.88 0.02 0.2 0.8 w236or_bcc_grain2.ori w236or_bcc_grain1.ori",
+   "style": "fix orient/bcc",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w133mf_orient_eco",
+   "line": 15,
+   "text": "fix eco nogroup orient/eco 0.08 0.25 3.6 w133mf_sigma5.ori",
+   "style": "fix orient/eco",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w236or_fcc",
+   "line": 14,
+   "text": "fix or nogroup orient/fcc 0 1 3.6 0.01 0.25 0.75 w236or_fcc_grain1.ori w236or_fcc_grain2.ori",
+   "style": "fix orient/fcc",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 33,
+   "text": "fix hp nogroup pafi pa 500.0 0.01 434 overdamped yes com no",
+   "style": "fix pafi",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w229xf_pair",
+   "line": 16,
+   "text": "fix pr nogroup pair 1 eam/alloy rho 0 fp 0",
+   "style": "fix pair",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w99phq_cu",
+   "line": 22,
+   "text": "fix 2 nogroup phonon 10 100 1000 w99phq_cu.map w99phq_cu nasr 20",
+   "style": "fix phonon",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w192pimdl_obabo_pile_l",
+   "line": 20,
+   "text": "fix 1 nogroup pimd/langevin ensemble nvt integrator obabo temp 1.00888 sp 0.1924 thermostat PILE_L 1234",
+   "style": "fix pimd/langevin",
+   "native": "ERROR: World variable count 4 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w191pimd_nvt_nmpimd8",
+   "line": 19,
+   "text": "fix 1 nogroup pimd/nvt method nmpimd fmass 0.5 sp 2.0 temp 300.0 nhc 3",
+   "style": "fix pimd/nvt",
+   "native": "ERROR: World variable count 8 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w66units_lineplane_real",
+   "line": 25,
+   "text": "fix 4 nogroup planeforce 0.2 0.1 1.0",
+   "style": "fix planeforce",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w71diel_nopbc_gmres",
+   "line": 18,
+   "text": "fix 3 nogroup polarize/bem/gmres 1 1.0e-4",
+   "style": "fix polarize/bem/gmres",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w71diel_nopbc_icc",
+   "line": 18,
+   "text": "fix 3 nogroup polarize/bem/icc 1 1.0e-4",
+   "style": "fix polarize/bem/icc",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w71diel_nopbc_dof",
+   "line": 18,
+   "text": "fix 3 nogroup polarize/functional 1 1.0e-4",
+   "style": "fix polarize/functional",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 19,
+   "text": "fix ins nogroup pour 20 1 4767548 vol 0.2 50 diam range 0.5 1.0 region slab",
+   "style": "fix pour",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 13,
+   "text": "fix 2 nogroup precession/spin zeeman 10.0 0 0 1",
+   "style": "fix precession/spin",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w89fix_pberend_iso",
+   "line": 14,
+   "text": "fix 2 nogroup press/berendsen iso 1.0 1.0 1.0",
+   "style": "fix press/berendsen",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w229xf_press_langevin",
+   "line": 15,
+   "text": "fix 2 nogroup press/langevin iso 0.5 1.5 0.5 temp 1.2 0.9 4321",
+   "style": "fix press/langevin",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w62brown_propelvel",
+   "line": 14,
+   "text": "fix 2 nogroup propel/self velocity 4.0",
+   "style": "fix propel/self",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w6prop_read",
+   "line": 6,
+   "text": "fix pr nogroup property/atom mol q i_tag d2_arr 2",
+   "style": "fix property/atom",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w99phq_qbmsst_lj",
+   "line": 16,
+   "text": "fix shock nogroup qbmsst z 1.5 q 10.0 tscale 0.1 damp 1.0 f_max 4.0 N_f 20 seed 35082 eta 1.0 beta 5 T_init 0.8",
+   "style": "fix qbmsst",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w58comb_cu2o",
+   "line": 21,
+   "text": "fix 2 nogroup qeq/comb 1 0.0001",
+   "style": "fix qeq/comb",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w140ct_limits",
+   "line": 17,
+   "text": "fix 1 nogroup qeq/ctip 1 12.0 1.0e-8 100 coul/ctip cdamp 0.30 maxrepeat 10",
+   "style": "fix qeq/ctip",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w36qeq_dyn_loose",
+   "line": 23,
+   "text": "fix q nogroup qeq/dynamic 1 8 1.0e-3 200 w36qeq_param.qeq2",
+   "style": "fix qeq/dynamic",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w36qeq_fire_tight",
+   "line": 23,
+   "text": "fix q nogroup qeq/fire 1 8 1.0e-5 200 w36qeq_param.qeq2",
+   "style": "fix qeq/fire",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 16,
+   "text": "fix q nogroup qeq/point 1 20 1.0e-14 200 w32qeq_point.params",
+   "style": "fix qeq/point",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w55reax_qeq_rdx_tight",
+   "line": 10,
+   "text": "fix 2 nogroup qeq/reax 1 0.0 10.0 1e-12 w55reax_param.qeq",
+   "style": "fix qeq/reax",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w55reax_qeq_water",
+   "line": 11,
+   "text": "fix 1 nogroup qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400",
+   "style": "fix qeq/reaxff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w65reaxq_qeqr_tight",
+   "line": 10,
+   "text": "fix 1 nogroup qeq/rel/reaxff 1 0.0 10.0 1e-12 reaxff w65reaxq_gauss_exp.txt",
+   "style": "fix qeq/rel/reaxff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w32qeq_shield4",
+   "line": 22,
+   "text": "fix q nogroup qeq/shielded 1 8 1.0e-14 200 w32qeq_shield.params",
+   "style": "fix qeq/shielded",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w40qslat_maxiter",
+   "line": 26,
+   "text": "fix 1 nogroup qeq/slater 2 12.0 1.0e-12 500 coul/streitz",
+   "style": "fix qeq/slater",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w99phq_qtb_lj",
+   "line": 16,
+   "text": "fix 2 nogroup qtb temp 0.8 damp 0.5 seed 35082 f_max 2.0 N_f 50",
+   "style": "fix qtb",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w65reaxq_qtpie_tight",
+   "line": 10,
+   "text": "fix 1 nogroup qtpie/reaxff 1 0.0 10.0 1e-12 reaxff w65reaxq_gauss_exp.txt",
+   "style": "fix qtpie/reaxff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w50rt_run0",
+   "line": 19,
+   "text": "fix 1 nogroup rattle 0.0001 20 0 b 1 a 1",
+   "style": "fix rattle",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w456dyngroup_reaxff_out",
+   "line": 21,
+   "text": "fix 4 nogroup reaxff/bonds 5 bonds.dyn",
+   "style": "fix reaxff/bonds",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w456dyngroup_reaxff_out",
+   "line": 22,
+   "text": "fix 3 nogroup reaxff/species 5 1 5 species.dyn cutoff * * 0.9 element H C O N",
+   "style": "fix reaxff/species",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w2fmom_recenter",
+   "line": 28,
+   "text": "fix 2 nogroup recenter INIT 2.5 NULL units box",
+   "style": "fix recenter",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w11restrain_dihedral",
+   "line": 19,
+   "text": "fix R nogroup restrain dihedral 1 2 3 4 0.0 20.0 60.0 mult 2 dihedral 1 2 3 5 5.0 5.0 -120.0 mult 3",
+   "style": "fix restrain",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 22,
+   "text": "fix 1 nogroup rheo 3.0 quintic 0 thermal",
+   "style": "fix rheo",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 66,
+   "text": "fix 5 nogroup rheo/oxidation 1.5 2 1.0",
+   "style": "fix rheo/oxidation",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 24,
+   "text": "fix 3 nogroup rheo/pressure * ideal/gas 1.4",
+   "style": "fix rheo/pressure",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 25,
+   "text": "fix 4 nogroup rheo/thermal conductivity * constant 0.1 specific/heat * constant 1.0",
+   "style": "fix rheo/thermal",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 23,
+   "text": "fix 2 nogroup rheo/viscosity * constant 0.05",
+   "style": "fix rheo/viscosity",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w48fb_rhok_npt",
+   "line": 25,
+   "text": "fix bias nogroup rhok 1 0 0 4.0 1.0",
+   "style": "fix rhok",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w89fix_rigid_langevin",
+   "line": 13,
+   "text": "fix 1 nogroup rigid single",
+   "style": "fix rigid",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w123q_meso_disk",
+   "line": 30,
+   "text": "fix 2 nogroup rigid/meso single",
+   "style": "fix rigid/meso",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w56rnh_nph_iso",
+   "line": 48,
+   "text": "fix 1 nogroup rigid/nph molecule iso 0.5 0.5 1.0",
+   "style": "fix rigid/nph",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w56rnh_nph_small",
+   "line": 48,
+   "text": "fix 1 nogroup rigid/nph/small molecule iso 0.5 0.5 1.0",
+   "style": "fix rigid/nph/small",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w56rnh_npt_iso",
+   "line": 48,
+   "text": "fix 1 nogroup rigid/npt molecule temp 1.0 1.0 0.5 iso 1.0 1.0 2.0",
+   "style": "fix rigid/npt",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w431rigidnh_ellipsoid",
+   "line": 21,
+   "text": "fix 1 nogroup rigid/npt/small molecule temp 1.5 1.5 1.0 iso 1.0 1.0 5.0",
+   "style": "fix rigid/npt/small",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w474rigid_nve_ellipsoids",
+   "line": 14,
+   "text": "fix 1 nogroup rigid/nve molecule",
+   "style": "fix rigid/nve",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w251rg_nve_small",
+   "line": 48,
+   "text": "fix 1 nogroup rigid/nve/small molecule",
+   "style": "fix rigid/nve/small",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w179rg_nh_deform",
+   "line": 15,
+   "text": "fix 1 nogroup rigid/nvt molecule temp 1.0 1.0 0.5",
+   "style": "fix rigid/nvt",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 21,
+   "text": "fix 1 nogroup rigid/nvt/small molecule temp 1.2 1.2 0.5",
+   "style": "fix rigid/nvt/small",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w37grav_double",
+   "line": 12,
+   "text": "fix rigidfix nogroup rigid/small molecule gravity gravfix",
+   "style": "fix rigid/small",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 12,
+   "text": "fix 4 nogroup rx w160rx_kinetics.dpdrx none dense lammps_rk4 1",
+   "style": "fix rx",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w171px_saed_vtk_full",
+   "line": 18,
+   "text": "fix 2 nogroup saed/vtk 2 2 4 c_SAED file w171px_saed_vtk_full",
+   "style": "fix saed/vtk",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w229xf_set",
+   "line": 21,
+   "text": "fix 2 nogroup set 10 1 atom 1*108 type v_t2 vx v_t",
+   "style": "fix set",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "deposit_rate_lattice",
+   "line": 17,
+   "text": "fix 0 nogroup setforce 0 0 0",
+   "style": "fix setforce",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w48sp2_setforce",
+   "line": 19,
+   "text": "fix 3 nogroup setforce/spin 0.0 0.0 0.0",
+   "style": "fix setforce/spin",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w436dyngroup_sphere",
+   "line": 21,
+   "text": "fix 5 nogroup settorque/atom 0.0 NULL 0.0",
+   "style": "fix settorque/atom",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w204sg_lj_generic",
+   "line": 17,
+   "text": "fix mc nogroup sgcmc 5 0.1 1.0 0.3 randseed 2468",
+   "style": "fix sgcmc",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w73shake_gil",
+   "line": 15,
+   "text": "fix shake nogroup shake 1e-4 20 0 b 1 2 a 1",
+   "style": "fix shake",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w95dreact_shardlow_dpd_1000",
+   "line": 27,
+   "text": "fix 1 nogroup shardlow",
+   "style": "fix shardlow",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w229xf_smd_tether_cfor",
+   "line": 16,
+   "text": "fix 2 nogroup smd cfor 0.3 tether NULL NULL 1.0 0.0",
+   "style": "fix smd",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 43,
+   "text": "fix dtfix nogroup smd/adjust_dt 0.1",
+   "style": "fix smd/adjust_dt",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w100smd_rubber_rings",
+   "line": 53,
+   "text": "fix integration_fix nogroup smd/integrate_tlsph",
+   "style": "fix smd/integrate_tlsph",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 44,
+   "text": "fix integration_fix nogroup smd/integrate_ulsph adjust_radius 1.01 10 15",
+   "style": "fix smd/integrate_ulsph",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 48,
+   "text": "fix mv nogroup smd/move_tri_surf *LINEAR 0.02 0.01 -0.03",
+   "style": "fix smd/move_tri_surf",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 64,
+   "text": "fix veltop_fix nogroup smd/setvel 0 v_vel_up 0",
+   "style": "fix smd/setvel",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 40,
+   "text": "fix stl_surface_fix nogroup smd/wall_surface w100smd_funnel_wall_cut.stl 2 65535",
+   "style": "fix smd/wall_surface",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w228gs_sph_lj",
+   "line": 13,
+   "text": "fix 2 nogroup sph",
+   "style": "fix sph",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 30,
+   "text": "fix integrate_fix nogroup sph/stationary",
+   "style": "fix sph/stationary",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w2fspring_tether",
+   "line": 28,
+   "text": "fix 2 nogroup spring tether 10.0 NULL NULL 1.2 0.2",
+   "style": "fix spring",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w323spring_chunk_wrap",
+   "line": 27,
+   "text": "fix 2 nogroup spring/chunk 2.0 cm com",
+   "style": "fix spring/chunk",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w11restrain_springrg",
+   "line": 16,
+   "text": "fix SRG nogroup spring/rg 5.0 NULL",
+   "style": "fix spring/rg",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w2fspring_self",
+   "line": 28,
+   "text": "fix 2 nogroup spring/self 10.0 xy",
+   "style": "fix spring/self",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w79srd_pure",
+   "line": 29,
+   "text": "fix 1 nogroup srd 1 NULL 1.0 0.25 49894 collision slip",
+   "style": "fix srd",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w323spring_chunk_wrap",
+   "line": 28,
+   "text": "fix 3 nogroup store/force",
+   "style": "fix store/force",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w89fix_storestate_every",
+   "line": 14,
+   "text": "fix s nogroup store/state 5 x y z vx",
+   "style": "fix store/state",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 17,
+   "text": "fix fsl nogroup surface/local",
+   "style": "fix surface/local",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 27,
+   "text": "fix 3 nogroup tdpd/source 1 cuboid 0.0 1.5 0.0 6.0 3.0 6.0 0.01",
+   "style": "fix tdpd/source",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w89fix_berendsen_onedof",
+   "line": 15,
+   "text": "fix 2 nogroup temp/berendsen 1.2 1.2 0.1",
+   "style": "fix temp/berendsen",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w89fix_csld_const",
+   "line": 14,
+   "text": "fix 2 nogroup temp/csld 1.2 1.2 0.1 12345",
+   "style": "fix temp/csld",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w89fix_csvr_2d",
+   "line": 15,
+   "text": "fix 2 nogroup temp/csvr 0.9 0.9 0.2 777",
+   "style": "fix temp/csvr",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w89fix_rescale_onedof",
+   "line": 15,
+   "text": "fix 2 nogroup temp/rescale 1 1.2 1.2 0.02 0.5",
+   "style": "fix temp/rescale",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w63eff_ch4_rescale",
+   "line": 22,
+   "text": "fix 2 nogroup temp/rescale/eff 2 0.0 300.0 0.02 0.5",
+   "style": "fix temp/rescale/eff",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w224mc_tfmc_com",
+   "line": 17,
+   "text": "fix mc nogroup tfmc 0.05 0.6 12345 com 1 1 1",
+   "style": "fix tfmc",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w11gk_thermcond",
+   "line": 17,
+   "text": "fix tc nogroup thermal/conductivity 10 z 8 swap 2",
+   "style": "fix thermal/conductivity",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w48fb_ti_spring_tiny",
+   "line": 14,
+   "text": "fix f2 nogroup ti/spring 3.0 4 3 function 1",
+   "style": "fix ti/spring",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w48fb_tmd_mass",
+   "line": 24,
+   "text": "fix 2 nogroup tmd 0.5 w48fb_tmd_mass_target.txt 0",
+   "style": "fix tmd",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w14ttm_stop",
+   "line": 19,
+   "text": "fix 2 nogroup ttm 4242 1.0 1.0 1.0 20.0 3.0 2.5 2 2 2 infile w14ttm_stop.init",
+   "style": "fix ttm",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w41ttm_cas_cetab",
+   "line": 20,
+   "text": "fix 2 nogroup ttm/cascade 77 3.0 2.0 0.5 20.0 0.0 2.0 2 2 2 infile w41ttm_cas.init cetab w41ttm_ce.tab offset 0.015",
+   "style": "fix ttm/cascade",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w421dump_grid_ttm",
+   "line": 20,
+   "text": "fix 2 nogroup ttm/grid 777 0.001 1.0 0.01 20.0 0.0 2.0 2 2 2 infile w14ttm_grid.init",
+   "style": "fix ttm/grid",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w43tm_si",
+   "line": 18,
+   "text": "fix twotemp nogroup ttm/mod 1354684 w43tm_si.par 4 4 4 set 1000.0",
+   "style": "fix ttm/mod",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w41ttm_thermal4",
+   "line": 21,
+   "text": "fix 2 nogroup ttm/thermal 99 w41ttm_thermal4.props 4 4 4 infile w41ttm_thermal4.init source 0.02",
+   "style": "fix ttm/thermal",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w7misc_vector",
+   "line": 17,
+   "text": "fix 3 nogroup vector 5 c_ke",
+   "style": "fix vector",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w11gk_viscosity",
+   "line": 14,
+   "text": "fix visc nogroup viscosity 10 x z 8 swap 2",
+   "style": "fix viscosity",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w66units_viscous_real",
+   "line": 21,
+   "text": "fix 2 nogroup viscous 0.5 scale 2 1.5",
+   "style": "fix viscous",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w228gs_viscous_nonlinear",
+   "line": 20,
+   "text": "fix 2 nogroup viscous/nonlinear 1.2 0.05 velocity 0.1 0.0 0.0",
+   "style": "fix viscous/nonlinear",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w133mf_viscous_sphere_var",
+   "line": 25,
+   "text": "fix 2 nogroup viscous/sphere 0.3 scale v_g",
+   "style": "fix viscous/sphere",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w126body_wall2d",
+   "line": 19,
+   "text": "fix 3 nogroup wall/body/polygon 2000 50 50 yplane 0 24",
+   "style": "fix wall/body/polygon",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w126body_cubes_wall",
+   "line": 17,
+   "text": "fix 3 nogroup wall/body/polyhedron 2000 50 50 zplane 0.0 NULL",
+   "style": "fix wall/body/polyhedron",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w231co_wall_colloid",
+   "line": 24,
+   "text": "fix 2 nogroup wall/colloid zlo 0.0 1.0 1.0 2.5 zhi EDGE 1.0 1.0 2.5",
+   "style": "fix wall/colloid",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w133mf_wall_ees",
+   "line": 16,
+   "text": "fix EES_substrate nogroup wall/ees zhi EDGE 10 1 10 zlo EDGE 10 1 10",
+   "style": "fix wall/ees",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w38wflow_seam_single",
+   "line": 16,
+   "text": "fix 2 nogroup wall/flow x 0.5 1.0 12345 2 3.0 7.0 units box",
+   "style": "fix wall/flow",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w7pour_fewer",
+   "line": 15,
+   "text": "fix 4 nogroup wall/gran hooke 2000.0 700.0 50.0 30.0 0.5 1 zplane -4.0 NULL",
+   "style": "fix wall/gran",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w13gran_region_hertz",
+   "line": 24,
+   "text": "fix 3 nogroup wall/gran/region hertz/history 2000.0 1000.0 0.4 0.3 0.6 1 region reg",
+   "style": "fix wall/gran/region",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w231co_lubricateU_wall",
+   "line": 20,
+   "text": "fix 2 nogroup wall/harmonic zlo EDGE 1.0 1.0 0.9 zhi EDGE 1.0 1.0 0.9",
+   "style": "fix wall/harmonic",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w40wh_3d_pair",
+   "line": 21,
+   "text": "fix 2 nogroup wall/harmonic/outside xlo 1.0 2.0 0.0 2.0 xhi 6.5 2.0 0.0 1.2 units box",
+   "style": "fix wall/harmonic/outside",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w435dyngroup_fixes",
+   "line": 18,
+   "text": "fix 3 nogroup wall/harmonic/returned zhi EDGE 2.0 1.0 1.5",
+   "style": "fix wall/harmonic/returned",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w16lepton_wall",
+   "line": 17,
+   "text": "fix w1 nogroup wall/lepton xlo EDGE \"k*(r-rc)^2; k=1.0\" 2.5",
+   "style": "fix wall/lepton",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w2wall_lj1043",
+   "line": 29,
+   "text": "fix 2 nogroup wall/lj1043 zlo EDGE 1.0 1.0 2.5 zhi EDGE 1.0 1.0 2.5",
+   "style": "fix wall/lj1043",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w2wall_lj126",
+   "line": 29,
+   "text": "fix 2 nogroup wall/lj126 zlo EDGE 1.0 1.0 2.5 zhi EDGE 1.0 1.0 2.5",
+   "style": "fix wall/lj126",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w231co_lubricate_walls",
+   "line": 18,
+   "text": "fix 2 nogroup wall/lj93 zlo -1.0 1.0 1.0 1.0 zhi 8.0 1.0 1.0 1.0",
+   "style": "fix wall/lj93",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w2wall_morse",
+   "line": 29,
+   "text": "fix 2 nogroup wall/morse zlo EDGE 1.0 2.0 1.0 2.5 zhi EDGE 1.0 2.0 1.0 2.5",
+   "style": "fix wall/morse",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w142mx_wall_piston",
+   "line": 17,
+   "text": "fix 2 nogroup wall/piston zlo pos -0.5 vel 0.5 temp 1.0 0.5 1234 1.0 units box",
+   "style": "fix wall/piston",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w48fb_addtorque_ball",
+   "line": 21,
+   "text": "fix 2 nogroup wall/reflect xlo EDGE xhi EDGE ylo EDGE yhi EDGE zlo EDGE zhi EDGE",
+   "style": "fix wall/reflect",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w7misc_stochastic",
+   "line": 23,
+   "text": "fix 2 nogroup wall/reflect/stochastic diffusive 4242 zlo 0.0 1.0 0 0 0 units box",
+   "style": "fix wall/reflect/stochastic",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w22rwall_region_union",
+   "line": 17,
+   "text": "fix 2 nogroup wall/region U lj93 0.1 0.3 2.5",
+   "style": "fix wall/region",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w133mf_region_ees",
+   "line": 15,
+   "text": "fix EES_block nogroup wall/region/ees the_wall 10. 1. 20",
+   "style": "fix wall/region/ees",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w231co_wall_srd",
+   "line": 24,
+   "text": "fix 3 nogroup wall/srd xlo EDGE xhi EDGE",
+   "style": "fix wall/srd",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w16walltable_linear",
+   "line": 14,
+   "text": "fix 2 nogroup wall/table linear 201 zlo EDGE w16walltable.dat HARMONIC 2.5 zhi EDGE w16walltable.dat LJ126 2.5",
+   "style": "fix wall/table",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w30widom_atom",
+   "line": 14,
+   "text": "fix w nogroup widom 2 3 2 12345 1.0",
+   "style": "fix widom",
+   "native": "ERROR: Could not find fix group ID nogroup"
+  },
+  {
+   "case": "w105cf_erotate_tri",
+   "line": 11,
+   "text": "set group nogroup angmom 0.4 -0.3 0.8",
+   "style": "set angmom",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 18,
+   "text": "set group nogroup apip/lambda precise",
+   "style": "set apip/lambda",
+   "native": "ERROR: Could not find set group ID nogroup",
+   "build": "APIP"
+  },
+  {
+   "case": "w84lang_kspace_compute_no",
+   "line": 11,
+   "text": "set group nogroup charge -1.0",
+   "style": "set charge",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w6prop_basic",
+   "line": 24,
+   "text": "set group nogroup d2_vec[1] v_c1",
+   "style": "set d2_vec[1]",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w6prop_basic",
+   "line": 25,
+   "text": "set group nogroup d2_vec[3] 2.5",
+   "style": "set d2_vec[3]",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 27,
+   "text": "set group nogroup d_ddnx 0.0577350269189626",
+   "style": "set d_ddnx",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 28,
+   "text": "set group nogroup d_ddny 0.0",
+   "style": "set d_ddny",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 29,
+   "text": "set group nogroup d_ddnz 0.0769800358919501",
+   "style": "set d_ddnz",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 24,
+   "text": "set group nogroup d_dnx 0.0577350269189626",
+   "style": "set d_dnx",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 25,
+   "text": "set group nogroup d_dny 0.0",
+   "style": "set d_dny",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 26,
+   "text": "set group nogroup d_dnz 0.0769800358919501",
+   "style": "set d_dnz",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w68elec_madelung_eta_cg",
+   "line": 18,
+   "text": "set group nogroup d_eta 0.5",
+   "style": "set d_eta",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 21,
+   "text": "set group nogroup d_nx v_px",
+   "style": "set d_nx",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 22,
+   "text": "set group nogroup d_ny v_py",
+   "style": "set d_ny",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 23,
+   "text": "set group nogroup d_nz v_pz",
+   "style": "set d_nz",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w6prop_basic",
+   "line": 22,
+   "text": "set group nogroup d_val v_dv",
+   "style": "set d_val",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 21,
+   "text": "set group nogroup d_vfrac 1.25e-10",
+   "style": "set d_vfrac",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w16lepton_sphere",
+   "line": 8,
+   "text": "set group nogroup density 1.0",
+   "style": "set density",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w4sphere_disc",
+   "line": 8,
+   "text": "set group nogroup density/disc 1.1",
+   "style": "set density/disc",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w84lang_omega_sphere",
+   "line": 9,
+   "text": "set group nogroup diameter 1.0 density 1.0",
+   "style": "set diameter",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w17chunk_pointdipole",
+   "line": 8,
+   "text": "set group nogroup dipole 0.3 -0.2 0.5",
+   "style": "set dipole",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w52rng_dipole3d",
+   "line": 9,
+   "text": "set group nogroup dipole/random 4321 1.5",
+   "style": "set dipole/random",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w210md_confined_gmres",
+   "line": 14,
+   "text": "set group nogroup epsilon 10",
+   "style": "set epsilon",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w6prop_basic",
+   "line": 20,
+   "text": "set group nogroup i_flag v_fl",
+   "style": "set i_flag",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w177px_srd_triclinic",
+   "line": 19,
+   "text": "set group nogroup mass 0.01",
+   "style": "set mass",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w37rigid_temp2d",
+   "line": 26,
+   "text": "set group nogroup mol 1",
+   "style": "set mol",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w4sphere_disc",
+   "line": 12,
+   "text": "set group nogroup omega 0.0 0.0 v_wz",
+   "style": "set omega",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w115p_ylz_flat",
+   "line": 31,
+   "text": "set group nogroup quat 0 -1 0 90",
+   "style": "set quat",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w52rng_quat3d",
+   "line": 10,
+   "text": "set group nogroup quat/random 4321",
+   "style": "set quat/random",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 14,
+   "text": "set group nogroup rheo/rho 1.0",
+   "style": "set rheo/rho",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w96rheo_pair_solid",
+   "line": 17,
+   "text": "set group nogroup rheo/status 1",
+   "style": "set rheo/status",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w52rng_quat3d",
+   "line": 8,
+   "text": "set group nogroup shape 0.5 0.6 0.8",
+   "style": "set shape",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w100smd_rubber_rings",
+   "line": 36,
+   "text": "set group nogroup smd/contact/radius 1.0",
+   "style": "set smd/contact/radius",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 16,
+   "text": "set group nogroup sph/e 0.5",
+   "style": "set sph/e",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 17,
+   "text": "set group nogroup sph/rho 10.0",
+   "style": "set sph/rho",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w103spin_iron_ewald_nve",
+   "line": 15,
+   "text": "set group nogroup spin 2.2 -1.0 0.0 0.0",
+   "style": "set spin",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w47spin_iron",
+   "line": 14,
+   "text": "set group nogroup spin/atom 2.2 0.3 0.5 0.8",
+   "style": "set spin/atom",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w52rng_spin3d",
+   "line": 9,
+   "text": "set group nogroup spin/atom/random 4321 1.3",
+   "style": "set spin/atom/random",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 13,
+   "text": "set group nogroup spin/random 11 2.2",
+   "style": "set spin/random",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w437dyngroup_bpm_heat",
+   "line": 12,
+   "text": "set group nogroup temperature 1.0",
+   "style": "set temperature",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w66units_gravity_chute_real",
+   "line": 11,
+   "text": "set group nogroup type 2",
+   "style": "set type",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w88pair_shift_soft",
+   "line": 8,
+   "text": "set group nogroup type/fraction 2 0.3 1234",
+   "style": "set type/fraction",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w52rng_type_ratio",
+   "line": 11,
+   "text": "set group nogroup type/ratio 2 0.37 987",
+   "style": "set type/ratio",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w52rng_type_subset",
+   "line": 9,
+   "text": "set group nogroup type/subset 3 40 555",
+   "style": "set type/subset",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w22peri_pmb_block",
+   "line": 14,
+   "text": "set group nogroup volume 1.25e-10",
+   "style": "set volume",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w42rfs_sphere_spin",
+   "line": 20,
+   "text": "set group nogroup vx 0.1 vy 0.02 vz -0.03",
+   "style": "set vx",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w42rfs_wall_gran",
+   "line": 21,
+   "text": "set group nogroup vz -10.0",
+   "style": "set vz",
+   "native": "ERROR: Could not find set group ID nogroup"
+  },
+  {
+   "case": "w97tri_velgeom",
+   "line": 7,
+   "text": "velocity nogroup create 1.44 87287 loop geom",
+   "style": "velocity create",
+   "native": "ERROR: Could not find velocity group ID nogroup"
+  },
+  {
+   "case": "w48cb_tp_nvt",
+   "line": 10,
+   "text": "velocity nogroup ramp vx 0.0 1.0 x 0.5 6.5 units box",
+   "style": "velocity ramp",
+   "native": "ERROR: Could not find velocity group ID nogroup"
+  },
+  {
+   "case": "w26velbias_create_cs",
+   "line": 20,
+   "text": "velocity nogroup scale 1427.0 temp CStemp",
+   "style": "velocity scale",
+   "native": "ERROR: Could not find velocity group ID nogroup"
+  },
+  {
+   "case": "w18fix_oneway",
+   "line": 14,
+   "text": "velocity nogroup set v_vx v_vy v_vz",
+   "style": "velocity set",
+   "native": "ERROR: Could not find velocity group ID nogroup"
+  },
+  {
+   "case": "w16lepton_shift",
+   "line": 12,
+   "text": "velocity nogroup zero linear",
+   "style": "velocity zero",
+   "native": "ERROR: Could not find velocity group ID nogroup"
+  }
+ ]
+}

@@ -53,10 +53,8 @@ export function parseSurfCoeff(args: string[]): Coeffs {
   let normal: SurfNormal | null = null, tangential: SurfTangential | null = null;
   // pair_granular.html: "If the *damping* keyword is not specified, the *viscoelastic* model is used by default."
   let damping: SurfDamping = 'viscoelastic';
-  const num = (w: string | undefined, what: string): number => {
-    if (w === undefined || !Number.isFinite(Number(w))) throw new StyleError(`pair_coeff surf/granular: ${what} must be a number`);
-    return Number(w);
-  };
+  // the model coefficients are read by utils::numeric (src/GRANULAR/granular_model.cpp and gran_sub_mod_*.cpp at b332f28)
+  const num = (w: string | undefined, _what: string): number => numeric(w);
   for (let n = 0; n < args.length; n++) {
     const w = args[n];
     if (w === 'hooke' || w === 'hertz') {

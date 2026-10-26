@@ -13,14 +13,17 @@ import { parityFiles, parityInput, type ParityFixture } from './parityMatrices';
 
 const ROOT = join(__dirname, '..');
 
-/** The engine's result in the fixture's form: OK, or ERROR: and the first line of the message without its line number. */
+/**
+ * The engine's result in the fixture's form: OK, or ERROR: and the first line of the message without its line number
+ * and trailing blanks (the runner trims native's line the same way).
+ */
 const engineResult = async (input: string, files: Record<string, { path: string; latin1: boolean }>): Promise<string> => {
   const s = new Session({ emit: () => {}, writeFile: () => {} } as never);
   for (const [name, f] of Object.entries(files)) s.addFile(name, readFileSync(f.path, f.latin1 ? 'latin1' : 'utf8'));
   try {
     await s.execute(input);
   } catch (e) {
-    return 'ERROR: ' + String((e as Error).message ?? e).split('\n')[0].replace(/^line \d+: /, '');
+    return 'ERROR: ' + String((e as Error).message ?? e).split('\n')[0].replace(/^line \d+: /, '').trimEnd();
   }
   return 'OK';
 };

@@ -424,7 +424,13 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
   sys.forcesCurrent(flags);
   sys.assignDynamicGroups(true);
   computeSetup(sys);
-  for (const f of sys.fixes) f.setup();
+  for (const f of sys.fixes) {
+    f.setup();
+    // As native LAMMPS does (src/EXTRA-FIX/fix_filter_corotate.cpp FixFilterCorotate::setup at b332f28):
+    // "copy_flevel_f(nlevels_respa-1)", the filter, "copy_f_flevel(nlevels_respa-1)": the atom forces are left holding
+    // the filtered outermost level, which the fixes set up after it and the setup's output (fnorm, f dumps) read
+    if (f === filter) s.f.set(F[N - 1].subarray(0, n3));
+  }
   // labelmap check_labels: once, at the end of the setup (native Modify::setup)
   runLabelCheck(sys);
   sys.refreshComputes();

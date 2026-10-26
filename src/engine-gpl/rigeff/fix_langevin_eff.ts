@@ -18,7 +18,7 @@ import { StyleError } from '../../engine/force/types';
 import { inumeric, logical, missingArgs, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { nativeOrder, ELECTRON_RFORCE, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle } from '../../engine/atoms';
-import { parseNumOrVar, ramp, valueOf, type NumOrVar } from '../../engine/fix/util';
+import { parseNumOrVar, valueOf, type NumOrVar } from '../../engine/fix/util';
 import { RanMars } from '../../engine/rng';
 
 export class FixLangevinEff extends Fix {
@@ -127,7 +127,11 @@ export class FixLangevinEff extends Fix {
 
   /** fix_langevin_eff.cpp compute_target: the constant or equal-style target and its square root. */
   private computeTarget(): void {
-    const tt = typeof this.tStart === 'number' ? ramp(this.sys, this.tStart, this.tStop) : valueOf(this.sys, this.tStart);
+    // "delta /= update->endstep - update->beginstep" without the guard of fix langevin: a run 0 (endstep = beginstep)
+    // divides 0 by 0, so the target, its square root and the random forces are NaN
+    const r = this.sys.run;
+    const delta = (this.sys.state.step - r.beginStep) / (r.endStep - r.beginStep);
+    const tt = typeof this.tStart === 'number' ? this.tStart + delta * (this.tStop - this.tStart) : valueOf(this.sys, this.tStart);
     // only a variable's negative value is an error; a negative constant target gives NaN random forces (sqrt), which
     // native runs with and the engine refuses once steps are run (a run 0 ends normally, as natively)
     if (tt < 0.0 && typeof this.tStart !== 'number') throw new StyleError('Fix langevin/eff variable returned negative temperature');

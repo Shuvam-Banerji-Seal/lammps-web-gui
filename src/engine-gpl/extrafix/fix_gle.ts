@@ -93,8 +93,11 @@ export const matrixExp = (n: number, M: Float64Array, EM: Float64Array, j = 8, k
 /**
  * Reads n numbers from a potential-style text file the way PotentialFileReader::next_dvector does: comments
  * (# to the end of the line) and blank lines are skipped, numbers are taken in order, extra numbers are ignored.
+ * The messages are native's (text_file_reader.cpp next_dvector, tokenizer.cpp, fix_gle.cpp): a file with no number is
+ * "Error reading A-matrix: EOF reached", one with too few "Incorrect format in fix gle A matrix potential file! i/n
+ * values", a word that is not a number "Error reading A-matrix: Not a valid floating-point number: 'word'".
  */
-const readDVector = (text: string, n: number, what: string, units: string): Float64Array => {
+const readDVector = (text: string, n: number, what: string, label: string, units: string): Float64Array => {
   // PotentialFileReader: a UNITS: tag must name the unit style in use (potential_file_reader.cpp refuses a mismatch)
   const tag = /UNITS:\s*(\S+)/.exec(text.split('\n')[0] ?? '');
   if (tag && tag[1] !== units) throw new StyleError(`${what}: potential file requires ${tag[1]} units but ${units} units are in use`);
@@ -105,12 +108,13 @@ const readDVector = (text: string, n: number, what: string, units: string): Floa
     const words = line.replace(/#.*/, '').trim().split(/\s+/).filter((w) => w.length > 0);
     for (const w of words) {
       if (i >= n) break;
-      const x = Number(w);
-      if (!Number.isFinite(x)) throw new StyleError(`Error reading ${what}: '${w}' is not a number`);
-      out[i++] = x;
+      // ValueTokenizer::next_double: utils::is_double, then atof
+      if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(w)) throw new StyleError(`Error reading ${label}: Not a valid floating-point number: '${w}'`);
+      out[i++] = Number(w);
     }
   }
-  if (i < n) throw new StyleError(`Error reading ${what}: expected ${n} numbers, found ${i}`);
+  if (i === 0) throw new StyleError(`Error reading ${label}: EOF reached`);
+  if (i < n) throw new StyleError(`Incorrect format in ${what} potential file! ${i}/${n} values`);
   return out;
 };
 
@@ -155,7 +159,7 @@ export class FixGLE extends Fix {
     this.tStop = numeric(args[2]);
     const seed = inumeric(args[3]);
     if (seed <= 0) throw new StyleError('Illegal fix gle command');
-    this.A = readDVector(sys.readFile(args[4], potentialFile('fix gle A matrix')), this.ns1sq, 'fix gle A matrix', sys.state.units.style);
+    this.A = readDVector(sys.readFile(args[4], potentialFile('fix gle A matrix')), this.ns1sq, 'fix gle A matrix', 'A-matrix', sys.state.units.style);
     this.C = new Float64Array(this.ns1sq);
     this.S = new Float64Array(this.ns1sq);
     this.T = new Float64Array(this.ns1sq);
@@ -185,7 +189,7 @@ export class FixGLE extends Fix {
       const kT = this.tTarget * cfac;
       for (let i = 0; i < this.ns1sq; i += ns + 2) this.C[i] = kT;
     } else {
-      const c = readDVector(sys.readFile(noneqFile!, potentialFile('fix gle C matrix')), this.ns1sq, 'fix gle C matrix', sys.state.units.style);
+      const c = readDVector(sys.readFile(noneqFile!, potentialFile('fix gle C matrix')), this.ns1sq, 'fix gle C matrix', 'C-matrix', sys.state.units.style);
       for (let i = 0; i < this.ns1sq; i++) this.C[i] = c[i] * cfac;
     }
     this.rng = new RanMars(seed);

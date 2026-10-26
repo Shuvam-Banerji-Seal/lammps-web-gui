@@ -270,15 +270,18 @@ const STYLES = new Set(['pair_style', 'bond_style', 'angle_style', 'dihedral_sty
 const styleKey: LineKey = (w, lines, i) => (STYLES.has(w[0]) ? commandKey(w, lines, i) : null);
 
 /**
- * The first number after the style word multiplied by `factor`: an integer stays an integer (rounded), a real number is
- * written with 12 significant digits.
+ * The first number from word `from` on multiplied by `factor`: an integer stays an integer (rounded), a real number is
+ * written with 12 significant digits. changedOnly: a number the change leaves as it is (an integer 1) gives no row.
  */
-const styleScaled = (factor: number): Change => (w, _lines) => {
-  const k = w.findIndex((x, j) => j >= 2 && NUMBER.test(x));
+const scaled = (from: number, factor: number, changedOnly = false): Change => (w, _lines) => {
+  const k = w.findIndex((x, j) => j >= from && NUMBER.test(x));
   if (k < 0) return null;
   const v = /^[-+]?\d+$/.test(w[k]) ? String(Math.round(Number(w[k]) * factor)) : String(Number((Number(w[k]) * factor).toPrecision(12)));
-  return w.map((x, j) => (j === k ? v : x));
+  return changedOnly && v === w[k] ? null : w.map((x, j) => (j === k ? v : x));
 };
+
+/** A fix line: "fix <style>". */
+const fixKey: LineKey = (w) => (w[0] === 'fix' && w.length >= 4 ? `fix ${w[3]}` : null);
 
 export const MATRICES: Record<string, MatrixDef> = {
   'fix-compute-word': {
@@ -326,7 +329,11 @@ export const MATRICES: Record<string, MatrixDef> = {
   },
   'style-scaled': {
     about: 'the first number after the style word of each pair, bond, angle, dihedral, improper and kspace style line multiplied by 1.1, pe, press and fnorm compared after run 0',
-    rows: throughRun(pick(styleKey, styleScaled(1.1)), THERMO_F, VALUES_F),
+    rows: throughRun(pick(styleKey, scaled(2, 1.1)), THERMO_F, VALUES_F),
+  },
+  'fix-scaled': {
+    about: 'the first number of each fix line (from word 4) multiplied by 1.1, pe, press and fnorm compared after run 0',
+    rows: throughRun(pick(fixKey, scaled(4, 1.1, true)), THERMO_F, VALUES_F),
   },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };

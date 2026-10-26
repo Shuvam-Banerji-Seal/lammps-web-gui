@@ -593,6 +593,15 @@ export class Neighbor {
     }
   }
 
+  /** Adds each ghost's values of a per-atom array to its owner's, in ghost order (a pair style's reverse communication). */
+  reverseAddGhosts(a: Float64Array, stride: number): void {
+    const o = this.owner;
+    for (let k = this.nlocal; k < this.nall; k++) {
+      const i = o[k];
+      for (let c = 0; c < stride; c++) a[stride * i + c] += a[stride * k + c];
+    }
+  }
+
   /** Copies a per-owned-atom array to every ghost (stride values per atom). */
   forwardCopy(a: Float64Array, stride: number): void {
     const o = this.owner;

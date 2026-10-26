@@ -175,6 +175,9 @@ describe('binary trajectories (dump dcd and xtc)', () => {
     expect(isBinaryFile('a.dcd', t)).toBe(true);
     expect(isBinaryTrajectory('run/a.xtc')).toBe(true);
     expect(isBinaryTrajectory('a.lammpstrj')).toBe(false);
+    // fitpod's descriptor files are bytes too, but not trajectories
+    expect(isBinaryFile('XYZ/globaldescriptors_config1.bin', '\u0000\u0000')).toBe(true);
+    expect(isBinaryTrajectory('XYZ/globaldescriptors_config1.bin')).toBe(false);
     expect(fileBytesSize(t, 'a.dcd')).toBe(t.length);
     expect(Buffer.from(fileBytes(t, 'a.dcd')).equals(Buffer.from(fixture.files['a.dcd'].slice(7), 'base64'))).toBe(true);
   });

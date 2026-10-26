@@ -39,8 +39,8 @@ const BINARY_TRAJECTORY_EXT = new Set(['dcd', 'xtc']);
 /** A DCD or XTC file: binary trajectory frames, which the 3D Viewer does not read. */
 export const isBinaryTrajectory = (name: string): boolean => BINARY_TRAJECTORY_EXT.has(extOf(name));
 
-/** A file whose characters are bytes (gzip, DCD, XTC), not text to preview or encode as UTF-8. */
-export const isBinaryFile = (name: string, text: string): boolean => isGzipText(text) || isBinaryTrajectory(name);
+/** A file whose characters are bytes (gzip, DCD, XTC, and .bin files such as fitpod's descriptors), not text to preview or encode as UTF-8. */
+export const isBinaryFile = (name: string, text: string): boolean => isGzipText(text) || isBinaryTrajectory(name) || extOf(name) === 'bin';
 
 export const classifyFile = (name: string, text: string): FileKind => {
   if (isImageDataUrl(text)) return 'image';

@@ -1,6 +1,6 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/ML-POD (pair_pod.cpp, eapod.cpp,
- * compute_pod_atom.cpp, compute_podd_atom.cpp), GPL-2.0. Registered through src/engine/lazyStyles.ts. Evaluation only; fitting is not ported.
+ * compute_pod_atom.cpp, compute_podd_atom.cpp), GPL-2.0. Registered through src/engine/lazyStyles.ts. The fitpod command is the lazy group gpl_fitpod (registry/fitpod.ts).
  */
 import type { Pair } from '../../engine/force/types';
 import type { ComputeFactory } from '../../engine/styles';

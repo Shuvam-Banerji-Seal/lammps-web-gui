@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent } from '../src/engine/types';
@@ -60,16 +62,36 @@ const STYLES: Record<string, string> = {
   morse: 'pair_style morse 2.5\npair_coeff * * 1.0 2.0 1.1',
 };
 
+/** The EAM styles (two-pass styles, threadedPairs.ts TwoPassPair): a metal box and the potential files they read. */
+const EAM_BOX = `units metal
+atom_style atomic
+lattice fcc 3.6
+region box block 0 5 0 5 0 5
+create_box 2 box
+create_atoms 1 box
+mass * 60.0
+set group all type/fraction 2 0.5 4321
+velocity all create 600.0 87287 loop geom
+`;
+const EAM_STYLES: Record<string, string> = {
+  eam: 'pair_style eam\npair_coeff * * Cu_u3.eam',
+  'eam/alloy': 'pair_style eam/alloy\npair_coeff * * CuNi.eam.alloy Cu Ni',
+  'eam/fs': 'pair_style eam/fs\npair_coeff * * AlFe_mm.eam.fs Al Fe',
+};
+const POTENTIALS = ['Cu_u3.eam', 'CuNi.eam.alloy', 'AlFe_mm.eam.fs'];
+const potential = (f: string): string => readFileSync(join(__dirname, '..', 'third_party', 'lammps', 'potentials', f), 'utf8');
+
 interface Outcome { rows: Record<string, number>[]; x: number[]; threadedComputes: number }
 
-const runCase = async (pairLines: string, threads: number, extra = ''): Promise<Outcome> => {
+const runCase = async (pairLines: string, threads: number, extra = '', box = BOX): Promise<Outcome> => {
   const workers: InProcessWorker[] = [];
   const backend = threads > 1 ? new SharedThreadsBackend(threads, () => { const w = new InProcessWorker(); workers.push(w); return w; }) : undefined;
   if (backend) backend.pairThreads.minAtoms = 1;
   const events: EngineEvent[] = [];
   const files = new Map<string, string>();
   const session = new Session({ emit: (e) => events.push(e), writeFile: (n, t) => files.set(n, t) }, backend);
-  await session.execute(`${BOX}${pairLines}
+  if (box === EAM_BOX) for (const f of POTENTIALS) session.addFile(f, potential(f));
+  await session.execute(`${box}${pairLines}
 neighbor 0.3 bin
 fix 1 all nve
 timestep 0.002
@@ -148,8 +170,18 @@ describe('shared-memory pair threads: every threaded style matches the single-th
       expectClose(serial, threaded, 1e-10);
     });
   }
+  for (const [name, lines] of Object.entries(EAM_STYLES)) {
+    it(`${name} (two passes)`, async () => {
+      const serial = await runCase(lines, 1, '', EAM_BOX);
+      const threaded = await runCase(lines, 4, '', EAM_BOX);
+      // two compute messages per worker and force evaluation
+      expect(threaded.threadedComputes).toBeGreaterThan(0);
+      expect(threaded.threadedComputes % 6).toBe(0);
+      expectClose(serial, threaded, 1e-10);
+    });
+  }
   it('covers every style of THREADED_PAIRS', () => {
-    expect(Object.keys(STYLES).sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
+    expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES)].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
   });
 });
 
@@ -187,7 +219,14 @@ describe('shared-memory pair threads: refresh and fallback', () => {
     backend.dispose();
   });
 
-  it('leaves styles outside the list (eam, dsf) to the engine thread', async () => {
+  it('runs eam/alloy per-atom energy evaluations on the engine thread', async () => {
+    const extra = 'compute pea all pe/atom\ncompute spe all reduce sum c_pea\nthermo_style custom step pe c_spe';
+    const serial = await runCase(EAM_STYLES['eam/alloy'], 1, extra, EAM_BOX);
+    const threaded = await runCase(EAM_STYLES['eam/alloy'], 3, extra, EAM_BOX);
+    expectClose(serial, threaded, 1e-10);
+  });
+
+  it('leaves styles outside the list (dsf) to the engine thread', async () => {
     const lines = 'pair_style lj/cut/coul/dsf 0.8 2.5\npair_coeff * * 1.0 1.0';
     const serial = await runCase(lines, 1);
     const threaded = await runCase(lines, 3);

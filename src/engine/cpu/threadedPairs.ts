@@ -1,4 +1,5 @@
-import type { Pair } from '../force/types';
+import type { Pair, PairCompute } from '../force/types';
+import { PairEAMKernel } from '../force/pair/eamKernel';
 import { PairLJCut } from '../force/pair/lj_cut';
 import { PairCoulLong, PairLJCutCoulLong } from '../force/pair/coul_long';
 import {
@@ -15,7 +16,8 @@ import { PairBornCoulLong, PairBuckCoulLong } from '../force/pair/coul_long2';
  * as the dsf/wolf Coulomb self energy, which every thread would add again), and compute() reads
  * only the coordinate, type, charge and list arrays of PairCompute, never s, nb or geom. A thread
  * runs the style on its own range of owned atoms by seeing a list whose other atoms have no
- * neighbors. The worker imports only these modules.
+ * neighbors. The EAM styles are two-pass styles (TwoPassPair below) whose two loops are such
+ * loops. The worker imports only these modules.
  */
 export const THREADED_PAIRS: Record<string, () => Pair> = {
   'lj/cut': () => new PairLJCut(),
@@ -36,4 +38,27 @@ export const THREADED_PAIRS: Record<string, () => Pair> = {
   born: () => new PairBorn(),
   'born/coul/long': () => new PairBornCoulLong(),
   morse: () => new PairMorse(),
+  // two-pass styles (TwoPassPair): the threads run each loop over their ranges of the half list, with a copy that holds
+  // only the loops (the engine's style reads the potential files and runs the embedding step between the loops)
+  eam: () => new PairEAMKernel('eam'),
+  'eam/alloy': () => new PairEAMKernel('eam/alloy'),
+  'eam/fs': () => new PairEAMKernel('eam/fs'),
 };
+
+/**
+ * A many-body style whose energy needs a per-atom quantity summed over the neighbors first (the EAM densities). The
+ * threads run its two loops over their ranges of the half list (PairCompute.half ilo .. inum): the first sums into a
+ * per-atom array of all atoms, owned and ghost (densities); the engine thread adds the threads' arrays and turns the sums
+ * into the per-atom values the second loop reads (embed: the ghosts summed to their owners, the embedding energy, the
+ * derivative copied to the ghosts); the second loop (forces) adds the forces and pair energies as a plain pair style does.
+ */
+export interface TwoPassPair {
+  /** The style can run in two passes now (EAM: its tables share one grid). */
+  twoPassReady(): boolean;
+  densities(pc: PairCompute, out: Float64Array): void;
+  embed(pc: PairCompute, sums: Float64Array, values: Float64Array): void;
+  forces(pc: PairCompute, values: Float64Array): void;
+}
+
+export const isTwoPass = (p: Pair): p is Pair & TwoPassPair =>
+  typeof (p as Partial<TwoPassPair>).densities === 'function' && typeof (p as Partial<TwoPassPair>).twoPassReady === 'function';

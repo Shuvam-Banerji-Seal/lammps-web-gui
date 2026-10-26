@@ -5,7 +5,7 @@ import { CpuForceBackend } from './forces';
 import {
   ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PHASE, READY, cloneableFields, sumForces, pairFromFields, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
-import { binCandidates, halfBinsPairs, type HalfBins, type ListSegment, type NeighborThreads } from './neighborKernel';
+import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, type NeighborThreads, type SpecialBins } from './neighborKernel';
 
 /*
  * Shared-memory threads for the pair term of the general engine. The engine thread copies the
@@ -46,8 +46,10 @@ interface NeighborShared {
   bL: Int32Array; bG: Int32Array; rLo: Int32Array; rHi: Int32Array;
   lk: Int32Array; lt: Int32Array; lxs: Float64Array; gk: Int32Array; gt: Int32Array; gxs: Float64Array; cutsq: Float64Array;
   chunkBins: Int32Array; chunkOut: Int32Array;
+  /** the special bonds of the owned atoms, their IDs and the owner of each owned or ghost atom */
+  spOffset: Int32Array; spPartner: Int32Array; spOrder: Int8Array; id: Int32Array; owner: Int32Array;
   pa: Int32Array[]; pj: Int32Array[];
-  /** capacities: bins, rows, owned, ghost atoms, type pairs, chunks, entries per worker */
+  /** capacities: bins, rows, owned, ghost atoms, type pairs, chunks, entries per worker, special partners, all atoms */
   caps: number[];
 }
 
@@ -240,38 +242,39 @@ export class SharedPairThreads implements NeighborThreads {
    * work (candidate pairs), every thread claims chunks from the shared counter as in run(), and the chunks' entries are
    * returned in chunk order, which is the order of the search on one thread.
    */
-  halfList(B: HalfBins, nbins: number, nlocal: number): { segs: ListSegment[]; np: number } | null {
+  halfList(B: HalfBins, sp: SpecialBins | null, nbins: number, nlocal: number, binMax: number): { segs: ListSegment[]; np: number } | null {
     const W = this.workers.length;
     if (W === 0 || nlocal < this.minAtoms || Atomics.load(this.ctl, READY) < W) return null;
-    // chunks of about equal candidate counts
-    const cand = new Float64Array(nbins + 1);
-    let maxBin = 0;
-    for (let b = 0; b < nbins; b++) {
-      const c = binCandidates(B, b);
-      if (c > maxBin) maxBin = c;
-      cand[b + 1] = cand[b] + c;
-    }
-    const total = cand[nbins];
+    // chunks of about equal work: a bin's owned atoms meet its own and the stencil's atoms, its ghosts only owned ones
+    const weight = new Float64Array(nbins + 1);
+    for (let b = 0; b < nbins; b++) weight[b + 1] = weight[b] + 2 * (B.bL[b + 1] - B.bL[b]) + (B.bG[b + 1] - B.bG[b]);
+    const total = weight[nbins];
     if (total === 0) return null;
     const K = Math.max(1, Math.min(nbins, CHUNKS_PER_THREAD * (W + 1)));
-    const nghost = B.gk.length;
-    // each worker's arrays hold twice its share of the entries of the last search (a fourth of the candidates at
-    // first) and the largest bin's candidates, which are written before their test
-    const share = Math.ceil((2 * (this.lastEntries > 0 ? this.lastEntries : total / 4)) / (W + 1)) + maxBin;
-    const S = this.neighborShared(nbins + 1, B.nrows, nlocal, nghost, B.nt * B.nt, K + 1, share);
+    const nghost = B.gk.length, nall = nlocal + nghost;
+    const npart = sp ? sp.offset[nlocal] : 0;
+    // each worker's arrays hold twice its share of the entries of the last search (48 per atom at first) and one bin's
+    // candidates (binMax), which are written before their test
+    const share = Math.ceil((2 * (this.lastEntries > 0 ? this.lastEntries : 48 * nlocal)) / (W + 1)) + binMax;
+    const S = this.neighborShared(nbins + 1, B.nrows, nlocal, nghost, B.nt * B.nt, K + 1, share, Math.max(1, npart), nall);
     S.bL.set(B.bL.subarray(0, nbins + 1)); S.bG.set(B.bG.subarray(0, nbins + 1));
     S.rLo.set(B.rLo.subarray(0, B.nrows)); S.rHi.set(B.rHi.subarray(0, B.nrows));
     S.lk.set(B.lk.subarray(0, nlocal)); S.lt.set(B.lt.subarray(0, nlocal)); S.lxs.set(B.lxs.subarray(0, 3 * nlocal));
     S.gk.set(B.gk.subarray(0, nghost)); S.gt.set(B.gt.subarray(0, nghost)); S.gxs.set(B.gxs.subarray(0, 3 * nghost));
     S.cutsq.set(B.cutsq);
+    if (sp) {
+      S.spOffset.set(sp.offset.subarray(0, nlocal + 1)); S.spPartner.set(sp.partner.subarray(0, npart)); S.spOrder.set(sp.order.subarray(0, npart));
+      S.id.set(sp.id.subarray(0, nlocal)); S.owner.set(sp.owner.subarray(0, nall));
+    }
     let k = 1;
     S.chunkBins[0] = 0;
-    for (let b = 1; b < nbins && k < K; b++) if (cand[b] >= (total * k) / K) S.chunkBins[k++] = b;
+    for (let b = 1; b < nbins && k < K; b++) if (weight[b] >= (total * k) / K) S.chunkBins[k++] = b;
     for (; k <= K; k++) S.chunkBins[k] = nbins;
     Atomics.store(this.ctl, DONE, 0);
     Atomics.store(this.ctl, FAILED, 0);
     Atomics.store(this.ctl, NEXT, 0);
-    for (const w of this.workers) w.postMessage({ type: 'neigh', nrows: B.nrows, nt: B.nt, nchunks: K } satisfies PairThreadMessage);
+    const special = sp ? { lj: Array.from(sp.lj), coul: Array.from(sp.coul), keep: sp.keep, hx: sp.hx, hy: sp.hy, hz: sp.hz, sbbits: sp.sbbits } : null;
+    for (const w of this.workers) w.postMessage({ type: 'neigh', nrows: B.nrows, nt: B.nt, nchunks: K, binMax, special } satisfies PairThreadMessage);
     // the engine thread claims chunks too, into its own arrays
     const out = new Int32Array(2);
     let own = 0;
@@ -280,10 +283,11 @@ export class SharedPairThreads implements NeighborThreads {
       const b1 = S.chunkBins[c + 1];
       const start = own;
       while (b < b1) {
-        halfBinsPairs(B, b, b1, this.ownPa, this.ownPj, own, this.ownPa.length, out);
+        if (sp) halfBinsPairsSpecial(B, sp, b, b1, this.ownPa, this.ownPj, own, this.ownPa.length, binMax, out);
+        else halfBinsPairs(B, b, b1, this.ownPa, this.ownPj, own, this.ownPa.length, binMax, out);
         b = out[0]; own = out[1];
         if (b < b1) {
-          const cap = Math.max(2 * this.ownPa.length, own + binCandidates(B, b));
+          const cap = Math.max(2 * this.ownPa.length, own + binMax);
           const na = new Int32Array(cap); na.set(this.ownPa.subarray(0, own)); this.ownPa = na;
           const nj = new Int32Array(cap); nj.set(this.ownPj.subarray(0, own)); this.ownPj = nj;
         }
@@ -319,16 +323,17 @@ export class SharedPairThreads implements NeighborThreads {
   }
 
   /** The shared buffers of a neighbor search, reallocated (and announced to the workers) when they are too small. */
-  private neighborShared(nb: number, nrows: number, nlocal: number, nghost: number, ntt: number, nchunk: number, share: number): NeighborShared {
-    const want = [nb, nrows, nlocal, nghost, ntt, nchunk, share];
+  private neighborShared(nb: number, nrows: number, nlocal: number, nghost: number, ntt: number, nchunk: number, share: number, npart: number, nall: number): NeighborShared {
+    const want = [nb, nrows, nlocal, nghost, ntt, nchunk, share, npart, nall];
     const S = this.nshared;
     if (S && want.every((v, i) => v <= S.caps[i])) return S;
     const caps = want.map((v, i) => Math.max(S?.caps[i] ?? 0, Math.ceil(v * 1.25)));
-    const [cb, cr, cl, cg, ct, cc, ce] = caps;
+    const [cb, cr, cl, cg, ct, cc, ce, cp, ca] = caps;
     const bufs = {
       bL: shared(4 * cb), bG: shared(4 * cb), rLo: shared(4 * cr), rHi: shared(4 * cr),
       lk: shared(4 * cl), lt: shared(4 * cl), lxs: shared(24 * cl), gk: shared(4 * cg), gt: shared(4 * cg), gxs: shared(24 * cg),
       cutsq: shared(8 * ct), chunkBins: shared(4 * cc), chunkOut: shared(12 * cc),
+      spOffset: shared(4 * (cl + 1)), spPartner: shared(4 * cp), spOrder: shared(cp), id: shared(4 * cl), owner: shared(4 * ca),
     };
     const pa: Int32Array[] = [], pj: Int32Array[] = [];
     this.workers.forEach((w) => {
@@ -340,7 +345,9 @@ export class SharedPairThreads implements NeighborThreads {
       bL: new Int32Array(bufs.bL), bG: new Int32Array(bufs.bG), rLo: new Int32Array(bufs.rLo), rHi: new Int32Array(bufs.rHi),
       lk: new Int32Array(bufs.lk), lt: new Int32Array(bufs.lt), lxs: new Float64Array(bufs.lxs),
       gk: new Int32Array(bufs.gk), gt: new Int32Array(bufs.gt), gxs: new Float64Array(bufs.gxs), cutsq: new Float64Array(bufs.cutsq),
-      chunkBins: new Int32Array(bufs.chunkBins), chunkOut: new Int32Array(bufs.chunkOut), pa, pj, caps,
+      chunkBins: new Int32Array(bufs.chunkBins), chunkOut: new Int32Array(bufs.chunkOut),
+      spOffset: new Int32Array(bufs.spOffset), spPartner: new Int32Array(bufs.spPartner), spOrder: new Int8Array(bufs.spOrder),
+      id: new Int32Array(bufs.id), owner: new Int32Array(bufs.owner), pa, pj, caps,
     };
     return this.nshared;
   }

@@ -1,7 +1,7 @@
 import { newAccum, type Pair } from '../force/types';
 import type { NeighList } from '../neighbor';
 import { THREADED_PAIRS } from './threadedPairs';
-import { halfBinsPairs, type HalfBins } from './neighborKernel';
+import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins } from './neighborKernel';
 
 /*
  * The worker side of the shared-memory pair threads (pairThreads.ts) and the helpers both sides
@@ -29,9 +29,14 @@ export type PairThreadMessage =
     type: 'nbuffers'; bL: SharedArrayBuffer; bG: SharedArrayBuffer; rLo: SharedArrayBuffer; rHi: SharedArrayBuffer;
     lk: SharedArrayBuffer; lt: SharedArrayBuffer; lxs: SharedArrayBuffer; gk: SharedArrayBuffer; gt: SharedArrayBuffer;
     gxs: SharedArrayBuffer; cutsq: SharedArrayBuffer; chunkBins: SharedArrayBuffer; chunkOut: SharedArrayBuffer;
+    spOffset: SharedArrayBuffer; spPartner: SharedArrayBuffer; spOrder: SharedArrayBuffer; id: SharedArrayBuffer; owner: SharedArrayBuffer;
     pa: SharedArrayBuffer; pj: SharedArrayBuffer;
   }
-  | { type: 'neigh'; nrows: number; nt: number; nchunks: number };
+  | {
+    type: 'neigh'; nrows: number; nt: number; nchunks: number; binMax: number;
+    /** a list with special bonds: the weights and the rest of neighborKernel.ts SpecialBins (the arrays are shared) */
+    special: { lj: number[]; coul: number[]; keep: boolean; hx: number; hy: number; hz: number; sbbits: number } | null;
+  };
 
 /**
  * A chunk of a threaded neighbor search (pairThreads.ts halfList) is recorded in chunkOut as three words: the thread
@@ -174,6 +179,7 @@ export class PairThreadWorker {
   private index = 0;
   /** the binned atoms of the current neighbor search, the chunk table and this worker's entry arrays */
   private bins: HalfBins | null = null;
+  private spArrays: { offset: Int32Array; partner: Int32Array; order: Int8Array; id: Int32Array; owner: Int32Array } | null = null;
   private chunkBins: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private chunkOut: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private pa: Int32Array<ArrayBufferLike> = new Int32Array(0);
@@ -193,6 +199,10 @@ export class PairThreadWorker {
         gk: new Int32Array(m.gk), gt: new Int32Array(m.gt), gxs: new Float64Array(m.gxs), cutsq: new Float64Array(m.cutsq), nt: 0,
       };
       this.chunkBins = new Int32Array(m.chunkBins); this.chunkOut = new Int32Array(m.chunkOut);
+      this.spArrays = {
+        offset: new Int32Array(m.spOffset), partner: new Int32Array(m.spPartner), order: new Int8Array(m.spOrder),
+        id: new Int32Array(m.id), owner: new Int32Array(m.owner),
+      };
       this.pa = new Int32Array(m.pa); this.pj = new Int32Array(m.pj);
       return;
     }
@@ -246,17 +256,19 @@ export class PairThreadWorker {
   }
 
   /** A threaded neighbor search: chunks of bins claimed from NEXT, their entries appended to this worker's arrays. */
-  private neighbors_(m: { nrows: number; nt: number; nchunks: number }): void {
+  private neighbors_(m: Extract<PairThreadMessage, { type: 'neigh' }>): void {
     const ctl = this.ctl!;
     try {
       const B = { ...this.bins!, nrows: m.nrows, nt: m.nt };
+      const sp = m.special ? { ...this.spArrays!, ...m.special, lj: Float64Array.from(m.special.lj), coul: Float64Array.from(m.special.coul) } : null;
       const out = new Int32Array(2);
       let np = 0;
       for (;;) {
         const c = Atomics.add(ctl, NEXT, 1);
         if (c >= m.nchunks) break;
         const b1 = this.chunkBins[c + 1];
-        halfBinsPairs(B, this.chunkBins[c], b1, this.pa, this.pj, np, this.pa.length, out);
+        if (sp) halfBinsPairsSpecial(B, sp, this.chunkBins[c], b1, this.pa, this.pj, np, this.pa.length, m.binMax, out);
+        else halfBinsPairs(B, this.chunkBins[c], b1, this.pa, this.pj, np, this.pa.length, m.binMax, out);
         if (out[0] < b1) {
           // no room for this chunk: the engine thread searches it (its partial entries are dropped)
           this.chunkOut[3 * c] = NOT_DONE;

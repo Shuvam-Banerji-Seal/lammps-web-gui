@@ -2,7 +2,7 @@ import type { SimState } from './types';
 import type { Geometry } from './domain';
 import { nativeOrder, type SpecialList } from './atoms';
 import { StyleError, type BondedCopies } from './force/types';
-import { halfBinsPairs, binCandidates, type HalfBins, type ListSegment, type NeighborThreads } from './cpu/neighborKernel';
+import { binBound, halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, type NeighborThreads, type SpecialBins } from './cpu/neighborKernel';
 import { gplHook } from './gplHooks';
 
 /*
@@ -868,18 +868,26 @@ export class Neighbor {
     // order without the per-pair branches of the others
     // the threads' entries are segments of their arrays, which the counting sort below reads in place
     let segs: ListSegment[] | null = null;
-    if (!fullList && plain && !lr && unmirrored === null) {
+    if (!fullList && !exclude && !incl && !lr && unmirrored === null) {
       const B: HalfBins = { bL, bG, rLo, rHi, nrows, lk, lt, lxs, gk, gt, gxs, cutsq, nt };
-      const threaded = this.listThreads?.halfList(B, nbins, nlocal) ?? null;
+      // with special bonds the kernel encodes each pair as encode() does
+      const S: SpecialBins | null = special ? {
+        offset: special.offset, partner: special.partner, order: special.order, id, owner,
+        lj: Float64Array.from(ss.lj), coul: Float64Array.from(ss.coul), keep: ss.keepExcluded,
+        hx: per[0] ? hx : Infinity, hy: per[1] ? hy : Infinity, hz: per[2] ? hz : Infinity, sbbits: SBBITS,
+      } : null;
+      const binMax = binBound(B, nbins);
+      const threaded = this.listThreads?.halfList(B, S, nbins, nlocal, binMax) ?? null;
       if (threaded) {
         segs = threaded.segs; np = threaded.np;
       } else {
         const out = new Int32Array(2);
         for (let b = 0; b < nbins;) {
-          halfBinsPairs(B, b, nbins, pa, pj, np, cap, out);
+          if (S) halfBinsPairsSpecial(B, S, b, nbins, pa, pj, np, cap, binMax, out);
+          else halfBinsPairs(B, b, nbins, pa, pj, np, cap, binMax, out);
           b = out[0]; np = out[1];
           if (b < nbins) {
-            cap = Math.max(2 * cap, np + binCandidates(B, b));
+            cap = Math.max(2 * cap, np + binMax);
             const na = new Int32Array(cap); na.set(pa.subarray(0, np)); pa = na;
             const nj = new Int32Array(cap); nj.set(pj.subarray(0, np)); pj = nj;
           }

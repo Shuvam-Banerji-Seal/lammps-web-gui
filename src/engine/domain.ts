@@ -158,7 +158,16 @@ export class Geometry {
    * likewise. A Cartesian edge shift (x -= k*A) gives the same atom up to round-off, but native's
    * bits differ, and loop geom velocities hash the bits, so the round trip is what matches.
    */
-  private remapTriclinic(x: Float64Array, image: Int32Array, i: number): void {
+  /**
+   * remap() of atom i in a triclinic box that also stores the atom's fractional coordinates after the wrap in lam[3i..3i+2]:
+   * as native LAMMPS does at a reneighboring (src/verlet.cpp at b332f28: "domain->x2lamda(atom->nlocal); domain->pbc();
+   * ... comm->borders(); domain->lamda2x(atom->nlocal+atom->nghost)"), the ghost atoms are then placed from these lamda.
+   */
+  remapKeepLamda(x: Float64Array, image: Int32Array, i: number, lam: Float64Array): void {
+    this.remapTriclinic(x, image, i, lam);
+  }
+
+  private remapTriclinic(x: Float64Array, image: Int32Array, i: number, lamOut?: Float64Array): void {
     const dx = x[3 * i] - this.lo[0], dy = x[3 * i + 1] - this.lo[1], dz = x[3 * i + 2] - this.lo[2];
     const l = [
       this.i00 * dx + this.i01 * dy + this.i02 * dz,
@@ -179,10 +188,14 @@ export class Geometry {
     x[3 * i] = this.lx * l[0] + this.xy * l[1] + this.xz * l[2] + this.lo[0];
     x[3 * i + 1] = this.ly * l[1] + this.yz * l[2] + this.lo[1];
     x[3 * i + 2] = this.lz * l[2] + this.lo[2];
+    if (lamOut) { lamOut[3 * i] = l[0]; lamOut[3 * i + 1] = l[1]; lamOut[3 * i + 2] = l[2]; }
   }
 
-  /** Atom i taken to lamda = h^-1 (x - lo) and back to x = h lamda + lo, summed as native's x2lamda/lamda2x do. */
-  lamdaRoundTrip(x: Float64Array, i: number): void {
+  /**
+   * Atom i taken to lamda = h^-1 (x - lo) and back to x = h lamda + lo, summed as native's x2lamda/lamda2x do; with
+   * lamOut, the lamda is stored in lamOut[3i..3i+2].
+   */
+  lamdaRoundTrip(x: Float64Array, i: number, lamOut?: Float64Array): void {
     const dx = x[3 * i] - this.lo[0], dy = x[3 * i + 1] - this.lo[1], dz = x[3 * i + 2] - this.lo[2];
     const l0 = this.i00 * dx + this.i01 * dy + this.i02 * dz;
     const l1 = this.i11 * dy + this.i12 * dz;
@@ -190,6 +203,7 @@ export class Geometry {
     x[3 * i] = this.lx * l0 + this.xy * l1 + this.xz * l2 + this.lo[0];
     x[3 * i + 1] = this.ly * l1 + this.yz * l2 + this.lo[1];
     x[3 * i + 2] = this.lz * l2 + this.lo[2];
+    if (lamOut) { lamOut[3 * i] = l0; lamOut[3 * i + 1] = l1; lamOut[3 * i + 2] = l2; }
   }
 
   private readonly scratchX = new Float64Array(3);

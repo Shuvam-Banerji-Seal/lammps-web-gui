@@ -45,6 +45,7 @@ export const spawnPairWorker = (): PairWorkerLike =>
 interface NeighborShared {
   bL: Int32Array; bG: Int32Array; rLo: Int32Array; rHi: Int32Array;
   lk: Int32Array; lt: Int32Array; lxs: Float64Array; gk: Int32Array; gt: Int32Array; gxs: Float64Array; cutsq: Float64Array;
+  ltag: Int32Array; gtag: Int32Array;
   chunkBins: Int32Array; chunkOut: Int32Array;
   /** the special bonds of the owned atoms, their IDs and the owner of each owned or ghost atom */
   spOffset: Int32Array; spPartner: Int32Array; spOrder: Int8Array; id: Int32Array; owner: Int32Array;
@@ -266,6 +267,8 @@ export class SharedPairThreads implements NeighborThreads {
       S.spOffset.set(sp.offset.subarray(0, nlocal + 1)); S.spPartner.set(sp.partner.subarray(0, npart)); S.spOrder.set(sp.order.subarray(0, npart));
       S.id.set(sp.id.subarray(0, nlocal)); S.owner.set(sp.owner.subarray(0, nall));
     }
+    // the atom IDs in bin order of the ID-parity rule (neighborKernel.ts keepGhostPair)
+    if (B.rule) { S.ltag.set(B.ltag!.subarray(0, nlocal)); S.gtag.set(B.gtag!.subarray(0, nghost)); }
     let k = 1;
     S.chunkBins[0] = 0;
     for (let b = 1; b < nbins && k < K; b++) if (weight[b] >= (total * k) / K) S.chunkBins[k++] = b;
@@ -274,7 +277,7 @@ export class SharedPairThreads implements NeighborThreads {
     Atomics.store(this.ctl, FAILED, 0);
     Atomics.store(this.ctl, NEXT, 0);
     const special = sp ? { lj: Array.from(sp.lj), coul: Array.from(sp.coul), keep: sp.keep, hx: sp.hx, hy: sp.hy, hz: sp.hz, sbbits: sp.sbbits } : null;
-    for (const w of this.workers) w.postMessage({ type: 'neigh', nrows: B.nrows, nt: B.nt, nchunks: K, binMax, special } satisfies PairThreadMessage);
+    for (const w of this.workers) w.postMessage({ type: 'neigh', nrows: B.nrows, nt: B.nt, nchunks: K, binMax, special, rule: B.rule ?? 0, delta: B.delta ?? 0 } satisfies PairThreadMessage);
     // the engine thread claims chunks too, into its own arrays
     const out = new Int32Array(2);
     let own = 0;
@@ -332,6 +335,7 @@ export class SharedPairThreads implements NeighborThreads {
     const bufs = {
       bL: shared(4 * cb), bG: shared(4 * cb), rLo: shared(4 * cr), rHi: shared(4 * cr),
       lk: shared(4 * cl), lt: shared(4 * cl), lxs: shared(24 * cl), gk: shared(4 * cg), gt: shared(4 * cg), gxs: shared(24 * cg),
+      ltag: shared(4 * cl), gtag: shared(4 * cg),
       cutsq: shared(8 * ct), chunkBins: shared(4 * cc), chunkOut: shared(12 * cc),
       spOffset: shared(4 * (cl + 1)), spPartner: shared(4 * cp), spOrder: shared(cp), id: shared(4 * cl), owner: shared(4 * ca),
     };
@@ -345,6 +349,7 @@ export class SharedPairThreads implements NeighborThreads {
       bL: new Int32Array(bufs.bL), bG: new Int32Array(bufs.bG), rLo: new Int32Array(bufs.rLo), rHi: new Int32Array(bufs.rHi),
       lk: new Int32Array(bufs.lk), lt: new Int32Array(bufs.lt), lxs: new Float64Array(bufs.lxs),
       gk: new Int32Array(bufs.gk), gt: new Int32Array(bufs.gt), gxs: new Float64Array(bufs.gxs), cutsq: new Float64Array(bufs.cutsq),
+      ltag: new Int32Array(bufs.ltag), gtag: new Int32Array(bufs.gtag),
       chunkBins: new Int32Array(bufs.chunkBins), chunkOut: new Int32Array(bufs.chunkOut),
       spOffset: new Int32Array(bufs.spOffset), spPartner: new Int32Array(bufs.spPartner), spOrder: new Int8Array(bufs.spOrder),
       id: new Int32Array(bufs.id), owner: new Int32Array(bufs.owner), pa, pj, caps,

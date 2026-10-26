@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 import { Neighbor, SBBITS, type NeighList, type NeighborNeeds } from '../src/engine/neighbor';
+import { keepGhostPair } from '../src/engine/cpu/neighborKernel';
 import type { SpecialList } from '../src/engine/atoms';
 import type { SimState } from '../src/engine/types';
 
@@ -11,7 +12,8 @@ import type { SimState } from '../src/engine/types';
  * periodic-image rule for special partners that neighbor.ts follows),
  * with `this` replaced by `self`. The membership rules it encodes are the ones in the class
  * comment of neighbor.ts: half lists keep an owned-owned pair once (lower index), an owned-ghost
- * pair only when the ghost lies lex-above; full lists keep every neighbor; special bits and
+ * pair as neighborKernel.ts keepGhostPair decides (the ghost lex-above, or by the atom IDs in a
+ * triclinic box and for neighbor nsq); full lists keep every neighbor; special bits and
  * exclusions are applied per entry. Lists are compared as sets per owned atom, including the
  * special-bond bits carried in the top bits of each neighbor code.
  */
@@ -96,6 +98,7 @@ function refBuildList(self: any, s: SimState, needs: NeighborNeeds, fullList: bo
   let neigh = new Int32Array(cap);
   let count = 0;
   const id = s.id;
+  const rule = fullList || needs.newton === false ? 0 : s.box.triclinic ? 1 : self.nsqStyle ? 2 : 0;
   for (let i = 0; i < nlocal; i++) {
     firstneigh[i] = count;
     if (incl && !(s.mask[i] & incl)) { numneigh[i] = 0; continue; }
@@ -119,7 +122,7 @@ function refBuildList(self: any, s: SimState, needs: NeighborNeeds, fullList: bo
         const dx = bxs[3 * p] - xi, dy = bxs[3 * p + 1] - yi, dz = bxs[3 * p + 2] - zi;
         if (!fullList) {
           if (j < nlocal) { if (j < i) continue; }
-          else if (dz < 0 || (dz === 0 && (dy < 0 || (dy === 0 && dx < 0)))) continue;
+          else if (!keepGhostPair(rule, id[i], id[owner[j]], dx, dy, dz, 0.01)) continue;
         }
         const r2 = dx * dx + dy * dy + dz * dz;
         // a pair at the neighbor cutoff itself is kept, as native's npair_bin.cpp tests "rsq <= cutneighsq"

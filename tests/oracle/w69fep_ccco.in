@@ -1,6 +1,7 @@
 # oracle: CC-CO fep01 (examples/PACKAGES/fep) cut down to 20 steps: hybrid lj/cut/coul/long + lj/cut/coul/long/soft, fix adapt/fep (after yes, hybrid sub-style lambda ranges and atom charges), compute fep (volume yes), pppm, NVE instead of shake/npt
 # oracle-inputs: w69fep_ccco_data.lmp
-# oracle-compare: thermo=all rel=1e-6 abs=1e-9 (the pressure after step 0 differs by ~4e-7 relative, the pppm virial level of the other pppm cases; energies agree to 1e-8)
+# oracle-compare: thermo=all rel=1e-7 abs=1e-9
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.2e-9 (atoms not compared).
 # created by fftool (examples/PACKAGES/fep/CC-CO/fep01/in.fep01.lmp, LAMMPS b332f28, GPL-2.0)
 units           real
 boundary        p p p

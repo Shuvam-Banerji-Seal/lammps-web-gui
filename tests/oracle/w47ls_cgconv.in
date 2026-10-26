@@ -1,5 +1,5 @@
 # oracle: min_style cg line quadratic to convergence with etol 1e-10 (minimize.html etol)
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9 skip=fnorm
+# oracle-compare: thermo=all atoms=all abs=1e-9 skip=fnorm
 # oracle-inputs: w47ls_lj.data
 units           lj
 atom_style      atomic

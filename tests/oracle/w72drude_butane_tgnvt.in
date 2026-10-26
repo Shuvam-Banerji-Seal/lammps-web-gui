@@ -1,7 +1,7 @@
 # oracle: DRUDE butane, temperature-grouped NVT (examples/PACKAGES/drude/butane/in.butane.tgnh) cut down to 10 molecules (180 atoms), 40 steps:
 # fix tgnvt/drude (molecule, internal and Drude chains), shake on the cores, pair thole in hybrid/overlay, temp/drude, f_fNVT[1..3]
 # oracle-inputs: w72drude_data.butane10
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-10
 # Measured with native LAMMPS (black box): engine vs native, max relative error 5e-9 (thermo, step 40; the molecule, internal and Drude chains of tgnvt/drude agree with native to ~1e-9 per row) and 4e-9 under Node 20. Setup forces agree with native to the shake-level tolerance of the example (1e-4).
 
 units real

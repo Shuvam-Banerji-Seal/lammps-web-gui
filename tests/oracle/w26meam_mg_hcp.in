@@ -1,7 +1,7 @@
 # oracle: pair_style meam, library Mg entry (hcp reference, nn2 = 0) with rc and delr from a parameter file, displaced hcp crystal, 50 steps of nve
 # oracle-potentials: library.meam
 # oracle-inputs: w26meam_mg.meam
-# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-8
+# oracle-compare: thermo=all atoms=all abs=1e-8
 units           metal
 atom_style      atomic
 lattice         hcp 3.20

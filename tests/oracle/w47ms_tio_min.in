@@ -1,7 +1,7 @@
 # oracle: pair_style meam/spline TiO.meam.spline, the same cell as w47ms_tio_run but one unit cell (6 atoms in a periodic cell smaller than the cutoff) with displaced atoms, relaxed by fix box/relax tri and cg minimize; final pe and pressure compared
 # oracle-potentials: TiO.meam.spline
-# oracle-compare: thermo=first-last atoms=all rel=1e-6 abs=1e-8 skip=fnorm,fmax,press,pxx,pyy,pzz
-# Measured with native LAMMPS (black box): the converged pressure components are about 1e-5 bar (noise of the stopped relaxation) and are not compared; pe and the box lengths agree to 1e-6 relative.
+# oracle-compare: thermo=first-last atoms=all abs=1e-8 skip=fnorm,fmax,press,pxx,pyy,pzz
+# Measured with native LAMMPS (black box): the converged pressure components are about 1e-5 bar (noise of the stopped relaxation) and are not compared; pe and the box lengths agree to 1.5e-11 relative, the atoms to 4.8e-9.
 units           metal
 atom_style      atomic
 dimension       3

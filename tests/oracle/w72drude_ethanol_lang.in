@@ -1,7 +1,7 @@
 # oracle: DRUDE ethanol, Langevin variant with fix nph iso (examples/PACKAGES/drude/ethanol/in.ethanol.lang) cut down to 10 molecules, 40 steps; langevin/drude, nph, thole, shake; SHAKE tolerance tightened to 1e-10 (see the measured line)
 # oracle-inputs: w72drude_data.ethanol_10
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
-# Measured with native LAMMPS (black box): max relative error 2e-7 (thermo pe, step 40) with SHAKE tolerance 1e-10 (the example tolerance 1e-4 leaves a step-0 press residual of 1.6e-5 against native, core fix shake); per-atom forces 2.5e-6.
+# oracle-compare: thermo=all atoms=all abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1e-10, atoms 7.8e-10. The case tightens the SHAKE tolerance to 1e-10.
 units real
 boundary p p p
 

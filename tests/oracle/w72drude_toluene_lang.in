@@ -1,7 +1,7 @@
 # oracle: DRUDE toluene Langevin (fix langevin/drude, zero yes, shake on the cores, pair lj/cut/thole/long, pppm 1e-4) cut down to 10 molecules, 40 steps: thermo every 10 steps
 # oracle-inputs: w72drude_data.toluene_10
-# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-6
-# Measured with native LAMMPS (black box): thermo rows agree to 1e-9 relative at step 0 and 10, the trajectory then drifts to 6.7e-6 relative in pe (step 30) and 3e-6 (step 20), from the table-12 erfc emulation residual (erfc.ts; forces 1.4e-6 absolute, see w72drude_toluene0). With pair_modify table 0 (run once, not a case) the same 40 steps agree to 1.5e-8 relative. Node 20 gives the same differences. Atom tolerance set to the same 1e-5 relative.
+# oracle-compare: thermo=all atoms=all abs=1e-6
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.3e-11, atoms 5.1e-12.
 
 units real
 boundary p p p

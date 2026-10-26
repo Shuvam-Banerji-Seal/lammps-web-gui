@@ -1,5 +1,5 @@
 # oracle: fix box/relax iso 0.0 vmax 0.001 on a perturbed LJ fcc box (cg); final state compared
-# oracle-compare: thermo=first-last atoms=all rel=1e-6 abs=1e-9 skip=fnorm,fmax
+# oracle-compare: thermo=first-last atoms=all abs=1e-9 skip=fnorm,fmax
 units           lj
 atom_style      atomic
 lattice         fcc 1.0

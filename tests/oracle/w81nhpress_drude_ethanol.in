@@ -1,7 +1,7 @@
 # oracle: DRUDE ethanol with fix npt iso on the atoms (fix_modify temp cTEMP_ATOM press thermo_press) and fix nvt on the drudes, as examples/PACKAGES/drude/ethanol/in.ethanol.nh, cut down to 10 molecules, 40 steps; drude transforms, thole, shake 1e-10
 # oracle-inputs: w72drude_data.ethanol_10
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
-# Measured with native LAMMPS (black box): with the fix_modify temp cTEMP_ATOM press thermo_press rule the engine is within 9.1e-7 relative (thermo press, step 20; etotal 1.9e-7, pe 4.0e-7), Node 20 rolldown run identical; without it the press error is 3.7e-4.
+# oracle-compare: thermo=all atoms=all abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1e-10, atoms 1.4e-9 (the fix_modify temp cTEMP_ATOM press thermo_press rule).
 units real
 boundary p p p
 

@@ -1,5 +1,5 @@
 # oracle: energy minimization (cg) of a perturbed lattice; compared by first and final energy
-# oracle-compare: thermo=first-last atoms=none rel=1e-7 skip=fnorm,fmax
+# oracle-compare: thermo=first-last atoms=none skip=fnorm,fmax
 units           lj
 atom_style      atomic
 lattice         fcc 1.0

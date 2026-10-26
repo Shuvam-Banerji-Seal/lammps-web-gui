@@ -1,6 +1,7 @@
 # oracle: DRUDE ethanol, Nose-Hoover variant (examples/PACKAGES/drude/ethanol/in.ethanol.nh) cut down to 10 molecules, 40 steps; fix npt on the atoms with fix_modify temp (the example also sets press thermo_press: not matched, see the measured line), fix nvt on the Drude particles, drude/transform, thole, shake; SHAKE tolerance tightened to 1e-10
 # oracle-inputs: w72drude_data.ethanol_10
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
+# oracle-compare: thermo=all atoms=all abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1e-10, atoms 7.9e-10.
 # Measured with native LAMMPS (black box): temp-only fix_modify matches native below 1e-6 relative (thermo and per-atom state). With fix_modify press thermo_press (the example input) native differs from this engine by 1.3e-5 in pe at step 10: native thermo_press is not the fix default press (the default press matches native, the thermo_press value does not), so that variant is not added.
 units real
 boundary p p p

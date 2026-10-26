@@ -1,7 +1,7 @@
 # oracle: fix bond/react CreateIDs (created atoms, modify_create fit create_fit overlap 2.0, max_rxn 30), polystyrene trimer growing a styrene chain (examples/PACKAGES/reaction/create_atoms_polystyrene) cut to 30 steps (the example runs 8000): one reaction (step 21) creates 16 atoms; from there the nvt on the statted group (reassigned after the reaction) differs from native at 1e-9 relative, growing to 1e-5 by step 60 (open item in src/engine/fix/nh.ts)
 # oracle-inputs: w94react_create_trimer.data w94react_create.map w94react_create_pre.molecule_template w94react_create_post.molecule_template
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
-# Engine vs this fixture (Node 24; Node 20 gives the same numbers to the digits shown): rows up to step 20 agree to round-off (temp 1.8e-14). The reaction at step 21 places the 16 created atoms to 4e-10 (xu, yu, zu), their velocities to 2e-10 and their forces to 4e-7 at step 30. Max errors at step 30 over the whole run: thermo rel 5.8e-7 (temp), press 7.4e-10; atoms rel 3.0e-5 (fz, abs 3.0e-5 on a force of 0.40; the largest error is on reactant atoms, xu 2.6e-9). The growth after step 21 comes from fix nvt on the statted group, which the reaction reassigns (the open item in src/engine/fix/nh.ts): 1.6e-9 in temp at step 21 and 5.6e-6 at step 47 in a 60-step run, so this case stops at 30 steps.
+# oracle-compare: thermo=all atoms=all abs=1e-9
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.1e-15, atoms 3.3e-13 (Node 24; the reaction at step 21 places the 16 created atoms at native's positions, velocities and forces).
 units real
 boundary p p p
 atom_style full

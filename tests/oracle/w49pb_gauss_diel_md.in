@@ -1,5 +1,5 @@
 # oracle: pair_style hybrid/overlay lj/cut gauss/cut coul/diel (gauss-diel overlay), pair_modify shift yes, dielectric 0.4255, periodic 12-atom cell, 50 steps of nve
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all abs=1e-9
 units           real
 atom_style      full
 boundary        p p p

@@ -12,7 +12,7 @@
  * Copyright (2003) Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0); this
  * file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, pairCoeffArgs, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
@@ -63,7 +63,8 @@ export class PairOxdna3Xstk extends Pair {
    * then a7 theta7_0_33 theta7_0_55 dtheta7_ast a8 theta8_0_33 theta8_0_55 dtheta8_ast (the order of the C++ reader).
    */
   coeff(args: string[], ctx?: StyleContext): void {
-    if (args.length !== 3) throw new StyleError('Incorrect args for pair coefficients in oxdna3/xstk, use potential file');
+    // pair_oxdna3_xstk.cpp coeff(): unlike oxdna3/stk and oxdna3/hbond, no "use potential file"
+    if (args.length !== 3) throw pairCoeffArgs(undefined, 'Incorrect args for pair coefficients in oxdna3/xstk');
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     if (ilo !== jlo || ihi !== jhi) throw new StyleError('Incorrect args for pair coefficients in oxdna3/xstk');

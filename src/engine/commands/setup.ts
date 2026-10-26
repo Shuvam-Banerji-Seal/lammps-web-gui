@@ -301,18 +301,17 @@ const parallelOnly = (name: string): Handler => (({ sys }, a) => {
   // suffix.html: "style = *off* or *on* or *gpu* or *intel* or *kk* or *omp* or *opt* or *hybrid*"; the
   // accelerator names are aliases here (accelAliases.ts), so a suffix changes no style and the words are only checked
   if (name === 'suffix') {
-    const suffixes = ['gpu', 'intel', 'kk', 'omp', 'opt'];
+    // As native LAMMPS does (src/input.cpp Input::suffix at b332f28): off/no/false turns suffixes off, on/yes/true turns
+    // them on again (only after one was defined), any other word defines the suffix (hybrid takes two)
+    if (a.length < 1) throw missingArgs('suffix');
     const style = a[0];
-    if (style === undefined || !['off', 'on', 'hybrid', ...suffixes].includes(style)) {
-      throw new StyleError(`suffix style must be off, on, gpu, intel, kk, omp, opt or hybrid (got '${style ?? ''}')`);
-    }
-    if (style === 'hybrid') {
-      if (a.length !== 3 || !suffixes.includes(a[1]) || !suffixes.includes(a[2])) {
-        throw new StyleError('usage: suffix hybrid default-suffix alternative-suffix (each of gpu, intel, kk, omp, opt)');
-      }
-    } else if (a.length !== 1) {
-      // native Input::suffix (src/input.cpp at b332f28): "if (narg != 1) error->all(FLERR,\"Illegal suffix command\")"
-      throw new StyleError('Illegal suffix command');
+    if (style === 'on' || style === 'yes' || style === 'true') {
+      if (sys.suffix === null) throw new StyleError('May only enable suffixes after defining one');
+    } else if (style !== 'off' && style !== 'no' && style !== 'false') {
+      if (style === 'hybrid') {
+        if (a.length !== 3) throw new StyleError('Illegal suffix hybrid command');
+      } else if (a.length !== 1) throw new StyleError('Illegal suffix command');
+      sys.suffix = style === 'hybrid' ? a.slice(1).join(' ') : style;
     }
     sys.log(`suffix ${a.join(' ')}: accepted; styles named later run as their base styles (the browser engine picks CPU threads or the GPU itself)`);
     return;
@@ -407,7 +406,9 @@ const processors: Handler = ({ sys }, a) => {
 
 /** comm_style brick|tiled — comm_style.html; recorded for fix balance rcb, otherwise no effect in one process. */
 const commStyle: Handler = ({ sys }, a) => {
-  if (a.length < 1 || (a[0] !== 'brick' && a[0] !== 'tiled')) throw new StyleError('usage: comm_style brick|tiled');
+  // As native LAMMPS does (src/input.cpp Input::comm_style at b332f28)
+  if (a.length < 1) throw missingArgs('comm_style');
+  if (a[0] !== 'brick' && a[0] !== 'tiled') throw new StyleError(`Unknown comm_style argument: ${a[0]}`);
   sys.commStyle = a[0];
   sys.log(`comm_style ${a[0]}: accepted (the browser engine runs one process)`);
 };
@@ -1716,18 +1717,26 @@ const labelmapCmd: Handler = ({ sys }, a) => {
 
 /** write_data file [nocoeff] [pair ii|ij] [nofix] [nolabelmap] [types numeric|labels] — write_data.html. */
 const writeDataCmd: Handler = ({ sys }, a) => {
-  if (!a[0]) throw new StyleError('usage: write_data file [keywords]');
+  // As native LAMMPS does (src/write_data.cpp WriteData::command at b332f28): a box, then the file name
+  if (!sys.hasBox) throw new StyleError(`Write_data command before simulation box is defined${errorUrl(33)}`);
+  if (!a[0]) throw missingArgs('write_data');
   let nocoeff = false, nofix = false, triclinicGeneral = false, nolabelmap = false, typesLabels = false;
   let pairStyle: 'ii' | 'ij' | null = null;
   for (let k = 1; k < a.length;) {
+    // noinit (undocumented; src/write_data.cpp at b332f28 then skips lmp->init() and the remap of the atoms into the box)
+    // is refused by name
+    if (a[k] === 'noinit') throw new StyleError('write_data noinit is not supported by the browser engine (native skips the system init and the remap of atoms into the box)');
     if (a[k] === 'nocoeff') { nocoeff = true; k++; } else if (a[k] === 'nofix') { nofix = true; k++; } else if (a[k] === 'nolabelmap') { nolabelmap = true; k++; }
     else if (a[k] === 'pair') {
-      if (a[k + 1] !== 'ii' && a[k + 1] !== 'ij') throw new StyleError('write_data pair must be ii or ij');
+      // As native LAMMPS does (src/write_data.cpp WriteData::command at b332f28)
+      if (a[k + 1] === undefined) throw missingArgs('write_data pair');
+      if (a[k + 1] !== 'ii' && a[k + 1] !== 'ij') throw new StyleError(`Unknown write_data pair option: ${a[k + 1]}`);
       pairStyle = a[k + 1] as 'ii' | 'ij';
       k += 2;
     } else if (a[k] === 'types') {
       // write_data.html: "*types* value = *numeric* or *labels*"
-      if (a[k + 1] !== 'numeric' && a[k + 1] !== 'labels') throw new StyleError('write_data types must be numeric or labels');
+      if (a[k + 1] === undefined) throw missingArgs('write_data types');
+      if (a[k + 1] !== 'numeric' && a[k + 1] !== 'labels') throw new StyleError(`Unknown write_data types option: ${a[k + 1]}`);
       typesLabels = a[k + 1] === 'labels';
       k += 2;
     } else if (a[k] === 'triclinic/general') {
@@ -1735,7 +1744,7 @@ const writeDataCmd: Handler = ({ sys }, a) => {
       triclinicGeneral = true;
       k++;
     }
-    else throw new StyleError(`unknown write_data keyword '${a[k]}'`);
+    else throw new StyleError(`Unknown write_data keyword: ${a[k]}`);
   }
   // the box must be current (shrink-wrapped faces, remapped atoms): write_data "calls ... pbc" via a setup.
   // Measured with native LAMMPS: atoms that drifted out of a periodic box since the last reneighboring
@@ -1928,7 +1937,10 @@ const group: Handler = ({ sys }, a) => {
       break;
     }
     case 'variable': {
-      const v0 = sys.vars.get(args[0] ?? '');
+      // As native LAMMPS does (src/group.cpp Group::assign at b332f28): with no name the lookup fails and formatting the
+      // null name into "Variable name {} for group does not exist" stops with fmt's "string pointer is null"
+      if (args[0] === undefined) throw new StyleError('string pointer is null');
+      const v0 = sys.vars.get(args[0]);
       if (!v0) throw new StyleError(`Variable name ${args[0]} for group does not exist`);
       if (v0.style !== 'atom' && v0.style !== 'atomfile') throw new StyleError(`Variable ${args[0]} for group is invalid style`);
       const v = sys.atomVariable(args[0]);
@@ -2036,7 +2048,8 @@ const groupDynamic = (sys: System, id: string, args: string[]): void => {
       g.exclude = val;
       continue;
     }
-    if (val === undefined) throw new StyleError(`Illegal group dynamic command: missing value for ${key}`);
+    // As native LAMMPS does (src/fix_group.cpp FixGroup::FixGroup at b332f28)
+    if (val === undefined) throw missingArgs(`group dynamic ${key}`);
     if (key === 'region') {
       if (!sys.regions.has(val)) throw new StyleError(`Region ${val} for dynamic group ${id} does not exist`);
       g.region = val;
@@ -2048,8 +2061,8 @@ const groupDynamic = (sys: System, id: string, args: string[]): void => {
       if (!c || c.cols !== 0) throw new StyleError(`Custom per-atom vector ${val} for dynamic group ${id} does not exist`);
       g.property = val;
     } else {
-      const n = Number(val);
-      if (!Number.isInteger(n) || n <= 0) throw new StyleError(`Illegal every value ${val} for dynamic group ${id}`);
+      const n = inumeric(val);
+      if (n <= 0) throw new StyleError(`Illegal every value ${n} for dynamic group ${id}`);
       g.every = n;
     }
   }
@@ -2106,6 +2119,22 @@ const SET_NVALUES: Record<string, number> = {
 };
 
 /**
+ * How native's process_* function reads each value of a set keyword (src/set.cpp at b332f28), one letter per value:
+ * i an integer (utils::inumeric), n a float (utils::numeric), b a 64-bit integer (utils::bnumeric or tnumeric); an
+ * upper-case letter also takes a v_name (varparse); V is a v_name or a word read otherwise (a type), - a word read
+ * otherwise. Keywords not listed (angle, bond, dihedral, improper, type) read type words.
+ */
+const SET_READERS: Record<string, string> = {
+  angmom: 'NNN', 'apip/lambda': 'N', block: 'NN', cc: 'iN', charge: 'N', density: 'N', 'density/disc': 'N', diameter: 'N',
+  dipole: 'NNN', 'dipole/random': 'in', 'dpd/theta': 'N', 'edpd/cv': 'N', 'edpd/temp': 'N', epsilon: 'N', image: 'III', length: 'N',
+  mass: 'N', mol: 'B', omega: 'NNN', quat: 'NNNN', 'quat/random': 'i', 'radius/electron': 'N', 'rheo/rho': 'N', 'rheo/status': 'I',
+  shape: 'NNN', 'smd/contact/radius': 'N', 'smd/mass/density': 'N', 'sph/cv': 'N', 'sph/e': 'N', 'sph/rho': 'N', spin: 'NNNN',
+  'spin/atom': 'NNNN', 'spin/atom/random': 'in', 'spin/random': 'in', 'spin/electron': 'I', temperature: 'N', theta: 'N',
+  'theta/random': 'i', tri: 'N', 'type/fraction': '-ni', 'type/ratio': '-ni', 'type/subset': '-bi', volume: 'N', vx: 'N', vy: 'N', vz: 'N',
+  x: 'N', y: 'N', z: 'N',
+};
+
+/**
  * The checks native LAMMPS makes on a set command's keywords before it changes any atom (src/set.cpp
  * Set::process_args at b332f28): each keyword is known and has its values, a v_name value is an atom-style variable,
  * and the type keywords name a valid type, fraction, subset size and seed.
@@ -2129,12 +2158,27 @@ const checkSetKeywords = (sys: System, a: string[]): void => {
     const n = custom ? 1 : SET_NVALUES[key];
     if (n === undefined) throw new StyleError(`Unrecognized set or fix set command keyword ${key}`);
     if (has[key] && !has[key]()) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
-    if (k + 1 + n > a.length) throw missingArgs(key === 'density/disc' ? 'set density' : custom ? 'set' : `set ${key}`);
-    for (const w of a.slice(k + 1, k + 1 + n)) {
-      if (!w.startsWith('v_')) continue;
-      const v = sys.vars.get(w.slice(2));
-      if (!v) throw new StyleError(`Variable name ${w} for set command does not exist`);
-      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Variable ${w} for set command is invalid style`);
+    // the message names the keyword as native's process_* function does (src/set.cpp at b332f28): density/disc is
+    // density's, and the old spin and spin/random names are spin/atom's and spin/atom/random's
+    const named: Record<string, string> = { 'density/disc': 'density', spin: 'spin/atom', 'spin/random': 'spin/atom/random' };
+    if (k + 1 + n > a.length) throw missingArgs(custom ? 'set' : `set ${named[key] ?? key}`);
+    // each value in turn, as native reads it: a v_name where the keyword takes one, else the number (SET_READERS); a
+    // custom i_ name takes an integer, a d_ name a float; image and dpd/theta take NULL, apip/lambda fast and precise
+    const readers = custom ? (key[0] === 'i' ? 'I' : 'N') : SET_READERS[key] ?? '';
+    for (let p = 0; p < n; p++) {
+      const w = a[k + 1 + p];
+      const r = readers[p] ?? 'V';
+      if (w.startsWith('v_') && r !== r.toLowerCase()) {
+        const v = sys.vars.get(w.slice(2));
+        if (!v) throw new StyleError(`Variable name ${w} for set command does not exist`);
+        if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Variable ${w} for set command is invalid style`);
+        continue;
+      }
+      if (((key === 'image' || key === 'dpd/theta') && w === 'NULL') || (key === 'apip/lambda' && (w === 'fast' || w === 'precise'))) continue;
+      const kind = r.toLowerCase();
+      if (kind === 'i') inumeric(w);
+      else if (kind === 'n') numeric(w);
+      else if (kind === 'b') bnumeric(w);
     }
     if (key === 'type' && !a[k + 1].startsWith('v_')) typeArg(a[k + 1]);
     if (key === 'type/fraction' || key === 'type/ratio' || key === 'type/subset') {
@@ -2409,8 +2453,11 @@ const set: Handler = ({ sys }, a) => {
       case 'cc': {
         const nsp = tdpdSpecies(s.atomStyle);
         if (!nsp) throw new StyleError(`Cannot set attribute cc for atom style ${s.atomStyle}`);
-        const idx = Number(a[k + 1]);
-        if (!Number.isInteger(idx) || idx < 1 || idx > nsp) throw new StyleError(`Invalid cc species index ${a[k + 1]} in set command (1 to ${nsp})`);
+        // src/set.cpp process_cc at b332f28: an index below 1 is refused; native writes outside the species for one above
+        // them, which the engine refuses
+        const idx = inumeric(a[k + 1]);
+        if (idx < 1) throw new StyleError(`Invalid cc index ${a[k + 1]} in set command`);
+        if (idx > nsp) throw new StyleError(`set cc: species index ${idx} is above the ${nsp} species (native LAMMPS writes outside its array)`);
         const v = value(a[k + 2], key);
         const cc = s.custom.get(TDPD_CC)!.data;
         for (const i of atoms) {

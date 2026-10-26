@@ -18,7 +18,7 @@
  * Restart files (restartFlag), diagnostics (the optional last argument of rkf45) and the local temperature lucy are not
  * supported and are refused with a StyleError. More than 13 species keep the order of first reading (see the constructor).
  */
-import { Fix } from '../../engine/fix/fix';
+import { Fix, FIX_MODIFY_KEYWORDS } from '../../engine/fix/fix';
 import { FixPropertyAtom } from '../../engine/fix/property_atom';
 import { StyleError, potentialFile } from '../../engine/force/types';
 import { inumeric, logical, numeric } from '../../engine/force/util';
@@ -566,9 +566,11 @@ export class FixRX extends Fix {
 
   /** fix_modify rx_chemistry on|off (fix_rx.cpp modify_param); other keywords go to the base class. */
   modify(key: string, values: string[]): number {
-    if (key !== 'rx_chemistry') return super.modify(key, values);
-    // fix_rx.cpp modify_param: utils::logical reads the value
+    if (FIX_MODIFY_KEYWORDS.has(key)) return super.modify(key, values);
+    // fix_rx.cpp modify_param: fewer than two words is "Illegal fix_modify rx_chemistry command" whatever the keyword,
+    // rx_chemistry's value is read by utils::logical, any other keyword is not supported
     if (values[0] === undefined) throw new StyleError('Illegal fix_modify rx_chemistry command');
+    if (key !== 'rx_chemistry') return 0;
     this.skipChemistry = !logical(values[0]);
     return 1;
   }

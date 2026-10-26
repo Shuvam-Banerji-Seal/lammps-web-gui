@@ -1,0 +1,3265 @@
+{
+ "matrix": "coeff-trailing",
+ "about": "an extra word after each coefficient line (one line per style)",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w225cm_angle_write_charmm",
+   "line": 12,
+   "text": "angle_coeff 1 50.0 109.5 5.0 1.8 extra",
+   "style": "angle_coeff charmm",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w35c2angle_coeff",
+   "line": 12,
+   "text": "angle_coeff 1 108.0 22.0 2.5 -0.4 extra",
+   "style": "angle_coeff class2",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 10,
+   "text": "angle_coeff 1 110.0 40.0 -5.0 2.0 -0.5 0.1 extra",
+   "style": "angle_coeff class2/p6",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w145pr_angle_class2xe",
+   "line": 18,
+   "text": "angle_coeff 1 110.77 41.453 -10.604 5.129 extra",
+   "style": "angle_coeff class2xe",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w1ba_angle_cosine",
+   "line": 14,
+   "text": "angle_coeff 1 40.0 extra",
+   "style": "angle_coeff cosine",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 10,
+   "text": "angle_coeff 1 1.978350 4 120.0 extra",
+   "style": "angle_coeff cosine/buck6d",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w87bond_angle_cosdelta_linear",
+   "line": 11,
+   "text": "angle_coeff * 20 110 extra",
+   "style": "angle_coeff cosine/delta",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w87bond_angle_cosper_linear",
+   "line": 11,
+   "text": "angle_coeff * 40 1 2 extra",
+   "style": "angle_coeff cosine/periodic",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w87bond_angle_cosshift_exact",
+   "line": 11,
+   "text": "angle_coeff * 20 110 extra",
+   "style": "angle_coeff cosine/shift",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w217xb_angle_cosine_shift_exp",
+   "line": 16,
+   "text": "angle_coeff 1 10.0 110.0 2.0 extra",
+   "style": "angle_coeff cosine/shift/exp",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w1ba_angle_cosine_squared",
+   "line": 14,
+   "text": "angle_coeff 1 40.0 109.5 extra",
+   "style": "angle_coeff cosine/squared",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w18angle_csr",
+   "line": 14,
+   "text": "angle_coeff 1 40.0 109.5 extra",
+   "style": "angle_coeff cosine/squared/restricted",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 15,
+   "text": "angle_coeff 1 200.0 100.0 100.0 1.25 1.25 107.0 extra",
+   "style": "angle_coeff cross",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w235mx_angle_dipole",
+   "line": 13,
+   "text": "angle_coeff 1 2.0 60.0 extra",
+   "style": "angle_coeff dipole",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 11,
+   "text": "angle_coeff * 20 1 1 0 extra",
+   "style": "angle_coeff fourier",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w1ba_angle_fourier_simple",
+   "line": 14,
+   "text": "angle_coeff 1 20.0 -1.0 2.0 extra",
+   "style": "angle_coeff fourier/simple",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 14,
+   "text": "angle_coeff 1 1.0 2 1.0 0.3 110.0 1.0 0.3 132.0 extra",
+   "style": "angle_coeff gaussian",
+   "native": "ERROR: Illegal angle_coeff command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 10,
+   "text": "angle_coeff 1 10.0 110.0 extra",
+   "style": "angle_coeff harmonic",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w54accel_bonded",
+   "line": 18,
+   "text": "angle_coeff 1 30.0 110.0 extra",
+   "style": "angle_coeff harmonic/omp",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w104cf_angle_hybrid_p6",
+   "line": 14,
+   "text": "angle_coeff 1 class2/p6 109.5 40.0 -10.0 5.0 -2.0 1.0 extra",
+   "style": "angle_coeff hybrid class2/p6",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w104cf_angle_hybrid_p6",
+   "line": 17,
+   "text": "angle_coeff 2 cosine 25.0 extra",
+   "style": "angle_coeff hybrid cosine",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 14,
+   "text": "angle_coeff * harmonic 40.0 109.5 extra",
+   "style": "angle_coeff hybrid harmonic",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w16lepton_bonded",
+   "line": 14,
+   "text": "angle_coeff 1 109.5 \"40.0*theta^2 + 2*sin(theta)\" extra",
+   "style": "angle_coeff lepton",
+   "native": "ERROR: Incorrect number of args for angle coefficients"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 11,
+   "text": "angle_coeff 1 buckling C 10 10 10 extra",
+   "style": "angle_coeff mesocnt",
+   "native": "ERROR: Incorrect number of args for 'C' preset in angle coefficients"
+  },
+  {
+   "case": "w18angle_mm3",
+   "line": 14,
+   "text": "angle_coeff 1 40.0 109.5 extra",
+   "style": "angle_coeff mm3",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w217xb_angle_mwlc",
+   "line": 16,
+   "text": "angle_coeff 1 2.0 1.0 1.5 300.0 extra",
+   "style": "angle_coeff mwlc",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w1ba_angle_quartic",
+   "line": 14,
+   "text": "angle_coeff 1 109.5 40.0 -10.0 5.0 extra",
+   "style": "angle_coeff quartic",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 14,
+   "text": "angle_coeff 1 0.0 180.0 extra",
+   "style": "angle_coeff sdk",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 14,
+   "text": "angle_coeff 1 0.0 180.0 extra",
+   "style": "angle_coeff spica",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w216tb_angle_linear",
+   "line": 10,
+   "text": "angle_coeff 1 w216tb_angle.table ANG1 extra",
+   "style": "angle_coeff table",
+   "native": "ERROR: Illegal angle_coeff command: must have 3 arguments"
+  },
+  {
+   "case": "w1ba_angle_zero",
+   "line": 14,
+   "text": "angle_coeff * 109.5 extra",
+   "style": "angle_coeff zero",
+   "native": "ERROR: Incorrect args for angle coefficients"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 27,
+   "text": "bond_coeff 1 pmb 1.6863e13 0.0015001 0.0005 0.25 extra",
+   "style": "bond_coeff bpm/peri",
+   "native": "ERROR: Incorrect args for bond_style bpm/peri pmb model (expected: <type> pmb c horizon s00 alpha)"
+  },
+  {
+   "case": "w53bpm_rot_chain",
+   "line": 13,
+   "text": "bond_coeff 1 1.0 0 0 0 0.5 1.0 1.0 1.0 0.0 0.0 0.0 0.0 extra",
+   "style": "bond_coeff bpm/rotational",
+   "native": "ERROR: Incorrect args for bond coefficients: expected Kr Ks Kt Kb Fcr Fcs Tct Tcb gr gs gt gb"
+  },
+  {
+   "case": "w51bpm_spring_compress",
+   "line": 10,
+   "text": "bond_coeff 1 1.0 0.1 0.5 extra",
+   "style": "bond_coeff bpm/spring",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w59bpm_plastic",
+   "line": 23,
+   "text": "bond_coeff 1 1.0 0.5 0.2 0.1 extra",
+   "style": "bond_coeff bpm/spring/plastic",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w59bpm_zero",
+   "line": 23,
+   "text": "bond_coeff 1 0.2 extra",
+   "style": "bond_coeff bpm/zero",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w35c2angle_coeff",
+   "line": 10,
+   "text": "bond_coeff 1 1.02 95.0 -25.0 6.0 extra",
+   "style": "bond_coeff class2",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w1ba_bond_fene_stretched",
+   "line": 9,
+   "text": "bond_coeff 1 30.0 1.5 1.0 1.0 extra",
+   "style": "bond_coeff fene",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w1ba_bond_fene_expand_stretched",
+   "line": 9,
+   "text": "bond_coeff 1 30.0 1.4 1.0 1.0 0.1 extra",
+   "style": "bond_coeff fene/expand",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w217xb_bond_fene_nm",
+   "line": 14,
+   "text": "bond_coeff 1 30.0 2.0 1.0 1.6 12 6 extra",
+   "style": "bond_coeff fene/nm",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 12,
+   "text": "bond_coeff 1 1.0 2 1.0 0.25 1.05 1.0 0.25 1.40 extra",
+   "style": "bond_coeff gaussian",
+   "native": "ERROR: Illegal bond_coeff command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_bond_gromos",
+   "line": 12,
+   "text": "bond_coeff 1 80.0 1.05 extra",
+   "style": "bond_coeff gromos",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 8,
+   "text": "bond_coeff 1 100.0 1.0 extra",
+   "style": "bond_coeff harmonic",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w54accel_bonded",
+   "line": 15,
+   "text": "bond_coeff 1 80.0 1.1 extra",
+   "style": "bond_coeff harmonic/omp",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w217xb_harmonic_restrain",
+   "line": 14,
+   "text": "bond_coeff 1 50.0 extra",
+   "style": "bond_coeff harmonic/restrain",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift",
+   "line": 12,
+   "text": "bond_coeff 1 10.0 1.05 2.0 extra",
+   "style": "bond_coeff harmonic/shift",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift_cut",
+   "line": 12,
+   "text": "bond_coeff 1 10.0 1.05 2.0 extra",
+   "style": "bond_coeff harmonic/shift/cut",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 55,
+   "text": "bond_coeff 1 bpm/spring 1.0 1.0 1.0 extra",
+   "style": "bond_coeff hybrid bpm/spring",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 10,
+   "text": "bond_coeff 1 harmonic 120.0 1.05 extra",
+   "style": "bond_coeff hybrid harmonic",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 11,
+   "text": "bond_coeff * morse 1.0 2.0 1.1 extra",
+   "style": "bond_coeff hybrid morse",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 16,
+   "text": "bond_coeff * oxdna3/fene oxdna3_lj.cgdna extra",
+   "style": "bond_coeff hybrid oxdna3/fene",
+   "native": "ERROR: Incorrect args for bond coefficients in oxdna3/fene, use potential file"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 56,
+   "text": "bond_coeff 2 rheo/shell 0.2 0.2 0.1 extra",
+   "style": "bond_coeff hybrid rheo/shell",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w16lepton_vref",
+   "line": 10,
+   "text": "bond_coeff 1 1.05 \"120.0*r^2 + 10*r^3\" extra",
+   "style": "bond_coeff lepton",
+   "native": "ERROR: Incorrect number of args for bond coefficients"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 9,
+   "text": "bond_coeff 1 C 10 10 16 extra",
+   "style": "bond_coeff mesocnt",
+   "native": "ERROR: Incorrect number of args for 'C' preset in bond coefficients"
+  },
+  {
+   "case": "w118yaff_bond_mm3",
+   "line": 13,
+   "text": "bond_coeff 1 120.0 1.05 extra",
+   "style": "bond_coeff mm3",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w1ba_bond_morse",
+   "line": 12,
+   "text": "bond_coeff 1 1.0 2.0 1.05 extra",
+   "style": "bond_coeff morse",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w1ba_bond_nonlinear",
+   "line": 12,
+   "text": "bond_coeff 1 50.0 1.05 1.5 extra",
+   "style": "bond_coeff nonlinear",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w57oxdna_excv_bond",
+   "line": 14,
+   "text": "bond_coeff * 2.0 0.25 0.7525 extra",
+   "style": "bond_coeff oxdna/fene",
+   "native": "ERROR: Incorrect args for bond coefficients in oxdna/fene, oxdna2/fene or oxrna2/fene"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 15,
+   "text": "bond_coeff * 2.0 0.25 0.7564 extra",
+   "style": "bond_coeff oxdna2/fene",
+   "native": "ERROR: Incorrect args for bond coefficients in oxdna/fene, oxdna2/fene or oxrna2/fene"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 15,
+   "text": "bond_coeff * 2.0 0.25 0.761070781051 extra",
+   "style": "bond_coeff oxrna2/fene",
+   "native": "ERROR: Incorrect args for bond coefficients in oxdna/fene, oxdna2/fene or oxrna2/fene"
+  },
+  {
+   "case": "w235mx_quartic_break",
+   "line": 31,
+   "text": "bond_coeff 1 1200 -0.55 0.25 1.3 34.6878 extra",
+   "style": "bond_coeff quartic",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 14,
+   "text": "bond_coeff 1 1.1 50.0 -10.0 5.0 2.0 0.3 extra",
+   "style": "bond_coeff quartic/exp",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w235mx_bond_special",
+   "line": 36,
+   "text": "bond_coeff 1 0.5 0.8 extra",
+   "style": "bond_coeff special",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w216tb_bond_linear",
+   "line": 10,
+   "text": "bond_coeff 1 w216tb_bond.table BLIN extra",
+   "style": "bond_coeff table",
+   "native": "ERROR: Illegal bond_coeff command: must have 3 arguments"
+  },
+  {
+   "case": "w1ba_bond_zero",
+   "line": 12,
+   "text": "bond_coeff * 1.05 extra",
+   "style": "bond_coeff zero",
+   "native": "ERROR: Incorrect args for bond coefficients"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 12,
+   "text": "dihedral_coeff 1 1.3 3 45 0.0 extra",
+   "style": "dihedral_coeff charmm",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w13dihcharmm_fsw",
+   "line": 11,
+   "text": "dihedral_coeff 1 0.2 1 180 1.0 extra",
+   "style": "dihedral_coeff charmmfsw",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w87bond_class2_trans",
+   "line": 15,
+   "text": "dihedral_coeff * 100 75 100 70 80 60 extra",
+   "style": "dihedral_coeff class2",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 25,
+   "text": "dihedral_coeff 1 100.0 75.0 70.0 100.0 80.0 60.0 extra",
+   "style": "dihedral_coeff class2xe",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w76dih_fine_cse",
+   "line": 12,
+   "text": "dihedral_coeff 1 2.0 30 3.0 extra",
+   "style": "dihedral_coeff cosine/shift/exp",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 17,
+   "text": "dihedral_coeff 1 0.0 120 extra",
+   "style": "dihedral_coeff cosine/squared/restricted",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w76dih_fine_fourier",
+   "line": 12,
+   "text": "dihedral_coeff 1 2 0.8 1 30 0.5 3 -60 extra",
+   "style": "dihedral_coeff fourier",
+   "native": "ERROR: Incorrect number of arguments for dihedral coefficients"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 12,
+   "text": "dihedral_coeff 1 1.0 1 0 extra",
+   "style": "dihedral_coeff harmonic",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 12,
+   "text": "dihedral_coeff 1 0.9 0.4 -0.6 extra",
+   "style": "dihedral_coeff helix",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 17,
+   "text": "dihedral_coeff 1 harmonic 1.5 -1 3 extra",
+   "style": "dihedral_coeff hybrid harmonic",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 18,
+   "text": "dihedral_coeff 2 zero extra",
+   "style": "dihedral_coeff hybrid zero",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w16lepton_bonded",
+   "line": 16,
+   "text": "dihedral_coeff 1 \"1.5*(1+cos(2*phi)) + 0.1*phi\" extra",
+   "style": "dihedral_coeff lepton",
+   "native": "ERROR: Incorrect number of args for dihedral coefficients"
+  },
+  {
+   "case": "w76dih_fine_mh",
+   "line": 12,
+   "text": "dihedral_coeff 1 1.1 -0.7 0.45 0.3 -0.2 extra",
+   "style": "dihedral_coeff multi/harmonic",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w76dih_fine_nharm",
+   "line": 12,
+   "text": "dihedral_coeff 1 4 0.9 -0.4 0.25 0.1 extra",
+   "style": "dihedral_coeff nharmonic",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w76dih_fine_opls",
+   "line": 12,
+   "text": "dihedral_coeff 1 1.2 -0.3 0.6 0.1 extra",
+   "style": "dihedral_coeff opls",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w76dih_fine_quad",
+   "line": 12,
+   "text": "dihedral_coeff 1 0.8 100 extra",
+   "style": "dihedral_coeff quadratic",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w217xb_dihedral_spherical",
+   "line": 19,
+   "text": "dihedral_coeff 1 2 2.861 1 124 1 1 90.0 0 1 90.0 0 -0.5 2 60 0.5 2 45 1 1 30 0.2 extra",
+   "style": "dihedral_coeff spherical",
+   "native": "ERROR: Incorrect number of arguments for dihedral coefficients"
+  },
+  {
+   "case": "w216tb_dihedral_linear_nof",
+   "line": 10,
+   "text": "dihedral_coeff 1 w216tb_dihedral.table DNOF extra",
+   "style": "dihedral_coeff table",
+   "native": "ERROR: Illegal dihedral_coeff command: must have 3 arguments"
+  },
+  {
+   "case": "w216tb_dihedral_cut_spline",
+   "line": 11,
+   "text": "dihedral_coeff 1 aat 1.5 95.0 125.0 w216tb_dihedral.table DNOF extra",
+   "style": "dihedral_coeff table/cut",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w1dih_zero",
+   "line": 16,
+   "text": "dihedral_coeff * extra",
+   "style": "dihedral_coeff zero",
+   "native": "ERROR: Incorrect args for dihedral coefficients"
+  },
+  {
+   "case": "w225cm_write_coeff_class2",
+   "line": 32,
+   "text": "improper_coeff 1 100.0 0 extra",
+   "style": "improper_coeff class2",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w1imp_cossq",
+   "line": 17,
+   "text": "improper_coeff 1 4.0 15.0 extra",
+   "style": "improper_coeff cossq",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w120cf_improper_cvff_planar",
+   "line": 11,
+   "text": "improper_coeff 1 150.0 1 2 extra",
+   "style": "improper_coeff cvff",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w1imp_distance",
+   "line": 17,
+   "text": "improper_coeff 1 30.0 10.0 extra",
+   "style": "improper_coeff distance",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 18,
+   "text": "improper_coeff 1 25.0 0.15 extra",
+   "style": "improper_coeff distharm",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w87bond_fourier_default",
+   "line": 17,
+   "text": "improper_coeff 1 20 1 1 0 extra",
+   "style": "improper_coeff fourier",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w120cf_improper_planar",
+   "line": 11,
+   "text": "improper_coeff 1 150.0 10.0 extra",
+   "style": "improper_coeff harmonic",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 20,
+   "text": "improper_coeff 1 harmonic 12.0 20.0 extra",
+   "style": "improper_coeff hybrid harmonic",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 21,
+   "text": "improper_coeff 2 none extra",
+   "style": "improper_coeff hybrid none",
+   "native": "OK"
+  },
+  {
+   "case": "w120cf_improper_inversion_planar",
+   "line": 11,
+   "text": "improper_coeff 1 150.0 10.0 extra",
+   "style": "improper_coeff inversion/harmonic",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w217xb_improper_ring",
+   "line": 20,
+   "text": "improper_coeff 1 80.0 70.5 extra",
+   "style": "improper_coeff ring",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w18dihimp_sqdistharm",
+   "line": 18,
+   "text": "improper_coeff 1 25.0 0.0225 extra",
+   "style": "improper_coeff sqdistharm",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w87bond_umbrella_flip_w0zero",
+   "line": 17,
+   "text": "improper_coeff 1 8 0 extra",
+   "style": "improper_coeff umbrella",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w1imp_zero",
+   "line": 17,
+   "text": "improper_coeff * extra",
+   "style": "improper_coeff zero",
+   "native": "ERROR: Incorrect args for improper coefficients"
+  },
+  {
+   "case": "w222me_adp_ni",
+   "line": 13,
+   "text": "pair_coeff * * Ni.adp Ni extra",
+   "style": "pair_coeff adp",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w52airebo_airebo_00",
+   "line": 10,
+   "text": "pair_coeff * * CH.airebo C H extra",
+   "style": "pair_coeff airebo",
+   "native": "ERROR: Incorrect number of args for pair coefficient."
+  },
+  {
+   "case": "w147ab_airebo_bc",
+   "line": 10,
+   "text": "pair_coeff * * CH.airebo-bc C H extra",
+   "style": "pair_coeff airebo/bc",
+   "native": "ERROR: Incorrect number of args for pair coefficient."
+  },
+  {
+   "case": "w52airebo_morse_11",
+   "line": 10,
+   "text": "pair_coeff * * CH.airebo-m C H extra",
+   "style": "pair_coeff airebo/morse",
+   "native": "ERROR: Incorrect number of args for pair coefficient."
+  },
+  {
+   "case": "amoeba_dimer_nokey",
+   "line": 15,
+   "text": "pair_coeff * * w119amoeba_water.prm extra",
+   "style": "pair_coeff amoeba",
+   "native": "ERROR: Cannot open AMOEBA key file extra: No such file or directory"
+  },
+  {
+   "case": "w10atm_pure",
+   "line": 21,
+   "text": "pair_coeff 1 1 1 0.064 extra",
+   "style": "pair_coeff atm",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w219xp_beck",
+   "line": 15,
+   "text": "pair_coeff 1 1 1.0 0.5 1.0 2.0 0.5 extra",
+   "style": "pair_coeff beck",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w48bd_free",
+   "line": 10,
+   "text": "pair_coeff * * 1.0 1.0 extra",
+   "style": "pair_coeff body/nparticle",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w50bc_static",
+   "line": 9,
+   "text": "pair_coeff * * 100 2 extra",
+   "style": "pair_coeff body/rounded/polygon",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w126body_cubes_wall",
+   "line": 11,
+   "text": "pair_coeff * * 100 1 extra",
+   "style": "pair_coeff body/rounded/polyhedron",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w233bo_alcu",
+   "line": 17,
+   "text": "pair_coeff * * AlCu.bop.table Al Cu extra",
+   "style": "pair_coeff bop",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w1buck_born",
+   "line": 21,
+   "text": "pair_coeff * * 1.0 0.1 1.0 1.0 0.5 extra",
+   "style": "pair_coeff born",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w18borncoul_dsf",
+   "line": 23,
+   "text": "pair_coeff 1 1 6.08 0.317 2.340 24.18 11.51 extra",
+   "style": "pair_coeff born/coul/dsf",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w21borncs_dsf",
+   "line": 9,
+   "text": "pair_coeff * * 0.0 1.0 0.0 0.0 0.0 extra",
+   "style": "pair_coeff born/coul/dsf/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w3coullong_born",
+   "line": 22,
+   "text": "pair_coeff * * 20.0 0.3 3.0 500.0 1000.0 extra",
+   "style": "pair_coeff born/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w9pair_born_cs",
+   "line": 9,
+   "text": "pair_coeff 1 1 6.08 0.317 2.340 24.18 11.51 extra",
+   "style": "pair_coeff born/coul/long/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w209ms_born",
+   "line": 25,
+   "text": "pair_coeff 1 1 0.263690 0.317 2.340 1.048553 -0.49935 extra",
+   "style": "pair_coeff born/coul/msm",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w18borncoul_wolf",
+   "line": 23,
+   "text": "pair_coeff 1 1 6.08 0.317 2.340 24.18 11.51 extra",
+   "style": "pair_coeff born/coul/wolf",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w21borncs_wolf",
+   "line": 9,
+   "text": "pair_coeff * * 0.0 1.0 0.0 0.0 0.0 extra",
+   "style": "pair_coeff born/coul/wolf/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w219xp_born_gauss",
+   "line": 16,
+   "text": "pair_coeff 1 1 2.0 2.0 0.5 1.5 1.0 extra",
+   "style": "pair_coeff born/gauss",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 23,
+   "text": "pair_coeff * * 1.6863e13 0.0015001 extra",
+   "style": "pair_coeff bpm/peri",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w51bpm_pair_anh",
+   "line": 8,
+   "text": "pair_coeff 1 1 1.0 1.0 0.5 2.0 extra",
+   "style": "pair_coeff bpm/spring",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w231co_brownian_nohi",
+   "line": 14,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff brownian",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w231co_brownian_poly",
+   "line": 22,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff brownian/poly",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w1buck_buck",
+   "line": 21,
+   "text": "pair_coeff * * 600.0 0.15 1.0 extra",
+   "style": "pair_coeff buck",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w1buck_buck_coul_cut",
+   "line": 23,
+   "text": "pair_coeff * * 600.0 0.15 1.0 extra",
+   "style": "pair_coeff buck/coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w3coullong_buck",
+   "line": 22,
+   "text": "pair_coeff * * 50000.0 0.27 900.0 extra",
+   "style": "pair_coeff buck/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w9pair_buck_cs",
+   "line": 9,
+   "text": "pair_coeff 1 1 1000.0 0.25 20.0 extra",
+   "style": "pair_coeff buck/coul/long/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w209ms_buck",
+   "line": 25,
+   "text": "pair_coeff 1 1 488.0 0.30 1.0 extra",
+   "style": "pair_coeff buck/coul/msm",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 7,
+   "text": "pair_coeff * * 2000.0 0.3 0.5 extra",
+   "style": "pair_coeff buck/long/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w219xp_buck_mdf",
+   "line": 15,
+   "text": "pair_coeff 1 1 5.0 0.3 0.02 extra",
+   "style": "pair_coeff buck/mdf",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 15,
+   "text": "pair_coeff 1 1 1200.0 3.3 600.0 5.0 0.7 extra",
+   "style": "pair_coeff buck6d/coul/gauss/dsf",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 17,
+   "text": "pair_coeff 1 1 1200.0 3.3 600.0 5.0 0.7 extra",
+   "style": "pair_coeff buck6d/coul/gauss/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w5colloid_mix",
+   "line": 21,
+   "text": "pair_coeff 1 1 144.0 1.0 5.0 5.0 12.0 extra",
+   "style": "pair_coeff colloid",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w58comb_si0",
+   "line": 13,
+   "text": "pair_coeff * * ffield.comb Si extra",
+   "style": "pair_coeff comb",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w158cb_cu",
+   "line": 15,
+   "text": "pair_coeff * * ffield.comb3 Cu extra",
+   "style": "pair_coeff comb3",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w219xp_cosine_squared",
+   "line": 15,
+   "text": "pair_coeff 1 1 1.0 1.0 2.0 extra",
+   "style": "pair_coeff cosine/squared",
+   "native": "ERROR: Incorrect args for pair coefficients (unknown option)"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 15,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w226cs_diel_cutcoul",
+   "line": 7,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/cut/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w219xp_coul_cut_global",
+   "line": 13,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/cut/global",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w69fep_coulcutsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 0.5 extra",
+   "style": "pair_coeff coul/cut/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w69fep_gapsys_coul",
+   "line": 18,
+   "text": "pair_coeff 1 1 0.5 extra",
+   "style": "pair_coeff coul/cut/soft/gapsys",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w1coul_debye",
+   "line": 23,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/debye",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w49pb_coul_diel_dimer",
+   "line": 14,
+   "text": "pair_coeff 1 1 78.0 1.375 0.112 extra",
+   "style": "pair_coeff coul/diel",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w1coul_special_dsf",
+   "line": 10,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/dsf",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w244es_ortho",
+   "line": 16,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/esp",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w117cf_pppm_mesh8_real",
+   "line": 11,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/long",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w9pair_coul_cs_short",
+   "line": 8,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/long/cs",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w226cs_diel_coullong_t12",
+   "line": 8,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/long/dielectric",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w69fep_coullongsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 0.5 extra",
+   "style": "pair_coeff coul/long/soft",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w219xp_coul_slater_cut",
+   "line": 17,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/slater/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w130pr_coulslater_ewald",
+   "line": 15,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/slater/long",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w43st_dsf_alone",
+   "line": 19,
+   "text": "pair_coeff * * AlO.streitz Al O extra",
+   "style": "pair_coeff coul/streitz",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w1coul_special_wolf",
+   "line": 10,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/wolf",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w226cs_wolf",
+   "line": 7,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff coul/wolf/cs",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w250d3_zerom",
+   "line": 14,
+   "text": "pair_coeff * * C O extra",
+   "style": "pair_coeff dispersion/d3",
+   "native": "ERROR: Pair_coeff * * needs: element1 element2 ..."
+  },
+  {
+   "case": "w77dpd_noise_dpd3d_nosort",
+   "line": 15,
+   "text": "pair_coeff * * 25.0 4.5 extra",
+   "style": "pair_coeff dpd",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 19,
+   "text": "pair_coeff 1 1 78 4.5 no 1 extra",
+   "style": "pair_coeff dpd/coul/slater/long",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w77dpd_noise_ext3d",
+   "line": 14,
+   "text": "pair_coeff * * 25.0 4.5 4.53 0.5 0.53 1.0 extra",
+   "style": "pair_coeff dpd/ext",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w319dpd_ext_tstat_ramp",
+   "line": 12,
+   "text": "pair_coeff 1 1 20.0 10.0 0.5 0.5 10.0 extra",
+   "style": "pair_coeff dpd/ext/tstat",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w95dreact_dpdvv_1000",
+   "line": 15,
+   "text": "pair_coeff 1 1 0.075 0.022 8.60 extra",
+   "style": "pair_coeff dpd/fdt",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 16,
+   "text": "pair_coeff 1 1 0.075 0.022 3.2E-05 10.00 extra",
+   "style": "pair_coeff dpd/fdt/energy",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w77dpd_noise_tstat_spce",
+   "line": 12,
+   "text": "pair_coeff 1 1 10.0 10.0 extra",
+   "style": "pair_coeff dpd/tstat",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w235mx_dsmc_gas",
+   "line": 17,
+   "text": "pair_coeff 1 1 1.0 extra",
+   "style": "pair_coeff dsmc",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 10,
+   "text": "pair_coeff * * Cu_u3.eam extra",
+   "style": "pair_coeff eam",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w47pkg_dtreset_metal",
+   "line": 12,
+   "text": "pair_coeff * * AlCu.eam.alloy Cu extra",
+   "style": "pair_coeff eam/alloy",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w222me_eamcd_fecr",
+   "line": 15,
+   "text": "pair_coeff * * FeCr.cdeam Fe Cr extra",
+   "style": "pair_coeff eam/cd",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w222me_eamcdold_fecr",
+   "line": 15,
+   "text": "pair_coeff * * FeCr.cdeam Fe Cr extra",
+   "style": "pair_coeff eam/cd/old",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w204sg_fs_vcsgc",
+   "line": 12,
+   "text": "pair_coeff * * VFe_mm.eam.fs Fe V extra",
+   "style": "pair_coeff eam/fs",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w222me_eamhe_pdhhe",
+   "line": 17,
+   "text": "pair_coeff * * PdHHe.eam.he Pd H He extra",
+   "style": "pair_coeff eam/he",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w99phq_cu",
+   "line": 13,
+   "text": "pair_coeff * * w99phq_cuu3.eam extra",
+   "style": "pair_coeff eam/opt",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w48pb_edip_diamond",
+   "line": 28,
+   "text": "pair_coeff * * Si.edip Si extra",
+   "style": "pair_coeff edip",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w48pb_edip_sic_example",
+   "line": 10,
+   "text": "pair_coeff * * SiC.edip Si C extra",
+   "style": "pair_coeff edip/multi",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w367eff_nph_couple_xy",
+   "line": 9,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff eff/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w14eim_one",
+   "line": 11,
+   "text": "pair_coeff * * Qa w14eim_one.eim Qa extra",
+   "style": "pair_coeff eim",
+   "native": "ERROR: Element extra not defined in EIM potential file"
+  },
+  {
+   "case": "w145pr_pair_extep",
+   "line": 13,
+   "text": "pair_coeff * * BN.extep B N extra",
+   "style": "pair_coeff extep",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w1misc_gauss",
+   "line": 21,
+   "text": "pair_coeff * * 1.0 0.9 extra",
+   "style": "pair_coeff gauss",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w49pb_gauss_cut_dimer",
+   "line": 14,
+   "text": "pair_coeff 1 1 1.5 3.2 0.7 6.0 extra",
+   "style": "pair_coeff gauss/cut",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w431rigidnh_ellipsoid",
+   "line": 17,
+   "text": "pair_coeff 1 1 1.0 1.0 1.0 0.5 0.2 1.0 0.5 0.2 extra",
+   "style": "pair_coeff gayberne",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w4gran_hertz_history",
+   "line": 26,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff gran/hertz/history",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w7pour_fewer",
+   "line": 11,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff gran/hooke",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 11,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff gran/hooke/history",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w15gran_mdr_pair",
+   "line": 18,
+   "text": "pair_coeff * * mdr 1.0 0.3 1000.0 0.0 0.0 0.2 damping mdr 1 tangential linear_history 300.0 0.5 0.4 extra",
+   "style": "pair_coeff granular",
+   "native": "ERROR: Illegal pair_coeff command extra"
+  },
+  {
+   "case": "w80superell_ellipsoid_gran",
+   "line": 25,
+   "text": "pair_coeff * * hooke 1000.0 0.0 tangential linear_history 285 0.0 0.5 damping mass_velocity extra",
+   "style": "pair_coeff granular/superellipsoid",
+   "native": "ERROR: Illegal pair_coeff command extra"
+  },
+  {
+   "case": "w223mb_gw",
+   "line": 20,
+   "text": "pair_coeff * * SiC.gw Si C extra",
+   "style": "pair_coeff gw",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w223mb_gw_zbl",
+   "line": 20,
+   "text": "pair_coeff * * SiC.gw.zbl Si C extra",
+   "style": "pair_coeff gw/zbl",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w17harmcut",
+   "line": 12,
+   "text": "pair_coeff 1 1 5.0 1.3 extra",
+   "style": "pair_coeff harmonic/cut",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "hippo_dimer_nokey",
+   "line": 15,
+   "text": "pair_coeff * * w119amoeba_hippo_water.prm extra",
+   "style": "pair_coeff hippo",
+   "native": "ERROR: Cannot open HIPPO key file extra: No such file or directory"
+  },
+  {
+   "case": "w225cm_write_coeff_hybrid",
+   "line": 13,
+   "text": "pair_coeff 2 2 coul/cut 9.5 extra",
+   "style": "pair_coeff hybrid coul/cut",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w104cf_sds_hybrid",
+   "line": 11,
+   "text": "pair_coeff 3 3 coul/long extra",
+   "style": "pair_coeff hybrid coul/long",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w206sr_srp_mid",
+   "line": 17,
+   "text": "pair_coeff 1 1 dpd 60.0 4.5 1.0 extra",
+   "style": "pair_coeff hybrid dpd",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w174mx_pn_hybrid",
+   "line": 28,
+   "text": "pair_coeff 1 1 gran/hooke/history extra",
+   "style": "pair_coeff hybrid gran/hooke/history",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 12,
+   "text": "pair_coeff 1 1 granular hooke 4000.0 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity extra",
+   "style": "pair_coeff hybrid granular",
+   "native": "ERROR: Illegal pair_coeff command extra"
+  },
+  {
+   "case": "w225cm_write_coeff_hybrid",
+   "line": 11,
+   "text": "pair_coeff 1 1 lj/cut 0.10 3.40 extra",
+   "style": "pair_coeff hybrid lj/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w109tip_hybrid",
+   "line": 10,
+   "text": "pair_coeff 1 1 lj/cut/coul/long 0.1852 3.1589 extra",
+   "style": "pair_coeff hybrid lj/cut/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w69fep_ccco",
+   "line": 28,
+   "text": "pair_coeff 2 7 lj/cut/coul/long/soft 0.000000 1.870829 1.0 extra",
+   "style": "pair_coeff hybrid lj/cut/coul/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w109tip_hybrid",
+   "line": 11,
+   "text": "pair_coeff 1 2 lj/cut/tip4p/long 0.0 1.0 extra",
+   "style": "pair_coeff hybrid lj/cut/tip4p/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w109tip_fep",
+   "line": 18,
+   "text": "pair_coeff 3 3 lj/cut/tip4p/long/soft 0.1628 3.1644 1.0 extra",
+   "style": "pair_coeff hybrid lj/cut/tip4p/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w104cf_sds_hybrid",
+   "line": 12,
+   "text": "pair_coeff 1 1 lj/sdk lj9_6 0.7000 4.3210 extra",
+   "style": "pair_coeff hybrid lj/sdk",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w417born_pair",
+   "line": 65,
+   "text": "pair_coeff 1 2 lj96/cut 0.9 1.05 extra",
+   "style": "pair_coeff hybrid lj96/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w88pair_hybrid_tally",
+   "line": 14,
+   "text": "pair_coeff 2 2 morse 0.1 1.5 1.2 extra",
+   "style": "pair_coeff hybrid morse",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 14,
+   "text": "pair_coeff 2 2 none extra",
+   "style": "pair_coeff hybrid none",
+   "native": "ERROR: Pair style surf/granular requires using a single fix surface/local"
+  },
+  {
+   "case": "w342press_hybrid_types",
+   "line": 12,
+   "text": "pair_coeff 2 2 soft 10.0 extra",
+   "style": "pair_coeff hybrid soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w83sph_cavity",
+   "line": 31,
+   "text": "pair_coeff * * sph/taitwater/morris 1000 0.1 1.0e-3 6.5e-5 extra",
+   "style": "pair_coeff hybrid sph/taitwater/morris",
+   "native": "ERROR: Incorrect args for pair_style sph/taitwater/morris coefficients"
+  },
+  {
+   "case": "w206sr_srp_mid",
+   "line": 19,
+   "text": "pair_coeff 2 2 srp 100.0 extra",
+   "style": "pair_coeff hybrid srp",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 13,
+   "text": "pair_coeff 1 2 surf/granular hooke 4000.0 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity extra",
+   "style": "pair_coeff hybrid surf/granular",
+   "native": "ERROR: Illegal pair_coeff command extra"
+  },
+  {
+   "case": "hybrid_molecular",
+   "line": 10,
+   "text": "pair_coeff * * lj/cut 1 0.5 0.9 extra",
+   "style": "pair_coeff hybrid/molecular lj/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w102il_aip_water",
+   "line": 19,
+   "text": "pair_coeff * * aip/water/2dm COH.DMC.aip.water.2dm C Ow Hw extra",
+   "style": "pair_coeff hybrid/overlay aip/water/2dm",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w10atm_overlay",
+   "line": 22,
+   "text": "pair_coeff 1 1 atm 1 0.064 extra",
+   "style": "pair_coeff hybrid/overlay atm",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w166px_bondval_bto",
+   "line": 21,
+   "text": "pair_coeff 1 1 bondval 0.0000000 5.0000000 0.5973900 2.0000000 8.0000000 extra",
+   "style": "pair_coeff hybrid/overlay bondval",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w166px_bondval_bto",
+   "line": 27,
+   "text": "pair_coeff 1 1 bondval/vec 0.0000000 5.0000000 0.0842900 0.1156100 8.0000000 extra",
+   "style": "pair_coeff hybrid/overlay bondval/vec",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w38nb3b_napo3",
+   "line": 24,
+   "text": "pair_coeff 1 1 buck 5.093669 0.905598 0.0 extra",
+   "style": "pair_coeff hybrid/overlay buck",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w99phq_quartz_qbmsst",
+   "line": 44,
+   "text": "pair_coeff 1 1 buck/coul/long 0.0 1.0 0.0 extra",
+   "style": "pair_coeff hybrid/overlay buck/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w140ct_limits",
+   "line": 16,
+   "text": "pair_coeff * * coul/ctip w140ct_limits.ctip Ni O extra",
+   "style": "pair_coeff hybrid/overlay coul/ctip",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w177px_hybrid_restart",
+   "line": 19,
+   "text": "pair_coeff * * coul/cut extra",
+   "style": "pair_coeff hybrid/overlay coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w219xp_coul_exclude",
+   "line": 14,
+   "text": "pair_coeff * * coul/cut/global extra",
+   "style": "pair_coeff hybrid/overlay coul/cut/global",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w49pb_gauss_diel_md",
+   "line": 30,
+   "text": "pair_coeff 1 1 coul/diel 78.0 1.375 0.112 extra",
+   "style": "pair_coeff hybrid/overlay coul/diel",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w38nb3b_napo3",
+   "line": 20,
+   "text": "pair_coeff * * coul/dsf extra",
+   "style": "pair_coeff hybrid/overlay coul/dsf",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w219xp_coul_exclude",
+   "line": 15,
+   "text": "pair_coeff * * coul/exclude extra",
+   "style": "pair_coeff hybrid/overlay coul/exclude",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w104cf_sds_overlay_unset",
+   "line": 12,
+   "text": "pair_coeff * * coul/long extra",
+   "style": "pair_coeff hybrid/overlay coul/long",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w209ms_shrink_hybrid",
+   "line": 22,
+   "text": "pair_coeff * * coul/msm extra",
+   "style": "pair_coeff hybrid/overlay coul/msm",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w102il_ilp_grhbn_tersoff",
+   "line": 17,
+   "text": "pair_coeff 1 1 coul/shield 0.70 extra",
+   "style": "pair_coeff hybrid/overlay coul/shield",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w219xp_hybrid_overlay",
+   "line": 14,
+   "text": "pair_coeff * * coul/slater/cut extra",
+   "style": "pair_coeff hybrid/overlay coul/slater/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w130pr_slater_hybrid_dpd",
+   "line": 18,
+   "text": "pair_coeff * * coul/slater/long extra",
+   "style": "pair_coeff hybrid/overlay coul/slater/long",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w40qslat_streitz_cut",
+   "line": 13,
+   "text": "pair_coeff * * coul/streitz AlO.streitz Al O extra",
+   "style": "pair_coeff hybrid/overlay coul/streitz",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w72drude_eglycol0",
+   "line": 43,
+   "text": "pair_coeff 2 4 coul/tt 4.5 1.0 extra",
+   "style": "pair_coeff hybrid/overlay coul/tt",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w250d3_bjm_overlay",
+   "line": 15,
+   "text": "pair_coeff * * dispersion/d3 C O extra",
+   "style": "pair_coeff hybrid/overlay dispersion/d3",
+   "native": "ERROR: Pair_coeff * * needs: element1 element2 ..."
+  },
+  {
+   "case": "w130pr_slater_hybrid_dpd",
+   "line": 17,
+   "text": "pair_coeff * * dpd 25.0 4.5 extra",
+   "style": "pair_coeff hybrid/overlay dpd",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 40,
+   "text": "pair_coeff * * dpd/fdt/energy 0.0 0.05 10.0 16.00 extra",
+   "style": "pair_coeff hybrid/overlay dpd/fdt/energy",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w102il_drip_c",
+   "line": 10,
+   "text": "pair_coeff * * drip C.drip C extra",
+   "style": "pair_coeff hybrid/overlay drip",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w130pr_e3b_tip4p2005",
+   "line": 15,
+   "text": "pair_coeff * * e3b preset 2015 extra",
+   "style": "pair_coeff hybrid/overlay e3b",
+   "native": "ERROR: Keyword extra is unknown"
+  },
+  {
+   "case": "w102il_saip_gold_gr",
+   "line": 14,
+   "text": "pair_coeff 1 1 eam Au_u3.eam extra",
+   "style": "pair_coeff hybrid/overlay eam",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w40qslat_streitz_cut",
+   "line": 14,
+   "text": "pair_coeff * * eam/alloy AlO.eam.alloy Al O extra",
+   "style": "pair_coeff hybrid/overlay eam/alloy",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 17,
+   "text": "pair_coeff * * eam/apip Cu_u3.eam extra",
+   "style": "pair_coeff hybrid/overlay eam/apip",
+   "native": "ERROR: Incorrect args for pair coefficients",
+   "build": "APIP"
+  },
+  {
+   "case": "w140ct_limits",
+   "line": 15,
+   "text": "pair_coeff * * eam/fs NiO.eam.fs Ni O extra",
+   "style": "pair_coeff hybrid/overlay eam/fs",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 16,
+   "text": "pair_coeff * * eam/fs/apip Cu_300K_Immel_2023.eam.fs Cu extra",
+   "style": "pair_coeff hybrid/overlay eam/fs/apip",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types",
+   "build": "APIP"
+  },
+  {
+   "case": "w160rx_dpdrx_fluid",
+   "line": 41,
+   "text": "pair_coeff * * exp6/rx w160rx_params.exp6 1fluid 1fluid exponent 1.0 1.0 16.00 extra",
+   "style": "pair_coeff hybrid/overlay exp6/rx",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w49pb_gauss_diel_md",
+   "line": 27,
+   "text": "pair_coeff 1 1 gauss/cut 0.2 3.1 0.6 3.4 extra",
+   "style": "pair_coeff hybrid/overlay gauss/cut",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w14hbond_lj",
+   "line": 13,
+   "text": "pair_coeff 1 3 hbond/dreiding/lj 2 i 2.0 2.2 extra",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/lj",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w14hbond_offset",
+   "line": 14,
+   "text": "pair_coeff 1 3 hbond/dreiding/lj/angleoffset 2 i 2.0 2.2 extra",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/lj/angleoffset",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w14hbond_morse",
+   "line": 13,
+   "text": "pair_coeff 1 3 hbond/dreiding/morse 2 i 3.0 1.2 2.5 extra",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/morse",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w14hbond_offset",
+   "line": 15,
+   "text": "pair_coeff 1 5 hbond/dreiding/morse/angleoffset 2 i 2.0 1.5 2.2 2 3.0 4.5 90.0 160.0 extra",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/morse/angleoffset",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w102il_ilp_gr_rebo",
+   "line": 17,
+   "text": "pair_coeff * * ilp/graphene/hbn BNCH.ILP C C extra",
+   "style": "pair_coeff hybrid/overlay ilp/graphene/hbn",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w102il_tmd",
+   "line": 15,
+   "text": "pair_coeff * * ilp/tmd TMD.ILP Mo S S Mo S S extra",
+   "style": "pair_coeff hybrid/overlay ilp/tmd",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w102il_kcf_bilayer",
+   "line": 14,
+   "text": "pair_coeff * * kolmogorov/crespi/full CH_taper.KC C C extra",
+   "style": "pair_coeff hybrid/overlay kolmogorov/crespi/full",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w102il_kcz_bilayer",
+   "line": 14,
+   "text": "pair_coeff 1 2 kolmogorov/crespi/z CC.KC C C extra",
+   "style": "pair_coeff hybrid/overlay kolmogorov/crespi/z",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w279ap_lambda_groups",
+   "line": 16,
+   "text": "pair_coeff * * lambda/input/apip extra",
+   "style": "pair_coeff hybrid/overlay lambda/input/apip",
+   "native": "ERROR: Incorrect args for pair coefficients",
+   "build": "APIP"
+  },
+  {
+   "case": "w279ap_thermostat_shuffle",
+   "line": 14,
+   "text": "pair_coeff * * lambda/input/csp/apip extra",
+   "style": "pair_coeff hybrid/overlay lambda/input/csp/apip",
+   "native": "ERROR: Incorrect args for pair coefficients",
+   "build": "APIP"
+  },
+  {
+   "case": "w279ap_thermostat_shuffle",
+   "line": 15,
+   "text": "pair_coeff * * lambda/zone/apip extra",
+   "style": "pair_coeff hybrid/overlay lambda/zone/apip",
+   "native": "ERROR: Incorrect args for pair coefficients",
+   "build": "APIP"
+  },
+  {
+   "case": "w112ld_basic_ldd",
+   "line": 17,
+   "text": "pair_coeff * * ldd w112ldd_basic.ldd A extra",
+   "style": "pair_coeff hybrid/overlay ldd",
+   "native": "ERROR: Incorrect args for pair_coeff ldd: expected '* * <file> <species> ...' with one species name per atom type"
+  },
+  {
+   "case": "w102il_leb_2particles",
+   "line": 17,
+   "text": "pair_coeff 1 2 lebedeva/z CC.Lebedeva C C extra",
+   "style": "pair_coeff hybrid/overlay lebedeva/z",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w235mx_list",
+   "line": 18,
+   "text": "pair_coeff * * list extra",
+   "style": "pair_coeff hybrid/overlay list",
+   "native": "OK"
+  },
+  {
+   "case": "w50bd_charmm_morse",
+   "line": 17,
+   "text": "pair_coeff 1 1 lj/charmm/coul/long 0.1 3.0 0.05 3.5 extra",
+   "style": "pair_coeff hybrid/overlay lj/charmm/coul/long",
+   "native": "ERROR: Illegal pair_coeff command"
+  },
+  {
+   "case": "w88pair_neigh_trim",
+   "line": 10,
+   "text": "pair_coeff * * lj/cut 1 1.0 1.0 extra",
+   "style": "pair_coeff hybrid/overlay lj/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w371tgnh_couple_xy",
+   "line": 24,
+   "text": "pair_coeff 1 1 lj/cut/coul/cut 0.065997 3.500000 extra",
+   "style": "pair_coeff hybrid/overlay lj/cut/coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w49pb_gauss_diel_example",
+   "line": 26,
+   "text": "pair_coeff 1 1 lj/cut/coul/long 0.5 1.775 3.268 extra",
+   "style": "pair_coeff hybrid/overlay lj/cut/coul/long",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w130pr_e3b_tip4p2005",
+   "line": 13,
+   "text": "pair_coeff * * lj/cut/tip4p/long 0.0 0.0 extra",
+   "style": "pair_coeff hybrid/overlay lj/cut/tip4p/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w219xp_hybrid_overlay",
+   "line": 13,
+   "text": "pair_coeff * * lj/mdf 1.0 1.0 extra",
+   "style": "pair_coeff hybrid/overlay lj/mdf",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w104cf_sds_overlay_unset",
+   "line": 13,
+   "text": "pair_coeff 1 1 lj/sdk lj9_6 0.7000 4.3210 extra",
+   "style": "pair_coeff hybrid/overlay lj/sdk",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w112ld_methanol_implicit",
+   "line": 12,
+   "text": "pair_coeff * * local/density methanol_implicit_water.localdensity.table extra",
+   "style": "pair_coeff hybrid/overlay local/density",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 17,
+   "text": "pair_coeff 1 1 mdpd -40 25 18.0 1.0 0.75 extra",
+   "style": "pair_coeff hybrid/overlay mdpd",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 16,
+   "text": "pair_coeff 1 1 mdpd/rhosum 0.75 extra",
+   "style": "pair_coeff hybrid/overlay mdpd/rhosum",
+   "native": "ERROR: Incorrect number of args for mdpd/rhosum coefficients"
+  },
+  {
+   "case": "w50bd_charmm_momb",
+   "line": 16,
+   "text": "pair_coeff * * momb 0.0 1.0 1.0 10.0 2.3 extra",
+   "style": "pair_coeff hybrid/overlay momb",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w37respa_hybrid",
+   "line": 13,
+   "text": "pair_coeff * * morse 0.2 1.6 1.1 3.0 extra",
+   "style": "pair_coeff hybrid/overlay morse",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w162rx_lucy_h2",
+   "line": 41,
+   "text": "pair_coeff * * multi/lucy/rx w162rx_lucy.table RXLUCY h2 1fluid 16.00 extra",
+   "style": "pair_coeff hybrid/overlay multi/lucy/rx",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w10nb3b_hybrid",
+   "line": 24,
+   "text": "pair_coeff * * nb3b/harmonic w10nb3b_SiC.nb3b Si C NULL extra",
+   "style": "pair_coeff hybrid/overlay nb3b/harmonic",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w38nb3b_hybrid",
+   "line": 14,
+   "text": "pair_coeff * * nb3b/screened PSiO.nb3b.screened P NULL O extra",
+   "style": "pair_coeff hybrid/overlay nb3b/screened",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w102il_kcz_bilayer",
+   "line": 13,
+   "text": "pair_coeff * * none extra",
+   "style": "pair_coeff hybrid/overlay none",
+   "native": "ERROR: Pair hybrid sub-style kolmogorov/crespi/z is not used"
+  },
+  {
+   "case": "w57oxdna_duplex2_full",
+   "line": 23,
+   "text": "pair_coeff * * oxdna/coaxstk 46.0 0.4 0.6 0.22 0.58 2.0 2.541592653589793 0.65 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 2.0 -0.65 2.0 -0.65 extra",
+   "style": "pair_coeff hybrid/overlay oxdna/coaxstk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/coaxstk"
+  },
+  {
+   "case": "w57oxdna_excv_stk",
+   "line": 18,
+   "text": "pair_coeff * * oxdna/excv 2.0 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32 extra",
+   "style": "pair_coeff hybrid/overlay oxdna/excv",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/excv"
+  },
+  {
+   "case": "w57oxdna_hbond_duplex",
+   "line": 19,
+   "text": "pair_coeff * * oxdna/hbond seqav 0.0 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45 extra",
+   "style": "pair_coeff hybrid/overlay oxdna/hbond",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/hbond"
+  },
+  {
+   "case": "w57oxdna_excv_stk",
+   "line": 19,
+   "text": "pair_coeff * * oxdna/stk seqav 0.1 1.3448 2.6568 6.0 0.4 0.9 0.32 0.75 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 2.0 0.65 2.0 0.65 extra",
+   "style": "pair_coeff hybrid/overlay oxdna/stk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/stk"
+  },
+  {
+   "case": "w57oxdna_xstk_duplex",
+   "line": 22,
+   "text": "pair_coeff * * oxdna/xstk 47.5 0.575 0.675 0.495 0.655 2.25 0.791592653589793 0.58 1.7 1.0 0.68 1.7 1.0 0.68 1.5 0 0.65 1.7 0.875 0.68 1.7 0.875 0.68 extra",
+   "style": "pair_coeff hybrid/overlay oxdna/xstk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/xstk"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 24,
+   "text": "pair_coeff * * oxdna2/coaxstk 58.5 0.4 0.6 0.22 0.58 2.0 2.891592653589793 0.65 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 40.0 3.116592653589793 extra",
+   "style": "pair_coeff hybrid/overlay oxdna2/coaxstk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna2/coaxstk"
+  },
+  {
+   "case": "w57oxdna2_dh",
+   "line": 19,
+   "text": "pair_coeff * * oxdna2/dh 0.1 0.2 0.815 extra",
+   "style": "pair_coeff hybrid/overlay oxdna2/dh",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna2/dh"
+  },
+  {
+   "case": "w57oxdna2_dh",
+   "line": 18,
+   "text": "pair_coeff * * oxdna2/excv 2.0 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32 extra",
+   "style": "pair_coeff hybrid/overlay oxdna2/excv",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/excv"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 20,
+   "text": "pair_coeff * * oxdna2/hbond seqav 0.0 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45 extra",
+   "style": "pair_coeff hybrid/overlay oxdna2/hbond",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/hbond"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 19,
+   "text": "pair_coeff * * oxdna2/stk seqav 0.1 1.3523 2.6717 6.0 0.4 0.9 0.32 0.75 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 2.0 0.65 2.0 0.65 extra",
+   "style": "pair_coeff hybrid/overlay oxdna2/stk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/stk"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 23,
+   "text": "pair_coeff * * oxdna2/xstk 47.5 0.575 0.675 0.495 0.655 2.25 0.791592653589793 0.58 1.7 1.0 0.68 1.7 1.0 0.68 1.5 0 0.65 1.7 0.875 0.68 1.7 0.875 0.68 extra",
+   "style": "pair_coeff hybrid/overlay oxdna2/xstk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/xstk"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 25,
+   "text": "pair_coeff * * oxdna3/coaxstk oxdna3_lj.cgdna extra",
+   "style": "pair_coeff hybrid/overlay oxdna3/coaxstk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna2/coaxstk"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 26,
+   "text": "pair_coeff * * oxdna3/dh 0.1 0.2 oxdna3_lj.cgdna extra",
+   "style": "pair_coeff hybrid/overlay oxdna3/dh",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna2/dh"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 19,
+   "text": "pair_coeff * * oxdna3/excv oxdna3_lj.cgdna extra",
+   "style": "pair_coeff hybrid/overlay oxdna3/excv",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna3/excv, use potential file"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 21,
+   "text": "pair_coeff * * oxdna3/hbond oxdna3_lj.cgdna extra",
+   "style": "pair_coeff hybrid/overlay oxdna3/hbond",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna3/hbond, use potential file"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 20,
+   "text": "pair_coeff * * oxdna3/stk 0.1 oxdna3_lj.cgdna extra",
+   "style": "pair_coeff hybrid/overlay oxdna3/stk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna3/stk, use potential file"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 24,
+   "text": "pair_coeff * * oxdna3/xstk oxdna3_lj.cgdna extra",
+   "style": "pair_coeff hybrid/overlay oxdna3/xstk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna3/xstk"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 25,
+   "text": "pair_coeff * * oxrna2/coaxstk 80 0.5 0.6 0.42 0.58 2.0 2.592 0.65 1.3 0.151 0.8 0.9 0.685 0.95 0.9 0.685 0.95 2.0 -0.65 2.0 -0.65 extra",
+   "style": "pair_coeff hybrid/overlay oxrna2/coaxstk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/coaxstk"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 26,
+   "text": "pair_coeff * * oxrna2/dh 0.1 0.5 1.02455 extra",
+   "style": "pair_coeff hybrid/overlay oxrna2/dh",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna2/dh"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 18,
+   "text": "pair_coeff * * oxrna2/excv 2.0 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32 extra",
+   "style": "pair_coeff hybrid/overlay oxrna2/excv",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/excv"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 20,
+   "text": "pair_coeff * * oxrna2/hbond seqdep 0.0 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45 extra",
+   "style": "pair_coeff hybrid/overlay oxrna2/hbond",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/hbond"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 19,
+   "text": "pair_coeff * * oxrna2/stk seqdep 0.1 1.40206 2.77 6.0 0.43 0.93 0.35 0.78 0.9 0 0.95 0.9 0 0.95 1.3 0 0.8 1.3 0 0.8 2.0 0.65 2.0 0.65 extra",
+   "style": "pair_coeff hybrid/overlay oxrna2/stk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxrna2/stk"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 24,
+   "text": "pair_coeff * * oxrna2/xstk 59.9626 0.5 0.6 0.42 0.58 2.25 0.505 0.58 1.7 1.266 0.68 1.7 1.266 0.68 1.7 0.309 0.68 1.7 0.309 0.68 extra",
+   "style": "pair_coeff hybrid/overlay oxrna2/xstk",
+   "native": "ERROR: Incorrect args for pair coefficients in oxrna2/xstk"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 17,
+   "text": "pair_coeff * * pace/apip Cu-1.yace Cu extra",
+   "style": "pair_coeff hybrid/overlay pace/apip",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types",
+   "build": "APIP"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 30,
+   "text": "pair_coeff * * pace/fast/apip Cu-1.yace Cu extra",
+   "style": "pair_coeff hybrid/overlay pace/fast/apip",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types",
+   "build": "APIP"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 18,
+   "text": "pair_coeff * * pace/precise/apip Cu-PBE-core-rep.ace Cu extra",
+   "style": "pair_coeff hybrid/overlay pace/precise/apip",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types",
+   "build": "APIP"
+  },
+  {
+   "case": "w48pb_pedone_melt",
+   "line": 20,
+   "text": "pair_coeff 1 2 pedone 0.030211 2.241334 2.923245 5.0 extra",
+   "style": "pair_coeff hybrid/overlay pedone",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w102il_kcz_rebo_bilayer",
+   "line": 13,
+   "text": "pair_coeff * * rebo CH.rebo C C extra",
+   "style": "pair_coeff hybrid/overlay rebo",
+   "native": "ERROR: Incorrect number of args for pair coefficient."
+  },
+  {
+   "case": "w96rheo_thermal_react",
+   "line": 23,
+   "text": "pair_coeff * * rheo extra",
+   "style": "pair_coeff hybrid/overlay rheo",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w96rheo_thermal_react",
+   "line": 24,
+   "text": "pair_coeff * * rheo/solid 1.0 1.0 1.0 extra",
+   "style": "pair_coeff hybrid/overlay rheo/solid",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w102il_saip_gold_gr",
+   "line": 16,
+   "text": "pair_coeff * * saip/metal CHAu.ILP Au C extra",
+   "style": "pair_coeff hybrid/overlay saip/metal",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w102il_saip_au_mos2",
+   "line": 18,
+   "text": "pair_coeff * * saip/metal/tmd TMDAu.SAIP Au S Mo S extra",
+   "style": "pair_coeff hybrid/overlay saip/metal/tmd",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w43ad_snap_scale",
+   "line": 23,
+   "text": "pair_coeff * * snap 1 Ni_Zuo_JPCA2020.snapcoeff Ni_Zuo_JPCA2020.snapparam Ni Ni extra",
+   "style": "pair_coeff hybrid/overlay snap",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w83sph_shock3d",
+   "line": 23,
+   "text": "pair_coeff * * sph/idealgas 0.75 4.0 extra",
+   "style": "pair_coeff hybrid/overlay sph/idealgas",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w83sph_shock3d",
+   "line": 22,
+   "text": "pair_coeff * * sph/rhosum 4.0 extra",
+   "style": "pair_coeff hybrid/overlay sph/rhosum",
+   "native": "ERROR: Incorrect number of args for sph/rhosum coefficients"
+  },
+  {
+   "case": "w103spin_dipole_cut_frozen",
+   "line": 16,
+   "text": "pair_coeff * * spin/dipole/cut 8.0 extra",
+   "style": "pair_coeff hybrid/overlay spin/dipole/cut",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w272sp_pppm_spin_peatom",
+   "line": 17,
+   "text": "pair_coeff * * spin/dipole/long 8.0 extra",
+   "style": "pair_coeff hybrid/overlay spin/dipole/long",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w48sp2_bfo_hybrid",
+   "line": 18,
+   "text": "pair_coeff * * spin/dmi dmi 4.5 0.00005 1.0 1.0 1.0 extra",
+   "style": "pair_coeff hybrid/overlay spin/dmi",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w48sp2_bfo_hybrid",
+   "line": 16,
+   "text": "pair_coeff * * spin/exchange exchange 6.0 -0.01575 0.0 1.965 extra",
+   "style": "pair_coeff hybrid/overlay spin/exchange",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w48sp2_hybrid",
+   "line": 22,
+   "text": "pair_coeff * * spin/exchange/biquadratic biquadratic 4.0 0.03 0.01 1.7 0.02 0.04 1.2 extra",
+   "style": "pair_coeff hybrid/overlay spin/exchange/biquadratic",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w48sp2_bfo_hybrid",
+   "line": 17,
+   "text": "pair_coeff * * spin/magelec magelec 4.5 0.000109 1.0 1.0 1.0 extra",
+   "style": "pair_coeff hybrid/overlay spin/magelec",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w103spin_neel_frozen",
+   "line": 16,
+   "text": "pair_coeff * * spin/neel neel 4.0 0.02 0.3 1.841 0.05 0.2 1.2 extra",
+   "style": "pair_coeff hybrid/overlay spin/neel",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w49mt_spce_sw",
+   "line": 12,
+   "text": "pair_coeff * * sw/angle/table w49mt_spce.sw type extra",
+   "style": "pair_coeff hybrid/overlay sw/angle/table",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w102il_tmd",
+   "line": 13,
+   "text": "pair_coeff * * sw/mod 1 tmd.sw.mod Mo S S NULL NULL NULL extra",
+   "style": "pair_coeff hybrid/overlay sw/mod",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w49mt_spce_sw",
+   "line": 11,
+   "text": "pair_coeff 1 1 table w49mt_table_CG_CG.txt VOTCA extra",
+   "style": "pair_coeff hybrid/overlay table",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 41,
+   "text": "pair_coeff * * table/rx w162rx_table.table RXPAIR rdx h2 16.00 extra",
+   "style": "pair_coeff hybrid/overlay table/rx",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w102il_ilp_grhbn_tersoff",
+   "line": 15,
+   "text": "pair_coeff * * tersoff BNC.tersoff B N NULL extra",
+   "style": "pair_coeff hybrid/overlay tersoff",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w140ct_gan_dsf",
+   "line": 30,
+   "text": "pair_coeff * * tersoff/mod GaN.streitz+tersoff.mod Ga N extra",
+   "style": "pair_coeff hybrid/overlay tersoff/mod",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w371tgnh_couple_xy",
+   "line": 31,
+   "text": "pair_coeff 1 * thole 1.368000 extra",
+   "style": "pair_coeff hybrid/overlay thole",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w49mt_spce2",
+   "line": 14,
+   "text": "pair_coeff * * threebody/table w49mt_spce2.3b type1 type2 extra",
+   "style": "pair_coeff hybrid/overlay threebody/table",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w142mx_tracker",
+   "line": 18,
+   "text": "pair_coeff * * tracker 2.5 extra",
+   "style": "pair_coeff hybrid/overlay tracker",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w171px_slcsa",
+   "line": 17,
+   "text": "pair_coeff * * zero extra",
+   "style": "pair_coeff hybrid/overlay zero",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w417born_pair",
+   "line": 76,
+   "text": "pair_coeff * * coul/cut extra",
+   "style": "pair_coeff hybrid/scaled coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "hybrid_scaled",
+   "line": 21,
+   "text": "pair_coeff * * lj/cut 1 1.0 1.0 extra",
+   "style": "pair_coeff hybrid/scaled lj/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w234lc_diamond",
+   "line": 13,
+   "text": "pair_coeff * * C.lcbop C extra",
+   "style": "pair_coeff lcbop",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w219xp_lennard_mdf",
+   "line": 15,
+   "text": "pair_coeff 1 1 4.0 4.0 extra",
+   "style": "pair_coeff lennard/mdf",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w16lepton_shift",
+   "line": 14,
+   "text": "pair_coeff * * \"4.0*((1.0/r)^12 - (1.0/r)^6)\" 2.0 extra",
+   "style": "pair_coeff lepton",
+   "native": "ERROR: Incorrect number of args for pair coefficients"
+  },
+  {
+   "case": "w16lepton_coul",
+   "line": 19,
+   "text": "pair_coeff 1 1 \"qi*qj/r + 4.0*((1.0/r)^12-(1.0/r)^6)\" 2.0 extra",
+   "style": "pair_coeff lepton/coul",
+   "native": "ERROR: Incorrect number of args for pair coefficients"
+  },
+  {
+   "case": "w16lepton_sphere",
+   "line": 16,
+   "text": "pair_coeff 1 * \"k*((r-r0)^2*step(r0-r)); k=20; r0=radi+radj\" 2.0 extra",
+   "style": "pair_coeff lepton/sphere",
+   "native": "ERROR: Incorrect number of args for pair coefficients"
+  },
+  {
+   "case": "w105cf_erotate_line",
+   "line": 12,
+   "text": "pair_coeff * * 0.25 0.25 1.0 0.25 2.5 extra",
+   "style": "pair_coeff line/lj",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 11,
+   "text": "pair_coeff * * 0.0 1.0 extra",
+   "style": "pair_coeff lj/charmm/coul/charmm",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w3charmm_implicit",
+   "line": 22,
+   "text": "pair_coeff 1 1 0.238 3.405 extra",
+   "style": "pair_coeff lj/charmm/coul/charmm/implicit",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w13dihcharmm_long",
+   "line": 15,
+   "text": "pair_coeff 1 1 0.1 3.0 0.05 3.5 extra",
+   "style": "pair_coeff lj/charmm/coul/long",
+   "native": "ERROR: Illegal pair_coeff command"
+  },
+  {
+   "case": "w69fep_charmmsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.0 1.0 0.5 extra",
+   "style": "pair_coeff lj/charmm/coul/long/soft",
+   "native": "ERROR: Illegal pair_coeff command"
+  },
+  {
+   "case": "w209ms_charmm_water",
+   "line": 9,
+   "text": "pair_coeff 1 1 0.1852 3.1589 extra",
+   "style": "pair_coeff lj/charmm/coul/msm",
+   "native": "ERROR: Illegal pair_coeff command"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 11,
+   "text": "pair_coeff 1 1 0.1 3.0 0.05 3.5 extra",
+   "style": "pair_coeff lj/charmmfsw/coul/charmmfsh",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 14,
+   "text": "pair_coeff 1 1 0.1 3.0 0.05 3.5 extra",
+   "style": "pair_coeff lj/charmmfsw/coul/long",
+   "native": "ERROR: Illegal pair_coeff command"
+  },
+  {
+   "case": "w1ljx_class2",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.0 1.0 extra",
+   "style": "pair_coeff lj/class2",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w51cs_c2cut_run",
+   "line": 23,
+   "text": "pair_coeff * * 1.0 1.0 8.0 7.0 extra",
+   "style": "pair_coeff lj/class2/coul/cut",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w69fep_class2cutsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.0 1.0 0.5 extra",
+   "style": "pair_coeff lj/class2/coul/cut/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w51cs_c2long_run",
+   "line": 23,
+   "text": "pair_coeff 1 1 0.4 3.0 extra",
+   "style": "pair_coeff lj/class2/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w226cs_class2",
+   "line": 7,
+   "text": "pair_coeff * * 0.05 2.5 extra",
+   "style": "pair_coeff lj/class2/coul/long/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w17soft_class2",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.0 1.0 0.5 extra",
+   "style": "pair_coeff lj/class2/coul/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w69fep_class2soft",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 1.0 0.5 extra",
+   "style": "pair_coeff lj/class2/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w88pair_shift_lj_cubic",
+   "line": 10,
+   "text": "pair_coeff * * 1.0 1.0 extra",
+   "style": "pair_coeff lj/cubic",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w88pair_nofdotr",
+   "line": 10,
+   "text": "pair_coeff * * 1.0 1.0 extra",
+   "style": "pair_coeff lj/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 6,
+   "text": "pair_coeff * * 0.2 1.1 extra",
+   "style": "pair_coeff lj/cut/coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w243de_efield_cutcoul",
+   "line": 9,
+   "text": "pair_coeff * * 0.02 2.0 extra",
+   "style": "pair_coeff lj/cut/coul/cut/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w17soft_coul",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.0 1.0 0.5 extra",
+   "style": "pair_coeff lj/cut/coul/cut/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w1lcoul_debye",
+   "line": 23,
+   "text": "pair_coeff 1 1 1.0 1.0 extra",
+   "style": "pair_coeff lj/cut/coul/debye",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w226cs_diel_debye",
+   "line": 7,
+   "text": "pair_coeff * * 0.02 2.0 extra",
+   "style": "pair_coeff lj/cut/coul/debye/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w1lcoul_special_dsf",
+   "line": 10,
+   "text": "pair_coeff * * 0.5 0.9 extra",
+   "style": "pair_coeff lj/cut/coul/dsf",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w244es_ljfluid",
+   "line": 16,
+   "text": "pair_coeff * * 0.1 2.6 extra",
+   "style": "pair_coeff lj/cut/coul/esp",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w75pppmslab_madelung_lowacc",
+   "line": 9,
+   "text": "pair_coeff * * 0 1 extra",
+   "style": "pair_coeff lj/cut/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w226cs_ljcoul_t12",
+   "line": 7,
+   "text": "pair_coeff * * 0.05 2.5 extra",
+   "style": "pair_coeff lj/cut/coul/long/cs",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w243de_efield_ljlong_pppm",
+   "line": 9,
+   "text": "pair_coeff * * 0.02 2.0 extra",
+   "style": "pair_coeff lj/cut/coul/long/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w54accel_charged",
+   "line": 25,
+   "text": "pair_coeff 1 1 0.0100 2.35 extra",
+   "style": "pair_coeff lj/cut/coul/long/omp",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 11,
+   "text": "pair_coeff 1 1 0.1 3.0 1.0 extra",
+   "style": "pair_coeff lj/cut/coul/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 9,
+   "text": "pair_coeff 1 1 0.1852 3.1589 extra",
+   "style": "pair_coeff lj/cut/coul/msm",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w243de_efield_ljcoulmsm",
+   "line": 9,
+   "text": "pair_coeff * * 0.02 2.0 extra",
+   "style": "pair_coeff lj/cut/coul/msm/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w1lcoul_special_wolf",
+   "line": 10,
+   "text": "pair_coeff * * 0.5 0.9 extra",
+   "style": "pair_coeff lj/cut/coul/wolf",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w41sm_dipole_mol",
+   "line": 13,
+   "text": "pair_coeff 1 1 1.0 1.0 extra",
+   "style": "pair_coeff lj/cut/dipole/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w44dl_static_auto",
+   "line": 20,
+   "text": "pair_coeff * * 0.0 1.0 extra",
+   "style": "pair_coeff lj/cut/dipole/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w54accel_melt",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 1.0 2.5 extra",
+   "style": "pair_coeff lj/cut/omp",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w17soft_tail",
+   "line": 14,
+   "text": "pair_coeff 1 1 1.0 1.0 0.6 extra",
+   "style": "pair_coeff lj/cut/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w69fep_gapsys_lj",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 1.0 0.5 extra",
+   "style": "pair_coeff lj/cut/soft/gapsys",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w220xp_ljcutsphere",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.0 extra",
+   "style": "pair_coeff lj/cut/sphere",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w72drude_toluene_lang",
+   "line": 21,
+   "text": "pair_coeff 1 1 0.069998 3.550000 1.620000 extra",
+   "style": "pair_coeff lj/cut/thole/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 9,
+   "text": "pair_coeff 1 1 0.1852 3.1589 extra",
+   "style": "pair_coeff lj/cut/tip4p/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 8,
+   "text": "pair_coeff 1 1 0.1852 3.1589 extra",
+   "style": "pair_coeff lj/cut/tip4p/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 125,
+   "text": "pair_coeff 1 1 0.1554 3.1655 0.5 extra",
+   "style": "pair_coeff lj/cut/tip4p/long/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w88pair_expand_shift01",
+   "line": 10,
+   "text": "pair_coeff * * 1.0 1.0 0.1 extra",
+   "style": "pair_coeff lj/expand",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w220xp_ljexpandcoullong_special",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 1.0 0.1 extra",
+   "style": "pair_coeff lj/expand/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w220xp_ljexpandsphere",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.0 0.3 extra",
+   "style": "pair_coeff lj/expand/sphere",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w1ljx_gromacs",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.0 1.0 extra",
+   "style": "pair_coeff lj/gromacs",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w220xp_gromacs",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 1.0 extra",
+   "style": "pair_coeff lj/gromacs/coul/gromacs",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 7,
+   "text": "pair_coeff 1 1 1.0 1.0 extra",
+   "style": "pair_coeff lj/long/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 7,
+   "text": "pair_coeff * * 0.02 2.0 extra",
+   "style": "pair_coeff lj/long/coul/long/dielectric",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 17,
+   "text": "pair_coeff * * 1.0 1.0 extra",
+   "style": "pair_coeff lj/long/dipole/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 10,
+   "text": "pair_coeff 1 1 0.1852 3.1589 extra",
+   "style": "pair_coeff lj/long/tip4p/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w219xp_lj_mdf",
+   "line": 15,
+   "text": "pair_coeff 1 1 1.0 1.0 extra",
+   "style": "pair_coeff lj/mdf",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w220xp_lj_pirani",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 2.0 1.0 1.0 1.0 extra",
+   "style": "pair_coeff lj/pirani",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w6relres_mixed",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.0 1.0 0.5 1.2 1.3 1.6 1.9 2.4 extra",
+   "style": "pair_coeff lj/relres",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 7,
+   "text": "pair_coeff 1 1 lj12_6 1.0 1.1 9.0 extra",
+   "style": "pair_coeff lj/sdk",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w51cs_sdklong_dimer",
+   "line": 33,
+   "text": "pair_coeff 1 1 lj9_6 1.0 1.1 9.0 extra",
+   "style": "pair_coeff lj/sdk/coul/long",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w9pair_ljsf",
+   "line": 23,
+   "text": "pair_coeff 1 1 1.0 1.0 extra",
+   "style": "pair_coeff lj/sf",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w19dipole_special",
+   "line": 39,
+   "text": "pair_coeff * * 0.8 1.0 extra",
+   "style": "pair_coeff lj/sf/dipole/sf",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w88pair_tail_lj_smooth",
+   "line": 10,
+   "text": "pair_coeff * * 1.0 1.0 extra",
+   "style": "pair_coeff lj/smooth",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w88pair_shift_lj_smooth_linear",
+   "line": 10,
+   "text": "pair_coeff * * 1.0 1.0 extra",
+   "style": "pair_coeff lj/smooth/linear",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 7,
+   "text": "pair_coeff 1 1 lj12_6 1.0 1.1 9.0 extra",
+   "style": "pair_coeff lj/spica",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w51cs_spicalong_run",
+   "line": 23,
+   "text": "pair_coeff 1 1 lj9_6 0.4 3.0 8.0 extra",
+   "style": "pair_coeff lj/spica/coul/long",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 21,
+   "text": "pair_coeff 1 1 lj9_6 0.40 3.2 extra",
+   "style": "pair_coeff lj/spica/coul/msm",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w1ljv_lj96",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.0 1.0 extra",
+   "style": "pair_coeff lj96/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w112ld_benzene_ld",
+   "line": 11,
+   "text": "pair_coeff * * benzene_water.localdensity.table extra",
+   "style": "pair_coeff local/density",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w231co_lubricate_nolog_fld",
+   "line": 19,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff lubricate",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w231co_lubricate_poly",
+   "line": 22,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff lubricate/poly",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w231co_lubricateU_flaglog0",
+   "line": 17,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff lubricateU",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w231co_lubricateU_poly",
+   "line": 23,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff lubricateU/poly",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w33meamtrip_dim",
+   "line": 13,
+   "text": "pair_coeff * * w33meamtrip_b1_lib.meam A B w33meamtrip_b1.meam A B extra",
+   "style": "pair_coeff meam",
+   "native": "ERROR: Expected 8 but found 9 args for pair style meam coefficients"
+  },
+  {
+   "case": "w128ms_msmeam",
+   "line": 17,
+   "text": "pair_coeff * * w128ms_library.msmeam H Ga4 w128ms_HGa.msmeam H Ga4 extra",
+   "style": "pair_coeff meam/ms",
+   "native": "ERROR: Expected 8 but found 9 args for pair style meam/ms coefficients"
+  },
+  {
+   "case": "w47ms_si_min",
+   "line": 15,
+   "text": "pair_coeff * * Si_1.meam.spline Si extra",
+   "style": "pair_coeff meam/spline",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w47ms_sw_ti_run",
+   "line": 19,
+   "text": "pair_coeff * * Ti.meam.sw.spline Ti extra",
+   "style": "pair_coeff meam/sw/spline",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w157mt_bond_angle",
+   "line": 12,
+   "text": "pair_coeff * * w157mt_C_10_10_coarse.mesocnt 1 extra",
+   "style": "pair_coeff mesocnt",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w157mt_viscous",
+   "line": 16,
+   "text": "pair_coeff * * w157mt_C_10_10_coarse.mesocnt 0.05 1.0 0.1 1 extra",
+   "style": "pair_coeff mesocnt/viscous",
+   "native": "ERROR: Expected integer parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w1ljx_mie",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.0 1.0 12.0 6.0 extra",
+   "style": "pair_coeff mie/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w37so3_dimer",
+   "line": 13,
+   "text": "pair_coeff * * A B extra",
+   "style": "pair_coeff mliap",
+   "native": "OK"
+  },
+  {
+   "case": "w49pb_momb_md",
+   "line": 23,
+   "text": "pair_coeff 1 1 0.3 1.2 2.5 10.2847 2.361 extra",
+   "style": "pair_coeff momb",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w88pair_tail_morse",
+   "line": 10,
+   "text": "pair_coeff * * 1.0 1.2 1.0 2.5 extra",
+   "style": "pair_coeff morse",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w220xp_morse_smooth_linear",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 1.5 1.1 extra",
+   "style": "pair_coeff morse/smooth/linear",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w69fep_morse",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 1.5 1.1 1.0 extra",
+   "style": "pair_coeff morse/soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w142mx_multi_lucy_lookup",
+   "line": 26,
+   "text": "pair_coeff * * w142mx_multilucy.table KEYWORD 16.00 extra",
+   "style": "pair_coeff multi/lucy",
+   "native": "ERROR: Illegal pair_coeff command"
+  },
+  {
+   "case": "w10nb3b_harmonic",
+   "line": 22,
+   "text": "pair_coeff * * w10nb3b_SiC.nb3b Si C extra",
+   "style": "pair_coeff nb3b/harmonic",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w38nb3b_screened_random",
+   "line": 14,
+   "text": "pair_coeff * * PSiO.nb3b.screened P O Si extra",
+   "style": "pair_coeff nb3b/screened",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w220xp_nm_cut",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 1.1 8 4 extra",
+   "style": "pair_coeff nm/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_cut",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.0 1.1 8 4 extra",
+   "style": "pair_coeff nm/cut/coul/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_long",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 1.1 8 4 extra",
+   "style": "pair_coeff nm/cut/coul/long",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w220xp_nm_cut_split_tail",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.0 1.3 8 4 extra",
+   "style": "pair_coeff nm/cut/split",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 13,
+   "text": "pair_coeff * * 2.0 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32 extra",
+   "style": "pair_coeff oxdna/excv",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/excv"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 18,
+   "text": "pair_coeff * * 2.0 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32 extra",
+   "style": "pair_coeff oxdna2/excv",
+   "native": "ERROR: Incorrect args for pair coefficients in oxdna/excv"
+  },
+  {
+   "case": "w270ya_pace_yace_cu",
+   "line": 15,
+   "text": "pair_coeff * * Cu-1.yace Cu extra",
+   "style": "pair_coeff pace",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types",
+   "build": "ML-PACE"
+  },
+  {
+   "case": "w48pb_pedone_triclinic",
+   "line": 23,
+   "text": "pair_coeff 1 1 0.030211 2.241334 2.923245 5.0 extra",
+   "style": "pair_coeff pedone",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w107peri_eps_block",
+   "line": 13,
+   "text": "pair_coeff * * 14.9e9 14.9e9 0.0015001 0.0005 0.25 10.0e8 extra",
+   "style": "pair_coeff peri/eps",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w22peri_lps_data",
+   "line": 10,
+   "text": "pair_coeff * * 14.9e9 7.0e9 0.0015001 0.0005 0.25 extra",
+   "style": "pair_coeff peri/lps",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w22peri_pmb_data",
+   "line": 10,
+   "text": "pair_coeff * * 1.6863e22 0.0015001 0.0005 0.25 extra",
+   "style": "pair_coeff peri/pmb",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w107peri_ves_block",
+   "line": 13,
+   "text": "pair_coeff * * 14.9e9 14.9e9 0.0015001 0.0005 0.25 0.5 0.001 extra",
+   "style": "pair_coeff peri/ves",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w128pod_ta_static",
+   "line": 18,
+   "text": "pair_coeff * * w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta extra",
+   "style": "pair_coeff pod",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w223mb_poly_cuta_eam",
+   "line": 20,
+   "text": "pair_coeff * * CuTa_eam.poly Cu Ta extra",
+   "style": "pair_coeff polymorphic",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w55reax_water",
+   "line": 9,
+   "text": "pair_coeff * * ffield.reax.rdx H O extra",
+   "style": "pair_coeff reaxff",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w52airebo_rebo_ethane",
+   "line": 9,
+   "text": "pair_coeff * * CH.rebo C H extra",
+   "style": "pair_coeff rebo",
+   "native": "ERROR: Incorrect number of args for pair coefficient."
+  },
+  {
+   "case": "w115p_rebomos",
+   "line": 11,
+   "text": "pair_coeff * * MoS.rebomos Mo S S extra",
+   "style": "pair_coeff rebomos",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w133mf_region_ees",
+   "line": 13,
+   "text": "pair_coeff 1 1 10.0 1.0 0.5 0.5 4 0.5 0.5 4 1 extra",
+   "style": "pair_coeff resquared",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 21,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff rheo",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w96rheo_pair_solid",
+   "line": 21,
+   "text": "pair_coeff * * 1.0 1.3 0.5 extra",
+   "style": "pair_coeff rheo/solid",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w189sq_al2o3",
+   "line": 21,
+   "text": "pair_coeff * * ffield.smtbq.Al2O3 O Al extra",
+   "style": "pair_coeff smtbq",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types",
+   "build": "SMTBQ"
+  },
+  {
+   "case": "w33snapchem_pair",
+   "line": 16,
+   "text": "pair_coeff * * w33snapchem_InP.snapcoeff w33snapchem_InP.snapparam In P extra",
+   "style": "pair_coeff snap",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w88pair_shift_soft",
+   "line": 10,
+   "text": "pair_coeff * * 10.0 extra",
+   "style": "pair_coeff soft",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 20,
+   "text": "pair_coeff 1 1 1.0e-4 2.0e-2 extra",
+   "style": "pair_coeff sph/heatconduction",
+   "native": "ERROR: Incorrect number of args for pair_style sph/heatconduction coefficients"
+  },
+  {
+   "case": "w228gs_sph_lj",
+   "line": 10,
+   "text": "pair_coeff * * 0.1 1.3 extra",
+   "style": "pair_coeff sph/lj",
+   "native": "ERROR: Incorrect args for pair_style sph/lj coefficients"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 17,
+   "text": "pair_coeff * * 4.0 extra",
+   "style": "pair_coeff spin/dipole/long",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w48sp2_dmi",
+   "line": 21,
+   "text": "pair_coeff * * dmi 4.0 0.001 1.0 2.0 -0.5 extra",
+   "style": "pair_coeff spin/dmi",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w47spin_moving2",
+   "line": 14,
+   "text": "pair_coeff * * exchange 4.0 0.02726 0.2171 1.841 offset yes extra",
+   "style": "pair_coeff spin/exchange",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w48sp2_biquad",
+   "line": 21,
+   "text": "pair_coeff * * biquadratic 4.0 0.05 0.03 1.48 0.07 0.02 1.9 offset no extra",
+   "style": "pair_coeff spin/exchange/biquadratic",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w48sp2_magelec",
+   "line": 21,
+   "text": "pair_coeff * * magelec 4.5 0.00109 1.0 1.0 1.0 extra",
+   "style": "pair_coeff spin/magelec",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w2tsw_sw",
+   "line": 19,
+   "text": "pair_coeff * * w2tsw_Si.sw Si extra",
+   "style": "pair_coeff sw",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w49mt_swang_spline",
+   "line": 16,
+   "text": "pair_coeff * * w49mt_spl5.sw type extra",
+   "style": "pair_coeff sw/angle/table",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w22pot_sw_mod_mos",
+   "line": 21,
+   "text": "pair_coeff * * tmd.sw.mod Mo S extra",
+   "style": "pair_coeff sw/mod",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w113cf_benzene_table_spline",
+   "line": 10,
+   "text": "pair_coeff 1 1 w113cf_benzene_water.pair.table PairBB extra",
+   "style": "pair_coeff table",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 18,
+   "text": "pair_coeff 1 1 18.75 4.5 0.41 1.58 1.58 1.0 1.0E-5 2.0 3.0 1.0E-5 2.0 extra",
+   "style": "pair_coeff tdpd",
+   "native": "ERROR: Incorrect args for pair tdpd coefficients"
+  },
+  {
+   "case": "w2tsw_tersoff",
+   "line": 19,
+   "text": "pair_coeff * * w2tsw_Si.tersoff Si extra",
+   "style": "pair_coeff tersoff",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w22pot_tersoff_mod_si",
+   "line": 18,
+   "text": "pair_coeff * * Si.tersoff.mod Si extra",
+   "style": "pair_coeff tersoff/mod",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w22pot_tersoff_modc_si",
+   "line": 18,
+   "text": "pair_coeff * * Si.tersoff.modc Si extra",
+   "style": "pair_coeff tersoff/mod/c",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w223mb_tersoff_table_si",
+   "line": 17,
+   "text": "pair_coeff * * SiC.tersoff Si extra",
+   "style": "pair_coeff tersoff/table",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w108xf_elfit_sisi",
+   "line": 11,
+   "text": "pair_coeff * * SiC.tersoff.zbl Si extra",
+   "style": "pair_coeff tersoff/zbl",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w49mt_tri_edge",
+   "line": 14,
+   "text": "pair_coeff * * w49mt_custom37.3b type extra",
+   "style": "pair_coeff threebody/table",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 123,
+   "text": "pair_coeff 1 1 0.5 extra",
+   "style": "pair_coeff tip4p/long/soft",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w61tri_pair",
+   "line": 9,
+   "text": "pair_coeff * * 1.0 0.3 4.0 extra",
+   "style": "pair_coeff tri/lj",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w146uf3_nb3b",
+   "line": 13,
+   "text": "pair_coeff * * Nb.uf3 Nb extra",
+   "style": "pair_coeff uf3",
+   "native": "ERROR: Invalid number of arguments uf3 in pair coeffs."
+  },
+  {
+   "case": "w219xp_ufm",
+   "line": 16,
+   "text": "pair_coeff 1 1 0.5 1.0 extra",
+   "style": "pair_coeff ufm",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w5vash_si",
+   "line": 19,
+   "text": "pair_coeff * * w5vash_Si.vashishta Si extra",
+   "style": "pair_coeff vashishta",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w472vashtable_runs",
+   "line": 13,
+   "text": "pair_coeff * * InP.vashishta In P extra",
+   "style": "pair_coeff vashishta/table",
+   "native": "ERROR: Number of element to type mappings does not match number of atom types"
+  },
+  {
+   "case": "w219xp_wf_cut",
+   "line": 15,
+   "text": "pair_coeff 1 1 1.0 1.0 1 2 extra",
+   "style": "pair_coeff wf/cut",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 21,
+   "text": "pair_coeff * * 1.0 1.0 4 3 0.0 2.6 extra",
+   "style": "pair_coeff ylz",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w88pair_tail_yukawa",
+   "line": 10,
+   "text": "pair_coeff * * 2.0 2.5 extra",
+   "style": "pair_coeff yukawa",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w5yukawa_colloid",
+   "line": 21,
+   "text": "pair_coeff 1 1 100.0 extra",
+   "style": "pair_coeff yukawa/colloid",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w15snap_grid_local",
+   "line": 17,
+   "text": "pair_coeff * * 73 73 extra",
+   "style": "pair_coeff zbl",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 9,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff zero",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  },
+  {
+   "case": "w40ksp_zerocoul_zero",
+   "line": 22,
+   "text": "pair_coeff * * extra",
+   "style": "pair_coeff zero/coul",
+   "native": "ERROR: Expected floating point parameter instead of 'extra' in input script or data file"
+  }
+ ]
+}

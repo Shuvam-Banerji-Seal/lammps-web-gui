@@ -217,7 +217,8 @@ export class PairNB3BHarmonic extends Pair {
 
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 3) throw new StyleError(`usage: pair_coeff * * filename elem1 ... elemN (style ${this.name})`);
+    // Pair::map_element2type(narg - 3, ...) runs first: fewer than three words is a wrong element count
+    if (args.length < 3) throw new StyleError('Number of element to type mappings does not match number of atom types');
     if (args[0] !== '*' || args[1] !== '*') {
       throw new StyleError(`the first 2 arguments of pair_coeff for style ${this.name} must be * *`);
     }

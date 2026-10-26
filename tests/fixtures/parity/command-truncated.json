@@ -1,0 +1,4966 @@
+{
+ "matrix": "command-truncated",
+ "about": "the last word of each other command dropped",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w119amoeba_angle",
+   "line": 8,
+   "text": "angle_style",
+   "style": "angle_style amoeba",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_angle_write_charmm",
+   "line": 11,
+   "text": "angle_style",
+   "style": "angle_style charmm",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w35c2angle_tri",
+   "line": 6,
+   "text": "angle_style",
+   "style": "angle_style class2",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 9,
+   "text": "angle_style",
+   "style": "angle_style class2/p6",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w145pr_angle_class2xe",
+   "line": 10,
+   "text": "angle_style",
+   "style": "angle_style class2xe",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_angle_cosine",
+   "line": 5,
+   "text": "angle_style",
+   "style": "angle_style cosine",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 9,
+   "text": "angle_style",
+   "style": "angle_style cosine/buck6d",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w87bond_angle_cosdelta_linear",
+   "line": 10,
+   "text": "angle_style",
+   "style": "angle_style cosine/delta",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w87bond_angle_cosper_linear",
+   "line": 10,
+   "text": "angle_style",
+   "style": "angle_style cosine/periodic",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w87bond_angle_cosshift_exact",
+   "line": 10,
+   "text": "angle_style",
+   "style": "angle_style cosine/shift",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w217xb_angle_cosine_shift_exp",
+   "line": 8,
+   "text": "angle_style",
+   "style": "angle_style cosine/shift/exp",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_angle_cosine_squared",
+   "line": 5,
+   "text": "angle_style",
+   "style": "angle_style cosine/squared",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w18angle_csr",
+   "line": 5,
+   "text": "angle_style",
+   "style": "angle_style cosine/squared/restricted",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 7,
+   "text": "angle_style",
+   "style": "angle_style cross",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w235mx_angle_dipole",
+   "line": 12,
+   "text": "angle_style",
+   "style": "angle_style dipole",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 10,
+   "text": "angle_style",
+   "style": "angle_style fourier",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_angle_fourier_simple",
+   "line": 5,
+   "text": "angle_style",
+   "style": "angle_style fourier/simple",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 5,
+   "text": "angle_style",
+   "style": "angle_style gaussian",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 9,
+   "text": "angle_style",
+   "style": "angle_style harmonic",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w54accel_bonded",
+   "line": 17,
+   "text": "angle_style",
+   "style": "angle_style harmonic/omp",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 6,
+   "text": "angle_style hybrid harmonic",
+   "style": "angle_style hybrid",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w16lepton_bonded",
+   "line": 5,
+   "text": "angle_style",
+   "style": "angle_style lepton",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 10,
+   "text": "angle_style",
+   "style": "angle_style mesocnt",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w18angle_mm3",
+   "line": 5,
+   "text": "angle_style",
+   "style": "angle_style mm3",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w217xb_angle_mwlc",
+   "line": 8,
+   "text": "angle_style",
+   "style": "angle_style mwlc",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w37respa_bond",
+   "line": 6,
+   "text": "angle_style",
+   "style": "angle_style none",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_angle_quartic",
+   "line": 5,
+   "text": "angle_style",
+   "style": "angle_style quartic",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 13,
+   "text": "angle_style",
+   "style": "angle_style sdk",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 13,
+   "text": "angle_style",
+   "style": "angle_style spica",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w216tb_angle_linear",
+   "line": 9,
+   "text": "angle_style table linear",
+   "style": "angle_style table",
+   "native": "ERROR: Illegal angle_style command: must have 2 arguments"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 6,
+   "text": "angle_style",
+   "style": "angle_style zero",
+   "native": "ERROR: Illegal angle_style command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_angle_write_charmm",
+   "line": 13,
+   "text": "angle_write 1 25 w225cm_charmm.table",
+   "style": "angle_write",
+   "native": "ERROR: Illegal angle_write command"
+  },
+  {
+   "case": "w79srd_pure",
+   "line": 5,
+   "text": "atom_modify first",
+   "style": "atom_modify first",
+   "native": "ERROR: Illegal atom_modify first command: missing argument(s)"
+  },
+  {
+   "case": "w6prop_read",
+   "line": 5,
+   "text": "atom_modify map array sort 0",
+   "style": "atom_modify map",
+   "native": "ERROR: Illegal atom_modify sort command: missing argument(s)"
+  },
+  {
+   "case": "w197ts_trisort",
+   "line": 12,
+   "text": "atom_modify sort 1",
+   "style": "atom_modify sort",
+   "native": "ERROR: Illegal atom_modify sort command: missing argument(s)"
+  },
+  {
+   "case": "w119amoeba_angle",
+   "line": 6,
+   "text": "atom_style",
+   "style": "atom_style amoeba",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 4,
+   "text": "atom_style",
+   "style": "atom_style angle",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 6,
+   "text": "atom_style",
+   "style": "atom_style apip",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 3,
+   "text": "atom_style",
+   "style": "atom_style atomic",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w50bc_static",
+   "line": 5,
+   "text": "atom_style body rounded/polygon 1",
+   "style": "atom_style body",
+   "native": "ERROR: Invalid body rounded/polygon command"
+  },
+  {
+   "case": "w104cf_reset_id",
+   "line": 4,
+   "text": "atom_style",
+   "style": "atom_style bond",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w53bpm_rot_chain",
+   "line": 5,
+   "text": "atom_style",
+   "style": "atom_style bpm/sphere",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w55reax_water",
+   "line": 5,
+   "text": "atom_style",
+   "style": "atom_style charge",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w226cs_diel_debye",
+   "line": 4,
+   "text": "atom_style",
+   "style": "atom_style dielectric",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w17chunk_pointdipole",
+   "line": 2,
+   "text": "atom_style",
+   "style": "atom_style dipole",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w95dreact_dpdvv_1000",
+   "line": 8,
+   "text": "atom_style",
+   "style": "atom_style dpd",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 8,
+   "text": "atom_style",
+   "style": "atom_style edpd",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w367eff_nph_couple_xy",
+   "line": 6,
+   "text": "atom_style",
+   "style": "atom_style electron",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w62brown_asphere3d",
+   "line": 3,
+   "text": "atom_style",
+   "style": "atom_style ellipsoid",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_write_molecule",
+   "line": 5,
+   "text": "atom_style",
+   "style": "atom_style full",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 4,
+   "text": "atom_style hybrid bond ellipsoid",
+   "style": "atom_style hybrid",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w105cf_erotate_line",
+   "line": 6,
+   "text": "atom_style",
+   "style": "atom_style line",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 8,
+   "text": "atom_style",
+   "style": "atom_style mdpd",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w35c2imp",
+   "line": 4,
+   "text": "atom_style",
+   "style": "atom_style molecular",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w22peri_pmb_data",
+   "line": 5,
+   "text": "atom_style",
+   "style": "atom_style peri",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w96rheo_pair_solid",
+   "line": 4,
+   "text": "atom_style",
+   "style": "atom_style rheo",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 4,
+   "text": "atom_style",
+   "style": "atom_style rheo/thermal",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 15,
+   "text": "atom_style",
+   "style": "atom_style smd",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w228gs_sph_lj",
+   "line": 6,
+   "text": "atom_style",
+   "style": "atom_style sph",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w35mesh_tri",
+   "line": 4,
+   "text": "atom_style",
+   "style": "atom_style sphere",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w52rng_spin3d",
+   "line": 3,
+   "text": "atom_style",
+   "style": "atom_style spin",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 9,
+   "text": "atom_style tdpd",
+   "style": "atom_style tdpd",
+   "native": "ERROR: Invalid atom_style tdpd command"
+  },
+  {
+   "case": "w24tmpl_read",
+   "line": 7,
+   "text": "atom_style template",
+   "style": "atom_style template",
+   "native": "ERROR: Illegal atom_style template command"
+  },
+  {
+   "case": "w105cf_erotate_tri",
+   "line": 6,
+   "text": "atom_style",
+   "style": "atom_style tri",
+   "native": "ERROR: Illegal atom_style command: missing argument(s)"
+  },
+  {
+   "case": "w378balance_out_tri2d",
+   "line": 13,
+   "text": "balance 1.0 shift xy 5 1.1 out",
+   "style": "balance",
+   "native": "ERROR: Illegal (fix) balance out command: missing argument(s)"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 26,
+   "text": "bond_style",
+   "style": "bond_style bpm/peri",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w53bpm_rot_chain",
+   "line": 12,
+   "text": "bond_style",
+   "style": "bond_style bpm/rotational",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w51bpm_spring_compress",
+   "line": 9,
+   "text": "bond_style",
+   "style": "bond_style bpm/spring",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w59bpm_plastic",
+   "line": 22,
+   "text": "bond_style",
+   "style": "bond_style bpm/spring/plastic",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w59bpm_zero",
+   "line": 22,
+   "text": "bond_style",
+   "style": "bond_style bpm/zero",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w35c2angle_tri",
+   "line": 5,
+   "text": "bond_style",
+   "style": "bond_style class2",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_bond_fene_stretched",
+   "line": 8,
+   "text": "bond_style",
+   "style": "bond_style fene",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_bond_fene_expand_stretched",
+   "line": 8,
+   "text": "bond_style",
+   "style": "bond_style fene/expand",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w217xb_bond_fene_nm",
+   "line": 7,
+   "text": "bond_style",
+   "style": "bond_style fene/nm",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 4,
+   "text": "bond_style",
+   "style": "bond_style gaussian",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_bond_gromos",
+   "line": 4,
+   "text": "bond_style",
+   "style": "bond_style gromos",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w35c2imp",
+   "line": 5,
+   "text": "bond_style",
+   "style": "bond_style harmonic",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w54accel_bonded",
+   "line": 14,
+   "text": "bond_style",
+   "style": "bond_style harmonic/omp",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w217xb_harmonic_restrain",
+   "line": 7,
+   "text": "bond_style",
+   "style": "bond_style harmonic/restrain",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift",
+   "line": 4,
+   "text": "bond_style",
+   "style": "bond_style harmonic/shift",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift_cut",
+   "line": 4,
+   "text": "bond_style",
+   "style": "bond_style harmonic/shift/cut",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 5,
+   "text": "bond_style hybrid harmonic",
+   "style": "bond_style hybrid",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w16lepton_vref",
+   "line": 5,
+   "text": "bond_style",
+   "style": "bond_style lepton",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 8,
+   "text": "bond_style",
+   "style": "bond_style mesocnt",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w118yaff_bond_mm3",
+   "line": 6,
+   "text": "bond_style",
+   "style": "bond_style mm3",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_bond_morse",
+   "line": 4,
+   "text": "bond_style",
+   "style": "bond_style morse",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ba_bond_nonlinear",
+   "line": 4,
+   "text": "bond_style",
+   "style": "bond_style nonlinear",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w57oxdna_excv_bond",
+   "line": 13,
+   "text": "bond_style",
+   "style": "bond_style oxdna/fene",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 14,
+   "text": "bond_style",
+   "style": "bond_style oxdna2/fene",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 14,
+   "text": "bond_style",
+   "style": "bond_style oxrna2/fene",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w235mx_quartic_break",
+   "line": 30,
+   "text": "bond_style",
+   "style": "bond_style quartic",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 7,
+   "text": "bond_style",
+   "style": "bond_style quartic/exp",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w235mx_bond_special",
+   "line": 35,
+   "text": "bond_style",
+   "style": "bond_style special",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w216tb_bond_linear",
+   "line": 9,
+   "text": "bond_style table linear",
+   "style": "bond_style table",
+   "native": "ERROR: Illegal bond_style command: must have 2 arguments"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 5,
+   "text": "bond_style",
+   "style": "bond_style zero",
+   "native": "ERROR: Illegal bond_style command: missing argument(s)"
+  },
+  {
+   "case": "w255pw_bond_harmonic",
+   "line": 14,
+   "text": "bond_write 1 40 0.8 2.5 w255pw_bond_harmonic.table",
+   "style": "bond_write",
+   "native": "ERROR: Illegal bond_write command"
+  },
+  {
+   "case": "w30widom_atom",
+   "line": 3,
+   "text": "boundary p p",
+   "style": "boundary",
+   "native": "ERROR: Illegal boundary command: expected 3 arguments but found 2"
+  },
+  {
+   "case": "w114cf_elastic_sw",
+   "line": 9,
+   "text": "box tilt",
+   "style": "box",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w126body_wall2d",
+   "line": 10,
+   "text": "change_box all boundary p f",
+   "style": "change_box boundary",
+   "native": "ERROR: Illegal change_box boundary command: missing argument(s)"
+  },
+  {
+   "case": "w89fix_npt_tilt0",
+   "line": 10,
+   "text": "change_box all",
+   "style": "change_box triclinic",
+   "native": "ERROR: Illegal change_box command: missing argument(s)"
+  },
+  {
+   "case": "w40core_change_box_warn",
+   "line": 11,
+   "text": "change_box all x final 0",
+   "style": "change_box x",
+   "native": "ERROR: Illegal change_box x final command: missing argument(s)"
+  },
+  {
+   "case": "w97tri_npt_diag",
+   "line": 13,
+   "text": "change_box all xy final 0.25 xz final 0.1 yz final -0.15",
+   "style": "change_box xy",
+   "native": "OK"
+  },
+  {
+   "case": "w469change_box_volume",
+   "line": 24,
+   "text": "change_box all y delta -0.2 0.3 x volume remap units",
+   "style": "change_box y",
+   "native": "ERROR: Illegal change_box units command: missing argument(s)"
+  },
+  {
+   "case": "w37grav_rigid",
+   "line": 9,
+   "text": "comm_modify cutoff",
+   "style": "comm_modify cutoff",
+   "native": "ERROR: Illegal comm_modify cutoff command: missing argument(s)"
+  },
+  {
+   "case": "w79srd_pure",
+   "line": 25,
+   "text": "comm_modify group",
+   "style": "comm_modify group",
+   "native": "ERROR: Illegal comm_modify group command: missing argument(s)"
+  },
+  {
+   "case": "w95dreact_dpdvv_1000",
+   "line": 11,
+   "text": "comm_modify mode single vel",
+   "style": "comm_modify mode",
+   "native": "ERROR: Illegal comm_modify vel command: missing argument(s)"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 5,
+   "text": "comm_modify vel",
+   "style": "comm_modify vel",
+   "native": "ERROR: Illegal comm_modify vel command: missing argument(s)"
+  },
+  {
+   "case": "w7bal_rcb",
+   "line": 12,
+   "text": "comm_style",
+   "style": "comm_style tiled",
+   "native": "ERROR: Illegal comm_style command: missing argument(s)"
+  },
+  {
+   "case": "w349chreg_onlysalt_anion",
+   "line": 16,
+   "text": "compute_modify dtemp dynamic/dof",
+   "style": "compute_modify dynamic/dof",
+   "native": "ERROR: Illegal compute_modify dynamic/dof command: missing argument(s)"
+  },
+  {
+   "case": "w79rigid_tri",
+   "line": 20,
+   "text": "compute_modify thermo_temp extra/dof",
+   "style": "compute_modify extra/dof",
+   "native": "ERROR: Illegal compute_modify extra/dof command: missing argument(s)"
+  },
+  {
+   "case": "w36mol_diam",
+   "line": 14,
+   "text": "create_atoms 0 single 5 5 5 mol md 12345 units",
+   "style": "create_atoms 0",
+   "native": "ERROR: Illegal create_atoms units command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 7,
+   "text": "create_atoms 1",
+   "style": "create_atoms 1",
+   "native": "ERROR: Illegal create_atoms command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 24,
+   "text": "create_atoms 10 single 9 3",
+   "style": "create_atoms 10",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 25,
+   "text": "create_atoms 11 single 1 5",
+   "style": "create_atoms 11",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 26,
+   "text": "create_atoms 12 single 3 5",
+   "style": "create_atoms 12",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 27,
+   "text": "create_atoms 13 single 5 5",
+   "style": "create_atoms 13",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 28,
+   "text": "create_atoms 14 single 7 5",
+   "style": "create_atoms 14",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 29,
+   "text": "create_atoms 15 single 9 5",
+   "style": "create_atoms 15",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 30,
+   "text": "create_atoms 16 single 1 7",
+   "style": "create_atoms 16",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 31,
+   "text": "create_atoms 17 single 3 7",
+   "style": "create_atoms 17",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 32,
+   "text": "create_atoms 18 single 5 7",
+   "style": "create_atoms 18",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 33,
+   "text": "create_atoms 19 single 7 7",
+   "style": "create_atoms 19",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w29dump_image",
+   "line": 7,
+   "text": "create_atoms 2 single 5.0 7.0",
+   "style": "create_atoms 2",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 34,
+   "text": "create_atoms 20 single 9 7",
+   "style": "create_atoms 20",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 35,
+   "text": "create_atoms 21 single 1 9",
+   "style": "create_atoms 21",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 36,
+   "text": "create_atoms 22 single 3 9",
+   "style": "create_atoms 22",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 37,
+   "text": "create_atoms 23 single 5 9",
+   "style": "create_atoms 23",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 38,
+   "text": "create_atoms 24 single 7 9",
+   "style": "create_atoms 24",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 39,
+   "text": "create_atoms 25 single 9 9",
+   "style": "create_atoms 25",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w38nb3b_screened_random",
+   "line": 11,
+   "text": "create_atoms 3 random 20 9133 box overlap 1.6 maxtry",
+   "style": "create_atoms 3",
+   "native": "ERROR: Illegal create_atoms maxtry command: missing argument(s)"
+  },
+  {
+   "case": "w79srd_overlap",
+   "line": 37,
+   "text": "create_atoms 4 region",
+   "style": "create_atoms 4",
+   "native": "ERROR: Illegal create_atoms region command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 19,
+   "text": "create_atoms 5 single 9 1",
+   "style": "create_atoms 5",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 20,
+   "text": "create_atoms 6 single 1 3",
+   "style": "create_atoms 6",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 21,
+   "text": "create_atoms 7 single 3 3",
+   "style": "create_atoms 7",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 22,
+   "text": "create_atoms 8 single 5 3",
+   "style": "create_atoms 8",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_super_table",
+   "line": 23,
+   "text": "create_atoms 9 single 7 3",
+   "style": "create_atoms 9",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w90label_cmds",
+   "line": 32,
+   "text": "create_atoms C single 9.0 9.0",
+   "style": "create_atoms C",
+   "native": "ERROR: Illegal create_atoms single command: missing argument(s)"
+  },
+  {
+   "case": "w131cf_bpm_bond_extra",
+   "line": 9,
+   "text": "create_bonds single/bond 1 1",
+   "style": "create_bonds",
+   "native": "ERROR: Illegal create_bonds command: missing argument(s)"
+  },
+  {
+   "case": "w19trigen_fcc",
+   "line": 4,
+   "text": "create_box 1 NULL 0 1 0 1 0",
+   "style": "create_box NULL",
+   "native": "ERROR: Illegal create_box general triclinic command: missing argument(s)"
+  },
+  {
+   "case": "w49mt_tri_edge",
+   "line": 8,
+   "text": "create_box 1",
+   "style": "create_box b",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 6,
+   "text": "create_box 1",
+   "style": "create_box box",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w190ca_rutile_prism_pfp",
+   "line": 8,
+   "text": "create_box 2",
+   "style": "create_box box_vide",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w36wgr_mixer",
+   "line": 8,
+   "text": "create_box 1",
+   "style": "create_box boxreg",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 11,
+   "text": "create_box 1",
+   "style": "create_box edpd",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w48cb_cnp_fcc",
+   "line": 10,
+   "text": "create_box 2",
+   "style": "create_box mdbox",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 11,
+   "text": "create_box 1",
+   "style": "create_box mdpd",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w113cf_velgeom_unif",
+   "line": 7,
+   "text": "create_box 4 my_box bond/types 1 angle/types 1 dihedral/types 1 extra/bond/per/atom 12 extra/angle/per/atom 12 extra/dihedral/per/atom 8 extra/special/per/atom",
+   "style": "create_box my_box",
+   "native": "ERROR: Illegal create_box extra/special/per/atom command: missing argument(s)"
+  },
+  {
+   "case": "w132lb_dragtest",
+   "line": 14,
+   "text": "create_box 1",
+   "style": "create_box mydomain",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w48pb_edip_diamond",
+   "line": 14,
+   "text": "create_box 1",
+   "style": "create_box myreg",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w99phq_quartz_qbmsst",
+   "line": 27,
+   "text": "create_box 2",
+   "style": "create_box orthorhombic_unit_cell",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w165mc_pour_body_molfrac",
+   "line": 10,
+   "text": "create_box 4",
+   "style": "create_box reg",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w77dpd_noise_ext3d",
+   "line": 10,
+   "text": "create_box 1",
+   "style": "create_box simBox",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w38wflow_example",
+   "line": 12,
+   "text": "create_box 2",
+   "style": "create_box sim_box",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w39nemd_visc2d",
+   "line": 9,
+   "text": "create_box 1",
+   "style": "create_box simbox",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w22peri_pmb_block",
+   "line": 9,
+   "text": "create_box 1",
+   "style": "create_box target",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 12,
+   "text": "create_box 1",
+   "style": "create_box tdpd",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w203cr_region_lattice",
+   "line": 11,
+   "text": "create_box 2",
+   "style": "create_box whole",
+   "native": "ERROR: Illegal create_box command: missing argument(s)"
+  },
+  {
+   "case": "w48cb_cnp_tiny",
+   "line": 11,
+   "text": "delete_atoms group",
+   "style": "delete_atoms group",
+   "native": "ERROR: Illegal delete_atoms group command: missing argument(s)"
+  },
+  {
+   "case": "w177px_srd_triclinic",
+   "line": 22,
+   "text": "delete_atoms overlap 1.0 small",
+   "style": "delete_atoms overlap",
+   "native": "ERROR: Illegal delete_atoms overlap command: missing argument(s)"
+  },
+  {
+   "case": "w85setup_del_approx2",
+   "line": 8,
+   "text": "delete_atoms random fraction 0.5 no all NULL",
+   "style": "delete_atoms random",
+   "native": "ERROR: Illegal delete_atoms random command: missing argument(s)"
+  },
+  {
+   "case": "w48cb_cnp_fcc",
+   "line": 16,
+   "text": "delete_atoms region",
+   "style": "delete_atoms region",
+   "native": "ERROR: Illegal delete_atoms region command: missing argument(s)"
+  },
+  {
+   "case": "w137cf_delbonds_stale",
+   "line": 18,
+   "text": "delete_bonds all bond 1",
+   "style": "delete_bonds",
+   "native": "OK"
+  },
+  {
+   "case": "w49pb_ewald_dielectric",
+   "line": 13,
+   "text": "dielectric",
+   "style": "dielectric",
+   "native": "ERROR: Illegal dielectric command"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style charmm",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w13dihcharmm_fsw",
+   "line": 10,
+   "text": "dihedral_style",
+   "style": "dihedral_style charmmfsw",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w35c2dih_phi",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style class2",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 8,
+   "text": "dihedral_style",
+   "style": "dihedral_style class2xe",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w76dih_fine_cse",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style cosine/shift/exp",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style cosine/squared/restricted",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w76dih_fine_fourier",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style fourier",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 11,
+   "text": "dihedral_style",
+   "style": "dihedral_style harmonic",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style helix",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 7,
+   "text": "dihedral_style hybrid harmonic",
+   "style": "dihedral_style hybrid",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w16lepton_bonded",
+   "line": 6,
+   "text": "dihedral_style",
+   "style": "dihedral_style lepton",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w76dih_fine_mh",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style multi/harmonic",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w76dih_fine_nharm",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style nharmonic",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w37respa_bond",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style none",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w76dih_fine_opls",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style opls",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w76dih_fine_quad",
+   "line": 7,
+   "text": "dihedral_style",
+   "style": "dihedral_style quadratic",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w217xb_dihedral_spherical",
+   "line": 10,
+   "text": "dihedral_style",
+   "style": "dihedral_style spherical",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w216tb_dihedral_linear_nof",
+   "line": 9,
+   "text": "dihedral_style table linear",
+   "style": "dihedral_style table",
+   "native": "ERROR: Illegal dihedral_style command: must have 2 arguments"
+  },
+  {
+   "case": "w216tb_dihedral_cut_spline",
+   "line": 10,
+   "text": "dihedral_style table/cut spline",
+   "style": "dihedral_style table/cut",
+   "native": "ERROR: Illegal dihedral_style command: must have 2 arguments"
+  },
+  {
+   "case": "w1dih_zero",
+   "line": 6,
+   "text": "dihedral_style",
+   "style": "dihedral_style zero",
+   "native": "ERROR: Illegal dihedral_style command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_dihedral_write",
+   "line": 14,
+   "text": "dihedral_write 2 25 w225cm_dihedral.table",
+   "style": "dihedral_write",
+   "native": "ERROR: Illegal dihedral_write command"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 1,
+   "text": "dimension",
+   "style": "dimension",
+   "native": "ERROR: Dimension command expects exactly one argument"
+  },
+  {
+   "case": "w49pb_pppm_diel1",
+   "line": 15,
+   "text": "displace_atoms all move v_dx v_dy 0.0 units",
+   "style": "displace_atoms move",
+   "native": "ERROR: Illegal displace_atoms units command: missing argument(s)"
+  },
+  {
+   "case": "w85setup_disp_random",
+   "line": 8,
+   "text": "displace_atoms all random 0.02 0.02 0.02 4242 units",
+   "style": "displace_atoms random",
+   "native": "ERROR: Illegal displace_atoms units command: missing argument(s)"
+  },
+  {
+   "case": "w19ellipsoid",
+   "line": 16,
+   "text": "displace_atoms ell rotate 3 3 1 0.3 0.4 1 33 units",
+   "style": "displace_atoms rotate",
+   "native": "ERROR: Illegal displace_atoms units command: missing argument(s)"
+  },
+  {
+   "case": "dump_formats",
+   "line": 12,
+   "text": "dump 1 all atom 10",
+   "style": "dump atom",
+   "native": "ERROR: Illegal dump command: missing argument(s)"
+  },
+  {
+   "case": "w215cfg_dump",
+   "line": 19,
+   "text": "dump 1 all cfg 20 s.*.cfg mass type xs ys zs id vx c_pe",
+   "style": "dump cfg",
+   "native": "OK"
+  },
+  {
+   "case": "dump_formats",
+   "line": 13,
+   "text": "dump 2 all custom 10 d.custom id type x y z xu vx fx mass",
+   "style": "dump custom",
+   "native": "OK"
+  },
+  {
+   "case": "w422dump_grid_tri",
+   "line": 11,
+   "text": "dump 1 all grid 1 tri.dump",
+   "style": "dump grid",
+   "native": "ERROR: No dump grid arguments specified"
+  },
+  {
+   "case": "w423dump_grid_2d",
+   "line": 20,
+   "text": "dump 2 all grid/vtk 40 v2d.*.vtr f_ag:grid:data[1] f_ag:grid:data[2]",
+   "style": "dump grid/vtk",
+   "native": "ERROR: Dump grid/vtk requires one or three fields"
+  },
+  {
+   "case": "w29dump_image",
+   "line": 11,
+   "text": "dump im all image 1 img.*.ppm type type size 64 64 box no 0.02 view 90",
+   "style": "dump image",
+   "native": "ERROR: Illegal dump image view command: missing argument(s)"
+  },
+  {
+   "case": "w11local_bond",
+   "line": 12,
+   "text": "dump 1 all local 1 w11local_bond.local index c_bl[*]",
+   "style": "dump local",
+   "native": "OK"
+  },
+  {
+   "case": "w196vtk_xml",
+   "line": 14,
+   "text": "dump d all vtk 10 dump*.vtp id type vx vy vz fx fy",
+   "style": "dump vtk",
+   "native": "OK"
+  },
+  {
+   "case": "dump_formats",
+   "line": 14,
+   "text": "dump 3 all xyz 10",
+   "style": "dump xyz",
+   "native": "ERROR: Illegal dump command: missing argument(s)"
+  },
+  {
+   "case": "w471dump_thresh_last",
+   "line": 29,
+   "text": "dump_modify e append yes thresh v_g < LAST thresh type ==",
+   "style": "dump_modify append",
+   "native": "ERROR: Illegal dump_modify thresh command: missing argument(s)"
+  },
+  {
+   "case": "w420dump_grid",
+   "line": 25,
+   "text": "dump_modify 5 double",
+   "style": "dump_modify double",
+   "native": "ERROR: Illegal dump_modify double command: missing argument(s)"
+  },
+  {
+   "case": "w196vtk_modify",
+   "line": 18,
+   "text": "dump_modify d element Ar Kr label cells double yes pad 3 region half thresh type ==",
+   "style": "dump_modify element",
+   "native": "ERROR: Illegal dump_modify command"
+  },
+  {
+   "case": "w100smd_aluminum_strip",
+   "line": 121,
+   "text": "dump_modify dump_id first",
+   "style": "dump_modify first",
+   "native": "ERROR: Illegal dump_modify first command: missing argument(s)"
+  },
+  {
+   "case": "w9rerun_basic",
+   "line": 19,
+   "text": "dump_modify 1 format float %.15g sort",
+   "style": "dump_modify format",
+   "native": "ERROR: Illegal dump_modify sort command: missing argument(s)"
+  },
+  {
+   "case": "w421dump_grid_ttm",
+   "line": 25,
+   "text": "dump_modify 2 header",
+   "style": "dump_modify header",
+   "native": "ERROR: Illegal dump_modify header command: missing argument(s)"
+  },
+  {
+   "case": "w11local_bond",
+   "line": 14,
+   "text": "dump_modify 2 label",
+   "style": "dump_modify label",
+   "native": "ERROR: Illegal dump_modify label command: missing argument(s)"
+  },
+  {
+   "case": "w31voronp_single",
+   "line": 16,
+   "text": "dump_modify d sort id format float",
+   "style": "dump_modify sort",
+   "native": "ERROR: Illegal dump_modify format command: missing argument(s)"
+  },
+  {
+   "case": "w471dump_thresh_last",
+   "line": 19,
+   "text": "dump_modify d thresh v_f >",
+   "style": "dump_modify thresh",
+   "native": "ERROR: Illegal dump_modify thresh command: missing argument(s)"
+  },
+  {
+   "case": "w19trigen_general",
+   "line": 13,
+   "text": "dump_modify 1 triclinic/general",
+   "style": "dump_modify triclinic/general",
+   "native": "ERROR: Illegal dump_modify triclinic/general command: missing argument(s)"
+  },
+  {
+   "case": "w421dump_grid_ttm",
+   "line": 23,
+   "text": "dump_modify 1 units yes time yes format float",
+   "style": "dump_modify units",
+   "native": "ERROR: Illegal dump_modify format command: missing argument(s)"
+  },
+  {
+   "case": "w99phq_dynmat_silicon",
+   "line": 16,
+   "text": "dynamical_matrix all eskm 0.000001 file dynmat.dat binary",
+   "style": "dynamical_matrix",
+   "native": "ERROR: Illegal dynamical_matrix command"
+  },
+  {
+   "case": "w279ap_lambda_groups",
+   "line": 30,
+   "text": "fix_modify lambda 2.5",
+   "style": "fix_modify 2.5",
+   "native": "ERROR: Illegal fix_modify lambda/apip command: missing argument(s)",
+   "build": "APIP"
+  },
+  {
+   "case": "w6rigid_bodyforces",
+   "line": 19,
+   "text": "fix_modify 1 bodyforces",
+   "style": "fix_modify bodyforces",
+   "native": "ERROR: Illegal fix_modify command"
+  },
+  {
+   "case": "w71diel_confined_dof",
+   "line": 25,
+   "text": "fix_modify 3 dielectrics -10 15 1.0 0.866",
+   "style": "fix_modify dielectrics",
+   "native": "ERROR: Illegal fix_modify command"
+  },
+  {
+   "case": "w38gcr_one_last",
+   "line": 24,
+   "text": "fix_modify myrigid dynamic/dof",
+   "style": "fix_modify dynamic/dof",
+   "native": "ERROR: Illegal fix_modify dynamic/dof command: missing argument(s)"
+  },
+  {
+   "case": "w128shock_nphug_fixmodify",
+   "line": 16,
+   "text": "fix_modify myhug e0 -300.0 p0 0.0 v0",
+   "style": "fix_modify e0",
+   "native": "ERROR: Illegal fix nphug command"
+  },
+  {
+   "case": "w37grav_rigid",
+   "line": 13,
+   "text": "fix_modify gravfix energy",
+   "style": "fix_modify energy",
+   "native": "ERROR: Illegal fix_modify energy command: missing argument(s)"
+  },
+  {
+   "case": "w210md_confined_gmres",
+   "line": 24,
+   "text": "fix_modify 3 itr_max 50 dielectrics -10 15 1.0 0.866",
+   "style": "fix_modify itr_max",
+   "native": "ERROR: Illegal fix_modify command"
+  },
+  {
+   "case": "w39nemd_kick_modify",
+   "line": 25,
+   "text": "fix_modify 3 kick",
+   "style": "fix_modify kick",
+   "native": "ERROR: Illegal fix_modify command"
+  },
+  {
+   "case": "w127gsg_line",
+   "line": 29,
+   "text": "fix_modify 20 move * rotate 0 0 0 0 0 1",
+   "style": "fix_modify move",
+   "native": "ERROR: Illegal fix surface/global modify move rotate command: missing argument(s)"
+  },
+  {
+   "case": "w81nhpress_iso_pressonly",
+   "line": 22,
+   "text": "fix_modify 1 press",
+   "style": "fix_modify press",
+   "native": "ERROR: Illegal fix_modify press command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 55,
+   "text": "fix_modify 4 rx_chemistry",
+   "style": "fix_modify rx_chemistry",
+   "native": "ERROR: Illegal fix_modify rx_chemistry command"
+  },
+  {
+   "case": "w41nptp_bias",
+   "line": 14,
+   "text": "fix_modify 1 temp",
+   "style": "fix_modify temp",
+   "native": "ERROR: Illegal fix_modify command"
+  },
+  {
+   "case": "w156mx_tf_conq_inv",
+   "line": 19,
+   "text": "fix_modify q tf 1 1.0",
+   "style": "fix_modify tf",
+   "native": "ERROR: Incorrect number of arguments for fix_modify electrode/conq"
+  },
+  {
+   "case": "w62brown_propelvel",
+   "line": 15,
+   "text": "fix_modify 2 virial",
+   "style": "fix_modify virial",
+   "native": "ERROR: Illegal fix_modify virial command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_group_ndx",
+   "line": 24,
+   "text": "group odd",
+   "style": "group clear",
+   "native": "ERROR: Illegal group command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_group_ndx",
+   "line": 25,
+   "text": "group hot",
+   "style": "group delete",
+   "native": "ERROR: Illegal group command: missing argument(s)"
+  },
+  {
+   "case": "w114cf_nvt_dyn_region",
+   "line": 14,
+   "text": "group hot dynamic all region half every",
+   "style": "group dynamic",
+   "native": "ERROR: Illegal group dynamic every command: missing argument(s)"
+  },
+  {
+   "case": "w26depmol_rigid",
+   "line": 14,
+   "text": "group addatoms",
+   "style": "group empty",
+   "native": "ERROR: Illegal group command: missing argument(s)"
+  },
+  {
+   "case": "w7bal_weight",
+   "line": 12,
+   "text": "group half id",
+   "style": "group id",
+   "native": "ERROR: Illegal group id command: missing argument(s)"
+  },
+  {
+   "case": "w68elec_graphil_pppm_shake",
+   "line": 17,
+   "text": "group top intersect ele",
+   "style": "group intersect",
+   "native": "ERROR: Illegal group intersect command: missing argument(s)"
+  },
+  {
+   "case": "w47ta_spce_force",
+   "line": 15,
+   "text": "group one molecule 1",
+   "style": "group molecule",
+   "native": "OK"
+  },
+  {
+   "case": "w52rng_type_ratio",
+   "line": 10,
+   "text": "group left region",
+   "style": "group region",
+   "native": "ERROR: Illegal group region command"
+  },
+  {
+   "case": "w8group_dynamic_prop",
+   "line": 31,
+   "text": "group mobile",
+   "style": "group static",
+   "native": "ERROR: Illegal group command: missing argument(s)"
+  },
+  {
+   "case": "w66units_gravity_chute_real",
+   "line": 10,
+   "text": "group even subtract all",
+   "style": "group subtract",
+   "native": "ERROR: Illegal group subtract command: missing argument(s)"
+  },
+  {
+   "case": "w33gcmc_real_ins",
+   "line": 10,
+   "text": "group gcmcgroup type",
+   "style": "group type",
+   "native": "ERROR: Illegal group type command: missing argument(s)"
+  },
+  {
+   "case": "w430rigidnh_sphere_dipole",
+   "line": 19,
+   "text": "group rig union g1 g2 g3",
+   "style": "group union",
+   "native": "OK"
+  },
+  {
+   "case": "w68elec_graphil_pppm_shake",
+   "line": 15,
+   "text": "group zpos variable",
+   "style": "group variable",
+   "native": "ERROR: string pointer is null"
+  },
+  {
+   "case": "w225cm_group_ndx",
+   "line": 22,
+   "text": "group2ndx",
+   "style": "group2ndx",
+   "native": "ERROR: Illegal group2ndx command: missing argument(s)"
+  },
+  {
+   "case": "w49hy_rebond",
+   "line": 32,
+   "text": "hyper 200 20 HG ev min 1.0e-5 1.0e-5 100 100 rebond",
+   "style": "hyper",
+   "native": "ERROR: Illegal hyper command"
+  },
+  {
+   "case": "w119amoeba_ub",
+   "line": 11,
+   "text": "improper_style",
+   "style": "improper_style amoeba",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w35c2imp",
+   "line": 6,
+   "text": "improper_style",
+   "style": "improper_style class2",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w1imp_cossq",
+   "line": 7,
+   "text": "improper_style",
+   "style": "improper_style cossq",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w120cf_improper_cvff_planar",
+   "line": 6,
+   "text": "improper_style",
+   "style": "improper_style cvff",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w1imp_distance",
+   "line": 7,
+   "text": "improper_style",
+   "style": "improper_style distance",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 8,
+   "text": "improper_style",
+   "style": "improper_style distharm",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w87bond_fourier_default",
+   "line": 16,
+   "text": "improper_style",
+   "style": "improper_style fourier",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w120cf_improper_planar",
+   "line": 6,
+   "text": "improper_style",
+   "style": "improper_style harmonic",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w21bhyb_read_coeffs",
+   "line": 8,
+   "text": "improper_style hybrid harmonic",
+   "style": "improper_style hybrid",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w120cf_improper_inversion_planar",
+   "line": 6,
+   "text": "improper_style",
+   "style": "improper_style inversion/harmonic",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w37respa_bond",
+   "line": 8,
+   "text": "improper_style",
+   "style": "improper_style none",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w217xb_improper_ring",
+   "line": 10,
+   "text": "improper_style",
+   "style": "improper_style ring",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w18dihimp_sqdistharm",
+   "line": 8,
+   "text": "improper_style",
+   "style": "improper_style sqdistharm",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w87bond_umbrella_flip_w0zero",
+   "line": 16,
+   "text": "improper_style",
+   "style": "improper_style umbrella",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 8,
+   "text": "improper_style",
+   "style": "improper_style zero",
+   "native": "ERROR: Illegal improper_style command: missing argument(s)"
+  },
+  {
+   "case": "w51km_dipole_noeffect",
+   "line": 22,
+   "text": "kspace_modify collective yes nonblocking yes fftbench yes overlap no minorder 2 cutoff/adjust",
+   "style": "kspace_modify collective",
+   "native": "ERROR: Illegal kspace_modify cutoff/adjust command: missing argument(s)"
+  },
+  {
+   "case": "w84lang_kspace_compute_no",
+   "line": 19,
+   "text": "kspace_modify compute",
+   "style": "kspace_modify compute",
+   "native": "ERROR: Illegal kspace_modify compute command: missing argument(s)"
+  },
+  {
+   "case": "w101pppm_ad_auto_a",
+   "line": 22,
+   "text": "kspace_modify diff",
+   "style": "kspace_modify diff",
+   "native": "ERROR: Illegal kspace_modify diff command: missing argument(s)"
+  },
+  {
+   "case": "w161pd_lj_auto",
+   "line": 12,
+   "text": "kspace_modify disp/auto",
+   "style": "kspace_modify disp/auto",
+   "native": "ERROR: Illegal kspace_modify disp/auto command: missing argument(s)"
+  },
+  {
+   "case": "w477kspace_modify_ignored",
+   "line": 20,
+   "text": "kspace_modify force/disp/real 1e-4 splittol 0.5 disp/auto yes amat onestep wire",
+   "style": "kspace_modify force/disp/real",
+   "native": "ERROR: Illegal kspace_modify wire command: missing argument(s)"
+  },
+  {
+   "case": "w16disp_ljcoul",
+   "line": 10,
+   "text": "kspace_modify gewald 0.4 gewald/disp",
+   "style": "kspace_modify gewald",
+   "native": "ERROR: Illegal kspace_modify gewald/disp command: missing argument(s)"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 10,
+   "text": "kspace_modify gewald/disp",
+   "style": "kspace_modify gewald/disp",
+   "native": "ERROR: Illegal kspace_modify gewald/disp command: missing argument(s)"
+  },
+  {
+   "case": "w478ewald_kmax_partial",
+   "line": 18,
+   "text": "kspace_modify kmax/ewald 4 0 4 mesh 8 8 8 order 3 diff",
+   "style": "kspace_modify kmax/ewald",
+   "native": "ERROR: Illegal kspace_modify diff command: missing argument(s)"
+  },
+  {
+   "case": "w209ms_nacl_npt",
+   "line": 29,
+   "text": "kspace_modify mesh 8 8 8 order",
+   "style": "kspace_modify mesh",
+   "native": "ERROR: Illegal kspace_modify order command: missing argument(s)"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 18,
+   "text": "kspace_modify order 8 pressure/scalar",
+   "style": "kspace_modify order",
+   "native": "ERROR: Illegal kspace_modify pressure/scalar command: missing argument(s)"
+  },
+  {
+   "case": "w209ms_nacl_tensor",
+   "line": 30,
+   "text": "kspace_modify pressure/scalar no cutoff/adjust no order",
+   "style": "kspace_modify pressure/scalar",
+   "native": "ERROR: Illegal kspace_modify order command: missing argument(s)"
+  },
+  {
+   "case": "w75pppmslab_madelung_lowacc",
+   "line": 4,
+   "text": "kspace_modify slab",
+   "style": "kspace_modify slab",
+   "native": "ERROR: Illegal kspace_modify slab command: missing argument(s)"
+  },
+  {
+   "case": "w244es_ortho",
+   "line": 17,
+   "text": "kspace_style esp",
+   "style": "kspace_style esp",
+   "native": "ERROR: Illegal kspace_style esp command"
+  },
+  {
+   "case": "w104cf_sds_coul_alone",
+   "line": 13,
+   "text": "kspace_style ewald",
+   "style": "kspace_style ewald",
+   "native": "ERROR: Illegal kspace_style ewald command"
+  },
+  {
+   "case": "w44dl_static_auto",
+   "line": 21,
+   "text": "kspace_style ewald/dipole",
+   "style": "kspace_style ewald/dipole",
+   "native": "ERROR: Illegal kspace_style ewald/dipole command"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 19,
+   "text": "kspace_style ewald/dipole/spin",
+   "style": "kspace_style ewald/dipole/spin",
+   "native": "ERROR: Illegal kspace_style ewald/dipole/spin command"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 9,
+   "text": "kspace_style ewald/disp",
+   "style": "kspace_style ewald/disp",
+   "native": "ERROR: Illegal kspace_style ewald/disp command"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 18,
+   "text": "kspace_style ewald/disp/dipole",
+   "style": "kspace_style ewald/disp/dipole",
+   "native": "ERROR: Illegal kspace_style ewald/disp/dipole command"
+  },
+  {
+   "case": "w68elec_madelung_cg",
+   "line": 5,
+   "text": "kspace_style ewald/electrode",
+   "style": "kspace_style ewald/electrode",
+   "native": "ERROR: Illegal kspace_style ewald/electrode command"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 17,
+   "text": "kspace_style msm",
+   "style": "kspace_style msm",
+   "native": "ERROR: Illegal kspace_style msm command: missing argument(s)"
+  },
+  {
+   "case": "w209ms_cg_peratom",
+   "line": 33,
+   "text": "kspace_style msm/cg 1.0e-4",
+   "style": "kspace_style msm/cg",
+   "native": "ERROR: Must use 'kspace_modify pressure/scalar no' with kspace_style msm/cg"
+  },
+  {
+   "case": "w243de_efield_ljcoulmsm",
+   "line": 10,
+   "text": "kspace_style msm/dielectric",
+   "style": "kspace_style msm/dielectric",
+   "native": "ERROR: Illegal kspace_style msm/dielectric command: missing argument(s)"
+  },
+  {
+   "case": "w75pppmslab_madelung_lowacc",
+   "line": 3,
+   "text": "kspace_style pppm",
+   "style": "kspace_style pppm",
+   "native": "ERROR: Illegal kspace_style pppm command: missing argument(s)"
+  },
+  {
+   "case": "w50bd_pppmcg",
+   "line": 25,
+   "text": "kspace_style pppm/cg 1.0e-5",
+   "style": "kspace_style pppm/cg",
+   "native": "OK"
+  },
+  {
+   "case": "w243de_efield_pair_kw_pppm",
+   "line": 13,
+   "text": "kspace_style pppm/dielectric",
+   "style": "kspace_style pppm/dielectric",
+   "native": "ERROR: Illegal kspace_style pppm/dielectric command: missing argument(s)"
+  },
+  {
+   "case": "w135pd_fixed_fcc",
+   "line": 17,
+   "text": "kspace_style pppm/dipole",
+   "style": "kspace_style pppm/dipole",
+   "native": "ERROR: Illegal kspace_style pppm/dipole command: missing argument(s)"
+  },
+  {
+   "case": "w272sp_pppm_spin_peatom",
+   "line": 20,
+   "text": "kspace_style pppm/dipole/spin",
+   "style": "kspace_style pppm/dipole/spin",
+   "native": "ERROR: Illegal kspace_style pppm/dipole/spin command: missing argument(s)"
+  },
+  {
+   "case": "w161pd_lj_fixed",
+   "line": 11,
+   "text": "kspace_style pppm/disp",
+   "style": "kspace_style pppm/disp",
+   "native": "ERROR: Illegal kspace_style pppm/disp command"
+  },
+  {
+   "case": "w250pd_ljlong_arith",
+   "line": 18,
+   "text": "kspace_style pppm/disp/dielectric",
+   "style": "kspace_style pppm/disp/dielectric",
+   "native": "ERROR: Illegal kspace_style pppm/disp/dielectric command"
+  },
+  {
+   "case": "w242tp_ljlong_shake_tables",
+   "line": 16,
+   "text": "kspace_style pppm/disp/tip4p",
+   "style": "kspace_style pppm/disp/tip4p",
+   "native": "ERROR: Illegal kspace_style pppm/disp/tip4p command"
+  },
+  {
+   "case": "w268el_pppm_peratom",
+   "line": 6,
+   "text": "kspace_style pppm/electrode",
+   "style": "kspace_style pppm/electrode",
+   "native": "ERROR: Illegal kspace_style pppm/electrode command: missing argument(s)"
+  },
+  {
+   "case": "w54accel_charged",
+   "line": 29,
+   "text": "kspace_style pppm/omp",
+   "style": "kspace_style pppm/omp",
+   "native": "ERROR: Illegal kspace_style pppm/omp command: missing argument(s)"
+  },
+  {
+   "case": "w304vsplit_rk",
+   "line": 17,
+   "text": "kspace_style pppm/rk",
+   "style": "kspace_style pppm/rk",
+   "native": "ERROR: Illegal kspace_style pppm/rk command: missing argument(s)"
+  },
+  {
+   "case": "w237pk_stagger_acc5_order4",
+   "line": 28,
+   "text": "kspace_style pppm/stagger",
+   "style": "kspace_style pppm/stagger",
+   "native": "ERROR: Illegal kspace_style pppm/stagger command: missing argument(s)"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 15,
+   "text": "kspace_style pppm/tip4p",
+   "style": "kspace_style pppm/tip4p",
+   "native": "ERROR: Illegal kspace_style pppm/tip4p command: missing argument(s)"
+  },
+  {
+   "case": "w40ksp_zerocoul_zero",
+   "line": 24,
+   "text": "kspace_style zero",
+   "style": "kspace_style zero",
+   "native": "ERROR: Illegal kspace_style zero command"
+  },
+  {
+   "case": "w90label_mol",
+   "line": 7,
+   "text": "labelmap atom 1 C 2",
+   "style": "labelmap",
+   "native": "ERROR: Incorrect number of arguments for labelmap command"
+  },
+  {
+   "case": "w8snap_snad",
+   "line": 5,
+   "text": "lattice bcc",
+   "style": "lattice bcc",
+   "native": "ERROR: Illegal lattice command: missing argument(s)"
+  },
+  {
+   "case": "w120cf_create_ortho",
+   "line": 3,
+   "text": "lattice custom 0.8442 a1 1 0 0 a2 0 1 0 a3 0 0 1 basis 0 0 0 basis 0.5 0.5",
+   "style": "lattice custom",
+   "native": "ERROR: Illegal lattice basis command: missing argument(s)"
+  },
+  {
+   "case": "w58comb_si0",
+   "line": 7,
+   "text": "lattice diamond",
+   "style": "lattice diamond",
+   "native": "ERROR: Illegal lattice command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 4,
+   "text": "lattice fcc",
+   "style": "lattice fcc",
+   "native": "ERROR: Illegal lattice command: missing argument(s)"
+  },
+  {
+   "case": "w107meam_fetibr",
+   "line": 7,
+   "text": "lattice hcp",
+   "style": "lattice hcp",
+   "native": "ERROR: Illegal lattice command: missing argument(s)"
+  },
+  {
+   "case": "w41nptp_x2d",
+   "line": 5,
+   "text": "lattice hex",
+   "style": "lattice hex",
+   "native": "ERROR: Illegal lattice command: missing argument(s)"
+  },
+  {
+   "case": "w85setup_ca_maxtry",
+   "line": 3,
+   "text": "lattice none",
+   "style": "lattice none",
+   "native": "ERROR: Illegal lattice command: expected 2 arguments but found 1"
+  },
+  {
+   "case": "w62brown_point3d",
+   "line": 5,
+   "text": "lattice sc",
+   "style": "lattice sc",
+   "native": "ERROR: Illegal lattice command: missing argument(s)"
+  },
+  {
+   "case": "w378balance_out_tri2d",
+   "line": 6,
+   "text": "lattice sq",
+   "style": "lattice sq",
+   "native": "ERROR: Illegal lattice command: missing argument(s)"
+  },
+  {
+   "case": "w52rng_displace2d",
+   "line": 6,
+   "text": "lattice sq2",
+   "style": "lattice sq2",
+   "native": "ERROR: Illegal lattice command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 8,
+   "text": "mass *",
+   "style": "mass",
+   "native": "ERROR: Illegal mass command: expected 2 arguments but found 1"
+  },
+  {
+   "case": "w298neb_fire_climb_ebf",
+   "line": 25,
+   "text": "min_modify alpha0 0.10 integrator verlet abcfire",
+   "style": "min_modify alpha0",
+   "native": "ERROR: Illegal min_modify command"
+  },
+  {
+   "case": "w194gneb_norm",
+   "line": 28,
+   "text": "min_modify alpha_damp 1.0 discrete_factor",
+   "style": "min_modify alpha_damp",
+   "native": "ERROR: Illegal min_modify command"
+  },
+  {
+   "case": "w103spin_min_cg",
+   "line": 27,
+   "text": "min_modify discrete_factor",
+   "style": "min_modify discrete_factor",
+   "native": "ERROR: Illegal fix_modify command"
+  },
+  {
+   "case": "w47qm_firebig",
+   "line": 10,
+   "text": "min_modify dmax",
+   "style": "min_modify dmax",
+   "native": "ERROR: Illegal min_modify command"
+  },
+  {
+   "case": "w307min_style_reset",
+   "line": 18,
+   "text": "min_modify integrator verlet dmax",
+   "style": "min_modify integrator",
+   "native": "ERROR: Illegal min_modify command"
+  },
+  {
+   "case": "w16min_backtrack",
+   "line": 19,
+   "text": "min_modify line",
+   "style": "min_modify line",
+   "native": "ERROR: Illegal min_modify command"
+  },
+  {
+   "case": "w103spin_min_lbfgs_bfo",
+   "line": 30,
+   "text": "min_modify norm",
+   "style": "min_modify norm",
+   "native": "ERROR: Illegal min_modify command"
+  },
+  {
+   "case": "w47ls_cgconv",
+   "line": 9,
+   "text": "min_style",
+   "style": "min_style cg",
+   "native": "ERROR: Illegal minimize_style command: missing argument(s)"
+  },
+  {
+   "case": "w47qm_fire",
+   "line": 8,
+   "text": "min_style",
+   "style": "min_style fire",
+   "native": "ERROR: Illegal minimize_style command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_hftn_mol",
+   "line": 17,
+   "text": "min_style",
+   "style": "min_style hftn",
+   "native": "ERROR: Illegal minimize_style command: missing argument(s)"
+  },
+  {
+   "case": "w47qm_lj",
+   "line": 8,
+   "text": "min_style",
+   "style": "min_style quickmin",
+   "native": "ERROR: Illegal minimize_style command: missing argument(s)"
+  },
+  {
+   "case": "w47ls_sdquad30",
+   "line": 9,
+   "text": "min_style",
+   "style": "min_style sd",
+   "native": "ERROR: Illegal minimize_style command: missing argument(s)"
+  },
+  {
+   "case": "w194gneb_norm",
+   "line": 27,
+   "text": "min_style",
+   "style": "min_style spin",
+   "native": "ERROR: Illegal minimize_style command: missing argument(s)"
+  },
+  {
+   "case": "w310gneb_cg",
+   "line": 23,
+   "text": "min_style",
+   "style": "min_style spin/cg",
+   "native": "ERROR: Illegal minimize_style command: missing argument(s)"
+  },
+  {
+   "case": "w311gneb_lbfgs",
+   "line": 23,
+   "text": "min_style",
+   "style": "min_style spin/lbfgs",
+   "native": "ERROR: Illegal minimize_style command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_write_molecule",
+   "line": 8,
+   "text": "molecule water",
+   "style": "molecule",
+   "native": "ERROR: Illegal molecule command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_group_ndx",
+   "line": 26,
+   "text": "ndx2group",
+   "style": "ndx2group",
+   "native": "ERROR: Illegal ndx2group command: missing argument(s)"
+  },
+  {
+   "case": "w46neb_tiny",
+   "line": 24,
+   "text": "neb 0.0 0.01 20 20 10 final",
+   "style": "neb",
+   "native": "ERROR: Cannot use NEB with a single replica"
+  },
+  {
+   "case": "w40ksp_bin_hash",
+   "line": 27,
+   "text": "neigh_modify bin/hash",
+   "style": "neigh_modify bin/hash",
+   "native": "ERROR: Illegal neigh_modify bin/hash command: missing argument(s)"
+  },
+  {
+   "case": "w477kspace_modify_ignored",
+   "line": 21,
+   "text": "neigh_modify binsize -1 every 1 delay 0 check",
+   "style": "neigh_modify binsize",
+   "native": "ERROR: Illegal neigh_modify check command: missing argument(s)"
+  },
+  {
+   "case": "w99phq_quartz_qbmsst",
+   "line": 52,
+   "text": "neigh_modify check yes every 1 delay 0 page 100000 one",
+   "style": "neigh_modify check",
+   "native": "ERROR: Illegal neigh_modify one command: missing argument(s)"
+  },
+  {
+   "case": "w26cgrid_propgrid2d",
+   "line": 13,
+   "text": "neigh_modify delay 0 every 20 check",
+   "style": "neigh_modify delay",
+   "native": "ERROR: Illegal neigh_modify check command: missing argument(s)"
+  },
+  {
+   "case": "w52rng_geom_data",
+   "line": 10,
+   "text": "neigh_modify every 20 delay 0 check",
+   "style": "neigh_modify every",
+   "native": "ERROR: Illegal neigh_modify check command: missing argument(s)"
+  },
+  {
+   "case": "w473rigid_ellipsoids",
+   "line": 12,
+   "text": "neigh_modify exclude molecule/intra",
+   "style": "neigh_modify exclude",
+   "native": "ERROR: Illegal neigh_modify exclude molecule command: missing argument(s)"
+  },
+  {
+   "case": "w79srd_mixture",
+   "line": 51,
+   "text": "neigh_modify include",
+   "style": "neigh_modify include",
+   "native": "ERROR: Illegal neigh_modify include command: missing argument(s)"
+  },
+  {
+   "case": "w472vashtable_runs",
+   "line": 15,
+   "text": "neigh_modify once no every 1 delay 0 check",
+   "style": "neigh_modify once",
+   "native": "ERROR: Illegal neigh_modify check command: missing argument(s)"
+  },
+  {
+   "case": "w71diel_nopbc_icc",
+   "line": 16,
+   "text": "neigh_modify one",
+   "style": "neigh_modify one",
+   "native": "ERROR: Illegal neigh_modify one command: missing argument(s)"
+  },
+  {
+   "case": "w47qm_fire",
+   "line": 7,
+   "text": "neighbor 0.3",
+   "style": "neighbor",
+   "native": "ERROR: Illegal neighbor command: expected 2 arguments but found 1"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 4,
+   "text": "newton",
+   "style": "newton",
+   "native": "ERROR: Illegal newton command"
+  },
+  {
+   "case": "w54accel_melt",
+   "line": 2,
+   "text": "package omp",
+   "style": "package",
+   "native": "ERROR: Illegal package omp command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_compute_no_tail",
+   "line": 11,
+   "text": "pair_modify compute no tail",
+   "style": "pair_modify compute",
+   "native": "ERROR: Illegal pair_modify tail command: missing argument(s)"
+  },
+  {
+   "case": "w255pw_mix_many",
+   "line": 10,
+   "text": "pair_modify mix",
+   "style": "pair_modify mix",
+   "native": "ERROR: Illegal pair_modify mix command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_neigh_trim",
+   "line": 12,
+   "text": "pair_modify neigh/trim",
+   "style": "pair_modify neigh/trim",
+   "native": "ERROR: Illegal pair_modify neigh/trim command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_nofdotr",
+   "line": 11,
+   "text": "pair_modify",
+   "style": "pair_modify nofdotr",
+   "native": "ERROR: Illegal pair_modify command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_hybrid_tally",
+   "line": 15,
+   "text": "pair_modify pair lj/cut compute/tally",
+   "style": "pair_modify pair",
+   "native": "ERROR: Illegal pair_modify compute/tally command"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 11,
+   "text": "pair_modify shift",
+   "style": "pair_modify shift",
+   "native": "ERROR: Illegal pair_modify shift command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_tabinner_table12",
+   "line": 15,
+   "text": "pair_modify table 12 tabinner",
+   "style": "pair_modify table",
+   "native": "ERROR: Illegal pair_modify tabinner command: missing argument(s)"
+  },
+  {
+   "case": "w252ll_buck_table",
+   "line": 8,
+   "text": "pair_modify table/disp",
+   "style": "pair_modify table/disp",
+   "native": "ERROR: Illegal pair_modify table/disp command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_tail_lj_smooth",
+   "line": 11,
+   "text": "pair_modify tail",
+   "style": "pair_modify tail",
+   "native": "ERROR: Illegal pair_modify tail command: missing argument(s)"
+  },
+  {
+   "case": "w222me_adp_ni",
+   "line": 12,
+   "text": "pair_style",
+   "style": "pair_style adp",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w52airebo_airebo_00",
+   "line": 9,
+   "text": "pair_style airebo 3.0 0",
+   "style": "pair_style airebo",
+   "native": "ERROR: Illegal pair_style airebo command"
+  },
+  {
+   "case": "w147ab_airebo_bc",
+   "line": 9,
+   "text": "pair_style airebo/bc 3.0 1",
+   "style": "pair_style airebo/bc",
+   "native": "ERROR: Illegal pair_style airebo command"
+  },
+  {
+   "case": "w52airebo_morse_11",
+   "line": 9,
+   "text": "pair_style airebo/morse 3.0 1",
+   "style": "pair_style airebo/morse",
+   "native": "ERROR: Illegal pair_style airebo/morse command"
+  },
+  {
+   "case": "amoeba_dimer_nokey",
+   "line": 14,
+   "text": "pair_style",
+   "style": "pair_style amoeba",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w10atm_pure",
+   "line": 20,
+   "text": "pair_style atm 4.5",
+   "style": "pair_style atm",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w219xp_beck",
+   "line": 14,
+   "text": "pair_style beck",
+   "style": "pair_style beck",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w48bd_free",
+   "line": 9,
+   "text": "pair_style body/nparticle",
+   "style": "pair_style body/nparticle",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w50bc_static",
+   "line": 8,
+   "text": "pair_style body/rounded/polygon 0 0 0 0.01",
+   "style": "pair_style body/rounded/polygon",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w126body_cubes_wall",
+   "line": 10,
+   "text": "pair_style body/rounded/polyhedron 20 5 0 1",
+   "style": "pair_style body/rounded/polyhedron",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w233bo_alcu",
+   "line": 16,
+   "text": "pair_style",
+   "style": "pair_style bop",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w1buck_born",
+   "line": 20,
+   "text": "pair_style born",
+   "style": "pair_style born",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w18borncoul_dsf",
+   "line": 22,
+   "text": "pair_style born/coul/dsf 0.6 2.5",
+   "style": "pair_style born/coul/dsf",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w21borncs_dsf",
+   "line": 8,
+   "text": "pair_style born/coul/dsf/cs 0.3",
+   "style": "pair_style born/coul/dsf/cs",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w3coullong_born",
+   "line": 21,
+   "text": "pair_style born/coul/long",
+   "style": "pair_style born/coul/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w9pair_born_cs",
+   "line": 8,
+   "text": "pair_style born/coul/long/cs 10.0",
+   "style": "pair_style born/coul/long/cs",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w209ms_born",
+   "line": 24,
+   "text": "pair_style born/coul/msm",
+   "style": "pair_style born/coul/msm",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w18borncoul_wolf",
+   "line": 22,
+   "text": "pair_style born/coul/wolf 0.6 2.5",
+   "style": "pair_style born/coul/wolf",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w21borncs_wolf",
+   "line": 8,
+   "text": "pair_style born/coul/wolf/cs 0.3",
+   "style": "pair_style born/coul/wolf/cs",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w219xp_born_gauss",
+   "line": 14,
+   "text": "pair_style born/gauss",
+   "style": "pair_style born/gauss",
+   "native": "ERROR: Pair style born/gauss must have exactly one argument"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 22,
+   "text": "pair_style",
+   "style": "pair_style bpm/peri",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w51bpm_pair_anh",
+   "line": 7,
+   "text": "pair_style bpm/spring anharmonic",
+   "style": "pair_style bpm/spring",
+   "native": "ERROR: Illegal pair_coeff bpm/spring anharmonic command: missing argument(s)"
+  },
+  {
+   "case": "w231co_brownian_nohi",
+   "line": 13,
+   "text": "pair_style brownian 1.5 0 1 2.01 2.5 2.0 5878567 0",
+   "style": "pair_style brownian",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w231co_brownian_poly",
+   "line": 21,
+   "text": "pair_style brownian/poly 1.0 1 1 2.2 3.0 2.0",
+   "style": "pair_style brownian/poly",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w1buck_buck",
+   "line": 20,
+   "text": "pair_style buck",
+   "style": "pair_style buck",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w1buck_buck_coul_cut",
+   "line": 22,
+   "text": "pair_style buck/coul/cut 2.5",
+   "style": "pair_style buck/coul/cut",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w3coullong_buck",
+   "line": 21,
+   "text": "pair_style buck/coul/long",
+   "style": "pair_style buck/coul/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w9pair_buck_cs",
+   "line": 8,
+   "text": "pair_style buck/coul/long/cs 10.0",
+   "style": "pair_style buck/coul/long/cs",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w209ms_buck",
+   "line": 24,
+   "text": "pair_style buck/coul/msm 7.0",
+   "style": "pair_style buck/coul/msm",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 6,
+   "text": "pair_style buck/long/coul/long long long",
+   "style": "pair_style buck/long/coul/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w219xp_buck_mdf",
+   "line": 14,
+   "text": "pair_style buck/mdf 2.0",
+   "style": "pair_style buck/mdf",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/dsf 0.9",
+   "style": "pair_style buck6d/coul/gauss/dsf",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/long 0.9 1.0",
+   "style": "pair_style buck6d/coul/gauss/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w5colloid_mix",
+   "line": 20,
+   "text": "pair_style colloid",
+   "style": "pair_style colloid",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w58comb_si0",
+   "line": 12,
+   "text": "pair_style",
+   "style": "pair_style comb",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w158cb_cu",
+   "line": 14,
+   "text": "pair_style comb3",
+   "style": "pair_style comb3",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w219xp_cosine_squared",
+   "line": 14,
+   "text": "pair_style cosine/squared",
+   "style": "pair_style cosine/squared",
+   "native": "ERROR: Illegal pair_style command (wrong number of params)"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 14,
+   "text": "pair_style coul/cut",
+   "style": "pair_style coul/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w226cs_diel_cutcoul",
+   "line": 6,
+   "text": "pair_style coul/cut/dielectric",
+   "style": "pair_style coul/cut/dielectric",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w219xp_coul_cut_global",
+   "line": 12,
+   "text": "pair_style coul/cut/global",
+   "style": "pair_style coul/cut/global",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w69fep_coulcutsoft",
+   "line": 17,
+   "text": "pair_style coul/cut/soft 2 2.6",
+   "style": "pair_style coul/cut/soft",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w69fep_gapsys_coul",
+   "line": 17,
+   "text": "pair_style coul/cut/soft/gapsys 0.1 1.5",
+   "style": "pair_style coul/cut/soft/gapsys",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w1coul_debye",
+   "line": 22,
+   "text": "pair_style coul/debye 1.5",
+   "style": "pair_style coul/debye",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w49pb_coul_diel_dimer",
+   "line": 13,
+   "text": "pair_style coul/diel",
+   "style": "pair_style coul/diel",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w1coul_special_dsf",
+   "line": 8,
+   "text": "pair_style coul/dsf 0.6",
+   "style": "pair_style coul/dsf",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w244es_ortho",
+   "line": 15,
+   "text": "pair_style coul/esp",
+   "style": "pair_style coul/esp",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w117cf_pppm_mesh8_real",
+   "line": 10,
+   "text": "pair_style coul/long",
+   "style": "pair_style coul/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w9pair_coul_cs_short",
+   "line": 7,
+   "text": "pair_style coul/long/cs",
+   "style": "pair_style coul/long/cs",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w226cs_diel_coullong_t12",
+   "line": 7,
+   "text": "pair_style coul/long/dielectric",
+   "style": "pair_style coul/long/dielectric",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w69fep_coullongsoft",
+   "line": 17,
+   "text": "pair_style coul/long/soft 2 2.6",
+   "style": "pair_style coul/long/soft",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w219xp_coul_slater_cut",
+   "line": 16,
+   "text": "pair_style coul/slater/cut 0.7",
+   "style": "pair_style coul/slater/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w130pr_coulslater_ewald",
+   "line": 14,
+   "text": "pair_style coul/slater/long 0.929",
+   "style": "pair_style coul/slater/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w43st_dsf_alone",
+   "line": 18,
+   "text": "pair_style coul/streitz 12.0 dsf",
+   "style": "pair_style coul/streitz",
+   "native": "ERROR: Illegal pair_style coul/streitz dsf command: missing argument(s)"
+  },
+  {
+   "case": "w1coul_special_wolf",
+   "line": 8,
+   "text": "pair_style coul/wolf 0.6",
+   "style": "pair_style coul/wolf",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w226cs_wolf",
+   "line": 6,
+   "text": "pair_style coul/wolf/cs 0.2",
+   "style": "pair_style coul/wolf/cs",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w250d3_zerom",
+   "line": 13,
+   "text": "pair_style dispersion/d3 zerom pbe0 9.0",
+   "style": "pair_style dispersion/d3",
+   "native": "ERROR: Pair style dispersion/d3 needs 4 arguments"
+  },
+  {
+   "case": "w77dpd_noise_dpd3d_nosort",
+   "line": 14,
+   "text": "pair_style dpd 1.0 1.0",
+   "style": "pair_style dpd",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 18,
+   "text": "pair_style dpd/coul/slater/long 1.0 1.0 165412 0.25",
+   "style": "pair_style dpd/coul/slater/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w77dpd_noise_ext3d",
+   "line": 13,
+   "text": "pair_style dpd/ext 1.0 1.0",
+   "style": "pair_style dpd/ext",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w319dpd_ext_tstat_ramp",
+   "line": 11,
+   "text": "pair_style dpd/ext/tstat 300.0 150.0 10.0",
+   "style": "pair_style dpd/ext/tstat",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w95dreact_dpdvv_1000",
+   "line": 14,
+   "text": "pair_style dpd/fdt 300.0 8.6",
+   "style": "pair_style dpd/fdt",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 15,
+   "text": "pair_style dpd/fdt/energy 10.0",
+   "style": "pair_style dpd/fdt/energy",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w77dpd_noise_tstat_spce",
+   "line": 11,
+   "text": "pair_style dpd/tstat 300.0 300.0 10.0",
+   "style": "pair_style dpd/tstat",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w235mx_dsmc_gas",
+   "line": 16,
+   "text": "pair_style dsmc 2.5 34387 2000 1.0 10",
+   "style": "pair_style dsmc",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 9,
+   "text": "pair_style",
+   "style": "pair_style eam",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w47pkg_dtreset_metal",
+   "line": 11,
+   "text": "pair_style",
+   "style": "pair_style eam/alloy",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w222me_eamcd_fecr",
+   "line": 14,
+   "text": "pair_style",
+   "style": "pair_style eam/cd",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w222me_eamcdold_fecr",
+   "line": 14,
+   "text": "pair_style",
+   "style": "pair_style eam/cd/old",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w204sg_fs_vcsgc",
+   "line": 11,
+   "text": "pair_style",
+   "style": "pair_style eam/fs",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w222me_eamhe_pdhhe",
+   "line": 16,
+   "text": "pair_style",
+   "style": "pair_style eam/he",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w99phq_cu",
+   "line": 12,
+   "text": "pair_style",
+   "style": "pair_style eam/opt",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w48pb_edip_diamond",
+   "line": 27,
+   "text": "pair_style",
+   "style": "pair_style edip",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w48pb_edip_sic_example",
+   "line": 9,
+   "text": "pair_style",
+   "style": "pair_style edip/multi",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 16,
+   "text": "pair_style edpd 1.58",
+   "style": "pair_style edpd",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w367eff_nph_couple_xy",
+   "line": 8,
+   "text": "pair_style eff/cut 6.447968",
+   "style": "pair_style eff/cut",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w14eim_one",
+   "line": 10,
+   "text": "pair_style",
+   "style": "pair_style eim",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w145pr_pair_extep",
+   "line": 12,
+   "text": "pair_style",
+   "style": "pair_style extep",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w1misc_gauss",
+   "line": 20,
+   "text": "pair_style gauss",
+   "style": "pair_style gauss",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w49pb_gauss_cut_dimer",
+   "line": 13,
+   "text": "pair_style gauss/cut",
+   "style": "pair_style gauss/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w431rigidnh_ellipsoid",
+   "line": 16,
+   "text": "pair_style gayberne 1.0 3.0 1.0",
+   "style": "pair_style gayberne",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w4gran_hertz_history",
+   "line": 25,
+   "text": "pair_style gran/hertz/history 20000.0 NULL 50.0 NULL 0.1",
+   "style": "pair_style gran/hertz/history",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w7pour_fewer",
+   "line": 10,
+   "text": "pair_style gran/hooke 2000.0 700.0 50.0 30.0 0.5",
+   "style": "pair_style gran/hooke",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 10,
+   "text": "pair_style gran/hooke/history 4000.0 NULL 100.0 NULL 0.5",
+   "style": "pair_style gran/hooke/history",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w15gran_mdr_pair",
+   "line": 17,
+   "text": "pair_style",
+   "style": "pair_style granular",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w80superell_ellipsoid_gran",
+   "line": 24,
+   "text": "pair_style",
+   "style": "pair_style granular/superellipsoid",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w223mb_gw",
+   "line": 19,
+   "text": "pair_style",
+   "style": "pair_style gw",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w223mb_gw_zbl",
+   "line": 19,
+   "text": "pair_style",
+   "style": "pair_style gw/zbl",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w17harmcut",
+   "line": 11,
+   "text": "pair_style",
+   "style": "pair_style harmonic/cut",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "hippo_dimer_nokey",
+   "line": 14,
+   "text": "pair_style",
+   "style": "pair_style hippo",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_write_coeff_hybrid",
+   "line": 10,
+   "text": "pair_style hybrid lj/cut 8.0 coul/cut",
+   "style": "pair_style hybrid",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "hybrid_molecular",
+   "line": 8,
+   "text": "pair_style hybrid/molecular lj/cut 2.5 lj/cut",
+   "style": "pair_style hybrid/molecular",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w88pair_neigh_trim",
+   "line": 9,
+   "text": "pair_style hybrid/overlay lj/cut 2.5 lj/cut",
+   "style": "pair_style hybrid/overlay",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "hybrid_scaled",
+   "line": 20,
+   "text": "pair_style hybrid/scaled v_one lj/cut 2.5 0.4 lj/cut",
+   "style": "pair_style hybrid/scaled",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w234lc_diamond",
+   "line": 12,
+   "text": "pair_style",
+   "style": "pair_style lcbop",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w112ldd_molecule_ld",
+   "line": 9,
+   "text": "pair_style",
+   "style": "pair_style ldd",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w219xp_lennard_mdf",
+   "line": 14,
+   "text": "pair_style lennard/mdf 2.0",
+   "style": "pair_style lennard/mdf",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w16lepton_shift",
+   "line": 13,
+   "text": "pair_style lepton",
+   "style": "pair_style lepton",
+   "native": "ERROR: Incorrect number of arguments for pair_style lepton command"
+  },
+  {
+   "case": "w16lepton_coul",
+   "line": 18,
+   "text": "pair_style lepton/coul",
+   "style": "pair_style lepton/coul",
+   "native": "ERROR: Illegal pair_style lepton/coul command: missing argument(s)"
+  },
+  {
+   "case": "w16lepton_sphere",
+   "line": 15,
+   "text": "pair_style lepton/sphere",
+   "style": "pair_style lepton/sphere",
+   "native": "ERROR: Incorrect number of arguments for pair_style lepton/sphere command"
+  },
+  {
+   "case": "w105cf_erotate_line",
+   "line": 11,
+   "text": "pair_style line/lj",
+   "style": "pair_style line/lj",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 9,
+   "text": "pair_style lj/charmm/coul/charmm 7.0",
+   "style": "pair_style lj/charmm/coul/charmm",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w3charmm_implicit",
+   "line": 21,
+   "text": "pair_style lj/charmm/coul/charmm/implicit 8.0",
+   "style": "pair_style lj/charmm/coul/charmm/implicit",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w50il_peptide_run0",
+   "line": 6,
+   "text": "pair_style lj/charmm/coul/long 8.0 10.0",
+   "style": "pair_style lj/charmm/coul/long",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w69fep_charmmsoft",
+   "line": 17,
+   "text": "pair_style lj/charmm/coul/long/soft 2 0.5 2.6 8.0",
+   "style": "pair_style lj/charmm/coul/long/soft",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w209ms_charmm_water",
+   "line": 8,
+   "text": "pair_style lj/charmm/coul/msm 3.5",
+   "style": "pair_style lj/charmm/coul/msm",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/charmmfsh 8.0 10.0",
+   "style": "pair_style lj/charmmfsw/coul/charmmfsh",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/long 8.0 10.0",
+   "style": "pair_style lj/charmmfsw/coul/long",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w1ljx_class2",
+   "line": 20,
+   "text": "pair_style lj/class2",
+   "style": "pair_style lj/class2",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w51cs_c2cut_nylon",
+   "line": 6,
+   "text": "pair_style lj/class2/coul/cut",
+   "style": "pair_style lj/class2/coul/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w69fep_class2cutsoft",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/cut/soft 2 0.5 4.0 2.4",
+   "style": "pair_style lj/class2/coul/cut/soft",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w51cs_c2long_nylon",
+   "line": 7,
+   "text": "pair_style lj/class2/coul/long",
+   "style": "pair_style lj/class2/coul/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w226cs_class2",
+   "line": 6,
+   "text": "pair_style lj/class2/coul/long/cs",
+   "style": "pair_style lj/class2/coul/long/cs",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w17soft_class2",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/long/soft 2 0.5 4.0 2.4",
+   "style": "pair_style lj/class2/coul/long/soft",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w69fep_class2soft",
+   "line": 15,
+   "text": "pair_style lj/class2/soft 2 0.5",
+   "style": "pair_style lj/class2/soft",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w88pair_shift_lj_cubic",
+   "line": 9,
+   "text": "pair_style",
+   "style": "pair_style lj/cubic",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_nofdotr",
+   "line": 9,
+   "text": "pair_style lj/cut",
+   "style": "pair_style lj/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 5,
+   "text": "pair_style lj/cut/coul/cut",
+   "style": "pair_style lj/cut/coul/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w243de_efield_cutcoul",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/cut/dielectric 0.2",
+   "style": "pair_style lj/cut/coul/cut/dielectric",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w17soft_coul",
+   "line": 17,
+   "text": "pair_style lj/cut/coul/cut/soft 2 0.5 4.0 2.4",
+   "style": "pair_style lj/cut/coul/cut/soft",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w1lcoul_debye",
+   "line": 22,
+   "text": "pair_style lj/cut/coul/debye 1.5 2.5",
+   "style": "pair_style lj/cut/coul/debye",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w226cs_diel_debye",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/debye/dielectric 0.2",
+   "style": "pair_style lj/cut/coul/debye/dielectric",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w1lcoul_special_dsf",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/dsf 0.6 2.5",
+   "style": "pair_style lj/cut/coul/dsf",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w244es_ljfluid",
+   "line": 15,
+   "text": "pair_style lj/cut/coul/esp 6.0",
+   "style": "pair_style lj/cut/coul/esp",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w75pppmslab_madelung_lowacc",
+   "line": 7,
+   "text": "pair_style lj/cut/coul/long",
+   "style": "pair_style lj/cut/coul/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w226cs_ljcoul_t12",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/long/cs",
+   "style": "pair_style lj/cut/coul/long/cs",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w243de_efield_ljlong_pppm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/long/dielectric 0.2",
+   "style": "pair_style lj/cut/coul/long/dielectric",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w54accel_charged",
+   "line": 24,
+   "text": "pair_style lj/cut/coul/long/omp 7.0",
+   "style": "pair_style lj/cut/coul/long/omp",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 4,
+   "text": "pair_style lj/cut/coul/long/soft 1 0.5 0.5 8.0",
+   "style": "pair_style lj/cut/coul/long/soft",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm",
+   "style": "pair_style lj/cut/coul/msm",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w243de_efield_ljcoulmsm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm/dielectric",
+   "style": "pair_style lj/cut/coul/msm/dielectric",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w1lcoul_special_wolf",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/wolf 0.6 2.5",
+   "style": "pair_style lj/cut/coul/wolf",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w41sm_dipole_mol",
+   "line": 12,
+   "text": "pair_style lj/cut/dipole/cut",
+   "style": "pair_style lj/cut/dipole/cut",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w44dl_static_auto",
+   "line": 19,
+   "text": "pair_style lj/cut/dipole/long",
+   "style": "pair_style lj/cut/dipole/long",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w54accel_melt",
+   "line": 15,
+   "text": "pair_style lj/cut/omp",
+   "style": "pair_style lj/cut/omp",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w17soft_tail",
+   "line": 13,
+   "text": "pair_style lj/cut/soft 2 0.5",
+   "style": "pair_style lj/cut/soft",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w69fep_gapsys_lj",
+   "line": 15,
+   "text": "pair_style lj/cut/soft/gapsys 0.5",
+   "style": "pair_style lj/cut/soft/gapsys",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w220xp_ljcutsphere",
+   "line": 17,
+   "text": "pair_style lj/cut/sphere",
+   "style": "pair_style lj/cut/sphere",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w72drude_toluene_lang",
+   "line": 15,
+   "text": "pair_style lj/cut/thole/long 2.600 8.0",
+   "style": "pair_style lj/cut/thole/long",
+   "native": "ERROR: Run command before simulation box is defined"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 8,
+   "text": "pair_style lj/cut/tip4p/cut 1 2 1 1 0.1546",
+   "style": "pair_style lj/cut/tip4p/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 7,
+   "text": "pair_style lj/cut/tip4p/long 1 2 1 1 0.1546",
+   "style": "pair_style lj/cut/tip4p/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 124,
+   "text": "pair_style lj/cut/tip4p/long/soft 1 2 1 1 0.15 1 0.5 0.5 4.0",
+   "style": "pair_style lj/cut/tip4p/long/soft",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w88pair_expand_shift01",
+   "line": 9,
+   "text": "pair_style lj/expand",
+   "style": "pair_style lj/expand",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w220xp_ljexpandcoullong_special",
+   "line": 15,
+   "text": "pair_style lj/expand/coul/long 2.5",
+   "style": "pair_style lj/expand/coul/long",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w220xp_ljexpandsphere",
+   "line": 17,
+   "text": "pair_style lj/expand/sphere",
+   "style": "pair_style lj/expand/sphere",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w1ljx_gromacs",
+   "line": 20,
+   "text": "pair_style lj/gromacs 2.0",
+   "style": "pair_style lj/gromacs",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w220xp_gromacs",
+   "line": 15,
+   "text": "pair_style lj/gromacs/coul/gromacs 1.6 2.2 1.2",
+   "style": "pair_style lj/gromacs/coul/gromacs",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 5,
+   "text": "pair_style lj/long/coul/long long off",
+   "style": "pair_style lj/long/coul/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 6,
+   "text": "pair_style lj/long/coul/long/dielectric long long",
+   "style": "pair_style lj/long/coul/long/dielectric",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 16,
+   "text": "pair_style lj/long/dipole/long cut long",
+   "style": "pair_style lj/long/dipole/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 8,
+   "text": "pair_style lj/long/tip4p/long cut long 1 2 1 1 0.1546",
+   "style": "pair_style lj/long/tip4p/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w219xp_lj_mdf",
+   "line": 14,
+   "text": "pair_style lj/mdf 2.0",
+   "style": "pair_style lj/mdf",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w220xp_lj_pirani",
+   "line": 15,
+   "text": "pair_style lj/pirani",
+   "style": "pair_style lj/pirani",
+   "native": "ERROR: Pair style ilj/cut must have exactly one argument: cutoff distance"
+  },
+  {
+   "case": "w6relres_mixed",
+   "line": 20,
+   "text": "pair_style lj/relres 1.4 1.7 2.0",
+   "style": "pair_style lj/relres",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 6,
+   "text": "pair_style lj/sdk",
+   "style": "pair_style lj/sdk",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w51cs_sdklong_dimer",
+   "line": 32,
+   "text": "pair_style lj/sdk/coul/long 9.0",
+   "style": "pair_style lj/sdk/coul/long",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w9pair_ljsf",
+   "line": 22,
+   "text": "pair_style lj/sf",
+   "style": "pair_style lj/sf",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w19dipole_special",
+   "line": 38,
+   "text": "pair_style lj/sf/dipole/sf",
+   "style": "pair_style lj/sf/dipole/sf",
+   "native": "ERROR: Incorrect args in pair_style command"
+  },
+  {
+   "case": "w88pair_tail_lj_smooth",
+   "line": 9,
+   "text": "pair_style lj/smooth 1.5",
+   "style": "pair_style lj/smooth",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w88pair_shift_lj_smooth_linear",
+   "line": 9,
+   "text": "pair_style lj/smooth/linear",
+   "style": "pair_style lj/smooth/linear",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 6,
+   "text": "pair_style lj/spica",
+   "style": "pair_style lj/spica",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w51cs_spicalong_run",
+   "line": 22,
+   "text": "pair_style lj/spica/coul/long 8.0",
+   "style": "pair_style lj/spica/coul/long",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 20,
+   "text": "pair_style lj/spica/coul/msm",
+   "style": "pair_style lj/spica/coul/msm",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w118yaff_mil53al_switch3_t0",
+   "line": 9,
+   "text": "pair_style lj/switch3/coulgauss/long 12.0000",
+   "style": "pair_style lj/switch3/coulgauss/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w1ljv_lj96",
+   "line": 20,
+   "text": "pair_style lj96/cut",
+   "style": "pair_style lj96/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w112ld_benzene_ld",
+   "line": 8,
+   "text": "pair_style",
+   "style": "pair_style local/density",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w231co_lubricate_nolog_fld",
+   "line": 18,
+   "text": "pair_style lubricate 1.5 0 1 0.61",
+   "style": "pair_style lubricate",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w231co_lubricate_poly",
+   "line": 21,
+   "text": "pair_style lubricate/poly 1.5 1 1 0.61",
+   "style": "pair_style lubricate/poly",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w231co_lubricateU_flaglog0",
+   "line": 16,
+   "text": "pair_style lubricateU 1.5 0 2.01 2.5 0.01 1",
+   "style": "pair_style lubricateU",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w231co_lubricateU_poly",
+   "line": 22,
+   "text": "pair_style lubricateU/poly 1.5 1 2.01 2.5 0.01 1",
+   "style": "pair_style lubricateU/poly",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w33meamtrip_dim",
+   "line": 12,
+   "text": "pair_style",
+   "style": "pair_style meam",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w128ms_msmeam",
+   "line": 16,
+   "text": "pair_style",
+   "style": "pair_style meam/ms",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w47ms_si_min",
+   "line": 14,
+   "text": "pair_style",
+   "style": "pair_style meam/spline",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w47ms_sw_ti_run",
+   "line": 18,
+   "text": "pair_style",
+   "style": "pair_style meam/sw/spline",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w157mt_bond_angle",
+   "line": 11,
+   "text": "pair_style mesocnt 40 chain",
+   "style": "pair_style mesocnt",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w157mt_viscous",
+   "line": 15,
+   "text": "pair_style mesocnt/viscous 40 chain",
+   "style": "pair_style mesocnt/viscous",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w212mg_vacmin",
+   "line": 16,
+   "text": "pair_style",
+   "style": "pair_style mgpt",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w1ljx_mie",
+   "line": 20,
+   "text": "pair_style mie/cut",
+   "style": "pair_style mie/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w37so3_dimer",
+   "line": 12,
+   "text": "pair_style mliap model linear w37so3_dimer.mliap.model descriptor so3",
+   "style": "pair_style mliap",
+   "native": "ERROR: Illegal pair_style mliap descriptor so3 command: missing argument(s)"
+  },
+  {
+   "case": "w115p_mm3_mof5",
+   "line": 8,
+   "text": "pair_style mm3/switch3/coulgauss/long 12.0000",
+   "style": "pair_style mm3/switch3/coulgauss/long",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w49pb_momb_md",
+   "line": 22,
+   "text": "pair_style momb 12.0 0.75",
+   "style": "pair_style momb",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w88pair_tail_morse",
+   "line": 9,
+   "text": "pair_style morse",
+   "style": "pair_style morse",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w220xp_morse_smooth_linear",
+   "line": 15,
+   "text": "pair_style morse/smooth/linear",
+   "style": "pair_style morse/smooth/linear",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w69fep_morse",
+   "line": 15,
+   "text": "pair_style morse/soft 2 0.8",
+   "style": "pair_style morse/soft",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w142mx_multi_lucy_lookup",
+   "line": 25,
+   "text": "pair_style multi/lucy lookup",
+   "style": "pair_style multi/lucy",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w10nb3b_harmonic",
+   "line": 21,
+   "text": "pair_style",
+   "style": "pair_style nb3b/harmonic",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w38nb3b_screened_random",
+   "line": 13,
+   "text": "pair_style",
+   "style": "pair_style nb3b/screened",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w220xp_nm_cut",
+   "line": 15,
+   "text": "pair_style nm/cut",
+   "style": "pair_style nm/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_cut",
+   "line": 17,
+   "text": "pair_style nm/cut/coul/cut 2.5",
+   "style": "pair_style nm/cut/coul/cut",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_long",
+   "line": 15,
+   "text": "pair_style nm/cut/coul/long 2.5",
+   "style": "pair_style nm/cut/coul/long",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w220xp_nm_cut_split_tail",
+   "line": 15,
+   "text": "pair_style nm/cut/split",
+   "style": "pair_style nm/cut/split",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w62brown_point3d",
+   "line": 11,
+   "text": "pair_style",
+   "style": "pair_style none",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 12,
+   "text": "pair_style",
+   "style": "pair_style oxdna/excv",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 17,
+   "text": "pair_style",
+   "style": "pair_style oxdna2/excv",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w270ya_pace_yace_cu",
+   "line": 14,
+   "text": "pair_style",
+   "style": "pair_style pace",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w48pb_pedone_triclinic",
+   "line": 22,
+   "text": "pair_style pedone",
+   "style": "pair_style pedone",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w107peri_eps_block",
+   "line": 12,
+   "text": "pair_style",
+   "style": "pair_style peri/eps",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w22peri_lps_data",
+   "line": 9,
+   "text": "pair_style",
+   "style": "pair_style peri/lps",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w22peri_pmb_data",
+   "line": 9,
+   "text": "pair_style",
+   "style": "pair_style peri/pmb",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w107peri_ves_block",
+   "line": 12,
+   "text": "pair_style",
+   "style": "pair_style peri/ves",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w128pod_ta_static",
+   "line": 17,
+   "text": "pair_style",
+   "style": "pair_style pod",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w223mb_poly_cuta_eam",
+   "line": 19,
+   "text": "pair_style",
+   "style": "pair_style polymorphic",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w55reax_water",
+   "line": 8,
+   "text": "pair_style reaxff NULL checkqeq",
+   "style": "pair_style reaxff",
+   "native": "ERROR: Illegal pair_style reaxff command"
+  },
+  {
+   "case": "w52airebo_rebo_ethane",
+   "line": 8,
+   "text": "pair_style",
+   "style": "pair_style rebo",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w115p_rebomos",
+   "line": 10,
+   "text": "pair_style",
+   "style": "pair_style rebomos",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w133mf_region_ees",
+   "line": 12,
+   "text": "pair_style resquared",
+   "style": "pair_style resquared",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 20,
+   "text": "pair_style rheo 3.0 artificial/visc",
+   "style": "pair_style rheo",
+   "native": "ERROR: Illegal pair rheo artificial/visc command: missing argument(s)"
+  },
+  {
+   "case": "w96rheo_pair_solid",
+   "line": 20,
+   "text": "pair_style",
+   "style": "pair_style rheo/solid",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 67,
+   "text": "pair_style",
+   "style": "pair_style smd/tlsph",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w189sq_al2o3",
+   "line": 20,
+   "text": "pair_style",
+   "style": "pair_style smtbq",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w33snapchem_pair",
+   "line": 15,
+   "text": "pair_style",
+   "style": "pair_style snap",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_shift_soft",
+   "line": 9,
+   "text": "pair_style soft",
+   "style": "pair_style soft",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 19,
+   "text": "pair_style",
+   "style": "pair_style sph/heatconduction",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w228gs_sph_lj",
+   "line": 9,
+   "text": "pair_style",
+   "style": "pair_style sph/lj",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 16,
+   "text": "pair_style spin/dipole/long",
+   "style": "pair_style spin/dipole/long",
+   "native": "ERROR: Incorrect number of args in pair_style pair/spin command"
+  },
+  {
+   "case": "w48sp2_dmi",
+   "line": 20,
+   "text": "pair_style spin/dmi",
+   "style": "pair_style spin/dmi",
+   "native": "ERROR: Incorrect number of args in pair_style pair/spin command"
+  },
+  {
+   "case": "w47spin_moving2",
+   "line": 13,
+   "text": "pair_style spin/exchange",
+   "style": "pair_style spin/exchange",
+   "native": "ERROR: Incorrect number of args in pair_style pair/spin command"
+  },
+  {
+   "case": "w48sp2_biquad",
+   "line": 20,
+   "text": "pair_style spin/exchange/biquadratic",
+   "style": "pair_style spin/exchange/biquadratic",
+   "native": "ERROR: Incorrect number of args in pair_style pair/spin command"
+  },
+  {
+   "case": "w48sp2_magelec",
+   "line": 20,
+   "text": "pair_style spin/magelec",
+   "style": "pair_style spin/magelec",
+   "native": "ERROR: Incorrect number of args in pair_style pair/spin command"
+  },
+  {
+   "case": "w2tsw_sw",
+   "line": 18,
+   "text": "pair_style",
+   "style": "pair_style sw",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w49mt_swang_spline",
+   "line": 15,
+   "text": "pair_style",
+   "style": "pair_style sw/angle/table",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w22pot_sw_mod_mos",
+   "line": 20,
+   "text": "pair_style",
+   "style": "pair_style sw/mod",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w113cf_benzene_table_spline",
+   "line": 9,
+   "text": "pair_style table spline",
+   "style": "pair_style table",
+   "native": "ERROR: Illegal pair_style table command: missing argument(s)"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 17,
+   "text": "pair_style tdpd 1.0 1.58",
+   "style": "pair_style tdpd",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w2tsw_tersoff",
+   "line": 18,
+   "text": "pair_style",
+   "style": "pair_style tersoff",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w22pot_tersoff_mod_si",
+   "line": 17,
+   "text": "pair_style",
+   "style": "pair_style tersoff/mod",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w22pot_tersoff_modc_si",
+   "line": 17,
+   "text": "pair_style",
+   "style": "pair_style tersoff/mod/c",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w223mb_tersoff_table_si",
+   "line": 16,
+   "text": "pair_style",
+   "style": "pair_style tersoff/table",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w108xf_elfit_sisi",
+   "line": 10,
+   "text": "pair_style",
+   "style": "pair_style tersoff/zbl",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w49mt_tri_edge",
+   "line": 13,
+   "text": "pair_style",
+   "style": "pair_style threebody/table",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 122,
+   "text": "pair_style tip4p/long/soft 1 2 1 1 0.15 1 0.5",
+   "style": "pair_style tip4p/long/soft",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w61tri_pair",
+   "line": 8,
+   "text": "pair_style tri/lj",
+   "style": "pair_style tri/lj",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w146uf3_nb3b",
+   "line": 12,
+   "text": "pair_style uf3",
+   "style": "pair_style uf3",
+   "native": "ERROR: Invalid number of arguments for pair_style uf3  Are you using a 2-body or 2 & 3-body UF potential?"
+  },
+  {
+   "case": "w219xp_ufm",
+   "line": 14,
+   "text": "pair_style ufm",
+   "style": "pair_style ufm",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w5vash_si",
+   "line": 18,
+   "text": "pair_style",
+   "style": "pair_style vashishta",
+   "native": "ERROR: Illegal pair_style command: missing argument(s)"
+  },
+  {
+   "case": "w472vashtable_runs",
+   "line": 12,
+   "text": "pair_style vashishta/table 2000",
+   "style": "pair_style vashishta/table",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w219xp_wf_cut",
+   "line": 14,
+   "text": "pair_style wf/cut",
+   "style": "pair_style wf/cut",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 20,
+   "text": "pair_style ylz",
+   "style": "pair_style ylz",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w88pair_tail_yukawa",
+   "line": 9,
+   "text": "pair_style yukawa 1.0",
+   "style": "pair_style yukawa",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w5yukawa_colloid",
+   "line": 20,
+   "text": "pair_style yukawa/colloid 2.0",
+   "style": "pair_style yukawa/colloid",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w15snap_grid_local",
+   "line": 16,
+   "text": "pair_style zbl 4",
+   "style": "pair_style zbl",
+   "native": "ERROR: Illegal pair_style command"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 8,
+   "text": "pair_style zero",
+   "style": "pair_style zero",
+   "native": "ERROR: Illegal pair_style zero command: missing argument(s)"
+  },
+  {
+   "case": "w40ksp_zerocoul_zero",
+   "line": 21,
+   "text": "pair_style zero/coul",
+   "style": "pair_style zero/coul",
+   "native": "ERROR: Illegal pair_style zero command: missing argument(s)"
+  },
+  {
+   "case": "w255pw_lj_r",
+   "line": 12,
+   "text": "pair_write 1 1 50 r 0.8 3.0 w255pw_lj_r.table",
+   "style": "pair_write",
+   "native": "ERROR: Illegal pair_write command"
+  },
+  {
+   "case": "w248pt_partition",
+   "line": 7,
+   "text": "partition yes 1 region box block 0 3 0 3 0",
+   "style": "partition",
+   "native": "ERROR: Illegal region command: missing argument(s)"
+  },
+  {
+   "case": "w312prd_vel_local",
+   "line": 33,
+   "text": "prd 200 20 2 2 40 1 54985 temp 1800.0 min 1.0e-5 1.0e-5 100 100 vel local",
+   "style": "prd",
+   "native": "ERROR: Illegal prd command"
+  },
+  {
+   "case": "w145pr_pair_extep",
+   "line": 10,
+   "text": "processors * *",
+   "style": "processors",
+   "native": "ERROR: Illegal processors command"
+  },
+  {
+   "case": "w47qm_fire",
+   "line": 4,
+   "text": "read_data",
+   "style": "read_data",
+   "native": "ERROR: Illegal read_data command: missing argument(s)"
+  },
+  {
+   "case": "w224mc_bondcreateangle",
+   "line": 6,
+   "text": "read_data w224mc_bondcreateangle_chains.data extra/bond/per/atom 6 extra/angle/per/atom 6 extra/special/per/atom",
+   "style": "read_data extra/bond/per/atom",
+   "native": "ERROR: Illegal read_data extra/special/per/atom command: missing argument(s)"
+  },
+  {
+   "case": "w224mc_bondswap_fene_angle",
+   "line": 6,
+   "text": "read_data w224mc_bondswap_angles.data extra/special/per/atom",
+   "style": "read_data extra/special/per/atom",
+   "native": "ERROR: Illegal read_data extra/special/per/atom command: missing argument(s)"
+  },
+  {
+   "case": "w6prop_read",
+   "line": 7,
+   "text": "read_data w6prop_read.data fix pr NULL",
+   "style": "read_data fix",
+   "native": "ERROR: Illegal read_data fix command: missing argument(s)"
+  },
+  {
+   "case": "w9rerun_boxadd",
+   "line": 13,
+   "text": "read_dump w9rerun_readdump.dump 10 x y z vx vy vz ix iy iz box no add",
+   "style": "read_dump",
+   "native": "ERROR: Illegal read_dump add command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 5,
+   "text": "region box block 0 4 0 4 0",
+   "style": "region block",
+   "native": "ERROR: Illegal region command: missing argument(s)"
+  },
+  {
+   "case": "w13gran_region_cone",
+   "line": 8,
+   "text": "region reg cone z 0.0 0.0 1.5 3.0 0.3 6.0 side in units",
+   "style": "region cone",
+   "native": "ERROR: Illegal region units command: missing argument(s)"
+  },
+  {
+   "case": "w165mc_deposit_cyl",
+   "line": 8,
+   "text": "region drop cylinder z 0 0 3 4 9 side",
+   "style": "region cylinder",
+   "native": "ERROR: Illegal region side command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_region2vmd",
+   "line": 15,
+   "text": "region rell ellipsoid 1.0 1.5 1.2 0.6 0.4",
+   "style": "region ellipsoid",
+   "native": "ERROR: Illegal region command: missing argument(s)"
+  },
+  {
+   "case": "w22rwall_gran_intersect",
+   "line": 11,
+   "text": "region I intersect 2 A",
+   "style": "region intersect",
+   "native": "ERROR: Illegal region intersect command: missing argument(s)"
+  },
+  {
+   "case": "w31plane_rotate",
+   "line": 16,
+   "text": "region pl plane 0.0 0.0 0.0 1.0 0.0 0.0 side in rotate v_theta 0.0 0.0 0.0 0.0 0.0",
+   "style": "region plane",
+   "native": "ERROR: Illegal region rotate command: missing argument(s)"
+  },
+  {
+   "case": "w378balance_out_tri2d",
+   "line": 7,
+   "text": "region box prism 0 6 0 5 -0.5 0.5 1.7 0",
+   "style": "region prism",
+   "native": "ERROR: Illegal region command: missing argument(s)"
+  },
+  {
+   "case": "w85setup_ca_maxtry",
+   "line": 6,
+   "text": "region sph sphere 2 2 2 0.4 units",
+   "style": "region sphere",
+   "native": "ERROR: Illegal region units command: missing argument(s)"
+  },
+  {
+   "case": "w198wr_region_exhaust",
+   "line": 15,
+   "text": "region sparse union 2 s1",
+   "style": "region union",
+   "native": "ERROR: Illegal region union command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_region2vmd",
+   "line": 17,
+   "text": "region2vmd r2v_blocks.tcl color red material Glossy region rinf region",
+   "style": "region2vmd",
+   "native": "ERROR: Illegal region2vmd command: missing argument(s)"
+  },
+  {
+   "case": "w52airebo_airebo_00",
+   "line": 7,
+   "text": "replicate 2 2",
+   "style": "replicate",
+   "native": "ERROR: Illegal number of arguments for replicate command"
+  },
+  {
+   "case": "w104cf_reset_id",
+   "line": 10,
+   "text": "reset_atoms",
+   "style": "reset_atoms",
+   "native": "CRASH rc=1",
+   "skip": "native LAMMPS crashes (CRASH rc=1)"
+  },
+  {
+   "case": "w85setup_reset_time",
+   "line": 17,
+   "text": "reset_timestep",
+   "style": "reset_timestep",
+   "native": "ERROR: Illegal reset_timestep command: missing argument(s)"
+  },
+  {
+   "case": "w40core_restart_lj",
+   "line": 15,
+   "text": "restart 25",
+   "style": "restart",
+   "native": "ERROR: Illegal restart command"
+  },
+  {
+   "case": "w37respa_bond",
+   "line": 17,
+   "text": "run_style respa 2",
+   "style": "run_style respa",
+   "native": "ERROR: Not enough rRESPA loop factors provided"
+  },
+  {
+   "case": "w319dpd_ext_tstat_ramp",
+   "line": 14,
+   "text": "run_style",
+   "style": "run_style verlet",
+   "native": "ERROR: Illegal run_style command: missing argument(s)"
+  },
+  {
+   "case": "w303vsplit_pppm",
+   "line": 23,
+   "text": "run_style",
+   "style": "run_style verlet/split",
+   "native": "ERROR: Illegal run_style command: missing argument(s)"
+  },
+  {
+   "case": "w304vsplit_rk",
+   "line": 23,
+   "text": "run_style",
+   "style": "run_style verlet/split/rk",
+   "native": "ERROR: Illegal run_style command: missing argument(s)"
+  },
+  {
+   "case": "w48bd_free",
+   "line": 7,
+   "text": "set atom 1 angmom 0.4 -0.3",
+   "style": "set angmom",
+   "native": "ERROR: Illegal set angmom command: missing argument(s)"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 18,
+   "text": "set group all apip/lambda",
+   "style": "set apip/lambda",
+   "native": "ERROR: Illegal set command: missing argument(s)",
+   "build": "APIP"
+  },
+  {
+   "case": "w80superell_ellipsoid_gran",
+   "line": 22,
+   "text": "set type 1 block 2.0",
+   "style": "set block",
+   "native": "ERROR: Illegal set block command: missing argument(s)"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 15,
+   "text": "set atom * cc 1",
+   "style": "set cc",
+   "native": "ERROR: Illegal set cc command: missing argument(s)"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 12,
+   "text": "set atom 1 charge",
+   "style": "set charge",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w9restart_propatom",
+   "line": 19,
+   "text": "set atom * d2_vec[1]",
+   "style": "set d2_vec[1]",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w9restart_propatom",
+   "line": 20,
+   "text": "set atom * d2_vec[2]",
+   "style": "set d2_vec[2]",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w6prop_basic",
+   "line": 25,
+   "text": "set group all d2_vec[3]",
+   "style": "set d2_vec[3]",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 31,
+   "text": "set atom * d_co",
+   "style": "set d_co",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 32,
+   "text": "set atom * d_co2",
+   "style": "set d_co2",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 27,
+   "text": "set group all d_ddnx",
+   "style": "set d_ddnx",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 28,
+   "text": "set group all d_ddny",
+   "style": "set d_ddny",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 29,
+   "text": "set group all d_ddnz",
+   "style": "set d_ddnz",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 24,
+   "text": "set group all d_dnx",
+   "style": "set d_dnx",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 25,
+   "text": "set group all d_dny",
+   "style": "set d_dny",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 26,
+   "text": "set group all d_dnz",
+   "style": "set d_dnz",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w68elec_madelung_eta_cg",
+   "line": 18,
+   "text": "set group bot d_eta",
+   "style": "set d_eta",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 25,
+   "text": "set atom * d_h2",
+   "style": "set d_h2",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 30,
+   "text": "set atom * d_h2o",
+   "style": "set d_h2o",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 28,
+   "text": "set atom * d_hcn",
+   "style": "set d_hcn",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 27,
+   "text": "set atom * d_n2",
+   "style": "set d_n2",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 29,
+   "text": "set atom * d_no",
+   "style": "set d_no",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 26,
+   "text": "set atom * d_no2",
+   "style": "set d_no2",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 21,
+   "text": "set group all d_nx",
+   "style": "set d_nx",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 22,
+   "text": "set group all d_ny",
+   "style": "set d_ny",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 23,
+   "text": "set group all d_nz",
+   "style": "set d_nz",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 24,
+   "text": "set atom * d_rdx",
+   "style": "set d_rdx",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w9restart_propatom",
+   "line": 18,
+   "text": "set atom * d_val",
+   "style": "set d_val",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 21,
+   "text": "set group all d_vfrac",
+   "style": "set d_vfrac",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w4sphere_data",
+   "line": 10,
+   "text": "set atom 3 density",
+   "style": "set density",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w4sphere_disc",
+   "line": 8,
+   "text": "set group all density/disc",
+   "style": "set density/disc",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w84lang_omega_sphere",
+   "line": 9,
+   "text": "set group all diameter 1.0 density",
+   "style": "set diameter",
+   "native": "ERROR: Illegal set density command: missing argument(s)"
+  },
+  {
+   "case": "w17chunk_pointdipole",
+   "line": 8,
+   "text": "set group all dipole 0.3 -0.2",
+   "style": "set dipole",
+   "native": "ERROR: Illegal set dipole command: missing argument(s)"
+  },
+  {
+   "case": "w62brown_sphere3dplanar",
+   "line": 10,
+   "text": "set type * dipole/random 77",
+   "style": "set dipole/random",
+   "native": "ERROR: Illegal set dipole/random command: missing argument(s)"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 35,
+   "text": "set atom * dpd/theta",
+   "style": "set dpd/theta",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 15,
+   "text": "set atom * edpd/cv",
+   "style": "set edpd/cv",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 14,
+   "text": "set atom * edpd/temp",
+   "style": "set edpd/temp",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w210md_confined_gmres",
+   "line": 14,
+   "text": "set group cations epsilon",
+   "style": "set epsilon",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w8group_dynamic_prop",
+   "line": 30,
+   "text": "set region ss i_flag",
+   "style": "set i_flag",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w215cfg_dump",
+   "line": 12,
+   "text": "set atom 3*6 image 1 -2",
+   "style": "set image",
+   "native": "ERROR: Illegal set image command: missing argument(s)"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 11,
+   "text": "set atom * mass",
+   "style": "set mass",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w30widom_molno",
+   "line": 17,
+   "text": "set atom 1 mol",
+   "style": "set mol",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w4sphere_data",
+   "line": 12,
+   "text": "set atom 5 omega 0.1 0.2",
+   "style": "set omega",
+   "native": "ERROR: Illegal set omega command: missing argument(s)"
+  },
+  {
+   "case": "w143cf_prop_tri",
+   "line": 11,
+   "text": "set atom 1 quat 0 0 1",
+   "style": "set quat",
+   "native": "ERROR: Illegal set quat command: missing argument(s)"
+  },
+  {
+   "case": "w62brown_asphere3d",
+   "line": 10,
+   "text": "set type * quat/random",
+   "style": "set quat/random",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 14,
+   "text": "set group all rheo/rho",
+   "style": "set rheo/rho",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w96rheo_pair_solid",
+   "line": 17,
+   "text": "set group all rheo/status",
+   "style": "set rheo/status",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 10,
+   "text": "set atom * shape 1.0 1.0",
+   "style": "set shape",
+   "native": "ERROR: Illegal set shape command: missing argument(s)"
+  },
+  {
+   "case": "w100smd_rubber_rings",
+   "line": 36,
+   "text": "set group all smd/contact/radius",
+   "style": "set smd/contact/radius",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 15,
+   "text": "set region left sph/e",
+   "style": "set sph/e",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 17,
+   "text": "set group all sph/rho",
+   "style": "set sph/rho",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w103spin_iron_ewald_nve",
+   "line": 15,
+   "text": "set group all spin 2.2 -1.0 0.0",
+   "style": "set spin",
+   "native": "ERROR: Illegal set spin/atom command: missing argument(s)"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 11,
+   "text": "set atom 1 spin/atom 2.2 1.0 0.3",
+   "style": "set spin/atom",
+   "native": "ERROR: Illegal set spin/atom command: missing argument(s)"
+  },
+  {
+   "case": "w52rng_spin3d",
+   "line": 9,
+   "text": "set group all spin/atom/random 4321",
+   "style": "set spin/atom/random",
+   "native": "ERROR: Illegal set spin/atom/random command: missing argument(s)"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 13,
+   "text": "set group all spin/random 11",
+   "style": "set spin/random",
+   "native": "ERROR: Illegal set spin/atom/random command: missing argument(s)"
+  },
+  {
+   "case": "w437dyngroup_bpm_heat",
+   "line": 12,
+   "text": "set group all temperature",
+   "style": "set temperature",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "dump_formats",
+   "line": 8,
+   "text": "set atom 3 type",
+   "style": "set type",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_shift_soft",
+   "line": 8,
+   "text": "set group all type/fraction 2 0.3",
+   "style": "set type/fraction",
+   "native": "ERROR: Illegal set type/fraction command: missing argument(s)"
+  },
+  {
+   "case": "w52rng_type_ratio",
+   "line": 11,
+   "text": "set group left type/ratio 2 0.37",
+   "style": "set type/ratio",
+   "native": "ERROR: Illegal set type/ratio command: missing argument(s)"
+  },
+  {
+   "case": "w52rng_type_subset",
+   "line": 9,
+   "text": "set group all type/subset 3 40",
+   "style": "set type/subset",
+   "native": "ERROR: Illegal set type/subset command: missing argument(s)"
+  },
+  {
+   "case": "w22peri_pmb_block",
+   "line": 14,
+   "text": "set group all volume",
+   "style": "set volume",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w51bpm_pair_anh",
+   "line": 14,
+   "text": "set atom 1 vx",
+   "style": "set vx",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w131cf_bpm_bond_extra",
+   "line": 16,
+   "text": "set atom 2 vy",
+   "style": "set vy",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w42rfs_wall_gran",
+   "line": 21,
+   "text": "set group clump vz",
+   "style": "set vz",
+   "native": "ERROR: Illegal set command: missing argument(s)"
+  },
+  {
+   "case": "w53bpm_rot_stretch",
+   "line": 22,
+   "text": "set atom 2 x 1.2 vx",
+   "style": "set x",
+   "native": "ERROR: Illegal set vx command: missing argument(s)"
+  },
+  {
+   "case": "w35c2imp",
+   "line": 10,
+   "text": "special_bonds lj 0.0 0.5",
+   "style": "special_bonds",
+   "native": "ERROR: Illegal special_bonds command"
+  },
+  {
+   "case": "w54accel_suffix",
+   "line": 3,
+   "text": "suffix",
+   "style": "suffix",
+   "native": "ERROR: Illegal suffix command: missing argument(s)"
+  },
+  {
+   "case": "w305tad_fire",
+   "line": 35,
+   "text": "tad 200 20 1200.0 1600.0 0.05 0.001 event min 1.0e-5 1.0e-5 100 100 neb 0.0 0.01 20 20 5 neb_style",
+   "style": "tad",
+   "native": "ERROR: Cannot use TAD with a single replica for NEB"
+  },
+  {
+   "case": "w47qm_fire",
+   "line": 12,
+   "text": "thermo",
+   "style": "thermo",
+   "native": "ERROR: Illegal thermo command"
+  },
+  {
+   "case": "w40fmt_colname",
+   "line": 16,
+   "text": "thermo_modify colname",
+   "style": "thermo_modify colname",
+   "native": "ERROR: Illegal thermo_modify colname command: missing argument(s)"
+  },
+  {
+   "case": "w71diel_nopbc_icc",
+   "line": 21,
+   "text": "thermo_modify flush yes format float",
+   "style": "thermo_modify flush",
+   "native": "ERROR: Illegal thermo_modify format command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 13,
+   "text": "thermo_modify format float",
+   "style": "thermo_modify format",
+   "native": "ERROR: Illegal thermo_modify format command: missing argument(s)"
+  },
+  {
+   "case": "w102il_leb_2particles",
+   "line": 20,
+   "text": "thermo_modify lost",
+   "style": "thermo_modify lost",
+   "native": "ERROR: Illegal thermo_modify lost command: missing argument(s)"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 41,
+   "text": "thermo_modify lost/bond",
+   "style": "thermo_modify lost/bond",
+   "native": "ERROR: Illegal thermo_modify lost/bond command: missing argument(s)"
+  },
+  {
+   "case": "w89fix_avetime_nonorm",
+   "line": 17,
+   "text": "thermo_modify norm no format float",
+   "style": "thermo_modify norm",
+   "native": "ERROR: Illegal thermo_modify format command: missing argument(s)"
+  },
+  {
+   "case": "w108xf_grem_npt",
+   "line": 14,
+   "text": "thermo_modify press",
+   "style": "thermo_modify press",
+   "native": "ERROR: Illegal thermo_modify press command: missing argument(s)"
+  },
+  {
+   "case": "w230re_eff_langevin",
+   "line": 18,
+   "text": "thermo_modify temp effTemp format float",
+   "style": "thermo_modify temp",
+   "native": "ERROR: Illegal thermo_modify format command: missing argument(s)"
+  },
+  {
+   "case": "w19trigen_thermo",
+   "line": 10,
+   "text": "thermo_modify triclinic/general",
+   "style": "thermo_modify triclinic/general",
+   "native": "ERROR: Illegal thermo_modify tricinic/general command: missing argument(s)"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 12,
+   "text": "thermo_style custom step pe evdwl",
+   "style": "thermo_style custom",
+   "native": "OK"
+  },
+  {
+   "case": "w241to_lj_fold",
+   "line": 23,
+   "text": "third_order all regular 0.01 file w241to_lj_fold.dat fold",
+   "style": "third_order",
+   "native": "ERROR: Illegal Third Order command"
+  },
+  {
+   "case": "w49hy_halt_min",
+   "line": 23,
+   "text": "timer timeout",
+   "style": "timer",
+   "native": "ERROR: Illegal timer timeout command: missing argument(s)"
+  },
+  {
+   "case": "w47qm_fire",
+   "line": 9,
+   "text": "timestep",
+   "style": "timestep",
+   "native": "ERROR: Timestep command expects exactly one argument"
+  },
+  {
+   "case": "w31voronp_surface",
+   "line": 18,
+   "text": "uncompute",
+   "style": "uncompute",
+   "native": "ERROR: Uncompute command expects exactly one argument"
+  },
+  {
+   "case": "w427readdump_shrink",
+   "line": 19,
+   "text": "undump",
+   "style": "undump",
+   "native": "ERROR: Undump command expects exactly one argument"
+  },
+  {
+   "case": "w33gcmc_real_lambda",
+   "line": 16,
+   "text": "unfix",
+   "style": "unfix",
+   "native": "ERROR: Unfix command expects exactly one argument"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 2,
+   "text": "units",
+   "style": "units",
+   "native": "ERROR: Illegal units command: expected 1 argument but found 0"
+  },
+  {
+   "case": "w97tri_velgeom",
+   "line": 7,
+   "text": "velocity all create 1.44 87287 loop",
+   "style": "velocity create",
+   "native": "ERROR: Illegal velocity loop command: missing argument(s)"
+  },
+  {
+   "case": "w48cb_tp_nvt",
+   "line": 10,
+   "text": "velocity all ramp vx 0.0 1.0 x 0.5 6.5 units",
+   "style": "velocity ramp",
+   "native": "ERROR: Illegal velocity units command: missing argument(s)"
+  },
+  {
+   "case": "w26velbias_create_cs",
+   "line": 20,
+   "text": "velocity all scale 1427.0 temp",
+   "style": "velocity scale",
+   "native": "ERROR: Illegal velocity temp command: missing argument(s)"
+  },
+  {
+   "case": "w18fix_oneway",
+   "line": 14,
+   "text": "velocity all set v_vx v_vy",
+   "style": "velocity set",
+   "native": "ERROR: Illegal velocity command: missing argument(s)"
+  },
+  {
+   "case": "w16lepton_shift",
+   "line": 12,
+   "text": "velocity all zero",
+   "style": "velocity zero",
+   "native": "ERROR: Illegal velocity command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_write_coeff_hybrid",
+   "line": 17,
+   "text": "write_coeff",
+   "style": "write_coeff",
+   "native": "ERROR: Illegal write_coeff command: missing argument(s)"
+  },
+  {
+   "case": "dump_formats",
+   "line": 18,
+   "text": "write_data",
+   "style": "write_data",
+   "native": "ERROR: Illegal write_data command: missing argument(s)"
+  },
+  {
+   "case": "w9pair_ljsf",
+   "line": 31,
+   "text": "write_data w9pair_ljsf_out.data pair",
+   "style": "write_data pair",
+   "native": "ERROR: Illegal write_data pair command: missing argument(s)"
+  },
+  {
+   "case": "w19trigen_general",
+   "line": 6,
+   "text": "write_data w19trigen_general_out.data",
+   "style": "write_data triclinic/general",
+   "native": "OK"
+  },
+  {
+   "case": "w90label_rt",
+   "line": 18,
+   "text": "write_data w90label_types.data types labels",
+   "style": "write_data types",
+   "native": "OK"
+  },
+  {
+   "case": "w36mol_diam",
+   "line": 22,
+   "text": "write_dump all custom w36mol_diam.dump id type x y z radius mass modify format float %.15g sort",
+   "style": "write_dump",
+   "native": "ERROR: Illegal dump_modify sort command: missing argument(s)"
+  },
+  {
+   "case": "w225cm_write_molecule",
+   "line": 9,
+   "text": "write_molecule water",
+   "style": "write_molecule",
+   "native": "ERROR: Illegal write_molecule command: missing argument(s)"
+  },
+  {
+   "case": "w89fix_nvt_restart",
+   "line": 18,
+   "text": "write_restart",
+   "style": "write_restart",
+   "native": "ERROR: Illegal write_restart command: missing argument(s)"
+  }
+ ]
+}

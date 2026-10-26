@@ -10,7 +10,7 @@
  * mdpd/rhosum (listed first in the hybrid/overlay) sums the density of each owned atom over its full neighbor list with the
  * quintic weight function of the source, rho_i = sum_j m_j w(r_ij); the density of a ghost is that of its owner.
  */
-import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, pairCoeffArgs, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseInt_, parseNum } from '../../engine/force/util';
 import { MDPD_RHO, isMdpdStyle } from '../../engine/atoms';
@@ -161,7 +161,7 @@ export class PairMDPDRhoSum extends Pair {
 
   coeff(args: string[]): void {
     // pair_mdpd_rhosum.cpp coeff(): "narg != 3" is an error; the one value is the cutoff of the density
-    if (args.length !== 3) throw new StyleError('Incorrect args for pair coefficients');
+    if (args.length !== 3) throw pairCoeffArgs(undefined, 'Incorrect number of args for mdpd/rhosum coefficients');
     if (!this.p) throw new StyleError('pair_coeff before the box is defined');
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);

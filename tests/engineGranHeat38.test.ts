@@ -74,10 +74,11 @@ describe('pair_style granular heat keyword: parsing', () => {
   });
 
   it('refuses a missing, unknown or negative heat model value', () => {
-    expect(() => parseGranularSpec([...base, 'heat'])).toThrow(/heat/);
-    expect(() => parseGranularSpec([...base, 'heat', 'area'])).toThrow(/heat area/);
-    expect(() => parseGranularSpec([...base, 'heat', 'foo', '1'])).toThrow(/unknown heat model 'foo'/);
-    expect(() => parseGranularSpec([...base, 'heat', 'area', '-0.5'])).toThrow(/must be >= 0/);
+    // src/GRANULAR/granular_model.cpp add_sub_model and gran_sub_mod_heat.cpp at b332f28
+    expect(() => parseGranularSpec([...base, 'heat'])).toThrow('Must specify granular sub model name');
+    expect(() => parseGranularSpec([...base, 'heat', 'area'])).toThrow('Insufficient arguments provided for area model');
+    expect(() => parseGranularSpec([...base, 'heat', 'foo', '1'])).toThrow('Illegal model type foo');
+    expect(() => parseGranularSpec([...base, 'heat', 'area', '-0.5'])).toThrow('Illegal area heat model');
     expect(() => parseGranularSpec([...base, 'heat', 'radius', 'abc'])).toThrow();
   });
 

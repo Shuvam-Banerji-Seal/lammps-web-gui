@@ -1,7 +1,8 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, pairCoeffArgs, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { buildAtomMap } from '../../atoms';
-import { parseNum } from '../util';
+import { inumeric, numeric, parseNum } from '../util';
+import { fmtShortest } from '../../cformat';
 import { libm } from '../../libm';
 
 /*
@@ -143,32 +144,37 @@ export class PairHbondDreiding extends Pair {
    * method as [I, J, K, flag, params...] (hybrid removes the style name).
    */
   coeff(args: string[]): void {
-    const nparam = this.variant === 'lj' ? [2, 6] : [3, 7];
-    if (this.offset) nparam[1] += 1;
-    if (args.length < 4 + nparam[0] || args.length > 4 + nparam[1]) {
-      throw new StyleError(`pair_coeff for ${this.name}: expected I J K i|j with ${nparam[0]} to ${nparam[1]} parameters`);
-    }
+    // As native LAMMPS does (src/MOLECULE/pair_hbond_dreiding_lj.cpp and pair_hbond_dreiding_morse.cpp, and the
+    // EXTRA-MOLECULE angleoffset variants, coeff at b332f28): 6 to 10 words for lj (11 with the offset), 7 to 12 for
+    // morse (a 12th word of plain morse is not read); I J K; the donor flag i or j; then epsilon sigma (D0 alpha r0) by
+    // utils::numeric, n by utils::inumeric, the inner and outer cutoffs as a pair (inner above outer refused), the
+    // angle cutoff, and for the variants the equilibrium angle (180 minus it, in 0..90 degrees)
+    const lj = this.variant === 'lj';
+    const k0 = lj ? 6 : 7;
+    const maxWords = lj ? (this.offset ? 11 : 10) : 12;
+    if (args.length < k0 || args.length > maxWords) throw pairCoeffArgs();
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     const [hlo, hhi] = typeBounds(args[2], this.ntypes);
     const flag = args[3];
-    if (flag !== 'i' && flag !== 'j') throw new StyleError(`pair_coeff for ${this.name}: donor flag must be i or j, got '${flag}'`);
-    const num = (k: number, what: string) => parseNum(args[4 + k], what);
-    const p1 = num(0, this.variant === 'lj' ? 'epsilon' : 'D0');
-    const p2 = num(1, this.variant === 'lj' ? 'sigma' : 'alpha');
-    let p3 = 0;
-    let k = 2;
-    if (this.variant === 'morse') { p3 = num(2, 'r0'); k = 3; }
-    const nv = args.length - 4 - k;
-    const n = nv > 0 ? Number(args[4 + k]) : this.nGlobal;
-    if (nv > 0 && (!/^\d+$/.test(args[4 + k]))) throw new StyleError(`pair_coeff for ${this.name}: n must be a non-negative integer`);
-    const rin = nv > 1 ? parseNum(args[4 + k + 1], 'inner distance cutoff') : this.rinGlobal;
-    const rout = nv > 2 ? parseNum(args[4 + k + 2], 'outer distance cutoff') : this.routGlobal;
-    const tc = nv > 3 ? parseNum(args[4 + k + 3], 'angle cutoff') : this.tcGlobal;
-    const teq = nv > 4 ? parseNum(args[4 + k + 4], 'equilibrium angle') : this.teqGlobal;
-    this.checkDistances(rin, rout);
-    this.checkAngle(tc, 'angle cutoff');
-    this.checkAngle(teq, 'equilibrium angle');
+    if (flag !== 'i' && flag !== 'j') throw pairCoeffArgs();
+    const p1 = numeric(args[4]);
+    const p2 = numeric(args[5]);
+    const p3 = lj ? 0 : numeric(args[6]);
+    const n = args.length > k0 ? inumeric(args[k0]) : this.nGlobal;
+    let rin = this.rinGlobal, rout = this.routGlobal;
+    if (args.length > k0 + 2) {
+      rin = numeric(args[k0 + 1]);
+      rout = numeric(args[k0 + 2]);
+    }
+    if (rin > rout) throw new StyleError('Pair inner cutoff >= Pair outer cutoff');
+    const tc = args.length > k0 + 3 ? numeric(args[k0 + 3]) : this.tcGlobal;
+    let teq = this.teqGlobal;
+    if (this.offset && args.length === k0 + 5) teq = numeric(args[k0 + 4]);
+    if (this.offset) {
+      const offset = (180.0 - teq) * Math.PI / 180.0;
+      if (offset < 0.0 || offset > 90.0 * Math.PI / 180.0) throw new StyleError(lj ? 'Illegal angle offset' : `Illegal angle offset ${fmtShortest(offset, false)}`);
+    }
     for (let i = ilo; i <= ihi; i++) {
       for (let j = Math.max(jlo, i); j <= jhi; j++) {
         const dtype = flag === 'i' ? i : j;

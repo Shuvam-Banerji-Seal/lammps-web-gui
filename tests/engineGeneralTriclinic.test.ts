@@ -95,10 +95,10 @@ describe('argument errors', () => {
   });
 
   it('create_box NULL needs a triclinic/general lattice and six valid bounds', () => {
-    expect(() => generalCreateBox(null, ['0', '1', '0', '1', '0', '1'])).toThrow(/triclinic\/general/);
+    expect(() => generalCreateBox(null, ['0', '1', '0', '1', '0', '1'])).toThrow('Create_box for general triclinic requires triclnic/general lattice');
     const lat = makeLattice('custom', 1, UNIT_SYSTEMS.metal, 3, ['a1', '1', '0', '0', 'a2', '0', '1', '0', 'a3', '0', '0', '1', 'basis', '0', '0', '0', 'triclinic/general']);
     expect(() => generalCreateBox(lat, ['0', '1', '0', '1'])).toThrow(StyleError);
-    expect(() => generalCreateBox(lat, ['0', 'x', '0', '1', '0', '1'])).toThrow(/expected a number/);
+    expect(() => generalCreateBox(lat, ['0', 'x', '0', '1', '0', '1'])).toThrow("Expected floating point parameter instead of 'x' in input script or data file");
     expect(() => generalCreateBox(lat, ['1', '1', '0', '1', '0', '1'])).toThrow(/exceed/);
     const r = generalCreateBox(lat, ['0', '2', '0', '2', '0', '2']);
     near(r.lo, [0, 0, 0]);

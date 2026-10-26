@@ -2,6 +2,7 @@ import { logical, missingArgs } from '../force/util';
 import type { Ctx, Handler } from './args';
 import { int } from './args';
 import { StyleError } from '../force/types';
+import { errorUrl } from '../formula';
 import { RunCancelled } from '../errors';
 import { emitFrame, ensureThermoComputes } from './run';
 import { initRun, setupRun } from '../run/verlet';
@@ -86,6 +87,9 @@ export const parseRerunArgs = (a: string[]): RerunArgs => {
 
 /** rerun ... — see parseRerunArgs; loads the files, selects snapshots and runs each as a zero-step run. */
 const rerun: Handler = async (ctx: Ctx, a) => {
+  // As native LAMMPS does (src/rerun.cpp Rerun::command at b332f28): a box, then two words at least
+  if (!ctx.sys.hasBox) throw new StyleError(`Rerun command before simulation box is defined${errorUrl(33)}`);
+  if (a.length < 2) throw missingArgs('rerun');
   const args = parseRerunArgs(a);
   const { sys, session } = ctx;
   const files: DumpFile[] = args.files.map((name) => parseDumpFile(name, sys.readFile(name)));
@@ -134,6 +138,9 @@ const rerun: Handler = async (ctx: Ctx, a) => {
 
 /** read_dump file Nstep field1 ... keywords — docs.lammps.org/read_dump.html. */
 const readDump: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/read_dump.cpp ReadDump::command at b332f28): a box, then two words at least
+  if (!sys.hasBox) throw new StyleError(`Read_dump command before simulation box is defined${errorUrl(33)}`);
+  if (a.length < 2) throw missingArgs('read_dump');
   if (a.length < 3) throw new StyleError('usage: read_dump file Nstep field1 field2 ... keyword values ...');
   const [file, nstep] = a;
   const step = int(nstep, 'read_dump Nstep');

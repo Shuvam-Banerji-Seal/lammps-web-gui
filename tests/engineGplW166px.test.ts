@@ -97,7 +97,8 @@ create_atoms 1 single 1.0 1.0 1.0
 pair_style bondval 2.0 8.0
 pair_coeff 1 1 0.0 5.0 0.5
 `);
-    expect(error?.message ?? '').toMatch(/Incorrect args for pair coefficients/);
+    // pair_bondval.cpp coeff(): 4 to 7 words pass the count, then V0 (past the line) is read as NULL
+    expect(error?.message ?? '').toMatch(/Expected floating point parameter instead of NULL or empty string/);
   });
 
   it('requires every I,I pair (native Pair::init)', async () => {

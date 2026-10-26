@@ -98,7 +98,7 @@ describe('fix_modify bodyforces', () => {
   it('accepts early and late, rejects other values', async () => {
     expect(await run('fix 1 all rigid custom v_bid\nfix_modify 1 bodyforces early')).toBeNull();
     expect(await run('fix 1 all rigid custom v_bid\nfix_modify 1 bodyforces late')).toBeNull();
-    expect(msg(await run('fix 1 all rigid custom v_bid\nfix_modify 1 bodyforces middle'))).toMatch(/bodyforces must be early or late/);
+    expect(msg(await run('fix 1 all rigid custom v_bid\nfix_modify 1 bodyforces middle'))).toMatch(/Illegal fix_modify command/);
   });
 });
 

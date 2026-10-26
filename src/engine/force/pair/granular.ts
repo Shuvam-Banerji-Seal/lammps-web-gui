@@ -241,12 +241,17 @@ const tsujiAlpha = (e: number): number =>
 
 /** Parses the arguments of one pair_coeff (after I J). */
 export function parseGranularSpec(args: string[]): Spec {
+  // As native LAMMPS does (src/GRANULAR/granular_model.cpp GranularModel::add_sub_model and construct_sub_model at
+  // b332f28): each sub-model is a name ("Must specify granular sub model name" when there is none, "Illegal model type"
+  // when it is unknown) and its coefficients ("Insufficient arguments provided for <name> model"), read by
+  // utils::numeric
   const word = args[0];
-  if (!(word in NUM_ARGS)) throw new StyleError(`pair_style granular: unknown normal model '${word}' (hooke, hertz, hertz/material, dmt, jkr, mdr)`);
+  if (word === undefined) throw new StyleError('Must specify granular sub model name');
+  if (!(word in NUM_ARGS)) throw new StyleError(`Illegal model type ${word}`);
   const normal = word as NormalKind;
   const nn = NUM_ARGS[normal];
-  if (args.length < 1 + nn) throw new StyleError(`pair_coeff granular ${normal} needs ${nn} numeric arguments`);
-  const num = args.slice(1, 1 + nn).map((w, k) => parseNum(w, `${normal} argument ${k + 1}`));
+  if (args.length < 1 + nn) throw new StyleError(`Insufficient arguments provided for ${normal} model`);
+  const num = args.slice(1, 1 + nn).map((w) => numeric(w));
   const sp: Spec = {
     normal, kn: 0, E: 0, nu: 0, gamma: 0, eta: 0, Y: 0, psib: 0, dtype: 0,
     damp: 'viscoelastic', tang: 'linear_nohistory', kt: 0, ktNull: false, xgt: 0, mu: 0,
@@ -280,8 +285,9 @@ export function parseGranularSpec(args: string[]): Spec {
   let tangSeen = false;
   let dampSeen = false;
   let k = 1 + nn;
-  const need = (n: number, what: string) => {
-    if (args.length < k + n) throw new StyleError(`pair_coeff granular: '${what}' needs ${n} arguments`);
+  // a sub-model keyword (damping, tangential, rolling, twisting, heat) with no name after it
+  const needName = () => {
+    if (args.length < k + 1) throw new StyleError('Must specify granular sub model name');
   };
   // As native LAMMPS does (src/GRANULAR/granular_model.cpp GranularModel::add_sub_model at b332f28): a sub-model with fewer
   // coefficients left than it needs is "Insufficient arguments provided for <model> model".
@@ -292,24 +298,24 @@ export function parseGranularSpec(args: string[]): Spec {
   while (k < args.length) {
     const kw = next();
     if (kw === 'damping') {
-      need(1, 'damping');
+      needName();
       dampSeen = true;
       const d = next();
       if (d === 'mdr') {
         // doc: "The *mdr* damping class contains multiple damping models that can be toggled between by specifying different integer values for the :math:`d_{type}` input parameter."
-        need(1, 'damping mdr');
+        needModel(1, 'mdr');
         const dt = parseNum(next(), 'damping mdr d_type');
         if (dt !== 1 && dt !== 2) throw new StyleError(`pair_style granular: damping mdr d_type must be 1 or 2 (got ${dt})`);
         sp.damp = 'mdr';
         sp.dtype = dt;
         continue;
       }
-      if (!(d in DAMPS)) throw new StyleError(`pair_style granular: unknown damping '${d}'`);
+      if (!(d in DAMPS)) throw new StyleError(`Illegal model type ${d}`);
       sp.damp = DAMPS[d];
     } else if (kw === 'tangential') {
-      need(1, 'tangential');
+      needName();
       const t = next();
-      if (!(t in TANGS)) throw new StyleError(`pair_style granular: unknown tangential model '${t}'`);
+      if (!(t in TANGS)) throw new StyleError(`Illegal model type ${t}`);
       sp.tang = TANGS[t];
       tangSeen = true;
       if (sp.tang === 'linear_nohistory') {
@@ -327,47 +333,48 @@ export function parseGranularSpec(args: string[]): Spec {
         sp.mu = parseNum(next(), 'mu_s');
       }
     } else if (kw === 'rolling') {
-      need(1, 'rolling');
+      needName();
       const r = next();
       if (r === 'none') sp.roll = 'none';
       else if (r === 'sds') {
-        need(3, 'rolling sds');
+        needModel(3, 'sds');
         sp.roll = 'sds';
         sp.kr = parseNum(next(), 'k_roll');
         sp.gr = parseNum(next(), 'gamma_roll');
         sp.mr = parseNum(next(), 'mu_roll');
-      } else throw new StyleError(`pair_style granular: unknown rolling model '${r}' (none, sds)`);
+      } else throw new StyleError(`Illegal model type ${r}`);
     } else if (kw === 'twisting') {
-      need(1, 'twisting');
+      needName();
       const w = next();
       if (w === 'none') sp.twist = 'none';
       else if (w === 'marshall') sp.twist = 'marshall';
       else if (w === 'sds') {
-        need(3, 'twisting sds');
+        needModel(3, 'sds');
         sp.twist = 'sds';
         sp.kw = parseNum(next(), 'k_twist');
         sp.gw = parseNum(next(), 'gamma_twist');
         sp.mw = parseNum(next(), 'mu_twist');
-      } else throw new StyleError(`pair_style granular: unknown twisting model '${w}' (none, sds, marshall)`);
+      } else throw new StyleError(`Illegal model type ${w}`);
     } else if (kw === 'limit_damping') {
       sp.limit = true;
     } else if (kw === 'synchronized_verlet') {
       sp.sync = true;
     } else if (kw === 'cutoff') {
-      need(1, 'cutoff');
+      if (args.length < k + 1) throw new StyleError('Illegal pair_coeff command, not enough parameters for cutoff keyword');
       sp.cutoff = parseNum(next(), 'cutoff');
     } else if (kw === 'heat') {
       // pair_granular.html: the heat models are none, radius and area (see the header of this file)
-      need(1, 'heat');
+      needName();
       const hm = next();
       if (hm === 'none') sp.heat = 'none';
       else if (hm === 'radius' || hm === 'area') {
-        need(1, `heat ${hm}`);
+        needModel(1, hm);
         sp.heat = hm;
         sp.hk = parseNum(next(), `heat ${hm} coefficient`);
         // native refuses a negative coefficient (measured: heat area -0.5 stops with Illegal area heat model)
-        if (!(sp.hk >= 0)) throw new StyleError(`pair_coeff granular: heat ${hm} coefficient must be >= 0 (got ${sp.hk})`);
-      } else throw new StyleError(`pair_coeff granular: unknown heat model '${hm}' (none, radius, area)`);
+        // src/GRANULAR/gran_sub_mod_heat.cpp coeffs_to_local at b332f28
+        if (sp.hk < 0.0) throw new StyleError(`Illegal ${hm} heat model`);
+      } else throw new StyleError(`Illegal model type ${hm}`);
     } else {
       // GRANULAR/pair_granular.cpp PairGranular::coeff (native at b332f28): an unrecognised word stops the pair_coeff line
       throw new StyleError(`Illegal pair_coeff command ${kw}`);

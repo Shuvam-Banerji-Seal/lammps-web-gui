@@ -26,7 +26,8 @@ const unsupported = (kind: string, name: string, list: Record<string, unknown>) 
 /** pair_style style args — pair_style.html; "pair_style none" removes it. */
 const pairStyle: Handler = ({ sys }, a) => {
   const name = a[0];
-  if (!name) throw new StyleError('usage: pair_style style args');
+  // As native LAMMPS does (src/input.cpp Input::pair_style at b332f28)
+  if (!name) throw missingArgs('pair_style');
   sys.ff.pairNotRestarted = null;
   if (name === 'none') { sys.ff.pair = null; sys.bump(); return; }
   const make = PAIR_STYLES[name];
@@ -103,7 +104,19 @@ const pairModify: Handler = ({ sys }, a) => {
   if (p instanceof PairHybrid) {
     targets = [p, ...p.subs.map((x) => x.style)];
     if (a[0] === 'pair') {
-      const { sub, used } = p.selectSub(a.slice(1), 'pair_modify pair');
+      // PairHybrid::modify_params: the sub-style name, then (for a style listed more than once) its number read by
+      // utils::inumeric; a name or number that matches no sub-style is "Unknown pair_modify hybrid sub-style"
+      if (a.length < 2) throw new StyleError('Illegal pair_modify command');
+      const all = p.subs.filter((x) => x.name === a[1]);
+      if (all.length === 0) throw new StyleError(`Unknown pair_modify hybrid sub-style: ${a[1]}`);
+      let sub = all[0], used = 1;
+      if (all.length > 1) {
+        if (a.length < 3) throw new StyleError('Illegal pair_modify command');
+        const m = inumeric(a[2]);
+        if (m < 1 || m > all.length) throw new StyleError(`Unknown pair_modify hybrid sub-style: ${a[1]}`);
+        sub = all[m - 1];
+        used = 2;
+      }
       // the selected sub-style first (style-specific keywords go to it); the hybrid's own
       // shift / tail flags follow, as native LAMMPS rejects shift on one sub-style with tail on another
       targets = [sub.style, p];
@@ -118,6 +131,8 @@ const pairModify: Handler = ({ sys }, a) => {
           // pair_modify.html: "disables or enables registering compute */tally computes for the sub-style". The
           // engine always registers them (yes); no is refused. Measured with native LAMMPS (black box): a
           // compute group/group pair sum is the same with compute/tally no and yes (the lj/cut energy stays in it).
+          // src/pair_hybrid.cpp PairHybrid::modify_params at b332f28: the value is required, then read by utils::logical
+          if (a[k + 1] === undefined) throw new StyleError('Illegal pair_modify compute/tally command');
           if (!yesno(a[k + 1], 'compute/tally')) throw new StyleError('pair_modify pair compute/tally no is not supported by the browser engine');
           k += 2;
         } else break;

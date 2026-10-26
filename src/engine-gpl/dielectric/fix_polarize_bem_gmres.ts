@@ -12,8 +12,8 @@
  * update order: the induced charges are solved in pre_force every N steps, and once in setup. Not ported: fix_modify
  * rand (random initial charges) is refused.
  */
-import { Fix } from '../../engine/fix/fix';
-import { inumeric, parseNum } from '../../engine/force/util';
+import { Fix, FIX_MODIFY_KEYWORDS } from '../../engine/fix/fix';
+import { inumeric, logical, numeric, parseNum } from '../../engine/force/util';
 import { isDielectricStyle } from '../../engine/atoms';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
@@ -264,25 +264,17 @@ export class FixPolarizeBEMGMRES extends Fix {
   }
 
   modify(key: string, values: string[]): number {
-    const int = (w: string | undefined): number => {
-      const x = Number(w);
-      if (w === undefined || !Number.isInteger(x)) throw new StyleError(`Illegal fix_modify ${key} value '${w ?? ''}'`);
-      return x;
-    };
-    if (key === 'itr_max') { this.itrMax = int(values[0]); return 1; }
-    if (key === 'mr') { this.mr = int(values[0]); return 1; }
-    if (key === 'kspace') {
-      if (values[0] !== 'yes' && values[0] !== 'no') throw new StyleError(`Illegal fix_modify kspace value '${values[0] ?? ''}'`);
-      this.kspaceOn = values[0] === 'yes';
-      return 1;
-    }
-    if (key === 'rand') throw new StyleError(`fix_modify rand is not supported by fix ${this.id} (${this.style}) in the browser engine`);
-    if (key === 'dielectrics') {
-      if (values.length < 5) throw new StyleError(`Illegal fix_modify dielectrics: needs ediff emean epsilon area q (NULL to keep)`);
-      setDielectricParams(this.sys, (i) => this.inGroup(i), values.slice(0, 5), this.id, this.style, false);
-      return 5;
-    }
-    return super.modify(key, values);
+    if (FIX_MODIFY_KEYWORDS.has(key)) return super.modify(key, values);
+    return polarizeModify(key, values, {
+      itr_max: { n: 1, apply: ([w]) => { this.itrMax = inumeric(w); } },
+      mr: { n: 1, apply: ([w]) => { this.mr = inumeric(w); } },
+      kspace: { n: 1, apply: ([w]) => { this.kspaceOn = logical(w); } },
+      dielectrics: { n: 5, apply: (v) => setDielectricParams(this.sys, (i) => this.inGroup(i), v, this.id, this.style, false) },
+      rand: { n: 2, apply: ([a, b]) => {
+        numeric(a); inumeric(b);
+        throw new StyleError(`fix_modify rand is not supported by fix ${this.id} (${this.style}) in the browser engine`);
+      } },
+    });
   }
 
   computeVector(i: number): number {
@@ -308,15 +300,29 @@ const multGivens = (c: number, s: number, k: number, g: Float64Array): void => {
 };
 
 /**
+ * FixPolarizeBEMGMRES, FixPolarizeBEMICC and FixPolarizeFunctional::modify_param (src/DIELECTRIC at b332f28): once a word
+ * that Fix::modify_params does not read reaches it, the fix reads the rest of the line itself, each keyword with its
+ * values ("Illegal fix_modify command" when they are missing), and any other word is "Illegal fix_modify command".
+ * Returns the number of words consumed after the first keyword.
+ */
+export const polarizeModify = (key: string, values: string[], keywords: Record<string, { n: number; apply: (v: string[]) => void }>): number => {
+  const words = [key, ...values];
+  for (let i = 0; i < words.length;) {
+    const k = keywords[words[i]];
+    if (!k || i + 1 + k.n > words.length) throw new StyleError('Illegal fix_modify command');
+    k.apply(words.slice(i + 1, i + 1 + k.n));
+    i += 1 + k.n;
+  }
+  return values.length;
+};
+
+/**
  * fix_modify dielectrics ediff emean epsiloni areai qi: set ed, em (and epsilon, area, charge) of the group atoms; NULL
  * keeps the value. The ICC variant also rescales the scaled charge (set_dielectric_params in fix_polarize_bem_icc.cpp).
  */
 export const setDielectricParams = (sys: System, inGroup: (i: number) => boolean, vals: string[], id: string, style: string, rescale: boolean): void => {
-  const num = (w: string): number => {
-    const x = Number(w);
-    if (!Number.isFinite(x)) throw new StyleError(`Illegal fix_modify dielectrics value '${w}' for fix ${id} (${style})`);
-    return x;
-  };
+  // the numbers are read by utils::numeric, NULL keeps the value
+  const num = (w: string): number => numeric(w);
   const s = sys.state;
   const ed = num(vals[0]), em = num(vals[1]);
   const epsI = vals[2] !== 'NULL' ? num(vals[2]) : -1;

@@ -2,7 +2,7 @@ import { hasChargeStyle } from '../../atoms';
 import { KSpace, StyleError, type KSpaceCompute, type StyleContext } from '../types';
 import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
-import { parseNum, inumeric, logical, numeric } from '../util';
+import { parseNum, inumeric, logical, missingArgs, numeric } from '../util';
 import { libm, SQRT_PI } from '../../libm';
 import { formatNumber } from '../../cformat';
 
@@ -49,10 +49,10 @@ const yesNoValue = (w: string | undefined, _key: string): void => {
   logical(w);
 };
 
-/** kspace_modify minorder value: an integer of at least 2 (native message, measured: Kspace_modify minorder must be at least 2). */
+/** kspace_modify minorder value: utils::inumeric, at least 2 (src/kspace.cpp KSpace::modify_params at b332f28). */
 export const minorderValue = (w: string | undefined): number => {
-  if (w === undefined || !/^[+-]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w ?? ''}' for kspace_modify minorder`);
-  const m = Number(w);
+  if (w === undefined) throw missingArgs('kspace_modify minorder');
+  const m = inumeric(w);
   if (m < 2) throw new StyleError('Kspace_modify minorder must be at least 2');
   return m;
 };

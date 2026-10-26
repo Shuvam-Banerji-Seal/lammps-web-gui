@@ -65,7 +65,9 @@ export abstract class PairBondValBase extends Pair {
   }
 
   coeff(args: string[], _ctx: StyleContext): void {
-    if (args.length < 6 || args.length > 7) throw new StyleError('Incorrect args for pair coefficients (pair_coeff I J r0 alpha S V0 [cutoff])');
+    // pair_bondval.cpp coeff(): 4 to 7 words, then r0 alpha S V0 read by utils::numeric (a word past the line is read as
+    // NULL)
+    if (args.length < 4 || args.length > 7) throw new StyleError('Incorrect args for pair coefficients');
     const vals = [
       parseNum(args[2], 'r0'), parseNum(args[3], 'alpha'), parseNum(args[4], 'S'), parseNum(args[5], 'V0'),
       args.length === 7 ? parseNum(args[6], 'cutoff') : this.cutGlobal,

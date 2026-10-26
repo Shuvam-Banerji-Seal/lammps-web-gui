@@ -185,7 +185,7 @@ export const minimize = async (
   const evaluate = (): number => {
     evaluations++;
     sys.bump();
-    if (evaluations === 1) { sys.setupNeighbors(); sys.sortAtoms(true); }
+    if (evaluations === 1) sys.setupNeighbors(true);
     else if (nb.decide(s.step, s, sys.geom)) {
       sys.pbc();
       // native's periodic atom sort (System.sortAtoms) only rewrites SimState.order; the engine's

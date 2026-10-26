@@ -1,5 +1,5 @@
 # oracle-inputs: w9pair_cs_short.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
 # oracle: coul/long/cs with core-shell pairs 1e-3 A apart (the r -> 0 case the /cs styles correct), ewald
 units           real
 atom_style      full

@@ -1,12 +1,13 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0: src/CORESHELL/pair_coul_wolf_cs.cpp and
  * pair_coul_wolf_cs.h, src/CORESHELL/pair_lj_cut_coul_long_cs.cpp and .h (contributing author Hendrik Heenen, hendrik.heenen@mytum.de),
- * and src/CORESHELL/pair_lj_class2_coul_long_cs.cpp and .h (the native files of coul/wolf/cs and lj/class2/coul/long/cs carry no
- * contributing-author line). The base styles are src/pair_coul_wolf.cpp, src/KSPACE/pair_lj_cut_coul_long.cpp and
+ * src/CORESHELL/pair_coul_long_cs.cpp and .h (contributing author Hendrik Heenen), and src/CORESHELL/pair_lj_class2_coul_long_cs.cpp
+ * and .h (the native files of coul/wolf/cs and lj/class2/coul/long/cs carry no contributing-author line). The base styles are
+ * src/pair_coul_wolf.cpp, src/KSPACE/pair_coul_long.cpp, src/KSPACE/pair_lj_cut_coul_long.cpp and
  * src/CLASS2/pair_lj_class2_coul_long.cpp at b332f28.
  * Copyright Sandia Corporation (GNU General Public License). This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
- * pair_style coul/wolf/cs, lj/cut/coul/long/cs and lj/class2/coul/long/cs: the core-shell variants. Each is its base style
+ * pair_style coul/wolf/cs, coul/long/cs, lj/cut/coul/long/cs and lj/class2/coul/long/cs: the core-shell variants. Each is its base style
  * with the Coulomb term of a core and its shell (a special pair whose 1-2 weight is 0) evaluated at r + EPSILON, so the
  * r -> 0 limit is finite (docs.lammps.org/pair_cs.html: "except that they correctly treat the special case where the
  * distance between two charged core and shell atoms in the same core/shell pair approach r = 0.0").
@@ -16,7 +17,7 @@
  */
 import { StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
-import { PairLJCutCoulLong } from '../../engine/force/pair/coul_long';
+import { PairCoulLong, PairLJCutCoulLong } from '../../engine/force/pair/coul_long';
 import { PairCoulWolf } from '../../engine/force/pair/coul';
 import { PairLJClass2Coul } from '../../engine/force/pair/class2_spica51';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
@@ -148,6 +149,56 @@ export class PairCoulWolfCS extends PairCoulWolf {
           ecoul += e;
           if (tally) tallyAtom(pc, i, j, e, fpair, delx, dely, delz);
         }
+      }
+    }
+    pc.acc.ecoul += ecoul;
+  }
+
+  single(): never { return noSingle(this.name); }
+}
+
+/* ----------------------------------------------------------------------
+   coul/long/cs
+   ---------------------------------------------------------------------- */
+
+/**
+ * pair_style coul/long/cs cutoff (docs.lammps.org/pair_cs.html): coul/long with the native PairCoulLongCS compute(). A pair
+ * within the Coulomb cutoff (tested before EPSILON is added) gets the Coulomb term of csLongCoul; f[i] is accumulated pair
+ * by pair, as native.
+ */
+export class PairCoulLongCS extends PairCoulLong {
+  readonly name: string = 'coul/long/cs';
+  private readonly csTables = new ErfcTableCache();
+
+  compute(pc: PairCompute): void {
+    const list = pc.half!;
+    const { x, f, q } = pc;
+    const cutcsq = this.cutCoul * this.cutCoul;
+    const g = this.gEwald;
+    const tab = this.csTables.get(this.table, g, cutcsq, this.tabinnerRsq);
+    const sC = pc.specialCoul;
+    const qqrd2e = pc.qqrd2e;
+    const tally = pc.eatom !== null || pc.vatom !== null;
+    let ecoul = 0;
+    const nb = list.neighbors;
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+      const qi = q[i];
+      for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
+        const jj = nb[k];
+        const j = jj & NEIGHMASK;
+        const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
+        const rsq0 = dx * dx + dy * dy + dz * dz;
+        if (rsq0 >= cutcsq) continue;
+        // EPSILON for r = 0 (a core and its shell): the interaction is removed by the special bond
+        const rsq = rsq0 + EPSILON;
+        const r2inv = 1.0 / rsq;
+        const c = csLongCoul(rsq, qi, q[j], sC[jj >>> SBBITS], g, qqrd2e, tab);
+        const fpair = c.force * r2inv;
+        f[3 * i] += dx * fpair; f[3 * i + 1] += dy * fpair; f[3 * i + 2] += dz * fpair;
+        f[3 * j] -= dx * fpair; f[3 * j + 1] -= dy * fpair; f[3 * j + 2] -= dz * fpair;
+        ecoul += c.e;
+        if (tally) tallyAtom(pc, i, j, c.e, fpair, dx, dy, dz);
       }
     }
     pc.acc.ecoul += ecoul;

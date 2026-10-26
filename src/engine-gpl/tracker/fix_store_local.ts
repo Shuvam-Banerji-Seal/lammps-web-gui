@@ -23,6 +23,7 @@ export class FixStoreLocal extends Fix {
   constructor(sys: System, id: string, nreset: number, nvalues: number) {
     super(sys, id, 'all', []);
     this.nreset = nreset;
+    this.localFreq = nreset;
     this.nvalues = nvalues;
     this.localFlag = true;
     this.sizeLocalCols = nvalues === 1 ? 0 : nvalues;

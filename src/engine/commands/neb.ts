@@ -159,7 +159,7 @@ const evaluate = (sys: System, first: boolean): number => {
   const s = sys.state;
   const nb = sys.nb;
   sys.bump();
-  if (first) { sys.setupNeighbors(); sys.sortAtoms(true); }
+  if (first) sys.setupNeighbors(true);
   else if (nb.decide(s.step, s, sys.geom)) {
     sys.pbc();
     sys.sortAtoms(false);

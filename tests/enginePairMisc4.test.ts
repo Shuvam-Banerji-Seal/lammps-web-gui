@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { PAIR_STYLES, loadAllStyles } from '../src/engine/styles';
-import { PairCoulLongCS, csCoulPair, erfAcc, hOverX3 } from '../src/engine/force/pair/coul_cs';
+import { erfAcc } from '../src/engine/force/pair/coul_cs';
+import { PairCoulLongCS } from '../src/engine-gpl/csdiel/coreshell';
 import { PairBornCoulLongCS, PairBuckCoulLongCS } from '../src/engine-gpl/csdiel/born_buck_long_cs';
 import { PairBornCoulLong } from '../src/engine/force/pair/coul_long2';
 import { erfcExact } from '../src/engine/force/erfc';
@@ -8,9 +9,8 @@ import type { Pair, StyleContext } from '../src/engine/force/types';
 
 /*
  * Unit checks for pair_style lj/sf (an alias of lj/smooth/linear) and the core-shell /cs styles
- * (born/coul/long/cs, buck/coul/long/cs, coul/long/cs). For every style the
- * radial force returned must be the central finite difference of the energy
- * (fpair * r = -dE/dr). Native agreement is covered by tests/oracle/w9pair_*.in.
+ * (born/coul/long/cs, buck/coul/long/cs, coul/long/cs): their write_data lines and argument errors. Native agreement is
+ * covered by tests/oracle/w9pair_*.in and w226cs_*.in.
  */
 
 const ctx: StyleContext = { s: null, readFile: () => '', log: () => {} };
@@ -22,21 +22,6 @@ const make = <T extends Pair>(s: T, styleArgs: string[], coeffs: string[]): T =>
   s.init(ctx);
   return s;
 };
-
-const close = (a: number, b: number, rel: number, abs: number) => Math.abs(a - b) <= abs + rel * Math.max(Math.abs(a), Math.abs(b));
-
-/** Central difference with a step proportional to r (roundoff ~1e-11 |E|/r, truncation ~1e-10 |E|/r). */
-const dEdr = (e: (r: number) => number, r: number): number => {
-  const h = r * 1e-5;
-  return (e(r + h) - e(r - h)) / (2 * h);
-};
-
-/** fpair * r must equal -dE/dr up to the natural scale |E|/r of a derivative of E at r. */
-const forceOk = (fpair: number, e: (r: number) => number, r: number): boolean => {
-  const d = dEdr(e, r);
-  return Math.abs(fpair * r + d) <= 1e-7 * Math.abs(e(r)) / r + 1e-12;
-};
-
 
 // the lazily loaded style registries (src/engine/lazyStyles.ts) are read directly here
 beforeAll(() => loadAllStyles());
@@ -55,41 +40,11 @@ describe('lj/sf: an alias of lj/smooth/linear', () => {
   });
 });
 
-describe('core-shell /cs styles: force = -dE/dr', () => {
-  // The fc < 1 form (core-shell special pair) and the fc = 1 damped form, with the
-  // accurate erfc and the series used at small g r.
-  it('csCoulPair: fpair * r equals -dE/dr for fc = 0, 0.5, 1 over 1e-3 .. 2.5 A', () => {
-    const g = 0.28, qqrd2e = 332.06371;
-    for (const [qi, qj] of [[1.0, -1.0], [0.3, 0.3], [-0.8, 0.5]]) {
-      for (const fc of [0, 0.5, 1]) {
-        for (const r of [1e-3, 0.02, 0.1, 0.8, 1.6, 2.5]) {
-          const term = (x: number) => csCoulPair(x * x, qi, qj, g, qqrd2e, fc).e;
-          const t = csCoulPair(r * r, qi, qj, g, qqrd2e, fc);
-          if (!forceOk(t.f, term, r)) {
-            throw new Error(`cs coul qi=${qi} qj=${qj} fc=${fc} r=${r}: fpair*r=${t.f * r} vs -dE/dr=${-dEdr(term, r)}`);
-          }
-        }
-      }
-    }
-  });
-
-  it('csCoulPair fc = 0 reproduces C qi qj erf(g r)/r (native value at r = 1e-7: 112.408131753734)', () => {
-    // qi = +1, qj = -1: E = C erf(g r)/r with C = 332.06371, g = 0.3 (measured with native LAMMPS, black box)
-    const e = csCoulPair(1e-14, 1, -1, 0.3, 332.06371, 0).e;
-    expect(Math.abs(e - 112.408131753734)).toBeLessThan(1e-9);
-    const e1 = csCoulPair(1, 1, -1, 0.3, 332.06371, 0).e;
-    expect(Math.abs(e1 - 109.125020951275)).toBeLessThan(1e-9);
-  });
-
-  it('erfAcc and hOverX3 agree with the exact erfc and the direct formula', () => {
+describe('core-shell /cs styles and the erf helper', () => {
+  it('erfAcc agrees with the exact erfc', () => {
     for (const x of [0, 0.01, 0.3, 0.5, 0.99, 1, 1.5, 2, 4]) {
       expect(Math.abs(erfAcc(x) + erfcExact(x) - 1), `erf+erfc at ${x}`).toBeLessThan(1e-14);
     }
-    const x = 0.5, s = 2 / Math.sqrt(Math.PI);
-    const direct = (erfAcc(x) - s * x * Math.exp(-x * x)) / (x * x * x);
-    expect(Math.abs(hOverX3(x) - direct)).toBeLessThan(1e-12);
-    // continuity of the series/direct switch at x = 1
-    expect(Math.abs(hOverX3(0.999999) - hOverX3(1.000001))).toBeLessThan(1e-5);
   });
 
   it('write_data: born/buck cs write their base coefficient lines; coul/long/cs writes none', () => {
@@ -104,8 +59,8 @@ describe('core-shell /cs styles: force = -dE/dr', () => {
 
   it('argument errors throw StyleError-style messages', () => {
     // born/coul/long/cs and buck/coul/long/cs are GPL ports with native's messages: tests/engineCoreShellGpl.test.ts
-    expect(() => new PairCoulLongCS().settings(['10', '8'])).toThrow(/usage: pair_style coul\/long\/cs cutoff/);
-    expect(() => new PairCoulLongCS().settings([])).toThrow(/usage: pair_style coul\/long\/cs cutoff/);
+    expect(() => new PairCoulLongCS().settings(['10', '8'])).toThrow(/usage: pair_style coul\/long cutoff/);
+    expect(() => new PairCoulLongCS().settings([])).toThrow(/usage: pair_style coul\/long cutoff/);
     const c = new PairCoulLongCS();
     c.settings(['10']);
     c.allocate(2);

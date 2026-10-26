@@ -44,8 +44,7 @@ const fixPhase = (systems: readonly System[], call: (f: Fix) => void): void => {
 export const runVerletCoupled = async (systems: readonly System[], nsteps: number, hooks: CoupledHooks): Promise<number> => {
   // setup: every replica's forces first, then the fix setups (a ring fix reads the forces of all beads)
   for (const sys of systems) {
-    sys.setupNeighbors();
-    sys.sortAtoms(true);
+    sys.setupNeighbors(true);
     sys.computeForcesInRun(sys.computeFlags());
     sys.forcesCurrent();
     sys.assignDynamicGroups(true);

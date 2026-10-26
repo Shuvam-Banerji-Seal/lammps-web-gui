@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Session } from '../src/engine/interpreter';
-import { parityFiles, parityInput, sameResult, type ParityFixture } from './parityMatrices';
+import { MATRICES, parityFiles, parityInput, sameResult, type ParityFixture } from './parityMatrices';
 
 /*
  * Parity matrix harness (the suites are tests/engineParity.<matrix>.test.ts; the rows and their inputs are defined in
@@ -49,7 +49,7 @@ export const paritySuite = (matrix: string): void => {
         const input = parityInput(textOf(row.case), row);
         const got = await engineResult(input, parityFiles(ROOT, textOf(row.case), input));
         // the status exactly, printed values within the oracle tolerance (sameResult); a mismatch shows both results
-        if (!sameResult(got, row.native)) expect(got, `${row.case} line ${row.line + 1}`).toBe(row.native);
+        if (!sameResult(got, row.native, MATRICES[matrix]?.abs?.[row.style])) expect(got, `${row.case} line ${row.line + 1}`).toBe(row.native);
       });
     }
   });

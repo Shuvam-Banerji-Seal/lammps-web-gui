@@ -56,6 +56,12 @@ export interface MatrixDef {
    * its arrays, so its result is not a rule the engine can follow. The runner marks them skip.
    */
   undefined?: Record<string, string>;
+  /**
+   * Rows (by style) whose printed values are compared within this absolute tolerance instead of 1e-10: a value that is a
+   * near-complete cancellation of much larger terms, so the order of the floating-point sums (which the engine does not
+   * follow) shows above the relative 1e-8. Each entry says why in a comment.
+   */
+  abs?: Record<string, number>;
 }
 
 export const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
@@ -331,6 +337,15 @@ export const MATRICES: Record<string, MatrixDef> = {
     about: 'the first number after the style word of each pair, bond, angle, dihedral, improper and kspace style line multiplied by 1.1, pe, press and fnorm compared after run 0',
     rows: throughRun(pick(styleKey, scaled(2, 1.1)), THERMO_F, VALUES_F),
   },
+  'command-scaled': {
+    about: 'the first number of each other command (from word 1) multiplied by 1.1, pe, press and fnorm compared after run 0',
+    rows: throughRun(pick(commandKey, scaled(1, 1.1, true)), THERMO_F, VALUES_F),
+    abs: {
+      // a perfect eam lattice: press -0.0279 bar is the sum x.f of virial terms of order 1e3 eV (1e5 times larger); the
+      // engine's sum over owned and ghost atoms differs from native's at 1e-14 of the terms, 3.6e-9 bar
+      'mass': 1e-8,
+    },
+  },
   'fix-scaled': {
     about: 'the first number of each fix line (from word 4) multiplied by 1.1, pe, press and fnorm compared after run 0',
     rows: throughRun(pick(fixKey, scaled(4, 1.1, true)), THERMO_F, VALUES_F),
@@ -354,7 +369,7 @@ export const parityInput = (caseText: string, row: ParityRow): string => {
  * The result in the fixture's form compared as native's: the status (OK or the first ERROR line) exactly, and the
  * printed values ("OK | VAL a b ...") within a relative 1e-8 (plus 1e-10 absolute), as the oracle cases compare.
  */
-export const sameResult = (engine: string, native: string): boolean => {
+export const sameResult = (engine: string, native: string, abs = 1e-10): boolean => {
   const [es, ev = ''] = engine.split(' | ');
   const [ns, nv = ''] = native.split(' | ');
   if (es !== ns) return false;
@@ -363,7 +378,7 @@ export const sameResult = (engine: string, native: string): boolean => {
   return a.every((x, i) => {
     if (x === b[i]) return true;
     const p = Number(x), q = Number(b[i]);
-    return Number.isFinite(p) && Number.isFinite(q) && Math.abs(p - q) <= 1e-10 + 1e-8 * Math.abs(q);
+    return Number.isFinite(p) && Number.isFinite(q) && Math.abs(p - q) <= abs + 1e-8 * Math.abs(q);
   });
 };
 

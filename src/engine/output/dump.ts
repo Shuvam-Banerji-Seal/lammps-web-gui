@@ -3,7 +3,7 @@ import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { errorUrl } from '../formula';
 import { inumeric, missingArgs, numeric, logical } from '../force/util';
-import { compileCFormat, checkCFormat, formatNumber, type ValueKind } from '../cformat';
+import { compileCFormat, checkCFormat, formatNumber, fmtShortest, type ValueKind } from '../cformat';
 import { localDumpColumns, localColumnSource, localOutputOf } from '../compute/local_dump';
 import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
 import { fillWildcard } from '../commands/restart';
@@ -107,7 +107,7 @@ const DIPOLE_COLS = new Set(['mux', 'muy', 'muz', 'mu']);
  */
 export const fmt = (f: string): ((v: number) => string) => compileCFormat(f, 'float', 'Invalid dump format');
 
-export type DumpStyle = 'atom' | 'custom' | 'cfg' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk' | 'grid' | 'grid/vtk';
+export type DumpStyle = 'atom' | 'custom' | 'cfg' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk' | 'grid' | 'grid/vtk' | 'dcd' | 'xtc';
 
 /**
  * The core side of the lazily loaded dump vtk helper (engine-gpl/dump/dump_vtk.ts, HOOKS 'vtk' of group gpl_dump_vtk):
@@ -198,6 +198,63 @@ export interface DumpGridStyle {
 
 export type DumpGridFactory = (host: DumpGridHost, fields: string[]) => DumpGridStyle;
 
+/**
+ * The core side of the lazily loaded dump dcd and xtc helpers (engine-gpl/dump/dump_dcd.ts and dump_xtc.ts, HOOKS 'dcd'
+ * and 'xtc' of group gpl_dump_traj): binary trajectory files, one frame per snapshot. dump.html: "The dcd style writes DCD
+ * files, a standard atomic trajectory format used by the CHARMM, NAMD, and XPLOR molecular dynamics packages"; "The xtc
+ * style writes XTC files, a compressed trajectory format used by the GROMACS molecular dynamics package". The core keeps
+ * the schedule and the dump_modify keywords every style takes and gives the group's atoms in ID order; the helper checks
+ * its settings and writes the bytes. A binary file is kept in the file store as one character per byte.
+ */
+export interface DumpTrajHost {
+  readonly sys: System;
+  /** The file name as given in the dump command. */
+  readonly file: string;
+  /** The number of atoms in the dump group now. */
+  groupCount(): number;
+  /** Creates the file empty (native opens it at the dump command). */
+  create(): void;
+  /** Appends bytes (one character per byte) to the file, or with `at` overwrites the bytes from that offset on. */
+  writeBytes(bytes: string, at?: number): void;
+}
+
+/** What the helper's init checks (Dump::init then the style's init_style, at each run and at write_dump). */
+export interface DumpTrajSettings {
+  /** write_dump's snapshot: native's dump ID WRITE_DUMP, whose init leaves out the checks of the output interval. */
+  writeDump: boolean;
+  /** dump_modify every/time (Output mode_dump 1). */
+  everyTime: boolean;
+  /** The output interval (Output every_dump): 0 with dump_modify every v_name. */
+  every: number;
+  /** dump_modify sort id (the default of these styles). */
+  sortById: boolean;
+  /** dump_modify flush as set; null when it was not set (each style has its own default). */
+  flush: boolean | null;
+}
+
+export interface DumpTrajFrame {
+  step: number;
+  dt: number;
+  /** The atoms of the snapshot (Dump::count: the group's atoms). */
+  natoms: number;
+  /** dump_modify header (write_header_flag). */
+  header: boolean;
+  box: { triclinic: boolean; lo: readonly number[]; hi: readonly number[]; xprd: number; yprd: number; zprd: number; xy: number; xz: number; yz: number };
+  /** x, y, z of each atom in ID order (dump_modify pbc applied to a copy), unwrapped when the helper's unwrap is set. */
+  coords: Float64Array;
+}
+
+export interface DumpTrajStyle {
+  /** dump_modify unwrap. */
+  readonly unwrap: boolean;
+  /** The helper's dump_modify keywords: the words taken, 0 for the core's. */
+  modify(args: string[], k: number): number;
+  init(settings: DumpTrajSettings): void;
+  write(frame: DumpTrajFrame): void;
+}
+
+export type DumpTrajFactory = (host: DumpTrajHost, args: string[]) => DumpTrajStyle;
+
 /** The dump_modify keywords of every dump style (the base list of Dump::modify_params, src/dump.cpp at b332f28). */
 const GRID_DUMP_KEYWORDS = new Set(['append', 'balance', 'buffer', 'colname', 'delay', 'every', 'every/time', 'fileper', 'first', 'flush', 'format', 'header', 'maxfiles', 'nfile', 'pad', 'pbc', 'skip', 'sort', 'time', 'units']);
 
@@ -260,6 +317,12 @@ export class Dump {
   private gridStyle: DumpGridStyle | null = null;
   /** dump cfg: the lazily loaded helper (null for every other style). */
   private cfgStyle: DumpCfgStyle | null = null;
+  /** dump dcd and xtc: the lazily loaded helper (null for every other style). */
+  private trajStyle: DumpTrajStyle | null = null;
+  /** dump_modify flush as set (null: not set). */
+  private flush: boolean | null = null;
+  /** dump_modify every/time was given (dump dcd and xtc only, whose init then stops; other styles refuse it). */
+  private everyTime = false;
 
   /** The atom colour map of a dump image as the previous output left it (fix graphics/labels colorscale); null for other styles. */
   colorScaleMap(which: 'atom' | 'grid' | 'bond' = 'atom'): ColorMap | null {
@@ -294,6 +357,7 @@ export class Dump {
    * fix[i]->peratom_freq)", local_freq for dump local; an interval of -1, not set, divides any).
    */
   init(): void {
+    if (this.trajStyle) { this.initTraj(false); return; }
     const local = this.style === 'local';
     if (!local && (!THRESH_STYLES.has(this.style) || this.style === 'image')) return;
     const st = this.gzStyle ?? this.style;
@@ -319,6 +383,14 @@ export class Dump {
     }
   }
 
+  /**
+   * dump dcd and xtc: the style's init_style (Dump::init, src/dump.cpp at b332f28: init_style comes first). write_dump's
+   * snapshot (native's dump ID WRITE_DUMP) leaves out the checks of the output interval.
+   */
+  initTraj(writeDump: boolean): void {
+    this.trajStyle?.init({ writeDump, everyTime: this.everyTime, every: this.everyVar ? 0 : this.every, sortById: this.sort === 'id', flush: this.flush });
+  }
+
   constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[], private readonly multifileOverride = false,
     /** A COMPRESS style (atom/gz, custom/gz, ...): its name, for dump_modify compression_level and the messages. */
     private readonly gzStyle: string | null = null) {
@@ -331,7 +403,8 @@ export class Dump {
     if (gzStyle) {
       if (!ext) throw new StyleError(`Dump ${gzStyle} only writes compressed files`);
       this.gz = true;
-    } else if (ext) {
+    } else if (ext && style !== 'dcd' && style !== 'xtc') {
+      // (dump dcd and xtc stop with their own "Invalid dump ... filename")
       if (style === 'image' || style === 'vtk' || style === 'grid/vtk' || ext !== 'gz') {
         throw new StyleError(`dump ${id}: a compressed (.${ext}) ${style} dump file is not supported by the browser engine; ${style === 'image' || style === 'vtk' || style === 'grid/vtk' ? 'use a plain file name' : 'use .gz or a plain file name'}`);
       }
@@ -343,7 +416,7 @@ export class Dump {
     this.nevery = this.every;
     // dump.html: "For the dcd, extxyz, grid/vtk, xtc, xyz, and molfile styles, sorting by atom ID or grid ID is on by
     // default."
-    this.sort = style === 'xyz' || style === 'extxyz' || style === 'grid/vtk' ? 'id' : 'off';
+    this.sort = style === 'xyz' || style === 'extxyz' || style === 'grid/vtk' || style === 'dcd' || style === 'xtc' ? 'id' : 'off';
     if (style === 'image') {
       this.imageDump = new ImageDump(sys, id, group, file, cols, multifileOverride, typeof every === 'number' ? every : 0);
       this.columns = [];
@@ -379,6 +452,22 @@ export class Dump {
         fillWildcard,
         writeText: (text) => this.writeText(text),
       }, this.columns);
+    } else if (style === 'dcd' || style === 'xtc') {
+      // dump dcd and xtc: the helper checks the arguments and the file name, and creates the file (as native LAMMPS does,
+      // src/EXTRA-DUMP/dump_dcd.cpp and dump_xtc.cpp at b332f28: the constructor opens it)
+      this.columns = [];
+      const key = sys.resolveFile(file);
+      this.trajStyle = gplHook<DumpTrajFactory>(style)({
+        sys,
+        file,
+        groupCount: () => {
+          let n = 0;
+          for (let i = 0; i < sys.state.n; i++) if (sys.state.mask[i] & this.groupBit) n++;
+          return n;
+        },
+        create: () => sys.writeFileAt(key, '', false),
+        writeBytes: (bytes, at) => sys.writeFileAt(key, bytes, at === undefined, at),
+      }, cols);
     } else if (style === 'vtk') {
       // dump vtk: the attributes are parsed by the helper, which reads the live pad and the core's column access
       this.columns = [];
@@ -504,6 +593,11 @@ export class Dump {
     for (let k = 0; k < args.length;) {
       const key = args[k];
       const v = args[k + 1];
+      // dump dcd and xtc: their own keywords (unwrap; xtc precision, sfactor, tfactor)
+      if (this.trajStyle) {
+        const n = this.trajStyle.modify(args, k);
+        if (n > 0) { k += n; continue; }
+      }
       // dump vtk: its own keywords (label, double, element, region, thresh ...); the common ones stay with the core
       if (this.vtkStyle) {
         const n = this.vtkStyle.modify(args, k);
@@ -540,7 +634,14 @@ export class Dump {
         case 'time': this.time = yesno(v, key); k += 2; break;
         case 'units': this.units = yesno(v, key); k += 2; break;
         case 'header': this.header = yesno(v, key); k += 2; break;
-        case 'flush': case 'buffer': case 'balance': case 'thermo': yesno(v, key); k += 2; break;
+        case 'flush': this.flush = yesno(v, key); k += 2; break;
+        // As native LAMMPS does (src/dump.cpp Dump::modify_params at b332f28): "if (buffer_flag && buffer_allow == 0)", and
+        // dump dcd and xtc leave buffer_allow 0
+        case 'buffer':
+          if (yesno(v, key) && this.trajStyle) throw new StyleError('Dump_modify buffer yes not allowed for this style');
+          k += 2;
+          break;
+        case 'balance': case 'thermo': yesno(v, key); k += 2; break;
         case 'delay': this.delay = intArg(v, key); k += 2; break;
         case 'compression_level': {
           // As native LAMMPS does (src/COMPRESS/dump_custom_gz.cpp and gz_file_writer.cpp at b332f28): a /gz style takes a
@@ -561,7 +662,21 @@ export class Dump {
             if (this.every < 1) throw new StyleError('dump_modify every must be > 0');
             this.everyVar = null;
           }
+          this.everyTime = false;
           this.nextStep = -1;
+          k += 2;
+          break;
+        }
+        case 'every/time': {
+          // As native LAMMPS does (src/dump.cpp Dump::modify_params at b332f28): a v_name or a delta > 0 ("Invalid dump_modify
+          // every/time argument: {}"). The browser engine writes no snapshots by simulation time; dump dcd and xtc keep the
+          // setting so that their init stops as native's does ("Cannot use every/time setting for dump dcd").
+          if (!this.trajStyle) throw new StyleError(`unsupported dump_modify keyword '${key}'`);
+          if (!v!.startsWith('v_')) {
+            const delta = numArg(v, key);
+            if (delta <= 0.0) throw new StyleError(`Invalid dump_modify every/time argument: ${fmtShortest(delta, false)}`);
+          }
+          this.everyTime = true;
           k += 2;
           break;
         }
@@ -575,8 +690,8 @@ export class Dump {
           else {
             const n = intArg(v, key);
             if (n === 0) throw new StyleError('dump_modify sort column out of range');
-            // As native LAMMPS does (src/dump.cpp at b332f28, Dump::init)
-            if (Math.abs(n) > this.columns.length) throw new StyleError(`Dump sort column index ${Math.abs(n)} is invalid`);
+            // As native LAMMPS does (src/dump.cpp at b332f28, Dump::init; dump dcd and xtc stop at their init_style first)
+            if (!this.trajStyle && Math.abs(n) > this.columns.length) throw new StyleError(`Dump sort column index ${Math.abs(n)} is invalid`);
             this.sort = { col: Math.abs(n) - 1, desc: n < 0 };
           }
           k += 2;
@@ -835,6 +950,20 @@ export class Dump {
       this.gridStyle.write(step);
       return true;
     }
+    if (this.trajStyle) {
+      // Dump::write: count (the group's atoms), the skip test, then the atoms in ID order and the style's header and frame
+      const rows = this.chooseRows();
+      if (this.skipSnapshot()) return false;
+      rows.sort((a, b) => s.id[a] - s.id[b]);
+      const g = sys.geom;
+      this.trajStyle.write({
+        step, dt: s.dt, natoms: rows.length, header: this.header,
+        box: { triclinic: g.triclinic, lo: s.box.lo, hi: s.box.hi, xprd: g.lx, yprd: g.ly, zprd: g.lz, xy: g.xy, xz: g.xz, yz: g.yz },
+        coords: this.trajCoords(rows, this.trajStyle.unwrap),
+      });
+      this.opened = true;
+      return true;
+    }
     sys.forces();
     if (this.style === 'local') {
       if (this.skipSnapshot()) return false;
@@ -925,6 +1054,34 @@ export class Dump {
     return true;
   }
 
+
+  /**
+   * The coordinates dump dcd and xtc pack (src/EXTRA-DUMP/dump_dcd.cpp and dump_xtc.cpp pack at b332f28): with dump_modify
+   * pbc, Dump::write first remaps a copy of x and the image counts into the box; with unwrap, "x[i][0] + ix * xprd + iy *
+   * xy + iz * xz", "x[i][1] + iy * yprd + iz * yz", "x[i][2] + iz * zprd" (the xy, xz and yz terms for a triclinic box only).
+   */
+  private trajCoords(rows: number[], unwrap: boolean): Float64Array {
+    const s = this.sys.state, g = this.sys.geom;
+    const out = new Float64Array(3 * rows.length);
+    const x = new Float64Array(3), im = new Int32Array(3);
+    for (let k = 0; k < rows.length; k++) {
+      const i = rows[k];
+      for (let d = 0; d < 3; d++) { x[d] = s.x[3 * i + d]; im[d] = s.image[3 * i + d]; }
+      if (this.pbc) g.remap(x, im, 0);
+      if (!unwrap) {
+        out[3 * k] = x[0]; out[3 * k + 1] = x[1]; out[3 * k + 2] = x[2];
+      } else if (g.triclinic) {
+        out[3 * k] = x[0] + im[0] * g.lx + im[1] * g.xy + im[2] * g.xz;
+        out[3 * k + 1] = x[1] + im[1] * g.ly + im[2] * g.yz;
+        out[3 * k + 2] = x[2] + im[2] * g.lz;
+      } else {
+        out[3 * k] = x[0] + im[0] * g.lx;
+        out[3 * k + 1] = x[1] + im[1] * g.ly;
+        out[3 * k + 2] = x[2] + im[2] * g.lz;
+      }
+    }
+    return out;
+  }
 
   /** One snapshot of a text dump (dump grid) into the dump's file: a "*" name per snapshot, else the single file. */
   private writeText(text: string): void {

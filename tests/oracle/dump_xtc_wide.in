@@ -1,0 +1,21 @@
+# oracle: dump xtc of atoms spread over a wide box (metal units, precision 1000000: the large integer sizes of xdr3dfcoord)
+# oracle-files: w.xtc n.xtc
+units           metal
+atom_style      atomic
+region          box block 0 400 0 300 0 200
+create_box      1 box
+create_atoms    1 random 200 9871 NULL
+lattice         fcc 3.6 origin 0.1 0.1 0.1
+region          blob block 10 13 10 13 10 13
+create_atoms    1 region blob
+mass            1 63.546
+pair_style      zero 5.0
+pair_coeff      * *
+velocity        all create 300.0 4412 loop geom
+fix             1 all nve
+dump            1 all xtc 5 w.xtc
+dump_modify     1 precision 1000000
+dump            2 all xtc 5 n.xtc
+thermo_style    custom step temp pe
+thermo_modify   format float %.15g
+run             10

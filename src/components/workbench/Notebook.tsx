@@ -330,8 +330,14 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           break;
       }
     };
-    const onFile = (name: string, text: string, append: boolean) =>
-      setFiles((prev) => ({ ...prev, [name]: (append ? prev[name] ?? '' : '') + text }));
+    // the engine's applyFileWrite (src/engine/fileWrite.ts), written out here: importing that module from the notebook
+    // makes the bundler move the engine's shared host chunk into the notebook's chunk
+    const onFile = (name: string, text: string, append: boolean, at?: number) =>
+      setFiles((prev) => {
+        const old = prev[name] ?? '';
+        const next = at === undefined ? (append ? old : '') + text : old.slice(0, at) + text + old.slice(at + text.length);
+        return { ...prev, [name]: next };
+      });
     const result = await client().exec(cell.text, 1, { onEvent, onFile });
     patchRun(cell.id, (r) => ({ ...r, status: result.cancelled ? 'cancelled' : result.ok ? 'ok' : 'error' }));
     setRunning(null);

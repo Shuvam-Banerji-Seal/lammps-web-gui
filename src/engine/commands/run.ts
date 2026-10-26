@@ -228,7 +228,7 @@ const runStyle: Handler = ({ sys }, a) => {
 // name is a word of the command)
 const DUMP_STYLES: DumpStyle[] = ['atom', 'custom', 'cfg', 'xyz', 'extxyz', 'yaml', 'local', 'image'];
 /** Dump styles of lazily loaded helpers (lazyStyles.ts). */
-const LAZY_DUMP_STYLES: string[] = ['vtk', 'grid', 'grid/vtk'];
+const LAZY_DUMP_STYLES: string[] = ['vtk', 'grid', 'grid/vtk', 'dcd', 'xtc'];
 /** The COMPRESS package's gzip dump styles (dump.html: "atom/gz, cfg/gz, custom/gz, local/gz, xyz/gz"). */
 const GZ_STYLES = ['atom/gz', 'cfg/gz', 'custom/gz', 'local/gz', 'xyz/gz'];
 
@@ -290,11 +290,13 @@ const writeDump: Handler = ({ sys }, a) => {
   const mi = rest.indexOf('modify');
   const cols = mi >= 0 ? rest.slice(0, mi) : rest;
   const { base, gzStyle } = compressStyle(style);
-  if (!(DUMP_STYLES as string[]).includes(base) && base !== 'grid') throw new StyleError(`write_dump style '${style}' is not supported; supported: ${[...DUMP_STYLES, 'grid', ...GZ_STYLES].join(', ')}`);
+  if (!(DUMP_STYLES as string[]).includes(base) && base !== 'grid' && base !== 'dcd' && base !== 'xtc') throw new StyleError(`write_dump style '${style}' is not supported; supported: ${[...DUMP_STYLES, 'grid', 'dcd', 'xtc', ...GZ_STYLES].join(', ')}`);
   // write_dump: a dump image or cfg file needs no '*' (multifile_override, see dump_image.ts; As native LAMMPS does
   // (src/write_dump.cpp at b332f28): "if (strcmp(arg[1], "cfg") == 0) dump->multifile_override = 1")
   const d = new Dump(sys, '__write_dump', group, base as DumpStyle, 1, file, cols, true, gzStyle);
   if (mi >= 0) d.modify(rest.slice(mi + 1));
+  // dump dcd and xtc: write_dump's dump->init() runs the style's init_style (with the dump ID WRITE_DUMP)
+  if (base === 'dcd' || base === 'xtc') d.initTraj(true);
   d.write();
 };
 

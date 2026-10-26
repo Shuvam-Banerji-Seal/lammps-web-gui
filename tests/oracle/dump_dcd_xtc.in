@@ -1,0 +1,27 @@
+# oracle: dump dcd and xtc of an LJ melt: wrapped and unwrapped, xtc precision 100, a group of 5 atoms (uncompressed xtc frames)
+# oracle-files: a.dcd a.xtc u.dcd u.xtc s.xtc
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 3.0 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 20 delay 0 check no
+fix             1 all nve
+group           sub id <= 5
+dump            1 all dcd 10 a.dcd
+dump            2 all xtc 10 a.xtc
+dump            3 all dcd 20 u.dcd
+dump_modify     3 unwrap yes
+dump            4 all xtc 20 u.xtc
+dump_modify     4 unwrap yes precision 100
+dump            5 sub xtc 10 s.xtc
+thermo_style    custom step temp pe etotal press
+thermo_modify   format float %.15g
+thermo          50
+run             100

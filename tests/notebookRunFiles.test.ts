@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
-  canOpenInViewer, classifyFile, countFrames, fileBytes, fileBytesSize, runLogText, thermoCsv, type RunOutput,
+  canOpenInViewer, classifyFile, countFrames, fileBytes, fileBytesSize, isBinaryFile, isBinaryTrajectory, runLogText, thermoCsv,
+  type RunOutput,
 } from '../src/components/workbench/notebook/runFiles';
 import { crc32 } from '../src/lammps/zip';
 
@@ -148,5 +151,31 @@ describe('gzipped run files (write_data or a dump with a .gz name)', () => {
     expect(frames('run.dump.gz', gz)).toBeNull();
     expect(sizeOf(gz)).toBe(gz.length);
     expect(new TextDecoder().decode(gunzip(bytesOf(gz)))).toBe(dump);
+  });
+});
+
+describe('binary trajectories (dump dcd and xtc)', () => {
+  // native LAMMPS's files of the oracle case dump_dcd_xtc (11 snapshots of 256 atoms, every 10 steps of 100; u.xtc every
+  // 20; s.xtc 5 atoms, written uncompressed), kept one character per byte as the engine stores them
+  const fixture = JSON.parse(readFileSync(join(__dirname, 'fixtures/oracle/dump_dcd_xtc.json'), 'utf8')) as { files: Record<string, string> };
+  const file = (f: string) => Buffer.from(fixture.files[f].slice(7), 'base64').toString('latin1');
+
+  it('counts frames: the DCD header field, the XTC frames walked', () => {
+    expect(countFrames('a.dcd', file('a.dcd'))).toBe(11);
+    expect(countFrames('a.xtc', file('a.xtc'))).toBe(11);
+    expect(countFrames('u.xtc', file('u.xtc'))).toBe(6);
+    expect(countFrames('s.xtc', file('s.xtc'))).toBe(11);
+    expect(countFrames('a.xtc', file('a.xtc').slice(0, 100))).toBeNull();
+    expect(countFrames('a.dcd', '')).toBeNull();
+  });
+
+  it('is a trajectory kept as bytes: no text preview, no viewer, one byte per character', () => {
+    const t = file('a.dcd');
+    expect(classifyFile('a.dcd', t)).toBe('trajectory');
+    expect(isBinaryFile('a.dcd', t)).toBe(true);
+    expect(isBinaryTrajectory('run/a.xtc')).toBe(true);
+    expect(isBinaryTrajectory('a.lammpstrj')).toBe(false);
+    expect(fileBytesSize(t, 'a.dcd')).toBe(t.length);
+    expect(Buffer.from(fileBytes(t, 'a.dcd')).equals(Buffer.from(fixture.files['a.dcd'].slice(7), 'base64'))).toBe(true);
   });
 });

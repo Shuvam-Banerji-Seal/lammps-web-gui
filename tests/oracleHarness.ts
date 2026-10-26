@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { applyFileWrite } from '../src/engine/fileWrite';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent, ThermoRow } from '../src/engine/types';
 
@@ -15,7 +16,7 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  *   # oracle-potentials: unmodified LAMMPS potential files from third_party/lammps/potentials
  *   # oracle-examples: unmodified files of the LAMMPS examples tree (third_party/lammps/examples/<dir>/<file>), added
  *     under their base name
- *   # oracle-files: files it writes that are compared token by token
+ *   # oracle-files: files it writes that are compared token by token (dump dcd and xtc files byte by byte)
  *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2 atomskip=c1,c2 printed=N
  *                     atomrel=R filerel=R (optional: the per-atom and written-file tolerances, relative, default
  *                     100*max(rel,1e-9) and 1e-6). printed=N (NEB tables only): the engine's table values are rounded
@@ -87,11 +88,16 @@ const options = (text: string) => {
   return o;
 };
 
-/** The files a case lists in "# oracle-files:", compared token by token with the native ones. */
+/** The files a case lists in "# oracle-files:", compared token by token with the native ones (binary files byte by byte). */
 const compareWrittenFiles = (name: string, want: Record<string, string>, files: Map<string, string>, filerel: number): void => {
   for (const [f, ref] of Object.entries(want)) {
     const mine = files.get(f);
     expect(mine, `file ${f}`).toBeDefined();
+    if (ref.startsWith('base64:')) {
+      const diff = sameBytes(f, mine!, Buffer.from(ref.slice(7), 'base64'));
+      if (diff) throw new Error(`${name}: file ${f} differs at ${diff}`);
+      continue;
+    }
     // the data-file title line names the writing program; a "DATE: YYYY-MM-DD" header field (fix ttm grid files,
     // potential files written by the engine) is the day of the run, so it is not compared
     const strip = (t: string) => (f.endsWith('.data') ? t.split('\n').slice(1).join('\n') : t)
@@ -99,6 +105,21 @@ const compareWrittenFiles = (name: string, want: Record<string, string>, files: 
     const diff = sameText(strip(mine!), strip(ref), filerel);
     if (diff) throw new Error(`${name}: file ${f} differs at ${diff}`);
   }
+};
+
+/**
+ * Byte-wise comparison of a binary file (the engine keeps one character per byte). A DCD file's second title record
+ * (bytes 180 to 260: "REMARKS Created %d %B,%Y at %H:%M", dump_dcd.cpp write_dcd_header) is the time of the run, so it is
+ * not compared.
+ */
+const sameBytes = (f: string, mine: string, ref: Uint8Array): string | null => {
+  if (mine.length !== ref.length) return `length ${mine.length} vs ${ref.length} bytes`;
+  const skip = f.endsWith('.dcd') ? [180, 260] : [0, 0];
+  for (let i = 0; i < ref.length; i++) {
+    if (i >= skip[0] && i < skip[1]) continue;
+    if ((mine.charCodeAt(i) & 0xff) !== ref[i] || mine.charCodeAt(i) > 0xff) return `byte ${i}: ${mine.charCodeAt(i)} vs ${ref[i]}`;
+  }
+  return null;
 };
 
 const close = (a: number, b: number, rel: number, abs: number) =>
@@ -168,7 +189,7 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
       const partitions = Number(directive(text, 'oracle-partitions')[0] ?? 1);
       const session = new Session({
         emit: (e) => events.push(e),
-        writeFile: (n, t, ap) => files.set(n, (ap ? files.get(n) ?? '' : '') + t),
+        writeFile: (n, t, ap, at) => files.set(n, applyFileWrite(files.get(n), t, ap, at)),
       }, undefined, 0, partitions);
       // partitioned (non-NEB) cases: the other replicas' thermo rows and dumps are passed on (Session.recordPartitionOutput)
       session.recordPartitionOutput = fx.perPartition !== undefined;

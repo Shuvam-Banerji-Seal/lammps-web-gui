@@ -136,7 +136,7 @@ export class EngineHost {
           this.post({ type: 'event', id: this.current, event });
         }
       },
-      writeFile: (name, text, append) => this.post({ type: 'file', id: this.current, name, text, append }),
+      writeFile: (name, text, append, at) => this.post({ type: 'file', id: this.current, name, text, append, ...(at === undefined ? {} : { at }) }),
     }, backend, this.frameEvery, partitions);
     this.session.setFrameVelocities(this.frameVelocities);
     for (const [name, text] of this.files) this.session.addFile(name, text);

@@ -1,4 +1,5 @@
 import type { RespaSettings } from './run/respa';
+import { applyFileWrite } from './fileWrite';
 import type { AtomStyle, EngineEvent, SimState, UnitSystem } from './types';
 import type { MoleculeTemplate } from './molecule';
 import { UNIT_SYSTEMS } from './units';
@@ -55,7 +56,8 @@ const pairUnsetText = (style: string): string | null => pairTable('pair_unset', 
 export interface SessionIO {
   emit(ev: EngineEvent): void;
   /** A command wrote (or appended to) a file: dump, write_data, print file/append. */
-  writeFile?(name: string, text: string, append: boolean): void;
+  /** at: overwrite the file from this character on (fileWrite.ts applyFileWrite). */
+  writeFile?(name: string, text: string, append: boolean, at?: number): void;
 }
 
 export interface RunInfo {
@@ -355,9 +357,10 @@ export class System {
    * Writes a session file under its root-relative name, already resolved from the working directory when it was
    * defined (a dump opens its file at the dump command, as native LAMMPS does, so a later shell cd does not move it).
    */
-  writeFileAt(key: string, text: string, append: boolean): void {
-    this.files.set(key, (append ? this.files.get(key) ?? '' : '') + text);
-    this.io.writeFile?.(key, text, append);
+  writeFileAt(key: string, text: string, append: boolean, at?: number): void {
+    this.files.set(key, applyFileWrite(this.files.get(key), text, append, at));
+    if (at === undefined) this.io.writeFile?.(key, text, append);
+    else this.io.writeFile?.(key, text, append, at);
   }
 
   // ---------------------------------------------------------------- forces

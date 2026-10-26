@@ -4,7 +4,7 @@ import type { getThemeTokens } from '../../../theme';
 import { downloadFile, downloadTextFile } from '../../../lammps/exporter';
 import { buildZip } from '../../../lammps/zip';
 import {
-  canOpenInViewer, classifyFile, countFrames, fileBytes, fileBytesSize, isGzipText, runLogText, thermoCsv,
+  canOpenInViewer, classifyFile, countFrames, fileBytes, fileBytesSize, isBinaryFile, isBinaryTrajectory, runLogText, thermoCsv,
   type FileKind, type RunOutput,
 } from './runFiles';
 
@@ -57,7 +57,7 @@ const RunFiles: React.FC<RunFilesProps> = ({ ct, files, cells, runs, onOpenInVie
   const entries = useMemo<Entry[]>(() => Object.keys(files).map((name) => {
     const text = files[name];
     const kind = classifyFile(name, text);
-    return { name, text, kind, size: fileBytesSize(text), frames: countFrames(name, text) };
+    return { name, text, kind, size: fileBytesSize(text, name), frames: countFrames(name, text) };
   }), [files]);
   const images = useMemo(() => entries.filter((e) => e.kind === 'image'), [entries]);
   const hasLog = useMemo(() => Object.values(runs).some((r) => r && (r.logs.length > 0 || r.tables.length > 0)), [runs]);
@@ -70,7 +70,7 @@ const RunFiles: React.FC<RunFilesProps> = ({ ct, files, cells, runs, onOpenInVie
   const previewEntry = preview ? entries.find((e) => e.name === preview.name) : undefined;
 
   const zipAll = () => {
-    const bytes = buildZip(entries.map((e) => ({ name: e.name, data: fileBytes(e.text) })));
+    const bytes = buildZip(entries.map((e) => ({ name: e.name, data: fileBytes(e.text, e.name) })));
     downloadBlob('lammps-run-files.zip', bytes, 'application/zip');
     setNote(`Saved ${entries.length} file${entries.length === 1 ? '' : 's'} to a zip.`);
   };
@@ -128,7 +128,7 @@ const RunFiles: React.FC<RunFilesProps> = ({ ct, files, cells, runs, onOpenInVie
           <ul className="mt-1 space-y-1" aria-label="Files written">
             {entries.map((e) => {
               const isOpen = preview?.name === e.name;
-              const textual = e.kind !== 'image' && !isGzipText(e.text);
+              const textual = e.kind !== 'image' && !isBinaryFile(e.name, e.text);
               return (
                 <li key={e.name} className={`rounded border p-1.5 ${ct.divider}`}>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
@@ -144,7 +144,7 @@ const RunFiles: React.FC<RunFilesProps> = ({ ct, files, cells, runs, onOpenInVie
                           {isOpen ? 'Hide' : 'Preview'}
                         </button>
                       )}
-                      {onOpenInViewer && canOpenInViewer(e.kind) && (
+                      {onOpenInViewer && canOpenInViewer(e.kind) && !isBinaryTrajectory(e.name) && (
                         <button className={`${btn} ${ct.button}`} aria-label={`Open ${e.name} in 3D Viewer`}
                           title="Open in the 3D Viewer"
                           onClick={() => onOpenInViewer({ name: e.name, text: e.text })}>

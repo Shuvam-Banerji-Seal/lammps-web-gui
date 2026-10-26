@@ -18,6 +18,15 @@ export interface ParityRow {
   text: string;
   /** what the row exercises, e.g. "fix langevin" */
   style: string;
+  /**
+   * A row that compares values: the case's lines are kept up to this index (exclusive), the first run, minimize or
+   * rerun after the changed line, so the lines that complete the setup stay.
+   */
+  until?: number;
+  /** Lines run before "run 0" (a row that compares values sets a thermo_style that computes them). */
+  pre?: string;
+  /** Lines run after "run 0" (a row that compares values prints them: print "VAL ..."). */
+  tail?: string;
 }
 
 export interface ParityFixtureRow extends ParityRow {
@@ -221,6 +230,38 @@ const badFile = (oracleFiles: Set<string>): Change => (w, lines) => {
   return k < 0 ? null : w.map((x, j) => (j === k ? 'nofile.txt' : x));
 };
 
+/**
+ * The values a row that compares values prints after run 0, the potential energy and the pressure, with a thermo_style
+ * set before the run that computes both (a variable can read only the thermo keywords the thermo output computes).
+ */
+const THERMO = 'thermo_style custom step pe press\n';
+const VALUES = 'print "VAL $(pe:%.15g) $(press:%.15g)"\n';
+/** Commands that run steps: a row that compares values keeps the case up to the first of them after its line. */
+const RUNS = /^\s*(run|minimize|rerun|tad|prd|neb|temper)\b/;
+
+/**
+ * Rows that compare values: each picked row keeps the rest of its case up to the first run (or flow command) after the
+ * changed line, then runs 0 steps and prints pe and press.
+ */
+const throughRun = (pickRows: (cases: Case[]) => ParityRow[]) => (cases: Case[]): ParityRow[] => {
+  const text = new Map(cases.map((c) => [c.name, c.text]));
+  return pickRows(cases).map((r) => {
+    const lines = text.get(r.case)!.split('\n');
+    let until = lines.length;
+    for (let i = r.line + 1; i < lines.length; i++) {
+      if (RUNS.test(lines[i]) || FLOW.test(lines[i])) { until = i; break; }
+    }
+    return { ...r, until, pre: THERMO, tail: VALUES };
+  });
+};
+
+/** The first number after the type words of a coefficient line multiplied by `factor`. */
+const coeffScaled = (factor: number): Change => (w, _lines) => {
+  const from = w[0] === 'pair_coeff' ? 3 : 2;
+  const k = w.findIndex((x, j) => j >= from && NUMBER.test(x));
+  return k < 0 ? null : w.map((x, j) => (j === k ? String(Number(x) * factor) : x));
+};
+
 export const MATRICES: Record<string, MatrixDef> = {
   'fix-compute-word': {
     about: 'the first number of each fix and compute style (from word 4) replaced by the word bogus',
@@ -261,13 +302,40 @@ export const MATRICES: Record<string, MatrixDef> = {
   },
   'yes-no': { about: 'the first yes, no, on or off value of each line replaced by maybe', rows: pick(lineKey, badLogical) },
   'region-id': { about: 'the region ID after a region keyword replaced by noregion', rows: pick(lineKey, badRegion) },
+  'coeff-scaled': {
+    about: 'the first number after the type words of each coefficient line multiplied by 1.1, pe and press compared after run 0',
+    rows: throughRun(pick(coeffKey, coeffScaled(1.1))),
+  },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };
 
 /** The row's input: the case up to its line (without the # oracle header lines), the replacing line, then run 0. */
 export const parityInput = (caseText: string, row: ParityRow): string => {
-  const kept = caseText.split('\n').slice(0, row.line).filter((l) => !l.startsWith('# oracle'));
-  return `${kept.join('\n')}\n${row.text}\nrun 0\n`;
+  const lines = caseText.split('\n');
+  if (row.until === undefined) {
+    const kept = lines.slice(0, row.line).filter((l) => !l.startsWith('# oracle'));
+    return `${kept.join('\n')}\n${row.text}\n${row.pre ?? ''}run 0\n${row.tail ?? ''}`;
+  }
+  // a row that compares values: the changed line in place, the case up to its first run, then run 0 and the tail
+  const kept = lines.slice(0, row.until).map((l, i) => (i === row.line ? row.text : l)).filter((l) => !l.startsWith('# oracle'));
+  return `${kept.join('\n')}\n${row.pre ?? ''}run 0\n${row.tail ?? ''}`;
+};
+
+/**
+ * The result in the fixture's form compared as native's: the status (OK or the first ERROR line) exactly, and the
+ * printed values ("OK | VAL a b ...") within a relative 1e-8 (plus 1e-10 absolute), as the oracle cases compare.
+ */
+export const sameResult = (engine: string, native: string): boolean => {
+  const [es, ev = ''] = engine.split(' | ');
+  const [ns, nv = ''] = native.split(' | ');
+  if (es !== ns) return false;
+  const a = ev.split(/\s+/).filter((x) => x !== ''), b = nv.split(/\s+/).filter((x) => x !== '');
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => {
+    if (x === b[i]) return true;
+    const p = Number(x), q = Number(b[i]);
+    return Number.isFinite(p) && Number.isFinite(q) && Math.abs(p - q) <= 1e-10 + 1e-8 * Math.abs(q);
+  });
 };
 
 const directive = (text: string, key: string): string[] => {

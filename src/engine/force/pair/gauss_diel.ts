@@ -29,8 +29,8 @@ import { libm } from '../../libm';
  * (r - r_me)/sigma_e, and the coefficients epsilon, r_me and sigma_e. The doc says: "This pair style does not support parameter mixing."
  * Measured with native LAMMPS (black box): the energy is C q_i q_j (eps / eps_D(r) - 1) / r, i.e. the 1/eps of the
  * doc's prefactor is not present; the global dielectric (the dielectric command) divides C, as in the other Coulomb
- * styles. Dimers with eps = 78 and 20, r = 0.9 to 3.4, agree to 1e-15 relative. Epsilon: a J,J coefficient, when set,
- * supplies the epsilon of every I,J pair with I <= J (see initOne). Shift: pair_modify shift yes subtracts E(rc)
+ * styles. Dimers with eps = 78 and 20, r = 0.9 to 3.4, agree to 1e-15 relative. Epsilon: one value for the style, the
+ * epsilon of its last pair_coeff line (see initOne). Shift: pair_modify shift yes subtracts E(rc)
  * for like-type pairs only (offset 0.0022039 at rc = 2.0 with charges +1 and +1; no change for 1-2 dimers).
  * Mixing: none; an unset I,J pair is refused with native's text "All pair coeffs are not set". Tail is refused (the doc
  * says the tail option is not supported). Special bonds: the Coulomb factors 0 and 1 are used; other values are
@@ -176,6 +176,8 @@ export class PairCoulDiel extends Pair {
   cutGlobal = 0;
   p!: PairParams;
   private eps = new Float64Array(0);
+  /** The epsilon of the last pair_coeff line (native's eps_s, one value for the style). */
+  private epsS = 0;
   private rme = new Float64Array(0);
   private se = new Float64Array(0);
   /** 1 where pair_modify shift yes subtracts the energy at the cutoff (I,J with I = J only, see initOne). */
@@ -205,6 +207,7 @@ export class PairCoulDiel extends Pair {
     }
     if (!(vals[2] > 0)) throw new StyleError('pair coul/diel: sigma_e must be > 0');
     this.p.setRange(args[0], args[1], vals);
+    this.epsS = vals[0];
   }
 
   initStyle(_ctx: StyleContext): void {
@@ -224,14 +227,11 @@ export class PairCoulDiel extends Pair {
     // (E(r) - E(rc), e.g. 0.0022039 at rc = 2.0 with charges +1 and +1) but not of I,J dimers with I != J (no change
     // for 1-2 pairs whose own energy at rc is nonzero, with either set of diagonal parameters).
     this.shiftOn[k1] = this.shiftOn[k2] = this.shift && i === j ? 1 : 0;
-    // Measured with native LAMMPS (black box): the epsilon of an I,J pair (I <= J) is the epsilon of the J,J
-    // coefficient when that is set, whatever the I,J coefficient says (with 1-1, 1-2 and 2-2 all set, a 1-2
-    // coefficient of eps = 20 gives the energy of eps = 78 set on 2-2; changing eps_11 leaves 1-2 unchanged; 1-3 and
-    // 2-3 use eps_33; the atom order does not matter). Without a J,J coefficient (a hybrid/overlay sub-style that
-    // only assigns I,J, as the gauss_diel example does with 1-4) the I,J epsilon is used (measured: eps_12 = 20
-    // gives -39.0043087936508 and eps_12 = 78 gives -58.11114925 for the same hybrid dimer). The rme and sigma_e of
-    // the I,J coefficient are used.
-    this.eps[k1] = this.eps[k2] = this.p.isSet(j, j) ? this.p.get('eps', j, j) : this.p.get('eps', i, j);
+    // As native LAMMPS does (src/EXTRA-PAIR/pair_coul_diel.cpp coeff and compute at b332f28): eps_s is one value of the
+    // style, set by each pair_coeff line, so every pair uses the epsilon of the last line (a_eps and b_eps follow it).
+    // This explains the earlier black-box measurements (a 1-2 line followed by a 2-2 line takes the 2-2 epsilon). The
+    // rme and sigma_e of the I,J coefficient are used.
+    this.eps[k1] = this.eps[k2] = this.epsS;
     this.rme[k1] = this.rme[k2] = this.p.get('rme', i, j);
     this.se[k1] = this.se[k2] = this.p.get('se', i, j);
     return this.cutGlobal;

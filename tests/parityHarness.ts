@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Session } from '../src/engine/interpreter';
-import { parityFiles, parityInput, type ParityFixture } from './parityMatrices';
+import { parityFiles, parityInput, sameResult, type ParityFixture } from './parityMatrices';
 
 /*
  * Parity matrix harness (the suites are tests/engineParity.<matrix>.test.ts; the rows and their inputs are defined in
@@ -18,14 +18,17 @@ const ROOT = join(__dirname, '..');
  * and trailing blanks (the runner trims native's line the same way).
  */
 const engineResult = async (input: string, files: Record<string, { path: string; latin1: boolean }>): Promise<string> => {
-  const s = new Session({ emit: () => {}, writeFile: () => {} } as never);
+  // the lines the input prints that start with VAL (a row that compares values), after the status as the runner does
+  const vals: string[] = [];
+  const s = new Session({ emit: (e: { kind: string; text?: string }) => { if (e.kind === 'log' && e.text?.startsWith('VAL ')) vals.push(e.text.trimEnd()); }, writeFile: () => {} } as never);
   for (const [name, f] of Object.entries(files)) s.addFile(name, readFileSync(f.path, f.latin1 ? 'latin1' : 'utf8'));
+  let status = 'OK';
   try {
     await s.execute(input);
   } catch (e) {
-    return 'ERROR: ' + String((e as Error).message ?? e).split('\n')[0].replace(/^line \d+: /, '').trimEnd();
+    status = 'ERROR: ' + String((e as Error).message ?? e).split('\n')[0].replace(/^line \d+: /, '').trimEnd();
   }
-  return 'OK';
+  return vals.length ? `${status} | ${vals.join(' ')}` : status;
 };
 
 export const paritySuite = (matrix: string): void => {
@@ -44,7 +47,9 @@ export const paritySuite = (matrix: string): void => {
       }
       it(name, async () => {
         const input = parityInput(textOf(row.case), row);
-        expect(await engineResult(input, parityFiles(ROOT, textOf(row.case), input)), `${row.case} line ${row.line + 1}`).toBe(row.native);
+        const got = await engineResult(input, parityFiles(ROOT, textOf(row.case), input));
+        // the status exactly, printed values within the oracle tolerance (sameResult); a mismatch shows both results
+        if (!sameResult(got, row.native)) expect(got, `${row.case} line ${row.line + 1}`).toBe(row.native);
       });
     }
   });

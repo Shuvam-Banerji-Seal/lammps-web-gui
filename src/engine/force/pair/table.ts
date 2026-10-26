@@ -291,6 +291,8 @@ const uniformSpline = (y: Float64Array, y2: Float64Array, p: number, h2_6: numbe
  * spline interpolation (bitmap is rejected by name).
  */
 export class PairTable extends Pair {
+  /** The message of a cutoff outside the table (src/pair_table.cpp coeff at b332f28; table/rx words it its own way). */
+  protected cutoffOutsideMessage = 'Pair table cutoff outside of table';
   readonly name: string = 'table';
   virialFdotr = true;
   /** Interpolation style from pair_style: lookup or linear. */
@@ -347,7 +349,7 @@ export class PairTable extends Pair {
     // outer one, is an error (the outer distance itself is accepted)
     const inner = sec.spacing === 'none' ? sec.r[0] : sec.rlo;
     const outer = sec.spacing === 'none' ? sec.r[sec.n - 1] : sec.rhi;
-    if (cut <= inner || cut > outer) throw new StyleError('Pair table cutoff outside of table');
+    if (cut <= inner || cut > outer) throw new StyleError(this.cutoffOutsideMessage);
     // "This pair style does not support mixing.  Thus, coefficients for all
     // I,J pairs must be specified explicitly." — setRange marks them set.
     this.p.setRange(args[0], args[1], [cut]);

@@ -11,7 +11,7 @@ import type { TriBody } from '../triBonus';
 
 import { expandTemplateTopology } from '../template';
 import { BODY_RECORD, POLY_OFF, bodyRecordOffset, bodyRecordStride, parseBodyStyle, polyRecordLength, polyStoredCounts, polyhedronFrame, principalFrame } from '../bodies';
-import { makeBox } from '../domain';
+import { makeBox, SHRINK_PAD } from '../domain';
 import { LABEL_KINDS, LABEL_SECTION, labelKindOfSection, type LabelKind } from '../labelmap';
 import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
 
@@ -1354,6 +1354,24 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
 
     // atom_style oxdna: each bond sets the 5'/3' partners (atoms.ts setOxdnaPartners)
     setOxdnaPartners(s, topo.filter((e) => e.kind === 'bonds').map((e) => [e.ids[0], e.ids[1]] as const));
+  }
+  if (!adding) {
+    // As native LAMMPS does (src/read_data.cpp ReadData::command and src/domain.cpp set_initial_box at b332f28):
+    // set_initial_box (expandflag 1) runs on each pass over the file, and a file with a Bonds, Angles, Dihedrals or
+    // Impropers section is read twice. Each call takes small = 1e-4 of the box length as it then is and moves a
+    // shrink-wrapped (s) face out by it; the last small is the margin later shrink-wrapping keeps (Geometry.pad).
+    const passes = ['Bonds', 'Angles', 'Dihedrals', 'Impropers'].some((x) => seen.has(x)) ? 2 : 1;
+    const box = s.box;
+    let small: [number, number, number] = [0, 0, 0];
+    for (let pass = 0; pass < passes; pass++) {
+      small = [0, 1, 2].map((d) => SHRINK_PAD * (box.hi[d] - box.lo[d])) as [number, number, number];
+      for (let d = 0; d < 3; d++) {
+        if (box.boundary[d][0] === 's') box.lo[d] -= small[d];
+        if (box.boundary[d][1] === 's') box.hi[d] += small[d];
+      }
+    }
+    sys.geom.update();
+    sys.geom.pad = small;
   }
   sys.atomsChanged();
 };

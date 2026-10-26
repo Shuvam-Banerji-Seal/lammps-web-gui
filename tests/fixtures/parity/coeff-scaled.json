@@ -1,0 +1,3288 @@
+{
+ "matrix": "coeff-scaled",
+ "about": "the first number after the type words of each coefficient line multiplied by 1.1, pe and press compared after run 0",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w225cm_angle_write_charmm",
+   "line": 12,
+   "text": "angle_coeff 1 55.00000000000001 109.5 5.0 1.8",
+   "style": "angle_coeff charmm",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w35c2angle_coeff",
+   "line": 12,
+   "text": "angle_coeff 1 118.80000000000001 22.0 2.5 -0.4",
+   "style": "angle_coeff class2",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 8.41304485054579 -0.00239829047966628"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 10,
+   "text": "angle_coeff 1 121.00000000000001 40.0 -5.0 2.0 -0.5 0.1",
+   "style": "angle_coeff class2/p6",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 85.5301164364209 6227.53317768601"
+  },
+  {
+   "case": "w145pr_angle_class2xe",
+   "line": 18,
+   "text": "angle_coeff 1 121.84700000000001 41.453 -10.604 5.129",
+   "style": "angle_coeff class2xe",
+   "until": 37,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.43286729287843 0.0513533708737713"
+  },
+  {
+   "case": "w1ba_angle_cosine",
+   "line": 14,
+   "text": "angle_coeff 1 44",
+   "style": "angle_coeff cosine",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 17.5590997375347 0.0255325747819249"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 10,
+   "text": "angle_coeff 1 2.1761850000000003 4 120.0",
+   "style": "angle_coeff cosine/buck6d",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 82.1325186917633 14819.9567831491"
+  },
+  {
+   "case": "w87bond_angle_cosdelta_linear",
+   "line": 11,
+   "text": "angle_coeff * 22 110",
+   "style": "angle_coeff cosine/delta",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 14.4755554691704 -3.52772703234297e-13"
+  },
+  {
+   "case": "w87bond_angle_cosper_linear",
+   "line": 11,
+   "text": "angle_coeff * 44 1 2",
+   "style": "angle_coeff cosine/periodic",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1.95399252334028e-13 2.74282737759601e-15"
+  },
+  {
+   "case": "w87bond_angle_cosshift_exact",
+   "line": 11,
+   "text": "angle_coeff * 22 110",
+   "style": "angle_coeff cosine/shift",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -14.772558195411 0"
+  },
+  {
+   "case": "w217xb_angle_cosine_shift_exp",
+   "line": 16,
+   "text": "angle_coeff 1 11 110.0 2.0",
+   "style": "angle_coeff cosine/shift/exp",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 14.9122080909985 -0.0259859117111453"
+  },
+  {
+   "case": "w1ba_angle_cosine_squared",
+   "line": 14,
+   "text": "angle_coeff 1 44 109.5",
+   "style": "angle_coeff cosine/squared",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.05098276454209 0.0255325747819249"
+  },
+  {
+   "case": "w18angle_csr",
+   "line": 14,
+   "text": "angle_coeff 1 44 109.5",
+   "style": "angle_coeff cosine/squared/restricted",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.65789358632207 0.024159827822342"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 15,
+   "text": "angle_coeff 1 220.00000000000003 100.0 100.0 1.25 1.25 107.0",
+   "style": "angle_coeff cross",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.0674250019362 0.383002982515067"
+  },
+  {
+   "case": "w235mx_angle_dipole",
+   "line": 13,
+   "text": "angle_coeff 1 2.2 60.0",
+   "style": "angle_coeff dipole",
+   "until": 20,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.408779725474648 0.000224980387891431"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 11,
+   "text": "angle_coeff * 22 1 1 0",
+   "style": "angle_coeff fourier",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 4.88498130835069e-14 9.70807521121991e-15"
+  },
+  {
+   "case": "w1ba_angle_fourier_simple",
+   "line": 14,
+   "text": "angle_coeff 1 22 -1.0 2.0",
+   "style": "angle_coeff fourier/simple",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 22.5683213707616 0.0255325747819249"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 14,
+   "text": "angle_coeff 1 1.1 2 1.0 0.3 110.0 1.0 0.3 132.0",
+   "style": "angle_coeff gaussian",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.5830363563248 0.0414611575805344"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 10,
+   "text": "angle_coeff 1 11 110.0",
+   "style": "angle_coeff harmonic",
+   "until": 16,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.523155359855869 -4489.08964919723"
+  },
+  {
+   "case": "w54accel_bonded",
+   "line": 18,
+   "text": "angle_coeff 1 33 110.0",
+   "style": "angle_coeff harmonic/omp",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 13.9718781600765 0.0286566319229399"
+  },
+  {
+   "case": "w104cf_angle_hybrid_p6",
+   "line": 14,
+   "text": "angle_coeff 1 class2/p6 120.45 40.0 -10.0 5.0 -2.0 1.0",
+   "style": "angle_coeff hybrid class2/p6",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 3.9539885632751 0.0239496572818955"
+  },
+  {
+   "case": "w104cf_angle_hybrid_p6",
+   "line": 17,
+   "text": "angle_coeff 2 cosine 27.500000000000004",
+   "style": "angle_coeff hybrid cosine",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 4.39126053621761 0.0236883775012948"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 14,
+   "text": "angle_coeff * harmonic 44 109.5",
+   "style": "angle_coeff hybrid harmonic",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 4.01305437415767 0.00928221182099504"
+  },
+  {
+   "case": "w16lepton_bonded",
+   "line": 14,
+   "text": "angle_coeff 1 120.45 \"40.0*theta^2 + 2*sin(theta)\"",
+   "style": "angle_coeff lepton",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 3.0339403301904 0.0252995311363354"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 11,
+   "text": "angle_coeff 1 buckling C 11 10 10",
+   "style": "angle_coeff mesocnt",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 186.446085131727 0.179940588919641"
+  },
+  {
+   "case": "w18angle_mm3",
+   "line": 14,
+   "text": "angle_coeff 1 44 109.5",
+   "style": "angle_coeff mm3",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.08806477129808 0.0241598278223419"
+  },
+  {
+   "case": "w217xb_angle_mwlc",
+   "line": 16,
+   "text": "angle_coeff 1 2.2 1.0 1.5 300.0",
+   "style": "angle_coeff mwlc",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2185.20246583724 -7301.90605734139"
+  },
+  {
+   "case": "w1ba_angle_quartic",
+   "line": 14,
+   "text": "angle_coeff 1 120.45 40.0 -10.0 5.0",
+   "style": "angle_coeff quartic",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1.94741798887861 0.0255325747819249"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 14,
+   "text": "angle_coeff 1 0 180.0",
+   "style": "angle_coeff sdk",
+   "until": 18,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2442.19472853545 7.49878371868283"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 14,
+   "text": "angle_coeff 1 0 180.0",
+   "style": "angle_coeff spica",
+   "until": 18,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2442.19472853545 7.49878371868283"
+  },
+  {
+   "case": "w1ba_angle_zero",
+   "line": 14,
+   "text": "angle_coeff * 120.45",
+   "style": "angle_coeff zero",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.953254397663138 0.0255325747819249"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 27,
+   "text": "bond_coeff 1 pmb 18549300000000 0.0015001 0.0005 0.25",
+   "style": "bond_coeff bpm/peri",
+   "until": 42,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w53bpm_rot_chain",
+   "line": 13,
+   "text": "bond_coeff 1 1.1 0 0 0 0.5 1.0 1.0 1.0 0.0 0.0 0.0 0.0",
+   "style": "bond_coeff bpm/rotational",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 7.06858347057703e-05"
+  },
+  {
+   "case": "w51bpm_spring_compress",
+   "line": 10,
+   "text": "bond_coeff 1 1.1 0.1 0.5",
+   "style": "bond_coeff bpm/spring",
+   "until": 20,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w59bpm_plastic",
+   "line": 23,
+   "text": "bond_coeff 1 1.1 0.5 0.2 0.1",
+   "style": "bond_coeff bpm/spring/plastic",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 -6.15167176834042e-07"
+  },
+  {
+   "case": "w59bpm_zero",
+   "line": 23,
+   "text": "bond_coeff 1 0.22000000000000003",
+   "style": "bond_coeff bpm/zero",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 2.18166156499291e-07"
+  },
+  {
+   "case": "w35c2angle_coeff",
+   "line": 10,
+   "text": "bond_coeff 1 1.122 95.0 -25.0 6.0",
+   "style": "bond_coeff class2",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 7.21772151830293 -0.00196634265848618"
+  },
+  {
+   "case": "w1ba_bond_fene_stretched",
+   "line": 9,
+   "text": "bond_coeff 1 33 1.5 1.0 1.0",
+   "style": "bond_coeff fene",
+   "until": 16,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 29.7396104286321 -0.237111981531663"
+  },
+  {
+   "case": "w1ba_bond_fene_expand_stretched",
+   "line": 9,
+   "text": "bond_coeff 1 33 1.4 1.0 1.0 0.1",
+   "style": "bond_coeff fene/expand",
+   "until": 16,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 26.4151853535506 -0.186728149607237"
+  },
+  {
+   "case": "w217xb_bond_fene_nm",
+   "line": 14,
+   "text": "bond_coeff 1 33 2.0 1.0 1.6 12 6",
+   "style": "bond_coeff fene/nm",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 69.8846617883151 0.00374935195894654"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 12,
+   "text": "bond_coeff 1 1.1 2 1.0 0.25 1.05 1.0 0.25 1.40",
+   "style": "bond_coeff gaussian",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.5776059271966 0.0418866301749788"
+  },
+  {
+   "case": "w1ba_bond_gromos",
+   "line": 12,
+   "text": "bond_coeff 1 88 1.05",
+   "style": "bond_coeff gromos",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.63123943005478 0.064950823263648"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 8,
+   "text": "bond_coeff 1 110.00000000000001 1.0",
+   "style": "bond_coeff harmonic",
+   "until": 16,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1.70145929908464 -4862.21919814501"
+  },
+  {
+   "case": "w54accel_bonded",
+   "line": 15,
+   "text": "bond_coeff 1 88 1.1",
+   "style": "bond_coeff harmonic/omp",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 14.7191985597008 0.0350566319229399"
+  },
+  {
+   "case": "w217xb_harmonic_restrain",
+   "line": 14,
+   "text": "bond_coeff 1 55.00000000000001",
+   "style": "bond_coeff harmonic/restrain",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 18.4690788842256 3.95911361770119e-07"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift",
+   "line": 12,
+   "text": "bond_coeff 1 11 1.05 2.0",
+   "style": "bond_coeff harmonic/shift",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.52252901520891 0.00180092339640516"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift_cut",
+   "line": 12,
+   "text": "bond_coeff 1 11 1.05 2.0",
+   "style": "bond_coeff harmonic/shift/cut",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.21817597695776 0.0394225467625891"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 55,
+   "text": "bond_coeff 1 bpm/spring 1.1 1.0 1.0",
+   "style": "bond_coeff hybrid bpm/spring",
+   "until": 85,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 10,
+   "text": "bond_coeff 1 harmonic 132 1.05",
+   "style": "bond_coeff hybrid harmonic",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 3.89075284458971 0.00928221182099504"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 11,
+   "text": "bond_coeff * morse 1.1 2.0 1.1",
+   "style": "bond_coeff hybrid morse",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 3.89150609451182 0.00940802799694369"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 56,
+   "text": "bond_coeff 2 rheo/shell 0.22000000000000003 0.2 0.1",
+   "style": "bond_coeff hybrid rheo/shell",
+   "until": 85,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w16lepton_vref",
+   "line": 10,
+   "text": "bond_coeff 1 1.1550000000000002 \"120.0*r^2 + 10*r^3\"",
+   "style": "bond_coeff lepton",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.73296531159562 0.121197625883776"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 9,
+   "text": "bond_coeff 1 C 11 10 16",
+   "style": "bond_coeff mesocnt",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 163.832892973215 0.187987198683058"
+  },
+  {
+   "case": "w118yaff_bond_mm3",
+   "line": 13,
+   "text": "bond_coeff 1 132 1.05",
+   "style": "bond_coeff mm3",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.32575167987424 0.045418761097172"
+  },
+  {
+   "case": "w1ba_bond_morse",
+   "line": 12,
+   "text": "bond_coeff 1 1.1 2.0 1.05",
+   "style": "bond_coeff morse",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.06896300311407 0.000872103246011379"
+  },
+  {
+   "case": "w1ba_bond_nonlinear",
+   "line": 12,
+   "text": "bond_coeff 1 55.00000000000001 1.05 1.5",
+   "style": "bond_coeff nonlinear",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.0965193112192 0.00444821575220783"
+  },
+  {
+   "case": "w57oxdna_excv_bond",
+   "line": 14,
+   "text": "bond_coeff * 2.2 0.25 0.7525",
+   "style": "bond_coeff oxdna/fene",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.0474016363025413 3.21807157478683e-05"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 15,
+   "text": "bond_coeff * 2.2 0.25 0.7564",
+   "style": "bond_coeff oxdna2/fene",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 363.271250093175 1.76509801315274"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 15,
+   "text": "bond_coeff * 2.2 0.25 0.761070781051",
+   "style": "bond_coeff oxrna2/fene",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 837.165524056354 6.69772497720501"
+  },
+  {
+   "case": "w235mx_quartic_break",
+   "line": 31,
+   "text": "bond_coeff 1 1320 -0.55 0.25 1.3 34.6878",
+   "style": "bond_coeff quartic",
+   "until": 37,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 15.2079760410995 -0.000198242789585228"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 14,
+   "text": "bond_coeff 1 1.2100000000000002 50.0 -10.0 5.0 2.0 0.3",
+   "style": "bond_coeff quartic/exp",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 21.5284362136722 -0.0171198306120697"
+  },
+  {
+   "case": "w235mx_bond_special",
+   "line": 36,
+   "text": "bond_coeff 1 0.55 0.8",
+   "style": "bond_coeff special",
+   "until": 42,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 363.334489269564 1761.09711286598"
+  },
+  {
+   "case": "w1ba_bond_zero",
+   "line": 12,
+   "text": "bond_coeff * 1.1550000000000002",
+   "style": "bond_coeff zero",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.06234842690641 -0.000334234522114443"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 12,
+   "text": "dihedral_coeff 1 1.4300000000000002 3 45 0.0",
+   "style": "dihedral_coeff charmm",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 197.34 2.1174893048023e-24"
+  },
+  {
+   "case": "w13dihcharmm_fsw",
+   "line": 11,
+   "text": "dihedral_coeff 1 0.22000000000000003 1 180 1.0",
+   "style": "dihedral_coeff charmmfsw",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1837.90857406879 -4347.72731084746"
+  },
+  {
+   "case": "w87bond_class2_trans",
+   "line": 15,
+   "text": "dihedral_coeff * 110.00000000000001 75 100 70 80 60",
+   "style": "dihedral_coeff class2",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 325.4417442695 1.67052975507407"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 25,
+   "text": "dihedral_coeff 1 110.00000000000001 75.0 70.0 100.0 80.0 60.0",
+   "style": "dihedral_coeff class2xe",
+   "until": 48,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 14.5101295730484 -0.000481450074757713"
+  },
+  {
+   "case": "w76dih_fine_cse",
+   "line": 12,
+   "text": "dihedral_coeff 1 2.2 30 3.0",
+   "style": "dihedral_coeff cosine/shift/exp",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -124.48613512402 -6.15631656139508e-25"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 17,
+   "text": "dihedral_coeff 1 0 120",
+   "style": "dihedral_coeff cosine/squared/restricted",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1.47289526038799 0.0235435040912898"
+  },
+  {
+   "case": "w76dih_fine_fourier",
+   "line": 12,
+   "text": "dihedral_coeff 1 2.2 0.8 1 30 0.5 3 -60",
+   "style": "dihedral_coeff fourier",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Expected integer parameter instead of '2.2' in input script or data file"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 12,
+   "text": "dihedral_coeff 1 1.1 1 0",
+   "style": "dihedral_coeff harmonic",
+   "until": 16,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.223675923062939 -4489.08964919723"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 12,
+   "text": "dihedral_coeff 1 0.9900000000000001 0.4 -0.6",
+   "style": "dihedral_coeff helix",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 109.020000005373 3.63850478031229e-13"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 17,
+   "text": "dihedral_coeff 1 harmonic 1.6500000000000001 -1 3",
+   "style": "dihedral_coeff hybrid harmonic",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 3.94449682519171 0.00928221182099504"
+  },
+  {
+   "case": "w76dih_fine_mh",
+   "line": 12,
+   "text": "dihedral_coeff 1 1.2100000000000002 -0.7 0.45 0.3 -0.2",
+   "style": "dihedral_coeff multi/harmonic",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 201.479999999976 -2.44337015986964e-18"
+  },
+  {
+   "case": "w76dih_fine_nharm",
+   "line": 12,
+   "text": "dihedral_coeff 1 4.4 0.9 -0.4 0.25 0.1",
+   "style": "dihedral_coeff nharmonic",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Expected integer parameter instead of '4.4' in input script or data file"
+  },
+  {
+   "case": "w76dih_fine_opls",
+   "line": 12,
+   "text": "dihedral_coeff 1 1.32 -0.3 0.6 0.1",
+   "style": "dihedral_coeff opls",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 132.480000000049 -2.20880763158105e-18"
+  },
+  {
+   "case": "w76dih_fine_quad",
+   "line": 12,
+   "text": "dihedral_coeff 1 0.8800000000000001 100",
+   "style": "dihedral_coeff quadratic",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 303.340463523114 -2.66779937120193e-12"
+  },
+  {
+   "case": "w217xb_dihedral_spherical",
+   "line": 19,
+   "text": "dihedral_coeff 1 2.2 2.861 1 124 1 1 90.0 0 1 90.0 0 -0.5 2 60 0.5 2 45 1 1 30 0.2",
+   "style": "dihedral_coeff spherical",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Expected integer parameter instead of '2.2' in input script or data file"
+  },
+  {
+   "case": "w216tb_dihedral_cut_spline",
+   "line": 11,
+   "text": "dihedral_coeff 1 aat 1.6500000000000001 95.0 125.0 w216tb_dihedral.table DNOF",
+   "style": "dihedral_coeff table/cut",
+   "until": 17,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1.37079071123598 8.77213254024815e-20"
+  },
+  {
+   "case": "w225cm_write_coeff_class2",
+   "line": 32,
+   "text": "improper_coeff 1 110.00000000000001 0",
+   "style": "improper_coeff class2",
+   "until": 36,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 953950.35171084 261728194.254252"
+  },
+  {
+   "case": "w1imp_cossq",
+   "line": 17,
+   "text": "improper_coeff 1 4.4 15.0",
+   "style": "improper_coeff cossq",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.28910051997034 0.0255325747819249"
+  },
+  {
+   "case": "w120cf_improper_cvff_planar",
+   "line": 11,
+   "text": "improper_coeff 1 165 1 2",
+   "style": "improper_coeff cvff",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2647.35730047652 -1477.61310712399"
+  },
+  {
+   "case": "w1imp_distance",
+   "line": 17,
+   "text": "improper_coeff 1 33 10.0",
+   "style": "improper_coeff distance",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.39966795628291 0.0210423424118211"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 18,
+   "text": "improper_coeff 1 27.500000000000004 0.15",
+   "style": "improper_coeff distharm",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1.47461765479409 0.0234818717181846"
+  },
+  {
+   "case": "w87bond_fourier_default",
+   "line": 17,
+   "text": "improper_coeff 1 22 1 1 0",
+   "style": "improper_coeff fourier",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 108.658565650841 -4.69915019105265e-16"
+  },
+  {
+   "case": "w120cf_improper_planar",
+   "line": 11,
+   "text": "improper_coeff 1 165 10.0",
+   "style": "improper_coeff harmonic",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 371.974933858123 -1477.61310712397"
+  },
+  {
+   "case": "w21bhyb_mol_hybrid",
+   "line": 20,
+   "text": "improper_coeff 1 harmonic 13.200000000000001 20.0",
+   "style": "improper_coeff hybrid harmonic",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 3.893628518665 0.00928221182099503"
+  },
+  {
+   "case": "w120cf_improper_inversion_planar",
+   "line": 11,
+   "text": "improper_coeff 1 165 10.0",
+   "style": "improper_coeff inversion/harmonic",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 372.317648112465 -1477.61310712443"
+  },
+  {
+   "case": "w217xb_improper_ring",
+   "line": 20,
+   "text": "improper_coeff 1 88 70.5",
+   "style": "improper_coeff ring",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 8.78785061755361 -0.0259859117111452"
+  },
+  {
+   "case": "w18dihimp_sqdistharm",
+   "line": 18,
+   "text": "improper_coeff 1 27.500000000000004 0.0225",
+   "style": "improper_coeff sqdistharm",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1.45806666133799 0.0240127016098976"
+  },
+  {
+   "case": "w87bond_umbrella_flip_w0zero",
+   "line": 17,
+   "text": "improper_coeff 1 8.8 0",
+   "style": "improper_coeff umbrella",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 29.9949417405908 -1.23352692515132e-16"
+  },
+  {
+   "case": "w10atm_pure",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.1 0.064",
+   "style": "pair_coeff atm",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Invalid range string: 1.1"
+  },
+  {
+   "case": "w219xp_beck",
+   "line": 15,
+   "text": "pair_coeff 1 1 1.1 0.5 1.0 2.0 0.5",
+   "style": "pair_coeff beck",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.724044921642351 0.152289569301453"
+  },
+  {
+   "case": "w48bd_free",
+   "line": 10,
+   "text": "pair_coeff * * 1.1 1.0",
+   "style": "pair_coeff body/nparticle",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w50bc_static",
+   "line": 9,
+   "text": "pair_coeff * * 110.00000000000001 2",
+   "style": "pair_coeff body/rounded/polygon",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.362368824822145 -0.305578233264823"
+  },
+  {
+   "case": "w126body_cubes_wall",
+   "line": 11,
+   "text": "pair_coeff * * 110.00000000000001 1",
+   "style": "pair_coeff body/rounded/polyhedron",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.00448729810778068 -0.000895257745250298"
+  },
+  {
+   "case": "w1buck_born",
+   "line": 21,
+   "text": "pair_coeff * * 1.1 0.1 1.0 1.0 0.5",
+   "style": "pair_coeff born",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.452946807491368 1.70821743277376"
+  },
+  {
+   "case": "w18borncoul_dsf",
+   "line": 23,
+   "text": "pair_coeff 1 1 6.688000000000001 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/dsf",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1336.19761663088 1607.13854893102"
+  },
+  {
+   "case": "w21borncs_dsf",
+   "line": 9,
+   "text": "pair_coeff * * 0 1.0 0.0 0.0 0.0",
+   "style": "pair_coeff born/coul/dsf/cs",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 13.369503025814 85980.2317619301"
+  },
+  {
+   "case": "w3coullong_born",
+   "line": 22,
+   "text": "pair_coeff * * 22 0.3 3.0 500.0 1000.0",
+   "style": "pair_coeff born/coul/long",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 782.998747818006 59358.2277287662"
+  },
+  {
+   "case": "w9pair_born_cs",
+   "line": 9,
+   "text": "pair_coeff 1 1 6.688000000000001 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/long/cs",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.109893548442869 5.99135284851291"
+  },
+  {
+   "case": "w209ms_born",
+   "line": 25,
+   "text": "pair_coeff 1 1 0.290059 0.317 2.340 1.048553 -0.49935",
+   "style": "pair_coeff born/coul/msm",
+   "until": 34,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -866.933868323115 1343.83388684613"
+  },
+  {
+   "case": "w18borncoul_wolf",
+   "line": 23,
+   "text": "pair_coeff 1 1 6.688000000000001 0.317 2.340 24.18 11.51",
+   "style": "pair_coeff born/coul/wolf",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1336.19962107467 1607.13854893102"
+  },
+  {
+   "case": "w21borncs_wolf",
+   "line": 9,
+   "text": "pair_coeff * * 0 1.0 0.0 0.0 0.0",
+   "style": "pair_coeff born/coul/wolf/cs",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 13.511025243198 85980.2317619301"
+  },
+  {
+   "case": "w219xp_born_gauss",
+   "line": 16,
+   "text": "pair_coeff 1 1 2.2 2.0 0.5 1.5 1.0",
+   "style": "pair_coeff born/gauss",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2.38734147877392 -0.98910530914326"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 23,
+   "text": "pair_coeff * * 18549300000000 0.0015001",
+   "style": "pair_coeff bpm/peri",
+   "until": 42,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w51bpm_pair_anh",
+   "line": 8,
+   "text": "pair_coeff 1 1 1.1 1.0 0.5 2.0",
+   "style": "pair_coeff bpm/spring",
+   "until": 18,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.0114 4.2570464e-05"
+  },
+  {
+   "case": "w1buck_buck",
+   "line": 21,
+   "text": "pair_coeff * * 660 0.15 1.0",
+   "style": "pair_coeff buck",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.796179971111655 -0.13338169387548"
+  },
+  {
+   "case": "w1buck_buck_coul_cut",
+   "line": 23,
+   "text": "pair_coeff * * 660 0.15 1.0",
+   "style": "pair_coeff buck/coul/cut",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.642471698456032 -0.0468758042051778"
+  },
+  {
+   "case": "w3coullong_buck",
+   "line": 22,
+   "text": "pair_coeff * * 55000.00000000001 0.27 900.0",
+   "style": "pair_coeff buck/coul/long",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -3959.32141207981 -6767.33249471728"
+  },
+  {
+   "case": "w9pair_buck_cs",
+   "line": 9,
+   "text": "pair_coeff 1 1 1100 0.25 20.0",
+   "style": "pair_coeff buck/coul/long/cs",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.178645948577469 -4.88989027583333"
+  },
+  {
+   "case": "w209ms_buck",
+   "line": 25,
+   "text": "pair_coeff 1 1 536.8000000000001 0.30 1.0",
+   "style": "pair_coeff buck/coul/msm",
+   "until": 36,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -898.918819310833 -37046.3226618775"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 7,
+   "text": "pair_coeff * * 2200 0.3 0.5",
+   "style": "pair_coeff buck/long/coul/long",
+   "until": 18,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 34.4860354851783 1427.40518786547"
+  },
+  {
+   "case": "w219xp_buck_mdf",
+   "line": 15,
+   "text": "pair_coeff 1 1 5.5 0.3 0.02",
+   "style": "pair_coeff buck/mdf",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.798115320501863 1.83538136125611"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 15,
+   "text": "pair_coeff 1 1 1320 3.3 600.0 5.0 0.7",
+   "style": "pair_coeff buck6d/coul/gauss/dsf",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634675 14819.9567831504"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 17,
+   "text": "pair_coeff 1 1 1320 3.3 600.0 5.0 0.7",
+   "style": "pair_coeff buck6d/coul/gauss/long",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634675 14819.9567831504"
+  },
+  {
+   "case": "w5colloid_mix",
+   "line": 21,
+   "text": "pair_coeff 1 1 158.4 1.0 5.0 5.0 12.0",
+   "style": "pair_coeff colloid",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2.8580787814824 -0.0447960763939331"
+  },
+  {
+   "case": "w219xp_cosine_squared",
+   "line": 15,
+   "text": "pair_coeff 1 1 1.1 1.0 2.0",
+   "style": "pair_coeff cosine/squared",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -6.181330452865 -3.81803863116446"
+  },
+  {
+   "case": "w1coul_cut",
+   "line": 24,
+   "text": "pair_coeff 2 2 2.2",
+   "style": "pair_coeff coul/cut",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.144776836431675 0.245777253322433"
+  },
+  {
+   "case": "w69fep_coulcutsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 0.55",
+   "style": "pair_coeff coul/cut/soft",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 3.08209305653504 1.81083068875997"
+  },
+  {
+   "case": "w69fep_gapsys_coul",
+   "line": 18,
+   "text": "pair_coeff 1 1 0.55",
+   "style": "pair_coeff coul/cut/soft/gapsys",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1.64272627037245 1.47817381809174"
+  },
+  {
+   "case": "w1coul_data",
+   "line": 31,
+   "text": "pair_coeff 2 2 2.2",
+   "style": "pair_coeff coul/debye",
+   "until": 38,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.687214285715228 -0.439915767398775"
+  },
+  {
+   "case": "w49pb_coul_diel_dimer",
+   "line": 14,
+   "text": "pair_coeff 1 1 85.80000000000001 1.375 0.112",
+   "style": "pair_coeff coul/diel",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 3295.63911104946 45.7611424849933"
+  },
+  {
+   "case": "w69fep_coullongsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 0.55",
+   "style": "pair_coeff coul/long/soft",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.767150418651495 0.579342783535332"
+  },
+  {
+   "case": "w219xp_coul_slater_cut",
+   "line": 18,
+   "text": "pair_coeff 1 2 2.4200000000000004",
+   "style": "pair_coeff coul/slater/cut",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.01710872375706 0.846360130987181"
+  },
+  {
+   "case": "w77dpd_noise_dpd3d_nosort",
+   "line": 15,
+   "text": "pair_coeff * * 27.500000000000004 4.5",
+   "style": "pair_coeff dpd",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.0138664607001 1.18519231939291"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 19,
+   "text": "pair_coeff 1 1 85.80000000000001 4.5 no 1",
+   "style": "pair_coeff dpd/coul/slater/long",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 8.36907955852489 8.55193201937151"
+  },
+  {
+   "case": "w77dpd_noise_ext3d",
+   "line": 14,
+   "text": "pair_coeff * * 27.500000000000004 4.5 4.53 0.5 0.53 1.0",
+   "style": "pair_coeff dpd/ext",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.0138664607001 1.14638663656356"
+  },
+  {
+   "case": "w319dpd_ext_tstat_ramp",
+   "line": 12,
+   "text": "pair_coeff 1 1 22 10.0 0.5 0.5 10.0",
+   "style": "pair_coeff dpd/ext/tstat",
+   "until": 20,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 762.103048222254"
+  },
+  {
+   "case": "w95dreact_dpdvv_1000",
+   "line": 15,
+   "text": "pair_coeff 1 1 0.0825 0.022 8.60",
+   "style": "pair_coeff dpd/fdt",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 11.6113646141013 37.2913316872805"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 16,
+   "text": "pair_coeff 1 1 0.0825 0.022 3.2E-05 10.00",
+   "style": "pair_coeff dpd/fdt/energy",
+   "until": 34,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 289.579222476953 3363.68368070723"
+  },
+  {
+   "case": "w77dpd_noise_tstat_spce",
+   "line": 12,
+   "text": "pair_coeff 1 1 11 10.0",
+   "style": "pair_coeff dpd/tstat",
+   "until": 20,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 873.815343333906"
+  },
+  {
+   "case": "w235mx_dsmc_gas",
+   "line": 17,
+   "text": "pair_coeff 1 1 1.1",
+   "style": "pair_coeff dsmc",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0.0998046875"
+  },
+  {
+   "case": "w110effecp_sic",
+   "line": 11,
+   "text": "pair_coeff 1 s 0.35293720000000006 2.283269 0.814857",
+   "style": "pair_coeff eff/cut",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -3059.0509751073 322666382069.628"
+  },
+  {
+   "case": "w1misc_gauss",
+   "line": 21,
+   "text": "pair_coeff * * 1.1 0.9",
+   "style": "pair_coeff gauss",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2.90004277638065 -2.4595042345723"
+  },
+  {
+   "case": "w49pb_gauss_cut_dimer",
+   "line": 14,
+   "text": "pair_coeff 1 1 1.6500000000000001 3.2 0.7 6.0",
+   "style": "pair_coeff gauss/cut",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.0492686209143626 -0.00339135789698323"
+  },
+  {
+   "case": "w431rigidnh_ellipsoid",
+   "line": 17,
+   "text": "pair_coeff 1 1 1.1 1.0 1.0 0.5 0.2 1.0 0.5 0.2",
+   "style": "pair_coeff gayberne",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.833141140925578 -12.0674058314569"
+  },
+  {
+   "case": "w15gran_mdr_pair",
+   "line": 18,
+   "text": "pair_coeff * * mdr 1.1 0.3 1000.0 0.0 0.0 0.2 damping mdr 1 tangential linear_history 300.0 0.5 0.4",
+   "style": "pair_coeff granular",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 1.4589426030912e-06"
+  },
+  {
+   "case": "w80superell_ellipsoid_gran",
+   "line": 25,
+   "text": "pair_coeff * * hooke 1100 0.0 tangential linear_history 285 0.0 0.5 damping mass_velocity",
+   "style": "pair_coeff granular/superellipsoid",
+   "until": 39,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w17harmcut",
+   "line": 12,
+   "text": "pair_coeff 1 1 5.5 1.3",
+   "style": "pair_coeff harmonic/cut",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1.07044373326596 4.54133353165913"
+  },
+  {
+   "case": "w225cm_write_coeff_hybrid",
+   "line": 13,
+   "text": "pair_coeff 2 2 coul/cut 10.450000000000001",
+   "style": "pair_coeff hybrid coul/cut",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w206sr_srp_mid",
+   "line": 17,
+   "text": "pair_coeff 1 1 dpd 66 4.5 1.0",
+   "style": "pair_coeff hybrid dpd",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 34680.53995997 65.8608391668316"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 12,
+   "text": "pair_coeff 1 1 granular hooke 4400 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity",
+   "style": "pair_coeff hybrid granular",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 4.16666666666667e-05"
+  },
+  {
+   "case": "w225cm_write_coeff_hybrid",
+   "line": 11,
+   "text": "pair_coeff 1 1 lj/cut 0.11000000000000001 3.40",
+   "style": "pair_coeff hybrid lj/cut",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w109tip_hybrid",
+   "line": 10,
+   "text": "pair_coeff 1 1 lj/cut/coul/long 0.20372 3.1589",
+   "style": "pair_coeff hybrid lj/cut/coul/long",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 8.47948235354579 15384.8497137681"
+  },
+  {
+   "case": "w69fep_ccco",
+   "line": 28,
+   "text": "pair_coeff 2 7 lj/cut/coul/long/soft 0 1.870829 1.0",
+   "style": "pair_coeff hybrid lj/cut/coul/long/soft",
+   "until": 98,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -229.842298937099 2715.23066608272"
+  },
+  {
+   "case": "w109tip_hybrid",
+   "line": 11,
+   "text": "pair_coeff 1 2 lj/cut/tip4p/long 0 1.0",
+   "style": "pair_coeff hybrid lj/cut/tip4p/long",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 9.87869514650765 14297.9615039565"
+  },
+  {
+   "case": "w109tip_fep",
+   "line": 18,
+   "text": "pair_coeff 3 3 lj/cut/tip4p/long/soft 0.17908000000000002 3.1644 1.0",
+   "style": "pair_coeff hybrid lj/cut/tip4p/long/soft",
+   "until": 34,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -119.25708164852 832.165691550855"
+  },
+  {
+   "case": "w104cf_sds_hybrid",
+   "line": 12,
+   "text": "pair_coeff 1 1 lj/sdk lj9_6 0.77 4.3210",
+   "style": "pair_coeff hybrid lj/sdk",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -15.2693896845224 8.23758567639078"
+  },
+  {
+   "case": "w417born_pair",
+   "line": 65,
+   "text": "pair_coeff 1 2 lj96/cut 0.9900000000000001 1.05",
+   "style": "pair_coeff hybrid lj96/cut",
+   "until": 66,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2.3106740516324 6.43878080188191"
+  },
+  {
+   "case": "w88pair_hybrid_tally",
+   "line": 14,
+   "text": "pair_coeff 2 2 morse 0.11000000000000001 1.5 1.2",
+   "style": "pair_coeff hybrid morse",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 32.71930969407 -3731.34420965923"
+  },
+  {
+   "case": "w342press_hybrid_types",
+   "line": 12,
+   "text": "pair_coeff 2 2 soft 11",
+   "style": "pair_coeff hybrid soft",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -3.5529832139348 -1.30764766185861"
+  },
+  {
+   "case": "w83sph_cavity",
+   "line": 31,
+   "text": "pair_coeff * * sph/taitwater/morris 1100 0.1 1.0e-3 6.5e-5",
+   "style": "pair_coeff hybrid sph/taitwater/morris",
+   "until": 54,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 -0.292815571959917"
+  },
+  {
+   "case": "w206sr_srp_mid",
+   "line": 19,
+   "text": "pair_coeff 2 2 srp 110.00000000000001",
+   "style": "pair_coeff hybrid srp",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 31913.177691969 61.3176045377738"
+  },
+  {
+   "case": "w64surf_tri_face",
+   "line": 13,
+   "text": "pair_coeff 1 2 surf/granular hooke 4400 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity",
+   "style": "pair_coeff hybrid surf/granular",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 4.16666666666667e-05"
+  },
+  {
+   "case": "hybrid_molecular",
+   "line": 10,
+   "text": "pair_coeff * * lj/cut 1.1 0.5 0.9",
+   "style": "pair_coeff hybrid/molecular lj/cut",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Expected integer parameter instead of '1.1' in input script or data file"
+  },
+  {
+   "case": "w10atm_overlay",
+   "line": 22,
+   "text": "pair_coeff 1 1 atm 1.1 0.064",
+   "style": "pair_coeff hybrid/overlay atm",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Invalid range string: 1.1"
+  },
+  {
+   "case": "w166px_bondval_bto",
+   "line": 21,
+   "text": "pair_coeff 1 1 bondval 0 5.0000000 0.5973900 2.0000000 8.0000000",
+   "style": "pair_coeff hybrid/overlay bondval",
+   "until": 43,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -541.686287546881 -2071482.28370426"
+  },
+  {
+   "case": "w166px_bondval_bto",
+   "line": 27,
+   "text": "pair_coeff 1 1 bondval/vec 0 5.0000000 0.0842900 0.1156100 8.0000000",
+   "style": "pair_coeff hybrid/overlay bondval/vec",
+   "until": 43,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -541.686287546881 -2071482.28370426"
+  },
+  {
+   "case": "w38nb3b_napo3",
+   "line": 24,
+   "text": "pair_coeff 1 1 buck 5.603035900000001 0.905598 0.0",
+   "style": "pair_coeff hybrid/overlay buck",
+   "until": 33,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -141.358007591824 25526.1102560611"
+  },
+  {
+   "case": "w99phq_quartz_qbmsst",
+   "line": 44,
+   "text": "pair_coeff 1 1 buck/coul/long 0 1.0 0.0",
+   "style": "pair_coeff hybrid/overlay buck/coul/long",
+   "until": 59,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Unrecognized fix style 'qtb' is part of the QTB package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the QTB package, which no native build here has"
+  },
+  {
+   "case": "w49pb_gauss_diel_md",
+   "line": 30,
+   "text": "pair_coeff 1 1 coul/diel 85.80000000000001 1.375 0.112",
+   "style": "pair_coeff hybrid/overlay coul/diel",
+   "until": 39,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 101.025079897726"
+  },
+  {
+   "case": "w102il_ilp_grhbn_tersoff",
+   "line": 17,
+   "text": "pair_coeff 1 1 coul/shield 0.77",
+   "style": "pair_coeff hybrid/overlay coul/shield",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5440.8071931308 1951.76020482213"
+  },
+  {
+   "case": "w72drude_eglycol0",
+   "line": 43,
+   "text": "pair_coeff 2 4 coul/tt 4.95 1.0",
+   "style": "pair_coeff hybrid/overlay coul/tt",
+   "until": 82,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 86.736018783757 -557.480916176806"
+  },
+  {
+   "case": "w130pr_slater_hybrid_dpd",
+   "line": 17,
+   "text": "pair_coeff * * dpd 27.500000000000004 4.5",
+   "style": "pair_coeff hybrid/overlay dpd",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.622091468214008 0.309489798124244"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 40,
+   "text": "pair_coeff * * dpd/fdt/energy 0 0.05 10.0 16.00",
+   "style": "pair_coeff hybrid/overlay dpd/fdt/energy",
+   "until": 56,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -227.57754988667 -3195.34071964558"
+  },
+  {
+   "case": "w130pr_e3b_tip4p2005",
+   "line": 15,
+   "text": "pair_coeff * * e3b preset 2216.5",
+   "style": "pair_coeff hybrid/overlay e3b",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Expected integer parameter instead of '2216.5' in input script or data file"
+  },
+  {
+   "case": "w160rx_dpdrx_fluid",
+   "line": 41,
+   "text": "pair_coeff * * exp6/rx w160rx_params.exp6 1fluid 1fluid exponent 1.1 1.0 16.00",
+   "style": "pair_coeff hybrid/overlay exp6/rx",
+   "until": 57,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 1366.19292038156"
+  },
+  {
+   "case": "w49pb_gauss_diel_md",
+   "line": 27,
+   "text": "pair_coeff 1 1 gauss/cut 0.22000000000000003 3.1 0.6 3.4",
+   "style": "pair_coeff hybrid/overlay gauss/cut",
+   "until": 39,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 101.025079897726"
+  },
+  {
+   "case": "w14hbond_lj",
+   "line": 13,
+   "text": "pair_coeff 1 3 hbond/dreiding/lj 2.2 i 2.0 2.2",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/lj",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Invalid range string: 2.2"
+  },
+  {
+   "case": "w14hbond_offset",
+   "line": 14,
+   "text": "pair_coeff 1 3 hbond/dreiding/lj/angleoffset 2.2 i 2.0 2.2",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/lj/angleoffset",
+   "until": 26,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Invalid range string: 2.2"
+  },
+  {
+   "case": "w14hbond_morse",
+   "line": 13,
+   "text": "pair_coeff 1 3 hbond/dreiding/morse 2.2 i 3.0 1.2 2.5",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/morse",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Invalid range string: 2.2"
+  },
+  {
+   "case": "w14hbond_offset",
+   "line": 15,
+   "text": "pair_coeff 1 5 hbond/dreiding/morse/angleoffset 2.2 i 2.0 1.5 2.2 2 3.0 4.5 90.0 160.0",
+   "style": "pair_coeff hybrid/overlay hbond/dreiding/morse/angleoffset",
+   "until": 26,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Invalid range string: 2.2"
+  },
+  {
+   "case": "w50bd_charmm_morse",
+   "line": 17,
+   "text": "pair_coeff 1 1 lj/charmm/coul/long 0.11000000000000001 3.0 0.05 3.5",
+   "style": "pair_coeff hybrid/overlay lj/charmm/coul/long",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1841.60173852098 -4371.32554360279"
+  },
+  {
+   "case": "w88pair_neigh_trim",
+   "line": 10,
+   "text": "pair_coeff * * lj/cut 1.1 1.0 1.0",
+   "style": "pair_coeff hybrid/overlay lj/cut",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Expected integer parameter instead of '1.1' in input script or data file"
+  },
+  {
+   "case": "w371tgnh_couple_xy",
+   "line": 24,
+   "text": "pair_coeff 1 1 lj/cut/coul/cut 0.0725967 3.500000",
+   "style": "pair_coeff hybrid/overlay lj/cut/coul/cut",
+   "until": 57,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 164.697313243134 -422.260942034995"
+  },
+  {
+   "case": "w49pb_gauss_diel_example",
+   "line": 26,
+   "text": "pair_coeff 1 1 lj/cut/coul/long 0.55 1.775 3.268",
+   "style": "pair_coeff hybrid/overlay lj/cut/coul/long",
+   "until": 42,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -359.452547133962 -10478.020033273"
+  },
+  {
+   "case": "w130pr_e3b_tip4p2005",
+   "line": 13,
+   "text": "pair_coeff * * lj/cut/tip4p/long 0 0.0",
+   "style": "pair_coeff hybrid/overlay lj/cut/tip4p/long",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -512.624321747451 14088.3221198507"
+  },
+  {
+   "case": "w219xp_hybrid_overlay",
+   "line": 13,
+   "text": "pair_coeff * * lj/mdf 1.1 1.0",
+   "style": "pair_coeff hybrid/overlay lj/mdf",
+   "until": 20,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.54671130813387 -1.68146377641705"
+  },
+  {
+   "case": "w104cf_sds_overlay_unset",
+   "line": 13,
+   "text": "pair_coeff 1 1 lj/sdk lj9_6 0.77 4.3210",
+   "style": "pair_coeff hybrid/overlay lj/sdk",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.0434004389638218 6.38740809921633"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 17,
+   "text": "pair_coeff 1 1 mdpd -44 25 18.0 1.0 0.75",
+   "style": "pair_coeff hybrid/overlay mdpd",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -14.223003839466 -5.47873591452363"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 16,
+   "text": "pair_coeff 1 1 mdpd/rhosum 0.8250000000000001",
+   "style": "pair_coeff hybrid/overlay mdpd/rhosum",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -9.58145160077053 0.0901955970444027"
+  },
+  {
+   "case": "w50bd_charmm_momb",
+   "line": 16,
+   "text": "pair_coeff * * momb 0 1.0 1.0 10.0 2.3",
+   "style": "pair_coeff hybrid/overlay momb",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1841.61027239344 -4371.26240264626"
+  },
+  {
+   "case": "w37respa_hybrid",
+   "line": 13,
+   "text": "pair_coeff * * morse 0.22000000000000003 1.6 1.1 3.0",
+   "style": "pair_coeff hybrid/overlay morse",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.0773036000138849 0.0230183241187306"
+  },
+  {
+   "case": "w162rx_lucy_h2",
+   "line": 41,
+   "text": "pair_coeff * * multi/lucy/rx w162rx_lucy.table RXLUCY h2 1fluid 17.6",
+   "style": "pair_coeff hybrid/overlay multi/lucy/rx",
+   "until": 56,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 29.0913297960555 -9483.15726199479"
+  },
+  {
+   "case": "w57oxdna_duplex2_full",
+   "line": 23,
+   "text": "pair_coeff * * oxdna/coaxstk 50.6 0.4 0.6 0.22 0.58 2.0 2.541592653589793 0.65 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 2.0 -0.65 2.0 -0.65",
+   "style": "pair_coeff hybrid/overlay oxdna/coaxstk",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -1.37680040517527 5.09478137407072e-05"
+  },
+  {
+   "case": "w57oxdna_excv_stk",
+   "line": 18,
+   "text": "pair_coeff * * oxdna/excv 2.2 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32",
+   "style": "pair_coeff hybrid/overlay oxdna/excv",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 362.382944733041 1.76522810841827"
+  },
+  {
+   "case": "w57oxdna_hbond_duplex",
+   "line": 19,
+   "text": "pair_coeff * * oxdna/hbond seqav 0 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45",
+   "style": "pair_coeff hybrid/overlay oxdna/hbond",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -1.1987922654716 -4.70580748675966e-05"
+  },
+  {
+   "case": "w57oxdna_excv_stk",
+   "line": 19,
+   "text": "pair_coeff * * oxdna/stk seqav 0.11000000000000001 1.3448 2.6568 6.0 0.4 0.9 0.32 0.75 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 2.0 0.65 2.0 0.65",
+   "style": "pair_coeff hybrid/overlay oxdna/stk",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 362.369055756303 1.76523027997563"
+  },
+  {
+   "case": "w57oxdna_xstk_duplex",
+   "line": 22,
+   "text": "pair_coeff * * oxdna/xstk 52.25000000000001 0.575 0.675 0.495 0.655 2.25 0.791592653589793 0.58 1.7 1.0 0.68 1.7 1.0 0.68 1.5 0 0.65 1.7 0.875 0.68 1.7 0.875 0.68",
+   "style": "pair_coeff hybrid/overlay oxdna/xstk",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -1.3164591883309 -4.67920248345648e-05"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 24,
+   "text": "pair_coeff * * oxdna2/coaxstk 64.35000000000001 0.4 0.6 0.22 0.58 2.0 2.891592653589793 0.65 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 40.0 3.116592653589793",
+   "style": "pair_coeff hybrid/overlay oxdna2/coaxstk",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 836.64611527551 6.69778455776687"
+  },
+  {
+   "case": "w57oxdna2_dh",
+   "line": 19,
+   "text": "pair_coeff * * oxdna2/dh 0.11000000000000001 0.2 0.815",
+   "style": "pair_coeff hybrid/overlay oxdna2/dh",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 363.26880873746 1.76508841265433"
+  },
+  {
+   "case": "w57oxdna2_dh",
+   "line": 18,
+   "text": "pair_coeff * * oxdna2/excv 2.2 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32",
+   "style": "pair_coeff hybrid/overlay oxdna2/excv",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 363.267127561324 1.76508822914803"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 20,
+   "text": "pair_coeff * * oxdna2/hbond seqav 0 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45",
+   "style": "pair_coeff hybrid/overlay oxdna2/hbond",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 836.647655412811 6.69778475446283"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 19,
+   "text": "pair_coeff * * oxdna2/stk seqav 0.11000000000000001 1.3523 2.6717 6.0 0.4 0.9 0.32 0.75 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 2.0 0.65 2.0 0.65",
+   "style": "pair_coeff hybrid/overlay oxdna2/stk",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 836.632562284934 6.69778904895546"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 23,
+   "text": "pair_coeff * * oxdna2/xstk 52.25000000000001 0.575 0.675 0.495 0.655 2.25 0.791592653589793 0.58 1.7 1.0 0.68 1.7 1.0 0.68 1.5 0 0.65 1.7 0.875 0.68 1.7 0.875 0.68",
+   "style": "pair_coeff hybrid/overlay oxdna2/xstk",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 836.647415653438 6.6977857367305"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 26,
+   "text": "pair_coeff * * oxdna3/dh 0.11000000000000001 0.2 oxdna3_lj.cgdna",
+   "style": "pair_coeff hybrid/overlay oxdna3/dh",
+   "until": 33,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -1.15897074148153 -0.000148533671378264"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 20,
+   "text": "pair_coeff * * oxdna3/stk 0.11000000000000001 oxdna3_lj.cgdna",
+   "style": "pair_coeff hybrid/overlay oxdna3/stk",
+   "until": 33,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -1.17655689403763 -0.000151065981644919"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 25,
+   "text": "pair_coeff * * oxrna2/coaxstk 88 0.5 0.6 0.42 0.58 2.0 2.592 0.65 1.3 0.151 0.8 0.9 0.685 0.95 0.9 0.685 0.95 2.0 -0.65 2.0 -0.65",
+   "style": "pair_coeff hybrid/overlay oxrna2/coaxstk",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 837.151293875118 6.69770860196382"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 26,
+   "text": "pair_coeff * * oxrna2/dh 0.11000000000000001 0.5 1.02455",
+   "style": "pair_coeff hybrid/overlay oxrna2/dh",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 837.153884232279 6.6977084298398"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 18,
+   "text": "pair_coeff * * oxrna2/excv 2.2 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32",
+   "style": "pair_coeff hybrid/overlay oxrna2/excv",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 837.151374587254 6.69770780297311"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 20,
+   "text": "pair_coeff * * oxrna2/hbond seqdep 0 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45",
+   "style": "pair_coeff hybrid/overlay oxrna2/hbond",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 837.151374587254 6.69770780297311"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 19,
+   "text": "pair_coeff * * oxrna2/stk seqdep 0.11000000000000001 1.40206 2.77 6.0 0.43 0.93 0.35 0.78 0.9 0 0.95 0.9 0 0.95 1.3 0 0.8 1.3 0 0.8 2.0 0.65 2.0 0.65",
+   "style": "pair_coeff hybrid/overlay oxrna2/stk",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 837.144966442699 6.69770919516113"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 24,
+   "text": "pair_coeff * * oxrna2/xstk 65.95886 0.5 0.6 0.42 0.58 2.25 0.505 0.58 1.7 1.266 0.68 1.7 1.266 0.68 1.7 0.309 0.68 1.7 0.309 0.68",
+   "style": "pair_coeff hybrid/overlay oxrna2/xstk",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 837.147004239141 6.69771506811783"
+  },
+  {
+   "case": "w48pb_pedone_melt",
+   "line": 20,
+   "text": "pair_coeff 1 2 pedone 0.0332321 2.241334 2.923245 5.0",
+   "style": "pair_coeff hybrid/overlay pedone",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -469.346476898941 59021.3185240246"
+  },
+  {
+   "case": "w96rheo_thermal_react",
+   "line": 24,
+   "text": "pair_coeff * * rheo/solid 1.1 1.0 1.0",
+   "style": "pair_coeff hybrid/overlay rheo/solid",
+   "until": 46,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0.00145"
+  },
+  {
+   "case": "w43ad_snap_scale",
+   "line": 23,
+   "text": "pair_coeff * * snap 1.1 Ni_Zuo_JPCA2020.snapcoeff Ni_Zuo_JPCA2020.snapparam Ni Ni",
+   "style": "pair_coeff hybrid/overlay snap",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Expected integer parameter instead of '1.1' in input script or data file"
+  },
+  {
+   "case": "w83sph_shock3d",
+   "line": 23,
+   "text": "pair_coeff * * sph/idealgas 0.8250000000000001 4.0",
+   "style": "pair_coeff hybrid/overlay sph/idealgas",
+   "until": 40,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0.643890284975531"
+  },
+  {
+   "case": "w83sph_shock3d",
+   "line": 22,
+   "text": "pair_coeff * * sph/rhosum 4.4",
+   "style": "pair_coeff hybrid/overlay sph/rhosum",
+   "until": 40,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0.645593637250046"
+  },
+  {
+   "case": "w103spin_dipole_cut_frozen",
+   "line": 16,
+   "text": "pair_coeff * * spin/dipole/cut 8.8",
+   "style": "pair_coeff hybrid/overlay spin/dipole/cut",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.354927769186847 0"
+  },
+  {
+   "case": "w272sp_pppm_spin_peatom",
+   "line": 17,
+   "text": "pair_coeff * * spin/dipole/long 8.8",
+   "style": "pair_coeff hybrid/overlay spin/dipole/long",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.272245987342876 -0.007037256129398"
+  },
+  {
+   "case": "w48sp2_bfo_hybrid",
+   "line": 18,
+   "text": "pair_coeff * * spin/dmi dmi 4.95 0.00005 1.0 1.0 1.0",
+   "style": "pair_coeff hybrid/overlay spin/dmi",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.0254073027701193 0"
+  },
+  {
+   "case": "w48sp2_bfo_hybrid",
+   "line": 16,
+   "text": "pair_coeff * * spin/exchange exchange 6.6000000000000005 -0.01575 0.0 1.965",
+   "style": "pair_coeff hybrid/overlay spin/exchange",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.0254073027701193 0"
+  },
+  {
+   "case": "w48sp2_hybrid",
+   "line": 22,
+   "text": "pair_coeff * * spin/exchange/biquadratic biquadratic 4.4 0.03 0.01 1.7 0.02 0.04 1.2",
+   "style": "pair_coeff hybrid/overlay spin/exchange/biquadratic",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.00241736109639647 0"
+  },
+  {
+   "case": "w48sp2_bfo_hybrid",
+   "line": 17,
+   "text": "pair_coeff * * spin/magelec magelec 4.95 0.000109 1.0 1.0 1.0",
+   "style": "pair_coeff hybrid/overlay spin/magelec",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.0254073027701193 0"
+  },
+  {
+   "case": "w103spin_neel_frozen",
+   "line": 16,
+   "text": "pair_coeff * * spin/neel neel 4.4 0.02 0.3 1.841 0.05 0.2 1.2",
+   "style": "pair_coeff hybrid/overlay spin/neel",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.552483166114296 0"
+  },
+  {
+   "case": "w102il_tmd",
+   "line": 13,
+   "text": "pair_coeff * * sw/mod 1.1 tmd.sw.mod Mo S S NULL NULL NULL",
+   "style": "pair_coeff hybrid/overlay sw/mod",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Expected integer parameter instead of '1.1' in input script or data file"
+  },
+  {
+   "case": "w38nb3b_napo3",
+   "line": 21,
+   "text": "pair_coeff 1 3 table w38nb3b_Table_NP.dat Pair_P-O 7.700000000000001",
+   "style": "pair_coeff hybrid/overlay table",
+   "until": 33,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -141.566138207155 25427.5044135347"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 41,
+   "text": "pair_coeff * * table/rx w162rx_table.table RXPAIR rdx h2 17.6",
+   "style": "pair_coeff hybrid/overlay table/rx",
+   "until": 56,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Invalid pair table cutoff"
+  },
+  {
+   "case": "w371tgnh_couple_xy",
+   "line": 31,
+   "text": "pair_coeff 1 * thole 1.5048000000000001",
+   "style": "pair_coeff hybrid/overlay thole",
+   "until": 57,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 166.509465527769 -413.313128752876"
+  },
+  {
+   "case": "w142mx_tracker",
+   "line": 18,
+   "text": "pair_coeff * * tracker 2.75",
+   "style": "pair_coeff hybrid/overlay tracker",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325309 -4.55351258258514"
+  },
+  {
+   "case": "hybrid_scaled",
+   "line": 21,
+   "text": "pair_coeff * * lj/cut 1.1 1.0 1.0",
+   "style": "pair_coeff hybrid/scaled lj/cut",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Expected integer parameter instead of '1.1' in input script or data file"
+  },
+  {
+   "case": "w219xp_lennard_mdf",
+   "line": 15,
+   "text": "pair_coeff 1 1 4.4 4.0",
+   "style": "pair_coeff lennard/mdf",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.93138230176838 -5.61527179856523"
+  },
+  {
+   "case": "w16lepton_shift",
+   "line": 14,
+   "text": "pair_coeff * * \"4.0*((1.0/r)^12 - (1.0/r)^6)\" 2.2",
+   "style": "pair_coeff lepton",
+   "until": 20,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.906148133209 -5.90687702104628"
+  },
+  {
+   "case": "w16lepton_coul",
+   "line": 19,
+   "text": "pair_coeff 1 1 \"qi*qj/r + 4.0*((1.0/r)^12-(1.0/r)^6)\" 2.2",
+   "style": "pair_coeff lepton/coul",
+   "until": 26,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -6.17418394209415 -4.79511531379541"
+  },
+  {
+   "case": "w16lepton_sphere",
+   "line": 16,
+   "text": "pair_coeff 1 * \"k*((r-r0)^2*step(r0-r)); k=20; r0=radi+radj\" 2.2",
+   "style": "pair_coeff lepton/sphere",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0.0551548107831255"
+  },
+  {
+   "case": "w105cf_erotate_line",
+   "line": 12,
+   "text": "pair_coeff * * 0.275 0.25 1.0 0.25 2.5",
+   "style": "pair_coeff line/lj",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 9901269.21224642 61494844.1226241"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 11,
+   "text": "pair_coeff * * 0 1.0",
+   "style": "pair_coeff lj/charmm/coul/charmm",
+   "until": 15,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 179.4 0"
+  },
+  {
+   "case": "w3charmm_implicit",
+   "line": 22,
+   "text": "pair_coeff 1 1 0.26180000000000003 3.405",
+   "style": "pair_coeff lj/charmm/coul/charmm/implicit",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -1918.52806320807 -2511.83645583093"
+  },
+  {
+   "case": "w13dihcharmm_long",
+   "line": 15,
+   "text": "pair_coeff 1 1 0.11000000000000001 3.0 0.05 3.5",
+   "style": "pair_coeff lj/charmm/coul/long",
+   "until": 26,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1841.60592527469 -4348.57397145173"
+  },
+  {
+   "case": "w69fep_charmmsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.1 1.0 0.5",
+   "style": "pair_coeff lj/charmm/coul/long/soft",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -1.08067592406279 19.2397695097276"
+  },
+  {
+   "case": "w209ms_charmm_water",
+   "line": 9,
+   "text": "pair_coeff 1 1 0.20372 3.1589",
+   "style": "pair_coeff lj/charmm/coul/msm",
+   "until": 26,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 54.9620036429808 18479.9827872317"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 11,
+   "text": "pair_coeff 1 1 0.11000000000000001 3.0 0.05 3.5",
+   "style": "pair_coeff lj/charmmfsw/coul/charmmfsh",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 5264.24272231543 -18731.8960527558"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 14,
+   "text": "pair_coeff 1 1 0.11000000000000001 3.0 0.05 3.5",
+   "style": "pair_coeff lj/charmmfsw/coul/long",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 5260.813746151 -18731.9987132313"
+  },
+  {
+   "case": "w1ljx_class2",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.1 1.0",
+   "style": "pair_coeff lj/class2",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.2828829220373 -5.9243072400807"
+  },
+  {
+   "case": "w51cs_c2cut_run",
+   "line": 23,
+   "text": "pair_coeff * * 1.1 1.0 8.0 7.0",
+   "style": "pair_coeff lj/class2/coul/cut",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -4385.90726919582 -8634.58384390348"
+  },
+  {
+   "case": "w69fep_class2cutsoft",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.1 1.0 0.5",
+   "style": "pair_coeff lj/class2/coul/cut/soft",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2.33459435545163 -0.16079984216257"
+  },
+  {
+   "case": "w51cs_c2long_run",
+   "line": 23,
+   "text": "pair_coeff 1 1 0.44000000000000006 3.0",
+   "style": "pair_coeff lj/class2/coul/long",
+   "until": 35,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -1934.0639798548 -6060.60167441918"
+  },
+  {
+   "case": "w226cs_class2",
+   "line": 7,
+   "text": "pair_coeff * * 0.05500000000000001 2.5",
+   "style": "pair_coeff lj/class2/coul/long/cs",
+   "until": 20,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 4.96030594106492 -6226.19183429119"
+  },
+  {
+   "case": "w17soft_class2",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.1 1.0 0.5",
+   "style": "pair_coeff lj/class2/coul/long/soft",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -3.88409301855084 -0.652321546434756"
+  },
+  {
+   "case": "w69fep_class2soft",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 1.0 0.5",
+   "style": "pair_coeff lj/class2/soft",
+   "until": 26,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -3.43438468290421 -1.12316516847941"
+  },
+  {
+   "case": "w88pair_shift_lj_cubic",
+   "line": 10,
+   "text": "pair_coeff * * 1.1 1.0",
+   "style": "pair_coeff lj/cubic",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -6.10606418240566 -5.38475711484194"
+  },
+  {
+   "case": "w88pair_nofdotr",
+   "line": 10,
+   "text": "pair_coeff * * 1.1 1.0",
+   "style": "pair_coeff lj/cut",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -7.45070485857803 -6.85884899709364"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 6,
+   "text": "pair_coeff * * 0.22000000000000003 1.1",
+   "style": "pair_coeff lj/cut/coul/cut",
+   "until": 16,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.423908831944198 -4489.12150995435"
+  },
+  {
+   "case": "w243de_efield_cutcoul",
+   "line": 9,
+   "text": "pair_coeff * * 0.022000000000000002 2.0",
+   "style": "pair_coeff lj/cut/coul/cut/dielectric",
+   "until": 18,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -62.0865789868097 -177.382429777811"
+  },
+  {
+   "case": "w17soft_coul",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.1 1.0 0.5",
+   "style": "pair_coeff lj/cut/coul/cut/soft",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.474370163825259 20.6669122606871"
+  },
+  {
+   "case": "w1lcoul_debye",
+   "line": 23,
+   "text": "pair_coeff 1 1 1.1 1.0",
+   "style": "pair_coeff lj/cut/coul/debye",
+   "until": 31,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -6.39525843696172 -4.85380690422367"
+  },
+  {
+   "case": "w226cs_diel_debye",
+   "line": 7,
+   "text": "pair_coeff * * 0.022000000000000002 2.0",
+   "style": "pair_coeff lj/cut/coul/debye/dielectric",
+   "until": 17,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 40771.8587430627 1400450.82890137"
+  },
+  {
+   "case": "w1lcoul_special_dsf",
+   "line": 10,
+   "text": "pair_coeff * * 0.55 0.9",
+   "style": "pair_coeff lj/cut/coul/dsf",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.23365970600735 0.0255132150118428"
+  },
+  {
+   "case": "w244es_ljfluid",
+   "line": 16,
+   "text": "pair_coeff * * 0.11000000000000001 2.6",
+   "style": "pair_coeff lj/cut/coul/esp",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -6262.4844039932 -20046.0797598646"
+  },
+  {
+   "case": "w75pppmslab_madelung_lowacc",
+   "line": 9,
+   "text": "pair_coeff * * 0 1",
+   "style": "pair_coeff lj/cut/coul/long",
+   "until": 12,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 725.0719520152 814391.825720641"
+  },
+  {
+   "case": "w226cs_ljcoul_t12",
+   "line": 7,
+   "text": "pair_coeff * * 0.05500000000000001 2.5",
+   "style": "pair_coeff lj/cut/coul/long/cs",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 5.50989310107639 -6005.19766941671"
+  },
+  {
+   "case": "w243de_efield_ljlong_pppm",
+   "line": 9,
+   "text": "pair_coeff * * 0.022000000000000002 2.0",
+   "style": "pair_coeff lj/cut/coul/long/dielectric",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -170.474129172385 -527.36396867753"
+  },
+  {
+   "case": "w54accel_charged",
+   "line": 25,
+   "text": "pair_coeff 1 1 0.011000000000000001 2.35",
+   "style": "pair_coeff lj/cut/coul/long/omp",
+   "until": 36,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -936.306762597356 -29784.5569541906"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 11,
+   "text": "pair_coeff 1 1 0.11000000000000001 3.0 1.0",
+   "style": "pair_coeff lj/cut/coul/long/soft",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -115.628062351888 -30.1515477465061"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 9,
+   "text": "pair_coeff 1 1 0.20372 3.1589",
+   "style": "pair_coeff lj/cut/coul/msm",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 46.7931759998723 18869.7433908551"
+  },
+  {
+   "case": "w243de_efield_ljcoulmsm",
+   "line": 9,
+   "text": "pair_coeff * * 0.022000000000000002 2.0",
+   "style": "pair_coeff lj/cut/coul/msm/dielectric",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 40384.3520304198 -1448.18653074409"
+  },
+  {
+   "case": "w1lcoul_special_wolf",
+   "line": 10,
+   "text": "pair_coeff * * 0.55 0.9",
+   "style": "pair_coeff lj/cut/coul/wolf",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2.23383583338011 0.0255132150270299"
+  },
+  {
+   "case": "w41sm_dipole_mol",
+   "line": 13,
+   "text": "pair_coeff 1 1 1.1 1.0",
+   "style": "pair_coeff lj/cut/dipole/cut",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.81995221684787 0.00220684614821684"
+  },
+  {
+   "case": "w44dl_static_auto",
+   "line": 20,
+   "text": "pair_coeff * * 0 1.0",
+   "style": "pair_coeff lj/cut/dipole/long",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 50.1648942132272 1998.44426909662"
+  },
+  {
+   "case": "w54accel_melt",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 1.0 2.5",
+   "style": "pair_coeff lj/cut/omp",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -7.45070485857803 -6.03098027474868"
+  },
+  {
+   "case": "w17soft_tail",
+   "line": 14,
+   "text": "pair_coeff 1 1 1.1 1.0 0.6",
+   "style": "pair_coeff lj/cut/soft",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2.83238773055164 -1.96222152869006"
+  },
+  {
+   "case": "w69fep_gapsys_lj",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 1.0 0.5",
+   "style": "pair_coeff lj/cut/soft/gapsys",
+   "until": 26,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.177400784873386 41.3149146542696"
+  },
+  {
+   "case": "w220xp_ljcutsphere",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.1",
+   "style": "pair_coeff lj/cut/sphere",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2.52373840522585 -1.45912447355617"
+  },
+  {
+   "case": "w72drude_toluene_lang",
+   "line": 21,
+   "text": "pair_coeff 1 1 0.0769978 3.550000 1.620000",
+   "style": "pair_coeff lj/cut/thole/long",
+   "until": 188,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 144.926810433342 174.561712367311"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 9,
+   "text": "pair_coeff 1 1 0.20372 3.1589",
+   "style": "pair_coeff lj/cut/tip4p/cut",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 4195.3889754128 131078.662946988"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 8,
+   "text": "pair_coeff 1 1 0.20372 3.1589",
+   "style": "pair_coeff lj/cut/tip4p/long",
+   "until": 25,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 22.8313874013979 16750.4813026671"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 125,
+   "text": "pair_coeff 1 1 0.17094000000000004 3.1655 0.5",
+   "style": "pair_coeff lj/cut/tip4p/long/soft",
+   "until": 135,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -62.2385709571186 796.581467130107"
+  },
+  {
+   "case": "w88pair_expand_shift01",
+   "line": 10,
+   "text": "pair_coeff * * 1.1 1.0 0.1",
+   "style": "pair_coeff lj/expand",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -7.83791194171023 2.84858619355686"
+  },
+  {
+   "case": "w220xp_ljexpandcoullong_special",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 1.0 0.1",
+   "style": "pair_coeff lj/expand/coul/long",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -4.03073410138073 0.733235432352875"
+  },
+  {
+   "case": "w220xp_ljexpandsphere",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.1 0.3",
+   "style": "pair_coeff lj/expand/sphere",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.0398239731832106 0.160160256190626"
+  },
+  {
+   "case": "w1ljx_gromacs",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.1 1.0",
+   "style": "pair_coeff lj/gromacs",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.54767584932663 -4.57337013057021"
+  },
+  {
+   "case": "w220xp_gromacs",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 1.0",
+   "style": "pair_coeff lj/gromacs/coul/gromacs",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -3.08391427205289 -1.25119053617792"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 7,
+   "text": "pair_coeff 1 1 1.1 1.0",
+   "style": "pair_coeff lj/long/coul/long",
+   "until": 16,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.66019809740815 -1.71774088285298"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 7,
+   "text": "pair_coeff * * 0.022000000000000002 2.0",
+   "style": "pair_coeff lj/long/coul/long/dielectric",
+   "until": 17,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 39629.5370272816 1399873.90696043"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 17,
+   "text": "pair_coeff * * 1.1 1.0",
+   "style": "pair_coeff lj/long/dipole/long",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2.06081757843494 -1.12125905238771"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 10,
+   "text": "pair_coeff 1 1 0.20372 3.1589",
+   "style": "pair_coeff lj/long/tip4p/long",
+   "until": 26,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 22.8303758970965 13036.3459907144"
+  },
+  {
+   "case": "w219xp_lj_mdf",
+   "line": 15,
+   "text": "pair_coeff 1 1 1.1 1.0",
+   "style": "pair_coeff lj/mdf",
+   "until": 20,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -6.63074185913431 -4.56608702797501"
+  },
+  {
+   "case": "w220xp_lj_pirani",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 2.0 1.0 1.0 1.0",
+   "style": "pair_coeff lj/pirani",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2.99306228857995 -0.941628068210708"
+  },
+  {
+   "case": "w6relres_mixed",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.1 1.0 0.5 1.2 1.3 1.6 1.9 2.4",
+   "style": "pair_coeff lj/relres",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -4.44363437030671 -2.67989754496854"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 7,
+   "text": "pair_coeff 1 1 lj12_6 1.1 1.1 9.0",
+   "style": "pair_coeff lj/sdk",
+   "until": 18,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2442.84147548614 8.14236911226564"
+  },
+  {
+   "case": "w51cs_sdklong_dimer",
+   "line": 33,
+   "text": "pair_coeff 1 1 lj9_6 1.1 1.1 9.0",
+   "style": "pair_coeff lj/sdk/coul/long",
+   "until": 41,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 71.0850379239545 18.9221749738468"
+  },
+  {
+   "case": "w9pair_ljsf",
+   "line": 23,
+   "text": "pair_coeff 1 1 1.1 1.0",
+   "style": "pair_coeff lj/sf",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.17093304709107 -0.977826233877291"
+  },
+  {
+   "case": "w19dipole_special",
+   "line": 39,
+   "text": "pair_coeff * * 0.8800000000000001 1.0",
+   "style": "pair_coeff lj/sf/dipole/sf",
+   "until": 40,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.358550937083222 -0.00755251866032612"
+  },
+  {
+   "case": "w88pair_tail_lj_smooth",
+   "line": 10,
+   "text": "pair_coeff * * 1.1 1.0",
+   "style": "pair_coeff lj/smooth",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -8.69886305332285 -5.31737947784659"
+  },
+  {
+   "case": "w88pair_shift_lj_smooth_linear",
+   "line": 10,
+   "text": "pair_coeff * * 1.1 1.0",
+   "style": "pair_coeff lj/smooth/linear",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -6.2626061032822 -6.24195713188911"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 7,
+   "text": "pair_coeff 1 1 lj12_6 1.1 1.1 9.0",
+   "style": "pair_coeff lj/spica",
+   "until": 18,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 2442.84147548614 8.14236911226564"
+  },
+  {
+   "case": "w51cs_spicalong_run",
+   "line": 23,
+   "text": "pair_coeff 1 1 lj9_6 0.44000000000000006 3.0 8.0",
+   "style": "pair_coeff lj/spica/coul/long",
+   "until": 35,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2062.50707795677 -6277.53921584756"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 21,
+   "text": "pair_coeff 1 1 lj9_6 0.44000000000000006 3.2",
+   "style": "pair_coeff lj/spica/coul/msm",
+   "until": 32,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -12235.1050592834 565150.772531464"
+  },
+  {
+   "case": "w1ljv_lj96",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.1 1.0",
+   "style": "pair_coeff lj96/cut",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -4.00508360931568 -1.84641484751201"
+  },
+  {
+   "case": "w157mt_bond_angle",
+   "line": 12,
+   "text": "pair_coeff * * w157mt_C_10_10_coarse.mesocnt 1.1",
+   "style": "pair_coeff mesocnt",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Expected integer parameter instead of '1.1' in input script or data file"
+  },
+  {
+   "case": "w157mt_viscous",
+   "line": 16,
+   "text": "pair_coeff * * w157mt_C_10_10_coarse.mesocnt 0.05500000000000001 1.0 0.1 1",
+   "style": "pair_coeff mesocnt/viscous",
+   "until": 26,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.74740363078003 1.1761415659455"
+  },
+  {
+   "case": "w1ljx_mie",
+   "line": 21,
+   "text": "pair_coeff 1 1 1.1 1.0 12.0 6.0",
+   "style": "pair_coeff mie/cut",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -6.11524450876034 -4.71410837735815"
+  },
+  {
+   "case": "w49pb_momb_md",
+   "line": 23,
+   "text": "pair_coeff 1 1 0.33 1.2 2.5 10.2847 2.361",
+   "style": "pair_coeff momb",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -9.5975975138673 -39725.605054271"
+  },
+  {
+   "case": "w88pair_tail_morse",
+   "line": 10,
+   "text": "pair_coeff * * 1.1 1.2 1.0 2.5",
+   "style": "pair_coeff morse",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -17.277524030257 -7.12508270809801"
+  },
+  {
+   "case": "w220xp_morse_smooth_linear",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 1.5 1.1",
+   "style": "pair_coeff morse/smooth/linear",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -1.06755213497565 -0.0742025431762953"
+  },
+  {
+   "case": "w69fep_morse",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 1.5 1.1 1.0",
+   "style": "pair_coeff morse/soft",
+   "until": 26,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -21.977359452223 -16.2986187192174"
+  },
+  {
+   "case": "w142mx_multi_lucy_lookup",
+   "line": 26,
+   "text": "pair_coeff * * w142mx_multilucy.table KEYWORD 17.6",
+   "style": "pair_coeff multi/lucy",
+   "until": 41,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 10.1808282024053 5331.62344616047"
+  },
+  {
+   "case": "w220xp_nm_cut",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 1.1 8 4",
+   "style": "pair_coeff nm/cut",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -2.8002088116262 -1.30804196982449"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_cut",
+   "line": 18,
+   "text": "pair_coeff 1 1 1.1 1.1 8 4",
+   "style": "pair_coeff nm/cut/coul/cut",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -3.35723485264182 -1.30565945934672"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_long",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 1.1 8 4",
+   "style": "pair_coeff nm/cut/coul/long",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -3.85542293109485 -0.949493959510841"
+  },
+  {
+   "case": "w220xp_nm_cut_split_tail",
+   "line": 16,
+   "text": "pair_coeff 1 1 1.1 1.3 8 4",
+   "style": "pair_coeff nm/cut/split",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -5.78469593849487 -1.42303877401514"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 13,
+   "text": "pair_coeff * * 2.2 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32",
+   "style": "pair_coeff oxdna/excv",
+   "until": 16,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 14862029.9483056 14866.1144910546"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 18,
+   "text": "pair_coeff * * 2.2 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32",
+   "style": "pair_coeff oxdna2/excv",
+   "until": 24,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 363.248419221657 1.76508504344121"
+  },
+  {
+   "case": "w48pb_pedone_triclinic",
+   "line": 23,
+   "text": "pair_coeff 1 1 0.0332321 2.241334 2.923245 5.0",
+   "style": "pair_coeff pedone",
+   "until": 30,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 7.56318289220201 252865.981040827"
+  },
+  {
+   "case": "w107peri_eps_block",
+   "line": 13,
+   "text": "pair_coeff * * 16390000000.000002 14.9e9 0.0015001 0.0005 0.25 10.0e8",
+   "style": "pair_coeff peri/eps",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 4.90139943507112e+16"
+  },
+  {
+   "case": "w22peri_lps_data",
+   "line": 10,
+   "text": "pair_coeff * * 16390000000.000002 7.0e9 0.0015001 0.0005 0.25",
+   "style": "pair_coeff peri/lps",
+   "until": 20,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 1.34123396875726e+15"
+  },
+  {
+   "case": "w22peri_pmb_data",
+   "line": 10,
+   "text": "pair_coeff * * 1.85493e+22 0.0015001 0.0005 0.25",
+   "style": "pair_coeff peri/pmb",
+   "until": 20,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 1.34123396875726e+15"
+  },
+  {
+   "case": "w107peri_ves_block",
+   "line": 13,
+   "text": "pair_coeff * * 16390000000.000002 14.9e9 0.0015001 0.0005 0.25 0.5 0.001",
+   "style": "pair_coeff peri/ves",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 4.90139943507112e+16"
+  },
+  {
+   "case": "w133mf_region_ees",
+   "line": 13,
+   "text": "pair_coeff 1 1 11 1.0 0.5 0.5 4 0.5 0.5 4 1",
+   "style": "pair_coeff resquared",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0.00149613741114517"
+  },
+  {
+   "case": "w96rheo_pair_solid",
+   "line": 21,
+   "text": "pair_coeff * * 1.1 1.3 0.5",
+   "style": "pair_coeff rheo/solid",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0.013148247536107"
+  },
+  {
+   "case": "w88pair_shift_soft",
+   "line": 10,
+   "text": "pair_coeff * * 11",
+   "style": "pair_coeff soft",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 107.936153571972 103.823605641425"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 20,
+   "text": "pair_coeff 1 1 0.00011000000000000002 2.0e-2",
+   "style": "pair_coeff sph/heatconduction",
+   "until": 34,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 0"
+  },
+  {
+   "case": "w228gs_sph_lj",
+   "line": 10,
+   "text": "pair_coeff * * 0.11000000000000001 1.3",
+   "style": "pair_coeff sph/lj",
+   "until": 19,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0 27.3420362734139"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 17,
+   "text": "pair_coeff * * 4.4",
+   "style": "pair_coeff spin/dipole/long",
+   "until": 27,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.000155595941806411 2300.90134420362"
+  },
+  {
+   "case": "w48sp2_dmi",
+   "line": 21,
+   "text": "pair_coeff * * dmi 4.4 0.001 1.0 2.0 -0.5",
+   "style": "pair_coeff spin/dmi",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -8.25527402377938e-05 -0.0141715240742691"
+  },
+  {
+   "case": "w47spin_moving2",
+   "line": 14,
+   "text": "pair_coeff * * exchange 4.4 0.02726 0.2171 1.841 offset yes",
+   "style": "pair_coeff spin/exchange",
+   "until": 22,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.00861274851342301 0.603337707116764"
+  },
+  {
+   "case": "w48sp2_biquad",
+   "line": 21,
+   "text": "pair_coeff * * biquadratic 4.4 0.05 0.03 1.48 0.07 0.02 1.9 offset no",
+   "style": "pair_coeff spin/exchange/biquadratic",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.132221284124868 -8.37318244189676"
+  },
+  {
+   "case": "w48sp2_magelec",
+   "line": 21,
+   "text": "pair_coeff * * magelec 4.95 0.00109 1.0 1.0 1.0",
+   "style": "pair_coeff spin/magelec",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 0.00107034566905853 0"
+  },
+  {
+   "case": "w3table_linear",
+   "line": 20,
+   "text": "pair_coeff 1 1 w3table_lj.table LJ11 2.75",
+   "style": "pair_coeff table",
+   "until": 28,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Pair table cutoff outside of table"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 18,
+   "text": "pair_coeff 1 1 20.625 4.5 0.41 1.58 1.58 1.0 1.0E-5 2.0 3.0 1.0E-5 2.0",
+   "style": "pair_coeff tdpd",
+   "until": 34,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 36.9231855556133 107.03214540333"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 123,
+   "text": "pair_coeff 1 1 0.55",
+   "style": "pair_coeff tip4p/long/soft",
+   "until": 133,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -1648.58242205894 -12989.4030064773"
+  },
+  {
+   "case": "w61tri_pair",
+   "line": 9,
+   "text": "pair_coeff * * 1.1 0.3 4.0",
+   "style": "pair_coeff tri/lj",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -0.000748140529638864 0.000134990647496021"
+  },
+  {
+   "case": "w219xp_ufm",
+   "line": 16,
+   "text": "pair_coeff 1 1 0.55 1.0",
+   "style": "pair_coeff ufm",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 1.5992194328732 2.66282848903698"
+  },
+  {
+   "case": "w219xp_wf_cut",
+   "line": 15,
+   "text": "pair_coeff 1 1 1.1 1.0 1 2",
+   "style": "pair_coeff wf/cut",
+   "until": 21,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -3.2319666448364 -6.68699314009331"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 21,
+   "text": "pair_coeff * * 1.1 1.0 4 3 0.0 2.6",
+   "style": "pair_coeff ylz",
+   "until": 33,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL -3.56832028219034 -0.00620930916435761"
+  },
+  {
+   "case": "w88pair_tail_yukawa",
+   "line": 10,
+   "text": "pair_coeff * * 2.2 2.5",
+   "style": "pair_coeff yukawa",
+   "until": 14,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 6.27905788537803 4.54090247425443"
+  },
+  {
+   "case": "w5yukawa_colloid",
+   "line": 21,
+   "text": "pair_coeff 1 1 110.00000000000001",
+   "style": "pair_coeff yukawa/colloid",
+   "until": 29,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "OK | VAL 194.77323476044 74.3093686600662"
+  },
+  {
+   "case": "w15snap_grid_local",
+   "line": 17,
+   "text": "pair_coeff * * 80.30000000000001 73",
+   "style": "pair_coeff zbl",
+   "until": 23,
+   "pre": "thermo_style custom step pe press\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g)\"\n",
+   "native": "ERROR: Incorrect args for pair coefficients"
+  }
+ ]
+}

@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
+import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -120,7 +120,12 @@ export class PairZBL extends Pair {
     if (args.length !== 4) throw pairCoeffArgs('usage: pair_coeff I J z_i z_j');
     const zi = parseNum(args[2], 'z_i');
     const zj = parseNum(args[3], 'z_j');
-    if (!(zi > 0) || !(zj > 0)) throw new StyleError('zbl: Z coefficients must be > 0 (multiples of a proton charge)');
+    // As native LAMMPS does (src/pair_zbl.cpp PairZBL::coeff at b332f28): an i == j pair of the range needs Z_i == Z_j
+    const [ilo, ihi] = typeBounds(args[0], this.ntypes);
+    const [jlo, jhi] = typeBounds(args[1], this.ntypes);
+    for (let i = ilo; i <= ihi; i++) if (i >= jlo && i <= jhi && zi !== zj) throw pairCoeffArgs();
+    // native takes any Z; a negative one gives NaN energies (a power of it), which the engine refuses
+    if (zi < 0 || zj < 0) throw new StyleError('zbl: a negative Z coefficient gives NaN energies in native LAMMPS; the engine does not run it');
     this.p.setRange(args[0], args[1], [zi, zj]);
   }
 

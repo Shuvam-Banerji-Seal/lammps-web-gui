@@ -671,6 +671,13 @@ export abstract class Pair {
 export interface BondedCopies {
   start: Int32Array;
   image: Int32Array;
+  /**
+   * The owned and ghost positions (Neighbor.xall): the coordinates of the copies themselves, as native LAMMPS has its
+   * ghost atoms. Used for two atoms whose owned coordinates there are their current ones.
+   */
+  x?: Float64Array;
+  /** The same positions at the last neighbor build (Neighbor.xBuilt), which choose the copy (see copyDelta). */
+  built?: Float64Array;
 }
 
 /** What a bonded style sees during compute(). Positions are owned atoms only. */

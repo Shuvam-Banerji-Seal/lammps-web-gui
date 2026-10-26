@@ -1,6 +1,6 @@
 import { newAccum, type Pair } from '../force/types';
 import type { NeighList } from '../neighbor';
-import { THREADED_PAIRS } from './threadedPairs';
+import { THREADED_PAIRS, type TwoPassPair } from './threadedPairs';
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins } from './neighborKernel';
 
 /*
@@ -24,6 +24,11 @@ export type PairThreadMessage =
     type: 'compute'; nlocal: number; nall: number; qqrd2e: number; specialLJ: number[]; specialCoul: number[]; nchunks: number;
     /** the engine's force array when it is shared (the threads then add their forces into it, see REDUCE) */
     F: SharedArrayBuffer | null; phase: number; nslices: number;
+    /**
+     * 0: pair.compute; 1 and 2: the two loops of a TwoPassPair (threadedPairs.ts), the first summing into this worker's
+     * force array (one value per atom), the second reading the per-atom values in aux
+     */
+    pass: 0 | 1 | 2; aux: SharedArrayBuffer | null;
   }
   | {
     type: 'nbuffers'; bL: SharedArrayBuffer; bG: SharedArrayBuffer; rLo: SharedArrayBuffer; rHi: SharedArrayBuffer;
@@ -222,20 +227,25 @@ export class PairThreadWorker {
     try {
       const pair = this.pair;
       if (!pair) throw new Error('no pair style');
-      this.f.fill(0, 0, 3 * m.nall);
+      this.f.fill(0, 0, m.pass === 1 ? m.nall : 3 * m.nall);
       const a = newAccum();
       const specialLJ = Float64Array.from(m.specialLJ), specialCoul = Float64Array.from(m.specialCoul);
+      const two = pair as Pair & TwoPassPair;
+      const values = m.pass === 2 ? new Float64Array(m.aux!) : null;
       for (;;) {
         const c = Atomics.add(ctl, NEXT, 1);
         if (c >= m.nchunks) break;
         const half: NeighList = { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: this.numneigh, firstneigh: this.firstneigh, neighbors: this.neighbors };
-        pair.compute({
+        const pc = {
           x: this.x, f: this.f, type: this.t, q: this.q, nlocal: m.nlocal, nall: m.nall, half, full: null,
           specialLJ, specialCoul, qqrd2e: m.qqrd2e,
           acc: a, eatom: null, vatom: null,
           // THREADED_PAIRS styles do not read these
           s: undefined as never, nb: undefined as never, geom: undefined as never,
-        });
+        };
+        if (m.pass === 1) two.densities(pc, this.f as Float64Array);
+        else if (m.pass === 2) two.forces(pc, values!);
+        else pair.compute(pc);
       }
       this.acc[0] = a.evdwl; this.acc[1] = a.ecoul;
       for (let c = 0; c < 6; c++) this.acc[2 + c] = a.virial[c];

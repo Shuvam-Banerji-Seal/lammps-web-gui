@@ -1,5 +1,6 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs, potentialFile } from '../types';
 import { NEIGHMASK } from '../../neighbor';
+import { eamDensities, eamForces, eamGrid, type EAMKernelTables } from './eamKernel';
 import { parseInt_, parseNum } from '../util';
 
 /*
@@ -238,7 +239,6 @@ class Embed {
 }
 
 const ZERO_EMBED = Embed.of(new Float64Array([0, 0]), 1);
-const ZERO_SPLINE = new Spline(new Float64Array([0, 0]), 1);
 
 interface EAMFile {
   name: string;
@@ -457,82 +457,59 @@ export abstract class PairEAMBase extends Pair {
     this.fTab[j] = fJ;
   }
 
+  /** The density and r*phi tables as the two loops read them (eamKernel.ts). */
+  private kernelTables(): EAMKernelTables {
+    return { ntypes: this.ntypes, cutsq: this.cutsq, rhoTab: this.rhoTab, gTab: this.gTab };
+  }
+
   /**
    * The table grid every density and r*phi table shares (one file, or files on the same grid), or null. On a shared grid
-   * the compute evaluates the tables as native LAMMPS does (src/MANYBODY/pair_eam.cpp compute at b332f28): one table
-   * index per pair, p = r rdr + 1, m = (int) p clamped to nr - 1, p -= m clamped to 1, and the seven coefficients of the
-   * interval (Spline.coef), the densities summed over the half list (both atoms of a pair, ghosts reverse-summed to
-   * their owners) as native does with newton on.
+   * the compute evaluates the tables as native LAMMPS does (eamKernel.ts), the densities summed over the half list (both
+   * atoms of a pair, ghosts reverse-summed to their owners) as native does with newton on.
    */
-  private sharedGrid(): { n: number; rdx: number } | null {
-    const nt = this.ntypes + 1;
-    let n = -1, rdx = 0;
-    for (let i = 1; i < nt; i++) {
-      for (let j = 1; j < nt; j++) {
-        for (const sp of [this.rhoTab[i * nt + j], this.gTab[i * nt + j]]) {
-          if (!sp) return null;
-          if (n < 0) { n = sp.n; rdx = sp.rdx; } else if (sp.n !== n || sp.rdx !== rdx) return null;
-        }
-      }
-    }
-    return n < 2 ? null : { n, rdx };
+  private sharedGrid(): { nr: number; rdr: number } | null {
+    return eamGrid(this.kernelTables());
   }
 
   compute(pc: PairCompute): void {
-    const grid = this.sharedGrid();
-    if (grid) this.computeShared(pc, grid.n, grid.rdx);
+    if (this.sharedGrid()) this.computeShared(pc);
     else this.computeGeneral(pc);
   }
 
-  /** compute() on a shared table grid (sharedGrid), in native's order of operations. */
-  private computeShared(pc: PairCompute, nr: number, rdr: number): void {
-    const half = pc.half;
-    if (!half) throw new Error(`pair style ${this.name} needs a half neighbor list`);
-    const { x, f, type } = pc;
-    const nlocal = pc.nlocal;
+  /** compute() on a shared table grid (sharedGrid), in native's order of operations: densities, embedding, forces. */
+  private computeShared(pc: PairCompute): void {
     const nall = pc.nall;
-    const nt = this.ntypes + 1;
-    const cutsq = this.cutsq;
     if (this.rhoBuf.length !== nall) {
       this.rhoBuf = new Float64Array(nall);
       this.fpBuf = new Float64Array(nall);
     }
-    const rho = this.rhoBuf;
-    const fp = this.fpBuf;
-    rho.fill(0);
-    // the coefficient arrays per type pair: rhoC[i * nt + j] the density at a type-i site from a type-j neighbour
-    const rhoC: Float64Array[] = [], z2C: Float64Array[] = [];
-    for (let k = 0; k < nt * nt; k++) {
-      rhoC.push((this.rhoTab[k] ?? ZERO_SPLINE).coef);
-      z2C.push((this.gTab[k] ?? ZERO_SPLINE).coef);
-    }
-    const first = half.firstneigh, num = half.numneigh, nbr = half.neighbors;
-    for (let i = 0; i < nlocal; i++) {
-      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-      const itype = type[i];
-      const ti = itype * nt;
-      let rhotmp = rho[i];
-      const k1 = first[i] + num[i];
-      for (let k = first[i]; k < k1; k++) {
-        const j = nbr[k] & NEIGHMASK;
-        const delx = xi - x[3 * j], dely = yi - x[3 * j + 1], delz = zi - x[3 * j + 2];
-        const rsq = delx * delx + dely * dely + delz * delz;
-        const jtype = type[j];
-        if (rsq >= cutsq[ti + jtype]) continue;
-        let p = Math.sqrt(rsq) * rdr + 1.0;
-        let m = Math.trunc(p);
-        if (m > nr - 1) m = nr - 1;
-        p -= m;
-        if (p > 1.0) p = 1.0;
-        const o = 7 * (m - 1);
-        let c = rhoC[ti + jtype];
-        rhotmp += ((c[o + 3] * p + c[o + 4]) * p + c[o + 5]) * p + c[o + 6];
-        c = rhoC[jtype * nt + itype];
-        rho[j] += ((c[o + 3] * p + c[o + 4]) * p + c[o + 5]) * p + c[o + 6];
-      }
-      rho[i] = rhotmp;
-    }
-    // reverse communication: the ghosts' densities go to their owners
+    this.rhoBuf.fill(0);
+    this.densities(pc, this.rhoBuf);
+    this.embed(pc, this.rhoBuf, this.fpBuf);
+    this.forces(pc, this.fpBuf);
+  }
+
+  /**
+   * Whether the style can run its two passes on the shared-memory threads (cpu/threadedPairs.ts TwoPassPair): its
+   * tables share one grid (sharedGrid).
+   */
+  twoPassReady(): boolean {
+    return this.sharedGrid() !== null;
+  }
+
+  /** Native's first loop over the half-list rows [ilo, inum) (eamKernel.ts eamDensities). */
+  densities(pc: PairCompute, rho: Float64Array): void {
+    eamDensities(this.kernelTables(), this.name, pc, rho);
+  }
+
+  /**
+   * Between the two loops (engine thread): the ghosts' densities summed to their owners (native's reverse
+   * communication), F'(rho) and the embedding energy of each owned atom (compute_embedding), and F' copied to the
+   * ghosts (forward communication).
+   */
+  embed(pc: PairCompute, rho: Float64Array, fp: Float64Array): void {
+    const { type } = pc;
+    const nlocal = pc.nlocal;
     pc.nb.reverseAddGhosts(rho, 1);
     const eatom = pc.eatom;
     let evdwl = 0;
@@ -554,60 +531,12 @@ export abstract class PairEAMBase extends Pair {
       if (eatom) eatom[i] += phi;
     }
     pc.nb.forwardCopy(fp, 1);
-    const vatom = pc.vatom;
-    for (let i = 0; i < nlocal; i++) {
-      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-      const itype = type[i];
-      const ti = itype * nt;
-      let fxtmp = f[3 * i], fytmp = f[3 * i + 1], fztmp = f[3 * i + 2];
-      const fptmp = fp[i];
-      const k1 = first[i] + num[i];
-      for (let k = first[i]; k < k1; k++) {
-        const j = nbr[k] & NEIGHMASK;
-        const delx = xi - x[3 * j], dely = yi - x[3 * j + 1], delz = zi - x[3 * j + 2];
-        const rsq = delx * delx + dely * dely + delz * delz;
-        const jtype = type[j];
-        if (rsq >= cutsq[ti + jtype]) continue;
-        const r = Math.sqrt(rsq);
-        let p = r * rdr + 1.0;
-        let m = Math.trunc(p);
-        if (m > nr - 1) m = nr - 1;
-        p -= m;
-        if (p > 1.0) p = 1.0;
-        const o = 7 * (m - 1);
-        // rhoip: the derivative of the density at j due to i; rhojp: at i due to j
-        let c = rhoC[jtype * nt + itype];
-        const rhoip = (c[o] * p + c[o + 1]) * p + c[o + 2];
-        c = rhoC[ti + jtype];
-        const rhojp = (c[o] * p + c[o + 1]) * p + c[o + 2];
-        c = z2C[ti + jtype];
-        const z2p = (c[o] * p + c[o + 1]) * p + c[o + 2];
-        const z2 = ((c[o + 3] * p + c[o + 4]) * p + c[o + 5]) * p + c[o + 6];
-        const recip = 1.0 / r;
-        const phi = z2 * recip;
-        const phip = z2p * recip - phi * recip;
-        const psip = fptmp * rhojp + fp[j] * rhoip + phip;
-        const fpair = -psip * recip;
-        fxtmp += delx * fpair;
-        fytmp += dely * fpair;
-        fztmp += delz * fpair;
-        f[3 * j] -= delx * fpair;
-        f[3 * j + 1] -= dely * fpair;
-        f[3 * j + 2] -= delz * fpair;
-        evdwl += phi;
-        if (eatom) { eatom[i] += 0.5 * phi; eatom[j] += 0.5 * phi; }
-        if (vatom) {
-          const v0 = delx * delx * fpair, v1 = dely * dely * fpair, v2 = delz * delz * fpair;
-          const v3 = delx * dely * fpair, v4 = delx * delz * fpair, v5 = dely * delz * fpair;
-          vatom[6 * i] += 0.5 * v0; vatom[6 * i + 1] += 0.5 * v1; vatom[6 * i + 2] += 0.5 * v2;
-          vatom[6 * i + 3] += 0.5 * v3; vatom[6 * i + 4] += 0.5 * v4; vatom[6 * i + 5] += 0.5 * v5;
-          vatom[6 * j] += 0.5 * v0; vatom[6 * j + 1] += 0.5 * v1; vatom[6 * j + 2] += 0.5 * v2;
-          vatom[6 * j + 3] += 0.5 * v3; vatom[6 * j + 4] += 0.5 * v4; vatom[6 * j + 5] += 0.5 * v5;
-        }
-      }
-      f[3 * i] = fxtmp; f[3 * i + 1] = fytmp; f[3 * i + 2] = fztmp;
-    }
     pc.acc.evdwl += evdwl;
+  }
+
+  /** Native's second loop over the half-list rows [ilo, inum) (eamKernel.ts eamForces). */
+  forces(pc: PairCompute, fp: Float64Array): void {
+    eamForces(this.kernelTables(), this.name, pc, fp);
   }
 
   /** compute() for tables on different grids (several funcfl files): each table evaluated on its own grid. */

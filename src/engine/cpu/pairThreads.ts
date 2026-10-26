@@ -1,6 +1,6 @@
 import type { Pair, PairCompute } from '../force/types';
 import type { NeighList } from '../neighbor';
-import { THREADED_PAIRS } from './threadedPairs';
+import { THREADED_PAIRS, isTwoPass } from './threadedPairs';
 import { CpuForceBackend } from './forces';
 import {
   ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PHASE, READY, cloneableFields, sumForces, pairFromFields, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
@@ -22,6 +22,10 @@ import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, t
  * This needs SharedArrayBuffer (a cross-origin isolated page, see src/coi.ts) and Atomics.wait,
  * which browsers allow in workers only: the engine runs in a worker. The pair forces equal the
  * single-thread ones up to the order of floating-point additions.
+ *
+ * A two-pass style (threadedPairs.ts TwoPassPair, the EAM styles) runs its first loop the same way, each thread summing
+ * per-atom values into its own array; the engine thread adds the arrays, turns the sums into the values the second loop
+ * reads (shared with the workers), and the threads run the second loop as a plain pair style.
  */
 
 /** Below this many owned atoms the threads cost more than they save. */
@@ -81,6 +85,10 @@ export class SharedPairThreads implements NeighborThreads {
   private neighbors: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private fs: Float64Array<ArrayBufferLike>[] = [];
   private accs: Float64Array<ArrayBufferLike>[] = [];
+  /** A two-pass style's per-atom sums (engine thread) and the values its second loop reads (shared). */
+  private sums = new Float64Array(0);
+  private auxBuf: SharedArrayBuffer = shared(8);
+  private aux: Float64Array<ArrayBufferLike> = new Float64Array(0);
 
   /**
    * The threads sum their forces into a shared force array in parallel (a second phase in which every thread blocks):
@@ -105,6 +113,8 @@ export class SharedPairThreads implements NeighborThreads {
     const list = pc.half;
     if (W === 0 || !list || pc.full || pc.eatom || pc.vatom || pair.needsFull || !pair.needsHalf) return false;
     if (!THREADED_PAIRS[pair.name] || list.inum < this.minAtoms) return false;
+    const two = isTwoPass(pair) ? pair : null;
+    if (two && !two.twoPassReady()) return false;
     // until every worker has started (READY, see pairThreadsCore.ts) the pair term runs on the engine thread: blocking
     // in Atomics.wait on a worker that has not started yet would deadlock
     if (Atomics.load(this.ctl, READY) < W) return false;
@@ -131,31 +141,29 @@ export class SharedPairThreads implements NeighborThreads {
     this.x.set(pc.x.subarray(0, 3 * nall));
     this.t.set(pc.type.subarray(0, nall));
     this.q.set(pc.q.subarray(0, nall));
-    Atomics.store(this.ctl, DONE, 0);
-    Atomics.store(this.ctl, FAILED, 0);
-    Atomics.store(this.ctl, NEXT, 0);
-    const nchunks = this.nchunks;
     const specialLJ = Array.from(pc.specialLJ), specialCoul = Array.from(pc.specialCoul);
     // a shared force array is summed by all the threads (sumForces), else by the engine thread below
     const F = this.parallelSum && pc.f.buffer instanceof SharedArrayBuffer && pc.f.byteOffset === 0 ? pc.f.buffer : null;
     const phase = Atomics.load(this.ctl, PHASE), nslices = CHUNKS_PER_THREAD * (W + 1);
-    for (let w = 0; w < W; w++) {
-      this.workers[w].postMessage({
-        type: 'compute', nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks, F, phase, nslices,
-      } satisfies PairThreadMessage);
+    const chunk = (c: number): PairCompute => ({
+      ...pc, half: { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: list.numneigh, firstneigh: list.firstneigh, neighbors: list.neighbors },
+    });
+    if (two) {
+      // the first loop: every thread sums into its own array, the engine thread adds them in worker order
+      const sums = this.sums;
+      sums.fill(0, 0, nall);
+      const firstFailed = this.dispatch({ type: 'compute', nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F: null, phase, nslices, pass: 1, aux: null }, (c) => two.densities(chunk(c), sums));
+      if (firstFailed) throw new Error(`pair style ${pair.name} failed in a force thread`);
+      for (let w = 0; w < W; w++) {
+        const a = this.fs[w];
+        for (let k = 0; k < nall; k++) sums[k] += a[k];
+      }
+      two.embed(pc, sums, this.aux as Float64Array);
     }
-    // the engine thread claims chunks too, straight into the real arrays
-    for (;;) {
-      const c = Atomics.add(this.ctl, NEXT, 1);
-      if (c >= nchunks) break;
-      pair.compute({ ...pc, half: { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: list.numneigh, firstneigh: list.firstneigh, neighbors: list.neighbors } });
-    }
-    for (;;) {
-      const done = Atomics.load(this.ctl, DONE);
-      if (done >= W) break;
-      if (Atomics.wait(this.ctl, DONE, done, 60_000) === 'timed-out') throw new Error('pair force threads did not answer within 60 s');
-    }
-    const failed = Atomics.load(this.ctl, FAILED) > 0;
+    const failed = this.dispatch(
+      { type: 'compute', nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F, phase, nslices, pass: two ? 2 : 0, aux: two ? this.auxBuf : null },
+      two ? (c) => two.forces(chunk(c), this.aux as Float64Array) : (c) => pair.compute(chunk(c)),
+    );
     const f = pc.f, acc = pc.acc;
     if (F) {
       // start the parallel sum (no slices after a failure, so the waiting workers return), take slices, wait
@@ -185,6 +193,29 @@ export class SharedPairThreads implements NeighborThreads {
     }
     this.calls++;
     return true;
+  }
+
+  /**
+   * One loop over the half list on every thread: the workers get `msg`, the engine thread claims chunks too (`own`, into
+   * the real arrays), then waits for the workers. True when a worker failed.
+   */
+  private dispatch(msg: Extract<PairThreadMessage, { type: 'compute' }>, own: (c: number) => void): boolean {
+    const W = this.workers.length;
+    Atomics.store(this.ctl, DONE, 0);
+    Atomics.store(this.ctl, FAILED, 0);
+    Atomics.store(this.ctl, NEXT, 0);
+    for (const w of this.workers) w.postMessage(msg);
+    for (;;) {
+      const c = Atomics.add(this.ctl, NEXT, 1);
+      if (c >= msg.nchunks) break;
+      own(c);
+    }
+    for (;;) {
+      const done = Atomics.load(this.ctl, DONE);
+      if (done >= W) break;
+      if (Atomics.wait(this.ctl, DONE, done, 60_000) === 'timed-out') throw new Error('pair force threads did not answer within 60 s');
+    }
+    return Atomics.load(this.ctl, FAILED) > 0;
   }
 
   /** Cuts the half list into chunks of about equal work, written where the workers read them. */
@@ -220,6 +251,9 @@ export class SharedPairThreads implements NeighborThreads {
     this.x = new Float64Array(xb); this.t = new Int32Array(tb); this.q = new Float64Array(qb);
     this.numneigh = new Int32Array(nb); this.firstneigh = new Int32Array(fb); this.neighbors = new Int32Array(lb);
     const fbufs = this.workers.map(() => shared(24 * this.cap));
+    this.sums = new Float64Array(this.cap);
+    this.auxBuf = shared(8 * this.cap);
+    this.aux = new Float64Array(this.auxBuf);
     this.fs = fbufs.map((b) => new Float64Array(b));
     this.accs = [];
     this.workers.forEach((w, k) => {

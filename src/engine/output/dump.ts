@@ -212,6 +212,8 @@ const GENERAL_UNSUPPORTED = /^(mu[xyz]|omega[xyz]|angmom[xyz]|tq[xyz]|sp[xyz]|qu
 export class Dump {
   readonly groupBit: number;
   every: number;
+  /** The N of the dump command, which init checks the fix intervals against (dump_modify every leaves it). */
+  private readonly nevery: number;
   everyVar: string | null = null;
   append = false;
   first = false;
@@ -285,6 +287,38 @@ export class Dump {
     if (!this.file.includes('*') && this.singleKey === null) this.singleKey = this.sys.resolveFile(this.file);
   }
 
+  /**
+   * The dump's init at each run (Output::init, after the thermo init). As native LAMMPS does (src/dump_custom.cpp and
+   * src/dump_local.cpp init_style at b332f28): the computes, then the fixes, that the columns (and a dump_modify thresh)
+   * read must still exist, and the dump's interval must be a multiple of each fix's output interval ("if (nevery %
+   * fix[i]->peratom_freq)", local_freq for dump local; an interval of -1, not set, divides any).
+   */
+  init(): void {
+    const local = this.style === 'local';
+    if (!local && (!THRESH_STYLES.has(this.style) || this.style === 'image')) return;
+    const st = this.gzStyle ?? this.style;
+    const ids = { c: [] as string[], f: [] as string[] };
+    for (const w of [...this.columns, ...this.thresh.map((t) => t.col)]) {
+      const m = /^([cf])_([A-Za-z0-9_]+)/.exec(w);
+      if (m && !ids[m[1] as 'c' | 'f'].includes(m[2])) ids[m[1] as 'c' | 'f'].push(m[2]);
+    }
+    for (const id of ids.c) {
+      const c = this.sys.computes.find((x) => x.id === id);
+      if (!c) throw new StyleError(`Could not find dump ${st} compute ID ${id}`);
+      if (!local && !c.peratomFlag) throw new StyleError(`Compute ID ${id} for dump ${st} does not compute per-atom data`);
+    }
+    for (const id of ids.f) {
+      const f = this.sys.fixes.find((x) => x.id === id);
+      if (!f) throw new StyleError(`Could not find dump ${st} fix ID ${id}`);
+      if (local) {
+        if (f.localFreq > 0 && this.nevery % f.localFreq) throw new StyleError(`Dump local and fix ${id} not computed at compatible times${errorUrl(7)}`);
+        continue;
+      }
+      if (!f.peratomFlag) throw new StyleError(`Fix ID ${id} for dump ${st} does not compute per-atom data`);
+      if (f.peratomFreq > 0 && this.nevery % f.peratomFreq) throw new StyleError(`Dump ${st} and fix not computed at compatible times${errorUrl(7)}`);
+    }
+  }
+
   constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[], private readonly multifileOverride = false,
     /** A COMPRESS style (atom/gz, custom/gz, ...): its name, for dump_modify compression_level and the messages. */
     private readonly gzStyle: string | null = null) {
@@ -306,6 +340,7 @@ export class Dump {
     this.groupBit = sys.groupBit(group);
     if (typeof every === 'string') this.everyVar = every;
     this.every = typeof every === 'number' ? every : 0;
+    this.nevery = this.every;
     // dump.html: "For the dcd, extxyz, grid/vtk, xtc, xyz, and molfile styles, sorting by atom ID or grid ID is on by
     // default."
     this.sort = style === 'xyz' || style === 'extxyz' || style === 'grid/vtk' ? 'id' : 'off';

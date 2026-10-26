@@ -383,13 +383,19 @@ export class System {
    * shrink-wrapped faces, checks for lost atoms and builds ghosts and
    * neighbor lists (the setup half of a run, Developer_flow.html).
    */
-  setupNeighbors(): void {
+  /**
+   * The force field's init, the periodic wrap and the neighbor lists. sort: a run's or minimization's setup, which sorts
+   * the atoms before the lists are built (src/verlet.cpp Verlet::setup at b332f28: "if (atom->sortfreq > 0)
+   * atom->sort();" before "neighbor->build(1);"), so the storage order of the build is the sorted one.
+   */
+  setupNeighbors(sort = false): void {
     const s = this.state;
     // the run's init has initialized the pair style (initPair) and nothing has changed since
     const pairDone = this.pairInitVersion === this.stateVersion && !this.ff.pairStale;
     this.pairInitVersion = -1;
     this.ff.init(s, this.nb, this.geom, this.styleContext(), pairDone);
     this.pbc();
+    if (sort) this.sortAtoms(true);
     this.nb.build(s, this.geom, s.step);
     for (const f of this.fixes) f.afterForceInit?.();
     this.checkDynamicWithin();

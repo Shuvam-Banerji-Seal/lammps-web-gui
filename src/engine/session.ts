@@ -228,9 +228,10 @@ export class Session {
   async execute(text: string, firstLine = 1, name = 'cell'): Promise<void> {
     this.cancelled = false;
     this.frames = [];
-    // the C library log, sin and cos of the native binary (libm.ts) and native LAMMPS's Richardson orientation update
-    // (orientation in fix/nve_asphere.ts): installed before the first command
-    await ensureStyles(['libm', 'mathextra']);
+    // the C library log, sin and cos of the native binary (libm.ts), native LAMMPS's Richardson orientation update
+    // (orientation in fix/nve_asphere.ts) and the per-atom count of the neigh_modify one check (neighbor.ts, called
+    // inside a list build): installed before the first command
+    await ensureStyles(['libm', 'mathextra', 'neigh_one']);
     try {
       await this.runText(text, firstLine, name);
     } catch (e) {

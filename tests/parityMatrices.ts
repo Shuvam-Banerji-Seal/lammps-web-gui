@@ -236,6 +236,9 @@ const badFile = (oracleFiles: Set<string>): Change => (w, lines) => {
  */
 const THERMO = 'thermo_style custom step pe press\n';
 const VALUES = 'print "VAL $(pe:%.15g) $(press:%.15g)"\n';
+/** The same with the force norm, which also sees forces that add no energy or virial (fixes, a changed cutoff). */
+const THERMO_F = 'thermo_style custom step pe press fnorm\n';
+const VALUES_F = 'print "VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)"\n';
 /** Commands that run steps: a row that compares values keeps the case up to the first of them after its line. */
 const RUNS = /^\s*(run|minimize|rerun|tad|prd|neb|temper)\b/;
 
@@ -243,7 +246,7 @@ const RUNS = /^\s*(run|minimize|rerun|tad|prd|neb|temper)\b/;
  * Rows that compare values: each picked row keeps the rest of its case up to the first run (or flow command) after the
  * changed line, then runs 0 steps and prints pe and press.
  */
-const throughRun = (pickRows: (cases: Case[]) => ParityRow[]) => (cases: Case[]): ParityRow[] => {
+const throughRun = (pickRows: (cases: Case[]) => ParityRow[], pre = THERMO, tail = VALUES) => (cases: Case[]): ParityRow[] => {
   const text = new Map(cases.map((c) => [c.name, c.text]));
   return pickRows(cases).map((r) => {
     const lines = text.get(r.case)!.split('\n');
@@ -251,7 +254,7 @@ const throughRun = (pickRows: (cases: Case[]) => ParityRow[]) => (cases: Case[])
     for (let i = r.line + 1; i < lines.length; i++) {
       if (RUNS.test(lines[i]) || FLOW.test(lines[i])) { until = i; break; }
     }
-    return { ...r, until, pre: THERMO, tail: VALUES };
+    return { ...r, until, pre, tail };
   });
 };
 
@@ -260,6 +263,21 @@ const coeffScaled = (factor: number): Change => (w, _lines) => {
   const from = w[0] === 'pair_coeff' ? 3 : 2;
   const k = w.findIndex((x, j) => j >= from && NUMBER.test(x));
   return k < 0 ? null : w.map((x, j) => (j === k ? String(Number(x) * factor) : x));
+};
+
+/** A *_style line (pair, bond, angle, dihedral, improper or kspace): "<command> <style>". */
+const STYLES = new Set(['pair_style', 'bond_style', 'angle_style', 'dihedral_style', 'improper_style', 'kspace_style']);
+const styleKey: LineKey = (w, lines, i) => (STYLES.has(w[0]) ? commandKey(w, lines, i) : null);
+
+/**
+ * The first number after the style word multiplied by `factor`: an integer stays an integer (rounded), a real number is
+ * written with 12 significant digits.
+ */
+const styleScaled = (factor: number): Change => (w, _lines) => {
+  const k = w.findIndex((x, j) => j >= 2 && NUMBER.test(x));
+  if (k < 0) return null;
+  const v = /^[-+]?\d+$/.test(w[k]) ? String(Math.round(Number(w[k]) * factor)) : String(Number((Number(w[k]) * factor).toPrecision(12)));
+  return w.map((x, j) => (j === k ? v : x));
 };
 
 export const MATRICES: Record<string, MatrixDef> = {
@@ -305,6 +323,10 @@ export const MATRICES: Record<string, MatrixDef> = {
   'coeff-scaled': {
     about: 'the first number after the type words of each coefficient line multiplied by 1.1, pe and press compared after run 0',
     rows: throughRun(pick(coeffKey, coeffScaled(1.1))),
+  },
+  'style-scaled': {
+    about: 'the first number after the style word of each pair, bond, angle, dihedral, improper and kspace style line multiplied by 1.1, pe, press and fnorm compared after run 0',
+    rows: throughRun(pick(styleKey, styleScaled(1.1)), THERMO_F, VALUES_F),
   },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };

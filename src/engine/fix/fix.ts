@@ -141,6 +141,8 @@ export abstract class Fix {
   globalFreq = 0;
   /** Steps on which the per-atom output is valid (native peratom_freq; -1: not set, any step). */
   peratomFreq = -1;
+  /** Steps on which the local output is valid (native local_freq; -1: not set, any step). */
+  localFreq = -1;
   /** Virial contribution (xx yy zz xy xz yz) when thermoVirial is on. */
   virial = new Float64Array(6);
   /** Ramp parameters use the current run's start and stop. */

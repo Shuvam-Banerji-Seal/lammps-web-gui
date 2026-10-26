@@ -96,12 +96,13 @@ export const initRun = (sys: System, opts: { verlet?: boolean } = {}): void => {
   // temperature computes need the fixes' dof (shake, rigid) — recount after fixes init
   for (const c of sys.computes) if (c.tempFlag) (c as unknown as { dofCompute?: () => void }).dofCompute?.();
   sys.thermo.init();
+  // Output::init: the thermo output, then each dump (src/output.cpp at b332f28)
+  for (const d of sys.dumps) d.init();
 };
 
 /** Setup half of a run: neighbor lists, forces, fix setup (Verlet::setup()). */
 export const setupRun = (sys: System): void => {
-  sys.setupNeighbors();
-  sys.sortAtoms(true);
+  sys.setupNeighbors(true);
   for (const f of sys.fixes) f.setupPreForce?.();
   sys.computeForcesInRun(sys.computeFlags());
   sys.forcesCurrent();

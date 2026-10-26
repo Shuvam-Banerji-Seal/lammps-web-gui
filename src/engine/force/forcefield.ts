@@ -304,6 +304,8 @@ export class ForceField {
       full: this.pair ? this.pair.needsFull : false,
       cutoff, ntypes: s.ntypes, special: this.specialList, specialSettings: settings,
       size: (this.pair?.sizeList ?? false) && s.radius !== null,
+      newton: ctx.newtonPair !== false,
+      hybrid: this.pair instanceof PairHybrid,
     });
     if (this.pair) this.pair.version++;
     this.updateTail(s);

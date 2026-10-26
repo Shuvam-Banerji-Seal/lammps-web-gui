@@ -1,7 +1,8 @@
 import type { SimState } from './types';
 import type { Geometry } from './domain';
-import type { SpecialList } from './atoms';
+import { nativeOrder, type SpecialList } from './atoms';
 import { StyleError, type BondedCopies } from './force/types';
+import { gplHook } from './gplHooks';
 
 /*
  * Ghost atoms and Verlet neighbor lists.
@@ -79,6 +80,40 @@ export interface NeighborNeeds {
   exclude?: ((i: number, j: number) => boolean) | null;
   /** Size list (Pair.sizeList): a pair is kept only when r <= radius_i + radius_j + skin (atom_style sphere radii). */
   size?: boolean;
+  /** newton_pair (default on); off, native's half list keeps an owned/ghost pair at both atoms (the one-atom count). */
+  newton?: boolean;
+  /** A pair hybrid style: native gives each sub-style a list of its own cutoff and type pairs (the one-atom count). */
+  hybrid?: boolean;
+}
+
+/** What the neigh_modify one count (the lazily loaded helper neigh_one) reads of a list build. */
+export interface NeighOneInput {
+  /** the list (half: each pair once; full: each pair at both atoms) */
+  list: NeighList;
+  full: boolean;
+  nlocal: number;
+  /** owned and ghost positions; owner of each (the owned atom a ghost is an image of); NEIGHMASK */
+  x: Float64Array;
+  owner: Int32Array;
+  mask: number;
+  /** atom IDs and each owned atom's position in native's storage order */
+  tag: Int32Array;
+  rank: Int32Array;
+  /** neighbor nsq (else bin), the box (bounding box of a triclinic cell), neigh_modify binsize, cutneighmax */
+  nsq: boolean;
+  triclinic: boolean;
+  newton: boolean;
+  boxLo: [number, number, number];
+  boxHi: [number, number, number];
+  binsize: number;
+  cutneighmax: number;
+  dimension: number;
+  units: string;
+}
+
+/** The helper of the neigh_modify one check: the largest per-atom entry count of the list as native builds it. */
+export interface NeighOneHook {
+  maxCount(input: NeighOneInput): number;
 }
 
 /** Whether two special lists hold the same partners, orders and offsets. */
@@ -331,6 +366,7 @@ export class Neighbor {
       else this.half = null;
       if (needs.full) this.full = this.buildList(s, needs, true);
       else this.full = null;
+      this.checkOneAtom(s, needs);
     } else {
       this.half = needs.half ? emptyList(s.n) : null;
       this.full = needs.full ? emptyList(s.n) : null;
@@ -345,6 +381,58 @@ export class Neighbor {
     this.forcedDecision = false;
     this.lastBuild = step;
     this.nbuild++;
+  }
+
+  /**
+   * neigh_modify one (neigh_modify.html: "one value = N  N = max # of neighbors of one atom"). As native LAMMPS does
+   * (src/npair_bin.cpp, src/npair_nsq.cpp and src/my_page.h at b332f28): a list keeps the neighbors of each atom in one
+   * chunk of at most N entries, and the build stops with "Neighbor list overflow, boost neigh_modify one" when an atom
+   * has more. A full list holds each pair at both atoms; a half list at one of them, as native's build decides (its
+   * bins, the storage order and the atom IDs), which the lazily loaded helper neigh_one works out only when some atom
+   * has more than N neighbors in all. The half list native derives from a full list when both are needed has no more
+   * entries than the full list, so the full list is the one checked. Not checked: neighbor style multi (its bins are
+   * per collection) and pair hybrid styles (src/pair_hybrid.cpp at b332f28: each sub-style's list has the sub-style's
+   * cutoff, "request->set_cutoff_max(cutmax_style[istyle])", and skips the type pairs of the other sub-styles, while
+   * the engine's list holds every pair within the largest cutoff).
+   */
+  private checkOneAtom(s: SimState, needs: NeighborNeeds): void {
+    const list = needs.full ? this.full : this.half;
+    if (!list || this.multiStyle || needs.hybrid) return;
+    const one = this.oneatom, nlocal = this.nlocal;
+    if (this.oneBound <= one) return;
+    let over = false;
+    if (needs.full) {
+      for (let i = 0; i < nlocal && !over; i++) over = list.numneigh[i] > one;
+    } else if (list.neighbors.length > one) {
+      // every neighbor of each atom, the pair counted at both of its atoms: no native count is larger
+      const all = Int32Array.from(list.numneigh);
+      const nb = list.neighbors, owner = this.owner;
+      for (let k = 0; k < nb.length; k++) all[owner[nb[k] & NEIGHMASK]]++;
+      for (let i = 0; i < nlocal && !over; i++) over = all[i] > one;
+    }
+    if (!over) return;
+    const order = nativeOrder(s);
+    const rank = new Int32Array(nlocal);
+    for (let p = 0; p < nlocal; p++) rank[order[p]] = p;
+    // the bins cover the box, or the bounding box of a triclinic cell (Domain::set_global_box boxlo_bound, boxhi_bound)
+    const b = s.box;
+    const lo: [number, number, number] = [b.lo[0], b.lo[1], b.lo[2]];
+    const hi: [number, number, number] = [b.hi[0], b.hi[1], b.hi[2]];
+    if (b.triclinic) {
+      const [xy, xz, yz] = b.tilt;
+      lo[0] = Math.min(lo[0], lo[0] + xy);
+      lo[0] = Math.min(lo[0], lo[0] + xz);
+      lo[1] = Math.min(lo[1], lo[1] + yz);
+      hi[0] = Math.max(hi[0], hi[0] + xy);
+      hi[0] = Math.max(hi[0], hi[0] + xz);
+      hi[1] = Math.max(hi[1], hi[1] + yz);
+    }
+    const max = gplHook<NeighOneHook>('neigh_one').maxCount({
+      list, full: needs.full, nlocal, x: this.xall, owner: this.owner.subarray(0, this.nall), mask: NEIGHMASK,
+      tag: s.id, rank, nsq: this.nsqStyle, triclinic: b.triclinic, newton: needs.newton !== false, boxLo: lo, boxHi: hi,
+      binsize: this.binsize, cutneighmax: this.cutneighmax, dimension: s.dimension, units: s.units.style,
+    });
+    if (max > one) throw new StyleError('Neighbor list overflow, boost neigh_modify one\nFor more information see https://docs.lammps.org/err0036');
   }
 
   /** Ghost atoms: every periodic image within cutghost of the box. */
@@ -490,7 +578,7 @@ export class Neighbor {
       half: !fullList, full: fullList, cutoff: cut, ntypes, special: null,
       specialSettings: { lj: [1, 1, 1, 1], coul: [1, 1, 1, 1], keepExcluded: true },
     };
-    return this.buildList(s, needs, fullList, 0);
+    return this.buildList(s, needs, fullList, 0, true);
   }
 
   /** The neigh_modify exclusions as one predicate over owned indices (null when none). */
@@ -564,7 +652,37 @@ export class Neighbor {
    * buffers and counting-sorted into fresh per-atom CSR arrays, so a returned list
    * never aliases a later build.
    */
-  private buildList(s: SimState, needs: NeighborNeeds, fullList: boolean, skin = this.skin): NeighList {
+  /**
+   * An upper bound of the neighbors of any owned atom in a list built from these bins (checkOneAtom): the atoms of the
+   * full stencil around its bin (the rows of both halves and the bin itself), less the atom. The fullest bin times the
+   * number of stencil bins first; the sums per bin only when that exceeds neigh_modify one.
+   */
+  private stencilBound(bL: Int32Array, bG: Int32Array, nbins: number, rLo: Int32Array, rHi: Int32Array, nrows: number): number {
+    let nst = 1;
+    for (let r = 0; r < nrows; r++) nst += 2 * (rHi[r] - rLo[r] + 1);
+    let fullest = 0;
+    for (let b = 0; b < nbins; b++) {
+      const c = bL[b + 1] - bL[b] + bG[b + 1] - bG[b];
+      if (c > fullest) fullest = c;
+    }
+    if (fullest * nst - 1 <= this.oneatom) return fullest * nst - 1;
+    let bound = 0;
+    for (let b = 0; b < nbins; b++) {
+      if (bL[b + 1] === bL[b]) continue;
+      let c = bL[b + 1] - bL[b] + bG[b + 1] - bG[b] - 1;
+      for (let r = 0; r < nrows; r++) {
+        c += bL[b + rHi[r] + 1] - bL[b + rLo[r]] + bG[b + rHi[r] + 1] - bG[b + rLo[r]];
+        c += bL[b - rLo[r] + 1] - bL[b - rHi[r]] + bG[b - rLo[r] + 1] - bG[b - rHi[r]];
+      }
+      if (c > bound) bound = c;
+    }
+    return bound;
+  }
+
+  /** stencilBound of the last pair-list build (checkOneAtom). */
+  private oneBound = 0;
+
+  private buildList(s: SimState, needs: NeighborNeeds, fullList: boolean, skin = this.skin, skip0 = false): NeighList {
     const nlocal = this.nlocal, nall = this.nall, nghost = nall - nlocal;
     const xa = this.xall, ta = this.typeall, owner = this.owner;
     const nt = needs.ntypes + 1;
@@ -656,6 +774,7 @@ export class Neighbor {
     const radius = needs.size ? s.radius : null;
     const lr = radius ? (this.sBr.length >= nlocal ? this.sBr : (this.sBr = new Float64Array(Math.max(nlocal, 2 * this.sBr.length)))) : null;
     const gr = radius ? (this.sBrG.length >= nghost ? this.sBrG : (this.sBrG = new Float64Array(Math.max(nghost, 2 * this.sBrG.length)))) : null;
+    if (!skip0) this.oneBound = this.stencilBound(bL, bG, nbins, rLo, rHi, nrows);
     for (let b = 0; b < nbins; b++) cursor[b] = bL[b];
     for (let b = 0; b < nbins; b++) cursor[nbins + b] = bG[b];
     for (let k = 0; k < nall; k++) {
@@ -762,7 +881,7 @@ export class Neighbor {
               // a size list keeps the pair only within radsum + skin (Pair.sizeList); NaN fails every test below
               if (lr) { const rc = lr[p] + lr[q] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
               if (fullList) {
-                const c1 = r2 < cutsq[tp * nt + tq], c2 = r2 < cutsq[tq * nt + tp];
+                const c1 = r2 <= cutsq[tp * nt + tq], c2 = r2 <= cutsq[tq * nt + tp];
                 if (plain) {
                   pa[np] = kp; pj[np] = kq; np += +c1;
                   pa[np] = kq; pj[np] = kp; np += +c2;
@@ -773,7 +892,7 @@ export class Neighbor {
               } else {
                 // half: the lower index owns the pair
                 const lo = kp < kq ? kp : kq, hi = kp < kq ? kq : kp;
-                const c = r2 < (kp < kq ? cutsq[tp * nt + tq] : cutsq[tq * nt + tp]);
+                const c = r2 <= (kp < kq ? cutsq[tp * nt + tq] : cutsq[tq * nt + tp]);
                 if (plain) { pa[np] = lo; pj[np] = hi; np += +c; }
                 else if (c) { const e = encode(lo, hi); if (e === e) { pa[np] = lo; pj[np] = e; np++; } }
               }
@@ -793,8 +912,8 @@ export class Neighbor {
               let r2 = dx * dx + dy * dy + dz * dz;
               if (lr) { const rc = lr[p] + gr![q] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
               // ghost q lies "above" the owned atom p when its offset is lex-positive
-              const c = r2 < cutsq[tp * nt + tq] && (fullList || keepAbove(dx, dy, dz));
-              if (unmirrored !== null && unmirrored[kp] && r2 < cutsq[tp * nt + tq] && (plain || accepted(kp, kq))) nUnmirrored++;
+              const c = r2 <= cutsq[tp * nt + tq] && (fullList || keepAbove(dx, dy, dz));
+              if (unmirrored !== null && unmirrored[kp] && r2 <= cutsq[tp * nt + tq] && (plain || accepted(kp, kq))) nUnmirrored++;
               if (plain) { pa[np] = kp; pj[np] = kq; np += +c; }
               else if (c) { const e = encode(kp, kq); if (e === e) { pa[np] = kp; pj[np] = e; np++; } }
             }
@@ -818,8 +937,8 @@ export class Neighbor {
               let r2 = dx * dx + dy * dy + dz * dz;
               if (lr) { const rc = lr[q] + gr![p] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
               // the owned atom is q: the ghost lies at offset p - q
-              const c = r2 < cutsq[tq * nt + tp] && (fullList || keepAbove(-dx, -dy, -dz));
-              if (unmirrored !== null && unmirrored[kq] && r2 < cutsq[tq * nt + tp] && (plain || accepted(kq, kp))) nUnmirrored++;
+              const c = r2 <= cutsq[tq * nt + tp] && (fullList || keepAbove(-dx, -dy, -dz));
+              if (unmirrored !== null && unmirrored[kq] && r2 <= cutsq[tq * nt + tp] && (plain || accepted(kq, kp))) nUnmirrored++;
               if (plain) { pa[np] = kq; pj[np] = kp; np += +c; }
               else if (c) { const e = encode(kq, kp); if (e === e) { pa[np] = kq; pj[np] = e; np++; } }
             }

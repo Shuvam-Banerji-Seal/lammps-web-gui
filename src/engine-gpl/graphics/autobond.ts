@@ -2,9 +2,9 @@
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
  * Source: src/GRAPHICS/dump_image.cpp (DumpImage::create_image, the AUTO branch "render dynamic bonds for my atoms",
  * and the autobond keyword of DumpImage::DumpImage), src/GRAPHICS/image.cpp (Image::draw_cylinder, through draw.ts),
- * src/neighbor.cpp (Neighbor::get_best_pair_list), src/nbin_standard.cpp (NBinStandard::setup_bins), src/nbin.cpp
- * (NBin::coord2bin), src/nstencil_bin.cpp (the half stencil), src/npair_bin.cpp and src/npair_nsq.cpp (which side of
- * an owned/ghost pair a half list stores it on) and src/update.cpp (force->angstrom of each unit style).
+ * src/neighbor.cpp (Neighbor::get_best_pair_list), src/nstencil_bin.cpp (the half stencil), src/npair_bin.cpp and
+ * src/npair_nsq.cpp (which side of an owned/ghost pair a half list stores it on); the bins and force->angstrom are in
+ * ../neighbor/nbin.ts.
  * Copyright (2003) Sandia Corporation, distributed under the GNU General Public License (the LAMMPS file headers). This
  * file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
@@ -28,36 +28,11 @@
  */
 import type { AutoBondSpec, RasterFrame, Vec3 } from '../../engine/output/image_objects';
 import { drawCylinder } from './draw';
-
-/** force->angstrom of each unit style (Update::set_units). */
-const ANGSTROM: Record<string, number> = { lj: 1.0, real: 1.0, metal: 1.0, si: 1.0e-10, cgs: 1.0e-8, electron: 1.88972612, micro: 1.0e-4, nano: 1.0e-1 };
-
-/** The standard bins of a list build (NBinStandard::setup_bins and NBin::coord2bin for an orthogonal box). */
-function binner(lo: Vec3, hi: Vec3, binsizeUser: number, cutneighmax: number, dimension: 2 | 3): (x: Float64Array, k: number) => [number, number, number] {
-  const bbox = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
-  let binsizeOptimal = binsizeUser > 0 ? binsizeUser : 0.5 * cutneighmax;
-  if (binsizeOptimal === 0.0) binsizeOptimal = bbox[0];
-  const binsizeinv = 1.0 / binsizeOptimal;
-  const nbin = [Math.trunc(bbox[0] * binsizeinv), Math.trunc(bbox[1] * binsizeinv), dimension === 3 ? Math.trunc(bbox[2] * binsizeinv) : 1];
-  for (let d = 0; d < 3; d++) if (nbin[d] === 0) nbin[d] = 1;
-  const bininv = [1.0 / (bbox[0] / nbin[0]), 1.0 / (bbox[1] / nbin[1]), 1.0 / (bbox[2] / nbin[2])];
-  const one = (v: number, d: number): number => {
-    if (v >= hi[d]) return Math.trunc((v - hi[d]) * bininv[d]) + nbin[d];
-    if (v >= lo[d]) return Math.min(Math.trunc((v - lo[d]) * bininv[d]), nbin[d] - 1);
-    return Math.trunc((v - lo[d]) * bininv[d]) - 1;
-  };
-  return (x, k) => [one(x[3 * k], 0), one(x[3 * k + 1], 1), one(x[3 * k + 2], 2)];
-}
+import { ANGSTROM, NativeBins, aboveXyz } from '../neighbor/nbin';
 
 /** Whether ghost g lies "above and to the right" of atom i (npair_bin.cpp, the same-bin ghost test). */
-function above(x: Float64Array, i: number, g: number): boolean {
-  if (x[3 * g + 2] < x[3 * i + 2]) return false;
-  if (x[3 * g + 2] === x[3 * i + 2]) {
-    if (x[3 * g + 1] < x[3 * i + 1]) return false;
-    if (x[3 * g + 1] === x[3 * i + 1] && x[3 * g] < x[3 * i]) return false;
-  }
-  return true;
-}
+const above = (x: Float64Array, i: number, g: number): boolean =>
+  aboveXyz(x[3 * i], x[3 * i + 1], x[3 * i + 2], x[3 * g], x[3 * g + 1], x[3 * g + 2]);
 
 /** One bond to draw: atom1 (owned) and atom2 (owned, or a ghost at the position of its image). */
 interface Pair { a1: number; a2: number; x2: Vec3 }
@@ -72,13 +47,13 @@ export function drawAutoBonds(f: RasterFrame, b: AutoBondSpec): void {
   const rank = new Int32Array(n);
   for (let k = 0; k < n; k++) rank[b.order[k]] = k;
   const xb = L.xBuilt;
-  const bins = L.triclinic || L.style === 'nsq' ? null : binner(L.boxLo, L.boxHi, L.binsize, L.cutneighmax, L.dimension);
+  const bins = L.triclinic || L.style === 'nsq' ? null : new NativeBins(L.boxLo, L.boxHi, L.binsize, L.cutneighmax, L.dimension);
   const delta = 0.01 * (ANGSTROM[b.units] ?? 1.0);
   // half list, newton on: whether native's list holds the owned/ghost pair (i, ghost g) at i (npair_bin.cpp and
   // npair_nsq.cpp, built positions)
   const storedAt = (i: number, g: number, o: number): boolean => {
     if (bins) {
-      const bi = bins(xb, i), bg = bins(xb, g);
+      const bi = bins.of(xb, i), bg = bins.of(xb, g);
       const dk = bg[2] - bi[2], dj = bg[1] - bi[1], di = bg[0] - bi[0];
       // nstencil_bin.cpp, half stencil: "k > 0 || j > 0 || (j == 0 && i > 0)", the own bin first
       if (dk !== 0 || dj !== 0 || di !== 0) return dk > 0 || (dk === 0 && (dj > 0 || (dj === 0 && di > 0)));

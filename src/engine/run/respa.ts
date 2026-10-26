@@ -411,8 +411,7 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
   };
 
   // setup: neighbor lists, all levels, totals (Verlet::setup() with the forces split by level)
-  sys.setupNeighbors();
-  sys.sortAtoms(true);
+  sys.setupNeighbors(true);
   filter?.respaPreNeighbor();
   for (const f of sys.fixes) f.setupPreForce?.();
   invalidateAll();

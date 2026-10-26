@@ -122,7 +122,8 @@ function refBuildList(self: any, s: SimState, needs: NeighborNeeds, fullList: bo
           else if (dz < 0 || (dz === 0 && (dy < 0 || (dy === 0 && dx < 0)))) continue;
         }
         const r2 = dx * dx + dy * dy + dz * dz;
-        if (r2 >= cutsq[ti + bts[p]]) continue;
+        // a pair at the neighbor cutoff itself is kept, as native's npair_bin.cpp tests "rsq <= cutneighsq"
+        if (r2 > cutsq[ti + bts[p]]) continue;
         if (plain) {
           if (count === cap) {
             cap *= 2;

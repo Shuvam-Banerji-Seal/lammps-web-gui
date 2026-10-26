@@ -9,7 +9,7 @@
  * into the fix named by the style (fix STORE/LOCAL, fix_store_local.ts). finite cutoffs (granular radii) are not
  * supported (StyleError).
  */
-import { Pair, StyleError, typeBounds, mixDistance, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, pairCoeffArgs, StyleError, typeBounds, mixDistance, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { inumeric, numeric, parseNum } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { NEIGHMASK } from '../../engine/neighbor';
@@ -123,7 +123,7 @@ export class PairTracker extends Pair {
 
   coeff(args: string[]): void {
     // pair_tracker.cpp coeff: "pair_coeff I J cutoff" (the finite form is refused in settings)
-    if (args.length !== 3) throw new StyleError('Incorrect args for pair coefficients (pair tracker: pair_coeff I J cutoff)');
+    if (args.length !== 3) throw pairCoeffArgs();
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the atom types first');
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);

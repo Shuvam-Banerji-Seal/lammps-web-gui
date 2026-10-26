@@ -46,7 +46,7 @@ describe('dump grid references (grid.ts, utils.cpp check_grid_reference)', () =>
     await expect(bad('dump 1 all grid 10 g.dump c_pv:grid:data c_p3:grid:data')).rejects.toThrow('Dump grid field grid sizes do not match');
     await expect(bad('compute ke all ke/atom\ndump 1 all grid 10 g.dump c_ke:grid:data')).rejects.toThrow('Dump grid compute ke does not compute per-grid info');
     await expect(bad('dump 1 all grid 10 g.dump')).rejects.toThrow('No dump grid arguments specified');
-    await expect(bad('dump 1 all grid 10 g.dump c_pv:grid:data\ndump_modify 1 thresh c_pv:grid:data > 1')).rejects.toThrow('Illegal dump_modify command');
+    await expect(bad('dump 1 all grid 10 g.dump c_pv:grid:data\ndump_modify 1 thresh c_pv:grid:data > 1')).rejects.toThrow('Unknown dump_modify keyword: thresh');
   });
 
   it('writes one line per cell after the grid header, wildcards expanded, sort by a column', async () => {
@@ -68,7 +68,7 @@ describe('dump grid/vtk settings (dump_grid_vtk.cpp)', () => {
     await expect(run(`${BASE}dump 1 all grid/vtk 10 g.vtr c_pv:grid:data\nrun 0`)).rejects.toThrow('Dump grid/vtk requires one snapshot per file');
     await expect(run(`${BASE}dump 1 all grid/vtk 10 g.*.vtr c_pv:grid:data\ndump_modify 1 sort off\nrun 0`)).rejects.toThrow('Dump grid/vtk requires sorting on IDs');
     await expect(run(`${BASE.replace('fix ag all ave/grid 5 2 10 2 2 2 vx\n', '')}change_box all triclinic\ndump 1 all grid/vtk 10 g.*.vtr c_pv:grid:data\nrun 0`)).rejects.toThrow('Dump grid/vtk does not support triclinic simulation boxes');
-    await expect(run(`${BASE}dump 1 all grid/vtk 10 g.*.vtr c_pv:grid:data\ndump_modify 1 region all`)).rejects.toThrow('Illegal dump_modify command');
+    await expect(run(`${BASE}dump 1 all grid/vtk 10 g.*.vtr c_pv:grid:data\ndump_modify 1 region all`)).rejects.toThrow('Unknown dump_modify keyword: region');
   });
 });
 

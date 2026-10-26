@@ -52,8 +52,16 @@ export const fixModifyCompute = (sys: System, id: string | undefined, kind: 'tem
  * compute a fix uses.
  */
 
+/** The fix_modify keywords every fix reads (src/fix.cpp Fix::modify_params at b332f28); others go to the fix's modify_param. */
+export const FIX_MODIFY_KEYWORDS: ReadonlySet<string> = new Set(['dynamic/dof', 'energy', 'virial', 'respa']);
+
 export abstract class Fix {
   abstract readonly style: string;
+
+  /** The style as invoked, for native's messages: a class that serves several styles (FixNH) names the one it is. */
+  get invokedStyle(): string {
+    return this.style;
+  }
   readonly groupBit: number;
   /** Fix moves atoms by time integration (nve, nvt, ...). */
   timeIntegrate = false;

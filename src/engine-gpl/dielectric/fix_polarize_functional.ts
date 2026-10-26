@@ -10,14 +10,14 @@
  * g_ewald, or 0.01 without kspace. The fix does not evaluate forces: the energies and forces of a run's setup are those
  * of the force evaluation before the charges are set (Verlet::setup), as in LAMMPS.
  */
-import { Fix } from '../../engine/fix/fix';
-import { inumeric, parseNum } from '../../engine/force/util';
+import { Fix, FIX_MODIFY_KEYWORDS } from '../../engine/fix/fix';
+import { inumeric, logical, parseNum } from '../../engine/force/util';
 import { isDielectricStyle } from '../../engine/atoms';
 import { StyleError } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
 import { dielArrays, dielectricPairField } from './common';
-import { setDielectricParams } from './fix_polarize_bem_gmres';
+import { polarizeModify, setDielectricParams } from './fix_polarize_bem_gmres';
 import { exp as libmExp } from '../libm/exp';
 import { erfc as libmErfc } from '../libm/erf';
 
@@ -358,16 +358,10 @@ export class FixPolarizeFunctional extends Fix {
   }
 
   modify(key: string, values: string[]): number {
-    if (key === 'kspace') {
-      if (values[0] !== 'yes' && values[0] !== 'no') throw new StyleError(`Illegal fix_modify kspace value '${values[0] ?? ''}'`);
-      this.kspaceOn = values[0] === 'yes';
-      return 1;
-    }
-    if (key === 'dielectrics') {
-      if (values.length < 5) throw new StyleError('Illegal fix_modify dielectrics: needs ediff emean epsilon area q (NULL to keep)');
-      setDielectricParams(this.sys, (i) => this.inGroup(i), values.slice(0, 5), this.id, this.style, false);
-      return 5;
-    }
-    return super.modify(key, values);
+    if (FIX_MODIFY_KEYWORDS.has(key)) return super.modify(key, values);
+    return polarizeModify(key, values, {
+      kspace: { n: 1, apply: ([w]) => { this.kspaceOn = logical(w); } },
+      dielectrics: { n: 5, apply: (v) => setDielectricParams(this.sys, (i) => this.inGroup(i), v, this.id, this.style, false) },
+    });
   }
 }

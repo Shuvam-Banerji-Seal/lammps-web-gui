@@ -18,7 +18,7 @@ import { EQUAL_STYLES } from '../../engine/argInfo';
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { parseInt_, parseNum, logical } from '../../engine/force/util';
+import { inumeric, parseInt_, parseNum, logical } from '../../engine/force/util';
 import { FixEfield } from '../../engine/fix/force_ext';
 import { invertDense, invertSPD } from './electrode_math';
 import { MY_2PI, safeDerfcr } from './electrode_math';
@@ -294,9 +294,17 @@ export class FixElectrodeConp extends Fix {
   }
 
   modify(key: string, values: string[]): number {
-    if (key === 'tf') return this.setTf(values);
     if (key === 'energy') throw new StyleError('fix_modify energy is not used by fix electrode/conp (its energy is always part of pe)');
-    return super.modify(key, values);
+    // the keywords every fix reads go to Fix::modify_params first, then FixElectrodeConp::modify_param: tf, timer (it
+    // only prints timings), else "Unknown argument {} for fix_modify {style}"
+    if (key === 'dynamic/dof' || key === 'virial' || key === 'respa') return super.modify(key, values);
+    if (key === 'tf') return this.setTf(values);
+    if (key === 'timer') {
+      if (values[0] === undefined) throw new StyleError(`Incorrect number of arguments for fix_modify ${this.style} timer`);
+      logical(values[0]);
+      return 1;
+    }
+    throw new StyleError(`Unknown argument ${key} for fix_modify ${this.style}`);
   }
 
   /**
@@ -308,7 +316,7 @@ export class FixElectrodeConp extends Fix {
    */
   protected setTf(values: string[]): number {
     if (values.length < 3) throw new StyleError(`Incorrect number of arguments for fix_modify ${this.style}`);
-    const type = Math.trunc(parseNum(values[0], 'fix_modify tf type'));
+    const type = inumeric(values[0]);
     const len = parseNum(values[1], 'fix_modify tf length');
     const voronoi = parseNum(values[2], 'fix_modify tf voronoi');
     const s = this.sys.state;
@@ -322,7 +330,7 @@ export class FixElectrodeConp extends Fix {
     if (notInEle) this.sys.warn('Not all atoms of type in electrode; Thomas-Fermi parameters will be ignored for electrolyte');
     this.tfTypes ??= new Map<number, number>();
     this.tfTypes.set(type, MY_4PI * len * len / voronoi);
-    return 4;
+    return 3;
   }
 
   /** Fix init: the Coulomb pair style and the k-space style must support the electrode interface. */

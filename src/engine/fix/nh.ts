@@ -171,6 +171,10 @@ export class FixNH extends Fix {
   readonly style: string;
   /** The fix style as written (nvt/eff, npt/sphere ...), for native's messages. */
   private readonly styleName: string;
+
+  override get invokedStyle(): string {
+    return this.styleName;
+  }
   // thermostat
   private tstat = false;
   protected tStart = 0; protected tStop = 0; private tPeriod = 0;

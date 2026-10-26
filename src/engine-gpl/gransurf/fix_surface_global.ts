@@ -28,6 +28,8 @@
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
+import { missingArgs, numeric } from '../../engine/force/util';
+import { fmtShortest } from '../../engine/cformat';
 import type { System } from '../../engine/system';
 import { parseStl } from '../../engine/stl';
 import { stlFirstSolid } from './stl_solid';
@@ -430,15 +432,16 @@ export class FixSurfaceGlobal extends Fix {
     if (style !== 'rotate') {
       throw new StyleError(`fix surface/global move style '${style}' is not supported by the browser engine (rotate only)`);
     }
+    // FixSurfaceGlobal::modify_params_move rotate: eight words, the point and axis read by utils::numeric, the 2d axis
+    // check, then the period
     const a = values.slice(2, 9);
-    if (a.length < 7) throw new StyleError('fix surface/global modify move rotate needs point, axis and period');
-    const nums = a.map((w) => Number(w));
-    if (nums.some((v) => !Number.isFinite(v))) throw new StyleError('fix surface/global modify move rotate: arguments must be numbers');
+    if (a.length < 7) throw missingArgs('fix surface/global modify move rotate');
+    const nums = a.slice(0, 6).map((w) => numeric(w));
     const point: V3 = [nums[0], nums[1], nums[2]];
     const axis: V3 = [nums[3], nums[4], nums[5]];
-    const period = nums[6];
     if (this.dim === 2 && (axis[0] !== 0 || axis[1] !== 0)) throw new StyleError('Fix_modify move cannot rotate around non z-axis for 2d problem');
-    if (!(period > 0)) throw new StyleError(`Illegal fix_modify move period ${period}`);
+    const period = numeric(a[6]);
+    if (period <= 0.0) throw new StyleError(`Illegal fix_modify move period ${fmtShortest(period, false)}`);
     const len = Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
     if (len === 0) throw new StyleError('Fix_modify move zero length rotation vector');
     const scale = 1.0 / len;

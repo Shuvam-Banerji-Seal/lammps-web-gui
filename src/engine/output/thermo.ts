@@ -701,6 +701,8 @@ export class Thermo {
           // must have been created as a general triclinic box). Measured with native LAMMPS (black box): the check runs when the
           // command executes, so a box created later does not satisfy it: Thermo_modify triclinic/general cannot be used
           // if simulation box is not general triclinic
+          // src/thermo.cpp Thermo::modify_params at b332f28 names the missing value "thermo_modify tricinic/general"
+          if (val === undefined) throw new StyleError('Illegal thermo_modify tricinic/general command: missing argument(s)');
           if (yesno(need(val), key)) {
             if (!this.sys.hasBox || !this.sys.state.box.general) {
               throw new StyleError('Thermo_modify triclinic/general cannot be used if simulation box is not general triclinic');

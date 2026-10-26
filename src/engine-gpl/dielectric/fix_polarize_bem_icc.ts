@@ -8,13 +8,13 @@
  * 064903), relaxed by successive over-relaxation (fix_modify omega, default 0.7). Each sweep evaluates the force field
  * once; the sweep is Jacobi-like (all patches use the field of the sweep). Not ported: fix_modify rand is refused.
  */
-import { Fix } from '../../engine/fix/fix';
-import { inumeric, parseNum } from '../../engine/force/util';
+import { Fix, FIX_MODIFY_KEYWORDS } from '../../engine/fix/fix';
+import { inumeric, logical, numeric, parseNum } from '../../engine/force/util';
 import { isDielectricStyle } from '../../engine/atoms';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { dielArrays, dielectricKSpaceField, keepingVirial, dielectricPairField, epsilon0e2q, fieldAt } from './common';
-import { setDielectricParams } from './fix_polarize_bem_gmres';
+import { polarizeModify, setDielectricParams } from './fix_polarize_bem_gmres';
 
 const MY_4PI = 4 * Math.PI;
 const MY_2PI = 2 * Math.PI;
@@ -119,25 +119,17 @@ export class FixPolarizeBEMICC extends Fix {
   }
 
   modify(key: string, values: string[]): number {
-    if (key === 'itr_max') {
-      const x = Number(values[0]);
-      if (!Number.isInteger(x)) throw new StyleError(`Illegal fix_modify itr_max value '${values[0] ?? ''}'`);
-      this.itrMax = x;
-      return 1;
-    }
-    if (key === 'omega') { this.omega = parseNum(values[0], 'omega'); return 1; }
-    if (key === 'kspace') {
-      if (values[0] !== 'yes' && values[0] !== 'no') throw new StyleError(`Illegal fix_modify kspace value '${values[0] ?? ''}'`);
-      this.kspaceOn = values[0] === 'yes';
-      return 1;
-    }
-    if (key === 'rand') throw new StyleError(`fix_modify rand is not supported by fix ${this.id} (${this.style}) in the browser engine`);
-    if (key === 'dielectrics') {
-      if (values.length < 5) throw new StyleError('Illegal fix_modify dielectrics: needs ediff emean epsilon area q (NULL to keep)');
-      setDielectricParams(this.sys, (i) => this.inGroup(i), values.slice(0, 5), this.id, this.style, true);
-      return 5;
-    }
-    return super.modify(key, values);
+    if (FIX_MODIFY_KEYWORDS.has(key)) return super.modify(key, values);
+    return polarizeModify(key, values, {
+      itr_max: { n: 1, apply: ([w]) => { this.itrMax = inumeric(w); } },
+      omega: { n: 1, apply: ([w]) => { this.omega = numeric(w); } },
+      kspace: { n: 1, apply: ([w]) => { this.kspaceOn = logical(w); } },
+      dielectrics: { n: 5, apply: (v) => setDielectricParams(this.sys, (i) => this.inGroup(i), v, this.id, this.style, true) },
+      rand: { n: 2, apply: ([a, b]) => {
+        numeric(a); inumeric(b);
+        throw new StyleError(`fix_modify rand is not supported by fix ${this.id} (${this.style}) in the browser engine`);
+      } },
+    });
   }
 
   computeVector(i: number): number {

@@ -53,52 +53,66 @@ export function parseSurfCoeff(args: string[]): Coeffs {
   let normal: SurfNormal | null = null, tangential: SurfTangential | null = null;
   // pair_granular.html: "If the *damping* keyword is not specified, the *viscoelastic* model is used by default."
   let damping: SurfDamping = 'viscoelastic';
-  // the model coefficients are read by utils::numeric (src/GRANULAR/granular_model.cpp and gran_sub_mod_*.cpp at b332f28)
-  const num = (w: string | undefined, _what: string): number => numeric(w);
-  for (let n = 0; n < args.length; n++) {
-    const w = args[n];
-    if (w === 'hooke' || w === 'hertz') {
-      normal = w;
-      k = num(args[n + 1], `${w} kn`);
-      damp = num(args[n + 2], `${w} damp`);
-      n += 2;
-    } else if (w === 'hertz/material') {
-      // doc: "hertz/material : E, eta_n0 (or e), nu"; native: k = 4/3 E / (2 (1 - nu^2)) for a surface contact
-      normal = w;
-      const E = num(args[n + 1], 'hertz/material E');
-      damp = num(args[n + 2], 'hertz/material damp');
-      const nu = num(args[n + 3], 'hertz/material nu');
-      if (!(E >= 0)) throw new StyleError('Illegal Hertz material normal model');
-      k = (4 / 3) * (E / (2 * (1 - nu * nu)));
-      n += 3;
-    } else if (w === 'tangential') {
-      const t = args[n + 1];
+  // As native LAMMPS does (src/GRANULAR/pair_granular.cpp PairGranular::coeff, which surf/granular uses, and
+  // granular_model.cpp add_sub_model at b332f28): the normal sub-model first, then the keywords in any order; each
+  // sub-model is a name of gran_sub_mod_register.cpp ("Must specify granular sub model name", "Illegal model type")
+  // and its coefficients, read by utils::numeric ("Insufficient arguments provided for <name> model"); any other word
+  // is "Illegal pair_coeff command <word>". A model native has that the engine does not is refused by name.
+  let n = 0;
+  const subModel = (kind: keyof typeof GRAN_SUB_MODELS): string => {
+    const name = args[n];
+    if (name === undefined) throw new StyleError('Must specify granular sub model name');
+    if (!(name in GRAN_SUB_MODELS[kind])) throw new StyleError(`Illegal model type ${name}`);
+    const count = GRAN_SUB_MODELS[kind][name];
+    if (n + 1 + count > args.length) throw new StyleError(`Insufficient arguments provided for ${name} model`);
+    n += 1;
+    return name;
+  };
+  const coeff = (): number => numeric(args[n++]);
+  const unsupported = (what: string): never => {
+    throw new StyleError(`pair_style surf/granular: ${what} is not supported by the browser engine`);
+  };
+  const nm = subModel('normal');
+  if (nm === 'hooke' || nm === 'hertz') {
+    normal = nm;
+    k = coeff();
+    damp = coeff();
+  } else if (nm === 'hertz/material') {
+    // doc: "hertz/material : E, eta_n0 (or e), nu"; native: k = 4/3 E / (2 (1 - nu^2)) for a surface contact
+    normal = nm;
+    const E = coeff();
+    damp = coeff();
+    const nu = coeff();
+    if (!(E >= 0)) throw new StyleError('Illegal Hertz material normal model');
+    k = (4 / 3) * (E / (2 * (1 - nu * nu)));
+  } else unsupported(`normal model ${nm}`);
+  while (n < args.length) {
+    const w = args[n++];
+    if (w === 'tangential') {
+      const t = subModel('tangential');
       if (t === 'linear_nohistory') {
         tangential = t;
-        xt = num(args[n + 2], 'linear_nohistory x_gamma_t');
-        mu = num(args[n + 3], 'linear_nohistory mu_s');
-        n += 3;
+        xt = coeff();
+        mu = coeff();
       } else if (t === 'linear_history') {
         tangential = t;
-        kt = num(args[n + 2], 'linear_history k_t');
-        xt = num(args[n + 3], 'linear_history x_gamma_t');
-        mu = num(args[n + 4], 'linear_history mu_s');
-        n += 4;
-      } else {
-        throw new StyleError(`pair_style surf/granular: tangential model '${t ?? ''}' is not supported (linear_nohistory, linear_history)`);
-      }
+        kt = coeff();
+        xt = coeff();
+        mu = coeff();
+      } else unsupported(`tangential model ${t}`);
     } else if (w === 'damping') {
-      const d = args[n + 1];
-      if (d !== 'mass_velocity' && d !== 'viscoelastic' && d !== 'tsuji') {
-        throw new StyleError(`pair_style surf/granular: damping model '${d ?? ''}' is not supported (mass_velocity, viscoelastic, tsuji)`);
-      }
-      damping = d;
-      n += 1;
+      const d = subModel('damping');
+      if (d !== 'mass_velocity' && d !== 'viscoelastic' && d !== 'tsuji') unsupported(`damping model ${d}`);
+      damping = d as SurfDamping;
+    } else if (w === 'rolling' || w === 'twisting' || w === 'heat') {
+      unsupported(`${w} model ${subModel(w)}`);
     } else if (w === 'cutoff') {
-      cutoff = num(args[n + 1], 'cutoff');
-      n += 1;
+      if (n >= args.length) throw new StyleError('Illegal pair_coeff command, not enough parameters for cutoff keyword');
+      cutoff = coeff();
+    } else if (w === 'limit_damping' || w === 'synchronized_verlet') {
+      unsupported(`the ${w} keyword`);
     } else {
-      throw new StyleError(`pair_style surf/granular: granular keyword '${w}' is not supported`);
+      throw new StyleError(`Illegal pair_coeff command ${w}`);
     }
   }
   if (normal === null || tangential === null) {
@@ -107,6 +121,22 @@ export function parseSurfCoeff(args: string[]): Coeffs {
   if (!(k >= 0 && damp >= 0 && kt >= 0 && xt >= 0 && mu >= 0)) throw new StyleError('Illegal surf/granular coefficients');
   return { k, damp, kt, xt, mu, cutoff, normal, damping, tangential };
 }
+
+/**
+ * The granular sub-models of src/GRANULAR/gran_sub_mod_register.cpp at b332f28 with the number of coefficients each
+ * reads (num_coeffs of its class in gran_sub_mod_*.cpp).
+ */
+const GRAN_SUB_MODELS = {
+  normal: { none: 0, hooke: 2, hertz: 2, 'hertz/material': 3, dmt: 4, jkr: 4, mdr: 6 } as Record<string, number>,
+  damping: { none: 0, velocity: 0, mass_velocity: 0, viscoelastic: 0, tsuji: 0, coeff_restitution: 0, mdr: 1 } as Record<string, number>,
+  tangential: {
+    none: 0, linear_nohistory: 2, linear_history: 3, linear_history_classic: 3, mindlin_classic: 3, mindlin: 3, 'mindlin/force': 3,
+    mindlin_rescale: 3, 'mindlin_rescale/force': 3,
+  } as Record<string, number>,
+  rolling: { none: 0, sds: 3 } as Record<string, number>,
+  twisting: { none: 0, marshall: 0, sds: 3 } as Record<string, number>,
+  heat: { none: 0, radius: 1, area: 1 } as Record<string, number>,
+};
 
 export class PairSurfGranular extends Pair {
   readonly name = 'surf/granular';
@@ -159,6 +189,10 @@ export class PairSurfGranular extends Pair {
     if (s.dimension === 2 && !isLineStyle(s.atomStyle)) throw new StyleError('Pair surf/granular requires atom style line in 2d');
     if (s.dimension === 3 && !isTriStyle(s.atomStyle)) throw new StyleError('Pair surf/granular requires atom style tri in 3d');
     if (!s.radius || !s.rmass || !s.omega || !s.torque) throw new StyleError('Pair surf/granular requires atom attributes radius, rmass, omega');
+    // As native LAMMPS does (src/GRANSURF/pair_surf_granular.cpp init_style at b332f28): ghost velocities, then the
+    // fix surface/local that holds the surface connectivity
+    if (ctx.ghostVelocity === false) throw new StyleError('Pair style surf/granular requires ghost atoms store velocity');
+    if (ctx.fixOf && !ctx.fixOf('surface/local')) throw new StyleError('Pair style surf/granular requires using a single fix surface/local');
     // the surface connectivity is built from unwrapped coordinates and is not periodic yet: a surface element and a
     // particle across a periodic boundary would not meet, so periodic in-plane dimensions are refused (z of a 2d box is
     // periodic by definition and does not matter)

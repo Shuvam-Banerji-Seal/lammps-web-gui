@@ -1,10 +1,12 @@
 import type { Ctx, Handler } from './args';
 import { int, num, missingArgs, numeric, inumeric, bnumeric, logical } from './args';
+import { errorUrl } from '../formula';
 import { StyleError, type KSpace } from '../force/types';
 import { removedStyleError } from '../deprecated';
 import { loadNativeStyles, unknownStyleError } from '../nativeStyles';
 import { gplHook } from '../gplHooks';
 import { checkFixStateNotStored } from '../fix/restartRecord';
+import { FIX_MODIFY_KEYWORDS } from '../fix/fix';
 import { FIX_STYLES, COMPUTE_STYLES, styleNames } from '../styles';
 import { Dump, type DumpStyle } from '../output/dump';
 import { initRun, runVerlet } from '../run/verlet';
@@ -94,15 +96,14 @@ const fixModify: Handler = ({ sys }, a) => {
   if (!f) throw new StyleError(`Could not find fix_modify ID ${a[0]}`);
   for (let k = 1; k < a.length;) {
     const key = a[k];
-    if (FIX_MODIFY_COMMON.has(key) && k + 2 > a.length) throw missingArgs(`fix_modify ${key}`);
+    if (FIX_MODIFY_KEYWORDS.has(key) && k + 2 > a.length) throw missingArgs(`fix_modify ${key}`);
     const used = f.modify(key, a.slice(k + 1));
-    if (used <= 0) throw new StyleError(`Fix ${f.id} ${f.style} does not support fix_modify ${key} command`);
+    if (used <= 0) throw new StyleError(`Fix ${f.id} ${f.invokedStyle} does not support fix_modify ${key} command`);
     k += 1 + used;
   }
 };
 
 /** The keywords of native Fix::modify_params, each with one value. */
-const FIX_MODIFY_COMMON = new Set(['dynamic/dof', 'energy', 'virial', 'respa']);
 
 /** compute ID group style args — compute.html. */
 const compute: Handler = ({ sys }, a) => {
@@ -189,6 +190,8 @@ const thermoModify: Handler = ({ sys }, a) => {
  */
 const runStyle: Handler = ({ sys }, a) => {
   if (!sys.hasBox) throw new StyleError('Run_style command before simulation box is defined');
+  // As native LAMMPS does (src/update.cpp Update::create_integrate at b332f28)
+  if (a.length < 1) throw missingArgs('run_style');
   const style = a[0];
   // As native LAMMPS does (src/update.cpp at b332f28, Update::new_integrate, and src/verlet.cpp Verlet::Verlet): the
   // verlet integrator ignores the words after its name, so run_style verlet bogus 1 is accepted
@@ -282,7 +285,8 @@ const dumpModify: Handler = ({ sys }, a) => {
 /** write_dump group style file args [modify ...] — write_dump.html: a single snapshot now. */
 const writeDump: Handler = ({ sys }, a) => {
   const [group, style, file, ...rest] = a;
-  if (!group || !style || !file) throw new StyleError('usage: write_dump group-ID style file [attributes] [modify ...]');
+  // As native LAMMPS does (src/write_dump.cpp WriteDump::command at b332f28)
+  if (!group || !style || !file) throw missingArgs('write_dump');
   const mi = rest.indexOf('modify');
   const cols = mi >= 0 ? rest.slice(0, mi) : rest;
   const { base, gzStyle } = compressStyle(style);
@@ -758,6 +762,9 @@ export const createMinimize = (sys: System, style: string): void => {
 
 /** min_style cg|sd|fire|quickmin|hftn — min_style.html. */
 const minStyle: Handler = ({ sys }, a) => {
+  // As native LAMMPS does (src/input.cpp Input::min_style and src/update.cpp Update::create_minimize at b332f28)
+  if (!sys.hasBox) throw new StyleError(`Min_style command before simulation box is defined${errorUrl(33)}`);
+  if (a.length < 1) throw missingArgs('minimize_style');
   const known = a[0] !== undefined && (Object.prototype.hasOwnProperty.call(MINIMIZERS, a[0]) || (MIN_STYLES as readonly string[]).includes(a[0]));
   if (!known) {
     return loadNativeStyles().then(() => {
@@ -782,7 +789,9 @@ const minModify: Handler = ({ sys }, a) => {
     const v = a[k + 1];
     const minKey = MIN_MODIFY_KEYS.has(key);
     if (!minKey && !(own[sys.minStyle] ?? []).includes(key)) throw new StyleError('Illegal fix_modify command');
-    if (v === undefined) throw new StyleError('Illegal min_modify command');
+    // a missing value: Min::modify_params and the spin minimizers say "Illegal min_modify command", except min_style
+    // spin/cg's own discrete_factor (src/SPIN/min_spin_cg.cpp modify_param at b332f28: "Illegal fix_modify command")
+    if (v === undefined) throw new StyleError(!minKey && sys.minStyle === 'spin/cg' ? 'Illegal fix_modify command' : 'Illegal min_modify command');
     switch (key) {
       case 'dmax': sys.minSettings.dmax = numeric(v); k += 2; break;
       case 'line':

@@ -8,7 +8,7 @@
  * Copyright (2003) Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0);
  * this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, pairCoeffArgs, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
@@ -57,7 +57,8 @@ export class PairOxdnaXstk extends Pair {
    */
   coeff(args: string[], ctx?: StyleContext): void {
     const nNum = this.withTheta4 ? 23 : 20;
-    if (args.length !== nNum + 2 && args.length !== 3) throw new StyleError('Incorrect args for pair coefficients in oxdna/xstk');
+    // pair_oxdna_xstk.cpp (oxdna/xstk, oxdna2/xstk) and pair_oxrna2_xstk.cpp name their own coeff()
+    if (args.length !== nNum + 2 && args.length !== 3) throw pairCoeffArgs(undefined, `Incorrect args for pair coefficients in ${this.withTheta4 ? 'oxdna' : 'oxrna2'}/xstk`);
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     let v: number[];

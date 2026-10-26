@@ -5,7 +5,15 @@
  * Corporation and distributed under the GNU General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too
  * (src/engine-gpl/LICENSE). Package author (from src/SPH/README): Georg Ganzenmuller (Fraunhofer EMI).
  */
-import { Pair, StyleError, typeBounds, type PairConstructorWhere, type StyleContext } from '../../engine/force/types';
+import { Pair, pairCoeffArgs, StyleError, typeBounds, type PairConstructorWhere, type StyleContext } from '../../engine/force/types';
+
+/** The wrong-word-count message of each SPH pair style's coeff() (the others say "Incorrect args for pair coefficients"). */
+const SPH_COEFF_COUNT: Record<string, string> = {
+  'sph/taitwater': 'Incorrect args for pair_style sph/taitwater coefficients',
+  'sph/taitwater/morris': 'Incorrect args for pair_style sph/taitwater/morris coefficients',
+  'sph/heatconduction': 'Incorrect number of args for pair_style sph/heatconduction coefficients',
+  'sph/rhosum': 'Incorrect number of args for sph/rhosum coefficients',
+};
 import { isSphStyle } from '../../engine/atoms';
 import { atomHasFlag, type AtomFlag } from '../atom_flags';
 
@@ -29,8 +37,9 @@ export abstract class PairSPHBase extends Pair {
   }
 
   /** Type ranges of a pair_coeff line: I and J (wildcards allowed), the values after them. */
-  protected coeffRange(args: string[], count: number, style: string): { ilo: number; ihi: number; jlo: number; jhi: number; values: string[] } {
-    if (args.length !== count + 2) throw new StyleError(`Incorrect args for pair_coeff ${style} coefficients`);
+  protected coeffRange(args: string[], count: number, _style: string): { ilo: number; ihi: number; jlo: number; jhi: number; values: string[] } {
+    // each style's coeff() has its own wording for a wrong word count (src/SPH/pair_sph_*.cpp at b332f28)
+    if (args.length !== count + 2) throw pairCoeffArgs(undefined, SPH_COEFF_COUNT[this.name] ?? 'Incorrect args for pair coefficients');
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     return { ilo, ihi, jlo, jhi, values: args.slice(2) };

@@ -479,7 +479,8 @@ export class Dump {
       if (this.gridStyle) {
         const n = this.gridStyle.modify(args, k);
         if (n > 0) { k += n; continue; }
-        if (!GRID_DUMP_KEYWORDS.has(key)) throw new StyleError('Illegal dump_modify command');
+        // DumpGrid::modify_param returns 0 for a word it does not read (src/dump_grid.cpp at b332f28)
+        if (!GRID_DUMP_KEYWORDS.has(key)) throw new StyleError(`Unknown dump_modify keyword: ${key}`);
       }
       // dump image/movie-only dump_modify keywords (dump_image.html, "dump_modify options for dump
       // image/movie"): acolor, adiam, bcolor, bdiam, backcolor, boxcolor, color.
@@ -491,6 +492,9 @@ export class Dump {
         && !(key === 'compression_level' && this.gzStyle)) {
         throw new StyleError(`Unknown dump_modify keyword: ${key}`);
       }
+      // As native LAMMPS does (src/dump.cpp Dump::modify_params at b332f28): each base keyword without its value is
+      // "Illegal dump_modify {keyword} command: missing argument(s)" (skip: "Illegal dump_modify command")
+      if (v === undefined && BASE_KEYWORDS.has(key)) throw key === 'skip' ? new StyleError('Illegal dump_modify command') : missingArgs(`dump_modify ${key}`);
       switch (key) {
         case 'append': this.append = yesno(v, key); k += 2; break;
         case 'first': this.first = yesno(v, key); k += 2; break;
@@ -554,7 +558,8 @@ export class Dump {
         case 'format': {
           if (v === 'none') { this.formatLine = null; this.formatInt = null; this.formatFloat = null; this.formatCol.clear(); k += 2; break; }
           const f = args[k + 2];
-          if (f === undefined) throw new StyleError('dump_modify format needs a format string');
+          // Dump::modify_params: the format string is missing as the keyword's value would be
+          if (f === undefined) throw missingArgs('dump_modify format');
           // the column formats are DumpCustom's and DumpLocal's (Dump::modify_params hands them to modify_param)
           if (v !== 'line' && !COLUMN_FORMAT_STYLES.has(this.style)) throw new StyleError(`Unknown dump_modify format keyword: ${v ?? ''}`);
           if (v === 'line') this.formatLine = f;
@@ -613,7 +618,8 @@ export class Dump {
           k += 4;
           break;
         }
-        case 'label': if (!v) throw new StyleError('dump_modify label needs a string'); this.label = v; k += 2; break;
+        // src/dump_local.cpp DumpLocal::modify_param at b332f28
+        case 'label': if (!v) throw missingArgs('dump_modify label'); this.label = v; k += 2; break;
         case 'maxfiles': {
           // dump_modify.html: "The specified Fmax is how many snapshots will be kept. Once this number is reached, the
           // file(s) containing the oldest snapshot is deleted before a new dump file is written." Measured with native

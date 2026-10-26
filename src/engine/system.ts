@@ -148,6 +148,8 @@ export class System {
   replicaPeers: () => readonly System[] = () => [this];
   /** run_style respa settings (run/respa.ts); null for run_style verlet. */
   respa: RespaSettings | null = null;
+  /** The accelerator suffix of the suffix command ("gpu", "omp", "kk kk" for hybrid), or null before one is defined. */
+  suffix: string | null = null;
   /** run_style verlet/split or verlet/split/rk (two partitions: Rspace and Kspace); null for the other run styles. */
   splitRun: 'verlet/split' | 'verlet/split/rk' | null = null;
   readonly vars: Variables;

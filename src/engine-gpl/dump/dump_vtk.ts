@@ -164,7 +164,8 @@ class DumpVtk implements DumpVtkStyle {
     const v = args[k + 1];
     switch (key) {
       case 'label':
-        if (v === undefined) throw new StyleError('dump_modify label needs a string');
+        // DumpVTK::modify_param: "if (narg < 2) utils::missing_cmd_args(FLERR, \"dump_modify label\", error)"
+        if (v === undefined) throw new StyleError('Illegal dump_modify label command: missing argument(s)');
         this.label = v;
         return 2;
       case 'binary':
@@ -193,12 +194,14 @@ class DumpVtk implements DumpVtkStyle {
         this.sortById = v === 'id';
         return 2;
       case 'thresh': {
+        // DumpVTK::modify_param: two words at least, none, then four ("Illegal dump_modify command" for either count)
+        if (v === undefined) throw new StyleError('Illegal dump_modify command');
         if (v === 'none') {
           this.thresh = [];
           return 2;
         }
         const op = args[k + 2], val = args[k + 3];
-        if (v === undefined || op === undefined || val === undefined) throw new StyleError('Illegal dump_modify thresh command');
+        if (op === undefined || val === undefined) throw new StyleError('Illegal dump_modify command');
         if (v === 'element') throw new StyleError('Invalid dump_modify thresh attribute: element');
         if (!RANK.has(v) && !DYNAMIC.test(v)) throw new StyleError(`Invalid dump_modify thresh attribute: ${v}`);
         if (!THRESH_OPS.has(op)) throw new StyleError('Invalid dump_modify thresh operator');
@@ -210,8 +213,10 @@ class DumpVtk implements DumpVtkStyle {
       case 'refresh':
         throw new StyleError('dump_modify refresh is not supported by the browser engine for dump vtk');
       default:
+        // DumpVTK::modify_param returns 0 for any other word: Dump::modify_params reads its own keywords and stops on the
+        // rest with "Unknown dump_modify keyword"
         if (CORE_KEYWORDS.has(key)) return 0;
-        throw new StyleError(`dump_modify ${key} is not supported by the browser engine for dump vtk`);
+        throw new StyleError(`Unknown dump_modify keyword: ${key}`);
     }
   }
 

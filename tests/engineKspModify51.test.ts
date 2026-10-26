@@ -70,7 +70,7 @@ describe('kspace_modify keywords refused by the engine', () => {
 
   it('rejects minorder below 2 and a non-integer minorder', async () => {
     expect(await run(system('ewald 1e-4', 'gewald 0.4 kmax/ewald 5 5 5 minorder 1'))).toMatch(/minorder must be at least 2/);
-    expect(await run(system('ewald 1e-4', 'gewald 0.4 kmax/ewald 5 5 5 minorder abc'))).toMatch(/Expected integer parameter instead of 'abc' for kspace_modify minorder/);
+    expect(await run(system('ewald 1e-4', 'gewald 0.4 kmax/ewald 5 5 5 minorder abc'))).toMatch(/Expected integer parameter instead of 'abc' in input script or data file/);
   });
 
   it('refuses pppm minorder above the order at init (native: PPPM order < minimum allowed order)', async () => {

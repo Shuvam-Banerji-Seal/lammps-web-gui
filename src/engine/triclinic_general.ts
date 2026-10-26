@@ -1,4 +1,5 @@
 import { StyleError } from './force/types';
+import { missingArgs, numeric } from './force/util';
 
 /*
  * General triclinic boxes — docs.lammps.org/Howto_triclinic.html.
@@ -209,13 +210,11 @@ export const generalAtomSites = (
 export const generalCreateBox = (
   lat: { general?: GeneralLattice } | null | undefined, bounds: readonly string[], dimension: 2 | 3 = 3,
 ): { lo: V3; hi: V3; tilt: V3; Q: Mat3 } => {
-  if (!lat?.general) throw new StyleError('create_box N NULL needs a lattice with the triclinic/general option');
-  if (bounds.length < 6) throw new StyleError('create_box N NULL needs alo ahi blo bhi clo chi');
-  const v = bounds.slice(0, 6).map((w) => {
-    const n = Number(w);
-    if (!Number.isFinite(n)) throw new StyleError(`create_box NULL: expected a number, got '${w}'`);
-    return n;
-  });
+  // As native LAMMPS does (src/create_box.cpp CreateBox::command at b332f28, with its spelling of triclinic): the
+  // lattice, six words, each read by utils::numeric
+  if (!lat?.general) throw new StyleError('Create_box for general triclinic requires triclnic/general lattice');
+  if (bounds.length < 6) throw missingArgs('create_box general triclinic');
+  const v = bounds.slice(0, 6).map((w) => numeric(w));
   if (!(v[1] > v[0]) || !(v[3] > v[2]) || !(v[5] > v[4])) throw new StyleError('create_box NULL: each hi bound must exceed its lo bound');
   // create_box.html: "For 2d general triclinic boxes, clo = -0.5 and chi = 0.5 is required."
   // Measured with native LAMMPS (black box): a 2d general box with clo chi other than -0.5 0.5 stops with

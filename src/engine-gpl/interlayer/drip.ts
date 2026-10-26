@@ -124,7 +124,7 @@ export class PairDRIP extends Pair {
 
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 4) throw new StyleError('usage: pair_coeff * * filename elem1 ... elemN (style drip)');
+    // pair_drip.cpp coeff(): Pair::map_element2type(narg - 3, ...) checks the element count before anything is read
     const nt = this.ntypes + 1;
     const elems = args.slice(3);
     if (elems.length !== this.ntypes) {

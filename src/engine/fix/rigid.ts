@@ -1181,7 +1181,8 @@ export class FixRigid extends Fix {
   /** fix_modify bodyforces early|late (fix_modify.rst: "early/late = compute rigid-body forces/torques early or late in the timestep"). */
   modify(key: string, values: string[]): number {
     if (key === 'bodyforces') {
-      if (values[0] !== 'early' && values[0] !== 'late') throw new StyleError(`fix_modify bodyforces must be early or late, got '${values[0] ?? ''}'`);
+      // src/RIGID/fix_rigid.cpp FixRigid::modify_param at b332f28: a missing or unknown value is "Illegal fix_modify command"
+      if (values[0] !== 'early' && values[0] !== 'late') throw new StyleError('Illegal fix_modify command');
       this.early = values[0] === 'early';
       return 1;
     }

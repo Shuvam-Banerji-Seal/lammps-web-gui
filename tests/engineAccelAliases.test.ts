@@ -306,14 +306,16 @@ class InProcessWorker implements PairWorkerLike {
 }
 
 describe('suffix, package and aliased names: errors', () => {
-  it('refuses an unknown suffix, naming the allowed styles', async () => {
-    const r = await runScript('suffix bogus\n');
-    expect(r.error?.message).toMatch(/suffix style must be off, on, gpu, intel, kk, omp, opt or hybrid \(got 'bogus'\)/);
+  it('takes any suffix word, as native LAMMPS does, and on only after one is defined', async () => {
+    // src/input.cpp Input::suffix at b332f28: any other word than off/on (and their synonyms) defines the suffix
+    expect((await runScript('suffix bogus\n')).error).toBeNull();
+    expect((await runScript('suffix on\n')).error?.message).toContain('May only enable suffixes after defining one');
+    expect((await runScript('suffix omp\nsuffix off\nsuffix on\n')).error).toBeNull();
   });
 
   it('refuses a suffix hybrid without two suffixes, and arguments on a plain suffix', async () => {
-    expect((await runScript('suffix hybrid omp\n')).error?.message).toMatch(/usage: suffix hybrid/);
-    expect((await runScript('suffix hybrid omp bogus\n')).error?.message).toMatch(/usage: suffix hybrid/);
+    expect((await runScript('suffix hybrid omp\n')).error?.message).toContain('Illegal suffix hybrid command');
+    expect((await runScript('suffix hybrid omp bogus\n')).error).toBeNull();
     // As native LAMMPS does (src/input.cpp Input::suffix at b332f28): a plain suffix takes one word
     expect((await runScript('suffix omp fast\n')).error?.message).toContain('Illegal suffix command');
   });

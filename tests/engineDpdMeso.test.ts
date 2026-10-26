@@ -70,7 +70,8 @@ describe('atom_style edpd, mdpd and tdpd', () => {
     await expect(newSession().session.execute(`${headFor('tdpd 0')}`)).rejects.toThrow(/Invalid atom_style tdpd command/);
     await expect(newSession().session.execute(`${headFor('atomic')}create_atoms 1 single 1 1 1\nset atom * edpd/temp 2.0\n`)).rejects.toThrow(/Cannot set attribute edpd\/temp for atom style atomic/);
     await expect(newSession().session.execute(`${headFor('edpd')}create_atoms 1 single 1 1 1\nset atom * edpd/cv 0\n`)).rejects.toThrow(/Invalid edpd\/cv value 0 in set command/);
-    await expect(newSession().session.execute(`${headFor('tdpd 2')}create_atoms 1 single 1 1 1\nset atom * cc 3 1.0\n`)).rejects.toThrow(/Invalid cc species index 3/);
+    await expect(newSession().session.execute(`${headFor('tdpd 2')}create_atoms 1 single 1 1 1\nset atom * cc 3 1.0\n`)).rejects.toThrow(/set cc: species index 3 is above the 2 species/);
+    await expect(newSession().session.execute(`${headFor('tdpd 2')}create_atoms 1 single 1 1 1\nset atom * cc 0 1.0\n`)).rejects.toThrow('Invalid cc index 0 in set command');
     await expect(newSession().session.execute(`${headFor('tdpd 2')}create_atoms 1 single 1 1 1\nset atom * cc 1 -1.0\n`)).rejects.toThrow(/Invalid cc value -1 in set command/);
   });
 

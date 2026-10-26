@@ -43,7 +43,7 @@ describe('pair_style granular argument errors', () => {
     expect(() => parseGranularSpec(['hooke', '1000', '50'])).toThrow(/tangential/);
   });
   it('rejects an unknown normal model', () => {
-    expect(() => parseGranularSpec(['bogus', '1', '2', 'tangential', 'linear_nohistory', '1', '0.4'])).toThrow(/unknown normal model 'bogus'/);
+    expect(() => parseGranularSpec(['bogus', '1', '2', 'tangential', 'linear_nohistory', '1', '0.4'])).toThrow('Illegal model type bogus');
   });
   it('names the unsupported mdr model', () => {
     expect(() => parseGranularSpec(['mdr', '1', '0.3', '3', '0.4', '0.5', '6', 'tangential', 'linear_nohistory', '1', '0.4'])).toThrow(/damping mdr/);
@@ -59,7 +59,7 @@ describe('pair_style granular argument errors', () => {
     expect(() => parseGranularSpec(['hooke', '1000', '50', 'tangential', 'linear_nohistory', '1', '0.4', 'damping', 'coeff_restitution'])).toThrow(/coeff_restitution/);
     // heat area is implemented (wave 38); a bad heat model is still named
     expect(() => parseGranularSpec(['hooke', '1000', '50', 'tangential', 'linear_nohistory', '1', '0.4', 'heat', 'area', '0.1'])).not.toThrow();
-    expect(() => parseGranularSpec(['hooke', '1000', '50', 'tangential', 'linear_nohistory', '1', '0.4', 'heat', 'volume', '0.1'])).toThrow(/heat/);
+    expect(() => parseGranularSpec(['hooke', '1000', '50', 'tangential', 'linear_nohistory', '1', '0.4', 'heat', 'volume', '0.1'])).toThrow('Illegal model type volume');
   });
   it('rejects NULL k_t for linear_history', () => {
     expect(() => parseGranularSpec(['hooke', '1000', '50', 'tangential', 'linear_history', 'NULL', '1', '0.4'])).toThrow(/NULL/);

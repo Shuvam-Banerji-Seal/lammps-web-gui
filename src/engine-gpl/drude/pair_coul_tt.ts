@@ -11,7 +11,7 @@
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
-import { parseNum } from '../../engine/force/util';
+import { inumeric, parseNum } from '../../engine/force/util';
 import { CORE_TYPE, DRUDE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
 import { exp as libmExp } from '../libm/exp';
 
@@ -68,7 +68,8 @@ export class PairCoulTT extends Pair {
     const cOne = parseNum(args[3], 'C');
     let nOne = this.nGlobal;
     let cutOne = this.cutGlobal;
-    if (args.length >= 5) nOne = Math.trunc(parseNum(args[4], 'n'));
+    // pair_coul_tt.cpp coeff(): n is read by utils::inumeric
+    if (args.length >= 5) nOne = inumeric(args[4]);
     if (args.length === 6) cutOne = parseNum(args[5], 'cutoff');
     if (nOne > this.nGlobal) throw new StyleError('Incorrect coefficients for pair style coul/tt: n should not be larger than global setting');
     const nt = this.ntypes + 1;

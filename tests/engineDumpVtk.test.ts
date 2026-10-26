@@ -129,7 +129,7 @@ describe('dump vtk: refusals name the keyword', () => {
     await expect(run(['dump d all vtk 1 bad.vtk id', 'dump_modify d binary yes', 'run 0'])).rejects.toThrow(/binary yes is not supported/);
   });
   it('rejects a dump_modify keyword that dump vtk does not take', async () => {
-    await expect(run(['dump d all vtk 1 bad.vtk id', 'dump_modify d scale no', 'run 0'])).rejects.toThrow(/dump_modify scale is not supported/);
+    await expect(run(['dump d all vtk 1 bad.vtk id', 'dump_modify d scale no', 'run 0'])).rejects.toThrow('Unknown dump_modify keyword: scale');
   });
   it('rejects thresh LAST', async () => {
     await expect(run(['dump d all vtk 1 bad.vtk id', 'dump_modify d thresh vx > LAST', 'run 0'])).rejects.toThrow(/thresh LAST/);

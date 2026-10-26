@@ -141,12 +141,12 @@ export class BondedHybrid extends Bonded {
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const name = args[1];
     const rest = args.slice(2);
+    // As native LAMMPS does (src/bond_hybrid.cpp, angle_hybrid.cpp, dihedral_hybrid.cpp and improper_hybrid.cpp coeff at
+    // b332f28): no sub-style reads the words after none or skip, so they are ignored
     if (name === 'none') {
-      if (rest.length) throw new StyleError(`${kind}_coeff ${args[0]} none takes no coefficients`);
       for (let t = lo; t <= hi; t++) { this.assign[t] = NONE; this.lines[t] = null; }
     } else if (name === 'skip' && kind !== 'bond') {
       // measured: a skip line changes nothing for its types (see the header comment)
-      if (rest.length) throw new StyleError(`${kind}_coeff ${args[0]} skip takes no coefficients`);
       return;
     } else {
       const k = this.subNames.indexOf(name);

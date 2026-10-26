@@ -94,6 +94,8 @@ export class FixNPHug extends FixNH {
   /** fix_nphug.cpp modify_param: e0, v0 and p0 set the reference state. */
   modify(key: string, values: string[]): number {
     if (key === 'e0' || key === 'v0' || key === 'p0') {
+      // FixNPHug::modify_param: "if (narg < 2) error->all(FLERR,\"Illegal fix nphug command\")"
+      if (values[0] === undefined) throw new StyleError('Illegal fix nphug command');
       const v = parseNum(values[0], `fix_modify ${key}`);
       if (key === 'e0') { this.e0 = v; this.e0Set = true; }
       else if (key === 'v0') { this.v0 = v; this.v0Set = true; }

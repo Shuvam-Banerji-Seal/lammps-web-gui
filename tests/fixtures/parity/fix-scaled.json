@@ -1,0 +1,1937 @@
+{
+ "matrix": "fix-scaled",
+ "about": "the first number of each fix line (from word 4) multiplied by 1.1, pe, press and fnorm compared after run 0",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w66units_accelcos_real",
+   "line": 21,
+   "text": "fix 2 all accelerate/cos 0.0011",
+   "style": "fix accelerate/cos",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 17158.5279087848 4130725.12272853 318.626828860245"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 23,
+   "text": "fix ADAPT all adapt/fep 22 pair lj/cut/coul/long/soft lambda * * v_lam atom charge 1 v_q1 atom charge 2 v_q2",
+   "style": "fix adapt/fep",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -115.197404867989 -23.064704335665 0.0343950568410765"
+  },
+  {
+   "case": "w437dyngroup_bpm_heat",
+   "line": 22,
+   "text": "fix 4 all add/heat linear 3.3 0.5",
+   "style": "fix add/heat",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.2272486046809 -4.58275269032922 5.2110761517832e-14"
+  },
+  {
+   "case": "w13misc_controller",
+   "line": 21,
+   "text": "fix push all addforce v_fc 0 0.0",
+   "style": "fix addforce",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.40593590251009 2.21189618453351e-13"
+  },
+  {
+   "case": "w18fix_addtorque",
+   "line": 19,
+   "text": "fix 2 all addtorque 0.022 0.01 -0.015",
+   "style": "fix addtorque",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 7.24104144168478e-06 2.32877909756373e-07 0.0226051346888472"
+  },
+  {
+   "case": "w228gs_addtorque",
+   "line": 22,
+   "text": "fix 2 all addtorque/atom 0.11 -0.2 v_tz every 2",
+   "style": "fix addtorque/atom",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 11.2978642426444 864.864090762447"
+  },
+  {
+   "case": "w66units_addtorqueg_real",
+   "line": 21,
+   "text": "fix 2 all addtorque/group 0.055 0.03 -0.02",
+   "style": "fix addtorque/group",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 17158.9578480747 4130725.12272853 0.009921838519223"
+  },
+  {
+   "case": "w62brown_alignquat",
+   "line": 15,
+   "text": "fix 3 all align/self quat 0.11",
+   "style": "fix align/self",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 -0.0790219763850352 12"
+  },
+  {
+   "case": "w142mx_append_atoms",
+   "line": 17,
+   "text": "fix 2 all append/atoms zhi freq 22 size 0.5",
+   "style": "fix append/atoms",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.93654833256937 -5.06152373869588 32.9424607578559"
+  },
+  {
+   "case": "w339swap_semi_tail",
+   "line": 17,
+   "text": "fix sw all atom/swap 6 20 12345 1.0 types 1 2 semi-grand yes mu 0.0 0.3 ke yes",
+   "style": "fix atom/swap",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.14084761388905 -3.93874957141514 43.3919469604432"
+  },
+  {
+   "case": "w278ap_vacancy",
+   "line": 20,
+   "text": "fix weight_atom all atom_weight/apip 55 eam ace 0.5 0 all",
+   "style": "fix atom_weight/apip",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -7485.24689963759 31515.119331871 34.2344372808259",
+   "build": "APIP"
+  },
+  {
+   "case": "w7chunk_mol",
+   "line": 25,
+   "text": "fix 3 all ave/chunk 6 1 5 cm vx norm all file molvx.txt",
+   "style": "fix ave/chunk",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Inconsistent fix ave/chunk nevery/nrepeat/nfreq values"
+  },
+  {
+   "case": "w26cgrid_propgrid",
+   "line": 15,
+   "text": "fix ave all ave/grid 6 1 5 4 4 4 vx vy vz",
+   "style": "fix ave/grid",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Inconsistent fix ave/grid nevery/nrepeat/pergrid_nfreq values"
+  },
+  {
+   "case": "w142mx_tracker",
+   "line": 24,
+   "text": "fix 2 all ave/histo 110 1 100 0 6 30 f_trackfix[5] mode vector kind local file w142mx_lifetime_hist.dat",
+   "style": "fix ave/histo",
+   "until": 32,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Inconsistent fix ave/histo nevery/nrepeat/nfreq values"
+  },
+  {
+   "case": "w47pkg_moments_simple",
+   "line": 14,
+   "text": "fix 2 all ave/moments 6 60 30 v_toteng mean stddev variance skew kurtosis",
+   "style": "fix ave/moments",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -887.842202487118 -107439.009198182 3.64889318102162e-15"
+  },
+  {
+   "case": "w7chunk_mol",
+   "line": 24,
+   "text": "fix 2 all ave/time 6 1 5 c_mc[*] mode vector file molcom.txt",
+   "style": "fix ave/time",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Inconsistent fix ave/time nevery/nrepeat/nfreq values"
+  },
+  {
+   "case": "w2fset_aveforce",
+   "line": 28,
+   "text": "fix 2 upper aveforce NULL 0 0.05",
+   "style": "fix aveforce",
+   "until": 32,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.416298249686 -3.89120868529837 35.7094367934183"
+  },
+  {
+   "case": "w7bal_forced",
+   "line": 12,
+   "text": "fix 2 all balance 11 0.9 shift xy 5 1.05",
+   "style": "fix balance",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.39893393675225 2.21189618453351e-13"
+  },
+  {
+   "case": "w133mf_baoab_lj",
+   "line": 17,
+   "text": "fix 1 all baoab 1.1 1.0 1.0 12345 zero yes",
+   "style": "fix baoab",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.39893393675225 2.21189618453351e-13"
+  },
+  {
+   "case": "w156mx_bocs",
+   "line": 17,
+   "text": "fix 1 all bocs temp 330 300.0 100.0 cgiso 0.986 0.986 1000.0 analytic 66476.015 968 2 245030.10 8962.20",
+   "style": "fix bocs",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1061.59613239388 3674.16209534179 104.190081058768"
+  },
+  {
+   "case": "w139bc_break_prob",
+   "line": 16,
+   "text": "fix b all bond/break 6 1 1.2 prob 0.5 777",
+   "style": "fix bond/break",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.75953306756572 -2.04582655829711 177.881945937896"
+  },
+  {
+   "case": "w139bc_create_iparam",
+   "line": 17,
+   "text": "fix c all bond/create 6 1 1 1.5 1 iparam 2 2 jparam 2 2 prob 0.5 4321",
+   "style": "fix bond/create",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.66050683753232 2.38544887038258 859.27600138565"
+  },
+  {
+   "case": "w94react_json_stab",
+   "line": 22,
+   "text": "fix myrxns all bond/react stabilization yes statted_grp 0.033 react rxn1 all 1 0.0 2.9 mol1 mol2 w94react_json_stp1.map react rxn2 all 1 0.0 5.0 mol3 mol4 w94react_json_stp2.map rescale_charges yes",
+   "style": "fix bond/react",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 114.636027418548 357.255874079363 1102.87774208586"
+  },
+  {
+   "case": "w10boxrelax_iso",
+   "line": 16,
+   "text": "fix 1 all box/relax iso 0",
+   "style": "fix box/relax",
+   "until": 20,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.04383212760257 3.55796669521125 480.231163363385"
+  },
+  {
+   "case": "w62brown_point3d",
+   "line": 12,
+   "text": "fix 1 all brownian 5.5 198098 rng gaussian gamma_t 2.0",
+   "style": "fix brownian",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.39375 0"
+  },
+  {
+   "case": "w62brown_asphere3d",
+   "line": 13,
+   "text": "fix 1 all brownian/asphere 1.1 5 rng uniform gamma_r_eigen 1.0 2.0 3.0 gamma_t_eigen 1.0 2.0 3.0 rotation_temp 2.0",
+   "style": "fix brownian/asphere",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.385185185185185 0"
+  },
+  {
+   "case": "w62brown_sphere3dplanar",
+   "line": 13,
+   "text": "fix 1 all brownian/sphere 1.1 77 rng uniform gamma_t 3.0 gamma_r 1.0 planar_rotation",
+   "style": "fix brownian/sphere",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.385185185185185 0"
+  },
+  {
+   "case": "w13misc_controller",
+   "line": 23,
+   "text": "fix ctl all controller 11 1.0 0.5 0.2 0.1 v_vcmx 0.5 fc",
+   "style": "fix controller",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.40593590251009 2.21189618453351e-13"
+  },
+  {
+   "case": "w228gs_cundall_var",
+   "line": 22,
+   "text": "fix 2 all damping/cundall 0.22 0.1 scale v_g",
+   "style": "fix damping/cundall",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 11.2978642426444 867.309643672842"
+  },
+  {
+   "case": "w229xf_deform_pressure",
+   "line": 15,
+   "text": "fix 2 all deform/pressure 11 x pressure 0.5 0.02 y pressure 0.5 0.02 z pressure 0.5 0.02 units box",
+   "style": "fix deform/pressure",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.03092527008559 2.21189618453351e-13"
+  },
+  {
+   "case": "w7dep_global",
+   "line": 14,
+   "text": "fix 3 all deposit 6 1 2 777 region reg units box global 1.0 2.0 units box",
+   "style": "fix deposit",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w18fix_drag",
+   "line": 18,
+   "text": "fix 2 all drag 0 0.0 0.0 0.5 0.5",
+   "style": "fix drag",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.562255859375 -0.00756028983686576 7.40365001254792"
+  },
+  {
+   "case": "w47pkg_dtreset_melt",
+   "line": 15,
+   "text": "fix 5 all dt/reset 6 NULL 0.05 0.1 units box emax 20",
+   "style": "fix dt/reset",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325309 -3.71261023883558 3.44584710937126e-13"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 28,
+   "text": "fix 3 all edpd/source cuboid 0 1.5 0.0 6.0 3.0 6.0 0.01",
+   "style": "fix edpd/source",
+   "until": 35,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 33.5665323232848 97.5607993520961 3974.14171010707"
+  },
+  {
+   "case": "w66units_efield_const_real",
+   "line": 23,
+   "text": "fix 2 all efield 0.022 -0.01 0.03",
+   "style": "fix efield",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 17149.5619673336 4130725.12272853 3.69282274289659"
+  },
+  {
+   "case": "w66units_lepton_efield_real",
+   "line": 23,
+   "text": "fix 2 all efield/lepton \"-0.05*x^2 - 0.3*y*z\" step 0.0011",
+   "style": "fix efield/lepton",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 18368.9300046968 4130725.12272853 227.717567761833"
+  },
+  {
+   "case": "w229xf_efield_tip4p",
+   "line": 20,
+   "text": "fix 3 all efield/tip4p 0.33 -0.2 0.5",
+   "style": "fix efield/tip4p",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 4211.31995107308 131544.292870631 227.814950228448"
+  },
+  {
+   "case": "w8ehex_region_dynamic",
+   "line": 20,
+   "text": "fix 2 all ehex 6 0.4 region hot",
+   "style": "fix ehex",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.83628717899181 -4.12608044099696 2.91315943653464e-13"
+  },
+  {
+   "case": "w156mx_tf_conp_cg",
+   "line": 18,
+   "text": "fix conp bot electrode/conp -1.1 1.805132 couple top 1.0 symm on algo cg 1e-10",
+   "style": "fix electrode/conp",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 151.074616945958 81247.6974867971 233.017022621401"
+  },
+  {
+   "case": "w68elec_conq_cg",
+   "line": 19,
+   "text": "fix q bot electrode/conq -0.22 2 couple top 0.2 symm on algo cg 1e-6",
+   "style": "fix electrode/conq",
+   "until": 20,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 164.930613382091 144647.962993485 168.074012315774"
+  },
+  {
+   "case": "w47pkg_elstop_cu",
+   "line": 18,
+   "text": "fix fel all electron/stopping 11 w47pkg_elstop_cu.table",
+   "style": "fix electron/stopping",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -902.289254798578 64238.580670187 7.73624503586072e-14"
+  },
+  {
+   "case": "w108xf_elfit_sisi",
+   "line": 18,
+   "text": "fix 3 all electron/stopping/fit 5.093 3.3e-3 4.0e-8",
+   "style": "fix electron/stopping/fit",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -7999.93688995392 5354765.74731772 39.3831540426258"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 32,
+   "text": "fix 3 all eos/cv 0.00055",
+   "style": "fix eos/cv",
+   "until": 34,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 263.253838615411 3065.7908751302 0.1406414329138"
+  },
+  {
+   "case": "w230re_eos_table",
+   "line": 23,
+   "text": "fix 3 all eos/table linear w230re_eos_table.txt 220 EOS_TABLE",
+   "style": "fix eos/table",
+   "until": 33,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 10.5557860128194 37.0890807692028 5.62941895975476"
+  },
+  {
+   "case": "w162rx_table_lookup",
+   "line": 44,
+   "text": "fix 3 all eos/table/rx linear w160rx_table.eos 221 KEYWORD w160rx_thermo.dpdrx",
+   "style": "fix eos/table/rx",
+   "until": 56,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -227.57754988667 -3195.34071964558 90.4916631810881"
+  },
+  {
+   "case": "w340deposit_tail",
+   "line": 20,
+   "text": "fix 3 all evaporate 8 1 ev 9113",
+   "style": "fix evaporate",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.73270463549702 -1.91610425587335 620.518447109143"
+  },
+  {
+   "case": "w229xf_ffl",
+   "line": 15,
+   "text": "fix 2 all ffl 0.55 1.2 0.6 4321",
+   "style": "fix ffl",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.39893393675225 2.21189618453351e-13"
+  },
+  {
+   "case": "w214fc_respa",
+   "line": 20,
+   "text": "fix cor all filter/corotate m 1.1",
+   "style": "fix filter/corotate",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6794.01097020879 19897.0139084077 319.057644351511"
+  },
+  {
+   "case": "w37gcmc_shake_rej",
+   "line": 20,
+   "text": "fix mygcmc pair gcmc 1100 1 0 0 54341 338 0.0 0.5 mol dpair full_energy tfac_insert 1.6667 group pair shake wshake",
+   "style": "fix gcmc",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w352gjf_method8",
+   "line": 20,
+   "text": "fix 1 all gjf 1.1 1.0 2.0 9182 method 8",
+   "style": "fix gjf",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.26477111895092 0.492263234171961 4.19756840689399e-13"
+  },
+  {
+   "case": "w229xf_gld",
+   "line": 15,
+   "text": "fix 2 all gld 1.32 0.6 2 4321 pprony 0.5 0.3 0.8 1.5 zero yes",
+   "style": "fix gld",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.39893393675225 2.21189618453351e-13"
+  },
+  {
+   "case": "w108xf_gle_lj_eq",
+   "line": 15,
+   "text": "fix 1 all gle 7 1.2 1.4 31415 gle_lj.A",
+   "style": "fix gle",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Incorrect format in fix gle A matrix potential file! 49/64 values"
+  },
+  {
+   "case": "w463dyngroup_isosurface",
+   "line": 22,
+   "text": "fix iso dyn graphics/isosurface 6 0.4 1.0 quality min filename w463iso.*.stl",
+   "style": "fix graphics/isosurface",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.85951110598702 -0.107560359216979 48.5529608287034"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 16,
+   "text": "fix 2 all gravity 1.1 spherical 0.0 -180.0",
+   "style": "fix gravity",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w108xf_grem_nvt",
+   "line": 13,
+   "text": "fix fxgREM all grem 440 -.01 -30000 fxnvt",
+   "style": "fix grem",
+   "until": 14,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3177.64234754201 883.583688353192 192.247351569389"
+  },
+  {
+   "case": "w437dyngroup_bpm_heat",
+   "line": 21,
+   "text": "fix 3 dyn2 heat/flow constant 2.2",
+   "style": "fix heat/flow",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.2272486046809 -4.58275269032922 5.2110761517832e-14"
+  },
+  {
+   "case": "w32hmc_accept",
+   "line": 15,
+   "text": "fix 2 all hmc 6 12345 1000000.0 resample yes",
+   "style": "fix hmc",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.160168297139287 3240.7577025915 2.31605766209231"
+  },
+  {
+   "case": "w49hy_rebond",
+   "line": 27,
+   "text": "fix HG mobile hyper/global 1.65 0.3 0.5 1.0",
+   "style": "fix hyper/global",
+   "until": 34,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.01927977502761 -0.553247314570612 11.7411165584573"
+  },
+  {
+   "case": "w153hy_bound",
+   "line": 27,
+   "text": "fix HL mobile hyper/local 1.65 0.3 0.5 1.0 3.0 0.5 1.2 bound 0.3 reset 40",
+   "style": "fix hyper/local",
+   "until": 34,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.04026542646179 -0.190648134336691 8.40630301988823"
+  },
+  {
+   "case": "w50il_chain",
+   "line": 14,
+   "text": "fix cons all ilves 0.00011 25 0 b 1",
+   "style": "fix ilves",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.074163453107056 -27005.7343460148 7559.19480156588"
+  },
+  {
+   "case": "w66units_indent_plane_real",
+   "line": 21,
+   "text": "fix 2 all indent 2.2 plane z 1.5 lo units box",
+   "style": "fix indent",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 17203.0779087848 4130725.12272853 21.0010714012359"
+  },
+  {
+   "case": "w279ap_thermostat_shuffle",
+   "line": 16,
+   "text": "fix lambda all lambda/apip 0.55 1.5 time_averaged_zone 2.0 3.0 3 3 store_atomic_stats",
+   "style": "fix lambda/apip",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -7676.16498181803 37624.7909569488 33.7185376142264",
+   "build": "APIP"
+  },
+  {
+   "case": "w280ap_la_csp_static",
+   "line": 16,
+   "text": "fix la all lambda/la/csp/apip 0.77 2.0 3.0 5.0 fcc store_peratom 5",
+   "style": "fix lambda/la/csp/apip",
+   "until": 31,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1086.06906210031 54862.6284970618 49.8948334373817",
+   "build": "APIP"
+  },
+  {
+   "case": "w279ap_vacancy_dynamic",
+   "line": 18,
+   "text": "fix lambda_thermostat all lambda_thermostat/apip N_rescaling 660 store_atomic_forces 100",
+   "style": "fix lambda_thermostat/apip",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -7485.33203975198 31505.1141818751 34.246432128901",
+   "build": "APIP"
+  },
+  {
+   "case": "w89fix_rigid_langevin",
+   "line": 14,
+   "text": "fix 2 all langevin 1.1 1.0 0.5 48279",
+   "style": "fix langevin",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325293 31.7945458985208 281.743490255406"
+  },
+  {
+   "case": "w72drude_butane_lang",
+   "line": 36,
+   "text": "fix fLANG all langevin/drude 286 100.0 200611 1.0 20.0 260514 zero yes",
+   "style": "fix langevin/drude",
+   "until": 43,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 143.884765742419 510.535782212414 2076.37007110027"
+  },
+  {
+   "case": "w230re_eff_langevin",
+   "line": 15,
+   "text": "fix 2 all langevin/eff 330 300.0 20.0 4321 tally yes scale 3 2.0",
+   "style": "fix langevin/eff",
+   "until": 20,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.37131328948164 3915.79850068209 -nan"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 14,
+   "text": "fix 3 all langevin/spin 0 0.1 21",
+   "style": "fix langevin/spin",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w132lb_momentum",
+   "line": 22,
+   "text": "fix 4 all lb/momentum 55 linear 1 1 1",
+   "style": "fix lb/momentum",
+   "until": 39,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Unrecognized fix style 'lb/fluid' is part of the LATBOLTZ package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the LATBOLTZ package, which no native build here has"
+  },
+  {
+   "case": "w66units_lineplane_real",
+   "line": 24,
+   "text": "fix 3 all lineforce 1.1 1.0 0.5",
+   "style": "fix lineforce",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 17158.5279087848 4130725.12272853 1.4192549106913"
+  },
+  {
+   "case": "w289mf_manifoldforce_min",
+   "line": 13,
+   "text": "fix mf all manifoldforce sphere 11",
+   "style": "fix manifoldforce",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.749853189714936 0.0177957029239998 259.89304074501",
+   "build": "MANIFOLD"
+  },
+  {
+   "case": "w125sdpd_meso_move_wiggle",
+   "line": 31,
+   "text": "fix 3 upper_wall meso/move wiggle 0.055 0 0 0.2 units box",
+   "style": "fix meso/move",
+   "until": 40,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.00118843284549136 0.137287768752278"
+  },
+  {
+   "case": "w129uef_npt_biaxial",
+   "line": 19,
+   "text": "fix 2 all momentum 110 linear 1 1 1",
+   "style": "fix momentum",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.762674465938137 6.6278458506488 578.677046369065"
+  },
+  {
+   "case": "w17move_linear",
+   "line": 16,
+   "text": "fix 1 moved move linear 0.55 0.0 0.0 units box",
+   "style": "fix move",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.493338293798673 -0.00337786220736191 5.11823415587007"
+  },
+  {
+   "case": "w128shock_msst_lj",
+   "line": 16,
+   "text": "fix msst all msst z 1.65 q 10.0 mu 0.5 tscale 0.1",
+   "style": "fix msst",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325309 -5.62986758258559 3.44584710937126e-13"
+  },
+  {
+   "case": "w451dyngroup_mdpd",
+   "line": 26,
+   "text": "fix 2 dyn2 mvv/dpd 0.66",
+   "style": "fix mvv/dpd",
+   "until": 31,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -12.6587218492459 -4.52916851155559 2596.99363429609"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 26,
+   "text": "fix 1 dyn mvv/edpd 0.55",
+   "style": "fix mvv/edpd",
+   "until": 35,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 33.5665323232848 97.5607993520961 3974.14171010707"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 25,
+   "text": "fix 1 dyn mvv/tdpd 0.55",
+   "style": "fix mvv/tdpd",
+   "until": 34,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 33.5665323232848 97.6992115363445 4021.89082328686"
+  },
+  {
+   "case": "w46neb_each",
+   "line": 20,
+   "text": "fix 2 all neb 1.1 parallel ideal",
+   "style": "fix neb",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.192687150602644 -1.3797783712182 1.58358816772381"
+  },
+  {
+   "case": "w310gneb_cg",
+   "line": 18,
+   "text": "fix 3 all neb/spin 1.1",
+   "style": "fix neb/spin",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.152781411004038 0 0"
+  },
+  {
+   "case": "w199vo_kmc_edge",
+   "line": 26,
+   "text": "fix mc all neighbor/swap 6 4 1340723 1000 3.0 voroN diff 2",
+   "style": "fix neighbor/swap",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -595.835521420225 -167352.095257389 2.59417638363871"
+  },
+  {
+   "case": "w229xf_nonaffine",
+   "line": 16,
+   "text": "fix 2 all nonaffine/displacement 6 integrated fixed 20 z/min 0",
+   "style": "fix nonaffine/displacement",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Dump custom and fix not computed at compatible times"
+  },
+  {
+   "case": "w483nh_isochoric_2d",
+   "line": 14,
+   "text": "fix 1 all nph y 1.1 1.0 1.0 isochoric x",
+   "style": "fix nph",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.62488591642611 1.63433651550894 2.39817097743078e-15"
+  },
+  {
+   "case": "w19nhasphere_nph",
+   "line": 39,
+   "text": "fix 1 all nph/asphere iso 1.65 0.5 2.0",
+   "style": "fix nph/asphere",
+   "until": 43,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.22724860468107 -4.5864997968107 2.78496740416797e-14"
+  },
+  {
+   "case": "w126body_squares_nph",
+   "line": 16,
+   "text": "fix 1 all nph/body x 0.11 0.1 1.0 y 0.1 0.1 1.0 fixedpoint 0 0 0",
+   "style": "fix nph/body",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.00607638888888889 0"
+  },
+  {
+   "case": "w367eff_nph_couple_xy",
+   "line": 14,
+   "text": "fix 1 all nph/eff x 0 0.0 1.0 y 0.0 0.0 1.0 z 0.0 0.0 1.0 couple xy pchain 1 mtk no",
+   "style": "fix nph/eff",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -25.6815917951627 43251913806.8512 0.343844609453045"
+  },
+  {
+   "case": "w355dipole_nph_sphere",
+   "line": 21,
+   "text": "fix 1 all nph/sphere iso 0.55 0.5 1.0 update dipole",
+   "style": "fix nph/sphere",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -4.19148390195649 -3.57087978561844 12.595621300432"
+  },
+  {
+   "case": "w128shock_nphug_z",
+   "line": 15,
+   "text": "fix myhug all nphug temp 1.1 1.0 10.0 z 1.5 1.5 20.0",
+   "style": "fix nphug",
+   "until": 20,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.56621060341892 2.21189618453351e-13"
+  },
+  {
+   "case": "w481nh_isochoric_x",
+   "line": 13,
+   "text": "fix 1 all npt temp 1.1 1.0 0.5 z 2.0 2.0 1.0 isochoric x",
+   "style": "fix npt",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325309 -5.39441492633558 3.44584710937126e-13"
+  },
+  {
+   "case": "w19nhasphere_npt",
+   "line": 39,
+   "text": "fix 1 all npt/asphere temp 1.1 1.0 0.5 iso 1.5 0.5 2.0",
+   "style": "fix npt/asphere",
+   "until": 43,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.22724860468107 -4.5864997968107 2.78496740416797e-14"
+  },
+  {
+   "case": "w126body_wall2d",
+   "line": 17,
+   "text": "fix 1 all npt/body temp 0.55 0.5 1.0 x 0.001 0.1 1.0 fixedpoint 0 0 0",
+   "style": "fix npt/body",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.00607638888888889 0"
+  },
+  {
+   "case": "w141cy_cauchy_basic",
+   "line": 18,
+   "text": "fix 1 all npt/cauchy temp 660 600.0 1.0 x 0.0 0.0 0.1 y 0.0 0.0 0.1 z 0.0 0.0 0.1 couple none alpha 0.001 continue no",
+   "style": "fix npt/cauchy",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -362.879999683813 9883.74846992145 3.57798646151853e-14"
+  },
+  {
+   "case": "w364eff_npt_aniso",
+   "line": 14,
+   "text": "fix 1 all npt/eff temp 330 300.0 0.5 aniso 0.0 0.0 1.0",
+   "style": "fix npt/eff",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -25.6815917951627 43251913806.8512 0.343844609453045"
+  },
+  {
+   "case": "w356dlm_npt_sphere",
+   "line": 22,
+   "text": "fix 1 all npt/sphere temp 0.88 0.8 0.5 iso 0.5 0.5 1.0 update dipole/dlm",
+   "style": "fix npt/sphere",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -4.1882176774629 -3.56892005092229 12.6108914569584"
+  },
+  {
+   "case": "w129uef_npt_biaxial",
+   "line": 18,
+   "text": "fix 1 all npt/uef temp 0.7942 0.722 0.5 iso 10 10 5 erate 0.5 0.5 ext z",
+   "style": "fix npt/uef",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.762674465938137 6.6278458506488 578.677046369065"
+  },
+  {
+   "case": "w57oxdna_langevin",
+   "line": 19,
+   "text": "fix 1 all nve/dotc/langevin 0.11 0.1 2.5 457145 angmom 10",
+   "style": "fix nve/dotc/langevin",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 363.224856779739 1.76509647450916 154259.830150378"
+  },
+  {
+   "case": "w2fmom_nvelimit",
+   "line": 27,
+   "text": "fix 1 all nve/limit 0.00132",
+   "style": "fix nve/limit",
+   "until": 31,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.416298249686 -3.89120868529837 44.2075392359779"
+  },
+  {
+   "case": "w282mf_sphere_energy",
+   "line": 9,
+   "text": "fix step all nve/manifold/rattle 0.0000011 10 sphere 10.0",
+   "style": "fix nve/manifold/rattle",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.749853189714936 0.0177957029239998 260.179703593247",
+   "build": "MANIFOLD"
+  },
+  {
+   "case": "w108xf_grem_nvt",
+   "line": 12,
+   "text": "fix fxnvt all nvt temp 330 300.0 1000.0",
+   "style": "fix nvt",
+   "until": 14,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Temperature ramp in fix nvt ID fxnvt not allowed"
+  },
+  {
+   "case": "w19nhasphere_nvt",
+   "line": 39,
+   "text": "fix 1 all nvt/asphere temp 1.1 1.0 0.5",
+   "style": "fix nvt/asphere",
+   "until": 43,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.22724860468107 -4.5864997968107 2.78496740416797e-14"
+  },
+  {
+   "case": "w126body_cubes_nvt",
+   "line": 15,
+   "text": "fix 1 all nvt/body temp 1.32 1.2 0.1",
+   "style": "fix nvt/body",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.00448729810778068 0.00952140892141636 0.535898384862246"
+  },
+  {
+   "case": "w63eff_ch4_nvt",
+   "line": 21,
+   "text": "fix 1 all nvt/eff temp 330 300.0 0.1",
+   "style": "fix nvt/eff",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -27.3140820331247 -56197.2118148881 3.3375541364708"
+  },
+  {
+   "case": "w286mf_nvt_ramp",
+   "line": 14,
+   "text": "fix step all nvt/manifold/rattle 1.1e-8 20 sphere v_R temp 1.0 1.2 0.1 tchain 4",
+   "style": "fix nvt/manifold/rattle",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.749853189714936 0.0222330708970354 260.179703593247",
+   "build": "MANIFOLD"
+  },
+  {
+   "case": "w39nemd_nemd3d",
+   "line": 23,
+   "text": "fix 1 all nvt/sllod temp 1.1 1.0 1.0 tchain 1",
+   "style": "fix nvt/sllod",
+   "until": 30,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.65487314704691 1.91711050716752 1.04365127419101e-12"
+  },
+  {
+   "case": "w230re_eff_sllod",
+   "line": 15,
+   "text": "fix 2 all nvt/sllod/eff temp 330 300.0 10.0",
+   "style": "fix nvt/sllod/eff",
+   "until": 20,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.37131328948164 3916.11322549102 0.763520899287756"
+  },
+  {
+   "case": "w7nhs_disc",
+   "line": 19,
+   "text": "fix 1 all nvt/sphere temp 0.88 0.5 0.5 disc",
+   "style": "fix nvt/sphere",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.541568 -0.364504177777783 8.69330150275228e-16"
+  },
+  {
+   "case": "w446dyngroup_nvt_uef",
+   "line": 19,
+   "text": "fix 1 dyn nvt/uef temp 0.7942 0.8 0.5 erate -0.05 -0.05",
+   "style": "fix nvt/uef",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.762674465938137 6.6278458506488 578.677046369065"
+  },
+  {
+   "case": "w18fix_oneway",
+   "line": 18,
+   "text": "fix 2 all oneway 6 mid x",
+   "style": "fix oneway",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.307124614804097 -0.00722212235193638 2.36456069157519"
+  },
+  {
+   "case": "w133mf_orient_eco",
+   "line": 15,
+   "text": "fix eco all orient/eco 0.088 0.25 3.6 w133mf_sigma5.ori",
+   "style": "fix orient/eco",
+   "until": 20,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 46.3596630687222 391.978080685666 0.250013531687685"
+  },
+  {
+   "case": "w155mx_pafi_od",
+   "line": 33,
+   "text": "fix hp all pafi pa 550 0.01 434 overdamped yes com no",
+   "style": "fix pafi",
+   "until": 37,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.04297612316634 70644.993729835 241.644045411738"
+  },
+  {
+   "case": "w99phq_cu",
+   "line": 22,
+   "text": "fix 2 all phonon 11 100 1000 w99phq_cu.map w99phq_cu nasr 20",
+   "style": "fix phonon",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1812.48000116739 3500.15785391566 1.15330726952372e-06"
+  },
+  {
+   "case": "w192pimdl_obabo_pile_l",
+   "line": 20,
+   "text": "fix 1 all pimd/langevin ensemble nvt integrator obabo temp 1.109768 sp 0.1924 thermostat PILE_L 1234",
+   "style": "fix pimd/langevin",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: World variable count 4 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w191pimd_nvt_nmpimd8",
+   "line": 19,
+   "text": "fix 1 all pimd/nvt method nmpimd fmass 0.55 sp 2.0 temp 300.0 nhc 3",
+   "style": "fix pimd/nvt",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: World variable count 8 doesn't match # of partitions 1"
+  },
+  {
+   "case": "w66units_lineplane_real",
+   "line": 25,
+   "text": "fix 4 all planeforce 0.22 0.1 1.0",
+   "style": "fix planeforce",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 17158.5279087848 4130725.12272853 1.35345904162305"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 19,
+   "text": "fix ins all pour 22 1 4767548 vol 0.2 50 diam range 0.5 1.0 region slab",
+   "style": "fix pour",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w48sp2_langevin0",
+   "line": 13,
+   "text": "fix 2 all precession/spin zeeman 11 0 0 1",
+   "style": "fix precession/spin",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w89fix_pberend_iso",
+   "line": 14,
+   "text": "fix 2 all press/berendsen iso 1.1 1.0 1.0",
+   "style": "fix press/berendsen",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325309 -5.02441789508558 3.44584710937126e-13"
+  },
+  {
+   "case": "w229xf_press_langevin",
+   "line": 15,
+   "text": "fix 2 all press/langevin iso 0.55 1.5 0.5 temp 1.2 0.9 4321",
+   "style": "fix press/langevin",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.39893393675225 2.21189618453351e-13"
+  },
+  {
+   "case": "w62brown_propelvel",
+   "line": 14,
+   "text": "fix 2 all propel/self velocity 4.4",
+   "style": "fix propel/self",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 -6.33574392388623e-05 26.4"
+  },
+  {
+   "case": "w99phq_qbmsst_lj",
+   "line": 16,
+   "text": "fix shock all qbmsst z 1.65 q 10.0 tscale 0.1 damp 1.0 f_max 4.0 N_f 20 seed 35082 eta 1.0 beta 5 T_init 0.8",
+   "style": "fix qbmsst",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Unrecognized fix style 'qbmsst' is part of the QTB package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the QTB package, which no native build here has"
+  },
+  {
+   "case": "w99phq_qtb_lj",
+   "line": 16,
+   "text": "fix 2 all qtb temp 0.88 damp 0.5 seed 35082 f_max 2.0 N_f 50",
+   "style": "fix qtb",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Unrecognized fix style 'qtb' is part of the QTB package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the QTB package, which no native build here has"
+  },
+  {
+   "case": "w50rt_run0",
+   "line": 19,
+   "text": "fix 1 all rattle 0.00011 20 0 b 1 a 1",
+   "style": "fix rattle",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -16692.357544152 -1289.83193625498 494.64133583141"
+  },
+  {
+   "case": "w456dyngroup_reaxff_out",
+   "line": 21,
+   "text": "fix 4 dyn reaxff/bonds 6 bonds.dyn",
+   "style": "fix reaxff/bonds",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -9828.89551220737 1262.43707264126 75.7139216973726"
+  },
+  {
+   "case": "w456dyngroup_reaxff_out",
+   "line": 22,
+   "text": "fix 3 dyn reaxff/species 6 1 5 species.dyn cutoff * * 0.9 element H C O N",
+   "style": "fix reaxff/species",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Incompatible fix reaxff/species nevery/nrepeat/nfreq settings"
+  },
+  {
+   "case": "w2fmom_recenter",
+   "line": 28,
+   "text": "fix 2 all recenter INIT 2.75 NULL units box",
+   "style": "fix recenter",
+   "until": 32,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.416298249686 -3.89120868529837 44.2075392359779"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 22,
+   "text": "fix 1 all rheo 3.3 quintic 0 thermal",
+   "style": "fix rheo",
+   "until": 33,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair rheo cutoff 3 does not agree with fix rheo cutoff 3.3"
+  },
+  {
+   "case": "w96rheo_oxidation",
+   "line": 66,
+   "text": "fix 5 rbar rheo/oxidation 1.65 2 1.0",
+   "style": "fix rheo/oxidation",
+   "until": 85,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0.00118953772533703"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 24,
+   "text": "fix 3 all rheo/pressure * ideal/gas 1.54",
+   "style": "fix rheo/pressure",
+   "until": 33,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.20808221970286 1.43674375499211"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 25,
+   "text": "fix 4 all rheo/thermal conductivity * constant 0.11 specific/heat * constant 1.0",
+   "style": "fix rheo/thermal",
+   "until": 33,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.160616459039156 1.06425463332749"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 23,
+   "text": "fix 2 all rheo/viscosity * constant 0.055",
+   "style": "fix rheo/viscosity",
+   "until": 33,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.160616459039156 1.06425463332749"
+  },
+  {
+   "case": "w36rigid_lgv2d",
+   "line": 15,
+   "text": "fix 1 all rigid single langevin 0.77 0.7 0.5 246810",
+   "style": "fix rigid",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w56rnh_nph_iso",
+   "line": 48,
+   "text": "fix 1 all rigid/nph molecule iso 0.55 0.5 1.0",
+   "style": "fix rigid/nph",
+   "until": 52,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.0404171941821851 0.0254527313599977 1.60957709546335"
+  },
+  {
+   "case": "w56rnh_nph_small",
+   "line": 48,
+   "text": "fix 1 all rigid/nph/small molecule iso 0.55 0.5 1.0",
+   "style": "fix rigid/nph/small",
+   "until": 52,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.0404171941821851 0.0254527313599969 1.60957709546335"
+  },
+  {
+   "case": "w56rnh_npt_iso",
+   "line": 48,
+   "text": "fix 1 all rigid/npt molecule temp 1.1 1.0 0.5 iso 1.0 1.0 2.0",
+   "style": "fix rigid/npt",
+   "until": 52,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.0404171941821851 0.0254527313599977 1.60957709546335"
+  },
+  {
+   "case": "w431rigidnh_ellipsoid",
+   "line": 21,
+   "text": "fix 1 all rigid/npt/small molecule temp 1.65 1.5 1.0 iso 1.0 1.0 5.0",
+   "style": "fix rigid/npt/small",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.821582788030194 -12.0623451230969 4.81105254885303"
+  },
+  {
+   "case": "w179rg_nh_deform",
+   "line": 15,
+   "text": "fix 1 all rigid/nvt molecule temp 1.1 1.0 0.5",
+   "style": "fix rigid/nvt",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.12333890603566 -30.6416750227994 1.37165874160693e-14"
+  },
+  {
+   "case": "w230re_rigid_nvt_small_erotate",
+   "line": 21,
+   "text": "fix 1 all rigid/nvt/small molecule temp 1.32 1.2 0.5",
+   "style": "fix rigid/nvt/small",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.1254525114665 -28.1341716412084 16.2753728995992"
+  },
+  {
+   "case": "w229xf_set",
+   "line": 21,
+   "text": "fix 2 all set 11 1 atom 1*108 type v_t2 vx v_t",
+   "style": "fix set",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.39893393675225 2.21189618453351e-13"
+  },
+  {
+   "case": "w8group_dynamic_var",
+   "line": 24,
+   "text": "fix 3 hotleft setforce NULL NULL 0",
+   "style": "fix setforce",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325309 -5.18427627308034 3.1822397218118e-13"
+  },
+  {
+   "case": "w48sp2_setforce",
+   "line": 19,
+   "text": "fix 3 frozen setforce/spin 0 0.0 0.0",
+   "style": "fix setforce/spin",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.0561498248230585 0 0"
+  },
+  {
+   "case": "w436dyngroup_sphere",
+   "line": 21,
+   "text": "fix 5 dyn2 settorque/atom 0 NULL 0.0",
+   "style": "fix settorque/atom",
+   "until": 30,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.2272486046809 -4.58275269032922 571.836932812577"
+  },
+  {
+   "case": "w204sg_lj_generic",
+   "line": 17,
+   "text": "fix mc all sgcmc 6 0.1 1.0 0.3 randseed 2468",
+   "style": "fix sgcmc",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.71511536173995 -4.956425385444 35.1184287640489"
+  },
+  {
+   "case": "w73shake_gil",
+   "line": 15,
+   "text": "fix shake bmi shake 0.00011 20 0 b 1 2 a 1",
+   "style": "fix shake",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 25137181.5361451 45953685.9192405 944898.476558919"
+  },
+  {
+   "case": "w229xf_smd_tether_cfor",
+   "line": 16,
+   "text": "fix 2 pull smd cfor 0.33 tether NULL NULL 1.0 0.0",
+   "style": "fix smd",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.39893393675225 0.0635085296108939"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 43,
+   "text": "fix dtfix all smd/adjust_dt 0.11",
+   "style": "fix smd/adjust_dt",
+   "until": 52,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0.192093727834715"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 44,
+   "text": "fix integration_fix water smd/integrate_ulsph adjust_radius 1.111 10 15",
+   "style": "fix smd/integrate_ulsph",
+   "until": 52,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0.192093727834715"
+  },
+  {
+   "case": "w230re_smd_wall_linear",
+   "line": 48,
+   "text": "fix mv surface smd/move_tri_surf *LINEAR 0.022 0.01 -0.03",
+   "style": "fix smd/move_tri_surf",
+   "until": 52,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0.192093727834715"
+  },
+  {
+   "case": "w2fspring_tether",
+   "line": 28,
+   "text": "fix 2 lower spring tether 11 NULL NULL 1.2 0.2",
+   "style": "fix spring",
+   "until": 32,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.416298249686 -3.89120868529837 44.208766068774"
+  },
+  {
+   "case": "w323spring_chunk_wrap",
+   "line": 27,
+   "text": "fix 2 all spring/chunk 2.2 cm com",
+   "style": "fix spring/chunk",
+   "until": 34,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.24888587615986 7.09964248579113 292.777239314323"
+  },
+  {
+   "case": "w11restrain_springrg",
+   "line": 16,
+   "text": "fix SRG all spring/rg 5.5 NULL",
+   "style": "fix spring/rg",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.07236505780371 -0.0100888969460721 103.50236862241"
+  },
+  {
+   "case": "w2fspring_self",
+   "line": 28,
+   "text": "fix 2 upper spring/self 11 xy",
+   "style": "fix spring/self",
+   "until": 33,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.416298249686 -3.89120868529837 44.2075392359779"
+  },
+  {
+   "case": "w177px_srd_triclinic",
+   "line": 29,
+   "text": "fix 2 small srd 22 big 1.0 0.25 49894 search 0.2 cubic warn 0.0001 shift yes 49829 overlap yes collision noslip",
+   "style": "fix srd",
+   "until": 35,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 14.265 0"
+  },
+  {
+   "case": "w89fix_storestate_every",
+   "line": 14,
+   "text": "fix s all store/state 6 x y z vx",
+   "style": "fix store/state",
+   "until": 20,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.03092527008559 2.21189618453351e-13"
+  },
+  {
+   "case": "w89fix_berendsen_onedof",
+   "line": 15,
+   "text": "fix 2 one temp/berendsen 1.32 1.2 0.1",
+   "style": "fix temp/berendsen",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325293 -5.05765827008559 1.22387434878151e-14"
+  },
+  {
+   "case": "w89fix_csld_const",
+   "line": 14,
+   "text": "fix 2 all temp/csld 1.32 1.2 0.1 12345",
+   "style": "fix temp/csld",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325309 -5.02441789508558 3.44584710937126e-13"
+  },
+  {
+   "case": "w89fix_csvr_2d",
+   "line": 15,
+   "text": "fix 2 all temp/csvr 0.99 0.9 0.2 777",
+   "style": "fix temp/csvr",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.62488591642611 2.01660082800895 4.72291948765743e-12"
+  },
+  {
+   "case": "w14flow_cos",
+   "line": 25,
+   "text": "fix 3 all temp/rescale 11 0.6 0.6 0.02 0.5",
+   "style": "fix temp/rescale",
+   "until": 31,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -6.08298281437492 0.367423461417476"
+  },
+  {
+   "case": "w224mc_tfmc_com",
+   "line": 17,
+   "text": "fix mc all tfmc 0.055 0.6 12345 com 1 1 1",
+   "style": "fix tfmc",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.56451464816354 -3.27789146538926 48.6214413058768"
+  },
+  {
+   "case": "w11gk_thermcond",
+   "line": 17,
+   "text": "fix tc all thermal/conductivity 11 z 8 swap 2",
+   "style": "fix thermal/conductivity",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325309 -5.02441789508559 3.44584710937126e-13"
+  },
+  {
+   "case": "w48fb_ti_spring_tiny",
+   "line": 14,
+   "text": "fix f2 all ti/spring 3.3 4 3 function 1",
+   "style": "fix ti/spring",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -7.22025922851564 -5.39812072265625 6.12103976502006e-14"
+  },
+  {
+   "case": "w48fb_tmd_mass",
+   "line": 24,
+   "text": "fix 2 all tmd 0.55 w48fb_tmd_mass_target.txt 0",
+   "style": "fix tmd",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.0109375 0"
+  },
+  {
+   "case": "w14ttm_stop",
+   "line": 19,
+   "text": "fix 2 all ttm 4666 1.0 1.0 1.0 20.0 3.0 2.5 2 2 2 infile w14ttm_stop.init",
+   "style": "fix ttm",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 1864.35742595406 0"
+  },
+  {
+   "case": "w41ttm_cas_cetab",
+   "line": 20,
+   "text": "fix 2 all ttm/cascade 85 3.0 2.0 0.5 20.0 0.0 2.0 2 2 2 infile w41ttm_cas.init cetab w41ttm_ce.tab offset 0.015",
+   "style": "fix ttm/cascade",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 111.331074403348 0"
+  },
+  {
+   "case": "w421dump_grid_ttm",
+   "line": 20,
+   "text": "fix 2 all ttm/grid 855 0.001 1.0 0.01 20.0 0.0 2.0 2 2 2 infile w14ttm_grid.init",
+   "style": "fix ttm/grid",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 213.345575432905 0"
+  },
+  {
+   "case": "w43tm_si",
+   "line": 18,
+   "text": "fix twotemp all ttm/mod 1490152 w43tm_si.par 4 4 4 set 1000.0",
+   "style": "fix ttm/mod",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -277.54239968802 27.8895725790928 6.93616385282949e-14"
+  },
+  {
+   "case": "w41ttm_thermal4",
+   "line": 21,
+   "text": "fix 2 all ttm/thermal 109 w41ttm_thermal4.props 4 4 4 infile w41ttm_thermal4.init source 0.02",
+   "style": "fix ttm/thermal",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 213.345575432905 0"
+  },
+  {
+   "case": "w7misc_vector",
+   "line": 17,
+   "text": "fix 3 all vector 6 c_ke",
+   "style": "fix vector",
+   "until": 30,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.7733680532529 -5.03092527008559 2.21189618453351e-13"
+  },
+  {
+   "case": "w11gk_viscosity",
+   "line": 14,
+   "text": "fix visc all viscosity 11 x z 8 swap 2",
+   "style": "fix viscosity",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325309 -5.02441789508558 3.44584710937126e-13"
+  },
+  {
+   "case": "w66units_viscous_real",
+   "line": 21,
+   "text": "fix 2 all viscous 0.55 scale 2 1.5",
+   "style": "fix viscous",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 17158.5279087848 4130725.12272853 0.0486007293861432"
+  },
+  {
+   "case": "w228gs_viscous_nonlinear",
+   "line": 20,
+   "text": "fix 2 all viscous/nonlinear 1.32 0.05 velocity 0.1 0.0 0.0",
+   "style": "fix viscous/nonlinear",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 11.2978642426444 864.876545705319"
+  },
+  {
+   "case": "w133mf_viscous_sphere_var",
+   "line": 25,
+   "text": "fix 2 all viscous/sphere 0.33 scale v_g",
+   "style": "fix viscous/sphere",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 7.38910508509612 742.119769432336"
+  },
+  {
+   "case": "w126body_wall2d",
+   "line": 19,
+   "text": "fix 3 all wall/body/polygon 2200 50 50 yplane 0 24",
+   "style": "fix wall/body/polygon",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.00607638888888889 0"
+  },
+  {
+   "case": "w126body_cubes_wall",
+   "line": 17,
+   "text": "fix 3 all wall/body/polyhedron 2200 50 50 zplane 0.0 NULL",
+   "style": "fix wall/body/polyhedron",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.00448729810778068 -0.000895257745250298 2.85369822150994"
+  },
+  {
+   "case": "w231co_wall_colloid",
+   "line": 24,
+   "text": "fix 2 all wall/colloid zlo 0 1.0 1.0 2.5 zhi EDGE 1.0 1.0 2.5",
+   "style": "fix wall/colloid",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.009 0.461604916337834"
+  },
+  {
+   "case": "w133mf_wall_ees",
+   "line": 16,
+   "text": "fix EES_substrate all wall/ees zhi EDGE 11 1 10 zlo EDGE 10 1 10",
+   "style": "fix wall/ees",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.000100443545620426 0.147612163556207"
+  },
+  {
+   "case": "w38wflow_seam_single",
+   "line": 16,
+   "text": "fix 2 all wall/flow x 0.55 1.0 12345 2 3.0 7.0 units box",
+   "style": "fix wall/flow",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.00603333333333333 0"
+  },
+  {
+   "case": "w7pour_fewer",
+   "line": 15,
+   "text": "fix 4 all wall/gran hooke 2200 700.0 50.0 30.0 0.5 1 zplane -4.0 NULL",
+   "style": "fix wall/gran",
+   "until": 20,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w13gran_region_hertz",
+   "line": 24,
+   "text": "fix 3 all wall/gran/region hertz/history 2200 1000.0 0.4 0.3 0.6 1 region reg",
+   "style": "fix wall/gran/region",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.0946818961706656 2120.85833067298"
+  },
+  {
+   "case": "w231co_lubricateU_wall",
+   "line": 20,
+   "text": "fix 2 all wall/harmonic zlo EDGE 1.1 1.0 0.9 zhi EDGE 1.0 1.0 0.9",
+   "style": "fix wall/harmonic",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 3.52"
+  },
+  {
+   "case": "w40wh_3d_pair",
+   "line": 21,
+   "text": "fix 2 outer wall/harmonic/outside xlo 1.1 2.0 0.0 2.0 xhi 6.5 2.0 0.0 1.2 units box",
+   "style": "fix wall/harmonic/outside",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.06822191315024 -5.91088005107031 55.2131202988588"
+  },
+  {
+   "case": "w435dyngroup_fixes",
+   "line": 18,
+   "text": "fix 3 dyn wall/harmonic/returned zhi EDGE 2.2 1.0 1.5",
+   "style": "fix wall/harmonic/returned",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -4.88428788365885 -3.2337331915152 69.9576044127022"
+  },
+  {
+   "case": "w16lepton_wall",
+   "line": 17,
+   "text": "fix w1 all wall/lepton xlo EDGE \"k*(r-rc)^2; k=1.0\" 2.75",
+   "style": "fix wall/lepton",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.12273464462744 -5.328219486758 72.2451166739526"
+  },
+  {
+   "case": "w2wall_lj1043",
+   "line": 29,
+   "text": "fix 2 all wall/lj1043 zlo EDGE 1.1 1.0 2.5 zhi EDGE 1.0 1.0 2.5",
+   "style": "fix wall/lj1043",
+   "until": 34,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.75548764827944 -1.97033398899178 47.2639464497793"
+  },
+  {
+   "case": "w2wall_lj126",
+   "line": 29,
+   "text": "fix 2 all wall/lj126 zlo EDGE 1.1 1.0 2.5 zhi EDGE 1.0 1.0 2.5",
+   "style": "fix wall/lj126",
+   "until": 34,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.64192951055474 -1.97033398899178 49.85688880816"
+  },
+  {
+   "case": "w231co_lubricate_walls",
+   "line": 18,
+   "text": "fix 2 all wall/lj93 zlo -1.1 1.0 1.0 1.0 zhi 8.0 1.0 1.0 1.0",
+   "style": "fix wall/lj93",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.429556882689654 720.001611207709"
+  },
+  {
+   "case": "w2wall_morse",
+   "line": 29,
+   "text": "fix 2 all wall/morse zlo EDGE 1.1 2.0 1.0 2.5 zhi EDGE 1.0 2.0 1.0 2.5",
+   "style": "fix wall/morse",
+   "until": 34,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.67730905169144 -1.97033398899178 49.2693614507555"
+  },
+  {
+   "case": "w142mx_wall_piston",
+   "line": 17,
+   "text": "fix 2 all wall/piston zlo pos -0.55 vel 0.5 temp 1.0 0.5 1234 1.0 units box",
+   "style": "fix wall/piston",
+   "until": 21,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.21548823946405 -5.44223544912266 61.336757484687"
+  },
+  {
+   "case": "w7misc_stochastic",
+   "line": 23,
+   "text": "fix 2 lo wall/reflect/stochastic diffusive 4666 zlo 0.0 1.0 0 0 0 units box",
+   "style": "fix wall/reflect/stochastic",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.00813 0"
+  },
+  {
+   "case": "w22rwall_region_union",
+   "line": 17,
+   "text": "fix 2 all wall/region U lj93 0.11 0.3 2.5",
+   "style": "fix wall/region",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.0311060865841356 0 4.14511120685926"
+  },
+  {
+   "case": "w133mf_region_ees",
+   "line": 15,
+   "text": "fix EES_block all wall/region/ees the_wall 11 1. 20",
+   "style": "fix wall/region/ees",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0.00149613741114517 0.00156624856101815"
+  },
+  {
+   "case": "w16walltable_linear",
+   "line": 14,
+   "text": "fix 2 all wall/table linear 221 zlo EDGE w16walltable.dat HARMONIC 2.5 zhi EDGE w16walltable.dat LJ126 2.5",
+   "style": "fix wall/table",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.11655367459371 -3.11663277608445 106.211580610914"
+  },
+  {
+   "case": "w35widom_fast",
+   "line": 24,
+   "text": "fix w all widom 6 400 2 29494 0.75",
+   "style": "fix widom",
+   "until": 30,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.31662345744979 -0.817799128762064 24.8689605259842"
+  }
+ ]
+}

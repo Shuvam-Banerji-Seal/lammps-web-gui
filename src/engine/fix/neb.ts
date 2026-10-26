@@ -90,13 +90,13 @@ export class FixNeb extends Fix {
   /** Set by the neb command while it runs; the forces are applied by the driver, not by these hooks. */
   active = false;
 
-  // minimize and run call these hooks; the nudging forces exist only inside the neb command, so anywhere else
-  // the fix is refused rather than ignored (an unsupported use is an error, not a silent no-op)
+  // As native LAMMPS does (src/REPLICA/fix_neb.cpp setmask at b332f28): the fix's only hook is MIN_POST_FORCE, so a
+  // dynamics run never calls it. A minimization outside the neb command would apply the nudging forces of a lone
+  // replica, which the engine does not reproduce: refused rather than ignored.
   minPostForce(): void { this.refuse(); }
-  postForce(): void { this.refuse(); }
 
   private refuse(): void {
-    if (!this.active) throw new StyleError(`fix neb ${this.id} acts only inside a neb command; minimize and run with fix neb are not supported`);
+    if (!this.active) throw new StyleError(`fix neb ${this.id} acts only inside a neb command; minimize with fix neb is not supported`);
   }
 }
 

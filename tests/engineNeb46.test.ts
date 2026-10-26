@@ -142,9 +142,9 @@ describe('neb command', () => {
     }
   });
 
-  it('refuses fix neb outside the neb command instead of ignoring its forces', async () => {
+  it('refuses fix neb in a minimization outside the neb command; a dynamics run never calls it (native MIN_POST_FORCE only)', async () => {
     expect((await run('minimize 0 0.01 10 10\n')).error?.message).toMatch(/acts only inside a neb command/);
-    expect((await run('run 0\n', 1)).error?.message).toMatch(/acts only inside a neb command/);
+    expect((await run('run 0\n', 1)).error).toBeFalsy();
   });
 
   it('refuses fix neb keywords it does not know', async () => {

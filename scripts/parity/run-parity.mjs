@@ -3,7 +3,8 @@
  * Parity matrix fixtures: builds the rows of each matrix of tests/parityMatrices.ts (an oracle case up to one line,
  * that line with one word changed, then run 0), runs every row through a native LAMMPS binary and writes
  * tests/fixtures/parity/<matrix>.json with each row's native result: the first ERROR line (its source location
- * dropped), OK (exit 0 and the "Total wall time" line), or CRASH rc=N.
+ * dropped), OK (exit 0 and the "Total wall time" line), or CRASH rc=N; then the lines a row prints that start with
+ * VAL (a row that compares values), as "OK | VAL a b ...".
  *
  *   LMP=/path/to/lmp node scripts/parity/run-parity.mjs [matrix ...]
  *
@@ -46,6 +47,9 @@ const runNative = (lmp, input, files) => new Promise((resolve) => {
     if (err) result = err.replace(/ \(src\/[^)]*\)/, '').replace(/^\s*ERROR( on proc \d+)?: /, 'ERROR: ').trimEnd();
     else if (code === 0 && out.includes('Total wall time')) result = 'OK';
     else result = `CRASH rc=${code ?? 128 + ({ SIGSEGV: 11, SIGABRT: 6, SIGKILL: 9, SIGFPE: 8, SIGBUS: 7 }[signal] ?? 0)}`;
+    // the values a row prints (print "VAL ..."), after the status: "OK | VAL a b"
+    const vals = out.split('\n').filter((l) => l.startsWith('VAL ')).map((l) => l.trimEnd());
+    if (vals.length) result += ` | ${vals.join(' ')}`;
     resolve({ result, version });
   });
 });

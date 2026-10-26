@@ -88,12 +88,13 @@ describe('zbl: errors', () => {
     expect(() => s.init(ctx)).toThrow(/all pair coeffs are not set \(pair 1 2\)/);
   });
 
-  it('Z_i != Z_j on an i==j pair throws', () => {
+  it('Z_i != Z_j on an i==j pair throws at pair_coeff, as native LAMMPS (pair_zbl.cpp coeff)', () => {
     const s: Pair = new PairZBL();
     s.settings(['2.0', '3.2'], ctx);
     s.allocate(2);
-    s.coeff('1 1 29.0 14.0'.split(/\s+/), ctx);
-    expect(() => s.init(ctx)).toThrow(/Z_i must equal Z_j/);
+    expect(() => s.coeff('1 1 29.0 14.0'.split(/\s+/), ctx)).toThrow('Incorrect args for pair coefficients');
+    // a range whose pairs are all i != j takes different Z
+    expect(() => s.coeff('1 2 29.0 14.0'.split(/\s+/), ctx)).not.toThrow();
   });
 
   it('pair_coeff needs exactly I J z_i z_j', () => {

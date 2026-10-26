@@ -27,6 +27,8 @@ import { NativePairOrder } from '../neighbor/nativeOrder';
 const LONG_RANGE_KEYWORDS = ['ewald', 'pppm', 'msm', 'dispersion', 'tip4p'];
 
 export class PairTableRX extends PairTable {
+  /** pair_table_rx.cpp coeff: a cutoff at or below the table's inner distance, or beyond its outer one */
+  protected override cutoffOutsideMessage = 'Invalid pair table cutoff';
   readonly name: string = 'table/rx';
   /** pair_table_rx.cpp: "fractionalWeighting = true" by default (the fractional keyword), molecular otherwise. */
   private fractional = true;

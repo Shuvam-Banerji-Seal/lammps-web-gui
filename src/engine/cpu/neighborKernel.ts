@@ -102,11 +102,14 @@ export const halfBinsPairs = (
   out[1] = np;
 };
 
+/** Entries o .. o + n - 1 of the arrays (a: the owned atom, j: its neighbor). */
+export interface ListSegment { a: Int32Array; j: Int32Array; o: number; n: number }
+
 /** Threads that run halfBinsPairs on ranges of bins (pairThreads.ts SharedPairThreads.halfList). */
 export interface NeighborThreads {
   /**
-   * The entries of all bins in buildList's order, written into pa/pj (grown when needed); null when the threads cannot
-   * take this build (the engine thread then runs the kernel alone).
+   * The entries of all bins, as segments in buildList's order (read before the next search, which reuses the arrays);
+   * null when the threads cannot take this build (the engine thread then runs the kernel alone).
    */
-  halfList(B: HalfBins, nbins: number, nlocal: number, pa: Int32Array<ArrayBuffer>, pj: Int32Array<ArrayBuffer>): { pa: Int32Array<ArrayBuffer>; pj: Int32Array<ArrayBuffer>; np: number } | null;
+  halfList(B: HalfBins, nbins: number, nlocal: number): { segs: ListSegment[]; np: number } | null;
 }

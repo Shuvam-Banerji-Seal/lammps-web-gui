@@ -2,7 +2,7 @@ import type { SimState } from './types';
 import type { Geometry } from './domain';
 import { nativeOrder, type SpecialList } from './atoms';
 import { StyleError, type BondedCopies } from './force/types';
-import { halfBinsPairs, binCandidates, type HalfBins, type NeighborThreads } from './cpu/neighborKernel';
+import { halfBinsPairs, binCandidates, type HalfBins, type ListSegment, type NeighborThreads } from './cpu/neighborKernel';
 import { gplHook } from './gplHooks';
 
 /*
@@ -437,6 +437,9 @@ export class Neighbor {
     if (max > one) throw new StyleError('Neighbor list overflow, boost neigh_modify one\nFor more information see https://docs.lammps.org/err0036');
   }
 
+  private sGhostOwner = new Int32Array(0);
+  private sGhostImage = new Int32Array(0);
+
   /** Ghost atoms: every periodic image within cutghost of the box. */
   private makeGhosts(s: SimState, g: Geometry): void {
     const n = s.n;
@@ -458,13 +461,14 @@ export class Neighbor {
       }
       return cut * Math.sqrt(norm2);
     });
-    const owner: number[] = [];
-    const img: number[] = [];
+    // the ghosts' owners and image offsets, in scratch arrays grown as needed
+    let owner = this.sGhostOwner, img = this.sGhostImage;
+    let ng = 0;
     const lam = [0, 0, 0];
     const gstart = new Int32Array(n + 1);
     const border = this.borderBit;
     for (let i = 0; i < n; i++) {
-      gstart[i] = n + owner.length;
+      gstart[i] = n + ng;
       if (border !== 0 && (s.mask[i] & border) === 0) continue;
       g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
       const lo = [0, 0, 0], hi = [0, 0, 0];
@@ -478,22 +482,29 @@ export class Neighbor {
         for (let ky = lo[1]; ky <= hi[1]; ky++) {
           for (let kx = lo[0]; kx <= hi[0]; kx++) {
             if (kx === 0 && ky === 0 && kz === 0) continue;
-            owner.push(i);
-            img.push(kx, ky, kz);
+            if (ng === owner.length) {
+              const o2 = new Int32Array(Math.max(1024, 2 * ng)); o2.set(owner); owner = o2;
+              const i2 = new Int32Array(3 * o2.length); i2.set(img); img = i2;
+            }
+            owner[ng] = i;
+            img[3 * ng] = kx; img[3 * ng + 1] = ky; img[3 * ng + 2] = kz;
+            ng++;
           }
         }
       }
     }
-    gstart[n] = n + owner.length;
+    this.sGhostOwner = owner;
+    this.sGhostImage = img;
+    gstart[n] = n + ng;
     this.ghostStart = gstart;
     this.nlocal = n;
-    this.nghost = owner.length;
-    const nall = n + owner.length;
+    this.nghost = ng;
+    const nall = n + ng;
     this.owner = new Int32Array(nall);
     for (let i = 0; i < n; i++) this.owner[i] = i;
-    this.owner.set(owner, n);
+    this.owner.set(owner.subarray(0, ng), n);
     this.gimage = new Int32Array(3 * nall);
-    this.gimage.set(img, 3 * n);
+    this.gimage.set(img.subarray(0, 3 * ng), 3 * n);
     if (this.xall.length !== 3 * nall || (this.listThreads !== null && !(this.fall.buffer instanceof SharedArrayBuffer))) {
       this.xall = new Float64Array(3 * nall);
       this.fall = this.listThreads !== null && typeof SharedArrayBuffer !== 'undefined' ? new Float64Array(new SharedArrayBuffer(24 * nall)) : new Float64Array(3 * nall);
@@ -855,11 +866,13 @@ export class Neighbor {
     // the common list (half, no special bonds, exclusions, include group or radii) is built by
     // cpu/neighborKernel.ts, on the shared-memory threads when there are some; it stores the same entries in the same
     // order without the per-pair branches of the others
+    // the threads' entries are segments of their arrays, which the counting sort below reads in place
+    let segs: ListSegment[] | null = null;
     if (!fullList && plain && !lr && unmirrored === null) {
       const B: HalfBins = { bL, bG, rLo, rHi, nrows, lk, lt, lxs, gk, gt, gxs, cutsq, nt };
-      const threaded = this.listThreads?.halfList(B, nbins, nlocal, pa, pj) ?? null;
+      const threaded = this.listThreads?.halfList(B, nbins, nlocal) ?? null;
       if (threaded) {
-        pa = threaded.pa; pj = threaded.pj; np = threaded.np;
+        segs = threaded.segs; np = threaded.np;
       } else {
         const out = new Int32Array(2);
         for (let b = 0; b < nbins;) {
@@ -977,14 +990,15 @@ export class Neighbor {
     }
 
     // counting sort of the entries into per-atom rows
+    segs ??= [{ a: pa, j: pj, o: 0, n: np }];
     const numneigh = new Int32Array(nlocal);
-    for (let e = 0; e < np; e++) numneigh[pa[e]]++;
+    for (const { a, o, n } of segs) for (let e = o; e < o + n; e++) numneigh[a[e]]++;
     const firstneigh = new Int32Array(nlocal + 1);
     for (let i = 0; i < nlocal; i++) firstneigh[i + 1] = firstneigh[i] + numneigh[i];
     const neighbors = new Int32Array(np);
     const pos = this.sCursor;
     pos.set(firstneigh.subarray(0, nlocal));
-    for (let e = 0; e < np; e++) neighbors[pos[pa[e]]++] = pj[e];
+    for (const { a, j, o, n } of segs) for (let e = o; e < o + n; e++) neighbors[pos[a[e]]++] = j[e];
     this.sPairA = pa;
     this.sPairJ = pj;
     return { inum: nlocal, numneigh, firstneigh, neighbors };

@@ -5,7 +5,7 @@ import { CpuForceBackend } from './forces';
 import {
   ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PHASE, READY, cloneableFields, sumForces, pairFromFields, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
-import { binCandidates, halfBinsPairs, type HalfBins, type NeighborThreads } from './neighborKernel';
+import { binCandidates, halfBinsPairs, type HalfBins, type ListSegment, type NeighborThreads } from './neighborKernel';
 
 /*
  * Shared-memory threads for the pair term of the general engine. The engine thread copies the
@@ -237,10 +237,10 @@ export class SharedPairThreads implements NeighborThreads {
 
   /**
    * The pair search of a half list (cpu/neighborKernel.ts) on the threads: the bins are cut into chunks of about equal
-   * work (candidate pairs), every thread claims chunks from the shared counter as in run(), and the entries are joined
-   * in chunk order, which is the order of the search on one thread.
+   * work (candidate pairs), every thread claims chunks from the shared counter as in run(), and the chunks' entries are
+   * returned in chunk order, which is the order of the search on one thread.
    */
-  halfList(B: HalfBins, nbins: number, nlocal: number, pa: Int32Array<ArrayBuffer>, pj: Int32Array<ArrayBuffer>): { pa: Int32Array<ArrayBuffer>; pj: Int32Array<ArrayBuffer>; np: number } | null {
+  halfList(B: HalfBins, nbins: number, nlocal: number): { segs: ListSegment[]; np: number } | null {
     const W = this.workers.length;
     if (W === 0 || nlocal < this.minAtoms || Atomics.load(this.ctl, READY) < W) return null;
     // chunks of about equal candidate counts
@@ -307,19 +307,15 @@ export class SharedPairThreads implements NeighborThreads {
     let grow = false;
     for (let c = 0; c < K; c++) if (S.chunkOut[3 * c] === NOT_DONE) { searchOwn(c); grow = true; }
     let np = 0;
-    for (let c = 0; c < K; c++) np += S.chunkOut[3 * c + 2];
-    if (np > Math.min(pa.length, pj.length)) { pa = new Int32Array(Math.ceil(np * 1.25)); pj = new Int32Array(pa.length); }
-    let e = 0;
+    const segs: ListSegment[] = [];
     for (let c = 0; c < K; c++) {
-      const t = S.chunkOut[3 * c], o = S.chunkOut[3 * c + 1], n = S.chunkOut[3 * c + 2];
-      const srcA = t === W ? this.ownPa : S.pa[t], srcJ = t === W ? this.ownPj : S.pj[t];
-      pa.set(srcA.subarray(o, o + n), e);
-      pj.set(srcJ.subarray(o, o + n), e);
-      e += n;
+      const t = S.chunkOut[3 * c], n = S.chunkOut[3 * c + 2];
+      segs.push({ a: t === W ? this.ownPa : S.pa[t], j: t === W ? this.ownPj : S.pj[t], o: S.chunkOut[3 * c + 1], n });
+      np += n;
     }
     this.lastEntries = grow ? 2 * np : np;
     this.neighborCalls++;
-    return { pa, pj, np };
+    return { segs, np };
   }
 
   /** The shared buffers of a neighbor search, reallocated (and announced to the workers) when they are too small. */

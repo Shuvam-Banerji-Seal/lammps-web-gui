@@ -1,7 +1,7 @@
 import type { Handler } from './args';
-import { int, yesno, keywords, initializing, missingArgs } from './args';
+import { int, yesno, initializing, missingArgs } from './args';
 import { StyleError } from '../force/types';
-import { hasMolecule, isMolecularStyle, nativeOrder } from '../atoms';
+import { hasMolecule, isMolecularStyle, isTemplateStyle, nativeOrder } from '../atoms';
 import { gplHook } from '../gplHooks';
 import type { SimState, TopoList } from '../types';
 import type { System } from '../system';
@@ -42,6 +42,20 @@ import type { System } from '../system';
  * the GPL helper src/engine-gpl/reset_atoms/spatial_sort.ts (SpatialSortHook). Native wraps the atoms into the periodic box
  * first (domain->pbc()) for both settings.
  */
+
+/** "Reset_atoms X command before simulation box is defined" (each native sub-command checks it first). */
+const boxFirst = (sys: System, what: string): void => {
+  if (!sys.hasBox) throw new StyleError(`Reset_atoms ${what} command before simulation box is defined\nFor more information see https://docs.lammps.org/err0033`);
+};
+
+/**
+ * The fixes that set stores_ids (native b332f28: fix shake and rattle, the rigid/small family, cmap, amoeba/bitorsion
+ * and amoeba/pitorsion, and the internal PERI_NEIGH and SMD_TLSPH_NEIGHBORS fixes); reset_atoms id refuses to run
+ * with one of them.
+ */
+const STORES_IDS = (style: string): boolean =>
+  style === 'shake' || style === 'rattle' || /^rigid(\/n[a-z]+)?\/small$/.test(style) || style === 'cmap'
+  || style === 'amoeba/bitorsion' || style === 'amoeba/pitorsion' || style === 'PERI_NEIGH' || style === 'SMD_TLSPH_NEIGHBORS';
 
 /** Union-find over atom indices (path halving). */
 class Sets {
@@ -92,16 +106,18 @@ export type SpatialSortHook = (x: Float64Array, n: number, dim: number) => numbe
  * renumbered with the atoms. Native calls domain->pbc() before either (reset_atoms_id.cpp, command()).
  */
 const resetIds = (sys: System, args: string[]): void => {
-  // As native LAMMPS does (src/reset_atoms_id.cpp at b332f28, ResetAtomsID::command): the words are read in order and
-  // an unknown word is "Unknown reset_atoms id keyword" (sort is the only keyword)
-  let sortValue: string | null = null;
+  // As native LAMMPS does (src/reset_atoms_id.cpp at b332f28, ResetAtomsID::command): the box, no fix that stores atom
+  // IDs, then the words in order (sort is the only keyword; atoms always have IDs in the engine)
+  boxFirst(sys, 'id');
+  const storing = sys.fixes.find((f) => STORES_IDS(f.style));
+  if (storing) throw new StyleError(`Cannot use reset_atoms id with a fix ${storing.style} storing atom IDs`);
+  let sorted = false;
   for (let k = 0; k < args.length;) {
     if (args[k] !== 'sort') throw new StyleError(`Unknown reset_atoms id keyword: ${args[k]}`);
-    if (k + 2 > args.length) throw new StyleError(`reset_atoms id: keyword 'sort' needs 1 value(s)`);
-    sortValue = args[k + 1];
+    if (k + 2 > args.length) throw missingArgs('reset_atoms id');
+    sorted = yesno(args[k + 1], 'reset_atoms id sort');
     k += 2;
   }
-  const sorted = sortValue !== null && yesno(sortValue, 'reset_atoms id sort');
   const s = sys.state;
   sys.pbc();
   const order = sorted ? gplHook<SpatialSortHook>('reset_atoms')(s.x, s.n, s.dimension) : nativeOrder(s);
@@ -127,11 +143,14 @@ const resetIds = (sys: System, args: string[]): void => {
  */
 const resetImages = (sys: System, args: string[]): void => {
   const name = args[0];
-  // As native LAMMPS does (src/reset_atoms_image.cpp ResetAtomsImage::command at b332f28): "if (narg < 1) utils::missing_cmd_args(FLERR, \"reset_atoms image\", error)"
-  if (name === undefined) throw missingArgs('reset_atoms image');
-  if (args.length > 1) throw new StyleError(`reset_atoms image: unexpected argument '${args[1]}'`);
+  // As native LAMMPS does (src/reset_atoms_image.cpp ResetAtomsImage::command at b332f28): the box, an atom style that
+  // allows bonds, then the one argument and its group
+  boxFirst(sys, 'image');
   const s = sys.state;
-  if (!isMolecularStyle(s.atomStyle)) throw new StyleError('reset_atoms image: the atom style has no bonds (reset_atoms image needs an atom style with bonds)');
+  if (!isMolecularStyle(s.atomStyle)) throw new StyleError('Cannot use reset_atoms image used when bonds are not allowed');
+  if (name === undefined) throw missingArgs('reset_atoms image');
+  if (args.length > 1) throw new StyleError(`Unknown reset_atoms image keyword: ${args[1]}`);
+  if (sys.groups.find(name) < 0) throw new StyleError(`Could not find reset_atoms image group ${name}`);
   const bit = sys.groupBit(name);
   const sets = new Sets(s.n);
   for (const [ia, ib] of bondPairs(sys, activeBonds(s))) sets.union(ia, ib);
@@ -161,14 +180,26 @@ const resetImages = (sys: System, args: string[]): void => {
  */
 const resetMol = (sys: System, args: string[]): void => {
   const name = args[0];
-  if (name === undefined) throw new StyleError('usage: reset_atoms mol group-ID keyword value ...');
-  const kw = keywords(args.slice(1), { compress: 1, offset: 1, single: 1 }, 'reset_atoms mol');
-  const compress = kw.has('compress') ? yesno(kw.get('compress')![0], 'reset_atoms mol compress') : true;
-  const single = kw.has('single') ? yesno(kw.get('single')![0], 'reset_atoms mol single') : false;
-  const offset = kw.has('offset') ? int(kw.get('offset')![0], 'reset_atoms mol offset') : -1;
-  if (offset < -1) throw new StyleError(`reset_atoms mol: offset must be >= -1, got ${offset}`);
+  // As native LAMMPS does (src/reset_atoms_mol.cpp ResetAtomsMol::command at b332f28): the box, a molecular system
+  // (Atom::MOLECULAR: not atom_style template), the group-ID, the keywords in order, then the group (create_computes)
+  boxFirst(sys, 'mol');
   const s = sys.state;
-  if (!hasMolecule(s)) throw new StyleError('reset_atoms mol: the atom style has no molecule IDs');
+  if (!hasMolecule(s) || isTemplateStyle(s.atomStyle)) throw new StyleError('Can only use reset_atoms mol on molecular systems');
+  if (name === undefined) throw missingArgs('reset_atoms mol');
+  let compress = true, single = false, offset = -1;
+  for (let k = 1; k < args.length;) {
+    const key = args[k];
+    if (key !== 'compress' && key !== 'single' && key !== 'offset') throw new StyleError(`Unknown reset_atoms mol keyword: ${key}`);
+    if (k + 2 > args.length) throw missingArgs(`reset_atoms mol ${key}`);
+    if (key === 'compress') compress = yesno(args[k + 1], 'reset_atoms mol compress');
+    else if (key === 'single') single = yesno(args[k + 1], 'reset_atoms mol single');
+    else {
+      offset = int(args[k + 1], 'reset_atoms mol offset');
+      if (offset < -1) throw new StyleError(`Illegal reset_atoms mol offset: ${offset}`);
+    }
+    k += 2;
+  }
+  if (sys.groups.find(name) < 0) throw new StyleError(`Could not find reset_atoms mol group ${name}`);
   const bit = sys.groupBit(name);
   const pairs = bondPairs(sys, activeBonds(s));
   const bonded = new Uint8Array(s.n);
@@ -211,7 +242,8 @@ const resetAtoms: Handler = ({ sys }, a) => {
   if (prop === 'id') resetIds(sys, a.slice(1));
   else if (prop === 'image') resetImages(sys, a.slice(1));
   else if (prop === 'mol') resetMol(sys, a.slice(1));
-  else throw new StyleError(`Illegal reset_atoms command: property must be id, image or mol, got '${prop ?? ''}'`);
+  // native Input::meta finds no RESET_ATOMS_<word> command and the line is an unknown command
+  else throw new StyleError(`Unknown command: reset_atoms ${a.join(' ')}`);
 };
 
 // reset_atoms initializes the system first (native lmp->init() in reset_atoms_id, _image and _mol at b332f28)

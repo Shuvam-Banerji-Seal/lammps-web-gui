@@ -59,8 +59,38 @@ describe('reset_atoms: refusals', () => {
   });
 
   it('refuses an unknown property and a negative offset below -1', async () => {
-    expect(await runScript('reset_atoms foo all')).toMatch(/property must be id, image or mol/);
-    expect(await runScript('reset_atoms mol all offset -2')).toMatch(/offset must be >= -1/);
+    expect(await runScript('reset_atoms foo all')).toMatch(/Unknown command: reset_atoms foo all/);
+    expect(await runScript('reset_atoms mol all offset -2')).toMatch(/Illegal reset_atoms mol offset: -2/);
+  });
+
+  // As native LAMMPS checks them (src/reset_atoms_id.cpp, reset_atoms_image.cpp and reset_atoms_mol.cpp at b332f28):
+  // the box, the fixes that store atom IDs (id), bonds allowed (image) or a molecular system (mol), then the words in
+  // order and the group. Measured with native LAMMPS: each line below gives the message expected.
+  it('checks its arguments in native order with native messages', async () => {
+    const cases: [string, RegExp][] = [
+      ['reset_atoms id sort', /Illegal reset_atoms id command: missing argument\(s\)/],
+      ['reset_atoms id sort maybe', /Expected boolean parameter instead of 'maybe'/],
+      ['reset_atoms mol', /Illegal reset_atoms mol command: missing argument\(s\)/],
+      ['reset_atoms mol nogroup', /Could not find reset_atoms mol group nogroup/],
+      ['reset_atoms mol all bogus 1', /Unknown reset_atoms mol keyword: bogus/],
+      ['reset_atoms mol all compress', /Illegal reset_atoms mol compress command: missing argument\(s\)/],
+      ['reset_atoms image', /Illegal reset_atoms image command: missing argument\(s\)/],
+      ['reset_atoms image all extra', /Unknown reset_atoms image keyword: extra/],
+      ['reset_atoms image nogroup', /Could not find reset_atoms image group nogroup/],
+      ['bond_style harmonic\nbond_coeff 1 100 1.0\nfix 1 all shake 1e-4 20 0 b 1\nreset_atoms id', /Cannot use reset_atoms id with a fix shake storing atom IDs/],
+    ];
+    for (const [line, want] of cases) expect(await runScript(line), line).toMatch(want);
+    const atomic = async (line: string): Promise<string> => {
+      const session = new Session({ emit: () => {}, writeFile: () => {} });
+      try {
+        await session.execute(`units lj\natom_style atomic\nregion b block 0 4 0 4 0 4\ncreate_box 1 b\n${line}\n`);
+      } catch (e) { return String((e as Error).message); }
+      return '';
+    };
+    expect(await atomic('reset_mol_ids')).toMatch(/Can only use reset_atoms mol on molecular systems/);
+    expect(await atomic('reset_atoms image all')).toMatch(/Cannot use reset_atoms image used when bonds are not allowed/);
+    const before = new Session({ emit: () => {}, writeFile: () => {} });
+    await expect(before.execute('units lj\nreset_atoms id\n')).rejects.toThrow(/Reset_atoms id command before simulation box is defined/);
   });
 
   it('refuses bonds that are turned off (type 0 or below) for image and mol', async () => {

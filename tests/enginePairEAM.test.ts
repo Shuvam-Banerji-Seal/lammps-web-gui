@@ -150,11 +150,14 @@ describe('eam (funcfl): documented r*phi formula at table grid points', () => {
     }
   });
 
-  it('cutoffs come from the files; the mixed pair cutoff is the average', () => {
+  it('cutoffs come from the files: every type pair has the largest cutoff of the funcfl files read', () => {
+    // as native LAMMPS does (src/MANYBODY/pair_eam.cpp init_one at b332f28): one cutoff, the largest over the files read
     const s = make(new PairEAM(), ['1 1 A.eam', '2 2 B.eam'], { 'A.eam': fileA, 'B.eam': fileB });
-    expect(s.cut[1 * 3 + 1]).toBe(CUTOFF);
-    expect(s.cut[2 * 3 + 2]).toBe(2.0);
-    expect(close(s.cut[1 * 3 + 2], 0.5 * (CUTOFF + 2.0), 0, 1e-12)).toBe(true);
+    const cmax = Math.max(CUTOFF, 2.0);
+    for (const k of [1 * 3 + 1, 1 * 3 + 2, 2 * 3 + 1, 2 * 3 + 2]) expect(s.cut[k]).toBe(cmax);
+    // a file read and then replaced still counts
+    const t = make(new PairEAM(), ['* * A.eam', '* * B.eam'], { 'A.eam': fileA, 'B.eam': fileB });
+    expect(t.cut[1 * 3 + 1]).toBe(cmax);
   });
 
   it('two-atom energy: embedding at rho of the neighbour element plus the mixed pair term', async () => {

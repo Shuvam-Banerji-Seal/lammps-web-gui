@@ -219,6 +219,15 @@ describe('shared-memory pair threads: refresh and fallback', () => {
     backend.dispose();
   });
 
+  it('leaves the eam/alloy densities and F\' where fix pair reads them', async () => {
+    const extra = 'fix fp all pair 10 eam/alloy rho 0 fp 0\ncompute rs all reduce sum f_fp[1] f_fp[2]\nthermo_style custom step pe c_rs[1] c_rs[2]';
+    const serial = await runCase(EAM_STYLES['eam/alloy'], 1, extra, EAM_BOX);
+    const threaded = await runCase(EAM_STYLES['eam/alloy'], 3, extra, EAM_BOX);
+    expect(threaded.threadedComputes).toBeGreaterThan(0);
+    expect(serial.rows[1]['c_rs[1]']).toBeGreaterThan(0);
+    expectClose(serial, threaded, 1e-10);
+  });
+
   it('runs eam/alloy per-atom energy evaluations on the engine thread', async () => {
     const extra = 'compute pea all pe/atom\ncompute spe all reduce sum c_pea\nthermo_style custom step pe c_spe';
     const serial = await runCase(EAM_STYLES['eam/alloy'], 1, extra, EAM_BOX);

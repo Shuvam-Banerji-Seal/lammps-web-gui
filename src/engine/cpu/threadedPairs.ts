@@ -53,7 +53,7 @@ export const THREADED_PAIRS: Record<string, () => Pair> = {
  * derivative copied to the ghosts); the second loop (forces) adds the forces and pair energies as a plain pair style does.
  */
 export interface TwoPassPair {
-  /** The style can run in two passes now (EAM: its tables share one grid). */
+  /** The style can run in two passes now. */
   twoPassReady(): boolean;
   densities(pc: PairCompute, out: Float64Array): void;
   embed(pc: PairCompute, sums: Float64Array, values: Float64Array): void;

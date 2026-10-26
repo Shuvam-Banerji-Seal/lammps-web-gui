@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, bondDelta } from '../bonded_util';
+import { SimpleBonded, bondDelta, copyDelta, delta, mapIndex } from '../bonded_util';
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { fmtCoeff, parseNum } from '../util';
 import { libm } from '../../libm';
@@ -27,11 +27,12 @@ export const bondLoop = (
   const d = [0, 0, 0];
   const f = bc.f;
   const v = bc.virial;
+  const map = bc.map, atoms = b.atoms, type = b.type;
   let e = 0;
   for (let k = 0; k < b.n; k++) {
-    const i = atomIndex(bc, b.atoms[2 * k], 'bond');
-    const j = atomIndex(bc, b.atoms[2 * k + 1], 'bond');
-    const t = b.type[k];
+    const i = mapIndex(map, atoms[2 * k], 'bond');
+    const j = mapIndex(map, atoms[2 * k + 1], 'bond');
+    const t = type[k];
     bondDelta(bc, i, j, d); // r_i - r_j (copy of j nearest to i)
     const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
     const term = r > 0 ? pot(r, t, k) : { e: 0, dEdr: 0 };
@@ -66,6 +67,9 @@ const feneArg = (bc: BondedCompute, arg: number, k: number, r: number): number =
   return 0.1;
 };
 
+/** The cube root of 2 (2^(1/3)): r^2 below 2^(1/3) sigma^2 is r below 2^(1/6) sigma, the end of the FENE LJ term. */
+const CUBEROOT2 = 1.25992104989487316476;
+
 /*
  * bond_style fene — docs.lammps.org/bond_fene.html:
  *   E = -0.5 K R0^2 ln[1 - (r/R0)^2] + 4 eps [ (sigma/r)^12 - (sigma/r)^6 ] + eps
@@ -79,20 +83,56 @@ export class BondFene extends SimpleBonded {
   readonly kind = 'bond' as const;
   readonly paramNames = ['K', 'R0', 'epsilon', 'sigma'];
 
+  private readonly d = [0, 0, 0];
+
+  /**
+   * In terms of the squared length, as native LAMMPS computes it (src/MOLECULE/bond_fene.cpp at b332f28): the force
+   * F_i = fbond d with fbond = -K / (1 - r^2/R0^2), plus 48 epsilon (sigma/r)^6 ((sigma/r)^6 - 1/2) / r^2 while
+   * r^2 < 2^(1/3) sigma^2, and E = -0.5 K R0^2 ln(1 - r^2/R0^2) (+ the LJ energy and epsilon).
+   */
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), R0 = this.params.p('R0');
     const eps = this.params.p('epsilon'), sig = this.params.p('sigma');
-    const rmin = Math.pow(2, 1 / 6);
-    bondLoop(bc, (r, t, k) => {
-      const arg = feneArg(bc, 1 - (r * r) / (R0[t] * R0[t]), k, r);
-      const e = -0.5 * K[t] * R0[t] * R0[t] * libm.log(arg);
-      const dEdr = (K[t] * r) / arg;
-      if (r < rmin * sig[t]) {
-        const s = sig[t] / r, s6 = s ** 6, s12 = s6 * s6;
-        return { e: e + 4 * eps[t] * (s12 - s6) + eps[t], dEdr: dEdr + 4 * eps[t] * (-12 * s12 / r + 6 * s6 / r) };
+    const b = bc.s.topo.bonds;
+    const d = this.d;
+    const f = bc.f;
+    const v = bc.virial;
+    const x = bc.s.x, cp = bc.copies, atoms = b.atoms, type = b.type, map = bc.map;
+    let e = 0;
+    for (let k = 0; k < b.n; k++) {
+      const i = mapIndex(map, atoms[2 * k], 'bond');
+      const j = mapIndex(map, atoms[2 * k + 1], 'bond');
+      const t = type[k];
+      // r_j - r_i (copy of j nearest to i)
+      if (!(cp?.x && copyDelta(x, cp.x, cp.built, cp.start, i, j, d, 0))) delta(bc, i, j, d);
+      const delx = -d[0], dely = -d[1], delz = -d[2];
+      const rsq = delx * delx + dely * dely + delz * delz;
+      const r0sq = R0[t] * R0[t];
+      const rlogarg = feneArg(bc, 1.0 - rsq / r0sq, k, Math.sqrt(rsq));
+      let fbond = -K[t] / rlogarg;
+      const lj = rsq < CUBEROOT2 * sig[t] * sig[t];
+      let sr6 = 0;
+      if (lj) {
+        const sr2 = (sig[t] * sig[t]) / rsq;
+        sr6 = sr2 * sr2 * sr2;
+        fbond += (48.0 * eps[t] * sr6 * (sr6 - 0.5)) / rsq;
       }
-      return { e, dEdr };
-    });
+      let eb = -0.5 * K[t] * r0sq * libm.log(rlogarg);
+      if (lj) eb += 4.0 * eps[t] * sr6 * (sr6 - 1.0) + eps[t];
+      e += eb;
+      f[3 * i] += delx * fbond; f[3 * i + 1] += dely * fbond; f[3 * i + 2] += delz * fbond;
+      f[3 * j] -= delx * fbond; f[3 * j + 1] -= dely * fbond; f[3 * j + 2] -= delz * fbond;
+      const w0 = delx * delx * fbond, w1 = dely * dely * fbond, w2 = delz * delz * fbond;
+      const w3 = delx * dely * fbond, w4 = delx * delz * fbond, w5 = dely * delz * fbond;
+      v[0] += w0; v[1] += w1; v[2] += w2; v[3] += w3; v[4] += w4; v[5] += w5;
+      if (bc.eatom) { bc.eatom[i] += 0.5 * eb; bc.eatom[j] += 0.5 * eb; }
+      if (bc.vatom) {
+        const vt = bc.vatom;
+        vt[6 * i] += 0.5 * w0; vt[6 * i + 1] += 0.5 * w1; vt[6 * i + 2] += 0.5 * w2; vt[6 * i + 3] += 0.5 * w3; vt[6 * i + 4] += 0.5 * w4; vt[6 * i + 5] += 0.5 * w5;
+        vt[6 * j] += 0.5 * w0; vt[6 * j + 1] += 0.5 * w1; vt[6 * j + 2] += 0.5 * w2; vt[6 * j + 3] += 0.5 * w3; vt[6 * j + 4] += 0.5 * w4; vt[6 * j + 5] += 0.5 * w5;
+      }
+    }
+    bc.acc.ebond += e;
   }
 
   // As native LAMMPS does (src/MOLECULE/bond_fene.cpp at b332f28, equilibrium_distance): 0.97 sigma, the length fix shake

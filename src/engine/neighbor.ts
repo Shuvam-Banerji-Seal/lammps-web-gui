@@ -208,7 +208,7 @@ export class Neighbor {
   /** Owned atom i's ghosts are the indices ghostStart[i] .. ghostStart[i+1]-1 (length nlocal+1). */
   ghostStart = new Int32Array(0);
   /** The periodic copies for the bonded terms (force/types.ts BondedCopies). */
-  bondedCopies(): BondedCopies { return { start: this.ghostStart, image: this.gimage }; }
+  bondedCopies(): BondedCopies { return { start: this.ghostStart, image: this.gimage, x: this.xall, built: this.xBuilt }; }
   xall = new Float64Array(0);
   /** Forces on owned and ghost atoms; in shared memory when there are threads (they add their parts in parallel). */
   fall: Float64Array = new Float64Array(0);

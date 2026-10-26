@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, bondDelta } from '../bonded_util';
+import { SimpleBonded, bondDelta, mapIndex } from '../bonded_util';
 import type { BondedCompute } from '../types';
 
 /*
@@ -18,11 +18,12 @@ export class BondHarmonic extends SimpleBonded {
     const d = [0, 0, 0];
     const f = bc.f;
     const v = bc.virial;
+    const map = bc.map, atoms = b.atoms, type = b.type;
     let e = 0;
     for (let k = 0; k < b.n; k++) {
-      const i = atomIndex(bc, b.atoms[2 * k], 'bond');
-      const j = atomIndex(bc, b.atoms[2 * k + 1], 'bond');
-      const t = b.type[k];
+      const i = mapIndex(map, atoms[2 * k], 'bond');
+      const j = mapIndex(map, atoms[2 * k + 1], 'bond');
+      const t = type[k];
       bondDelta(bc, i, j, d);   // r_i - r_j (copy of j nearest to i)
       const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
       const dr = r - r0[t];

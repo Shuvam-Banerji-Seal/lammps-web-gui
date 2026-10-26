@@ -210,7 +210,8 @@ export class Neighbor {
   /** The periodic copies for the bonded terms (force/types.ts BondedCopies). */
   bondedCopies(): BondedCopies { return { start: this.ghostStart, image: this.gimage }; }
   xall = new Float64Array(0);
-  fall = new Float64Array(0);
+  /** Forces on owned and ghost atoms; in shared memory when there are threads (they add their parts in parallel). */
+  fall: Float64Array = new Float64Array(0);
   typeall = new Int32Array(0);
   qall = new Float64Array(0);
   half: NeighList | null = null;
@@ -493,9 +494,9 @@ export class Neighbor {
     this.owner.set(owner, n);
     this.gimage = new Int32Array(3 * nall);
     this.gimage.set(img, 3 * n);
-    if (this.xall.length !== 3 * nall) {
+    if (this.xall.length !== 3 * nall || (this.listThreads !== null && !(this.fall.buffer instanceof SharedArrayBuffer))) {
       this.xall = new Float64Array(3 * nall);
-      this.fall = new Float64Array(3 * nall);
+      this.fall = this.listThreads !== null && typeof SharedArrayBuffer !== 'undefined' ? new Float64Array(new SharedArrayBuffer(24 * nall)) : new Float64Array(3 * nall);
     }
     this.typeall = new Int32Array(nall);
     this.qall = new Float64Array(nall);

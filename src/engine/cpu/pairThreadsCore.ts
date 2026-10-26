@@ -18,9 +18,13 @@ export interface PairWorkerLike {
 
 export type PairThreadMessage =
   | { type: 'init'; ctl: SharedArrayBuffer; index: number }
-  | { type: 'buffers'; x: SharedArrayBuffer; t: SharedArrayBuffer; q: SharedArrayBuffer; numneigh: SharedArrayBuffer; firstneigh: SharedArrayBuffer; neighbors: SharedArrayBuffer; f: SharedArrayBuffer; acc: SharedArrayBuffer; chunks: SharedArrayBuffer }
+  | { type: 'buffers'; x: SharedArrayBuffer; t: SharedArrayBuffer; q: SharedArrayBuffer; numneigh: SharedArrayBuffer; firstneigh: SharedArrayBuffer; neighbors: SharedArrayBuffer; f: SharedArrayBuffer; fs: SharedArrayBuffer[]; acc: SharedArrayBuffer; chunks: SharedArrayBuffer }
   | { type: 'pair'; name: string; fields: Record<string, unknown> }
-  | { type: 'compute'; nlocal: number; nall: number; qqrd2e: number; specialLJ: number[]; specialCoul: number[]; nchunks: number }
+  | {
+    type: 'compute'; nlocal: number; nall: number; qqrd2e: number; specialLJ: number[]; specialCoul: number[]; nchunks: number;
+    /** the engine's force array when it is shared (the threads then add their forces into it, see REDUCE) */
+    F: SharedArrayBuffer | null; phase: number; nslices: number;
+  }
   | {
     type: 'nbuffers'; bL: SharedArrayBuffer; bG: SharedArrayBuffer; rLo: SharedArrayBuffer; rHi: SharedArrayBuffer;
     lk: SharedArrayBuffer; lt: SharedArrayBuffer; lxs: SharedArrayBuffer; gk: SharedArrayBuffer; gt: SharedArrayBuffer;
@@ -50,6 +54,22 @@ export const DONE = 0, FAILED = 1, READY = 2;
  * engine thread finished its range in 2.1 ms and then waited 2.4 ms for the slowest worker.
  */
 export const NEXT = 3;
+/**
+ * The parallel sum of the threads' forces into the engine's force array (when it is in shared memory): after the pair
+ * chunks (DONE) the engine advances PHASE, every thread claims slices of the array from NEXT2 and adds, element by
+ * element, each worker's force in worker order (the order of the one-thread sum), and DONE2 counts the finished threads.
+ */
+export const PHASE = 4, NEXT2 = 5, DONE2 = 6;
+/** Words of the control array. */
+export const CTL_WORDS = 8;
+/** Adds every worker's forces into F over elements [k0, k1), each element in worker order. */
+export const sumForces = (F: Float64Array, fs: readonly Float64Array[], k0: number, k1: number): void => {
+  for (let k = k0; k < k1; k++) {
+    let v = F[k];
+    for (let w = 0; w < fs.length; w++) v += fs[w][k];
+    F[k] = v;
+  }
+};
 /** Chunks per thread: enough to even out the load, few enough that the per-call overhead stays small. */
 export const CHUNKS_PER_THREAD = 8;
 /** Doubles of a worker's result: evdwl, ecoul, virial[6]. */
@@ -148,6 +168,7 @@ export class PairThreadWorker {
   private firstneigh: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private neighbors: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private f: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private fs: Float64Array[] = [];
   private acc: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private chunks: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private index = 0;
@@ -180,6 +201,7 @@ export class PairThreadWorker {
       this.x = new Float64Array(m.x); this.t = new Int32Array(m.t); this.q = new Float64Array(m.q);
       this.numneigh = new Int32Array(m.numneigh); this.firstneigh = new Int32Array(m.firstneigh); this.neighbors = new Int32Array(m.neighbors);
       this.f = new Float64Array(m.f); this.acc = new Float64Array(m.acc); this.chunks = new Int32Array(m.chunks);
+      this.fs = m.fs.map((b) => new Float64Array(b));
       return;
     }
     if (m.type === 'pair') { this.pair = pairFromFields(m.name, m.fields); return; }
@@ -209,6 +231,18 @@ export class PairThreadWorker {
     }
     Atomics.add(ctl, DONE, 1);
     Atomics.notify(ctl, DONE);
+    if (!m.F) return;
+    // the parallel sum: wait for the engine to start it (every thread has finished its chunks), then claim slices
+    Atomics.wait(ctl, PHASE, m.phase);
+    const F = new Float64Array(m.F);
+    const len = Math.ceil((3 * m.nall) / m.nslices);
+    for (;;) {
+      const sl = Atomics.add(ctl, NEXT2, 1);
+      if (sl >= m.nslices) break;
+      sumForces(F, this.fs, sl * len, Math.min(3 * m.nall, (sl + 1) * len));
+    }
+    Atomics.add(ctl, DONE2, 1);
+    Atomics.notify(ctl, DONE2);
   }
 
   /** A threaded neighbor search: chunks of bins claimed from NEXT, their entries appended to this worker's arrays. */

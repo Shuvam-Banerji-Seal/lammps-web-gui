@@ -3,7 +3,7 @@ import type { NeighList } from '../neighbor';
 import { THREADED_PAIRS } from './threadedPairs';
 import { CpuForceBackend } from './forces';
 import {
-  ACC_LEN, CHUNKS_PER_THREAD, DONE, FAILED, NEXT, NOT_DONE, READY, cloneableFields, pairFromFields, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
+  ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PHASE, READY, cloneableFields, sumForces, pairFromFields, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
 import { binCandidates, halfBinsPairs, type HalfBins, type NeighborThreads } from './neighborKernel';
 
@@ -56,7 +56,7 @@ export class SharedPairThreads implements NeighborThreads {
   /** Force evaluations that ran on the threads. */
   calls = 0;
   private workers: PairWorkerLike[] = [];
-  private readonly ctlBuf = shared(16);
+  private readonly ctlBuf = shared(4 * CTL_WORDS);
   private readonly ctl = new Int32Array(this.ctlBuf);
   private pairRef: Pair | null = null;
   private pairVersion = -1;
@@ -79,7 +79,14 @@ export class SharedPairThreads implements NeighborThreads {
   private fs: Float64Array<ArrayBufferLike>[] = [];
   private accs: Float64Array<ArrayBufferLike>[] = [];
 
+  /**
+   * The threads sum their forces into a shared force array in parallel (a second phase in which every thread blocks):
+   * real workers only, as an in-process stand-in (tests) handles a message at once and could not wait for the others.
+   */
+  private readonly parallelSum: boolean;
+
   constructor(readonly threads: number, spawn: () => PairWorkerLike = spawnPairWorker, public minAtoms = MIN_THREADED_ATOMS) {
+    this.parallelSum = spawn === spawnPairWorker;
     this.chunksBuf = shared(4 * (CHUNKS_PER_THREAD * Math.max(1, threads) + 1));
     this.chunks = new Int32Array(this.chunksBuf);
     for (let k = 0; k < threads - 1; k++) {
@@ -126,9 +133,12 @@ export class SharedPairThreads implements NeighborThreads {
     Atomics.store(this.ctl, NEXT, 0);
     const nchunks = this.nchunks;
     const specialLJ = Array.from(pc.specialLJ), specialCoul = Array.from(pc.specialCoul);
+    // a shared force array is summed by all the threads (sumForces), else by the engine thread below
+    const F = this.parallelSum && pc.f.buffer instanceof SharedArrayBuffer && pc.f.byteOffset === 0 ? pc.f.buffer : null;
+    const phase = Atomics.load(this.ctl, PHASE), nslices = CHUNKS_PER_THREAD * (W + 1);
     for (let w = 0; w < W; w++) {
       this.workers[w].postMessage({
-        type: 'compute', nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks,
+        type: 'compute', nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks, F, phase, nslices,
       } satisfies PairThreadMessage);
     }
     // the engine thread claims chunks too, straight into the real arrays
@@ -142,11 +152,29 @@ export class SharedPairThreads implements NeighborThreads {
       if (done >= W) break;
       if (Atomics.wait(this.ctl, DONE, done, 60_000) === 'timed-out') throw new Error('pair force threads did not answer within 60 s');
     }
-    if (Atomics.load(this.ctl, FAILED) > 0) throw new Error(`pair style ${pair.name} failed in a force thread`);
+    const failed = Atomics.load(this.ctl, FAILED) > 0;
     const f = pc.f, acc = pc.acc;
+    if (F) {
+      // start the parallel sum (no slices after a failure, so the waiting workers return), take slices, wait
+      Atomics.store(this.ctl, NEXT2, failed ? nslices : 0);
+      Atomics.store(this.ctl, DONE2, 0);
+      Atomics.add(this.ctl, PHASE, 1);
+      Atomics.notify(this.ctl, PHASE);
+      const len = Math.ceil((3 * nall) / nslices);
+      for (;;) {
+        const sl = Atomics.add(this.ctl, NEXT2, 1);
+        if (sl >= nslices) break;
+        sumForces(f, this.fs, sl * len, Math.min(3 * nall, (sl + 1) * len));
+      }
+      for (;;) {
+        const done = Atomics.load(this.ctl, DONE2);
+        if (done >= W) break;
+        if (Atomics.wait(this.ctl, DONE2, done, 60_000) === 'timed-out') throw new Error('pair force threads did not answer within 60 s');
+      }
+    }
+    if (failed) throw new Error(`pair style ${pair.name} failed in a force thread`);
+    if (!F) sumForces(f, this.fs, 0, 3 * nall);
     for (let w = 0; w < W; w++) {
-      const fw = this.fs[w];
-      for (let k = 0; k < 3 * nall; k++) f[k] += fw[k];
       const a = this.accs[w];
       acc.evdwl += a[0];
       acc.ecoul += a[1];
@@ -188,12 +216,13 @@ export class SharedPairThreads implements NeighborThreads {
     const nb = shared(4 * this.capL), fb = shared(4 * this.capL), lb = shared(4 * this.capN);
     this.x = new Float64Array(xb); this.t = new Int32Array(tb); this.q = new Float64Array(qb);
     this.numneigh = new Int32Array(nb); this.firstneigh = new Int32Array(fb); this.neighbors = new Int32Array(lb);
-    this.fs = []; this.accs = [];
-    this.workers.forEach((w) => {
-      const f = shared(24 * this.cap), acc = shared(8 * ACC_LEN);
-      this.fs.push(new Float64Array(f));
+    const fbufs = this.workers.map(() => shared(24 * this.cap));
+    this.fs = fbufs.map((b) => new Float64Array(b));
+    this.accs = [];
+    this.workers.forEach((w, k) => {
+      const acc = shared(8 * ACC_LEN);
       this.accs.push(new Float64Array(acc));
-      w.postMessage({ type: 'buffers', x: xb, t: tb, q: qb, numneigh: nb, firstneigh: fb, neighbors: lb, f, acc, chunks: this.chunksBuf } satisfies PairThreadMessage);
+      w.postMessage({ type: 'buffers', x: xb, t: tb, q: qb, numneigh: nb, firstneigh: fb, neighbors: lb, f: fbufs[k], fs: fbufs, acc, chunks: this.chunksBuf } satisfies PairThreadMessage);
     });
   }
 

@@ -33,8 +33,18 @@ const TABLE_EXT = new Set(['csv', 'tsv', 'avg']);
  */
 export const isGzipText = (text: string): boolean => text.charCodeAt(0) === 0x1f && text.charCodeAt(1) === 0x8b;
 
+/** The binary trajectory formats the engine writes (dump dcd and xtc), stored one character per byte. */
+const BINARY_TRAJECTORY_EXT = new Set(['dcd', 'xtc']);
+
+/** A DCD or XTC file: binary trajectory frames, which the 3D Viewer does not read. */
+export const isBinaryTrajectory = (name: string): boolean => BINARY_TRAJECTORY_EXT.has(extOf(name));
+
+/** A file whose characters are bytes (gzip, DCD, XTC), not text to preview or encode as UTF-8. */
+export const isBinaryFile = (name: string, text: string): boolean => isGzipText(text) || isBinaryTrajectory(name);
+
 export const classifyFile = (name: string, text: string): FileKind => {
   if (isImageDataUrl(text)) return 'image';
+  if (isBinaryTrajectory(name)) return 'trajectory';
   if (isGzipText(text)) {
     // classified by the name without .gz (the viewer decompresses it); its bytes are not text to preview
     const inner = name.replace(/\.gz$/i, '');
@@ -58,6 +68,7 @@ export const classifyFile = (name: string, text: string): FileKind => {
 /** Frames in a dump (ITEM: TIMESTEP blocks) or an XYZ file (count line, comment line, count atom lines). */
 export const countFrames = (name: string, text: string): number | null => {
   if (isImageDataUrl(text) || isGzipText(text)) return null;
+  if (isBinaryTrajectory(name)) return binaryFrames(extOf(name), text);
   if (/^ITEM: TIMESTEP/m.test(text)) {
     let n = 0;
     const re = /^ITEM: TIMESTEP[ \t]*\r?$/gm;
@@ -79,9 +90,39 @@ export const countFrames = (name: string, text: string): number | null => {
   return frames;
 };
 
-/** Size in bytes: decoded size for an image data URL, UTF-8 length for text. */
-export const fileBytesSize = (text: string): number => {
-  if (isGzipText(text)) return text.length;
+/**
+ * Frames of a binary trajectory: a DCD file's NFILE header field (the 32-bit integer at byte 8, little-endian), or the
+ * frames of an XTC file walked one by one (magic 1995, natoms, step, time, 9 box floats, then natoms again and either
+ * 3 natoms floats, for 9 atoms or fewer, or the precision, 6 integer bounds, the small index and the byte count of the
+ * compressed coordinates, padded to 4 bytes). null when the bytes are not such a file.
+ */
+const binaryFrames = (ext: string, text: string): number | null => {
+  const u32 = (at: number, little: boolean): number => {
+    const b = [0, 1, 2, 3].map((k) => text.charCodeAt(at + k) & 0xff);
+    return (little ? (b[3] << 24) | (b[2] << 16) | (b[1] << 8) | b[0] : (b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]) >>> 0;
+  };
+  if (ext === 'dcd') return text.length >= 12 && text.slice(4, 8) === 'CORD' ? u32(8, true) : null;
+  let at = 0;
+  let frames = 0;
+  while (at < text.length) {
+    if (at + 56 > text.length || u32(at, false) !== 1995) return null;
+    const n = u32(at + 52, false);
+    at += 56;
+    if (n <= 9) at += 12 * n;
+    else {
+      if (at + 36 > text.length) return null;
+      const bytes = u32(at + 32, false);
+      at += 36 + bytes + ((4 - (bytes % 4)) % 4);
+    }
+    if (at > text.length) return null;
+    frames++;
+  }
+  return frames;
+};
+
+/** Size in bytes: decoded size for an image data URL, UTF-8 length for text, one byte per character for binary files. */
+export const fileBytesSize = (text: string, name = ''): number => {
+  if (isBinaryFile(name, text)) return text.length;
   if (isImageDataUrl(text)) {
     const comma = text.indexOf(',');
     const b64 = text.slice(comma + 1);
@@ -100,11 +141,11 @@ export const fileBytesSize = (text: string): number => {
 };
 
 /** Bytes to store in a zip: the decoded binary for an image data URL, UTF-8 for text. */
-export const fileBytes = (text: string): Uint8Array<ArrayBuffer> => {
+export const fileBytes = (text: string, name = ''): Uint8Array<ArrayBuffer> => {
   const bin = dataUrlBytes(text);
   if (bin) return bin.bytes;
-  // a gzip file is one character per byte: its bytes, not the UTF-8 encoding of those characters
-  if (isGzipText(text)) {
+  // a gzip, DCD or XTC file is one character per byte: its bytes, not the UTF-8 encoding of those characters
+  if (isBinaryFile(name, text)) {
     const out = new Uint8Array(new ArrayBuffer(text.length));
     for (let i = 0; i < text.length; i++) out[i] = text.charCodeAt(i) & 0xff;
     return out;

@@ -47,5 +47,5 @@ export type FromEngine =
     styles: Record<string, string[]>;
   }
   | { type: 'event'; id: number; event: EngineEvent }
-  | { type: 'file'; id: number; name: string; text: string; append: boolean }
+  | { type: 'file'; id: number; name: string; text: string; append: boolean; at?: number }
   | { type: 'finished'; id: number; ok: boolean; cancelled: boolean };

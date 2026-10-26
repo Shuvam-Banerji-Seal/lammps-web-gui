@@ -9,7 +9,7 @@ import type { EngineEvent } from './types';
 
 export interface ExecHandlers {
   onEvent: (event: EngineEvent) => void;
-  onFile?: (name: string, text: string, append: boolean) => void;
+  onFile?: (name: string, text: string, append: boolean, at?: number) => void;
 }
 
 export interface ExecResult { ok: boolean; cancelled: boolean }
@@ -52,7 +52,7 @@ export class EngineClient {
     const entry = this.pending.get(msg.id);
     if (!entry) return;
     if (msg.type === 'event') entry.handlers.onEvent(msg.event);
-    else if (msg.type === 'file') entry.handlers.onFile?.(msg.name, msg.text, msg.append);
+    else if (msg.type === 'file') entry.handlers.onFile?.(msg.name, msg.text, msg.append, msg.at);
     else if (msg.type === 'finished') {
       this.pending.delete(msg.id);
       entry.resolve({ ok: msg.ok, cancelled: msg.cancelled });

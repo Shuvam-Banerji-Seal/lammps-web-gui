@@ -1,5 +1,6 @@
 import { EngineError, type EngineEvent, type ForceBackend } from './types';
 import type { ForceField } from './force/forcefield';
+import type { Neighbor } from './neighbor';
 import { System, type SessionIO } from './system';
 import { RUN_API } from './commands/runApi';
 import { StyleError } from './force/types';
@@ -52,6 +53,9 @@ interface Frame {
 /** The shared-memory pair threads a backend carries (cpu/pairThreads.ts SharedThreadsBackend), if any. */
 const pairThreadsOf = (b: ForceBackend): ForceField['pairThreads'] =>
   (b as { pairThreads?: ForceField['pairThreads'] }).pairThreads ?? null;
+/** The same threads for the neighbor search (they also implement cpu/neighborKernel.ts NeighborThreads), if any. */
+const listThreadsOf = (b: ForceBackend): Neighbor['listThreads'] =>
+  (b as { pairThreads?: Neighbor['listThreads'] }).pairThreads ?? null;
 
 /**
  * The partition commands that drive all replicas together and read their words per replica (each replica's own
@@ -138,6 +142,7 @@ export class Session {
     sys.registries = { ...styleNames(), command: SUPPORTED_COMMANDS.slice() };
     sys.commands = COMMANDS;
     sys.ff.pairThreads = pairThreadsOf(this.backend);
+    sys.nb.listThreads = listThreadsOf(this.backend);
     sys.vars.partition = k;
     sys.vars.nworlds = this.partitions;
     sys.replicaPeers = () => this.replicas;
@@ -179,6 +184,7 @@ export class Session {
     this.backend = backend;
     for (const sys of this.replicas) {
       sys.ff.pairThreads = pairThreadsOf(backend);
+      sys.nb.listThreads = listThreadsOf(backend);
       sys.bump();
     }
   }

@@ -1,0 +1,21 @@
+# oracle: dump cfg/uef of the UEF nvt/uef uniaxial example: the box written in the flow frame (fix nvt/uef get_box and get_rot), then write_dump cfg/uef
+# oracle-inputs: w129uef_data.wca
+# oracle-files: u.0.cfg u.50.cfg u.100.cfg w.0.cfg w.50.cfg w.100.cfg v.100.cfg
+units           lj
+atom_style      atomic
+pair_style      lj/cut 1.122562
+read_data       w129uef_data.wca
+pair_coeff      1 1 1.0 1.0
+pair_modify     shift yes
+neighbor        0.5 bin
+neigh_modify    delay 0
+change_box      all triclinic
+fix             1 all nvt/uef temp 0.722 0.722 0.5 erate -0.5 -0.5
+dump            1 all cfg/uef 50 u.*.cfg mass type xs ys zs
+dump            2 all cfg/uef 50 w.*.cfg mass type xsu ysu zsu vx
+dump_modify     2 element Ar
+thermo_style    custom step pe lx ly lz xy xz yz
+thermo_modify   format float %.15g
+thermo          50
+run             100
+write_dump      all cfg/uef v.*.cfg mass type xs ys zs id

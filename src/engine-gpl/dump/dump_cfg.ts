@@ -2,7 +2,8 @@
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0: src/dump_cfg.cpp and dump_cfg.h (class
  * DumpCFG, dump style cfg; contributing author Liang Wan (Chinese Academy of Sciences); copyright Sandia Corporation): the
  * argument checks and the auxiliary names of the constructor, write_header and write_lines; with the peridynamic scale
- * factor of src/PERI/fix_peri_neigh.cpp init. This file is GPL-2.0 too (src/engine-gpl/LICENSE).
+ * factor of src/PERI/fix_peri_neigh.cpp init; and src/UEF/dump_cfg_uef.cpp (class DumpCFGUef, dump style cfg/uef; contributing
+ * author David Nicholson (MIT)): its init_style and write_header. This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * docs.lammps.org/dump.html (verbatim): "Style cfg has the same command syntax as style custom and writes extended CFG
  * format files, as used by the AtomEye visualization package. Since the extended CFG format uses a single snapshot of the
@@ -47,7 +48,20 @@ const periScale = (sys: System): number => {
   return vave > 0.0 ? 1.44 / pow(vave, 1.0 / 3.0) : 1.0;
 };
 
-export const createDumpCfg: DumpCfgFactory = (sys, earg) => {
+/** What dump cfg/uef reads of its fix nvt/uef or npt/uef (engine-gpl/uef/fix_nh_uef.ts FixNHUef get_box, get_rot). */
+interface UefFrame {
+  getBox(out: number[][]): void;
+  getRot(out: number[][]): void;
+}
+
+/** dump_cfg_uef.cpp init_style: the first fix whose style matches "^n[vp]t/uef". */
+const findUefFix = (sys: System): UefFrame | null =>
+  (sys.fixes.find((f) => /^n[vp]t\/uef/.test(f.style)) as unknown as UefFrame | undefined) ?? null;
+
+export const createDumpCfg: DumpCfgFactory = (sys, earg) => makeDumpCfg(sys, earg, false);
+export const createDumpCfgUef: DumpCfgFactory = (sys, earg) => makeDumpCfg(sys, earg, true);
+
+const makeDumpCfg = (sys: System, earg: string[], uef: boolean) => {
   const nfield = earg.length;
   if (nfield < 5 || earg[0] !== 'mass' || earg[1] !== 'type' || (earg[2] !== 'xs' && earg[2] !== 'xsu')
     || (earg[3] !== 'ys' && earg[3] !== 'ysu') || (earg[4] !== 'zs' && earg[4] !== 'zsu')) {
@@ -64,6 +78,8 @@ export const createDumpCfg: DumpCfgFactory = (sys, earg) => {
   const auxname = earg.slice(5).map(auxName);
   // atom->pdscale: set once, at the first init of fix PERI_NEIGH; here at the first snapshot
   let pdscale: number | null = null;
+  // dump cfg/uef: the fix found at init
+  let fixUef: UefFrame | null = null;
 
   const g = (v: number) => formatNumber(v, '%g');
   const writeHeader = (n: number, colnames: Map<number, string>): string => {
@@ -74,15 +90,30 @@ export const createDumpCfg: DumpCfgFactory = (sys, earg) => {
     const [xy, xz, yz] = sys.state.box.tilt;
     let header = `Number of particles = ${n}\n`;
     header += `A = ${g(scale)} Angstrom (basic length-scale)\n`;
-    header += `H0(1,1) = ${g(geom.lx)} A\n`;
-    header += 'H0(1,2) = 0 A\n';
-    header += 'H0(1,3) = 0 A\n';
-    header += `H0(2,1) = ${g(xy)} A\n`;
-    header += `H0(2,2) = ${g(geom.ly)} A\n`;
-    header += 'H0(2,3) = 0 A\n';
-    header += `H0(3,1) = ${g(xz)} A\n`;
-    header += `H0(3,2) = ${g(yz)} A\n`;
-    header += `H0(3,3) = ${g(geom.lz)} A\n`;
+    if (uef) {
+      // dump_cfg_uef.cpp write_header: the box in the flow frame. rot goes from the lab frame to the upper triangular
+      // frame and its transpose takes the simulation box to the flow frame; in box[][] columns are cell edges, in H0 rows
+      const box = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], rot = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      const fix = fixUef ?? findUefFix(sys);
+      if (!fix) throw new StyleError("Can't use dump cfg/uef without defining a fix nvt/npt/uef");
+      fix.getBox(box);
+      fix.getRot(rot);
+      for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) { const t = rot[i][j]; rot[i][j] = rot[j][i]; rot[j][i] = t; }
+      // UEF_utils::mul_m2(rot, box): box = rot box
+      const t = box.map((row) => [...row]);
+      for (let k = 0; k < 3; k++) for (let j = 0; j < 3; j++) box[k][j] = rot[k][0] * t[0][j] + rot[k][1] * t[1][j] + rot[k][2] * t[2][j];
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) header += `H0(${r + 1},${c + 1}) = ${g(box[c][r])} A\n`;
+    } else {
+      header += `H0(1,1) = ${g(geom.lx)} A\n`;
+      header += 'H0(1,2) = 0 A\n';
+      header += 'H0(1,3) = 0 A\n';
+      header += `H0(2,1) = ${g(xy)} A\n`;
+      header += `H0(2,2) = ${g(geom.ly)} A\n`;
+      header += 'H0(2,3) = 0 A\n';
+      header += `H0(3,1) = ${g(xz)} A\n`;
+      header += `H0(3,2) = ${g(yz)} A\n`;
+      header += `H0(3,3) = ${g(geom.lz)} A\n`;
+    }
     header += '.NO_VELOCITY.\n';
     header += `entry_count = ${nfield - 2}\n`;
     for (let i = 5; i < nfield; i++) header += `auxiliary[${i - 5}] = ${colnames.get(i) ?? auxname[i - 5]}\n`;
@@ -90,6 +121,12 @@ export const createDumpCfg: DumpCfgFactory = (sys, earg) => {
   };
 
   return {
+    init(): void {
+      if (!uef) return;
+      // dump_cfg_uef.cpp init_style: after DumpCFG's checks, a fix nvt/uef or npt/uef must exist
+      fixUef = findUefFix(sys);
+      if (!fixUef) throw new StyleError("Can't use dump cfg/uef without defining a fix nvt/npt/uef");
+    },
     text(snap: DumpCfgSnapshot): string {
       const s = sys.state;
       const out: string[] = [];

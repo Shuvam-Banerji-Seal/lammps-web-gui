@@ -217,6 +217,11 @@ export class FixNHUef extends FixNH {
     this.installHooks(nh);
   }
 
+  /** The box in the upper-triangular frame for the current volume xprd * yprd * zprd (fix nvt/npt/uef get_box). */
+  getBox(out: M3): void {
+    this.uefbox.getBox(out, this.sys.geom.volume(3));
+  }
+
   /** The current rotation matrix Q (fix nvt/npt/uef get_rot). */
   getRot(out: M3): void {
     for (let k = 0; k < 3; k++) for (let j = 0; j < 3; j++) out[k][j] = this.rot[k][j];

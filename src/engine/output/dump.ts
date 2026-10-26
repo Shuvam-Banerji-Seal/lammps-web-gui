@@ -58,6 +58,7 @@ const STYLE_KEYWORDS: Record<string, ReadonlySet<string>> = {
   atom: new Set(['image', 'scale', 'triclinic/general']),
   custom: new Set(['element', 'refresh', 'region', 'thresh', 'triclinic/general']),
   cfg: new Set(['element', 'refresh', 'region', 'thresh', 'triclinic/general']),
+  'cfg/uef': new Set(['element', 'refresh', 'region', 'thresh', 'triclinic/general']),
   image: new Set(['element', 'refresh', 'region', 'thresh', 'triclinic/general']),
   yaml: new Set(['element', 'refresh', 'region', 'thresh', 'triclinic/general', 'thermo']),
   xyz: new Set(['element', 'types']),
@@ -68,10 +69,10 @@ const STYLE_KEYWORDS: Record<string, ReadonlySet<string>> = {
 const EXTXYZ_NO_NAMES = 'Must use either type lables or dump_modify element with dump style extxyz';
 
 /** The styles whose modify_param takes the column formats (format N, int, float): DumpCustom, DumpLocal and DumpGrid. */
-const COLUMN_FORMAT_STYLES = new Set(['custom', 'cfg', 'image', 'yaml', 'local', 'grid', 'grid/vtk']);
+const COLUMN_FORMAT_STYLES = new Set(['custom', 'cfg', 'cfg/uef', 'image', 'yaml', 'local', 'grid', 'grid/vtk']);
 
 /** The dump styles of native's DumpCustom family (custom, cfg, image, yaml and their compressed forms): dump_modify region and thresh. */
-const THRESH_STYLES = new Set<string>(['custom', 'cfg', 'image', 'yaml']);
+const THRESH_STYLES = new Set<string>(['custom', 'cfg', 'cfg/uef', 'image', 'yaml']);
 /** The per-atom attributes a dump_modify thresh can test (src/dump_custom.cpp at b332f28, modify_param "thresh"). */
 const THRESH_ATTRS = new Set([
   'id', 'mol', 'proc', 'procp1', 'type', 'mass', 'x', 'y', 'z', 'xs', 'ys', 'zs', 'xu', 'yu', 'zu', 'xsu', 'ysu', 'zsu',
@@ -107,7 +108,7 @@ const DIPOLE_COLS = new Set(['mux', 'muy', 'muz', 'mu']);
  */
 export const fmt = (f: string): ((v: number) => string) => compileCFormat(f, 'float', 'Invalid dump format');
 
-export type DumpStyle = 'atom' | 'custom' | 'cfg' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk' | 'grid' | 'grid/vtk' | 'dcd' | 'xtc';
+export type DumpStyle = 'atom' | 'custom' | 'cfg' | 'cfg/uef' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk' | 'grid' | 'grid/vtk' | 'dcd' | 'xtc';
 
 /**
  * The core side of the lazily loaded dump vtk helper (engine-gpl/dump/dump_vtk.ts, HOOKS 'vtk' of group gpl_dump_vtk):
@@ -158,6 +159,8 @@ export interface DumpCfgSnapshot {
 
 export interface DumpCfgStyle {
   text(snap: DumpCfgSnapshot): string;
+  /** The style's own init checks, after the custom ones (dump cfg/uef: its fix nvt/uef or npt/uef). */
+  init?(): void;
 }
 
 export type DumpCfgFactory = (sys: System, columns: string[]) => DumpCfgStyle;
@@ -381,12 +384,24 @@ export class Dump {
       if (!f.peratomFlag) throw new StyleError(`Fix ID ${id} for dump ${st} does not compute per-atom data`);
       if (f.peratomFreq > 0 && this.nevery % f.peratomFreq) throw new StyleError(`Dump ${st} and fix not computed at compatible times${errorUrl(7)}`);
     }
+    this.cfgStyle?.init?.();
   }
 
   /**
    * dump dcd and xtc: the style's init_style (Dump::init, src/dump.cpp at b332f28: init_style comes first). write_dump's
    * snapshot (native's dump ID WRITE_DUMP) leaves out the checks of the output interval.
    */
+  /**
+   * write_dump's init before its one snapshot (src/write_dump.cpp at b332f28 calls dump->init()): the file checks of
+   * openFile (dump cfg: one snapshot per file unless write_dump overrides it), the cfg helper's own (dump cfg/uef: its
+   * fix) and dump dcd and xtc's init_style.
+   */
+  initWriteDump(): void {
+    this.openFile();
+    this.cfgStyle?.init?.();
+    if (this.trajStyle) this.initTraj(true);
+  }
+
   initTraj(writeDump: boolean): void {
     this.trajStyle?.init({ writeDump, everyTime: this.everyTime, every: this.everyVar ? 0 : this.every, sortById: this.sort === 'id', flush: this.flush });
   }
@@ -491,7 +506,8 @@ export class Dump {
       for (const c of out) this.validate(c);
       this.columns = out;
       // dump cfg: the attribute checks of the lazily loaded helper (lazyStyles.ts group gpl_dump_cfg)
-      if (style === 'cfg') this.cfgStyle = gplHook<DumpCfgFactory>('cfg')(sys, out);
+      // (dump cfg/uef: the same helper with the box of fix nvt/uef or npt/uef, HOOKS 'cfg/uef')
+      if (style === 'cfg' || style === 'cfg/uef') this.cfgStyle = gplHook<DumpCfgFactory>(style)(sys, out);
     }
   }
 

@@ -99,7 +99,12 @@ describe('fix nvt/uef and npt/uef keywords', () => {
     await expect(run(['fix 1 all npt/uef temp 1 1 0.5 aniso 1 1 1 erate 0.5 0.5 ext z', 'run 1'])).rejects.toThrow(/ext keyword/);
   });
 
-  it('refuses write_restart and dump cfg/uef by name', async () => {
-    await expect(run(['fix 1 all nvt/uef temp 1 1 0.5 erate -0.5 -0.5', 'dump 1 all cfg/uef 25 dump.*.cfg mass type xs ys zs', 'run 1'])).rejects.toThrow(/cfg\/uef/);
+  it('dump cfg/uef writes the box in the flow frame (native files compared by the oracle case dump_cfg_uef)', async () => {
+    const files = new Map<string, string>();
+    const session = new Session({ emit: () => {}, writeFile: (n: string, t: string) => { files.set(n, t); } }, undefined, 0, 1);
+    await session.execute([...BASE, 'fix 1 all nvt/uef temp 1 1 0.5 erate -0.5 -0.5', 'dump 1 all cfg/uef 25 dump.*.cfg mass type xs ys zs', 'run 1'].join('\n') + '\n');
+    const text = files.get('dump.0.cfg') ?? '';
+    expect(text).toMatch(/^Number of particles = \d+\nA = 1 Angstrom \(basic length-scale\)\nH0\(1,1\) = /);
+    expect(text.split('\n').filter((l) => /^H0\(\d,\d\) = /.test(l))).toHaveLength(9);
   });
 });

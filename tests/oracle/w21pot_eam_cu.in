@@ -1,6 +1,6 @@
 # oracle: pair_style eam with the LAMMPS potential file Cu_u3.eam (third_party/lammps/potentials), fcc copper with a 0.05 A sinusoidal displacement, velocities from atom-style variables, 100 steps of nve
 # oracle-potentials: Cu_u3.eam
-# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-12
 units           metal
 atom_style      atomic
 lattice         fcc 3.615

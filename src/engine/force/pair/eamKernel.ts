@@ -22,19 +22,13 @@ export interface EAMKernelTables {
 
 const NONE = new Float64Array(0);
 
-/** The grid every density and r*phi table shares, or null (tables on different grids, or a table missing). */
+/**
+ * The grid of the density and r*phi tables (eam.ts puts every table of a style on one grid, as native does), or null when
+ * the style has no tables (types without a table pair, e.g. NULL elements under pair hybrid, have no list entries).
+ */
 export const eamGrid = (t: EAMKernelTables): { nr: number; rdr: number } | null => {
-  const nt = t.ntypes + 1;
-  let n = -1, rdx = 0;
-  for (let i = 1; i < nt; i++) {
-    for (let j = 1; j < nt; j++) {
-      for (const sp of [t.rhoTab[i * nt + j], t.gTab[i * nt + j]]) {
-        if (!sp) return null;
-        if (n < 0) { n = sp.n; rdx = sp.rdx; } else if (sp.n !== n || sp.rdx !== rdx) return null;
-      }
-    }
-  }
-  return n < 2 ? null : { nr: n, rdr: rdx };
+  for (const sp of t.rhoTab) if (sp) return { nr: sp.n, rdr: sp.rdx };
+  return null;
 };
 
 const coefs = (tabs: readonly (EAMKernelSpline | null)[]): Float64Array[] => tabs.map((sp) => sp?.coef ?? NONE);
@@ -46,7 +40,9 @@ const coefs = (tabs: readonly (EAMKernelSpline | null)[]): Float64Array[] => tab
 export const eamDensities = (t: EAMKernelTables, name: string, pc: PairCompute, rho: Float64Array): void => {
   const half = pc.half;
   if (!half) throw new Error(`pair style ${name} needs a half neighbor list`);
-  const { nr, rdr } = eamGrid(t)!;
+  const grid = eamGrid(t);
+  if (!grid) return;
+  const { nr, rdr } = grid;
   const { x, type } = pc;
   const nt = t.ntypes + 1;
   const cutsq = t.cutsq;
@@ -83,7 +79,9 @@ export const eamDensities = (t: EAMKernelTables, name: string, pc: PairCompute, 
 export const eamForces = (t: EAMKernelTables, name: string, pc: PairCompute, fp: Float64Array): void => {
   const half = pc.half;
   if (!half) throw new Error(`pair style ${name} needs a half neighbor list`);
-  const { nr, rdr } = eamGrid(t)!;
+  const grid = eamGrid(t);
+  if (!grid) return;
+  const { nr, rdr } = grid;
   const { x, f, type } = pc;
   const nt = t.ntypes + 1;
   const cutsq = t.cutsq;
@@ -159,7 +157,7 @@ export class PairEAMKernel extends Pair implements EAMKernelTables {
 
   constructor(readonly name: string) { super(); }
 
-  twoPassReady(): boolean { return eamGrid(this) !== null; }
+  twoPassReady(): boolean { return true; }
   densities(pc: PairCompute, rho: Float64Array): void { eamDensities(this, this.name, pc, rho); }
   forces(pc: PairCompute, fp: Float64Array): void { eamForces(this, this.name, pc, fp); }
 

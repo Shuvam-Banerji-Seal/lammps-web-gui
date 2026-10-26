@@ -1,6 +1,5 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs, potentialFile } from '../types';
-import { NEIGHMASK } from '../../neighbor';
-import { eamDensities, eamForces, eamGrid, type EAMKernelTables } from './eamKernel';
+import { eamDensities, eamForces, type EAMKernelTables } from './eamKernel';
 import { parseInt_, parseNum } from '../util';
 
 /*
@@ -78,9 +77,10 @@ import { parseInt_, parseNum } from '../util';
  * effective charges via the r·phi formula above (so phi_AB(r) =
  * 27.2·0.529·Z_A(r)·Z_B(r)/r); the density at an atom of element A from a
  * neighbor of element B is rho_B(r), B's own tabulated density function;
- * each element keeps its own embedding function F_A. The two files must
- * share the same Nr and dr to be mixed; the mixed pair cutoff is the
- * average of the two file cutoffs.
+ * each element keeps its own embedding function F_A. As native LAMMPS does
+ * (src/MANYBODY/pair_eam.cpp file2array_funcfl and init_one at b332f28), the
+ * files are first put on one grid (PairEAM.file2array) and every type pair
+ * has the same cutoff, the largest cutoff of the funcfl files read.
  *
  * Beyond the last tabulated density (verbatim): "LAMMPS will assume a
  * linearly increasing embedding energy for electron densities beyond the
@@ -201,10 +201,6 @@ class Spline {
     return ((3 * this.c3[k] * p + 2 * this.c2[k]) * p + this.s[k]) / this.dx;
   }
 
-  /** Slope at the last tabulated point (linear extrapolation of F), per grid step. */
-  endSlope(): number {
-    return this.s[this.n - 1];
-  }
 }
 
 /** A tabulated function of an EAM file: y[k] at x = k * dx, k = 0 .. y.length - 1. */
@@ -215,26 +211,16 @@ export interface EAMTable {
 
 /** Embedding energy F(rho): spline in [0, rhoMax], linear above it (doc quote in the header). */
 class Embed {
-  private constructor(readonly sp: Spline, readonly rhoMax: number, private readonly slope: number) {}
+  private constructor(readonly sp: Spline, readonly rhoMax: number) {}
 
   /** The tabulated values of F(rho) and their spacing drho. */
   get table(): EAMTable {
     return this.sp;
   }
 
-  static of(y: Float64Array, drho: number): Embed {
-    const sp = new Spline(y, drho);
-    return new Embed(sp, (y.length - 1) * drho, sp.endSlope() / drho);
-  }
-
-  eval(rho: number): number {
-    if (rho > this.rhoMax) return this.sp.eval(this.rhoMax) + this.slope * (rho - this.rhoMax);
-    return this.sp.eval(rho < 0 ? 0 : rho);
-  }
-
-  deriv(rho: number): number {
-    if (rho > this.rhoMax) return this.slope;
-    return this.sp.deriv(rho < 0 ? 0 : rho);
+  /** rhoMax: where the linear extension starts (the last tabulated density unless given). */
+  static of(y: Float64Array, drho: number, rhoMax = (y.length - 1) * drho): Embed {
+    return new Embed(new Spline(y, drho), rhoMax);
   }
 }
 
@@ -253,8 +239,10 @@ interface EAMFile {
   masses: number[];
   /** Embedding function per element. */
   F: Embed[];
-  /** funcfl: raw effective charge Z(r) table. */
+  /** funcfl: the raw tables of F(rho), the effective charge Z(r) and the density rho(r). */
+  frho?: Float64Array;
   z?: Float64Array;
+  rhor?: Float64Array;
   /** funcfl and eam/alloy: one density function per element; eam/fs: [neighbour beta][site alpha]. */
   rho?: Spline[];
   fsRho?: Spline[][];
@@ -339,10 +327,10 @@ const parseFuncfl = (text: string, name: string, ctx: StyleContext): EAMFile => 
   checkUnitsTag(t.line('the comment line'), ctx, name);
   const mass = massOfElementLine(t.line('the element line'), name);
   const g = readGrid(t, name);
-  const F = Embed.of(t.take(g.nrho, 'the embedding function F(rho)'), g.drho);
+  const frho = t.take(g.nrho, 'the embedding function F(rho)');
   const z = t.take(g.nr, 'the effective charge function Z(r)');
-  const rho = new Spline(t.take(g.nr, 'the density function rho(r)'), g.dr);
-  return { name, ...g, names: [], masses: [mass], F: [F], z, rho: [rho] };
+  const rhor = t.take(g.nr, 'the density function rho(r)');
+  return { name, ...g, names: [], masses: [mass], F: [], frho, z, rhor };
 };
 
 /** Parses a setfl (fs = false) or Finnis-Sinclair (fs = true) file. */
@@ -386,21 +374,17 @@ const parseSetfl = (text: string, name: string, ctx: StyleContext, fs: boolean):
 };
 
 /**
- * Shared compute for all three styles. The densities rho_i are summed over
- * the FULL neighbor list (every neighbor of every owned atom, owned or
- * ghost) and copied to the ghosts through owner; F'(rho_i) likewise. The
- * force loop then runs over the HALF list, where every physical pair
- * appears exactly once (owned-owned with j > i, or an owned atom with the
- * ghost image that lies above it), so each atom receives its force once
- * and the force-field virial sum x.f over owned and ghost atoms is the
- * pairwise sum r_ij.F_ij (virialFdotr). The embedding part of the pair
- * force, -F'_i(rho_i) rho'_{ij}(r)/r on atom i and -F'_j(rho_j)
- * rho'_{ji}(r)/r on atom j, follows from dE/dx of the documented energy.
+ * Shared compute for all three styles, as native LAMMPS does (src/MANYBODY/pair_eam.cpp compute at b332f28; the loops
+ * are in eamKernel.ts): the densities rho_i summed over the HALF list (each pair adds to both atoms, the ghosts'
+ * sums added to their owners), F'(rho_i) and the embedding energy of the owned atoms, F' copied to the ghosts, then the
+ * forces over the half list, where every physical pair appears once, so the force-field virial sum x.f over owned and
+ * ghost atoms is the pairwise sum r_ij.F_ij (virialFdotr). The embedding part of the pair force,
+ * -F'_i(rho_i) rho'_{ij}(r)/r on atom i and -F'_j(rho_j) rho'_{ji}(r)/r on atom j, follows from dE/dx of the
+ * documented energy.
  */
 export abstract class PairEAMBase extends Pair {
   manybody = true;
-  // the full list serves only tables on different grids (computeGeneral, see init); the half list serves both
-  needsFull = true;
+  needsFull = false;
   needsHalf = true;
   virialFdotr = true;
 
@@ -408,17 +392,12 @@ export abstract class PairEAMBase extends Pair {
   protected rhoTab: (Spline | null)[] = [];
   protected gTab: (Spline | null)[] = [];
   protected fTab: Embed[] = [];
-  private rhoBuf = new Float64Array(0);
-  private fpBuf = new Float64Array(0);
+  /** The densities and F' of the last force evaluation, owned atoms first (fix pair reads them, as native's extract_peratom). */
+  private rhoBuf: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private fpBuf: Float64Array<ArrayBufferLike> = new Float64Array(0);
 
   override settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError(`usage: pair_style ${this.name} (no arguments)`);
-  }
-
-  /** The full list only for tables on different grids (computeGeneral): set after the tables are built. */
-  override init(ctx: StyleContext): void {
-    super.init(ctx);
-    this.needsFull = this.sharedGrid() === null;
   }
 
   override initStyle(ctx: StyleContext): void {
@@ -463,21 +442,11 @@ export abstract class PairEAMBase extends Pair {
   }
 
   /**
-   * The table grid every density and r*phi table shares (one file, or files on the same grid), or null. On a shared grid
-   * the compute evaluates the tables as native LAMMPS does (eamKernel.ts), the densities summed over the half list (both
-   * atoms of a pair, ghosts reverse-summed to their owners) as native does with newton on.
+   * compute() as native LAMMPS does (src/MANYBODY/pair_eam.cpp compute at b332f28), on the one grid of the style's tables
+   * (eamKernel.ts): the densities summed over the half list (both atoms of a pair, ghosts reverse-summed to their
+   * owners, as native does with newton on), the embedding step, then the forces.
    */
-  private sharedGrid(): { nr: number; rdr: number } | null {
-    return eamGrid(this.kernelTables());
-  }
-
   compute(pc: PairCompute): void {
-    if (this.sharedGrid()) this.computeShared(pc);
-    else this.computeGeneral(pc);
-  }
-
-  /** compute() on a shared table grid (sharedGrid), in native's order of operations: densities, embedding, forces. */
-  private computeShared(pc: PairCompute): void {
     const nall = pc.nall;
     if (this.rhoBuf.length !== nall) {
       this.rhoBuf = new Float64Array(nall);
@@ -489,12 +458,9 @@ export abstract class PairEAMBase extends Pair {
     this.forces(pc, this.fpBuf);
   }
 
-  /**
-   * Whether the style can run its two passes on the shared-memory threads (cpu/threadedPairs.ts TwoPassPair): its
-   * tables share one grid (sharedGrid).
-   */
+  /** The style can always run its two passes on the shared-memory threads (cpu/threadedPairs.ts TwoPassPair). */
   twoPassReady(): boolean {
-    return this.sharedGrid() !== null;
+    return true;
   }
 
   /** Native's first loop over the half-list rows [ilo, inum) (eamKernel.ts eamDensities). */
@@ -532,95 +498,14 @@ export abstract class PairEAMBase extends Pair {
     }
     pc.nb.forwardCopy(fp, 1);
     pc.acc.evdwl += evdwl;
+    // the arrays fix pair reads, also when the shared-memory threads ran the two loops (cpu/pairThreads.ts)
+    this.rhoBuf = rho;
+    this.fpBuf = fp;
   }
 
   /** Native's second loop over the half-list rows [ilo, inum) (eamKernel.ts eamForces). */
   forces(pc: PairCompute, fp: Float64Array): void {
     eamForces(this.kernelTables(), this.name, pc, fp);
-  }
-
-  /** compute() for tables on different grids (several funcfl files): each table evaluated on its own grid. */
-  private computeGeneral(pc: PairCompute): void {
-    const full = pc.full;
-    const half = pc.half;
-    if (!full || !half) throw new Error(`pair style ${this.name} needs full and half neighbor lists`);
-    const { x, f, type } = pc;
-    const nlocal = pc.nlocal;
-    const nall = pc.nall;
-    const nt = this.ntypes + 1;
-    const cutsq = this.cutsq;
-    if (this.rhoBuf.length !== nall) {
-      this.rhoBuf = new Float64Array(nall);
-      this.fpBuf = new Float64Array(nall);
-    }
-    const rho = this.rhoBuf;
-    const fp = this.fpBuf;
-    for (let i = 0; i < nlocal; i++) {
-      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-      const ti = type[i] * nt;
-      let s = 0;
-      const k0 = full.firstneigh[i], k1 = k0 + full.numneigh[i];
-      for (let k = k0; k < k1; k++) {
-        const j = full.neighbors[k] & NEIGHMASK;
-        const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
-        const rsq = dx * dx + dy * dy + dz * dz;
-        if (rsq >= cutsq[ti + type[j]]) continue;
-        s += (this.rhoTab[ti + type[j]] as Spline).eval(Math.sqrt(rsq));
-      }
-      rho[i] = s;
-    }
-    pc.nb.forwardCopy(rho, 1);
-    const eatom = pc.eatom;
-    let evdwl = 0;
-    for (let i = 0; i < nlocal; i++) {
-      const ft = this.fTab[type[i]];
-      fp[i] = ft.deriv(rho[i]);
-      const fe = ft.eval(rho[i]);
-      evdwl += fe;
-      if (eatom) eatom[i] += fe;
-    }
-    pc.nb.forwardCopy(fp, 1);
-    const vatom = pc.vatom;
-    for (let i = 0; i < nlocal; i++) {
-      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-      const tii = type[i];
-      const ti = tii * nt;
-      const fpi = fp[i];
-      let fxi = 0, fyi = 0, fzi = 0;
-      const k0 = half.firstneigh[i], k1 = k0 + half.numneigh[i];
-      for (let k = k0; k < k1; k++) {
-        const j = half.neighbors[k] & NEIGHMASK;
-        const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
-        const rsq = dx * dx + dy * dy + dz * dz;
-        const tj = type[j];
-        if (rsq >= cutsq[ti + tj]) continue;
-        const r = Math.sqrt(rsq);
-        const gt = this.gTab[ti + tj] as Spline;
-        const g = gt.eval(r);
-        const gp = gt.deriv(r);
-        // phi = g/r with g = r*phi(r): -phi'(r)/r = -g'/r^2 + g/r^3; the embedding
-        // terms -F'_i rho'_{ij}(r)/r and -F'_j rho'_{ji}(r)/r follow from dE/dx_i
-        const A = -gp / (r * r) + g / (r * r * r)
-          - (fpi * (this.rhoTab[ti + tj] as Spline).deriv(r)) / r
-          - (fp[j] * (this.rhoTab[tj * nt + tii] as Spline).deriv(r)) / r;
-        const fx = A * dx, fy = A * dy, fz = A * dz;
-        fxi += fx; fyi += fy; fzi += fz;
-        f[3 * j] -= fx; f[3 * j + 1] -= fy; f[3 * j + 2] -= fz;
-        const e = g / r;
-        evdwl += e;
-        if (eatom) { eatom[i] += 0.5 * e; eatom[j] += 0.5 * e; }
-        if (vatom) {
-          const h = 0.5 * A;
-          const v0 = h * dx * dx, v1 = h * dy * dy, v2 = h * dz * dz, v3 = h * dx * dy, v4 = h * dx * dz, v5 = h * dy * dz;
-          vatom[6 * i] += v0; vatom[6 * i + 1] += v1; vatom[6 * i + 2] += v2;
-          vatom[6 * i + 3] += v3; vatom[6 * i + 4] += v4; vatom[6 * i + 5] += v5;
-          vatom[6 * j] += v0; vatom[6 * j + 1] += v1; vatom[6 * j + 2] += v2;
-          vatom[6 * j + 3] += v3; vatom[6 * j + 4] += v4; vatom[6 * j + 5] += v5;
-        }
-      }
-      f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
-    }
-    pc.acc.evdwl += evdwl;
   }
 
   /** Pair term only (the embedding part depends on rho, not on r alone). */
@@ -664,6 +549,10 @@ const applyFileMass = (ctx: StyleContext, type: number, mass: number, name: stri
 export class PairEAM extends PairEAMBase {
   readonly name = 'eam';
   private files: (EAMFile | null)[] = [];
+  /** Each funcfl file's tables on the common grid (file2array), and the r*phi tables by file pair. */
+  private onGrid = new Map<EAMFile, { rho: Spline; F: Embed; z: Float64Array }>();
+  private z2r = new Map<string, Spline>();
+  private grid = { nr: 0, dr: 0 };
 
   override allocate(ntypes: number): void {
     super.allocate(ntypes);
@@ -694,31 +583,95 @@ export class PairEAM extends PairEAMBase {
     return file;
   }
 
+  override initStyle(ctx: StyleContext): void {
+    super.initStyle(ctx);
+    this.file2array();
+  }
+
+  /**
+   * The funcfl files on one grid, as native LAMMPS does (src/MANYBODY/pair_eam.cpp file2array_funcfl at b332f28): over
+   * the files some type uses, the largest dr and drho and the largest table ends (Nr - 1) dr and (Nrho - 1) drho; the
+   * grid has round(rmax / dr) points r = (m - 1) dr and round(rhomax / drho) points in rho, and each file's F, Z and rho
+   * at a grid point come from the cubic through four of its own points (fourPoint). The embedding energy is extended
+   * linearly past rhomax.
+   */
+  private file2array(): void {
+    const active = new Set<EAMFile>();
+    for (let t = 1; t <= this.ntypes; t++) if (this.files[t]) active.add(this.files[t]!);
+    let dr = 0, drho = 0, rmax = 0, rhomax = 0;
+    for (const f of active) {
+      dr = Math.max(dr, f.dr);
+      drho = Math.max(drho, f.drho);
+      rmax = Math.max(rmax, (f.nr - 1) * f.dr);
+      rhomax = Math.max(rhomax, (f.nrho - 1) * f.drho);
+    }
+    const nr = Math.round(rmax / dr), nrho = Math.round(rhomax / drho);
+    this.grid = { nr, dr };
+    this.onGrid.clear();
+    this.z2r.clear();
+    for (const f of active) {
+      const frho = new Float64Array(nrho), rhor = new Float64Array(nr), z = new Float64Array(nr);
+      for (let m = 1; m <= nrho; m++) frho[m - 1] = fourPoint(f.frho!, f.nrho, f.drho, (m - 1) * drho);
+      for (let m = 1; m <= nr; m++) {
+        rhor[m - 1] = fourPoint(f.rhor!, f.nr, f.dr, (m - 1) * dr);
+        z[m - 1] = fourPoint(f.z!, f.nr, f.dr, (m - 1) * dr);
+      }
+      this.onGrid.set(f, { rho: new Spline(rhor, dr), F: Embed.of(frho, drho, rhomax), z });
+    }
+  }
+
+  /**
+   * r*phi of two funcfl files: 27.2 * 0.529 * Z_A(r) * Z_B(r) on the common grid, A the file read later (native's
+   * lower-triangular z2r arrays).
+   */
+  private pairTable(fa: EAMFile, fb: EAMFile): Spline {
+    const order = [...this.fileCache.values()];
+    const [row, col] = order.indexOf(fa) >= order.indexOf(fb) ? [fa, fb] : [fb, fa];
+    const key = `${row.name}\u0000${col.name}`;
+    let sp = this.z2r.get(key);
+    if (!sp) {
+      const zi = this.onGrid.get(row)!.z, zj = this.onGrid.get(col)!.z;
+      const y = new Float64Array(this.grid.nr);
+      for (let m = 0; m < y.length; m++) y[m] = HARTREE_EV * BOHR_ANG * zi[m] * zj[m];
+      sp = new Spline(y, this.grid.dr);
+      this.z2r.set(key, sp);
+    }
+    return sp;
+  }
+
+  /** One cutoff for every type pair (native init_one): the largest of the funcfl files read. */
   override initOne(i: number, j: number): number {
     const fi = this.files[i];
     const fj = this.files[j];
     if (!fi || !fj) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);
-    if (i === j) {
-      this.setPair(i, j, fi.rho![0], fi.rho![0], this.chargeProduct(fi, fi), fi.F[0], fi.F[0]);
-      return fi.cutoff;
-    }
-    if (fi.nr !== fj.nr || fi.dr !== fj.dr) {
-      throw new StyleError(`funcfl files ${fi.name} and ${fj.name} do not share the same Nr and dr; cannot mix them`);
-    }
-    this.setPair(i, j, fj.rho![0], fi.rho![0], this.chargeProduct(fi, fj), fi.F[0], fj.F[0]);
-    return 0.5 * (fi.cutoff + fj.cutoff);
-  }
-
-  /** g(r) = r*phi(r) from the effective charges, exact at the table points. */
-  private chargeProduct(fi: EAMFile, fj: EAMFile): Spline {
-    const zA = fi.z as Float64Array;
-    const zB = fj.z as Float64Array;
-    const n = fi.nr;
-    const y = new Float64Array(n);
-    for (let k = 0; k < n; k++) y[k] = HARTREE_EV * BOHR_ANG * zA[k] * zB[k];
-    return new Spline(y, fi.dr);
+    const ti = this.onGrid.get(fi)!, tj = this.onGrid.get(fj)!;
+    this.setPair(i, j, tj.rho, ti.rho, this.pairTable(fi, fj), ti.F, tj.F);
+    let cutmax = 0;
+    for (const f of this.fileCache.values()) cutmax = Math.max(cutmax, f.cutoff);
+    return cutmax;
   }
 }
+
+/**
+ * A funcfl table at x: the cubic through the file's points k - 1 .. k + 2 (1-based, the point below x with k clamped to
+ * [2, n - 2], the offset from k clamped to 2), as native LAMMPS interpolates a funcfl file onto the common grid
+ * (src/MANYBODY/pair_eam.cpp file2array_funcfl at b332f28). On a file's own grid points it returns the file's values.
+ */
+const SIXTH = 1.0 / 6.0;
+const fourPoint = (y: Float64Array, n: number, d: number, x: number): number => {
+  let p = x / d + 1.0;
+  let k = Math.trunc(p);
+  k = Math.min(k, n - 2);
+  k = Math.max(k, 2);
+  p -= k;
+  p = Math.min(p, 2.0);
+  const c1 = -SIXTH * p * (p - 1.0) * (p - 2.0);
+  const c2 = 0.5 * (p * p - 1.0) * (p - 2.0);
+  const c3 = -0.5 * p * (p + 1.0) * (p - 2.0);
+  const c4 = SIXTH * p * (p * p - 1.0);
+  // y holds points 1 .. n at 0 .. n - 1
+  return c1 * y[k - 2] + c2 * y[k - 1] + c3 * y[k] + c4 * y[k + 1];
+};
 
 /**
  * pair_style eam/alloy — one DYNAMO setfl file, elements mapped to LAMMPS

@@ -1,0 +1,16 @@
+# data file of the fitpod_ta4 oracle case: every fourth configuration for the fit, a third of them for the test set
+file_format extxyz
+file_extension xyz
+path_to_training_data_set "XYZ"
+path_to_test_data_set "XYZ"
+fitting_weight_energy 50.0
+fitting_weight_force 2.0
+fitting_regularization_parameter 1e-10
+fraction_training_data_set 0.25
+randomize_training_data_set 0
+fraction_test_data_set 0.33
+randomize_test_data_set 0
+error_analysis_for_training_data_set 1
+error_analysis_for_test_data_set 1
+basename_for_output_files Ta4
+precision_for_pod_coefficients 7

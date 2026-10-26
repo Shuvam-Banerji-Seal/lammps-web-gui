@@ -96,9 +96,9 @@ export const isImageDataUrl = (text: string): boolean => /^data:image\/[\w.+-]+;
 
 /** Download an engine file: data URLs as their binary content, everything else as text. */
 export const downloadFile = (filename: string, content: string): void => {
-  // A .gz, .dcd or .xtc file from the engine is a string with one character per byte (gzip.ts, dump dcd and xtc); save
-  // its bytes, not UTF-8 text.
-  if (/\.(gz|dcd|xtc)$/.test(filename)) {
+  // A .gz, .dcd, .xtc or .bin file from the engine is a string with one character per byte (gzip.ts, dump dcd and xtc,
+  // fitpod's descriptor files); save its bytes, not UTF-8 text.
+  if (/\.(gz|dcd|xtc|bin)$/.test(filename)) {
     const bytes = new Uint8Array(content.length);
     for (let k = 0; k < content.length; k++) bytes[k] = content.charCodeAt(k) & 0xff;
     const url = URL.createObjectURL(new Blob([bytes], { type: filename.endsWith('.gz') ? 'application/gzip' : 'application/octet-stream' }));

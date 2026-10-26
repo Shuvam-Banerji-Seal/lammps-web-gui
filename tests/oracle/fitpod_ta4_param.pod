@@ -1,0 +1,12 @@
+# POD parameters for the fitpod_ta4 oracle case: the Ta example's settings with four-body terms
+species Ta
+pbc 1 1 1
+rin 1.0
+rcut 5.0
+bessel_polynomial_degree 3
+inverse_polynomial_degree 6
+twobody_number_radial_basis_functions 6
+threebody_number_radial_basis_functions 5
+threebody_angular_degree 4
+fourbody_number_radial_basis_functions 3
+fourbody_angular_degree 2

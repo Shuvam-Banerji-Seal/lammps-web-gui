@@ -8,8 +8,9 @@
  * Copyright (2003) Sandia Corporation (GNU General Public License).
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
- * Evaluation only (pair_style pod). Not ported: fitting (fitpod), the 5-, 6- and 7-body terms, the
- * environment-adaptive model (number_of_environment_clusters > 1) and onebody 0; each is a StyleError.
+ * Evaluation (pair_style pod and the POD computes); the fitpod command builds on it (fitpod_eapod.ts). Not ported: the 5-,
+ * 6- and 7-body terms, the environment-adaptive model (number_of_environment_clusters > 1) and onebody 0; each is a
+ * StyleError.
  */
 import { StyleError } from '../../engine/force/types';
 import { POLY3, POLY4, NS4 } from './tables';
@@ -31,6 +32,8 @@ export interface PODParams {
   rin: number;
   rcut: number;
   nClusters: number;
+  /** pbc keyword: periodic boundary flags in x, y, z (read_pod_file default 1 1 1); used by fitpod. */
+  pbc: [number, number, number];
   nComponents: number;
   besseldegree: number;
   inversedegree: number;
@@ -74,7 +77,7 @@ export const POD_OPENER = (name: string): string => `Cannot open POD coefficient
 
 export const parsePODParams = (text: string): PODParams => {
   const p: PODParams = {
-    species: [], rin: 0.5, rcut: 5.0, nClusters: 1, nComponents: 1, besseldegree: 4, inversedegree: 8, onebody: 1,
+    species: [], pbc: [1, 1, 1], rin: 0.5, rcut: 5.0, nClusters: 1, nComponents: 1, besseldegree: 4, inversedegree: 8, onebody: 1,
     nrbf2: 8, nrbf3: 6, P3: 4, nrbf4: 4, P4: 3, nrbf33: 0, P33: 0, nrbf34: 0, P34: 0, nrbf44: 0, P44: 0,
   };
   for (const line of text.split(/\r?\n/)) {
@@ -87,6 +90,7 @@ export const parsePODParams = (text: string): PODParams => {
     }
     if (key === 'pbc') {
       if (w.length !== 4) throw new StyleError('Improper POD file (pbc needs three values)');
+      p.pbc = [intArg(w[1], key), intArg(w[2], key), intArg(w[3], key)];
       continue;
     }
     if (w.length !== 2) throw new StyleError(`Improper POD file: keyword '${key}' needs one value`);
@@ -202,7 +206,7 @@ const powint = (x: number, n: number): number => {
 };
 
 /** Per-call scratch arrays, grown to the largest neighbour count seen. */
-interface Scratch {
+export interface Scratch {
   n: number;
   rbft: Float64Array; rbfxt: Float64Array; rbfyt: Float64Array; rbfzt: Float64Array;
   rbf: Float64Array; rbfx: Float64Array; rbfy: Float64Array; rbfz: Float64Array;
@@ -236,16 +240,16 @@ export class PODModel {
   /** Projection of the radial basis onto the eigenvectors of the snapshot matrix (ns x ns, column-major). */
   readonly Phi: Float64Array;
   /** pn3: first monomial index of each angular degree; pq3: parent index and direction; pc3: monomial coefficient. */
-  private readonly pn3: Int32Array;
-  private readonly pq3: Int32Array;
-  private readonly pc3: Float64Array;
+  protected readonly pn3: Int32Array;
+  protected readonly pq3: Int32Array;
+  protected readonly pc3: Float64Array;
   /** pa4: first term of each four-body angular function; pb4: three monomial indices per term; pc4: coefficient. */
-  private readonly pa4: Int32Array;
-  private readonly pb4: Int32Array;
-  private readonly pc4: Int32Array;
-  private readonly elemindex: Int32Array;
+  protected readonly pa4: Int32Array;
+  protected readonly pb4: Int32Array;
+  protected readonly pc4: Int32Array;
+  protected readonly elemindex: Int32Array;
   private scratchData: Scratch | null = null;
-  private readonly sumU: Float64Array;
+  protected readonly sumU: Float64Array;
   private readonly forcecoeff: Float64Array;
   private readonly bd: Float64Array;
   private readonly tm: Float64Array;
@@ -322,10 +326,15 @@ export class PODModel {
     this.nCoeffPerElement = nl1 + this.Mdesc;
     this.nCoeffAll = this.nCoeffPerElement * Ne;
 
-    if (coeffFile.coeff.length !== this.nCoeffAll) {
-      throw new StyleError('number of coefficients in the coefficient file is not correct');
+    // fitpod without a coefficient file: the coefficients come from the fit (EAPOD::mknewcoeff); zeros until then
+    if (coeffFile.coeff.length === 0 && coeffFile.proj.length === 0 && coeffFile.centroids.length === 0) {
+      this.coeff = new Float64Array(this.nCoeffAll);
+    } else {
+      if (coeffFile.coeff.length !== this.nCoeffAll) {
+        throw new StyleError('number of coefficients in the coefficient file is not correct');
+      }
+      this.coeff = coeffFile.coeff;
     }
-    this.coeff = coeffFile.coeff;
 
     this.Phi = this.eigenBasis();
 
@@ -430,13 +439,13 @@ export class PODModel {
     };
   }
 
-  private scratch(n: number): Scratch {
+  protected scratch(n: number): Scratch {
     if (!this.scratchData || this.scratchData.n < n) this.scratchData = this.makeScratch(Math.max(n, 16));
     return this.scratchData;
   }
 
   /** Radial basis functions and their derivatives with respect to r_ij (eapod.cpp radialbasis). */
-  private radialbasis(s: Scratch, rij: Float64Array, nj: number): void {
+  protected radialbasis(s: Scratch, rij: Float64Array, nj: number): void {
     const rmax = this.rcut - this.rin;
     const bd = this.besseldegree, id = this.inversedegree;
     for (let n = 0; n < nj; n++) {
@@ -490,7 +499,7 @@ export class PODModel {
   }
 
   /** Projects the radial basis onto Phi: rbf = rbft Phi (first nrbfmax columns). */
-  private projectRadial(s: Scratch, nj: number): void {
+  protected projectRadial(s: Scratch, nj: number): void {
     const ns = this.ns, Phi = this.Phi;
     for (let m = 0; m < this.nrbfmax; m++) {
       for (let n = 0; n < nj; n++) {
@@ -513,7 +522,7 @@ export class PODModel {
   }
 
   /** Angular basis functions of the unit vectors and their derivatives (eapod.cpp angularbasis). */
-  private angularbasis(s: Scratch, rij: Float64Array, nj: number): void {
+  protected angularbasis(s: Scratch, rij: Float64Array, nj: number): void {
     const K = this.K3;
     const pq = this.pq3, tm = this.tm;
     const tmu = new Float64Array(K), tmv = new Float64Array(K), tmw = new Float64Array(K);
@@ -567,7 +576,7 @@ export class PODModel {
    * (ux, uy, uz) (eapod.cpp radialangularbasis). Layout: index n + nj*k + nj*K*m for the derivatives,
    * tn + Ne*k + Ne*K*m for sumU.
    */
-  private radialangularbasis(s: Scratch, tj: Int32Array, nj: number): void {
+  protected radialangularbasis(s: Scratch, tj: Int32Array, nj: number): void {
     const K = this.K3, M = this.nrbf3, Ne = this.nelements;
     const sumU = this.sumU;
     sumU.fill(0);
@@ -590,7 +599,7 @@ export class PODModel {
   }
 
   /** Three-body descriptors (eapod.cpp threebodydesc): d3[p + nabf3*m + nabf3*nrbf3*pair]. */
-  private threebodydesc(d3: Float64Array, off: number): void {
+  protected threebodydesc(d3: Float64Array, off: number): void {
     const Ne = this.nelements, K = this.K3, M = this.nrbf3, nabf = this.nabf3;
     const sumU = this.sumU;
     const pn = this.pn3, pc = this.pc3;
@@ -612,7 +621,7 @@ export class PODModel {
   }
 
   /** Four-body descriptors (eapod.cpp fourbodydesc): d4[p + nabf4*m + nabf4*nrbf4*triple]. */
-  private fourbodydesc(d4: Float64Array, off: number): void {
+  protected fourbodydesc(d4: Float64Array, off: number): void {
     const Ne = this.nelements, K = this.K3, M = this.nrbf4, nabf = this.nabf4, Q4 = this.Q4;
     const sumU = this.sumU;
     for (let m = 0; m < M; m++) {

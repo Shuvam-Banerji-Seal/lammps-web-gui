@@ -1,0 +1,14 @@
+# oracle: fitpod of the LAMMPS Ta example (examples/PACKAGES/pod/Ta: 363 configurations in 12 extended XYZ files, linear POD with two- and three-body terms)
+# oracle-examples: PACKAGES/pod/Ta/Ta_param.pod PACKAGES/pod/Ta/Ta_data.pod PACKAGES/pod/Ta/XYZ/
+# oracle-files: Ta_coefficients.pod Ta_training_errors.pod Ta_training_analysis.pod
+# Native links OpenBLAS for the least-squares system and its Cholesky solve; the engine sums in the reference BLAS
+# order. The fit is ill-conditioned (regularization 1e-12), so the coefficients, written with 5 decimals, may differ in
+# the last one or two of them (native's own shipped Ta_coefficients.pod differs from a local native run the same way).
+# Measured with native LAMMPS: coefficients within 2e-5, the error table identical, the analysis within 6e-7.
+# oracle-compare: thermo=all atoms=all filerel=1e-6 fileabs=4e-5
+fitpod Ta_param.pod Ta_data.pod
+units metal
+region b block 0 1 0 1 0 1
+create_box 1 b
+create_atoms 1 single 0.5 0.5 0.5
+mass 1 180.95

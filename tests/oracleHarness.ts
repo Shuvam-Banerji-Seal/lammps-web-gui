@@ -15,11 +15,11 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  *   # oracle-inputs: files the input reads (data, potentials), next to the .in file
  *   # oracle-potentials: unmodified LAMMPS potential files from third_party/lammps/potentials
  *   # oracle-examples: unmodified files of the LAMMPS examples tree (third_party/lammps/examples/<dir>/<file>), added
- *     under their base name
+ *     under their base name; a directory (<dir>/<sub>/, ending in "/") is added with its files under <sub>/
  *   # oracle-files: files it writes that are compared token by token (dump dcd and xtc files byte by byte)
  *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2 atomskip=c1,c2 printed=N
- *                     atomrel=R filerel=R (optional: the per-atom and written-file tolerances, relative, default
- *                     100*max(rel,1e-9) and 1e-6). printed=N (NEB tables only): the engine's table values are rounded
+ *                     atomrel=R filerel=R fileabs=A (optional: the per-atom and written-file tolerances, relative,
+ *                     default 100*max(rel,1e-9) and 1e-6, and the written files' absolute one, default 1e-12). printed=N (NEB tables only): the engine's table values are rounded
  *                     to N significant digits before the comparison, as the native table prints them (%12.8g: N=8)
  *   # oracle-partitions: N   the case runs on N replicas (partitions). A NEB case's fixture holds the NEB table
  *                            rows and the "Climbing replica" lines, compared with the same rel/abs. Any other
@@ -69,7 +69,7 @@ const directive = (text: string, key: string): string[] => {
 };
 
 const options = (text: string) => {
-  const o: { thermo: string; atoms: string; rel: number; abs: number; atomrel?: number; filerel?: number; printed?: number; skip: Set<string>; atomskip: Set<string>; atomparts?: Set<number> } = {
+  const o: { thermo: string; atoms: string; rel: number; abs: number; atomrel?: number; filerel?: number; fileabs?: number; printed?: number; skip: Set<string>; atomskip: Set<string>; atomparts?: Set<number> } = {
     thermo: 'all', atoms: 'all', rel: 1e-8, abs: 1e-10, skip: new Set<string>(), atomskip: new Set<string>(),
   };
   for (const w of directive(text, 'oracle-compare')) {
@@ -80,6 +80,7 @@ const options = (text: string) => {
     else if (k === 'abs') o.abs = Number(v);
     else if (k === 'atomrel') o.atomrel = Number(v);
     else if (k === 'filerel') o.filerel = Number(v);
+    else if (k === 'fileabs') o.fileabs = Number(v);
     else if (k === 'printed') o.printed = Number(v);
     else if (k === 'skip') for (const s of v.split(',')) o.skip.add(s);
     else if (k === 'atomskip') for (const s of v.split(',')) o.atomskip.add(s);
@@ -89,7 +90,7 @@ const options = (text: string) => {
 };
 
 /** The files a case lists in "# oracle-files:", compared token by token with the native ones (binary files byte by byte). */
-const compareWrittenFiles = (name: string, want: Record<string, string>, files: Map<string, string>, filerel: number): void => {
+const compareWrittenFiles = (name: string, want: Record<string, string>, files: Map<string, string>, filerel: number, fileabs = 1e-12): void => {
   for (const [f, ref] of Object.entries(want)) {
     const mine = files.get(f);
     expect(mine, `file ${f}`).toBeDefined();
@@ -102,7 +103,7 @@ const compareWrittenFiles = (name: string, want: Record<string, string>, files: 
     // potential files written by the engine) is the day of the run, so it is not compared
     const strip = (t: string) => (f.endsWith('.data') ? t.split('\n').slice(1).join('\n') : t)
       .replace(/\bDATE: \d{4}-\d{2}-\d{2}\b/g, 'DATE: <date>');
-    const diff = sameText(strip(mine!), strip(ref), filerel);
+    const diff = sameText(strip(mine!), strip(ref), filerel, fileabs);
     if (diff) throw new Error(`${name}: file ${f} differs at ${diff}`);
   }
 };
@@ -126,7 +127,7 @@ const close = (a: number, b: number, rel: number, abs: number) =>
   (Number.isNaN(a) && Number.isNaN(b)) || Math.abs(a - b) <= abs + rel * Math.max(Math.abs(a), Math.abs(b));
 
 /** Token-wise comparison of two text files: numbers within tolerance, words equal. */
-const sameText = (a: string, b: string, rel: number): string | null => {
+const sameText = (a: string, b: string, rel: number, abs = 1e-12): string | null => {
   const la = a.trim().split('\n'), lb = b.trim().split('\n');
   if (la.length !== lb.length) return `line count ${la.length} vs ${lb.length}`;
   for (let i = 0; i < la.length; i++) {
@@ -136,7 +137,7 @@ const sameText = (a: string, b: string, rel: number): string | null => {
     for (let k = 0; k < ta.length; k++) {
       const x = Number(ta[k]), y = Number(tb[k]);
       if (Number.isFinite(x) && Number.isFinite(y)) {
-        if (!close(x, y, rel, 1e-12)) return `line ${i + 1} token ${k + 1}: ${ta[k]} vs ${tb[k]}`;
+        if (!close(x, y, rel, abs)) return `line ${i + 1} token ${k + 1}: ${ta[k]} vs ${tb[k]}`;
       } else if (ta[k] !== tb[k]) return `line ${i + 1} token ${k + 1}: '${ta[k]}' vs '${tb[k]}'`;
     }
   }
@@ -197,7 +198,13 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
       // as the app reads uploads (fileStore.ts readInputText): UTF-8 text, else the bytes as latin1 (a binary restart file)
       for (const f of directive(text, 'oracle-inputs')) session.addFile(f, readInputBytes(join(CASES, f), f.endsWith('.gz')));
       for (const f of directive(text, 'oracle-potentials')) session.addFile(f, readFileSync(join(POTENTIALS, f), 'utf8'));
-      for (const f of directive(text, 'oracle-examples')) session.addFile(f.split('/').pop()!, readInputBytes(join(EXAMPLES, f), f.endsWith('.gz')));
+      for (const f of directive(text, 'oracle-examples')) {
+        // a directory (a name ending in "/") is copied with its files under its own name
+        if (f.endsWith('/')) {
+          const dir = f.slice(0, -1).split('/').pop()!;
+          for (const g of readdirSync(join(EXAMPLES, f)).sort()) session.addFile(`${dir}/${g}`, readInputBytes(join(EXAMPLES, f, g), g.endsWith('.gz')));
+        } else session.addFile(f.split('/').pop()!, readInputBytes(join(EXAMPLES, f), f.endsWith('.gz')));
+      }
       try {
         // as scripts/oracle/run-oracle.mjs: a partitioned non-NEB case writes one final dump per partition (oracle_p
         // is a world-style variable, 0..N-1); a NEB case writes none
@@ -263,7 +270,7 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
         }
         const table = fx.table ?? fx.tempering;
         if (table !== undefined) expect(tableRows(events), 'table rows').toEqual(table);
-        compareWrittenFiles(name, fx.files, files, o.filerel ?? 1e-6);
+        compareWrittenFiles(name, fx.files, files, o.filerel ?? 1e-6, o.fileabs);
         return;
       }
       if (partitions > 1) {
@@ -346,7 +353,7 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
         if (worst > atomTol) throw new Error(`${name}: per-atom mismatch ${worst.toExponential(2)} (${where})`);
         if (process.env.ORACLE_MEASURE) console.log(`MEASURE ${name} atoms ${worst.toExponential(1)}`);
       }
-      compareWrittenFiles(name, fx.files, files, o.filerel ?? 1e-6);
+      compareWrittenFiles(name, fx.files, files, o.filerel ?? 1e-6, o.fileabs);
     }, 120_000);
   }
 });

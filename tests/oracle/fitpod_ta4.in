@@ -1,0 +1,13 @@
+# oracle: fitpod with four-body POD terms on a deterministic selection of the Ta example's configurations (fractions 0.25 and 0.33, randomize 0), with test-set analysis
+# oracle-inputs: fitpod_ta4_param.pod fitpod_ta4_data.pod
+# oracle-examples: PACKAGES/pod/Ta/XYZ/
+# oracle-files: Ta4_coefficients.pod Ta4_training_errors.pod Ta4_training_analysis.pod Ta4_test_errors.pod Ta4_test_analysis.pod
+# Measured with native LAMMPS: coefficients (7 decimals) within 3.8e-5 (2.8e-7 relative, an ill-conditioned fit summed in
+# another order than OpenBLAS), the error tables within 1e-6, the analysis files within 1.4e-6 (energies near -1100).
+# oracle-compare: thermo=all atoms=all filerel=1e-6 fileabs=2e-4
+fitpod fitpod_ta4_param.pod fitpod_ta4_data.pod
+units metal
+region b block 0 1 0 1 0 1
+create_box 1 b
+create_atoms 1 single 0.5 0.5 0.5
+mass 1 180.95

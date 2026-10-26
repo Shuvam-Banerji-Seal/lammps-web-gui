@@ -14,7 +14,8 @@
  * A case may list data/potential files it reads in "# oracle-inputs: a b";
  * they are looked up next to the .in file. "# oracle-potentials: a b" lists
  * unmodified LAMMPS potential files from third_party/lammps/potentials; "# oracle-examples: dir/a" lists
- * unmodified files of the LAMMPS examples tree in third_party/lammps/examples (copied under their base name).
+ * unmodified files of the LAMMPS examples tree in third_party/lammps/examples (copied under their base name; a
+ * directory "dir/sub/" is copied with its files under sub/).
  * The header oracle-partitions: N runs the case on N partitions (replicas) with
  * mpirun -np N lmp -partition Nx1. Two kinds:
  *  - a NEB case (its universe log has the header line starting with Step MaxReplicaForce or MaxReplicaTorque): the fixture holds the
@@ -28,7 +29,7 @@
  *    array holds {thermo, atoms} for K = 0..N-1.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync, copyFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -189,7 +190,14 @@ for (const name of cases) {
   const dir = mkdtempSync(join(tmpdir(), `oracle-${name}-`));
   for (const f of header(text, 'oracle-inputs')) copyFileSync(join(CASES, f), join(dir, f));
   for (const f of header(text, 'oracle-potentials')) copyFileSync(join(POTENTIALS, f), join(dir, f));
-  for (const f of header(text, 'oracle-examples')) copyFileSync(join(EXAMPLES, f), join(dir, basename(f)));
+  for (const f of header(text, 'oracle-examples')) {
+    // a directory (a name ending in "/") is copied with its files under its own name
+    if (f.endsWith('/')) {
+      const sub = join(dir, basename(f.slice(0, -1)));
+      mkdirSync(sub, { recursive: true });
+      for (const g of readdirSync(join(EXAMPLES, f))) copyFileSync(join(EXAMPLES, f, g), join(sub, g));
+    } else copyFileSync(join(EXAMPLES, f), join(dir, basename(f)));
+  }
   const partitions = Number(header(text, 'oracle-partitions')[0] ?? 1);
   // a NEB case (its input runs the neb command) gets no dump: every replica would write it
   const isNeb = /^\s*neb(\/spin)?\s/m.test(text);

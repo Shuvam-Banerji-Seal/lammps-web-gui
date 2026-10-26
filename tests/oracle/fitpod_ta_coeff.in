@@ -1,0 +1,10 @@
+# oracle: fitpod with a coefficient file (the Ta example's Ta_coeff.pod): no fit, the error analysis of the training set with those coefficients
+# oracle-examples: PACKAGES/pod/Ta/Ta_param.pod PACKAGES/pod/Ta/Ta_data.pod PACKAGES/pod/Ta/Ta_coeff.pod PACKAGES/pod/Ta/XYZ/
+# oracle-files: Ta_training_errors.pod Ta_training_analysis.pod
+# oracle-compare: thermo=all atoms=all filerel=1e-8 fileabs=1e-7
+fitpod Ta_param.pod Ta_data.pod Ta_coeff.pod
+units metal
+region b block 0 1 0 1 0 1
+create_box 1 b
+create_atoms 1 single 0.5 0.5 0.5
+mass 1 180.95

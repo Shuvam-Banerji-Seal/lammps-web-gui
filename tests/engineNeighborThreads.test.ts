@@ -72,6 +72,8 @@ const SYSTEMS: Record<string, string> = {
   'two types, orthogonal box': 'units lj\natom_style atomic\nlattice fcc 0.8442\nregion box block 0 6 0 6 0 6\ncreate_box 2 box\ncreate_atoms 1 box\nset type 1 type/fraction 2 0.3 7\nmass * 1.0\nvelocity all create 3.0 87287 loop geom\npair_style lj/cut 2.5\npair_coeff * * 1.0 1.0\npair_coeff 1 2 1.0 1.0 2.8\n',
   'triclinic box': 'units lj\natom_style atomic\nlattice fcc 0.8442\nregion box prism 0 6 0 6 0 6 1.3 0.6 -0.9\ncreate_box 1 box\ncreate_atoms 1 box\nmass 1 1.0\nvelocity all create 3.0 87287 loop geom\npair_style lj/cut 2.5\npair_coeff 1 1 1.0 1.0 2.5\n',
   'shrink-wrapped box, a type pair without interaction': 'units lj\natom_style atomic\nboundary p s p\nlattice fcc 0.8442\nregion box block 0 6 0 6 0 6\ncreate_box 2 box\ncreate_atoms 1 box\nset type 1 type/fraction 2 0.5 7\nmass * 1.0\nvelocity all create 3.0 87287 loop geom\npair_style lj/cut 2.5\npair_coeff * * 1.0 1.0\npair_coeff 1 2 1.0 1.0 0.0\n',
+  // neighbor nsq: the half list keeps a pair through an image by the parity of the atom IDs (neighborKernel.ts keepGhostPair)
+  'neighbor nsq': 'units lj\natom_style atomic\nlattice fcc 0.8442\nregion box block 0 6 0 6 0 6\ncreate_box 1 box\ncreate_atoms 1 box\nmass 1 1.0\nvelocity all create 3.0 87287 loop geom\npair_style lj/cut 2.5\npair_coeff 1 1 1.0 1.0 2.5\nneighbor 0.3 nsq\n',
   '2d': 'units lj\ndimension 2\natom_style atomic\nlattice sq2 0.8442\nregion box block 0 20 0 20 -0.5 0.5\ncreate_box 1 box\ncreate_atoms 1 box\nmass 1 1.0\nvelocity all create 3.0 87287 loop geom\npair_style lj/cut 2.5\npair_coeff 1 1 1.0 1.0 2.5\nfix 2 all enforce2d\n',
   // special bonds (cpu/neighborKernel.ts halfBinsPairsSpecial): weighted pairs, dropped pairs, and pairs kept for kspace
   'special bonds, weights 0 0.5 0.8': `${CHAINS}special_bonds lj 0.0 0.5 0.8\n`,
@@ -86,7 +88,7 @@ const build = async (text: string, threads: number): Promise<{ sums: number[]; n
   const s = new Session({ emit: () => {}, writeFile: () => {} }, backend);
   s.addFile('mol_chains.data', CHAIN_DATA);
   s.addFile('mol_chains_full.data', CHAIN_DATA_FULL);
-  await s.execute(`${text}neighbor 0.3 bin\nfix 1 all nve\nthermo_style custom step pe press\nthermo 10\nrun 30\n`);
+  await s.execute(`${text}${text.includes('neighbor ') ? '' : 'neighbor 0.3 bin\n'}fix 1 all nve\nthermo_style custom step pe press\nthermo 10\nrun 30\n`);
   const nb = (s as unknown as { sys: { nb: { half: NeighList | null; full: NeighList | null } } }).sys.nb;
   return { sums: [checksum(nb.half), checksum(nb.full)], neighs: workers.reduce((a, w) => a + w.neighs, 0) };
 };

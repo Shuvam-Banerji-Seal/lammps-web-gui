@@ -2,7 +2,7 @@ import type { SimState } from './types';
 import type { Geometry } from './domain';
 import { nativeOrder, type SpecialList } from './atoms';
 import { StyleError, type BondedCopies } from './force/types';
-import { binBound, halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, type NeighborThreads, type SpecialBins } from './cpu/neighborKernel';
+import { binBound, halfBinsPairs, halfBinsPairsSpecial, keepGhostPair, type HalfBins, type ListSegment, type NeighborThreads, type SpecialBins } from './cpu/neighborKernel';
 import { gplHook } from './gplHooks';
 
 /*
@@ -440,6 +440,12 @@ export class Neighbor {
   private sGhostOwner = new Int32Array(0);
   private sGhostImage = new Int32Array(0);
 
+  /**
+   * The owned atoms' lamda after the wrap of the reneighboring (System.pbc in a triclinic box), for the next ghost build
+   * only; null otherwise (the ghosts are then placed in Cartesian coordinates, as forwardComm does).
+   */
+  freshLamda: Float64Array | null = null;
+
   /** Ghost atoms: every periodic image within cutghost of the box. */
   private makeGhosts(s: SimState, g: Geometry): void {
     const n = s.n;
@@ -467,10 +473,12 @@ export class Neighbor {
     const lam = [0, 0, 0];
     const gstart = new Int32Array(n + 1);
     const border = this.borderBit;
+    const fresh = g.triclinic && this.freshLamda !== null && this.freshLamda.length === 3 * n ? this.freshLamda : null;
+    this.freshLamda = null;
     for (let i = 0; i < n; i++) {
       gstart[i] = n + ng;
       if (border !== 0 && (s.mask[i] & border) === 0) continue;
-      g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
+      if (fresh) { lam[0] = fresh[3 * i]; lam[1] = fresh[3 * i + 1]; lam[2] = fresh[3 * i + 2]; } else g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
       const lo = [0, 0, 0], hi = [0, 0, 0];
       for (let d = 0; d < 3; d++) {
         if (ext[d] < 0) continue;
@@ -517,6 +525,20 @@ export class Neighbor {
       this.qall[k] = s.q[o];
     }
     this.forwardComm(s, g);
+    if (fresh) {
+      // As native LAMMPS does (src/comm_brick.cpp borders and src/domain.cpp lamda2x at b332f28): in a triclinic box the
+      // borders are exchanged in lamda, each ghost at its owner's lamda plus the image shift, and lamda2x then gives
+      // x = h lamda + lo; forward_comm adds the Cartesian edge vectors only between reneighborings
+      const xa = this.xall, im = this.gimage, o = this.owner;
+      const { lx, ly, lz, xy, xz, yz } = g;
+      for (let k = n; k < nall; k++) {
+        const i = o[k];
+        const l0 = fresh[3 * i] + im[3 * k], l1 = fresh[3 * i + 1] + im[3 * k + 1], l2 = fresh[3 * i + 2] + im[3 * k + 2];
+        xa[3 * k] = lx * l0 + xy * l1 + xz * l2 + g.lo[0];
+        xa[3 * k + 1] = ly * l1 + yz * l2 + g.lo[1];
+        xa[3 * k + 2] = lz * l2 + g.lo[2];
+      }
+    }
   }
 
   /**
@@ -692,6 +714,10 @@ export class Neighbor {
     return bound;
   }
 
+  /** The atom IDs of the owned and the ghost atoms in bin order (neighborKernel.ts HalfBins ltag, gtag). */
+  private sTagL = new Int32Array(0);
+  private sTagG = new Int32Array(0);
+
   /** Shared-memory threads for the pair search of the common half list (set by the session with the pair threads). */
   listThreads: NeighborThreads | null = null;
 
@@ -808,6 +834,14 @@ export class Neighbor {
       }
     }
 
+    // which copy of a pair through a periodic image the half list keeps (keepGhostPair): as native LAMMPS does
+    // (src/npair_bin.cpp and src/npair_nsq.cpp at b332f28), by the atom IDs in a triclinic box and for neighbor nsq when
+    // newton is on, an atom and its own image within delta = 0.01 Angstrom compared coordinate by coordinate (triclinic)
+    const rule = fullList || needs.newton === false ? 0 : s.box.triclinic ? 1 : this.nsqStyle ? 2 : 0;
+    const delta = 0.01 * (ANGSTROM_UNITS[s.units.style] ?? 1);
+    const keepPair = (i: number, j: number, ox: number, oy: number, oz: number): boolean =>
+      rule === 0 ? keepAbove(ox, oy, oz) : keepGhostPair(rule, s.id[i], s.id[owner[j]], ox, oy, oz, delta);
+
     const special = needs.special;
     const ss = needs.specialSettings;
     const exclude = needs.exclude ?? this.excludeFn(s);
@@ -869,7 +903,14 @@ export class Neighbor {
     // the threads' entries are segments of their arrays, which the counting sort below reads in place
     let segs: ListSegment[] | null = null;
     if (!fullList && !exclude && !incl && !lr && unmirrored === null) {
-      const B: HalfBins = { bL, bG, rLo, rHi, nrows, lk, lt, lxs, gk, gt, gxs, cutsq, nt };
+      const B: HalfBins = { bL, bG, rLo, rHi, nrows, lk, lt, lxs, gk, gt, gxs, cutsq, nt, rule, delta };
+      if (rule !== 0) {
+        // the atom IDs in bin order (a ghost has its owner's ID)
+        const ltag = (this.sTagL = grownI32(this.sTagL, nlocal)), gtag = (this.sTagG = grownI32(this.sTagG, nghost));
+        for (let p = 0; p < nlocal; p++) ltag[p] = s.id[lk[p]];
+        for (let q = 0; q < nghost; q++) gtag[q] = s.id[owner[gk[q]]];
+        B.ltag = ltag; B.gtag = gtag;
+      }
       // with special bonds the kernel encodes each pair as encode() does
       const S: SpecialBins | null = special ? {
         offset: special.offset, partner: special.partner, order: special.order, id, owner,
@@ -958,7 +999,7 @@ export class Neighbor {
               let r2 = dx * dx + dy * dy + dz * dz;
               if (lr) { const rc = lr[p] + gr![q] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
               // ghost q lies "above" the owned atom p when its offset is lex-positive
-              const c = r2 <= cutsq[tp * nt + tq] && (fullList || keepAbove(dx, dy, dz));
+              const c = r2 <= cutsq[tp * nt + tq] && (fullList || keepPair(kp, kq, dx, dy, dz));
               if (unmirrored !== null && unmirrored[kp] && r2 <= cutsq[tp * nt + tq] && (plain || accepted(kp, kq))) nUnmirrored++;
               if (plain) { pa[np] = kp; pj[np] = kq; np += +c; }
               else if (c) { const e = encode(kp, kq); if (e === e) { pa[np] = kp; pj[np] = e; np++; } }
@@ -983,7 +1024,7 @@ export class Neighbor {
               let r2 = dx * dx + dy * dy + dz * dz;
               if (lr) { const rc = lr[q] + gr![p] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
               // the owned atom is q: the ghost lies at offset p - q
-              const c = r2 <= cutsq[tq * nt + tp] && (fullList || keepAbove(-dx, -dy, -dz));
+              const c = r2 <= cutsq[tq * nt + tp] && (fullList || keepPair(kq, kp, -dx, -dy, -dz));
               if (unmirrored !== null && unmirrored[kq] && r2 <= cutsq[tq * nt + tp] && (plain || accepted(kq, kp))) nUnmirrored++;
               if (plain) { pa[np] = kq; pj[np] = kp; np += +c; }
               else if (c) { const e = encode(kq, kp); if (e === e) { pa[np] = kq; pj[np] = e; np++; } }
@@ -1012,6 +1053,13 @@ export class Neighbor {
     return { inum: nlocal, numneigh, firstneigh, neighbors };
   }
 }
+
+/**
+ * One Angstrom in each unit style's distance unit, as native LAMMPS sets force->angstrom (src/update.cpp set_units at
+ * b332f28; docs.lammps.org/units.html: "distance = Angstroms" for real and metal, meters for si, centimeters for cgs,
+ * Bohr for electron, micrometers for micro, nanometers for nano, and 1 for lj).
+ */
+const ANGSTROM_UNITS: Record<string, number> = { lj: 1.0, real: 1.0, metal: 1.0, si: 1.0e-10, cgs: 1.0e-8, electron: 1.88972612, micro: 1.0e-4, nano: 1.0e-1 };
 
 /** Whether a ghost at offset (dx, dy, dz) from an owned atom belongs to its half list (the lower mirror keeps the pair). */
 const keepAbove = (dx: number, dy: number, dz: number): boolean =>

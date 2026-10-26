@@ -28,12 +28,14 @@ export type PairThreadMessage =
   | {
     type: 'nbuffers'; bL: SharedArrayBuffer; bG: SharedArrayBuffer; rLo: SharedArrayBuffer; rHi: SharedArrayBuffer;
     lk: SharedArrayBuffer; lt: SharedArrayBuffer; lxs: SharedArrayBuffer; gk: SharedArrayBuffer; gt: SharedArrayBuffer;
-    gxs: SharedArrayBuffer; cutsq: SharedArrayBuffer; chunkBins: SharedArrayBuffer; chunkOut: SharedArrayBuffer;
+    gxs: SharedArrayBuffer; cutsq: SharedArrayBuffer; ltag: SharedArrayBuffer; gtag: SharedArrayBuffer; chunkBins: SharedArrayBuffer; chunkOut: SharedArrayBuffer;
     spOffset: SharedArrayBuffer; spPartner: SharedArrayBuffer; spOrder: SharedArrayBuffer; id: SharedArrayBuffer; owner: SharedArrayBuffer;
     pa: SharedArrayBuffer; pj: SharedArrayBuffer;
   }
   | {
     type: 'neigh'; nrows: number; nt: number; nchunks: number; binMax: number;
+    /** neighborKernel.ts HalfBins rule and delta (the IDs in bin order are the shared ltag and gtag) */
+    rule: number; delta: number;
     /** a list with special bonds: the weights and the rest of neighborKernel.ts SpecialBins (the arrays are shared) */
     special: { lj: number[]; coul: number[]; keep: boolean; hx: number; hy: number; hz: number; sbbits: number } | null;
   };
@@ -197,6 +199,7 @@ export class PairThreadWorker {
         bL: new Int32Array(m.bL), bG: new Int32Array(m.bG), rLo: new Int32Array(m.rLo), rHi: new Int32Array(m.rHi), nrows: 0,
         lk: new Int32Array(m.lk), lt: new Int32Array(m.lt), lxs: new Float64Array(m.lxs),
         gk: new Int32Array(m.gk), gt: new Int32Array(m.gt), gxs: new Float64Array(m.gxs), cutsq: new Float64Array(m.cutsq), nt: 0,
+        ltag: new Int32Array(m.ltag), gtag: new Int32Array(m.gtag),
       };
       this.chunkBins = new Int32Array(m.chunkBins); this.chunkOut = new Int32Array(m.chunkOut);
       this.spArrays = {
@@ -259,7 +262,7 @@ export class PairThreadWorker {
   private neighbors_(m: Extract<PairThreadMessage, { type: 'neigh' }>): void {
     const ctl = this.ctl!;
     try {
-      const B = { ...this.bins!, nrows: m.nrows, nt: m.nt };
+      const B = { ...this.bins!, nrows: m.nrows, nt: m.nt, rule: m.rule, delta: m.delta };
       const sp = m.special ? { ...this.spArrays!, ...m.special, lj: Float64Array.from(m.special.lj), coul: Float64Array.from(m.special.coul) } : null;
       const out = new Int32Array(2);
       let np = 0;

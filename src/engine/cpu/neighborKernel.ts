@@ -26,7 +26,37 @@ export interface HalfBins {
   /** squared neighbor cutoff per type pair ((ntypes + 1)^2), nt = ntypes + 1 */
   cutsq: Float64Array;
   nt: number;
+  /**
+   * Which copy of a pair through a periodic image the list keeps (keepGhostPair): 0, or 1 and 2 by the atom IDs, which
+   * ltag and gtag hold for the owned and the ghost atoms in bin order (a ghost has its owner's ID); delta is rule 1's
+   * coordinate tolerance.
+   */
+  rule?: number;
+  ltag?: Int32Array;
+  gtag?: Int32Array;
+  delta?: number;
 }
+
+/**
+ * Whether a half list keeps the pair of owned atom i (ID itag) and ghost atom j (ID jtag), the ghost at offset
+ * (ox, oy, oz) = x_j - x_i. A pair through a periodic image is met twice, once as each atom's ghost neighbor, and exactly
+ * one of the two is kept.
+ *  - rule 0: the copy whose ghost lies above, in the order of z, then y, then x of the offset.
+ *  - rules 1 and 2, as native LAMMPS does in a triclinic box and for neighbor nsq (src/npair_bin.cpp and src/npair_nsq.cpp
+ *    at b332f28): the parity of itag + jtag, the smaller ID keeping the pair when the sum is even and the larger when it is
+ *    odd; an atom and its own image by their coordinates, rule 2 as rule 0 and rule 1 (triclinic) taking each coordinate
+ *    only when the two differ by more than delta. The two copies of a pair round its distance differently, so the copy
+ *    decides a pair at the cutoff exactly.
+ */
+export const keepGhostPair = (rule: number, itag: number, jtag: number, ox: number, oy: number, oz: number, delta: number): boolean => {
+  if (rule !== 0 && itag !== jtag) return itag < jtag ? ((itag + jtag) & 1) === 0 : ((itag + jtag) & 1) === 1;
+  if (rule === 1) {
+    if (Math.abs(oz) > delta) return !(oz < 0);
+    if (Math.abs(oy) > delta) return !(oy < 0);
+    return !(ox < 0);
+  }
+  return !(oz < 0 || (oz === 0 && (oy < 0 || (oy === 0 && ox < 0))));
+};
 
 /**
  * An upper bound of the pairs any one bin tests: with at most F atoms in a bin, each of a bin's atoms tests at most F
@@ -53,6 +83,7 @@ export const halfBinsPairs = (
   B: HalfBins, b0: number, b1: number, pa: Int32Array, pj: Int32Array, np0: number, cap: number, binMax: number, out: Int32Array,
 ): void => {
   const { bL, bG, rLo, rHi, nrows, lk, lt, lxs, gk, gt, gxs, cutsq, nt } = B;
+  const rule = B.rule ?? 0, ltag = B.ltag!, gtag = B.gtag!, delta = B.delta ?? 0;
   let np = np0;
   let b = b0;
   for (; b < b1; b++) {
@@ -80,23 +111,46 @@ export const halfBinsPairs = (
           pa[np] = low ? kp : kq; pj[np] = low ? kq : kp;
           np += +(r2 <= (low ? cutsq[row + tq] : cutsq[tq * nt + tp]));
         }
-        for (let q = gA; q < gB; q++) {
-          const dx = gxs[3 * q] - px, dy = gxs[3 * q + 1] - py, dz = gxs[3 * q + 2] - pz;
-          const r2 = dx * dx + dy * dy + dz * dz;
-          pa[np] = kp; pj[np] = gk[q];
-          np += +(r2 <= cutsq[row + gt[q]] && !(dz < 0 || (dz === 0 && (dy < 0 || (dy === 0 && dx < 0)))));
+        if (rule === 0) {
+          for (let q = gA; q < gB; q++) {
+            const dx = gxs[3 * q] - px, dy = gxs[3 * q + 1] - py, dz = gxs[3 * q + 2] - pz;
+            const r2 = dx * dx + dy * dy + dz * dz;
+            pa[np] = kp; pj[np] = gk[q];
+            np += +(r2 <= cutsq[row + gt[q]] && !(dz < 0 || (dz === 0 && (dy < 0 || (dy === 0 && dx < 0)))));
+          }
+        } else {
+          const itag = ltag[p];
+          for (let q = gA; q < gB; q++) {
+            const dx = gxs[3 * q] - px, dy = gxs[3 * q + 1] - py, dz = gxs[3 * q + 2] - pz;
+            const r2 = dx * dx + dy * dy + dz * dz;
+            pa[np] = kp; pj[np] = gk[q];
+            const jtag = gtag[q];
+            // the parity test without a branch: its outcome is close to random from pair to pair
+            np += +(r2 <= cutsq[row + gt[q]]) & (itag !== jtag ? ((itag + jtag + +(itag > jtag)) & 1) ^ 1 : +keepGhostPair(rule, itag, jtag, dx, dy, dz, delta));
+          }
         }
       }
       if (own) continue;
       for (let p = g0; p < g1; p++) {
         const kp = gk[p], tp = gt[p];
         const px = gxs[3 * p], py = gxs[3 * p + 1], pz = gxs[3 * p + 2];
-        for (let q = lA; q < lB; q++) {
-          const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
-          const r2 = dx * dx + dy * dy + dz * dz;
-          pa[np] = lk[q]; pj[np] = kp;
-          // the ghost lies at offset p - q from the owned atom q: kept when that is lex-positive
-          np += +(r2 <= cutsq[lt[q] * nt + tp] && !(dz > 0 || (dz === 0 && (dy > 0 || (dy === 0 && dx > 0)))));
+        if (rule === 0) {
+          for (let q = lA; q < lB; q++) {
+            const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
+            const r2 = dx * dx + dy * dy + dz * dz;
+            pa[np] = lk[q]; pj[np] = kp;
+            // the ghost lies at offset p - q from the owned atom q: kept when that is lex-positive
+            np += +(r2 <= cutsq[lt[q] * nt + tp] && !(dz > 0 || (dz === 0 && (dy > 0 || (dy === 0 && dx > 0)))));
+          }
+        } else {
+          const jtag = gtag[p];
+          for (let q = lA; q < lB; q++) {
+            const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
+            const r2 = dx * dx + dy * dy + dz * dz;
+            pa[np] = lk[q]; pj[np] = kp;
+            const itag = ltag[q];
+            np += +(r2 <= cutsq[lt[q] * nt + tp]) & (itag !== jtag ? ((itag + jtag + +(itag > jtag)) & 1) ^ 1 : +keepGhostPair(rule, itag, jtag, -dx, -dy, -dz, delta));
+          }
         }
       }
     }
@@ -153,6 +207,7 @@ export const halfBinsPairsSpecial = (
   B: HalfBins, S: SpecialBins, b0: number, b1: number, pa: Int32Array, pj: Int32Array, np0: number, cap: number, binMax: number, out: Int32Array,
 ): void => {
   const { bL, bG, rLo, rHi, nrows, lk, lt, lxs, gk, gt, gxs, cutsq, nt } = B;
+  const rule = B.rule ?? 0, ltag = B.ltag!, gtag = B.gtag!, delta = B.delta ?? 0;
   let np = np0;
   let b = b0;
   for (; b < b1; b++) {
@@ -182,7 +237,8 @@ export const halfBinsPairsSpecial = (
         }
         for (let q = gA; q < gB; q++) {
           const dx = gxs[3 * q] - px, dy = gxs[3 * q + 1] - py, dz = gxs[3 * q + 2] - pz;
-          if (!(dx * dx + dy * dy + dz * dz <= cutsq[row + gt[q]]) || dz < 0 || (dz === 0 && (dy < 0 || (dy === 0 && dx < 0)))) continue;
+          if (!(dx * dx + dy * dy + dz * dz <= cutsq[row + gt[q]])) continue;
+          if (rule === 0 ? dz < 0 || (dz === 0 && (dy < 0 || (dy === 0 && dx < 0))) : !keepGhostPair(rule, ltag[p], gtag[q], dx, dy, dz, delta)) continue;
           const e = encodeSpecial(S, kp, gk[q], dx, dy, dz);
           if (e !== DROP) { pa[np] = kp; pj[np] = e; np++; }
         }
@@ -193,7 +249,8 @@ export const halfBinsPairsSpecial = (
         const px = gxs[3 * p], py = gxs[3 * p + 1], pz = gxs[3 * p + 2];
         for (let q = lA; q < lB; q++) {
           const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
-          if (!(dx * dx + dy * dy + dz * dz <= cutsq[lt[q] * nt + tp]) || dz > 0 || (dz === 0 && (dy > 0 || (dy === 0 && dx > 0)))) continue;
+          if (!(dx * dx + dy * dy + dz * dz <= cutsq[lt[q] * nt + tp])) continue;
+          if (rule === 0 ? dz > 0 || (dz === 0 && (dy > 0 || (dy === 0 && dx > 0))) : !keepGhostPair(rule, ltag[q], gtag[p], -dx, -dy, -dz, delta)) continue;
           const e = encodeSpecial(S, lk[q], kp, dx, dy, dz);
           if (e !== DROP) { pa[np] = lk[q]; pj[np] = e; np++; }
         }

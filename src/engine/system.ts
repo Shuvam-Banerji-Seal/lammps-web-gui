@@ -483,13 +483,23 @@ export class System {
     }
   }
 
+  /** The owned atoms' lamda of the last pbc() in a triclinic box (Neighbor.freshLamda), reused while the count holds. */
+  private lamdaScratch = new Float64Array(0);
+
   pbc(): void {
     const s = this.state;
     const g = this.geom;
     // the first reset of the box (domain->pbc and reset_box at setup) replaces the create_box expansion
     this.initSmall = null;
-    for (let i = 0; i < s.n; i++) g.remap(s.x, s.image, i);
-    if (shrinkWrap(s, g)) this.nb.forwardComm(s, g);
+    if (g.triclinic) {
+      // the next ghost build places the ghosts from the owned atoms' lamda after the wrap (Neighbor.freshLamda)
+      if (this.lamdaScratch.length !== 3 * s.n) this.lamdaScratch = new Float64Array(3 * s.n);
+      const lam = this.lamdaScratch;
+      for (let i = 0; i < s.n; i++) g.remapKeepLamda(s.x, s.image, i, lam);
+      this.nb.freshLamda = lam;
+    } else for (let i = 0; i < s.n; i++) g.remap(s.x, s.image, i);
+    // a shrink-wrapped box changes the lamda of every atom
+    if (shrinkWrap(s, g)) { this.nb.freshLamda = null; this.nb.forwardComm(s, g); }
     this.checkLost();
   }
 
@@ -706,7 +716,7 @@ export class System {
     if (!setup && s.step < this.nextSort) return;
     this.nextSort = Math.floor(s.step / this.sortEvery) * this.sortEvery + this.sortEvery;
     const binsize = this.sortBinsize > 0 ? this.sortBinsize : 0.5 * this.nb.cutneighmax;
-    if (!(binsize > 0) || s.n < 2) return;
+    if (!(binsize > 0)) return;
     const b = s.box;
     // atom.cpp setup_sort_bins: a triclinic box is binned in the bounding box of the tilted cell (domain->bbox of the
     // lamda box), which is Domain::set_global_box's boxlo_bound / boxhi_bound
@@ -723,6 +733,15 @@ export class System {
     }
     const len = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
     const nb = len.map((l, d) => (d === 2 && s.dimension === 2 ? 1 : Math.max(1, Math.floor(l / binsize))));
+    // As native LAMMPS does (src/atom.cpp Atom::sort at b332f28): unless there is a single bin, a triclinic box's atoms are
+    // binned in box coordinates ("domain->lamda2x(nlocal)") and taken back with "domain->x2lamda(nlocal)", between the
+    // reneighboring's x2lamda and its lamda2x: one more round trip of every coordinate, and the ghosts come from the new
+    // lamda (Neighbor.freshLamda, set by pbc() just before)
+    const fresh = this.nb.freshLamda;
+    if (b.triclinic && nb[0] * nb[1] * nb[2] > 1 && fresh !== null && fresh.length === 3 * s.n) {
+      for (let i = 0; i < s.n; i++) this.geom.lamdaRoundTrip(s.x, i, fresh);
+    }
+    if (s.n < 2) return;
     const bin = new Float64Array(s.n);
     for (let i = 0; i < s.n; i++) {
       let key = 0;

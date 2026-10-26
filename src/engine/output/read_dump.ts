@@ -223,10 +223,14 @@ export const parseDumpFile = (name: string, text: string): DumpFile => {
   return { name, snapshots };
 };
 
-/** The snapshot with timestep `step` (read_dump: "The dump file is scanned for a snapshot with a timestamp that matches the specified Nstep"). */
+/**
+ * The snapshot with timestep `step` (read_dump: "The dump file is scanned for a snapshot with a timestamp that matches
+ * the specified Nstep"). As native LAMMPS does (src/read_dump.cpp ReadDump::command at b332f28): "Dump file does not
+ * contain requested snapshot" when there is none.
+ */
 export const findSnapshot = (file: DumpFile, step: number): DumpSnapshot => {
   const snap = file.snapshots.find((s) => s.step === step);
-  if (!snap) throw new StyleError(`read_dump: no snapshot with timestep ${step} in ${file.name}`);
+  if (!snap) throw new StyleError('Dump file does not contain requested snapshot');
   return snap;
 };
 

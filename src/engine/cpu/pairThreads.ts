@@ -3,8 +3,9 @@ import type { NeighList } from '../neighbor';
 import { THREADED_PAIRS } from './threadedPairs';
 import { CpuForceBackend } from './forces';
 import {
-  ACC_LEN, CHUNKS_PER_THREAD, DONE, FAILED, NEXT, READY, cloneableFields, pairFromFields, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
+  ACC_LEN, CHUNKS_PER_THREAD, DONE, FAILED, NEXT, NOT_DONE, READY, cloneableFields, pairFromFields, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
+import { binCandidates, halfBinsPairs, type HalfBins, type NeighborThreads } from './neighborKernel';
 
 /*
  * Shared-memory threads for the pair term of the general engine. The engine thread copies the
@@ -40,8 +41,18 @@ export const sharedThreadsAvailable = (): boolean =>
 export const spawnPairWorker = (): PairWorkerLike =>
   new Worker(new URL('../../workers/pair.worker.ts', import.meta.url), { type: 'module' });
 
+/** Shared copies of a neighbor search's binned atoms and chunk table, and each worker's entry arrays. */
+interface NeighborShared {
+  bL: Int32Array; bG: Int32Array; rLo: Int32Array; rHi: Int32Array;
+  lk: Int32Array; lt: Int32Array; lxs: Float64Array; gk: Int32Array; gt: Int32Array; gxs: Float64Array; cutsq: Float64Array;
+  chunkBins: Int32Array; chunkOut: Int32Array;
+  pa: Int32Array[]; pj: Int32Array[];
+  /** capacities: bins, rows, owned, ghost atoms, type pairs, chunks, entries per worker */
+  caps: number[];
+}
+
 /** The engine side: owns the workers and the shared buffers. */
-export class SharedPairThreads {
+export class SharedPairThreads implements NeighborThreads {
   /** Force evaluations that ran on the threads. */
   calls = 0;
   private workers: PairWorkerLike[] = [];
@@ -184,6 +195,129 @@ export class SharedPairThreads {
       this.accs.push(new Float64Array(acc));
       w.postMessage({ type: 'buffers', x: xb, t: tb, q: qb, numneigh: nb, firstneigh: fb, neighbors: lb, f, acc, chunks: this.chunksBuf } satisfies PairThreadMessage);
     });
+  }
+
+  /** Neighbor searches that ran on the threads. */
+  neighborCalls = 0;
+  private nshared: NeighborShared | null = null;
+  /** Entries of the last threaded search (sizes the workers' entry arrays). */
+  private lastEntries = 0;
+  /** The engine thread's own entries of a threaded search (grown when needed). */
+  private ownPa = new Int32Array(0);
+  private ownPj = new Int32Array(0);
+
+  /**
+   * The pair search of a half list (cpu/neighborKernel.ts) on the threads: the bins are cut into chunks of about equal
+   * work (candidate pairs), every thread claims chunks from the shared counter as in run(), and the entries are joined
+   * in chunk order, which is the order of the search on one thread.
+   */
+  halfList(B: HalfBins, nbins: number, nlocal: number, pa: Int32Array<ArrayBuffer>, pj: Int32Array<ArrayBuffer>): { pa: Int32Array<ArrayBuffer>; pj: Int32Array<ArrayBuffer>; np: number } | null {
+    const W = this.workers.length;
+    if (W === 0 || nlocal < this.minAtoms || Atomics.load(this.ctl, READY) < W) return null;
+    // chunks of about equal candidate counts
+    const cand = new Float64Array(nbins + 1);
+    let maxBin = 0;
+    for (let b = 0; b < nbins; b++) {
+      const c = binCandidates(B, b);
+      if (c > maxBin) maxBin = c;
+      cand[b + 1] = cand[b] + c;
+    }
+    const total = cand[nbins];
+    if (total === 0) return null;
+    const K = Math.max(1, Math.min(nbins, CHUNKS_PER_THREAD * (W + 1)));
+    const nghost = B.gk.length;
+    // each worker's arrays hold twice its share of the entries of the last search (a fourth of the candidates at
+    // first) and the largest bin's candidates, which are written before their test
+    const share = Math.ceil((2 * (this.lastEntries > 0 ? this.lastEntries : total / 4)) / (W + 1)) + maxBin;
+    const S = this.neighborShared(nbins + 1, B.nrows, nlocal, nghost, B.nt * B.nt, K + 1, share);
+    S.bL.set(B.bL.subarray(0, nbins + 1)); S.bG.set(B.bG.subarray(0, nbins + 1));
+    S.rLo.set(B.rLo.subarray(0, B.nrows)); S.rHi.set(B.rHi.subarray(0, B.nrows));
+    S.lk.set(B.lk.subarray(0, nlocal)); S.lt.set(B.lt.subarray(0, nlocal)); S.lxs.set(B.lxs.subarray(0, 3 * nlocal));
+    S.gk.set(B.gk.subarray(0, nghost)); S.gt.set(B.gt.subarray(0, nghost)); S.gxs.set(B.gxs.subarray(0, 3 * nghost));
+    S.cutsq.set(B.cutsq);
+    let k = 1;
+    S.chunkBins[0] = 0;
+    for (let b = 1; b < nbins && k < K; b++) if (cand[b] >= (total * k) / K) S.chunkBins[k++] = b;
+    for (; k <= K; k++) S.chunkBins[k] = nbins;
+    Atomics.store(this.ctl, DONE, 0);
+    Atomics.store(this.ctl, FAILED, 0);
+    Atomics.store(this.ctl, NEXT, 0);
+    for (const w of this.workers) w.postMessage({ type: 'neigh', nrows: B.nrows, nt: B.nt, nchunks: K } satisfies PairThreadMessage);
+    // the engine thread claims chunks too, into its own arrays
+    const out = new Int32Array(2);
+    let own = 0;
+    const searchOwn = (c: number): void => {
+      let b = S.chunkBins[c];
+      const b1 = S.chunkBins[c + 1];
+      const start = own;
+      while (b < b1) {
+        halfBinsPairs(B, b, b1, this.ownPa, this.ownPj, own, this.ownPa.length, out);
+        b = out[0]; own = out[1];
+        if (b < b1) {
+          const cap = Math.max(2 * this.ownPa.length, own + binCandidates(B, b));
+          const na = new Int32Array(cap); na.set(this.ownPa.subarray(0, own)); this.ownPa = na;
+          const nj = new Int32Array(cap); nj.set(this.ownPj.subarray(0, own)); this.ownPj = nj;
+        }
+      }
+      S.chunkOut[3 * c] = W;
+      S.chunkOut[3 * c + 1] = start;
+      S.chunkOut[3 * c + 2] = own - start;
+    };
+    for (;;) {
+      const c = Atomics.add(this.ctl, NEXT, 1);
+      if (c >= K) break;
+      searchOwn(c);
+    }
+    for (;;) {
+      const done = Atomics.load(this.ctl, DONE);
+      if (done >= W) break;
+      if (Atomics.wait(this.ctl, DONE, done, 60_000) === 'timed-out') throw new Error('neighbor threads did not answer within 60 s');
+    }
+    if (Atomics.load(this.ctl, FAILED) > 0) return null;
+    // chunks no worker had room for: searched here, and the workers get more room next time
+    let grow = false;
+    for (let c = 0; c < K; c++) if (S.chunkOut[3 * c] === NOT_DONE) { searchOwn(c); grow = true; }
+    let np = 0;
+    for (let c = 0; c < K; c++) np += S.chunkOut[3 * c + 2];
+    if (np > Math.min(pa.length, pj.length)) { pa = new Int32Array(Math.ceil(np * 1.25)); pj = new Int32Array(pa.length); }
+    let e = 0;
+    for (let c = 0; c < K; c++) {
+      const t = S.chunkOut[3 * c], o = S.chunkOut[3 * c + 1], n = S.chunkOut[3 * c + 2];
+      const srcA = t === W ? this.ownPa : S.pa[t], srcJ = t === W ? this.ownPj : S.pj[t];
+      pa.set(srcA.subarray(o, o + n), e);
+      pj.set(srcJ.subarray(o, o + n), e);
+      e += n;
+    }
+    this.lastEntries = grow ? 2 * np : np;
+    this.neighborCalls++;
+    return { pa, pj, np };
+  }
+
+  /** The shared buffers of a neighbor search, reallocated (and announced to the workers) when they are too small. */
+  private neighborShared(nb: number, nrows: number, nlocal: number, nghost: number, ntt: number, nchunk: number, share: number): NeighborShared {
+    const want = [nb, nrows, nlocal, nghost, ntt, nchunk, share];
+    const S = this.nshared;
+    if (S && want.every((v, i) => v <= S.caps[i])) return S;
+    const caps = want.map((v, i) => Math.max(S?.caps[i] ?? 0, Math.ceil(v * 1.25)));
+    const [cb, cr, cl, cg, ct, cc, ce] = caps;
+    const bufs = {
+      bL: shared(4 * cb), bG: shared(4 * cb), rLo: shared(4 * cr), rHi: shared(4 * cr),
+      lk: shared(4 * cl), lt: shared(4 * cl), lxs: shared(24 * cl), gk: shared(4 * cg), gt: shared(4 * cg), gxs: shared(24 * cg),
+      cutsq: shared(8 * ct), chunkBins: shared(4 * cc), chunkOut: shared(12 * cc),
+    };
+    const pa: Int32Array[] = [], pj: Int32Array[] = [];
+    this.workers.forEach((w) => {
+      const a = shared(4 * ce), j = shared(4 * ce);
+      pa.push(new Int32Array(a)); pj.push(new Int32Array(j));
+      w.postMessage({ type: 'nbuffers', ...bufs, pa: a, pj: j } satisfies PairThreadMessage);
+    });
+    this.nshared = {
+      bL: new Int32Array(bufs.bL), bG: new Int32Array(bufs.bG), rLo: new Int32Array(bufs.rLo), rHi: new Int32Array(bufs.rHi),
+      lk: new Int32Array(bufs.lk), lt: new Int32Array(bufs.lt), lxs: new Float64Array(bufs.lxs),
+      gk: new Int32Array(bufs.gk), gt: new Int32Array(bufs.gt), gxs: new Float64Array(bufs.gxs), cutsq: new Float64Array(bufs.cutsq),
+      chunkBins: new Int32Array(bufs.chunkBins), chunkOut: new Int32Array(bufs.chunkOut), pa, pj, caps,
+    };
+    return this.nshared;
   }
 
   dispose(): void {

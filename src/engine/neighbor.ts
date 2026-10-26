@@ -2,6 +2,7 @@ import type { SimState } from './types';
 import type { Geometry } from './domain';
 import { nativeOrder, type SpecialList } from './atoms';
 import { StyleError, type BondedCopies } from './force/types';
+import { halfBinsPairs, binCandidates, type HalfBins, type NeighborThreads } from './cpu/neighborKernel';
 import { gplHook } from './gplHooks';
 
 /*
@@ -679,6 +680,9 @@ export class Neighbor {
     return bound;
   }
 
+  /** Shared-memory threads for the pair search of the common half list (set by the session with the pair threads). */
+  listThreads: NeighborThreads | null = null;
+
   /** stencilBound of the last pair-list build (checkOneAtom). */
   private oneBound = 0;
 
@@ -847,7 +851,27 @@ export class Neighbor {
       for (let i = 0; i < nlocal; i++) unmirrored[i] = (s.mask[i] & this.borderBit) === 0 ? 1 : 0;
     }
 
-    for (let b = 0; b < nbins; b++) {
+    // the common list (half, no special bonds, exclusions, include group or radii) is built by
+    // cpu/neighborKernel.ts, on the shared-memory threads when there are some; it stores the same entries in the same
+    // order without the per-pair branches of the others
+    if (!fullList && plain && !lr && unmirrored === null) {
+      const B: HalfBins = { bL, bG, rLo, rHi, nrows, lk, lt, lxs, gk, gt, gxs, cutsq, nt };
+      const threaded = this.listThreads?.halfList(B, nbins, nlocal, pa, pj) ?? null;
+      if (threaded) {
+        pa = threaded.pa; pj = threaded.pj; np = threaded.np;
+      } else {
+        const out = new Int32Array(2);
+        for (let b = 0; b < nbins;) {
+          halfBinsPairs(B, b, nbins, pa, pj, np, cap, out);
+          b = out[0]; np = out[1];
+          if (b < nbins) {
+            cap = Math.max(2 * cap, np + binCandidates(B, b));
+            const na = new Int32Array(cap); na.set(pa.subarray(0, np)); pa = na;
+            const nj = new Int32Array(cap); nj.set(pj.subarray(0, np)); pj = nj;
+          }
+        }
+      }
+    } else for (let b = 0; b < nbins; b++) {
       const l0 = bL[b], l1 = bL[b + 1], g0 = bG[b], g1 = bG[b + 1];
       if (l1 === l0 && g1 === g0) continue;
       // row -1 is the bin itself (its owned atoms pair with later owned atoms of the bin), then the

@@ -35,10 +35,21 @@ const binKey = (ix: number, iy: number, iz: number): number => ((iz + OFF) * BW 
 export interface NativeFarOrder {
   /** owned engine index -> native local index. */
   nativeIdx: Int32Array;
-  /** key (i * nall + j, engine indices) -> rank of j in the native far list of i (only j above i). */
-  rank: Map<number, number>;
+  /**
+   * The native far list of each owned atom i (engine index), only j above i: the engine indices of its partners in
+   * native order are list[start[i]] .. list[start[i + 1] - 1], so the rank of a partner is its position there.
+   */
+  start: Int32Array;
+  list: Int32Array;
   nall: number;
 }
+
+/** Rank of partner p (engine index) in the native far list of owned atom i, or -1 when it is not there. */
+export const nativeRank = (nat: NativeFarOrder, i: number, p: number): number => {
+  const a = nat.start[i], b = nat.start[i + 1], list = nat.list;
+  for (let k = a; k < b; k++) if (list[k] === p) return k - a;
+  return -1;
+};
 
 /** CommBrick::borders for one processor: the ghosts of owned atoms in coordinates c (3 per atom), per dimension
  *  and swap, in the order of the native swaps; root = native index of the owner, img = image offsets. */
@@ -208,9 +219,10 @@ export const nativeFarOrder = (s: SimState, nb: Neighbor, g: Geometry, x: Float6
     }
   }
 
-  const rank = new Map<number, number>();
+  // each owned atom's partners in native order, by native index; then regrouped by engine index
+  const lists: Int32Array[] = new Array(n);
+  let buf = new Int32Array(1024);
   for (let k = 0; k < n; k++) {
-    const ei = order[k];
     const bx = binOf[3 * k], by = binOf[3 * k + 1], bz = binOf[3 * k + 2];
     let r = 0;
     for (let st = 0; st < stencil.length; st += 3) {
@@ -220,9 +232,15 @@ export const nativeFarOrder = (s: SimState, nb: Neighbor, g: Geometry, x: Float6
         if (j <= k) continue;
         const ek = engineIndex(j);
         if (ek < 0) continue;
-        rank.set(ei * NA + ek, r++);
+        if (r === buf.length) { const b2 = new Int32Array(2 * r); b2.set(buf); buf = b2; }
+        buf[r++] = ek;
       }
     }
+    lists[k] = buf.slice(0, r);
   }
-  return { nativeIdx, rank, nall: NA };
+  const start = new Int32Array(n + 1);
+  for (let i = 0; i < n; i++) start[i + 1] = start[i] + lists[nativeIdx[i]].length;
+  const list = new Int32Array(start[n]);
+  for (let i = 0; i < n; i++) list.set(lists[nativeIdx[i]], start[i]);
+  return { nativeIdx, start, list, nall: NA };
 };

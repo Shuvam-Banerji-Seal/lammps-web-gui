@@ -1,11 +1,11 @@
-import { WignerTables, bispectrumComponent, adjointComponentChem, type Triple, type Cmat } from './sna';
+import { WignerTables, bispectrumComponent, adjointComponentChem, mirrorGradient, newZStore, type Triple, type Cmat, type ZStore } from './sna';
 import { libm } from '../libm';
 
 /*
  * Explicit multi-element bispectrum (chemflag 1) shared by pair_style snap (src/engine/force/pair/snap.ts,
  * computeChem) and the sna descriptor of pair_style mliap with chemflag 1 (src/engine/force/pair/mliap.ts).
- * The arithmetic is the one that pair_style snap already used (moved here unchanged, so pair snap results
- * stay bitwise identical). Documentation: docs.lammps.org/pair_snap.html, "If *chemflag* is set to 1, then the
+ * The kernels are those of the single-element form (sna.ts): the Wigner tables summed over the columns k <= J/2 and
+ * mirrored, the products Z kept by the bispectrum for the adjoint, and one contraction per neighbour. Documentation: docs.lammps.org/pair_snap.html, "If *chemflag* is set to 1, then the
  * energy expression is written in terms of explicit multi-element bispectrum components indexed on ordered
  * triplets of elements"; docs.lammps.org/pair_mliap.html, the sna descriptor "is the same as that used by
  * pair_style snap", including the chem variant.
@@ -52,6 +52,12 @@ export class ChemSna {
   private readonly WT: WignerTables;
   private ue: Cmat[][] = [];
   private gd: Cmat[][] = [];
+  /** The products Z of each element block (kappa, lambda, mu), mu fastest. */
+  private readonly zs: ZStore[] = [];
+  /** Each element's gradient in the layout of WignerTables.contract (set by adjoint), and one contraction. */
+  private readonly gpR: Float64Array[] = [];
+  private readonly gpI: Float64Array[] = [];
+  private readonly cs5 = new Float64Array(5);
   private cap = 0;
   /** Number of accepted neighbours of the current atom. */
   m = 0;
@@ -85,7 +91,10 @@ export class ChemSna {
         gm.push({ re: new Float64Array(nn), im: new Float64Array(nn) });
       }
       this.ue.push(um); this.gd.push(gm);
+      this.gpR.push(new Float64Array(tables.size));
+      this.gpI.push(new Float64Array(tables.size));
     }
+    for (let b = 0; b < s.nelem ** 3; b++) this.zs.push(newZStore(s.triples));
   }
 
   /** Make room for mx neighbours (call once per atom before add). */
@@ -138,29 +147,20 @@ export class ChemSna {
       const S = sg * sn, C = sg * cs;
       const g = S / r;
       const ar = C, ai = g * this.dz[a], br = g * this.dy[a], bi = g * this.dx[a];
-      const sc = this.sc[a];
-      WT.compute(ar, ai, br, bi, false);
-      const um = ue[this.ele[a]];
-      for (let J = 0; J <= tj; J++) {
-        const Ur = WT.ur[J], Ui = WT.ui[J];
-        const uj = um[J];
-        for (let q = 0; q < Ur.length; q++) {
-          uj.re[q] += sc * Ur[q];
-          uj.im[q] += sc * Ui[q];
-        }
-      }
+      WT.addScaled(ar, ai, br, bi, this.sc[a], ue[this.ele[a]]);
     }
+    for (let e = 0; e < Ne; e++) WignerTables.mirror(ue[e]);
 
     // raw multi-element bispectrum, blocks (κ,λ,μ) with μ fastest
     let b = 0;
     for (let k1e = 0; k1e < Ne; k1e++) {
       for (let k2e = 0; k2e < Ne; k2e++) {
         for (let k3e = 0; k3e < Ne; k3e++) {
-          const bo = b * K;
+          const bo = b * K, z = this.zs[b];
           const useB0 = this.wselfall || (k1e === ei && k2e === ei && k3e === ei);
           for (let c = 0; c < K; c++) {
             const t = triples[c];
-            let v = bispectrumComponent(t, ue[k1e][t.J1], ue[k2e][t.J2], ue[k3e][t.J]);
+            let v = bispectrumComponent(t, ue[k1e][t.J1], ue[k2e][t.J2], ue[k3e][t.J], z.r[c], z.i[c]);
             if (useB0) v -= this.b0[c];
             Bf[bo + c] = v / this.normOf[c];
           }
@@ -181,16 +181,20 @@ export class ChemSna {
     for (let k1e = 0; k1e < Ne; k1e++) {
       for (let k2e = 0; k2e < Ne; k2e++) {
         for (let k3e = 0; k3e < Ne; k3e++) {
-          const bo = b * K;
+          const bo = b * K, z = this.zs[b];
           for (let c = 0; c < K; c++) {
             const g = gam[bo + c] / this.normOf[c];
             if (g === 0) continue;
             const t = triples[c];
-            adjointComponentChem(t, ue[k1e][t.J1], ue[k2e][t.J2], ue[k3e][t.J], g, gd[k1e], gd[k2e], gd[k3e]);
+            adjointComponentChem(t, ue[k1e][t.J1], ue[k2e][t.J2], ue[k3e][t.J], g, gd[k1e], gd[k2e], gd[k3e], z.r[c], z.i[c]);
           }
           b++;
         }
       }
+    }
+    for (let e = 0; e < Ne; e++) {
+      for (let J = 0; J <= tj; J++) mirrorGradient(J, gd[e][J].re, gd[e][J].im);
+      this.WT.polyGradient(gd[e].map((x) => x.re), gd[e].map((x) => x.im), this.gpR[e], this.gpI[e]);
     }
   }
 
@@ -199,7 +203,7 @@ export class ChemSna {
    * F_j = -G0 and F_i = +G0.
    */
   force(a: number, G0: number[]): void {
-    const tj = this.tj, rfac0 = this.rfac0, rmin0 = this.rmin0, WT = this.WT, dp = this.dp;
+    const rfac0 = this.rfac0, rmin0 = this.rmin0, WT = this.WT, dp = this.dp;
     const dx = this.dx[a], dy = this.dy[a], dz = this.dz[a];
     const r = this.r[a], Rii = this.rc[a];
     const sn = libm.sin(this.th[a]), cs = libm.cos(this.th[a]);
@@ -219,26 +223,11 @@ export class ChemSna {
     }
     const ar = C, ai = g * dz, br = g * dy, bi = g * dx;
     const sc = this.sc[a], dsc = this.dsc[a];
-    G0[0] = 0; G0[1] = 0; G0[2] = 0;
-    WT.compute(ar, ai, br, bi, true);
-    const gm = this.gd[this.ele[a]];
-    for (let J = 0; J <= tj; J++) {
-      const nn = (J + 1) * (J + 1);
-      const Ur = WT.ur[J], Ui = WT.ui[J];
-      const Dr = WT.dur[J], Di = WT.dui[J];
-      const GR = gm[J].re, GI = gm[J].im;
-      for (let q = 0; q < nn; q++) {
-        const gR = GR[q], gI = GI[q];
-        if (gR === 0 && gI === 0) continue;
-        for (let mm = 0; mm < 3; mm++) {
-          let dre = dsc * nm[mm] * Ur[q], dim = dsc * nm[mm] * Ui[q];
-          for (let pp = 0; pp < 4; pp++) {
-            dre += sc * Dr[pp][q] * dp[pp][mm];
-            dim += sc * Di[pp][q] * dp[pp][mm];
-          }
-          G0[mm] += gR * dre + gI * dim;
-        }
-      }
+    // the element's gradient contracted with U and dU/dp over every entry first (WignerTables.contract)
+    const cs5 = this.cs5, e = this.ele[a];
+    WT.contract(ar, ai, br, bi, this.gpR[e], this.gpI[e], cs5);
+    for (let mm = 0; mm < 3; mm++) {
+      G0[mm] = dsc * nm[mm] * cs5[0] + sc * (cs5[1] * dp[0][mm] + cs5[2] * dp[1][mm] + cs5[3] * dp[2][mm] + cs5[4] * dp[3][mm]);
     }
   }
 }

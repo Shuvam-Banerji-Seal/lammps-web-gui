@@ -314,6 +314,7 @@ export class PairSnap extends Pair {
     const WT = this.tables ?? (this.tables = new WignerTables(tj));
     // the gradient of E_i in the layout of WT.contract, and the contraction of one neighbour
     const gpR = new Float64Array(WT.size), gpI = new Float64Array(WT.size), cs5 = new Float64Array(5);
+    const grR = gr.map((x) => x.r), giR = gi.map((x) => x.r);
     const B = new Float64Array(K), Bf = new Float64Array(K), gam = new Float64Array(K), gbuf = new Float64Array(K);
     let evdwl = 0;
     let mx = 0;
@@ -411,7 +412,7 @@ export class PairSnap extends Pair {
         gr[J].r.fill(0); gr[J].i.fill(0); gi[J].r.fill(0); gi[J].i.fill(0);
       }
       adjointBispectrum(triples, u, gbuf, gr, gi, zs);
-      WT.polyGradient(gr, gi, gpR, gpI);
+      WT.polyGradient(grR, giR, gpR, gpI);
 
       // pass 2: dE_i/dd for every neighbour (d = x_j - x_i); F_j = -G, F_i = +G
       for (let a = 0; a < m; a++) {

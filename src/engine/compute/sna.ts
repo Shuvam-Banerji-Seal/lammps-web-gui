@@ -669,60 +669,69 @@ export const adjointBispectrum = (triples: Triple[], u: Cmat[], g: Float64Array,
     const gc = g[c];
     if (gc === 0) continue;
     const t = triples[c];
-    const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1, J = t.J;
-    const { tOff, tM1, tM2, tC } = t;
-    const u1r = u[t.J1].re, u1i = u[t.J1].im, u2r = u[t.J2].re, u2i = u[t.J2].im;
-    const ujr = u[t.J].re, uji = u[t.J].im;
-    const GJr = gr[t.J].r, GJi = gi[t.J].r, Zr = z.r[c], Zi = z.i[c];
-    const G1r = gr[t.J1].r, G1i = gi[t.J1].r, G2r = gr[t.J2].r, G2i = gi[t.J2].r;
-    for (let k = 0; 2 * k <= J; k++) {
-      const a0 = tOff[k], a1 = tOff[k + 1];
-      for (let kp = 0, kp1 = kpEnd(J, k); kp < kp1; kp++) {
-        const b0 = tOff[kp], b1 = tOff[kp + 1];
-        const gk = 2 * k === J && 2 * kp === J ? 0.5 * gc : gc;
-        // role J: conj(u^J) * Z
-        GJr[k * n + kp] += gk * Zr[k * n + kp];
-        GJi[k * n + kp] += gk * Zi[k * n + kp];
-        const cur = ujr[k * n + kp], cui = uji[k * n + kp];
-        for (let a = a0; a < a1; a++) {
-          const gc1 = gk * tC[a], r1 = tM1[a] * n1, r2 = tM2[a] * n2;
-          for (let b = b0; b < b1; b++) {
-            const w = gc1 * tC[b];
-            const q1 = r1 + tM1[b], q2 = r2 + tM2[b];
-            const aa = u1r[q1], bb = u1i[q1];
-            const cc = u2r[q2], dd = u2i[q2];
-            // role J1: conj(uJ) * u2 ; dB/dRe = Re h, dB/dIm = -Im h
-            G1r[q1] += w * (cur * cc + cui * dd);
-            G1i[q1] -= w * (cur * dd - cui * cc);
-            // role J2: conj(uJ) * u1
-            G2r[q2] += w * (cur * aa + cui * bb);
-            G2i[q2] -= w * (cur * bb - cui * aa);
-          }
+    adjointTerms(t, u[t.J1], u[t.J2], u[t.J], gc, z.r[c], z.i[c],
+      gr[t.J].r, gi[t.J].r, gr[t.J1].r, gi[t.J1].r, gr[t.J2].r, gi[t.J2].r);
+  }
+  for (let J = 0; J < gr.length; J++) mirrorGradient(J, gr[J].r, gi[J].r);
+};
+
+/**
+ * gc dB/du of one component over the visited entries (kpEnd, the centre at half weight): the conjugated u^J role from
+ * the products Z into (GJr, GJi), the holomorphic u^{J1}, u^{J2} roles into (G1r, G1i), (G2r, G2i) (real and imaginary
+ * part gradients). mirrorGradient completes each J afterwards.
+ */
+const adjointTerms = (
+  t: Triple, u1: Cmat, u2: Cmat, uj: Cmat, gc: number, Zr: Float64Array, Zi: Float64Array,
+  GJr: Float64Array, GJi: Float64Array, G1r: Float64Array, G1i: Float64Array, G2r: Float64Array, G2i: Float64Array,
+): void => {
+  const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1, J = t.J;
+  const { tOff, tM1, tM2, tC } = t;
+  const u1r = u1.re, u1i = u1.im, u2r = u2.re, u2i = u2.im;
+  const ujr = uj.re, uji = uj.im;
+  for (let k = 0; 2 * k <= J; k++) {
+    const a0 = tOff[k], a1 = tOff[k + 1];
+    for (let kp = 0, kp1 = kpEnd(J, k); kp < kp1; kp++) {
+      const b0 = tOff[kp], b1 = tOff[kp + 1];
+      const gk = 2 * k === J && 2 * kp === J ? 0.5 * gc : gc;
+      // role J: conj(u^J) * Z
+      GJr[k * n + kp] += gk * Zr[k * n + kp];
+      GJi[k * n + kp] += gk * Zi[k * n + kp];
+      const cur = ujr[k * n + kp], cui = uji[k * n + kp];
+      for (let a = a0; a < a1; a++) {
+        const gc1 = gk * tC[a], r1 = tM1[a] * n1, r2 = tM2[a] * n2;
+        for (let b = b0; b < b1; b++) {
+          const w = gc1 * tC[b];
+          const q1 = r1 + tM1[b], q2 = r2 + tM2[b];
+          const aa = u1r[q1], bb = u1i[q1];
+          const cc = u2r[q2], dd = u2i[q2];
+          // role J1: conj(uJ) * u2 ; dB/dRe = Re h, dB/dIm = -Im h
+          G1r[q1] += w * (cur * cc + cui * dd);
+          G1i[q1] -= w * (cur * dd - cui * cc);
+          // role J2: conj(uJ) * u1
+          G2r[q2] += w * (cur * aa + cui * bb);
+          G2i[q2] -= w * (cur * bb - cui * aa);
         }
       }
     }
   }
-  mirrorGradient(gr, gi);
 };
 
 /**
- * G + mirror(G) for every J: the gradient terms of the entries the loops skip are the mirror images of those of the
+ * G + mirror(G) for one J (R, I: the gradients of the real and imaginary parts): the gradient terms of the entries the loops skip are the mirror images of those of the
  * visited ones (a term at (m, m') with real part x and imaginary part y has its image at (J - m, J - m') with
  * (-1)^(m+m') x and -(-1)^(m+m') y, from the symmetry of u and Z, see kpEnd).
  */
-export const mirrorGradient = (gr: Grad[], gi: Grad[]): void => {
-  for (let J = 0; J < gr.length; J++) {
-    const n = J + 1, R = gr[J].r, I = gi[J].r;
-    for (let k = 0; k <= J; k++) {
-      for (let kp = 0; kp <= J; kp++) {
-        const q = k * n + kp, qm = (J - k) * n + (J - kp);
-        if (qm < q) continue;
-        if (qm === q) { R[q] = 2 * R[q]; I[q] = 0; continue; }
-        const sgn = (k + kp) & 1 ? -1 : 1;
-        const rq = R[q], rm = R[qm], iq = I[q], im = I[qm];
-        R[q] = rq + sgn * rm; R[qm] = rm + sgn * rq;
-        I[q] = iq - sgn * im; I[qm] = im - sgn * iq;
-      }
+export const mirrorGradient = (J: number, R: Float64Array, I: Float64Array): void => {
+  const n = J + 1;
+  for (let k = 0; k <= J; k++) {
+    for (let kp = 0; kp <= J; kp++) {
+      const q = k * n + kp, qm = (J - k) * n + (J - kp);
+      if (qm < q) continue;
+      if (qm === q) { R[q] = 2 * R[q]; I[q] = 0; continue; }
+      const sgn = (k + kp) & 1 ? -1 : 1;
+      const rq = R[q], rm = R[qm], iq = I[q], im = I[qm];
+      R[q] = rq + sgn * rm; R[qm] = rm + sgn * rq;
+      I[q] = iq - sgn * im; I[qm] = im - sgn * iq;
     }
   }
 };
@@ -730,42 +739,15 @@ export const mirrorGradient = (gr: Grad[], gi: Grad[]): void => {
 /**
  * chemflag adjoint: adds g dB/d(u) to per-element gradient tables. The
  * conjugated slot J uses element gEj, the holomorphic slots J1, J2 use gE1,
- * gE2 (each an array of per-J real/imaginary gradient matrices). Same signs
- * as adjointBispectrum.
+ * gE2 (each an array of per-J real/imaginary gradient matrices), with the products Z of
+ * bispectrumComponent for the same matrices. Same signs as adjointBispectrum; like it, only the visited entries are
+ * summed, so the caller completes every element's gradient with mirrorGradient once all components are added.
  */
 export const adjointComponentChem = (
   t: Triple, u1: Cmat, u2: Cmat, uj: Cmat, g: number,
-  gE1: Cmat[], gE2: Cmat[], gEj: Cmat[],
+  gE1: Cmat[], gE2: Cmat[], gEj: Cmat[], zr: Float64Array, zi: Float64Array,
 ): void => {
-  const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
-  for (let k = 0; k < n; k++) {
-    for (let kp = 0; kp < n; kp++) {
-      const cur = uj.re[k * n + kp], cui = uj.im[k * n + kp];
-      for (let m1 = 0; m1 < n1; m1++) {
-        const s1 = k * n1 + m1;
-        const c1 = t.coef[s1];
-        if (c1 === 0) continue;
-        const m2 = t.m2[s1];
-        for (let m1p = 0; m1p < n1; m1p++) {
-          const s2 = kp * n1 + m1p;
-          const c2 = t.coef[s2];
-          if (c2 === 0) continue;
-          const m2p = t.m2[s2];
-          const w = g * c1 * c2;
-          const a = u1.re[m1 * n1 + m1p], b = u1.im[m1 * n1 + m1p];
-          const cc = u2.re[m2 * n2 + m2p], dd = u2.im[m2 * n2 + m2p];
-          gEj[t.J].re[k * n + kp] += w * (a * cc - b * dd);
-          gEj[t.J].im[k * n + kp] += w * (a * dd + b * cc);
-          const hr = cur * cc + cui * dd, hi = cur * dd - cui * cc;
-          gE1[t.J1].re[m1 * n1 + m1p] += w * hr;
-          gE1[t.J1].im[m1 * n1 + m1p] -= w * hi;
-          const yr = cur * a + cui * b, yi = cur * b - cui * a;
-          gE2[t.J2].re[m2 * n2 + m2p] += w * yr;
-          gE2[t.J2].im[m2 * n2 + m2p] -= w * yi;
-        }
-      }
-    }
-  }
+  adjointTerms(t, u1, u2, uj, g, zr, zi, gEj[t.J].re, gEj[t.J].im, gE1[t.J1].re, gE1[t.J1].im, gE2[t.J2].re, gE2[t.J2].im);
 };
 
 
@@ -956,14 +938,14 @@ export class WignerTables {
   get size(): number { return this.off[this.tj + 1]; }
 
   /**
-   * A gradient of U^J (gr[J].r with respect to Re U^J, gi[J].r to Im U^J, in the U layout) in the polynomial layout of
+   * A gradient of U^J (gr[J] with respect to Re U^J, gi[J] to Im U^J, in the U layout) in the polynomial layout of
    * contract, the normalization of each entry included.
    */
-  polyGradient(gr: Grad[], gi: Grad[], outR: Float64Array, outI: Float64Array): void {
+  polyGradient(gr: Float64Array[], gi: Float64Array[], outR: Float64Array, outI: Float64Array): void {
     const off = this.off;
     for (let J = 0; J <= this.tj; J++) {
       const n = J + 1, oJ = off[J], nm = this.norm[J];
-      const GR = gr[J].r, GI = gi[J].r;
+      const GR = gr[J], GI = gi[J];
       for (let k = 0; k <= J >> 1; k++) {
         for (let kp = 0; kp < n; kp++) {
           const q = kp * n + k;

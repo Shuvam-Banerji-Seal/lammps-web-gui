@@ -443,25 +443,31 @@ export class PairLJClass2 extends PairLJ2Variant {
  * "The lj/cubic pair style does not support the pair_modify shift option" and
  * "The lj/cubic pair style does not support the pair_modify tail option".
  */
-const RHO_S = (26 / 7) ** (1 / 6);
-const RHO_C = (67 / 48) * RHO_S;
-/** u_LJ(r_s)/eps and u'_LJ(r_s)sigma/eps at the inflection point (sigma-independent). */
-const U_S = 4 * (RHO_S ** -12 - RHO_S ** -6);
-const U_D = 4 * (-12 * RHO_S ** -13 + 6 * RHO_S ** -7);
+/**
+ * As native LAMMPS does (src/EXTRA-PAIR/pair_lj_cubic.cpp coeff, init_one and compute, constants from
+ * src/EXTRA-PAIR/pair_lj_cubic_const.h at b332f28): the inflection point r_s = SS r_min and the cutoff r_c = SM r_min
+ * are set from sigma by pair_coeff (r_min = 2^(1/6) sigma) and mixed like distances for the other pairs; beyond r_s the
+ * cubic in t = (r - r_s)/r_min takes r_min from the current sigma, E = epsilon (PHIS + DPHIDS t - A3 t^3/6).
+ */
+const RT6TWO = 1.1224620483093730;
+const SS = 1.1086834179687215;
+const PHIS = -0.7869822485207097;
+const DPHIDS = 2.6899008972047196;
+const A3 = 27.9335700460986445;
+const SM = 1.5475372709146737;
 
 export class PairLJCubic extends PairLJ2Variant {
   readonly name: string = 'lj/cubic';
-  protected readonly paramNames = ['epsilon', 'sigma'] as const;
+  protected readonly paramNames = ['epsilon', 'sigma', 'cut_inner', 'cut'] as const;
   protected readonly coeffUsage = 'usage: pair_coeff I J epsilon sigma';
   lj1 = new Float64Array(0);
   lj2 = new Float64Array(0);
   lj3 = new Float64Array(0);
   lj4 = new Float64Array(0);
-  rsTab = new Float64Array(0);
-  rs2 = new Float64Array(0);
-  us = new Float64Array(0);
-  ud = new Float64Array(0);
-  wc = new Float64Array(0);
+  eps = new Float64Array(0);
+  sig = new Float64Array(0);
+  cutInner = new Float64Array(0);
+  cutInnerSq = new Float64Array(0);
 
   settings(args: string[]): void {
     if (args.length !== 0) throw new StyleError(`usage: pair_style ${this.name}`);
@@ -471,7 +477,8 @@ export class PairLJCubic extends PairLJ2Variant {
     if (args.length !== 4) throw pairCoeffArgs(this.coeffUsage);
     const eps = parseNum(args[2], 'epsilon');
     const sig = parseNum(args[3], 'sigma');
-    this.p.setRange(args[0], args[1], [eps, sig]);
+    const rmin = sig * RT6TWO;
+    this.p.setRange(args[0], args[1], [eps, sig, rmin * SS, rmin * SM]);
   }
 
   init(ctx: StyleContext): void {
@@ -489,9 +496,8 @@ export class PairLJCubic extends PairLJ2Variant {
     if (this.lj1.length !== nt * nt) {
       this.lj1 = new Float64Array(nt * nt); this.lj2 = new Float64Array(nt * nt);
       this.lj3 = new Float64Array(nt * nt); this.lj4 = new Float64Array(nt * nt);
-      this.rsTab = new Float64Array(nt * nt); this.rs2 = new Float64Array(nt * nt);
-      this.us = new Float64Array(nt * nt); this.ud = new Float64Array(nt * nt);
-      this.wc = new Float64Array(nt * nt);
+      this.eps = new Float64Array(nt * nt); this.sig = new Float64Array(nt * nt);
+      this.cutInner = new Float64Array(nt * nt); this.cutInnerSq = new Float64Array(nt * nt);
     }
   }
 
@@ -503,31 +509,30 @@ export class PairLJCubic extends PairLJ2Variant {
     this.lj2[k1] = this.lj2[k2] = 24 * eps * s6;
     this.lj3[k1] = this.lj3[k2] = 4 * eps * s12;
     this.lj4[k1] = this.lj4[k2] = 4 * eps * s6;
-    const rs = RHO_S * sig, rc = RHO_C * sig;
-    this.rsTab[k1] = this.rsTab[k2] = rs;
-    this.rs2[k1] = this.rs2[k2] = rs * rs;
-    // cubic branch: E = u(r_s) + (r-r_s) u'(r_s) - (A3/6)(r-r_s)^3 with
-    // A3/6 = u'(r_s) / (3 (r_c - r_s)^2) so that E(r_c) = F(r_c) = 0
-    const ud = (eps / sig) * U_D;
-    this.us[k1] = this.us[k2] = eps * U_S;
-    this.ud[k1] = this.ud[k2] = ud;
-    this.wc[k1] = this.wc[k2] = ud / (3 * (rc - rs) ** 2);
-    return rc;
+    this.eps[k1] = this.eps[k2] = eps;
+    this.sig[k1] = this.sig[k2] = sig;
+    const rs = this.p.get('cut_inner', i, j);
+    this.cutInner[k1] = this.cutInner[k2] = rs;
+    this.cutInnerSq[k1] = this.cutInnerSq[k2] = rs * rs;
+    return this.p.get('cut', i, j);
   }
 
   protected pairKernel(t: number, rsq: number): { eng: number; fpairBase: number } {
-    if (rsq <= this.rs2[t]) {
-      const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
+    const r2inv = 1 / rsq;
+    if (rsq <= this.cutInnerSq[t]) {
+      const r6inv = r2inv * r2inv * r2inv;
       return {
         fpairBase: r6inv * (this.lj1[t] * r6inv - this.lj2[t]) * r2inv,
         eng: r6inv * (this.lj3[t] * r6inv - this.lj4[t]),
       };
     }
-    const r = Math.sqrt(rsq), d = r - this.rsTab[t], d2 = d * d;
+    const r = Math.sqrt(rsq);
+    const rmin = this.sig[t] * RT6TWO;
+    const u = (r - this.cutInner[t]) / rmin;
+    const eps = this.eps[t];
     return {
-      // E = u(r_s) + d u'(r_s) - (A3/6) d^3 ; F_r = -u'(r_s) + (A3/2) d^2
-      fpairBase: (-this.ud[t] + 3 * this.wc[t] * d2) / r,
-      eng: this.us[t] + d * (this.ud[t] - this.wc[t] * d2),
+      fpairBase: eps * (-DPHIDS + A3 * u * u / 2.0) * r / rmin * r2inv,
+      eng: eps * (PHIS + DPHIDS * u - A3 * u * u * u / 6.0),
     };
   }
 

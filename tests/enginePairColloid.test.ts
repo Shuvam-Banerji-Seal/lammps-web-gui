@@ -165,13 +165,14 @@ describe('pair style colloid', () => {
 
   it('unset I != J pairs mix A like epsilon and sigma/d1/d2/cut like sigma (geometric default)', () => {
     const st = make(['10.0'], [
-      ['1', '1', '144.0', '4.0', '5.0', '2.0', '12.0'],
-      ['2', '2', '39.5', '1.0', '0.8', '0.0', '3.0'],
+      // an I,I pair has d1 = d2 (native refuses others, see the errors test)
+      ['1', '1', '144.0', '4.0', '5.0', '5.0', '12.0'],
+      ['2', '2', '39.5', '1.0', '0.8', '0.8', '3.0'],
     ]);
     near(st.p.get('a', 1, 2), Math.sqrt(144.0 * 39.5));
     near(st.p.get('sigma', 1, 2), Math.sqrt(4.0 * 1.0));
     near(st.p.get('d1', 1, 2), Math.sqrt(5.0 * 0.8));
-    near(st.p.get('d2', 1, 2), 0);
+    near(st.p.get('d2', 1, 2), Math.sqrt(5.0 * 0.8));
     near(st.p.get('cut', 1, 2), Math.sqrt(12.0 * 3.0));
     near(st.cut[1 * 3 + 2], Math.sqrt(12.0 * 3.0));
   });
@@ -193,7 +194,10 @@ describe('pair style colloid', () => {
     expect(() => make([], COEFFS)).toThrow(/pair_style colloid cutoff/);
     expect(() => make(['12.0', '3.0'], COEFFS)).toThrow(/pair_style colloid cutoff/);
     expect(() => make(['0.0'], COEFFS)).toThrow(/cutoff must be > 0/);
-    expect(() => make(['12.0'], [['1', '1', '144.0', '1.0', '-5.0', '5.0', '12.0']])).toThrow(/d1 and d2 must be values >= 0/);
+    expect(() => make(['12.0'], [['1', '1', '144.0', '1.0', '-5.0', '5.0', '12.0']])).toThrow(/Invalid d1 or d2 value for pair colloid coeff/);
+    // Measured with native LAMMPS: ERROR: Invalid d1 or d2 value for pair colloid coeff (src/COLLOID/pair_colloid.cpp:302)
+    // for pair_coeff 1 1 144.0 1.0 5.0 3.0 12.0 (an I,I pair with d1 != d2)
+    expect(() => make(['12.0'], [['1', '1', '144.0', '1.0', '5.0', '3.0', '12.0']])).toThrow(/Invalid d1 or d2 value for pair colloid coeff/);
     expect(() => make(['12.0'], [['1', '1', '144.0', '1.0', '5.0']])).toThrow(/usage: pair_coeff/);
     // tail is not supported
     const st = new PairColloid();

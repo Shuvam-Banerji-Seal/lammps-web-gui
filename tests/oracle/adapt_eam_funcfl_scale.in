@@ -1,0 +1,23 @@
+# oracle: fix adapt on eam (funcfl) scale: the 2-2 pair and type 2's embedding energy scaled; the 1-2 pair, which coeff_funcfl does not set, is reset to 1 by init_one at every reinit (no effect)
+# oracle-potentials: Cu_u3.eam Ni_u3.eam
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10
+units           metal
+atom_style      atomic
+lattice         fcc 3.6
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+set             group all type/fraction 2 0.4 4321
+pair_style      eam
+pair_coeff      1 1 Cu_u3.eam
+pair_coeff      2 2 Ni_u3.eam
+velocity        all create 800.0 87287 loop geom
+variable        a equal 0.9
+variable        b equal 1.3
+fix             1 all nve
+fix             2 all adapt 0 pair eam scale 2 2 v_a pair eam scale 1 2 v_b
+timestep        0.002
+thermo_style    custom step temp pe press
+thermo_modify   format float %.15g
+thermo          10
+run             30

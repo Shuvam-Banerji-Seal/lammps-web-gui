@@ -49,6 +49,8 @@ export interface LeptonStyleContext extends StyleContext {
 }
 
 export class PairLepton extends Pair {
+  // As native LAMMPS does (src/LEPTON/pair_lepton.cpp at b332f28): reinitflag = 0, fix adapt cannot re-initialize it
+  reinitFlag = false;
   readonly name: Variant;
   virialFdotr = true;
   cutGlobal = 0;

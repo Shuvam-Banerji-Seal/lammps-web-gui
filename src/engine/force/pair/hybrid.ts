@@ -422,6 +422,25 @@ export class PairHybrid extends Pair {
     return this.cut[i * (this.ntypes + 1) + j];
   }
 
+  /**
+   * As native LAMMPS does (src/pair.cpp Pair::reinit with src/pair_hybrid.cpp init_one at b332f28): each sub-style's
+   * initOne for its type pairs again, and the sub-style's cutoffs from what it returns; the hybrid's own cutoffs (the
+   * neighbor lists) stay those of the last init.
+   */
+  override reinit(): void {
+    const n = this.ntypes, nt = n + 1;
+    for (let i = 1; i <= n; i++) {
+      for (let j = i; j <= n; j++) {
+        for (const k of this.map[i * nt + j] ?? []) {
+          const st = this.subs[k].style;
+          const c = st.initOne(i, j);
+          st.cut[i * nt + j] = st.cut[j * nt + i] = c;
+          st.cutsq[i * nt + j] = st.cutsq[j * nt + i] = c * c;
+        }
+      }
+    }
+  }
+
   tailSums(counts: Float64Array): { etail: number; ptail: number } {
     let etail = 0, ptail = 0;
     for (const s of this.subs) {

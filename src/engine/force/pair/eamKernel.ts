@@ -12,10 +12,14 @@ import { NEIGHMASK } from '../../neighbor';
 /** A table as the loops read it (eam.ts Spline). */
 export interface EAMKernelSpline { readonly n: number; readonly rdx: number; readonly coef: Float64Array }
 
-/** The density and r*phi tables by type pair (index i * (ntypes + 1) + j) and the squared cutoffs. */
+/**
+ * The density and r*phi tables by type pair (index i * (ntypes + 1) + j), the squared cutoffs and fix adapt's scale
+ * factors (native PairEAM::extract "scale").
+ */
 export interface EAMKernelTables {
   readonly ntypes: number;
   readonly cutsq: Float64Array;
+  readonly scale: Float64Array;
   readonly rhoTab: readonly (EAMKernelSpline | null)[];
   readonly gTab: readonly (EAMKernelSpline | null)[];
 }
@@ -84,7 +88,7 @@ export const eamForces = (t: EAMKernelTables, name: string, pc: PairCompute, fp:
   const { nr, rdr } = grid;
   const { x, f, type } = pc;
   const nt = t.ntypes + 1;
-  const cutsq = t.cutsq;
+  const cutsq = t.cutsq, scale = t.scale;
   const rhoC = coefs(t.rhoTab), z2C = coefs(t.gTab);
   const first = half.firstneigh, num = half.numneigh, nbr = half.neighbors;
   const eatom = pc.eatom, vatom = pc.vatom;
@@ -121,15 +125,18 @@ export const eamForces = (t: EAMKernelTables, name: string, pc: PairCompute, fp:
       const phi = z2 * recip;
       const phip = z2p * recip - phi * recip;
       const psip = fptmp * rhojp + fp[j] * rhoip + phip;
-      const fpair = -psip * recip;
+      // the pair's force and energy times fix adapt's scale[itype][jtype]
+      const sc = scale[ti + jtype];
+      const fpair = -sc * psip * recip;
       fxtmp += delx * fpair;
       fytmp += dely * fpair;
       fztmp += delz * fpair;
       f[3 * j] -= delx * fpair;
       f[3 * j + 1] -= dely * fpair;
       f[3 * j + 2] -= delz * fpair;
-      evdwl += phi;
-      if (eatom) { eatom[i] += 0.5 * phi; eatom[j] += 0.5 * phi; }
+      const ev = sc * phi;
+      evdwl += ev;
+      if (eatom) { eatom[i] += 0.5 * ev; eatom[j] += 0.5 * ev; }
       if (vatom) {
         const v0 = delx * delx * fpair, v1 = dely * dely * fpair, v2 = delz * delz * fpair;
         const v3 = delx * dely * fpair, v4 = delx * delz * fpair, v5 = dely * delz * fpair;
@@ -154,6 +161,7 @@ export class PairEAMKernel extends Pair implements EAMKernelTables {
   virialFdotr = true;
   rhoTab: (EAMKernelSpline | null)[] = [];
   gTab: (EAMKernelSpline | null)[] = [];
+  scale = new Float64Array(0);
 
   constructor(readonly name: string) { super(); }
 

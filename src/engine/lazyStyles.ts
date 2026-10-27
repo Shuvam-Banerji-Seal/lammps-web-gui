@@ -67,6 +67,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_pafi', names: { FIXES: ['pafi'] }, load: () => import('../engine-gpl/registry/pafi') as Promise<StyleModule> },
   { id: 'gpl_pod', names: { PAIRS: ['pod'], COMPUTES: ['pod/atom', 'podd/atom', 'pod/global', 'pod/local'] }, load: () => import('../engine-gpl/registry/pod') as Promise<StyleModule> },
   { id: 'gpl_slcsa', names: { COMPUTES: ['slcsa/atom'] }, load: () => import('../engine-gpl/registry/slcsa') as Promise<StyleModule> },
+  { id: 'adapt_pairs', names: { HOOKS: ['adapt'] }, load: () => import('./registry/adapt_pairs') as Promise<StyleModule> },
   { id: 'pair_meam_spline', names: { PAIRS: ['meam/spline', 'meam/sw/spline'] }, load: () => import('./registry/pair_meam_spline') as Promise<StyleModule> },
   { id: 'pair_snap', names: { PAIRS: ['snap'] }, load: () => import('./registry/pair_snap') as Promise<StyleModule> },
   { id: 'compute_sna', names: { COMPUTES: ['sna/atom', 'snad/atom', 'snav/atom'] }, load: () => import('./registry/compute_sna') as Promise<StyleModule> },

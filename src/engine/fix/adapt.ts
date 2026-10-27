@@ -1,6 +1,9 @@
 import { hasChargeStyle, isSphereStyle } from '../atoms';
 import { Fix } from './fix';
-import { Pair, PairParams, StyleError, typeBounds, type Bonded } from '../force/types';
+import { Pair, StyleError, typeBounds, type AdaptAccess, type Bonded } from '../force/types';
+import { ACCEL_ALIASES } from '../accelAliases';
+import type { AdaptPairsHook } from './adaptPairs';
+import { gplHook } from '../gplHooks';
 import { PairHybrid } from '../force/pair/hybrid';
 import { SimpleBonded } from '../force/bonded_util';
 import { bounds, inumeric, missingArgs, logical } from '../force/util';
@@ -33,6 +36,12 @@ import type { SimState } from '../types';
  * "The *v_name* argument for keyword *pair* is the name of an" equal-style variable
  * "which will be evaluated each time" this fix is invoked "to set the parameter to a
  * new value."
+ * As native LAMMPS does (src/fix_adapt.cpp FixAdapt::init and change_settings, src/force.cpp pair_match and
+ * src/pair.cpp Pair::reinit at b332f28): pstyle ("style" or "style:N") names the defined pair style or a hybrid
+ * sub-style, pparam is looked up in that style's extract() (fix/adaptPairs.ts), the values of the type pairs I <= J of
+ * the range are set at setup and every N steps, and the defined pair style is re-initialized (init_one for every type
+ * pair, which re-mixes the pairs pair_coeff did not set, so a value written to a mixed pair has no effect; the run's
+ * cutoffs stay). The style and parameter are checked when the run starts, after the force field's init.
  *
  * Atom attributes: "The new value is assigned to the corresponding attribute for all
  * atoms in the fix group."
@@ -85,44 +94,10 @@ import type { SimState } from '../types';
  * forces, virial calculated by whatever k-space solver is defined by the kspace_style command." It sets KSpace.scale.
  *
  * Not supported (StyleError): bonded hybrid styles (their sub-styles are rebuilt from the
- * coefficient lines at every init here); bonded styles outside BONDED_ADAPT; pair
- * styles and parameters other than those listed in ADAPTABLE (a cutoff is never adaptable:
- * the neighbor list would not follow it); mixed type pairs; diameter/disc; sub-style
- * selection for a sub-style name that is not in the hybrid style.
+ * coefficient lines at every init here); bonded styles outside BONDED_ADAPT; pair parameters
+ * native extract() names but this engine keeps no table for (fix/adaptPairs.ts); diameter/disc.
  *
  */
-
-/**
- * Pair styles and parameters (lower-case, as the fix_adapt.rst table names them) this engine can
- * adapt; "cut" names are not adaptable. The engine's table name is matched case-insensitively
- * (a -> A, c -> C, d -> D). reinit: the style derives tables from the parameter at init() and must
- * be re-initialized after a change; false when compute() reads the parameter table directly.
- */
-interface Adaptable {
-  params: string[];
-  reinit: boolean;
-  /** Parameters that are listed by the doc table but refused, with the reason (measured below). */
-  refused?: Record<string, string>;
-}
-const ADAPTABLE: Record<string, Adaptable> = {
-  'lj/cut': { params: ['epsilon', 'sigma'], reinit: true },
-  'lj/cut/coul/cut': { params: ['epsilon', 'sigma'], reinit: true },
-  'lj/class2': { params: ['epsilon', 'sigma'], reinit: true },
-  'lj/expand': {
-    params: ['epsilon', 'sigma', 'delta'],
-    reinit: true,
-    // Measured with native LAMMPS (black box): with pair_coeff 1 1 1.0 1.0 0.5 and fix adapt delta 1 1 0.14
-    // the pe is 92.7189 (the energy uses delta 0.14 but the force cutoff stays cut + 0.5 = 3.0); with
-    // pair_coeff delta 0.1 and an adapted 0.14 it is 92.7497 (cutoff 2.6); static delta 0.14 gives 92.7420.
-    // The cutoff cut + delta is frozen at the value the run started with, which this engine does not model.
-    refused: { delta: 'changes the force cutoff cut + delta, which native LAMMPS keeps at its run-start value (not modelled by this engine)' },
-  },
-  buck: { params: ['a', 'c'], reinit: true },
-  born: { params: ['a', 'c', 'd'], reinit: true },
-  soft: { params: ['a'], reinit: true },
-  morse: { params: ['d0', 'alpha', 'r0'], reinit: true },
-  snap: { params: ['scale'], reinit: false },
-};
 
 const USAGE = 'usage: fix ID group-ID adapt N attribute args ... keyword value ...';
 
@@ -184,25 +159,20 @@ interface BondedTarget {
   orig: Float64Array;
 }
 
+/** A pair attribute as given. */
+interface PendingPair { pstyle: string; pparam: string; vname: string; iw: string; jw: string }
+
 interface PairTarget {
-  /** Sub-style name (or the pair style name), as given without the ":N" instance. */
+  /** pstyle as given ("style" or "style:N") */
   pstyle: string;
-  /** Lower-case parameter name from the input, and the engine's name for it. */
   pparam: string;
-  name: string;
   vname: string;
-  /** Type words as given (resolved against ntypes at run start). */
-  iw: string;
-  jw: string;
-  /** Explicit type pairs (i <= j) and their original values (captured at run start). */
+  /** The type pairs I <= J of the range (dim 2; native's loops) and their values when the run started. */
   pairs: Array<[number, number]>;
   orig: Float64Array;
-  table: PairParams;
-  /** The (sub-)style that owns the table. */
-  style: Pair;
-  /** The defined pair style: a hybrid style when the sub-style is in one; init() runs on it. */
+  access: AdaptAccess;
+  /** The defined pair style (a hybrid style when the parameter is a sub-style's): reinit() runs on it. */
   owner: Pair;
-  reinit: boolean;
 }
 
 type AtomKind = 'charge' | 'diameter';
@@ -324,77 +294,96 @@ export class FixAdapt extends Fix {
     }
     // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::FixAdapt at b332f28): the two type ranges
     // (utils::bounds_typelabel) and the v_ reference are checked when the fix is defined; the pair style and its
-    // parameter when the run starts (the engine checks them next)
+    // parameter when the run starts (resolvePairs)
     const sys = this.sys;
     for (const w of [iw, jw]) {
       if (sys.labels.defined && !isNumericTypeWord(w)) inumeric(typeWord(sys.labels, 'atom', w));
       else bounds(w, 1, sys.state.ntypes);
     }
     if (!vw.startsWith('v_')) throw new StyleError(`Argument must be variable not ${vw}`);
-    const m = /^([^:]+)(?::(\d+))?$/.exec(pstyle);
-    if (!m) throw new StyleError(`fix ${id} (adapt): pair style selection '${pstyle}' must be style or style:N (${USAGE})`);
-    const base = m[1];
-    const inst = m[2] === undefined ? undefined : Number(m[2]);
-    if (inst !== undefined && (!Number.isInteger(inst) || inst < 1)) {
-      throw new StyleError(`fix ${id} (adapt): instance N of pair style selection '${pstyle}' must be 1 or more`);
-    }
-    const entry = ADAPTABLE[base];
-    if (!entry) {
-      throw new StyleError(`fix ${id} (adapt): pair style '${base}' is not supported by fix adapt in this engine (supported: ${Object.keys(ADAPTABLE).join(', ')})`);
-    }
-    const lname = pparam.toLowerCase();
-    if (entry.refused?.[lname]) throw new StyleError(`fix ${id} (adapt): pair style ${base} parameter '${pparam}' is not supported: ${entry.refused[lname]}`);
-    if (!entry.params.includes(lname)) {
-      throw new StyleError(`fix ${id} (adapt): pair style ${base} parameter '${pparam}' cannot be adapted (supported: ${entry.params.join(', ')})`);
-    }
     this.checkVariable(id, vw);
-    // the type ranges and the pair table are resolved at run start (resolve())
-    this.pending.push({ pstyle: base, inst, pparam: lname, vname: vw.slice(2), iw, jw, reinit: entry.reinit });
+    this.pending.push({ pstyle, pparam, vname: vw.slice(2), iw, jw });
   }
 
-  /** Pair attributes as given; resolve() turns them into PairTarget. */
-  private readonly pending: Array<{ pstyle: string; inst: number | undefined; pparam: string; vname: string; iw: string; jw: string; reinit: boolean }> = [];
+  /** Pair attributes as given; resolvePairs() turns them into PairTarget. */
+  private readonly pending: PendingPair[] = [];
 
-  /** Resolves pair targets against the defined pair style (or its hybrid sub-styles) and the box (run start). */
-  private resolve(): void {
-    const s = this.sys.state;
+  /**
+   * As native LAMMPS does (src/force.cpp Force::pair_match at b332f28, exact): the defined pair style when its name is
+   * pstyle, else the hybrid sub-style of that name (the nsub-th one, or the only one); null when there is none. An
+   * accelerator alias (lj/cut/omp) names its base style, as the engine runs it.
+   */
+  private pairMatch(word: string, nsub: number): { style: Pair; name: string } | null {
     const owner = this.sys.ff.pair;
+    if (!owner) return null;
+    const base = ACCEL_ALIASES.get(word) ?? word;
+    if (owner.name === base) return { style: owner, name: base };
+    if (!(owner instanceof PairHybrid)) return null;
+    let count = 0, last: Pair | null = null;
+    for (const sub of owner.subs) {
+      if (sub.name !== base) continue;
+      last = sub.style;
+      count++;
+      if (nsub === count) return { style: sub.style, name: base };
+    }
+    return count === 1 ? { style: last!, name: base } : null;
+  }
+
+  /**
+   * The pair attributes against the defined pair style, as native FixAdapt::init does (src/fix_adapt.cpp at b332f28)
+   * once the force field is initialized: the style ("Fix adapt pair style {} not found"), the parameter of its
+   * extract() (fix/adaptPairs.ts), and with a hybrid pair style the sub-style of every type pair of the range.
+   */
+  private resolvePairs(): void {
+    const owner = this.sys.ff.pair;
+    const nt = this.sys.state.ntypes;
     this.pairs = [];
+    if (!this.pending.length) return;
+    const { pairExtractHas, pairExtractDim, pairAdaptAccess } = gplHook<AdaptPairsHook>('adapt');
+    // native's checks of every attribute first (FixAdapt::init), then Pair::reinit's at the setup's first change, then
+    // where this engine keeps each value
+    const found: Array<{ p: PendingPair; style: Pair; name: string; pairs: Array<[number, number]> }> = [];
     for (const p of this.pending) {
-      if (!owner) throw new StyleError(`fix ${this.id} (adapt): no pair style is defined (pair ${p.pstyle})`);
-      let style: Pair;
-      if (owner instanceof PairHybrid) {
-        const subs = owner.subs.filter((x) => x.name === p.pstyle);
-        if (!subs.length) throw new StyleError(`fix ${this.id} (adapt): pair sub-style ${p.pstyle} is not in pair_style ${owner.name}`);
-        if (p.inst === undefined && subs.length > 1) {
-          throw new StyleError(`fix ${this.id} (adapt): pair sub-style ${p.pstyle} is used ${subs.length} times; select one with ${p.pstyle}:N`);
-        }
-        const sub = p.inst === undefined ? subs[0] : subs.find((x) => x.instance === p.inst);
-        if (!sub) throw new StyleError(`fix ${this.id} (adapt): pair sub-style ${p.pstyle}:${p.inst} does not exist (it is used ${subs.length} times)`);
-        style = sub.style;
-      } else {
-        if (owner.name !== p.pstyle) throw new StyleError(`fix ${this.id} (adapt): pair style ${p.pstyle} is not the defined pair style (${owner.name})`);
-        if (p.inst !== undefined && p.inst !== 1) throw new StyleError(`fix ${this.id} (adapt): pair style ${p.pstyle}:${p.inst} does not exist (the pair style is not a hybrid style)`);
-        style = owner;
+      const c = p.pstyle.indexOf(':');
+      const word = c >= 0 ? p.pstyle.slice(0, c) : p.pstyle;
+      const nsub = c >= 0 ? inumeric(p.pstyle.slice(c + 1)) : 0;
+      const m = this.pairMatch(word, nsub);
+      if (!m || !owner) throw new StyleError(`Fix adapt pair style ${word} not found`);
+      let style = m.style, name = m.name;
+      if (m.style === owner && owner instanceof PairHybrid) {
+        // PairHybrid::extract: the first sub-style's value of that name
+        const sub = owner.subs.find((q) => pairExtractHas(q.name, p.pparam));
+        if (!sub) throw new StyleError(`Fix adapt pair style ${p.pstyle} param ${p.pparam} not supported`);
+        style = sub.style; name = sub.name;
       }
-      const table = Object.values(style).find((v): v is PairParams => v instanceof PairParams && v.names.some((n) => n.toLowerCase() === p.pparam));
-      if (!table) throw new StyleError(`fix ${this.id} (adapt): pair style ${p.pstyle} has no parameter ${p.pparam}`);
-      const name = table.names.find((n) => n.toLowerCase() === p.pparam)!;
-      const [ilo, ihi] = typeBounds(p.iw, s.ntypes);
-      const [jlo, jhi] = typeBounds(p.jw, s.ntypes);
+      pairExtractDim(name, p.pstyle, p.pparam);
+      const [ilo, ihi] = typeBounds(p.iw, nt);
+      const [jlo, jhi] = typeBounds(p.jw, nt);
       const pairs: Array<[number, number]> = [];
       for (let i = ilo; i <= ihi; i++) for (let j = Math.max(jlo, i); j <= jhi; j++) pairs.push([i, j]);
-      if (!pairs.length) throw new StyleError(`fix ${this.id} (adapt): no type pairs with I <= J in ${p.iw} ${p.jw}`);
-      for (const [i, j] of pairs) {
-        if (!table.isSet(i, j)) {
-          throw new StyleError(`fix ${this.id} (adapt): type pair ${i} ${j} was not set by pair_coeff; fix adapt changes only explicit coefficients, not mixed ones`);
+      if (owner instanceof PairHybrid) {
+        for (const [i, j] of pairs) {
+          if (!owner.subsOf(i, j).some((k) => owner.subs[k].name === word)) {
+            throw new StyleError(`Fix adapt type pair range is not valid for pair hybrid sub-style ${word}`);
+          }
         }
       }
+      found.push({ p, style, name, pairs });
+    }
+    if (!owner || !found.length) return;
+    if (!owner.reinitFlag) throw new StyleError(`Fix adapt interface to pair style ${owner.name} is not supported`);
+    for (const { p, style, name, pairs } of found) {
+      const access: AdaptAccess = pairAdaptAccess(style, name, p.pstyle, p.pparam);
       this.pairs.push({
-        pstyle: p.pstyle, pparam: p.pparam, name, vname: p.vname, iw: p.iw, jw: p.jw,
-        pairs, orig: new Float64Array(pairs.length), table, style, owner, reinit: p.reinit,
+        pstyle: p.pstyle, pparam: p.pparam, vname: p.vname,
+        pairs: access.dim === 2 ? pairs : [], orig: new Float64Array(access.dim === 2 ? pairs.length : 1), access, owner,
       });
     }
+  }
+
+  /** Resolves the bonded, kspace and atom attributes (run start; the pair ones follow the force field's init). */
+  private resolve(): void {
+    const s = this.sys.state;
     for (const b of this.bonded) this.resolveBonded(b);
     if (this.kspaces.length && !this.sys.ff.kspace) throw new StyleError('Fix adapt expected a kspace style but none was defined');
     // As native LAMMPS does (src/atom_vec_sphere.cpp init at b332f28): changing diameters needs atom_style sphere 1
@@ -444,10 +433,9 @@ export class FixAdapt extends Fix {
     }
     if (this.atoms.length && this.sys.groups.isDynamic(this.groupBit)) throw new StyleError(`Cannot use dynamic group ${this.group} with fix adapt atom`);
     this.resolve();
+    // the pair attributes are resolved and set once the force field is initialized (afterForceInit)
+    this.pairs = [];
     const s = this.sys.state;
-    for (const t of this.pairs) {
-      t.pairs.forEach(([i, j], k) => { t.orig[k] = t.table.get(t.name, i, j); });
-    }
     for (const b of this.bonded) for (let i = b.lo; i <= b.hi; i++) b.orig[i] = b.arr![i];
     for (const a of this.atoms) {
       a.origQ.clear(); a.origR.clear(); a.origM.clear();
@@ -478,6 +466,16 @@ export class FixAdapt extends Fix {
 
   /** Setup: the charges of this run's setup are written after the force field's init (kspace init). */
   afterForceInit(): void {
+    // As native LAMMPS does (src/fix_adapt.cpp at b332f28): FixAdapt::init after the force field's init stores the
+    // values the run starts with, and setup_pre_force's change_settings sets them and re-initializes the pair style
+    this.resolvePairs();
+    for (const t of this.pairs) {
+      if (t.access.dim === 2) {
+        const a = t.access;
+        t.pairs.forEach(([i, j], k) => { t.orig[k] = a.get(i, j); });
+      } else t.orig[0] = t.access.get();
+    }
+    if (this.pairs.length) this.applyPairs(true);
     if (!this.chargesPending) return;
     this.chargesPending = false;
     const s = this.sys.state;
@@ -494,21 +492,7 @@ export class FixAdapt extends Fix {
   private apply(reinitPair: boolean, charges = true): void {
     const sys = this.sys;
     const s = sys.state;
-    let pairChanged = false;
-    for (const t of this.pairs) {
-      const v = sys.equalVariable(t.vname);
-      const arr = t.table.p(t.name);
-      t.pairs.forEach(([i, j], k) => {
-        const val = this.scale ? t.orig[k] * v : v;
-        arr[t.table.idx(i, j)] = val;
-        arr[t.table.idx(j, i)] = val;
-      });
-      pairChanged = true;
-    }
-    if (pairChanged) {
-      this.refreshPairs(reinitPair);
-      sys.ff.pairStale = true;
-    }
+    if (this.pairs.length) this.applyPairs(reinitPair);
     for (const b of this.bonded) {
       // native: vector[i] = scale ? value * vector_orig[i] : value, in native's stored units (see BONDED_ADAPT)
       const v = sys.equalVariable(b.vname);
@@ -526,23 +510,38 @@ export class FixAdapt extends Fix {
   }
 
   /**
-   * After the tables changed: re-initializes each defined pair style that derives tables from the
-   * changed parameters (the style re-mixes its non-explicit pairs), updates the tail corrections,
-   * and bumps the version so that copies of the style in force threads are refreshed.
+   * native change_settings for the pair attributes: each value (scale yes: times the run's starting value) into the
+   * type pairs of its range, then the defined pair style re-initialized (Pair::reinit).
+   */
+  private applyPairs(reinitPair: boolean): void {
+    for (const t of this.pairs) {
+      const v = this.sys.equalVariable(t.vname);
+      if (t.access.dim === 0) t.access.set(this.scale ? v * t.orig[0] : v);
+      else {
+        const a = t.access;
+        t.pairs.forEach(([i, j], k) => a.set(i, j, this.scale ? v * t.orig[k] : v));
+      }
+    }
+    this.refreshPairs(reinitPair);
+    this.sys.ff.pairStale = true;
+  }
+
+  /**
+   * After the values changed: the defined pair style re-initialized as native's Pair::reinit (re-derived coefficients,
+   * re-mixed pairs, the run's cutoffs kept), the tail corrections summed again, and the version bumped so that copies of
+   * the style in force threads are refreshed.
    */
   private refreshPairs(reinitPair: boolean): void {
     const s = this.sys.state;
     const owners = new Set<Pair>();
     for (const t of this.pairs) owners.add(t.owner);
-    if (reinitPair) {
-      const reinit = new Set<Pair>();
-      for (const t of this.pairs) if (t.reinit) reinit.add(t.owner);
-      for (const owner of reinit) {
-        owner.init(this.sys.styleContext());
+    for (const owner of owners) {
+      if (reinitPair) {
+        owner.reinit();
         if (hasTail(owner)) this.sys.ff.reinitTail(s);
       }
+      owner.version++;
     }
-    for (const owner of owners) owner.version++;
   }
 
   /** native bond->reinit() (and angle, dihedral, improper) after the values changed: the style's init(). */
@@ -594,16 +593,14 @@ export class FixAdapt extends Fix {
   postRun(): void {
     if (!this.reset) return;
     const s = this.sys.state;
-    let pairChanged = false;
     for (const t of this.pairs) {
-      const arr = t.table.p(t.name);
-      t.pairs.forEach(([i, j], k) => {
-        arr[t.table.idx(i, j)] = t.orig[k];
-        arr[t.table.idx(j, i)] = t.orig[k];
-      });
-      pairChanged = true;
+      if (t.access.dim === 0) t.access.set(t.orig[0]);
+      else {
+        const a = t.access;
+        t.pairs.forEach(([i, j], k) => a.set(i, j, t.orig[k]));
+      }
     }
-    if (pairChanged) this.refreshPairs(true);
+    if (this.pairs.length) this.refreshPairs(true);
     for (const b of this.bonded) for (let i = b.lo; i <= b.hi; i++) b.arr![i] = b.orig[i];
     this.reinitBonded();
     // fix_adapt.cpp restore_settings: "*kspace_scale = 1.0"

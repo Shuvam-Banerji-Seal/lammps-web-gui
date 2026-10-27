@@ -661,7 +661,33 @@ export abstract class Pair {
 
   /** Named values for other styles (e.g. 'cut_coul' for kspace). */
   extract(_name: string): unknown { return undefined; }
+
+  /**
+   * Native reinitflag: fix adapt may re-initialize the style (src/pair.cpp Pair::reinit at b332f28: "Fix adapt interface
+   * to pair style {} is not supported" otherwise).
+   */
+  reinitFlag = true;
+
+  /**
+   * As native LAMMPS does (src/pair.cpp Pair::reinit at b332f28) after fix adapt changed a parameter: initOne for every
+   * type pair again, so the style re-derives its coefficients and re-mixes the pairs pair_coeff did not set. The
+   * cutoffs stay those of the last init (Pair::init sets cutsq, reinit does not); the force field sums the tail again.
+   */
+  reinit(): void {
+    for (let i = 1; i <= this.ntypes; i++) for (let j = i; j <= this.ntypes; j++) this.initOne(i, j);
+  }
+
+  /**
+   * A parameter fix adapt changes that the style does not keep in a PairParams table of the same name (fix/adaptPairs.ts
+   * resolves those): native extract() with dim 2 (by type pair) or 0 (one value); null when there is none.
+   */
+  adaptParam(_name: string): AdaptAccess | null { return null; }
 }
+
+/** A pair parameter fix adapt reads and writes (native Pair::extract with dim 2 or 0). */
+export type AdaptAccess =
+  | { dim: 2; get(i: number, j: number): number; set(i: number, j: number, v: number): void }
+  | { dim: 0; get(): number; set(v: number): void };
 
 /**
  * Ghost copies of owned atoms: the ghosts of owned atom i are the indices

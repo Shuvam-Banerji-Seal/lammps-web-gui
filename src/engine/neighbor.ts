@@ -770,7 +770,10 @@ export class Neighbor {
     // bins are never narrower than binsize: a tiny but nonzero extent (atoms almost in a line or a
     // plane) would otherwise make the stencil reach ~cmax/extent bins and exhaust memory
     const bx = Math.max(binsize, (x1 - x0) / mx), by = Math.max(binsize, (y1 - y0) / my), bz = Math.max(binsize, (z1 - z0) / mz);
-    const sx = Math.ceil(cmax / bx), sy = Math.ceil(cmax / by), sz = Math.ceil(cmax / bz);
+    // a dimension with a single bin holds every atom in that bin (a 2d system in z): stencil rows reaching past it would
+    // only visit empty padding bins, so its reach is 0 (as native LAMMPS's 2d stencils, which have no z rows); the pairs
+    // and their order are unchanged
+    const sx = mx === 1 ? 0 : Math.ceil(cmax / bx), sy = my === 1 ? 0 : Math.ceil(cmax / by), sz = mz === 1 ? 0 : Math.ceil(cmax / bz);
     const nbx = mx + 2 * sx, nby = my + 2 * sy, nbz = mz + 2 * sz;
     const nbins = nbx * nby * nbz;
 

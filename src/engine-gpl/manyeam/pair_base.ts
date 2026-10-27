@@ -7,7 +7,8 @@
  * Shared pieces of the many-body EAM-family styles: the element-to-type mapping of pair_coeff, the masses set from the
  * potential file, the table set-up, and the ghost reverse and forward communication of per-atom arrays.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, StyleError, type AdaptAccess, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { initScale, scaleAccess, unitScaleTable } from '../../engine/force/pair/scaleTable';
 import { buildTables, type EamFile, type EamTables } from './potential';
 
 /** Ghost reverse communication: adds each ghost's values (stride per atom) into its owner (native reverse_comm). */
@@ -66,6 +67,12 @@ export abstract class EamFamilyBase extends Pair {
   protected fp = new Float64Array(0);
   protected numforce = new Int32Array(0);
   protected computed = false;
+  /**
+   * fix adapt's scale by type pair (pair_eam.cpp extract "scale"): compute scales a pair's force and energy by
+   * scale[itype][jtype] and an atom's embedding energy by scale[t][t]; coeff_mapped sets 1 for every pair and init_one 1
+   * for a pair it did not set (eam/cd's extract() returns nothing, so fix adapt never reaches its table).
+   */
+  scale: Float64Array = new Float64Array(0);
 
   /** True for the Finnis-Sinclair density layout (rhor per element pair). */
   protected abstract readonly fsLayout: boolean;
@@ -80,6 +87,7 @@ export abstract class EamFamilyBase extends Pair {
   allocate(ntypes: number): void {
     super.allocate(ntypes);
     this.map = new Int32Array(ntypes + 1).fill(-1);
+    this.scale = unitScaleTable(ntypes);
     this.file = null;
     this.tabs = null;
     this.computed = false;
@@ -116,6 +124,7 @@ export abstract class EamFamilyBase extends Pair {
     for (let i = 1; i <= this.ntypes; i++) {
       if (this.map[i] >= 0) this.setMass(ctx, i, file.mass[this.map[i]]);
     }
+    this.scale.fill(1);
     return file;
   }
 
@@ -143,8 +152,13 @@ export abstract class EamFamilyBase extends Pair {
   }
 
   /** native init_one: the global cutoff for mapped pairs; a NULL type is only allowed under hybrid (native Pair::init). */
+  override adaptParam(name: string): AdaptAccess | null {
+    return name === 'scale' ? scaleAccess(this) : null;
+  }
+
   initOne(i: number, j: number): number {
     if (!this.file) throw new StyleError('All pair coeffs are not set');
+    initScale(this.scale, this.ntypes, i, j, this.map[i] >= 0 && this.map[j] >= 0);
     if (this.map[i] < 0 || this.map[j] < 0) {
       if (i === j && !this.hybridSub) throw new StyleError('All pair coeffs are not set');
       return 0;

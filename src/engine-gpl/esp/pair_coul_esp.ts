@@ -55,7 +55,9 @@ export class PairCoulEsp extends PairCoulLong {
     const ks = this.kspace;
     if (!ks) throw new StyleError('Pair style requires a KSpace style');
     const list = pc.half!;
-    const { x, f, q } = pc;
+    const { x, f, q, type } = pc;
+    const nt = this.ntypes + 1;
+    const scale = this.set.p('scale');
     const cutCoul = this.cutCoul;
     const cutCoulsq = cutCoul * cutCoul;
     const sC = pc.specialCoul;
@@ -99,7 +101,8 @@ export class PairCoulEsp extends PairCoulLong {
               forcecoul -= (1.0 - factorCoul) * prefactor;
             }
             table = tab.etable[itable] + fraction * tab.detable[itable];
-            e = 1.0 * qtmp * q[j] * table;
+            // native: only this energy carries fix adapt's scale[itype][jtype] (pair_coul_esp.cpp compute)
+            e = scale[type[i] * nt + type[j]] * qtmp * q[j] * table;
             if (factorCoul < 1.0) e -= (1.0 - factorCoul) * prefactor;
           }
           const fpair = forcecoul * r2inv;

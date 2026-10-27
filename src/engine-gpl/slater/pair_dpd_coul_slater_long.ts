@@ -12,7 +12,7 @@
  * The random deviate is drawn only inside the DPD cutoff, after the r > EPSILON test, as native does, in the native
  * neighbor-list order (nativeOrder.ts), so the random forces match native step by step.
  */
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, type AdaptAccess, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { fmtCoeff, parseInt_, parseNum, logical } from '../../engine/force/util';
 import { RanMars } from '../random_mars';
@@ -190,6 +190,12 @@ export class PairDPDCoulSlaterLong extends Pair {
       }
     }
     return out;
+  }
+
+  /** fix adapt's lamda (extract() dim 0): compute reads it at every step, as native does. */
+  override adaptParam(name: string): AdaptAccess | null {
+    if (name !== 'lamda') return null;
+    return { dim: 0, get: () => this.lamda, set: (v) => { this.lamda = v; } };
   }
 
   extract(name: string): unknown {

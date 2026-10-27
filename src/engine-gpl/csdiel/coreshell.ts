@@ -51,10 +51,10 @@ const B5 = 1.14652755e-1;
  * bare 1/r term (the tabulated qqrd2e/r).
  */
 const csLongCoul = (
-  rsq: number, qi: number, qj: number, fc: number, g: number, qqrd2e: number, tab: ErfcTable | null,
+  rsq: number, qi: number, qj: number, fc: number, g: number, qqrd2e: number, tab: ErfcTable | null, scale = 1,
 ): { force: number; e: number } => {
   if (tab && rsq > tab.inner) {
-    const qq = qqrd2e * qi * qj;
+    const qq = qqrd2e * scale * qi * qj;
     let force = qq * tab.force(rsq);
     let e = qq * tab.energy(rsq);
     if (fc < 1.0) {
@@ -70,13 +70,14 @@ const csLongCoul = (
   if (fc < 1.0) {
     // for excluded pairs the correction nearly cancels the Ewald term: use erf(); erfc holds erfc - (1 - factor_coul)
     const erfc = fc - glibcErf(grij);
-    const prefactor = qqrd2e * qi * qj / r;
+    const prefactor = qqrd2e * scale * qi * qj / r;
     return { force: prefactor * (erfc + MY_ISPI4 * grij * expm2), e: prefactor * erfc };
   }
   const t = 1.0 / (1.0 + EWALD_P * grij);
   const u = 1.0 - t;
   const erfc = t * (1.0 + u * (B0 + u * (B1 + u * (B2 + u * (B3 + u * (B4 + u * B5)))))) * expm2;
-  const prefactor = qqrd2e * qi * qj / r;
+  // native prefactor = qqrd2e * scale[itype][jtype] * qtmp*q[j] (scale only in coul/long/cs; 1 for the lj styles)
+  const prefactor = qqrd2e * scale * qi * qj / r;
   return { force: prefactor * (erfc + EWALD_F * grij * expm2), e: prefactor * erfc };
 };
 
@@ -172,7 +173,9 @@ export class PairCoulLongCS extends PairCoulLong {
 
   compute(pc: PairCompute): void {
     const list = pc.half!;
-    const { x, f, q } = pc;
+    const { x, f, q, type } = pc;
+    const nt = this.ntypes + 1;
+    const scale = this.set.p('scale');
     const cutcsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
     const tab = this.csTables.get(this.table, g, cutcsq, this.tabinnerRsq);
@@ -193,7 +196,7 @@ export class PairCoulLongCS extends PairCoulLong {
         // EPSILON for r = 0 (a core and its shell): the interaction is removed by the special bond
         const rsq = rsq0 + EPSILON;
         const r2inv = 1.0 / rsq;
-        const c = csLongCoul(rsq, qi, q[j], sC[jj >>> SBBITS], g, qqrd2e, tab);
+        const c = csLongCoul(rsq, qi, q[j], sC[jj >>> SBBITS], g, qqrd2e, tab, scale[type[i] * nt + type[j]]);
         const fpair = c.force * r2inv;
         f[3 * i] += dx * fpair; f[3 * i + 1] += dy * fpair; f[3 * i + 2] += dz * fpair;
         f[3 * j] -= dx * fpair; f[3 * j + 1] -= dy * fpair; f[3 * j + 2] -= dz * fpair;

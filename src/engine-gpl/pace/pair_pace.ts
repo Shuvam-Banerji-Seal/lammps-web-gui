@@ -14,7 +14,8 @@
  * ACE potentials "are parameterized in metal units", and "pair_coeff * * file elem1 ... elemN" maps the atom types to
  * elements ("NULL" skips a type).
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type AdaptAccess, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { scaleAccess, unitScaleTable } from '../../engine/force/pair/scaleTable';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { NativeFullOrder } from '../neighbor/nativeOrder';
 import { CTildeBasis } from './cbasis';
@@ -48,9 +49,15 @@ export class PairPace extends Pair {
   protected ace: ACEPaceEvaluator | null = null;
   protected readonly natOrder = new NativeFullOrder();
   private setflagAll = false;
+  /**
+   * fix adapt's scale by type pair (pair_pace.cpp extract "scale"): an atom's neighbour forces and energy times
+   * scale[itype][itype]; coeff sets every pair to 1 and init_one mirrors it.
+   */
+  scale: Float64Array = new Float64Array(0);
 
   override allocate(ntypes: number): void {
     super.allocate(ntypes);
+    this.scale = unitScaleTable(ntypes);
     this.map = new Int32Array(ntypes + 1).fill(-1);
     this.basis = null;
     this.ace = null;
@@ -123,6 +130,11 @@ export class PairPace extends Pair {
     this.map = map;
     this.ace = new ACEPaceEvaluator(basis, this.recursive, map);
     this.setflagAll = true;
+    this.scale.fill(1);
+  }
+
+  override adaptParam(name: string): AdaptAccess | null {
+    return name === 'scale' ? scaleAccess(this) : null;
   }
 
   override initStyle(ctx: StyleContext): void {
@@ -133,6 +145,8 @@ export class PairPace extends Pair {
   /** PairPACE::init_one: the radial cutoff of the species pair. */
   override initOne(i: number, j: number): number {
     if (!this.setflagAll || !this.basis) throw new StyleError('All pair coeffs are not set');
+    const nt = this.ntypes + 1;
+    this.scale[j * nt + i] = this.scale[i * nt + j];
     const mi = this.map[i], mj = this.map[j];
     if (mi < 0 || mj < 0) return 0;
     return this.basis.radial.cut[mi * this.basis.nelements + mj];
@@ -154,10 +168,11 @@ export class PairPace extends Pair {
       for (let jj = 0; jj < jnum; jj++) jl[jj] = nbrs[k0 + jj] & NEIGHMASK;
       ace.computeAtom(i, x, type, jnum, jl, 0);
       const nf = ace.neighboursForces;
+      const sc = this.scale[type[i] * (this.ntypes + 1) + type[i]];
       const xtmp = x[3 * i], ytmp = x[3 * i + 1], ztmp = x[3 * i + 2];
       for (let jj = 0; jj < jnum; jj++) {
         const j = jl[jj];
-        const fx = nf[3 * jj], fy = nf[3 * jj + 1], fz = nf[3 * jj + 2];
+        const fx = sc * nf[3 * jj], fy = sc * nf[3 * jj + 1], fz = sc * nf[3 * jj + 2];
         f[3 * i] += fx;
         f[3 * i + 1] += fy;
         f[3 * i + 2] += fz;
@@ -175,8 +190,8 @@ export class PairPace extends Pair {
           }
         }
       }
-      // ev_tally_full with 2 * scale * e_atom: energy e_atom to the total and to the atom (scale = 1)
-      const evdwl = 1.0 * ace.eAtom;
+      // ev_tally_full with 2 * scale * e_atom: energy scale * e_atom to the total and to the atom
+      const evdwl = sc * ace.eAtom;
       pc.acc.evdwl += evdwl;
       if (pc.eatom) pc.eatom[i] += evdwl;
     }

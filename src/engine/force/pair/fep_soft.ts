@@ -1,4 +1,5 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, typeBounds, type AdaptAccess, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
+import { initScale, resetScale, scaleAccess, unitScaleTable } from './scaleTable';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 import { erfcPoly, EWALD_F } from '../erfc';
@@ -133,9 +134,20 @@ export class PairFepSoft extends Pair {
     return `usage: pair_style ${this.name} n alpha_LJ alpha_C cutoff (cutoff2)`;
   }
 
+  /**
+   * fix adapt's scale by type pair (scaleTable.ts): native coul/long/soft multiplies its Coulomb prefactor by it
+   * (src/FEP/pair_coul_long_soft.cpp compute); the other soft styles have none, so it stays 1 for them.
+   */
+  scale: Float64Array = new Float64Array(0);
+
   allocate(ntypes: number): void {
     super.allocate(ntypes);
     this.p = new PairParams(ntypes, VALUES);
+    this.scale = unitScaleTable(ntypes);
+  }
+
+  override adaptParam(name: string): AdaptAccess | null {
+    return name === 'scale' ? scaleAccess(this) : null;
   }
 
   coeff(args: string[]): void {
@@ -147,6 +159,9 @@ export class PairFepSoft extends Pair {
       const lam = parseNum(args[2], 'lambda');
       const cut = args[3] !== undefined ? parseNum(args[3], 'cutoff') : this.cutCGlobal;
       this.p.setRange(args[0], args[1], [0, 0, lam, cut, cut]);
+      // native coeff: scale[i][j] = 1.0 for the pairs it sets
+      const [ilo, ihi] = typeBounds(args[0], this.ntypes), [jlo, jhi] = typeBounds(args[1], this.ntypes);
+      for (let i = ilo; i <= ihi; i++) for (let j = Math.max(jlo, i); j <= jhi; j++) resetScale(this.scale, this.ntypes, i, j);
       return;
     }
     // Measured with native LAMMPS (black box): the long styles take one per-pair cutoff (the LJ one);
@@ -183,6 +198,7 @@ export class PairFepSoft extends Pair {
 
   initOne(i: number, j: number): number {
     const p = this.p;
+    initScale(this.scale, this.ntypes, i, j, p.isSet(i, j));
     if (!p.isSet(i, j)) {
       if (!p.isSet(i, i) || !p.isSet(j, j)) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);
       const li = p.get('lambda', i, i), lj = p.get('lambda', j, j);
@@ -283,7 +299,7 @@ export class PairFepSoft extends Pair {
     const gr = g * r;
     const ex = libm.exp(-gr * gr);
     const ec = erfcPoly(gr, ex);
-    const P = this.lamN[t] * qqrd2e * qq;
+    const P = this.lamN[t] * qqrd2e * this.scale[t] * qq;
     const corr = ec - (1 - fc);
     this.kE = (P * corr) / rs;
     this.kF = P * (EWALD_F * g * ex / (r * rs) + corr / (rs2 * rs));

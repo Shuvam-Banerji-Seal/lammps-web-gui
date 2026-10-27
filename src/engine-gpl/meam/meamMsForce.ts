@@ -149,7 +149,8 @@ export const forceAll = (c: ComputeInput, w: MeamWork, rdrar: number): number =>
       const r4 = M.phirar4[ind], r5 = M.phirar5[ind], r6 = M.phirar6[ind], r0 = M.phirar[ind];
       const phi = (((r3[kk] * pp + r2[kk]) * pp + r1[kk]) * pp + r0[kk]);
       const phip = (r6[kk] * pp + r5[kk]) * pp + r4[kk];
-      const scaleij = 1.0;
+      // meam_force.cpp: scaleij = scale[type[i]][type[j]], the pair energy phi * scaleij
+      const scaleij = c.scale[type[i] * (c.ntypes + 1) + type[j]];
       const phiSc = phi * scaleij;
       eng += phiSc * sij;
       if (c.eatom) {
@@ -384,10 +385,17 @@ export const forceAll = (c: ComputeInput, w: MeamWork, rdrar: number): number =>
         drhods2 = w.dgamma1[j] * drho0ds2 + w.dgamma2[j] * ((drho1ds2 - drho1mds2) + (drho2ds2 - drho2mds2) + (drho3ds2 - drho3mds2));
       }
       const frhopi = w.frhop[i], frhopj = w.frhop[j];
-      const dUdrij = phip * sij + frhopi * drhodr1 + frhopj * drhodr2;
+      let dUdrij = phip * sij + frhopi * drhodr1 + frhopj * drhodr2;
       let dUdsij = 0.0;
       if (!iszero(dscr)) dUdsij = phi + frhopi * drhods1 + frhopj * drhods2;
       const dUdrijm = [frhopi * drhodrm1[0] + frhopj * drhodrm2[0], frhopi * drhodrm1[1] + frhopj * drhodrm2[1], frhopi * drhodrm1[2] + frhopj * drhodrm2[2]];
+      if (!isone(scaleij)) {
+        dUdrij *= scaleij;
+        dUdsij *= scaleij;
+        dUdrijm[0] *= scaleij;
+        dUdrijm[1] *= scaleij;
+        dUdrijm[2] *= scaleij;
+      }
       const force = dUdrij * recip + dUdsij * dscr;
       for (let m = 0; m < 3; m++) {
         const forcem = delij[m] * force + dUdrijm[m];

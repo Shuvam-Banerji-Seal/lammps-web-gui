@@ -99,6 +99,7 @@ export class PairEAMHE extends EamFamilyBase {
       let phi = ((c[o + 3] * p + c[o + 4]) * p + c[o + 5]) * p + c[o + 6];
       if (rho[i] < this.rhomin) phi += fp[i] * (rho[i] - this.rhomin);
       else if (rho[i] > this.rhomax) phi += fp[i] * (rho[i] - this.rhomax);
+      phi *= this.scale[type[i] * nt + type[i]];
       pc.acc.evdwl += phi;
       if (eatom) eatom[i] += phi;
     }
@@ -137,14 +138,15 @@ export class PairEAMHE extends EamFamilyBase {
           const phi = z2 * recip;
           const phip = z2p * recip - phi * recip;
           const psip = fpi * rhojp + fp[j] * rhoip + phip;
-          const fpair = -psip * recip;
+          const sc = this.scale[itype * nt + jtype];
+          const fpair = -sc * psip * recip;
           fxtmp += delx * fpair;
           fytmp += dely * fpair;
           fztmp += delz * fpair;
           f[3 * j] -= delx * fpair;
           f[3 * j + 1] -= dely * fpair;
           f[3 * j + 2] -= delz * fpair;
-          tallyPair(pc, i, j, phi, fpair, delx, dely, delz);
+          tallyPair(pc, i, j, sc * phi, fpair, delx, dely, delz);
         }
       }
       this.numforce[i] = nforce;

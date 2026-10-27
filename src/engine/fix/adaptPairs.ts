@@ -26,15 +26,8 @@ inert(['B', 'epsilon', 'sigma'], ['lj/long/coul/long', 'lj/long/coul/long/dielec
 inert(['B'], ['buck/long/coul/long']);
 // COLLOID/pair_colloid.cpp: diameter is written by coeff and the mixing of init_one but read by neither compute nor init_one
 inert(['diameter'], ['colloid']);
-
-/**
- * Tables this engine keeps under a name extract() also uses that do not hold native's array: coul/long's and
- * coul/slater/long's "scale" table records which pairs pair_coeff set (their compute does not apply a scale yet).
- */
-const NOT_NATIVE: Record<string, readonly string[]> = {
-  'coul/long': ['scale'], 'coul/long/cs': ['scale'], 'coul/long/dielectric': ['scale'], 'coul/esp': ['scale'],
-  'coul/msm': ['scale'], 'coul/slater/long': ['scale'],
-};
+// KSPACE/pair_coul_streitz.cpp: scale is set by coeff and mirrored by init_one, but compute never reads it
+inert(['scale'], ['coul/streitz']);
 
 /** Whether the style's native extract() knows the name (PairHybrid::extract asks its sub-styles in order). */
 export const pairExtractHas = (styleName: string, pparam: string): boolean => (PAIR_EXTRACT[styleName] ?? []).some((e) => e[0] === pparam);
@@ -66,7 +59,7 @@ export const pairAdaptAccess = (style: Pair, styleName: string, pstyle: string, 
     if (dim === 2) return { dim: 2, get: (i, j) => arr[i * nt + j], set: (i, j, x) => { arr[i * nt + j] = x; } };
   }
   // a cutoff decides the neighbor lists and the force cutoff of the run's init: left to styles that state it themselves
-  if (dim === 2 && !/cut/.test(pparam) && !NOT_NATIVE[styleName]?.includes(pparam)) {
+  if (dim === 2 && !/cut/.test(pparam)) {
     const want = (alias ?? pparam).toLowerCase();
     for (const v of Object.values(style)) {
       if (!(v instanceof PairParams)) continue;

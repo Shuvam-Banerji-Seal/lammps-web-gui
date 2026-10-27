@@ -35,11 +35,12 @@ import { libm } from '../../libm';
 /** Coulomb long-range real-space loop shared by both styles. */
 export const coulLongPair = (
   rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean, table: ErfcTable | null = null,
+  scale = 1,
 ): { e: number; f: number } => {
   if (table && rsq > table.inner) {
     // pair_modify table N > 0 (erfc.ts makeErfcTable): native interpolates erfc/r, the force kernel
     // and the bare 1/r of the special-bond correction from its tables
-    const qq = qqrd2e * qi * qj;
+    const qq = qqrd2e * scale * qi * qj;
     let forcecoul = qq * table.force(rsq);
     let e = qq * table.energy(rsq);
     if (fc < 1) {
@@ -55,7 +56,8 @@ export const coulLongPair = (
   // native's direct branch (table 0, and table N > 0 below r^2 = 2) is the polynomial fit; measured
   // with native LAMMPS (black box): table 0 and table 12 give the same energy at r = 1.2
   const erfc = poly || table ? erfcPoly(grij, ex) : erfcFast(grij, ex);
-  const pre = qqrd2e * qi * qj / r;
+  // native: prefactor = qqrd2e * scale[itype][jtype] * qtmp * q[j] / r (scale 1 for the styles without one)
+  const pre = qqrd2e * scale * qi * qj / r;
   let forcecoul = pre * (erfc + EWALD_F * grij * ex);
   let e = pre * erfc;
   if (fc < 1) {
@@ -73,7 +75,8 @@ export class PairCoulLong extends Pair {
   private readonly erfcTables = new ErfcTableCache();
   /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
   private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
-  private set!: PairParams;
+  /** The pairs pair_coeff set, holding fix adapt's scale (native scale[i][j]; coeff sets 1, init_one mirrors it). */
+  protected set!: PairParams;
 
   settings(args: string[]): void {
     if (args.length !== 1) throw new StyleError('usage: pair_style coul/long cutoff');
@@ -93,12 +96,19 @@ export class PairCoulLong extends Pair {
 
   initOne(i: number, j: number): number {
     if (!this.set.isSet(i, j) && !(this.set.isSet(i, i) && this.set.isSet(j, j))) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);
+    // As native LAMMPS does (src/KSPACE/pair_coul_long.cpp init_one at b332f28): fix adapt's scale is 1 for a pair
+    // pair_coeff did not set (coeff sets 1 for its pairs), then mirrored
+    const sc = this.set.p('scale');
+    if (!this.set.isSet(i, j)) sc[this.set.idx(i, j)] = 1;
+    sc[this.set.idx(j, i)] = sc[this.set.idx(i, j)];
     return this.cutCoul;
   }
 
   compute(pc: PairCompute): void {
     const list = pc.half!;
-    const { x, f, q } = pc;
+    const { x, f, q, type } = pc;
+    const nt = this.ntypes + 1;
+    const scale = this.set.p('scale');
     const cutsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
     const tab = this.erfcTable(g);
@@ -119,7 +129,7 @@ export class PairCoulLong extends Pair {
         const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq >= cutsq) continue;
-        const r = coulLongPair(rsq, qi, qj, g, pc.qqrd2e, sC[jj >>> SBBITS], this.table === 0, tab);
+        const r = coulLongPair(rsq, qi, qj, g, pc.qqrd2e, sC[jj >>> SBBITS], this.table === 0, tab, scale[type[i] * nt + type[j]]);
         fxi += dx * r.f; fyi += dy * r.f; fzi += dz * r.f;
         f[3 * j] -= dx * r.f; f[3 * j + 1] -= dy * r.f; f[3 * j + 2] -= dz * r.f;
         ecoul += r.e;

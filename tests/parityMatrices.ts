@@ -296,29 +296,10 @@ const adaptPairUndefined = (): Record<string, string> => {
   return out;
 };
 /**
- * The adapt-pair rows this engine refuses (an error naming the parameter), by style: the scale factor of these styles
- * is not applied yet; a cutoff or geometry value native reads when a run initializes; and parameters this engine keeps
- * in another form than native's array.
+ * The adapt-pair rows this engine refuses (an error naming the parameter), by style: a cutoff or geometry value native
+ * reads when a run initializes, and parameters this engine keeps in another form than native's array.
  */
 const ADAPT_GAPS: Record<string, Record<string, readonly string[]>> = {
-  'the scale factor of this style is not applied by the engine yet': {
-    'coul/cut': ['scale'],
-    'coul/cut/dielectric': ['scale'],
-    'coul/cut/global': ['scale'],
-    'coul/debye': ['scale'],
-    'coul/esp': ['scale'],
-    'coul/long': ['scale'],
-    'coul/long/cs': ['scale'],
-    'coul/long/dielectric': ['scale'],
-    'coul/long/soft': ['scale'],
-    'coul/slater/cut': ['scale'],
-    'coul/slater/long': ['scale'],
-    'coul/streitz': ['scale'],
-    'eam/he': ['scale'],
-    'meam': ['scale'],
-    'meam/ms': ['scale'],
-    'pace': ['scale'],
-  },
   'a cutoff or geometry value native reads when the run initializes; the engine keeps no adaptable copy': {
     'born/coul/long': ['cut_coul'],
     'born/coul/long/cs': ['cut_coul'],
@@ -386,9 +367,7 @@ const ADAPT_GAPS: Record<string, Record<string, readonly string[]>> = {
     'amoeba': ['opbend_cubic', 'opbend_quartic', 'opbend_pentic', 'opbend_sextic'],
     'buck6d/coul/gauss/dsf': ['buck6d1', 'buck6d2', 'buck6d3', 'buck6d4'],
     'buck6d/coul/gauss/long': ['buck6d1', 'buck6d2', 'buck6d3', 'buck6d4'],
-    'coul/slater/long': ['lamda'],
     'coul/streitz': ['alpha'],
-    'dpd/coul/slater/long': ['lamda'],
     'hippo': ['opbend_cubic', 'opbend_quartic', 'opbend_pentic', 'opbend_sextic'],
     'oxdna/excv': ['epsilon_bkbk', 'sigma_bkbk', 'cut_bkbk_ast', 'b_bkbk', 'cut_bkbk_c', 'epsilon_bkbs', 'sigma_bkbs', 'cut_bkbs_ast', 'b_bkbs', 'cut_bkbs_c', 'sigma4_bkbs', 'epsilon_bsbs', 'sigma_bsbs', 'cut_bsbs_ast', 'b_bsbs', 'cut_bsbs_c'],
     'oxdna2/excv': ['epsilon_bkbk', 'sigma_bkbk', 'cut_bkbk_ast', 'b_bkbk', 'cut_bkbk_c', 'epsilon_bkbs', 'sigma_bkbs', 'cut_bkbs_ast', 'b_bkbs', 'cut_bkbs_c', 'sigma4_bkbs', 'epsilon_bsbs', 'sigma_bsbs', 'cut_bsbs_ast', 'b_bsbs', 'cut_bsbs_c'],

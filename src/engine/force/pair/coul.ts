@@ -1,4 +1,5 @@
-import { Pair, PairParams, StyleError, mixDistance, type PairCompute, pairCoeffArgs } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, typeBounds, type AdaptAccess, type PairCompute, pairCoeffArgs } from '../types';
+import { initScale, resetScale, scaleAccess, unitScaleTable } from './scaleTable';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
@@ -55,9 +56,17 @@ abstract class PairCoul extends Pair {
   /** dsf/wolf: a special pair keeps the damped term minus (1 - w) of the bare C q_i q_j / r. */
   protected coulSpecialSubtract = false;
 
+  /** fix adapt's scale by type pair (scaleTable.ts): coul/cut and coul/debye multiply the pair's Coulomb term by it. */
+  scale: Float64Array = new Float64Array(0);
+
   allocate(ntypes: number): void {
     super.allocate(ntypes);
     this.p = new PairParams(ntypes, ['cut']);
+    this.scale = unitScaleTable(ntypes);
+  }
+
+  override adaptParam(name: string): AdaptAccess | null {
+    return name === 'scale' ? scaleAccess(this) : null;
   }
 
   coeff(args: string[]): void {
@@ -68,10 +77,14 @@ abstract class PairCoul extends Pair {
     const cut = args[2] !== undefined ? parseNum(args[2], 'cutoff') : this.cutGlobal;
     if (!(cut > 0)) throw new StyleError('pair_coeff cutoff must be > 0');
     this.p.setRange(args[0], args[1], [cut]);
+    // As native LAMMPS does (src/pair_coul_cut.cpp coeff at b332f28): scale 1 for the type pairs I <= J of the range
+    const [ilo, ihi] = typeBounds(args[0], this.ntypes), [jlo, jhi] = typeBounds(args[1], this.ntypes);
+    for (let i = ilo; i <= ihi; i++) for (let j = Math.max(jlo, i); j <= jhi; j++) resetScale(this.scale, this.ntypes, i, j);
   }
 
   initOne(i: number, j: number): number {
     const p = this.p;
+    initScale(this.scale, this.ntypes, i, j, p.isSet(i, j));
     if (!p.isSet(i, j)) {
       if (!p.isSet(i, i) || !p.isSet(j, j)) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);
       p.setMixed(i, j, 'cut', this.cutPerPair ? mixDistance(this.mix, p.get('cut', i, i), p.get('cut', j, j)) : this.cutGlobal);
@@ -169,8 +182,9 @@ export class PairCoulCut extends PairCoul {
     if (!(this.cutGlobal > 0)) throw new StyleError('cutoff must be > 0');
   }
 
-  protected coulPair(_t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
-    const pre = (qqrd2e * qi * qj) / Math.sqrt(rsq);
+  protected coulPair(t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
+    // native: qqrd2e * scale[itype][jtype] * qtmp * q[j] * rinv
+    const pre = (qqrd2e * this.scale[t] * qi * qj) / Math.sqrt(rsq);
     return { e: pre, f: pre / rsq };
   }
 }
@@ -192,9 +206,10 @@ export class PairCoulDebye extends PairCoul {
     if (!(this.cutGlobal > 0)) throw new StyleError('cutoff must be > 0');
   }
 
-  protected coulPair(_t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
+  protected coulPair(t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
-    const pre = (qqrd2e * qi * qj * libm.exp(-this.kappa * r)) / r;
+    // native: qqrd2e * scale[itype][jtype] * qtmp * q[j] * screening ...
+    const pre = (qqrd2e * this.scale[t] * qi * qj * libm.exp(-this.kappa * r)) / r;
     return { e: pre, f: (pre * (1 + this.kappa * r)) / rsq };
   }
 }

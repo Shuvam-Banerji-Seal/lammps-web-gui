@@ -438,6 +438,10 @@ export class FixRigidNH extends FixRigidBase {
    * edges scale about their centre by exp(dtq epsilon_dot); atoms and centres of mass are mapped through fractional
    * coordinates before and after the change.
    */
+  /** Scratch of remap: fractional coordinates (3 per atom) and the dilated flag of each atom. */
+  private lamBuf = new Float64Array(0);
+  private selBuf = new Uint8Array(0);
+
   protected remap(): void {
     const sys = this.sys;
     const s = sys.state;
@@ -445,11 +449,14 @@ export class FixRigidNH extends FixRigidBase {
     const b = s.box;
     for (let i = 0; i < 3; i++) this.epsilon[i] += this.dtq * this.epsilonDot[i];
     const tmp = [0, 0, 0];
-    const lamAtoms = new Map<number, number[]>();
+    // the fractional coordinates of the dilated atoms (lam), and which atoms are dilated (sel)
+    if (this.lamBuf.length < 3 * s.n) { this.lamBuf = new Float64Array(3 * s.n); this.selBuf = new Uint8Array(s.n); }
+    const lam = this.lamBuf, sel = this.selBuf;
     for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.dilateBit)) continue;
+      sel[i] = s.mask[i] & this.dilateBit ? 1 : 0;
+      if (!sel[i]) continue;
       g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], tmp);
-      lamAtoms.set(i, [tmp[0], tmp[1], tmp[2]]);
+      lam[3 * i] = tmp[0]; lam[3 * i + 1] = tmp[1]; lam[3 * i + 2] = tmp[2];
     }
     for (const body of this.bodies) {
       g.toLamda(body.xcm[0], body.xcm[1], body.xcm[2], tmp);
@@ -466,8 +473,9 @@ export class FixRigidNH extends FixRigidBase {
     b.minLo = [...b.lo];
     b.minHi = [...b.hi];
     g.update();
-    for (const [i, l] of lamAtoms) {
-      g.fromLamda(l[0], l[1], l[2], tmp);
+    for (let i = 0; i < s.n; i++) {
+      if (!sel[i]) continue;
+      g.fromLamda(lam[3 * i], lam[3 * i + 1], lam[3 * i + 2], tmp);
       s.x[3 * i] = tmp[0];
       s.x[3 * i + 1] = tmp[1];
       s.x[3 * i + 2] = tmp[2];

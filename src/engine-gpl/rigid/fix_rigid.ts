@@ -617,24 +617,27 @@ export abstract class FixRigidBase extends Fix {
     const L = [this.edge(0), this.edge(1), this.edge(2)];
     const xbox: V3 = [0, 0, 0];
     const delta: V3 = [0, 0, 0];
+    // per-atom scratch: the unwrapped old position, the old velocity and the constraint force
+    const x0: V3 = [0, 0, 0], v0: V3 = [0, 0, 0], fc: V3 = [0, 0, 0];
     for (const b of this.bodies) {
-      b.atoms.forEach((id, n) => {
-        const i = idx[id];
+      const atoms = b.atoms;
+      for (let n = 0; n < atoms.length; n++) {
+        const i = idx[atoms[n]];
         const m = massOf(s, i);
         for (let d = 0; d < 3; d++) xbox[d] = s.image[3 * i + d] - b.imagebody[d];
-        const x0 = [0, 1, 2].map((d) => s.x[3 * i + d] + xbox[d] * L[d]);
-        const v0 = [s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2]];
+        for (let d = 0; d < 3; d++) x0[d] = s.x[3 * i + d] + xbox[d] * L[d];
+        v0[0] = s.v[3 * i]; v0[1] = s.v[3 * i + 1]; v0[2] = s.v[3 * i + 2];
         matvec(b.ex, b.ey, b.ez, b.displace[n], delta);
         const w = b.omega;
-        for (let d = 0; d < 3; d++) {
-          const c = [w[1] * delta[2] - w[2] * delta[1], w[2] * delta[0] - w[0] * delta[2], w[0] * delta[1] - w[1] * delta[0]];
-          s.v[3 * i + d] = c[d] + b.vcm[d];
-        }
+        // v = omega x delta + vcm
+        s.v[3 * i] = (w[1] * delta[2] - w[2] * delta[1]) + b.vcm[0];
+        s.v[3 * i + 1] = (w[2] * delta[0] - w[0] * delta[2]) + b.vcm[1];
+        s.v[3 * i + 2] = (w[0] * delta[1] - w[1] * delta[0]) + b.vcm[2];
         if (setX) {
           for (let d = 0; d < 3; d++) s.x[3 * i + d] = delta[d] + (b.xcm[d] - xbox[d] * L[d]);
         }
         if (virialFactor) {
-          const fc = [0, 1, 2].map((d) => (m * (s.v[3 * i + d] - v0[d])) / dtf - s.f[3 * i + d]);
+          for (let d = 0; d < 3; d++) fc[d] = (m * (s.v[3 * i + d] - v0[d])) / dtf - s.f[3 * i + d];
           vir[0] += virialFactor * x0[0] * fc[0];
           vir[1] += virialFactor * x0[1] * fc[1];
           vir[2] += virialFactor * x0[2] * fc[2];
@@ -647,7 +650,7 @@ export abstract class FixRigidBase extends Fix {
           va[6 * i + 3] += virialFactor * x0[0] * fc[1]; va[6 * i + 4] += virialFactor * x0[0] * fc[2];
           va[6 * i + 5] += virialFactor * x0[1] * fc[2];
         }
-      });
+      }
     }
     // set_xv / set_v: the orientation, omega, angular momentum and dipole of the extended particles
     for (const b of this.bodies) {

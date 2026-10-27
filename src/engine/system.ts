@@ -673,7 +673,27 @@ export class System {
       variable: (name) => this.vars.scalar(name, this.formulaEnv),
       region: (id) => this.regions.get(id),
       remap: (p) => { if (this.hasBox) this.geom.remapPoint(p); },
+      stamp: () => this.variableStamp(),
     };
+  }
+
+  /** Input commands run so far (Session.runCommand), one of the inputs of variableStamp. */
+  commandSerial = 0;
+  private stampOf = [-1, -1, -1, -1];
+  private stampValue = 0;
+
+  /**
+   * A number that changes whenever an equal-style variable may give another value: with the epoch (new positions,
+   * fresh compute values), the step, every input command and every change of the variable table (Region.varValue).
+   */
+  variableStamp(): number {
+    const k = this.stampOf;
+    const e = this.epoch, st = this.hasBox ? this.state.step : 0, c = this.commandSerial, v = this.vars.version;
+    if (k[0] !== e || k[1] !== st || k[2] !== c || k[3] !== v) {
+      k[0] = e; k[1] = st; k[2] = c; k[3] = v;
+      this.stampValue++;
+    }
+    return this.stampValue;
   }
 
   /** Per-atom group mask bit by name. */

@@ -450,7 +450,11 @@ export class FixWallGranGranular extends Fix {
   private motion: Motion | null = null;
   private readonly regionId: string | null;
   private readonly step0: number;
-  private shear = new Map<string, Float64Array>();
+  /** Shear history by atom ID, then by wall element key (the face of a region, or the plane index). */
+  private shear = new Map<number, Map<string, Float64Array>>();
+  /** Scratch of apply and regionElements (the contacts of one atom). */
+  private readonly candBuf: WallElement[] = [];
+  private readonly csBuf: SurfaceContact[] = [];
   /** keyword temperature: a number, or the name of an equal-style variable (v_name); null when not given. */
   private wallT: number | string | null = null;
   private readonly out: ContactOut = newContactOut();
@@ -654,15 +658,29 @@ export class FixWallGranGranular extends Fix {
     return out;
   }
 
+  /**
+   * The history key of a face of a (sub-)region, "regionID:face", one string per face: the shear history is looked up
+   * for every atom and face at every step, and a string built anew each time would be hashed anew each time.
+   */
+  private faceKey(src: Region, face: string): string {
+    let m = this.faceKeys.get(src);
+    if (!m) this.faceKeys.set(src, (m = new Map()));
+    let k = m.get(face);
+    if (k === undefined) m.set(face, (k = `${src.id}:${face}`));
+    return k;
+  }
+  private readonly faceKeys = new Map<Region, Map<string, string>>();
+
   /** Contact candidates of one atom at its position (region faces; all sub-regions of a compound). */
   private regionElements(x: number, y: number, z: number, R: number, out: WallElement[]): void {
     out.length = 0;
     const r = this.sys.region(this.regionId!);
-    const cs: SurfaceContact[] = [];
+    const cs = this.csBuf;
+    cs.length = 0;
     r.surfaceContacts(x, y, z, cs);
     for (const c of cs) {
       const Rf = c.curvature === 0 ? R : (R * c.curvature) / (R + c.curvature);
-      out.push({ key: `${c.source.id}:${c.key}`, dist: c.dist, nx: c.nx, ny: c.ny, nz: c.nz, Rf, source: c.source });
+      out.push({ key: this.faceKey(c.source, c.key), dist: c.dist, nx: c.nx, ny: c.ny, nz: c.nz, Rf, source: c.source });
     }
   }
 
@@ -706,7 +724,8 @@ export class FixWallGranGranular extends Fix {
       const R = radius[i];
       const mi = cmass[i];
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-      const cand: WallElement[] = [];
+      const cand = this.candBuf;
+      cand.length = 0;
       if (this.regionId) {
         this.regionElements(xi, yi, zi, R, cand);
       } else {
@@ -721,13 +740,15 @@ export class FixWallGranGranular extends Fix {
           cand.push({ key: `${k}`, dist, nx: n[0], ny: n[1], nz: n[2], Rf: R, source: null });
         }
       }
+      const aid = id[i];
+      let hist = this.shear.get(aid);
       for (const e of cand) {
-        const key = `${e.key}:${id[i]}`;
         if (e.dist >= R && !jkr) {
-          this.shear.delete(key);
-          if (mdr) mdr.wallDrop(`${this.id}|${key}`);
+          hist?.delete(e.key);
+          if (mdr) mdr.wallDrop(`${this.id}|${e.key}:${aid}`);
           continue;
         }
+        const key = `${e.key}:${aid}`;
         // region walls: the moving surface velocity enters the granular contact
         // through the full relative velocity (measured with native LAMMPS, see
         // updateVelocities)
@@ -747,7 +768,8 @@ export class FixWallGranGranular extends Fix {
           vry = v[3 * i + 1] - wy;
           vrz = v[3 * i + 2] - wz;
         }
-        const sh = this.shear.get(key) ?? new Float64Array(8);
+        const had = hist?.get(e.key);
+        const sh = had ?? new Float64Array(8);
         const normal = mdr && this.mdrMat
           ? mdr.wallNormal({ key: `${this.id}|${key}`, ai: i, R, delta: R - e.dist, Rf: e.Rf, nx: e.nx, ny: e.ny, nz: e.nz, meff: mi, hu: update, p: this.mdrMat })
           : undefined;
@@ -757,12 +779,15 @@ export class FixWallGranGranular extends Fix {
           oix: omega[3 * i], oiy: omega[3 * i + 1], oiz: omega[3 * i + 2],
           ojx: 0, ojy: 0, ojz: 0, dt, update, sg: 1, surfaceArm: true, normal,
           poly: this.legacyHertz ? Math.sqrt((R - e.dist) * e.Rf) : 1,
-        }, sh, this.out, this.shear.has(key));
+        }, sh, this.out, had !== undefined);
         if (!ok) {
-          this.shear.delete(key);
+          hist?.delete(e.key);
           continue;
         }
-        if (this.out.hist) this.shear.set(key, sh);
+        if (this.out.hist) {
+          if (!hist) this.shear.set(aid, (hist = new Map()));
+          hist.set(e.key, sh);
+        }
         if (this.contactsOn) {
           const base = i * this.sizePeratomCols;
           const av = this.arrayAtom;

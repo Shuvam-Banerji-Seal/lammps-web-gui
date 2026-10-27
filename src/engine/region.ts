@@ -61,6 +61,11 @@ export interface RegionEnv {
   region(id: string): Region | undefined;
   /** Maps a point into the periodic box (absent before the box exists). */
   remap?(p: number[]): void;
+  /**
+   * A number that changes whenever an equal-style variable may give another value: a new step, new positions or
+   * compute values, a command, a change of the variables. Absent: every use evaluates the variables.
+   */
+  stamp?(): number;
 }
 
 export abstract class Region {
@@ -71,6 +76,9 @@ export abstract class Region {
   rotate: { theta: string; p: [number, number, number]; r: [number, number, number] } | null = null;
   openFaces: number[] = [];
   private readonly remapBuf = [0, 0, 0];
+  /** The variable values of the current stamp (see varValue). */
+  private varStamp = -1;
+  private readonly varCache = new Map<string, number>();
 
   constructor(readonly id: string, readonly style: string, protected env: RegionEnv) {}
 
@@ -100,10 +108,10 @@ export abstract class Region {
   /** Inverse of the region's current displacement and rotation. */
   private toBodyFrame(x: number, y: number, z: number): [number, number, number] {
     let d: [number, number, number] = [0, 0, 0];
-    if (this.move) d = this.move.map((v) => (v ? this.env.variable(v) : 0)) as [number, number, number];
+    if (this.move) d = this.move.map((v) => (v ? this.varValue(v) : 0)) as [number, number, number];
     let px = x - d[0], py = y - d[1], pz = z - d[2];
     if (this.rotate) {
-      const th = -this.env.variable(this.rotate.theta);
+      const th = -this.varValue(this.rotate.theta);
       const [ox, oy, oz] = this.rotate.p;
       const [ux, uy, uz] = this.rotate.r;
       // rotation of (p - P) by -theta about R (Rodrigues)
@@ -120,7 +128,21 @@ export abstract class Region {
 
   /** A parameter's current value. */
   protected val(p: Param): number {
-    return typeof p === 'number' ? p : this.env.variable(p.variable) * p.scale;
+    return typeof p === 'number' ? p : this.varValue(p.variable) * p.scale;
+  }
+
+  /**
+   * An equal-style variable of the region (move, rotate or a shape parameter), evaluated once per stamp of the
+   * environment. As native LAMMPS does (src/region.cpp Region::prematch at b332f28): the variables are evaluated once
+   * before a loop over atoms (shape_update and pretransform), and match() and the surface contacts use those values.
+   */
+  protected varValue(name: string): number {
+    const st = this.env.stamp?.();
+    if (st === undefined) return this.env.variable(name);
+    if (st !== this.varStamp) { this.varCache.clear(); this.varStamp = st; }
+    let v = this.varCache.get(name);
+    if (v === undefined) { v = this.env.variable(name); this.varCache.set(name, v); }
+    return v;
   }
 
   /**
@@ -132,16 +154,16 @@ export abstract class Region {
    */
   transformState(): { d: [number, number, number]; theta: number } {
     const d = this.move
-      ? (this.move.map((v) => (v ? this.env.variable(v) : 0)) as [number, number, number])
+      ? (this.move.map((v) => (v ? this.varValue(v) : 0)) as [number, number, number])
       : ([0, 0, 0] as [number, number, number]);
-    const theta = this.rotate ? this.env.variable(this.rotate.theta) : 0;
+    const theta = this.rotate ? this.varValue(this.rotate.theta) : 0;
     return { d, theta };
   }
 
   /** Rotate a body-frame vector by +theta about the region axis (Rodrigues). */
   protected toLabVector(vx: number, vy: number, vz: number): [number, number, number] {
     if (!this.rotate) return [vx, vy, vz];
-    const th = this.env.variable(this.rotate.theta);
+    const th = this.varValue(this.rotate.theta);
     const [ux, uy, uz] = this.rotate.r;
     const c = libm.cos(th), s = libm.sin(th);
     const dot = ux * vx + uy * vy + uz * vz;
@@ -159,7 +181,7 @@ export abstract class Region {
     if (!this.dynamic) return [bx, by, bz];
     let px = bx, py = by, pz = bz;
     if (this.rotate) {
-      const th = this.env.variable(this.rotate.theta);
+      const th = this.varValue(this.rotate.theta);
       const [ox, oy, oz] = this.rotate.p;
       const [ux, uy, uz] = this.rotate.r;
       const vx = bx - ox, vy = by - oy, vz = bz - oz;
@@ -170,7 +192,7 @@ export abstract class Region {
       py = oy + vy * c + cy * s + uy * dot * (1 - c);
       pz = oz + vz * c + cz * s + uz * dot * (1 - c);
     }
-    const d = this.move ? this.move.map((v) => (v ? this.env.variable(v) : 0)) : [0, 0, 0];
+    const d = this.move ? this.move.map((v) => (v ? this.varValue(v) : 0)) : [0, 0, 0];
     return [px + d[0], py + d[1], pz + d[2]];
   }
 
@@ -330,6 +352,9 @@ export abstract class Region {
   bbox(): { lo: number[]; hi: number[] } | null { return null; }
 }
 
+/** The face keys of a block, by axis (constant strings: the wall fixes key their contact history on them). */
+const FACE_LO = ['0lo', '1lo', '2lo'], FACE_HI = ['0hi', '1hi', '2hi'];
+
 export class BlockRegion extends Region {
   constructor(id: string, env: RegionEnv, readonly b: Param[]) { super(id, 'block', env); }
   /** xlo, xhi, ylo, yhi, zlo, zhi as the region command gives them (dump image draws the box). */
@@ -347,8 +372,8 @@ export class BlockRegion extends Region {
     for (let a = 0; a < 3; a++) {
       const e = [0, 0, 0];
       e[a] = 1;
-      out.push({ key: `${a}lo`, dist: p[a] - lo[a], nx: e[0], ny: e[1], nz: e[2], curvature: 0, source: this });
-      out.push({ key: `${a}hi`, dist: hi[a] - p[a], nx: -e[0], ny: -e[1], nz: -e[2], curvature: 0, source: this });
+      out.push({ key: FACE_LO[a], dist: p[a] - lo[a], nx: e[0], ny: e[1], nz: e[2], curvature: 0, source: this });
+      out.push({ key: FACE_HI[a], dist: hi[a] - p[a], nx: -e[0], ny: -e[1], nz: -e[2], curvature: 0, source: this });
     }
   }
   bbox() {

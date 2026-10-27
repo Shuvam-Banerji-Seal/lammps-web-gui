@@ -10,7 +10,8 @@
  * pair_style meam (src/MEAM/pair_meam.cpp, meamModel.ts with msmeam false): the same class built with msmeam = false,
  * registered as 'meam' in registry/meam_ms.ts. It is the only pair meam implementation of the engine.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, StyleError, type AdaptAccess, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { initScale, scaleAccess, unitScaleTable } from '../../engine/force/pair/scaleTable';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { MeamModel, MAXELT, LibEntry, meamKeywords, toLattice, latticeCode } from './meamModel';
 import { getZij } from './meamMath';
@@ -243,10 +244,25 @@ export class PairMeamMs extends Pair {
       else throw new StyleError(`Incorrect element mapping for pair style ${this.name} coefficients: ${m}`);
     }
     this.typeElem = typeElem;
+    // pair_meam.cpp coeff: scale[i][j] = 1.0 for every type pair
+    this.scale = unitScaleTable(this.ntypes);
   }
 
-  override initOne(_i: number, _j: number): number {
+  /**
+   * fix adapt's scale by type pair (pair_meam.cpp extract "scale"): the embedding energy of a type-t atom times
+   * scale[t][t], a pair's energy and force times scale[itype][jtype] (meam_dens_final.cpp, meam_force.cpp).
+   */
+  scale: Float64Array = new Float64Array(0);
+
+  override adaptParam(name: string): AdaptAccess | null {
+    return name === 'scale' ? scaleAccess(this) : null;
+  }
+
+  override initOne(i: number, j: number): number {
     if (!this.model) throw new StyleError(`pair_coeff for style ${this.name} must be set before the run`);
+    if (this.scale.length !== (this.ntypes + 1) * (this.ntypes + 1)) this.scale = unitScaleTable(this.ntypes);
+    // init_one: scale 1 for a pair pair_coeff did not set (a NULL type), then mirrored
+    initScale(this.scale, this.ntypes, i, j, this.typeElem[i] >= 0 && this.typeElem[j] >= 0);
     return this.model.cutforce;
   }
 
@@ -260,6 +276,7 @@ export class PairMeamMs extends Pair {
     const c: ComputeInput = {
       model: M, nlocal: pc.nlocal, nall, x: pc.x, f: pc.f, type: pc.type, typeElem: this.typeElem,
       owner: pc.nb.owner, half, full, mask: NEIGHMASK, eatom: pc.eatom, vatom: pc.vatom,
+      scale: this.scale, ntypes: this.ntypes,
     };
     densInit(c, w);
     foldGhosts(c, w);

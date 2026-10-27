@@ -94,6 +94,9 @@ export interface ComputeInput {
   eatom: Float64Array | null;
   /** per-atom virial (6 per atom, native vatom order xx yy zz xy xz yz), or null */
   vatom: Float64Array | null;
+  /** fix adapt's scale by type pair (pair_meam.cpp extract "scale"), index itype * (ntypes + 1) + jtype */
+  scale: Float64Array;
+  ntypes: number;
 }
 
 const sq = (v: number): number => v * v;
@@ -375,8 +378,10 @@ export const densFinal = (c: ComputeInput, w: MeamWork): number => {
     w.dgamma3[i] = M.mixRefT === 1 ? ((w.rho0[i] * Gd * dGbar) / (Gbar * Z * Z)) * denom : 0.0;
     const emb = M.embedding(M.A[elti], M.Ec[elti][elti], rhob);
     w.frhop[i] = emb.dF;
-    eng += emb.F;
-    if (c.eatom) c.eatom[i] += emb.F;
+    // meam_dens_final.cpp: Fl *= scale[type[i]][type[i]] for the energy only (frhop stays unscaled)
+    const Fl = emb.F * c.scale[c.type[i] * (c.ntypes + 1) + c.type[i]];
+    eng += Fl;
+    if (c.eatom) c.eatom[i] += Fl;
   }
   return eng;
 };

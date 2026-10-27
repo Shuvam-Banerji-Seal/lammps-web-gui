@@ -89,8 +89,10 @@ export const densFinalNonMs = (c: ComputeInput, w: MeamWork): number => {
     w.dgamma3[i] = M.mixRefT === 1 ? ((w.rho0[i] * Gd * dGbar) / (Gbar * Z * Z)) * denom : 0.0;
     const emb = M.embedding(M.A[elti], M.Ec[elti][elti], rhob);
     w.frhop[i] = emb.dF;
-    eng += emb.F;
-    if (c.eatom) c.eatom[i] += emb.F;
+    // meam_dens_final.cpp: Fl *= scale[type[i]][type[i]] for the energy only (frhop stays unscaled)
+    const Fl = emb.F * c.scale[c.type[i] * (c.ntypes + 1) + c.type[i]];
+    eng += Fl;
+    if (c.eatom) c.eatom[i] += Fl;
   }
   return eng;
 };
@@ -144,10 +146,13 @@ export const forceNonMs = (c: ComputeInput, w: MeamWork, rdrar: number): number 
       const r4 = M.phirar4[ind], r5 = M.phirar5[ind], r6 = M.phirar6[ind], r0 = M.phirar[ind];
       const phi = (((r3[kk] * pp + r2[kk]) * pp + r1[kk]) * pp + r0[kk]);
       const phip = (r6[kk] * pp + r5[kk]) * pp + r4[kk];
-      eng += phi * sij;
+      // meam_force.cpp: scaleij = scale[type[i]][type[j]], the pair energy phi * scaleij
+      const scaleij = c.scale[type[i] * (c.ntypes + 1) + type[j]];
+      const phiSc = phi * scaleij;
+      eng += phiSc * sij;
       if (c.eatom) {
-        c.eatom[i] += 0.5 * phi * sij;
-        c.eatom[j] += 0.5 * phi * sij;
+        c.eatom[i] += 0.5 * phiSc * sij;
+        c.eatom[j] += 0.5 * phiSc * sij;
       }
       // pair densities and derivatives (the t weights of ialloy = 1 multiply them below)
       const invrei = 1.0 / M.re[elti][elti];
@@ -303,10 +308,17 @@ export const forceNonMs = (c: ComputeInput, w: MeamWork, rdrar: number): number 
           w.dgamma3[j] * (shpj[0] * dts.dt1[1] + shpj[1] * dts.dt2[1] + shpj[2] * dts.dt3[1]);
       }
       const frhopi = w.frhop[i], frhopj = w.frhop[j];
-      const dUdrij = phip * sij + frhopi * drhodr1 + frhopj * drhodr2;
+      let dUdrij = phip * sij + frhopi * drhodr1 + frhopj * drhodr2;
       let dUdsij = 0.0;
       if (!iszero(dscr)) dUdsij = phi + frhopi * drhods1 + frhopj * drhods2;
       const dUdrijm = [frhopi * drhodrm1[0] + frhopj * drhodrm2[0], frhopi * drhodrm1[1] + frhopj * drhodrm2[1], frhopi * drhodrm1[2] + frhopj * drhodrm2[2]];
+      if (!isone(scaleij)) {
+        dUdrij *= scaleij;
+        dUdsij *= scaleij;
+        dUdrijm[0] *= scaleij;
+        dUdrijm[1] *= scaleij;
+        dUdrijm[2] *= scaleij;
+      }
       const force = dUdrij * recip + dUdsij * dscr;
       for (let m = 0; m < 3; m++) {
         const forcem = delij[m] * force + dUdrijm[m];

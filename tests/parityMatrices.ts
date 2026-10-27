@@ -296,16 +296,10 @@ const adaptPairUndefined = (): Record<string, string> => {
   return out;
 };
 /**
- * The adapt-pair rows this engine refuses (an error naming the parameter), by style: the scale factor of these styles
- * is not applied yet; a cutoff or geometry value native reads when a run initializes; and parameters this engine keeps
- * in another form than native's array.
+ * The adapt-pair rows this engine refuses (an error naming the parameter), by style: a cutoff or geometry value native
+ * reads when a run initializes, and parameters this engine keeps in another form than native's array.
  */
 const ADAPT_GAPS: Record<string, Record<string, readonly string[]>> = {
-  'the scale factor of this style is not applied by the engine yet': {
-    'meam': ['scale'],
-    'meam/ms': ['scale'],
-    'pace': ['scale'],
-  },
   'a cutoff or geometry value native reads when the run initializes; the engine keeps no adaptable copy': {
     'born/coul/long': ['cut_coul'],
     'born/coul/long/cs': ['cut_coul'],

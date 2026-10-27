@@ -158,6 +158,8 @@ export class PairLJCutCoulLong extends PairLJCut {
   private readonly erfcTables = new ErfcTableCache();
   /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
   private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
+  /** The table values of one pair (ErfcTable.all): erfc/r, the force kernel and 1/r. */
+  private readonly tabVals = new Float64Array(3);
 
   settings(args: string[]): void {
     if (args.length !== 1 && args.length !== 2) throw new StyleError('usage: pair_style lj/cut/coul/long cutoff (cutoff2)');
@@ -202,6 +204,10 @@ export class PairLJCutCoulLong extends PairLJCut {
     const cutcsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
     const tab = this.erfcTable(g);
+    const tabInner = tab ? tab.inner : Infinity;
+    const tv = this.tabVals;
+    const poly = this.table === 0;
+    const qqrd2e = pc.qqrd2e;
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;
@@ -219,11 +225,43 @@ export class PairLJCutCoulLong extends PairLJCut {
         const rsq = dx * dx + dy * dy + dz * dz;
         const t = ti + type[j];
         let fpair = 0, e = 0;
-        if (rsq < cutcsq && qi !== 0 && q[j] !== 0) {
-          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0, tab);
-          fpair += r.f;
-          ecoul += r.e;
-          e += r.e;
+        const qj = q[j];
+        if (rsq < cutcsq && qi !== 0 && qj !== 0) {
+          // coulLongPair written inline (the same arithmetic in the same order, without a result object per pair),
+          // with the three table values from one lookup
+          const fc = sC[sb];
+          let cf: number, ce: number;
+          if (rsq > tabInner && tab!.all(rsq, tv)) {
+            const qq = qqrd2e * qi * qj;
+            let forcecoul = qq * tv[1];
+            ce = qq * tv[0];
+            if (fc < 1) {
+              const bare = qq * tv[2];
+              forcecoul -= (1 - fc) * bare;
+              ce -= (1 - fc) * bare;
+            }
+            cf = forcecoul / rsq;
+          } else if (rsq > tabInner) {
+            // past the table's last point: its own direct evaluation
+            const r = coulLongPair(rsq, qi, qj, g, qqrd2e, fc, poly, tab);
+            cf = r.f; ce = r.e;
+          } else {
+            const r = Math.sqrt(rsq);
+            const grij = g * r;
+            const ex = libm.exp(-grij * grij);
+            const erfc = poly || tab ? erfcPoly(grij, ex) : erfcFast(grij, ex);
+            const pre = qqrd2e * qi * qj / r;
+            let forcecoul = pre * (erfc + EWALD_F * grij * ex);
+            ce = pre * erfc;
+            if (fc < 1) {
+              forcecoul -= (1 - fc) * pre;
+              ce -= (1 - fc) * pre;
+            }
+            cf = forcecoul / rsq;
+          }
+          fpair += cf;
+          ecoul += ce;
+          e += ce;
         }
         if (rsq < cutljsq[t]) {
           const factor = sLJ[sb];

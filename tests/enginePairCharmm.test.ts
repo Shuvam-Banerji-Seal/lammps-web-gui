@@ -141,11 +141,16 @@ describe('pair style lj/charmm/coul/charmm', () => {
     st.allocate(1);
     expect(() => st.settings(['3.0'])).toThrow(/usage/);
     expect(() => st.settings(['3.0', '5.0', '2.5'])).toThrow(/usage/);
-    expect(() => st.settings(['5.0', '3.0'])).toThrow(/inner cutoff .*outer/);
     expect(() => st.coeff(['1', '1', '0.2'])).toThrow(/usage/);
     expect(() => st.coeff(['1', '1', '0.2', '2.0', '0.1'])).toThrow(/usage/);
-    st.settings(['3.0', '5.0']);
+    // Measured with native LAMMPS: pair_style lj/charmm/coul/charmm 10 8 (and 8 10 9 9) is accepted, and run 0 stops
+    // with ERROR: Pair inner cutoff >= Pair outer cutoff (init_style checks the cutoffs)
+    st.settings(['5.0', '3.0']);
     st.coeff(['1', '1', '0.2', '2.0']);
+    expect(() => st.init(CTX)).toThrow('Pair inner cutoff >= Pair outer cutoff');
+    st.settings(['3.0', '5.0', '4.5', '4.0']);
+    expect(() => st.init(CTX)).toThrow('Pair inner cutoff >= Pair outer cutoff');
+    st.settings(['3.0', '5.0']);
     st.shift = true;
     expect(() => st.init(CTX)).toThrow(/shift/);
     st.shift = false;
@@ -201,7 +206,10 @@ describe('pair style lj/charmm/coul/long', () => {
     st.coeff(['1', '1', '0.2', '2.0']);
     expect(() => st.init(CTX)).toThrow(/all pair coeffs are not set/);
     expect(() => st.settings(['3.0', '5.0', '4.0', '4.5'])).toThrow(/usage/);
-    expect(() => st.settings(['5.0', '3.0'])).toThrow(/inner cutoff/);
+    // checked at init, as natively (see lj/charmm/coul/charmm above)
+    st.settings(['5.0', '3.0']);
+    st.coeff(['*', '*', '0.2', '2.0']);
+    expect(() => st.init(CTX)).toThrow('Pair inner cutoff >= Pair outer cutoff');
   });
 });
 

@@ -39,7 +39,7 @@ describe('pppm/disp/tip4p and lj/long/tip4p/long (GPL port)', () => {
     p.allocate(2);
     p.coeff(['*', '*', '0.0', '1.0'], { s: { ntypes: 2, topo: { nbondtypes: 1, nangletypes: 1 } } } as never);
     p.linkBonded({ bond: () => 0.9572, angle: () => (104.52 * Math.PI) / 180 }); // radians, as Angle::equilibrium_angle
-    p.initStyle();
+    p.initStyle({} as never);
     const m = p.siteModel();
     expect(m).not.toBeNull();
     // alpha = qdist / (cos(theta/2) r0) with theta = 104.52 degrees, r0 = 0.9572 A (measured in the oracle geometry)
@@ -51,7 +51,7 @@ describe('pppm/disp/tip4p and lj/long/tip4p/long (GPL port)', () => {
   it('refuses a bond style that is missing', () => {
     const p = new PairLJLongTIP4PLong();
     p.settings(['long', 'long', '1', '2', '1', '1', '0.1546', '8.5']);
-    expect(() => p.initStyle()).toThrow('Must use a bond style with TIP4P potential');
+    expect(() => p.initStyle({} as never)).toThrow('Must use a bond style with TIP4P potential');
   });
 
   it('needs the lj/long/tip4p/long pair style for kspace pppm/disp/tip4p', () => {

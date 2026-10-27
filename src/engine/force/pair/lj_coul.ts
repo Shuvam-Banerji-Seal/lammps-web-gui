@@ -100,7 +100,16 @@ abstract class PairLJCutCoul extends PairLJCut {
       p.setMixed(i, j, 'cut_coul', mixDistance(this.mix, p.get('cut_coul', i, i), p.get('cut_coul', j, j)));
     }
     this.initCoul(i, j);
-    return Math.max(cutLJ, p.get('cut_coul', i, j));
+    return Math.max(cutLJ, this.coulCut(i, j));
+  }
+
+  /**
+   * The Coulomb cutoff of a type pair: its pair_coeff value, or the global one of a style without a per-pair Coulomb
+   * cutoff (dsf, wolf), read as it is now: native keeps it in cut_coul alone (src/EXTRA-PAIR/pair_lj_cut_coul_dsf.cpp
+   * init_style at b332f28), which fix adapt may have changed since the pair_coeff command.
+   */
+  protected coulCut(i: number, j: number): number {
+    return this.coulCutPerPair ? this.p.get('cut_coul', i, j) : this.cutCoul;
   }
 
   /** Hook for per-pair Coulomb shift constants (dsf/wolf). */
@@ -119,10 +128,13 @@ abstract class PairLJCutCoul extends PairLJCut {
     const { lj1, lj2, lj3, lj4, offset } = this;
     const cutljsq = new Float64Array(nt * nt);
     const cutcoulsq = new Float64Array(nt * nt);
+    // As native LAMMPS does (src/pair_lj_cut_coul_cut.cpp compute at b332f28): the Coulomb term inside both the cutoff
+    // of the run's init (cutsq) and cut_coul as it is now (init_one sets cut_coulsq, also when fix adapt re-inits)
+    const cutsq = this.cutsq;
     for (let i = 1; i < nt; i++) {
       for (let j = 1; j < nt; j++) {
         cutljsq[i * nt + j] = this.p.get('cut', i, j) ** 2;
-        cutcoulsq[i * nt + j] = this.p.get('cut_coul', i, j) ** 2;
+        cutcoulsq[i * nt + j] = Math.min(cutsq[i * nt + j], this.coulCut(i, j) ** 2);
       }
     }
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
@@ -355,7 +367,7 @@ export class PairLJCutCoulDsf extends PairLJCutCoul {
   protected initCoul(i: number, j: number): void {
     const nt = this.ntypes + 1;
     const k1 = i * nt + j, k2 = j * nt + i;
-    const rc = this.p.get('cut_coul', i, j);
+    const rc = this.coulCut(i, j);
     const arc = this.alpha * rc;
     const erc = libm.erfc(arc);
     this.dsfRC[k1] = this.dsfRC[k2] = rc;
@@ -438,7 +450,7 @@ export class PairLJCutCoulWolf extends PairLJCutCoul {
   protected initCoul(i: number, j: number): void {
     const nt = this.ntypes + 1;
     const k1 = i * nt + j, k2 = j * nt + i;
-    const rc = this.p.get('cut_coul', i, j);
+    const rc = this.coulCut(i, j);
     const a = libm.erfc(this.alpha * rc) / rc;
     this.wolfA[k1] = this.wolfA[k2] = a;
     const arc = this.alpha * rc;

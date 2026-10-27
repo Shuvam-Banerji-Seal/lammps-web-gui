@@ -93,9 +93,14 @@ describe('pair_style table spline', () => {
 });
 
 describe('CHARMM force-switched and lj/long argument checks', () => {
-  it('lj/charmmfsw/coul/charmmfsh requires inner < outer', () => {
+  it('lj/charmmfsw/coul/charmmfsh requires inner < outer when the run initializes', () => {
+    // Measured with native LAMMPS: pair_style lj/charmmfsw/coul/charmmfsh 10 8 is accepted, and run 0 stops with
+    // ERROR: Pair inner lj cutoff >= Pair outer lj cutoff
     const p = new PairLJCharmmfswCoulCharmmfsh();
-    expect(() => p.settings(['10.0', '8.0', '9.0'])).toThrow(/inner cutoff/);
+    p.settings(['10.0', '8.0', '9.0']);
+    p.allocate(1);
+    p.coeff(['1', '1', '0.1', '3.0']);
+    expect(() => p.init({ s: null, readFile: () => '', log: () => {} } as never)).toThrow('Pair inner lj cutoff >= Pair outer lj cutoff');
   });
 
   it('lj/long/coul/long refuses its argument counts as native LAMMPS', () => {

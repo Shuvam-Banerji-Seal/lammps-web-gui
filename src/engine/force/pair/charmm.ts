@@ -163,29 +163,25 @@ export class PairLJCharmmCoulCharmm extends Pair {
       this.innerCoul = this.inner;
       this.outerCoul = this.outer;
     }
-    this.checkCutoffs();
+    if (!(this.inner > 0) || !(this.outer > 0)) throw new StyleError(`${this.name}: cutoffs must be > 0`);
+    if (!(this.innerCoul > 0) || !(this.outerCoul > 0)) throw new StyleError(`${this.name}: Coulomb cutoffs must be > 0`);
     this.cutCoul = this.outerCoul;
+  }
+
+  /**
+   * The switching bounds of this run, from the cutoffs as they are now (a cutoff fix adapt left changed with reset no
+   * is the next run's). As native LAMMPS does (src/MOLECULE/pair_lj_charmm_coul_charmm.cpp init_style at b332f28): "the
+   * inner cutoff distance must be less than the outer cutoff" (pair_charmm.html) is checked there, "Pair inner cutoff
+   * >= Pair outer cutoff", and the squares and denominators are set from the cutoffs.
+   */
+  protected initCutoffs(): void {
+    if (this.inner >= this.outer || this.innerCoul >= this.outerCoul) throw new StyleError('Pair inner cutoff >= Pair outer cutoff');
     this.aL2 = this.inner * this.inner;
     this.bL2 = this.outer * this.outer;
     this.invDL3 = 1 / (this.bL2 - this.aL2) ** 3;
     this.aC2 = this.innerCoul * this.innerCoul;
     this.bC2 = this.outerCoul * this.outerCoul;
     this.invDC3 = 1 / (this.bC2 - this.aC2) ** 3;
-  }
-
-  protected checkCutoffs(): void {
-    // "In all cases where an inner and outer cutoff are specified, the inner
-    // cutoff distance must be less than the outer cutoff." (pair_charmm.html)
-    if (!(this.inner > 0) || !(this.outer > 0)) throw new StyleError(`${this.name}: cutoffs must be > 0`);
-    if (!(this.outer > this.inner)) {
-      throw new StyleError(`${this.name}: the inner cutoff (${this.inner}) must be less than the outer cutoff (${this.outer})`);
-    }
-    if (!(this.innerCoul > 0) || !(this.outerCoul > 0)) throw new StyleError(`${this.name}: Coulomb cutoffs must be > 0`);
-    if (this.innerCoul !== this.inner || this.outerCoul !== this.outer) {
-      if (!(this.outerCoul > this.innerCoul)) {
-        throw new StyleError(`${this.name}: the inner Coulomb cutoff (${this.innerCoul}) must be less than the outer Coulomb cutoff (${this.outerCoul})`);
-      }
-    }
   }
 
   allocate(ntypes: number): void {
@@ -250,6 +246,11 @@ export class PairLJCharmmCoulCharmm extends Pair {
       throw new StyleError(`pair_modify table is not supported for pair style ${this.name}`);
     }
     super.init(ctx);
+  }
+
+  /** The cutoffs of this run (initCutoffs), after Pair.init's coefficient and charge checks as in native init_style. */
+  initStyle(_ctx: StyleContext): void {
+    this.initCutoffs();
   }
 
   /** The unswitched Coulomb pair term: energy U(r) and force coefficient -U'(r)/r. */
@@ -401,13 +402,15 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     this.inner = parseNum(args[0], 'inner cutoff');
     this.outer = parseNum(args[1], 'outer cutoff');
     if (!(this.inner > 0) || !(this.outer > 0)) throw new StyleError('lj/charmm/coul/long: cutoffs must be > 0');
-    if (!(this.outer > this.inner)) {
-      throw new StyleError(`lj/charmm/coul/long: the inner cutoff (${this.inner}) must be less than the outer cutoff (${this.outer})`);
-    }
     // "outer is Coulombic cutoff if only 2 args"; the Coulomb has no switching
     // region of its own, so innerCoul/outerCoul stay unused.
     this.cutCoul = args.length === 3 ? parseNum(args[2], 'Coulomb cutoff') : this.outer;
     if (!(this.cutCoul > 0)) throw new StyleError('lj/charmm/coul/long: Coulomb cutoff must be > 0');
+  }
+
+  /** As native LAMMPS does (src/KSPACE/pair_lj_charmm_coul_long.cpp init_style at b332f28): only the LJ cutoffs are checked. */
+  protected override initCutoffs(): void {
+    if (this.inner >= this.outer) throw new StyleError('Pair inner cutoff >= Pair outer cutoff');
     this.innerCoul = this.outerCoul = this.cutCoul;
     this.aL2 = this.inner * this.inner;
     this.bL2 = this.outer * this.outer;
@@ -610,12 +613,19 @@ abstract class PairLJCharmmfswBase extends PairLJCharmmCoulCharmm {
     this.inner = parseNum(args[0], 'inner cutoff');
     this.outer = parseNum(args[1], 'outer cutoff');
     if (!(this.inner > 0) || !(this.outer > 0)) throw new StyleError(`${this.name}: cutoffs must be > 0`);
-    // pair_charmm.html: "the inner cutoff distance must be less than the outer cutoff"
-    if (!(this.outer > this.inner)) {
-      throw new StyleError(`${this.name}: the inner cutoff (${this.inner}) must be less than the outer cutoff (${this.outer})`);
-    }
     this.cutCoul = args.length === 3 ? parseNum(args[2], 'Coulomb cutoff') : this.outer;
     if (!(this.cutCoul > 0)) throw new StyleError(`${this.name}: Coulomb cutoff must be > 0`);
+  }
+
+  /**
+   * As native LAMMPS does (src/MOLECULE/pair_lj_charmmfsw_coul_charmmfsh.cpp and src/KSPACE/pair_lj_charmmfsw_coul_long.cpp
+   * init_style at b332f28): the LJ cutoffs checked ("Pair inner lj cutoff >= Pair outer lj cutoff" for charmmfsh, "Pair
+   * inner cutoff >= Pair outer cutoff" for long) and their powers set.
+   */
+  protected override initCutoffs(): void {
+    if (this.inner >= this.outer) {
+      throw new StyleError(this.name === 'lj/charmmfsw/coul/charmmfsh' ? 'Pair inner lj cutoff >= Pair outer lj cutoff' : 'Pair inner cutoff >= Pair outer cutoff');
+    }
     this.innerCoul = this.outerCoul = this.cutCoul;
     this.aL2 = this.inner * this.inner;
     this.bL2 = this.outer * this.outer;

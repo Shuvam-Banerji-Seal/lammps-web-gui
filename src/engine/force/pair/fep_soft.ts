@@ -225,7 +225,10 @@ export class PairFepSoft extends Pair {
       this.offset = z(); this.cutLJT = z(); this.cutLJsq = z(); this.cutCsq = z();
     }
     const eps = p.get('epsilon', i, j), sig = p.get('sigma', i, j), lam = p.get('lambda', i, j);
-    const cutLJ = p.get('cut', i, j), cutC = p.get('cutc', i, j);
+    // the long styles have one global Coulomb cutoff, read at each init: as native LAMMPS does (src/FEP/
+    // pair_coul_long_soft.cpp, pair_lj_cut_coul_long_soft.cpp and the charmm and class2 ones, init_style at b332f28:
+    // cut_coulsq = cut_coul * cut_coul), so a value fix adapt left there (reset no) is the next run's cutoff
+    const cutLJ = p.get('cut', i, j), cutC = this.coul === 'long' ? this.cutCGlobal : p.get('cutc', i, j);
     if (this.lj !== 'none' && !(cutLJ > 0)) throw new StyleError(`pair ${this.name}: LJ cutoff for types ${i} ${j} must be > 0`);
     if (this.coul !== 'none' && !(cutC > 0)) throw new StyleError(`pair ${this.name}: Coulomb cutoff for types ${i} ${j} must be > 0`);
     // lambda, n and the alpha parameters, per the functional forms in the file header

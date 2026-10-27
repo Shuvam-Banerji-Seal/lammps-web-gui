@@ -12,7 +12,7 @@
  * and the special-bond corrections; the table branch subtracts the special Coulomb correction after a float32 rounding, as
  * native does (rsq_lookup.f is a float).
  */
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, type AdaptAccess, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
@@ -63,6 +63,24 @@ export class PairBuckLongCoulLong extends Pair {
   private rhoinv = new Float64Array(0);
   private offsetT = new Float64Array(0);
   private cutBuckT = new Float64Array(0);
+  /**
+   * init_style's cut_coulsq and the cut_buck_global of its init_tables_disp (as native LAMMPS does,
+   * src/KSPACE/pair_buck_long_coul_long.cpp at b332f28); init_one sets cutsq itself (cutSq), also on a fix adapt re-init.
+   */
+  private coulSqInit = 0;
+  private dispCut = 0;
+
+  initStyle(_ctx: StyleContext): void {
+    this.coulSqInit = this.cutCoul * this.cutCoul;
+    this.dispCut = this.cutBuckGlobal;
+  }
+
+  /** fix adapt cut_coul (ewald_cut the same) and cut_vdwl (cut_LJ the same): native cut_coul and cut_buck_global. */
+  override adaptParam(name: string): AdaptAccess | null {
+    if (name === 'cut_coul' || name === 'ewald_cut') return { dim: 0, get: () => this.cutCoul, set: (v) => { this.cutCoul = v; } };
+    if (name === 'cut_vdwl' || name === 'cut_LJ') return { dim: 0, get: () => this.cutBuckGlobal, set: (v) => { this.cutBuckGlobal = v; } };
+    return null;
+  }
 
   allocate(ntypes: number): void {
     super.allocate(ntypes);
@@ -129,9 +147,9 @@ export class PairBuckLongCoulLong extends Pair {
   /** The dispersion table of pair_modify table/disp N (native init_tables_disp(cut_buck_global)), rebuilt when its inputs change. */
   private dispTable(gd: number): DispTable | null {
     if (!this.dispFlag || this.tableDisp <= 0) return null;
-    const key = [this.tableDisp, gd, this.cutBuckGlobal, this.tabinnerDisp];
+    const key = [this.tableDisp, gd, this.dispCut, this.tabinnerDisp];
     if (this.dispTab === null || key.some((v, i) => v !== this.dispKey[i])) {
-      this.dispTab = makeDispTable(this.tableDisp, gd, this.cutBuckGlobal, this.tabinnerDisp);
+      this.dispTab = makeDispTable(this.tableDisp, gd, this.dispCut, this.tabinnerDisp);
       this.dispKey = key;
     }
     return this.dispTab;
@@ -145,7 +163,7 @@ export class PairBuckLongCoulLong extends Pair {
     const qqrd2e = pc.qqrd2e;
     const g = this.gEwald, gd = this.gEwaldDisp;
     const g2 = gd * gd, g6 = g2 * g2 * g2, g8 = g6 * g2;
-    const cutCoulsq = this.cutCoul * this.cutCoul;
+    const cutCoulsq = this.coulSqInit;
     const coulTab: ErfcTable | null = order1 ? this.coulTables.get(this.table, g, cutCoulsq, this.tabinnerRsq, true) : null;
     const dispTab = order6 ? this.dispTable(gd) : null;
     const sLJ = pc.specialLJ, sC = pc.specialCoul;

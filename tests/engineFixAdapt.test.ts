@@ -135,6 +135,41 @@ run 0
     expect(no.thermo[2].evdwl).toBeCloseTo(2 * e1, 12);
   });
 
+  const CHARGED = `
+units lj
+atom_style charge
+lattice fcc 0.8442
+region box block 0 4 0 4 0 4
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+variable q atom 0.3*(2*(id%2)-1)
+set group all charge v_q
+pair_style lj/cut/coul/long 2.5 3.0
+pair_coeff 1 1 1.0 1.0
+kspace_style ewald 1e-4
+thermo_style custom step pe ecoul evdwl press
+thermo_modify format float %.15g
+variable s equal 0.8
+fix 2 all adapt 0 pair lj/cut/coul/long cut_coul * * v_s scale yes reset no
+`;
+
+  it('a cutoff native reads when a run initializes (lj/cut/coul/long cut_coul) changes the next run, not this one', async () => {
+    const r = await runScript(`${CHARGED}run 0\nrun 0 pre no\nrun 0\nrun 0 pre no\nrun 0\n`);
+    expect(r.error).toBeNull();
+    // Measured with native LAMMPS: ecoul -0.0167527976380203 for the first run and its pre no run (cut_coulsq of the
+    // init, 3.0), -0.00853989036484843 for the next run and its pre no run (2.4 from the init), -0.00285495305159151
+    // for the third (1.92)
+    const ecoul = r.thermo.map((t) => t.ecoul);
+    const want = [-0.0167527976380203, -0.0167527976380203, -0.00853989036484843, -0.00853989036484843, -0.00285495305159151];
+    want.forEach((w, k) => expect(Math.abs(ecoul[k] - w)).toBeLessThan(1e-12));
+  });
+
+  it('a run with steps and pre no after such a cutoff was left changed is refused by name', async () => {
+    const r = await runScript(`${CHARGED}run 0\nrun 5 pre no\n`);
+    expect(r.message).toContain('run pre no after fix adapt left pair lj/cut/coul/long cut_coul changed (reset no)');
+  });
+
   it('a mixed (mixing-derived) epsilon(1,2) follows the diagonal epsilon(1,1)', async () => {
     // pair_coeff 1 1 2.0 with 1 2 mixed (geometric) equals the adapted run
     const adapted = await runScript(`${SYS2}

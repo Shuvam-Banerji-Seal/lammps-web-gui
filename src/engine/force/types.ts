@@ -684,10 +684,14 @@ export abstract class Pair {
   adaptParam(_name: string): AdaptAccess | null { return null; }
 }
 
-/** A pair parameter fix adapt reads and writes (native Pair::extract with dim 2 or 0). */
+/**
+ * A pair parameter fix adapt reads and writes (native Pair::extract with dim 2 or 0). commit: a value that native reads
+ * only when a run initializes is held by the access during the run and written to the style when the run ends; true
+ * when that changed the style.
+ */
 export type AdaptAccess =
   | { dim: 2; get(i: number, j: number): number; set(i: number, j: number, v: number): void }
-  | { dim: 0; get(): number; set(v: number): void };
+  | { dim: 0; get(): number; set(v: number): void; commit?(): boolean };
 
 /**
  * Ghost copies of owned atoms: the ghosts of owned atom i are the indices

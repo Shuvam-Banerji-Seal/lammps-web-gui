@@ -188,6 +188,13 @@ export class ForceField {
   pairStale = false;
 
   /**
+   * A pair value native reads only when a run initializes, which fix adapt left changed at the end of a run (reset no,
+   * AdaptAccess commit), as "<pstyle> <param>": a run with pre no, which native runs on the last init's values, is
+   * refused until the next init.
+   */
+  heldPairChange: string | null = null;
+
+  /**
    * The kspace style's init: KSpace::pair_check (src/kspace.cpp at b332f28, with the solver styles that call it checked
    * against the pair's flags in kspaceCheck.ts), the Coulomb cutoff, then the solver's G-ewald and grid.
    */
@@ -211,6 +218,7 @@ export class ForceField {
 
   initPair(s: SimState, geom: Geometry, ctx: StyleContext): void {
     this.pairStale = false;
+    this.heldPairChange = null;
     if (!this.pair && this.pairNotRestarted) throw new StyleError(`Must re-specify non-restarted pair style (${this.pairNotRestarted}) after read_restart`);
     // As native LAMMPS does (src/force.cpp Force::init at b332f28): the kspace style's init comes before the pair's, and
     // the charge solvers' init requires per-atom charges (src/KSPACE/ewald.cpp, pppm.cpp, msm.cpp, kspace_zero.cpp,

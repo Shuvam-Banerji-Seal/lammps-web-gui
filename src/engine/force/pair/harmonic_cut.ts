@@ -32,6 +32,12 @@ export class PairHarmonicCut extends Pair {
   p!: PairParams;
   /** Per type pair (both orders) after mixing/init. */
   hk = new Float64Array(0);
+  /**
+   * rc per type pair (both orders) as initOne last set it. As native LAMMPS does (src/EXTRA-PAIR/pair_harmonic_cut.cpp
+   * compute at b332f28): the pair is inside cutsq of the run's init and its force uses cut[i][j] as it is now, which
+   * fix adapt may change (Pair::reinit runs initOne again).
+   */
+  hrc = new Float64Array(0);
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('usage: pair_style harmonic/cut');
@@ -59,9 +65,13 @@ export class PairHarmonicCut extends Pair {
       p.setMixed(i, j, 'cut', c);
     }
     const nt = this.ntypes + 1;
-    if (this.hk.length !== nt * nt) this.hk = new Float64Array(nt * nt);
+    if (this.hk.length !== nt * nt) {
+      this.hk = new Float64Array(nt * nt);
+      this.hrc = new Float64Array(nt * nt);
+    }
     const k = p.get('k', i, j);
     this.hk[i * nt + j] = this.hk[j * nt + i] = k;
+    this.hrc[i * nt + j] = this.hrc[j * nt + i] = p.get('cut', i, j);
     return p.get('cut', i, j);
   }
 
@@ -69,7 +79,7 @@ export class PairHarmonicCut extends Pair {
     const list = pc.half!;
     const { x, f, type } = pc;
     const nt = this.ntypes + 1;
-    const { cutsq, cut, hk } = this;
+    const { cutsq, hrc, hk } = this;
     const sLJ = pc.specialLJ;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0;
@@ -88,7 +98,7 @@ export class PairHarmonicCut extends Pair {
         if (rsq >= cutsq[t]) continue;
         const factor = sLJ[jj >>> SBBITS];
         const r = Math.sqrt(rsq);
-        const dr = cut[t] - r;
+        const dr = hrc[t] - r;
         // F = 2 k (r_c - r) * rhat = fpair * (ri - rj), fpair = 2 k dr / r.
         const fpair = factor * 2 * hk[t] * dr / r;
         const fx = dx * fpair, fy = dy * fpair, fz = dz * fpair;

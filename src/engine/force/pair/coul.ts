@@ -90,7 +90,9 @@ abstract class PairCoul extends Pair {
       p.setMixed(i, j, 'cut', this.cutPerPair ? mixDistance(this.mix, p.get('cut', i, i), p.get('cut', j, j)) : this.cutGlobal);
     }
     this.initCoul(i, j);
-    return p.get('cut', i, j);
+    // dsf and wolf: the global cutoff as it is at this init (src/pair_coul_dsf.cpp and pair_coul_wolf.cpp init_one at
+    // b332f28 return cut_coul), which fix adapt may have changed since the pair_coeff command
+    return this.cutPerPair ? p.get('cut', i, j) : this.cutGlobal;
   }
 
   /** Hook for per-pair shift constants (dsf/wolf). */

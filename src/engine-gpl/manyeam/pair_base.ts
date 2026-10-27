@@ -74,6 +74,13 @@ export abstract class EamFamilyBase extends Pair {
    */
   scale: Float64Array = new Float64Array(0);
 
+  /** pair_write (src/pair.cpp Pair::write_file) swaps in a dummy fp of zeros for single(); returns the restore. */
+  swapEamFp(fp: Float64Array<ArrayBuffer>): () => void {
+    const hold = this.fp;
+    this.fp = fp;
+    return () => { this.fp = hold; };
+  }
+
   /** True for the Finnis-Sinclair density layout (rhor per element pair). */
   protected abstract readonly fsLayout: boolean;
 

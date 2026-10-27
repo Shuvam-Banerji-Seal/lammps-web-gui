@@ -11,6 +11,8 @@
  */
 import type { Handler } from '../../engine/commands/args';
 import { StyleError } from '../../engine/force/types';
+import { PairHybrid } from '../../engine/force/pair/hybrid';
+import { nativeOrder } from '../../engine/atoms';
 import { formatNumber } from '../../engine/cformat';
 import { nativeFloat, nativeInt } from './common';
 import { startTableFile, tableRow } from './table_write';
@@ -51,33 +53,47 @@ const pairWrite: Handler = ({ sys }, a) => {
 
   // force->init() and neighbor->init(): the pair style's cutoffs and coefficients as a run would set them up
   sys.ff.init(sys.state, sys.nb, sys.geom, sys.styleContext());
+  // "if pair style = any of EAM, swap in dummy fp vector": force->pair_match("^eam", 0), the defined style or the one
+  // hybrid sub-style whose name starts with eam, gets an F' of zeros while single() runs (native's two-entry array, here
+  // one entry per atom: single() reads native's atoms 0 and 1 at their engine indices)
+  const subs = pair instanceof PairHybrid ? pair.subs.filter((q) => q.name.startsWith('eam')) : [];
+  const epair = pair.name.startsWith('eam') ? pair : subs.length === 1 ? subs[0].style : null;
+  const restore = epair && 'swapEamFp' in epair ? (epair as { swapEamFp(fp: Float64Array): () => void }).swapEamFp(new Float64Array(Math.max(2, sys.state.n))) : null;
+  if (epair) sys.warn('EAM pair style. Table will not include embedding term');
   // the charges of the two atoms (native swaps them into atom->q)
   const qi = a.length === 10 ? nativeFloat(a[8]) : 1;
   const qj = a.length === 10 ? nativeFloat(a[9]) : 1;
 
-  // energy and force at each of N distances, with the single() of atoms 0 and 1 (factors 1)
+  // energy and force at each of N distances, with the single() of atoms 0 and 1 (factors 1): the first two atoms of
+  // native's storage order (a style such as eam reads their per-atom data)
+  const ord = nativeOrder(sys.state);
+  const a0 = ord.length > 0 ? ord[0] : 0, a1 = ord.length > 1 ? ord[1] : 1;
   const nt = pair.ntypes + 1;
   const cutsq = pair.cutsq[itype * nt + jtype];
   let rows = '';
-  for (let i = 0; i < n; i++) {
-    let r: number;
-    let rsq: number;
-    if (style === 'r') {
-      r = inner + ((outer - inner) * i) / (n - 1);
-      rsq = r * r;
-    } else {
-      rsq = inner * inner + ((outer * outer - inner * inner) * i) / (n - 1);
-      r = Math.sqrt(rsq);
+  try {
+    for (let i = 0; i < n; i++) {
+      let r: number;
+      let rsq: number;
+      if (style === 'r') {
+        r = inner + ((outer - inner) * i) / (n - 1);
+        rsq = r * r;
+      } else {
+        rsq = inner * inner + ((outer * outer - inner * inner) * i) / (n - 1);
+        r = Math.sqrt(rsq);
+      }
+      let e = 0;
+      let f = 0;
+      if (rsq < cutsq) {
+        const res = single(a0, a1, itype, jtype, rsq, 1, 1, qi, qj);
+        e = res.eng;
+        // single() returns the force divided by r; the table holds the force
+        f = res.fforce * r;
+      }
+      rows += tableRow(i + 1, r, e, f);
     }
-    let e = 0;
-    let f = 0;
-    if (rsq < cutsq) {
-      const res = single(0, 1, itype, jtype, rsq, 1, 1, qi, qj);
-      e = res.eng;
-      // single() returns the force divided by r; the table holds the force
-      f = res.fforce * r;
-    }
-    rows += tableRow(i + 1, r, e, f);
+  } finally {
+    restore?.();
   }
   sys.writeFile(tableFile, rows, true);
 };

@@ -1,5 +1,8 @@
 import { Pair, StyleError, typeBounds, type AdaptAccess, type PairCompute, type StyleContext, pairCoeffArgs, potentialFile } from '../types';
 import { eamDensities, eamForces, type EAMKernelTables } from './eamKernel';
+import { NEIGHMASK, type NeighList } from '../../neighbor';
+import { gplHook } from '../../gplHooks';
+import type { PairLocalHook, PairOrderSource } from '../../compute/local';
 import { parseInt_, parseNum } from '../util';
 
 /*
@@ -395,6 +398,16 @@ export abstract class PairEAMBase extends Pair {
   /** The densities and F' of the last force evaluation, owned atoms first (fix pair reads them, as native's extract_peratom). */
   private rhoBuf: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private fpBuf: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  /**
+   * The lists and atoms of the last force evaluation (set by embed, which runs on the engine thread also when the
+   * shared-memory threads run the loops), and a count of the evaluations: single() needs native's numforce for them.
+   */
+  private last: { s: PairCompute['s']; nb: PairCompute['nb']; geom: PairCompute['geom']; half: NeighList } | null = null;
+  private evals = 0;
+  /** native numforce of the evaluation numforceAt: neighbors within the cutoff of each atom's row of native's half list */
+  private numforce = new Int32Array(0);
+  private numforceAt = -1;
+  private pairOrder: PairOrderSource | null = null;
 
   override settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError(`usage: pair_style ${this.name} (no arguments)`);
@@ -489,6 +502,15 @@ export abstract class PairEAMBase extends Pair {
     this.forces(pc, this.fpBuf);
   }
 
+  /**
+   * pair_write (src/pair.cpp Pair::write_file at b332f28) swaps in a dummy F' of zeros for single(); returns the restore.
+   */
+  swapEamFp(fp: Float64Array): () => void {
+    const hold = this.fpBuf;
+    this.fpBuf = fp;
+    return () => { this.fpBuf = hold; };
+  }
+
   /** The style can always run its two passes on the shared-memory threads (cpu/threadedPairs.ts TwoPassPair). */
   twoPassReady(): boolean {
     return true;
@@ -534,6 +556,79 @@ export abstract class PairEAMBase extends Pair {
     // the arrays fix pair reads, also when the shared-memory threads ran the two loops (cpu/pairThreads.ts)
     this.rhoBuf = rho;
     this.fpBuf = fp;
+    if (pc.half) this.last = { s: pc.s, nb: pc.nb, geom: pc.geom, half: pc.half };
+    this.evals++;
+  }
+
+  /**
+   * native numforce of the last force evaluation (pair_eam.cpp compute: the neighbors within the cutoff of each atom's
+   * row of the half list). Native's half list gives a pair to the row of one atom by its binning rule, which this
+   * engine's lists do not follow, so the counts come from native's pair order (the lazily loaded pair/local helper).
+   */
+  private nativeNumforce(): Int32Array {
+    if (this.numforceAt === this.evals || !this.last) return this.numforce;
+    const { s, nb, geom, half } = this.last;
+    this.pairOrder ??= gplHook<PairLocalHook>('pair/local').pairOrder(true);
+    const pairs = this.pairOrder.pairs(s, nb, geom, half);
+    const nt = this.ntypes + 1;
+    const counts = new Int32Array(nb.nlocal);
+    const xa = nb.xall, ta = nb.typeall;
+    for (let p = 0; p < pairs.length; p += 2) {
+      const i = pairs[p], j = pairs[p + 1] & NEIGHMASK;
+      const dx = xa[3 * i] - xa[3 * j], dy = xa[3 * i + 1] - xa[3 * j + 1], dz = xa[3 * i + 2] - xa[3 * j + 2];
+      if (dx * dx + dy * dy + dz * dz < this.cutsq[ta[i] * nt + ta[j]]) counts[nb.owner[i]]++;
+    }
+    this.numforce = counts;
+    this.numforceAt = this.evals;
+    return counts;
+  }
+
+  /**
+   * The values native's compute passes to ev_tally for a pair (pair_eam.cpp at b332f28), which the tally computes
+   * receive: the pair energy scale phi and fpair = -scale psip / r with F' of both atoms from the last evaluation.
+   */
+  tallyTerms(i: number, j: number, itype: number, jtype: number, rsq: number): { evdwl: number; ecoul: number; fforce: number } {
+    const nt = this.ntypes + 1;
+    const gt = this.gTab[itype * nt + jtype];
+    if (!gt || !this.last) return { evdwl: 0, ecoul: 0, fforce: 0 };
+    const t = this.pairTerms(gt, itype, jtype, rsq, 0);
+    const sc = this.scale[itype * nt + jtype];
+    const psip = this.fpBuf[i] * t.rhojp + this.fpBuf[j] * t.rhoip + t.phip;
+    return { evdwl: sc * t.phi, ecoul: 0, fforce: -sc * psip * t.recip };
+  }
+
+  /** The pair term alone, phi = r*phi(r) / r and fforce = -phi'(r) / r, on native's table grid (no embedding term). */
+  pairEnergy(itype: number, jtype: number, rsq: number): { eng: number; fforce: number } {
+    const gt = this.gTab[itype * (this.ntypes + 1) + jtype];
+    if (!gt) return { eng: 0, fforce: 0 };
+    const t = this.pairTerms(gt, itype, jtype, rsq, 0);
+    return { eng: t.phi, fforce: -t.phip * t.recip };
+  }
+
+  /** The table values of one pair on the grid (native's p, m): rho' of both atoms, r*phi and its derivative. */
+  private pairTerms(gt: Spline, itype: number, jtype: number, rsq: number, phi0: number) {
+    const nt = this.ntypes + 1;
+    const nr = gt.n, rdr = gt.rdx;
+    const r = Math.sqrt(rsq);
+    let p = r * rdr + 1.0;
+    let m = Math.trunc(p);
+    if (m > nr - 1) m = nr - 1;
+    p -= m;
+    if (p > 1.0) p = 1.0;
+    const o = 7 * (m - 1);
+    // rhoip: native type2rhor[itype][jtype], the density at a type-j site from type i (rhoTab[jtype][itype] here)
+    let c = this.rhoTab[jtype * nt + itype]!.coef;
+    const rhoip = (c[o] * p + c[o + 1]) * p + c[o + 2];
+    c = this.rhoTab[itype * nt + jtype]!.coef;
+    const rhojp = (c[o] * p + c[o + 1]) * p + c[o + 2];
+    c = gt.coef;
+    const z2p = (c[o] * p + c[o + 1]) * p + c[o + 2];
+    const z2 = ((c[o + 3] * p + c[o + 4]) * p + c[o + 5]) * p + c[o + 6];
+    const recip = 1.0 / r;
+    // phi0: native single() adds the pair term to the embedding share first, and phip then takes that sum
+    const phi = phi0 + z2 * recip;
+    const phip = z2p * recip - phi * recip;
+    return { rhoip, rhojp, phi, phip, recip };
   }
 
   /** Native's second loop over the half-list rows [ilo, inum) (eamKernel.ts eamForces). */
@@ -541,16 +636,38 @@ export abstract class PairEAMBase extends Pair {
     eamForces(this.kernelTables(), this.name, pc, fp);
   }
 
-  /** Pair term only (the embedding part depends on rho, not on r alone). */
-  override single(_i: number, _j: number, itype: number, jtype: number, rsq: number) {
+  /**
+   * As native LAMMPS does (src/MANYBODY/pair_eam.cpp single at b332f28): the embedding energy of atom i shared over its
+   * numforce neighbors of the last force evaluation (with the linear term past rhomax), then the pair term on the
+   * table grid; phip takes phi with that share, as native's does. An error before any force evaluation.
+   */
+  override single(i: number, j: number, itype: number, jtype: number, rsq: number) {
+    if (!this.last) throw new StyleError('EAM embedding data required for this calculation is missing');
     const nt = this.ntypes + 1;
-    if (rsq >= this.cutsq[itype * nt + jtype]) return { eng: 0, fforce: 0 };
     const gt = this.gTab[itype * nt + jtype];
     if (!gt) return { eng: 0, fforce: 0 };
-    const r = Math.sqrt(rsq);
-    const g = gt.eval(r);
-    return { eng: g / r, fforce: -gt.deriv(r) / (r * r) + g / (r * r * r) };
+    const rho = this.rhoBuf, fp = this.fpBuf;
+    let phi = 0;
+    const nf = this.nativeNumforce()[i];
+    if (nf > 0) {
+      const emb = this.fTab[itype];
+      const sp = emb.sp;
+      let p = rho[i] * sp.rdx + 1.0;
+      let m = Math.trunc(p);
+      if (m > sp.n - 1) m = sp.n - 1;
+      if (m < 1) m = 1;
+      p -= m;
+      if (p > 1.0) p = 1.0;
+      const c = sp.coef, o = 7 * (m - 1);
+      phi = ((c[o + 3] * p + c[o + 4]) * p + c[o + 5]) * p + c[o + 6];
+      if (rho[i] > emb.rhoMax) phi += fp[i] * (rho[i] - emb.rhoMax);
+      phi *= 1.0 / nf;
+    }
+    const t = this.pairTerms(gt, itype, jtype, rsq, phi);
+    const psip = fp[i] * t.rhojp + fp[j] * t.rhoip + t.phip;
+    return { eng: t.phi, fforce: -psip * t.recip };
   }
+
 }
 
 /**

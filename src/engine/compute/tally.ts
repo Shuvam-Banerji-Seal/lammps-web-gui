@@ -65,6 +65,9 @@ import { gplHook } from '../gplHooks';
 
 export type MolMode = 'off' | 'inter' | 'intra';
 
+/** The values a pair style passes to ev_tally for one pair (the tally callbacks' evdwl, ecoul and fpair). */
+type TallyTerms = (i: number, j: number, itype: number, jtype: number, rsq: number) => { evdwl: number; ecoul: number; fforce: number };
+
 const NEIGH_MASK = (1 << 30) - 1;
 
 /**
@@ -118,6 +121,13 @@ export const walkTallyPairs = (
       const fc = sC[sb], fl = sLJ[sb];
       const qi = nb.qall[i], qj = nb.qall[j];
       const oi = nb.owner[i];
+      // a style whose single() is not what its compute tallies (pair eam: native's ev_tally values) gives them itself
+      const tt = (pair as { tallyTerms?: TallyTerms }).tallyTerms;
+      if (tt) {
+        const v = tt.call(pair, oi, oj, ti, tj, rsq);
+        cb(i, j, v.evdwl, v.ecoul, v.fforce, dx, dy, dz);
+        continue;
+      }
       const tot = pair.single(oi, oj, ti, tj, rsq, fc, fl, qi, qj);
       // Coulomb part alone (the LJ factor 0 switches the LJ term off); the rest is the LJ part
       const ecoul = pair.single(oi, oj, ti, tj, rsq, fc, 0, qi, qj).eng;

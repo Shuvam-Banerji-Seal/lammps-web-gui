@@ -9,7 +9,8 @@
  * the charge -q of its Drude particle; a Drude particle its own charge; the bonded core-Drude pair itself is skipped.
  * The energy is tallied as Coulomb (ecoul). Special weights of the pair are subtracted from the damping, as LAMMPS.
  */
-import { Pair, StyleError, mixDistance, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, mixDistance, type AdaptAccess, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { resetScale, scaleAccess, unitScaleTable } from '../../engine/force/pair/scaleTable';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { DRUDE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
@@ -26,6 +27,8 @@ export class PairThole extends Pair {
   private thole = new Float64Array(0);
   private ascreen = new Float64Array(0);
   private cutOne = new Float64Array(0);
+  /** fix adapt's scale of the Coulomb term (src/DRUDE/pair_thole.cpp: 1 for the pairs pair_coeff sets). */
+  scale: Float64Array = new Float64Array(0);
   private set = new Uint8Array(0);
   private model: DrudeModel | null = null;
 
@@ -62,7 +65,16 @@ export class PairThole extends Pair {
       this.thole = new Float64Array(nt * nt);
       this.ascreen = new Float64Array(nt * nt);
       this.cutOne = new Float64Array(nt * nt);
+      this.scale = unitScaleTable(ntypes);
     }
+  }
+
+  /** fix adapt ascreen and scale (native extract(), dim 2): the I <= J entry, which init_one mirrors. */
+  override adaptParam(name: string): AdaptAccess | null {
+    if (name === 'scale') return scaleAccess(this);
+    if (name !== 'ascreen') return null;
+    const nt = this.ntypes + 1;
+    return { dim: 2, get: (i, j) => this.ascreen[i * nt + j], set: (i, j, v) => { this.ascreen[i * nt + j] = v; } };
   }
 
   coeff(args: string[]): void {
@@ -82,6 +94,7 @@ export class PairThole extends Pair {
         this.thole[k] = tholeOne;
         this.ascreen[k] = tholeOne / libmPow(polarOne, 1 / 3);
         this.cutOne[k] = cutOne;
+        resetScale(this.scale, this.ntypes, i, j);
         this.set[k] = 1;
         count++;
       }
@@ -104,6 +117,7 @@ export class PairThole extends Pair {
     this.thole[kr] = this.thole[k];
     this.ascreen[kr] = this.ascreen[k];
     this.cutOne[kr] = this.cutOne[k];
+    this.scale[kr] = this.scale[k];
     return this.cutOne[k];
   }
 
@@ -154,7 +168,7 @@ export class PairThole extends Pair {
         const r = Math.sqrt(rsq);
         const asr = this.ascreen[t] * r;
         const expAsr = libmExp(-asr);
-        const dcoul = qqrd2e * qi * qj * rinv;
+        const dcoul = qqrd2e * qi * qj * this.scale[t] * rinv;
         const factorF = 0.5 * (2.0 + expAsr * (-2.0 - asr * (2.0 + asr))) - factorCoul;
         const factorE = 0.5 * (2.0 - expAsr * (2.0 + asr)) - factorCoul;
         const fpair = factorF * dcoul / rsq;

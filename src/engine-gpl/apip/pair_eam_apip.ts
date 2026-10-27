@@ -12,7 +12,8 @@
  * index); a ghost neighbour contributes only the terms of atom i (the owner of the ghost adds the others). An atom
  * whose lambda and whose neighbours' lambdas are all zero is skipped (lambda_required NO_SIMPLE).
  */
-import { Pair, potentialFile, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, potentialFile, StyleError, type AdaptAccess, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { initScale, resetScale, scaleAccess, unitScaleTable } from '../../engine/force/pair/scaleTable';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { NativeFullOrder } from '../neighbor/nativeOrder';
 import { buildTables, interpolate, openPotential, parseInteger, parseReal, readFs, type EamFile, type EamTables, type Spline } from '../manyeam/potential';
@@ -188,8 +189,20 @@ export class PairEAMAPIP extends Pair {
     this.nAccumulated += n;
   }
 
+  /**
+   * fix adapt's scale by type pair (src/APIP/pair_eam_apip.cpp extract "scale"): the embedding energy of an atom times
+   * scale[itype][itype], the pair forces and energies times scale[itype][jtype]; coeff sets its pairs to 1, init_one
+   * sets an unset pair to 1 and mirrors it.
+   */
+  scale: Float64Array = new Float64Array(0);
+
+  override adaptParam(name: string): AdaptAccess | null {
+    return name === 'scale' ? scaleAccess(this) : null;
+  }
+
   override allocate(ntypes: number): void {
     super.allocate(ntypes);
+    this.scale = unitScaleTable(ntypes);
     this.map = new Int32Array(ntypes + 1).fill(-1);
     this.funcfl = [];
     this.fsFile = null;
@@ -221,6 +234,7 @@ export class PairEAMAPIP extends Pair {
           this.setMass(ctx, i, this.funcfl[ifuncfl].mass);
           count++;
         }
+        resetScale(this.scale, this.ntypes, i, j);
       }
     }
     if (count === 0) throw new StyleError('Incorrect args for pair coefficients');
@@ -267,7 +281,7 @@ export class PairEAMAPIP extends Pair {
 
   /** init_one: the largest file cutoff (funcfl) or the file cutoff (FS). */
   override initOne(i: number, j: number): number {
-    void i; void j;
+    initScale(this.scale, this.ntypes, i, j, this.setsPair(i, j));
     if (this.funcfl.length) {
       this.cutmax = 0;
       for (const f of this.funcfl) this.cutmax = Math.max(this.cutmax, f.cut);
@@ -341,7 +355,7 @@ export class PairEAMAPIP extends Pair {
       fp[i] = (sp(c, m, 0) * p + sp(c, m, 1)) * p + sp(c, m, 2);
       let phi = ((sp(c, m, 3) * p + sp(c, m, 4)) * p + sp(c, m, 5)) * p + sp(c, m, 6);
       if (rho[i] > rhomax) phi += fp[i] * (rho[i] - rhomax);
-      // scale[itype][itype] = 1
+      phi *= this.scale[type[i] * nt + type[i]];
       if (eSimple) eSimple[i] = phi;
       pc.acc.evdwl += lambda[i] * phi;
       if (pc.eatom) pc.eatom[i] += lambda[i] * phi;
@@ -405,8 +419,8 @@ export class PairEAMAPIP extends Pair {
         } else {
           psip = lambda[i] * fp[i] * rhojp + phip * 0.5 * lambda[i];
         }
-        // scale[itype][jtype] = 1
-        const fpair = -1.0 * psip * recip;
+        const sc = this.scale[itype * nt + jtype];
+        const fpair = -sc * psip * recip;
         f[3 * i] += dx * fpair; f[3 * i + 1] += dy * fpair; f[3 * i + 2] += dz * fpair;
         f[3 * j] -= dx * fpair; f[3 * j + 1] -= dy * fpair; f[3 * j + 2] -= dz * fpair;
         if (fDyn && fConst && lambdaConst) {
@@ -415,11 +429,11 @@ export class PairEAMAPIP extends Pair {
           const psipCl = j < nlocal
             ? lambdaConst[i] * fp[i] * rhojp + lambdaConst[j] * fp[j] * rhoip + phip * (lambdaConst[i] + lambdaConst[j]) / 2
             : lambdaConst[i] * fp[i] * rhojp + phip * 0.5 * lambdaConst[i];
-          const fpairCl = -1.0 * psipCl * recip;
+          const fpairCl = -sc * psipCl * recip;
           fConst[3 * i] += dx * fpairCl; fConst[3 * i + 1] += dy * fpairCl; fConst[3 * i + 2] += dz * fpairCl;
           fConst[3 * j] -= dx * fpairCl; fConst[3 * j + 1] -= dy * fpairCl; fConst[3 * j + 2] -= dz * fpairCl;
         }
-        const evdwl = 0.5 * 1.0 * phi;
+        const evdwl = 0.5 * sc * phi;
         if (eSimple) {
           eSimple[i] += evdwl;
           if (j < nlocal) eSimple[j] += evdwl;
@@ -477,6 +491,7 @@ export class PairEAMFSAPIP extends PairEAMAPIP {
           if (i === j) this.setMass(ctx, i, file.mass[map[i]]);
           count++;
         }
+        resetScale(this.scale, ntypes, i, j);
       }
     }
     if (count === 0) throw new StyleError('Incorrect args for pair coefficients');

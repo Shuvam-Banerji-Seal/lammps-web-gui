@@ -76,6 +76,11 @@ export class PairCoulCtip extends Pair {
   virialFdotr = true;
   private alpha = 0;
   private cutCoul = 0;
+  /**
+   * cut_coulsq of init_style. As native LAMMPS does (src/EXTRA-PAIR/pair_coul_ctip.cpp at b332f28): the force loop
+   * takes the pair cutoff and erfcd_cut from it, and t_cut and the shifted terms from cut_coul as it is then (fix adapt).
+   */
+  private coulSqInit = 0;
   private fileName = '';
   private fileRead = false;
   private entries = new Map<string, CtipParams>();
@@ -152,6 +157,7 @@ export class PairCoulCtip extends Pair {
     this.selfHalf = new Float64Array(n2);
     const a = this.alpha, rc = this.cutCoul;
     const cutCoulsq = rc * rc;
+    this.coulSqInit = cutCoulsq;
     const cutCoulcu = cutCoulsq * rc;
     const cut4 = cutCoulsq * cutCoulsq;
     const alphacu = a * a * a;
@@ -189,7 +195,7 @@ export class PairCoulCtip extends Pair {
     const nt = this.ntypes + 1;
     const C = pc.qqrd2e;
     const a = this.alpha, rc = this.cutCoul;
-    const cutCoulsq = rc * rc;
+    const cutCoulsq = this.coulSqInit;
     const tally = pc.eatom !== null || pc.vatom !== null;
     const sC = pc.specialCoul;
     const erfcdCut = libmExp(-a * a * cutCoulsq);

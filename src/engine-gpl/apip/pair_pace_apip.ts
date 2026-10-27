@@ -127,10 +127,12 @@ export class PairPaceAPIP extends PairPace {
       for (let jj = 0; jj < jnum; jj++) jl[jj] = nbrs[k0 + jj] & NEIGHMASK;
       ace.computeAtom(i, x, type, jnum, jl, 0);
       const nf = ace.neighboursForces;
+      // fix adapt's scale[itype][itype] on the neighbour forces and the atomic energy (src/APIP/pair_pace_apip.cpp)
+      const sc = this.scale[type[i] * (this.ntypes + 1) + type[i]];
       const xtmp = x[3 * i], ytmp = x[3 * i + 1], ztmp = x[3 * i + 2];
       for (let jj = 0; jj < jnum; jj++) {
         const j = jl[jj];
-        const fx = nf[3 * jj], fy = nf[3 * jj + 1], fz = nf[3 * jj + 2];
+        const fx = sc * nf[3 * jj], fy = sc * nf[3 * jj + 1], fz = sc * nf[3 * jj + 2];
         const wx = factorI * fx, wy = factorI * fy, wz = factorI * fz;
         f[3 * i] += wx; f[3 * i + 1] += wy; f[3 * i + 2] += wz;
         f[3 * j] -= wx; f[3 * j + 1] -= wy; f[3 * j + 2] -= wz;
@@ -153,8 +155,8 @@ export class PairPaceAPIP extends PairPace {
         }
       }
       // the reference energy for the thermostat, and ev_tally_full with 2 x the weighted atomic energy
-      if (eRef) eRef[i] = ace.eAtom;
-      const evdwl = factorI * ace.eAtom;
+      if (eRef) eRef[i] = sc * ace.eAtom;
+      const evdwl = factorI * sc * ace.eAtom;
       pc.acc.evdwl += evdwl;
       if (pc.eatom) pc.eatom[i] += evdwl;
     }

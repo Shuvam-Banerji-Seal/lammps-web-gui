@@ -26,8 +26,11 @@ inert(['B', 'epsilon', 'sigma'], ['lj/long/coul/long', 'lj/long/coul/long/dielec
 inert(['B'], ['buck/long/coul/long']);
 // COLLOID/pair_colloid.cpp: diameter is written by coeff and the mixing of init_one but read by neither compute nor init_one
 inert(['diameter'], ['colloid']);
-// KSPACE/pair_coul_streitz.cpp: scale is set by coeff and mirrored by init_one, but compute never reads it
-inert(['scale'], ['coul/streitz']);
+// KSPACE/pair_coul_streitz.cpp and DRUDE/pair_lj_cut_thole_long.cpp: scale is set by coeff and mirrored by init_one,
+// but compute never reads it
+inert(['scale'], ['coul/streitz', 'lj/cut/thole/long']);
+// DRUDE/pair_thole.cpp: polar and thole are read by coeff (which derives ascreen from them) and mirrored by init_one
+inert(['polar', 'thole'], ['thole']);
 
 /**
  * Cutoff and geometry values of native extract() (dim 0) that this engine keeps as a number field of the style: the
@@ -50,13 +53,14 @@ const cutFields = (names: Record<string, readonly [string, CutTiming]>, styles: 
 // pair_lj_charmm_coul_long.cpp, CLASS2/pair_lj_class2_coul_long.cpp, the CORESHELL and DIELECTRIC styles derived from
 // them, MOFFF/pair_buck6d_coul_gauss_*.cpp, EXTRA-PAIR/pair_coul_slater_long.cpp, pair_lj_cut_coul_dsf.cpp,
 // pair_lj_expand_coul_long.cpp and pair_nm_cut_coul_long.cpp, CG-SPICA/pair_lj_spica_coul_long.cpp,
-// DPD-BASIC/pair_dpd_coul_slater_long.cpp: cut_coul in settings, init_style and init_one's returned cutoff
+// DPD-BASIC/pair_dpd_coul_slater_long.cpp, DRUDE/pair_lj_cut_thole_long.cpp, YAFF/pair_lj_switch3_coulgauss_long.cpp and
+// pair_mm3_switch3_coulgauss_long.cpp: cut_coul in settings, init_style and init_one's returned cutoff
 cutFields({ cut_coul: ['cutCoul', 'init'] }, [
   'born/coul/long', 'born/coul/long/cs', 'buck/coul/long', 'buck/coul/long/cs', 'buck6d/coul/gauss/dsf',
   'buck6d/coul/gauss/long', 'coul/long', 'coul/long/cs', 'coul/long/dielectric', 'coul/slater/long',
   'dpd/coul/slater/long', 'lj/charmm/coul/long', 'lj/class2/coul/long', 'lj/class2/coul/long/cs', 'lj/cut/coul/dsf',
-  'lj/cut/coul/long', 'lj/cut/coul/long/cs', 'lj/cut/coul/long/dielectric', 'lj/expand/coul/long', 'lj/sdk/coul/long',
-  'lj/spica/coul/long', 'nm/cut/coul/long',
+  'lj/cut/coul/long', 'lj/cut/coul/long/cs', 'lj/cut/coul/long/dielectric', 'lj/cut/thole/long', 'lj/expand/coul/long',
+  'lj/sdk/coul/long', 'lj/spica/coul/long', 'lj/switch3/coulgauss/long', 'mm3/switch3/coulgauss/long', 'nm/cut/coul/long',
 ]);
 // pair_coul_dsf.cpp: the same, kept as the global cutoff
 cutFields({ cut_coul: ['cutGlobal', 'init'] }, ['coul/dsf']);
@@ -71,11 +75,12 @@ cutFields({ cut_coul: ['cutCGlobal', 'init'] }, [
 cutFields({ cut_coul: ['cutCoul', 'init'], cut_lj_inner: ['inner', 'init'], cut_lj: ['outer', 'init'] }, [
   'lj/charmmfsw/coul/charmmfsh', 'lj/charmmfsw/coul/long',
 ]);
-// EXTRA-PAIR/pair_coul_cut_global.cpp and pair_zero_coul.cpp: the global cutoff, read by settings and coeff only
-cutFields({ cut_coul: ['cutGlobal', 'init'] }, ['coul/cut/global', 'zero/coul']);
+// EXTRA-PAIR/pair_coul_cut_global.cpp, pair_coul_exclude.cpp and pair_zero_coul.cpp: the global cutoff, read by
+// settings, coeff and init_one's returned cutoff only
+cutFields({ cut_coul: ['cutGlobal', 'init'] }, ['coul/cut/global', 'coul/exclude', 'zero/coul']);
 // SPIN/pair_spin_*.cpp: the global cutoff of settings, the cutoff init_one returns
-cutFields({ cut: ['cutGlobal', 'init'] }, ['spin/dmi', 'spin/exchange', 'spin/exchange/biquadratic', 'spin/magelec']);
-cutFields({ cut: ['cutGlobal', 'init'], cut_coul: ['cutGlobal', 'init'] }, ['spin/dipole/long']);
+cutFields({ cut: ['cutGlobal', 'init'] }, ['spin/dmi', 'spin/exchange', 'spin/exchange/biquadratic', 'spin/magelec', 'spin/neel']);
+cutFields({ cut: ['cutGlobal', 'init'], cut_coul: ['cutGlobal', 'init'] }, ['spin/dipole/cut', 'spin/dipole/long']);
 // KSPACE/pair_*_coul_msm.cpp, DIELECTRIC/pair_lj_cut_coul_msm_dielectric.cpp, CG-SPICA/pair_lj_spica_coul_msm.cpp
 // (cut_msm is its cut_coul): the force loop's gamma(r / cut_coul); KSPACE/pair_coul_esp.cpp and
 // pair_lj_cut_coul_esp.cpp: its r_scal = 2 r / cut_coul - 1
@@ -86,6 +91,8 @@ cutFields({ cut_coul: ['cutCoul', 'now'] }, [
 cutFields({ cut_coul: ['cutCoul', 'now'], cut_msm: ['cutCoul', 'now'] }, ['lj/spica/coul/msm']);
 // KSPACE/pair_coul_streitz.cpp: the Coulomb integrals and the Wolf and Fennell sums of the force loop
 cutFields({ cut_coul: ['cutGlobal', 'now'] }, ['coul/streitz']);
+// EXTRA-PAIR/pair_coul_ctip.cpp: t_cut and the shifted terms of the force loop (pair_coul_ctip.ts)
+cutFields({ cut_coul: ['cutCoul', 'now'] }, ['coul/ctip']);
 // the TIP4P styles: init_one's cutoff, the long styles' cut_coulsqplus of the force loop (pair_tip4p.ts)
 cutFields({ cut_coul: ['cutCoul', 'now'], qdist: ['qdist', 'now'] }, [
   'lj/cut/tip4p/cut', 'lj/cut/tip4p/long', 'lj/cut/tip4p/long/soft', 'tip4p/cut', 'tip4p/long', 'tip4p/long/soft',

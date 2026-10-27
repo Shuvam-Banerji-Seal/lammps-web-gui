@@ -1,7 +1,7 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { missingArgs } from '../util';
 import { NEIGHMASK } from '../../neighbor';
-import { WignerTables, rawBispectrum, adjointBispectrum, type Cmat, type Grad } from '../../compute/sna';
+import { WignerTables, rawBispectrum, adjointBispectrum, newZStore, type Cmat, type Grad } from '../../compute/sna';
 import { parseMliapSnaDescriptor, type MliapSnaDescriptor } from '../../mliap/descriptor';
 import { parseMliapModel, type MliapModel, type ModelKind } from '../../mliap/model';
 import { parseMliapSo3Descriptor, So3Engine, type So3Descriptor } from '../../mliap/so3';
@@ -225,6 +225,7 @@ export class PairMliap extends Pair {
     const { x, f, type } = pc;
     const nlocal = pc.nlocal;
     const K = d.K, tj = d.twojmax, triples = d.triples;
+    const zs = newZStore(triples);
     const rfac0 = d.rfac0, rmin0 = d.rmin0, rc = d.rcutfac;
 
     const u: Cmat[] = [];
@@ -236,6 +237,7 @@ export class PairMliap extends Pair {
       gi.push({ r: new Float64Array(nn), i: new Float64Array(nn) });
     }
     const WT = this.tables ?? (this.tables = new WignerTables(tj));
+    const gpR = new Float64Array(WT.size), gpI = new Float64Array(WT.size), cs5 = new Float64Array(5);
     const B = new Float64Array(K), Bf = new Float64Array(K), gam = new Float64Array(K), gbuf = new Float64Array(K);
     let evdwl = 0;
     let mx = 0;
@@ -290,18 +292,10 @@ export class PairMliap extends Pair {
         const S = sg * sn, C = sg * cs;
         const g = S / r;
         const ar = C, ai = g * nDz[a], br = g * nDy[a], bi = g * nDx[a];
-        const sc = nSc[a];
-        WT.compute(ar, ai, br, bi, false);
-        for (let J = 0; J <= tj; J++) {
-          const Ur = WT.ur[J], Ui = WT.ui[J];
-          const uj = u[J];
-          for (let q = 0; q < Ur.length; q++) {
-            uj.re[q] += sc * Ur[q];
-            uj.im[q] += sc * Ui[q];
-          }
-        }
+        WT.addScaled(ar, ai, br, bi, nSc[a], u);
       }
-      rawBispectrum(triples, u, B);
+      WignerTables.mirror(u);
+      rawBispectrum(triples, u, B, zs);
       for (let c = 0; c < K; c++) Bf[c] = (B[c] - d.b0[c]) / d.norm[c];
 
       const E = model.energy(ei, Bf, gam);
@@ -314,7 +308,8 @@ export class PairMliap extends Pair {
       for (let J = 0; J <= tj; J++) {
         gr[J].r.fill(0); gr[J].i.fill(0); gi[J].r.fill(0); gi[J].i.fill(0);
       }
-      adjointBispectrum(triples, u, gbuf, gr, gi);
+      adjointBispectrum(triples, u, gbuf, gr, gi, zs);
+      WT.polyGradient(gr, gi, gpR, gpI);
 
       // pass 2: dE_i/dd for every neighbour (d = x_j - x_i); F_j = -G, F_i = +G
       for (let a = 0; a < m; a++) {
@@ -338,25 +333,11 @@ export class PairMliap extends Pair {
         }
         const ar = C, ai = g * dz, br = g * dy, bi = g * dx;
         const sc = nSc[a], dsc = nDsc[a];
+        // as pair snap: the gradient contracted over every entry first (WignerTables.contract)
+        WT.contract(ar, ai, br, bi, gpR, gpI, cs5);
         const G0 = [0, 0, 0];
-        WT.compute(ar, ai, br, bi, true);
-        for (let J = 0; J <= tj; J++) {
-          const nn = (J + 1) * (J + 1);
-          const Ur = WT.ur[J], Ui = WT.ui[J];
-          const Dr = WT.dur[J], Di = WT.dui[J];
-          const GR = gr[J], GI = gi[J];
-          for (let q = 0; q < nn; q++) {
-            const gR = GR.r[q], gI = GI.r[q];
-            if (gR === 0 && gI === 0) continue;
-            for (let mm = 0; mm < 3; mm++) {
-              let dre = dsc * nm[mm] * Ur[q], dim = dsc * nm[mm] * Ui[q];
-              for (let pp = 0; pp < 4; pp++) {
-                dre += sc * Dr[pp][q] * dp[pp][mm];
-                dim += sc * Di[pp][q] * dp[pp][mm];
-              }
-              G0[mm] += gR * dre + gI * dim;
-            }
-          }
+        for (let mm = 0; mm < 3; mm++) {
+          G0[mm] = dsc * nm[mm] * cs5[0] + sc * (cs5[1] * dp[0][mm] + cs5[2] * dp[1][mm] + cs5[3] * dp[2][mm] + cs5[4] * dp[3][mm]);
         }
         f[3 * j] -= G0[0];
         f[3 * j + 1] -= G0[1];

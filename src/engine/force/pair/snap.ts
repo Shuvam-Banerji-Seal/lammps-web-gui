@@ -1,6 +1,6 @@
 import { Pair, PairParams, StyleError, pairCoeffArgs, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
-import { buildTriples, WignerTables, rawBispectrum, adjointBispectrum, type Triple, type Cmat, type Grad } from '../../compute/sna';
+import { buildTriples, WignerTables, rawBispectrum, adjointBispectrum, newZStore, type Triple, type Cmat, type Grad } from '../../compute/sna';
 import { ChemSna } from '../../compute/snapChem';
 import { parseNum } from '../util';
 import { libm } from '../../libm';
@@ -299,6 +299,7 @@ export class PairSnap extends Pair {
     const { x, f, type } = pc;
     const nlocal = pc.nlocal;
     const K = this.K, tj = p.twojmax, triples = this.triples;
+    const zs = newZStore(triples);
     const quad = this.quadratic;
     const rfac0 = p.rfac0, rmin0 = p.rmin0, rc = p.rcutfac;
 
@@ -311,6 +312,8 @@ export class PairSnap extends Pair {
       gi.push({ r: new Float64Array(nn), i: new Float64Array(nn) });
     }
     const WT = this.tables ?? (this.tables = new WignerTables(tj));
+    // the gradient of E_i in the layout of WT.contract, and the contraction of one neighbour
+    const gpR = new Float64Array(WT.size), gpI = new Float64Array(WT.size), cs5 = new Float64Array(5);
     const B = new Float64Array(K), Bf = new Float64Array(K), gam = new Float64Array(K), gbuf = new Float64Array(K);
     let evdwl = 0;
     let mx = 0;
@@ -368,18 +371,10 @@ export class PairSnap extends Pair {
         const S = sg * sn, C = sg * cs;
         const g = S / r;
         const ar = C, ai = g * nDz[a], br = g * nDy[a], bi = g * nDx[a];
-        const sc = nSc[a];
-        WT.compute(ar, ai, br, bi, false);
-        for (let J = 0; J <= tj; J++) {
-          const Ur = WT.ur[J], Ui = WT.ui[J];
-          const uj = u[J];
-          for (let q = 0; q < Ur.length; q++) {
-            uj.re[q] += sc * Ur[q];
-            uj.im[q] += sc * Ui[q];
-          }
-        }
+        WT.addScaled(ar, ai, br, bi, nSc[a], u);
       }
-      rawBispectrum(triples, u, B);
+      WignerTables.mirror(u);
+      rawBispectrum(triples, u, B, zs);
       for (let c = 0; c < K; c++) Bf[c] = (B[c] - this.b0[c]) / this.normOf[c];
 
       // energy E_i = beta_0 + beta . B + quadratic, and gam = dE_i/dBf
@@ -415,7 +410,8 @@ export class PairSnap extends Pair {
       for (let J = 0; J <= tj; J++) {
         gr[J].r.fill(0); gr[J].i.fill(0); gi[J].r.fill(0); gi[J].i.fill(0);
       }
-      adjointBispectrum(triples, u, gbuf, gr, gi);
+      adjointBispectrum(triples, u, gbuf, gr, gi, zs);
+      WT.polyGradient(gr, gi, gpR, gpI);
 
       // pass 2: dE_i/dd for every neighbour (d = x_j - x_i); F_j = -G, F_i = +G
       for (let a = 0; a < m; a++) {
@@ -440,26 +436,11 @@ export class PairSnap extends Pair {
         }
         const ar = C, ai = g * dz, br = g * dy, bi = g * dx;
         const sc = nSc[a], dsc = nDsc[a];
+        // d u / d d_m = dsc n_m U + sc sum_p dU/dp_p dp_p/dd_m, contracted with the gradient over every entry first
+        WT.contract(ar, ai, br, bi, gpR, gpI, cs5);
         const G0 = [0, 0, 0];
-        WT.compute(ar, ai, br, bi, true);
-        for (let J = 0; J <= tj; J++) {
-          const nn = (J + 1) * (J + 1);
-          const Ur = WT.ur[J], Ui = WT.ui[J];
-          const Dr = WT.dur[J], Di = WT.dui[J];
-          const GR = gr[J], GI = gi[J];
-          for (let q = 0; q < nn; q++) {
-            const gR = GR.r[q], gI = GI.r[q];
-            if (gR === 0 && gI === 0) continue;
-            for (let mm = 0; mm < 3; mm++) {
-              // d u / d d_m = dsc n_m U + sc sum_p dU_p dp_p/dd_m
-              let dre = dsc * nm[mm] * Ur[q], dim = dsc * nm[mm] * Ui[q];
-              for (let pp = 0; pp < 4; pp++) {
-                dre += sc * Dr[pp][q] * dp[pp][mm];
-                dim += sc * Di[pp][q] * dp[pp][mm];
-              }
-              G0[mm] += gR * dre + gI * dim;
-            }
-          }
+        for (let mm = 0; mm < 3; mm++) {
+          G0[mm] = dsc * nm[mm] * cs5[0] + sc * (cs5[1] * dp[0][mm] + cs5[2] * dp[1][mm] + cs5[3] * dp[2][mm] + cs5[4] * dp[3][mm]);
         }
         f[3 * j] -= G0[0];
         f[3 * j + 1] -= G0[1];

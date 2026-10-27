@@ -28,7 +28,7 @@ import type { System } from '../../engine/system';
 import { buildAtomMap, hasMolecule, nativeOrder } from '../../engine/atoms';
 import { PairReaxFF } from './pair';
 import type { BondList, RxSystem } from './core';
-import type { NativeFarOrder } from './nativeFar';
+import { nativeRank, type NativeFarOrder } from './nativeFar';
 
 const intArg = (w: string | undefined, what: string): number => {
   const v = w === undefined ? NaN : Number(w);
@@ -55,8 +55,8 @@ export const nativeRegion = (b: BondList, nat: NativeFarOrder, i: number, n: num
     if (p < n && nat.nativeIdx[p] < ni) {
       items.push({ pj, group: 0, key: nat.nativeIdx[p] });
     } else {
-      const r = nat.rank.get(i * nat.nall + p);
-      if (r === undefined) throw new StyleError('internal: a bond partner is not in the native far list of its atom');
+      const r = nativeRank(nat, i, p);
+      if (r < 0) throw new StyleError('internal: a bond partner is not in the native far list of its atom');
       items.push({ pj, group: 1, key: r });
     }
   }

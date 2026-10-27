@@ -10,6 +10,7 @@
  * Copyright (2003) Sandia Corporation (GNU General Public License).
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  */
+import { NEIGHMASK } from '../../engine/neighbor';
 import { sp, sp2, type Ref } from './splines';
 import { TOL, kron, gSpline, piRCSpline, TijSpline, newRef, type ReboCore } from './rebo';
 import { bondorderPijCross, pijEval } from './bc';
@@ -33,8 +34,13 @@ export interface LJParams {
 /** REBO core plus the LJ term data and the LJ pair list of owned atoms. */
 export interface LJCore extends ReboCore {
   ljp: LJParams;
-  /** LJ neighbors of owned atoms (CSR): j with rijsq < cutljsq. */
-  ljStart: Int32Array;
+  /**
+   * LJ neighbor rows of owned atoms: row i is ljList[ljFirst[i] .. ljFirst[i] + ljNum[i]), entries masked with
+   * NEIGHMASK (the full neighbor list, or the rows of a binned search); flj skips unmapped atoms and pairs beyond
+   * cutljsq.
+   */
+  ljFirst: Int32Array;
+  ljNum: Int32Array;
   ljList: Int32Array;
   /** Epsilon of the torsion term per element pair (ii*2+jj) (TORSION uses it). */
   epsilonT: Float64Array;
@@ -750,7 +756,7 @@ export const bondorderLJ = (
  * largest path weight `best`, and C_ij = 1 - best scales the LJ energy.
  */
 export const flj = (core: LJCore, nlocal: number): void => {
-  const { P, mt, tag, x, f, rstart, rlist, ljStart, ljList, ljp } = core;
+  const { P, mt, tag, x, f, rstart, rlist, ljFirst, ljNum, ljList, ljp } = core;
   const pidx = (a: number, b: number) => a * 2 + b;
   const eatom = core.eatom, vatom = core.vatom;
   const dwij = newRef(), dwik = newRef(), dwkj = newRef(), dwkm = newRef(), dwmj = newRef();
@@ -761,9 +767,11 @@ export const flj = (core: LJCore, nlocal: number): void => {
   for (let i = 0; i < nlocal; i++) {
     const itag = tag[i];
     const itype = mt[i];
+    if (itype < 0) continue;
     const xtmp = x[3 * i], ytmp = x[3 * i + 1], ztmp = x[3 * i + 2];
-    for (let jj = ljStart[i]; jj < ljStart[i + 1]; jj++) {
-      const j = ljList[jj];
+    for (let jj = ljFirst[i], jj1 = jj + ljNum[i]; jj < jj1; jj++) {
+      const j = ljList[jj] & NEIGHMASK;
+      if (mt[j] < 0) continue;
       const jtag = tag[j];
       if (itag > jtag) {
         if ((itag + jtag) % 2 === 0) continue;

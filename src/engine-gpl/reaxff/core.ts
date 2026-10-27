@@ -189,6 +189,9 @@ export const taperCoefficients = (nonbLow: number, nonbCut: number): Float64Arra
  * every j > i (owned or ghost) with d <= nonb_cut; for ghost i, every ghost j > i with d <= bond_cut.
  * Positions are x (owned then ghost); a binned search over all N atoms.
  */
+/** Scratch of buildFarList, grown as needed and kept between calls (the results are copied out). */
+let farNbr = new Int32Array(0), farD = new Float64Array(0), farV = new Float64Array(0);
+
 export const buildFarList = (ctrl: ControlParams, n: number, N: number, x: Float64Array<ArrayBufferLike>, type: Int32Array): FarList => {
   const nonb = ctrl.nonbCut, bond = ctrl.bondCut;
   const cs = Math.max(nonb, bond) > 0 ? Math.max(nonb, bond) : 1;
@@ -209,15 +212,14 @@ export const buildFarList = (ctrl: ControlParams, n: number, N: number, x: Float
   const nz = Math.floor((zmax - zmin) / cs) + 1;
   const ncell = nx * ny * nz;
   const cstart = new Int32Array(ncell + 1);
+  // each atom's cell coordinates, then its cell
+  const cxyz = new Int32Array(3 * N);
   const cellOf = new Int32Array(N);
-  const cidx = (a: number) => {
+  for (let a = 0; a < N; a++) {
     const cx = Math.floor((x[3 * a] - xmin) / cs);
     const cy = Math.floor((x[3 * a + 1] - ymin) / cs);
     const cz = Math.floor((x[3 * a + 2] - zmin) / cs);
-    return [cx, cy, cz];
-  };
-  for (let a = 0; a < N; a++) {
-    const [cx, cy, cz] = cidx(a);
+    cxyz[3 * a] = cx; cxyz[3 * a + 1] = cy; cxyz[3 * a + 2] = cz;
     const c = cx + nx * (cy + ny * cz);
     cellOf[a] = c;
     cstart[c + 1]++;
@@ -226,22 +228,28 @@ export const buildFarList = (ctrl: ControlParams, n: number, N: number, x: Float
   const fill = cstart.slice(0, ncell);
   const cellAtoms = new Int32Array(N);
   for (let a = 0; a < N; a++) cellAtoms[fill[cellOf[a]]++] = a;
-  const out: number[] = [];
-  const outD: number[] = [];
-  const outV: number[] = [];
+  let nbr = farNbr, dd = farD, dv = farV;
+  let count = 0;
   for (let i = 0; i < N; i++) {
-    start[i] = out.length;
-    if (type[i] < 0) { end[i] = out.length; continue; }
-    const cutoffSq = (i < n ? nonb : bond) ** 2;
+    start[i] = count;
+    if (type[i] < 0) { end[i] = count; continue; }
+    const cut = i < n ? nonb : bond;
+    const cutoffSq = cut ** 2;
     const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-    const [cx, cy, cz] = cidx(i);
-    for (let dz = -1; dz <= 1; dz++) {
+    const cx = cxyz[3 * i], cy = cxyz[3 * i + 1], cz = cxyz[3 * i + 2];
+    // a neighbouring cell farther than the cutoff along one axis holds no partner (with a margin for the rounding of
+    // the cell assignment); skipping it leaves the order of the others unchanged
+    const reach = cut + 1e-6 * cs;
+    const zlo = zi - (zmin + cz * cs) <= reach ? -1 : 0, zhi = zmin + (cz + 1) * cs - zi <= reach ? 1 : 0;
+    const ylo = yi - (ymin + cy * cs) <= reach ? -1 : 0, yhi = ymin + (cy + 1) * cs - yi <= reach ? 1 : 0;
+    const xlo = xi - (xmin + cx * cs) <= reach ? -1 : 0, xhi = xmin + (cx + 1) * cs - xi <= reach ? 1 : 0;
+    for (let dz = zlo; dz <= zhi; dz++) {
       const z = cz + dz;
       if (z < 0 || z >= nz) continue;
-      for (let dy = -1; dy <= 1; dy++) {
+      for (let dy = ylo; dy <= yhi; dy++) {
         const y = cy + dy;
         if (y < 0 || y >= ny) continue;
-        for (let dx = -1; dx <= 1; dx++) {
+        for (let dx = xlo; dx <= xhi; dx++) {
           const xx = cx + dx;
           if (xx < 0 || xx >= nx) continue;
           const c = xx + nx * (y + ny * z);
@@ -251,20 +259,24 @@ export const buildFarList = (ctrl: ControlParams, n: number, N: number, x: Float
             const dvx = x[3 * j] - xi, dvy = x[3 * j + 1] - yi, dvz = x[3 * j + 2] - zi;
             const dsq = dvx * dvx + dvy * dvy + dvz * dvz;
             if (dsq <= cutoffSq) {
-              out.push(j);
-              outD.push(Math.sqrt(dsq));
-              outV.push(dvx, dvy, dvz);
+              if (count === nbr.length) {
+                const cap = Math.max(1024, 2 * count);
+                const n2 = new Int32Array(cap), d2 = new Float64Array(cap), v2 = new Float64Array(3 * cap);
+                n2.set(nbr); d2.set(dd); v2.set(dv);
+                nbr = farNbr = n2; dd = farD = d2; dv = farV = v2;
+              }
+              nbr[count] = j;
+              dd[count] = Math.sqrt(dsq);
+              dv[3 * count] = dvx; dv[3 * count + 1] = dvy; dv[3 * count + 2] = dvz;
+              count++;
             }
           }
         }
       }
     }
-    end[i] = out.length;
+    end[i] = count;
   }
-  return {
-    start, end, nbr: Int32Array.from(out), d: Float64Array.from(outD), dvec: Float64Array.from(outV),
-    count: out.length,
-  };
+  return { start, end, nbr: nbr.slice(0, count), d: dd.slice(0, count), dvec: dv.slice(0, 3 * count), count };
 };
 
 /** Reset_Atoms: hydrogen indexes of the owned atoms (only for hbonds). */

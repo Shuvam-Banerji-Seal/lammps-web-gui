@@ -1,0 +1,1120 @@
+{
+ "matrix": "adapt-pair-down",
+ "about": "fix adapt 0 pair <style> <name> * * v_x scale yes reset no (x = 0.9) for each cutoff and geometry name of each pair style's native extract(), pe, press and fnorm compared after run 0 and after a second run 0",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w3coullong_born",
+   "line": 21,
+   "text": "pair_style born/coul/long 10.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair born/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair born/coul/long cut_coul",
+   "until": 31,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 382.912578469321 53455.1399187418 71.0503486963741 VAL 381.699631134473 53433.5627407745 71.0525280320359"
+  },
+  {
+   "case": "w9pair_born_cs",
+   "line": 8,
+   "text": "pair_style born/coul/long/cs 10.0 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair born/coul/long/cs cut_coul * * v_adpv scale yes reset no",
+   "style": "pair born/coul/long/cs cut_coul",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.11010704138846 5.94005653287079 2.98540405535014 VAL -0.175551364738681 -4.31341442953731 2.98282214598476"
+  },
+  {
+   "case": "w209ms_born",
+   "line": 24,
+   "text": "pair_style born/coul/msm 7.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair born/coul/msm cut_coul * * v_adpv scale yes reset no",
+   "style": "pair born/coul/msm cut_coul",
+   "until": 34,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -826.150072550039 5714.89359494231 2.83610494677786 VAL -826.150072550039 5714.89359494231 2.83610494677786"
+  },
+  {
+   "case": "w3coullong_buck",
+   "line": 21,
+   "text": "pair_style buck/coul/long 10.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair buck/coul/long cut_coul",
+   "until": 32,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3963.03766290827 -6828.24084686918 3.61622996340262 VAL -3964.25061024312 -6849.81802483649 3.61878922681097"
+  },
+  {
+   "case": "w9pair_buck_cs",
+   "line": 8,
+   "text": "pair_style buck/coul/long/cs 10.0 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck/coul/long/cs cut_coul * * v_adpv scale yes reset no",
+   "style": "pair buck/coul/long/cs cut_coul",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.178646119472887 -4.88994200159685 2.9883102238066 VAL -0.179012092191897 -4.99465878394871 2.98825617278452"
+  },
+  {
+   "case": "w209ms_buck",
+   "line": 24,
+   "text": "pair_style buck/coul/msm 7.0 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck/coul/msm cut_coul * * v_adpv scale yes reset no",
+   "style": "pair buck/coul/msm cut_coul",
+   "until": 36,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -854.043391073512 18734.4024808456 3.14594613045043 VAL -856.436677116447 -13005.6426995844 2.16157099928497"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 6,
+   "text": "pair_style buck/long/coul/long long long 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck/long/coul/long ewald_cut * * v_adpv scale yes reset no",
+   "style": "pair buck/long/coul/long ewald_cut",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 12.2382550230811 1237.47868620597 688.956958783729 VAL 12.2378575275845 1237.49446824332 688.957369850593"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 6,
+   "text": "pair_style buck/long/coul/long long long 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck/long/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair buck/long/coul/long cut_coul",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 12.2382550230811 1237.47868620597 688.956958783729 VAL 12.2378575275845 1237.49446824332 688.957369850593"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 6,
+   "text": "pair_style buck/long/coul/long long long 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck/long/coul/long cut_vdwl * * v_adpv scale yes reset no",
+   "style": "pair buck/long/coul/long cut_vdwl",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 12.2382549562756 1237.47868031546 688.956958707814 VAL 12.2382537929911 1237.47859791324 688.956958420992"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 6,
+   "text": "pair_style buck/long/coul/long long long 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck/long/coul/long cut_LJ * * v_adpv scale yes reset no",
+   "style": "pair buck/long/coul/long cut_LJ",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 12.2382549562756 1237.47868031546 688.956958707814 VAL 12.2382537929911 1237.47859791324 688.956958420992"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/dsf 0.9 12.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck6d/coul/gauss/dsf cut_ljsq * * v_adpv scale yes reset no",
+   "style": "pair buck6d/coul/gauss/dsf cut_ljsq",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 14819.9567831491 890.888742494777 VAL 82.1160299634658 14819.9567831491 890.888742494777"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/dsf 0.9 12.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck6d/coul/gauss/dsf cut_coul * * v_adpv scale yes reset no",
+   "style": "pair buck6d/coul/gauss/dsf cut_coul",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 14819.9567831491 890.888742494777 VAL 82.1160299634658 14819.9567831491 890.888742494777"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/long 0.9 1.0 12.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck6d/coul/gauss/long cut_ljsq * * v_adpv scale yes reset no",
+   "style": "pair buck6d/coul/gauss/long cut_ljsq",
+   "until": 30,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 14819.9567831491 890.888742494777 VAL 82.1160299634658 14819.9567831491 890.888742494777"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/long 0.9 1.0 12.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair buck6d/coul/gauss/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair buck6d/coul/gauss/long cut_coul",
+   "until": 30,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 14819.9567831491 890.888742494777 VAL 82.1160299634658 14819.9567831491 890.888742494777"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 14,
+   "text": "pair_style coul/cut 20.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/cut cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/cut cut_coul",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.26360540091214 -24.9940602298087 0.595669298485946 VAL -1.26360540091214 -24.9940602298087 0.595669298485946"
+  },
+  {
+   "case": "w226cs_diel_cutcoul",
+   "line": 6,
+   "text": "pair_style coul/cut/dielectric 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/cut/dielectric cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/cut/dielectric cut_coul",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -62.0865789868097 -177.382429777811 112.515450295729 VAL -61.0437385347758 -174.403016573901 112.515451668946"
+  },
+  {
+   "case": "w219xp_coul_cut_global",
+   "line": 12,
+   "text": "pair_style coul/cut/global 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/cut/global cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/cut/global cut_coul",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.979164439917822 0.504627143772141 2.9219288478789 VAL -0.979164439917822 0.504627143772141 2.9219288478789"
+  },
+  {
+   "case": "w1coul_debye",
+   "line": 22,
+   "text": "pair_style coul/debye 1.5 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/debye cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/debye cut_coul",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.0392764268291797 0.264106621878778 0.218932536734012 VAL -0.0572243677963836 0.241083932503565 0.22336862107195"
+  },
+  {
+   "case": "w1coul_dsf",
+   "line": 22,
+   "text": "pair_style coul/dsf 0.6 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/dsf cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/dsf cut_coul",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.171794237875079 0.235163730014354 0.314872589324505 VAL -0.17072353545613 0.233983442308406 0.318750979391535"
+  },
+  {
+   "case": "w244es_ortho",
+   "line": 15,
+   "text": "pair_style coul/esp 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/esp cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/esp cut_coul",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -15930.6613152935 -32922.3391529722 56.3675991503462 VAL -15931.466284224 -32918.1080922778 56.356666866268"
+  },
+  {
+   "case": "w117cf_pppm_mesh8_real",
+   "line": 10,
+   "text": "pair_style coul/long 12.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/long cut_coul",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.1801228299563 -1.86289587992503 13.5065805948678 VAL -1.15429072803389 -1.58728033914497 13.5133145027628"
+  },
+  {
+   "case": "w9pair_coul_cs_short",
+   "line": 7,
+   "text": "pair_style coul/long/cs 10.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/long/cs cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/long/cs cut_coul",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.38565469569585e-05 -0.000182244334426768 0.0298655087465041 VAL -1.38568611873779e-05 -0.000182274022374328 0.0298568826171227"
+  },
+  {
+   "case": "w226cs_diel_coullong_t12",
+   "line": 7,
+   "text": "pair_style coul/long/dielectric 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/long/dielectric cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/long/dielectric cut_coul",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1199.97046625944 -760.72170267743 152.415259102662 VAL -1277.17727419833 -950.848841766169 173.476601144404"
+  },
+  {
+   "case": "w69fep_coullongsoft",
+   "line": 17,
+   "text": "pair_style coul/long/soft 2 2.6 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/long/soft cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/long/soft cut_coul",
+   "until": 30,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.768988749440707 0.574675684362941 9.39748773722447e-15 VAL -0.768988748544284 0.57467569526453 2.41599658308978e-15"
+  },
+  {
+   "case": "w219xp_coul_slater_cut",
+   "line": 16,
+   "text": "pair_style coul/slater/cut 0.7 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/slater/cut cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/slater/cut cut_coul",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.325007777780061 0.93040587186578 11.9540538448943 VAL 0.728568103075095 1.03500359567746 10.4694710301432"
+  },
+  {
+   "case": "w130pr_coulslater_ewald",
+   "line": 14,
+   "text": "pair_style coul/slater/long 0.929 3.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/slater/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/slater/long cut_coul",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.0474547171695645 0.191785942069386 16.710889945296 VAL -0.0480686060407509 0.191537384601568 16.8152279628977"
+  },
+  {
+   "case": "w43st_dsf_alone",
+   "line": 18,
+   "text": "pair_style coul/streitz 12.0 dsf 0.3\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair coul/streitz cut_coul * * v_adpv scale yes reset no",
+   "style": "pair coul/streitz cut_coul",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 15.6760543708964 -27968.4664291386 40.7259452653756 VAL 15.6689569826983 -28006.5691852425 40.7260270433698"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 18,
+   "text": "pair_style dpd/coul/slater/long 1.0 1.0 165412 0.25 2.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair dpd/coul/slater/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair dpd/coul/slater/long cut_coul",
+   "until": 31,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 8.08347667864379 8.33671332649846 607.095264459955 VAL 8.08347757961811 8.64409557221002 659.267841141665"
+  },
+  {
+   "case": "w17harmcut",
+   "line": 11,
+   "text": "pair_style harmonic/cut\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair harmonic/cut cut * * v_adpv scale yes reset no",
+   "style": "pair harmonic/cut cut",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.109740089595369 1.25331872944892 17.8856363665947 VAL 0.103520890590407 -0.862740108324487 11.8777182988769"
+  },
+  {
+   "case": "w16lepton_coul",
+   "line": 18,
+   "text": "pair_style lepton/coul 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lepton/coul cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lepton/coul cut_coul",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Fix adapt interface to pair style lepton/coul is not supported"
+  },
+  {
+   "case": "w13dihcharmm_long",
+   "line": 14,
+   "text": "pair_style lj/charmm/coul/long 8.0 10.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/charmm/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/charmm/coul/long cut_coul",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1841.61016219933 -4348.55265566435 1616.51355932364 VAL 1841.60998366373 -4348.5553437375 1616.5135430295"
+  },
+  {
+   "case": "w69fep_charmmsoft",
+   "line": 17,
+   "text": "pair_style lj/charmm/coul/long/soft 2 0.5 2.6 8.0 10.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/charmm/coul/long/soft cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/charmm/coul/long/soft cut_coul",
+   "until": 30,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.04075828990871 19.3096171198355 6.41670642689508e-13 VAL -1.04067866631841 19.3099267884483 3.85495600758661e-13"
+  },
+  {
+   "case": "w209ms_charmm_water",
+   "line": 8,
+   "text": "pair_style lj/charmm/coul/msm 3.5 4.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/charmm/coul/msm cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/charmm/coul/msm cut_coul",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 280.673866736833 23682.43755772 282.483914928571 VAL 280.673866736833 23682.43755772 282.483914928571"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/charmmfsh 8.0 10.0 9.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/charmmfsw/coul/charmmfsh cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/charmmfsw/coul/charmmfsh cut_coul",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5264.26732587601 -18731.7502634035 3341.899451201 VAL 5265.05401622896 -18741.8293333059 3342.00688985504"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/charmmfsh 8.0 10.0 9.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/charmmfsw/coul/charmmfsh cut_lj_inner * * v_adpv scale yes reset no",
+   "style": "pair lj/charmmfsw/coul/charmmfsh cut_lj_inner",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5264.26732587601 -18731.7502634035 3341.899451201 VAL 5264.29913601822 -18731.6216027439 3341.90046597373"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/charmmfsh 8.0 10.0 9.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/charmmfsw/coul/charmmfsh cut_lj * * v_adpv scale yes reset no",
+   "style": "pair lj/charmmfsw/coul/charmmfsh cut_lj",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5264.26732587601 -18731.7502634035 3341.899451201 VAL 5264.31292076471 -18731.5576489397 3341.90065136192"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/long 8.0 10.0 9.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/charmmfsw/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/charmmfsw/coul/long cut_coul",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5260.83834971158 -18731.852923879 3341.8009393789 VAL 5260.86194421482 -18731.5839449034 3341.80406970087"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/long 8.0 10.0 9.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/charmmfsw/coul/long cut_lj_inner * * v_adpv scale yes reset no",
+   "style": "pair lj/charmmfsw/coul/long cut_lj_inner",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5260.83834971158 -18731.852923879 3341.8009393789 VAL 5260.87015985379 -18731.7242632194 3341.80195402175"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/long 8.0 10.0 9.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/charmmfsw/coul/long cut_lj * * v_adpv scale yes reset no",
+   "style": "pair lj/charmmfsw/coul/long cut_lj",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5260.83834971158 -18731.852923879 3341.8009393789 VAL 5260.88394460028 -18731.6603094152 3341.80213930888"
+  },
+  {
+   "case": "w51cs_c2cut_run",
+   "line": 22,
+   "text": "pair_style lj/class2/coul/cut 8.0 7.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/class2/coul/cut cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/class2/coul/cut cut_coul",
+   "until": 31,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "CRASH rc=139",
+   "skip": "native LAMMPS crashes (CRASH rc=139)"
+  },
+  {
+   "case": "w69fep_class2cutsoft",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/cut/soft 2 0.5 4.0 2.4 2.6\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/class2/coul/cut/soft cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/class2/coul/cut/soft cut_coul",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "CRASH rc=139",
+   "skip": "native LAMMPS crashes (CRASH rc=139)"
+  },
+  {
+   "case": "w51cs_c2long_run",
+   "line": 22,
+   "text": "pair_style lj/class2/coul/long 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/class2/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/class2/coul/long cut_coul",
+   "until": 35,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1917.96543944268 -5877.61448730231 3.63584489526086 VAL -1925.22209269218 -6080.43761570414 3.66625396298962"
+  },
+  {
+   "case": "w226cs_class2",
+   "line": 6,
+   "text": "pair_style lj/class2/coul/long/cs 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/class2/coul/long/cs cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/class2/coul/long/cs cut_coul",
+   "until": 20,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5.08714887505744 -6221.40851639705 483.07724313884 VAL 5.08710188225086 -6221.51945150025 483.077170380623"
+  },
+  {
+   "case": "w17soft_class2",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/long/soft 2 0.5 4.0 2.4 2.6\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/class2/coul/long/soft cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/class2/coul/long/soft cut_coul",
+   "until": 30,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.86126911730312 -0.613855666652343 6.54651400207079e-15 VAL -3.86136647403093 -0.614477150444164 5.26276085510247e-15"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 5,
+   "text": "pair_style lj/cut/coul/cut 10.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/cut cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/cut cut_coul",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 15.5107081490674 -4124.89116258815 121.472610014532 VAL 8.60182569251163 -4282.80153574393 121.813497965029"
+  },
+  {
+   "case": "w243de_efield_cutcoul",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/cut/dielectric 0.2 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/cut/dielectric cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/cut/dielectric cut_coul",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -61.0437385347758 -174.403016573901 112.515451668946 VAL -73.3600576605464 -209.590953285912 112.146925394033"
+  },
+  {
+   "case": "w17soft_coul",
+   "line": 17,
+   "text": "pair_style lj/cut/coul/cut/soft 2 0.5 4.0 2.4 2.6\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/cut/soft cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/cut/soft cut_coul",
+   "until": 28,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "CRASH rc=139",
+   "skip": "native LAMMPS crashes (CRASH rc=139)"
+  },
+  {
+   "case": "w1lcoul_debye",
+   "line": 22,
+   "text": "pair_style lj/cut/coul/debye 1.5 2.5 3.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/debye cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/debye cut_coul",
+   "until": 31,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.25344206477313 -4.70956225251971 31.5452170752414 VAL -6.26054796595248 -4.71930309972665 31.5401969078753"
+  },
+  {
+   "case": "w226cs_diel_debye",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/debye/dielectric 0.2 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/debye/dielectric cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/debye/dielectric cut_coul",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 37060.241069458 1273121.7370089 984693.120132653 VAL 37056.932414974 1273099.85921359 984693.118330988"
+  },
+  {
+   "case": "w1lcoul_dsf",
+   "line": 22,
+   "text": "pair_style lj/cut/coul/dsf 0.6 2.5 3.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/dsf cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/dsf cut_coul",
+   "until": 31,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.38848299499492 -4.73914854279097 31.5213316224751 VAL -6.39006513752192 -4.73994496475226 31.5138912882523"
+  },
+  {
+   "case": "w244es_ljfluid",
+   "line": 15,
+   "text": "pair_style lj/cut/coul/esp 6.0 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/esp cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/esp cut_coul",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6253.53316419517 -21349.8008708285 127.722082604169 VAL -6253.49817109543 -21337.2221797144 127.707481896952"
+  },
+  {
+   "case": "w88pair_compute_no",
+   "line": 5,
+   "text": "pair_style lj/cut/coul/long 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/long cut_coul",
+   "until": 18,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 4.15481553305117 -3836.71555595377 123.414186211725 VAL 2.57484859821428 -3849.154692269 123.214874678078"
+  },
+  {
+   "case": "w226cs_ljcoul_t12",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/long/cs 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/long/cs cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/long/cs cut_coul",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5.58677765185416 -6020.50462283512 484.003975966311 VAL 5.58670349076237 -6020.61570985709 484.003899633712"
+  },
+  {
+   "case": "w243de_efield_ljlong_pppm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/long/dielectric 0.2 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/long/dielectric cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/long/dielectric cut_coul",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -170.474129172385 -527.36396867753 110.533529043165 VAL -153.990758394214 -688.5841089979 110.508207285279"
+  },
+  {
+   "case": "w17soft_long",
+   "line": 17,
+   "text": "pair_style lj/cut/coul/long/soft 2 0.5 4.0 2.4 2.6\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/long/soft cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/long/soft cut_coul",
+   "until": 30,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.04044709822316 20.2347263684152 7.534969485176e-14 VAL -1.04054445495097 20.2341048846234 5.47711822159017e-14"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm 4.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/msm cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/msm cut_coul",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 273.558210062566 17748.8862440927 282.15616683866 VAL 273.558210062566 17748.8862440927 282.15616683866"
+  },
+  {
+   "case": "w243de_efield_ljcoulmsm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm/dielectric 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/coul/msm/dielectric cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/coul/msm/dielectric cut_coul",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 36673.9112971488 -1444.36911138811 984692.331122686 VAL 36673.9112971488 -1444.36911138811 984692.331122686"
+  },
+  {
+   "case": "w41sm_dipole_mol",
+   "line": 12,
+   "text": "pair_style lj/cut/dipole/cut 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/dipole/cut cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/dipole/cut cut_coul",
+   "until": 19,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.743530723582579 0.00202314721489103 6.56152652362578 VAL -0.744373662336353 0.00201556076610707 6.55930603800082"
+  },
+  {
+   "case": "w44dl_static_auto",
+   "line": 19,
+   "text": "pair_style lj/cut/dipole/long 5.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/dipole/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/dipole/long cut_coul",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 50.1648942132272 1998.44426909662 43.2944973758832 VAL 50.1538046629614 2001.82868661728 43.2921085056377"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 8,
+   "text": "pair_style lj/cut/tip4p/cut 1 2 1 1 0.1546 4.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/tip4p/cut qdist * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/tip4p/cut qdist",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 4196.03026108937 129865.650375533 179.124650534157 VAL 4420.30775731187 136258.033307902 185.194477680923"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 8,
+   "text": "pair_style lj/cut/tip4p/cut 1 2 1 1 0.1546 4.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/tip4p/cut cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/tip4p/cut cut_coul",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 4196.03026108937 129865.650375533 179.124650534157 VAL 4196.03026108831 129865.65037573 179.124650535263"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 7,
+   "text": "pair_style lj/cut/tip4p/long 1 2 1 1 0.1546 8.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/tip4p/long qdist * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/tip4p/long qdist",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 24.2306001943598 15663.5930928527 114.143366312367 VAL 25.7178913974635 15810.4406019686 120.492365770138"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 7,
+   "text": "pair_style lj/cut/tip4p/long 1 2 1 1 0.1546 8.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/tip4p/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/tip4p/long cut_coul",
+   "until": 25,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 24.3092722694942 15709.6888621514 114.146431798023 VAL 24.2960395637433 15671.9490768005 114.157067185083"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 124,
+   "text": "pair_style lj/cut/tip4p/long/soft 1 2 1 1 0.15 1 0.5 0.5 4.0 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/tip4p/long/soft qdist * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/tip4p/long/soft qdist",
+   "until": 135,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -61.8229934165697 791.398774076637 52.261585865012 VAL -65.3934761410883 689.869284001646 55.7551021027631"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 124,
+   "text": "pair_style lj/cut/tip4p/long/soft 1 2 1 1 0.15 1 0.5 0.5 4.0 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/cut/tip4p/long/soft cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/cut/tip4p/long/soft cut_coul",
+   "until": 135,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -61.8205837195237 792.740134946918 52.2574892170084 VAL -60.6447467062162 1171.36352106739 52.2738081627588"
+  },
+  {
+   "case": "w220xp_ljexpandcoullong_special",
+   "line": 15,
+   "text": "pair_style lj/expand/coul/long 2.5 3.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/expand/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/expand/coul/long cut_coul",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.85972115218805 0.722054666948796 47.4380555892962 VAL -3.85972153070489 0.722048504642726 47.4380555892962"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 5,
+   "text": "pair_style lj/long/coul/long long off 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/coul/long ewald_cut * * v_adpv scale yes reset no",
+   "style": "pair lj/long/coul/long ewald_cut",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.3684858711066 -1.5517368922398 137.828485737582 VAL -5.3684858711066 -1.5517368922398 137.828485737582"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 5,
+   "text": "pair_style lj/long/coul/long long off 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/long/coul/long cut_coul",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.3684858711066 -1.5517368922398 137.828485737582 VAL -5.3684858711066 -1.5517368922398 137.828485737582"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 5,
+   "text": "pair_style lj/long/coul/long long off 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/coul/long cut_vdwl * * v_adpv scale yes reset no",
+   "style": "pair lj/long/coul/long cut_vdwl",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.3684858711066 -1.5517368922398 137.828485737582 VAL -5.07898795233034 -1.05779229432389 134.937213398637"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 5,
+   "text": "pair_style lj/long/coul/long long off 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/coul/long cut_LJ * * v_adpv scale yes reset no",
+   "style": "pair lj/long/coul/long cut_LJ",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.3684858711066 -1.5517368922398 137.828485737582 VAL -5.07898795233034 -1.05779229432389 134.937213398637"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 6,
+   "text": "pair_style lj/long/coul/long/dielectric long long 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/coul/long/dielectric ewald_cut * * v_adpv scale yes reset no",
+   "style": "pair lj/long/coul/long/dielectric ewald_cut",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 35917.7636187778 1272543.48617287 984661.344937845 VAL 35840.5568107921 1272353.35901876 984651.130697691"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 6,
+   "text": "pair_style lj/long/coul/long/dielectric long long 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/coul/long/dielectric cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/long/coul/long/dielectric cut_coul",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 35917.7636187778 1272543.48617287 984661.344937845 VAL 35840.5568107921 1272353.35901876 984651.130697691"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 6,
+   "text": "pair_style lj/long/coul/long/dielectric long long 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/coul/long/dielectric cut_vdwl * * v_adpv scale yes reset no",
+   "style": "pair lj/long/coul/long/dielectric cut_vdwl",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 35917.7636187778 1272543.48617287 984661.344937845 VAL 35917.7636187778 1272543.48617287 984661.344937845"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 6,
+   "text": "pair_style lj/long/coul/long/dielectric long long 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/coul/long/dielectric cut_LJ * * v_adpv scale yes reset no",
+   "style": "pair lj/long/coul/long/dielectric cut_LJ",
+   "until": 17,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 35917.7636187778 1272543.48617287 984661.344937845 VAL 35917.7636187778 1272543.48617287 984661.344937845"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 16,
+   "text": "pair_style lj/long/dipole/long cut long 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/dipole/long ewald_cut * * v_adpv scale yes reset no",
+   "style": "pair lj/long/dipole/long ewald_cut",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.87229757843494 -0.982827052387715 11.2504063002511 VAL -1.87229277036338 -0.982851150114456 11.2501503711361"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 16,
+   "text": "pair_style lj/long/dipole/long cut long 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/dipole/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/long/dipole/long cut_coul",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.87229757843494 -0.982827052387715 11.2504063002511 VAL -1.87229277036338 -0.982851150114456 11.2501503711361"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 16,
+   "text": "pair_style lj/long/dipole/long cut long 2.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/dipole/long cut_vdwl * * v_adpv scale yes reset no",
+   "style": "pair lj/long/dipole/long cut_vdwl",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.87229757843494 -0.982827052387715 11.2504063002511 VAL -1.87229757843494 -0.982827052387715 11.2504063002511"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 8,
+   "text": "pair_style lj/long/tip4p/long cut long 1 2 1 1 0.1546 8.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/tip4p/long qdist * * v_adpv scale yes reset no",
+   "style": "pair lj/long/tip4p/long qdist",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 24.2295886900583 11949.4577808999 173.686149368887 VAL 25.7169485765307 11990.9780077626 183.026293661059"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 8,
+   "text": "pair_style lj/long/tip4p/long cut long 1 2 1 1 0.1546 8.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/tip4p/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/long/tip4p/long cut_coul",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 24.308320648393 11996.4193606155 173.684504174487 VAL 24.2950447192443 11977.1137945427 173.677481445993"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 8,
+   "text": "pair_style lj/long/tip4p/long cut long 1 2 1 1 0.1546 8.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/tip4p/long ewald_cut * * v_adpv scale yes reset no",
+   "style": "pair lj/long/tip4p/long ewald_cut",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 24.308320648393 11996.4193606155 173.684504174487 VAL 24.2950447192443 11977.1137945427 173.677481445993"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 8,
+   "text": "pair_style lj/long/tip4p/long cut long 1 2 1 1 0.1546 8.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/tip4p/long cut_vdwl * * v_adpv scale yes reset no",
+   "style": "pair lj/long/tip4p/long cut_vdwl",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 24.2295886900583 11949.4577808999 173.686149368887 VAL 24.2295886900583 11949.4577808999 173.686149368887"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 8,
+   "text": "pair_style lj/long/tip4p/long cut long 1 2 1 1 0.1546 8.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/long/tip4p/long cut_LJ * * v_adpv scale yes reset no",
+   "style": "pair lj/long/tip4p/long cut_LJ",
+   "until": 26,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 24.2295886900583 11949.4577808999 173.686149368887 VAL 24.2295886900583 11949.4577808999 173.686149368887"
+  },
+  {
+   "case": "w51cs_sdklong_dimer",
+   "line": 32,
+   "text": "pair_style lj/sdk/coul/long 9.0 8.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/sdk/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/sdk/coul/long cut_coul",
+   "until": 41,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 69.2284750699064 17.5255526362684 588.715650265179 VAL 69.2284750699064 17.5255526362684 588.715650265179"
+  },
+  {
+   "case": "w19dipole_special",
+   "line": 38,
+   "text": "pair_style lj/sf/dipole/sf 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/sf/dipole/sf cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/sf/dipole/sf cut_coul",
+   "until": 40,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.359473577993983 -0.00754743585713245 19.4783925696794 VAL 0.359712400515072 -0.00754413517421124 19.4780035212104"
+  },
+  {
+   "case": "w51cs_spicalong_run",
+   "line": 22,
+   "text": "pair_style lj/spica/coul/long 8.0 9.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/spica/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/spica/coul/long cut_coul",
+   "until": 35,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2051.16237107883 -6163.47907134707 3.28620371066336 VAL -2050.09762876145 -6127.39847822195 3.2741503667811"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 20,
+   "text": "pair_style lj/spica/coul/msm 7.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/spica/coul/msm cut_coul * * v_adpv scale yes reset no",
+   "style": "pair lj/spica/coul/msm cut_coul",
+   "until": 32,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -12212.1211635742 565562.327602241 1134.57608035453 VAL -12385.4742463407 558743.70244264 1138.00535927953"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 20,
+   "text": "pair_style lj/spica/coul/msm 7.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair lj/spica/coul/msm cut_msm * * v_adpv scale yes reset no",
+   "style": "pair lj/spica/coul/msm cut_msm",
+   "until": 32,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -12212.1211635742 565562.327602241 1134.57608035453 VAL -12385.4742463407 558743.70244264 1138.00535927953"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_cut",
+   "line": 17,
+   "text": "pair_style nm/cut/coul/cut 2.5 3.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair nm/cut/coul/cut cut_coul * * v_adpv scale yes reset no",
+   "style": "pair nm/cut/coul/cut cut_coul",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.17086277962071 -1.23422574242091 24.992837159909 VAL -3.16351370067641 -1.23300089593019 23.9480443465303"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_long",
+   "line": 15,
+   "text": "pair_style nm/cut/coul/long 2.5 3.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair nm/cut/coul/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair nm/cut/coul/long cut_coul",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.74591371776686 -0.87243403386637 10.2062072615963 VAL -3.7459140962837 -0.872440196172438 10.2062072615963"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 12,
+   "text": "pair_style oxdna/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna/excv cut_bkbk_ast * * v_adpv scale yes reset no",
+   "style": "pair oxdna/excv cut_bkbk_ast",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 13511077.0513329 13514.793940957 2293536586.07749 VAL 13511077.0513329 13514.793940957 2293536586.07749"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 12,
+   "text": "pair_style oxdna/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna/excv cut_bkbk_c * * v_adpv scale yes reset no",
+   "style": "pair oxdna/excv cut_bkbk_c",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 13511077.0513329 13514.793940957 2293536586.07749 VAL 13511077.0513329 13514.793940957 2293536586.07749"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 12,
+   "text": "pair_style oxdna/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna/excv cut_bkbs_ast * * v_adpv scale yes reset no",
+   "style": "pair oxdna/excv cut_bkbs_ast",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 13511077.0513329 13514.793940957 2293536586.07749 VAL 13511077.0513329 13514.793940957 2293536586.07749"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 12,
+   "text": "pair_style oxdna/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna/excv cut_bkbs_c * * v_adpv scale yes reset no",
+   "style": "pair oxdna/excv cut_bkbs_c",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 13511077.0513329 13514.793940957 2293536586.07749 VAL 13511077.0513329 13514.793940957 2293536586.07749"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 12,
+   "text": "pair_style oxdna/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna/excv cut_bsbs_ast * * v_adpv scale yes reset no",
+   "style": "pair oxdna/excv cut_bsbs_ast",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 13511077.0513329 13514.793940957 2293536586.07749 VAL 13511077.0513329 13514.793940957 2293536586.07749"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 12,
+   "text": "pair_style oxdna/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna/excv cut_bsbs_c * * v_adpv scale yes reset no",
+   "style": "pair oxdna/excv cut_bsbs_c",
+   "until": 16,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 13511077.0513329 13514.793940957 2293536586.07749 VAL 13511077.0513329 13514.793940957 2293536586.07749"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 17,
+   "text": "pair_style oxdna2/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna2/excv cut_bkbk_ast * * v_adpv scale yes reset no",
+   "style": "pair oxdna2/excv cut_bkbk_ast",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 363.248419221657 1.76508504344121 154261.543475608 VAL 363.248419221657 1.76508504344121 154261.543475608"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 17,
+   "text": "pair_style oxdna2/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna2/excv cut_bkbk_c * * v_adpv scale yes reset no",
+   "style": "pair oxdna2/excv cut_bkbk_c",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 363.248419221657 1.76508504344121 154261.543475608 VAL 363.248419221657 1.76508504344121 154261.543475608"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 17,
+   "text": "pair_style oxdna2/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna2/excv cut_bkbs_ast * * v_adpv scale yes reset no",
+   "style": "pair oxdna2/excv cut_bkbs_ast",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 363.248419221657 1.76508504344121 154261.543475608 VAL 363.248419221657 1.76508504344121 154261.543475608"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 17,
+   "text": "pair_style oxdna2/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna2/excv cut_bkbs_c * * v_adpv scale yes reset no",
+   "style": "pair oxdna2/excv cut_bkbs_c",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 363.248419221657 1.76508504344121 154261.543475608 VAL 363.248419221657 1.76508504344121 154261.543475608"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 17,
+   "text": "pair_style oxdna2/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna2/excv cut_bsbs_ast * * v_adpv scale yes reset no",
+   "style": "pair oxdna2/excv cut_bsbs_ast",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 363.248419221657 1.76508504344121 154261.543475608 VAL 363.248419221657 1.76508504344121 154261.543475608"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 17,
+   "text": "pair_style oxdna2/excv\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair oxdna2/excv cut_bsbs_c * * v_adpv scale yes reset no",
+   "style": "pair oxdna2/excv cut_bsbs_c",
+   "until": 24,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 363.248419221657 1.76508504344121 154261.543475608 VAL 363.248419221657 1.76508504344121 154261.543475608"
+  },
+  {
+   "case": "w55reax_water",
+   "line": 8,
+   "text": "pair_style reaxff NULL checkqeq no\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair reaxff bcut_acks2 * * v_adpv scale yes reset no",
+   "style": "pair reaxff bcut_acks2",
+   "until": 13,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter bcut_acks2 is not compatible with fix adapt"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 16,
+   "text": "pair_style spin/dipole/long 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair spin/dipole/long cut * * v_adpv scale yes reset no",
+   "style": "pair spin/dipole/long cut",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.000154128430295636 2300.91608933243 0.000590638635246895 VAL -0.000154128430295636 2300.91608933243 0.000590638635246895"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 16,
+   "text": "pair_style spin/dipole/long 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair spin/dipole/long cut_coul * * v_adpv scale yes reset no",
+   "style": "pair spin/dipole/long cut_coul",
+   "until": 27,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.000154128430295636 2300.91608933243 0.000590638635246895 VAL -0.000154128430295636 2300.91608933243 0.000590638635246895"
+  },
+  {
+   "case": "w48sp2_dmi",
+   "line": 20,
+   "text": "pair_style spin/dmi 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair spin/dmi cut * * v_adpv scale yes reset no",
+   "style": "pair spin/dmi cut",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -8.25527402377938e-05 -0.0141715240742691 0.000376396962787861 VAL -8.25527402377938e-05 -0.0141715240742691 0.000376396962787861"
+  },
+  {
+   "case": "w47spin_moving2",
+   "line": 13,
+   "text": "pair_style spin/exchange 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair spin/exchange cut * * v_adpv scale yes reset no",
+   "style": "pair spin/exchange cut",
+   "until": 22,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.00861274851342301 0.603337707116764 0.00639066945317658 VAL 0.00861274851342301 0.603337707116764 0.00639066945317658"
+  },
+  {
+   "case": "w48sp2_biquad",
+   "line": 20,
+   "text": "pair_style spin/exchange/biquadratic 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair spin/exchange/biquadratic cut * * v_adpv scale yes reset no",
+   "style": "pair spin/exchange/biquadratic cut",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.132221284124868 -8.37318244189676 0.0733945661325538 VAL -0.132221284124868 -8.37318244189676 0.0733945661325538"
+  },
+  {
+   "case": "w48sp2_magelec",
+   "line": 20,
+   "text": "pair_style spin/magelec 4.5\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair spin/magelec cut * * v_adpv scale yes reset no",
+   "style": "pair spin/magelec cut",
+   "until": 23,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.00107034566905853 0 0 VAL 0.00107034566905853 0 0"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 122,
+   "text": "pair_style tip4p/long/soft 1 2 1 1 0.15 1 0.5 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair tip4p/long/soft qdist * * v_adpv scale yes reset no",
+   "style": "pair tip4p/long/soft qdist",
+   "until": 133,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1648.70105208766 -13036.8308073839 85.9372584820432 VAL -1647.30345156826 -13135.0576892129 84.5340454229118"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 122,
+   "text": "pair_style tip4p/long/soft 1 2 1 1 0.15 1 0.5 4.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair tip4p/long/soft cut_coul * * v_adpv scale yes reset no",
+   "style": "pair tip4p/long/soft cut_coul",
+   "until": 133,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1648.70300439929 -13037.6979426141 85.9380506988317 VAL -1765.3039143168 -17021.5519121553 104.216966859624"
+  },
+  {
+   "case": "w40ksp_zerocoul_zero",
+   "line": 21,
+   "text": "pair_style zero/coul 6.0\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair zero/coul cut_coul * * v_adpv scale yes reset no",
+   "style": "pair zero/coul cut_coul",
+   "until": 29,
+   "pre": "thermo_style custom step pe press fnorm\n",
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\nrun 0\nprint \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 102.314212875626 0 VAL 0 102.314212875626 0"
+  }
+ ]
+}

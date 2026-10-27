@@ -117,14 +117,19 @@ export class PairLJLongTIP4PLong extends PairLJLongCoulLong {
   }
 
   /** Equilibrium OH length and HOH angle come from the bond and angle styles (forcefield.ts hook). */
-  initStyle(): void {
+  initStyle(ctx: StyleContext): void {
     // As native LAMMPS does (init_style at b332f28): the bond and angle styles are required.
     if (!this.bonded) throw new StyleError('Must use a bond style with TIP4P potential');
     const r0 = this.bonded.bond(this.typeB), th0 = this.bonded.angle(this.typeA);
     if (!Number.isFinite(r0)) throw new StyleError(`pair style ${this.name}: bond type ${this.typeB} has no equilibrium length (bond_style and bond_coeff needed)`);
     if (!Number.isFinite(th0)) throw new StyleError(`pair style ${this.name}: angle type ${this.typeA} has no equilibrium angle (angle_style and angle_coeff needed)`);
     this.alpha = tip4pAlpha(this.qdist, r0, th0);
+    // PairLJLongCoulLong::init_style: cut_coulsq and the tables of this init
+    super.initStyle(ctx);
   }
+
+  /** init_one's cutsq covers the M sites: cut_coul + 2 qdist (src/KSPACE/pair_lj_long_coul_long.cpp init_one). */
+  protected override siteReach(): number { return 2 * this.qdist; }
 
   initOne(i: number, j: number): number {
     const cut = super.initOne(i, j);
@@ -143,15 +148,15 @@ export class PairLJLongTIP4PLong extends PairLJLongCoulLong {
 
   /** The Coulomb table of pair_modify table N (null for N = 0: the direct erfc polynomial). */
   private coulTable(g: number): ErfcTable | null {
-    return this.coulTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq);
+    return this.coulTables.get(this.table, g, this.coulSqInit, this.tabinnerRsq);
   }
 
   /** The dispersion table of pair_modify table/disp N > 0 (lj/long/coul/long helper, src/engine-gpl/pair_disp). */
   private dispTableFor(gd: number): DispTable | null {
     if (!this.ljLong || this.tableDisp <= 0) return null;
-    const key = [this.tableDisp, gd, this.cutGlobal, this.tabinnerDisp];
+    const key = [this.tableDisp, gd, this.dispCut, this.tabinnerDisp];
     if (this.ownDispTab === null || key.some((v, i) => v !== this.ownDispKey[i])) {
-      this.ownDispTab = makeDispTable(this.tableDisp, gd, this.cutGlobal, this.tabinnerDisp);
+      this.ownDispTab = makeDispTable(this.tableDisp, gd, this.dispCut, this.tabinnerDisp);
       this.ownDispKey = key;
     }
     return this.ownDispTab;
@@ -189,7 +194,8 @@ export class PairLJLongTIP4PLong extends PairLJLongCoulLong {
     const ljLong = this.ljLong;
     const dtab = this.dispTableFor(gd);
     const tab = this.coulTable(g);
-    const cutCoulsq = this.cutCoul * this.cutCoul;
+    // cut_coulsq of the run's init; cut_coulsqplus from cut_coul and qdist as they are now (native compute, fix adapt)
+    const cutCoulsq = this.coulSqInit;
     const cutCoulsqplus = (this.cutCoul + 2.0 * this.qdist) * (this.cutCoul + 2.0 * this.qdist);
     // cut_ljsq: the pair cutoffs squared, 0 for pairs with the H type (native init_one)
     const cutljsq = new Float64Array(nt * nt);

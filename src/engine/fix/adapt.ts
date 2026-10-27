@@ -544,6 +544,12 @@ export class FixAdapt extends Fix {
     }
   }
 
+  private commitPairs(): void {
+    for (const t of this.pairs) {
+      if (t.access.dim === 0 && t.access.commit?.()) this.sys.ff.heldPairChange = `${t.pstyle} ${t.pparam}`;
+    }
+  }
+
   /** native bond->reinit() (and angle, dihedral, improper) after the values changed: the style's init(). */
   private reinitBonded(): void {
     const done = new Set<Bonded>();
@@ -589,9 +595,15 @@ export class FixAdapt extends Fix {
    */
   preExchange(): void {}
 
-  /** reset yes: the values the run started with are restored at the end of the run. */
+  /**
+   * reset yes: the values the run started with are restored at the end of the run. Then a pair value native reads only
+   * when a run initializes, which the access held during the run, is written to the style (AdaptAccess commit).
+   */
   postRun(): void {
-    if (!this.reset) return;
+    if (!this.reset) {
+      this.commitPairs();
+      return;
+    }
     const s = this.sys.state;
     for (const t of this.pairs) {
       if (t.access.dim === 0) t.access.set(t.orig[0]);
@@ -601,6 +613,7 @@ export class FixAdapt extends Fix {
       }
     }
     if (this.pairs.length) this.refreshPairs(true);
+    this.commitPairs();
     for (const b of this.bonded) for (let i = b.lo; i <= b.hi; i++) b.arr![i] = b.orig[i];
     this.reinitBonded();
     // fix_adapt.cpp restore_settings: "*kspace_scale = 1.0"

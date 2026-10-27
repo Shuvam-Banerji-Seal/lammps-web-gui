@@ -7,7 +7,7 @@
  *
  * Both the polynomial path (pair_modify table 0) and the native lookup table (default table 12, espTables.ts).
  */
-import { StyleError, type PairCompute } from '../../engine/force/types';
+import { StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { PairLJCutCoulLong } from '../../engine/force/pair/coul_long';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
@@ -22,6 +22,17 @@ export class PairLJCutCoulEsp extends PairLJCutCoulLong {
 
   private readonly espTable = new EspTableCache();
 
+  /**
+   * cut_coul at the run's init. As native LAMMPS does (src/KSPACE/pair_lj_cut_coul_esp.cpp at b332f28): init_style sets cut_coulsq and the
+   * tables from cut_coul; the force loop's r_scal = 2 r / cut_coul - 1 reads cut_coul as it is then (fix adapt).
+   */
+  private cutCoulInit = 0;
+
+  initStyle(ctx: StyleContext): void {
+    super.initStyle(ctx);
+    this.cutCoulInit = this.cutCoul;
+  }
+
   compute(pc: PairCompute): void {
     const ks = this.kspace;
     if (!ks) throw new StyleError('Pair style requires a KSpace style');
@@ -29,24 +40,23 @@ export class PairLJCutCoulEsp extends PairLJCutCoulLong {
     const { x, f, q, type } = pc;
     const nt = this.ntypes + 1;
     const { lj1, lj2, lj3, lj4, offset } = this;
-    // cut_ljsq and cutsq of init_one: cut = MAX(cut_lj, cut_coul + 2 qdist) with qdist = 0
+    // cut_ljsq of init_one; cutsq of the run's init (Pair::init sets it from init_one's MAX(cut_lj, cut_coul + 2 qdist),
+    // qdist = 0, and a fix adapt re-init does not)
     const cutljsq = new Float64Array(nt * nt);
-    const cutsq = new Float64Array(nt * nt);
+    const cutsq = this.cutsq;
     for (let i = 1; i < nt; i++) {
       for (let j = 1; j < nt; j++) {
         const cl = this.p.get('cut', i, j);
         cutljsq[i * nt + j] = cl * cl;
-        const c = Math.max(cl, this.cutCoul + 0.0);
-        cutsq[i * nt + j] = c * c;
       }
     }
     const cutCoul = this.cutCoul;
-    const cutCoulsq = cutCoul * cutCoul;
+    const cutCoulsq = this.cutCoulInit * this.cutCoulInit;
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     const qqrd2e = pc.qqrd2e;
     const fpoly = ks.forcePolyCoeff, epoly = ks.energyPolyCoeff;
-    const tab = this.table !== 0 ? this.espTable.get(cutCoul, this.tabinnerRsq, this.table, qqrd2e, fpoly, epoly) : null;
+    const tab = this.table !== 0 ? this.espTable.get(this.cutCoulInit, this.tabinnerRsq, this.table, qqrd2e, fpoly, epoly) : null;
     let evdwl = 0, ecoul = 0;
     const nb = list.neighbors;
     for (let i = list.ilo ?? 0; i < list.inum; i++) {

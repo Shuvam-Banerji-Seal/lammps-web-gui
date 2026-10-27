@@ -45,7 +45,8 @@ export class PairLJCutCoulCutDielectric extends PairLJCutCoulCut {
     for (let i = 1; i < nt; i++) {
       for (let j = 1; j < nt; j++) {
         cutljsq[i * nt + j] = this.p.get('cut', i, j) ** 2;
-        cutcoulsq[i * nt + j] = this.p.get('cut_coul', i, j) ** 2;
+        // inside cutsq (the run's init) as well: native's compute tests rsq < cutsq first (src/DIELECTRIC/pair_lj_cut_coul_cut_dielectric.cpp)
+        cutcoulsq[i * nt + j] = Math.min(this.cutsq[i * nt + j], this.p.get('cut_coul', i, j) ** 2);
       }
     }
     const { lj1, lj2, lj3, lj4, offset } = this;

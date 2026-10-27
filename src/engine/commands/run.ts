@@ -513,6 +513,11 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   // displacement, the setup row of a pre no run still shows the energy of the old positions; a pre yes run shows the new one).
   const reuse = !opts.pre && sys.run.ranOnce;
   if (reuse && sys.respa) throw new StyleError("Run flag 'pre no' not compatible with r-RESPA");
+  if (reuse && n > 0 && sys.ff.heldPairChange) {
+    // native keeps the cutoffs and tables of the last init for the steps of a pre no run, while this engine's style
+    // reads the value fix adapt left (src/engine/fix/adaptPairs.ts CUT_FIELDS); run 0 pre no reuses the last forces
+    throw new StyleError(`run pre no after fix adapt left pair ${sys.ff.heldPairChange} changed (reset no) is not supported by the browser engine: use pre yes`);
+  }
   if (reuse && lastSetup.get(sys) !== setupSignature(sys)) {
     throw new StyleError('run pre no after a change of the atoms, box, fixes, computes or pair style: use pre yes (run.html: it is an error to use pre no after such a change)');
   }

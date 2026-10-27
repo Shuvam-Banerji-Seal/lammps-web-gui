@@ -66,9 +66,9 @@ import { libm, SQRT_PI } from '../../libm';
  * which is symmetric in (za, zb) and reduces to the equal-zeta form
  *   1/R - (1/R + 11 z/8 + 3 z^2 R/4 + z^3 R^2/6) exp(-2 z R)
  * as za -> zb (checked in tests/engineCoulStreitz38.test.ts against 2D quadrature).
- * Near za = zb the closed form cancels, so for |za - zb| R < 0.2 the code uses the
- * Taylor series in d = (za - zb)/2 about m = (za + zb)/2 (coefficients generated
- * symbolically; the d^8 truncation error is below 1e-11 relative at that bound).
+ * As native LAMMPS does (src/KSPACE/pair_coul_streitz.cpp coulomb_integral_wolf and _ewald, and
+ * src/QEQ/fix_qeq_slater.cpp, at b332f28: "if (zei == zej)"), the closed form is used whenever
+ * za != zb, its cancellation near za = zb included, and the equal-zeta form when za == zb.
  *
  * The 1/r real-space part follows the coul/wolf (pair_coul.ts) and Ewald real-space
  * conventions, with the C library's erfc (libm.erfc, as native calls erfc()), not from the
@@ -96,13 +96,9 @@ export const mdfTaper = (r: number, rc: number, width: number, out: { f: number;
   out.df = (-3 * t1 * t1 * t2 + cube * (3 + 12 * x)) * dx;
 };
 const TAPER_OUT = { f: 1, df: 0 };
-/** Series branch: |za - zb| R below this uses the Taylor expansion in d = (za - zb)/2. */
-const SERIES_DR = 0.2;
-
 /** Slater integral S(R) = [f_a|f_b](R) - 1/R and dS/dR for exponents za, zb (R > 0). */
 export const slaterShort = (R: number, za: number, zb: number): { s: number; ds: number } => {
-  const m = 0.5 * (za + zb), d = 0.5 * (za - zb);
-  if (Math.abs(d) * R < SERIES_DR) return seriesS(R, m, d);
+  if (za === zb) return equalS(R, za);
   const D1 = za * za - zb * zb;
   const XA = libm.exp(-2 * za * R), XB = libm.exp(-2 * zb * R);
   const zb4 = zb ** 4, za4 = za ** 4;
@@ -115,31 +111,19 @@ export const slaterShort = (R: number, za: number, zb: number): { s: number; ds:
   return { s: N / (R * D), ds: (dN * R - N) / (R * R * D) };
 };
 
-/** Taylor series of S in d about m (even in d), see the header comment. */
-const seriesS = (R: number, m: number, d: number): { s: number; ds: number } => {
-  const E = libm.exp(-2 * m * R);
-  const m2 = m * m, m3 = m2 * m, m4 = m3 * m, m5 = m4 * m, m6 = m5 * m, m7 = m6 * m;
-  const R2 = R * R, R3 = R2 * R, R4 = R3 * R, R5 = R4 * R, R6 = R5 * R, R7 = R6 * R;
-  const s0 = (-E * (4 * R3 * m3 + 18 * R2 * m2 + 33 * R * m + 24)) / (24 * R);
-  const ds0 = E * (R2 * m4 / 3 + 7 * R * m3 / 6 + 2 * m2 + 2 * m / R + 1 / R2);
-  const c2 = (-E * (4 * R4 * m4 + 30 * R3 * m3 + 75 * R2 * m2 + 90 * R * m + 45)) / (60 * m);
-  const c4 = (E * (-8 * R6 * m6 - 84 * R5 * m5 - 266 * R4 * m4 - 280 * R3 * m3 + 210 * R * m + 105)) / (840 * m3);
-  const c6 = (E * R2 * (-8 * R6 * m6 - 108 * R5 * m5 - 414 * R4 * m4 - 252 * R3 * m3 + 1134 * R2 * m2 + 1890 * R * m + 945)) / (11340 * m3);
-  const c8 = (E * R4 * (-4 * R6 * m6 - 66 * R5 * m5 - 297 * R4 * m4 + 2376 * R2 * m2 + 4158 * R * m + 2079)) / (124740 * m3);
-  const k2 = (E * R * m * (4 * R3 * m3 + 22 * R2 * m2 + 30 * R * m + 15)) / 30;
-  const k4 = (E * R * (4 * R5 * m5 + 30 * R4 * m4 + 28 * R3 * m3 - 126 * R2 * m2 - 210 * R * m - 105)) / (210 * m);
-  const k6 = (E * R * (8 * R7 * m7 + 76 * R6 * m6 + 36 * R5 * m5 - 990 * R4 * m4 - 1764 * R3 * m3 + 378 * R2 * m2 + 1890 * R * m + 945)) / (5670 * m3);
-  const k8 = (E * R3 * (2 * R7 * m7 + 23 * R6 * m6 - 594 * R4 * m4 - 1188 * R3 * m3 + 1485 * R2 * m2 + 4158 * R * m + 2079)) / (31185 * m3);
-  const d2 = d * d;
-  const s = s0 + d2 * (c2 + d2 * (c4 + d2 * (c6 + d2 * c8)));
-  const ds = ds0 + d2 * (k2 + d2 * (k4 + d2 * (k6 + d2 * k8)));
+/** S and dS/dR for equal exponents: -(1/R + 11 z/8 + 3 z^2 R/4 + z^3 R^2/6) exp(-2 z R), see the header comment. */
+const equalS = (R: number, z: number): { s: number; ds: number } => {
+  const E = libm.exp(-2 * z * R);
+  const z2 = z * z, z3 = z2 * z, z4 = z3 * z;
+  const R2 = R * R, R3 = R2 * R;
+  const s = (-E * (4 * R3 * z3 + 18 * R2 * z2 + 33 * R * z + 24)) / (24 * R);
+  const ds = E * (R2 * z4 / 3 + 7 * R * z3 / 6 + 2 * z2 + 2 * z / R + 1 / R2);
   return { s, ds };
 };
 
 /** Slater integral S(R) alone (no derivative, no allocation): the same value as slaterShort(R, za, zb).s. */
 export const slaterS = (R: number, za: number, zb: number): number => {
-  const m = 0.5 * (za + zb), d = 0.5 * (za - zb);
-  if (Math.abs(d) * R < SERIES_DR) return seriesS(R, m, d).s;
+  if (za === zb) return equalS(R, za).s;
   const D1 = za * za - zb * zb;
   const XA = libm.exp(-2 * za * R), XB = libm.exp(-2 * zb * R);
   const zb2 = zb * zb, za2 = za * za;
@@ -191,6 +175,12 @@ export const parseStreitzFile = (text: string, fileName: string): Map<string, St
   return out;
 };
 
+/** coul/wolf's force shift at cutoff rc: -(erfc(alpha rc) / rc + 2 alpha / sqrt(pi) exp(-(alpha rc)^2)) / rc. */
+const wolfForceShift = (alpha: number, rc: number): number => {
+  const arc = alpha * rc;
+  return -(libm.erfc(arc) / rc + TWO_OVER_SQRTPI * alpha * libm.exp(-arc * arc)) / rc;
+};
+
 export class PairCoulStreitz extends Pair {
   readonly name: string = 'coul/streitz';
   virialFdotr = true;
@@ -206,9 +196,14 @@ export class PairCoulStreitz extends Pair {
   private entries = new Map<string, StreitzParams>();
   /** Per atom type (1..ntypes) parameters; null until pair_coeff sets them. */
   private tp: (StreitzParams | null)[] = [];
-  /** Wolf shifts of the 1/r part (coul/wolf): energy shift and force shift. */
-  private eShiftW = 0;
+  /**
+   * The Wolf force shift of the 1/r part (coul/wolf's f_shift) at the cutoff of the last pair_coeff, and that cutoff. As
+   * native LAMMPS does (src/KSPACE/pair_coul_streitz.cpp at b332f28): setup_params, which pair_coeff runs, sets the Wolf
+   * self terms woself and dwoself from cut_coul; init_style sets cut_coulsq; the force loop (coulomb_integral_wolf,
+   * wolf_sum, fennell_sum) reads cut_coul as it is then. fix adapt can change cut_coul between them.
+   */
   private fShiftW = 0;
+  private rcCoeff = 0;
   /** Shifted-force constants of the short-range part, per type pair (ntypes+1)^2: S, S', U_j, U_j', U_i, U_i' at rc. */
   private rcS = new Float64Array(0);
   private rcDS = new Float64Array(0);
@@ -282,6 +277,7 @@ export class PairCoulStreitz extends Pair {
       if (!e) throw new StyleError(`element '${name}' is not in coul/streitz potential file ${this.fileName} (elements: ${[...this.entries.keys()].sort().join(' ')})`);
       this.tp[t] = e;
     }
+    this.rcCoeff = this.cutGlobal;
   }
 
   initStyle(ctx: StyleContext): void {
@@ -294,12 +290,7 @@ export class PairCoulStreitz extends Pair {
     for (let t = 1; t <= this.ntypes; t++) {
       if (!this.tp[t]) throw new StyleError(`pair_coeff for style coul/streitz does not set atom type ${t}`);
     }
-    const rc = this.cutGlobal;
-    if (this.mode !== 'ewald') {
-      const arc = this.alpha * rc;
-      this.eShiftW = libm.erfc(arc) / rc;
-      this.fShiftW = -(this.eShiftW + TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
-    }
+    if (this.mode !== 'ewald') this.fShiftW = wolfForceShift(this.alpha, this.rcCoeff);
     const nt = this.ntypes + 1;
     this.rcS = new Float64Array(nt * nt);
     this.rcDS = new Float64Array(nt * nt);
@@ -343,14 +334,18 @@ export class PairCoulStreitz extends Pair {
     const rc = this.cutGlobal;
     const wolf = this.mode !== 'ewald';
     const dsf = this.mode === 'dsf';
-    // dsf: the Fennell-Gezelter energy adds K (r - rc) to the wolf energy (its force is the wolf force)
-    const dsfK = dsf ? -this.fShiftW : 0;
-    // Measured with native LAMMPS (black box): the dsf force carries the force shift twice (2 K), while its energy has K (r - rc).
-    const forceScale = dsf ? 2 : 1;
     const alpha = this.alpha, g = this.gEwald;
+    // the energy shift erfc(alpha rc) / rc at the cutoff as it is now; the force shift of the pair_coeff cutoff (dwoself)
+    const eShiftW = wolf ? libm.erfc(alpha * rc) / rc : 0;
+    // dsf: the Fennell-Gezelter energy adds K (r - rc) to the wolf energy, K = -f_shift at the cutoff as it is now; its
+    // force carries both K and the pair_coeff force shift (src/KSPACE/pair_coul_streitz.cpp fennell_sum at b332f28)
+    const fShiftNow = dsf ? wolfForceShift(alpha, rc) : 0;
+    const dsfK = -fShiftNow;
+    const fShift = this.fShiftW + fShiftNow;
     let ecoul = 0;
-    // per owned atom: chi q + J q^2 / 2 (and the wolf self term)
-    const selfWolf = wolf ? -(libm.erfc(alpha * rc) / (2 * rc) + alpha / SQRT_PI) : 0;
+    // per owned atom: chi q + J q^2 / 2 (and the wolf self term, woself of the pair_coeff cutoff)
+    const rc0 = this.rcCoeff;
+    const selfWolf = wolf ? -(libm.erfc(alpha * rc0) / (2 * rc0) + alpha / SQRT_PI) : 0;
     for (let i = 0; i < pc.nlocal; i++) {
       const p = this.typeParams(type[i]);
       const qi = q[i];
@@ -381,6 +376,8 @@ export class PairCoulStreitz extends Pair {
         const qj = q[j];
         const pJ = this.typeParams(type[j]);
         const r = Math.sqrt(rsq);
+        // fennell_sum: "if (r >= rc)" the pair adds nothing (rc as it is now; cutsq is that of the run's init)
+        if (dsf && r >= rc) continue;
         const qq = qi * qj;
         // short-range part: G(r) and G'(r) with the type-pair Slater terms
         const { s, ds } = slaterShort(r, pI.zeta, pJ.zeta);
@@ -397,11 +394,12 @@ export class PairCoulStreitz extends Pair {
           const Gc = cS * this.rcS[t] + pI.Z * qj * this.rcUj[t] + pJ.Z * qi * this.rcUi[t];
           const dGc = cS * this.rcDS[t] + pI.Z * qj * this.rcDUj[t] + pJ.Z * qi * this.rcDUi[t];
           const Gsf = G - Gc - (r - rc) * dGc;
-          // dsf: the Slater part is multiplied by the taper (native fennell_sum: ftap on the ci terms, not on the erfc part)
+          // the Slater part is multiplied by the taper (native wolf_sum and fennell_sum: ftap on the ci terms, not on the
+          // erfc part); with no taper width it is 0 past rc as it is now (a pair inside the cutoff of the run's init)
           let tf = 1, dtf = 0;
-          if (dsf && this.taper > 0) { mdfTaper(r, rc, this.taper, TAPER_OUT); tf = TAPER_OUT.f; dtf = TAPER_OUT.df; }
-          e = pref * (erfcc / r - this.eShiftW + dsfK * (r - rc)) + C * tf * Gsf;
-          fpair = (pref * (erfcc / (rsq * r) + (TWO_OVER_SQRTPI * alpha * ex) / rsq + forceScale * this.fShiftW / r)
+          if (this.taper > 0 || r > rc) { mdfTaper(r, rc, this.taper, TAPER_OUT); tf = TAPER_OUT.f; dtf = TAPER_OUT.df; }
+          e = pref * (erfcc / r - eShiftW + dsfK * (r - rc)) + C * tf * Gsf;
+          fpair = (pref * (erfcc / (rsq * r) + (TWO_OVER_SQRTPI * alpha * ex) / rsq + fShift / r)
             - C * (tf * (dG - dGc) + dtf * Gsf) / r);
         } else {
           const grij = g * r;

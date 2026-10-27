@@ -296,73 +296,10 @@ const adaptPairUndefined = (): Record<string, string> => {
   return out;
 };
 /**
- * The adapt-pair rows this engine refuses (an error naming the parameter), by style: a cutoff or geometry value native
- * reads when a run initializes, and parameters this engine keeps in another form than native's array.
+ * The adapt-pair rows this engine refuses (an error naming the parameter), by style: parameters this engine keeps in
+ * another form than native's array.
  */
 const ADAPT_GAPS: Record<string, Record<string, readonly string[]>> = {
-  'a cutoff or geometry value native reads when the run initializes; the engine keeps no adaptable copy': {
-    'born/coul/long': ['cut_coul'],
-    'born/coul/long/cs': ['cut_coul'],
-    'born/coul/msm': ['cut_coul'],
-    'buck/coul/long': ['cut_coul'],
-    'buck/coul/long/cs': ['cut_coul'],
-    'buck/coul/msm': ['cut_coul'],
-    'buck/long/coul/long': ['ewald_cut', 'cut_coul', 'cut_vdwl', 'cut_LJ'],
-    'buck6d/coul/gauss/dsf': ['cut_coul'],
-    'buck6d/coul/gauss/long': ['cut_coul'],
-    'coul/cut': ['cut_coul'],
-    'coul/cut/dielectric': ['cut_coul'],
-    'coul/cut/global': ['cut_coul'],
-    'coul/debye': ['cut_coul'],
-    'coul/esp': ['cut_coul'],
-    'coul/long': ['cut_coul'],
-    'coul/long/cs': ['cut_coul'],
-    'coul/long/dielectric': ['cut_coul'],
-    'coul/long/soft': ['cut_coul'],
-    'coul/slater/cut': ['cut_coul'],
-    'coul/slater/long': ['cut_coul'],
-    'coul/streitz': ['cut_coul'],
-    'dpd/coul/slater/long': ['cut_coul'],
-    'harmonic/cut': ['cut'],
-    'lj/charmm/coul/long/soft': ['cut_coul'],
-    'lj/charmm/coul/msm': ['cut_coul'],
-    'lj/charmmfsw/coul/charmmfsh': ['cut_coul', 'cut_lj_inner', 'cut_lj'],
-    'lj/charmmfsw/coul/long': ['cut_coul', 'cut_lj_inner', 'cut_lj'],
-    'lj/class2/coul/long/cs': ['cut_coul'],
-    'lj/class2/coul/long/soft': ['cut_coul'],
-    'lj/cut/coul/cut': ['cut_coul'],
-    'lj/cut/coul/cut/dielectric': ['cut_coul'],
-    'lj/cut/coul/debye': ['cut_coul'],
-    'lj/cut/coul/debye/dielectric': ['cut_coul'],
-    'lj/cut/coul/esp': ['cut_coul'],
-    'lj/cut/coul/long/cs': ['cut_coul'],
-    'lj/cut/coul/long/dielectric': ['cut_coul'],
-    'lj/cut/coul/msm': ['cut_coul'],
-    'lj/cut/coul/msm/dielectric': ['cut_coul'],
-    'lj/cut/dipole/cut': ['cut_coul'],
-    'lj/cut/dipole/long': ['cut_coul'],
-    'lj/cut/tip4p/cut': ['qdist', 'cut_coul'],
-    'lj/cut/tip4p/long': ['qdist', 'cut_coul'],
-    'lj/cut/tip4p/long/soft': ['qdist', 'cut_coul'],
-    'lj/expand/coul/long': ['cut_coul'],
-    'lj/long/coul/long': ['ewald_cut', 'cut_coul', 'cut_vdwl', 'cut_LJ'],
-    'lj/long/coul/long/dielectric': ['ewald_cut', 'cut_coul', 'cut_vdwl', 'cut_LJ'],
-    'lj/long/dipole/long': ['ewald_cut', 'cut_coul', 'cut_vdwl'],
-    'lj/long/tip4p/long': ['qdist', 'cut_coul', 'ewald_cut', 'cut_vdwl', 'cut_LJ'],
-    'lj/sdk/coul/long': ['cut_coul'],
-    'lj/sf/dipole/sf': ['cut_coul'],
-    'lj/spica/coul/long': ['cut_coul'],
-    'lj/spica/coul/msm': ['cut_coul', 'cut_msm'],
-    'nm/cut/coul/cut': ['cut_coul'],
-    'nm/cut/coul/long': ['cut_coul'],
-    'spin/dipole/long': ['cut', 'cut_coul'],
-    'spin/dmi': ['cut'],
-    'spin/exchange': ['cut'],
-    'spin/exchange/biquadratic': ['cut'],
-    'spin/magelec': ['cut'],
-    'tip4p/long/soft': ['qdist', 'cut_coul'],
-    'zero/coul': ['cut_coul'],
-  },
   "the engine keeps this parameter in another form than native's array": {
     'amoeba': ['opbend_cubic', 'opbend_quartic', 'opbend_pentic', 'opbend_sextic'],
     'buck6d/coul/gauss/dsf': ['buck6d1', 'buck6d2', 'buck6d3', 'buck6d4'],
@@ -386,6 +323,29 @@ const adaptPairRows = (cases: Case[]): ParityRow[] =>
     return (PAIR_EXTRACT[style] ?? []).map(([name]) => ({
       ...r,
       text: `${r.text}\nvariable adpv equal 1.1\nfix adpv all adapt 0 pair ${style} ${name} * * v_adpv scale yes`,
+      style: `pair ${style} ${name}`,
+    }));
+  });
+
+/**
+ * The cutoff and geometry parameters of the adapt-pair rows (the extract() names with cut in them, and qdist), from the
+ * smallest case whose pair_style line comes after the box is defined, scaled down, with reset no and a second run 0: "variable adpv equal 0.9" and "fix adpv all adapt 0 pair <style>
+ * <name> * * v_adpv scale yes reset no". A smaller cutoff shows a change init_one or the force computation makes at
+ * once (a larger one stays inside the cutoffs of the run's init), and the second run shows the value the next init
+ * reads.
+ */
+const BOX = /^\s*(create_box|read_data|read_restart)\b/;
+/** The pair_style line of the smallest case that defines the box before it (fix adapt needs the box). */
+const pairStyleAfterBoxKey: LineKey = (w, lines, i) => {
+  const key = pairStyleKey(w, lines, i);
+  return key !== null && lines.slice(0, i).some((l) => BOX.test(l)) ? key : null;
+};
+const adaptPairDownRows = (cases: Case[]): ParityRow[] =>
+  pick(pairStyleAfterBoxKey, (w) => w)(cases).flatMap((r) => {
+    const style = r.style.split(' ')[1];
+    return (PAIR_EXTRACT[style] ?? []).filter(([name]) => /cut|qdist/.test(name)).map(([name]) => ({
+      ...r,
+      text: `${r.text}\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair ${style} ${name} * * v_adpv scale yes reset no`,
       style: `pair ${style} ${name}`,
     }));
   });
@@ -479,6 +439,12 @@ export const MATRICES: Record<string, MatrixDef> = {
   'adapt-pair': {
     about: 'fix adapt 0 pair <style> <name> * * v_x scale yes (x = 1.1) for each name of each pair style\'s native extract(), pe, press and fnorm compared after run 0',
     rows: throughRun(adaptPairRows, THERMO_F, VALUES_F),
+    undefined: adaptPairUndefined(),
+    gaps: adaptPairGaps(),
+  },
+  'adapt-pair-down': {
+    about: 'fix adapt 0 pair <style> <name> * * v_x scale yes reset no (x = 0.9) for each cutoff and geometry name of each pair style\'s native extract(), pe, press and fnorm compared after run 0 and after a second run 0',
+    rows: throughRun(adaptPairDownRows, THERMO_F, `${VALUES_F}run 0\n${VALUES_F}`),
     undefined: adaptPairUndefined(),
     gaps: adaptPairGaps(),
   },

@@ -116,6 +116,8 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
     if (!Number.isFinite(r0)) throw new StyleError(`pair style ${this.name}: bond type ${this.btype} has no equilibrium length (bond_style and bond_coeff needed)`);
     if (!Number.isFinite(th0)) throw new StyleError(`pair style ${this.name}: angle type ${this.atype} has no equilibrium angle (angle_style and angle_coeff needed)`);
     this.siteAlpha = tip4pAlpha(this.qdist, r0, th0);
+    // cut_coulsq of this init (src/FEP/pair_coul_long_soft.cpp init_style); cut_coulsqplus is the compute's (see there)
+    this.coulSq = this.cutCoul * this.cutCoul;
   }
 
   initOne(i: number, j: number): number {
@@ -156,7 +158,7 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
     }
     for (const k of [k1, k2]) {
       this.epsT[k] = eps; this.sinv6[k] = sinv6; this.lamN[k] = pl; this.aL[k] = aL; this.aC[k] = aC;
-      this.offT[k] = off; this.cutLJsq[k] = cutLJ * cutLJ; this.cutCsq[k] = this.cutCoul * this.cutCoul;
+      this.offT[k] = off; this.cutLJsq[k] = cutLJ * cutLJ; this.cutCsq[k] = this.coulSq;
     }
     return this.hasLJ ? Math.max(cutLJ, coulCut) : coulCut;
   }
@@ -256,6 +258,9 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
     const w6 = new Float64Array(6);
     const si = [0, 0, 0], sj = [0, 0, 0];
     let evdwl = 0, ecoul = 0;
+    // src/FEP/pair_lj_cut_tip4p_long_soft.cpp and pair_tip4p_long_soft.cpp compute: the atoms' Coulomb cutoff
+    // cut_coulsqplus from cut_coul and qdist as they are now (fix adapt), the M sites' cut_coulsq from the run's init
+    const cutCsqPlus = (this.cutCoul + 2 * this.qdist) ** 2;
     const nb0 = list.neighbors;
     for (let i = 0; i < list.inum; i++) {
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
@@ -290,7 +295,7 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
           }
         }
         const qj = q[j];
-        if (qi === 0 || qj === 0) continue;
+        if (qi === 0 || qj === 0 || rsq >= cutCsqPlus) continue;
         site(j, sj);
         const ex = si[0] - sj[0], ey = si[1] - sj[1], ez = si[2] - sj[2];
         const rc = ex * ex + ey * ey + ez * ez;

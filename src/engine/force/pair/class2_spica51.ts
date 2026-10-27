@@ -282,7 +282,9 @@ export class PairLJClass2Coul extends PairPowerLJ {
     // E = eps (2 (sigma/r)^9 - 3 (sigma/r)^6)
     return {
       n: 9, m: 6, a: 2 * eps * Math.pow(sig, 9), b: 3 * eps * Math.pow(sig, 6),
-      cutLJ: this.p.get('cut', i, j), cutC: this.p.get('cut_coul', i, j),
+      // lj/class2/coul/long has one global Coulomb cutoff, read at each init (src/CLASS2/pair_lj_class2_coul_long.cpp
+      // init_style at b332f28), which fix adapt may have changed since the pair_coeff command
+      cutLJ: this.p.get('cut', i, j), cutC: this.coulKind === 'long' ? this.cutCoul : this.p.get('cut_coul', i, j),
     };
   }
 }

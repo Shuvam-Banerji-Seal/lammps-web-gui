@@ -1,4 +1,4 @@
-import { pairCoeffArgs, StyleError, type PairCompute } from '../types';
+import { pairCoeffArgs, StyleError, type AdaptAccess, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 import { gplHook } from '../../gplHooks';
@@ -151,6 +151,40 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
   private readonly ljErfcTables = new ErfcTableCache();
   private dispTable: DispTable | null = null;
   private dispKey: number[] = [];
+  /**
+   * The cutoffs as native LAMMPS keeps them (src/KSPACE/pair_lj_long_coul_long.cpp at b332f28): init_style sets
+   * cut_coulsq (coulSqInit), the Coulomb table from cut_coul and the dispersion table from cut_lj_global (dispCut);
+   * init_one sets cutsq = max(cut_lj, cut_coul + 2 qdist)^2 (outerSq), also when fix adapt re-initializes the style
+   * after changing cut_coul or cut_lj_global, and the force loop leaves out a pair outside it.
+   */
+  protected coulSqInit = 0;
+  protected dispCut = 0;
+  protected outerSq = new Float64Array(0);
+
+  /** 2 qdist of the TIP4P variant (lj/long/tip4p/long), in init_one's cutsq; 0 here. */
+  protected siteReach(): number { return 0; }
+
+  initStyle(ctx: StyleContext): void {
+    super.initStyle(ctx);
+    this.coulSqInit = this.cutCoul * this.cutCoul;
+    this.dispCut = this.cutGlobal;
+  }
+
+  /**
+   * fix adapt cut_coul (ewald_cut the same) and cut_vdwl (cut_LJ the same), native cut_coul and cut_lj_global: the
+   * Coulomb cutoff as given (cutCoulNative, the Coulomb term's when flag_coul is long) and the global LJ cutoff.
+   */
+  override adaptParam(name: string): AdaptAccess | null {
+    if (name === 'cut_coul' || name === 'ewald_cut') {
+      return {
+        dim: 0,
+        get: () => this.cutCoulNative,
+        set: (v) => { this.cutCoulNative = v; if (this.coulLongFlag) this.cutCoul = v; },
+      };
+    }
+    if (name === 'cut_vdwl' || name === 'cut_LJ') return { dim: 0, get: () => this.cutGlobal, set: (v) => { this.cutGlobal = v; } };
+    return super.adaptParam(name);
+  }
 
   settings(args: string[]): void {
     // As native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp settings and options at b332f28): the word count,
@@ -193,12 +227,17 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
       if (this.shift) throw new StyleError('pair_modify shift yes is not supported with flag_lj long (shift applies to flag_lj cut)');
       if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/long/coul/long');
     }
-    const cut = super.initOne(i, j);
-    if (!this.ljLong || this.p.isSet(i, j)) return cut;
+    let cut = super.initOne(i, j);
     // As native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp init_one at b332f28): with dispersion
     // (EWALD_DISP) a pair without its own pair_coeff cutoff takes the global LJ cutoff, not a mixed one.
-    this.p.setMixed(i, j, 'cut', this.cutGlobal);
-    return Math.max(this.cutGlobal, this.cutCoul);
+    if (this.ljLong && !this.p.isSet(i, j)) {
+      this.p.setMixed(i, j, 'cut', this.cutGlobal);
+      cut = Math.max(this.cutGlobal, this.cutCoul);
+    }
+    const nt = this.ntypes + 1;
+    if (this.outerSq.length !== nt * nt) this.outerSq = new Float64Array(nt * nt);
+    this.outerSq[i * nt + j] = this.outerSq[j * nt + i] = Math.max(this.p.get('cut', i, j), this.cutCoulNative + this.siteReach()) ** 2;
+    return cut;
   }
 
   /** flag_lj long, cut or off: the lj/long/coul/long loop (its Coulomb table and special-bond rounding differ from lj/cut/coul/long's). */
@@ -222,7 +261,8 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
       }
     }
     const coul = this.cutCoul > 0;
-    const cutcsq = this.cutCoul * this.cutCoul;
+    const cutcsq = this.coulSqInit;
+    const outerSq = this.outerSq;
     const g = this.gEwald;
     const gd = this.gEwaldDisp;
     const gd6 = gd ** 6;
@@ -244,6 +284,7 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
         const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
         const t = ti + type[j];
+        if (rsq >= outerSq[t]) continue;
         let fpair = 0, e = 0;
         if (coul && rsq < cutcsq && qi !== 0 && q[j] !== 0) {
           const r = coulShort(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0, tab);
@@ -302,9 +343,9 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
    */
   private ljDispTable(gd: number): DispTable | null {
     if (!this.ljLong || this.tableDisp <= 0) return null;
-    const key = [this.tableDisp, gd, this.cutGlobal, this.tabinnerDisp];
+    const key = [this.tableDisp, gd, this.dispCut, this.tabinnerDisp];
     if (this.dispTable === null || key.some((v, i) => v !== this.dispKey[i])) {
-      this.dispTable = gplHook<DispTableHook>('lj/long/coul/long')(this.tableDisp, gd, this.cutGlobal, this.tabinnerDisp);
+      this.dispTable = gplHook<DispTableHook>('lj/long/coul/long')(this.tableDisp, gd, this.dispCut, this.tabinnerDisp);
       this.dispKey = key;
     }
     return this.dispTable;

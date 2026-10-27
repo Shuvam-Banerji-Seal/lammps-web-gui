@@ -51,6 +51,8 @@ export interface MsmPair {
   readonly msmflag: true;
   /** The pair style's Coulomb cutoff (pair extract cut_coul). */
   cutCoul: number;
+  /** The Coulomb cutoff of the pair style's init (its cut_coulsq and tables). */
+  cutCoulInit: number;
 }
 export const isMsmPair = (p: Pair | null | undefined): p is Pair & MsmPair => !!p && (p as Partial<MsmPair>).msmflag === true;
 
@@ -389,7 +391,9 @@ export class KSpaceMSM extends KSpaceBase {
       const sum = hx2pm2 / (xprd * xprd) + hy2pm2 / (yprd * yprd) + hz2pm2 / (zprd * zprd);
       this.cutoff = pow((k * k * sum) / 3.0, 1.0 / (2.0 * p));
       if (!this.coulPair) throw new StyleError(`kspace_modify cutoff/adjust yes: the browser engine cannot set the Coulomb cutoff of this pair style (use kspace_modify cutoff/adjust no)`);
-      this.coulPair.cutCoul = this.cutoff;
+      // native runs the kspace init before the pair's (src/force.cpp Force::init at b332f28), so the pair's cut_coulsq
+      // and tables come from this cutoff too
+      this.coulPair.cutCoul = this.coulPair.cutCoulInit = this.cutoff;
       ctx.log(`WARNING: Adjusting Coulombic cutoff for MSM, new cutoff = ${this.cutoff.toPrecision(8)}`);
     }
     if (!this.triclinic) {

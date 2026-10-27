@@ -52,9 +52,10 @@ export class PairLJCutCoulMSMDielectric extends PairLJCutCoulMSM {
     const ft = this.ftmp;
     const nt = this.ntypes + 1;
     const { lj1, lj2, lj3, lj4, offset, cutsq, cutljsq } = this;
-    const cutCoul = this.cutCoul, cutCoulsq = cutCoul * cutCoul;
+    // cut_coulsq and the tables of the run's init, the gamma argument r / cut_coul as cut_coul is now (fix adapt)
+    const cutCoul = this.cutCoul, cutCoulsq = this.cutCoulInit * this.cutCoulInit;
     const order = msm.order, qqrd2e = pc.qqrd2e;
-    const tab = this.tables.get(this.table, this.tabinnerRsq, cutCoul, qqrd2e, order);
+    const tab = this.tables.get(this.table, this.tabinnerRsq, this.cutCoulInit, qqrd2e, order);
     const { x, f, type } = pc;
     const owner = pc.nb.owner;
     const q = d.qs, eps = d.epsilon, area = d.area, curvature = d.curvature, norm = d.mu;

@@ -71,13 +71,13 @@ export const PAIR_EXTRACT: Record<string, ReadonlyArray<readonly [string, number
     ['omega', 1]
   ],
   // pair_coul_cut.cpp
-  'coul/cut': [['cut_coul', 2], ['scale', 2]],
+  'coul/cut': [['cut_coul', 2, 'cut'], ['scale', 2]],
   // pair_coul_cut.cpp
-  'coul/cut/dielectric': [['cut_coul', 2], ['scale', 2]],
+  'coul/cut/dielectric': [['cut_coul', 2, 'cut'], ['scale', 2]],
   // pair_coul_cut.cpp
-  'coul/debye': [['cut_coul', 2], ['scale', 2]],
+  'coul/debye': [['cut_coul', 2, 'cut'], ['scale', 2]],
   // pair_coul_cut.cpp
-  'coul/slater/cut': [['cut_coul', 2], ['scale', 2]],
+  'coul/slater/cut': [['cut_coul', 2, 'cut'], ['scale', 2]],
   // EXTRA-PAIR/pair_coul_cut_global.cpp
   'coul/cut/global': [['cut_coul', 0], ['scale', 2]],
   // FEP/pair_coul_cut_soft.cpp
@@ -209,7 +209,7 @@ export const PAIR_EXTRACT: Record<string, ReadonlyArray<readonly [string, number
   // DIELECTRIC/pair_lj_cut_coul_msm_dielectric.cpp
   'lj/cut/coul/msm/dielectric': [['cut_coul', 0], ['epsilon', 2], ['sigma', 2]],
   // DIPOLE/pair_lj_cut_dipole_cut.cpp
-  'lj/cut/dipole/cut': [['cut_coul', 2], ['epsilon', 2], ['sigma', 2]],
+  'lj/cut/dipole/cut': [['cut_coul', 2, 'cutc'], ['epsilon', 2], ['sigma', 2]],
   // DIPOLE/pair_lj_cut_dipole_long.cpp
   'lj/cut/dipole/long': [['cut_coul', 0], ['ewald_order', 0], ['ewald_mix', 0], ['epsilon', 2], ['sigma', 2]],
   // FEP/pair_lj_cut_soft.cpp
@@ -306,7 +306,7 @@ export const PAIR_EXTRACT: Record<string, ReadonlyArray<readonly [string, number
   // EXTRA-PAIR/pair_lj_smooth_linear.cpp
   'lj/smooth/linear': [['epsilon', 2], ['sigma', 2]],
   // DIPOLE/pair_lj_sf_dipole_sf.cpp
-  'lj/sf/dipole/sf': [['epsilon', 2], ['sigma', 2], ['scale', 2], ['cut_coul', 2]],
+  'lj/sf/dipole/sf': [['epsilon', 2], ['sigma', 2], ['scale', 2], ['cut_coul', 2, 'cutc']],
   // EXTRA-PAIR/pair_lj_smooth.cpp
   'lj/smooth': [['epsilon', 2], ['sigma', 2]],
   // YAFF/pair_lj_switch3_coulgauss_long.cpp

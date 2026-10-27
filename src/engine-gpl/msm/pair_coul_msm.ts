@@ -112,7 +112,10 @@ interface ShortRange { f: number; e: number }
 interface MsmLoopStyle {
   readonly name: string;
   ntypes: number;
+  /** cut_coul: fix adapt changes it at once, and gamma(r / cut_coul) reads it in the force loop. */
   cutCoul: number;
+  /** cut_coul at the run's init: init_style's cut_coulsq (the Coulomb cutoff and fgamma's rsq / cut_coulsq) and tables. */
+  cutCoulInit: number;
   table: number;
   tabinnerRsq: number;
   cutsq: Float64Array;
@@ -149,9 +152,9 @@ const msmLoop = (style: MsmLoopStyle, pc: PairCompute, msm: KSpaceMSM, o: LoopOp
     ft = ftmp;
   }
   const nt = style.ntypes + 1;
-  const cutCoul = style.cutCoul, cutCoulsq = cutCoul * cutCoul;
+  const cutCoul = style.cutCoul, cutCoulsq = style.cutCoulInit * style.cutCoulInit;
   const order = msm.order, qqrd2e = pc.qqrd2e;
-  const tab = o.tables ? style.tables.get(style.table, style.tabinnerRsq, cutCoul, qqrd2e, order) : null;
+  const tab = o.tables ? style.tables.get(style.table, style.tabinnerRsq, style.cutCoulInit, qqrd2e, order) : null;
   const sLJ = pc.specialLJ, sC = pc.specialCoul;
   const tally = pc.eatom !== null || pc.vatom !== null;
   const t2 = coulTerm, sr = sr0;
@@ -226,12 +229,12 @@ const msmSingle = (
 ): { eng: number; fforce: number } => {
   const nt = style.ntypes + 1;
   const tt = itype * nt + jtype;
-  const cutCoulsq = style.cutCoul * style.cutCoul;
+  const cutCoulsq = style.cutCoulInit * style.cutCoulInit;
   const r2inv = 1.0 / rsq;
   let forcecoul = 0, phicoul = 0, forcelj = 0, philj = 0;
   if (rsq < cutCoulsq) {
     const qqrd2e = msm.qqrd2eRun;
-    const tab = o.tables ? style.tables.get(style.table, style.tabinnerRsq, style.cutCoul, qqrd2e, msm.order) : null;
+    const tab = o.tables ? style.tables.get(style.table, style.tabinnerRsq, style.cutCoulInit, qqrd2e, msm.order) : null;
     coulMsm(coulTerm, rsq, qi, qj, qqrd2e, style.cutCoul, cutCoulsq, msm.order, factorCoul, tab);
     forcecoul = coulTerm.f;
     phicoul = coulTerm.e;
@@ -248,13 +251,15 @@ export class PairCoulMSM extends PairCoulLong implements MsmPair, MsmLoopStyle {
   override readonly name: string = 'coul/msm';
   readonly msmflag = true as const;
   readonly tables = new TableCache();
+  /** cut_coul at the run's init (MsmLoopStyle.cutCoulInit). */
+  cutCoulInit = 0;
   private kspace: KSpace | null = null;
   private readonly opts: LoopOptions;
 
   constructor() {
     super();
     // the compute applies fix adapt's scale (native single() does not)
-    this.opts = { tables: true, outerSq: () => this.cutCoul * this.cutCoul, term: null, sumI: false, scale: () => this.set.p('scale') };
+    this.opts = { tables: true, outerSq: () => this.cutCoulInit * this.cutCoulInit, term: null, sumI: false, scale: () => this.set.p('scale') };
   }
 
   override settings(args: string[]): void {
@@ -263,6 +268,12 @@ export class PairCoulMSM extends PairCoulLong implements MsmPair, MsmLoopStyle {
   }
 
   linkKSpace(k: KSpace | null): void { this.kspace = k; }
+
+  /** As native LAMMPS does (init_style at b332f28): cut_coulsq and the tables from the Coulomb cutoff of this init. */
+  override init(ctx: StyleContext): void {
+    this.cutCoulInit = this.cutCoul;
+    super.init(ctx);
+  }
 
   override compute(pc: PairCompute): void {
     msmLoop(this, pc, msmOf(this.kspace, this.name), this.opts);
@@ -278,6 +289,8 @@ export class PairLJCutCoulMSM extends PairLJCutCoulLong implements MsmPair, MsmL
   override readonly name: string = 'lj/cut/coul/msm';
   readonly msmflag = true as const;
   readonly tables = new TableCache();
+  /** cut_coul at the run's init (MsmLoopStyle.cutCoulInit). */
+  cutCoulInit = 0;
   protected kspace: KSpace | null = null;
   protected cutljsq = new Float64Array(0);
   private readonly opts: LoopOptions;
@@ -305,6 +318,8 @@ export class PairLJCutCoulMSM extends PairLJCutCoulLong implements MsmPair, MsmL
   linkKSpace(k: KSpace | null): void { this.kspace = k; }
 
   override init(ctx: StyleContext): void {
+    // As native LAMMPS does (init_style at b332f28): cut_coulsq and the tables from the Coulomb cutoff of this init
+    this.cutCoulInit = this.cutCoul;
     super.init(ctx);
     const nt = this.ntypes + 1;
     this.cutljsq = new Float64Array(nt * nt);
@@ -336,6 +351,8 @@ export class PairBornCoulMSM extends PairBornCoulLong implements MsmPair, MsmLoo
   override readonly name: string = 'born/coul/msm';
   readonly msmflag = true as const;
   readonly tables = new TableCache();
+  /** cut_coul at the run's init (MsmLoopStyle.cutCoulInit). */
+  cutCoulInit = 0;
   private kspace: KSpace | null = null;
   private readonly k = new ExpCoeffs();
   private readonly opts: LoopOptions;
@@ -363,6 +380,12 @@ export class PairBornCoulMSM extends PairBornCoulLong implements MsmPair, MsmLoo
   }
 
   linkKSpace(kspace: KSpace | null): void { this.kspace = kspace; }
+
+  /** As native LAMMPS does (init_style at b332f28): cut_coulsq and the tables from the Coulomb cutoff of this init. */
+  override init(ctx: StyleContext): void {
+    this.cutCoulInit = this.cutCoul;
+    super.init(ctx);
+  }
 
   override initOne(i: number, j: number): number {
     const cut = super.initOne(i, j);
@@ -399,6 +422,8 @@ export class PairBuckCoulMSM extends PairBuckCoulLong implements MsmPair, MsmLoo
   override readonly name: string = 'buck/coul/msm';
   readonly msmflag = true as const;
   readonly tables = new TableCache();
+  /** cut_coul at the run's init (MsmLoopStyle.cutCoulInit). */
+  cutCoulInit = 0;
   private kspace: KSpace | null = null;
   private readonly k = new ExpCoeffs();
   private readonly opts: LoopOptions;
@@ -426,6 +451,12 @@ export class PairBuckCoulMSM extends PairBuckCoulLong implements MsmPair, MsmLoo
   }
 
   linkKSpace(kspace: KSpace | null): void { this.kspace = kspace; }
+
+  /** As native LAMMPS does (init_style at b332f28): cut_coulsq and the tables from the Coulomb cutoff of this init. */
+  override init(ctx: StyleContext): void {
+    this.cutCoulInit = this.cutCoul;
+    super.init(ctx);
+  }
 
   override initOne(i: number, j: number): number {
     const cut = super.initOne(i, j);
@@ -462,6 +493,8 @@ export class PairLJCharmmCoulMSM extends PairLJCharmmCoulLong implements MsmPair
   readonly msmflag = true as const;
   override cutCoul = 0;
   readonly tables = new TableCache();
+  /** cut_coul at the run's init (MsmLoopStyle.cutCoulInit). */
+  cutCoulInit = 0;
   private kspace: KSpace | null = null;
   private n1 = new Float64Array(0); private n2 = new Float64Array(0);
   private n3 = new Float64Array(0); private n4 = new Float64Array(0);
@@ -472,7 +505,7 @@ export class PairLJCharmmCoulMSM extends PairLJCharmmCoulLong implements MsmPair
     super();
     this.opts = {
       tables: true, sumI: false,
-      outerSq: () => Math.max(this.cutLjsq, this.cutCoul * this.cutCoul),
+      outerSq: () => Math.max(this.cutLjsq, this.cutCoulInit * this.cutCoulInit),
       term: (t, rsq, r2inv, sr) => {
         const cutLjsq = this.cutLjsq, inner = this.cutLjInnersq;
         if (rsq >= cutLjsq) return false;
@@ -518,8 +551,9 @@ export class PairLJCharmmCoulMSM extends PairLJCharmmCoulLong implements MsmPair
   }
 
   override init(ctx: StyleContext): void {
+    this.cutCoulInit = this.cutCoul;
     super.init(ctx);
-    // PairLJCharmmCoulLong::init_style
+    // PairLJCharmmCoulLong::init_style (cut_coulsq, cut_bothsq and the tables from the Coulomb cutoff of this init)
     this.cutLjInnersq = this.inner * this.inner;
     this.cutLjsq = this.outer * this.outer;
     const dl = this.cutLjsq - this.cutLjInnersq;
@@ -554,6 +588,8 @@ export class PairLJSpicaCoulMSM extends PairLJSpica implements MsmPair, MsmLoopS
   override readonly name: string;
   readonly msmflag = true as const;
   readonly tables = new TableCache();
+  /** cut_coul at the run's init (MsmLoopStyle.cutCoulInit). */
+  cutCoulInit = 0;
   private kspace: KSpace | null = null;
   private ljt = new Int32Array(0);
   private n1 = new Float64Array(0); private n2 = new Float64Array(0);
@@ -595,6 +631,12 @@ export class PairLJSpicaCoulMSM extends PairLJSpica implements MsmPair, MsmLoopS
   }
 
   linkKSpace(k: KSpace | null): void { this.kspace = k; }
+
+  /** As native LAMMPS does (init_style at b332f28): cut_coulsq and the tables from the Coulomb cutoff of this init. */
+  override init(ctx: StyleContext): void {
+    this.cutCoulInit = this.cutCoul;
+    super.init(ctx);
+  }
 
   override initOne(i: number, j: number): number {
     const cut = super.initOne(i, j);

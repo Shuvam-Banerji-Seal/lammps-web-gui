@@ -109,6 +109,15 @@ export class PairTIP4PBase extends PairLJCut {
   typeWords: string[] = [];
   qdist = 0;
   cutCoul = 0;
+  /**
+   * cut_coulsq and cut_coulsqplus = (cut_coul + 2 qdist)^2, the Coulomb cutoff of the M sites and of the atoms. As native
+   * LAMMPS does (src/MOLECULE/pair_lj_cut_tip4p_cut.cpp and pair_tip4p_cut.cpp settings, src/KSPACE/pair_coul_long.cpp
+   * init_style, pair_lj_cut_tip4p_long.cpp and pair_tip4p_long.cpp compute at b332f28): the cut styles set both in
+   * settings; the long ones set cut_coulsq at init and cut_coulsqplus in each force computation from cut_coul and qdist
+   * as they are then. fix adapt may change cut_coul and qdist in between (alpha follows qdist at the next init).
+   */
+  protected coulSq = 0;
+  protected coulSqPlus = 0;
   private alpha = Number.NaN;
   private bonded: BondedEquilibria | null = null;
   private readonly erfcTables = new ErfcTableCache();
@@ -122,7 +131,7 @@ export class PairTIP4PBase extends PairLJCut {
     return { otype: this.otype, htype: this.htype, alpha: this.alpha };
   }
 
-  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.coulSq, this.tabinnerRsq); }
 
   /** Parses otype htype btype atype qdist cutoff [cutoff2]; the Coulomb-only styles take no cutoff2. */
   settings(args: string[]): void {
@@ -141,6 +150,10 @@ export class PairTIP4PBase extends PairLJCut {
       this.cutGlobal = cut;
     }
     if (!(this.cutCoul > 0)) throw new StyleError('cutoffs must be > 0');
+    if (!this.coulLong) {
+      this.coulSq = this.cutCoul * this.cutCoul;
+      this.coulSqPlus = (this.cutCoul + 2 * this.qdist) ** 2;
+    }
   }
 
   /** The atom, bond and angle types of the pair_style words (tip4pTypes), at each pair_coeff. */
@@ -174,6 +187,7 @@ export class PairTIP4PBase extends PairLJCut {
     if (!Number.isFinite(r0)) throw new StyleError(`pair style ${this.name}: bond type ${this.btype} has no equilibrium length (bond_style and bond_coeff needed)`);
     if (!Number.isFinite(th0)) throw new StyleError(`pair style ${this.name}: angle type ${this.atype} has no equilibrium angle (angle_style and angle_coeff needed)`);
     this.alpha = tip4pAlpha(this.qdist, r0, th0);
+    if (this.coulLong) this.coulSq = this.cutCoul * this.cutCoul;
   }
 
   initOne(i: number, j: number): number {
@@ -203,7 +217,8 @@ export class PairTIP4PBase extends PairLJCut {
     const qqrd2e = pc.qqrd2e;
     const g = this.gEwald;
     const tab = this.coulLong ? this.erfcTable(g) : null;
-    const cutCsq = this.cutCoul * this.cutCoul;
+    const cutCsq = this.coulSq;
+    const cutCsqPlus = this.coulLong ? (this.cutCoul + 2 * this.qdist) ** 2 : this.coulSqPlus;
     const cutljsq = new Float64Array(nt * nt);
     if (this.hasLJ) for (let i = 1; i < nt; i++) for (let j = 1; j < nt; j++) cutljsq[i * nt + j] = this.p.get('cut', i, j) ** 2;
     const v = pc.acc.virial;
@@ -297,7 +312,7 @@ export class PairTIP4PBase extends PairLJCut {
           }
         }
         const qj = q[j];
-        if (qi === 0 || qj === 0) continue;
+        if (qi === 0 || qj === 0 || rsq >= cutCsqPlus) continue;
         site(j, sj);
         const ex = si[0] - sj[0], ey = si[1] - sj[1], ez = si[2] - sj[2];
         const rc = ex * ex + ey * ey + ez * ez;

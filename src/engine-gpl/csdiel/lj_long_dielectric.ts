@@ -35,9 +35,10 @@ export class PairLJLongCoulLongDielectric extends PairLJLongCoulLong {
   /** The dispersion table of pair_modify table/disp N (native Pair::init_tables_disp), rebuilt when its inputs change. */
   private dispTableOf(gd: number): DispTable | null {
     if (!this.ljLong || this.tableDisp <= 0) return null;
-    const key = [this.tableDisp, gd, this.cutGlobal, this.tabinnerDisp];
+    // init_tables_disp(cut_lj_global) of init_style: the global LJ cutoff of the run's init (dispCut)
+    const key = [this.tableDisp, gd, this.dispCut, this.tabinnerDisp];
     if (this.dieDispTab === null || key.some((v, i) => v !== this.dieDispKey[i])) {
-      this.dieDispTab = makeDispTable(this.tableDisp, gd, this.cutGlobal, this.tabinnerDisp);
+      this.dieDispTab = makeDispTable(this.tableDisp, gd, this.dispCut, this.tabinnerDisp);
       this.dieDispKey = key;
     }
     return this.dieDispTab;
@@ -58,7 +59,9 @@ export class PairLJLongCoulLongDielectric extends PairLJLongCoulLong {
     const order1 = this.coulLongFlag, order6 = this.ljLong;
     const g = this.gEwald, gd = this.gEwaldDisp;
     const g2 = gd * gd, g6 = g2 * g2 * g2, g8 = g6 * g2;
-    const cutcoulsq = order1 ? this.cutCoul * this.cutCoul : 0;
+    // cut_coulsq of the run's init, and cutsq as init_one last set it (src/KSPACE/pair_lj_long_coul_long.cpp)
+    const cutcoulsq = order1 ? this.coulSqInit : 0;
+    const outerSq = this.outerSq;
     const coulTab: ErfcTable | null = order1 ? this.dieTables.get(this.table, g, cutcoulsq, this.tabinnerRsq) : null;
     const dispTab = order6 ? this.dispTableOf(gd) : null;
     const { lj1, lj2, lj3, lj4, offset } = this;
@@ -80,7 +83,7 @@ export class PairLJLongCoulLongDielectric extends PairLJLongCoulLong {
         const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
         const t = ti + type[j];
-        if (rsq >= this.cutsq[t]) continue;
+        if (rsq >= outerSq[t]) continue;
         const oj = owner[j];
         const qj = qs[oj], ej = eps[oj];
         const r2inv = 1.0 / rsq;

@@ -11,7 +11,7 @@
  * charge and the dipole term to kspace_style ewald/disp. As natively, the dispersion real-space term uses the kspace
  * style's g_ewald (not g_ewald_6), the forces and torques are summed per pair, and the global virial is the fdotr sum.
  */
-import { Pair, PairParams, StyleError, type KSpace, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, type AdaptAccess, type KSpace, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { pow } from '../libm/pow';
 import { exp } from '../libm/exp';
@@ -38,6 +38,12 @@ export class PairLJLongDipoleLong extends Pair {
   private p!: PairParams;
   private eps = new Float64Array(0); private sig = new Float64Array(0);
   private cutLJsq = new Float64Array(0);
+  /**
+   * init_one's cutsq (it sets cutsq itself, so a fix adapt re-init changes it) and init_style's cut_coulsq (as native
+   * LAMMPS does, src/DIPOLE/pair_lj_long_dipole_long.cpp at b332f28).
+   */
+  private cutsqNow = new Float64Array(0);
+  private coulSqInit = 0;
   private lj1 = new Float64Array(0); private lj2 = new Float64Array(0);
   private lj3 = new Float64Array(0); private lj4 = new Float64Array(0);
   private offset = new Float64Array(0);
@@ -114,7 +120,15 @@ export class PairLJLongDipoleLong extends Pair {
       if ((this.ewaldOrder & EWALD_DISP) && !disp && k.name !== 'pppm/disp') throw new StyleError('Pair style requires use of kspace_style with dispersion support');
     }
     const nt = this.ntypes + 1;
-    for (const key of ['eps', 'sig', 'cutLJsq', 'lj1', 'lj2', 'lj3', 'lj4', 'offset'] as const) this[key] = new Float64Array(nt * nt);
+    for (const key of ['eps', 'sig', 'cutLJsq', 'cutsqNow', 'lj1', 'lj2', 'lj3', 'lj4', 'offset'] as const) this[key] = new Float64Array(nt * nt);
+    this.coulSqInit = this.cutCoul * this.cutCoul;
+  }
+
+  /** fix adapt cut_coul (ewald_cut the same) and cut_vdwl: native cut_coul and cut_lj_global. */
+  override adaptParam(name: string): AdaptAccess | null {
+    if (name === 'cut_coul' || name === 'ewald_cut') return { dim: 0, get: () => this.cutCoul, set: (v) => { this.cutCoul = v; } };
+    if (name === 'cut_vdwl') return { dim: 0, get: () => this.cutLJGlobal, set: (v) => { this.cutLJGlobal = v; } };
+    return null;
   }
 
   initOne(i: number, j: number): number {
@@ -139,6 +153,7 @@ export class PairLJLongDipoleLong extends Pair {
     for (const t of [i * nt + j, j * nt + i]) {
       this.eps[t] = eps; this.sig[t] = sig;
       this.cutLJsq[t] = cutLJ * cutLJ;
+      this.cutsqNow[t] = cut * cut;
       this.lj1[t] = 48.0 * eps * pow(sig, 12.0);
       this.lj2[t] = 24.0 * eps * pow(sig, 6.0);
       this.lj3[t] = 4.0 * eps * pow(sig, 12.0);
@@ -184,8 +199,9 @@ export class PairLJLongDipoleLong extends Pair {
     const gE = this.gEwaldLR || this.gEwald;
     const g2 = gE * gE, g6 = g2 * g2 * g2, g8 = g6 * g2;
     const C1 = (2.0 * gE) / MY_PIS, C2 = 2.0 * g2 * C1, C3 = 2.0 * g2 * C2;
-    const cutCoulsq = this.cutCoul * this.cutCoul;
-    const { cutsq, cutLJsq, lj1, lj2, lj3, lj4, offset } = this;
+    const cutCoulsq = this.coulSqInit;
+    const { cutLJsq, lj1, lj2, lj3, lj4, offset } = this;
+    const cutsq = this.cutsqNow;
     let evdwlSum = 0, ecoulSum = 0;
     const nb = list.neighbors;
     for (let i = list.ilo ?? 0; i < list.inum; i++) {

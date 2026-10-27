@@ -59,8 +59,8 @@ export const useKeyboardShortcuts = (actions: ShortcutActionMap): void => {
         case '2': a.onVisualizationMode(1); break;
         case '3': a.onVisualizationMode(2); break;
         case '4': a.onVisualizationMode(3); break;
-        case '5': a.onVisualizationMode(4); break;
-        case '6': a.onVisualizationMode(5); break;
+        case '6': a.onVisualizationMode(4); break;
+        case '0': a.onVisualizationMode(5); break;
         case 'b':
         case 'B':
           a.onToggleBonds();
@@ -154,7 +154,7 @@ export const useKeyboardShortcuts = (actions: ShortcutActionMap): void => {
 export const SHORTCUT_CATALOG: { keys: string; action: string }[] = [
   { keys: 'Space', action: 'Play / pause auto-rotation' },
   { keys: 'R', action: 'Reset & fit view' },
-  { keys: '1 – 6', action: 'Ball & Stick / Space Fill / Wireframe / Licorice / Element balls / Points' },
+  { keys: '1 / 2 / 3 / 4 / 6 / 0', action: 'Ball & Stick / Space Fill / Wireframe / Licorice / Element balls / Points' },
   { keys: '7 / 8 / 9 / 5', action: 'Camera: front / top / right / isometric' },
   { keys: '← → ↑ ↓', action: 'Orbit the camera' },
   { keys: '+ / −', action: 'Zoom in / out' },

@@ -40,8 +40,8 @@ const VIZ_MODES: { value: VisualizationMode; label: string; desc: string; key: s
   { value: 'space-fill', label: 'Space Fill', desc: 'Van der Waals radii', key: '2' },
   { value: 'wireframe', label: 'Wireframe', desc: 'Small point atoms', key: '3' },
   { value: 'licorice', label: 'Licorice', desc: 'Bond-centric sticks', key: '4' },
-  { value: 'element-balls', label: 'Element balls', desc: 'Sized by covalent radius', key: '5' },
-  { value: 'points', label: 'Points', desc: 'Fast shaded dots, huge systems', key: '6' },
+  { value: 'element-balls', label: 'Element balls', desc: 'Sized by covalent radius', key: '6' },
+  { value: 'points', label: 'Points', desc: 'Fast shaded dots, huge systems', key: '0' },
 ];
 
 const MATERIALS: { value: VisualizationConfig['materialType']; label: string }[] = [

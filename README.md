@@ -140,11 +140,13 @@ The viewer plays **LAMMPS dump** (`.lammpstrj`/`.dump`) natively and exports **M
   | XYZ | `.xyz` | multi-frame trajectories, **extended XYZ** `Lattice` / `Properties` (periodic cell per frame), chemistry-aware bond inference (never for noble gases) |
   | Protein Data Bank | `.pdb` `.ent` | NMR `MODEL`s as trajectory frames, alternate locations collapsed, elements per the wwPDB name alignment, fixed-width `CONECT` bonds, `CRYST1` unit cell |
   | CIF | `.cif` `.mmcif` | symmetry operations applied to the asymmetric unit, fractional ↔ Cartesian conversion, triclinic cells as true parallelepipeds |
-- 🎨 **All 118 elements** resolved by symbol from *any* format and colored with standard **CPK/Jmol** palettes; per-type recoloring in the sidebar.
+- 🎨 **All 118 elements** resolved by symbol from *any* format and colored with standard **CPK/Jmol** palettes; per-type recoloring and sizing in the sidebar.
+- 🌈 **Colour by quantity** — charge, speed |v|, atom ID, molecule or x/y/z position through viridis, plasma, inferno, turbo, coolwarm, rainbow or grayscale (reversible), with the range taken over every trajectory frame (or set by hand) and an on-canvas legend; bonds follow the atoms or take one colour.
 - ⚡ **Large-system performance** — atoms *and* bonds render as single instanced draw calls with instance matrices written straight into the GPU buffer (no per-atom `Object3D` compose, no per-instance colour string re-parsing); bond inference uses an O(n) spatial hash grid; adaptive device-pixel-ratio and tessellation scale with system size; FPS-adaptive quality degradation; `frameloop="demand"` means zero idle GPU burn.
 - 🧵 **Two Web Workers, so the UI never freezes** — parsing runs off the main thread, and so does trajectory analysis. **RDF uses a periodic cell list** instead of an all-pairs loop: measured **7× faster at 10 000 atoms and 36× at 30 000** (36.9 s → 1.0 s), with the accelerated histogram asserted bin-for-bin identical to a brute-force reference. MSD resolves a stable atom ordering once instead of rebuilding a lookup inside its inner loop.
 - 🎬 **High-quality video export** — one-click recording of the live canvas at up to 60 fps and ~24 Mbps, saved as MP4 (H.264) where the browser supports it, WebM (VP9/VP8) otherwise.
-- 💡 **Five lighting rigs** (studio · lab · outdoor · space · soft) plus four materials (realistic · plastic · metallic · toon).
+- 💡 **Five lighting rigs** (studio · lab · outdoor · space · soft) plus four materials (realistic · plastic · metallic · toon), six representations (ball & stick · space fill · wireframe · licorice · element balls sized by covalent radius · points: shaded sphere impostors in one draw call for very large systems).
+- ✨ **Rendering quality** Low · Auto · High · Ultra (tessellation, supersampling, shadow resolution and reach), tone mapping (ACES filmic · AgX · Neutral) with exposure, environment reflections from a procedural room (nothing downloaded) and depth cueing; view settings are remembered in the browser and carried by share links.
 - 📦 **Simulation box display** for LAMMPS bounds, PDB `CRYST1` and CIF cells — triclinic cells render correctly, never faked as cubes.
 - ⌨️ **Full keyboard control** with an in-app shortcut overlay (`H`).
 - 🖱️ **Drag & drop** files anywhere on the page (gzipped files such as `dump.lammpstrj.gz` are decompressed); hover any atom for element details.
@@ -187,7 +189,7 @@ parameter field keep their native behaviour.
 |---|---|
 | `Space` | Play / pause auto-rotation |
 | `R` | Reset & fit view |
-| `1` `2` `3` `4` | Ball & Stick · Space Fill · Wireframe · Licorice |
+| `1` `2` `3` `4` `6` `0` | Ball & Stick · Space Fill · Wireframe · Licorice · Element balls · Points |
 | `7` `8` `9` `5` | Camera: front · top · right · isometric |
 | `←` `→` `↑` `↓` | Orbit camera |
 | `+` / `−` | Zoom in / out |
@@ -239,6 +241,8 @@ Project layout:
 │   │   ├── MoleculeCanvas.tsx     # Canvas, adaptive DPR, hover picking
 │   │   ├── InstancedAtomMesh.tsx  # one draw call for all atoms
 │   │   ├── InstancedBondMesh.tsx  # one draw call for all bonds (half-bond coloring)
+│   │   ├── PointAtoms.tsx         # points representation: shaded sphere impostors, one draw call
+│   │   ├── SceneEffects.tsx       # tone mapping, environment reflections, depth cueing
 │   │   ├── SimulationBox.tsx      # box/triclinic cell wireframe
 │   │   ├── LightingRig.tsx        # five lighting presets
 │   │   ├── CameraRig.tsx          # fit/preset/zoom/orbit command handling
@@ -260,6 +264,8 @@ Project layout:
 │   │   ├── cifParser.ts           # CIF (fractional coords, triclinic)
 │   │   ├── dumpParser.ts          # LAMMPS dump trajectories (.lammpstrj)
 │   │   ├── bondInference.ts       # O(n) spatial-hash covalent bonding
+│   │   ├── colorMaps.ts           # colour maps and per-atom colouring (type, quantity, molecule)
+│   │   ├── atomStyle.ts           # atom radii per representation, quality tiers
 │   │   ├── measure.ts             # distance / angle / dihedral math
 │   │   ├── persistence.ts         # safe JSON localStorage layer
 │   │   └── viewState.ts           # shareable ?s= view encoding

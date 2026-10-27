@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { ThreeEvent, useThree } from '@react-three/fiber';
 import { Atom, VisualizationConfig } from '../types';
 import { DEFAULT_ATOM_COLOR } from '../constants';
-import { atomDisplayRadius } from '../services/atomStyle';
+import { atomDisplayRadius, radiusKeyOf, sphereSegments } from '../services/atomStyle';
+import { colorKeyOf, makeAtomColorer } from '../services/colorMaps';
 import { writeInstanceTransform } from '../services/instanceMatrix';
 import { getAtomRenderOverride, onAtomRenderOverride } from './workbench/notebook/render/atomOverride';
 
@@ -20,8 +21,9 @@ export const PICKING_MAX_ATOMS = 50_000;
 
 /**
  * Optimized instanced rendering for atoms — one draw call regardless of
- * system size. Sphere tessellation adapts to system size:
- *   <=1k atoms -> 32 segs | <=10k -> 20 | >10k -> 12
+ * system size. Sphere tessellation follows the quality setting and adapts to
+ * system size (sphereSegments: 'auto' gives 32 segments up to 1k atoms, 20 up
+ * to 10k, 12 up to 30k, 8 above).
  *
  * Performance contract:
  *  - Matrices rewrite ONLY when positions or radius-affecting fields change.
@@ -45,28 +47,23 @@ const writeMatrices = (mesh: THREE.InstancedMesh, atoms: Atom[], config: Visuali
 };
 
 /**
- * Writes every instance's colour: the override's sRGB colours when they cover the atoms, else the view's type
- * colours. Colour depends only on atom TYPE, of which there are a handful, so the type colours are parsed once.
+ * Writes every instance's colour: the override's sRGB colours when they cover the atoms, else the view's colouring
+ * (makeAtomColorer: by type, by molecule, or a quantity through the colour map).
  */
 const writeColours = (mesh: THREE.InstancedMesh, atoms: Atom[], config: VisualizationConfig, override: Float32Array | null): void => {
+  const c = new THREE.Color();
   if (override && override.length >= 3 * atoms.length) {
-    const c = new THREE.Color();
     for (let i = 0; i < atoms.length; i++) {
       c.setRGB(override[3 * i], override[3 * i + 1], override[3 * i + 2], THREE.SRGBColorSpace);
       mesh.setColorAt(i, c);
     }
   } else {
-    const byType = new Map<number, THREE.Color>();
-    const colorFor = (type: number): THREE.Color => {
-      let c = byType.get(type);
-      if (!c) {
-        c = new THREE.Color(config.customColors[type] || DEFAULT_ATOM_COLOR);
-        byType.set(type, c);
-      }
-      return c;
-    };
+    const colorOf = makeAtomColorer(config, DEFAULT_ATOM_COLOR);
+    const rgb = new Float32Array(3);
     for (let i = 0; i < atoms.length; i++) {
-      mesh.setColorAt(i, colorFor(atoms[i].type));
+      colorOf(atoms[i], rgb);
+      c.setRGB(rgb[0], rgb[1], rgb[2], THREE.SRGBColorSpace);
+      mesh.setColorAt(i, c);
     }
   }
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -78,23 +75,16 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
   const [hoverId, setHoverId] = useState<number | null>(null);
 
   // Narrow dependency keys — object identity of `config` must NOT trigger O(n) work.
-  const radiusKey = `${config.visualizationMode}|${config.atomScale}`;
-  const colorKey = useMemo(
-    () =>
-      Object.keys(config.customColors)
-        .sort((a, b) => Number(a) - Number(b))
-        .map(k => `${k}:${config.customColors[Number(k)]}`)
-        .join(';'),
-    [config.customColors]
-  );
+  const radiusKey = radiusKeyOf(config);
+  const colorKey = colorKeyOf(config);
 
-  const geometry = useMemo(() => {
-    // Tessellation tiers: visual quality is indistinguishable at these
-    // densities, while triangle count drops ~4x per tier.
-    const baseSegments =
-      atoms.length > 30000 ? 8 : atoms.length > 10000 ? 12 : atoms.length > 1000 ? 20 : 32;
-    return new THREE.SphereGeometry(1, baseSegments, Math.max(6, Math.round(baseSegments / 2)));
-  }, [atoms.length]);
+  const segments = sphereSegments(config.quality, atoms.length);
+  // Tessellation tiers: visual quality is indistinguishable at these
+  // densities, while triangle count drops ~4x per tier.
+  const geometry = useMemo(
+    () => new THREE.SphereGeometry(1, segments, Math.max(6, Math.round(segments / 2))),
+    [segments],
+  );
 
   // R3F disposes what it constructs from `args`, but a useMemo'd geometry that
   // is REPLACED when the tier changes is not R3F's to clean up — without this
@@ -122,7 +112,7 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
     // Correct frustum culling: derive bounds from actual instance placements.
     mesh.computeBoundingSphere();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atoms, radiusKey]);
+  }, [atoms, radiusKey, segments]);
 
   // --- Colors: only when the mapping changes ---
   useEffect(() => {
@@ -133,7 +123,7 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
     applied.current.colours = colours !== null;
     invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atoms, colorKey]);
+  }, [atoms, colorKey, segments]);
 
   // --- Render overrides (the notebook's Render panel): applied at once, without a React render ---
   useEffect(() => onAtomRenderOverride(() => {
@@ -191,7 +181,8 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
 
   return (
     <instancedMesh
-      key={atoms.length}
+      // a new mesh for a new size or tessellation (the effects above write its matrices and colours)
+      key={`${atoms.length}|${segments}`}
       ref={meshRef}
       args={[geometry, undefined, atoms.length]}
       castShadow={config.shadowsEnabled}

@@ -79,4 +79,27 @@ describe('viewState share links', () => {
     expect(out?.visualizationMode).toBe('space-fill');
     expect(viewStateFromSearch('?x=1')).toBeNull();
   });
+
+  it('round-trips the colour, rendering and size settings, and drops or clamps bad values', () => {
+    const token = encodeViewState({
+      ...baseConfig, visualizationMode: 'points', colorBy: 'speed', colorMap: 'turbo', colorReverse: true, colorAuto: false,
+      colorMin: -1.5, colorMax: 4, quality: 'ultra', toneMapping: 'agx', exposure: 1.35, envLighting: true, depthCue: 0.4,
+      bondColor: '#aabbcc', boxColor: '#112233', typeRadii: { 1: 1.5, 8: 0.5 },
+    });
+    expect(decodeViewState(token)).toMatchObject({
+      visualizationMode: 'points', colorBy: 'speed', colorMap: 'turbo', colorReverse: true, colorAuto: false, colorMin: -1.5,
+      colorMax: 4, quality: 'ultra', toneMapping: 'agx', exposure: 1.35, envLighting: true, depthCue: 0.4,
+      bondColor: '#aabbcc', boxColor: '#112233', typeRadii: { 1: 1.5, 8: 0.5 },
+    });
+    const bad = Buffer.from(JSON.stringify({ cb: 'mass', cm: 'jet', q: 'max', tm: 'filmic', ex: 9999, dc: -5, bc: 'red', tr: '1:9999,x:5' })).toString('base64url');
+    const out = decodeViewState(bad)!;
+    expect(out.colorBy).toBeUndefined();
+    expect(out.colorMap).toBeUndefined();
+    expect(out.quality).toBeUndefined();
+    expect(out.toneMapping).toBeUndefined();
+    expect(out.exposure).toBe(3);
+    expect(out.depthCue).toBe(0);
+    expect(out.bondColor).toBeUndefined();
+    expect(out.typeRadii).toEqual({ 1: 3 });
+  });
 });

@@ -7,6 +7,8 @@ interface LightingRigProps {
   shadows: boolean;
   /** Scene bounding radius (world units) — sizes the key light's shadow camera. */
   radius?: number;
+  /** Shadow map resolution of the key light (the quality setting). */
+  shadowMapSize?: number;
 }
 
 export interface LightConfig {
@@ -85,7 +87,7 @@ export const LIGHT_PRESETS: Record<LightingPreset, LightConfig> = {
   },
 };
 
-const LightingRig: React.FC<LightingRigProps> = ({ preset, shadows, radius = 10 }) => {
+const LightingRig: React.FC<LightingRigProps> = ({ preset, shadows, radius = 10, shadowMapSize = 2048 }) => {
   const cfg = LIGHT_PRESETS[preset] ?? LIGHT_PRESETS.studio;
   // A directional light's shadow camera is an orthographic box (three.js
   // default: +-5 units, near 0.5). Sized here to the scene so shadows are not
@@ -108,12 +110,14 @@ const LightingRig: React.FC<LightingRigProps> = ({ preset, shadows, radius = 10 
         />
       )}
       <directionalLight
+        // a new light for a new shadow map size (three allocates the shadow map once, at its first shadow render)
+        key={shadowMapSize}
         position={keyPos}
         intensity={cfg.keyIntensity}
         color={cfg.keyColor}
         castShadow={shadows}
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={shadowMapSize}
+        shadow-mapSize-height={shadowMapSize}
         shadow-bias={-0.0002}
         shadow-camera-left={-half}
         shadow-camera-right={half}

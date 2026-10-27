@@ -4,12 +4,13 @@ import { parseFile, detectFileFormat, detectFormatFromContent } from '../../serv
 import { parseInWorker } from '../../services/parserClient';
 import {
   MoleculeData, VisualizationConfig, VisualizationMode, FileFormat,
-  LightingPreset, CameraPreset,
+  LightingPreset, CameraPreset, ColorBy, RenderQuality, ToneMappingMode,
 } from '../../types';
+import { COLOR_BY_LABELS, COLOR_MAP_NAMES, colorMapGradient, isContinuous, scalarRange } from '../../services/colorMaps';
 import { DEFAULT_ATOM_COLOR, ELEMENT_DATA, ATOM_COLORS } from '../../constants';
 import { emitCameraCommand } from '../../services/cameraBus';
 import { useKeyboardShortcuts, SHORTCUT_CATALOG } from '../../hooks/useKeyboardShortcuts';
-import { encodeViewState, viewStateFromSearch } from '../../services/viewState';
+import { decodeViewState, encodeViewState, viewStateFromSearch } from '../../services/viewState';
 import { measureSelection, measurementGlyph, MeasurementResult } from '../../services/measure';
 import { startCanvasRecording, RecordingHandle } from '../../services/recorder';
 import { captureActiveCanvas } from '../../services/glRegistry';
@@ -39,6 +40,8 @@ const VIZ_MODES: { value: VisualizationMode; label: string; desc: string; key: s
   { value: 'space-fill', label: 'Space Fill', desc: 'Van der Waals radii', key: '2' },
   { value: 'wireframe', label: 'Wireframe', desc: 'Small point atoms', key: '3' },
   { value: 'licorice', label: 'Licorice', desc: 'Bond-centric sticks', key: '4' },
+  { value: 'element-balls', label: 'Element balls', desc: 'Sized by covalent radius', key: '6' },
+  { value: 'points', label: 'Points', desc: 'Fast shaded dots, huge systems', key: '0' },
 ];
 
 const MATERIALS: { value: VisualizationConfig['materialType']; label: string }[] = [
@@ -49,6 +52,20 @@ const MATERIALS: { value: VisualizationConfig['materialType']; label: string }[]
 ];
 
 const LIGHTING_PRESETS: LightingPreset[] = ['studio', 'lab', 'outdoor', 'space', 'soft'];
+
+const QUALITIES: { value: RenderQuality; label: string; desc: string }[] = [
+  { value: 'low', label: 'Low', desc: 'Coarse, reduced resolution; shadows to 2k atoms' },
+  { value: 'auto', label: 'Auto', desc: 'Scales with the system; shadows to 8k atoms' },
+  { value: 'high', label: 'High', desc: 'Fine, full resolution; 4k shadows to 20k atoms' },
+  { value: 'ultra', label: 'Ultra', desc: 'Finest, supersampled; shadows to 50k atoms' },
+];
+
+const TONE_MAPPINGS: { value: ToneMappingMode; label: string }[] = [
+  { value: 'aces', label: 'ACES filmic' },
+  { value: 'agx', label: 'AgX' },
+  { value: 'neutral', label: 'Neutral' },
+  { value: 'none', label: 'None (linear)' },
+];
 
 const CAMERA_VIEWS: { preset: CameraPreset; label: string }[] = [
   { preset: 'iso', label: 'Iso' },
@@ -137,7 +154,28 @@ const initialConfig = (): VisualizationConfig => ({
   shadowsEnabled: true,
   autoRotateSpeed: 0.5,
   fov: 40,
+  colorBy: 'type',
+  colorMap: 'viridis',
+  colorReverse: false,
+  colorAuto: true,
+  quality: 'auto',
+  toneMapping: 'aces',
+  exposure: 1,
+  envLighting: false,
+  depthCue: 0,
+  bondColor: '',
+  boxColor: '#5b8def',
 });
+
+/** The view settings saved in this browser (a share token: validated and clamped on reading), without type colours. */
+const VIEW_STORAGE_KEY = 'm3d.view';
+const savedConfig = (): Partial<VisualizationConfig> => {
+  try {
+    return decodeViewState(localStorage.getItem(VIEW_STORAGE_KEY) ?? '') ?? {};
+  } catch {
+    return {};
+  }
+};
 
 /** A file handed over from another module (the MD Notebook's run output), loaded like an upload. */
 /** A gzipped file: a .gz name whose first two bytes are the gzip magic 1f 8b. */
@@ -191,11 +229,11 @@ const ViewerModule: React.FC<{
   /** Type ids the user manually recolored — survive re-parsing. */
   const userEditedTypes = useRef<Set<number>>(new Set());
 
-  // Shared view state (P3): ?s=<token> overrides defaults before first paint.
+  // Shared view state (P3): ?s=<token> overrides the saved settings, which override the defaults, before first paint.
   const [vizConfig, setVizConfig] = useState<VisualizationConfig>(() => ({
     ...initialConfig(),
     ...(typeof window !== 'undefined'
-      ? viewStateFromSearch(window.location.search) ?? {}
+      ? { ...savedConfig(), ...(viewStateFromSearch(window.location.search) ?? {}) }
       : {}),
   }));
 
@@ -281,6 +319,11 @@ const ViewerModule: React.FC<{
         window.history.replaceState(null, '', url.toString());
       } catch {
         /* history unavailable (sandboxed iframe etc.) — non-fatal */
+      }
+      try {
+        localStorage.setItem(VIEW_STORAGE_KEY, encodeViewState({ ...vizConfig, customColors: {} }));
+      } catch {
+        /* storage unavailable (private mode etc.) — the settings just are not remembered */
       }
     }, 300);
     return () => window.clearTimeout(id);
@@ -517,6 +560,15 @@ const ViewerModule: React.FC<{
     setVizConfig(prev => ({ ...prev, [key]: value }));
   };
 
+  const updateTypeRadius = (typeId: number, scale: number) => {
+    setVizConfig(prev => ({ ...prev, typeRadii: { ...prev.typeRadii, [typeId]: scale } }));
+  };
+
+  /** Every view setting back to its default; the structure's type colours and sizes stay. */
+  const resetView = () => {
+    setVizConfig(prev => ({ ...initialConfig(), customColors: prev.customColors, typeRadii: prev.typeRadii }));
+  };
+
   const updateCustomColor = (typeId: number, color: string) => {
     userEditedTypes.current.add(typeId);
     setVizConfig(prev => ({
@@ -649,6 +701,41 @@ const ViewerModule: React.FC<{
     sidebar: shared.panel,
     header: shared.headerText,
   };
+  const accent = isDarkTheme(theme) ? 'accent-[#7fa66b]' : 'accent-[#4e7a41]';
+
+  /** A labelled on/off switch row of the sidebar. */
+  const toggleRow = (label: React.ReactNode, on: boolean, onClick: () => void, disabled = false, title?: string) => (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-pressed={on}
+      className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors disabled:opacity-40 ${ct.button}`}
+    >
+      <span className="flex items-center gap-2">{label}</span>
+      <span className={`w-8 h-4 rounded-full relative transition-colors ${on ? ct.toggleOn : ct.toggleOff}`}>
+        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? 'left-4' : 'left-0.5'}`} />
+      </span>
+    </button>
+  );
+
+  /** A labelled range slider of the sidebar. */
+  const slider = (label: string, shown: string, value: number, min: number, max: number, step: number, set: (v: number) => void) => (
+    <div className="space-y-1">
+      <div className={`flex justify-between text-[11px] ${ct.muted}`}>
+        <span>{label}</span><span className="font-mono">{shown}</span>
+      </div>
+      <input
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={e => set(parseFloat(e.target.value))}
+        className={`w-full ${accent}`}
+        aria-label={label}
+      />
+    </div>
+  );
+
+  const colorBy: ColorBy = vizConfig.colorBy ?? 'type';
+  const selectClass = `rounded border bg-transparent py-1 px-1.5 text-[11px] ${ct.input}`;
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'data', label: 'Data', icon: <FileText size={14} /> },
@@ -677,6 +764,20 @@ const ViewerModule: React.FC<{
     () => moleculeData?.frames?.[Math.min(frameIdx, frameCount - 1)]?.box,
     [moleculeData, frameIdx, frameCount],
   );
+
+  /** A colour map's range from the data: over every frame, so a trajectory's colours do not rescale while it plays. */
+  const autoColorRange = useMemo(() => {
+    const by = vizConfig.colorBy;
+    if (!moleculeData || !isContinuous(by)) return null;
+    const lists = moleculeData.frames?.length ? moleculeData.frames.map(f => f.atoms) : [moleculeData.atoms];
+    return scalarRange(lists, by!);
+  }, [moleculeData, vizConfig.colorBy]);
+  const canvasConfig = useMemo((): VisualizationConfig => {
+    if (!isContinuous(vizConfig.colorBy) || vizConfig.colorAuto === false) return vizConfig;
+    const r = autoColorRange ?? [0, 1];
+    return { ...vizConfig, colorMin: r[0], colorMax: r[1] };
+  }, [vizConfig, autoColorRange]);
+  const hasVelocities = activeData?.atoms[0]?.vx !== undefined;
 
   /** The structure export menu (the shown frame as LAMMPS data, extended XYZ or PDB; every frame as XYZ). */
   const [exportOpen, setExportOpen] = useState(false);
@@ -987,26 +1088,82 @@ const ViewerModule: React.FC<{
                 </div>
               </section>
 
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Colour</h3>
+                <label className={`flex items-center justify-between text-[11px] ${ct.muted}`}>
+                  <span>Colour by</span>
+                  <select value={colorBy} onChange={e => updateConfig('colorBy', e.target.value)} className={selectClass} aria-label="Colour by">
+                    {Object.entries(COLOR_BY_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                  </select>
+                </label>
+                {colorBy === 'type' && <p className={`text-[10px] ${ct.muted}`}>Per-type colours and sizes are in the Elements tab.</p>}
+                {colorBy === 'molecule' && <p className={`text-[10px] ${ct.muted}`}>A distinct hue per molecule ID.</p>}
+                {colorBy === 'speed' && moleculeData && !hasVelocities && (
+                  <p className={`text-[10px] ${ct.muted}`}>This structure has no velocities (a dump with vx vy vz has): atoms are grey.</p>
+                )}
+                {isContinuous(colorBy) && (
+                  <>
+                    <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Colour map">
+                      {COLOR_MAP_NAMES.map(name => (
+                        <button
+                          key={name}
+                          role="radio"
+                          aria-checked={(vizConfig.colorMap ?? 'viridis') === name}
+                          onClick={() => updateConfig('colorMap', name)}
+                          className={`p-1.5 rounded-lg border text-[10px] capitalize transition-colors ${(vizConfig.colorMap ?? 'viridis') === name ? ct.active : ct.button}`}
+                        >
+                          <div className="h-2 rounded mb-1" style={{ background: colorMapGradient(name, !!vizConfig.colorReverse) }} />
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                    {toggleRow('Reverse colour map', !!vizConfig.colorReverse, () => updateConfig('colorReverse', !vizConfig.colorReverse))}
+                    {toggleRow('Range from the data (all frames)', vizConfig.colorAuto !== false, () =>
+                      setVizConfig(prev => prev.colorAuto === false
+                        ? { ...prev, colorAuto: true }
+                        : { ...prev, colorAuto: false, colorMin: autoColorRange?.[0] ?? 0, colorMax: autoColorRange?.[1] ?? 1 }))}
+                    {vizConfig.colorAuto === false && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['colorMin', 'colorMax'] as const).map(k => (
+                          <label key={k} className={`text-[10px] ${ct.muted}`}>
+                            {k === 'colorMin' ? 'Minimum' : 'Maximum'}
+                            <input
+                              type="number" step="any"
+                              value={vizConfig[k] ?? 0}
+                              onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) updateConfig(k, v); }}
+                              className={`mt-0.5 w-full rounded border bg-transparent px-1.5 py-1 font-mono text-[11px] ${ct.input}`}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className={`flex items-center justify-between text-[11px] ${ct.muted}`}>
+                  <span>Bond colour</span>
+                  <span className="flex items-center gap-2">
+                    <button
+                      onClick={() => updateConfig('bondColor', '')}
+                      className={`px-2 py-1 rounded border text-[10px] transition-colors ${vizConfig.bondColor ? ct.button : ct.active}`}
+                    >
+                      By atom
+                    </button>
+                    <input
+                      type="color"
+                      value={vizConfig.bondColor || '#9aa0a6'}
+                      onChange={e => updateConfig('bondColor', e.target.value)}
+                      className="w-7 h-7 cursor-pointer rounded border-0 bg-transparent p-0"
+                      title="One colour for every bond"
+                      aria-label="Bond colour"
+                    />
+                  </span>
+                </div>
+              </section>
+
               <section className="space-y-3">
                 <h3 className={`text-xs font-semibold ${ct.header}`}>Geometry</h3>
-                {([
-                  { label: 'Atom size', key: 'atomScale' as const },
-                  { label: 'Bond thickness', key: 'bondScale' as const },
-                ]).map(sl => (
-                  <div key={sl.key} className="space-y-1">
-                    <div className={`flex justify-between text-[11px] ${ct.muted}`}>
-                      <span>{sl.label}</span>
-                      <span className="font-mono">{(vizConfig[sl.key] * 100).toFixed(0)}%</span>
-                    </div>
-                    <input
-                      type="range" min="0.1" max="3" step="0.05"
-                      value={vizConfig[sl.key]}
-                      onChange={e => updateConfig(sl.key, parseFloat(e.target.value))}
-                      className={`w-full ${isDarkTheme(theme) ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
-                      aria-label={sl.label}
-                    />
-                  </div>
-                ))}
+                {slider('Atom size', `${(vizConfig.atomScale * 100).toFixed(0)}%`, vizConfig.atomScale, 0.1, 3, 0.05, v => updateConfig('atomScale', v))}
+                {slider('Bond thickness', `${(vizConfig.bondScale * 100).toFixed(0)}%`, vizConfig.bondScale, 0.1, 3, 0.05, v => updateConfig('bondScale', v))}
               </section>
 
               <section className="space-y-2">
@@ -1078,26 +1235,23 @@ const ViewerModule: React.FC<{
 
               <section className="space-y-2">
                 <h3 className={`text-xs font-semibold ${ct.header}`}>Simulation box & axes</h3>
-                <button
-                  onClick={() => updateConfig('showBox', !vizConfig.showBox)}
-                  disabled={!moleculeData?.box}
-                  className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors disabled:opacity-40 ${ct.button}`}
-                  title="X"
-                >
-                  <span className="flex items-center gap-2"><Grid3x3 size={14} /> Show simulation box <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>X</kbd></span>
-                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showBox ? ct.toggleOn : ct.toggleOff}`}>
-                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.showBox ? 'left-4' : 'left-0.5'}`} />
-                  </span>
-                </button>
-                <button
-                  onClick={() => updateConfig('showAxes', !vizConfig.showAxes)}
-                  className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
-                >
-                  <span className="flex items-center gap-2"><Grid3x3 size={14} /> Show XYZ axes</span>
-                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showAxes ? ct.toggleOn : ct.toggleOff}`}>
-                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.showAxes ? 'left-4' : 'left-0.5'}`} />
-                  </span>
-                </button>
+                {toggleRow(
+                  <><Grid3x3 size={14} /> Show simulation box <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>X</kbd></>,
+                  vizConfig.showBox, () => updateConfig('showBox', !vizConfig.showBox), !moleculeData?.box, 'X',
+                )}
+                {vizConfig.showBox && moleculeData?.box && (
+                  <label className={`flex items-center justify-between text-[11px] ${ct.muted}`}>
+                    <span>Box colour</span>
+                    <input
+                      type="color"
+                      value={vizConfig.boxColor || '#5b8def'}
+                      onChange={e => updateConfig('boxColor', e.target.value)}
+                      className="w-7 h-7 cursor-pointer rounded border-0 bg-transparent p-0"
+                      aria-label="Box colour"
+                    />
+                  </label>
+                )}
+                {toggleRow(<><Grid3x3 size={14} /> Show XYZ axes</>, vizConfig.showAxes, () => updateConfig('showAxes', !vizConfig.showAxes))}
                 {!moleculeData?.box && (
                   <p className={`text-[10px] ${ct.muted}`}>This structure has no cell information (load a LAMMPS/PDB-CRYST1/CIF file).</p>
                 )}
@@ -1105,39 +1259,37 @@ const ViewerModule: React.FC<{
 
               <section className="space-y-3">
                 <h3 className={`text-xs font-semibold ${ct.header}`}>Motion & optics</h3>
-                <div className="space-y-1">
-                  <div className={`flex justify-between text-[11px] ${ct.muted}`}>
-                    <span>Auto-rotate speed</span><span className="font-mono">{vizConfig.autoRotateSpeed.toFixed(1)}</span>
-                  </div>
-                  <input
-                    type="range" min="0.1" max="6" step="0.1"
-                    value={vizConfig.autoRotateSpeed}
-                    onChange={e => updateConfig('autoRotateSpeed', parseFloat(e.target.value))}
-                    className={`w-full ${isDarkTheme(theme) ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
-                    aria-label="Auto-rotate speed"
-                  />
+                {slider('Auto-rotate speed', vizConfig.autoRotateSpeed.toFixed(1), vizConfig.autoRotateSpeed, 0.1, 6, 0.1, v => updateConfig('autoRotateSpeed', v))}
+                {slider('Field of view', `${vizConfig.fov.toFixed(0)}°`, vizConfig.fov, 15, 90, 1, v => updateConfig('fov', Math.round(v)))}
+              </section>
+
+              <section className="space-y-3">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Rendering</h3>
+                <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Rendering quality">
+                  {QUALITIES.map(q => (
+                    <button
+                      key={q.value}
+                      role="radio"
+                      aria-checked={(vizConfig.quality ?? 'auto') === q.value}
+                      onClick={() => updateConfig('quality', q.value)}
+                      title={q.desc}
+                      className={`py-2 text-[11px] font-medium rounded-lg border transition-colors ${(vizConfig.quality ?? 'auto') === q.value ? ct.active : ct.button}`}
+                    >
+                      {q.label}
+                    </button>
+                  ))}
                 </div>
-                <div className="space-y-1">
-                  <div className={`flex justify-between text-[11px] ${ct.muted}`}>
-                    <span>Field of view</span><span className="font-mono">{vizConfig.fov.toFixed(0)}°</span>
-                  </div>
-                  <input
-                    type="range" min="15" max="90" step="1"
-                    value={vizConfig.fov}
-                    onChange={e => updateConfig('fov', parseInt(e.target.value, 10))}
-                    className={`w-full ${isDarkTheme(theme) ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
-                    aria-label="Field of view"
-                  />
-                </div>
-                <button
-                  onClick={() => updateConfig('shadowsEnabled', !vizConfig.shadowsEnabled)}
-                  className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
-                >
-                  <span>Shadows (≤8k atoms)</span>
-                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.shadowsEnabled ? ct.toggleOn : ct.toggleOff}`}>
-                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.shadowsEnabled ? 'left-4' : 'left-0.5'}`} />
-                  </span>
-                </button>
+                <p className={`text-[10px] ${ct.muted}`}>{QUALITIES.find(q => q.value === (vizConfig.quality ?? 'auto'))?.desc}</p>
+                {toggleRow('Shadows', vizConfig.shadowsEnabled, () => updateConfig('shadowsEnabled', !vizConfig.shadowsEnabled))}
+                {toggleRow('Environment reflections', !!vizConfig.envLighting, () => updateConfig('envLighting', !vizConfig.envLighting))}
+                <label className={`flex items-center justify-between text-[11px] ${ct.muted}`}>
+                  <span>Tone mapping</span>
+                  <select value={vizConfig.toneMapping ?? 'aces'} onChange={e => updateConfig('toneMapping', e.target.value)} className={selectClass} aria-label="Tone mapping">
+                    {TONE_MAPPINGS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </label>
+                {slider('Exposure', (vizConfig.exposure ?? 1).toFixed(2), vizConfig.exposure ?? 1, 0.2, 3, 0.05, v => updateConfig('exposure', v))}
+                {slider('Depth cueing', vizConfig.depthCue ? `${Math.round(vizConfig.depthCue * 100)}%` : 'off', vizConfig.depthCue ?? 0, 0, 1, 0.05, v => updateConfig('depthCue', v))}
               </section>
 
               <section className="space-y-2">
@@ -1176,6 +1328,13 @@ const ViewerModule: React.FC<{
                     />
                   </label>
                 </div>
+                <button
+                  onClick={resetView}
+                  className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-xs font-medium transition-colors ${ct.button}`}
+                  title="Every view setting back to its default (type colours and sizes stay)"
+                >
+                  <RotateCw size={14} /> Reset view settings
+                </button>
               </section>
             </>
           )}
@@ -1213,8 +1372,18 @@ const ViewerModule: React.FC<{
                               </div>
                             </div>
                           </div>
-                          <div className={`px-2 py-0.5 rounded text-[10px] font-mono ${ct.chip}`}>
-                            ×{typeInfo.count}
+                          <div className="flex flex-col items-end gap-1">
+                            <div className={`px-2 py-0.5 rounded text-[10px] font-mono ${ct.chip}`}>
+                              ×{typeInfo.count}
+                            </div>
+                            <input
+                              type="range" min="0.25" max="3" step="0.05"
+                              value={vizConfig.typeRadii?.[typeInfo.id] ?? 1}
+                              onChange={e => updateTypeRadius(typeInfo.id, parseFloat(e.target.value))}
+                              className={`w-20 ${accent}`}
+                              title={`Size of type ${typeInfo.id}: ${Math.round((vizConfig.typeRadii?.[typeInfo.id] ?? 1) * 100)}%`}
+                              aria-label={`Size of element type ${typeInfo.id}`}
+                            />
                           </div>
                         </div>
                       );
@@ -1602,7 +1771,7 @@ const ViewerModule: React.FC<{
                 max={frameCount - 1}
                 value={Math.min(frameIdx, frameCount - 1)}
                 onChange={e => { setTrajPlaying(false); setFrameIdx(parseInt(e.target.value, 10)); }}
-                className={`w-20 min-w-16 flex-1 @md:w-32 @2xl:w-48 ${isDarkTheme(theme) ? 'accent-[#7fa66b]' : 'accent-[#4e7a41]'}`}
+                className={`w-20 min-w-16 flex-1 @md:w-32 @2xl:w-48 ${accent}`}
                 aria-label="Trajectory frame"
               />
               <span className={`shrink-0 text-[10px] font-mono tabular-nums ${ct.muted}`}>
@@ -1766,7 +1935,7 @@ const ViewerModule: React.FC<{
           <MoleculeCanvas
             data={activeData}
             autoRotate={autoRotate}
-            config={vizConfig}
+            config={canvasConfig}
             selectedIds={selectedIds}
             onSelectAtom={toggleSelectAtom}
             forceContinuousRender={isRecording || savingVideo}

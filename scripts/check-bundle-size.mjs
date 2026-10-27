@@ -5,8 +5,9 @@
  * silent performance regressions from reaching main.
  *
  * Budgets (gzipped):
- *   initial JS <= 420 KB  (what index.html loads: entry + modulepreloads;
- *                          three.js dominates)
+ *   initial JS <= 426 KB  (what index.html loads: entry + modulepreloads;
+ *                          three.js dominates; the structure viewer with its
+ *                          colour maps, quality presets and scene effects)
  *   lazy JS    <= 140 KB  (code-split modules and small workers, e.g. the
  *                          MD notebook UI with its structure import and example
  *                          notebooks and its run files (DCD and XTC frames
@@ -33,7 +34,7 @@ import { gzipSync } from 'node:zlib';
 const DIST = new URL('../dist', import.meta.url).pathname;
 const ASSETS = join(DIST, 'assets');
 
-const INITIAL_BUDGET = 420 * 1024;
+const INITIAL_BUDGET = 426 * 1024;
 const LAZY_BUDGET = 140 * 1024;
 const CHUNK_BUDGET = 300 * 1024;
 const ENGINE_BUDGET = 400 * 1024;

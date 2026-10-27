@@ -7,6 +7,7 @@ import { ELEMENT_DATA } from '../constants';
 import { measureSelection, MeasurementResult } from '../services/measure';
 import { getActiveGL, registerActiveGL } from '../services/glRegistry';
 import InstancedAtomMesh from './InstancedAtomMesh';
+import PointAtoms from './PointAtoms';
 import InstancedBondMesh from './InstancedBondMesh';
 import SimulationBox from './SimulationBox';
 import LightingRig from './LightingRig';
@@ -14,6 +15,9 @@ import CameraRig from './CameraRig';
 import AtomLabels from './AtomLabels';
 import MeasurementOverlay from './MeasurementOverlay';
 import { CanvasErrorBoundary } from './CanvasErrorBoundary';
+import SceneEffects from './SceneEffects';
+import { qualityDpr, shadowLimit, shadowMapSize } from '../services/atomStyle';
+import { COLOR_BY_LABELS, colorMapGradient, isContinuous, scalarRange } from '../services/colorMaps';
 
 interface MoleculeCanvasProps {
   data: MoleculeData;
@@ -87,7 +91,7 @@ const sceneExtent = (data: MoleculeData): { radius: number; center: THREE.Vector
 const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
   data,
   autoRotate,
-  config,
+  config: viewConfig,
   selectedIds = [],
   onSelectAtom,
   forceContinuousRender = false,
@@ -104,6 +108,15 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
   const [perfFactor, setPerfFactor] = useState(1);
 
   const { atoms, bonds } = data;
+
+  // a colour map needs its range: the caller's (the viewer resolves it over all frames), else this frame's
+  const config = useMemo((): VisualizationConfig => {
+    const by = viewConfig.colorBy;
+    if (!isContinuous(by) || (viewConfig.colorMin !== undefined && viewConfig.colorMax !== undefined)) return viewConfig;
+    const r = scalarRange([atoms], by!) ?? [0, 1];
+    return { ...viewConfig, colorMin: r[0], colorMax: r[1] };
+  }, [viewConfig, atoms]);
+  const quality = config.quality;
 
   // Only bond rendering and the measurement tool look atoms up by id.
   // A LAMMPS dump has no bonds, so building a Map of every atom on every
@@ -149,13 +162,9 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
     return Math.max(lx, ly, lz) * 0.9;
   }, [data.box]);
 
-  // Adaptive device pixel ratio — huge systems render below native res,
-  // and PerformanceMonitor can degrade further on weak GPUs (P6).
-  const dpr: [number, number] = useMemo(() => {
-    if (atoms.length > 20000) return [0.75, 1.25];
-    if (atoms.length > 5000) return [1, 1.5];
-    return [1, 2];
-  }, [atoms.length]);
+  // Device pixel ratio from the quality setting — 'auto' renders huge systems below native res, 'ultra'
+  // supersamples — and PerformanceMonitor can degrade 'auto' and 'low' further on weak GPUs (P6).
+  const dpr: [number, number] = useMemo(() => qualityDpr(quality, atoms.length), [quality, atoms.length]);
 
   const effectiveDpr: [number, number] = useMemo(
     () => [
@@ -165,11 +174,12 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
     [dpr, perfFactor]
   );
 
-  const shadowsEnabled = config.shadowsEnabled && atoms.length <= 8000;
+  const shadowsEnabled = config.shadowsEnabled && atoms.length <= shadowLimit(quality);
 
   const shouldShowBonds =
     config.showBonds &&
     config.visualizationMode !== 'space-fill' &&
+    config.visualizationMode !== 'points' &&
     bonds.length > 0;
 
   // Hover updates: immediate on atom change, position refresh throttled to
@@ -251,22 +261,39 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
         }}
       >
         <PerformanceMonitor
-          onDecline={() => setPerfFactor(0.6)}
+          onDecline={() => setPerfFactor(quality === 'high' || quality === 'ultra' ? 1 : 0.6)}
           onIncline={() => setPerfFactor(1)}
           flipflops={3}
         />
         <color attach="background" args={[config.backgroundColor]} />
+        <SceneEffects
+          toneMapping={config.toneMapping ?? 'aces'}
+          exposure={config.exposure ?? 1}
+          envLighting={!!config.envLighting}
+          depthCue={config.depthCue ?? 0}
+          background={config.backgroundColor}
+          radius={boundingRadius}
+        />
 
-        <LightingRig preset={config.lightingPreset} shadows={shadowsEnabled} radius={boundingRadius} />
+        <LightingRig
+          preset={config.lightingPreset}
+          shadows={shadowsEnabled}
+          radius={boundingRadius}
+          shadowMapSize={shadowMapSize(quality)}
+        />
 
         <group position={groupPosition}>
           {config.showAxes && <axesHelper args={[boundingRadius * 1.2]} />}
-          <InstancedAtomMesh
-            atoms={atoms}
-            config={config}
-            onHover={handleHover}
-            onSelectAtom={onSelectAtom}
-          />
+          {config.visualizationMode === 'points' ? (
+            <PointAtoms atoms={atoms} config={config} />
+          ) : (
+            <InstancedAtomMesh
+              atoms={atoms}
+              config={config}
+              onHover={handleHover}
+              onSelectAtom={onSelectAtom}
+            />
+          )}
           {shouldShowBonds && (
             <InstancedBondMesh
               bonds={bonds}
@@ -276,7 +303,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
             />
           )}
           {config.showBox && (displayBox ?? data.box) && (
-            <SimulationBox box={(displayBox ?? data.box)!} showFaces={false} />
+            <SimulationBox box={(displayBox ?? data.box)!} showFaces={false} color={config.boxColor} />
           )}
           <AtomLabels atoms={atoms} config={config} />
           <MeasurementOverlay selected={selectedAtoms} config={config} result={measurement} />
@@ -289,6 +316,21 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
           fov={config.fov}
         />
       </Canvas>
+
+      {/* Colour-map legend — DOM overlay */}
+      {isContinuous(config.colorBy) && (
+        <div
+          className="pointer-events-none absolute bottom-3 left-3 z-10 w-44 rounded-lg border border-gray-600/50 bg-gray-900/80 px-2.5 py-1.5 text-[10px] text-gray-100"
+          aria-label="Colour legend"
+        >
+          <div className="mb-1 font-semibold">{COLOR_BY_LABELS[config.colorBy!]}</div>
+          <div className="h-2.5 rounded" style={{ background: colorMapGradient(config.colorMap ?? 'viridis', !!config.colorReverse) }} />
+          <div className="mt-0.5 flex justify-between font-mono">
+            <span>{Number(config.colorMin).toPrecision(4)}</span>
+            <span>{Number(config.colorMax).toPrecision(4)}</span>
+          </div>
+        </div>
+      )}
 
       {/* Hover tooltip — DOM overlay, no in-scene text cost */}
       {hover && (

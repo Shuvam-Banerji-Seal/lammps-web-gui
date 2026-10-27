@@ -1,4 +1,7 @@
-import { VisualizationConfig, MaterialType, VisualizationMode, LightingPreset } from '../types';
+import {
+  VisualizationConfig, MaterialType, VisualizationMode, LightingPreset, ColorBy, ColorMapName, RenderQuality, ToneMappingMode,
+} from '../types';
+import { COLOR_BY_LABELS, COLOR_MAP_NAMES } from './colorMaps';
 
 /**
  * Shareable view state: encodes the visualization configuration into a
@@ -8,8 +11,10 @@ import { VisualizationConfig, MaterialType, VisualizationMode, LightingPreset } 
  */
 
 const MATERIALS: MaterialType[] = ['realistic', 'plastic', 'metallic', 'toon'];
-const MODES: VisualizationMode[] = ['ball-and-stick', 'space-fill', 'wireframe', 'licorice'];
+const MODES: VisualizationMode[] = ['ball-and-stick', 'space-fill', 'wireframe', 'licorice', 'element-balls', 'points'];
 const LIGHTING: LightingPreset[] = ['studio', 'lab', 'outdoor', 'space', 'soft'];
+const QUALITY: RenderQuality[] = ['low', 'auto', 'high', 'ultra'];
+const TONE: ToneMappingMode[] = ['aces', 'agx', 'neutral', 'none'];
 
 const HEX6 = /^[0-9a-f]{6}$/;
 
@@ -48,6 +53,22 @@ export const encodeViewState = (c: VisualizationConfig): string => {
     bg: c.backgroundColor.replace('#', '').toLowerCase(),
     cc: Object.entries(c.customColors)
       .map(([k, hex]) => `${Number(k)}${hex.replace('#', '').toLowerCase()}`)
+      .join(','),
+    cb: c.colorBy,
+    cm: c.colorMap,
+    cr: c.colorReverse ? 1 : 0,
+    ca: c.colorAuto === false ? 0 : 1,
+    c0: c.colorAuto === false ? c.colorMin : undefined,
+    c1: c.colorAuto === false ? c.colorMax : undefined,
+    q: c.quality,
+    tm: c.toneMapping,
+    ex: c.exposure === undefined ? undefined : Math.round(c.exposure * 100),
+    ev: c.envLighting ? 1 : 0,
+    dc: c.depthCue === undefined ? undefined : Math.round(c.depthCue * 100),
+    bc: c.bondColor?.replace('#', '').toLowerCase(),
+    xc: c.boxColor?.replace('#', '').toLowerCase(),
+    tr: Object.entries(c.typeRadii ?? {})
+      .map(([k, v]) => `${Number(k)}:${Math.round(v * 100)}`)
       .join(','),
   };
   return bytesToB64Url(new TextEncoder().encode(JSON.stringify(view)));
@@ -95,6 +116,28 @@ export const decodeViewState = (token: string): Partial<VisualizationConfig> | n
         if (m) colors[parseInt(m[1], 10)] = `#${m[2]}`;
       }
       if (Object.keys(colors).length > 0) out.customColors = colors;
+    }
+    if (typeof raw.cb === 'string' && raw.cb in COLOR_BY_LABELS) out.colorBy = raw.cb as ColorBy;
+    if (typeof raw.cm === 'string' && COLOR_MAP_NAMES.includes(raw.cm as ColorMapName)) out.colorMap = raw.cm as ColorMapName;
+    if (raw.cr === 0 || raw.cr === 1) out.colorReverse = raw.cr === 1;
+    if (raw.ca === 0 || raw.ca === 1) out.colorAuto = raw.ca === 1;
+    if (typeof raw.c0 === 'number' && Number.isFinite(raw.c0)) out.colorMin = raw.c0;
+    if (typeof raw.c1 === 'number' && Number.isFinite(raw.c1)) out.colorMax = raw.c1;
+    if (typeof raw.q === 'string' && QUALITY.includes(raw.q as RenderQuality)) out.quality = raw.q as RenderQuality;
+    if (typeof raw.tm === 'string' && TONE.includes(raw.tm as ToneMappingMode)) out.toneMapping = raw.tm as ToneMappingMode;
+    if (typeof raw.ex === 'number') out.exposure = clamp(raw.ex / 100, 0.2, 3);
+    if (raw.ev === 0 || raw.ev === 1) out.envLighting = raw.ev === 1;
+    if (typeof raw.dc === 'number') out.depthCue = clamp(raw.dc / 100, 0, 1);
+    if (raw.bc === '') out.bondColor = '';
+    else if (typeof raw.bc === 'string' && HEX6.test(raw.bc)) out.bondColor = `#${raw.bc}`;
+    if (typeof raw.xc === 'string' && HEX6.test(raw.xc)) out.boxColor = `#${raw.xc}`;
+    if (typeof raw.tr === 'string' && raw.tr.length > 0) {
+      const radii: Record<number, number> = {};
+      for (const entry of raw.tr.split(',').slice(0, 256)) {
+        const m = entry.match(/^(\d{1,4}):(\d{1,4})$/);
+        if (m) radii[parseInt(m[1], 10)] = clamp(parseInt(m[2], 10) / 100, 0.1, 3);
+      }
+      if (Object.keys(radii).length > 0) out.typeRadii = radii;
     }
 
     return Object.keys(out).length > 0 ? out : null;

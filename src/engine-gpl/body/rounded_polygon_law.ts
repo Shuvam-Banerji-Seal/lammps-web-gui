@@ -27,10 +27,6 @@ const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const scl = (s: number, a: V3): V3 => [s * a[0], s * a[1], s * a[2]];
 const dot = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const len = (a: V3): number => Math.sqrt(dot(a, a));
-const distsq = (a: V3, b: V3): number => {
-  const d = sub(a, b);
-  return dot(d, d);
-};
 /** sum_torque (native): torque on a body with centre xm from the force F acting at x. */
 export const torqueOf = (xm: V3, x: V3, F: V3): V3 => {
   const r = sub(x, xm);
@@ -120,21 +116,26 @@ export const normalForce = (R: number, kn: number, kna: number, cut: number): { 
  * returned for a distance above dcut, with h and n undefined).
  */
 export const nearestPoint = (Y: BodyGeom, xp: V3, dcut = BIG): { d: number; h: V3; n: V3; nv: number } => {
+  // the same operations as add/sub/scl/dot/distsq in the same order, on scalars (no vector per step)
   const xm = Y.c;
   const disc = Y.disc;
   const nsub = disc.length;
   const nedges = Y.edges.length;
+  const px = xp[0], py = xp[1], pz = xp[2];
+  const cx = xm[0], cy = xm[1], cz = xm[2];
   let nv = 0;
-  let h: V3 = add(xm, disc[0]);
-  let dmin = distsq(xp, h);
+  let hx = cx + disc[0][0], hy = cy + disc[0][1], hz = cz + disc[0][2];
+  let dx = px - hx, dy = py - hy, dz = pz - hz;
+  let dmin = dx * dx + dy * dy + dz * dz;
   if (nedges === 0) {
     for (let m = 1; m < nsub; m++) {
-      const p = add(xm, disc[m]);
-      const dsq = distsq(xp, p);
+      const qx = cx + disc[m][0], qy = cy + disc[m][1], qz = cz + disc[m][2];
+      dx = px - qx; dy = py - qy; dz = pz - qz;
+      const dsq = dx * dx + dy * dy + dz * dz;
       if (dsq < dmin) {
         dmin = dsq;
         nv = m;
-        h = p;
+        hx = qx; hy = qy; hz = qz;
       }
     }
   }
@@ -144,8 +145,9 @@ export const nearestPoint = (Y: BodyGeom, xp: V3, dcut = BIG): { d: number; h: V
   for (let ne = 0; ne < nedges; ne++) {
     const eg = Y.edges[ne];
     if (eg.vsq === 0) continue;
-    const u = sub(xp, add(xm, disc[eg.a]));
-    const sd = dot(u, eg.en);
+    const da = disc[eg.a], en = eg.en;
+    const ux = px - (cx + da[0]), uy = py - (cy + da[1]), uz = pz - (cz + da[2]);
+    const sd = ux * en[0] + uy * en[1] + uz * en[2];
     if (emax < 0 || sd > smax) {
       smax = sd;
       emax = ne;
@@ -154,38 +156,44 @@ export const nearestPoint = (Y: BodyGeom, xp: V3, dcut = BIG): { d: number; h: V
   if (nsub > 2 && emax >= 0 && smax > dcut) return { d: smax, h: [0, 0, 0], n: [0, 0, 0], nv: -1 };
   if (nsub > 2 && emax >= 0 && smax < 0) {
     const en = Y.edges[emax].en;
-    return { d: smax, h: sub(xp, scl(smax, en)), n: en, nv: -1 };
+    return { d: smax, h: [px - smax * en[0], py - smax * en[1], pz - smax * en[2]], n: en, nv: -1 };
   }
   // the nearest point over the edges that xp is in front of (non-negative signed distance)
   let first = true;
   for (let ne = 0; ne < nedges; ne++) {
     const eg = Y.edges[ne];
-    const a = add(xm, disc[eg.a]);
-    const u = sub(xp, a);
-    if (dot(u, eg.en) < 0) continue;
-    const b = add(xm, disc[eg.b]);
-    const v = sub(b, a);
-    const t = eg.vsq > 0 ? dot(u, v) / eg.vsq : 0;
-    let p: V3;
+    const da = disc[eg.a], en = eg.en;
+    const ax = cx + da[0], ay = cy + da[1], az = cz + da[2];
+    const ux = px - ax, uy = py - ay, uz = pz - az;
+    if (ux * en[0] + uy * en[1] + uz * en[2] < 0) continue;
+    const db = disc[eg.b];
+    const bx = cx + db[0], by = cy + db[1], bz = cz + db[2];
+    const vx = bx - ax, vy = by - ay, vz = bz - az;
+    const t = eg.vsq > 0 ? (ux * vx + uy * vy + uz * vz) / eg.vsq : 0;
+    let qx: number, qy: number, qz: number;
     let nvp = -1;
     if (t <= 0) {
-      p = a;
+      qx = ax; qy = ay; qz = az;
       nvp = eg.a;
     } else if (t >= 1) {
-      p = b;
+      qx = bx; qy = by; qz = bz;
       nvp = eg.b;
-    } else p = add(a, scl(t, v));
-    const dsq = distsq(xp, p);
+    } else {
+      qx = ax + t * vx; qy = ay + t * vy; qz = az + t * vz;
+    }
+    dx = px - qx; dy = py - qy; dz = pz - qz;
+    const dsq = dx * dx + dy * dy + dz * dz;
     if (first || dsq < dmin) {
       first = false;
       dmin = dsq;
       nv = nvp;
-      h = p;
+      hx = qx; hy = qy; hz = qz;
     }
   }
   const d = Math.sqrt(dmin);
   if (d === 0) throw new Error('A vertex of a body touches the core of another body');
-  return { d, h, n: scl(1 / d, sub(xp, h)), nv };
+  const inv = 1 / d;
+  return { d, h: [hx, hy, hz], n: [inv * (px - hx), inv * (py - hy), inv * (pz - hz)], nv };
 };
 
 /** One contact between a vertex of body `ib` and the core of body `jb` (roles 0 or 1 in the pair). */
@@ -250,9 +258,13 @@ export const vertexAgainstEdge = (bodies: [BodyGeom, BodyGeom], ib: 0 | 1, jb: 0
   const X = bodies[ib], Y = bodies[jb];
   const rmin = Math.min(X.rrad, Y.rrad);
   for (let ni = 0; ni < X.disc.length; ni++) {
-    const xpi = add(X.c, X.disc[ni]);
-    const dist = Math.sqrt(distsq(xpi, Y.c));
+    // the vertex position and its distance from Y's centre on scalars (add and distsq), the vector only when it is near
+    const dv = X.disc[ni];
+    const xx = X.c[0] + dv[0], xy = X.c[1] + dv[1], xz = X.c[2] + dv[2];
+    const ex = xx - Y.c[0], ey = xy - Y.c[1], ez = xz - Y.c[2];
+    const dist = Math.sqrt(ex * ex + ey * ey + ez * ez);
     if (dist > Y.erad + Y.rrad + X.rrad + p.cut) continue;
+    const xpi: V3 = [xx, xy, xz];
     const { d, h, n, nv } = nearestPoint(Y, xpi, X.rrad + Y.rrad + p.cut);
     const R = d - (X.rrad + Y.rrad);
     if (R > p.cut) continue;

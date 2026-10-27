@@ -41,6 +41,21 @@ const BAD_INVERSION = 'Bad matrix inversion in mldivide3';
 
 const v3 = (): Float64Array => new Float64Array(3);
 
+/**
+ * The local arrays of gayberne_analytic (GA) and gayberne_lj (GL), kept between calls (the functions are not
+ * reentrant and write each array before reading it, except the d_eta sums, which they zero).
+ */
+const GA = {
+  tempv: v3(), tempv2: v3(), temp: newMat3(), r12hat: v3(), g12: newMat3(), kappa: v3(), b12: newMat3(), iota: v3(),
+  dUr: v3(), dchi: v3(), dUr2: v3(), dchi2: v3(), deta: v3(), deta2: v3(),
+};
+const GL = {
+  tempv: v3(), tempv2: v3(), temp: newMat3(), r12hat: v3(), g12: newMat3(), kappa: v3(), b12: newMat3(), iota: v3(),
+  dUr: v3(), dchi: v3(), deta: v3(),
+};
+/** Scratch of atomMats. */
+const AM_TMP = newMat3();
+
 /** The tables the Gay-Berne functions read (the class fields, flat with index ti * nt + tj for pairs). */
 export interface GbTables {
   gamma: number;
@@ -64,16 +79,15 @@ export interface GbTables {
  */
 function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat3, b1: Mat3, b2: Mat3, g1: Mat3, g2: Mat3,
   r12: Float64Array, rsq: number, fforce: Float64Array, ttor: Float64Array, rtor: Float64Array): number {
-  const tempv = v3(), tempv2 = v3();
-  const temp = newMat3();
-  const r12hat = v3();
+  const { tempv, tempv2, temp, r12hat, g12, kappa, b12, iota, dUr, dchi, dUr2, dchi2, deta, deta2 } = GA;
+  // the d_eta sums start at zero (the source's local arrays)
+  deta.fill(0);
+  deta2.fill(0);
   normalize3(r12, r12hat);
   const r = Math.sqrt(rsq);
 
   // compute distance of closest approach
-  const g12 = newMat3();
   plus3(g1, g2, g12);
-  const kappa = v3();
   if (mldivide3(g12, r12, kappa)) throw new StyleError(BAD_INVERSION);
   // tempv = G12^-1*r12hat
   tempv[0] = kappa[0] / r;
@@ -98,9 +112,7 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   eta = libmPow(eta / det_g12, g.upsilon);
 
   // compute chi_12
-  const b12 = newMat3();
   plus3(b1, b2, b12);
-  const iota = v3();
   if (mldivide3(b12, r12, iota)) throw new StyleError(BAD_INVERSION);
   tempv[0] = iota[0] / r;
   tempv[1] = iota[1] / r;
@@ -113,7 +125,6 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   let temp1 = (2.0 * varrho12 * varrho - varrho6 * varrho) / sg;
   temp1 = temp1 * 24.0 * g.eps[k];
   const u_slj = temp1 * libmPow(sigma12, 3.0) / 2.0;
-  const dUr = v3();
   let temp2 = dot3(kappa, r12hat);
   const uslj_rsq = u_slj / rsq;
   dUr[0] = temp1 * r12hat[0] + uslj_rsq * (kappa[0] - temp2 * r12hat[0]);
@@ -121,7 +132,6 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   dUr[2] = temp1 * r12hat[2] + uslj_rsq * (kappa[2] - temp2 * r12hat[2]);
 
   // compute dChi_12/dr
-  const dchi = v3();
   temp1 = dot3(iota, r12hat);
   temp2 = -4.0 / rsq * g.mu * libmPow(chi, (g.mu - 1.0) / g.mu);
   dchi[0] = temp2 * (iota[0] - temp1 * r12hat[0]);
@@ -141,7 +151,6 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   tempv[2] = -uslj_rsq * kappa[2];
   vecmat(kappa, g1, tempv2);
   cross3(tempv, tempv2, dUr);
-  const dUr2 = v3();
   vecmat(kappa, g2, tempv2);
   cross3(tempv, tempv2, dUr2);
 
@@ -151,7 +160,6 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   dchi[0] *= temp2;
   dchi[1] *= temp2;
   dchi[2] *= temp2;
-  const dchi2 = v3();
   vecmat(iota, b2, tempv);
   cross3(tempv, iota, dchi2);
   dchi2[0] *= temp2;
@@ -159,7 +167,6 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   dchi2[2] *= temp2;
 
   // compute d_eta
-  const deta = v3();
   computeEtaTorque(g12, a1, g.shape2.subarray(3 * ti, 3 * ti + 3), temp);
   temp1 = -eta * g.upsilon;
   for (let m = 0; m < 3; m++) {
@@ -171,7 +178,6 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   }
 
   // compute d_eta for particle 2
-  const deta2 = v3();
   computeEtaTorque(g12, a2, g.shape2.subarray(3 * tj, 3 * tj + 3), temp);
   for (let m = 0; m < 3; m++) {
     for (let y = 0; y < 3; y++) tempv[y] = temp1 * temp[m][y];
@@ -200,14 +206,12 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
  */
 function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1: Mat3, r12: Float64Array, rsq: number,
   fforce: Float64Array, ttor: Float64Array): number {
-  const tempv = v3(), tempv2 = v3();
-  const temp = newMat3();
-  const r12hat = v3();
+  const { tempv, tempv2, temp, r12hat, g12, kappa, b12, iota, dUr, dchi, deta } = GL;
+  deta.fill(0);
   normalize3(r12, r12hat);
   const r = Math.sqrt(rsq);
 
   // compute distance of closest approach
-  const g12 = newMat3();
   const s2 = g.shape2[3 * tj];
   g12[0][0] = g1[0][0] + s2;
   g12[1][1] = g1[1][1] + s2;
@@ -215,7 +219,6 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
   g12[0][1] = g1[0][1]; g12[1][0] = g1[1][0];
   g12[0][2] = g1[0][2]; g12[2][0] = g1[2][0];
   g12[1][2] = g1[1][2]; g12[2][1] = g1[2][1];
-  const kappa = v3();
   if (mldivide3(g12, r12, kappa)) throw new StyleError(BAD_INVERSION);
   tempv[0] = kappa[0] / r;
   tempv[1] = kappa[1] / r;
@@ -239,7 +242,6 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
   eta = libmPow(eta / det_g12, g.upsilon);
 
   // compute chi_12
-  const b12 = newMat3();
   const wl = g.well[3 * tj];
   b12[0][0] = b1[0][0] + wl;
   b12[1][1] = b1[1][1] + wl;
@@ -247,7 +249,6 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
   b12[0][1] = b1[0][1]; b12[1][0] = b1[1][0];
   b12[0][2] = b1[0][2]; b12[2][0] = b1[2][0];
   b12[1][2] = b1[1][2]; b12[2][1] = b1[2][1];
-  const iota = v3();
   if (mldivide3(b12, r12, iota)) throw new StyleError(BAD_INVERSION);
   tempv[0] = iota[0] / r;
   tempv[1] = iota[1] / r;
@@ -260,7 +261,6 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
   let temp1 = (2.0 * varrho12 * varrho - varrho6 * varrho) / sg;
   temp1 = temp1 * 24.0 * g.eps[k];
   const u_slj = temp1 * libmPow(sigma12, 3.0) / 2.0;
-  const dUr = v3();
   const temp2a = dot3(kappa, r12hat);
   const uslj_rsq = u_slj / rsq;
   dUr[0] = temp1 * r12hat[0] + uslj_rsq * (kappa[0] - temp2a * r12hat[0]);
@@ -268,7 +268,6 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
   dUr[2] = temp1 * r12hat[2] + uslj_rsq * (kappa[2] - temp2a * r12hat[2]);
 
   // compute dChi_12/dr
-  const dchi = v3();
   temp1 = dot3(iota, r12hat);
   const temp2 = -4.0 / rsq * g.mu * libmPow(chi, (g.mu - 1.0) / g.mu);
   dchi[0] = temp2 * (iota[0] - temp1 * r12hat[0]);
@@ -298,7 +297,6 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
   dchi[2] *= temp1b;
 
   // compute d_eta
-  const deta = v3();
   computeEtaTorque(g12, a1, g.shape2.subarray(3 * ti, 3 * ti + 3), temp);
   temp1 = -eta * g.upsilon;
   for (let m = 0; m < 3; m++) {
@@ -322,19 +320,20 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
 /** Matrices of one ellipsoid atom: a = quat_to_mat_trans, b = a^T (well a), g = a^T (shape2 a). */
 interface AtomMats { a: Mat3; b: Mat3; g: Mat3 }
 
-const atomMats = (g: GbTables, quat: Float64Array, o: number, t: number): AtomMats => {
-  const a = newMat3();
+const atomMats = (g: GbTables, quat: Float64Array, o: number, t: number,
+  out: AtomMats = { a: newMat3(), b: newMat3(), g: newMat3() }): AtomMats => {
+  const a = out.a;
   quatToMatTrans(quat.subarray(4 * o, 4 * o + 4), a);
-  const tmp = newMat3();
-  const b = newMat3();
-  const gm = newMat3();
+  const tmp = AM_TMP;
+  const b = out.b;
+  const gm = out.g;
   const well = g.well.subarray(3 * t, 3 * t + 3);
   const s2 = g.shape2.subarray(3 * t, 3 * t + 3);
   diagTimes3(well, a, tmp);
   transposeTimes3(a, tmp, b);
   diagTimes3(s2, a, tmp);
   transposeTimes3(a, tmp, gm);
-  return { a, b, g: gm };
+  return out;
 };
 
 /** Result of one pair evaluation (unscaled by factor_lj). */
@@ -591,10 +590,13 @@ export class PairGayBerne extends Pair {
   singleNeedsSeparation(): boolean { return true; }
 
   /** Matrices of owned atom o of type t, or null for a sphere type. */
-  private matsOf(o: number, t: number): AtomMats | null {
+  private matsOf(o: number, t: number, out?: AtomMats): AtomMats | null {
     if (this.form[t * (this.ntypes + 1) + t] !== ELLIPSE_ELLIPSE) return null;
-    return atomMats(this, this.state!.quat!, o, t);
+    return atomMats(this, this.state!.quat!, o, t, out);
   }
+
+  /** The matrices of each owned atom of the last compute, reused (refilled) by the next one. */
+  private matsCache: AtomMats[] = [];
 
   /**
    * Native single() (pair_gayberne.cpp): fforce is the force on i projected on the centre axis, the svector holds the
@@ -632,7 +634,11 @@ export class PairGayBerne extends Pair {
 
     // Per owned ellipsoid atom: a1, b1, g1 (native, computed when form[itype][itype] == ELLIPSE_ELLIPSE).
     const mats: (AtomMats | null)[] = new Array(nlocal);
-    for (let o = 0; o < nlocal; o++) mats[o] = this.matsOf(o, type[o]);
+    const cache = this.matsCache;
+    for (let o = 0; o < nlocal; o++) {
+      if (cache.length <= o) cache.push({ a: newMat3(), b: newMat3(), g: newMat3() });
+      mats[o] = this.matsOf(o, type[o], cache[o]);
+    }
 
     let evdwl = 0;
     const fi = v3(), tqi = v3(), tqj = v3();

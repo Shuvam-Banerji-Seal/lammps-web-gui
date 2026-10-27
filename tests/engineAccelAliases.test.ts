@@ -9,6 +9,7 @@ import { accelerator } from '../src/engine/run/accel';
 import { CpuForceBackend } from '../src/engine/cpu/forces';
 import { SharedThreadsBackend } from '../src/engine/cpu/pairThreads';
 import { PairThreadWorker, type PairThreadMessage, type PairWorkerLike } from '../src/engine/cpu/pairThreadsCore';
+import { THREADED_PAIRS } from '../src/engine/cpu/threadedPairFactories';
 import { isResident, type ResidentBackend } from '../src/engine/md';
 import { halfKick, drift, wrapPositions } from '../src/engine/integrate';
 import type { EngineEvent, ForceResult, PairTable, SimState, ThermoRow } from '../src/engine/types';
@@ -295,7 +296,7 @@ velocity all create 1.4 87287 loop geom
 
 class InProcessWorker implements PairWorkerLike {
   onmessage: ((ev: MessageEvent) => void) | null = null;
-  readonly worker = new PairThreadWorker();
+  readonly worker = new PairThreadWorker(THREADED_PAIRS);
   computes = 0;
   postMessage(msg: unknown): void {
     const m = msg as PairThreadMessage;

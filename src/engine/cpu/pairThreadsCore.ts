@@ -1,6 +1,9 @@
 import { newAccum, type Pair } from '../force/types';
 import type { NeighList } from '../neighbor';
-import { THREADED_PAIRS, type TwoPassPair } from './threadedPairs';
+import type { TwoPassPair } from './threadedPairs';
+
+/** The style factories a worker builds its copy with (cpu/threadedPairFactories.ts in the worker). */
+export type PairFactories = Readonly<Record<string, () => Pair>>;
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins } from './neighborKernel';
 
 /*
@@ -21,7 +24,9 @@ export type PairThreadMessage =
   | { type: 'buffers'; x: SharedArrayBuffer; t: SharedArrayBuffer; q: SharedArrayBuffer; numneigh: SharedArrayBuffer; firstneigh: SharedArrayBuffer; neighbors: SharedArrayBuffer; f: SharedArrayBuffer; fs: SharedArrayBuffer[]; acc: SharedArrayBuffer; chunks: SharedArrayBuffer }
   | { type: 'pair'; name: string; fields: Record<string, unknown> }
   | {
-    type: 'compute'; nlocal: number; nall: number; qqrd2e: number; specialLJ: number[]; specialCoul: number[]; nchunks: number;
+    type: 'compute'; nlocal: number; nall: number;
+    /** the style reads the full list (a three-body style of THREADED_PAIRS), else the half list */
+    full: boolean; qqrd2e: number; specialLJ: number[]; specialCoul: number[]; nchunks: number;
     /** the engine's force array when it is shared (the threads then add their forces into it, see REDUCE) */
     F: SharedArrayBuffer | null; phase: number; nslices: number;
     /**
@@ -141,10 +146,10 @@ export const adoptFields = (target: Record<string, unknown>, src: Record<string,
   }
 };
 
-/** A pair style rebuilt in a worker from the engine's fields (null when the style is not threaded). */
-export const pairFromFields = (name: string, fields: Record<string, unknown>): Pair | null => {
-  if (!Object.hasOwn(THREADED_PAIRS, name)) return null;
-  const make = THREADED_PAIRS[name];
+/** A pair style rebuilt from the engine's fields with one of the factories (null when there is none for the name). */
+export const pairFromFields = (name: string, fields: Record<string, unknown>, factories: PairFactories): Pair | null => {
+  if (!Object.hasOwn(factories, name)) return null;
+  const make = factories[name];
   const p = make();
   // allocate() creates the class-typed members (coefficient tables) the cloned fields go into
   if (typeof fields.ntypes === 'number' && fields.ntypes > 0) p.allocate(fields.ntypes);
@@ -171,6 +176,8 @@ export const sameShape = (orig: object, copy: object, depth = 0): boolean => {
 
 /** One worker's side of the protocol, also run in-process by tests. */
 export class PairThreadWorker {
+  constructor(private readonly factories: PairFactories) {}
+
   private ctl: Int32Array | null = null;
   private pair: Pair | null = null;
   private x: Float64Array<ArrayBufferLike> = new Float64Array(0);
@@ -222,7 +229,7 @@ export class PairThreadWorker {
       this.fs = m.fs.map((b) => new Float64Array(b));
       return;
     }
-    if (m.type === 'pair') { this.pair = pairFromFields(m.name, m.fields); return; }
+    if (m.type === 'pair') { this.pair = pairFromFields(m.name, m.fields, this.factories); return; }
     const ctl = this.ctl!;
     try {
       const pair = this.pair;
@@ -235,9 +242,10 @@ export class PairThreadWorker {
       for (;;) {
         const c = Atomics.add(ctl, NEXT, 1);
         if (c >= m.nchunks) break;
-        const half: NeighList = { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: this.numneigh, firstneigh: this.firstneigh, neighbors: this.neighbors };
+        const rows: NeighList = { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: this.numneigh, firstneigh: this.firstneigh, neighbors: this.neighbors };
         const pc = {
-          x: this.x, f: this.f, type: this.t, q: this.q, nlocal: m.nlocal, nall: m.nall, half, full: null,
+          x: this.x, f: this.f, type: this.t, q: this.q, nlocal: m.nlocal, nall: m.nall,
+          half: m.full ? null : rows, full: m.full ? rows : null,
           specialLJ, specialCoul, qqrd2e: m.qqrd2e,
           acc: a, eatom: null, vatom: null,
           // THREADED_PAIRS styles do not read these

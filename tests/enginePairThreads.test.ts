@@ -7,7 +7,8 @@ import { SharedThreadsBackend } from '../src/engine/cpu/pairThreads';
 import {
   PairThreadWorker, cloneableFields, pairFromFields, restrictCounts, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from '../src/engine/cpu/pairThreadsCore';
-import { THREADED_PAIRS } from '../src/engine/cpu/threadedPairs';
+import { THREADED_PAIRS } from '../src/engine/cpu/threadedPairFactories';
+import { THREADED_NAMES } from '../src/engine/cpu/threadedPairs';
 import { PairLJCutCoulLong } from '../src/engine/force/pair/coul_long';
 
 /*
@@ -18,7 +19,7 @@ import { PairLJCutCoulLong } from '../src/engine/force/pair/coul_long';
 
 class InProcessWorker implements PairWorkerLike {
   onmessage: ((ev: MessageEvent) => void) | null = null;
-  readonly worker = new PairThreadWorker();
+  readonly worker = new PairThreadWorker(THREADED_PAIRS);
   computes = 0;
   postMessage(msg: unknown): void {
     const m = msg as PairThreadMessage;
@@ -78,7 +79,26 @@ const EAM_STYLES: Record<string, string> = {
   'eam/alloy': 'pair_style eam/alloy\npair_coeff * * CuNi.eam.alloy Cu Ni',
   'eam/fs': 'pair_style eam/fs\npair_coeff * * AlFe_mm.eam.fs Al Fe',
 };
-const POTENTIALS = ['Cu_u3.eam', 'CuNi.eam.alloy', 'AlFe_mm.eam.fs'];
+/** The full-list three-body styles: a displaced diamond Si lattice (two types for tersoff/zbl's Si-C file). */
+const SI_BOX = `units metal
+atom_style atomic
+lattice diamond 5.431
+region box block 0 3 0 3 0 3
+create_box 2 box
+create_atoms 1 box
+mass * 28.06
+set group all type/fraction 2 0.3 4321
+displace_atoms all random 0.1 0.1 0.1 8191
+velocity all create 1500.0 87287 loop geom
+`;
+const THREEBODY_STYLES: Record<string, string> = {
+  tersoff: 'pair_style tersoff\npair_coeff * * Si.tersoff Si Si',
+  'tersoff/mod': 'pair_style tersoff/mod\npair_coeff * * Si.tersoff.mod Si Si',
+  'tersoff/mod/c': 'pair_style tersoff/mod/c\npair_coeff * * Si.tersoff.modc Si Si',
+  'tersoff/zbl': 'pair_style tersoff/zbl\npair_coeff * * SiC.tersoff.zbl Si C',
+  'sw/mod': 'pair_style sw/mod\npair_coeff * * Si.sw Si Si',
+};
+const POTENTIALS = ['Cu_u3.eam', 'CuNi.eam.alloy', 'AlFe_mm.eam.fs', 'Si.tersoff', 'Si.tersoff.mod', 'Si.tersoff.modc', 'SiC.tersoff.zbl', 'Si.sw'];
 const potential = (f: string): string => readFileSync(join(__dirname, '..', 'third_party', 'lammps', 'potentials', f), 'utf8');
 
 interface Outcome { rows: Record<string, number>[]; x: number[]; threadedComputes: number }
@@ -90,7 +110,7 @@ const runCase = async (pairLines: string, threads: number, extra = '', box = BOX
   const events: EngineEvent[] = [];
   const files = new Map<string, string>();
   const session = new Session({ emit: (e) => events.push(e), writeFile: (n, t) => files.set(n, t) }, backend);
-  if (box === EAM_BOX) for (const f of POTENTIALS) session.addFile(f, potential(f));
+  if (box === EAM_BOX || box === SI_BOX) for (const f of POTENTIALS) session.addFile(f, potential(f));
   await session.execute(`${box}${pairLines}
 neighbor 0.3 bin
 fix 1 all nve
@@ -153,7 +173,7 @@ describe('shared-memory pair threads: helpers', () => {
     p.allocate(2);
     p.coeff(['*', '*', '1.0', '1.0']);
     const fields = cloneableFields(p);
-    const q = pairFromFields('lj/cut/coul/long', structuredClone(fields)) as PairLJCutCoulLong;
+    const q = pairFromFields('lj/cut/coul/long', structuredClone(fields), THREADED_PAIRS) as PairLJCutCoulLong;
     expect(sameShape(p, q)).toBe(true);
     expect(q.cutCoul).toBe(2.5);
     // PairParams keeps its methods
@@ -180,8 +200,18 @@ describe('shared-memory pair threads: every threaded style matches the single-th
       expectClose(serial, threaded, 1e-10);
     });
   }
+  for (const [name, lines] of Object.entries(THREEBODY_STYLES)) {
+    it(`${name} (full list, three-body)`, async () => {
+      const serial = await runCase(lines, 1, '', SI_BOX);
+      const threaded = await runCase(lines, 4, '', SI_BOX);
+      expect(threaded.threadedComputes).toBeGreaterThan(0);
+      expectClose(serial, threaded, 1e-10);
+    });
+  }
   it('covers every style of THREADED_PAIRS', () => {
-    expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES)].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
+    expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES), ...Object.keys(THREEBODY_STYLES)].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
+    // the engine side knows the styles by name only (threadedPairs.ts), the worker by factory (threadedPairFactories.ts)
+    expect([...THREADED_NAMES].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
   });
 });
 

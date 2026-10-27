@@ -19,7 +19,7 @@ npm test             # vitest run — the whole suite (~7000 tests, a few minute
 npx vitest run tests/<file>.test.ts   # one file
 npm run typecheck    # tsc --noEmit — must be clean
 npm run build        # tsc && vite build
-npm run check:size   # gzip budgets: 420 KB initial JS, 130 KB lazy (notebook UI, storage panel, small workers), 400 KB engine worker (+ its static engine-* chunks), 60 KB per lazy style chunk
+npm run check:size   # gzip budgets: 420 KB initial JS, 140 KB lazy (notebook UI, storage panel, small workers incl. the pair-thread worker), 400 KB engine worker (+ its static engine-* chunks), 60 KB per lazy style chunk
 ```
 
 There is no linter configured; `typecheck` is the static gate.

@@ -541,7 +541,6 @@ export abstract class PairSWBase extends Pair {
     const list = pc.full;
     if (!list) throw new Error(`pair style ${this.name} needs a full neighbor list`);
     const { x, f, type } = pc;
-    const nlocal = pc.nlocal;
     const nt = this.ntypes + 1;
     const cutsq = this.cutsq;
     const elemOf = this.elemOf;
@@ -566,7 +565,8 @@ export abstract class PairSWBase extends Pair {
     const nIdx = this.sIdx, nDx = this.sDx, nDy = this.sDy, nDz = this.sDz;
     const nR = this.sR, nInvR = this.sInvR, nES = this.sES, nW = this.sW;
 
-    for (let i = 0; i < nlocal; i++) {
+    // the rows [ilo, inum) of the full list (a shared-memory thread runs a range of them, cpu/pairThreads.ts)
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const tiv = type[i];
       if (elemOf[tiv] < 0) continue;
       const ti = tiv * nt;

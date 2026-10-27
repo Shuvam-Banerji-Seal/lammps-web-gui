@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Session } from '../src/engine/interpreter';
 import { SharedThreadsBackend } from '../src/engine/cpu/pairThreads';
 import { PairThreadWorker, type PairThreadMessage, type PairWorkerLike } from '../src/engine/cpu/pairThreadsCore';
+import { THREADED_PAIRS } from '../src/engine/cpu/threadedPairFactories';
 import type { NeighList } from '../src/engine/neighbor';
 
 /*
@@ -16,7 +17,7 @@ import type { NeighList } from '../src/engine/neighbor';
 
 class InProcessWorker implements PairWorkerLike {
   onmessage: ((ev: MessageEvent) => void) | null = null;
-  readonly worker = new PairThreadWorker();
+  readonly worker = new PairThreadWorker(THREADED_PAIRS);
   neighs = 0;
   postMessage(msg: unknown): void {
     const m = msg as PairThreadMessage;

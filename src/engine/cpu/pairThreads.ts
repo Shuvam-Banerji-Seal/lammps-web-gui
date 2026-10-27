@@ -1,6 +1,6 @@
 import type { Pair, PairCompute } from '../force/types';
 import type { NeighList } from '../neighbor';
-import { THREADED_PAIRS, isTwoPass } from './threadedPairs';
+import { THREADED_NAMES, isTwoPass } from './threadedPairs';
 import { CpuForceBackend } from './forces';
 import {
   ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PHASE, READY, cloneableFields, sumForces, pairFromFields, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
@@ -110,9 +110,11 @@ export class SharedPairThreads implements NeighborThreads {
   /** Runs pair.compute(pc) on the threads; false (nothing done) when this style or call cannot use them. */
   run(pair: Pair, pc: PairCompute): boolean {
     const W = this.workers.length;
-    const list = pc.half;
-    if (W === 0 || !list || pc.full || pc.eatom || pc.vatom || pair.needsFull || !pair.needsHalf) return false;
-    if (!THREADED_PAIRS[pair.name] || list.inum < this.minAtoms) return false;
+    // a half-list style, or a full-list one whose rows are independent (the three-body styles of THREADED_PAIRS)
+    const fullStyle = pair.needsFull && !pair.needsHalf;
+    const list = fullStyle ? pc.full : pc.half;
+    if (W === 0 || !list || (!fullStyle && (pc.full || pair.needsFull)) || pc.eatom || pc.vatom || !(pair.needsHalf || fullStyle)) return false;
+    if (!THREADED_NAMES.has(pair.name) || list.inum < this.minAtoms) return false;
     const two = isTwoPass(pair) ? pair : null;
     if (two && !two.twoPassReady()) return false;
     // until every worker has started (READY, see pairThreadsCore.ts) the pair term runs on the engine thread: blocking
@@ -146,13 +148,14 @@ export class SharedPairThreads implements NeighborThreads {
     const F = this.parallelSum && pc.f.buffer instanceof SharedArrayBuffer && pc.f.byteOffset === 0 ? pc.f.buffer : null;
     const phase = Atomics.load(this.ctl, PHASE), nslices = CHUNKS_PER_THREAD * (W + 1);
     const chunk = (c: number): PairCompute => ({
-      ...pc, half: { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: list.numneigh, firstneigh: list.firstneigh, neighbors: list.neighbors },
+      ...pc,
+      [fullStyle ? 'full' : 'half']: { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: list.numneigh, firstneigh: list.firstneigh, neighbors: list.neighbors },
     });
     if (two) {
       // the first loop: every thread sums into its own array, the engine thread adds them in worker order
       const sums = this.sums;
       sums.fill(0, 0, nall);
-      const firstFailed = this.dispatch({ type: 'compute', nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F: null, phase, nslices, pass: 1, aux: null }, (c) => two.densities(chunk(c), sums));
+      const firstFailed = this.dispatch({ type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F: null, phase, nslices, pass: 1, aux: null }, (c) => two.densities(chunk(c), sums));
       if (firstFailed) throw new Error(`pair style ${pair.name} failed in a force thread`);
       for (let w = 0; w < W; w++) {
         const a = this.fs[w];
@@ -161,7 +164,7 @@ export class SharedPairThreads implements NeighborThreads {
       two.embed(pc, sums, this.aux as Float64Array);
     }
     const failed = this.dispatch(
-      { type: 'compute', nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F, phase, nslices, pass: two ? 2 : 0, aux: two ? this.auxBuf : null },
+      { type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F, phase, nslices, pass: two ? 2 : 0, aux: two ? this.auxBuf : null },
       two ? (c) => two.forces(chunk(c), this.aux as Float64Array) : (c) => pair.compute(chunk(c)),
     );
     const f = pc.f, acc = pc.acc;
@@ -231,7 +234,9 @@ export class SharedPairThreads implements NeighborThreads {
     const fields = cloneableFields(pair);
     // the worker must be able to rebuild exactly this style (same classes for every member that is
     // not a cache it rebuilds itself); otherwise the style runs on the engine thread
-    const copy = pairFromFields(pair.name, structuredClone(fields));
+    // the engine's own class rebuilt from the cloned fields (the worker builds its copy from threadedPairFactories.ts)
+    const own = pair.constructor as new () => Pair;
+    const copy = pairFromFields(pair.name, structuredClone(fields), { [pair.name]: () => new own() });
     this.pairOk = copy !== null && sameShape(pair, copy);
     if (this.pairOk) for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields } satisfies PairThreadMessage);
   }

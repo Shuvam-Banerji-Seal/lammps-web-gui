@@ -158,7 +158,8 @@ export class FixWallGran extends Fix {
   /** Step when the fix was specified: wiggle time is (step - step0) * dt. */
   private readonly step0: number;
   /** Shear displacement per (plane index, atom ID) while in contact. */
-  private shear = new Map<string, Float64Array>();
+  /** Shear history per plane (index k), by atom ID. */
+  private shear: Map<number, Float64Array>[] = [];
   /**
    * keyword contacts: the per-atom array of the contact data, as native fix_wall_gran.cpp post_force stores it after
    * clear_stored_contacts: column 1 flag (1 in contact), 2-4 the wall force on the atom, 5-7 the contact point, 8 radius.
@@ -335,9 +336,10 @@ export class FixWallGran extends Fix {
         const mv = planeMv[k];
         const c = planeCoord[k] + (m?.kind === 'wiggle' && m.dim === d && p.variable === undefined ? off : 0);
         const sd = x[3 * i + d] - c;
-        const key = `${k}:${id[i]}`;
+        const hist = this.shear[k] ?? (this.shear[k] = new Map());
+        const key = id[i];
         const dist = Math.abs(sd);
-        if (dist >= R) { this.shear.delete(key); continue; }
+        if (dist >= R) { hist.delete(key); continue; }
         if (sd === 0) {
           throw new StyleError(`fix wall/gran: particle ${id[i]} is at the wall position (zero distance); native LAMMPS gives NaN forces`);
         }
@@ -350,12 +352,12 @@ export class FixWallGran extends Fix {
         const vn = vr0 * n[0] + vr1 * n[1] + vr2 * n[2];
         const poly = this.hertz ? Math.sqrt(ov * R) : 1;
         const fn = poly * (kn * ov - mi * gn * vn);
-        if (this.limitDamping && fn < 0) { this.shear.delete(key); continue; }
+        if (this.limitDamping && fn < 0) { hist.delete(key); continue; }
         // tangential relative velocity: v_t = v_r - (v_r.n) n - (R w) x n
         const wx = R * omega[3 * i], wy = R * omega[3 * i + 1], wz = R * omega[3 * i + 2];
         const cx = wy * n[2] - wz * n[1], cy = wz * n[0] - wx * n[2], cz = wx * n[1] - wy * n[0];
         const vt0 = vr0 - vn * n[0] - cx, vt1 = vr1 - vn * n[1] - cy, vt2 = vr2 - vn * n[2] - cz;
-        let sh: Float64Array = this.shear.get(key) ?? new Float64Array(3);
+        let sh: Float64Array = hist.get(key) ?? new Float64Array(3);
         if (this.history) {
           sh = Float64Array.from(sh);
           if (update) {
@@ -385,7 +387,7 @@ export class FixWallGran extends Fix {
           }
           ft0 *= scale; ft1 *= scale; ft2 *= scale;
         }
-        if (this.history) this.shear.set(key, sh);
+        if (this.history) hist.set(key, sh);
         // force on the particle: normal along n plus the tangential part
         f[3 * i] += fn * n[0] + ft0;
         f[3 * i + 1] += fn * n[1] + ft1;

@@ -550,7 +550,6 @@ export class PairTersoff extends Pair {
     const list = pc.full;
     if (!list) throw new Error(`pair style ${this.name} needs a full neighbor list`);
     const { x, f, type } = pc;
-    const nlocal = pc.nlocal;
     const nt = this.ntypes + 1;
     const elemOf = this.elemOf;
     const sft = this.shiftDelta;
@@ -580,7 +579,8 @@ export class PairTersoff extends Pair {
     const dHdRik = this.dHdRik, dHdRij = this.dHdRij, dHdc = this.dHdc;
     const kGx = this.kGx, kGy = this.kGy, kGz = this.kGz;
 
-    for (let i = 0; i < nlocal; i++) {
+    // the rows [ilo, inum) of the full list (a shared-memory thread runs a range of them, cpu/pairThreads.ts)
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const tiv = type[i];
       if (elemOf[tiv] < 0) continue;
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];

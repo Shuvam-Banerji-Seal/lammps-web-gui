@@ -1,15 +1,4 @@
 import type { Pair, PairCompute } from '../force/types';
-import { PairEAMKernel } from '../force/pair/eamKernel';
-import { PairLJCut } from '../force/pair/lj_cut';
-import { PairCoulLong, PairLJCutCoulLong } from '../force/pair/coul_long';
-import {
-  PairLJCharmmCoulCharmm, PairLJCharmmCoulCharmmImplicit, PairLJCharmmCoulLong, PairLJCharmmfswCoulCharmmfsh, PairLJCharmmfswCoulLong,
-} from '../force/pair/charmm';
-import { PairLJCutCoulCut, PairLJCutCoulDebye } from '../force/pair/lj_coul';
-import { PairCoulCut, PairCoulDebye } from '../force/pair/coul';
-import { PairBorn, PairBuck, PairBuckCoulCut, PairMorse } from '../force/pair/simple';
-import { PairBornCoulLong, PairBuckCoulLong } from '../force/pair/coul_long2';
-
 /*
  * Pair styles the shared-memory threads (pairThreads.ts) may run. Each is a plain half-list pair
  * loop: every energy and force term belongs to a neighbor-list entry (no per-atom self terms such
@@ -17,33 +6,39 @@ import { PairBornCoulLong, PairBuckCoulLong } from '../force/pair/coul_long2';
  * only the coordinate, type, charge and list arrays of PairCompute, never s, nb or geom. A thread
  * runs the style on its own range of owned atoms by seeing a list whose other atoms have no
  * neighbors. The EAM styles are two-pass styles (TwoPassPair below) whose two loops are such
- * loops. The worker imports only these modules.
+ * loops. The three-body styles read the full list instead: each row adds its two- and three-body
+ * terms to the atoms of that row (i, j, k) and nothing else, so the rows run in any order on any
+ * thread, each thread into its own force array. The worker builds them from cpu/threadedPairFactories.ts (only the worker
+ * imports the style modules, so the engine's first chunk does not hold them).
  */
-export const THREADED_PAIRS: Record<string, () => Pair> = {
-  'lj/cut': () => new PairLJCut(),
-  'lj/cut/coul/cut': () => new PairLJCutCoulCut(),
-  'lj/cut/coul/debye': () => new PairLJCutCoulDebye(),
-  'lj/cut/coul/long': () => new PairLJCutCoulLong(),
-  'coul/cut': () => new PairCoulCut(),
-  'coul/debye': () => new PairCoulDebye(),
-  'coul/long': () => new PairCoulLong(),
-  'lj/charmm/coul/charmm': () => new PairLJCharmmCoulCharmm(),
-  'lj/charmm/coul/charmm/implicit': () => new PairLJCharmmCoulCharmmImplicit(),
-  'lj/charmm/coul/long': () => new PairLJCharmmCoulLong(),
-  'lj/charmmfsw/coul/charmmfsh': () => new PairLJCharmmfswCoulCharmmfsh(),
-  'lj/charmmfsw/coul/long': () => new PairLJCharmmfswCoulLong(),
-  buck: () => new PairBuck(),
-  'buck/coul/cut': () => new PairBuckCoulCut(),
-  'buck/coul/long': () => new PairBuckCoulLong(),
-  born: () => new PairBorn(),
-  'born/coul/long': () => new PairBornCoulLong(),
-  morse: () => new PairMorse(),
-  // two-pass styles (TwoPassPair): the threads run each loop over their ranges of the half list, with a copy that holds
-  // only the loops (the engine's style reads the potential files and runs the embedding step between the loops)
-  eam: () => new PairEAMKernel('eam'),
-  'eam/alloy': () => new PairEAMKernel('eam/alloy'),
-  'eam/fs': () => new PairEAMKernel('eam/fs'),
-};
+export const THREADED_NAMES: ReadonlySet<string> = new Set([
+  'lj/cut',
+  'lj/cut/coul/cut',
+  'lj/cut/coul/debye',
+  'lj/cut/coul/long',
+  'coul/cut',
+  'coul/debye',
+  'coul/long',
+  'lj/charmm/coul/charmm',
+  'lj/charmm/coul/charmm/implicit',
+  'lj/charmm/coul/long',
+  'lj/charmmfsw/coul/charmmfsh',
+  'lj/charmmfsw/coul/long',
+  'buck',
+  'buck/coul/cut',
+  'buck/coul/long',
+  'born',
+  'born/coul/long',
+  'morse',
+  'eam',
+  'eam/alloy',
+  'eam/fs',
+  'tersoff',
+  'tersoff/mod',
+  'tersoff/mod/c',
+  'tersoff/zbl',
+  'sw/mod',
+]);
 
 /**
  * A many-body style whose energy needs a per-atom quantity summed over the neighbors first (the EAM densities). The

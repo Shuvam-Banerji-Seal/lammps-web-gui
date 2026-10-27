@@ -9,7 +9,7 @@
  * S(r) = exp(-2r/lamda) (1 + 2r/lamda (1 + r/lamda)), with the Ewald erfc taken from the polynomial fit of
  * ewald_const.h (EWALD_P, A1..A5) as native does (no tables).
  */
-import { Pair, PairParams, StyleError, type PairCompute } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, type AdaptAccess, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { parseNum } from '../../engine/force/util';
@@ -25,7 +25,9 @@ const A1 = 0.254829592, A2 = -0.284496736, A3 = 1.421413741, A4 = -1.453152027, 
  * Ewald real-space erfc and the Slater correction; the special weight fc scales the excluded part (1 - fc) as in the
  * source (forcecoul -= (1-fc) prefactor (1 - S), energy -= (1-fc) prefactor (1 - (1 + r/lamda) exp(-2r/lamda))).
  */
-export const slaterCoulPair = (rsq: number, qi: number, qj: number, g: number, qqrd2e: number, lamda: number, fc: number): { e: number; f: number } => {
+export const slaterCoulPair = (
+  rsq: number, qi: number, qj: number, g: number, qqrd2e: number, lamda: number, fc: number, scale = 1,
+): { e: number; f: number } => {
   const r2inv = 1.0 / rsq;
   const r = Math.sqrt(rsq);
   const grij = g * r;
@@ -33,7 +35,8 @@ export const slaterCoulPair = (rsq: number, qi: number, qj: number, g: number, q
   const t = 1.0 / (1.0 + EWALD_P * grij);
   const erfc = t * (A1 + t * (A2 + t * (A3 + t * (A4 + t * A5)))) * expm2;
   const slaterTerm = libmExp(-2 * r / lamda) * (1 + (2 * r / lamda * (1 + r / lamda)));
-  const prefactor = qqrd2e * qi * qj / r;
+  // native: prefactor = qqrd2e * scale[itype][jtype] * qtmp*q[j]/r (dpd/coul/slater/long has no scale)
+  const prefactor = qqrd2e * scale * qi * qj / r;
   let forcecoul = prefactor * (erfc + EWALD_F * grij * expm2 - slaterTerm);
   if (fc < 1.0) forcecoul -= (1.0 - fc) * prefactor * (1 - slaterTerm);
   let e = prefactor * (erfc - (1 + r / lamda) * libmExp(-2 * r / lamda));
@@ -69,14 +72,25 @@ export class PairCoulSlaterLong extends Pair {
   }
 
   initOne(i: number, j: number): number {
-    // init_one(): the pair takes the Coulomb cutoff (scale of unset pairs mixes to 1)
+    // init_one(): the pair takes the Coulomb cutoff (scale of unset pairs mixes to 1); scale[j][i] = scale[i][j]
     if (!this.set.isSet(i, j) && !(this.set.isSet(i, i) && this.set.isSet(j, j))) throw new StyleError(`All pair coeffs are not set (pair ${i} ${j})`);
+    const sc = this.set.p('scale');
+    if (!this.set.isSet(i, j)) sc[this.set.idx(i, j)] = 1;
+    sc[this.set.idx(j, i)] = sc[this.set.idx(i, j)];
     return this.cutCoul;
+  }
+
+  /** fix adapt's lamda (extract() dim 0): compute reads it at every step, as native does. */
+  override adaptParam(name: string): AdaptAccess | null {
+    if (name !== 'lamda') return null;
+    return { dim: 0, get: () => this.lamda, set: (v) => { this.lamda = v; } };
   }
 
   compute(pc: PairCompute): void {
     const list = pc.half!;
-    const { x, f, q } = pc;
+    const { x, f, q, type } = pc;
+    const nt = this.ntypes + 1;
+    const scale = this.set.p('scale');
     const cutsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
     const sC = pc.specialCoul;
@@ -93,7 +107,7 @@ export class PairCoulSlaterLong extends Pair {
         const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq >= cutsq) continue;
-        const r = slaterCoulPair(rsq, qi, q[j], g, pc.qqrd2e, this.lamda, sC[jj >>> SBBITS]);
+        const r = slaterCoulPair(rsq, qi, q[j], g, pc.qqrd2e, this.lamda, sC[jj >>> SBBITS], scale[type[i] * nt + type[j]]);
         fxi += dx * r.f; fyi += dy * r.f; fzi += dz * r.f;
         f[3 * j] -= dx * r.f; f[3 * j + 1] -= dy * r.f; f[3 * j + 2] -= dz * r.f;
         ecoul += r.e;

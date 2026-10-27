@@ -89,20 +89,17 @@ export class PairCoulCutDielectric extends PairCoulCut {
         const qj = d.qs[oj], ej = d.epsilon[oj];
         const r2inv = 1.0 / rsq;
         const rinv = Math.sqrt(r2inv);
-        let efieldI = qqrd2e * this.scaleOf() * qj * rinv;
+        let efieldI = qqrd2e * this.scale[t] * qj * rinv;
         const forcecoul = qi * efieldI;
         const fpairI = factorCoul * ei * forcecoul * r2inv;
         f[3 * i] += dx * fpairI; f[3 * i + 1] += dy * fpairI; f[3 * i + 2] += dz * fpairI;
         efieldI *= factorCoul * ei * r2inv;
         E[3 * i] += dx * efieldI; E[3 * i + 1] += dy * efieldI; E[3 * i + 2] += dz * efieldI;
-        const ecoul = factorCoul * qqrd2e * this.scaleOf() * qi * qj * 0.5 * (ei + ej) * rinv;
+        const ecoul = factorCoul * qqrd2e * this.scale[t] * qi * qj * 0.5 * (ei + ej) * rinv;
         evTallyFull(pc, i, 0, ecoul, fpairI, dx, dy, dz);
       }
     }
   }
-
-  /** The pair_coeff scale of coul/cut: always 1 (native scale[i][j] = 1.0 for these styles). */
-  protected scaleOf(): number { return 1.0; }
 
   single(): never {
     throw new StyleError('pair style coul/cut/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
@@ -135,7 +132,9 @@ export class PairCoulLongDielectric extends PairCoulLong {
     const nl = pc.nlocal;
     if (this.efield.length < 3 * nl) this.efield = new Float64Array(3 * nl);
     const E = this.efield;
-    const { x, f } = pc;
+    const { x, f, type } = pc;
+    const nt = this.ntypes + 1;
+    const scale = this.set.p('scale');
     const owner = pc.nb.owner;
     const qqrd2e = pc.qqrd2e;
     const g = this.gEwald;
@@ -157,16 +156,18 @@ export class PairCoulLongDielectric extends PairCoulLong {
         const oj = owner[j];
         const qj = d.qs[oj], ej = d.epsilon[oj];
         const r2inv = 1.0 / rsq;
+        // fix adapt's scale[itype][jtype] (native pair_coul_long_dielectric.cpp: in prefactor, prefactorE and the tables)
+        const sc = scale[type[i] * nt + type[j]];
         let forcecoul: number, efieldI: number, ecoul: number;
         if (!tab || rsq <= tab.inner) {
           const r = Math.sqrt(rsq);
           const grij = g * r;
           const expm2 = glibcExp(-grij * grij);
           const erfc = erfcPoly(grij, expm2);
-          const prefactor = qqrd2e * qi * qj / r;
+          const prefactor = qqrd2e * sc * qi * qj / r;
           forcecoul = prefactor * (erfc + EWALD_F * grij * expm2);
           if (factorCoul < 1.0) forcecoul -= (1.0 - factorCoul) * prefactor;
-          const prefactorE = qqrd2e * qj / r;
+          const prefactorE = qqrd2e * sc * qj / r;
           efieldI = prefactorE * (erfc + EWALD_F * grij * expm2);
           if (factorCoul < 1.0) efieldI -= (1.0 - factorCoul) * prefactorE;
           ecoul = prefactor * 0.5 * (ei + ej) * erfc;
@@ -174,13 +175,13 @@ export class PairCoulLongDielectric extends PairCoulLong {
         } else {
           // table branch: the tables hold qqrd2e (native ftable, etable, ctable); the field of the table branch is
           // scaled by qqrd2e as the direct branch's prefactorE
-          const qq = qqrd2e * qi * qj;
+          const qq = qqrd2e * sc * qi * qj;
           forcecoul = qq * tab.force(rsq);
-          efieldI = qqrd2e * qj * tab.force(rsq);
+          efieldI = qqrd2e * sc * qj * tab.force(rsq);
           if (factorCoul < 1.0) {
             const bare = qq * tab.coul(rsq);
             forcecoul -= (1.0 - factorCoul) * bare;
-            efieldI -= (1.0 - factorCoul) * qqrd2e * qj * tab.coul(rsq);
+            efieldI -= (1.0 - factorCoul) * qqrd2e * sc * qj * tab.coul(rsq);
           }
           ecoul = qq * 0.5 * (ei + ej) * tab.energy(rsq);
           if (factorCoul < 1.0) ecoul -= (1.0 - factorCoul) * qq * tab.coul(rsq);

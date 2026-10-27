@@ -10,25 +10,28 @@
  *   coul/exclude cutoff        for the special pairs only: adds (factor_coul - 1) times the bare Coulomb term, which
  *                              removes the excluded part of the force field's Coulomb interaction.
  *
- * Each compute() keeps native's operation order; the scale factor of coul/cut is 1.0 for every pair (coul/cut has no
- * coeff that changes it), so the multiplication by it is left out where it cannot change the value.
+ * Each compute() keeps native's operation order, with fix adapt's scale[itype][jtype] of coul/cut where native has it
+ * (the table is the parent class's, engine/force/pair/coul.ts; native single() leaves it out).
  */
-import { Pair, PairParams, StyleError, type PairCompute, type PairSep, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../../engine/force/types';
+import { resetScale } from '../../engine/force/pair/scaleTable';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { PairCoulCut } from '../../engine/force/pair/coul';
 import { parseNum } from '../../engine/force/util';
 import { exp } from '../libm/exp';
-import { setPairRange, resetSetCutoffs, table } from './common';
-
-/** The scale table of coul/cut: 1.0 for every pair (flat, (ntypes+1)^2). */
-const unitScale = (ntypes: number): Float64Array => table(ntypes).fill(1.0);
+import { setPairRange, resetSetCutoffs } from './common';
 
 /** pair_coul_cut.cpp coeff(): "pair_coeff I J [cutoff]" with narg 2 or 3 (coul/slater/cut), or narg 2 (coul/cut/global). */
-const coulCutCoeff = (p: PairParams, args: string[], minNarg: number, maxNarg: number, cutGlobal: number, ntypes: number): void => {
+const coulCutCoeff = (
+  p: PairParams, args: string[], minNarg: number, maxNarg: number, cutGlobal: number, ntypes: number, scale: Float64Array,
+): void => {
   if (args.length < minNarg || args.length > maxNarg) throw new StyleError('Incorrect args for pair coefficients');
   const cut = args.length === 3 ? parseNum(args[2], 'cutoff') : cutGlobal;
   setPairRange(p, args[0], args[1], [cut], 'Incorrect args for pair coefficients', ntypes);
+  // and scale[i][j] = 1.0 for the same pairs
+  const [ilo, ihi] = typeBounds(args[0], ntypes), [jlo, jhi] = typeBounds(args[1], ntypes);
+  for (let i = ilo; i <= ihi; i++) for (let j = Math.max(jlo, i); j <= jhi; j++) resetScale(scale, ntypes, i, j);
 };
 
 /** pair_style coul/cut/global cutoff (pair_coul_cut_global.cpp: PairCoulCut with a coeff() that takes two words). */
@@ -46,7 +49,7 @@ export class PairCoulCutGlobal extends PairCoulCut {
   coeff(args: string[]): void {
     // pair_coul_cut_global.cpp coeff(): "if (narg != 2) error->all(...Incorrect args for pair coefficients...)"
     if (args.length !== 2) throw new StyleError('Incorrect args for pair coefficients');
-    coulCutCoeff(this.p, args, 2, 2, this.cutGlobal, this.ntypes);
+    coulCutCoeff(this.p, args, 2, 2, this.cutGlobal, this.ntypes, this.scale);
   }
 
   compute(pc: PairCompute): void {
@@ -75,11 +78,11 @@ export class PairCoulCutGlobal extends PairCoulCut {
         const factor = sC[jj >>> SBBITS];
         const r2inv = 1.0 / rsq;
         const rinv = Math.sqrt(r2inv);
-        const forcecoul = qqrd2e * qi * q[j] * rinv;
+        const forcecoul = qqrd2e * this.scale[t] * qi * q[j] * rinv;
         const fpair = factor * forcecoul * r2inv;
         f[3 * i] += dx * fpair; f[3 * i + 1] += dy * fpair; f[3 * i + 2] += dz * fpair;
         f[3 * j] -= dx * fpair; f[3 * j + 1] -= dy * fpair; f[3 * j + 2] -= dz * fpair;
-        const e = factor * qqrd2e * qi * q[j] * rinv;
+        const e = factor * qqrd2e * this.scale[t] * qi * q[j] * rinv;
         ecoul += e;
         if (tally) tallyAtom(pc, i, j, e, fpair, dx, dy, dz);
       }
@@ -99,7 +102,7 @@ export class PairCoulCutGlobal extends PairCoulCut {
   extract(name: string): unknown {
     // pair_coul_cut_global.cpp extract(): cut_coul is the global cutoff (dim 0); scale (dim 2)
     if (name === 'cut_coul') return this.cutGlobal;
-    if (name === 'scale') return unitScale(this.ntypes);
+    if (name === 'scale') return this.scale;
     return undefined;
   }
 }
@@ -120,7 +123,7 @@ export class PairCoulSlaterCut extends PairCoulCut {
 
   coeff(args: string[]): void {
     // inherited from pair_coul_cut.cpp coeff(): narg 2 or 3
-    coulCutCoeff(this.p, args, 2, 3, this.cutGlobal, this.ntypes);
+    coulCutCoeff(this.p, args, 2, 3, this.cutGlobal, this.ntypes, this.scale);
   }
 
   compute(pc: PairCompute): void {
@@ -152,11 +155,11 @@ export class PairCoulSlaterCut extends PairCoulCut {
         const r = Math.sqrt(rsq);
         const rinv = 1.0 / r;
         const bracketTerm = 1 - exp(-2 * r / lamda) * (1 + (2 * r / lamda * (1 + r / lamda)));
-        const forcecoul = qqrd2e * qi * q[j] * bracketTerm * rinv;
+        const forcecoul = qqrd2e * this.scale[t] * qi * q[j] * bracketTerm * rinv;
         const fpair = factor * forcecoul * r2inv;
         f[3 * i] += dx * fpair; f[3 * i + 1] += dy * fpair; f[3 * i + 2] += dz * fpair;
         f[3 * j] -= dx * fpair; f[3 * j + 1] -= dy * fpair; f[3 * j + 2] -= dz * fpair;
-        const e = factor * qqrd2e * qi * q[j] * rinv * (1 - (1 + r / lamda) * exp(-2 * r / lamda));
+        const e = factor * qqrd2e * this.scale[t] * qi * q[j] * rinv * (1 - (1 + r / lamda) * exp(-2 * r / lamda));
         ecoul += e;
         if (tally) tallyAtom(pc, i, j, e, fpair, dx, dy, dz);
       }
@@ -178,7 +181,7 @@ export class PairCoulSlaterCut extends PairCoulCut {
   extract(name: string): unknown {
     // inherited from pair_coul_cut.cpp extract(): cut_coul is the per-pair cutoff table (dim 2); scale likewise
     if (name === 'cut_coul') return this.p.p('cut');
-    if (name === 'scale') return unitScale(this.ntypes);
+    if (name === 'scale') return this.scale;
     return undefined;
   }
 }

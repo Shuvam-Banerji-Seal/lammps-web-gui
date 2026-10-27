@@ -194,6 +194,22 @@ describe('shared-memory pair threads: refresh and fallback', () => {
     expectClose(serial, threaded, 1e-10);
   });
 
+  it('follows fix adapt changing coul/long and eam/alloy scale during the run (the worker copies take the new table)', async () => {
+    const extra = 'variable s equal 1.0-0.002*elapsed\nfix ad all adapt 2 pair coul/long scale 1 2 v_s';
+    const serial = await runCase(STYLES['coul/long'], 1, extra);
+    const threaded = await runCase(STYLES['coul/long'], 3, extra);
+    expect(threaded.threadedComputes).toBeGreaterThan(0);
+    expectClose(serial, threaded, 1e-10);
+    const eamExtra = 'variable s equal 1.0+0.003*elapsed\nfix ad all adapt 2 pair eam/alloy scale 1 1 v_s';
+    const eSerial = await runCase(EAM_STYLES['eam/alloy'], 1, eamExtra, EAM_BOX);
+    const eThreaded = await runCase(EAM_STYLES['eam/alloy'], 3, eamExtra, EAM_BOX);
+    expect(eThreaded.threadedComputes).toBeGreaterThan(0);
+    expectClose(eSerial, eThreaded, 1e-10);
+    // and the scale changed the energy
+    const plain = await runCase(EAM_STYLES['eam/alloy'], 1, '', EAM_BOX);
+    expect(Math.abs(plain.rows[3].pe - eSerial.rows[3].pe)).toBeGreaterThan(1e-3);
+  });
+
   it('runs per-atom energy evaluations on the engine thread', async () => {
     const extra = 'compute pea all pe/atom\ncompute spe all reduce sum c_pea\nthermo_style custom step pe c_spe';
     const serial = await runCase(STYLES['lj/cut'], 1, extra);

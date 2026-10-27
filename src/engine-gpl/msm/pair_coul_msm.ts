@@ -59,12 +59,13 @@ export class TableCache {
 /** The Coulomb term of one pair: forcecoul (F r) and ecoul, as the compute loops of the coul/msm styles evaluate them. */
 const coulMsm = (
   out: { f: number; e: number }, rsq: number, qtmp: number, qj: number, qqrd2e: number, cutCoul: number, cutCoulsq: number,
-  order: number, fc: number, tab: CoulTables | null,
+  order: number, fc: number, tab: CoulTables | null, scale = 1,
 ): void => {
+  // scale: fix adapt's scale[itype][jtype] of coul/msm (pair_coul_msm.cpp compute), 1 for the other msm styles
   let forcecoul: number, ecoul: number;
   if (!tab || rsq <= tab.tabinnersq) {
     const r = Math.sqrt(rsq);
-    const prefactor = (qqrd2e * qtmp * qj) / r;
+    const prefactor = (qqrd2e * scale * qtmp * qj) / r;
     const egamma = 1.0 - (r / cutCoul) * msmGamma(order, r / cutCoul);
     const fgamma = 1.0 + (rsq / cutCoulsq) * msmDgamma(order, r / cutCoul);
     forcecoul = prefactor * fgamma;
@@ -76,15 +77,15 @@ const coulMsm = (
     const itable = (i32[0] & tab.ncoulmask) >> tab.ncoulshiftbits;
     const fraction = (f32[0] - tab.rtable[itable]) * tab.drtable[itable];
     let table = tab.ftable[itable] + fraction * tab.dftable[itable];
-    forcecoul = qtmp * qj * table;
+    forcecoul = scale * qtmp * qj * table;
     let prefactor = 0;
     if (fc < 1.0) {
       table = tab.ctable[itable] + fraction * tab.dctable[itable];
-      prefactor = qtmp * qj * table;
+      prefactor = scale * qtmp * qj * table;
       forcecoul -= (1.0 - fc) * prefactor;
     }
     table = tab.etable[itable] + fraction * tab.detable[itable];
-    ecoul = qtmp * qj * table;
+    ecoul = scale * qtmp * qj * table;
     if (fc < 1.0) ecoul -= (1.0 - fc) * prefactor;
   }
   out.f = forcecoul;
@@ -127,6 +128,8 @@ interface LoopOptions {
   term: ((t: number, rsq: number, r2inv: number, sr: ShortRange) => boolean) | null;
   /** lj/spica/coul/msm sums the forces on i in fxtmp and adds them after its neighbors (native eval_msm). */
   sumI: boolean;
+  /** coul/msm: fix adapt's scale by type slot; absent (1) for the others. */
+  scale?: () => Float64Array;
 }
 
 const sr0: ShortRange = { f: 0, e: 0 };
@@ -154,6 +157,7 @@ const msmLoop = (style: MsmLoopStyle, pc: PairCompute, msm: KSpaceMSM, o: LoopOp
   const t2 = coulTerm, sr = sr0;
   const { term, outerSq } = o;
   const cutsq = style.cutsq;
+  const scale = o.scale ? o.scale() : null;
   let evdwlSum = 0, ecoulSum = 0;
   const nb = list.neighbors;
   for (let i = list.ilo ?? 0; i < list.inum; i++) {
@@ -173,7 +177,7 @@ const msmLoop = (style: MsmLoopStyle, pc: PairCompute, msm: KSpaceMSM, o: LoopOp
       const r2inv = 1.0 / rsq;
       let forcecoul = 0.0, ecoul = 0.0;
       if (rsq < cutCoulsq) {
-        coulMsm(t2, rsq, qtmp, q[j], qqrd2e, cutCoul, cutCoulsq, order, factorCoul, tab);
+        coulMsm(t2, rsq, qtmp, q[j], qqrd2e, cutCoul, cutCoulsq, order, factorCoul, tab, scale ? scale[tt] : 1);
         forcecoul = t2.f;
         ecoul = t2.e;
       }
@@ -249,7 +253,8 @@ export class PairCoulMSM extends PairCoulLong implements MsmPair, MsmLoopStyle {
 
   constructor() {
     super();
-    this.opts = { tables: true, outerSq: () => this.cutCoul * this.cutCoul, term: null, sumI: false };
+    // the compute applies fix adapt's scale (native single() does not)
+    this.opts = { tables: true, outerSq: () => this.cutCoul * this.cutCoul, term: null, sumI: false, scale: () => this.set.p('scale') };
   }
 
   override settings(args: string[]): void {

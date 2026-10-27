@@ -396,17 +396,22 @@ export class PairVashishta extends Pair {
     }
     const nIdx = this.sIdx, nDx = this.sDx, nDy = this.sDy, nDz = this.sDz;
     const nR = this.sR, nInvR = this.sInvR, nES = this.sES, nW = this.sW;
+    const ids = pc.s.id, owner = pc.nb.owner;
 
     for (let i = 0; i < nlocal; i++) {
       const tiv = type[i];
       if (elemOf[tiv] < 0) continue;
       const ti = tiv * nt;
+      const itag = ids[i];
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const k0 = list.firstneigh[i];
       const k1 = k0 + list.numneigh[i];
       let m = 0;
       let fxi = 0, fyi = 0, fzi = 0;
-      // pass 1: two-body terms (half per visit; the pair is seen again from the other
-      // end, using its own ordered entry) and gather of the three-body legs
+      // pass 1: two-body terms and gather of the three-body legs. As native LAMMPS does
+      // (src/MANYBODY/pair_vashishta.cpp compute at b332f28, "two-body interactions, skip half of them"): the
+      // two-body term of a pair is computed once, from the end that the parity of the two atom IDs picks (for an
+      // atom and its own image, the one with the smaller z, then y, then x), with that end's ordered entry
       for (let k = k0; k < k1; k++) {
         const j = list.neighbors[k] & NEIGHMASK;
         const dxx = x[3 * j] - x[3 * i];
@@ -418,39 +423,48 @@ export class PairVashishta extends Pair {
         if (rsq >= cutsq[t]) continue;
         const r = Math.sqrt(rsq);
         const rc = this.tbRc[t];
-        if (r < rc) {
+        const jtag = ids[owner[j]];
+        let mine: boolean;
+        if (itag > jtag) mine = (itag + jtag) % 2 !== 0;
+        else if (itag < jtag) mine = (itag + jtag) % 2 !== 1;
+        else {
+          const zj = x[3 * j + 2], yj = x[3 * j + 1];
+          mine = !(zj < zi || (zj === zi && yj < yi) || (zj === zi && yj === yi && x[3 * j] < xi));
+        }
+        if (mine && r < rc) {
           // shifted and tilted two-body: U2(r) - U2(rc) - (r - rc) * U2'(rc)
           const H = this.tbH[t], eta = this.tbEta[t];
           const zpq = this.tbZpq[t], lam1 = this.tbLam1[t];
           const D = this.tbD[t], lam4 = this.tbLam4[t], W = this.tbW[t];
           const u2rc = this.tbU2rc[t], duRc = this.tbDuRc[t];
           const scr = libm.exp(-r / lam1);
+          const scr4 = libm.exp(-r / lam4);
           const phi2 =
             H / Math.pow(r, eta) + zpq * scr / r -
-            D / Math.pow(r, 4) * libm.exp(-r / lam4) - W / Math.pow(r, 6);
+            D / Math.pow(r, 4) * scr4 - W / Math.pow(r, 6);
           const du =
             -eta * H / Math.pow(r, eta + 1) - zpq * scr * (1 / (r * r) + 1 / (lam1 * r)) +
-            D * libm.exp(-r / lam4) * (4 / Math.pow(r, 5) + 1 / (lam4 * Math.pow(r, 4))) +
+            D * scr4 * (4 / Math.pow(r, 5) + 1 / (lam4 * Math.pow(r, 4))) +
             6 * W / Math.pow(r, 7) - duRc;
           const phi2s = phi2 - u2rc - (r - rc) * duRc;
           const fpair = -du / r;
-          const hx = 0.5 * fpair * dxx;
-          const hy = 0.5 * fpair * dyy;
-          const hz = 0.5 * fpair * dzz;
+          const hx = fpair * dxx;
+          const hy = fpair * dyy;
+          const hz = fpair * dzz;
           fxi -= hx;
           fyi -= hy;
           fzi -= hz;
           f[3 * j] += hx;
           f[3 * j + 1] += hy;
           f[3 * j + 2] += hz;
-          evdwl += 0.5 * phi2s;
+          evdwl += phi2s;
           if (eatom) {
-            const e4 = 0.25 * phi2s;
+            const e4 = 0.5 * phi2s;
             eatom[i] += e4;
             eatom[j] += e4;
           }
           if (vatom) {
-            const vc = 0.25 * fpair;
+            const vc = 0.5 * fpair;
             const v0 = vc * dxx * dxx, v1 = vc * dyy * dyy, v2 = vc * dzz * dzz;
             const v3 = vc * dxx * dyy, v4 = vc * dxx * dzz, v5 = vc * dyy * dzz;
             vatom[6 * i] += v0; vatom[6 * i + 1] += v1; vatom[6 * i + 2] += v2;

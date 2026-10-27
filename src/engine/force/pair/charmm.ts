@@ -393,6 +393,8 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
   readonly name: string = 'lj/charmm/coul/long';
   coulLong = true;
   protected override tableSupported = true;
+  /** The table values of one pair (ErfcTable.all): erfc/r, the force kernel and 1/r. */
+  private readonly tabVals = new Float64Array(3);
 
   override settings(args: string[]): void {
     if (args.length !== 2 && args.length !== 3) throw new StyleError('usage: pair_style lj/charmm/coul/long inner outer [Coulomb cutoff]');
@@ -448,6 +450,7 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     const qqrd2e = pc.qqrd2e, g = this.gEwald;
     const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul, this.tabinnerRsq);
     const tabInner = tab ? tab.inner : Infinity;
+    const tv = this.tabVals;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;
     const nb = list.neighbors;
@@ -484,7 +487,13 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
         if (rsq < cutCoulSq && qi !== 0 && qj !== 0) {
           // coulombPair, then coulTerm's special-bond correction
           let ce: number, cf: number;
-          if (tab && rsq > tabInner) {
+          const tabbed = tab !== null && rsq > tabInner && tab.all(rsq, tv);
+          if (tabbed) {
+            const qq = qqrd2e * qi * qj;
+            ce = qq * tv[0];
+            cf = qq * tv[1] / rsq;
+          } else if (tab && rsq > tabInner) {
+            // past the table's last point: its own direct evaluation
             const qq = qqrd2e * qi * qj;
             ce = qq * tab.energy(rsq);
             cf = qq * tab.force(rsq) / rsq;
@@ -499,7 +508,7 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
           }
           const fc = sC[sb];
           if (fc < 1) {
-            const inv = tab && rsq > tabInner ? tab.coul(rsq) : 1 / Math.sqrt(rsq);
+            const inv = tabbed ? tv[2] : tab && rsq > tabInner ? tab.coul(rsq) : 1 / Math.sqrt(rsq);
             const bare = qqrd2e * qi * qj * inv;
             ce = ce - (1 - fc) * bare;
             cf = cf - (1 - fc) * bare / rsq;

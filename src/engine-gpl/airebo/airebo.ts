@@ -303,16 +303,25 @@ export class PairAIREBO extends Pair {
         cutljsq: this.cutljsq, lj1: this.lj1, lj2: this.lj2, lj3: this.lj3, lj4: this.lj4,
         sigcut: this.sigcut, sigmin: this.sigmin, morseflag: this.morseflag === 1, cut3rebo: this.cut3rebo,
       };
-      let ljStart = new Int32Array(nlocal + 1);
-      let ljList = new Int32Array(0);
+      let ljFirst: Int32Array = new Int32Array(nlocal), ljNum: Int32Array = new Int32Array(nlocal);
+      let ljList: Int32Array = new Int32Array(0);
       if (this.ljflag) {
-        let cutmaxsq = 0;
-        for (let q = 0; q < 4; q++) if (this.cutljsq[q] > cutmaxsq) cutmaxsq = this.cutljsq[q];
-        const built = rowNeighbors(pc.x, nlocal, nall, mt, this.cutljsq, Math.sqrt(cutmaxsq));
-        ljStart = built.start;
-        ljList = built.list;
+        const full = pc.full;
+        if (full && full.inum >= nlocal) {
+          // as native PairAIREBO::FLJ reads list->firstneigh: the full list (cutmax, at least the LJ cutoff, plus the
+          // skin), each pair tested against the LJ cutoff of its element pair in flj
+          ljFirst = full.firstneigh;
+          ljNum = full.numneigh;
+          ljList = full.neighbors;
+        } else {
+          let cutmaxsq = 0;
+          for (let q = 0; q < 4; q++) if (this.cutljsq[q] > cutmaxsq) cutmaxsq = this.cutljsq[q];
+          const built = rowNeighbors(pc.x, nlocal, nall, mt, this.cutljsq, Math.sqrt(cutmaxsq));
+          ljList = built.list;
+          for (let i = 0; i < nlocal; i++) { ljFirst[i] = built.start[i]; ljNum[i] = built.start[i + 1] - built.start[i]; }
+        }
       }
-      const lcore: LJCore = { ...core, ljp, ljStart, ljList, epsilonT: P.epsilonT };
+      const lcore: LJCore = { ...core, ljp, ljFirst, ljNum, ljList, epsilonT: P.epsilonT };
       if (this.ljflag) flj(lcore, nlocal);
       if (this.torflag) torsion(lcore, nlocal);
     }

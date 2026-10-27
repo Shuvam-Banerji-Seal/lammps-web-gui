@@ -86,7 +86,7 @@ const setfl = (fs: boolean): string => {
   return out.join('\n');
 };
 
-const make = (s: Pair, coeffs: string[], files: Record<string, string> = {}): Pair => {
+const make = <T extends Pair>(s: T, coeffs: string[], files: Record<string, string> = {}): T => {
   s.settings([], ctx);
   s.allocate(2);
   const full: StyleContext = {
@@ -132,20 +132,20 @@ describe('eam (funcfl): documented r*phi formula at table grid points', () => {
     const s = make(new PairEAM(), ['1 1 A.eam', '2 2 B.eam'], { 'A.eam': fileA, 'B.eam': fileB });
     for (const k of [30, 95, 160, 249]) {
       const r = k * DR;
-      const self = s.single!(0, 0, 1, 1, r * r, 1, 1, 0, 0);
+      const self = s.pairEnergy(1, 1, r * r);
       expect(close(self.eng, (27.2 * 0.529 * Z_A(r) * Z_A(r)) / r, 1e-12, 1e-12)).toBe(true);
     }
     for (const k of [30, 95, 160, 220]) {
       const r = k * DR;
-      const mixed = s.single!(0, 0, 1, 2, r * r, 1, 1, 0, 0);
+      const mixed = s.pairEnergy(1, 2, r * r);
       expect(close(mixed.eng, (27.2 * 0.529 * Z_A(r) * Z_B(r)) / r, 1e-12, 1e-12)).toBe(true);
     }
     const h = 1e-6;
     for (const k of [70, 130, 210]) {
       const r = k * DR;
-      const em = s.single!(0, 0, 1, 1, (r - h) * (r - h), 1, 1, 0, 0).eng;
-      const ep = s.single!(0, 0, 1, 1, (r + h) * (r + h), 1, 1, 0, 0).eng;
-      const m = s.single!(0, 0, 1, 1, r * r, 1, 1, 0, 0);
+      const em = s.pairEnergy(1, 1, (r - h) * (r - h)).eng;
+      const ep = s.pairEnergy(1, 1, (r + h) * (r + h)).eng;
+      const m = s.pairEnergy(1, 1, r * r);
       expect(close(m.fforce * r, -(ep - em) / (2 * h), 1e-5, 1e-7)).toBe(true);
     }
   });
@@ -187,9 +187,9 @@ describe('eam/alloy (setfl): r*phi tables and element mapping', () => {
     const s = make(new PairEAMAlloy(), ['* * AB.eam.alloy A B'], { 'AB.eam.alloy': setfl(false) });
     for (const k of [40, 120, 200]) {
       const r = k * DR;
-      expect(close(s.single!(0, 0, 1, 1, r * r, 1, 1, 0, 0).eng, g_AA(r) / r, 1e-12, 1e-12)).toBe(true);
-      expect(close(s.single!(0, 0, 1, 2, r * r, 1, 1, 0, 0).eng, g_AB(r) / r, 1e-12, 1e-12)).toBe(true);
-      expect(close(s.single!(0, 0, 2, 2, r * r, 1, 1, 0, 0).eng, g_BB(r) / r, 1e-12, 1e-12)).toBe(true);
+      expect(close(s.pairEnergy(1, 1, r * r).eng, g_AA(r) / r, 1e-12, 1e-12)).toBe(true);
+      expect(close(s.pairEnergy(1, 2, r * r).eng, g_AB(r) / r, 1e-12, 1e-12)).toBe(true);
+      expect(close(s.pairEnergy(2, 2, r * r).eng, g_BB(r) / r, 1e-12, 1e-12)).toBe(true);
     }
     expect(s.cut[1 * 3 + 2]).toBe(CUTOFF);
   });
@@ -232,7 +232,7 @@ describe('eam/fs (Finnis-Sinclair): asymmetric densities rho_{alpha beta}', () =
   it('pair term matches the r*phi arrays; NULL mapping returns a zero cutoff', () => {
     const s = make(new PairEAMFS(), ['* * AB.eam.fs A B'], { 'AB.eam.fs': setfl(true) });
     const r = 120 * DR;
-    expect(close(s.single!(0, 0, 1, 2, r * r, 1, 1, 0, 0).eng, g_AB(r) / r, 1e-12, 1e-12)).toBe(true);
+    expect(close(s.pairEnergy(1, 2, r * r).eng, g_AB(r) / r, 1e-12, 1e-12)).toBe(true);
     const nulled = make(new PairEAMFS(), ['* * AB.eam.fs NULL B'], { 'AB.eam.fs': setfl(true) });
     expect(nulled.initOne(1, 1)).toBe(0);
     expect(nulled.initOne(2, 2)).toBe(CUTOFF);
@@ -241,5 +241,18 @@ describe('eam/fs (Finnis-Sinclair): asymmetric densities rho_{alpha beta}', () =
   it('errors: wrong element count and unknown element', () => {
     expect(() => make(new PairEAMFS(), ['* * AB.eam.fs A'], { 'AB.eam.fs': setfl(true) })).toThrow(StyleError);
     expect(() => make(new PairEAMFS(), ['* * AB.eam.fs A Q'], { 'AB.eam.fs': setfl(true) })).toThrow(StyleError);
+  });
+});
+
+describe('eam single(): native embedding data', () => {
+  it('pair_write before any force evaluation is an error, after the EAM warning', async () => {
+    // Measured with native LAMMPS: WARNING: EAM pair style. Table will not include embedding term (src/pair.cpp:1974),
+    // then ERROR: EAM embedding data required for this calculation is missing (src/MANYBODY/pair_eam.cpp:1558)
+    const logs: string[] = [];
+    const session = new Session({ emit: (e) => { if (e.kind === 'log') logs.push(e.text); }, writeFile: () => {} });
+    session.addFile('A.eam', fileA);
+    const script = `${dimerScript('eam', 'pair_coeff 1 1 A.eam\npair_coeff 2 2 A.eam')}\npair_write 1 1 5 r 1.0 2.0 t.table AA\n`.replace(/\nrun 0\n/g, '\n');
+    await expect(session.execute(script)).rejects.toThrow(/EAM embedding data required for this calculation is missing/);
+    expect(logs.some((l) => l.includes('WARNING: EAM pair style. Table will not include embedding term'))).toBe(true);
   });
 });

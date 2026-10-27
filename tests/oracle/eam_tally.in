@@ -1,0 +1,22 @@
+# oracle: compute pe/tally with pair eam: the tally callbacks receive what native's compute passes to ev_tally for each pair (pair_eam.cpp: evdwl = scale phi, the pair term only, and fpair with F' of both atoms), not single()
+# oracle-potentials: Cu_u3.eam Ni_u3.eam
+# oracle-compare: thermo=all atoms=none rel=1e-11 abs=1e-12
+units           metal
+atom_style      atomic
+lattice         fcc 3.6
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+set             group all type/fraction 2 0.4 4321
+displace_atoms  all random 0.08 0.08 0.08 4711
+group           g1 type 1
+group           g2 type 2
+pair_style      eam
+pair_coeff      1 1 Cu_u3.eam
+pair_coeff      2 2 Ni_u3.eam
+compute         pt all pe/tally all
+compute         p12 g1 pe/tally g2
+compute         pa all reduce sum c_pt[1] c_pt[2]
+thermo_style    custom step pe c_pt c_p12 c_pa[1] c_pa[2]
+thermo_modify   format float %.15g
+run             0

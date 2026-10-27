@@ -18,4 +18,8 @@ const pairLocal: PairLocalHook = { pairOrder: (newton: boolean) => new NativePai
 export const HOOKS: Record<string, PairLocalHook> = {
   'pair/local': pairLocal,
   'property/local': pairLocal,
+  // pair eam's single() takes native numforce from the native pair order (engine/force/pair/eam.ts nativeNumforce)
+  eam: pairLocal,
+  'eam/alloy': pairLocal,
+  'eam/fs': pairLocal,
 };

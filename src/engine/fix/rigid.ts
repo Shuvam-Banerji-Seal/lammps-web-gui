@@ -2,7 +2,7 @@ import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import { inumeric, missingArgs, numeric, logical } from '../force/util';
 import type { System } from '../system';
-import { hasMolecule, isEllipsoid, isLineAtom, isSuperEllipsoidStyle, isTriAtom, LINE_BONUS, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { hasMolecule, isEllipsoid, isLineAtom, isSuperEllipsoidStyle, isTriAtom, LINE_BONUS, LINE_FLAG, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS, TRI_FLAG } from '../atoms';
 import { ellipsoidInertia, quatToMatrix } from '../compute/asphere';
 import { RanMars } from '../rng';
 import { ramp, valueOf, type NumOrVar } from './util';
@@ -138,7 +138,11 @@ const wrapAngle = (t: number): number => {
 };
 
 const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const qnorm = (q: number[]) => { const n = Math.hypot(q[0], q[1], q[2], q[3]); return q.map((v) => v / n); };
+/** As native LAMMPS does (src/math_extra.h MathExtra::qnormalize at b332f28): q times 1 / sqrt(q.q). */
+const qnorm = (q: number[]) => {
+  const inv = 1.0 / Math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+  return [q[0] * inv, q[1] * inv, q[2] * inv, q[3] * inv];
+};
 /** Rotation matrix (columns = body axes in the space frame) of a unit quaternion. */
 const qmat = (q: number[]): number[][] => {
   const [w, x, y, z] = q;
@@ -1031,6 +1035,8 @@ export class FixRigid extends Fix {
     const u = [0, 0, 0];
     // per-atom scratch: R d, omega x R d, the old velocity and unwrapped position, the constraint force
     const r = [0, 0, 0], w = [0, 0, 0], vold = [0, 0, 0], xold = [0, 0, 0], fc = [0, 0, 0];
+    // the per-atom flags of line and triangle particles (isLineAtom, isTriAtom), looked up once per call
+    const lineFlag = s.custom.get(LINE_FLAG)?.data ?? null, triFlag = s.custom.get(TRI_FLAG)?.data ?? null;
     for (const b of this.bodies) {
       const R = qmat(b.q);
       const om = b.omega;
@@ -1045,7 +1051,7 @@ export class FixRigid extends Fix {
         // finite-size spheres rotate with the body: their angular velocity is the body's (measured with native LAMMPS, black box)
         if (s.omega && s.radius && s.radius[i] > 0) for (let d = 0; d < 3; d++) s.omega[3 * i + d] = b.omega[d];
         // fix_rigid.cpp set_xv(): the segment angle follows the body, theta = orient + theta_body (set_v does not)
-        if (setX && isLineAtom(s, i)) s.custom.get(LINE_BONUS)!.data[2 * i + 1] = wrapAngle(b.orient[n] + bodyTheta(b.q));
+        if (setX && (lineFlag !== null && !!lineFlag[i])) s.custom.get(LINE_BONUS)!.data[2 * i + 1] = wrapAngle(b.orient[n] + bodyTheta(b.q));
         // fix_rigid.cpp set_xv()/set_v() (TRIANGLE): set_xv sets the triangle's quaternion quat_body * orient; both set its
         // angular momentum from the body's omega with its principal moments (omega_to_angmom)
         // fix_rigid_small.cpp set_xv() and set_v() (ELLIPSOID): quat_atom = quat_body * orient (set_xv only), then
@@ -1075,7 +1081,7 @@ export class FixRigid extends Fix {
             for (let d = 0; d < 3; d++) s.mu[4 * i + d] = (R[d][0] * dv[0] + R[d][1] * dv[1] + R[d][2] * dv[2]) * scale;
           }
         }
-        if (isTriAtom(s, i)) {
+        if ((triFlag !== null && !!triFlag[i])) {
           if (setX) {
             const qo = quatNormalize(quatMul(b.q, b.orientQ.slice(4 * n, 4 * n + 4)));
             for (let d = 0; d < 4; d++) s.quat![4 * i + d] = qo[d];

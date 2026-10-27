@@ -512,11 +512,24 @@ export class FixRigid extends Fix {
 
   // ---------------------------------------------------------------- setup
 
-  private index(): Map<number, number> {
+  /** The atom index of each ID (-1: none), refilled by index(). */
+  private idIdx = new Int32Array(0);
+  private readonly idView = {
+    get: (id: number): number | undefined => {
+      const k = id >= 0 && id < this.idIdx.length ? this.idIdx[id] : -1;
+      return k < 0 ? undefined : k;
+    },
+  };
+
+  /** The atom index of each atom ID (a reused table: the integration looks it up for every atom at every step). */
+  private index(): { get(id: number): number | undefined } {
     const s = this.sys.state;
-    const m = new Map<number, number>();
-    for (let i = 0; i < s.n; i++) m.set(s.id[i], i);
-    return m;
+    let maxId = 0;
+    for (let i = 0; i < s.n; i++) if (s.id[i] > maxId) maxId = s.id[i];
+    if (this.idIdx.length <= maxId) this.idIdx = new Int32Array(maxId + 1);
+    this.idIdx.fill(-1);
+    for (let i = 0; i < s.n; i++) this.idIdx[s.id[i]] = i;
+    return this.idView;
   }
 
   private buildBodies(): void {
@@ -979,11 +992,13 @@ export class FixRigid extends Fix {
       const F = [0, 0, 0], T = [0, 0, 0];
       for (const id of b.atoms) {
         const i = idx.get(id)!;
-        const f = [s.f[3 * i], s.f[3 * i + 1], s.f[3 * i + 2]];
+        const fx = s.f[3 * i], fy = s.f[3 * i + 1], fz = s.f[3 * i + 2];
         g.unwrap(s.x, s.image, i, u);
-        const r = [u[0] - b.xcm[0], u[1] - b.xcm[1], u[2] - b.xcm[2]];
-        const t = cross(r, f);
-        for (let d = 0; d < 3; d++) { F[d] += f[d]; T[d] += t[d]; }
+        const rx = u[0] - b.xcm[0], ry = u[1] - b.xcm[1], rz = u[2] - b.xcm[2];
+        // r x f
+        F[0] += fx; T[0] += ry * fz - rz * fy;
+        F[1] += fy; T[1] += rz * fx - rx * fz;
+        F[2] += fz; T[2] += rx * fy - ry * fx;
         // per-atom torques of finite-size particles (granular contacts, fix addtorque) add to the body torque
         if (s.torque) for (let d = 0; d < 3; d++) T[d] += s.torque[3 * i + d];
       }
@@ -1007,7 +1022,6 @@ export class FixRigid extends Fix {
    */
   private setXV(setX: boolean, virialFactor: number): void {
     const s = this.sys.state;
-    const box = s.box;
     const g = this.sys.geom;
     const idx = this.index();
     const dtf = 0.5 * s.dt * s.units.ftm2v;
@@ -1015,15 +1029,17 @@ export class FixRigid extends Fix {
     if (this.vAtom.length !== 6 * s.n) this.vAtom = new Float64Array(6 * s.n);
     const va = this.vAtom;
     const u = [0, 0, 0];
+    // per-atom scratch: R d, omega x R d, the old velocity and unwrapped position, the constraint force
+    const r = [0, 0, 0], w = [0, 0, 0], vold = [0, 0, 0], xold = [0, 0, 0], fc = [0, 0, 0];
     for (const b of this.bodies) {
       const R = qmat(b.q);
-      b.atoms.forEach((id, n) => {
-        const i = idx.get(id)!;
+      const om = b.omega;
+      for (let n = 0; n < b.atoms.length; n++) {
+        const i = idx.get(b.atoms[n])!;
         const dsp = b.displace[n];
-        const r = [0, 1, 2].map((d) => R[d][0] * dsp[0] + R[d][1] * dsp[1] + R[d][2] * dsp[2]);
-        const w = cross(b.omega, r);
-        const vold = [s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2]];
-        const xold = [0, 0, 0];
+        for (let d = 0; d < 3; d++) r[d] = R[d][0] * dsp[0] + R[d][1] * dsp[1] + R[d][2] * dsp[2];
+        w[0] = om[1] * r[2] - om[2] * r[1]; w[1] = om[2] * r[0] - om[0] * r[2]; w[2] = om[0] * r[1] - om[1] * r[0];
+        vold[0] = s.v[3 * i]; vold[1] = s.v[3 * i + 1]; vold[2] = s.v[3 * i + 2];
         g.unwrap(s.x, s.image, i, xold);
         for (let d = 0; d < 3; d++) s.v[3 * i + d] = b.vcm[d] + w[d];
         // finite-size spheres rotate with the body: their angular velocity is the body's (measured with native LAMMPS, black box)
@@ -1077,26 +1093,25 @@ export class FixRigid extends Fix {
           for (let d = 0; d < 3; d++) s.angmom![3 * i + d] = L[d];
         }
         if (setX) {
-          // unwrapped position, written back as wrapped position + image flags
-          for (let d = 0; d < 3; d++) {
-            const xu = b.xcm[d] + r[d];
-            const L = box.hi[d] - box.lo[d];
-            const im = box.periodic[d] ? Math.floor((xu - box.lo[d]) / L) : 0;
-            s.x[3 * i + d] = xu - im * L;
-            s.image[3 * i + d] = im;
-          }
+          // As native LAMMPS does (src/RIGID/fix_rigid.cpp and fix_rigid_small.cpp set_xv at b332f28): the atom keeps
+          // its image flags, x = xcm + R d minus their shift (with the tilt factors of a triclinic box: "map back into
+          // periodic box via xbox,ybox,zbox"); atoms that leave the box are mapped back when the lists are rebuilt
+          const ix = s.image[3 * i], iy = s.image[3 * i + 1], iz = s.image[3 * i + 2];
+          s.x[3 * i] = r[0] + (b.xcm[0] - ix * g.lx - iy * g.xy - iz * g.xz);
+          s.x[3 * i + 1] = r[1] + (b.xcm[1] - iy * g.ly - iz * g.yz);
+          s.x[3 * i + 2] = r[2] + (b.xcm[2] - iz * g.lz);
         }
         if (virialFactor) {
           const m = massOf(s, i);
           if (setX) { u[0] = xold[0]; u[1] = xold[1]; u[2] = xold[2]; } else g.unwrap(s.x, s.image, i, u);
-          const fc = [0, 1, 2].map((d) => (m * (s.v[3 * i + d] - vold[d])) / dtf - s.f[3 * i + d]);
+          for (let d = 0; d < 3; d++) fc[d] = (m * (s.v[3 * i + d] - vold[d])) / dtf - s.f[3 * i + d];
           vir[0] += virialFactor * u[0] * fc[0]; vir[1] += virialFactor * u[1] * fc[1]; vir[2] += virialFactor * u[2] * fc[2];
           vir[3] += virialFactor * u[0] * fc[1]; vir[4] += virialFactor * u[0] * fc[2]; vir[5] += virialFactor * u[1] * fc[2];
           // fix_rigid_small.cpp set_xv()/set_v(): vr = 0.5 * x fc terms of this atom, v_tally(1, &i, 1.0, vr)
           va[6 * i] += virialFactor * u[0] * fc[0]; va[6 * i + 1] += virialFactor * u[1] * fc[1]; va[6 * i + 2] += virialFactor * u[2] * fc[2];
           va[6 * i + 3] += virialFactor * u[0] * fc[1]; va[6 * i + 4] += virialFactor * u[0] * fc[2]; va[6 * i + 5] += virialFactor * u[1] * fc[2];
         }
-      });
+      }
     }
   }
 

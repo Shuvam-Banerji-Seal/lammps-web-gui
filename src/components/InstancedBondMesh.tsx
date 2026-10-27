@@ -4,6 +4,8 @@ import { useThree } from '@react-three/fiber';
 import { Atom, Bond, VisualizationConfig } from '../types';
 import { DEFAULT_ATOM_COLOR } from '../constants';
 import { writeInstanceSegment } from '../services/instanceMatrix';
+import { bondSegments } from '../services/atomStyle';
+import { colorKeyOf, hexToRgb, makeAtomColorer } from '../services/colorMaps';
 
 interface InstancedBondMeshProps {
   bonds: Bond[];
@@ -26,21 +28,22 @@ interface BondBuffers {
   count: number;
   ax: Float32Array; ay: Float32Array; az: Float32Array;
   bx: Float32Array; by: Float32Array; bz: Float32Array;
-  /** Atom type whose colour this half-bond takes. */
-  type: Int32Array;
+  /** The atom whose colour this half-bond takes. */
+  atom: Atom[];
 }
 
 const EMPTY: BondBuffers = {
   count: 0,
   ax: new Float32Array(0), ay: new Float32Array(0), az: new Float32Array(0),
   bx: new Float32Array(0), by: new Float32Array(0), bz: new Float32Array(0),
-  type: new Int32Array(0),
+  atom: [],
 };
 
 /**
  * Renders ALL bonds in a single THREE.InstancedMesh draw call.
  * Each bond is drawn as two half-cylinders (atom1->mid coloured by atom1,
- * mid->atom2 coloured by atom2) using per-instance colours.
+ * mid->atom2 coloured by atom2, in the view's atom colouring) using
+ * per-instance colours, or all in config.bondColor when that is set.
  *
  * Performance contract: endpoint extraction runs only when topology inputs
  * change; moving the thickness slider only rewrites matrices from the cached
@@ -57,21 +60,14 @@ const InstancedBondMesh: React.FC<InstancedBondMeshProps> = ({
   const radius = Math.max(0.02, 0.12 * config.bondScale);
 
   // Narrow colour dependency: identity of `config` must not rebuild buffers.
-  const colorKey = useMemo(
-    () =>
-      Object.keys(config.customColors)
-        .sort((a, b) => Number(a) - Number(b))
-        .map(k => `${k}:${config.customColors[Number(k)]}`)
-        .join(';'),
-    [config.customColors],
-  );
+  const colorKey = config.bondColor ? `bond:${config.bondColor}` : colorKeyOf(config);
 
   const buf = useMemo<BondBuffers>(() => {
     if (bonds.length === 0) return EMPTY;
     const cap = bonds.length * 2;
     const ax = new Float32Array(cap), ay = new Float32Array(cap), az = new Float32Array(cap);
     const bx = new Float32Array(cap), by = new Float32Array(cap), bz = new Float32Array(cap);
-    const type = new Int32Array(cap);
+    const atom: Atom[] = new Array(cap);
 
     let n = 0;
     for (let i = 0; i < bonds.length; i++) {
@@ -88,27 +84,21 @@ const InstancedBondMesh: React.FC<InstancedBondMeshProps> = ({
 
       ax[n] = a1.x; ay[n] = a1.y; az[n] = a1.z;
       bx[n] = mx;   by[n] = my;   bz[n] = mz;
-      type[n] = a1.type;
+      atom[n] = a1;
       n++;
 
       ax[n] = mx;   ay[n] = my;   az[n] = mz;
       bx[n] = a2.x; by[n] = a2.y; bz[n] = a2.z;
-      type[n] = a2.type;
+      atom[n] = a2;
       n++;
     }
-    return { count: n, ax, ay, az, bx, by, bz, type };
+    return { count: n, ax, ay, az, bx, by, bz, atom };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bonds, atomMap, maxBondLength]);
 
-  // Tessellation adapts to system size (fewer segments for huge systems).
-  const geometry = useMemo(
-    () =>
-      new THREE.CylinderGeometry(
-        1, 1, 1,
-        Math.min(16, Math.max(6, 18 - Math.floor(bonds.length / 2000)))
-      ),
-    [bonds.length]
-  );
+  // Tessellation follows the quality setting and adapts to system size (fewer segments for huge systems).
+  const segments = bondSegments(config.quality, bonds.length);
+  const geometry = useMemo(() => new THREE.CylinderGeometry(1, 1, 1, segments), [segments]);
 
   // A useMemo'd geometry that gets REPLACED is not R3F's to dispose; without
   // this the old buffers leak on the GPU on every differently sized load.
@@ -134,33 +124,31 @@ const InstancedBondMesh: React.FC<InstancedBondMeshProps> = ({
     // matrices (without it the last trajectory/engine frame could stay unpainted until the next interaction)
     invalidate();
     mesh.computeBoundingSphere();
-  }, [buf, radius]);
+  }, [buf, radius, segments]);
 
-  // Per-instance colours, cached per atom type rather than re-parsing the
-  // same handful of hex strings once per half-bond.
+  // Per-instance colours: the bond colour, or each half its atom's colour (makeAtomColorer caches type colours).
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
-    const byType = new Map<number, THREE.Color>();
+    const rgb = new Float32Array(3);
+    const c = new THREE.Color();
+    const colorOf = makeAtomColorer(config, DEFAULT_ATOM_COLOR);
+    if (config.bondColor) hexToRgb(config.bondColor, rgb);
     for (let i = 0; i < buf.count; i++) {
-      const t = buf.type[i];
-      let c = byType.get(t);
-      if (!c) {
-        c = new THREE.Color(config.customColors[t] ?? DEFAULT_ATOM_COLOR);
-        byType.set(t, c);
-      }
+      if (!config.bondColor) colorOf(buf.atom[i], rgb);
+      c.setRGB(rgb[0], rgb[1], rgb[2], THREE.SRGBColorSpace);
       mesh.setColorAt(i, c);
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buf, colorKey]);
+  }, [buf, colorKey, segments]);
 
   if (buf.count === 0) return null;
 
   return (
     <instancedMesh
-      key={buf.count}
+      key={`${buf.count}|${segments}`}
       ref={meshRef}
       args={[geometry, undefined, buf.count]}
     >

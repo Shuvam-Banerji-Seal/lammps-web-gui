@@ -98,13 +98,23 @@ export enum ParseSection {
 
 export type MaterialType = 'realistic' | 'plastic' | 'toon' | 'metallic';
 
-export type VisualizationMode = 'ball-and-stick' | 'space-fill' | 'wireframe' | 'licorice';
+export type VisualizationMode = 'ball-and-stick' | 'space-fill' | 'wireframe' | 'licorice' | 'element-balls' | 'points';
 
 export type FileFormat = 'lammps' | 'xyz' | 'pdb' | 'cif' | 'lammpsdump';
 
 export type LightingPreset = 'studio' | 'lab' | 'outdoor' | 'space' | 'soft';
 
 export type CameraPreset = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso';
+
+/** What decides an atom's colour: its type (the per-type colours), or a per-atom quantity through a colour map. */
+export type ColorBy = 'type' | 'charge' | 'speed' | 'id' | 'molecule' | 'x' | 'y' | 'z';
+
+export type ColorMapName = 'viridis' | 'plasma' | 'inferno' | 'turbo' | 'coolwarm' | 'rainbow' | 'grayscale';
+
+/** Rendering quality: sphere and cylinder tessellation, pixel ratio and shadow resolution ('auto' scales with size). */
+export type RenderQuality = 'low' | 'auto' | 'high' | 'ultra';
+
+export type ToneMappingMode = 'aces' | 'agx' | 'neutral' | 'none';
 
 export interface VisualizationConfig {
   atomScale: number;
@@ -121,4 +131,27 @@ export interface VisualizationConfig {
   shadowsEnabled: boolean;
   autoRotateSpeed: number;
   fov: number;
+  /** Colour by type (default) or by a per-atom quantity through colorMap. */
+  colorBy?: ColorBy;
+  colorMap?: ColorMapName;
+  /** Reverse the colour map. */
+  colorReverse?: boolean;
+  /** Map range from the data (all frames) when true or absent; colorMin..colorMax otherwise. */
+  colorAuto?: boolean;
+  colorMin?: number;
+  colorMax?: number;
+  quality?: RenderQuality;
+  toneMapping?: ToneMappingMode;
+  /** Tone-mapping exposure (1 = neutral). */
+  exposure?: number;
+  /** Image-based lighting from a procedural room environment (reflections on the PBR materials). */
+  envLighting?: boolean;
+  /** Depth cueing: fog toward the background colour, 0 (off) to 1 (strong). */
+  depthCue?: number;
+  /** One colour for every bond; empty or absent: each half takes its atom's colour. */
+  bondColor?: string;
+  /** Simulation box edge colour. */
+  boxColor?: string;
+  /** Radius multiplier per atom type (1 when absent). */
+  typeRadii?: Record<number, number>;
 }

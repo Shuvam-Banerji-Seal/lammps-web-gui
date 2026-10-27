@@ -72,6 +72,31 @@ const bspline = (p: number, x: number): number => {
   return (x * bspline(p - 1, x) + (p - x) * bspline(p - 1, x - 1)) / (p - 1);
 };
 
+/**
+ * The p weights M_p(x0 - k), k = 0 .. p - 1, into out[o + k]: the recursion of bspline() evaluated once for every
+ * argument it reaches (t_m = x0 - m by successive subtraction, as its x - 1), level by level, instead of once per call.
+ * a and b are scratch arrays of at least 2p entries.
+ */
+const bsplineWeights = (p: number, x0: number, out: Float64Array, o: number, t: Float64Array, a: Float64Array, b: Float64Array): void => {
+  const m1 = 2 * p - 1;
+  t[0] = x0;
+  for (let m = 1; m < m1; m++) t[m] = t[m - 1] - 1;
+  for (let m = 0; m < m1; m++) a[m] = t[m] >= 0 && t[m] < 1 ? 1 : 0;
+  let cur = a, nxt = b;
+  for (let n = 2; n <= p; n++) {
+    // level n needs the arguments t_0 .. t_(m1 - n)
+    for (let m = 0; m <= m1 - n; m++) {
+      const x = t[m];
+      nxt[m] = x <= 0 || x >= n ? 0 : (x * cur[m] + (n - x) * cur[m + 1]) / (n - 1);
+    }
+    const sw = cur; cur = nxt; nxt = sw;
+  }
+  for (let k = 0; k < p; k++) out[o + k] = cur[k];
+};
+
+/** m mod n in [0, n). */
+const wrap = (m: number, n: number): number => ((m % n) + n) % n;
+
 /*
  * Automatic g_ewald, mesh (orthorhombic boxes, with or without slab).
  *
@@ -443,6 +468,7 @@ export class KSpacePPPM extends KSpaceBase {
     const wts = new Float64Array(3 * n * P);
     const lam = [0, 0, 0];
     const N = [nx, ny, nz];
+    const t = new Float64Array(2 * P), sa = new Float64Array(2 * P), sb = new Float64Array(2 * P);
     for (let i = 0; i < n; i++) {
       geom.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
       lam[2] /= this.slab;
@@ -450,27 +476,43 @@ export class KSpacePPPM extends KSpaceBase {
         const u = lam[d] * N[d];
         const i0 = P % 2 === 1 ? Math.round(u) - (P - 1) / 2 : Math.floor(u) - P / 2 + 1;
         first[3 * i + d] = i0;
-        for (let k = 0; k < P; k++) wts[(3 * i + d) * P + k] = bspline(P, u - (i0 + k) + P / 2);
+        // the weights M_P(u - (i0 + k) + P/2) of the P mesh points from i0
+        bsplineWeights(P, u - i0 + P / 2, wts, (3 * i + d) * P, t, sa, sb);
       }
     }
     return { first, wts };
   }
 
-  /** Adds charge q of atom i to the real parts of the complex mesh rho with its assignment weights. */
-  protected spread(rho: Float64Array, i: number, q: number, first: Int32Array, wts: Float64Array): void {
+  /** The P mesh indices of atom i in x, y and z (from first, wrapped into the mesh), in a reused array. */
+  private meshIdx = new Int32Array(0);
+  protected meshIndices(i: number, first: Int32Array): Int32Array {
     const [nx, ny, nz] = this.mesh;
     const P = this.order;
-    const mod = (a: number, m: number) => ((a % m) + m) % m;
+    if (this.meshIdx.length !== 3 * P) this.meshIdx = new Int32Array(3 * P);
+    const xs = this.meshIdx;
     const fx = first[3 * i], fy = first[3 * i + 1], fz = first[3 * i + 2];
+    for (let k = 0; k < P; k++) {
+      xs[k] = wrap(fx + k, nx);
+      xs[P + k] = wrap(fy + k, ny);
+      xs[2 * P + k] = wrap(fz + k, nz);
+    }
+    return xs;
+  }
+
+  /** Adds charge q of atom i to the real parts of the complex mesh rho with its assignment weights. */
+  protected spread(rho: Float64Array, i: number, q: number, first: Int32Array, wts: Float64Array): void {
+    const [nx, ny] = this.mesh;
+    const P = this.order;
+    const xs = this.meshIndices(i, first);
     for (let c = 0; c < P; c++) {
-      const iz = mod(fz + c, nz);
+      const iz = xs[2 * P + c];
       const wz = q * wts[(3 * i + 2) * P + c];
       for (let b = 0; b < P; b++) {
-        const iy = mod(fy + b, ny);
+        const iy = xs[P + b];
         const wyz = wz * wts[(3 * i + 1) * P + b];
+        const row = (iz * ny + iy) * nx;
         for (let a = 0; a < P; a++) {
-          const ix = mod(fx + a, nx);
-          rho[2 * ((iz * ny + iy) * nx + ix)] += wyz * wts[(3 * i) * P + a];
+          rho[2 * (row + xs[a])] += wyz * wts[(3 * i) * P + a];
         }
       }
     }
@@ -536,7 +578,6 @@ export class KSpacePPPM extends KSpaceBase {
     this.buildGreen(geom);
     const ng = nx * ny * nz;
     const { first, wts } = this.assignWeights(s, geom);
-    const mod = (a: number, m: number) => ((a % m) + m) % m;
     const rho = new Float64Array(2 * ng);
     const qg = this.gridCharges(s);
     for (let i = 0; i < n; i++) if (qg[i] !== 0) this.spread(rho, i, qg[i], first, wts);
@@ -592,18 +633,18 @@ export class KSpacePPPM extends KSpaceBase {
     for (let i = 0; i < n; i++) {
       const q = qg[i];
       if (q === 0) continue;
-      const fx0 = first[3 * i], fy0 = first[3 * i + 1], fz0 = first[3 * i + 2];
+      const xs = this.meshIndices(i, first);
       let Ex = 0, Ey = 0, Ez = 0;
       for (let c = 0; c < P; c++) {
-        const iz = mod(fz0 + c, nz);
+        const iz = xs[2 * P + c];
         const wz = wts[(3 * i + 2) * P + c];
         for (let b = 0; b < P; b++) {
-          const iy = mod(fy0 + b, ny);
+          const iy = xs[P + b];
           const wyz = wz * wts[(3 * i + 1) * P + b];
+          const row = (iz * ny + iy) * nx;
           for (let a = 0; a < P; a++) {
-            const ix = mod(fx0 + a, nx);
             const ww = wyz * wts[(3 * i) * P + a];
-            const idx = 2 * ((iz * ny + iy) * nx + ix);
+            const idx = 2 * (row + xs[a]);
             Ex += ww * ex[idx]; Ey += ww * ey[idx]; Ez += ww * ez[idx];
           }
         }
@@ -628,26 +669,25 @@ export class KSpacePPPM extends KSpaceBase {
     ub: Float64Array | null, vb: Float64Array[] | null, pref: number): void {
     const project = this.peratomProject;
     const s = kc.s;
-    const [nx, ny, nz] = this.mesh;
+    const [nx, ny] = this.mesh;
     const P = this.order;
-    const mod = (a: number, m: number) => ((a % m) + m) % m;
     const vsum = [0, 0, 0, 0, 0, 0];
     for (let i = 0; i < s.n; i++) {
       const q = qg[i];
       if (q === 0) continue;
-      const fx0 = first[3 * i], fy0 = first[3 * i + 1], fz0 = first[3 * i + 2];
+      const xs = this.meshIndices(i, first);
       let u = 0;
       vsum.fill(0);
       for (let c = 0; c < P; c++) {
-        const iz = mod(fz0 + c, nz);
+        const iz = xs[2 * P + c];
         const wz = wts[(3 * i + 2) * P + c];
         for (let b = 0; b < P; b++) {
-          const iy = mod(fy0 + b, ny);
+          const iy = xs[P + b];
           const wyz = wz * wts[(3 * i + 1) * P + b];
+          const row = (iz * ny + iy) * nx;
           for (let a = 0; a < P; a++) {
-            const ix = mod(fx0 + a, nx);
             const ww = wyz * wts[(3 * i) * P + a];
-            const idx = 2 * ((iz * ny + iy) * nx + ix);
+            const idx = 2 * (row + xs[a]);
             if (ub) u += ww * ub[idx];
             if (vb) for (let k = 0; k < 6; k++) vsum[k] += ww * vb[k][idx];
           }

@@ -196,16 +196,17 @@ export class FixShake extends Fix {
     else this.vAtom.fill(0);
   }
 
-  /** Adds w * r (x) r (the six components xx yy zz xy xz yz) to out. */
-  private static addOuter(out: Float64Array | number[], w: number, rr: number[]): void {
-    out[0] += w * rr[0] * rr[0]; out[1] += w * rr[1] * rr[1]; out[2] += w * rr[2] * rr[2];
-    out[3] += w * rr[0] * rr[1]; out[4] += w * rr[0] * rr[2]; out[5] += w * rr[1] * rr[2];
+  /** Adds w * r (x) r (the six components xx yy zz xy xz yz) to out, r the three values of rr from o. */
+  private static addOuter(out: Float64Array | number[], w: number, rr: ArrayLike<number>, o = 0): void {
+    const x = rr[o], y = rr[o + 1], z = rr[o + 2];
+    out[0] += w * x * x; out[1] += w * y * y; out[2] += w * z * z;
+    out[3] += w * x * y; out[4] += w * x * z; out[5] += w * y * z;
   }
 
-  /** Adds a cluster's six virial components to its atoms, 1/n each (sum over the atoms = the cluster's virial). */
-  private tallyCluster(at: number[], cv: number[]): void {
-    const inv = 1 / at.length;
-    for (const i of at) for (let c = 0; c < 6; c++) this.vAtom[6 * i + c] += cv[c] * inv;
+  /** Adds a cluster's six virial components to its nAt atoms, 1/n each (sum over the atoms = the cluster's virial). */
+  private tallyCluster(at: ArrayLike<number>, nAt: number, cv: ArrayLike<number>): void {
+    const inv = 1 / nAt;
+    for (let n = 0; n < nAt; n++) for (let c = 0; c < 6; c++) this.vAtom[6 * at[n] + c] += cv[c] * inv;
   }
 
   constructor(sys: System, id: string, group: string, args: string[], style: 'shake' | 'rattle') {
@@ -484,19 +485,20 @@ export class FixShake extends Fix {
     // by dx in the half-step kinematics 0.5 dt^2 ftm2v (see the header; measured 5736.1 for dx 0.1, m 12)
     const st = this.sys.state;
     const toForce = 1 / (0.5 * st.dt * st.dt * st.units.ftm2v);
-    this.solveClusters((at, m, r, cons) => {
-      const s0 = cons.map((_k, j) => r[j].slice());
-      return { s0, factor: 1 };
-    }, (at, m, r, lam) => {
+    this.solveClusters((_c, w) => {
+      w.s0.set(w.r);
+      return 1;
+    }, (c, w) => {
       const s = this.sys.state;
-      for (let j = 0; j < lam.length; j++) {
-        const k = this.current!.cons[j];
+      const { at, m, r, lam } = w;
+      for (let j = 0; j < w.nc; j++) {
+        const k = c.cons[j];
         for (let q = 0; q < 3; q++) {
-          s.x[3 * at[k.a] + q] += (lam[j] * r[j][q]) / m[k.a];
-          s.x[3 * at[k.b] + q] -= (lam[j] * r[j][q]) / m[k.b];
+          s.x[3 * at[k.a] + q] += (lam[j] * r[3 * j + q]) / m[k.a];
+          s.x[3 * at[k.b] + q] -= (lam[j] * r[3 * j + q]) / m[k.b];
           if (this.storeForces) {
-            this.arrayAtom[3 * at[k.a] + q] += lam[j] * r[j][q] * toForce;
-            this.arrayAtom[3 * at[k.b] + q] -= lam[j] * r[j][q] * toForce;
+            this.arrayAtom[3 * at[k.a] + q] += lam[j] * r[3 * j + q] * toForce;
+            this.arrayAtom[3 * at[k.b] + q] -= lam[j] * r[3 * j + q] * toForce;
           }
         }
       }
@@ -541,7 +543,28 @@ export class FixShake extends Fix {
     this.vAtom.set(savedAtom);
   }
 
-  private current: Cluster | null = null;
+  /** The cluster being solved (atom indices, masses, separations, predictions and multipliers), sized at first use. */
+  private work: ClusterWork | null = null;
+  /** Index of each atom ID (-1: no such atom), refilled by atomIndex(). */
+  private idIndex = new Int32Array(0);
+
+  private atomIndex(): Int32Array {
+    const s = this.sys.state;
+    let maxId = 0;
+    for (let i = 0; i < s.n; i++) if (s.id[i] > maxId) maxId = s.id[i];
+    if (this.idIndex.length <= maxId) this.idIndex = new Int32Array(maxId + 1);
+    this.idIndex.fill(-1);
+    for (let i = 0; i < s.n; i++) this.idIndex[s.id[i]] = i;
+    return this.idIndex;
+  }
+
+  private clusterWork(): ClusterWork {
+    let nAt = 0, nc = 0;
+    for (const c of this.clusters) { nAt = Math.max(nAt, c.ids.length); nc = Math.max(nc, c.cons.length); }
+    const w = this.work;
+    if (w && w.at.length >= nAt && w.lam.length >= nc) return w;
+    return (this.work = newClusterWork(nAt, nc));
+  }
 
   /**
    * Solves every cluster for multipliers lambda_j such that the separations s0_k + sum_j C_kj lambda_j r_j
@@ -555,81 +578,103 @@ export class FixShake extends Fix {
    * tolerance (see the header).
    */
   private solveClusters(
-    start: (at: number[], m: number[], r: number[][], cons: Cluster['cons']) => { s0: number[][]; factor: number },
-    apply: (at: number[], m: number[], r: number[][], lam: number[]) => void,
+    start: (c: Cluster, w: ClusterWork) => number,
+    apply: (c: Cluster, w: ClusterWork) => void,
     stepScale: number,
   ): void {
     if (!this.clusters.length) return;
     const sys = this.sys;
     const s = sys.state;
     const g = sys.geom;
-    const index = new Map<number, number>();
-    for (let i = 0; i < s.n; i++) index.set(s.id[i], i);
+    const index = this.atomIndex();
+    const w = this.clusterWork();
+    const { at, m, r, s0, lam, C, J, F, rhs, delta, aug } = w;
     const d = [0, 0, 0];
-    interface Solve {
-      c: Cluster;
-      at: number[];
-      m: number[];
-      r: number[][];
-      s0: number[][];
-      /** Coefficient of lambda_j in the separation of constraint k. */
-      C: number[][];
-      /** Jacobian of the residuals in lambda, frozen at s0. */
-      J: number[][];
-      lam: number[];
-    }
-    const todo: Solve[] = this.clusters.map((c) => {
-      const at = c.ids.map((id) => index.get(id)!);
-      const m = at.map((i) => massOf(s, i));
+    // Clusters share no atoms, so each one is solved and applied before the next is set up.
+    for (const c of this.clusters) {
+      const nAt = c.ids.length, nc = c.cons.length;
+      w.nAt = nAt;
+      w.nc = nc;
+      for (let n = 0; n < nAt; n++) {
+        at[n] = index[c.ids[n]];
+        m[n] = massOf(s, at[n]);
+      }
       // current bond vectors (minimum image)
-      const r = c.cons.map((k) => {
+      for (let j = 0; j < nc; j++) {
+        const k = c.cons[j];
         for (let q = 0; q < 3; q++) d[q] = s.x[3 * at[k.a] + q] - s.x[3 * at[k.b] + q];
         g.minimumImage(d);
-        return [d[0], d[1], d[2]];
-      });
-      const { s0, factor } = start(at, m, r, c.cons);
-      const nc = c.cons.length;
-      const C = Array.from({ length: nc }, (_, k) => Array.from({ length: nc }, (_, j) => {
-        const ck = c.cons[k], cj = c.cons[j];
-        const sg = (atom: number) => (atom === cj.a ? 1 : atom === cj.b ? -1 : 0);
-        return factor * (sg(ck.a) / m[ck.a] - sg(ck.b) / m[ck.b]);
-      }));
-      const J = Array.from({ length: nc }, (_, k) => Array.from({ length: nc }, (_, j) =>
-        2 * C[k][j] * (s0[k][0] * r[j][0] + s0[k][1] * r[j][1] + s0[k][2] * r[j][2])));
-      return { c, at, m, r, s0, C, J, lam: new Array(nc).fill(0) };
-    });
-    for (const t of todo) {
-      const nc = t.c.cons.length;
-      for (let k = 0; ; k++) {
-        const sep = t.s0.map((sk, kk) => [0, 1, 2].map((q) => {
-          let v = sk[q];
-          for (let j = 0; j < nc; j++) v += t.C[kk][j] * t.lam[j] * t.r[j][q];
-          return v;
-        }));
-        const F = sep.map((v, q) => v[0] * v[0] + v[1] * v[1] + v[2] * v[2] - t.c.cons[q].d2);
-        let delta: number[] | null;
+        r[3 * j] = d[0]; r[3 * j + 1] = d[1]; r[3 * j + 2] = d[2];
+      }
+      const factor = start(c, w);
+      // C[k][j]: coefficient of lambda_j in the separation of constraint k; J: the residuals' Jacobian frozen at s0
+      for (let k = 0; k < nc; k++) {
+        const ck = c.cons[k];
+        for (let j = 0; j < nc; j++) {
+          const cj = c.cons[j];
+          const sa = ck.a === cj.a ? 1 : ck.a === cj.b ? -1 : 0;
+          const sb = ck.b === cj.a ? 1 : ck.b === cj.b ? -1 : 0;
+          C[nc * k + j] = factor * (sa / m[ck.a] - sb / m[ck.b]);
+        }
+      }
+      for (let k = 0; k < nc; k++) {
+        for (let j = 0; j < nc; j++) {
+          J[nc * k + j] = 2 * C[nc * k + j] * (s0[3 * k] * r[3 * j] + s0[3 * k + 1] * r[3 * j + 1] + s0[3 * k + 2] * r[3 * j + 2]);
+        }
+        lam[k] = 0;
+      }
+      for (let it = 0; ; it++) {
+        for (let k = 0; k < nc; k++) {
+          let v0 = s0[3 * k], v1 = s0[3 * k + 1], v2 = s0[3 * k + 2];
+          for (let j = 0; j < nc; j++) {
+            const cl = C[nc * k + j] * lam[j];
+            v0 += cl * r[3 * j]; v1 += cl * r[3 * j + 1]; v2 += cl * r[3 * j + 2];
+          }
+          F[k] = v0 * v0 + v1 * v1 + v2 * v2 - c.cons[k].d2;
+        }
+        let solved: boolean;
         if (nc === 1) {
-          const x = quadraticRoot(t.C[0][0] * t.C[0][0] * dot3(t.r[0], t.r[0]), 2 * t.C[0][0] * dot3(t.s0[0], t.r[0]), F[0]);
-          delta = x === null ? null : [x];
-        } else delta = solve(t.J, F.map((x) => -x));
-        if (!delta) { sys.warn(`fix ${this.style}: singular SHAKE system for cluster at atom ${t.c.ids[0]}`); break; }
+          const c0 = C[0];
+          const x = quadraticRoot(c0 * c0 * (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]),
+            2 * c0 * (s0[0] * r[0] + s0[1] * r[1] + s0[2] * r[2]), F[0]);
+          solved = x !== null;
+          if (x !== null) delta[0] = x;
+        } else {
+          for (let k = 0; k < nc; k++) rhs[k] = -F[k];
+          solved = solveInto(J, rhs, nc, delta, aug);
+        }
+        if (!solved) { sys.warn(`fix ${this.style}: singular SHAKE system for cluster at atom ${c.ids[0]}`); break; }
         let big = 0;
         for (let j = 0; j < nc; j++) {
-          t.lam[j] += delta[j];
+          lam[j] += delta[j];
           big = Math.max(big, Math.abs(delta[j]) * stepScale);
         }
         if (nc === 1 || big <= this.tol) break;
-        if (k + 1 >= this.maxIter) {
-          sys.warn(`fix ${this.style}: SHAKE did not converge in ${this.maxIter} iterations for the cluster at atom ${t.c.ids[0]}`);
+        if (it + 1 >= this.maxIter) {
+          sys.warn(`fix ${this.style}: SHAKE did not converge in ${this.maxIter} iterations for the cluster at atom ${c.ids[0]}`);
           break;
         }
       }
+      apply(c, w);
     }
-    for (const t of todo) {
-      this.current = t.c;
-      apply(t.at, t.m, t.r, t.lam);
+  }
+
+  /** Adds a cluster's constraint forces lambda_j r_j to f and their virial to the global and per-atom tallies. */
+  private applyForces(c: Cluster, w: ClusterWork): void {
+    const f = this.sys.state.f;
+    const { at, r, lam, cv } = w;
+    cv.fill(0);
+    for (let j = 0; j < w.nc; j++) {
+      const k = c.cons[j];
+      for (let q = 0; q < 3; q++) {
+        const fq = lam[j] * r[3 * j + q];
+        f[3 * at[k.a] + q] += fq;
+        f[3 * at[k.b] + q] -= fq;
+      }
+      FixShake.addOuter(this.virial, lam[j], r, 3 * j);
+      FixShake.addOuter(cv, lam[j], r, 3 * j);
     }
-    this.current = null;
+    this.tallyCluster(at, w.nAt, cv);
   }
 
   /** Adds constraint forces so the next positions satisfy the constraints; the prediction uses factor * dt^2. */
@@ -637,25 +682,19 @@ export class FixShake extends Fix {
     const s = this.sys.state;
     const dt = s.dt;
     const dtfsq = dtfFactor * dt * dt * s.units.ftm2v;
-    const vir = this.virial;
     this.resetVirial();
-    this.solveClusters((at, m, r, cons) => {
-      const p = at.map((i, n) => [0, 1, 2].map((q) => dt * s.v[3 * i + q] + (dtfsq * s.f[3 * i + q]) / m[n]));
-      return { s0: cons.map((k, j) => [0, 1, 2].map((q) => r[j][q] + p[k.a][q] - p[k.b][q])), factor: dtfsq };
-    }, (at, _m, r, lam) => {
-      const cv = [0, 0, 0, 0, 0, 0];
-      for (let j = 0; j < lam.length; j++) {
-        const k = this.current!.cons[j];
-        for (let q = 0; q < 3; q++) {
-          const fq = lam[j] * r[j][q];
-          s.f[3 * at[k.a] + q] += fq;
-          s.f[3 * at[k.b] + q] -= fq;
-        }
-        FixShake.addOuter(vir, lam[j], r[j]);
-        FixShake.addOuter(cv, lam[j], r[j]);
+    this.solveClusters((c, w) => {
+      const { at, m, r, s0, p } = w;
+      for (let n = 0; n < w.nAt; n++) {
+        const i = at[n];
+        for (let q = 0; q < 3; q++) p[3 * n + q] = dt * s.v[3 * i + q] + (dtfsq * s.f[3 * i + q]) / m[n];
       }
-      this.tallyCluster(at, cv);
-    }, dtfsq);
+      for (let j = 0; j < w.nc; j++) {
+        const k = c.cons[j];
+        for (let q = 0; q < 3; q++) s0[3 * j + q] = r[3 * j + q] + p[3 * k.a + q] - p[3 * k.b + q];
+      }
+      return dtfsq;
+    }, (c, w) => this.applyForces(c, w), dtfsq);
   }
 
   /**
@@ -674,7 +713,10 @@ export class FixShake extends Fix {
     this.resetVirial();
     this.velStore = [];
     const pending: { at: number[]; acc: number[][]; nCross: number; dmu: number[]; r: number[][]; cons: Cluster['cons'] }[] = [];
-    this.solveClusters((at, m, r, cons) => {
+    this.solveClusters((c, w) => {
+      const cons = c.cons;
+      const at = Array.from(w.at.subarray(0, w.nAt)), m = Array.from(w.m.subarray(0, w.nAt));
+      const r = cons.map((_k, j) => [w.r[3 * j], w.r[3 * j + 1], w.r[3 * j + 2]]);
       // full-step velocity without G, then its projection impulse dmu (linear solve)
       const u = at.map((i, n) => [0, 1, 2].map((q) => s.v[3 * i + q] + (0.5 * dt * ftm2v * s.f[3 * i + q]) / m[n]));
       const nc = cons.length;
@@ -702,21 +744,9 @@ export class FixShake extends Fix {
         for (let j = 0; j < nc; j++) v += (dmu[j] * sg(n, j) * r[j][q]) / m[n];
         return dt * v + (half * s.f[3 * at[n] + q]) / m[n];
       }));
-      return { s0: cons.map((k, j) => [0, 1, 2].map((q) => r[j][q] + p[k.a][q] - p[k.b][q])), factor: half };
-    }, (at, _m, r, lam) => {
-      const cv = [0, 0, 0, 0, 0, 0];
-      for (let j = 0; j < lam.length; j++) {
-        const k = this.current!.cons[j];
-        for (let q = 0; q < 3; q++) {
-          const fq = lam[j] * r[j][q];
-          s.f[3 * at[k.a] + q] += fq;
-          s.f[3 * at[k.b] + q] -= fq;
-        }
-        FixShake.addOuter(vir, lam[j], r[j]);
-        FixShake.addOuter(cv, lam[j], r[j]);
-      }
-      this.tallyCluster(at, cv);
-    }, half);
+      cons.forEach((k, j) => { for (let q = 0; q < 3; q++) w.s0[3 * j + q] = r[j][q] + p[k.a][q] - p[k.b][q]; });
+      return half;
+    }, (c, w) => this.applyForces(c, w), half);
     const kickLater = this.integratorAfter();
     for (const e of pending) {
       const k = kickLater ? Math.max(e.nCross, 1) : Math.max(e.nCross - 1, 0);
@@ -732,7 +762,7 @@ export class FixShake extends Fix {
         FixShake.addOuter(vir, lam, rr);
         const cv = [0, 0, 0, 0, 0, 0];
         FixShake.addOuter(cv, lam, rr);
-        this.tallyCluster(e.at, cv);
+        this.tallyCluster(e.at, e.at.length, cv);
       }
     }
   }
@@ -785,11 +815,10 @@ export class FixShake extends Fix {
   private rattleVelocities(addVirial = false): void {
     const s = this.sys.state;
     const g = this.sys.geom;
-    const index = new Map<number, number>();
-    for (let i = 0; i < s.n; i++) index.set(s.id[i], i);
+    const index = this.atomIndex();
     const d = [0, 0, 0];
     for (const c of this.clusters) {
-      const at = c.ids.map((id) => index.get(id)!);
+      const at = c.ids.map((id) => index[id]);
       const m = at.map((i) => massOf(s, i));
       const nc = c.cons.length;
       const r = c.cons.map((k) => {
@@ -814,7 +843,7 @@ export class FixShake extends Fix {
           FixShake.addOuter(this.virial, f, rr);
           const cv = [0, 0, 0, 0, 0, 0];
           FixShake.addOuter(cv, f, rr);
-          this.tallyCluster(at, cv);
+          this.tallyCluster(at, at.length, cv);
         }
       }
       for (let j = 0; j < nc; j++) {
@@ -827,8 +856,6 @@ export class FixShake extends Fix {
     }
   }
 }
-
-const dot3 = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 /**
  * Small root of a x^2 + b x + c = 0 (the root that vanishes with c), by the cancellation-free form; a = 0 gives
@@ -855,20 +882,68 @@ const filterList = (l: TopoList, keep: boolean[]): TopoList => {
   return out;
 };
 
-/** Gaussian elimination with partial pivoting for the small (<= 3x3) cluster systems. */
-const solve = (A: number[][], b: number[]): number[] | null => {
-  const n = b.length;
-  const M = A.map((row, i) => [...row, b[i]]);
+/**
+ * Gaussian elimination with partial pivoting for the small (<= 3x3) cluster systems: x = A^-1 b into out, A an n x n
+ * row-major matrix, M scratch for the n x (n + 1) augmented matrix. False when A is singular.
+ */
+const solveInto = (A: ArrayLike<number>, b: ArrayLike<number>, n: number, out: Float64Array, M: Float64Array): boolean => {
+  const w = n + 1;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) M[w * i + j] = A[n * i + j];
+    M[w * i + n] = b[i];
+  }
   for (let c = 0; c < n; c++) {
     let p = c;
-    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
-    if (Math.abs(M[p][c]) < 1e-300) return null;
-    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[w * r + c]) > Math.abs(M[w * p + c])) p = r;
+    if (Math.abs(M[w * p + c]) < 1e-300) return false;
+    if (p !== c) {
+      for (let q = 0; q <= n; q++) { const t = M[w * c + q]; M[w * c + q] = M[w * p + q]; M[w * p + q] = t; }
+    }
     for (let r = 0; r < n; r++) {
       if (r === c) continue;
-      const f = M[r][c] / M[c][c];
-      for (let q = c; q <= n; q++) M[r][q] -= f * M[c][q];
+      const f = M[w * r + c] / M[w * c + c];
+      for (let q = c; q <= n; q++) M[w * r + q] -= f * M[w * c + q];
     }
   }
-  return M.map((row, i) => row[n] / row[i]);
+  for (let i = 0; i < n; i++) out[i] = M[w * i + n] / M[w * i + i];
+  return true;
 };
+
+/** solveInto for nested rows: the solution, or null when A is singular. */
+const solve = (A: number[][], b: number[]): number[] | null => {
+  const n = b.length;
+  const out = new Float64Array(n);
+  return solveInto(A.flat(), b, n, out, new Float64Array(n * (n + 1))) ? Array.from(out) : null;
+};
+
+/**
+ * One cluster in solveClusters, flat: atom indices and masses (nAt), and per constraint (nc) the separation r and the
+ * prediction s0 (three values each) and the multiplier lam. The rest is the solver's scratch.
+ */
+interface ClusterWork {
+  nAt: number;
+  nc: number;
+  at: Int32Array;
+  m: Float64Array;
+  r: Float64Array;
+  s0: Float64Array;
+  lam: Float64Array;
+  /** Predicted displacements of the atoms (three per atom). */
+  p: Float64Array;
+  C: Float64Array;
+  J: Float64Array;
+  F: Float64Array;
+  rhs: Float64Array;
+  delta: Float64Array;
+  aug: Float64Array;
+  /** The cluster's virial (xx yy zz xy xz yz). */
+  cv: Float64Array;
+}
+
+const newClusterWork = (nAt: number, nc: number): ClusterWork => ({
+  nAt: 0, nc: 0,
+  at: new Int32Array(nAt), m: new Float64Array(nAt), r: new Float64Array(3 * nc), s0: new Float64Array(3 * nc),
+  lam: new Float64Array(nc), p: new Float64Array(3 * nAt), C: new Float64Array(nc * nc), J: new Float64Array(nc * nc),
+  F: new Float64Array(nc), rhs: new Float64Array(nc), delta: new Float64Array(nc), aug: new Float64Array(nc * (nc + 1)),
+  cv: new Float64Array(6),
+});

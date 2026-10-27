@@ -113,6 +113,11 @@ export interface ErfcTable {
    * correction uses this tabulated 1/r too (energies agree to 1e-14; the exact 1/r is 2e-5 off).
    */
   coul(rsq: number): number;
+  /**
+   * energy, force and coul at one rsq above inner, into out[0..2], with one table lookup (the same values as the three
+   * calls); false (out untouched) where the table ends and the caller evaluates directly.
+   */
+  all(rsq: number, out: Float64Array): boolean;
 }
 
 const f32 = new Float32Array(1);
@@ -197,11 +202,23 @@ export const makeErfcTable = (N: number, g: number, cutsq: number, inner: number
     const t = ((doubleRsq ? rsq : f32[0]) - node[k]) * invsp[k];
     return tab[k] + dtab[k] * t;
   };
+  const all = (rsq: number, out: Float64Array): boolean => {
+    f32[0] = rsq;
+    const bits = u32[0];
+    const k = ((bits >>> 23) - eMin) * perOctave + ((bits & 0x7fffff) >>> shift);
+    if (k + 1 >= n) return false;
+    const t = ((doubleRsq ? rsq : f32[0]) - node[k]) * invsp[k];
+    out[0] = eTab[k] + dE[k] * t;
+    out[1] = fTab[k] + dF[k] * t;
+    out[2] = cTab[k] + dC[k] * t;
+    return true;
+  };
   return {
     inner,
     energy: (rsq) => interp(rsq, eTab, dE, 0),
     force: (rsq) => interp(rsq, fTab, dF, 1),
     coul: (rsq) => interp(rsq, cTab, dC, 2),
+    all,
   };
 };
 

@@ -2,7 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNum, parseInt_ } from '../force/util';
-import { buildTriples, checkRcutfac, rawBispectrum, adjointBispectrum, WignerTables, snaBinCut, type Triple, type Cmat, type Grad } from './sna';
+import { buildTriples, checkRcutfac, rawBispectrum, adjointBispectrum, newZStore, WignerTables, snaBinCut, type Triple, type Cmat, type Grad } from './sna';
 import { CellList } from '../cellList';
 import { libm } from '../libm';
 import { fmtShortest } from '../cformat';
@@ -275,6 +275,7 @@ export class ComputeSnap extends Compute {
     const n = s.n;
     const nall = nb.nall, xa = nb.xall, ta = nb.typeall, owner = nb.owner;
     const nt = p.radius.length, K = p.K, Q = p.Q, blk = p.blk, tj = p.twojmax, triples = p.triples;
+    const zs = newZStore(triples);
     const gb = this.groupBit;
 
     // atoms in ID order: row r of the array belongs to rankOrder[r]
@@ -391,7 +392,7 @@ export class ComputeSnap extends Compute {
           }
         }
       }
-      rawBispectrum(triples, u, raw);
+      rawBispectrum(triples, u, raw, zs);
       for (let c = 0; c < K; c++) Bf[c] = (raw[c] - p.b0[c]) / p.norm[c];
       vals.fill(0);
       for (let c = 0; c < K; c++) vals[c] = Bf[c];
@@ -404,7 +405,7 @@ export class ComputeSnap extends Compute {
         gbuf.fill(0);
         gbuf[k] = 1 / p.norm[k];
         for (let J = 0; J <= tj; J++) { gr[J].r.fill(0); gi[J].r.fill(0); }
-        adjointBispectrum(triples, u, gbuf, gr, gi);
+        adjointBispectrum(triples, u, gbuf, gr, gi, zs);
         for (let a = 0; a < m; a++) {
           for (let mm = 0; mm < 3; mm++) {
             let acc2 = 0;

@@ -109,16 +109,9 @@ class GridEvaluator {
             if (p.switchinner) fin = innerSwitch(r, p.sinner[tk], p.dinner[tk])[0];
             const sc = fc * fin * p.weight[tk];
             const ck = cayleyKlein(p, r, Rii, dx, dy, dz);
-            T.compute(ck.ar, ck.ai, ck.br, ck.bi, false);
-            for (let J = 0; J <= tj; J++) {
-              const nn = (J + 1) * (J + 1);
-              const Ur = T.ur[J], Ui = T.ui[J];
-              for (let q = 0; q < nn; q++) {
-                u[J].re[q] += sc * Ur[q];
-                u[J].im[q] += sc * Ui[q];
-              }
-            }
+            T.addScaled(ck.ar, ck.ai, ck.br, ck.bi, sc, u);
           }
+          WignerTables.mirror(u);
           rawBispectrum(triples, u, raw);
           for (let c = 0; c < K; c++) Bf[c] = (raw[c] - p.b0[c]) / p.norm[c];
           vals.fill(0);

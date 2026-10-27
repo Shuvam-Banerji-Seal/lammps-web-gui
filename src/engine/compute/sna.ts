@@ -194,6 +194,14 @@ export interface Triple {
   coef: Float64Array;
   /** Index m2 for the same flat slot (or -1 when no CG term). */
   m2: Int32Array;
+  /**
+   * The nonzero terms of coef by k, m1 ascending: terms tOff[k] .. tOff[k + 1] - 1 have m1 = tM1[t], m2 = tM2[t] and
+   * the coefficient tC[t].
+   */
+  tOff: Int32Array;
+  tM1: Int32Array;
+  tM2: Int32Array;
+  tC: Float64Array;
 }
 
 /** Bispectrum component list in the documented order, with coupling tables. */
@@ -216,7 +224,16 @@ export const buildTriples = (twojmax: number): Triple[] => {
             m2[k * (J1 + 1) + m1] = m2i;
           }
         }
-        out.push({ J1, J2, J, coef, m2 });
+        const tOff = new Int32Array(J + 2), tM1: number[] = [], tM2: number[] = [], tC: number[] = [];
+        for (let k = 0; k <= J; k++) {
+          for (let m1 = 0; m1 <= J1; m1++) {
+            const s = k * (J1 + 1) + m1;
+            if (coef[s] === 0) continue;
+            tM1.push(m1); tM2.push(m2[s]); tC.push(coef[s]);
+          }
+          tOff[k + 1] = tM1.length;
+        }
+        out.push({ J1, J2, J, coef, m2, tOff, tM1: Int32Array.from(tM1), tM2: Int32Array.from(tM2), tC: Float64Array.from(tC) });
       }
     }
   }
@@ -549,16 +566,9 @@ export class ComputeSnaAtom extends Compute {
         // Cayley-Klein parameters of the point on the 3-sphere
         const ar = sg * libm.cos(theta0), ai = dz / r0, br = dy / r0, bi = dx / r0;
         const e = this.chemflag ? this.elemMap[ta[k] - 1] : 0;
-        WT.compute(ar, ai, br, bi, false);
-        for (let J = 0; J <= tj; J++) {
-          const ur = WT.ur[J], ui = WT.ui[J];
-          const uj = ue[e][J];
-          for (let q = 0; q < ur.length; q++) {
-            uj.re[q] += sc * ur[q];
-            uj.im[q] += sc * ui[q];
-          }
-        }
+        WT.addScaled(ar, ai, br, bi, sc, ue[e]);
       }
+      for (let e = 0; e < Ne; e++) WignerTables.mirror(ue[e]);
       this.rawBlocks(ue, raw);
       this.finish(raw, out, i * this.ncols, muI);
     }
@@ -580,44 +590,66 @@ const DL2X: number[][] = [[0, 0], [0, 0], [1, 0], [0, 1]];
 export interface Cmat { re: Float64Array; im: Float64Array }
 
 /**
+ * The products Z^J_{k,kp} = sum CG(j1 m1, j2 m2 | j k) CG(j1 m1', j2 m2' | j kp) u^{J1}_{m1 m1'} u^{J2}_{m2 m2'} of one
+ * component, per triple (J+1)^2 complex values: rawBispectrum keeps them so that adjointBispectrum need not form them
+ * again (they are the derivative of B with respect to conj(u^J)).
+ */
+export interface ZStore { r: Float64Array[]; i: Float64Array[] }
+
+export const newZStore = (triples: Triple[]): ZStore => ({
+  r: triples.map((t) => new Float64Array((t.J + 1) * (t.J + 1))),
+  i: triples.map((t) => new Float64Array((t.J + 1) * (t.J + 1))),
+});
+
+/**
+ * The entries (k, kp) of a (J+1) x (J+1) matrix that bispectrumComponent and adjointBispectrum visit: one of each
+ * mirror pair (k, kp) <-> (J - k, J - kp), i.e. the rows k < J/2, and in the middle row (J even) the columns kp <= J/2.
+ * The matrices u^J, their products Z^J and the U^J tables all satisfy M_{J-k, J-kp} = (-1)^(k+kp) conj(M_{k,kp})
+ * (see WignerTables.mirror; for Z it follows from the same relation of u^{J1}, u^{J2} and the Clebsch-Gordan symmetry
+ * CG(j1 -m1, j2 -m2 | j -m) = (-1)^(j1+j2-j) CG(j1 m1, j2 m2 | j m), whose sign cancels in the product of two), so
+ * Re(conj(u) Z) has the same value at both entries of a pair: each pair counts twice, the centre (k = kp = J/2) once.
+ */
+const kpEnd = (J: number, k: number): number => (2 * k < J ? J + 1 : (J >> 1) + 1);
+
+/**
  * One bispectrum component B_{j1,j2,j} = sum conj(u^j) H u^{j1} u^{j2}, with
  * the three expansion-coefficient matrices supplied explicitly (chemflag uses
- * a different element's partial density in each of the three slots).
+ * a different element's partial density in each of the three slots). With zr/zi the products Z^J of the visited
+ * entries (kpEnd) are kept there.
  */
-export const bispectrumComponent = (t: Triple, u1: Cmat, u2: Cmat, uj: Cmat): number => {
-  const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
+export const bispectrumComponent = (t: Triple, u1: Cmat, u2: Cmat, uj: Cmat, zr?: Float64Array, zi?: Float64Array): number => {
+  const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1, J = t.J;
+  const { tOff, tM1, tM2, tC } = t;
+  const u1r = u1.re, u1i = u1.im, u2r = u2.re, u2i = u2.im;
   let val = 0;
-  for (let k = 0; k < n; k++) {
-    for (let kp = 0; kp < n; kp++) {
+  for (let k = 0; 2 * k <= J; k++) {
+    const a0 = tOff[k], a1 = tOff[k + 1];
+    for (let kp = 0, kp1 = kpEnd(J, k); kp < kp1; kp++) {
+      const b0 = tOff[kp], b1 = tOff[kp + 1];
       let cr = 0, ci = 0;
-      for (let m1 = 0; m1 < n1; m1++) {
-        const s1 = k * n1 + m1;
-        const c1 = t.coef[s1];
-        if (c1 === 0) continue;
-        const m2 = t.m2[s1];
-        for (let m1p = 0; m1p < n1; m1p++) {
-          const s2 = kp * n1 + m1p;
-          const c2 = t.coef[s2];
-          if (c2 === 0) continue;
-          const m2p = t.m2[s2];
-          const ar = u1.re[m1 * n1 + m1p], ai = u1.im[m1 * n1 + m1p];
-          const br = u2.re[m2 * n2 + m2p], bi = u2.im[m2 * n2 + m2p];
-          const w = c1 * c2;
+      for (let a = a0; a < a1; a++) {
+        const c1 = tC[a], r1 = tM1[a] * n1, r2 = tM2[a] * n2;
+        for (let b = b0; b < b1; b++) {
+          const ar = u1r[r1 + tM1[b]], ai = u1i[r1 + tM1[b]];
+          const br = u2r[r2 + tM2[b]], bi = u2i[r2 + tM2[b]];
+          const w = c1 * tC[b];
           cr += w * (ar * br - ai * bi);
           ci += w * (ar * bi + ai * br);
         }
       }
-      val += uj.re[k * n + kp] * cr + uj.im[k * n + kp] * ci;
+      if (zr) { zr[k * n + kp] = cr; zi![k * n + kp] = ci; }
+      const term = uj.re[k * n + kp] * cr + uj.im[k * n + kp] * ci;
+      val += 2 * k === J && 2 * kp === J ? term : 2 * term;
     }
   }
   return val;
 };
 
-/** Bispectrum components (raw, before B0/bnorm) and their adjoints, shared by the pair style. */
-export const rawBispectrum = (triples: Triple[], u: Cmat[], out: Float64Array): void => {
+/** Bispectrum components (raw, before B0/bnorm), keeping the products Z in z when given (for adjointBispectrum). */
+export const rawBispectrum = (triples: Triple[], u: Cmat[], out: Float64Array, z?: ZStore): void => {
   for (let c = 0; c < triples.length; c++) {
     const t = triples[c];
-    out[c] = bispectrumComponent(t, u[t.J1], u[t.J2], u[t.J]);
+    out[c] = bispectrumComponent(t, u[t.J1], u[t.J2], u[t.J], z?.r[c], z?.i[c]);
   }
 };
 
@@ -627,46 +659,69 @@ export interface Grad { r: Float64Array; i: Float64Array }
 /**
  * Adds sum_c g_c dB_c/d(u) to the gradients gr[J] (w.r.t. Re u^J) and gi[J]
  * (w.r.t. Im u^J), for the three roles of every component: the conjugated
- * u^J (dB/dRe = Re C, dB/dIm = Im C), and the holomorphic u^{J1}, u^{J2}
- * (dB/dRe = Re H, dB/dIm = -Im H), with the Clebsch-Gordan weights.
+ * u^J (dB/dRe = Re Z, dB/dIm = Im Z with the products Z of rawBispectrum), and the holomorphic u^{J1}, u^{J2}
+ * (dB/dRe = Re H, dB/dIm = -Im H), with the Clebsch-Gordan weights. z: the products of rawBispectrum for the same u.
+ * gr and gi must hold zeros: the terms of the visited entries (kpEnd, the centre at half weight) are summed, and the
+ * mirror image of that sum, which the terms of the other entries add up to, is added at the end (mirrorGradient).
  */
-export const adjointBispectrum = (triples: Triple[], u: Cmat[], g: Float64Array, gr: Grad[], gi: Grad[]): void => {
+export const adjointBispectrum = (triples: Triple[], u: Cmat[], g: Float64Array, gr: Grad[], gi: Grad[], z: ZStore): void => {
   for (let c = 0; c < triples.length; c++) {
     const gc = g[c];
     if (gc === 0) continue;
     const t = triples[c];
-    const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
-    const u1 = u[t.J1], u2 = u[t.J2], uj = u[t.J];
-    for (let k = 0; k < n; k++) {
-      for (let kp = 0; kp < n; kp++) {
-        const cur = uj.re[k * n + kp], cui = uj.im[k * n + kp];
-        for (let m1 = 0; m1 < n1; m1++) {
-          const s1 = k * n1 + m1;
-          const c1 = t.coef[s1];
-          if (c1 === 0) continue;
-          const m2 = t.m2[s1];
-          for (let m1p = 0; m1p < n1; m1p++) {
-            const s2 = kp * n1 + m1p;
-            const c2 = t.coef[s2];
-            if (c2 === 0) continue;
-            const m2p = t.m2[s2];
-            const w = gc * c1 * c2;
-            const a = u1.re[m1 * n1 + m1p], b = u1.im[m1 * n1 + m1p];
-            const cc = u2.re[m2 * n2 + m2p], dd = u2.im[m2 * n2 + m2p];
-            // role J: conj(u) * (u1 u2)
-            const pr = a * cc - b * dd, pi = a * dd + b * cc;
-            gr[t.J].r[k * n + kp] += w * pr;
-            gi[t.J].r[k * n + kp] += w * pi;
+    const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1, J = t.J;
+    const { tOff, tM1, tM2, tC } = t;
+    const u1r = u[t.J1].re, u1i = u[t.J1].im, u2r = u[t.J2].re, u2i = u[t.J2].im;
+    const ujr = u[t.J].re, uji = u[t.J].im;
+    const GJr = gr[t.J].r, GJi = gi[t.J].r, Zr = z.r[c], Zi = z.i[c];
+    const G1r = gr[t.J1].r, G1i = gi[t.J1].r, G2r = gr[t.J2].r, G2i = gi[t.J2].r;
+    for (let k = 0; 2 * k <= J; k++) {
+      const a0 = tOff[k], a1 = tOff[k + 1];
+      for (let kp = 0, kp1 = kpEnd(J, k); kp < kp1; kp++) {
+        const b0 = tOff[kp], b1 = tOff[kp + 1];
+        const gk = 2 * k === J && 2 * kp === J ? 0.5 * gc : gc;
+        // role J: conj(u^J) * Z
+        GJr[k * n + kp] += gk * Zr[k * n + kp];
+        GJi[k * n + kp] += gk * Zi[k * n + kp];
+        const cur = ujr[k * n + kp], cui = uji[k * n + kp];
+        for (let a = a0; a < a1; a++) {
+          const gc1 = gk * tC[a], r1 = tM1[a] * n1, r2 = tM2[a] * n2;
+          for (let b = b0; b < b1; b++) {
+            const w = gc1 * tC[b];
+            const q1 = r1 + tM1[b], q2 = r2 + tM2[b];
+            const aa = u1r[q1], bb = u1i[q1];
+            const cc = u2r[q2], dd = u2i[q2];
             // role J1: conj(uJ) * u2 ; dB/dRe = Re h, dB/dIm = -Im h
-            const hr = cur * cc + cui * dd, hi = cur * dd - cui * cc;
-            gr[t.J1].r[m1 * n1 + m1p] += w * hr;
-            gi[t.J1].r[m1 * n1 + m1p] -= w * hi;
+            G1r[q1] += w * (cur * cc + cui * dd);
+            G1i[q1] -= w * (cur * dd - cui * cc);
             // role J2: conj(uJ) * u1
-            const yr = cur * a + cui * b, yi = cur * b - cui * a;
-            gr[t.J2].r[m2 * n2 + m2p] += w * yr;
-            gi[t.J2].r[m2 * n2 + m2p] -= w * yi;
+            G2r[q2] += w * (cur * aa + cui * bb);
+            G2i[q2] -= w * (cur * bb - cui * aa);
           }
         }
+      }
+    }
+  }
+  mirrorGradient(gr, gi);
+};
+
+/**
+ * G + mirror(G) for every J: the gradient terms of the entries the loops skip are the mirror images of those of the
+ * visited ones (a term at (m, m') with real part x and imaginary part y has its image at (J - m, J - m') with
+ * (-1)^(m+m') x and -(-1)^(m+m') y, from the symmetry of u and Z, see kpEnd).
+ */
+export const mirrorGradient = (gr: Grad[], gi: Grad[]): void => {
+  for (let J = 0; J < gr.length; J++) {
+    const n = J + 1, R = gr[J].r, I = gi[J].r;
+    for (let k = 0; k <= J; k++) {
+      for (let kp = 0; kp <= J; kp++) {
+        const q = k * n + kp, qm = (J - k) * n + (J - kp);
+        if (qm < q) continue;
+        if (qm === q) { R[q] = 2 * R[q]; I[q] = 0; continue; }
+        const sgn = (k + kp) & 1 ? -1 : 1;
+        const rq = R[q], rm = R[qm], iq = I[q], im = I[qm];
+        R[q] = rq + sgn * rm; R[qm] = rm + sgn * rq;
+        I[q] = iq - sgn * im; I[qm] = im - sgn * iq;
       }
     }
   }
@@ -766,61 +821,64 @@ export class WignerTables {
     }
   }
 
-  /** Fills the outputs for the Cayley-Klein parameters (a, b); derivatives only if deriv. */
-  compute(ar: number, ai: number, br: number, bi: number, deriv: boolean): void {
-    const { pr, pi, dpr, dpi, off } = this;
-    // linear forms [y-coefficient, x-coefficient] as (re, im)
-    const L1y = [-br, bi], L1x = [ar, ai];
-    const L2y = [ar, -ai], L2x = [br, bi];
+  /**
+   * The polynomials P_{k,J} for the Cayley-Klein parameters (a, b) into pr/pi, and with deriv their derivatives into
+   * dpr/dpi. Each step multiplies by one linear form: its y- and x-coefficients (fy, fx) and, for the derivative with
+   * respect to parameter p, the constant forms DL*[p] held as scalars (the same arithmetic as the generic form).
+   */
+  private recurse(ar: number, ai: number, br: number, bi: number, deriv: boolean, half = false): void {
+    const { pr, pi, off } = this;
     pr[0] = 1; pi[0] = 0;
-    if (deriv) for (let p = 0; p < 4; p++) { dpr[p][0] = 0; dpi[p][0] = 0; }
+    if (deriv) for (let p = 0; p < 4; p++) { this.dpr[p][0] = 0; this.dpi[p][0] = 0; }
     for (let J = 1; J <= this.tj; J++) {
       const oJ = off[J], oP = off[J - 1], nJ = J + 1, nP = J;
-      for (let k = 0; k <= J; k++) {
+      // half: rows k <= J/2 only, which need rows k - 1 <= (J - 1)/2 of J - 1 (see mirror)
+      const kmax = half ? J >> 1 : J;
+      for (let k = 0; k <= kmax; k++) {
         const dst = oJ + k * nJ;
         const src = k === 0 ? oP : oP + (k - 1) * nP;
-        // base form F and its constant derivative forms
-        const fy = k === 0 ? L2y : L1y;
-        const fx = k === 0 ? L2x : L1x;
+        // L2 = b x + conj(a) y for k = 0, L1 = a x - conj(b) y otherwise
+        const fyr = k === 0 ? ar : -br, fyi = k === 0 ? -ai : bi;
+        const fxr = k === 0 ? br : ar, fxi = k === 0 ? bi : ai;
         for (let i = 0; i < nJ; i++) {
           let vr = 0, vi = 0;
           if (i < nP) {
             const a = pr[src + i], b = pi[src + i];
-            vr += fy[0] * a - fy[1] * b;
-            vi += fy[0] * b + fy[1] * a;
+            vr += fyr * a - fyi * b;
+            vi += fyr * b + fyi * a;
           }
           if (i >= 1) {
             const a = pr[src + i - 1], b = pi[src + i - 1];
-            vr += fx[0] * a - fx[1] * b;
-            vi += fx[0] * b + fx[1] * a;
+            vr += fxr * a - fxi * b;
+            vi += fxr * b + fxi * a;
           }
           pr[dst + i] = vr;
           pi[dst + i] = vi;
         }
         if (!deriv) continue;
+        const DY = k === 0 ? DL2Y : DL1Y, DX = k === 0 ? DL2X : DL1X;
         for (let p = 0; p < 4; p++) {
-          // constant derivative form of the base factor (complex [re, im] pairs)
-          const dfy = k === 0 ? DL2Y[p] : DL1Y[p];
-          const dfx = k === 0 ? DL2X[p] : DL1X[p];
-          const Dr = dpr[p], Di = dpi[p];
+          // constant derivative form of the base factor
+          const dyr = DY[p][0], dyi = DY[p][1], dxr = DX[p][0], dxi = DX[p][1];
+          const Dr = this.dpr[p], Di = this.dpi[p];
           for (let i = 0; i < nJ; i++) {
             // d(new) = dold * F + old * dF
             let vr = 0, vi = 0;
             if (i < nP) {
               const a = Dr[src + i], b = Di[src + i];
-              vr += fy[0] * a - fy[1] * b;
-              vi += fy[0] * b + fy[1] * a;
+              vr += fyr * a - fyi * b;
+              vi += fyr * b + fyi * a;
               const c = pr[src + i], d = pi[src + i];
-              vr += dfy[0] * c - dfy[1] * d;
-              vi += dfy[0] * d + dfy[1] * c;
+              vr += dyr * c - dyi * d;
+              vi += dyr * d + dyi * c;
             }
             if (i >= 1) {
               const a = Dr[src + i - 1], b = Di[src + i - 1];
-              vr += fx[0] * a - fx[1] * b;
-              vi += fx[0] * b + fx[1] * a;
+              vr += fxr * a - fxi * b;
+              vi += fxr * b + fxi * a;
               const c = pr[src + i - 1], d = pi[src + i - 1];
-              vr += dfx[0] * c - dfx[1] * d;
-              vi += dfx[0] * d + dfx[1] * c;
+              vr += dxr * c - dxi * d;
+              vi += dxr * d + dxi * c;
             }
             Dr[dst + i] = vr;
             Di[dst + i] = vi;
@@ -828,6 +886,12 @@ export class WignerTables {
         }
       }
     }
+  }
+
+  /** Fills the outputs for the Cayley-Klein parameters (a, b); derivatives only if deriv. */
+  compute(ar: number, ai: number, br: number, bi: number, deriv: boolean): void {
+    const { pr, pi, dpr, dpi, off } = this;
+    this.recurse(ar, ai, br, bi, deriv);
     for (let J = 0; J <= this.tj; J++) {
       const n = J + 1, oJ = off[J], nm = this.norm[J];
       const ur = this.ur[J], ui = this.ui[J];
@@ -846,6 +910,99 @@ export class WignerTables {
         }
       }
     }
+  }
+
+  /**
+   * u[J] += sc U^J(a, b) for the columns k <= J/2 of every J (the values of compute(..., false) without filling ur/ui);
+   * mirror() then sets the other columns of the sum.
+   */
+  addScaled(ar: number, ai: number, br: number, bi: number, sc: number, u: Cmat[]): void {
+    const { pr, pi, off } = this;
+    this.recurse(ar, ai, br, bi, false, true);
+    for (let J = 0; J <= this.tj; J++) {
+      const n = J + 1, oJ = off[J], nm = this.norm[J];
+      const re = u[J].re, im = u[J].im;
+      for (let k = 0; k <= J >> 1; k++) {
+        for (let kp = 0; kp < n; kp++) {
+          const s = nm[kp * n + k];
+          const src = oJ + k * n + kp;
+          re[kp * n + k] += sc * (pr[src] * s);
+          im[kp * n + k] += sc * (pi[src] * s);
+        }
+      }
+    }
+  }
+
+  /**
+   * The columns k > J/2 of matrices that have the symmetry of U^J (sums of U^J with real weights, the identity
+   * included) from the columns J - k: U^J_{J-kp, J-k} = (-1)^(k+kp) conj(U^J_{kp, k}), which the tables satisfy for any
+   * parameters (a, b) since L1 and L2 map into each other under conjugation and the exchange of x and y.
+   */
+  static mirror(u: Cmat[]): void {
+    for (let J = 0; J < u.length; J++) {
+      const n = J + 1, re = u[J].re, im = u[J].im;
+      for (let k = (J >> 1) + 1; k <= J; k++) {
+        for (let kp = 0; kp <= J; kp++) {
+          const q = kp * n + k, qm = (J - kp) * n + (J - k);
+          const sgn = (k + kp) & 1 ? -1 : 1;
+          re[q] = sgn * re[qm];
+          im[q] = -sgn * im[qm];
+        }
+      }
+    }
+  }
+
+  /** Size of the polynomial layout (gradients for contract). */
+  get size(): number { return this.off[this.tj + 1]; }
+
+  /**
+   * A gradient of U^J (gr[J].r with respect to Re U^J, gi[J].r to Im U^J, in the U layout) in the polynomial layout of
+   * contract, the normalization of each entry included.
+   */
+  polyGradient(gr: Grad[], gi: Grad[], outR: Float64Array, outI: Float64Array): void {
+    const off = this.off;
+    for (let J = 0; J <= this.tj; J++) {
+      const n = J + 1, oJ = off[J], nm = this.norm[J];
+      const GR = gr[J].r, GI = gi[J].r;
+      for (let k = 0; k <= J >> 1; k++) {
+        for (let kp = 0; kp < n; kp++) {
+          const q = kp * n + k;
+          let gR = GR[q], gI = GI[q];
+          if (2 * k < J) {
+            // the mirror entry (see mirror) has the value and derivatives sgn conj(U_q): its gradient folds in here
+            const qm = (J - kp) * n + (J - k);
+            const sgn = (k + kp) & 1 ? -1 : 1;
+            gR += sgn * GR[qm];
+            gI -= sgn * GI[qm];
+          }
+          outR[oJ + k * n + kp] = gR * nm[q];
+          outI[oJ + k * n + kp] = gI * nm[q];
+        }
+      }
+    }
+  }
+
+  /**
+   * For the parameters (a, b) and a gradient G in the polynomial layout (polyGradient): out[0] = sum G . U and
+   * out[1 + p] = sum G . dU/dp_p, p = (Re a, Im a, Re b, Im b), each sum over every J and entry.
+   */
+  contract(ar: number, ai: number, br: number, bi: number, gR: Float64Array, gI: Float64Array, out: Float64Array): void {
+    this.recurse(ar, ai, br, bi, true, true);
+    const { pr, pi, off } = this;
+    const [d0r, d1r, d2r, d3r] = this.dpr, [d0i, d1i, d2i, d3i] = this.dpi;
+    let s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+    // the rows k <= J/2 of every J (polyGradient folded the others in)
+    for (let J = 0; J <= this.tj; J++) {
+      for (let q = off[J], q1 = off[J] + ((J >> 1) + 1) * (J + 1); q < q1; q++) {
+        const a = gR[q], b = gI[q];
+        s0 += a * pr[q] + b * pi[q];
+        s1 += a * d0r[q] + b * d0i[q];
+        s2 += a * d1r[q] + b * d1i[q];
+        s3 += a * d2r[q] + b * d2i[q];
+        s4 += a * d3r[q] + b * d3i[q];
+      }
+    }
+    out[0] = s0; out[1] = s1; out[2] = s2; out[3] = s3; out[4] = s4;
   }
 }
 
@@ -910,6 +1067,7 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
     }
     const n = s.n, nall = nb.nall, xa = nb.xall, ta = nb.typeall, owner = nb.owner;
     const tj = this.twojmax, triples = this.triples, K = this.nbComps;
+    const zs = newZStore(triples);
     const quad = this.quadraticflag;
     const Q = quad ? (K * (K + 1)) / 2 : 0;
     const blk = K + Q;
@@ -1037,7 +1195,7 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
           }
         }
       }
-      rawBispectrum(triples, u, raw);
+      rawBispectrum(triples, u, raw, zs);
       for (let c = 0; c < K; c++) Bf[c] = (raw[c] - b0[c]) / norm[c];
 
       // Jacobian of every bispectrum component with respect to every neighbour displacement
@@ -1045,7 +1203,7 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
         gbuf.fill(0);
         gbuf[k] = 1 / norm[k];
         for (let J = 0; J <= tj; J++) { gr[J].r.fill(0); gi[J].r.fill(0); }
-        adjointBispectrum(triples, u, gbuf, gr, gi);
+        adjointBispectrum(triples, u, gbuf, gr, gi, zs);
         for (let a = 0; a < m; a++) {
           for (let mm = 0; mm < 3; mm++) {
             let acc = 0;

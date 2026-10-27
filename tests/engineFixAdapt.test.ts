@@ -86,17 +86,20 @@ run 0
     expect(r.thermo[1].evdwl).toBeCloseTo(2 * r.thermo[0].evdwl, 10);
   });
 
-  it('morse D0 doubled doubles the energy', async () => {
-    const r = await runScript(`${SYS1}
+  it('morse d0 doubled doubles the energy; D0 is not a name native extract() knows', async () => {
+    const script = (name: string) => `${SYS1}
 pair_style morse 2.5
 pair_coeff * * 1.0 1.5 1.0
 run 0
 variable d equal 2.0
-fix 1 all adapt 0 pair morse D0 * * v_d
+fix 1 all adapt 0 pair morse ${name} * * v_d
 run 0
-`);
+`;
+    const r = await runScript(script('d0'));
     expect(r.error).toBeNull();
     expect(r.thermo[1].evdwl).toBeCloseTo(2 * r.thermo[0].evdwl, 10);
+    // Measured with native LAMMPS: ERROR: Fix adapt pair style morse param D0 not supported (src/fix_adapt.cpp:440)
+    expect((await runScript(script('D0'))).message).toContain('Fix adapt pair style morse param D0 not supported');
   });
 
   it('scale yes multiplies the value the run started with', async () => {
@@ -322,29 +325,33 @@ variable        e equal 2.0
     expect(r.message).toMatch(/Variable av for fix adapt is invalid style/);
   });
 
-  it('cutoff parameters cannot be adapted (the neighbor list would not follow)', async () => {
-    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut cut 1 1 v_e\n`);
-    expect(r.message).toMatch(/parameter 'cut' cannot be adapted/);
+  it('a parameter extract() does not name is refused at the run (lj/cut has no cut)', async () => {
+    // Measured with native LAMMPS: ERROR: Fix adapt pair style lj/cut param cut not supported (src/fix_adapt.cpp:440)
+    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut cut 1 1 v_e\nrun 0\n`);
+    expect(r.message).toContain('Fix adapt pair style lj/cut param cut not supported');
   });
 
-  it('a pair style that is not supported is named', async () => {
-    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair eam epsilon 1 1 v_e\n`);
-    expect(r.message).toMatch(/pair style 'eam' is not supported by fix adapt/);
+  it('a pair style other than the defined one is not found', async () => {
+    // Measured with native LAMMPS: ERROR: Fix adapt pair style eam not found (src/fix_adapt.cpp:436), and the same for soft
+    for (const w of ['eam epsilon', 'soft a']) {
+      const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair ${w} 1 1 v_e\nrun 0\n`);
+      expect(r.message).toContain(`Fix adapt pair style ${w.split(' ')[0]} not found`);
+    }
   });
 
-  it('style:N on a plain pair style: only instance 1 exists (hybrid sub-style selection is in w43ad tests)', async () => {
-    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut:2 epsilon 1 1 v_e\nrun 0\n`);
-    expect(r.message).toMatch(/lj\/cut:2 does not exist/);
+  it('style:N on a plain pair style names that style (pair_match ignores N for the defined style)', async () => {
+    // Measured with native LAMMPS: pe 0.359199256203132 before, -0.794635511109422 with lj/cut:2 epsilon 1 1 v_e
+    const r = await runScript(`${pairSetup}\nrun 0\nfix 1 all adapt 1 pair lj/cut:2 epsilon 1 1 v_e\nrun 0\n`);
+    expect(r.error).toBeNull();
+    expect(r.thermo[0].pe).toBeCloseTo(0.359199256203132, 12);
+    expect(r.thermo[1].pe).toBeCloseTo(-0.794635511109422, 12);
   });
 
-  it('the pair style must be the defined one', async () => {
-    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair soft a 1 1 v_e\nrun 0\n`);
-    expect(r.message).toMatch(/is not the defined pair style/);
-  });
-
-  it('a type pair set only by mixing is refused (mixed values cannot be adapted)', async () => {
-    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut epsilon 1 2 v_e\nrun 0\n`);
-    expect(r.message).toMatch(/was not set by pair_coeff/);
+  it('a type pair set only by mixing takes the value, which the re-mixing at reinit replaces (no effect)', async () => {
+    // Measured with native LAMMPS: pe 0.359199256203132 both before and with fix adapt ... epsilon 1 2 v_e
+    const r = await runScript(`${pairSetup}\nrun 0\nfix 1 all adapt 1 pair lj/cut epsilon 1 2 v_e\nrun 0\n`);
+    expect(r.error).toBeNull();
+    expect(r.thermo[1].pe).toBe(r.thermo[0].pe);
   });
 
   it('atom diameter needs atom_style sphere', async () => {

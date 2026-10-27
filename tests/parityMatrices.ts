@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { PAIR_EXTRACT } from '../src/engine/fix/adaptPairsTable.ts';
 
 /*
  * Parity matrices: oracle cases (tests/oracle/*.in) with one word of one line changed, then run 0. Native LAMMPS runs
@@ -62,6 +63,11 @@ export interface MatrixDef {
    * follow) shows above the relative 1e-8. Each entry says why in a comment.
    */
   abs?: Record<string, number>;
+  /**
+   * Rows (by style) native runs that this engine refuses with an error naming what it cannot do (the reason): the suite
+   * checks the engine's error instead of native's result.
+   */
+  gaps?: Record<string, string>;
 }
 
 export const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
@@ -264,6 +270,147 @@ const throughRun = (pickRows: (cases: Case[]) => ParityRow[], pre = THERMO, tail
   });
 };
 
+/**
+ * fix adapt on each pair style: the pair_style line of the smallest case that has the style (not a hybrid style),
+ * followed by "variable adpv equal 1.1" and "fix adpv all adapt 0 pair <style> <name> * * v_adpv scale yes", one row for
+ * each name the style's native extract() knows (src/engine/fix/adaptPairsTable.ts).
+ */
+const pairStyleKey: LineKey = (w) => (w[0] === 'pair_style' && w.length > 1 && !w[1].startsWith('hybrid') ? `pair_style ${w[1]}` : null);
+/**
+ * extract() names whose native member is an int (src/ at b332f28: the AMOEBA flags and type arrays, the TIP4P types,
+ * the charmm implicit and dihedflag, ewald_order and mix_flag, coul/streitz kspacetype, the spica lj_type array, pace's
+ * flag_corerep_factor): fix adapt writes a double through the pointer, so native's result is undefined behaviour.
+ */
+const INT_PARAMS = new Set([
+  'amtype', 'atomic_num', 'bond_flag', 'angle_flag', 'dihedral_flag', 'improper_flag', 'urey_flag', 'pitorsion_flag',
+  'bitorsion_flag', 'typeO', 'typeH', 'typeA', 'typeB', 'implicit', 'dihedflag', 'ewald_order', 'ewald_mix', 'kspacetype',
+  'lj_type', 'corerep_flag',
+]);
+const adaptPairUndefined = (): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const [style, names] of Object.entries(PAIR_EXTRACT)) {
+    for (const [name] of names) {
+      if (INT_PARAMS.has(name)) out[`pair ${style} ${name}`] = `native writes a double through the int ${name} (undefined behaviour)`;
+    }
+  }
+  return out;
+};
+/**
+ * The adapt-pair rows this engine refuses (an error naming the parameter), by style: the scale factor of these styles
+ * is not applied yet; a cutoff or geometry value native reads when a run initializes; and parameters this engine keeps
+ * in another form than native's array.
+ */
+const ADAPT_GAPS: Record<string, Record<string, readonly string[]>> = {
+  'the scale factor of this style is not applied by the engine yet': {
+    'coul/cut': ['scale'],
+    'coul/cut/dielectric': ['scale'],
+    'coul/cut/global': ['scale'],
+    'coul/debye': ['scale'],
+    'coul/esp': ['scale'],
+    'coul/long': ['scale'],
+    'coul/long/cs': ['scale'],
+    'coul/long/dielectric': ['scale'],
+    'coul/long/soft': ['scale'],
+    'coul/slater/cut': ['scale'],
+    'coul/slater/long': ['scale'],
+    'coul/streitz': ['scale'],
+    'eam/he': ['scale'],
+    'meam': ['scale'],
+    'meam/ms': ['scale'],
+    'pace': ['scale'],
+  },
+  'a cutoff or geometry value native reads when the run initializes; the engine keeps no adaptable copy': {
+    'born/coul/long': ['cut_coul'],
+    'born/coul/long/cs': ['cut_coul'],
+    'born/coul/msm': ['cut_coul'],
+    'buck/coul/long': ['cut_coul'],
+    'buck/coul/long/cs': ['cut_coul'],
+    'buck/coul/msm': ['cut_coul'],
+    'buck/long/coul/long': ['ewald_cut', 'cut_coul', 'cut_vdwl', 'cut_LJ'],
+    'buck6d/coul/gauss/dsf': ['cut_coul'],
+    'buck6d/coul/gauss/long': ['cut_coul'],
+    'coul/cut': ['cut_coul'],
+    'coul/cut/dielectric': ['cut_coul'],
+    'coul/cut/global': ['cut_coul'],
+    'coul/debye': ['cut_coul'],
+    'coul/esp': ['cut_coul'],
+    'coul/long': ['cut_coul'],
+    'coul/long/cs': ['cut_coul'],
+    'coul/long/dielectric': ['cut_coul'],
+    'coul/long/soft': ['cut_coul'],
+    'coul/slater/cut': ['cut_coul'],
+    'coul/slater/long': ['cut_coul'],
+    'coul/streitz': ['cut_coul'],
+    'dpd/coul/slater/long': ['cut_coul'],
+    'harmonic/cut': ['cut'],
+    'lj/charmm/coul/long/soft': ['cut_coul'],
+    'lj/charmm/coul/msm': ['cut_coul'],
+    'lj/charmmfsw/coul/charmmfsh': ['cut_coul', 'cut_lj_inner', 'cut_lj'],
+    'lj/charmmfsw/coul/long': ['cut_coul', 'cut_lj_inner', 'cut_lj'],
+    'lj/class2/coul/long/cs': ['cut_coul'],
+    'lj/class2/coul/long/soft': ['cut_coul'],
+    'lj/cut/coul/cut': ['cut_coul'],
+    'lj/cut/coul/cut/dielectric': ['cut_coul'],
+    'lj/cut/coul/debye': ['cut_coul'],
+    'lj/cut/coul/debye/dielectric': ['cut_coul'],
+    'lj/cut/coul/esp': ['cut_coul'],
+    'lj/cut/coul/long/cs': ['cut_coul'],
+    'lj/cut/coul/long/dielectric': ['cut_coul'],
+    'lj/cut/coul/msm': ['cut_coul'],
+    'lj/cut/coul/msm/dielectric': ['cut_coul'],
+    'lj/cut/dipole/cut': ['cut_coul'],
+    'lj/cut/dipole/long': ['cut_coul'],
+    'lj/cut/tip4p/cut': ['qdist', 'cut_coul'],
+    'lj/cut/tip4p/long': ['qdist', 'cut_coul'],
+    'lj/cut/tip4p/long/soft': ['qdist', 'cut_coul'],
+    'lj/expand/coul/long': ['cut_coul'],
+    'lj/long/coul/long': ['ewald_cut', 'cut_coul', 'cut_vdwl', 'cut_LJ'],
+    'lj/long/coul/long/dielectric': ['ewald_cut', 'cut_coul', 'cut_vdwl', 'cut_LJ'],
+    'lj/long/dipole/long': ['ewald_cut', 'cut_coul', 'cut_vdwl'],
+    'lj/long/tip4p/long': ['qdist', 'cut_coul', 'ewald_cut', 'cut_vdwl', 'cut_LJ'],
+    'lj/sdk/coul/long': ['cut_coul'],
+    'lj/sf/dipole/sf': ['cut_coul'],
+    'lj/spica/coul/long': ['cut_coul'],
+    'lj/spica/coul/msm': ['cut_coul', 'cut_msm'],
+    'nm/cut/coul/cut': ['cut_coul'],
+    'nm/cut/coul/long': ['cut_coul'],
+    'spin/dipole/long': ['cut', 'cut_coul'],
+    'spin/dmi': ['cut'],
+    'spin/exchange': ['cut'],
+    'spin/exchange/biquadratic': ['cut'],
+    'spin/magelec': ['cut'],
+    'tip4p/long/soft': ['qdist', 'cut_coul'],
+    'zero/coul': ['cut_coul'],
+  },
+  "the engine keeps this parameter in another form than native's array": {
+    'amoeba': ['opbend_cubic', 'opbend_quartic', 'opbend_pentic', 'opbend_sextic'],
+    'buck6d/coul/gauss/dsf': ['buck6d1', 'buck6d2', 'buck6d3', 'buck6d4'],
+    'buck6d/coul/gauss/long': ['buck6d1', 'buck6d2', 'buck6d3', 'buck6d4'],
+    'coul/slater/long': ['lamda'],
+    'coul/streitz': ['alpha'],
+    'dpd/coul/slater/long': ['lamda'],
+    'hippo': ['opbend_cubic', 'opbend_quartic', 'opbend_pentic', 'opbend_sextic'],
+    'oxdna/excv': ['epsilon_bkbk', 'sigma_bkbk', 'cut_bkbk_ast', 'b_bkbk', 'cut_bkbk_c', 'epsilon_bkbs', 'sigma_bkbs', 'cut_bkbs_ast', 'b_bkbs', 'cut_bkbs_c', 'sigma4_bkbs', 'epsilon_bsbs', 'sigma_bsbs', 'cut_bsbs_ast', 'b_bsbs', 'cut_bsbs_c'],
+    'oxdna2/excv': ['epsilon_bkbk', 'sigma_bkbk', 'cut_bkbk_ast', 'b_bkbk', 'cut_bkbk_c', 'epsilon_bkbs', 'sigma_bkbs', 'cut_bkbs_ast', 'b_bkbs', 'cut_bkbs_c', 'sigma4_bkbs', 'epsilon_bsbs', 'sigma_bsbs', 'cut_bsbs_ast', 'b_bsbs', 'cut_bsbs_c'],
+  },
+};
+const adaptPairGaps = (): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const [why, styles] of Object.entries(ADAPT_GAPS)) {
+    for (const [style, names] of Object.entries(styles)) for (const n of names) out[`pair ${style} ${n}`] = why;
+  }
+  return out;
+};
+const adaptPairRows = (cases: Case[]): ParityRow[] =>
+  pick(pairStyleKey, (w) => w)(cases).flatMap((r) => {
+    const style = r.style.split(' ')[1];
+    return (PAIR_EXTRACT[style] ?? []).map(([name]) => ({
+      ...r,
+      text: `${r.text}\nvariable adpv equal 1.1\nfix adpv all adapt 0 pair ${style} ${name} * * v_adpv scale yes`,
+      style: `pair ${style} ${name}`,
+    }));
+  });
+
 /** The first number after the type words of a coefficient line multiplied by `factor`. */
 const coeffScaled = (factor: number): Change => (w, _lines) => {
   const from = w[0] === 'pair_coeff' ? 3 : 2;
@@ -349,6 +496,12 @@ export const MATRICES: Record<string, MatrixDef> = {
   'fix-scaled': {
     about: 'the first number of each fix line (from word 4) multiplied by 1.1, pe, press and fnorm compared after run 0',
     rows: throughRun(pick(fixKey, scaled(4, 1.1, true)), THERMO_F, VALUES_F),
+  },
+  'adapt-pair': {
+    about: 'fix adapt 0 pair <style> <name> * * v_x scale yes (x = 1.1) for each name of each pair style\'s native extract(), pe, press and fnorm compared after run 0',
+    rows: throughRun(adaptPairRows, THERMO_F, VALUES_F),
+    undefined: adaptPairUndefined(),
+    gaps: adaptPairGaps(),
   },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };

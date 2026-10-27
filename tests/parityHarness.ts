@@ -45,9 +45,15 @@ export const paritySuite = (matrix: string): void => {
         it.skip(`${name} [${row.skip}]`, () => {});
         continue;
       }
-      it(name, async () => {
+      const gap = MATRICES[matrix]?.gaps?.[row.style];
+      it(gap ? `${name} [engine gap: ${gap}]` : name, async () => {
         const input = parityInput(textOf(row.case), row);
         const got = await engineResult(input, parityFiles(ROOT, textOf(row.case), input));
+        // a known gap: the engine refuses the row with an error that names the parameter it cannot handle
+        if (gap) {
+          expect(got.startsWith('ERROR: ') && got.includes(row.style.split(' ').pop()!), got).toBe(true);
+          return;
+        }
         // the status exactly, printed values within the oracle tolerance (sameResult); a mismatch shows both results
         if (!sameResult(got, row.native, MATRICES[matrix]?.abs?.[row.style])) expect(got, `${row.case} line ${row.line + 1}`).toBe(row.native);
       });

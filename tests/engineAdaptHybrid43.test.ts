@@ -122,7 +122,7 @@ variable e equal 2.0
     expect(s1).not.toBe(s2);
   });
 
-  it('a repeated sub-style without N is an error that names style:N', async () => {
+  it('a repeated sub-style without N is not found', async () => {
     const r = await runScript(`${LJ}
 pair_style hybrid/overlay lj/cut 2.5 lj/cut 2.0
 pair_coeff * * lj/cut 1 1.0 1.0
@@ -131,7 +131,8 @@ variable e equal 2.0
 fix 1 all adapt 0 pair lj/cut epsilon * * v_e
 run 0
 `);
-    expect(r.message).toContain('lj/cut:N');
+    // Measured with native LAMMPS: ERROR: Fix adapt pair style lj/cut not found (src/fix_adapt.cpp:436)
+    expect(r.message).toContain('Fix adapt pair style lj/cut not found');
   });
 
   it('an instance that does not exist is an error', async () => {
@@ -143,10 +144,11 @@ variable e equal 2.0
 fix 1 all adapt 0 pair lj/cut:3 epsilon * * v_e
 run 0
 `);
-    expect(r.message).toContain('lj/cut:3');
+    // Measured with native LAMMPS: ERROR: Fix adapt pair style lj/cut not found (src/fix_adapt.cpp:436)
+    expect(r.message).toContain('Fix adapt pair style lj/cut not found');
   });
 
-  it('a sub-style N on a plain (non-hybrid) pair style is an error', async () => {
+  it('a sub-style N on a plain (non-hybrid) pair style names that style', async () => {
     const r = await runScript(`${LJ}
 pair_style lj/cut 2.5
 pair_coeff * * 1.0 1.0
@@ -154,10 +156,12 @@ variable e equal 2.0
 fix 1 all adapt 0 pair lj/cut:2 epsilon * * v_e
 run 0
 `);
-    expect(r.message).toContain('lj/cut:2');
+    expect(r.message).toBe('');
   });
 
-  it('lj/expand delta is refused (its force cutoff is frozen natively)', async () => {
+  it('lj/expand delta changes the energy but not the force cutoff of the run (native reinit keeps cutsq)', async () => {
+    // Measured with native LAMMPS: pe 37.0163694038127 with pair_coeff delta 0.1 adapted to 0.2 (the cutoff stays
+    // 2.5 + 0.1); 36.8511244148207 with pair_coeff delta 0.2 (cutoff 2.7)
     const r = await runScript(`${LJ}
 pair_style lj/expand 2.5
 pair_coeff * * 1.0 1.0 0.1
@@ -165,8 +169,8 @@ variable d equal 0.2
 fix 1 all adapt 0 pair lj/expand delta * * v_d
 run 0
 `);
-    expect(r.message).toContain('delta');
-    expect(r.message).toContain('not supported');
+    expect(r.message).toBe('');
+    expect(r.thermo[0].pe).toBeCloseTo(37.0163694038127, 11);
   });
 
   it('a pair style that is not adaptable is still refused', async () => {

@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs, potentialFile } from '../types';
+import { Pair, StyleError, typeBounds, type AdaptAccess, type PairCompute, type StyleContext, pairCoeffArgs, potentialFile } from '../types';
 import { eamDensities, eamForces, type EAMKernelTables } from './eamKernel';
 import { parseInt_, parseNum } from '../util';
 
@@ -414,6 +414,37 @@ export abstract class PairEAMBase extends Pair {
     this.rhoTab = new Array(nt * nt).fill(null);
     this.gTab = new Array(nt * nt).fill(null);
     this.fTab = new Array(nt).fill(ZERO_EMBED);
+    this.scale = new Float64Array(nt * nt).fill(1);
+  }
+
+  /**
+   * fix adapt's scale by type pair, as native LAMMPS has it (src/MANYBODY/pair_eam.cpp extract, compute and init_one at
+   * b332f28): a pair's force and energy times scale[itype][jtype], an atom's embedding energy times scale[t][t]. A
+   * pair_coeff command sets it to 1 for its type pairs, and init_one for the pairs pair_coeff did not set.
+   */
+  protected scale = new Float64Array(0);
+
+  /** scale = 1 for the type pair (both orders). */
+  protected unitScale(i: number, j: number): void {
+    const nt = this.ntypes + 1;
+    this.scale[i * nt + j] = this.scale[j * nt + i] = 1;
+  }
+
+  /** native init_one: scale[i][j] = 1 when pair_coeff did not set the pair, then scale[j][i] = scale[i][j]. */
+  protected initScale(i: number, j: number, set: boolean): void {
+    const nt = this.ntypes + 1;
+    if (!set) this.scale[i * nt + j] = 1;
+    this.scale[j * nt + i] = this.scale[i * nt + j];
+  }
+
+  override adaptParam(name: string): AdaptAccess | null {
+    if (name !== 'scale') return null;
+    const nt = this.ntypes + 1;
+    return {
+      dim: 2,
+      get: (i, j) => this.scale[i * nt + j],
+      set: (i, j, v) => { this.scale[i * nt + j] = v; },
+    };
   }
 
   /**
@@ -438,7 +469,7 @@ export abstract class PairEAMBase extends Pair {
 
   /** The density and r*phi tables as the two loops read them (eamKernel.ts). */
   private kernelTables(): EAMKernelTables {
-    return { ntypes: this.ntypes, cutsq: this.cutsq, rhoTab: this.rhoTab, gTab: this.gTab };
+    return { ntypes: this.ntypes, cutsq: this.cutsq, scale: this.scale, rhoTab: this.rhoTab, gTab: this.gTab };
   }
 
   /**
@@ -476,6 +507,7 @@ export abstract class PairEAMBase extends Pair {
   embed(pc: PairCompute, rho: Float64Array, fp: Float64Array): void {
     const { type } = pc;
     const nlocal = pc.nlocal;
+    const nt = this.ntypes + 1;
     pc.nb.reverseAddGhosts(rho, 1);
     const eatom = pc.eatom;
     let evdwl = 0;
@@ -493,6 +525,7 @@ export abstract class PairEAMBase extends Pair {
       fp[i] = (c[o] * p + c[o + 1]) * p + c[o + 2];
       let phi = ((c[o + 3] * p + c[o + 4]) * p + c[o + 5]) * p + c[o + 6];
       if (rho[i] > emb.rhoMax) phi += fp[i] * (rho[i] - emb.rhoMax);
+      phi *= this.scale[type[i] * nt + type[i]];
       evdwl += phi;
       if (eatom) eatom[i] += phi;
     }
@@ -566,11 +599,12 @@ export class PairEAM extends PairEAMBase {
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     const file = this.readFuncfl(args[2], ctx);
     for (let i = ilo; i <= ihi; i++) {
-      for (let j = jlo; j <= jhi; j++) {
+      for (let j = Math.max(jlo, i); j <= jhi; j++) {
         if (i === j) {
           this.files[i] = file;
           applyFileMass(ctx, i, file.masses[0], file.name);
         }
+        this.unitScale(i, j);
       }
     }
   }
@@ -646,6 +680,8 @@ export class PairEAM extends PairEAMBase {
     if (!fi || !fj) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);
     const ti = this.onGrid.get(fi)!, tj = this.onGrid.get(fj)!;
     this.setPair(i, j, tj.rho, ti.rho, this.pairTable(fi, fj), ti.F, tj.F);
+    // native coeff_funcfl sets only the I,I pairs
+    this.initScale(i, j, i === j);
     let cutmax = 0;
     for (const f of this.fileCache.values()) cutmax = Math.max(cutmax, f.cutoff);
     return cutmax;
@@ -699,6 +735,8 @@ export class PairEAMAlloy extends PairEAMBase {
     }
     this.setfl = this.readSetfl(args[2], ctx, false);
     const file = this.setfl;
+    // native coeff_mapped: scale 1 for every type pair
+    for (let i = 1; i <= this.ntypes; i++) for (let j = i; j <= this.ntypes; j++) this.unitScale(i, j);
     for (let t = 1; t <= this.ntypes; t++) {
       if (elems[t - 1] === 'NULL') {
         this.elemOf[t] = -1;
@@ -723,6 +761,7 @@ export class PairEAMAlloy extends PairEAMBase {
 
   override initOne(i: number, j: number): number {
     const ei = this.elemOf[i], ej = this.elemOf[j];
+    this.initScale(i, j, ei >= 0 && ej >= 0);
     if (ei < 0 || ej < 0) return 0;
     const f = this.setfl as EAMFile;
     this.setPair(i, j, f.rho![ej], f.rho![ei], f.phi![Math.max(ei, ej)][Math.min(ei, ej)], f.F[ei], f.F[ej]);
@@ -755,6 +794,8 @@ export class PairEAMFS extends PairEAMBase {
     }
     this.fs = this.readSetfl(args[2], ctx);
     const file = this.fs;
+    // native coeff_mapped: scale 1 for every type pair
+    for (let i = 1; i <= this.ntypes; i++) for (let j = i; j <= this.ntypes; j++) this.unitScale(i, j);
     for (let t = 1; t <= this.ntypes; t++) {
       if (elems[t - 1] === 'NULL') {
         this.elemOf[t] = -1;
@@ -779,6 +820,7 @@ export class PairEAMFS extends PairEAMBase {
 
   override initOne(i: number, j: number): number {
     const ei = this.elemOf[i], ej = this.elemOf[j];
+    this.initScale(i, j, ei >= 0 && ej >= 0);
     if (ei < 0 || ej < 0) return 0;
     const f = this.fs as EAMFile;
     this.setPair(i, j, f.fsRho![ej][ei], f.fsRho![ei][ej], f.phi![Math.max(ei, ej)][Math.min(ei, ej)], f.F[ei], f.F[ej]);

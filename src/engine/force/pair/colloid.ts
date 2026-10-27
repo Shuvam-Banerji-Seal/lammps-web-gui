@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, typeBounds, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 import { libm } from '../../libm';
@@ -157,10 +157,15 @@ export class PairColloid extends Pair {
     const sig = parseNum(args[3], 'sigma');
     const d1 = parseNum(args[4], 'd1');
     const d2 = parseNum(args[5], 'd2');
-    // "Both d1 and d2 must be values >= 0"
-    if (!(d1 >= 0) || !(d2 >= 0)) throw new StyleError('d1 and d2 must be values >= 0');
+    // "Both d1 and d2 must be values >= 0"; as native LAMMPS does (src/COLLOID/pair_colloid.cpp coeff at b332f28) the
+    // same error for an I,I pair whose d1 and d2 differ
+    if (!(d1 >= 0) || !(d2 >= 0)) throw new StyleError('Invalid d1 or d2 value for pair colloid coeff');
     const cut = args[6] !== undefined ? parseNum(args[6], 'cutoff') : this.cutGlobal;
     if (!(cut > 0)) throw new StyleError('cutoff must be > 0');
+    if (d1 !== d2) {
+      const [ilo, ihi] = typeBounds(args[0], this.ntypes), [jlo, jhi] = typeBounds(args[1], this.ntypes);
+      if (Math.max(ilo, jlo) <= Math.min(ihi, jhi)) throw new StyleError('Invalid d1 or d2 value for pair colloid coeff');
+    }
     this.p.setRange(args[0], args[1], [a, sig, d1, d2, cut]);
   }
 
@@ -201,12 +206,14 @@ export class PairColloid extends Pair {
     const k1 = i * nt + j, k2 = j * nt + i;
     this.pA[k1] = this.pA[k2] = a;
     this.pSig[k1] = this.pSig[k2] = sig;
-    this.pD1[k1] = this.pD1[k2] = d1;
+    // As native LAMMPS does (src/COLLOID/pair_colloid.cpp init_one at b332f28): a large-large pair's radii are written as
+    // a1[i][j] = a2[j][i] = d1/2, then a1[j][i] = a2[i][j] = d2/2, so for I = J both radii are d2/2
+    this.pD1[k1] = this.pD1[k2] = i === j && d1 > 0 && d2 > 0 ? d2 : d1;
     this.pD2[k1] = this.pD2[k2] = d2;
     // pair_modify shift: "adds an energy term to each pairwise interaction
     // which will be included in the thermodynamic output, but does not affect
     // pair forces" (pair_modify.html)
-    this.pOff[k1] = this.pOff[k2] = this.shift ? this.pairEnergy(a, sig, d1, d2, cut, cut * cut) : 0;
+    this.pOff[k1] = this.pOff[k2] = this.shift ? this.pairEnergy(a, sig, this.pD1[k1], d2, cut, cut * cut) : 0;
     return cut;
   }
 

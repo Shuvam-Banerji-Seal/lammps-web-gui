@@ -163,7 +163,11 @@ export const mdrPairOf = (s: SimState): { api: MdrApi; mat: MdrMaterialCore } | 
 
 type NormalKind = 'hooke' | 'hertz' | 'hertz/material' | 'dmt' | 'jkr' | 'mdr';
 type DampKind = 'velocity' | 'mass_velocity' | 'viscoelastic' | 'tsuji' | 'coeff_restitution' | 'mdr';
-type TangKind = 'linear_nohistory' | 'linear_history' | 'mindlin' | 'mindlin/force' | 'mindlin_rescale' | 'mindlin_rescale/force';
+/**
+ * linear_history_classic: the tangential model of the classic fstyles (fix wall/gran/region hooke/history and
+ * hertz/history), which updates and projects its displacement as native GranSubModTangentialLinearHistoryClassic does.
+ */
+type TangKind = 'linear_nohistory' | 'linear_history' | 'linear_history_classic' | 'mindlin' | 'mindlin/force' | 'mindlin_rescale' | 'mindlin_rescale/force';
 type RollKind = 'none' | 'sds';
 type TwistKind = 'none' | 'sds' | 'marshall';
 
@@ -629,11 +633,24 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   const forceVariant = kind === 'mindlin/force' || kind === 'mindlin_rescale/force';
   const rescale = kind === 'mindlin_rescale' || kind === 'mindlin_rescale/force';
   const aC = contactA;
-  const keff = kind === 'linear_history' ? pm.kt : kind === 'linear_nohistory' ? 0 : pm.kt * aC;
+  const classic = kind === 'linear_history_classic';
+  const keff = kind === 'linear_history' || classic ? pm.kt : kind === 'linear_nohistory' ? 0 : pm.kt * aC;
+  // classic: the displacement magnitude after the update, before the projection (native shrmag)
+  let shrmag = 0;
   let shx = 0, shy = 0, shz = 0;
   if (hist) {
     shx = sg * sh[0]; shy = sg * sh[1]; shz = sg * sh[2];
-    if (sync && update) {
+    if (classic) {
+      // As native LAMMPS does (src/GRANULAR/gran_sub_mod_tangential.cpp GranSubModTangentialLinearHistoryClassic::
+      // calculate_forces at b332f28): the displacement is advanced by vtr dt first, its magnitude taken, and then its
+      // component along n removed ("rotate shear displacements": rsht = dot3(history, nx)), without rescaling
+      if (update) { shx += vtx * dt; shy += vty * dt; shz += vtz * dt; }
+      shrmag = Math.hypot(shx, shy, shz);
+      if (update) {
+        const rsht = shx * nx + shy * ny + shz * nz;
+        shx -= rsht * nx; shy -= rsht * ny; shz -= rsht * nz;
+      }
+    } else if (sync && update) {
       // synchronized history: the prior history is kept in the plane n' with its magnitude, advanced by the half-step
       // tangential velocity, and returned to the plane n with the same magnitude
       const [px, py, pz] = planeMap(shx, shy, shz, hx, hy, hz, Math.hypot(shx, shy, shz));
@@ -665,7 +682,8 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
     let scale = ft > 0 ? fcap / ft : 0;
     if (hist) {
       // with no stored displacement (a contact at run setup) the capped force is dropped
-      if (shx === 0 && shy === 0 && shz === 0) scale = 0;
+      // (classic: when the magnitude before the projection is 0, native zeroes the tangential force)
+      if (classic ? shrmag === 0 : shx === 0 && shy === 0 && shz === 0) scale = 0;
       else if (keff > 0) {
         if (forceVariant) {
           // F_te = s (F_te + F_damp) - F_damp

@@ -441,7 +441,11 @@ export class FixWallGran extends Fix {
 const WALL_WORDS = ['xplane', 'yplane', 'zplane', 'zcylinder', 'region'] as const;
 
 /** A wall/particle contact candidate: history key, distance to the surface, unit normal (wall to particle), effective radius. */
-interface WallElement { key: string; dist: number; nx: number; ny: number; nz: number; Rf: number; source: Region | null }
+/** A wall contact: nx, ny, nz the force normal, vnx, vny, vnz the normal of the contact point of the wall velocity. */
+interface WallElement {
+  key: string; dist: number; nx: number; ny: number; nz: number; Rf: number; source: Region | null;
+  vnx?: number; vny?: number; vnz?: number;
+}
 
 export class FixWallGranGranular extends Fix {
   readonly style: string;
@@ -456,6 +460,8 @@ export class FixWallGranGranular extends Fix {
   private shear = new Map<number, Map<string, Float64Array>>();
   /** Scratch of apply and regionElements (the contacts of one atom). */
   private readonly candBuf: WallElement[] = [];
+  /** The face keys an atom touches at this step (apply). */
+  private readonly touchedBuf: string[] = [];
   private readonly csBuf: SurfaceContact[] = [];
   /** keyword temperature: a number, or the name of an equal-style variable (v_name); null when not given. */
   private wallT: number | string | null = null;
@@ -490,7 +496,7 @@ export class FixWallGranGranular extends Fix {
       this.legacyHertz = args[0] === 'hertz/history';
       pmOut = {
         normal: 'hooke', kn, Eeff: 0, gamma: 0, eta: gn, damp: 'mass_velocity',
-        tang: hist ? 'linear_history' : 'linear_nohistory', kt, xgt: gn > 0 ? gtEff / gn : 0, mu: xmu,
+        tang: hist ? 'linear_history_classic' : 'linear_nohistory', kt, xgt: gn > 0 ? gtEff / gn : 0, mu: xmu,
         roll: 'none', kr: 0, gr: 0, mr: 0, twist: 'none', kw: 0, gw: 0, mw: 0, limit, cutoff: -1, heat: 'none', hk: 0, sig: 'legacy',
       };
     } else {
@@ -673,16 +679,22 @@ export class FixWallGranGranular extends Fix {
   }
   private readonly faceKeys = new Map<Region, Map<string, string>>();
 
-  /** Contact candidates of one atom at its position (region faces; all sub-regions of a compound). */
-  private regionElements(x: number, y: number, z: number, R: number, out: WallElement[]): void {
+  /**
+   * Contact candidates of one atom at its position (region faces; all sub-regions of a compound), those closer than
+   * cutoff (the atom's radius; every face for the models that act beyond contact).
+   */
+  private regionElements(x: number, y: number, z: number, R: number, out: WallElement[], cutoff = Infinity): void {
     out.length = 0;
     const r = this.sys.region(this.regionId!);
     const cs = this.csBuf;
     cs.length = 0;
-    r.surfaceContacts(x, y, z, cs);
+    r.surfaceContacts(x, y, z, cs, cutoff);
     for (const c of cs) {
       const Rf = c.curvature === 0 ? R : (R * c.curvature) / (R + c.curvature);
-      out.push({ key: this.faceKey(c.source, c.key), dist: c.dist, nx: c.nx, ny: c.ny, nz: c.nz, Rf, source: c.source });
+      out.push({
+        key: this.faceKey(c.source, c.key), dist: c.dist, nx: c.nx, ny: c.ny, nz: c.nz, Rf, source: c.source,
+        vnx: c.vnx ?? c.nx, vny: c.vny ?? c.ny, vnz: c.vnz ?? c.nz,
+      });
     }
   }
 
@@ -729,7 +741,8 @@ export class FixWallGranGranular extends Fix {
       const cand = this.candBuf;
       cand.length = 0;
       if (this.regionId) {
-        this.regionElements(xi, yi, zi, R, cand);
+        // only the faces in contact (jkr acts beyond contact; mdr drops the bulk record of each face out of contact)
+        this.regionElements(xi, yi, zi, R, cand, jkr || mdr ? Infinity : R);
       } else {
         for (let k = 0; k < this.planes.length; k++) {
           const p = this.planes[k];
@@ -744,6 +757,8 @@ export class FixWallGranGranular extends Fix {
       }
       const aid = id[i];
       let hist = this.shear.get(aid);
+      const touched = this.touchedBuf;
+      touched.length = 0;
       for (const e of cand) {
         if (e.dist >= R && !jkr) {
           hist?.delete(e.key);
@@ -759,7 +774,8 @@ export class FixWallGranGranular extends Fix {
           const st = vel.get(e.source);
           let wx = 0, wy = 0, wz = 0;
           if (st) {
-            const qx = xi - e.dist * e.nx, qy = yi - e.dist * e.ny, qz = zi - e.dist * e.nz;
+            // the contact point of the sub-region's own contact (native velocity_contact)
+            const qx = xi - e.dist * (e.vnx ?? e.nx), qy = yi - e.dist * (e.vny ?? e.ny), qz = zi - e.dist * (e.vnz ?? e.nz);
             const P = e.source.rotate ? e.source.rotate.p : [0, 0, 0];
             const rx = qx - (P[0] + st.d[0]), ry = qy - (P[1] + st.d[1]), rz = qz - (P[2] + st.d[2]);
             wx = st.ddot[0] + st.omega[1] * rz - st.omega[2] * ry;
@@ -790,6 +806,7 @@ export class FixWallGranGranular extends Fix {
           if (!hist) this.shear.set(aid, (hist = new Map()));
           hist.set(e.key, sh);
         }
+        touched.push(e.key);
         if (this.contactsOn) {
           const base = i * this.sizePeratomCols;
           const av = this.arrayAtom;
@@ -802,6 +819,12 @@ export class FixWallGranGranular extends Fix {
         f[3 * i] += this.out.fx; f[3 * i + 1] += this.out.fy; f[3 * i + 2] += this.out.fz;
         torque[3 * i] += this.out.tix; torque[3 * i + 1] += this.out.tiy; torque[3 * i + 2] += this.out.tiz;
         if (HF) HF[i] += heatFlowOf(pm.heat, pm.hk, this.out.a, Tw - T![i]);
+      }
+      // As native LAMMPS does (src/GRANULAR/fix_wall_gran_region.cpp post_force and update_contacts at b332f28): an
+      // atom inside the region keeps the history of the faces it touches now only; an atom outside the region is
+      // skipped ("if (!region->match(...)) continue") and keeps its history
+      if (hist && hist.size > touched.length && this.regionId && this.sys.region(this.regionId).match(xi, yi, zi)) {
+        for (const k of hist.keys()) if (!touched.includes(k)) hist.delete(k);
       }
     }
   }

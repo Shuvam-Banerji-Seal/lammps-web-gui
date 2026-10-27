@@ -52,6 +52,12 @@ export interface SurfaceContact {
   curvature: number;
   /** The primitive sub-region that produced this contact (for its motion). */
   source: Region;
+  /**
+   * The unit normal of the sub-region's own contact when nx, ny, nz carry a compound region's second transform (see
+   * CompoundRegion.retransform): the wall velocity is taken at that contact point, as native velocity_contact reads
+   * the sub-region's contact.
+   */
+  vnx?: number; vny?: number; vnz?: number;
 }
 
 export interface RegionEnv {
@@ -105,18 +111,43 @@ export abstract class Region {
     return this.interior ? ins : !ins;
   }
 
+  /** cos and sin of the last two rotation angles (cosSin): -theta and +theta alternate between the transforms. */
+  private trigA = NaN;
+  private cA = 1;
+  private sA = 0;
+  private trigB = NaN;
+  private cB = 1;
+  private sB = 0;
+  private tcos = 1;
+  private tsin = 0;
+
+  /** libm cos and sin of th into tcos and tsin, kept for the last two angles (the same values as the calls). */
+  private cosSin(th: number): void {
+    if (Object.is(th, this.trigA)) { this.tcos = this.cA; this.tsin = this.sA; return; }
+    if (Object.is(th, this.trigB)) { this.tcos = this.cB; this.tsin = this.sB; return; }
+    const c = libm.cos(th), s = libm.sin(th);
+    this.trigB = this.trigA; this.cB = this.cA; this.sB = this.sA;
+    this.trigA = th; this.cA = c; this.sA = s;
+    this.tcos = c; this.tsin = s;
+  }
+
+  /** The move displacement along axis a (0 without move or for a NULL variable). */
+  private moveAlong(a: number): number {
+    const v = this.move ? this.move[a] : null;
+    return v ? this.varValue(v) : 0;
+  }
+
   /** Inverse of the region's current displacement and rotation. */
   private toBodyFrame(x: number, y: number, z: number): [number, number, number] {
-    let d: [number, number, number] = [0, 0, 0];
-    if (this.move) d = this.move.map((v) => (v ? this.varValue(v) : 0)) as [number, number, number];
-    let px = x - d[0], py = y - d[1], pz = z - d[2];
+    let px = x - this.moveAlong(0), py = y - this.moveAlong(1), pz = z - this.moveAlong(2);
     if (this.rotate) {
       const th = -this.varValue(this.rotate.theta);
       const [ox, oy, oz] = this.rotate.p;
       const [ux, uy, uz] = this.rotate.r;
       // rotation of (p - P) by -theta about R (Rodrigues)
       const vx = px - ox, vy = py - oy, vz = pz - oz;
-      const c = libm.cos(th), s = libm.sin(th);
+      this.cosSin(th);
+      const c = this.tcos, s = this.tsin;
       const dot = ux * vx + uy * vy + uz * vz;
       const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
       px = ox + vx * c + cx * s + ux * dot * (1 - c);
@@ -165,7 +196,8 @@ export abstract class Region {
     if (!this.rotate) return [vx, vy, vz];
     const th = this.varValue(this.rotate.theta);
     const [ux, uy, uz] = this.rotate.r;
-    const c = libm.cos(th), s = libm.sin(th);
+    this.cosSin(th);
+    const c = this.tcos, s = this.tsin;
     const dot = ux * vx + uy * vy + uz * vz;
     const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
     return [vx * c + cx * s + ux * dot * (1 - c), vy * c + cy * s + uy * dot * (1 - c), vz * c + cz * s + uz * dot * (1 - c)];
@@ -185,15 +217,15 @@ export abstract class Region {
       const [ox, oy, oz] = this.rotate.p;
       const [ux, uy, uz] = this.rotate.r;
       const vx = bx - ox, vy = by - oy, vz = bz - oz;
-      const c = libm.cos(th), s = libm.sin(th);
+      this.cosSin(th);
+      const c = this.tcos, s = this.tsin;
       const dot = ux * vx + uy * vy + uz * vz;
       const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
       px = ox + vx * c + cx * s + ux * dot * (1 - c);
       py = oy + vy * c + cy * s + uy * dot * (1 - c);
       pz = oz + vz * c + cz * s + uz * dot * (1 - c);
     }
-    const d = this.move ? this.move.map((v) => (v ? this.varValue(v) : 0)) : [0, 0, 0];
-    return [px + d[0], py + d[1], pz + d[2]];
+    return [px + this.moveAlong(0), py + this.moveAlong(1), pz + this.moveAlong(2)];
   }
 
   /**
@@ -203,7 +235,7 @@ export abstract class Region {
    * then each face can exert a force on the particle if it is close enough").
    * A point outside the region yields no contact.
    */
-  contacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+  contacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     let px = x, py = y, pz = z;
     if (this.env.remap) {
       const p = [px, py, pz];
@@ -213,8 +245,9 @@ export abstract class Region {
     const [bx, by, bz] = this.dynamic ? this.toBodyFrame(px, py, pz) : [px, py, pz];
     const body: SurfaceContact[] = [];
     this.primitiveContacts(bx, by, bz, body);
-    if (!this.dynamic) { for (const c of body) out.push(c); return; }
+    if (!this.dynamic) { for (const c of body) if (c.dist < cutoff) out.push(c); return; }
     for (const c of body) {
+      if (!(c.dist < cutoff)) continue;
       const [nx, ny, nz] = this.toLabVector(c.nx, c.ny, c.nz);
       out.push({ key: c.key, dist: c.dist, nx, ny, nz, curvature: c.curvature, source: c.source });
     }
@@ -232,11 +265,13 @@ export abstract class Region {
    * compound region overrides this to filter the sub-region contacts as
    * region.html describes.  The force direction is "along the direction
    * between that point and the particle center, which is the direction normal
-   * to the surface at that point" (fix_wall_gran_region.rst).
+   * to the surface at that point" (fix_wall_gran_region.rst).  With a cutoff only the contacts closer than it are
+   * returned, as native LAMMPS does (src/region.cpp Region::surface at b332f28: surface_interior and surface_exterior
+   * add a contact only "if (delta < cutoff)"), before a compound region tests the others.
    */
-  surfaceContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
-    if (this.interior) this.contacts(x, y, z, out);
-    else this.outContacts(x, y, z, out);
+  surfaceContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
+    if (this.interior) this.contacts(x, y, z, out, cutoff);
+    else this.outContacts(x, y, z, out, cutoff);
   }
 
   /**
@@ -252,7 +287,7 @@ export abstract class Region {
    * cylinder (radius 1) gives Rw = +2 at the lateral surface and at the rim,
    * and Rw = 0 at the flat caps.
    */
-  outContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+  outContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     let px = x, py = y, pz = z;
     if (this.env.remap) {
       const p = [px, py, pz];
@@ -262,15 +297,20 @@ export abstract class Region {
     const [bx, by, bz] = this.dynamic ? this.toBodyFrame(px, py, pz) : [px, py, pz];
     const body: SurfaceContact[] = [];
     this.primitiveSideOutContacts(bx, by, bz, body);
-    if (!this.dynamic) { for (const c of body) out.push(c); return; }
+    if (!this.dynamic) { for (const c of body) if (c.dist < cutoff) out.push(c); return; }
     for (const c of body) {
+      if (!(c.dist < cutoff)) continue;
       const [nx, ny, nz] = this.toLabVector(c.nx, c.ny, c.nz);
       out.push({ key: c.key, dist: c.dist, nx, ny, nz, curvature: c.curvature, source: c.source });
     }
   }
 
   /**
-   * Nearest-point (side-out) contacts of a primitive region in its body frame.
+   * Nearest-point (side-out) contacts of a primitive region in its body frame. The contact has one key, 'out', for
+   * every nearest point (face, edge or corner, lateral surface or cap): as native LAMMPS does (src/region_block.cpp,
+   * region_sphere.cpp, region_cylinder.cpp and region_cone.cpp surface_exterior at b332f28, "contact[0].iwall = 0"),
+   * the exterior contact of a region is one wall, so its shear history continues when the nearest point moves from
+   * an edge onto a face.
    * Measured with native LAMMPS (black box): block, sphere, cylinder (radlo =
    * radhi) and cone solids use the nearest point of the solid; a particle on
    * or inside the solid yields no exterior contact.
@@ -284,16 +324,11 @@ export abstract class Region {
       for (let a = 0; a < 3; a++) if (p[a] < lo[a] || p[a] > hi[a]) inside = false;
       if (inside) return;
       const s = [0, 0, 0];
-      const act: string[] = [];
-      for (let a = 0; a < 3; a++) {
-        if (p[a] < lo[a]) { s[a] = lo[a]; act.push(`${a}lo`); }
-        else if (p[a] > hi[a]) { s[a] = hi[a]; act.push(`${a}hi`); }
-        else s[a] = p[a];
-      }
+      for (let a = 0; a < 3; a++) s[a] = p[a] < lo[a] ? lo[a] : p[a] > hi[a] ? hi[a] : p[a];
       const dx = x - s[0], dy = y - s[1], dz = z - s[2];
       const d = Math.hypot(dx, dy, dz);
       if (!(d > 0)) return;
-      out.push({ key: `out:${act.join('')}`, dist: d, nx: dx / d, ny: dy / d, nz: dz / d, curvature: 0, source: this });
+      out.push({ key: 'out', dist: d, nx: dx / d, ny: dy / d, nz: dz / d, curvature: 0, source: this });
       return;
     }
     if (this instanceof SphereRegion) {
@@ -327,7 +362,7 @@ export abstract class Region {
       const d = Math.hypot(dx, dy, dz);
       if (!(d > 0)) return;
       out.push({
-        key: curved ? 'outlat' : 'outcap', dist: d, nx: dx / d, ny: dy / d, nz: dz / d,
+        key: 'out', dist: d, nx: dx / d, ny: dy / d, nz: dz / d,
         curvature: curved ? 2 * rc : 0, source: this,
       });
       return;
@@ -616,7 +651,7 @@ export class CompoundRegion extends Region {
    *   "Having two coincident faces could cause the face to become invisible
    *   to the particles." on region.html).
    */
-  contacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+  contacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     let px = x, py = y, pz = z;
     if (this.env.remap) {
       const p = [px, py, pz];
@@ -628,10 +663,11 @@ export class CompoundRegion extends Region {
       if (!r) throw new StyleError(`region ${this.id}: sub-region ${m} no longer exists`);
       return r;
     });
+    const base = out.length;
     for (const m of members) {
       if (!m.match(px, py, pz)) continue;
       const sub: SurfaceContact[] = [];
-      m.contacts(px, py, pz, sub);
+      m.contacts(px, py, pz, sub, cutoff);
       for (const c of sub) {
         const qx = px - c.dist * c.nx, qy = py - c.dist * c.ny, qz = pz - c.dist * c.nz;
         const keep = this.style === 'intersect'
@@ -639,6 +675,27 @@ export class CompoundRegion extends Region {
           : members.every((mm) => mm === m || !mm.match(qx, qy, qz));
         if (keep) out.push(c);
       }
+      if (m.rotate && sub.length) this.retransform(m, out, base, sub.length, px, py, pz);
+    }
+  }
+
+  /**
+   * As native LAMMPS does (src/region_intersect.cpp and src/region_union.cpp surface_interior and surface_exterior at
+   * b332f28): once the contacts of a sub-region with the rotate keyword are added, the last ncontacts entries are
+   * moved by the sub-region's forward_transform a second time ("region->forward_transform(xs, ys, zs);
+   * contact[i].delx = xorig[0] - xs;"), on top of the one Region::surface applied, where ncontacts counts the
+   * sub-region's contacts within the cutoff, kept or not; the distance r stays. The wall styles take the normal as
+   * delx / r, while the wall velocity uses the sub-region's own contact (vnx, vny, vnz). Native indexes before the
+   * start of its array when fewer contacts were kept than found; here only this region's entries are moved.
+   */
+  private retransform(m: Region, out: SurfaceContact[], base: number, ncontacts: number, px: number, py: number, pz: number): void {
+    for (let i = Math.max(base, out.length - ncontacts); i < out.length; i++) {
+      const c = out[i];
+      const [lx, ly, lz] = m.labPoint(px - c.dist * c.nx, py - c.dist * c.ny, pz - c.dist * c.nz);
+      out[i] = {
+        ...c, nx: (px - lx) / c.dist, ny: (py - ly) / c.dist, nz: (pz - lz) / c.dist,
+        vnx: c.vnx ?? c.nx, vny: c.vny ?? c.ny, vnz: c.vnz ?? c.nz,
+      };
     }
   }
 
@@ -655,7 +712,7 @@ export class CompoundRegion extends Region {
    * point must lie in every other sub-region; for a union it must lie in no
    * other sub-region.
    */
-  surfaceContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+  surfaceContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     let px = x, py = y, pz = z;
     if (this.env.remap) {
       const p = [px, py, pz];
@@ -667,10 +724,11 @@ export class CompoundRegion extends Region {
       if (!r) throw new StyleError(`region ${this.id}: sub-region ${m} no longer exists`);
       return r;
     });
+    const base = out.length;
     for (const m of members) {
       if (!m.match(px, py, pz)) continue;
       const sub: SurfaceContact[] = [];
-      m.surfaceContacts(px, py, pz, sub);
+      m.surfaceContacts(px, py, pz, sub, cutoff);
       for (const c of sub) {
         const qx = px - c.dist * c.nx, qy = py - c.dist * c.ny, qz = pz - c.dist * c.nz;
         const keep = this.style === 'intersect'
@@ -678,6 +736,7 @@ export class CompoundRegion extends Region {
           : members.every((mm) => mm === m || !mm.match(qx, qy, qz));
         if (keep) out.push(c);
       }
+      if (m.rotate && sub.length) this.retransform(m, out, base, sub.length, px, py, pz);
     }
   }
 }

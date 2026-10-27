@@ -100,9 +100,18 @@ export function vecmat(v: ArrayLike<number>, m: Mat3, ans: Float64Array): void {
  * MathExtra::mldivide3: solve M ans = v by Gaussian elimination with the native partial pivoting. Returns 0 on
  * success and 1 for a singular matrix (the caller raises the native "Bad matrix inversion" error).
  */
+/** The augmented matrix of mldivide3, kept between calls. */
+const AUG: Float64Array[] = [new Float64Array(4), new Float64Array(4), new Float64Array(4)];
+
+/** Exchanges rows r and q of the augmented matrix (the source's tempv copies). */
+const swapRows = (aug: Float64Array[], r: number, q: number): void => {
+  const a = aug[r], b = aug[q];
+  for (let k = 0; k < 4; k++) { const t = a[k]; a[k] = b[k]; b[k] = t; }
+};
+
 export function mldivide3(m: Mat3, v: ArrayLike<number>, ans: Float64Array): number {
   // create augmented matrix for pivoting
-  const aug: Float64Array[] = [new Float64Array(4), new Float64Array(4), new Float64Array(4)];
+  const aug = AUG;
   for (let i = 0; i < 3; i++) {
     aug[i][3] = v[i];
     for (let j = 0; j < 3; j++) aug[i][j] = m[i][j];
@@ -111,21 +120,13 @@ export function mldivide3(m: Mat3, v: ArrayLike<number>, ans: Float64Array): num
   for (let i = 0; i < 2; i++) {
     let p = i;
     for (let j = i + 1; j < 3; j++) {
-      if (Math.abs(aug[j][i]) > Math.abs(aug[i][i])) {
-        const tempv = Float64Array.from(aug[i]);
-        aug[i].set(aug[j]);
-        aug[j].set(tempv);
-      }
+      if (Math.abs(aug[j][i]) > Math.abs(aug[i][i])) swapRows(aug, i, j);
     }
 
     while (p < 3 && aug[p][i] === 0.0) p++;
 
     if (p === 3) return 1;
-    if (p !== i) {
-      const tempv = Float64Array.from(aug[i]);
-      aug[i].set(aug[p]);
-      aug[p].set(tempv);
-    }
+    if (p !== i) swapRows(aug, i, p);
 
     for (let j = i + 1; j < 3; j++) {
       const n = aug[j][i] / aug[i][i];

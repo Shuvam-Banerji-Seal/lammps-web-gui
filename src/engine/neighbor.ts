@@ -805,7 +805,12 @@ export class Neighbor {
     const cursor = (this.sCursor = grownI32(this.sCursor, Math.max(2 * nbins, nlocal, nghost)));
     bL.fill(0, 0, nbins + 1);
     bG.fill(0, 0, nbins + 1);
+    // neigh_modify include: as native LAMMPS does (src/nbin_standard.cpp bin_atoms and src/npair_bin.cpp at b332f28,
+    // "if (includegroup)"), only the atoms of the group (owned, and ghosts of the group's atoms) are binned, so the
+    // other atoms are never visited; the pairs of the group and their order are those of the full binning
+    const inclBin = this.includeBit;
     for (let k = 0; k < nall; k++) {
+      if (inclBin && !(s.mask[k < nlocal ? k : owner[k]] & inclBin)) { binOf[k] = -1; continue; }
       // the box covers every atom, so the scaled offsets are non-negative
       let ix = ((xa[3 * k] - x0) / bx) | 0; if (ix >= mx) ix = mx - 1;
       let iy = ((xa[3 * k + 1] - y0) / by) | 0; if (iy >= my) iy = my - 1;
@@ -830,6 +835,7 @@ export class Neighbor {
     for (let b = 0; b < nbins; b++) cursor[nbins + b] = bG[b];
     for (let k = 0; k < nall; k++) {
       const b = binOf[k];
+      if (b < 0) continue;
       if (k < nlocal) {
         const p = cursor[b]++;
         lk[p] = k; lt[p] = ta[k];

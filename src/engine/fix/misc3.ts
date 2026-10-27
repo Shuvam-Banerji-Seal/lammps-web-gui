@@ -432,7 +432,8 @@ export class FixWallRegion extends Fix {
       // faces filtered as documented on region.html; a dynamic region's faces are
       // returned in the lab frame.
       const cs: SurfaceContact[] = [];
-      r.contacts(x, y, z, cs);
+      // the faces within the cutoff (native region->surface(x, cutoff); a compound region counts them, see region.ts)
+      r.contacts(x, y, z, cs, this.rc);
       for (const c of cs) {
         // fix_wall_region.cpp post_force: a contact at r = 0 (on the surface) is the same error
         if (c.dist <= 0) throw new StyleError('Particle outside surface of region used in fix wall/region');

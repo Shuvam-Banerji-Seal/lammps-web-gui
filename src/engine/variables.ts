@@ -65,6 +65,8 @@ const ALL_STYLES = new Set<string>(['index', 'loop', 'world', 'universe', 'uloop
 
 export class Variables {
   readonly vars = new Map<string, Variable>();
+  /** Bumped by every change of the table (define, delete, next, internal values), for caches of variable values. */
+  version = 0;
   /** The variables being evaluated now (native eval_in_progress): a formula reaching one again is circular. */
   private inProgress = new Set<string>();
 
@@ -99,6 +101,7 @@ export class Variables {
     };
     if (style === 'delete') {
       if (narg > 2) throw new StyleError(`Illegal variable delete command: expected 2 arguments but found ${narg}${url3}`);
+      this.version++;
       this.vars.delete(name);
       return true;
     }
@@ -217,6 +220,7 @@ export class Variables {
       default:
         throw new StyleError(`Unknown variable style: ${style}`);
     }
+    this.version++;
     this.vars.set(name, v);
     return true;
   }
@@ -277,10 +281,12 @@ export class Variables {
     }
     for (const [nm, v] of vs) {
       if (['index', 'loop', 'world', 'universe', 'uloop'].includes(v.style)) {
+        this.version++;
         v.which++;
         if (v.which >= v.values.length) { exhausted = true; this.vars.delete(nm); }
       } else if (v.style === 'file') {
         const line = v.lines!.shift();
+        this.version++;
         if (line === undefined) { exhausted = true; this.autoDelete(nm); } else v.values = [line];
       } else if (v.style === 'atomfile') {
         if (!this.nextAtomfile(v)) { exhausted = true; this.autoDelete(nm); }
@@ -300,6 +306,7 @@ export class Variables {
    */
   private autoDelete(nm: string): void {
     this.warn(`Auto-deleting variable ${nm}`);
+    this.version++;
     this.vars.delete(nm);
   }
 
@@ -445,6 +452,7 @@ export class Variables {
 
   /** clear: "Variables are not deleted ... with the exception of atomfile-style variables." */
   clear(): void {
+    this.version++;
     for (const [k, v] of this.vars) if (v.style === 'atomfile') this.vars.delete(k);
   }
 
@@ -452,6 +460,7 @@ export class Variables {
   setInternal(name: string, value: number): void {
     const v = this.vars.get(name);
     if (v && v.style !== 'internal') throw new StyleError(`variable ${name} is not internal-style`);
+    this.version++;
     this.vars.set(name, { style: 'internal', values: [], which: 0, num: value });
   }
 }

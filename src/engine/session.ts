@@ -305,6 +305,8 @@ export class Session {
       const words = this.parse(text);
       if (words.length === 0) return;
       this.command = words[0];
+      // a command may change what an equal-style variable gives (System.variableStamp)
+      this.sys.commandSerial++;
       if (this.echo === 'screen' || this.echo === 'both' || this.echo === 'log') this.io.emit({ kind: 'log', text: words.join(' ') });
       await this.dispatch(words[0], words.slice(1), frame);
     } catch (e) {

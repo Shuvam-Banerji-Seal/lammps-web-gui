@@ -1,4 +1,4 @@
-import { Bonded, NoSettingsError, StyleError, bondedCoeffArgs, termCentroid, typeBounds, type BondedCompute, type StyleContext } from './types';
+import { Bonded, NoSettingsError, StyleError, bondedCoeffArgs, termCentroid, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext } from './types';
 import { fmtCoeff, parseNum } from './util';
 
 /*
@@ -87,6 +87,12 @@ export abstract class SimpleBonded extends Bonded {
     return this.params.lines();
   }
 }
+
+/** fix adapt's access to the per-type vector of that name among the style's own vectors (Bonded.adaptParam), or null. */
+export const vectorAccess = (vectors: Record<string, Float64Array>, name: string): BondedAdaptAccess | null => {
+  const a = Object.hasOwn(vectors, name) ? vectors[name] : undefined;
+  return a ? { get: (i) => a[i], set: (i, v) => { a[i] = v; } } : null;
+};
 
 /** Index of an atom ID, or a StyleError naming the missing atom. */
 export const atomIndex = (bc: BondedCompute, id: number, kind: string): number => mapIndex(bc.map, id, kind);

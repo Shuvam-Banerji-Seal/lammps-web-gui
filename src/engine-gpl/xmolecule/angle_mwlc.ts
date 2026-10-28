@@ -9,8 +9,8 @@
  * Coefficients: "k1 k2 mu T" (angle_coeff N k1 k2 mu T). kB is force->boltz of the units style, T the temperature
  * of the coefficient line. The equilibrium angle is pi (native equilibrium_angle returns MY_PI).
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
-import { atomIndex, delta } from '../../engine/force/bonded_util';
+import { Bonded, StyleError, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
+import { atomIndex, delta, vectorAccess } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { exp } from '../libm/exp';
 import { log } from '../libm/log';
@@ -18,6 +18,10 @@ import { evTallyAngle } from './ev';
 
 export class AngleMWLC extends Bonded {
   readonly name = 'mwlc';
+  /** fix adapt: as native extract() does (src/EXTRA-MOLECULE/angle_mwlc.cpp at b332f28), k1, k2, mu and temp. */
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ k1: this.k1, k2: this.k2, mu: this.mu, temp: this.temp }, name);
+  }
   readonly kind = 'angle' as const;
   private k1!: Float64Array;
   private k2!: Float64Array;

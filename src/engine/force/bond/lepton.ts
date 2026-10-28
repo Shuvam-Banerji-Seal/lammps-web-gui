@@ -1,5 +1,5 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
-import { atomIndex, bondDelta } from '../bonded_util';
+import { Bonded, StyleError, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext } from '../types';
+import { atomIndex, bondDelta, vectorAccess } from '../bonded_util';
 import { parseNum } from '../util';
 import { compileLepton, fillVrefs, type LeptonProgram } from '../../lepton';
 
@@ -18,6 +18,14 @@ import { compileLepton, fillVrefs, type LeptonProgram } from '../../lepton';
 
 export class BondLepton extends Bonded {
   readonly name = 'lepton';
+  /**
+   * As native LAMMPS does (src/LEPTON/bond_lepton.cpp at b332f28): extract() hands fix adapt "r0", and reinitflag is 0, so the first
+   * change stops with "Fix adapt interface to this bond style not supported" (Bond::reinit and Angle::reinit).
+   */
+  override reinitFlag = false;
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ r0: this.r0 }, name);
+  }
   readonly kind = 'bond' as const;
   private autoOffset = true;
   private r0 = new Float64Array(0);

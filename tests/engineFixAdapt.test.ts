@@ -329,18 +329,20 @@ variable        e equal 2.0
     ['bond morse d0 1 v_e', /Fix adapt bond style morse does not exist/],
     ['bond harmonic r1 1 v_e', /Fix adapt bond style parameter r1 not supported/],
     ['angle harmonic theta 1 v_e', /Fix adapt angle style parameter theta not supported/],
-    // native writes doubles through the integer multiplicity array: refused, as the doc table lists only k
-    ['dihedral charmm n 1 v_e', /Fix adapt dihedral style parameter n not supported/],
+    // native writes a double through the integer multiplicity array (undefined behaviour): refused by name
+    ['dihedral charmm n 1 v_e', /Fix adapt dihedral style charmm param n: the browser engine cannot change this parameter/],
     ['improper harmonic k 1 2.0', /Argument must be variable not 2.0/],
   ])('bonded attribute errors: %s', async (attr, msg) => {
     const r = await runScript(`${MOL}fix 1 all adapt 1 ${attr}\nrun 0\n`);
     expect(r.message).toMatch(msg);
   });
 
-  it('a bonded hybrid style is refused by name', async () => {
+  it('a bonded hybrid sub-style is found by name (native Force::bond_match), another name does not exist', async () => {
     // every sub-style used: an unused one stops first at the bond style's init (Bond hybrid sub-style X is not used)
-    const r = await runScript(`${MOL.replace('bond_style      harmonic\nbond_coeff      1 10.0 1.0', 'bond_style      hybrid harmonic\nbond_coeff      1 harmonic 10.0 1.0')}fix 1 all adapt 1 bond harmonic k 1 v_e\nrun 0\n`);
-    expect(r.message).toMatch(/bond with bond_style hybrid is not supported/);
+    const hybrid = MOL.replace('bond_style      harmonic\nbond_coeff      1 10.0 1.0', 'bond_style      hybrid harmonic\nbond_coeff      1 harmonic 10.0 1.0');
+    expect((await runScript(`${hybrid}fix 1 all adapt 1 bond harmonic k 1 v_e\nrun 0\n`)).message).toBe('');
+    const r = await runScript(`${hybrid}fix 1 all adapt 1 bond morse d0 1 v_e\nrun 0\n`);
+    expect(r.message).toMatch(/Fix adapt bond style morse does not exist/);
   });
 
   it('the variable must exist when the run starts (native FixAdapt::init), not when the fix is defined', async () => {

@@ -1,5 +1,5 @@
-import { Bonded, NoSettingsError, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
-import { atomIndex, delta } from '../bonded_util';
+import { Bonded, NoSettingsError, StyleError, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { atomIndex, delta, vectorAccess } from '../bonded_util';
 import { tallyAngle } from './harmonic';
 import { fmtCoeff, parseNum } from '../util';
 import { libm } from '../../libm';
@@ -50,6 +50,16 @@ export class AngleClass2 extends Bonded {
 
   settings(args: string[], _ctx?: StyleContext): void {
     if (args.length) throw new NoSettingsError(args[0]);
+  }
+
+  /**
+   * fix adapt: as native LAMMPS does (src/CLASS2/angle_class2.cpp and src/MOFFF/angle_class2_p6.cpp extract at
+   * b332f28), k2, k3, k4 (and k5, k6 for class2/p6) and theta0 in radians, which compute reads as they are.
+   */
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    const vectors: Record<string, Float64Array> = { k2: this.K2, k3: this.K3, k4: this.K4, theta0: this.th0 };
+    if (this.p6) { vectors.k5 = this.K5; vectors.k6 = this.K6; }
+    return vectorAccess(vectors, name);
   }
 
   allocate(ntypes: number): void {

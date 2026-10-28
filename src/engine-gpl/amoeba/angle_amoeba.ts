@@ -11,8 +11,8 @@
  * docs.lammps.org/angle_amoeba.html: "angle_coeff N ba ..." (BondAngle) and "angle_coeff N ub ..." (Urey-Bradley)
  * and the plain line "pflag ubflag theta0 K2 K3 K4 K5 K6".
  */
-import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
-import { atomIndex, delta } from '../../engine/force/bonded_util';
+import { Bonded, StyleError, bondedVirial, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
+import { atomIndex, delta, vectorAccess } from '../../engine/force/bonded_util';
 import { parseNum } from '../../engine/force/util';
 import { acos as libmAcos } from '../libm/acos';
 
@@ -57,6 +57,10 @@ const tallyNoCentroid = (bc: BondedCompute, atoms: number[], e: number, vir: num
 
 export class AngleAmoeba extends Bonded {
   readonly name: string = 'amoeba';
+  /** fix adapt: as native extract() does (src/AMOEBA/angle_amoeba.cpp at b332f28), k2 .. k6 and theta0 (radians). */
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ k2: this.k2, k3: this.k3, k4: this.k4, k5: this.k5, k6: this.k6, theta0: this.theta0 }, name);
+  }
   readonly kind = 'angle' as const;
   /**
    * The per-atom centroid virial is native's, not the virial split: native angle_amoeba.cpp tallies the sextic angle and

@@ -1,4 +1,4 @@
-import { PairParams, StyleError, type AdaptAccess, type Pair } from '../force/types';
+import { PairParams, StyleError, type AdaptAccess, type Bonded, type BondedAdaptAccess, type Pair } from '../force/types';
 import { PAIR_EXTRACT } from './adaptPairsTable';
 
 /**
@@ -184,9 +184,14 @@ export const pairAdaptAccess = (style: Pair, styleName: string, pstyle: string, 
   );
 };
 
-/** The helpers fix adapt reads through gplHook('adapt') (registry/adapt_pairs.ts loads this module on first use). */
+/**
+ * The helpers fix adapt reads through gplHook('adapt') (registry/adapt_pairs.ts loads this module and adaptBonded.ts on
+ * first use).
+ */
 export interface AdaptPairsHook {
   pairExtractHas: typeof pairExtractHas;
   pairExtractDim: typeof pairExtractDim;
   pairAdaptAccess: typeof pairAdaptAccess;
+  bondedExtractHas: (kind: string, style: string, name: string) => boolean;
+  bondedAdaptAccess: (style: Bonded, kind: string, name: string) => BondedAdaptAccess;
 }

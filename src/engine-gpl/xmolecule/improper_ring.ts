@@ -10,8 +10,8 @@
  * MathSpecial::powint. The bond vectors of the three angles are taken from the copies of i, k and l nearest to j
  * (the owner of the improper). Native writedata = 0: no Impropers Coeffs section.
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
-import { atomIndex, delta } from '../../engine/force/bonded_util';
+import { Bonded, StyleError, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
+import { atomIndex, delta, vectorAccess } from '../../engine/force/bonded_util';
 import { parseNum } from '../../engine/force/util';
 import { cosFma as cos } from '../libm/sincos_fma';
 import { evTallyFour } from './ev';
@@ -34,6 +34,10 @@ export const powint = (x: number, n: number): number => {
 
 export class ImproperRing extends Bonded {
   readonly name = 'ring';
+  /** fix adapt: as native extract() does (src/EXTRA-MOLECULE/improper_ring.cpp at b332f28), k and "theta0", which is chi = cos(theta0). */
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ k: this.k, theta0: this.chi }, name);
+  }
   readonly kind = 'improper' as const;
   private k!: Float64Array;
   private chi!: Float64Array;

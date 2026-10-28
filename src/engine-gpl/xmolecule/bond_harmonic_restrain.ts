@@ -14,13 +14,17 @@
  * of the neighbor list. A system with more atoms than at the first run is an error (native message kept).
  * Native writedata = 0: the style writes no Bond Coeffs section (dataCoeffs returns null).
  */
-import { atomIndex, bondDelta } from '../../engine/force/bonded_util';
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
+import { atomIndex, bondDelta, vectorAccess } from '../../engine/force/bonded_util';
+import { Bonded, StyleError, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { evTallyBond } from './ev';
 
 export class BondHarmonicRestrain extends Bonded {
   readonly name = 'harmonic/restrain';
+  /** fix adapt: as native extract() does (src/EXTRA-MOLECULE/bond_harmonic_restrain.cpp at b332f28), k (init_style keeps the positions it stored at the first init). */
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ k: this.k }, name);
+  }
   readonly kind = 'bond' as const;
   private k!: Float64Array;
   private set!: Uint8Array;

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { PAIR_EXTRACT } from '../src/engine/fix/adaptPairsTable.ts';
+import { BONDED_EXTRACT } from '../src/engine/fix/adaptBondedTable.ts';
 
 /*
  * Parity matrices: oracle cases (tests/oracle/*.in) with one word of one line changed, then run 0. Native LAMMPS runs
@@ -351,6 +352,68 @@ const adaptPairRows = (cases: Case[]): ParityRow[] => adaptRows(cases, () => tru
 const adaptPairDownRows = (cases: Case[]): ParityRow[] => adaptRows(cases, (name) => /cut|qdist/.test(name), (style, name, ij) =>
   `variable adpv equal 0.9\nfix adpv all adapt 0 pair ${style} ${name} ${ij} v_adpv scale yes reset no\n`);
 
+/**
+ * fix adapt on each bond, angle, dihedral and improper style, as adapt-pair: the smallest case that has the style as
+ * its <kind>_style, else the smallest that has it in a hybrid <kind>_style line, where the type is the I of that
+ * sub-style's first coefficient line (native refuses a type of another sub-style: "Fix adapt type bond range is not
+ * valid for bond hybrid sub-style"); "variable adpv equal 1.1" and "fix adpv all adapt 0 <kind> <style> <name> <I>
+ * v_adpv scale yes" before its run 0, one row for each name the style's native extract() knows
+ * (src/engine/fix/adaptBondedTable.ts).
+ */
+const BONDED_KINDS = new Set(['bond', 'angle', 'dihedral', 'improper']);
+const bondedStyleKey: LineKey = (w) => {
+  const kind = w[0].endsWith('_style') ? w[0].slice(0, -6) : '';
+  return BONDED_KINDS.has(kind) && w.length > 1 && w[1] !== 'hybrid' ? `${kind} ${w[1]}` : null;
+};
+const adaptBondedRows = (cases: Case[]): ParityRow[] => {
+  const rowsOf = (r: ParityRow, key: string, it: string): ParityRow[] =>
+    (BONDED_EXTRACT[key] ?? []).map((name) => ({
+      ...r, pre: `variable adpv equal 1.1\nfix adpv all adapt 0 ${key} ${name} ${it} v_adpv scale yes\n`, style: `${key} ${name}`,
+    }));
+  const plain = pick(bondedStyleKey, (w) => w)(cases);
+  const out = plain.flatMap((r) => rowsOf(r, r.style, '*'));
+  const covered = new Set(plain.map((r) => r.style));
+  const text = new Map(cases.map((c) => [c.name, c.text]));
+  for (const key of Object.keys(BONDED_EXTRACT)) {
+    if (covered.has(key)) continue;
+    const [kind, style] = key.split(' ');
+    const sub: LineKey = (w) => (w[0] === `${kind}_style` && w[1] === 'hybrid' && w.slice(2).includes(style) ? key : null);
+    for (const r of pick(sub, (w) => w)(cases)) {
+      const lines = text.get(r.case)!.split('\n');
+      const coeff = lines.slice(r.line + 1).map((l) => words(l)).find((w) => w?.[0] === `${kind}_coeff` && w[2] === style);
+      if (coeff) out.push(...rowsOf(r, key, coeff[1]));
+    }
+  }
+  return out.sort((a, b) => (a.style < b.style ? -1 : a.style > b.style ? 1 : 0));
+};
+/**
+ * extract() names whose native member is an int array (src/ at b332f28: EXTRA-MOLECULE/angle_cosine_periodic.h
+ * multiplicity and b, MOFFF/angle_cosine_buck6d.h multiplicity, MOLECULE/dihedral_charmm.h (and charmmfsw) n and d,
+ * MOLECULE/improper_cvff.h d and n): fix adapt writes a double through the pointer, so native's result is undefined.
+ */
+const BONDED_INT_PARAMS: Record<string, readonly string[]> = {
+  'angle cosine/periodic': ['multiplicity', 'b'], 'angle cosine/buck6d': ['multiplicity'],
+  'dihedral charmm': ['n', 'd'], 'dihedral charmmfsw': ['n', 'd'], 'improper cvff': ['d', 'n'],
+};
+/**
+ * extract() names whose native member is a per-type array of arrays (double **, EXTRA-MOLECULE/angle_gaussian.h and
+ * bond_gaussian.h at b332f28: one value per Gaussian term) handed out as dim 1: fix adapt writes doubles over the
+ * array's pointers.
+ */
+const BONDED_POINTER_PARAMS: Record<string, readonly string[]> = {
+  'angle gaussian': ['alpha', 'width', 'theta0'], 'bond gaussian': ['alpha', 'width', 'r0'],
+};
+const adaptBondedUndefined = (): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const [key, names] of Object.entries(BONDED_INT_PARAMS)) {
+    for (const name of names) out[`${key} ${name}`] = `native writes a double through the int ${name} (undefined behaviour)`;
+  }
+  for (const [key, names] of Object.entries(BONDED_POINTER_PARAMS)) {
+    for (const name of names) out[`${key} ${name}`] = `native's ${name} is a double ** that extract() gives as dim 1 (undefined behaviour)`;
+  }
+  return out;
+};
+
 /** The first number after the type words of a coefficient line multiplied by `factor`. */
 const coeffScaled = (factor: number): Change => (w, _lines) => {
   const from = w[0] === 'pair_coeff' ? 3 : 2;
@@ -446,6 +509,11 @@ export const MATRICES: Record<string, MatrixDef> = {
     about: 'fix adapt 0 pair <style> <name> * * v_x scale yes reset no (x = 0.9) for each cutoff and geometry name of each pair style\'s native extract(), pe, press and fnorm compared after run 0 and after a second run 0',
     rows: throughRun(adaptPairDownRows, THERMO_F, `${VALUES_F}run 0\n${VALUES_F}`),
     undefined: adaptPairUndefined(),
+  },
+  'adapt-bonded': {
+    about: 'fix adapt 0 <kind> <style> <name> * v_x scale yes (x = 1.1) for each name of each bond, angle, dihedral and improper style\'s native extract(), pe, press and fnorm compared after run 0',
+    rows: throughRun(adaptBondedRows, THERMO_F, VALUES_F),
+    undefined: adaptBondedUndefined(),
   },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };

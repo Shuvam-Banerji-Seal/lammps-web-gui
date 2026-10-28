@@ -164,12 +164,17 @@ export class BondRHEOShell extends SimpleBonded {
       f[3 * i2 + 1] -= dely * fbond;
       f[3 * i2 + 2] -= delz * fbond;
       // virial tally of the pair (ev_tally with the force magnitude fbond, no energy)
-      v[0] += delx * delx * fbond;
-      v[1] += dely * dely * fbond;
-      v[2] += delz * delz * fbond;
-      v[3] += delx * dely * fbond;
-      v[4] += delx * delz * fbond;
-      v[5] += dely * delz * fbond;
+      const w0 = delx * delx * fbond, w1 = dely * dely * fbond, w2 = delz * delz * fbond;
+      const w3 = delx * dely * fbond, w4 = delx * delz * fbond, w5 = dely * delz * fbond;
+      v[0] += w0; v[1] += w1; v[2] += w2; v[3] += w3; v[4] += w4; v[5] += w5;
+      // per-atom: half of it to each atom (Bond::ev_tally with newton_bond on)
+      if (bc.vatom) {
+        const va = bc.vatom;
+        for (const a of [i1, i2]) {
+          va[6 * a] += 0.5 * w0; va[6 * a + 1] += 0.5 * w1; va[6 * a + 2] += 0.5 * w2;
+          va[6 * a + 3] += 0.5 * w3; va[6 * a + 4] += 0.5 * w4; va[6 * a + 5] += 0.5 * w5;
+        }
+      }
     }
     // the formed-bond counts of the atoms; an atom with shell bonds does not shift (native post_compute part)
     for (let i = 0; i < s.n; i++) {

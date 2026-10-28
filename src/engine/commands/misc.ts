@@ -258,6 +258,93 @@ const box: Handler = ({ sys }) => {
   sys.warn("The 'box' command has been removed and will be ignored");
 };
 
+/**
+ * geturl url keyword args ... — geturl.html: "Download a file from an URL to the local disk."; "*output* filename =
+ * write to *filename* instead of inferring the name from the URL", "*overwrite* yes/no = if *yes* overwrite the output
+ * file in case it exists, do not if *no*", "*timeout* time = stop download if not completed within given time in
+ * seconds", "*verify* yes/no = verify SSL certificate and hostname if *yes*, do not if *no*", "*verbose* yes/no = if
+ * *yes* write verbose debug output from libcurl to screen, do not if *no*"; "By default, the string after the last '/'
+ * is used or 'index.html'."; "The default time value is 300, i.e. 5 minutes.  Setting the timeout to 0 means to wait
+ * forever."
+ *
+ * The checks, the name rules and the messages are native's (src/EXTRA-COMMAND/geturl.cpp GetURL::command at b332f28):
+ * the URL must hold "://", keywords are read in order (logical yes/no values, an integer timeout >= 0), and the output
+ * file is opened before the transfer, so a failed download leaves it empty. The browser engine downloads with fetch into
+ * the notebook's files (bytes kept as an upload keeps them): it cannot turn certificate verification off (verify no is accepted), writes no libcurl trace
+ * (verbose is accepted), and a server must allow cross-origin requests (CORS) for a page to read it.
+ */
+const geturl: Handler = async ({ sys }, a) => {
+  if (a.length < 1) throw missingArgs('geturl');
+  let overwrite = true;
+  let timeout = 300;
+  const url = a[0];
+  if (!url.includes('://')) throw new StyleError(`URL '${url}' is not a supported URL`);
+  let output = '';
+  for (let i = 1; i < a.length; i++) {
+    const kw = a[i];
+    if (kw === 'output') {
+      if (i + 2 > a.length) throw missingArgs('geturl output');
+      output = a[++i];
+    } else if (kw === 'overwrite') {
+      if (i + 2 > a.length) throw missingArgs('geturl overwrite');
+      overwrite = logical(a[++i]);
+    } else if (kw === 'timeout') {
+      if (i + 2 > a.length) throw missingArgs('geturl timeout');
+      timeout = inumeric(a[++i]);
+      if (timeout < 0) throw new StyleError(`Invalid timeout ${timeout} for geturl`);
+    } else if (kw === 'verify') {
+      if (i + 2 > a.length) throw missingArgs('geturl verify');
+      logical(a[++i]);
+    } else if (kw === 'verbose') {
+      if (i + 2 > a.length) throw missingArgs('geturl verbose');
+      logical(a[++i]);
+    } else {
+      throw new StyleError(`Unknown geturl keyword: ${kw}`);
+    }
+  }
+  // "a trailing forward slash represents an index page"; a URL with no '/' past the scheme is a bare domain
+  if (!output) {
+    if (url.endsWith('/')) output = 'index.html';
+    else {
+      const pos = url.lastIndexOf('/');
+      output = pos < 8 ? 'index.html' : url.slice(pos + 1);
+    }
+  }
+  if (!output) throw new StyleError(`Cannot determine output file name from URL '${url}' and 'output' is not used`);
+  if (!overwrite && sys.files.has(sys.resolveFile(output))) return;
+  sys.writeFile(output, '', false);
+  let reason = '', code = 0;
+  let body: Uint8Array | null = null;
+  try {
+    const res = await fetch(url, timeout > 0 ? { signal: AbortSignal.timeout(1000 * timeout) } : {});
+    // CURLOPT_FAILONERROR: an HTTP status of 400 or more is an error with the response code
+    if (res.status >= 400) { reason = 'HTTP response code said error'; code = res.status; }
+    else body = new Uint8Array(await res.arrayBuffer());
+  } catch (e) {
+    reason = (e as Error).name === 'TimeoutError' ? 'Timeout was reached' : "Couldn't connect to server";
+  }
+  if (!body) {
+    const hint = reason === "Couldn't connect to server"
+      ? '\nThe browser engine downloads with fetch: the server must be reachable and allow cross-origin requests (CORS)'
+      : '';
+    throw new StyleError(`Download of ${output} failed with: ${reason} ${code}${hint}`);
+  }
+  // stored as the notebook stores an upload (services/fileStore.ts readInputText): a gzipped file, or one that is not
+  // valid UTF-8, one character per byte; any other file as UTF-8 text
+  const bytes = body;
+  const latin1 = (): string => {
+    let out = '';
+    for (let k = 0; k < bytes.length; k += 8192) out += String.fromCharCode(...bytes.subarray(k, k + 8192));
+    return out;
+  };
+  let text: string;
+  if (output.toLowerCase().endsWith('.gz') || (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b)) text = latin1();
+  else {
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { text = latin1(); }
+  }
+  sys.writeFile(output, text, false);
+};
+
 export const MISC_COMMANDS: Record<string, Handler> = {
   variable, print, log, timer, info, shell, box,
   python: browserOnly('python', 'is not available: the browser engine has no Python interpreter'),
@@ -267,5 +354,5 @@ export const MISC_COMMANDS: Record<string, Handler> = {
   // fenix.rst: "This command initializes `Fenix <https://github.com/sandialabs/fenix>`_ for online process recovery.
   // From this point on, Fenix claims a number of ranks to be used as spares." The browser engine runs no MPI ranks.
   fenix: browserOnly('fenix', 'is not available: Fenix recovers failed MPI processes, and the browser engine runs no MPI ranks'),
-  geturl: browserOnly('geturl', 'is not available: the notebook only reads files you add to it'),
+  geturl,
 };

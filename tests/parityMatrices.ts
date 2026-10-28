@@ -290,8 +290,20 @@ const INT_PARAMS = new Set([
 ]);
 /** int extract() members of one style only (EXTRA-PAIR/pair_wf_cut.h: int **nu, **mu; DRUDE/pair_coul_tt.h: int **ntt). */
 const INT_PARAMS_OF: Record<string, readonly string[]> = { 'wf/cut': ['nu', 'mu'], 'coul/tt': ['ntt'] };
+/**
+ * extract() names whose native member is a tetramer array (double ****, src/CG-DNA/pair_oxdna_stk.h and
+ * pair_oxdna3_xstk.h at b332f28) handed out as dim 2: fix adapt writes a double through a pointer to pointers.
+ */
+const STK_TETRAMER = ['cut_st_0', 'cut_st_c', 'cut_st_lo', 'cut_st_hi', 'cut_st_lc', 'cut_st_hc', 'shift_st', 'a_st4', 'dtheta_st4_ast', 'b_st4', 'dtheta_st4_c'];
+const TETRAMER_OF: Record<string, readonly string[]> = {
+  'oxdna/stk': STK_TETRAMER, 'oxdna2/stk': STK_TETRAMER, 'oxdna3/stk': STK_TETRAMER,
+  'oxdna3/xstk': ['33', '55'].flatMap((set) => ['0', 'c', 'lo', 'hi', 'lc', 'hc'].map((k) => `cut_xst_${k}_${set}`)),
+};
 const adaptPairUndefined = (): Record<string, string> => {
   const out: Record<string, string> = {};
+  for (const [style, names] of Object.entries(TETRAMER_OF)) {
+    for (const name of names) out[`pair ${style} ${name}`] = `native's ${name} is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)`;
+  }
   for (const [style, names] of Object.entries(PAIR_EXTRACT)) {
     for (const [name] of names) {
       if (INT_PARAMS.has(name) || INT_PARAMS_OF[style]?.includes(name)) {
@@ -313,9 +325,9 @@ const ADAPT_GAPS: Record<string, Record<string, readonly string[]>> = {
     'coul/streitz': ['alpha'],
     'hippo': ['opbend_cubic', 'opbend_quartic', 'opbend_pentic', 'opbend_sextic'],
   },
-  // every extract() name of the oxDNA and oxRNA styles (src/CG-DNA/pair_ox*.cpp)
-  "the engine keeps the oxDNA and oxRNA parameters in another form than native's arrays": Object.fromEntries(
-    Object.entries(PAIR_EXTRACT).filter(([style]) => /^ox(dna|rna)/.test(style)).map(([style, names]) => [style, names.map(([n]) => n)]),
+  // every extract() name of the oxDNA and oxRNA excluded-volume styles (src/CG-DNA/pair_oxdna_excv.cpp and its variants)
+  "the engine keeps the oxDNA excluded-volume parameters in site tables, not native's arrays": Object.fromEntries(
+    Object.entries(PAIR_EXTRACT).filter(([style]) => /^ox(dna|rna)\d?\/excv$/.test(style)).map(([style, names]) => [style, names.map(([n]) => n)]),
   ),
 };
 const adaptPairGaps = (): Record<string, string> => {

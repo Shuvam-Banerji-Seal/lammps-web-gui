@@ -11,12 +11,13 @@
  * The per-atom effective charge qeff is an internal per-atom property of atom_style oxdna. pair_coeff sets it
  * on every atom (1, or 0.5 at strand ends with "half_charged_ends yes"), as pair_oxdna2_dh.cpp coeff() does.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type AdaptAccess, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, OXDNA_QEFF, isEllipsoid } from '../../engine/atoms';
 import { parseNum, logical as readLogical } from '../../engine/force/util';
 import { type OxdnaConstants, backboneOxdna2, backboneOxrna2Dh, lrfOf, oxdnaConstants, potentialLines } from './common';
 import { exp as libmExp } from '../libm/exp';
+import { oxdnaTableAccess } from './adapt';
 
 /** utils::logical of LAMMPS for the half_charged_ends keyword. */
 const logical = (w: string): boolean => readLogical(w);
@@ -36,6 +37,13 @@ export class PairOxdna2Dh extends Pair {
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length) throw new StyleError('Illegal pair_style command');
+  }
+
+  /** fix adapt on the per-type-pair arrays of extract() (pair_oxdna2_dh.cpp; adapt.ts). */
+  override adaptParam(name: string): AdaptAccess | null {
+    const field = ({ kappa_dh: 'kappa', qeff_dh_pf: 'qpf', b_dh: 'bDh', cut_dh_ast: 'cutAst', cut_dh_c: 'cutC' } as Record<string, string>)[name];
+    const tab = field === undefined ? undefined : (this as unknown as Record<string, unknown>)[field];
+    return tab instanceof Float64Array ? oxdnaTableAccess(tab, this.nt) : null;
   }
 
   allocate(ntypes: number): void {

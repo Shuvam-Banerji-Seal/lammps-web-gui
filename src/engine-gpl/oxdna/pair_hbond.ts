@@ -11,7 +11,7 @@
  * is refused by name. The per-type coefficients are symmetrised in initOne
  * (pair_oxdna_hbond.cpp init_one writes the j,i entries), as in the C++.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type AdaptAccess, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
@@ -19,6 +19,8 @@ import { DF1, DF4, F1, F4, baseSiteOxdna1, lrfOf, oxdnaConstants, type OxdnaCons
 import { sinFma as libmSin } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { acos as libmAcos } from '../libm/acos';
+import { oxdnaRecordAccess } from './adapt';
+import { NativePairOrder } from '../neighbor/nativeOrder';
 
 /** pair_oxdna_hbond.cpp constructor: alpha_hb[i][j] (sequence dependence of the hydrogen bonds, oxDNA). */
 const ALPHA_HB_OXDNA: number[][] = [
@@ -51,6 +53,11 @@ export class PairOxdnaHbond extends Pair {
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('Illegal pair_style command');
+  }
+
+  /** fix adapt on the per-type-pair arrays of extract() (adapt.ts). */
+  override adaptParam(name: string): AdaptAccess | null {
+    return oxdnaRecordAccess(name, this.t, this.nt, {});
   }
 
   allocate(ntypes: number): void {
@@ -161,6 +168,8 @@ export class PairOxdnaHbond extends Pair {
     return T.cuthc[q];
   }
 
+  private readonly natPairs = new NativePairOrder();
+
   compute(pc: PairCompute): void {
     const s = pc.s;
     if (!s.custom.has(OXDNA_5P) || !s.quat || !s.torque) throw new StyleError('pair_style oxdna/hbond requires atom_style hybrid bond ellipsoid oxdna');
@@ -197,15 +206,18 @@ export class PairOxdnaHbond extends Pair {
     };
     const clamp = (c: number) => (c > 1.0 ? 1.0 : c < -1.0 ? -1.0 : c);
     const dot = (u: readonly number[], v: readonly number[]) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
-    for (let ia = 0; ia < list.inum; ia++) {
+    // the pairs in native's half-list order and orientation (which atom of a pair is a): the paired angle terms
+    // swap with it, which shows once their parameters differ (fix adapt)
+    const pairs = this.natPairs.pairs(pc.s, pc.nb, pc.geom, list);
+    for (let p = 0; p < pairs.length; p += 2) {
+      const ia = pairs[p];
       const a = ia;
       const atype = type[a];
       for (let c = 0; c < 3; c++) {
         ax[c] = L[9 * a + c]; ay[c] = L[9 * a + 3 + c]; az[c] = L[9 * a + 6 + c];
       }
-      const jstart = list.firstneigh[a], jend = jstart + list.numneigh[a];
-      for (let kk = jstart; kk < jend; kk++) {
-        const jj = list.neighbors[kk];
+      {
+        const jj = pairs[p + 1];
         const factorLJ = special[jj >>> SBBITS];
         const b = jj & NEIGHMASK;
         const btype = type[b];

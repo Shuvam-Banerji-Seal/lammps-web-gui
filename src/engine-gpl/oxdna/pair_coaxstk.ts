@@ -11,13 +11,15 @@
  * Atoms with both a 3' and a 5' partner (the interior of a strand) take no coaxial stacking; the C++ skips them
  * (the "continue" lines of compute), and so does this port.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type AdaptAccess, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, DF5, F2, F4, F5, backboneSite, lrfOf, oxdnaConstants, stackingSite } from './common';
 import { sinFma as libmSin } from '../libm/sincos_fma';
 import { acos as libmAcos } from '../libm/acos';
+import { oxdnaRecordAccess } from './adapt';
+import { NativePairOrder } from '../neighbor/nativeOrder';
 
 /** The 21 numbers after "I J" (pair_coeff) or after the potential-file name, in order. */
 const CX_NAMES = ['k_cxst', 'cut_cxst_0', 'cut_cxst_c', 'cut_cxst_lo', 'cut_cxst_hi',
@@ -37,6 +39,11 @@ export class PairOxdnaCoaxstk extends Pair {
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('Illegal pair_style command');
+  }
+
+  /** fix adapt on the per-type-pair arrays of extract() (adapt.ts). */
+  override adaptParam(name: string): AdaptAccess | null {
+    return oxdnaRecordAccess(name, this.t, this.nt, {});
   }
 
   allocate(ntypes: number): void {
@@ -129,6 +136,8 @@ export class PairOxdnaCoaxstk extends Pair {
     return this.t.cuthc[q];
   }
 
+  private readonly natPairs = new NativePairOrder();
+
   compute(pc: PairCompute): void {
     const s = pc.s;
     if (!s.custom.has(OXDNA_5P) || !s.quat || !s.torque) throw new StyleError('pair_style oxdna/coaxstk requires atom_style hybrid bond ellipsoid oxdna');
@@ -170,13 +179,16 @@ export class PairOxdnaCoaxstk extends Pair {
     const clamp = (c: number) => (c > 1.0 ? 1.0 : c < -1.0 ? -1.0 : c);
     const dot = (u: readonly number[], v: readonly number[]) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
     const interior = (k: number) => id3p[k] !== 0 && id5p[k] !== 0;
-    for (let a = 0; a < list.inum; a++) {
+    // the pairs in native's half-list order and orientation (which atom of a pair is a): the paired angle terms
+    // swap with it, which shows once their parameters differ (fix adapt)
+    const pairs = this.natPairs.pairs(pc.s, pc.nb, pc.geom, list);
+    for (let p = 0; p < pairs.length; p += 2) {
+      const a = pairs[p];
       if (interior(a)) continue;
       const atype = type[a];
       for (let c = 0; c < 3; c++) { ax[c] = L[9 * a + c]; ay[c] = L[9 * a + 3 + c]; az[c] = L[9 * a + 6 + c]; }
-      const jstart = list.firstneigh[a], jend = jstart + list.numneigh[a];
-      for (let kk = jstart; kk < jend; kk++) {
-        const jj = list.neighbors[kk];
+      {
+        const jj = pairs[p + 1];
         const factorLJ = special[jj >>> SBBITS];
         const b = jj & NEIGHMASK;
         const ob = owner[b];

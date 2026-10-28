@@ -10,12 +10,14 @@
  * The C++ computes the local frames of its ghost atoms from the fix OXDNA/LRF (forward communication); here the
  * frame of every ghost is the frame of the owned atom it images. The pair list is the default (half) list.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type AdaptAccess, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, OXDNA_3P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { type OxdnaConstants, F3, backboneOxdna1, baseSiteOxdna1, lrfOf, oxdnaConstants, potentialLines } from './common';
 import { pow as libmPow } from '../libm/pow';
+import { NativePairOrder } from '../neighbor/nativeOrder';
+import { oxdnaTableAccess } from './adapt';
 
 /** The three site kinds of the excluded volume: bk-bk, bk-bs (both orders) and bs-bs. */
 interface SiteTable {
@@ -75,6 +77,27 @@ export class PairOxdnaExcv extends Pair {
   /** tetramer tables (pair_oxdna_excv.cpp sigma4_bsbs, cut4..., lj14, lj24, b4), indexed [i][j][k][l] */
   protected t4!: { sigma: Float64Array; cutAst: Float64Array; cutsqAst: Float64Array; cutC: Float64Array; cutsqC: Float64Array; b: Float64Array; lj14: Float64Array; lj24: Float64Array };
   protected tEps = new Float64Array(0);
+  private readonly natPairs = new NativePairOrder();
+
+  /**
+   * fix adapt's names (pair_oxdna_excv.cpp extract): epsilon, sigma, cut_ast, b and cut_c of the bkbk, bkbs and bsbs
+   * tables, sigma4_bkbs being sigma_bkbs there. Written at [i][j] only, as init_one does not mirror. The force loop
+   * reads epsilon, b and cut_c as they are then (epsilon_bsbs in the tetramer terms too), the squared cutoffs and LJ
+   * factors stay those of pair_coeff, and init_one returns cut_bkbk_c as the cutoff of the next init.
+   */
+  override adaptParam(name: string): AdaptAccess | null {
+    const nt = this.nt;
+    if (name === 'epsilon_bsbs') {
+      const eps = this.bb.eps, tEps = this.tEps;
+      return { dim: 2, get: (i, j) => eps[i * nt + j], set: (i, j, v) => { eps[i * nt + j] = v; tEps[i * nt + j] = v; } };
+    }
+    if (name === 'sigma4_bkbs') return oxdnaTableAccess(this.bs.sigma, nt);
+    const m = /^(epsilon|sigma|cut|b)_(bkbk|bkbs|bsbs)(_ast|_c)?$/.exec(name);
+    if (!m || (m[1] === 'cut') !== (m[3] !== undefined)) return null;
+    const t = m[2] === 'bkbk' ? this.bk : m[2] === 'bkbs' ? this.bs : this.bb;
+    const field = m[1] === 'cut' ? (m[3] === '_ast' ? t.cutAst : t.cutC) : m[1] === 'epsilon' ? t.eps : m[1] === 'sigma' ? t.sigma : t.b;
+    return oxdnaTableAccess(field, nt);
+  }
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('Illegal pair_style command');
@@ -247,13 +270,21 @@ export class PairOxdnaExcv extends Pair {
     const dbk = [0, 0, 0], dbs = [0, 0, 0], dsk = [0, 0, 0], dss = [0, 0, 0];
     const rtBk = [0, 0, 0], rtBs = [0, 0, 0];
 
-    for (let a = 0; a < list.inum; a++) {
-      const atype = type[a];
-      const ra_bk = rbk.subarray(3 * a, 3 * a + 3), ra_bs = rbs.subarray(3 * a, 3 * a + 3);
-      for (let d = 0; d < 3; d++) { rtBk[d] = x[3 * a + d] + ra_bk[d]; rtBs[d] = x[3 * a + d] + ra_bs[d]; }
-      const jstart = list.firstneigh[a], jend = jstart + list.numneigh[a];
-      for (let kk = jstart; kk < jend; kk++) {
-        const jj = list.neighbors[kk];
+    // the pairs in native's half-list order and orientation (which atom of a pair is a): the [atype][btype] entries
+    // differ from [btype][atype] once fix adapt has written one of them
+    const pairs = this.natPairs.pairs(s, pc.nb, pc.geom, list);
+    let a = -1, atype = 0;
+    let ra_bk = rbk.subarray(0, 0), ra_bs = rbs.subarray(0, 0);
+    for (let p = 0; p < pairs.length; p += 2) {
+      if (pairs[p] !== a) {
+        a = pairs[p];
+        atype = type[a];
+        ra_bk = rbk.subarray(3 * a, 3 * a + 3);
+        ra_bs = rbs.subarray(3 * a, 3 * a + 3);
+        for (let d = 0; d < 3; d++) { rtBk[d] = x[3 * a + d] + ra_bk[d]; rtBs[d] = x[3 * a + d] + ra_bs[d]; }
+      }
+      {
+        const jj = pairs[p + 1];
         const factorLJ = special[jj >>> SBBITS];
         const b = jj & NEIGHMASK;
         const btype = type[b];

@@ -1,4 +1,4 @@
-import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../types';
+import { Pair, StyleError, type AdaptAccess, type PairCompute, type StyleContext, potentialFile } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
@@ -197,13 +197,16 @@ export class PairCoulStreitz extends Pair {
   /** Per atom type (1..ntypes) parameters; null until pair_coeff sets them. */
   private tp: (StreitzParams | null)[] = [];
   /**
-   * The Wolf force shift of the 1/r part (coul/wolf's f_shift) at the cutoff of the last pair_coeff, and that cutoff. As
-   * native LAMMPS does (src/KSPACE/pair_coul_streitz.cpp at b332f28): setup_params, which pair_coeff runs, sets the Wolf
-   * self terms woself and dwoself from cut_coul; init_style sets cut_coulsq; the force loop (coulomb_integral_wolf,
-   * wolf_sum, fennell_sum) reads cut_coul as it is then. fix adapt can change cut_coul between them.
+   * The Wolf force shift of the 1/r part (coul/wolf's f_shift) at the cutoff and alpha of the last pair_coeff, and that
+   * cutoff. As native LAMMPS does (src/KSPACE/pair_coul_streitz.cpp at b332f28): setup_params, which pair_coeff runs,
+   * sets the Wolf self terms woself and dwoself from cut_coul and g_wolf; init_style sets cut_coulsq; the force loop
+   * (coulomb_integral_wolf, wolf_sum, fennell_sum) reads cut_coul and g_wolf as they are then. fix adapt can change
+   * either between them.
    */
   private fShiftW = 0;
   private rcCoeff = 0;
+  /** alpha at the last pair_coeff: setup_params derives woself and dwoself from g_wolf as it is then. */
+  private alphaCoeff = 0;
   /** Shifted-force constants of the short-range part, per type pair (ntypes+1)^2: S, S', U_j, U_j', U_i, U_i' at rc. */
   private rcS = new Float64Array(0);
   private rcDS = new Float64Array(0);
@@ -278,6 +281,7 @@ export class PairCoulStreitz extends Pair {
       this.tp[t] = e;
     }
     this.rcCoeff = this.cutGlobal;
+    this.alphaCoeff = this.alpha;
   }
 
   initStyle(ctx: StyleContext): void {
@@ -290,7 +294,7 @@ export class PairCoulStreitz extends Pair {
     for (let t = 1; t <= this.ntypes; t++) {
       if (!this.tp[t]) throw new StyleError(`pair_coeff for style coul/streitz does not set atom type ${t}`);
     }
-    if (this.mode !== 'ewald') this.fShiftW = wolfForceShift(this.alpha, this.rcCoeff);
+    if (this.mode !== 'ewald') this.fShiftW = wolfForceShift(this.alphaCoeff, this.rcCoeff);
     const nt = this.ntypes + 1;
     this.rcS = new Float64Array(nt * nt);
     this.rcDS = new Float64Array(nt * nt);
@@ -319,6 +323,17 @@ export class PairCoulStreitz extends Pair {
     return rc;
   }
 
+  /**
+   * fix adapt's alpha. As native LAMMPS does (src/KSPACE/pair_coul_streitz.cpp extract at b332f28): "alpha" is g_wolf
+   * (wolf and dsf) or g_ewald (ewald), which the force loop reads as it is then (wolf_sum, fennell_sum, ewald_sum);
+   * woself and dwoself keep the g_wolf of the last pair_coeff, and init_style sets g_ewald from the kspace style again.
+   */
+  override adaptParam(name: string): AdaptAccess | null {
+    if (name !== 'alpha') return null;
+    if (this.mode === 'ewald') return { dim: 0, get: () => this.gEwald, set: (v) => { this.gEwald = v; } };
+    return { dim: 0, get: () => this.alpha, set: (v) => { this.alpha = v; } };
+  }
+
   extract(name: string): unknown {
     if (name === 'cut_coul') return this.mode === 'ewald' ? this.cutGlobal : undefined;
     return undefined;
@@ -343,9 +358,10 @@ export class PairCoulStreitz extends Pair {
     const dsfK = -fShiftNow;
     const fShift = this.fShiftW + fShiftNow;
     let ecoul = 0;
-    // per owned atom: chi q + J q^2 / 2 (and the wolf self term, woself of the pair_coeff cutoff)
+    // per owned atom: chi q + J q^2 / 2 (and the wolf self term, woself of the pair_coeff cutoff and alpha)
     const rc0 = this.rcCoeff;
-    const selfWolf = wolf ? -(libm.erfc(alpha * rc0) / (2 * rc0) + alpha / SQRT_PI) : 0;
+    const a0 = this.alphaCoeff;
+    const selfWolf = wolf ? -(libm.erfc(a0 * rc0) / (2 * rc0) + a0 / SQRT_PI) : 0;
     for (let i = 0; i < pc.nlocal; i++) {
       const p = this.typeParams(type[i]);
       const qi = q[i];

@@ -314,30 +314,6 @@ const adaptPairUndefined = (): Record<string, string> => {
   return out;
 };
 /**
- * The adapt-pair rows this engine refuses (an error naming the parameter), by style: parameters this engine keeps in
- * another form than native's array.
- */
-const ADAPT_GAPS: Record<string, Record<string, readonly string[]>> = {
-  "the engine keeps this parameter in another form than native's array": {
-    'amoeba': ['opbend_cubic', 'opbend_quartic', 'opbend_pentic', 'opbend_sextic'],
-    'buck6d/coul/gauss/dsf': ['buck6d1', 'buck6d2', 'buck6d3', 'buck6d4'],
-    'buck6d/coul/gauss/long': ['buck6d1', 'buck6d2', 'buck6d3', 'buck6d4'],
-    'coul/streitz': ['alpha'],
-    'hippo': ['opbend_cubic', 'opbend_quartic', 'opbend_pentic', 'opbend_sextic'],
-  },
-  // every extract() name of the oxDNA and oxRNA excluded-volume styles (src/CG-DNA/pair_oxdna_excv.cpp and its variants)
-  "the engine keeps the oxDNA excluded-volume parameters in site tables, not native's arrays": Object.fromEntries(
-    Object.entries(PAIR_EXTRACT).filter(([style]) => /^ox(dna|rna)\d?\/excv$/.test(style)).map(([style, names]) => [style, names.map(([n]) => n)]),
-  ),
-};
-const adaptPairGaps = (): Record<string, string> => {
-  const out: Record<string, string> = {};
-  for (const [why, styles] of Object.entries(ADAPT_GAPS)) {
-    for (const [style, names] of Object.entries(styles)) for (const n of names) out[`pair ${style} ${n}`] = why;
-  }
-  return out;
-};
-/**
  * The rows of one adapt matrix: for each pair style, the smallest case that has it as its pair_style, else the smallest
  * that has it once in a hybrid pair_style line, where the type range is the I J of that sub-style's first pair_coeff
  * (native refuses a range with pairs of another sub-style: "Fix adapt type pair range is not valid for pair hybrid
@@ -465,13 +441,11 @@ export const MATRICES: Record<string, MatrixDef> = {
     about: 'fix adapt 0 pair <style> <name> * * v_x scale yes (x = 1.1) for each name of each pair style\'s native extract(), pe, press and fnorm compared after run 0',
     rows: throughRun(adaptPairRows, THERMO_F, VALUES_F),
     undefined: adaptPairUndefined(),
-    gaps: adaptPairGaps(),
   },
   'adapt-pair-down': {
     about: 'fix adapt 0 pair <style> <name> * * v_x scale yes reset no (x = 0.9) for each cutoff and geometry name of each pair style\'s native extract(), pe, press and fnorm compared after run 0 and after a second run 0',
     rows: throughRun(adaptPairDownRows, THERMO_F, `${VALUES_F}run 0\n${VALUES_F}`),
     undefined: adaptPairUndefined(),
-    gaps: adaptPairGaps(),
   },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };

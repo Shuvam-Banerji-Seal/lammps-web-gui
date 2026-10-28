@@ -114,6 +114,7 @@ export class PairPaceAPIP extends PairPace {
     const eRef = thermo || this.lambdaLa ? (this.fast ? ap.eFast : ap.ePrecise) : null;
     const fDyn = thermo ? new Float64Array(3 * pc.nall) : null;
     const fConst = thermo ? new Float64Array(3 * pc.nall) : null;
+    if (this.flagCorerepFactor && pc.nlocal > (this.corerep?.length ?? 0)) this.corerep = new Float64Array(pc.nlocal);
     const x = pc.x, f = pc.f, type = pc.type;
     const nbrs = this.natOrder.neighbors(pc.s, pc.nb, pc.geom, list);
     for (let i = list.ilo ?? 0; i < list.inum; i++) {
@@ -126,6 +127,7 @@ export class PairPaceAPIP extends PairPace {
       const jl = new Int32Array(jnum);
       for (let jj = 0; jj < jnum; jj++) jl[jj] = nbrs[k0 + jj] & NEIGHMASK;
       ace.computeAtom(i, x, type, jnum, jl, 0);
+      if (this.flagCorerepFactor) this.corerep![i] = 1 - ace.aceFcut;
       const nf = ace.neighboursForces;
       // fix adapt's scale[itype][itype] on the neighbour forces and the atomic energy (src/APIP/pair_pace_apip.cpp)
       const sc = this.scale[type[i] * (this.ntypes + 1) + type[i]];
@@ -171,10 +173,20 @@ export class PairPaceAPIP extends PairPace {
 /** pair_style pace/precise/apip: the precise ACE potential (the same weights as pace/apip). */
 export class PairPacePreciseAPIP extends PairPaceAPIP {
   override readonly name: string = 'pace/precise/apip';
+
+  /** extract() of this style serves "scale" only (no corerep_flag); extract_peratom("corerep") is inherited. */
+  override hasTrigger(): boolean {
+    return false;
+  }
 }
 
 /** pair_style pace/fast/apip: the fast ACE potential, weighted with lambda. */
 export class PairPaceFastAPIP extends PairPaceAPIP {
   override readonly name: string = 'pace/fast/apip';
   protected override readonly fast: boolean = true;
+
+  /** extract() of this style serves "scale" only (no corerep_flag); extract_peratom("corerep") is inherited. */
+  override hasTrigger(): boolean {
+    return false;
+  }
 }

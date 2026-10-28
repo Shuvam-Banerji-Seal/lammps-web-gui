@@ -64,9 +64,10 @@ describe('pair_style pace keywords (native messages)', () => {
 });
 
 describe('pair_style pace coeff rules', () => {
-  it('reads the .yace format (oracle cases w270ya_*) and refuses the B-basis .yaml format by name', async () => {
-    expect(await errorOf('pace', 'pair_coeff * * Cu.yaml Cu')).toMatch(/B-basis \.yaml.*not supported yet/);
-    expect(await errorOf('pace', 'pair_coeff * * Cu.txt Cu')).toMatch(/Unrecognized file type of 'Cu.txt'. Accept only .ace or .yace/);
+  it('refuses a missing potential file as native does (the found path is empty)', async () => {
+    // Measured with native LAMMPS: a missing Cu.yaml or Cu.txt gives Unrecognized file type of ''. Accept only .ace or .yace
+    expect(await errorOf('pace', 'pair_coeff * * Cu.yaml Cu')).toMatch(/Unrecognized file type of ''. Accept only .ace or .yace/);
+    expect(await errorOf('pace', 'pair_coeff * * Cu.txt Cu')).toMatch(/Unrecognized file type of ''. Accept only .ace or .yace/);
   });
 
   it('refuses an element the potential does not contain', async () => {
@@ -79,12 +80,6 @@ describe('pair_style pace coeff rules', () => {
 
   it('refuses pair_coeff without * *', async () => {
     expect(await errorOf('pace', 'pair_coeff 1 * Cu-PBE-core-rep.ace Cu')).toMatch(/Incorrect args for pair coefficients/);
-  });
-});
-
-describe('styles refused by name', () => {
-  it('refuses pair_style pace/extrapolation', async () => {
-    expect(await errorOf('pace/extrapolation', 'pair_coeff * * Cu-PBE-core-rep.ace Cu')).toMatch(/pace\/extrapolation/);
   });
 });
 

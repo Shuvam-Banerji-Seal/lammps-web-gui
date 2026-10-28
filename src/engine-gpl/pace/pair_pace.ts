@@ -18,12 +18,13 @@ import { Pair, StyleError, type AdaptAccess, type PairCompute, type StyleContext
 import { scaleAccess, unitScaleTable } from '../../engine/force/pair/scaleTable';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { NativeFullOrder } from '../neighbor/nativeOrder';
+import { BBasis } from './bbasis';
 import { CTildeBasis } from './cbasis';
 import { loadYace } from './yace';
 import { ACEPaceEvaluator } from './evaluator';
 
 /** The elements of ML-PACE's elements_pace list (pair_pace.cpp), index = atomic number. */
-const ELEMENTS_PACE = [
+export const ELEMENTS_PACE = [
   'X', 'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg', 'Al', 'Si',
   'P', 'S', 'Cl', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu',
   'Zn', 'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru',
@@ -54,6 +55,9 @@ export class PairPace extends Pair {
    * scale[itype][itype]; coeff sets every pair to 1 and init_one mirrors it.
    */
   scale: Float64Array = new Float64Array(0);
+  /** flag_corerep_factor: the trigger fix pair sets (extract "corerep_flag"); corerep_factor by owned atom */
+  flagCorerepFactor = 0;
+  corerep: Float64Array | null = null;
 
   override allocate(ntypes: number): void {
     super.allocate(ntypes);
@@ -107,12 +111,12 @@ export class PairPace extends Pair {
     const fileName = args[2];
     // pair_pace.cpp coeff: a .yaml file is a B-basis (ACEBBasisSet) converted to the C-tilde basis; ACECTildeBasisSet's
     // constructor reads .ace with load and .yace with load_yaml, and refuses other names
-    if (/\.yaml$/.test(fileName)) {
-      throw new StyleError(`pair_style pace: the B-basis .yaml potential format (${fileName}) is not supported yet; use its .yace or .ace export`);
-    }
-    if (!fileName.endsWith('.ace') && !fileName.endsWith('.yace')) throw new StyleError(`Unrecognized file type of '${fileName}'. Accept only .ace or .yace`);
-    const text = ctx.readFile(fileName);
-    const basis = fileName.endsWith('.yace') ? loadYace(text, fileName) : CTildeBasis.fromText(text, fileName);
+    // a missing file: utils::get_potential_file_path gives '', which the C-tilde loader refuses by its (empty) type
+    const text = ctx.readFile(fileName, () => "Unrecognized file type of ''. Accept only .ace or .yace");
+    const isYaml = /\.yaml$/.test(fileName);
+    if (!isYaml && !fileName.endsWith('.ace') && !fileName.endsWith('.yace')) throw new StyleError(`Unrecognized file type of '${fileName}'. Accept only .ace or .yace`);
+    const basis = isYaml ? BBasis.fromYaml(text, fileName).toCTilde()
+      : fileName.endsWith('.yace') ? loadYace(text, fileName) : CTildeBasis.fromText(text, fileName);
     this.basis = basis;
     // element map: LAMMPS type i -> species index (NULL skips the type)
     const map = new Int32Array(nt + 1).fill(-1);
@@ -131,6 +135,22 @@ export class PairPace extends Pair {
     this.ace = new ACEPaceEvaluator(basis, this.recursive, map);
     this.setflagAll = true;
     this.scale.fill(1);
+  }
+
+  /** extract("corerep_flag"): the scalar trigger fix pair sets. */
+  hasTrigger(name: string): boolean {
+    return name === 'corerep_flag';
+  }
+
+  setTrigger(name: string, value: number): boolean {
+    if (name !== 'corerep_flag') return false;
+    this.flagCorerepFactor = value;
+    return true;
+  }
+
+  /** extract_peratom("corerep"): 1 - ace_fcut by owned atom (null before the first step that computes it). */
+  extractPeratom(name: string): { values: Float64Array | null; columns: number } | undefined {
+    return name === 'corerep' ? { values: this.corerep, columns: 0 } : undefined;
   }
 
   override adaptParam(name: string): AdaptAccess | null {
@@ -158,6 +178,7 @@ export class PairPace extends Pair {
     if (!list) throw new StyleError(`pair style ${this.name} needs a full neighbor list`);
     if (!this.ace) throw new StyleError('All pair coeffs are not set');
     const ace = this.ace;
+    if (this.flagCorerepFactor && pc.nlocal > (this.corerep?.length ?? 0)) this.corerep = new Float64Array(pc.nlocal);
     const x = pc.x, f = pc.f, type = pc.type;
     // the neighbours in native full-list order (the evaluator's sums follow this order)
     const nbrs = this.natOrder.neighbors(pc.s, pc.nb, pc.geom, list);
@@ -167,6 +188,7 @@ export class PairPace extends Pair {
       const jl = new Int32Array(jnum);
       for (let jj = 0; jj < jnum; jj++) jl[jj] = nbrs[k0 + jj] & NEIGHMASK;
       ace.computeAtom(i, x, type, jnum, jl, 0);
+      if (this.flagCorerepFactor) this.corerep![i] = 1 - ace.aceFcut;
       const nf = ace.neighboursForces;
       const sc = this.scale[type[i] * (this.ntypes + 1) + type[i]];
       const xtmp = x[3 * i], ytmp = x[3 * i + 1], ztmp = x[3 * i + 2];

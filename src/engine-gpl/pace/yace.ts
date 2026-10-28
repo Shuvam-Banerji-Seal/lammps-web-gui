@@ -227,34 +227,34 @@ export const parseYaml = (text: string, filename: string): YamlValue => {
 
 // --- typed access in the manner of yaml-cpp's as<T>()
 
-const need = (m: YamlValue, key: string, what: string): YamlValue => {
+export const need = (m: YamlValue, key: string, what: string): YamlValue => {
   if (!(m instanceof YamlMap) || !m.has(key)) throw new StyleError(`${what}: missing key '${key}'`);
   return m.get(key)!;
 };
-const asNum = (v: YamlValue, what: string): number => {
+export const asNum = (v: YamlValue, what: string): number => {
   const x = typeof v === 'string' ? Number(v) : NaN;
   if (typeof v !== 'string' || v.trim() === '' || Number.isNaN(x)) throw new StyleError(`${what}: expected a number, found ${JSON.stringify(v)}`);
   return x;
 };
-const asInt = (v: YamlValue, what: string): number => {
+export const asInt = (v: YamlValue, what: string): number => {
   const x = asNum(v, what);
   if (!Number.isInteger(x)) throw new StyleError(`${what}: expected an integer, found ${v}`);
   return x;
 };
-const asStr = (v: YamlValue, what: string): string => {
+export const asStr = (v: YamlValue, what: string): string => {
   if (typeof v !== 'string') throw new StyleError(`${what}: expected a string`);
   return v;
 };
-const asSeq = (v: YamlValue, what: string): YamlValue[] => {
+export const asSeq = (v: YamlValue, what: string): YamlValue[] => {
   if (!Array.isArray(v)) throw new StyleError(`${what}: expected a sequence`);
   return v;
 };
-const asMap = (v: YamlValue, what: string): YamlMap => {
+export const asMap = (v: YamlValue, what: string): YamlMap => {
   if (!(v instanceof YamlMap)) throw new StyleError(`${what}: expected a mapping`);
   return v;
 };
-const nums = (v: YamlValue, what: string): number[] => asSeq(v, what).map((x) => asNum(x, what));
-const ints = (v: YamlValue, what: string): number[] => asSeq(v, what).map((x) => asInt(x, what));
+export const nums = (v: YamlValue, what: string): number[] => asSeq(v, what).map((x) => asNum(x, what));
+export const ints = (v: YamlValue, what: string): number[] => asSeq(v, what).map((x) => asInt(x, what));
 
 /** ACEBondSpecification (ace_abstract_basis.h) as from_YAML reads it. */
 interface BondSpec {

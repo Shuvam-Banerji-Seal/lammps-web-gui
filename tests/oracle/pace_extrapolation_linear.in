@@ -1,0 +1,24 @@
+# oracle: pair_style pace/extrapolation with a linear active set: a self-made single-element B-basis (ranks 1-5, ChebExpCos, FinnisSinclairShiftedScaled, distance inner cutoff with core repulsion; scripts/oracle/pace-extrapolation-fixtures.py) on a displaced fcc Cu cell, the grade and the core-repulsion factor from fix pair every 5 steps, 300 K NVE
+# Native reference: LAMMPS b332f28 built with PKG_ML-PACE (the installed binary has no ML-PACE)
+# Measured with native LAMMPS: max relative error engine vs native thermo 6.6e-13, atoms 1.8e-15.
+# oracle-inputs: pace_al_cu.yaml pace_al_cu.asi
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      atomic
+lattice         fcc 3.6
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 63.546
+displace_atoms  all random 0.1 0.1 0.1 12345 units box
+pair_style      pace/extrapolation
+pair_coeff      * * pace_al_cu.yaml pace_al_cu.asi Cu
+fix             grade all pair 5 pace/extrapolation gamma 1 corerep 1
+compute         gmax all reduce max f_grade[1] f_grade[2]
+compute         gsum all reduce sum f_grade[1]
+velocity        all create 300 4928 loop geom
+fix             1 all nve
+thermo_style    custom step pe ke etotal press pxy c_gmax[1] c_gmax[2] c_gsum
+thermo_modify   format float %.15g
+thermo          5
+run             20

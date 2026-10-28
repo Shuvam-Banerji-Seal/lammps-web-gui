@@ -1,0 +1,25 @@
+# oracle: fix external pf/array without a library caller (its forces, energy and virial stay zero): an LJ melt where half the atoms carry the fix (applied every 2 steps), its scalar, per-atom array and fix_modify energy/virial in the thermo output, then a minimization through min_post_force
+# Measured with native LAMMPS: max relative error engine vs native thermo 7.0e-15, atoms 9.5e-14.
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 3.0 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+region          half block 0 2 INF INF INF INF
+group           half region half
+fix             e half external pf/array 2
+fix_modify      e energy yes virial yes
+compute         fe all reduce sum f_e[1] f_e[2] f_e[3]
+fix             1 all nve
+thermo_style    custom step temp pe etotal press f_e c_fe[1] c_fe[2] c_fe[3]
+thermo_modify   format float %.15g
+thermo          10
+run             50
+unfix           1
+minimize        0 0 20 40

@@ -79,6 +79,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_gran_single', names: { HOOKS: ['gran/hertz/history', 'gran/hooke', 'gran/hooke/history'] }, load: () => import('../engine-gpl/registry/gran_single') as Promise<StyleModule> },
   { id: 'fix_wallgran', names: { FIXES: ['freeze', 'heat/flow', 'wall/gran', 'wall/gran/region'] }, load: () => import('./registry/fix_wallgran') as Promise<StyleModule> },
   { id: 'fix_gcmc', names: { FIXES: ['gcmc'] }, load: () => import('./registry/fix_gcmc') as Promise<StyleModule> },
+  { id: 'fix_external', names: { FIXES: ['external'] }, load: () => import('./registry/fix_external') as Promise<StyleModule> },
   { id: 'fix_widom', names: { FIXES: ['widom'] }, load: () => import('./registry/fix_widom') as Promise<StyleModule> },
   { id: 'gpl_fix_hmc', names: { FIXES: ['hmc'] }, load: () => import('../engine-gpl/registry/fix_hmc') as Promise<StyleModule> },
   { id: 'fix_molswap', names: { FIXES: ['mol/swap'] }, load: () => import('./registry/fix_molswap') as Promise<StyleModule> },

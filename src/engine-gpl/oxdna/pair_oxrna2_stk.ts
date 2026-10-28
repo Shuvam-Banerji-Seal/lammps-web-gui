@@ -12,13 +12,14 @@
  * is the other atom (pair_oxrna2_stk.cpp, compute). The backbone-site distance uses the oxDNA1 x offset of the
  * backbone site as the C++ does (dx_cbk_oxdna2 is set to get_dx_cbk_oxdna1() there).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type AdaptAccess, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { OXDNA_5P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, halfVirial, lrfOf, oxdnaConstants } from './common';
 import { stackingDerived, stackingStrength } from './pair_stk';
 import { sinFma as libmSin } from '../libm/sincos_fma';
 import { acos as libmAcos } from '../libm/acos';
+import { oxdnaRecordAccess } from './adapt';
 
 /** pair_oxrna2_stk.cpp constructor: the sequence-dependence factors eta_st[i-1][j-1] (1-based types). */
 const ETA_OXRNA2: number[][] = [
@@ -51,6 +52,11 @@ export class PairOxrna2Stk extends Pair {
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('Illegal pair_style command');
+  }
+
+  /** fix adapt on the per-type-pair arrays of extract() (adapt.ts). */
+  override adaptParam(name: string): AdaptAccess | null {
+    return oxdnaRecordAccess(name, this.t, this.nt, { epsilon: 'eps' });
   }
 
   allocate(ntypes: number): void {

@@ -4023,7 +4023,7 @@
    "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 pair lj/sdk lj_type * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
    "until": 18,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
-   "native": "OK | VAL 2442.19472853545 7.49878371868283 153.704474318881",
+   "native": "CRASH rc=137",
    "skip": "native writes a double through the int lj_type (undefined behaviour)"
   },
   {
@@ -5969,7 +5969,7 @@
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's a_st4 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -6020,7 +6020,7 @@
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's b_st4 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -6111,7 +6111,7 @@
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_0 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -6121,7 +6121,8 @@
    "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 pair oxdna/stk cut_st_c * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
-   "native": "OK | VAL 362.382944733041 1.76522810841827 154259.213453497"
+   "native": "OK | VAL 362.382944733041 1.76522810841827 154259.213453497",
+   "skip": "native's cut_st_c is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -6132,7 +6133,7 @@
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_hc is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -6143,7 +6144,7 @@
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_hi is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -6154,7 +6155,7 @@
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_lc is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -6165,7 +6166,7 @@
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_lo is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -6176,7 +6177,7 @@
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's dtheta_st4_ast is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -6187,7 +6188,7 @@
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's dtheta_st4_c is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -6248,7 +6249,7 @@
    "until": 25,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's shift_st is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna_excv_stk",
@@ -7639,7 +7640,7 @@
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's a_st4 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -7690,7 +7691,7 @@
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's b_st4 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -7781,7 +7782,7 @@
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_0 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -7791,7 +7792,8 @@
    "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 pair oxdna2/stk cut_st_c * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
-   "native": "OK | VAL 836.647655412811 6.69778475446283 566083.939374078"
+   "native": "OK | VAL 836.647655412811 6.69778475446283 566083.939374078",
+   "skip": "native's cut_st_c is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -7802,7 +7804,7 @@
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_hc is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -7813,7 +7815,7 @@
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_hi is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -7824,7 +7826,7 @@
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_lc is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -7835,7 +7837,7 @@
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_lo is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -7846,7 +7848,7 @@
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's dtheta_st4_ast is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -7857,7 +7859,7 @@
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's dtheta_st4_c is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -7918,7 +7920,7 @@
    "until": 31,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's shift_st is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w57oxdna2_coaxstk_full",
@@ -9309,7 +9311,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's a_st4 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9360,7 +9362,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's b_st4 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9451,7 +9453,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_0 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9461,7 +9463,8 @@
    "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 pair oxdna3/stk cut_st_c * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
-   "native": "OK | VAL -1.16125841358927 -0.000148823439763554 45.6941861661744"
+   "native": "OK | VAL -1.16125841358927 -0.000148823439763554 45.6941861661744",
+   "skip": "native's cut_st_c is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9472,7 +9475,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_hc is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9483,7 +9486,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_hi is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9494,7 +9497,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_lc is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9505,7 +9508,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_st_lo is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9516,7 +9519,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's dtheta_st4_ast is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9527,7 +9530,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's dtheta_st4_c is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9588,7 +9591,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's shift_st is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9749,7 +9752,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_0_33 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9760,7 +9763,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_0_55 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9771,7 +9774,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_c_33 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9782,7 +9785,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_c_55 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9793,7 +9796,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_hc_33 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9804,7 +9807,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_hc_55 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9815,7 +9818,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_hi_33 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9826,7 +9829,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_hi_55 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9837,7 +9840,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_lc_33 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9848,7 +9851,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_lc_55 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9859,7 +9862,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_lo_33 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -9870,7 +9873,7 @@
    "until": 33,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
    "native": "CRASH rc=139",
-   "skip": "native LAMMPS crashes (CRASH rc=139)"
+   "skip": "native's cut_xst_lo_55 is a tetramer array (double ****) that extract() gives as dim 2 (undefined behaviour)"
   },
   {
    "case": "w78oxdna3_lj_duplex2",
@@ -12246,7 +12249,7 @@
    "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 pair wf/cut mu * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
    "until": 21,
    "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
-   "native": "CRASH rc=134",
+   "native": "OK | VAL -nan -nan -nan",
    "skip": "native writes a double through the int mu (undefined behaviour)"
   },
   {

@@ -8,13 +8,15 @@
  * Copyright (2003) Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0);
  * this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { Pair, pairCoeffArgs, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, pairCoeffArgs, StyleError, typeBounds, type AdaptAccess, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, F2, F4, baseSite, lrfOf, oxdnaConstants, potentialLines } from './common';
 import { sinFma as libmSin } from '../libm/sincos_fma';
 import { acos as libmAcos } from '../libm/acos';
+import { oxdnaRecordAccess } from './adapt';
+import { NativePairOrder } from '../neighbor/nativeOrder';
 
 /** The 23 numbers after "I J" (pair_coeff) or after the potential-file name, in order. */
 const XST_NAMES = ['k_xst', 'cut_xst_0', 'cut_xst_c', 'cut_xst_lo', 'cut_xst_hi',
@@ -36,6 +38,11 @@ export class PairOxdnaXstk extends Pair {
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('Illegal pair_style command');
+  }
+
+  /** fix adapt on the per-type-pair arrays of extract() (adapt.ts). */
+  override adaptParam(name: string): AdaptAccess | null {
+    return oxdnaRecordAccess(name, this.t, this.nt, {});
   }
 
   allocate(ntypes: number): void {
@@ -122,10 +129,14 @@ export class PairOxdnaXstk extends Pair {
   initOne(i: number, j: number): number {
     const nt = this.nt;
     if (!this.set[i * nt + j]) throw new StyleError('Coefficient mixing not defined in oxDNA');
-    const q = i * nt + j;
+    const q = i * nt + j, r = j * nt + i;
     this.t.cutsqhc[q] = this.t.cuthc[q] * this.t.cuthc[q];
+    // pair_oxdna_xstk.cpp init_one: every array mirrored into [j][i] (a fix adapt value set for I <= J reaches both)
+    for (const key of Object.keys(this.t)) this.t[key][r] = this.t[key][q];
     return this.t.cuthc[q];
   }
+
+  private readonly natPairs = new NativePairOrder();
 
   compute(pc: PairCompute): void {
     const s = pc.s;
@@ -160,11 +171,14 @@ export class PairOxdnaXstk extends Pair {
     };
     const clamp = (c: number) => (c > 1.0 ? 1.0 : c < -1.0 ? -1.0 : c);
     const dot = (u: readonly number[], v: readonly number[]) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
-    for (let a = 0; a < list.inum; a++) {
+    // the pairs in native's half-list order and orientation (which atom of a pair is a): the theta2/theta3 and
+    // theta7/theta8 terms swap with it, which shows once their parameters differ (fix adapt)
+    const pairs = this.natPairs.pairs(s, pc.nb, pc.geom, list);
+    for (let p = 0; p < pairs.length; p += 2) {
+      const a = pairs[p];
       for (let c = 0; c < 3; c++) { ax[c] = L[9 * a + c]; ay[c] = L[9 * a + 3 + c]; az[c] = L[9 * a + 6 + c]; }
-      const jstart = list.firstneigh[a], jend = jstart + list.numneigh[a];
-      for (let kk = jstart; kk < jend; kk++) {
-        const jj = list.neighbors[kk];
+      {
+        const jj = pairs[p + 1];
         const factorLJ = special[jj >>> SBBITS];
         const b = jj & NEIGHMASK;
         const atype = type[a], btype = type[b];

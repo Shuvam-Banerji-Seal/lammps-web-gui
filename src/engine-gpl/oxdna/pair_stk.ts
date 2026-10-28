@@ -10,7 +10,7 @@
  * The stacking term runs over the FENE backbone bonds (the bond list), not over the pair list: the 3' side of a
  * bond is the atom whose 5' partner is the other atom (pair_oxdna_stk.cpp, compute).
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type AdaptAccess, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { OXDNA_5P, OXDNA_3P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, halfVirial, lrfOf, oxdnaConstants, stackingSiteOxdna1, backboneSite, type StackRule, potentialLines } from './common';
@@ -18,6 +18,7 @@ import { sinFma as libmSin } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 import { acos as libmAcos } from '../libm/acos';
+import { oxdnaTableAccess, oxdnaKey } from './adapt';
 
 /** pair_oxdna_stk.cpp constructor: the sequence-dependence factors eta_st[i][j] (indexed by 1-based base types mod 4). */
 export const ETA_ST: number[][] = [
@@ -79,6 +80,17 @@ export class PairOxdnaStk extends Pair {
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('Illegal pair_style command');
+  }
+
+  /**
+   * fix adapt on the per-type-pair arrays of extract() (adapt.ts). The cutoffs, shift_st and the a_st4, dtheta_st4 and
+   * b_st4 sets are tetramer arrays in native (double ****) that extract() hands out as dim 2: not adaptable here.
+   */
+  override adaptParam(name: string): AdaptAccess | null {
+    const key = oxdnaKey(name);
+    const field = key === null ? null : ({ epsilon: 'eps', a: 'aSt', blo: 'bLo', bhi: 'bHi' } as Record<string, string>)[key] ?? key;
+    const tab = field === null ? undefined : (this as unknown as Record<string, unknown>)[field];
+    return tab instanceof Float64Array && tab.length === this.nt * this.nt ? oxdnaTableAccess(tab, this.nt) : null;
   }
 
   allocate(ntypes: number): void {

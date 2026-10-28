@@ -55,13 +55,13 @@ export const PAIR_EXTRACT: Record<string, ReadonlyArray<readonly [string, number
   'buck/mdf': [['a', 2], ['c', 2]],
   // MOFFF/pair_buck6d_coul_gauss_dsf.cpp
   'buck6d/coul/gauss/dsf': [
-    ['cut_ljsq', 2], ['buck6d1', 2], ['buck6d2', 2], ['buck6d3', 2], ['buck6d4', 2], ['rsmooth_sq', 2], ['c0', 2],
-    ['c1', 2], ['c2', 2], ['c3', 2], ['c4', 2], ['c5', 2], ['offset', 2], ['cut_coul', 0]
+    ['cut_ljsq', 2], ['buck6d1', 2, 'A'], ['buck6d2', 2, 'rho'], ['buck6d3', 2, 'C'], ['buck6d4', 2, 'D'], ['rsmooth_sq', 2],
+    ['c0', 2], ['c1', 2], ['c2', 2], ['c3', 2], ['c4', 2], ['c5', 2], ['offset', 2], ['cut_coul', 0]
   ],
   // MOFFF/pair_buck6d_coul_gauss_long.cpp
   'buck6d/coul/gauss/long': [
-    ['cut_ljsq', 2], ['buck6d1', 2], ['buck6d2', 2], ['buck6d3', 2], ['buck6d4', 2], ['rsmooth_sq', 2], ['c0', 2],
-    ['c1', 2], ['c2', 2], ['c3', 2], ['c4', 2], ['c5', 2], ['offset', 2], ['cut_coul', 0]
+    ['cut_ljsq', 2], ['buck6d1', 2, 'A'], ['buck6d2', 2, 'rho'], ['buck6d3', 2, 'C'], ['buck6d4', 2, 'D'], ['rsmooth_sq', 2],
+    ['c0', 2], ['c1', 2], ['c2', 2], ['c3', 2], ['c4', 2], ['c5', 2], ['offset', 2], ['cut_coul', 0]
   ],
   // COLLOID/pair_colloid.cpp
   'colloid': [['a12', 2, 'a'], ['sigma', 2], ['d1', 2], ['d2', 2], ['diameter', 2]],

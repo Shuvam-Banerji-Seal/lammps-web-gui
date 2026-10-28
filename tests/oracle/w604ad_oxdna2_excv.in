@@ -1,0 +1,31 @@
+# oracle: fix adapt on pair oxdna2/excv with the oxDNA2 duplex2 example compressed to 0.85 (change_box remap) and wider backbone-backbone (sigma 0.9, cut_ast 0.87) and backbone-base (sigma 0.7, cut_ast 0.68) excluded volumes, so that type pairs of both orders are inside it: epsilon_bkbk and epsilon_bsbs of all type pairs raised, b_bkbs, cut_bkbs_c and cut_bkbk_c lowered, every 10 steps with reset no. Native writes [i][j] with j >= i only and init_one does not mirror, so the force loop's orientation of each pair shows; the second run's init takes cut_bkbk_c as the cutoff
+# oracle-inputs: w57oxdna2_duplex2.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       3
+newton          on
+boundary        p p p
+atom_style      hybrid bond ellipsoid oxdna
+atom_modify     sort 0 1.0
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+read_data       w57oxdna2_duplex2.data
+set             atom * mass 3.1575
+change_box      all x scale 0.85 y scale 0.85 z scale 0.85 remap
+bond_style      oxdna2/fene
+bond_coeff      * 2.0 0.25 0.7564
+special_bonds   lj 0 1 1
+pair_style      oxdna2/excv
+pair_coeff      * * 2.0 0.9 0.87 2.0 0.7 0.68 2.0 0.33 0.32
+fix             1 all nve/asphere
+variable        up equal 1.0+0.004*elapsed
+variable        dn equal 1.0-0.001*elapsed
+fix             2 all adapt 10 pair oxdna2/excv epsilon_bkbk * * v_up pair oxdna2/excv epsilon_bsbs * * v_up &
+                pair oxdna2/excv b_bkbs * * v_dn pair oxdna2/excv cut_bkbs_c * * v_dn &
+                pair oxdna2/excv cut_bkbk_c * * v_dn scale yes reset no
+timestep        1e-4
+thermo_style    custom step temp pe ebond evdwl ke etotal
+thermo_modify   format float %.15g
+thermo          10
+run             100
+run             50

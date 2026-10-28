@@ -15,7 +15,7 @@
  * docs.lammps.org/pair_amoeba.html: "pair_style amoeba" takes no arguments and "pair_coeff * * file.prm file.key"
  * reads the Tinker PRM and key files.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type AdaptAccess, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, sbOf } from '../../engine/neighbor';
 import { buildOneFive } from '../../engine/atoms';
 import {
@@ -255,6 +255,17 @@ export class PairAmoeba extends Pair {
     if (name === 'opbend_sextic') return this.prm?.opbend[3] ?? 0;
     if (name === 'atomic_num') return this.prm?.atomicNum;
     return undefined;
+  }
+
+  /**
+   * fix adapt's opbend_cubic .. opbend_sextic: pair_amoeba.cpp extract() hands out the pair's own doubles, which
+   * improper_amoeba.cpp copies in its init_style only, so a value fix adapt writes reaches the improper at the next init.
+   */
+  override adaptParam(name: string): AdaptAccess | null {
+    const k = ['opbend_cubic', 'opbend_quartic', 'opbend_pentic', 'opbend_sextic'].indexOf(name);
+    if (k < 0 || !this.prm) return null;
+    const w = this.prm.opbend;
+    return { dim: 0, get: () => w[k], set: (v) => { w[k] = v; } };
   }
 
   compute(pc: PairCompute): void {

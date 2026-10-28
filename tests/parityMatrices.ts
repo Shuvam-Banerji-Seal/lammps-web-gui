@@ -266,14 +266,16 @@ const throughRun = (pickRows: (cases: Case[]) => ParityRow[], pre = THERMO, tail
     for (let i = r.line + 1; i < lines.length; i++) {
       if (RUNS.test(lines[i]) || FLOW.test(lines[i])) { until = i; break; }
     }
-    return { ...r, until, pre, tail };
+    // a row's own pre lines (adapt-pair's fix adapt) come before the thermo settings
+    return { ...r, until, pre: `${r.pre ?? ''}${pre}`, tail };
   });
 };
 
 /**
- * fix adapt on each pair style: the pair_style line of the smallest case that has the style (not a hybrid style),
- * followed by "variable adpv equal 1.1" and "fix adpv all adapt 0 pair <style> <name> * * v_adpv scale yes", one row for
- * each name the style's native extract() knows (src/engine/fix/adaptPairsTable.ts).
+ * fix adapt on each pair style: the smallest case that has the style up to its first run (adaptRows), then
+ * "variable adpv equal 1.1" and "fix adpv all adapt 0 pair <style> <name> <I J> v_adpv scale yes" before its run 0 (so
+ * the box exists whatever the order of its setup), one row for each name the style's native extract() knows
+ * (src/engine/fix/adaptPairsTable.ts).
  */
 const pairStyleKey: LineKey = (w) => (w[0] === 'pair_style' && w.length > 1 && !w[1].startsWith('hybrid') ? `pair_style ${w[1]}` : null);
 /**
@@ -286,11 +288,15 @@ const INT_PARAMS = new Set([
   'bitorsion_flag', 'typeO', 'typeH', 'typeA', 'typeB', 'implicit', 'dihedflag', 'ewald_order', 'ewald_mix', 'kspacetype',
   'lj_type', 'corerep_flag',
 ]);
+/** int extract() members of one style only (EXTRA-PAIR/pair_wf_cut.h: int **nu, **mu; DRUDE/pair_coul_tt.h: int **ntt). */
+const INT_PARAMS_OF: Record<string, readonly string[]> = { 'wf/cut': ['nu', 'mu'], 'coul/tt': ['ntt'] };
 const adaptPairUndefined = (): Record<string, string> => {
   const out: Record<string, string> = {};
   for (const [style, names] of Object.entries(PAIR_EXTRACT)) {
     for (const [name] of names) {
-      if (INT_PARAMS.has(name)) out[`pair ${style} ${name}`] = `native writes a double through the int ${name} (undefined behaviour)`;
+      if (INT_PARAMS.has(name) || INT_PARAMS_OF[style]?.includes(name)) {
+        out[`pair ${style} ${name}`] = `native writes a double through the int ${name} (undefined behaviour)`;
+      }
     }
   }
   return out;
@@ -306,9 +312,11 @@ const ADAPT_GAPS: Record<string, Record<string, readonly string[]>> = {
     'buck6d/coul/gauss/long': ['buck6d1', 'buck6d2', 'buck6d3', 'buck6d4'],
     'coul/streitz': ['alpha'],
     'hippo': ['opbend_cubic', 'opbend_quartic', 'opbend_pentic', 'opbend_sextic'],
-    'oxdna/excv': ['epsilon_bkbk', 'sigma_bkbk', 'cut_bkbk_ast', 'b_bkbk', 'cut_bkbk_c', 'epsilon_bkbs', 'sigma_bkbs', 'cut_bkbs_ast', 'b_bkbs', 'cut_bkbs_c', 'sigma4_bkbs', 'epsilon_bsbs', 'sigma_bsbs', 'cut_bsbs_ast', 'b_bsbs', 'cut_bsbs_c'],
-    'oxdna2/excv': ['epsilon_bkbk', 'sigma_bkbk', 'cut_bkbk_ast', 'b_bkbk', 'cut_bkbk_c', 'epsilon_bkbs', 'sigma_bkbs', 'cut_bkbs_ast', 'b_bkbs', 'cut_bkbs_c', 'sigma4_bkbs', 'epsilon_bsbs', 'sigma_bsbs', 'cut_bsbs_ast', 'b_bsbs', 'cut_bsbs_c'],
   },
+  // every extract() name of the oxDNA and oxRNA styles (src/CG-DNA/pair_ox*.cpp)
+  "the engine keeps the oxDNA and oxRNA parameters in another form than native's arrays": Object.fromEntries(
+    Object.entries(PAIR_EXTRACT).filter(([style]) => /^ox(dna|rna)/.test(style)).map(([style, names]) => [style, names.map(([n]) => n)]),
+  ),
 };
 const adaptPairGaps = (): Record<string, string> => {
   const out: Record<string, string> = {};
@@ -317,38 +325,43 @@ const adaptPairGaps = (): Record<string, string> => {
   }
   return out;
 };
-const adaptPairRows = (cases: Case[]): ParityRow[] =>
-  pick(pairStyleKey, (w) => w)(cases).flatMap((r) => {
-    const style = r.style.split(' ')[1];
-    return (PAIR_EXTRACT[style] ?? []).map(([name]) => ({
-      ...r,
-      text: `${r.text}\nvariable adpv equal 1.1\nfix adpv all adapt 0 pair ${style} ${name} * * v_adpv scale yes`,
-      style: `pair ${style} ${name}`,
-    }));
-  });
+/**
+ * The rows of one adapt matrix: for each pair style, the smallest case that has it as its pair_style, else the smallest
+ * that has it once in a hybrid pair_style line, where the type range is the I J of that sub-style's first pair_coeff
+ * (native refuses a range with pairs of another sub-style: "Fix adapt type pair range is not valid for pair hybrid
+ * sub-style"); one row per extract() name that `names` keeps, with the attribute's lines before run 0.
+ */
+const adaptRows = (cases: Case[], names: (name: string) => boolean, line: (style: string, name: string, ij: string) => string): ParityRow[] => {
+  const rowsOf = (r: ParityRow, style: string, ij: string): ParityRow[] =>
+    (PAIR_EXTRACT[style] ?? []).filter(([name]) => names(name)).map(([name]) => ({ ...r, pre: line(style, name, ij), style: `pair ${style} ${name}` }));
+  const plain = pick(pairStyleKey, (w) => w)(cases);
+  const out = plain.flatMap((r) => rowsOf(r, r.style.split(' ')[1], '* *'));
+  const covered = new Set(plain.map((r) => r.style.split(' ')[1]));
+  const text = new Map(cases.map((c) => [c.name, c.text]));
+  for (const style of Object.keys(PAIR_EXTRACT)) {
+    if (covered.has(style)) continue;
+    const once: LineKey = (w) => (w[0] === 'pair_style' && w[1]?.startsWith('hybrid') && w.filter((x) => x === style).length === 1 ? `pair_style ${style}` : null);
+    for (const r of pick(once, (w) => w)(cases)) {
+      const lines = text.get(r.case)!.split('\n');
+      const coeff = lines.slice(r.line + 1).map((l) => words(l)).find((w) => w?.[0] === 'pair_coeff' && w[3] === style);
+      if (coeff) out.push(...rowsOf(r, style, `${coeff[1]} ${coeff[2]}`));
+    }
+  }
+  return out.sort((a, b) => (a.style < b.style ? -1 : a.style > b.style ? 1 : 0));
+};
+
+const adaptPairRows = (cases: Case[]): ParityRow[] => adaptRows(cases, () => true, (style, name, ij) =>
+  `variable adpv equal 1.1\nfix adpv all adapt 0 pair ${style} ${name} ${ij} v_adpv scale yes\n`);
 
 /**
- * The cutoff and geometry parameters of the adapt-pair rows (the extract() names with cut in them, and qdist), from the
- * smallest case whose pair_style line comes after the box is defined, scaled down, with reset no and a second run 0: "variable adpv equal 0.9" and "fix adpv all adapt 0 pair <style>
+ * The cutoff and geometry parameters of the adapt-pair rows (the extract() names with cut in them, and qdist) scaled
+ * down, with reset no and a second run 0: "variable adpv equal 0.9" and "fix adpv all adapt 0 pair <style>
  * <name> * * v_adpv scale yes reset no". A smaller cutoff shows a change init_one or the force computation makes at
  * once (a larger one stays inside the cutoffs of the run's init), and the second run shows the value the next init
  * reads.
  */
-const BOX = /^\s*(create_box|read_data|read_restart)\b/;
-/** The pair_style line of the smallest case that defines the box before it (fix adapt needs the box). */
-const pairStyleAfterBoxKey: LineKey = (w, lines, i) => {
-  const key = pairStyleKey(w, lines, i);
-  return key !== null && lines.slice(0, i).some((l) => BOX.test(l)) ? key : null;
-};
-const adaptPairDownRows = (cases: Case[]): ParityRow[] =>
-  pick(pairStyleAfterBoxKey, (w) => w)(cases).flatMap((r) => {
-    const style = r.style.split(' ')[1];
-    return (PAIR_EXTRACT[style] ?? []).filter(([name]) => /cut|qdist/.test(name)).map(([name]) => ({
-      ...r,
-      text: `${r.text}\nvariable adpv equal 0.9\nfix adpv all adapt 0 pair ${style} ${name} * * v_adpv scale yes reset no`,
-      style: `pair ${style} ${name}`,
-    }));
-  });
+const adaptPairDownRows = (cases: Case[]): ParityRow[] => adaptRows(cases, (name) => /cut|qdist/.test(name), (style, name, ij) =>
+  `variable adpv equal 0.9\nfix adpv all adapt 0 pair ${style} ${name} ${ij} v_adpv scale yes reset no\n`);
 
 /** The first number after the type words of a coefficient line multiplied by `factor`. */
 const coeffScaled = (factor: number): Change => (w, _lines) => {

@@ -9,7 +9,8 @@
  * E = -C exp(-b r) f_n(b r) q_i q_j / r (pair_coeff I J b C [n] [cutoff]). Cores carry their Drude charge: the
  * core-Drude terms of a molecule are skipped and a core's charge is combined with its Drude particle's, as LAMMPS.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type AdaptAccess, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { resetScale, scaleAccess, unitScaleTable } from '../../engine/force/pair/scaleTable';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { inumeric, parseNum } from '../../engine/force/util';
 import { CORE_TYPE, DRUDE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
@@ -23,6 +24,8 @@ export class PairCoulTT extends Pair {
   private cArr = new Float64Array(0);
   private nArr = new Int32Array(0);
   private cutOne = new Float64Array(0);
+  /** fix adapt's scale of the Coulomb term (src/DRUDE/pair_coul_tt.cpp: 1 for the pairs pair_coeff sets). */
+  scale: Float64Array = new Float64Array(0);
   private set = new Uint8Array(0);
   private model: DrudeModel | null = null;
 
@@ -56,7 +59,17 @@ export class PairCoulTT extends Pair {
       this.cArr = new Float64Array(nt * nt);
       this.nArr = new Int32Array(nt * nt);
       this.cutOne = new Float64Array(nt * nt);
+      this.scale = unitScaleTable(ntypes);
     }
+  }
+
+  /** fix adapt b, c and scale (native extract(), dim 2): the I <= J entry, which init_one mirrors. */
+  override adaptParam(name: string): AdaptAccess | null {
+    if (name === 'scale') return scaleAccess(this);
+    const arr = name === 'b' ? this.bArr : name === 'c' ? this.cArr : null;
+    if (!arr) return null;
+    const nt = this.ntypes + 1;
+    return { dim: 2, get: (i, j) => arr[i * nt + j], set: (i, j, v) => { arr[i * nt + j] = v; } };
   }
 
   coeff(args: string[]): void {
@@ -81,6 +94,7 @@ export class PairCoulTT extends Pair {
         this.cArr[k] = cOne;
         this.nArr[k] = nOne;
         this.cutOne[k] = cutOne;
+        resetScale(this.scale, this.ntypes, i, j);
         this.set[k] = 1;
         count++;
       }
@@ -102,6 +116,7 @@ export class PairCoulTT extends Pair {
     this.cArr[kr] = this.cArr[k];
     this.nArr[kr] = this.nArr[k];
     this.cutOne[kr] = this.cutOne[k];
+    this.scale[kr] = this.scale[k];
     return this.cutOne[k];
   }
 
@@ -170,9 +185,9 @@ export class PairCoulTT extends Pair {
         let dcoul: number;
         if (ki === CORE_TYPE && kj === CORE_TYPE) {
           const dk = partner[i];
-          dcoul = qqrd2e * (-(q[i] + q[dk]) * q[dj] - q[dk] * (q[j] + q[dj])) * rinv;
+          dcoul = qqrd2e * (-(q[i] + q[dk]) * q[dj] - q[dk] * (q[j] + q[dj])) * this.scale[t] * rinv;
         } else {
-          dcoul = qqrd2e * qi * qj * rinv;
+          dcoul = qqrd2e * qi * qj * this.scale[t] * rinv;
         }
         const factorF = (-beta * gamma + r * betaprime * gamma + r * beta * gammaprime) * factorCoul;
         const factorE = -beta * gamma * factorCoul;

@@ -14,7 +14,7 @@
  */
 import { PairLJCutCoulLong, coulLongPair } from '../../engine/force/pair/coul_long';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
-import { StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { StyleError, type AdaptAccess, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, type ErfcTable } from '../../engine/force/erfc';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
@@ -137,6 +137,17 @@ export class PairLJCutTholeLong extends PairLJCutCoulLong {
         this.tset[k] = 1;
       }
     }
+  }
+
+  /**
+   * fix adapt polar, thole and ascreen (native extract(), dim 2): the I <= J entry; init_one mirrors it and, for a pair
+   * pair_coeff did not set, mixes polar and thole again and derives ascreen from them (as initOne does).
+   */
+  override adaptParam(name: string): AdaptAccess | null {
+    const arr = name === 'polar' ? this.polar : name === 'thole' ? this.thole : name === 'ascreen' ? this.ascreen : null;
+    if (!arr) return super.adaptParam(name);
+    const nt = this.ntypes + 1;
+    return { dim: 2, get: (i, j) => arr[i * nt + j], set: (i, j, v) => { arr[i * nt + j] = v; } };
   }
 
   override initStyle(ctx: StyleContext): void {

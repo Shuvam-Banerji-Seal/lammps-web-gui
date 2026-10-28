@@ -186,7 +186,8 @@ export class BondedHybrid extends Bonded {
       if (!this.usedBy(k)) throw new StyleError(`${LABEL[kind]} hybrid sub-style ${this.subNames[k]} is not used`);
     }
     if (kind === 'bond' && this.hasNone()) throw new StyleError('Invoked bond equil distance on bond style none');
-    this.subs = null;
+    // the sub-styles stay from one init to the next (a coefficient or style command rebuilds them), so a value fix
+    // adapt wrote into one is kept, as native's are
     const subs = this.build();
     const c = this.ctx ?? NO_CONTEXT;
     for (const st of subs) st.init(c);
@@ -226,6 +227,18 @@ export class BondedHybrid extends Bonded {
     const a = type >= 0 && type < this.assign.length ? this.assign[type] : UNSET;
     if (a < 0) return false;
     return this.build()[a].ignoresSpecial?.(type) ?? false;
+  }
+
+  /** The sub-style of that name (native Force::bond_match and the others on a hybrid style), or null. */
+  subStyle(name: string): Bonded | null {
+    const k = this.subNames.indexOf(name);
+    return k < 0 ? null : this.build()[k];
+  }
+
+  /** The sub-style name type t has its coefficients from (native check_itype: keywords[map[itype]]), or null. */
+  subNameOf(t: number): string | null {
+    const a = t >= 0 && t < this.assign.length ? this.assign[t] : UNSET;
+    return a < 0 ? null : this.subNames[a];
   }
 
   /** Energy of each sub-style at the last force evaluation (indices 1..N in compute bond, angle, ...). */

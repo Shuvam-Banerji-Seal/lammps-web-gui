@@ -1,6 +1,6 @@
-import { SimpleBonded, atomIndex, delta, dihedralGeometry, applyDihedral, termDelta } from '../bonded_util';
+import { SimpleBonded, atomIndex, delta, dihedralGeometry, applyDihedral, termDelta, vectorAccess } from '../bonded_util';
 import { fmtCoeff, parseNum, parseInt_ } from '../util';
-import { StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { StyleError, bondedVirial, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -263,6 +263,32 @@ export class ImproperUmbrella extends SimpleBonded {
     return [parseNum(args[0], 'K'), parseNum(args[1], 'omega0') * DEG2RAD];
   }
 
+  /**
+   * C = K / sin^2(w0) of each type (1 for w0 = 0). As native LAMMPS does (src/MOLECULE/improper_umbrella.cpp coeff at
+   * b332f28): improper_coeff sets kw, w0 and C, and compute reads kw (w0 = 0) or C and w0, so fix adapt's k or w0
+   * (their extract() names) leaves C as it was.
+   */
+  private C = new Float64Array(0);
+
+  override allocate(ntypes: number): void {
+    super.allocate(ntypes);
+    this.C = new Float64Array(ntypes + 1);
+  }
+
+  override coeff(args: string[], ctx?: StyleContext): void {
+    super.coeff(args, ctx);
+    const [lo, hi] = typeBounds(args[0], this.ntypes);
+    const K = this.params.p('K'), w0 = this.params.p('omega0');
+    for (let t = lo; t <= hi; t++) {
+      const s0 = libm.sin(w0[t]);
+      this.C[t] = w0[t] === 0 ? 1.0 : K[t] / (s0 * s0);
+    }
+  }
+
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ k: this.params.p('K'), w0: this.params.p('omega0') }, name);
+  }
+
   override dataCoeffs(): string[] {
     const K = this.params.p('K'), w0 = this.params.p('omega0');
     const out: string[] = [];
@@ -273,7 +299,7 @@ export class ImproperUmbrella extends SimpleBonded {
 
   compute(bc: BondedCompute): void {
     const I = bc.s.topo.impropers;
-    const K = this.params.p('K'), w0 = this.params.p('omega0');
+    const K = this.params.p('K'), w0 = this.params.p('omega0'), C = this.C;
     const grad = new Array(12).fill(0);
     let e = 0;
     for (let q = 0; q < I.n; q++) {
@@ -286,11 +312,9 @@ export class ImproperUmbrella extends SimpleBonded {
         ei = K[t] * (1 - cw);
         dEdc = K[t] / (2 * cw);
       } else {
-        const s0 = libm.sin(w0[t]);
-        const inv = 1 / (s0 * s0);
         const d = cw - libm.cos(w0[t]);
-        ei = 0.5 * K[t] * inv * d * d;
-        dEdc = -0.5 * K[t] * inv * d / cw;
+        ei = 0.5 * C[t] * d * d;
+        dEdc = -0.5 * C[t] * d / cw;
       }
       e += ei;
       applyGradC(bc, atoms, dEdc, grad, ei);

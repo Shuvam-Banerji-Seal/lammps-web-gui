@@ -1,7 +1,7 @@
-import { SimpleBonded, atomIndex, termDelta } from '../bonded_util';
+import { SimpleBonded, atomIndex, termDelta, vectorAccess } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { Bonded, StyleError, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -137,6 +137,29 @@ export class AngleCosinePeriodic extends SimpleBonded {
     return [parseNum(args[0], 'C'), parseNum(args[1], 'B'), parseInt_(args[2], 'n')];
   }
 
+  /**
+   * k = C / n^2 of each type. As native LAMMPS does (src/EXTRA-MOLECULE/angle_cosine_periodic.cpp coeff at b332f28):
+   * angle_coeff stores k = c_one/(n_one*n_one), the vector compute reads (E = 2 k (1 - b (-1)^n T_n(cos theta))) and
+   * extract() hands fix adapt as "k".
+   */
+  private k = new Float64Array(0);
+
+  allocate(ntypes: number): void {
+    super.allocate(ntypes);
+    this.k = new Float64Array(ntypes + 1);
+  }
+
+  coeff(args: string[], ctx?: StyleContext): void {
+    super.coeff(args, ctx);
+    const [lo, hi] = typeBounds(args[0], this.ntypes);
+    const C = this.params.p('C'), n = this.params.p('n');
+    for (let t = lo; t <= hi; t++) this.k[t] = C[t] / (n[t] * n[t]);
+  }
+
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ k: this.k }, name);
+  }
+
   /** angle_cosine_periodic.cpp equilibrium_angle(): MY_PI*(1.0 - ((b[i]>0) ? 0.0 : (1.0/multiplicity[i]))) */
   equilibriumRadians(type: number): number {
     const B = this.params.p('B')[type], n = this.params.p('n')[type];
@@ -145,7 +168,7 @@ export class AngleCosinePeriodic extends SimpleBonded {
   equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
-    const C = this.params.p('C'), B = this.params.p('B'), n = this.params.p('n');
+    const K = this.k, B = this.params.p('B'), n = this.params.p('n');
     const A = bc.s.topo.angles;
     const d1 = [0, 0, 0], d2 = [0, 0, 0];
     let e = 0;
@@ -156,10 +179,10 @@ export class AngleCosinePeriodic extends SimpleBonded {
       const t = A.type[a];
       const nt = n[t], sign = nt % 2 === 0 ? 1 : -1;
       angleTerm(bc, i, j, k, d1, d2, (theta, c) => {
-        const ea = ((2 / (nt * nt)) * C[t]) * (1 - B[t] * sign * libm.cos(nt * theta));
+        const ea = 2 * K[t] * (1 - B[t] * sign * libm.cos(nt * theta));
         e += ea;
-        // dE/dc = -(2C/n) B (-1)^n U_{n-1}(c), with U_{n-1}(c) = sin(n theta)/sin(theta) (a polynomial, no 1/sin)
-        return { e: ea, dEdc: -((2 * C[t]) / nt) * B[t] * sign * chebyshevU(nt - 1, c) };
+        // dE/dc = -2 k n B (-1)^n U_{n-1}(c), with U_{n-1}(c) = sin(n theta)/sin(theta) (a polynomial, no 1/sin)
+        return { e: ea, dEdc: -(2 * K[t] * nt) * B[t] * sign * chebyshevU(nt - 1, c) };
       });
     }
     bc.acc.eangle += e;
@@ -451,7 +474,7 @@ export class AngleFourierSimple extends SimpleBonded {
   equilibrium(type: number): number { return (180 / Math.PI) * this.equilibriumRadians(type); }
 
   compute(bc: BondedCompute): void {
-    const K = this.params.p('K'), c = this.params.p('c'), n = this.params.p('n');
+    const K = this.params.p('K'), C = this.params.p('c'), n = this.params.p('n');
     const A = bc.s.topo.angles;
     const d1 = [0, 0, 0], d2 = [0, 0, 0];
     let e = 0;
@@ -460,11 +483,17 @@ export class AngleFourierSimple extends SimpleBonded {
       const j = atomIndex(bc, A.atoms[3 * a + 1], 'angle');
       const k = atomIndex(bc, A.atoms[3 * a + 2], 'angle');
       const t = A.type[a];
-      angleTerm(bc, i, j, k, d1, d2, (theta) => {
+      angleTerm(bc, i, j, k, d1, d2, (theta, c) => {
         const nt = n[t];
-        const ea = K[t] * (1 + c[t] * libm.cos(nt * theta));
+        const ea = K[t] * (1 + C[t] * libm.cos(nt * theta));
         e += ea;
-        return { e: ea, dEdtheta: -K[t] * c[t] * nt * libm.sin(nt * theta) };
+        // As native LAMMPS does (src/EXTRA-MOLECULE/angle_fourier_simple.cpp compute at b332f28): its test
+        // fabs(c) - 1.0 > SMALL never holds (c is clamped to [-1, 1]), so the force always takes the expansion about
+        // the singular points instead of K C N sin(N theta)/sin(theta): dE/dc = K C N sgn (N + N (1 - N^2) u / 3), u =
+        // 1 - c (sgn 1) for c >= 0, else u = 1 + c (sgn -1 for an even N). It is exact for N = 1 and 2.
+        const u = c >= 0 ? 1 - c : 1 + c;
+        const sgn = c >= 0 || nt % 2 !== 0 ? 1 : -1;
+        return { e: ea, dEdc: K[t] * C[t] * nt * sgn * (nt + (nt * (1 - nt * nt) * u) / 3) };
       });
     }
     bc.acc.eangle += e;

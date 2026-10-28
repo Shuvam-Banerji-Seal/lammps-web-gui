@@ -1,11 +1,10 @@
 import { hasChargeStyle, isSphereStyle } from '../atoms';
 import { Fix } from './fix';
-import { Pair, StyleError, typeBounds, type AdaptAccess, type Bonded } from '../force/types';
+import { Pair, StyleError, typeBounds, type AdaptAccess, type Bonded, type BondedAdaptAccess } from '../force/types';
 import { ACCEL_ALIASES } from '../accelAliases';
 import type { AdaptPairsHook } from './adaptPairs';
 import { gplHook } from '../gplHooks';
 import { PairHybrid } from '../force/pair/hybrid';
-import { SimpleBonded } from '../force/bonded_util';
 import { bounds, inumeric, missingArgs, logical } from '../force/util';
 import { isNumericTypeWord, typeWord } from '../labelmap';
 import { EQUAL_STYLES } from '../argInfo';
@@ -84,18 +83,17 @@ import type { SimState } from '../types';
  * Bonded attributes — fix_adapt.rst: "*bond* args = bstyle bparam I v_name", "*angle* args = astyle aparam I
  * v_name", and the same for *dihedral* and *improper*; "Note that internally, theta0 is stored in radians, so the
  * variable should compute theta0 in radians" (likewise phi0, chi0). As native LAMMPS does (src/fix_adapt.cpp at
- * b332f28): the style's extract() names the per-type array (BONDED_ADAPT gives native's names, the engine's array
- * and native's stored value per engine value: dihedral opls stores 0.5 K, improper inversion/harmonic K/3), the
- * values of types I are set at setup and every N steps (scale yes multiplies the values the run started with), the
- * style is re-initialized, and reset yes restores them after the run. Native writes doubles through integer arrays
- * (dihedral charmm n and d, improper cvff d and n): those parameters are refused, as the doc table lists only k.
+ * b332f28): the style (or hybrid sub-style) extract() names the per-type vector, in native's stored units
+ * (fix/adaptBonded.ts), the values of types I are set at setup and every N steps (scale yes multiplies the values the
+ * run started with), the defined style is re-initialized, and reset yes restores them after the run. Native writes
+ * doubles through integer arrays (angle cosine/periodic, cosine/buck6d multiplicity, dihedral charmm n and d, improper
+ * cvff d and n): those parameters are refused.
  *
  * kspace v_name (fix_adapt.rst): "The *kspace* keyword used the specified variable as a scale factor on the energy,
  * forces, virial calculated by whatever k-space solver is defined by the kspace_style command." It sets KSpace.scale.
  *
- * Not supported (StyleError): bonded hybrid styles (their sub-styles are rebuilt from the
- * coefficient lines at every init here); bonded styles outside BONDED_ADAPT; pair parameters
- * native extract() names but this engine keeps no table for (fix/adaptPairs.ts); diameter/disc.
+ * Not supported (StyleError): pair parameters native extract() names but this engine keeps no table for
+ * (fix/adaptPairs.ts); diameter/disc.
  *
  */
 
@@ -105,44 +103,6 @@ const USAGE = 'usage: fix ID group-ID adapt N attribute args ... keyword value .
 const ATTRIBUTE_WORDS: Record<string, number> = { pair: 6, kspace: 2, atom: 3, bond: 5, angle: 5, dihedral: 5, improper: 5 };
 
 type BondedKind = 'bond' | 'angle' | 'dihedral' | 'improper';
-const KIND_LABEL: Record<BondedKind, string> = { bond: 'Bond', angle: 'Angle', dihedral: 'Dihedral', improper: 'Improper' };
-
-/**
- * Bonded styles fix adapt can change: native extract() name -> [the engine's parameter, native's stored value per
- * engine value]. Read from the extract() and coeff() functions of each style (src/*.cpp at b332f28).
- */
-const BONDED_ADAPT: Record<string, Record<string, [string, number]>> = {
-  'bond harmonic': { k: ['K', 1], r0: ['r0', 1] },
-  'bond morse': { d0: ['D', 1], alpha: ['alpha', 1], r0: ['r0', 1] },
-  'bond fene': { k: ['K', 1], r0: ['R0', 1] },
-  'bond fene/expand': { k: ['K', 1], r0: ['R0', 1], epsilon: ['epsilon', 1], sigma: ['sigma', 1], shift: ['delta', 1] },
-  'bond gromos': { k: ['K', 1], r0: ['r0', 1] },
-  'bond nonlinear': { lamda: ['lam', 1], epsilon: ['epsilon', 1], r0: ['r0', 1] },
-  'bond class2': { k2: ['K2', 1], k3: ['K3', 1], k4: ['K4', 1], r0: ['r0', 1] },
-  'angle harmonic': { k: ['K', 1], theta0: ['theta0', 1] },
-  'angle charmm': { k: ['K', 1], theta0: ['theta0', 1] },
-  'angle cosine': { k: ['K', 1] },
-  'angle cosine/squared': { k: ['K', 1], theta0: ['theta0', 1] },
-  'angle cosine/squared/restricted': { k: ['K', 1], theta0: ['theta0', 1] },
-  'angle fourier': { k: ['K', 1], C0: ['C0', 1], C1: ['C1', 1], C2: ['C2', 1] },
-  'angle fourier/simple': { k: ['K', 1], C: ['c', 1], N: ['n', 1] },
-  'angle quartic': { k2: ['K2', 1], k3: ['K3', 1], k4: ['K4', 1], theta0: ['theta0', 1] },
-  'angle mm3': { k2: ['K', 1], theta0: ['theta0', 1] },
-  'dihedral charmm': { k: ['K', 1] },
-  'dihedral opls': { k1: ['K1', 0.5], k2: ['K2', 0.5], k3: ['K3', 0.5], k4: ['K4', 0.5] },
-  'dihedral multi/harmonic': { a1: ['A1', 1], a2: ['A2', 1], a3: ['A3', 1], a4: ['A4', 1], a5: ['A5', 1] },
-  'dihedral quadratic': { k: ['K', 1], phi0: ['phi0', 1] },
-  'dihedral helix': { a: ['A', 1], b: ['B', 1], c: ['C', 1] },
-  'dihedral cosine/squared/restricted': { k: ['K', 1], phi0: ['phi0', 1] },
-  'improper harmonic': { k: ['K', 1], chi0: ['chi0', 1] },
-  'improper cvff': { k: ['K', 1] },
-  'improper fourier': { k: ['K', 1], C0: ['C0', 1], C1: ['C1', 1], C2: ['C2', 1] },
-  'improper cossq': { k: ['K', 1], chi0: ['chi0', 1] },
-  'improper distance': { k2: ['K2', 1], k4: ['K4', 1] },
-  'improper distharm': { k: ['K', 1], d0: ['d0', 1] },
-  'improper sqdistharm': { k: ['K', 1] },
-  'improper inversion/harmonic': { k: ['K', 1 / 3], w0: ['omega0', 1] },
-};
 
 interface BondedTarget {
   kind: BondedKind;
@@ -150,10 +110,12 @@ interface BondedTarget {
   bparam: string;
   iw: string;
   vname: string;
-  /** Resolved at run start: the style, its array, native's value per engine value, the types and their originals. */
-  style: Bonded | null;
-  arr: Float64Array | null;
-  ratio: number;
+  /**
+   * Resolved at run start: the defined style (a hybrid style when the parameter is a sub-style's; native reinit()s
+   * force->bond), native's per-type vector of the parameter, the types and their values when the run started.
+   */
+  owner: Bonded | null;
+  access: BondedAdaptAccess | null;
   lo: number;
   hi: number;
   orig: Float64Array;
@@ -256,8 +218,14 @@ export class FixAdapt extends Fix {
         if (vw === undefined) throw new StyleError(`fix ${id} (adapt): ${w} needs ${w[0]}style ${w[0]}param I v_name (${USAGE})`);
         // native: "Argument must be variable not X"
         if (!vw.startsWith('v_')) throw new StyleError(`Argument must be variable not ${vw}`);
+        // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::FixAdapt at b332f28): the type range
+        // (utils::bounds_typelabel against the number of types of the kind) when the fix is defined
+        const topo = this.sys.state.topo;
+        const ntypes = w === 'bond' ? topo.nbondtypes : w === 'angle' ? topo.nangletypes : w === 'dihedral' ? topo.ndihedraltypes : topo.nimpropertypes;
+        if (this.sys.labels.defined && !isNumericTypeWord(iw)) inumeric(typeWord(this.sys.labels, w, iw));
+        else bounds(iw, 1, ntypes);
         this.checkVariable(id, vw);
-        this.bonded.push({ kind: w, bstyle, bparam, iw, vname: vw.slice(2), style: null, arr: null, ratio: 1, lo: 0, hi: -1, orig: new Float64Array(0) });
+        this.bonded.push({ kind: w, bstyle, bparam, iw, vname: vw.slice(2), owner: null, access: null, lo: 0, hi: -1, orig: new Float64Array(0) });
         k += 5; nattr++;
         continue;
       }
@@ -400,23 +368,28 @@ export class FixAdapt extends Fix {
     }
   }
 
-  /** A bonded attribute against the defined style (native FixAdapt::init with Force::bond_match and extract()). */
+  /**
+   * A bonded attribute against the defined style, as native FixAdapt::init does (src/fix_adapt.cpp at b332f28): the
+   * style or hybrid sub-style of that name (Force::bond_match and the others: "Fix adapt bond style X does not exist"),
+   * a name its extract() knows ("Fix adapt bond style parameter X not supported"), and with a hybrid style the
+   * sub-style of every type of the range (check_itype). Where this engine keeps the value: fix/adaptBonded.ts.
+   */
   private resolveBonded(b: BondedTarget): void {
-    const style = this.sys.ff[b.kind] as Bonded | null;
-    const label = KIND_LABEL[b.kind].toLowerCase();
-    if (style instanceof BondedHybrid) {
-      throw new StyleError(`fix ${this.id} (adapt): ${b.kind} with ${b.kind}_style hybrid is not supported by this engine (its sub-styles are rebuilt from the coefficient lines at every init)`);
-    }
-    if (!style || style.name !== b.bstyle) throw new StyleError(`Fix adapt ${label} style ${b.bstyle} does not exist`);
-    const entry = BONDED_ADAPT[`${b.kind} ${b.bstyle}`];
-    if (!entry) throw new StyleError(`fix ${this.id} (adapt): ${b.kind} style ${b.bstyle} is not supported by fix adapt in this engine`);
-    const m = entry[b.bparam];
-    if (!m || !(style instanceof SimpleBonded)) throw new StyleError(`Fix adapt ${label} style parameter ${b.bparam} not supported`);
+    const defined = this.sys.ff[b.kind] as Bonded | null;
+    const word = ACCEL_ALIASES.get(b.bstyle) ?? b.bstyle;
+    const style = defined instanceof BondedHybrid ? defined.subStyle(word) : defined?.name === word ? defined : null;
+    if (!style || !defined) throw new StyleError(`Fix adapt ${b.kind} style ${b.bstyle} does not exist`);
+    const { bondedExtractHas, bondedAdaptAccess } = gplHook<AdaptPairsHook>('adapt');
+    if (!bondedExtractHas(b.kind, style.name, b.bparam)) throw new StyleError(`Fix adapt ${b.kind} style parameter ${b.bparam} not supported`);
     const ntypes = style.ntypes;
-    const [lo, hi] = typeBounds(b.iw, ntypes);
-    b.style = style;
-    b.arr = style.params.p(m[0]);
-    b.ratio = m[1];
+    const [lo, hi] = typeBounds(this.sys.labels.defined && !isNumericTypeWord(b.iw) ? typeWord(this.sys.labels, b.kind, b.iw) : b.iw, ntypes);
+    if (defined instanceof BondedHybrid) {
+      for (let i = lo; i <= hi; i++) {
+        if (defined.subNameOf(i) !== word) throw new StyleError(`Fix adapt type ${b.kind} range is not valid for ${b.kind} hybrid sub-style ${b.bstyle}`);
+      }
+    }
+    b.owner = defined;
+    b.access = bondedAdaptAccess(style, b.kind, b.bparam);
     b.lo = lo;
     b.hi = hi;
     b.orig = new Float64Array(ntypes + 1);
@@ -436,7 +409,6 @@ export class FixAdapt extends Fix {
     // the pair attributes are resolved and set once the force field is initialized (afterForceInit)
     this.pairs = [];
     const s = this.sys.state;
-    for (const b of this.bonded) for (let i = b.lo; i <= b.hi; i++) b.orig[i] = b.arr![i];
     for (const a of this.atoms) {
       a.origQ.clear(); a.origR.clear(); a.origM.clear();
       for (let i = 0; i < s.n; i++) {
@@ -451,7 +423,7 @@ export class FixAdapt extends Fix {
     }
     this.inInit = true;
     try {
-      this.apply(false, false);
+      this.apply(false, false, false);
     } finally {
       this.inInit = false;
     }
@@ -476,6 +448,11 @@ export class FixAdapt extends Fix {
       } else t.orig[0] = t.access.get();
     }
     if (this.pairs.length) this.applyPairs(true);
+    // the bonded values too: native writes them in the same change_settings, so a bonded style's re-init reads what the
+    // pair attributes of this and the fixes before it have written (improper amoeba copies the opbend weights of pair
+    // amoeba in its init_style)
+    for (const b of this.bonded) for (let i = b.lo; i <= b.hi; i++) b.orig[i] = b.access!.get(i);
+    this.applyBonded();
     if (!this.chargesPending) return;
     this.chargesPending = false;
     const s = this.sys.state;
@@ -489,16 +466,11 @@ export class FixAdapt extends Fix {
    * Writes the variable values into the pair tables, the diameters and (when charges is set) the charges
    * (scale yes multiplies the originals).
    */
-  private apply(reinitPair: boolean, charges = true): void {
+  private apply(reinitPair: boolean, charges = true, bonded = true): void {
     const sys = this.sys;
     const s = sys.state;
     if (this.pairs.length) this.applyPairs(reinitPair);
-    for (const b of this.bonded) {
-      // native: vector[i] = scale ? value * vector_orig[i] : value, in native's stored units (see BONDED_ADAPT)
-      const v = sys.equalVariable(b.vname);
-      for (let i = b.lo; i <= b.hi; i++) b.arr![i] = this.scale ? v * b.orig[i] : v / b.ratio;
-    }
-    this.reinitBonded();
+    if (bonded) this.applyBonded();
     // fix_adapt.cpp change_settings: "*kspace_scale = value" (scale yes does not apply to it)
     for (const vname of this.kspaces) this.sys.ff.kspace!.scale = sys.equalVariable(vname);
     for (const a of this.atoms) {
@@ -550,13 +522,27 @@ export class FixAdapt extends Fix {
     }
   }
 
-  /** native bond->reinit() (and angle, dihedral, improper) after the values changed: the style's init(). */
+  /** native change_settings for the bonded attributes: vector[i] = scale ? value * vector_orig[i] : value, then reinit. */
+  private applyBonded(): void {
+    for (const b of this.bonded) {
+      const v = this.sys.equalVariable(b.vname);
+      for (let i = b.lo; i <= b.hi; i++) b.access!.set(i, this.scale ? v * b.orig[i] : v);
+    }
+    this.reinitBonded();
+  }
+
+  /**
+   * native bond->reinit() (and angle, dihedral, improper) after the values changed, on the defined style: "Fix adapt
+   * interface to this bond style not supported" for a style without reinitflag (src/bond.cpp Bond::reinit at b332f28),
+   * else its init().
+   */
   private reinitBonded(): void {
     const done = new Set<Bonded>();
     for (const b of this.bonded) {
-      if (!b.style || done.has(b.style)) continue;
-      done.add(b.style);
-      b.style.init(this.sys.styleContext());
+      if (!b.owner || done.has(b.owner)) continue;
+      done.add(b.owner);
+      if (!b.owner.reinitFlag) throw new StyleError(`Fix adapt interface to this ${b.kind} style not supported`);
+      b.owner.init(this.sys.styleContext());
     }
     if (this.bonded.length) this.sys.bump();
   }
@@ -614,7 +600,7 @@ export class FixAdapt extends Fix {
     }
     if (this.pairs.length) this.refreshPairs(true);
     this.commitPairs();
-    for (const b of this.bonded) for (let i = b.lo; i <= b.hi; i++) b.arr![i] = b.orig[i];
+    for (const b of this.bonded) for (let i = b.lo; i <= b.hi; i++) b.access!.set(i, b.orig[i]);
     this.reinitBonded();
     // fix_adapt.cpp restore_settings: "*kspace_scale = 1.0"
     if (this.kspaces.length && this.sys.ff.kspace) this.sys.ff.kspace.scale = 1.0;

@@ -1,5 +1,5 @@
-import { SimpleBonded, bondDelta, copyDelta, delta, mapIndex } from '../bonded_util';
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { SimpleBonded, bondDelta, copyDelta, delta, mapIndex, vectorAccess } from '../bonded_util';
+import { Bonded, StyleError, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
 import { fmtCoeff, parseNum } from '../util';
 import { libm } from '../../libm';
 
@@ -278,16 +278,37 @@ export class BondGromos extends SimpleBonded {
  *   coefficients: "Umin (energy)", "r0 (distance)", "rc (distance)".
  */
 export class BondHarmonicShift extends SimpleBonded {
-  readonly name = 'harmonic/shift';
+  readonly name: string = 'harmonic/shift';
   readonly kind = 'bond' as const;
   readonly paramNames = ['Umin', 'r0', 'rc'];
+  /**
+   * k = Umin / (r0 - rc)^2 of each type. As native LAMMPS does (src/EXTRA-MOLECULE/bond_harmonic_shift.cpp and
+   * bond_harmonic_shift_cut.cpp coeff at b332f28): bond_coeff sets k, r0 and r1 (rc here), and compute reads them, so
+   * fix adapt's k, r0 or r1 (their extract() names) changes that one value only.
+   */
+  protected k = new Float64Array(0);
+
+  allocate(ntypes: number): void {
+    super.allocate(ntypes);
+    this.k = new Float64Array(ntypes + 1);
+  }
+
+  coeff(args: string[], ctx?: StyleContext): void {
+    super.coeff(args, ctx);
+    const [lo, hi] = typeBounds(args[0], this.ntypes);
+    const U = this.params.p('Umin'), r0 = this.params.p('r0'), rc = this.params.p('rc');
+    for (let t = lo; t <= hi; t++) this.k[t] = U[t] / ((r0[t] - rc[t]) * (r0[t] - rc[t]));
+  }
+
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ k: this.k, r0: this.params.p('r0'), r1: this.params.p('rc') }, name);
+  }
 
   compute(bc: BondedCompute): void {
-    const U = this.params.p('Umin'), r0 = this.params.p('r0'), rc = this.params.p('rc');
+    const K = this.k, r0 = this.params.p('r0'), rc = this.params.p('rc');
     bondLoop(bc, (r, t) => {
-      const dr = r - r0[t], drc = rc[t] - r0[t];
-      const k = U[t] / (drc * drc);
-      return { e: k * (dr * dr - drc * drc), dEdr: 2 * k * dr };
+      const dr = r - r0[t], drc = r0[t] - rc[t];
+      return { e: K[t] * (dr * dr - drc * drc), dEdr: 2 * K[t] * dr };
     });
   }
 
@@ -301,22 +322,17 @@ export class BondHarmonicShift extends SimpleBonded {
  *   r > rc.  The potential energy has the value -Umin at r0 and zero at rc."
  *   coefficients: "Umin (energy)", "r0 (distance)", "rc (distance)".
  */
-export class BondHarmonicShiftCut extends SimpleBonded {
-  readonly name = 'harmonic/shift/cut';
-  readonly kind = 'bond' as const;
-  readonly paramNames = ['Umin', 'r0', 'rc'];
+export class BondHarmonicShiftCut extends BondHarmonicShift {
+  override readonly name: string = 'harmonic/shift/cut';
 
   compute(bc: BondedCompute): void {
-    const U = this.params.p('Umin'), r0 = this.params.p('r0'), rc = this.params.p('rc');
+    const K = this.k, r0 = this.params.p('r0'), rc = this.params.p('rc');
     bondLoop(bc, (r, t) => {
       if (r > rc[t]) return { e: 0, dEdr: 0 };
-      const dr = r - r0[t], drc = rc[t] - r0[t];
-      const k = U[t] / (drc * drc);
-      return { e: k * (dr * dr - drc * drc), dEdr: 2 * k * dr };
+      const dr = r - r0[t], drc = r0[t] - rc[t];
+      return { e: K[t] * (dr * dr - drc * drc), dEdr: 2 * K[t] * dr };
     });
   }
-
-  equilibrium(type: number): number { return this.params.p('r0')[type]; }
 }
 
 /*

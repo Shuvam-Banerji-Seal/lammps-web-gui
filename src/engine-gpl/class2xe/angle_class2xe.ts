@@ -17,8 +17,8 @@
  * which is kept as native has it. The angle clamp s >= 0.001 (SMALL) is native's.
  * Geometry: every atom is placed relative to the vertex (delta from the owner), as the other angle styles do.
  */
-import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
-import { atomIndex, delta } from '../../engine/force/bonded_util';
+import { Bonded, StyleError, bondedVirial, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
+import { atomIndex, delta, vectorAccess } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { exp as libmExp } from '../libm/exp';
 import { acos as libmAcos } from '../libm/acos';
@@ -28,6 +28,10 @@ const SMALL = 0.001;
 
 export class AngleClass2xe extends Bonded {
   readonly name = 'class2xe';
+  /** fix adapt: as native extract() does (src/CLASS2/angle_class2xe.cpp at b332f28), k2, k3, k4 and theta0 (radians). */
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ k2: this.k2, k3: this.k3, k4: this.k4, theta0: this.theta0 }, name);
+  }
   readonly kind = 'angle' as const;
   private theta0!: Float64Array;
   private k2!: Float64Array;

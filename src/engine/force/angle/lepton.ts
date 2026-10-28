@@ -1,5 +1,5 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
-import { atomIndex } from '../bonded_util';
+import { Bonded, StyleError, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext } from '../types';
+import { atomIndex, vectorAccess } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { parseNum } from '../util';
 import { compileLepton, fillVrefs, type LeptonProgram } from '../../lepton';
@@ -20,6 +20,14 @@ import { compileLepton, fillVrefs, type LeptonProgram } from '../../lepton';
 
 export class AngleLepton extends Bonded {
   readonly name = 'lepton';
+  /**
+   * As native LAMMPS does (src/LEPTON/angle_lepton.cpp at b332f28): extract() hands fix adapt "theta0", and reinitflag is 0, so the first
+   * change stops with "Fix adapt interface to this angle style not supported" (Bond::reinit and Angle::reinit).
+   */
+  override reinitFlag = false;
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ theta0: this.th0 }, name);
+  }
   readonly kind = 'angle' as const;
   private autoOffset = true;
   private th0 = new Float64Array(0);

@@ -13,8 +13,8 @@
  * the C++ coeff(): kh = 0.5 k / l, kb = 0.7 k / (275 ang), thetab = atan(l / (275 ang)) with
  * k = 63.80 r^2.93 eunit ang). A harmonic type sets kb = 0 and thetab = 180 degrees.
  */
-import { atomIndex, delta } from '../../engine/force/bonded_util';
-import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
+import { atomIndex, delta, vectorAccess } from '../../engine/force/bonded_util';
+import { Bonded, StyleError, bondedVirial, typeBounds, type BondedAdaptAccess, type BondedCompute, type StyleContext, NoSettingsError } from '../../engine/force/types';
 import { fmtCoeff, inumeric, parseNum } from '../../engine/force/util';
 import { ANGSTROM } from '../../engine/force/kspace/ewald';
 import type { CustomProp } from '../../engine/types';
@@ -32,6 +32,10 @@ const RAD2DEG = 180 / Math.PI;
 
 export class AngleMesoCNT extends Bonded {
   readonly name = 'mesocnt';
+  /** fix adapt: as native extract() does (src/MESONT/angle_mesocnt.cpp at b332f28), theta0 (radians, 180 degrees from angle_coeff). */
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ theta0: this.theta0 }, name);
+  }
   readonly kind = 'angle' as const;
   private buckling!: Uint8Array;
   private kh!: Float64Array;

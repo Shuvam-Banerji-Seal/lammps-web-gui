@@ -1,0 +1,1772 @@
+{
+ "matrix": "adapt-bonded",
+ "about": "fix adapt 0 <kind> <style> <name> * v_x scale yes (x = 1.1) for each name of each bond, angle, dihedral and improper style's native extract(), pe, press and fnorm compared after run 0",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w119amoeba_angle",
+   "line": 8,
+   "text": "angle_style amoeba",
+   "style": "angle amoeba k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle amoeba k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.811269932478687 -27938.3466028539 35.7322829119872"
+  },
+  {
+   "case": "w119amoeba_angle",
+   "line": 8,
+   "text": "angle_style amoeba",
+   "style": "angle amoeba k3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle amoeba k3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.746252050904355 -27938.3466028539 33.5377980327987"
+  },
+  {
+   "case": "w119amoeba_angle",
+   "line": 8,
+   "text": "angle_style amoeba",
+   "style": "angle amoeba k4",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle amoeba k4 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.741598885412436 -27938.3466028539 33.2957963357628"
+  },
+  {
+   "case": "w119amoeba_angle",
+   "line": 8,
+   "text": "angle_style amoeba",
+   "style": "angle amoeba k5",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle amoeba k5 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.74151215698258 -27938.3466028539 33.2898419358174"
+  },
+  {
+   "case": "w119amoeba_angle",
+   "line": 8,
+   "text": "angle_style amoeba",
+   "style": "angle amoeba k6",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle amoeba k6 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.741507395328092 -27938.3466028539 33.2894415495996"
+  },
+  {
+   "case": "w119amoeba_angle",
+   "line": 8,
+   "text": "angle_style amoeba",
+   "style": "angle amoeba theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle amoeba theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 9.04304482065852 -27938.3466028539 117.392337805446"
+  },
+  {
+   "case": "w225cm_angle_write_charmm",
+   "line": 11,
+   "text": "angle_style charmm",
+   "style": "angle charmm k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle charmm k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w225cm_angle_write_charmm",
+   "line": 11,
+   "text": "angle_style charmm",
+   "style": "angle charmm theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle charmm theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w35c2angle_tri",
+   "line": 6,
+   "text": "angle_style class2",
+   "style": "angle class2 k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2 k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 8.27362082974056 -0.0022750484209455 175.510248118821"
+  },
+  {
+   "case": "w35c2angle_tri",
+   "line": 6,
+   "text": "angle_style class2",
+   "style": "angle class2 k3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2 k3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 8.21186860937902 -0.0022750484209455 175.809581108278"
+  },
+  {
+   "case": "w35c2angle_tri",
+   "line": 6,
+   "text": "angle_style class2",
+   "style": "angle class2 k4",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2 k4 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 8.21016530364536 -0.0022750484209455 175.828623682672"
+  },
+  {
+   "case": "w35c2angle_tri",
+   "line": 6,
+   "text": "angle_style class2",
+   "style": "angle class2 theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2 theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 7.59815523324988 -0.00226688653378598 179.747799593018"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 9,
+   "text": "angle_style class2/p6",
+   "style": "angle class2/p6 k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2/p6 k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 99.0659279576762 6227.53317768601 433.972186363426"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 9,
+   "text": "angle_style class2/p6",
+   "style": "angle class2/p6 k3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2/p6 k3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 95.7809390900697 6227.53317768601 418.986673791197"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 9,
+   "text": "angle_style class2/p6",
+   "style": "angle class2/p6 k4",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2/p6 k4 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 96.204000057645 6227.53317768601 421.85754045564"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 9,
+   "text": "angle_style class2/p6",
+   "style": "angle class2/p6 k5",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2/p6 k5 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 96.0729220304388 6227.53317768601 420.712496654163"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 9,
+   "text": "angle_style class2/p6",
+   "style": "angle class2/p6 k6",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2/p6 k6 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 96.1000205758949 6227.53317768601 421.003599124828"
+  },
+  {
+   "case": "w50bd_class2p6",
+   "line": 9,
+   "text": "angle_style class2/p6",
+   "style": "angle class2/p6 theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2/p6 theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 87.6806400050915 6228.2348652752 406.077899203074"
+  },
+  {
+   "case": "w145pr_angle_class2xe",
+   "line": 10,
+   "text": "angle_style class2xe",
+   "style": "angle class2xe k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2xe k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 37,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.588815047034748 -0.0263447330833406 383.096352972918"
+  },
+  {
+   "case": "w145pr_angle_class2xe",
+   "line": 10,
+   "text": "angle_style class2xe",
+   "style": "angle class2xe k3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2xe k3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 37,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.454595124109731 -0.0263447330833406 380.658810140503"
+  },
+  {
+   "case": "w145pr_angle_class2xe",
+   "line": 10,
+   "text": "angle_style class2xe",
+   "style": "angle class2xe k4",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2xe k4 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 37,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.463725049151983 -0.0263447330833406 380.080721745718"
+  },
+  {
+   "case": "w145pr_angle_class2xe",
+   "line": 10,
+   "text": "angle_style class2xe",
+   "style": "angle class2xe theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle class2xe theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 37,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 4.03576789211072 0.10556725454187 531.218968215301"
+  },
+  {
+   "case": "w1ba_angle_cosine",
+   "line": 5,
+   "text": "angle_style cosine",
+   "style": "angle cosine k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 17.7668155251291 0.0255325747819249 427.278718653016"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 9,
+   "text": "angle_style cosine/buck6d",
+   "style": "angle cosine/buck6d k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/buck6d k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 82.157156715681 14819.9567831491 890.6745508106"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 9,
+   "text": "angle_style cosine/buck6d",
+   "style": "angle cosine/buck6d multiplicity",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/buck6d multiplicity * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 14819.9567831491 890.888742494777",
+   "skip": "native writes a double through the int multiplicity (undefined behaviour)"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 9,
+   "text": "angle_style cosine/buck6d",
+   "style": "angle cosine/buck6d th0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/buck6d th0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 82.4883881382604 14819.9567831491 890.440196199698"
+  },
+  {
+   "case": "w87bond_angle_cosdelta_linear",
+   "line": 10,
+   "text": "angle_style cosine/delta",
+   "style": "angle cosine/delta k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/delta k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 14.4755554691704 -3.52772703234297e-13 0.00224979789090341"
+  },
+  {
+   "case": "w87bond_angle_cosdelta_linear",
+   "line": 10,
+   "text": "angle_style cosine/delta",
+   "style": "angle cosine/delta theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/delta theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 9.69923735936604 -8.344991823418e-13 0.00186520971594429"
+  },
+  {
+   "case": "w87bond_angle_cosper_linear",
+   "line": 10,
+   "text": "angle_style cosine/periodic",
+   "style": "angle cosine/periodic b",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/periodic b * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.77635683940025e-13 -3.24802770834441e-15 8.70929686322903e-06",
+   "skip": "native writes a double through the int b (undefined behaviour)"
+  },
+  {
+   "case": "w87bond_angle_cosper_linear",
+   "line": 10,
+   "text": "angle_style cosine/periodic",
+   "style": "angle cosine/periodic k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/periodic k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.95399252334028e-13 2.74282737759601e-15 9.58022654955193e-06"
+  },
+  {
+   "case": "w87bond_angle_cosper_linear",
+   "line": 10,
+   "text": "angle_style cosine/periodic",
+   "style": "angle cosine/periodic multiplicity",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/periodic multiplicity * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.77635683940025e-13 -3.24802770834441e-15 8.70929686322903e-06",
+   "skip": "native writes a double through the int multiplicity (undefined behaviour)"
+  },
+  {
+   "case": "w1ba_angle_cosine_squared",
+   "line": 5,
+   "text": "angle_style cosine/squared",
+   "style": "angle cosine/squared k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/squared k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.05601060563616 0.0255325747819249 237.252039959165"
+  },
+  {
+   "case": "w1ba_angle_cosine_squared",
+   "line": 5,
+   "text": "angle_style cosine/squared",
+   "style": "angle cosine/squared theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/squared theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.71185902971956 0.0255325747819249 240.917752979927"
+  },
+  {
+   "case": "w18angle_csr",
+   "line": 5,
+   "text": "angle_style cosine/squared/restricted",
+   "style": "angle cosine/squared/restricted k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/squared/restricted k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.66622959498233 0.0241598278223419 437.356324663657"
+  },
+  {
+   "case": "w18angle_csr",
+   "line": 5,
+   "text": "angle_style cosine/squared/restricted",
+   "style": "angle cosine/squared/restricted theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cosine/squared/restricted theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.85109339953651 0.024159827822342 276.530466804021"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 7,
+   "text": "angle_style cross",
+   "style": "angle cross kbs0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cross kbs0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.33035511629918 0.312174164414965 588.510815644242"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 7,
+   "text": "angle_style cross",
+   "style": "angle cross kbs1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cross kbs1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.31757441387827 0.312492862856439 589.107600381202"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 7,
+   "text": "angle_style cross",
+   "style": "angle cross kss",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cross kss * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.05136212645849 0.383856953475906 631.175872771555"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 7,
+   "text": "angle_style cross",
+   "style": "angle cross r00",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cross r00 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 3.32598508070139 0.534707364512608 817.432133322183"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 7,
+   "text": "angle_style cross",
+   "style": "angle cross r01",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cross r01 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 3.07475798728042 0.537632984138486 767.778587110022"
+  },
+  {
+   "case": "w118yaff_angle_cross",
+   "line": 7,
+   "text": "angle_style cross",
+   "style": "angle cross theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle cross theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 6.22481988950554 0.650903316124243 798.678999789109"
+  },
+  {
+   "case": "w235mx_angle_dipole",
+   "line": 12,
+   "text": "angle_style dipole",
+   "style": "angle dipole gamma0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle dipole gamma0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.299921596842176 0.000224980387891431 10.2520485355641"
+  },
+  {
+   "case": "w235mx_angle_dipole",
+   "line": 12,
+   "text": "angle_style dipole",
+   "style": "angle dipole k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle dipole k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.408779725474648 0.000224980387891431 10.470771289347"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 10,
+   "text": "angle_style fourier",
+   "style": "angle fourier C0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle fourier C0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.00000000000005 1.44358516461902e-15 2.17732421580726e-06"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 10,
+   "text": "angle_style fourier",
+   "style": "angle fourier C1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle fourier C1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.99999999999995 9.70807521121991e-15 2.39505663738799e-06"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 10,
+   "text": "angle_style fourier",
+   "style": "angle fourier C2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle fourier C2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 4.44089209850063e-14 1.44358516461902e-15 2.17732421580726e-06"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 10,
+   "text": "angle_style fourier",
+   "style": "angle fourier k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle fourier k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 4.88498130835069e-14 9.70807521121991e-15 2.39505663738799e-06"
+  },
+  {
+   "case": "w1ba_angle_fourier_simple",
+   "line": 5,
+   "text": "angle_style fourier/simple",
+   "style": "angle fourier/simple C",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle fourier/simple C * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 21.1929508433183 0.0255325747819249 424.359599807386"
+  },
+  {
+   "case": "w1ba_angle_fourier_simple",
+   "line": 5,
+   "text": "angle_style fourier/simple",
+   "style": "angle fourier/simple N",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle fourier/simple N * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 16.0168313999518 0.0255325747819249 320.553301216852"
+  },
+  {
+   "case": "w1ba_angle_fourier_simple",
+   "line": 5,
+   "text": "angle_style fourier/simple",
+   "style": "angle fourier/simple k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle fourier/simple k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 22.6929508433183 0.0255325747819249 424.359599807386"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 5,
+   "text": "angle_style gaussian",
+   "style": "angle gaussian alpha",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle gaussian alpha * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.531632122946412 0.0414611575805344 290.99970986615",
+   "skip": "native's alpha is a double ** that extract() gives as dim 1 (undefined behaviour)"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 5,
+   "text": "angle_style gaussian",
+   "style": "angle gaussian theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle gaussian theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.531632122946412 0.0414611575805344 290.99970986615",
+   "skip": "native's theta0 is a double ** that extract() gives as dim 1 (undefined behaviour)"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 5,
+   "text": "angle_style gaussian",
+   "style": "angle gaussian width",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle gaussian width * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.531632122946412 0.0414611575805344 290.99970986615",
+   "skip": "native's width is a double ** that extract() gives as dim 1 (undefined behaviour)"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 9,
+   "text": "angle_style harmonic",
+   "style": "angle harmonic k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle harmonic k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.523155359855869 -4489.08964919723 121.875804106459"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 9,
+   "text": "angle_style harmonic",
+   "style": "angle harmonic theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle harmonic theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -4.81690991616228 -4489.08964919723 126.112562464745"
+  },
+  {
+   "case": "w16lepton_bonded",
+   "line": 5,
+   "text": "angle_style lepton",
+   "style": "angle lepton theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle lepton theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Fix adapt interface to this angle style not supported"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 10,
+   "text": "angle_style mesocnt",
+   "style": "angle mesocnt theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle mesocnt theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 414.049745838734 0.179940588919628 70.0769086045879"
+  },
+  {
+   "case": "w18angle_mm3",
+   "line": 5,
+   "text": "angle_style mm3",
+   "style": "angle mm3 k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle mm3 k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.09458322572406 0.0241598278223419 246.136178351701"
+  },
+  {
+   "case": "w18angle_mm3",
+   "line": 5,
+   "text": "angle_style mm3",
+   "style": "angle mm3 theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle mm3 theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.07327744611382 0.0241598278223419 342.325346406497"
+  },
+  {
+   "case": "w217xb_angle_mwlc",
+   "line": 8,
+   "text": "angle_style mwlc",
+   "style": "angle mwlc k1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle mwlc k1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2186.26067130054 -7301.90605734139 1745.57701389952"
+  },
+  {
+   "case": "w217xb_angle_mwlc",
+   "line": 8,
+   "text": "angle_style mwlc",
+   "style": "angle mwlc k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle mwlc k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2182.74104894682 -7301.90605734139 1744.92659370594"
+  },
+  {
+   "case": "w217xb_angle_mwlc",
+   "line": 8,
+   "text": "angle_style mwlc",
+   "style": "angle mwlc mu",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle mwlc mu * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2183.21426538545 -7301.90605734139 1744.85941953757"
+  },
+  {
+   "case": "w217xb_angle_mwlc",
+   "line": 8,
+   "text": "angle_style mwlc",
+   "style": "angle mwlc temp",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle mwlc temp * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2181.39628871488 -7301.90605734139 1744.5736797662"
+  },
+  {
+   "case": "w1ba_angle_quartic",
+   "line": 5,
+   "text": "angle_style quartic",
+   "style": "angle quartic k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle quartic k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.30858323504853 0.0255325747819249 300.711513873458"
+  },
+  {
+   "case": "w1ba_angle_quartic",
+   "line": 5,
+   "text": "angle_style quartic",
+   "style": "angle quartic k3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle quartic k3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.17019881458936 0.0255325747819249 272.09912416538"
+  },
+  {
+   "case": "w1ba_angle_quartic",
+   "line": 5,
+   "text": "angle_style quartic",
+   "style": "angle quartic k4",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle quartic k4 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.18037490425711 0.0255325747819249 275.068220716941"
+  },
+  {
+   "case": "w1ba_angle_quartic",
+   "line": 5,
+   "text": "angle_style quartic",
+   "style": "angle quartic theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle quartic theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.95758362521717 0.0255325747819249 299.769751449551"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 13,
+   "text": "angle_style sdk",
+   "style": "angle sdk k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle sdk k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2685.69066304196 7.49878371868283 153.704474318881"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 13,
+   "text": "angle_style sdk",
+   "style": "angle sdk theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle sdk theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1780.69820133633 7.49878371867521 153.70447431887"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 13,
+   "text": "angle_style spica",
+   "style": "angle spica k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle spica k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2685.69066304196 7.49878371868283 153.704474318881"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 13,
+   "text": "angle_style spica",
+   "style": "angle spica theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 angle spica theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1780.69820133633 7.49878371867521 153.70447431887"
+  },
+  {
+   "case": "w35c2angle_tri",
+   "line": 5,
+   "text": "bond_style class2",
+   "style": "bond class2 k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond class2 k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 8.99023853484904 -0.00251598520392324 195.013463343752"
+  },
+  {
+   "case": "w35c2angle_tri",
+   "line": 5,
+   "text": "bond_style class2",
+   "style": "bond class2 k3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond class2 k3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 8.1323661263949 -0.00224170588803963 173.365742129974"
+  },
+  {
+   "case": "w35c2angle_tri",
+   "line": 5,
+   "text": "bond_style class2",
+   "style": "bond class2 k4",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond class2 k4 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 8.22152644573006 -0.00228126047436918 176.32311101348"
+  },
+  {
+   "case": "w35c2angle_tri",
+   "line": 5,
+   "text": "bond_style class2",
+   "style": "bond class2 r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond class2 r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5.71853053060044 -0.00148096727355581 154.306797859308"
+  },
+  {
+   "case": "w1ba_bond_fene_stretched",
+   "line": 8,
+   "text": "bond_style fene",
+   "style": "bond fene k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond fene k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 30.9034812068056 -0.246397805236145 774.812697107366"
+  },
+  {
+   "case": "w1ba_bond_fene_stretched",
+   "line": 8,
+   "text": "bond_style fene",
+   "style": "bond fene r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond fene r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 23.6232552487492 -0.112493499265444 336.625767673971"
+  },
+  {
+   "case": "w1ba_bond_fene_expand_stretched",
+   "line": 8,
+   "text": "bond_style fene/expand",
+   "style": "bond fene/expand epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond fene/expand epsilon * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 25.1732435245446 -0.170687518417781 740.584425489101"
+  },
+  {
+   "case": "w1ba_bond_fene_expand_stretched",
+   "line": 8,
+   "text": "bond_style fene/expand",
+   "style": "bond fene/expand k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond fene/expand k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 27.3725538687891 -0.195009745074405 792.881053975567"
+  },
+  {
+   "case": "w1ba_bond_fene_expand_stretched",
+   "line": 8,
+   "text": "bond_style fene/expand",
+   "style": "bond fene/expand r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond fene/expand r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 21.1788733594156 -0.0720133137851299 390.47450112969"
+  },
+  {
+   "case": "w1ba_bond_fene_expand_stretched",
+   "line": 8,
+   "text": "bond_style fene/expand",
+   "style": "bond fene/expand shift",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond fene/expand shift * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 25.0900406521874 -0.164219464880787 746.520198279353"
+  },
+  {
+   "case": "w1ba_bond_fene_expand_stretched",
+   "line": 8,
+   "text": "bond_style fene/expand",
+   "style": "bond fene/expand sigma",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond fene/expand sigma * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 30.5532570154169 -0.0744774213657953 1086.51675068938"
+  },
+  {
+   "case": "w217xb_bond_fene_nm",
+   "line": 7,
+   "text": "bond_style fene/nm",
+   "style": "bond fene/nm k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond fene/nm k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 70.2149335216218 0.00323054571431419 3198.95013061858"
+  },
+  {
+   "case": "w217xb_bond_fene_nm",
+   "line": 7,
+   "text": "bond_style fene/nm",
+   "style": "bond fene/nm r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond fene/nm r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 63.3181691671571 0.0260697878081358 3082.96101529254"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 4,
+   "text": "bond_style gaussian",
+   "style": "bond gaussian alpha",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond gaussian alpha * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.531632122946412 0.0414611575805344 290.99970986615",
+   "skip": "native's alpha is a double ** that extract() gives as dim 1 (undefined behaviour)"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 4,
+   "text": "bond_style gaussian",
+   "style": "bond gaussian r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond gaussian r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.531632122946412 0.0414611575805344 290.99970986615",
+   "skip": "native's r0 is a double ** that extract() gives as dim 1 (undefined behaviour)"
+  },
+  {
+   "case": "w17gaussian",
+   "line": 4,
+   "text": "bond_style gaussian",
+   "style": "bond gaussian width",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond gaussian width * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.531632122946412 0.0414611575805344 290.99970986615",
+   "skip": "native's width is a double ** that extract() gives as dim 1 (undefined behaviour)"
+  },
+  {
+   "case": "w1ba_bond_gromos",
+   "line": 4,
+   "text": "bond_style gromos",
+   "style": "bond gromos k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond gromos k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.67357397557361 0.0692485428924186 408.141289856561"
+  },
+  {
+   "case": "w1ba_bond_gromos",
+   "line": 4,
+   "text": "bond_style gromos",
+   "style": "bond gromos r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond gromos r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 6.72383180817607 0.724445446680416 798.183227322396"
+  },
+  {
+   "case": "w35c2imp",
+   "line": 5,
+   "text": "bond_style harmonic",
+   "style": "bond harmonic k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond harmonic k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 3.33814846440024 -0.0017369673490963 102.008619152151"
+  },
+  {
+   "case": "w35c2imp",
+   "line": 5,
+   "text": "bond_style harmonic",
+   "style": "bond harmonic r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond harmonic r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.48398179773358 -0.000989571515762963 66.7765197437795"
+  },
+  {
+   "case": "w217xb_harmonic_restrain",
+   "line": 7,
+   "text": "bond_style harmonic/restrain",
+   "style": "bond harmonic/restrain k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond harmonic/restrain k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 18.4690788842256 3.95911361770119e-07 652.313797138146"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift",
+   "line": 4,
+   "text": "bond_style harmonic/shift",
+   "style": "bond harmonic/shift k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond harmonic/shift k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.84148849200122 0.0019295443309904 293.793965249975"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift",
+   "line": 4,
+   "text": "bond_style harmonic/shift",
+   "style": "bond harmonic/shift r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond harmonic/shift r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.57698493051667 0.0191675098727765 297.377437999954"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift",
+   "line": 4,
+   "text": "bond_style harmonic/shift",
+   "style": "bond harmonic/shift r1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond harmonic/shift r1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -8.39245370788497 0.00172374625343541 293.970113262069"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift_cut",
+   "line": 4,
+   "text": "bond_style harmonic/shift/cut",
+   "style": "bond harmonic/shift/cut k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond harmonic/shift/cut k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.50670014992495 0.0433133300337928 346.785949895216"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift_cut",
+   "line": 4,
+   "text": "bond_style harmonic/shift/cut",
+   "style": "bond harmonic/shift/cut r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond harmonic/shift/cut r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.0123511637740806 0.257026198952814 520.050741781678"
+  },
+  {
+   "case": "w1ba_bond_harmonic_shift_cut",
+   "line": 4,
+   "text": "bond_style harmonic/shift/cut",
+   "style": "bond harmonic/shift/cut r1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond harmonic/shift/cut r1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -12.1921006696338 0.0393453696196194 335.808092637228"
+  },
+  {
+   "case": "w16lepton_vref",
+   "line": 5,
+   "text": "bond_style lepton",
+   "style": "bond lepton r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond lepton r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Fix adapt interface to this bond style not supported"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 8,
+   "text": "bond_style mesocnt",
+   "style": "bond mesocnt k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond mesocnt k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 164.575056974044 0.1979346478116 76.7251698800402"
+  },
+  {
+   "case": "w255cs_mesocnt",
+   "line": 8,
+   "text": "bond_style mesocnt",
+   "style": "bond mesocnt r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond mesocnt r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1341.94909488419 57.9500587087775 208.216336613647"
+  },
+  {
+   "case": "w118yaff_bond_mm3",
+   "line": 6,
+   "text": "bond_style mm3",
+   "style": "bond mm3 k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond mm3 k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.34354724864523 0.0485631445906838 307.827486777871"
+  },
+  {
+   "case": "w118yaff_bond_mm3",
+   "line": 6,
+   "text": "bond_style mm3",
+   "style": "bond mm3 r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond mm3 r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 4.23327561670136 0.39430069958262 540.007812532946"
+  },
+  {
+   "case": "w1ba_bond_morse",
+   "line": 4,
+   "text": "bond_style morse",
+   "style": "bond morse alpha",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond morse alpha * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.07026590513684 0.00113069724102437 294.794859092159"
+  },
+  {
+   "case": "w1ba_bond_morse",
+   "line": 4,
+   "text": "bond_style morse",
+   "style": "bond morse d0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond morse d0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.06944191869918 0.000950121530582299 294.906528263881"
+  },
+  {
+   "case": "w1ba_bond_morse",
+   "line": 4,
+   "text": "bond_style morse",
+   "style": "bond morse r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond morse r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.12201839835076 0.0105324740574016 295.878682445078"
+  },
+  {
+   "case": "w1ba_bond_nonlinear",
+   "line": 4,
+   "text": "bond_style nonlinear",
+   "style": "bond nonlinear epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond nonlinear epsilon * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.09898932854146 0.00475560189149532 291.726105765597"
+  },
+  {
+   "case": "w1ba_bond_nonlinear",
+   "line": 4,
+   "text": "bond_style nonlinear",
+   "style": "bond nonlinear lamda",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond nonlinear lamda * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.08986018737662 0.00348411446136509 292.610830904695"
+  },
+  {
+   "case": "w1ba_bond_nonlinear",
+   "line": 4,
+   "text": "bond_style nonlinear",
+   "style": "bond nonlinear r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond nonlinear r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.32058219103678 0.042427179235317 299.544831320268"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 7,
+   "text": "bond_style quartic/exp",
+   "style": "bond quartic/exp A",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond quartic/exp A * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 23.8289364793904 -0.02348771790009 719.762923964323"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 7,
+   "text": "bond_style quartic/exp",
+   "style": "bond quartic/exp B",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond quartic/exp B * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 23.8333523199506 -0.023477736989323 719.72320193674"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 7,
+   "text": "bond_style quartic/exp",
+   "style": "bond quartic/exp k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond quartic/exp k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 24.4011995079212 -0.0260894840548671 734.060541020987"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 7,
+   "text": "bond_style quartic/exp",
+   "style": "bond quartic/exp k3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond quartic/exp k3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 23.7781034203091 -0.0231405062765813 718.125358292544"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 7,
+   "text": "bond_style quartic/exp",
+   "style": "bond quartic/exp k4",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond quartic/exp k4 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 23.8395226142776 -0.0235948298593249 720.299940863399"
+  },
+  {
+   "case": "w217xb_bond_quartic_exp",
+   "line": 7,
+   "text": "bond_style quartic/exp",
+   "style": "bond quartic/exp r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond quartic/exp r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 21.8273650532997 -0.0154301665211347 712.378597991616"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 5,
+   "text": "bond_style zero",
+   "style": "bond zero r0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 bond zero r0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Invalid range string: *"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 7,
+   "text": "dihedral_style charmm",
+   "style": "dihedral charmm d",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral charmm d * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 179.4 0 74.9395596464245",
+   "skip": "native writes a double through the int d (undefined behaviour)"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 7,
+   "text": "dihedral_style charmm",
+   "style": "dihedral charmm k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral charmm k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 197.34 2.1174893048023e-24 82.4335156110668"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 7,
+   "text": "dihedral_style charmm",
+   "style": "dihedral charmm n",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral charmm n * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 179.4 0 74.9395596464245",
+   "skip": "native writes a double through the int n (undefined behaviour)"
+  },
+  {
+   "case": "w13dihcharmm_fsw",
+   "line": 10,
+   "text": "dihedral_style charmmfsw",
+   "style": "dihedral charmmfsw d",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral charmmfsw d * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1837.87617251615 -4347.72731084746 1616.02255414449",
+   "skip": "native writes a double through the int d (undefined behaviour)"
+  },
+  {
+   "case": "w13dihcharmm_fsw",
+   "line": 10,
+   "text": "dihedral_style charmmfsw",
+   "style": "dihedral charmmfsw k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral charmmfsw k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1838.9886857914 -4347.72731084746 1616.18997603498"
+  },
+  {
+   "case": "w13dihcharmm_fsw",
+   "line": 10,
+   "text": "dihedral_style charmmfsw",
+   "style": "dihedral charmmfsw n",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral charmmfsw n * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1835.02058020164 -4347.72731121517 12472278377.1272",
+   "skip": "native writes a double through the int n (undefined behaviour)"
+  },
+  {
+   "case": "w35c2dih_phi",
+   "line": 7,
+   "text": "dihedral_style class2",
+   "style": "dihedral class2 k1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2 k1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 31.3811816097329 0.00465356339353779 617.605700832096"
+  },
+  {
+   "case": "w35c2dih_phi",
+   "line": 7,
+   "text": "dihedral_style class2",
+   "style": "dihedral class2 k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2 k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 31.5779363972492 0.0046535633935378 566.038444587676"
+  },
+  {
+   "case": "w35c2dih_phi",
+   "line": 7,
+   "text": "dihedral_style class2",
+   "style": "dihedral class2 k3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2 k3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 31.1359295513082 0.00465356339353778 655.246663882943"
+  },
+  {
+   "case": "w35c2dih_phi",
+   "line": 7,
+   "text": "dihedral_style class2",
+   "style": "dihedral class2 phi1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2 phi1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 29.1178308373041 0.00465356339353779 600.954748277524"
+  },
+  {
+   "case": "w35c2dih_phi",
+   "line": 7,
+   "text": "dihedral_style class2",
+   "style": "dihedral class2 phi2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2 phi2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 31.3652284985994 0.00465356339353779 668.476295813805"
+  },
+  {
+   "case": "w35c2dih_phi",
+   "line": 7,
+   "text": "dihedral_style class2",
+   "style": "dihedral class2 phi3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2 phi3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 29.6028115469975 0.00465356339353779 605.53592519721"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 8,
+   "text": "dihedral_style class2xe",
+   "style": "dihedral class2xe k1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2xe k1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 48,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 14.521402292338 -0.000481450074757713 318.663897562213"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 8,
+   "text": "dihedral_style class2xe",
+   "style": "dihedral class2xe k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2xe k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 48,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 14.6709266452561 -0.000481450074757713 328.980797236304"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 8,
+   "text": "dihedral_style class2xe",
+   "style": "dihedral class2xe k3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2xe k3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 48,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 15.4128225834463 -0.000481450074757713 314.013007593731"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 8,
+   "text": "dihedral_style class2xe",
+   "style": "dihedral class2xe phi1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2xe phi1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 48,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 14.3934411442575 -0.000481450074757714 297.323142706173"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 8,
+   "text": "dihedral_style class2xe",
+   "style": "dihedral class2xe phi2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2xe phi2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 48,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 14.0479308121062 -0.000481450074757713 344.961747431314"
+  },
+  {
+   "case": "w147ab_class2xe",
+   "line": 8,
+   "text": "dihedral_style class2xe",
+   "style": "dihedral class2xe phi3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral class2xe phi3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 48,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 15.3231943720364 -0.000481450074757713 348.608375872335"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 7,
+   "text": "dihedral_style cosine/squared/restricted",
+   "style": "dihedral cosine/squared/restricted k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral cosine/squared/restricted k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.47289526038799 0.0235435040912898 290.640702106534"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 7,
+   "text": "dihedral_style cosine/squared/restricted",
+   "style": "dihedral cosine/squared/restricted phi0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral cosine/squared/restricted phi0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.47289526038799 0.0235435040912898 290.640702106534"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 7,
+   "text": "dihedral_style helix",
+   "style": "dihedral helix a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral helix a * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 109.020000005373 3.63850478031229e-13 2.16368548119545"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 7,
+   "text": "dihedral_style helix",
+   "style": "dihedral helix b",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral helix b * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 102.120000005373 1.43837802159627e-13 2.16368432300565"
+  },
+  {
+   "case": "w76dih_fine_helix",
+   "line": 7,
+   "text": "dihedral_style helix",
+   "style": "dihedral helix c",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral helix c * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 88.3200000059104 4.02650274638778e-13 2.38005159471751"
+  },
+  {
+   "case": "w76dih_fine_mh",
+   "line": 7,
+   "text": "dihedral_style multi/harmonic",
+   "style": "dihedral multi/harmonic a1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral multi/harmonic a1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 201.479999999976 -2.44337015986964e-18 1.25023414124521e-05"
+  },
+  {
+   "case": "w76dih_fine_mh",
+   "line": 7,
+   "text": "dihedral_style multi/harmonic",
+   "style": "dihedral multi/harmonic a2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral multi/harmonic a2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 186.299999999975 -4.17649986525813e-19 9.3293058729615e-06"
+  },
+  {
+   "case": "w76dih_fine_mh",
+   "line": 7,
+   "text": "dihedral_style multi/harmonic",
+   "style": "dihedral multi/harmonic a3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral multi/harmonic a3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 192.509999999954 -1.29148858672181e-18 1.57426392608849e-05"
+  },
+  {
+   "case": "w76dih_fine_mh",
+   "line": 7,
+   "text": "dihedral_style multi/harmonic",
+   "style": "dihedral multi/harmonic a4",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral multi/harmonic a4 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 186.299999999976 -1.97040272517465e-19 1.68174058730552e-05"
+  },
+  {
+   "case": "w76dih_fine_mh",
+   "line": 7,
+   "text": "dihedral_style multi/harmonic",
+   "style": "dihedral multi/harmonic a5",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral multi/harmonic a5 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 183.539999999995 -8.25963161503644e-19 1.0503651664271e-05"
+  },
+  {
+   "case": "w76dih_fine_opls",
+   "line": 7,
+   "text": "dihedral_style opls",
+   "style": "dihedral opls k1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral opls k1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 132.480000000049 -2.20880763158105e-18 0.000106167465664205"
+  },
+  {
+   "case": "w76dih_fine_opls",
+   "line": 7,
+   "text": "dihedral_style opls",
+   "style": "dihedral opls k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral opls k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 124.200000000034 -1.29745924504891e-18 0.00010565570765269"
+  },
+  {
+   "case": "w76dih_fine_opls",
+   "line": 7,
+   "text": "dihedral_style opls",
+   "style": "dihedral opls k3",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral opls k3 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 128.340000000049 3.50162153477954e-19 0.000115043656876827"
+  },
+  {
+   "case": "w76dih_fine_opls",
+   "line": 7,
+   "text": "dihedral_style opls",
+   "style": "dihedral opls k4",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral opls k4 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 124.200000000068 1.23835521448476e-18 0.000104753864767137"
+  },
+  {
+   "case": "w76dih_fine_quad",
+   "line": 7,
+   "text": "dihedral_style quadratic",
+   "style": "dihedral quadratic k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral quadratic k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 303.340463523114 -2.66779937120193e-12 14.5735706345154"
+  },
+  {
+   "case": "w76dih_fine_quad",
+   "line": 7,
+   "text": "dihedral_style quadratic",
+   "style": "dihedral quadratic phi0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 dihedral quadratic phi0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 285.852986686836 -2.2361931368221e-12 13.8141355526186"
+  },
+  {
+   "case": "w604ad_amoeba_opbend",
+   "line": 10,
+   "text": "improper_style amoeba",
+   "style": "improper amoeba k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper amoeba k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 34,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -4677.47844187159 -1766.58436428483 1411.86725221452"
+  },
+  {
+   "case": "w35c2imp",
+   "line": 6,
+   "text": "improper_style class2",
+   "style": "improper class2 chi0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper class2 chi0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 3.04302590030216 -0.00157923780573041 92.8084315061223"
+  },
+  {
+   "case": "w35c2imp",
+   "line": 6,
+   "text": "improper_style class2",
+   "style": "improper class2 k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper class2 k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 3.04738522133952 -0.00157923780573041 93.2395029359987"
+  },
+  {
+   "case": "w1imp_cossq",
+   "line": 7,
+   "text": "improper_style cossq",
+   "style": "improper cossq chi0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper cossq chi0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.28932072650225 0.0255325747819249 291.805289162931"
+  },
+  {
+   "case": "w1imp_cossq",
+   "line": 7,
+   "text": "improper_style cossq",
+   "style": "improper cossq k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper cossq k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.28910051997034 0.0255325747819249 292.28437013453"
+  },
+  {
+   "case": "w120cf_improper_cvff_planar",
+   "line": 6,
+   "text": "improper_style cvff",
+   "style": "improper cvff d",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper cvff d * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2437.35809794249 -1477.61310712399 881.607000301526",
+   "skip": "native writes a double through the int d (undefined behaviour)"
+  },
+  {
+   "case": "w120cf_improper_cvff_planar",
+   "line": 6,
+   "text": "improper_style cvff",
+   "style": "improper cvff k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper cvff k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2647.35730047652 -1477.61310712399 881.615599834019"
+  },
+  {
+   "case": "w120cf_improper_cvff_planar",
+   "line": 6,
+   "text": "improper_style cvff",
+   "style": "improper cvff n",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper cvff n * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2437.35809794249 -1477.61310712399 881.607000301526",
+   "skip": "native writes a double through the int n (undefined behaviour)"
+  },
+  {
+   "case": "w1imp_distance",
+   "line": 7,
+   "text": "improper_style distance",
+   "style": "improper distance k2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper distance k2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.39966795628291 0.0210423424118211 270.498917069119"
+  },
+  {
+   "case": "w1imp_distance",
+   "line": 7,
+   "text": "improper_style distance",
+   "style": "improper distance k4",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper distance k4 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.38172888219292 0.0214289368475777 271.045451671524"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 8,
+   "text": "improper_style distharm",
+   "style": "improper distharm d0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper distharm d0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.47182774147351 0.0238134660327746 292.080716257923"
+  },
+  {
+   "case": "w18dihimp_distharm",
+   "line": 8,
+   "text": "improper_style distharm",
+   "style": "improper distharm k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper distharm k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.47461765479409 0.0234818717181846 290.447083848113"
+  },
+  {
+   "case": "w87bond_fourier_default",
+   "line": 16,
+   "text": "improper_style fourier",
+   "style": "improper fourier C0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper fourier C0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 108.02182293912 -1.87966007642106e-16 4.94355156565016"
+  },
+  {
+   "case": "w87bond_fourier_default",
+   "line": 16,
+   "text": "improper_style fourier",
+   "style": "improper fourier C1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper fourier C1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 102.957969082056 -5.63898022926318e-16 5.19285570019982"
+  },
+  {
+   "case": "w87bond_fourier_default",
+   "line": 16,
+   "text": "improper_style fourier",
+   "style": "improper fourier C2",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper fourier C2 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 101.102859090096 -2.81949011463159e-16 5.19436912167564"
+  },
+  {
+   "case": "w87bond_fourier_default",
+   "line": 16,
+   "text": "improper_style fourier",
+   "style": "improper fourier k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper fourier k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 110.739005233032 -3.75932015284212e-16 5.43790672221517"
+  },
+  {
+   "case": "w120cf_improper_planar",
+   "line": 6,
+   "text": "improper_style harmonic",
+   "style": "improper harmonic chi0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper harmonic chi0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 375.49286632217 -1477.61310712396 939.304619107724"
+  },
+  {
+   "case": "w120cf_improper_planar",
+   "line": 6,
+   "text": "improper_style harmonic",
+   "style": "improper harmonic k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper harmonic k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 371.974933858123 -1477.61310712397 939.175512394885"
+  },
+  {
+   "case": "w120cf_improper_inversion_planar",
+   "line": 6,
+   "text": "improper_style inversion/harmonic",
+   "style": "improper inversion/harmonic k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper inversion/harmonic k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 372.317648112465 -1477.61310712443 897.302308720468"
+  },
+  {
+   "case": "w120cf_improper_inversion_planar",
+   "line": 6,
+   "text": "improper_style inversion/harmonic",
+   "style": "improper inversion/harmonic w0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper inversion/harmonic w0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 375.835910196852 -1477.61310712443 897.312383857131"
+  },
+  {
+   "case": "w217xb_improper_ring",
+   "line": 10,
+   "text": "improper_style ring",
+   "style": "improper ring k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper ring k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 8.78785061755361 -0.0259859117111452 394.121427830947"
+  },
+  {
+   "case": "w217xb_improper_ring",
+   "line": 10,
+   "text": "improper_style ring",
+   "style": "improper ring theta0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper ring theta0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 8.77844479062193 -0.0259859117111452 394.627861698777"
+  },
+  {
+   "case": "w18dihimp_sqdistharm",
+   "line": 8,
+   "text": "improper_style sqdistharm",
+   "style": "improper sqdistharm k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper sqdistharm k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.45806666133799 0.0240127016098976 292.282038394721"
+  },
+  {
+   "case": "w87bond_umbrella_flip_w0zero",
+   "line": 16,
+   "text": "improper_style umbrella",
+   "style": "improper umbrella k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper umbrella k * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 32.9877492791283 -1.70344194425659e-16 1.32707518560044"
+  },
+  {
+   "case": "w87bond_umbrella_flip_w0zero",
+   "line": 16,
+   "text": "improper_style umbrella",
+   "style": "improper umbrella w0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt 0 improper umbrella w0 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 29.9888629810257 -1.58596318948027e-16 1.20643198690949"
+  }
+ ]
+}

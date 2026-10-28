@@ -13,14 +13,18 @@
  * Ported as native: the energy and the derivatives are the same expressions, with the angle in degrees in the
  * prefactors. docs.lammps.org/improper_amoeba.html: "improper_coeff N k" (energy coefficient).
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type Pair, type StyleContext, NoSettingsError } from '../../engine/force/types';
-import { atomIndex, delta } from '../../engine/force/bonded_util';
+import { Bonded, StyleError, typeBounds, type BondedAdaptAccess, type BondedCompute, type Pair, type StyleContext, NoSettingsError } from '../../engine/force/types';
+import { atomIndex, delta, vectorAccess } from '../../engine/force/bonded_util';
 import { parseNum } from '../../engine/force/util';
 
 const RAD2DEG = 180.0 / Math.PI;
 
 export class ImproperAmoeba extends Bonded {
   readonly name: string = 'amoeba';
+  /** fix adapt: as native extract() does (src/AMOEBA/improper_amoeba.cpp at b332f28), k. */
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ k: this.k }, name);
+  }
   readonly kind = 'improper' as const;
   private k!: Float64Array;
   private setK!: Uint8Array;

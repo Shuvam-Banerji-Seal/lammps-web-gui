@@ -815,9 +815,24 @@ export const bondedVirial = (
 };
 
 /** Base for bond, angle, dihedral and improper styles. */
+/** A per-type vector of a bonded style (index 1..ntypes) as native extract() hands it to fix adapt. */
+export interface BondedAdaptAccess { get(i: number): number; set(i: number, v: number): void }
+
 export abstract class Bonded {
   abstract readonly name: string;
   abstract readonly kind: 'bond' | 'angle' | 'dihedral' | 'improper';
+  /**
+   * Native reinitflag: fix adapt may re-initialize the style (src/bond.cpp Bond::reinit at b332f28 and the angle,
+   * dihedral and improper ones: "Fix adapt interface to this bond style not supported").
+   */
+  reinitFlag = true;
+  /**
+   * fix adapt's <kind> attribute: native extract()'s per-type vector of the name (src/fix_adapt.cpp at b332f28), in
+   * native's stored units, or null when the style keeps it as fix/adaptBonded.ts's table says. After each change fix
+   * adapt runs init() as native's reinit runs init_style, so a style re-derives there what native's init_style does
+   * and keeps what native derives in coeff() only.
+   */
+  adaptParam(_name: string): BondedAdaptAccess | null { return null; }
   /**
    * True when this style's per-atom centroid virial is native's even though it does not sum to the per-atom virial:
    * native tallies some of its terms without the centroid virial (angle_amoeba.cpp uses Angle::ev_tally4 and ev_tally2,

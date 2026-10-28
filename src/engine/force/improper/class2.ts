@@ -1,5 +1,5 @@
-import { Bonded, NoSettingsError, StyleError, typeBounds, bondedVirial, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
-import { atomIndex, termDelta } from '../bonded_util';
+import { Bonded, NoSettingsError, StyleError, typeBounds, bondedVirial, type BondedAdaptAccess, type BondedCompute, type StyleContext, bondedCoeffArgs } from '../types';
+import { atomIndex, termDelta, vectorAccess } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { libm } from '../../libm';
 
@@ -47,6 +47,11 @@ export class ImproperClass2 extends Bonded {
 
   settings(args: string[], _ctx?: StyleContext): void {
     if (args.length) throw new NoSettingsError(args[0]);
+  }
+
+  /** fix adapt: as native LAMMPS does (src/CLASS2/improper_class2.cpp extract at b332f28), k and chi0 in radians. */
+  override adaptParam(name: string): BondedAdaptAccess | null {
+    return vectorAccess({ k: this.K, chi0: this.chi0 }, name);
   }
 
   allocate(ntypes: number): void {

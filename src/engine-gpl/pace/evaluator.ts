@@ -17,7 +17,7 @@ import { exp as libmExp } from '../libm/exp';
 import { innerCutoff } from './cbasis';
 
 /** Fexp (ace_abstract_basis.cpp): the FinnisSinclair embedding F(rho) = sign (omega am + lambda g a). */
-const fexp = (x: number, m: number): [number, number] => {
+export const fexp = (x: number, m: number): [number, number] => {
   const w = 1.e6;
   const eps = 1e-10;
   const lambda = libmPow(1.0 / w, m - 1.0);
@@ -37,7 +37,7 @@ const fexp = (x: number, m: number): [number, number] => {
 };
 
 /** FexpShiftedScaled (ace_abstract_basis.cpp), the FinnisSinclairShiftedScaled type. */
-const fexpShifted = (rho: number, mexp: number): [number, number] => {
+export const fexpShifted = (rho: number, mexp: number): [number, number] => {
   const eps = 1e-10;
   if (Math.abs(mexp - 1.0) < eps) return [rho, 1];
   const a = Math.abs(rho);

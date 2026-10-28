@@ -8,9 +8,11 @@
  * style on every Nevery-th step, after the force evaluation (post_force), and the copy is what f_ID reads.
  *
  * Supported here: the EAM family (pair_style eam, eam/alloy, eam/fs), whose native PairEAM::extract_peratom returns
- * the per-atom vectors "rho" (electron density) and "fp" (embedding derivative F'(rho)), both with ncol = 0 (vectors).
- * Every other pair style or field is refused by name with a StyleError. Trigger flags (the "<field>_flag" scalar that
- * a pair style extracts with extract(); flag 1) are refused: no engine pair style exposes one.
+ * the per-atom vectors "rho" (electron density) and "fp" (embedding derivative F'(rho)), both with ncol = 0 (vectors),
+ * and the pair styles that serve fields and triggers through FixPairSource (pair_style pace/extrapolation: "gamma" and
+ * "corerep" with the triggers "gamma_flag" and "corerep_flag"). A trigger (flag 1) is set to 1 before the force
+ * evaluation of a sampled step (pre_force) and back to 0 after the copy (post_force). Every other pair style is refused
+ * by name with a StyleError.
  *
  * The EAM pair keeps rho and fp for the owned atoms in its rhoBuf and fpBuf after each force evaluation (eam.ts
  * compute); this fix reads them through their engine field names.
@@ -30,6 +32,19 @@ interface EAMPeratomArrays {
   fpBuf?: Float64Array;
 }
 
+/**
+ * A pair style that serves per-atom fields to fix pair: extract_peratom (undefined for a field it does not know, values
+ * null until computed; columns 0 for a vector) and the scalar triggers extract("<field>_flag") returns.
+ */
+export interface FixPairSource {
+  extractPeratom(field: string): { values: Float64Array | null; columns: number } | undefined;
+  hasTrigger(name: string): boolean;
+  setTrigger(name: string, value: number): boolean;
+}
+
+const asSource = (pair: unknown): FixPairSource | null =>
+  pair && typeof (pair as FixPairSource).extractPeratom === 'function' ? pair as FixPairSource : null;
+
 function parseInteger(w: string | undefined): number {
   const x = Number(w);
   if (w === undefined || w.trim() === '' || !Number.isInteger(x)) {
@@ -46,6 +61,8 @@ export class FixPair extends Fix {
   private vector: Float64Array<ArrayBuffer> | null = null;
   private array: Float64Array<ArrayBuffer> | null = null;
   private readonly ncols: number;
+  /** the trigger names ("<field>_flag") of the fields with flag 1, for a FixPairSource pair style */
+  private readonly triggers: string[] = [];
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -70,18 +87,33 @@ export class FixPair extends Fix {
       if (flag !== 0 && flag !== 1) throw new StyleError(`Illegal fix pair ${rest[k]} command flag: ${rest[k + 1]}`);
       flags.push(flag);
     }
+    const src = asSource(this.sys.ff.pair);
+    let ncols = 0;
     for (let k = 0; k < rest.length; k += 2) {
       const field = rest[k];
+      if (src) {
+        // native: extract_peratom gives the column count (a field it does not know counts one column and fails at
+        // the first copy), then the trigger must be a scalar the style extracts
+        const pe = src.extractPeratom(field);
+        ncols += pe && pe.columns ? pe.columns : 1;
+        if (flags[k / 2] === 1) {
+          if (!src.hasTrigger(`${field}_flag`)) throw new StyleError(`Fix pair pair style cannot extract ${field}_flag`);
+          this.triggers.push(`${field}_flag`);
+        }
+        this.fieldnames.push(field);
+        continue;
+      }
       if (flags[k / 2] === 1) throw new StyleError(`Fix pair pair style cannot extract ${field}_flag`);
       if (!EAM_FIELDS.has(field)) {
         throw new StyleError(`Fix pair cannot extract property ${field} from pair style ${this.pairname}`);
       }
       this.fieldnames.push(field);
+      ncols++;
     }
     if (this.fieldnames.length === 0) throw new StyleError('Illegal fix pair command: missing argument(s)');
 
     // native: a single column is a per-atom vector (size_peratom_cols 0), several columns a per-atom array
-    this.ncols = this.fieldnames.length;
+    this.ncols = ncols;
     this.peratomFlag = true;
     this.sizePeratomCols = this.ncols === 1 ? 0 : this.ncols;
     this.ensureArrays();
@@ -96,9 +128,9 @@ export class FixPair extends Fix {
       }
       throw new StyleError(`Pair style ${this.pairname} for fix pair not found`);
     }
-    if (!EAM_STYLES.has(pair.name)) {
+    if (!EAM_STYLES.has(pair.name) && !asSource(pair)) {
       throw new StyleError(
-        `fix pair: pair style ${pair.name} exposes no per-atom fields to fix pair (supported: pair eam, eam/alloy, eam/fs with rho, fp)`,
+        `fix pair: pair style ${pair.name} exposes no per-atom fields to fix pair (supported: pair eam, eam/alloy, eam/fs with rho, fp; pace with corerep; pace/extrapolation with gamma, corerep)`,
       );
     }
   }
@@ -132,6 +164,22 @@ export class FixPair extends Fix {
     return values;
   }
 
+  /** Native FixPair::pre_force: on a step that will be copied, the triggers are set before the force evaluation. */
+  preForce(): void {
+    const step = this.sys.state.step;
+    if (step % this.nevery !== 0 || step === this.lasttime) return;
+    const src = asSource(this.sys.ff.pair);
+    if (src) for (const t of this.triggers) src.setTrigger(t, 1);
+  }
+
+  setupPreForce(): void {
+    this.preForce();
+  }
+
+  minPreForce(): void {
+    this.preForce();
+  }
+
   /** Native FixPair::post_force: on steps that are multiples of Nevery, copy the fields once per step. */
   postForce(): void {
     const step = this.sys.state.step;
@@ -141,6 +189,28 @@ export class FixPair extends Fix {
     this.checkPairStyle();
     this.ensureArrays();
     const nlocal = this.sys.state.n;
+    const src = asSource(this.sys.ff.pair);
+    if (src) {
+      let icol = 0;
+      for (const field of this.fieldnames) {
+        const pe = src.extractPeratom(field);
+        const values = pe?.values ?? null;
+        if (!values && nlocal > 0) throw new StyleError(`Fix pair cannot extract property ${field} from pair style`);
+        const columns = pe?.columns ?? 0;
+        if (columns === 0) {
+          for (let i = 0; i < nlocal; i++) {
+            if (this.ncols === 1) this.vector![i] = values![i];
+            else this.array![i * this.ncols + icol] = values![i];
+          }
+          icol++;
+        } else {
+          for (let i = 0; i < nlocal; i++) for (let m = 0; m < columns; m++) this.array![i * this.ncols + icol + m] = values![i * columns + m];
+          icol += columns;
+        }
+      }
+      for (const t of this.triggers) src.setTrigger(t, 0);
+      return;
+    }
     for (let icol = 0; icol < this.ncols; icol++) {
       const src = this.fieldValues(this.fieldnames[icol], nlocal);
       if (this.ncols === 1) {

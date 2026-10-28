@@ -329,12 +329,12 @@ describe('suffix, package and aliased names: errors', () => {
   });
 
   it('names the base style when the base is not supported', async () => {
-    // pace/extrapolation (the ACE extrapolation grades) is not supported yet, so its KOKKOS alias stays an example of an
-    // unsupported base
-    const r = await runScript(`${MELT_HEAD}pair_style pace/extrapolation/kk\n`);
+    // docs.lammps.org/Commands_pair.html lists "lj/cut/dipole/sf (go)", but LAMMPS has no pair style of that name (the
+    // pair_dipole page documents lj/sf/dipole/sf), so its alias lj/cut/dipole/sf/gpu stays an example of an unsupported base
+    const r = await runScript(`${MELT_HEAD}pair_style lj/cut/dipole/sf/gpu\n`);
     expect(r.error).not.toBeNull();
-    expect(r.error!.message).toMatch(/pace\/extrapolation/);
-    expect(r.error!.message).not.toMatch(/pace\/extrapolation\/kk/);
+    expect(r.error!.message).toMatch(/lj\/cut\/dipole\/sf/);
+    expect(r.error!.message).not.toMatch(/lj\/cut\/dipole\/sf\/gpu/);
   });
 });
 

@@ -1,0 +1,32 @@
+# oracle: fix adapt atom diameter/disc in 2d (atom_style sphere 1, enforce2d): with mass yes the mass follows d^2 (disc area); ramp(1.0,1.5) every step, nve/sphere
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+dimension       2
+atom_style      sphere 1
+lattice         sq 0.7
+region          b block 0 6 0 6 -0.5 0.5
+create_box      2 b
+create_atoms    1 box
+group           odd id 1:36:2
+set             group all diameter 1.0 density 1.0
+set             group odd type 2
+set             group odd diameter 1.0 density 1.4
+variable        dx atom 0.1*sin(1.3*x+0.7*y)
+variable        dy atom 0.1*cos(0.9*y-1.1*x)
+displace_atoms  all move v_dx v_dy 0.0 units box
+variable        vx atom 0.5*sin(1.7*x+2.3*y)
+variable        vy atom 0.5*cos(2.1*x-1.1*y)
+velocity        all set v_vx v_vy 0.0 units box
+timestep        0.002
+pair_style      lj/cut 2.5
+pair_coeff      * * 0.5 1.0
+variable        dd equal ramp(1.0,1.5)
+fix             1 all adapt 1 atom diameter/disc v_dd
+fix             2 all nve/sphere disc
+fix             3 all enforce2d
+compute         rr all property/atom radius mass
+compute         sr all reduce sum c_rr[1] c_rr[2]
+thermo_style    custom step temp pe ke etotal press c_sr[1] c_sr[2]
+thermo_modify   format float %.15g
+thermo          10
+run             60

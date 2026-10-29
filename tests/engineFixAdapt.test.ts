@@ -391,19 +391,21 @@ variable        e equal 2.0
     expect(r.thermo[1].pe).toBe(r.thermo[0].pe);
   });
 
-  it('atom diameter needs atom_style sphere', async () => {
-    const r = await runScript(`${SYS1}\nvariable d equal 2.0\nfix 1 all adapt 0 atom diameter v_d\nrun 0\n`);
-    expect(r.message).toMatch(/atom diameter needs atom_style sphere/);
-  });
-
-  it('atom charge needs atom_style charge or full', async () => {
-    const r = await runScript(`${SYS1}\nvariable q equal 2.0\nfix 1 all adapt 0 atom charge v_q\nrun 0\n`);
-    expect(r.message).toMatch(/atom charge needs atom_style charge or full/);
-  });
-
-  it('diameter/disc is refused', async () => {
-    const r = await runScript(`${SYS1}\nvariable d equal 2.0\nfix 1 all adapt 0 atom diameter/disc v_d\n`);
-    expect(r.message).toMatch(/diameter\/disc is not supported/);
+  // native's texts (src/fix_adapt.cpp at b332f28, each checked against the native binary with these inputs)
+  const SPH = 'units lj\natom_style sphere 1\nlattice sc 1.0\nregion box block 0 2 0 2 0 2\ncreate_box 1 box\ncreate_atoms 1 box\npair_style lj/cut 2.5\npair_coeff * * 1 1\n';
+  const CHG = 'units lj\natom_style charge\nlattice sc 1.0\nregion box block 0 2 0 2 0 2\ncreate_box 1 box\ncreate_atoms 1 box\nmass 1 1.0\nset group all charge 1.0\npair_style lj/cut/coul/cut 2.5\npair_coeff * * 1 1\n';
+  it.each([
+    [`${SYS1}\nvariable d equal 2.0\nfix 1 all adapt 0 atom diameter v_d\nrun 0\n`, 'Fix adapt requires atom attribute diameter'],
+    [`${SYS1}\nvariable q equal 2.0\nfix 1 all adapt 0 atom charge v_q\nrun 0\n`, 'Fix adapt requires atom attribute charge'],
+    [`${SPH}variable d equal 2.0\nfix 1 all adapt 0 atom diameter/disc v_d\nrun 0\n`, 'Fix adapt requires 2d simulation'],
+    [`${CHG}variable q equal 0.0\nfix 1 all adapt 0 atom charge v_q scale yes\nrun 0\n`, 'Fix adapt charge scale factor of 0.0 is not supported'],
+    [`${SPH}variable d equal 0.0\nfix 1 all adapt 0 atom diameter v_d scale yes\nrun 0\n`, 'Fix adapt diameter scale factor of 0.0 is not supported'],
+    [`${SPH}variable d equal 0.0\nfix 1 all adapt 0 atom diameter v_d\nrun 0\n`, 'Fix adapt particle mass has become 0.0'],
+    [`${SPH}variable d equal -1.0\nfix 1 all adapt 0 atom diameter v_d mass no\nrun 0\n`, 'Fix adapt particle diameter has become negative'],
+    [`${SPH}variable d equal 2.0\nfix 1 all adapt 0 atom radius v_d\nrun 0\n`, 'Unsupported per-atom property radius for fix adapt'],
+  ])('atom attribute errors as native: %#', async (input, msg) => {
+    const r = await runScript(input);
+    expect(r.message).toContain(msg);
   });
 
   it('scale and reset take yes or no', async () => {

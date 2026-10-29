@@ -75,6 +75,16 @@ export class PairHarmonicCut extends Pair {
     return p.get('cut', i, j);
   }
 
+  /** As native LAMMPS does (src/EXTRA-PAIR/pair_harmonic_cut.cpp single at b332f28). */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number): { eng: number; fforce: number } {
+    const t = itype * (this.ntypes + 1) + jtype;
+    if (rsq >= this.cutsq[t]) return { eng: 0, fforce: 0 };
+    const r = Math.sqrt(rsq);
+    const delta = this.hrc[t] - r;
+    const philj = factorLJ * delta * delta * this.hk[t];
+    return { eng: philj, fforce: 2 * philj / (r * delta) };
+  }
+
   compute(pc: PairCompute): void {
     const list = pc.half!;
     const { x, f, type } = pc;

@@ -112,6 +112,14 @@ export class PairSoft extends Pair {
     pc.acc.evdwl += evdwl;
   }
 
+  /** As native LAMMPS does (src/pair_soft.cpp single at b332f28): no cutoff test; arg = pi r / cut. */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number): { eng: number; fforce: number } {
+    const r = Math.sqrt(rsq);
+    const a = this.p.get('a', itype, jtype), cut = this.p.get('cut', itype, jtype);
+    const arg = Math.PI * r / cut;
+    return { eng: factorLJ * a * (1 + libm.cos(arg)), fforce: factorLJ * a * libm.sin(arg) * Math.PI / cut / r };
+  }
+
   dataCoeffs(): string[] {
     const out: string[] = [];
     for (let i = 1; i <= this.ntypes; i++) out.push(`${i} ${fmtCoeff(this.p.get('a', i, i))}`);
@@ -201,6 +209,15 @@ export class PairYukawa extends Pair {
     // pair_modify shift: subtract the pair energy at the cutoff
     this.offset[k1] = this.offset[k2] = this.shift && cut > 0 ? a * libm.exp(-this.kappa * cut) / cut : 0;
     return cut;
+  }
+
+  /** As native LAMMPS does (src/pair_yukawa.cpp single at b332f28): no cutoff test. */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number): { eng: number; fforce: number } {
+    const t = itype * (this.ntypes + 1) + jtype;
+    const r = Math.sqrt(rsq), rinv = 1 / r;
+    const screening = libm.exp(-this.kappa * r);
+    const forceyukawa = this.pa[t] * screening * (this.kappa + rinv);
+    return { eng: factorLJ * (this.pa[t] * screening * rinv - this.offset[t]), fforce: factorLJ * forceyukawa / rsq };
   }
 
   compute(pc: PairCompute): void {
@@ -346,6 +363,13 @@ export class PairGauss extends Pair {
     this.pb[k1] = this.pb[k2] = b;
     this.po[k1] = this.po[k2] = this.shift ? a * libm.exp(-b * cut * cut) : 0;
     return cut;
+  }
+
+  /** As native LAMMPS does (src/EXTRA-PAIR/pair_gauss.cpp single at b332f28): no cutoff test. */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number): { eng: number; fforce: number } {
+    const t = itype * (this.ntypes + 1) + jtype;
+    const ek = libm.exp(-this.pb[t] * rsq);
+    return { eng: factorLJ * -(this.pa[t] * ek - this.po[t]), fforce: factorLJ * (-2 * this.pa[t] * this.pb[t] * ek) };
   }
 
   compute(pc: PairCompute): void {

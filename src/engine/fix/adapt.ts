@@ -53,8 +53,9 @@ import type { SimState } from '../types';
  * Measured with native LAMMPS (black box), 4x4x4 sc lattice, lj/cut:
  * - pre_force timing: the value is applied at setup (also N = 0; measured for the first run)
  *   and then at every step whose number is a multiple of N, before the forces of that step.
- * - reset yes restores the values the run started with (after run 2 with epsilon set to
- *   2, unfix and run 0 give the epsilon = 1 energy); reset no keeps the last value.
+ * - reset yes restores the pair and bonded values the run started with (after run 2 with epsilon
+ *   set to 2, unfix and run 0 give the epsilon = 1 energy); reset no keeps the last value. The
+ *   radii and charges go back to those of the fix's definition (restore_settings, below).
  * - scale yes multiplies the value the parameter had when the run started (a pair_coeff
  *   change before the run is the new original).
  * - a mixed (not pair_coeff-set) type pair targeted by adapt has no effect: the energy is
@@ -63,8 +64,6 @@ import type { SimState } from '../types';
  * - atom charge: adapt charge 2.0 on atoms of charge 1 with pair coul/cut gives pe 4x (q^2).
  * - atom diameter 1 -> 2 with atom_style sphere: radius 1, mass 0.5236 -> 4.1888 (d^3);
  *   mass no leaves the mass unchanged.
- * - atom_style sphere without the dynamic flag errors in native LAMMPS; this engine does
- *   not track that flag and accepts it.
  *
  * Sub-style selection (fix_adapt.rst): "If there are multiple sub-styles using the same pair
  * style, then *pstyle* should be specified as "style:N", where *N* is which instance of the
@@ -93,7 +92,7 @@ import type { SimState } from '../types';
  * forces, virial calculated by whatever k-space solver is defined by the kspace_style command." It sets KSpace.scale.
  *
  * Not supported (StyleError): pair parameters native extract() names but this engine keeps no table for
- * (fix/adaptPairs.ts); diameter/disc.
+ * (fix/adaptPairs.ts).
  *
  */
 
@@ -141,10 +140,6 @@ type AtomKind = 'charge' | 'diameter';
 interface AtomTarget {
   kind: AtomKind;
   vname: string;
-  /** Original per-atom values by atom ID (charge, or radius and mass for diameter). */
-  origQ: Map<number, number>;
-  origR: Map<number, number>;
-  origM: Map<number, number>;
 }
 
 /** fix_adapt.cpp: utils::logical. */
@@ -166,6 +161,17 @@ export class FixAdapt extends Fix {
   private scale = false;
   private reset = false;
   private massFlag = true;
+  /** atom diameter/disc: the mass follows the disc area, d^2 (native discflag, as the last diameter attribute set it). */
+  private disc = false;
+  /**
+   * reset yes: the radii and charges of the group's atoms when the fix was defined, by atom ID (native post_constructor's
+   * STORE/ATOM fixes: 0 for atoms outside the group), which restore_settings writes back after each run.
+   */
+  private readonly defR = new Map<number, number>();
+  private readonly defQ = new Map<number, number>();
+  /** native previous_diam_scale and previous_chg_scale: the last scale yes value of the run (1 at each init). */
+  private prevDiam = 1;
+  private prevChg = 1;
   /** True while init() applies values (before the force field is initialized). */
   private inInit = false;
 
@@ -206,10 +212,12 @@ export class FixAdapt extends Fix {
       if (w === 'atom') {
         const kind = args[k + 1], vw = args[k + 2];
         if (vw === undefined) throw new StyleError(`fix ${id} (adapt): atom needs atomparam v_name (${USAGE})`);
-        if (kind === 'diameter/disc') throw new StyleError(`fix ${id} (adapt): atom diameter/disc is not supported by this engine (2d disc particles)`);
-        if (kind !== 'charge' && kind !== 'diameter') throw new StyleError(`fix ${id} (adapt): atom parameter '${kind}' is not supported (charge, diameter)`);
+        // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::FixAdapt at b332f28): diameter and diameter/disc set
+        // discflag, any other name is "Unsupported per-atom property X for fix adapt"
+        if (kind === 'diameter' || kind === 'diameter/disc') this.disc = kind === 'diameter/disc';
+        else if (kind !== 'charge') throw new StyleError(`Unsupported per-atom property ${kind} for fix adapt`);
         this.checkVariable(id, vw);
-        this.atoms.push({ kind, vname: vw.slice(2), origQ: new Map(), origR: new Map(), origM: new Map() });
+        this.atoms.push({ kind: kind === 'charge' ? 'charge' : 'diameter', vname: vw.slice(2) });
         k += 3; nattr++;
         continue;
       }
@@ -243,6 +251,16 @@ export class FixAdapt extends Fix {
       throw new StyleError(`Unknown fix adapt keyword ${w}`);
     }
     if (nattr === 0) throw new StyleError(`fix ${id} (adapt): no attribute given (${USAGE})`);
+    // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::post_constructor at b332f28): with reset yes the radii and
+    // charges of the atoms when the fix is defined are stored (0 outside the group) for the restore after each run
+    if (this.reset) {
+      const s = sys.state;
+      for (let i = 0; i < s.n; i++) {
+        const inGroup = (s.mask[i] & this.groupBit) !== 0;
+        if (this.atoms.some((a) => a.kind === 'diameter') && s.radius) this.defR.set(s.id[i], inGroup ? s.radius[i] : 0);
+        if (this.atoms.some((a) => a.kind === 'charge') && hasChargeStyle(s.atomStyle)) this.defQ.set(s.id[i], inGroup ? s.q[i] : 0);
+      }
+    }
     // fix_adapt.rst: "The option defaults are scale = no, reset = no, mass = yes."
   }
 
@@ -358,12 +376,17 @@ export class FixAdapt extends Fix {
     if (this.atoms.some((a) => a.kind !== 'charge') && isSphereStyle(s.atomStyle) && !this.sys.radvary) {
       throw new StyleError('Fix adapt changes atom radii but atom_style sphere is not dynamic');
     }
+    // As native LAMMPS does (src/fix_adapt.cpp FixAdapt::init at b332f28): the per-atom attributes the fix changes,
+    // a 2d box for diameter/disc, and previous_diam_scale and previous_chg_scale back to 1
     for (const a of this.atoms) {
-      if (a.kind === 'charge' && !hasChargeStyle(s.atomStyle)) {
-        throw new StyleError(`fix ${this.id} (adapt): atom charge needs atom_style charge or full (atom_style is ${s.atomStyle})`);
-      }
-      if (a.kind === 'diameter' && (!isSphereStyle(s.atomStyle) || !s.radius || !s.rmass)) {
-        throw new StyleError(`fix ${this.id} (adapt): atom diameter needs atom_style sphere`);
+      if (a.kind === 'diameter') {
+        if (!s.radius) throw new StyleError('Fix adapt requires atom attribute diameter');
+        if (!s.rmass) throw new StyleError('Fix adapt requires atom attribute mass');
+        if (this.disc && s.dimension !== 2) throw new StyleError('Fix adapt requires 2d simulation');
+        this.prevDiam = 1;
+      } else {
+        if (!hasChargeStyle(s.atomStyle)) throw new StyleError('Fix adapt requires atom attribute charge');
+        this.prevChg = 1;
       }
     }
   }
@@ -408,33 +431,20 @@ export class FixAdapt extends Fix {
     this.resolve();
     // the pair attributes are resolved and set once the force field is initialized (afterForceInit)
     this.pairs = [];
-    const s = this.sys.state;
-    for (const a of this.atoms) {
-      a.origQ.clear(); a.origR.clear(); a.origM.clear();
-      for (let i = 0; i < s.n; i++) {
-        if (!(s.mask[i] & this.groupBit)) continue;
-        const id = s.id[i];
-        if (a.kind === 'charge') a.origQ.set(id, s.q[i]);
-        else {
-          a.origR.set(id, s.radius![i]);
-          a.origM.set(id, s.rmass![i]);
-        }
-      }
-    }
     this.inInit = true;
     try {
-      this.apply(false, false, false);
+      this.apply(false, false, false, false);
     } finally {
       this.inInit = false;
     }
-    // Measured with native LAMMPS (black box): the kspace style chooses g_ewald and its grid or kmax from the
-    // charges present at its init, and fix adapt changes the charges only at setup, after that init. The
-    // charges are therefore written by afterForceInit, once the force field is initialized.
-    this.chargesPending = this.atoms.some((a) => a.kind === 'charge');
+    // As native LAMMPS does (src/fix_adapt.cpp at b332f28): setup_pre_force changes the per-atom attributes after the
+    // force field's init and the setup's neighbor build, so the kspace style chooses g_ewald and its grid from the
+    // charges before the change, and the lists are built with the radii before it. afterForceInit writes them.
+    this.atomsPending = this.atoms.length > 0;
   }
 
-  /** Charges that init() has not written yet (see afterForceInit). */
-  private chargesPending = false;
+  /** Per-atom attributes that init() has not written yet (see afterForceInit). */
+  private atomsPending = false;
 
   /** Setup: the charges of this run's setup are written after the force field's init (kspace init). */
   afterForceInit(): void {
@@ -453,32 +463,34 @@ export class FixAdapt extends Fix {
     // amoeba in its init_style)
     for (const b of this.bonded) for (let i = b.lo; i <= b.hi; i++) b.orig[i] = b.access!.get(i);
     this.applyBonded();
-    if (!this.chargesPending) return;
-    this.chargesPending = false;
+    if (!this.atomsPending) return;
+    this.atomsPending = false;
+    this.applyAtoms(true);
+  }
+
+  /** native change_settings for the atom attributes, in the order given; charges reach the force field's copies. */
+  private applyAtoms(charges: boolean): void {
     const s = this.sys.state;
     for (const a of this.atoms) {
-      if (a.kind === 'charge') this.setCharges(a, this.sys.equalVariable(a.vname), s);
+      if (a.kind === 'charge') {
+        if (charges) this.setCharges(this.sys.equalVariable(a.vname), s);
+      } else this.setDiameter(this.sys.equalVariable(a.vname), s);
     }
-    this.sys.nb.refreshCharges(s);
+    if (this.atoms.some((a) => a.kind === 'diameter')) this.sys.bump();
+    if (charges && this.atoms.some((a) => a.kind === 'charge')) this.sys.nb.refreshCharges(s);
   }
 
   /**
    * Writes the variable values into the pair tables, the diameters and (when charges is set) the charges
    * (scale yes multiplies the originals).
    */
-  private apply(reinitPair: boolean, charges = true, bonded = true): void {
+  private apply(reinitPair: boolean, charges = true, bonded = true, atoms = true): void {
     const sys = this.sys;
-    const s = sys.state;
     if (this.pairs.length) this.applyPairs(reinitPair);
     if (bonded) this.applyBonded();
     // fix_adapt.cpp change_settings: "*kspace_scale = value" (scale yes does not apply to it)
     for (const vname of this.kspaces) this.sys.ff.kspace!.scale = sys.equalVariable(vname);
-    for (const a of this.atoms) {
-      if (a.kind === 'charge') {
-        if (charges) this.setCharges(a, sys.equalVariable(a.vname), s);
-      } else this.setDiameter(a, sys.equalVariable(a.vname), s);
-    }
-    if (!this.inInit && charges && this.atoms.some((a) => a.kind === 'charge')) sys.nb.refreshCharges(s);
+    if (atoms) this.applyAtoms(charges && !this.inInit);
   }
 
   /**
@@ -547,26 +559,50 @@ export class FixAdapt extends Fix {
     if (this.bonded.length) this.sys.bump();
   }
 
-  private setCharges(a: AtomTarget, v: number, s: SimState): void {
+  /**
+   * As native LAMMPS does (src/fix_adapt.cpp change_settings at b332f28): the charge of the group's atoms set to the
+   * value, or with scale yes multiplied by value / previous_chg_scale ("Fix adapt charge scale factor of 0.0 is not
+   * supported").
+   */
+  private setCharges(v: number, s: SimState): void {
+    let scale = 1;
+    if (this.scale) {
+      if (v === 0 || this.prevChg === 0) throw new StyleError('Fix adapt charge scale factor of 0.0 is not supported');
+      scale = v / this.prevChg;
+    }
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      s.q[i] = this.scale ? (a.origQ.get(s.id[i]) ?? s.q[i]) * v : v;
+      if (this.scale) s.q[i] *= scale;
+      else s.q[i] = v;
     }
+    if (this.scale) this.prevChg = v;
   }
 
-  private setDiameter(a: AtomTarget, v: number, s: SimState): void {
+  /**
+   * As native LAMMPS does (src/fix_adapt.cpp change_settings at b332f28): the radius of the group's atoms set to half
+   * the value, or with scale yes multiplied by value / previous_diam_scale; with mass yes the mass follows at constant
+   * density, scale^3 (scale^2 for diameter/disc), the scale of an atom being 0.5 value / radius without scale yes.
+   */
+  private setDiameter(v: number, s: SimState): void {
     const radius = s.radius!, rmass = s.rmass!;
+    let scale = 1;
+    if (this.scale) {
+      if (v === 0 || this.prevDiam === 0) throw new StyleError('Fix adapt diameter scale factor of 0.0 is not supported');
+      scale = v / this.prevDiam;
+    }
+    if (this.massFlag && (scale === 0 || v === 0)) throw new StyleError('Fix adapt particle mass has become 0.0');
+    if (!this.massFlag && (scale < 0 || v < 0)) throw new StyleError('Fix adapt particle diameter has become negative');
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      const d0 = 2 * radius[i];
-      const d = this.scale ? 2 * (a.origR.get(s.id[i]) ?? radius[i]) * v : v;
       if (this.massFlag) {
-        if (!(d0 > 0)) throw new StyleError(`fix ${this.id} (adapt): diameter change with mass yes needs particles with a nonzero diameter (atom ${s.id[i]}); use mass no`);
-        // fix_adapt.rst: "The mass is set from the particle volume for 3d systems (density is assumed to stay constant)."
-        rmass[i] *= (d / d0) ** 3;
+        if (!this.scale) scale = 0.5 * v / radius[i];
+        if (this.disc) rmass[i] *= scale * scale;
+        else rmass[i] *= scale * scale * scale;
       }
-      radius[i] = 0.5 * d;
+      if (this.scale) radius[i] *= scale;
+      else radius[i] = 0.5 * v;
     }
+    if (this.scale) this.prevDiam = v;
   }
 
   preForce(): void {
@@ -604,20 +640,26 @@ export class FixAdapt extends Fix {
     this.reinitBonded();
     // fix_adapt.cpp restore_settings: "*kspace_scale = 1.0"
     if (this.kspaces.length && this.sys.ff.kspace) this.sys.ff.kspace.scale = 1.0;
-    for (const a of this.atoms) {
+    // As native LAMMPS does (src/fix_adapt.cpp restore_settings at b332f28): the radii and charges stored when the fix
+    // was defined. With mass yes the mass is multiplied by the cube (square for diameter/disc) of previous_diam_scale
+    // under scale yes, and of stored radius / radius otherwise: under scale yes it grows again rather than returning.
+    if (this.atoms.some((a) => a.kind === 'diameter') && s.radius && s.rmass) {
+      let scale = this.prevDiam;
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.groupBit)) continue;
-        const id = s.id[i];
-        if (a.kind === 'charge') {
-          const q = a.origQ.get(id);
-          if (q !== undefined) s.q[i] = q;
-        } else {
-          const r = a.origR.get(id), m = a.origM.get(id);
-          if (r !== undefined) s.radius![i] = r;
-          if (m !== undefined) s.rmass![i] = m;
+        const r0 = this.defR.get(s.id[i]) ?? 0;
+        if (this.massFlag) {
+          if (!this.scale) scale = r0 / s.radius[i];
+          if (this.disc) s.rmass[i] *= scale * scale;
+          else s.rmass[i] *= scale * scale * scale;
         }
+        s.radius[i] = r0;
       }
+      this.sys.bump();
     }
-    if (this.atoms.some((a) => a.kind === 'charge')) this.sys.nb.refreshCharges(s);
+    if (this.atoms.some((a) => a.kind === 'charge')) {
+      for (let i = 0; i < s.n; i++) if (s.mask[i] & this.groupBit) s.q[i] = this.defQ.get(s.id[i]) ?? 0;
+      this.sys.nb.refreshCharges(s);
+    }
   }
 }

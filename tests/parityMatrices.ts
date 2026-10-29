@@ -473,6 +473,19 @@ const PAIR_MODIFY = ['shift yes', 'tail yes', 'mix arithmetic'];
 const pairModifyRows = (cases: Case[]): ParityRow[] =>
   pick(pairStyleKey, (w) => w)(cases).flatMap((r) => PAIR_MODIFY.map((m) => ({ ...r, pre: `pair_modify ${m}\n`, style: `${r.style} ${m}` })));
 
+/**
+ * compute pair/local on each pair style, the smallest case that has it as its pair_style: "compute zzpl all pair/local
+ * eng force" and "compute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local" before its run 0, the two sums printed
+ * (docs.lammps.org/compute_pair_local.html: "*eng* = pair energy, *force* = pair force", computed by the pair style's
+ * single() function), which reach every style's single() or native's refusal of it.
+ */
+const pairLocalRows = (cases: Case[]): ParityRow[] =>
+  pick(pairStyleKey, (w) => w)(cases).map((r) => ({
+    ...r, pre: 'compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\n', style: `${r.style} pair/local`,
+  }));
+const THERMO_PL = 'thermo_style custom step pe c_zzpls[1] c_zzpls[2]\n';
+const VALUES_PL = 'print "VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)"\n';
+
 /** The first number after the type words of a coefficient line multiplied by `factor`. */
 const coeffScaled = (factor: number): Change => (w, _lines) => {
   const from = w[0] === 'pair_coeff' ? 3 : 2;
@@ -587,6 +600,10 @@ export const MATRICES: Record<string, MatrixDef> = {
   'pair-modify': {
     about: 'pair_modify shift yes, tail yes and mix arithmetic before the first run 0 of each pair style, pe, press and fnorm compared',
     rows: throughRun(pairModifyRows, THERMO_F, VALUES_F),
+  },
+  'pair-local': {
+    about: 'compute pair/local eng force reduced to sums before the first run 0 of each pair style (the style\'s single()), pe and the two sums compared',
+    rows: throughRun(pairLocalRows, THERMO_PL, VALUES_PL),
   },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };

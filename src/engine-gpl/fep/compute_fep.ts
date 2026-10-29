@@ -100,8 +100,8 @@ export class ComputeFEP extends Compute {
       if (!v) throw new StyleError(`Variable name ${p.vname} for compute fep does not exist`);
       if (!EQUAL_STYLES.has(v.style)) throw new StyleError(`Variable ${p.vname} for compute fep is of invalid style`);
       if (p.kind === 'pair') {
-        p.table = resolvePairTable(this.sys, `compute ${this.id} (fep)`, p.pstyle, p.pparam);
         p.pairs = typePairs(p.iw, p.jw, s.ntypes, false);
+        p.table = resolvePairTable(this.sys, 'compute fep', p.pstyle, p.pparam, p.pairs);
         p.orig = new Float64Array(p.pairs.length);
       } else {
         if (!hasChargeStyle(s.atomStyle)) throw new StyleError(`compute fep requires atom attribute charge`);
@@ -139,26 +139,30 @@ export class ComputeFEP extends Compute {
   protected computeVector(): void {
     const sys = this.sys, s = sys.state;
     const kT = s.units.boltz * this.temp;
-    const pe0 = this.energyOf(sys.forces());
+    // the force field's lists and init as forces() leaves them (between runs it evaluates once here)
+    sys.forces();
     // backups: the forces, the force-field accumulator, the charges and the pair tables the perturbation touches
     const fSave = s.f.slice();
     const qSave = s.q.slice();
     const accSave = snapshotAccum(sys.ff.acc);
+    // As native LAMMPS does (src/FEP/compute_fep.cpp compute_vector at b332f28): the unperturbed energy is evaluated
+    // anew at the current positions (a fix such as drude/transform may have moved them since the last force call)
+    let pe0 = 0;
     const owners = new Set<Pair>();
     for (const p of this.perts) {
       if (p.kind !== 'pair' || !p.table) continue;
-      p.pairs.forEach(([i, j], k) => { p.orig[k] = p.table!.table.get(p.table!.name, i, j); });
+      // backup_params: the [i][j] values of the range (j >= i)
+      p.pairs.forEach(([i, j], k) => { p.orig[k] = p.table!.access.get(i, j); });
       owners.add(p.table.owner);
     }
     try {
+      pe0 = this.perturbedEnergy();
       for (const p of this.perts) {
         const delta = sys.equalVariable(p.vname);
         if (p.kind === 'pair' && p.table) {
-          const arr = p.table.table.p(p.table.name);
-          p.pairs.forEach(([i, j], k) => {
-            arr[p.table!.table.idx(i, j)] = p.orig[k] + delta;
-            arr[p.table!.table.idx(j, i)] = p.orig[k] + delta;
-          });
+          // perturb_params: array[i][j] = array_orig[i][j] + delta (the pair style's reinit mirrors where it does)
+          const access = p.table.access;
+          p.pairs.forEach(([i, j], k) => access.set(i, j, p.orig[k] + delta));
         } else if (p.kind === 'charge') {
           const [ilo, ihi] = typeBounds(p.iw, s.ntypes);
           for (let i = 0; i < s.n; i++) {
@@ -179,11 +183,8 @@ export class ComputeFEP extends Compute {
       s.q.set(qSave);
       for (const p of this.perts) {
         if (p.kind !== 'pair' || !p.table) continue;
-        const arr = p.table.table.p(p.table.name);
-        p.pairs.forEach(([i, j], k) => {
-          arr[p.table!.table.idx(i, j)] = p.orig[k];
-          arr[p.table!.table.idx(j, i)] = p.orig[k];
-        });
+        const access = p.table.access;
+        p.pairs.forEach(([i, j], k) => access.set(i, j, p.orig[k]));
       }
       for (const owner of owners) reinitPair(sys, owner);
       if (this.chgFlag) refreshChargeSums(sys);

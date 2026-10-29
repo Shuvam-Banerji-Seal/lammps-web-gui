@@ -1,0 +1,1460 @@
+{
+ "matrix": "compute-fep-pair",
+ "about": "compute fep 300.0 pair <style> <name> * * v_d (d = 0.01) for the first per-type-pair name of each pair style's native extract(), pe, press and the energy difference c_[1] compared after run 0",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w1buck_born",
+   "line": 20,
+   "text": "pair_style born 2.5",
+   "style": "pair born a",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair born a * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.533451822003686 1.4411646867925 1.23146822267893"
+  },
+  {
+   "case": "w219xp_born_gauss",
+   "line": 14,
+   "text": "pair_style born/gauss 2.5",
+   "style": "pair born/gauss biga0",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair born/gauss biga0 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -2.42547502067696 -1.02924203383285 5.80118237027227"
+  },
+  {
+   "case": "w1buck_buck",
+   "line": 20,
+   "text": "pair_style buck 2.5",
+   "style": "pair buck a",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair buck a * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.909613176346105 -0.387059747504209 0.00274840790096675"
+  },
+  {
+   "case": "w1buck_buck_coul_cut",
+   "line": 22,
+   "text": "pair_style buck/coul/cut 2.5 3.0",
+   "style": "pair buck/coul/cut a",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair buck/coul/cut a * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.689823214365004 -0.154766053321243 0.00293745155137515"
+  },
+  {
+   "case": "w3coullong_buck",
+   "line": 21,
+   "text": "pair_style buck/coul/long 10.0",
+   "style": "pair buck/coul/long a",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair buck/coul/long a * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -3963.03766290827 -6828.24084686918 3.17828662446118e-05"
+  },
+  {
+   "case": "w9pair_buck_cs",
+   "line": 8,
+   "text": "pair_style buck/coul/long/cs 10.0 8.0",
+   "style": "pair buck/coul/long/cs a",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair buck/coul/long/cs a * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.178646119472887 -4.88994200159685 1.2196323950775e-09"
+  },
+  {
+   "case": "w209ms_buck",
+   "line": 24,
+   "text": "pair_style buck/coul/msm 7.0 8.0",
+   "style": "pair buck/coul/msm a",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair buck/coul/msm a * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 36,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -898.974951644156 -37128.0221826205 0.000585320656512067"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 6,
+   "text": "pair_style buck/long/coul/long long long 8.0",
+   "style": "pair buck/long/coul/long B",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair buck/long/coul/long B * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 12.2382550230811 1237.47868620597 0"
+  },
+  {
+   "case": "w219xp_buck_mdf",
+   "line": 14,
+   "text": "pair_style buck/mdf 2.0 2.5",
+   "style": "pair buck/mdf a",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair buck/mdf a * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 0.779979682057325 1.81217903711904 0.928964207646402"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/dsf 0.9 12.0",
+   "style": "pair buck6d/coul/gauss/dsf cut_ljsq",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair buck6d/coul/gauss/dsf cut_ljsq * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 14819.9567831491 0"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/long 0.9 1.0 12.0",
+   "style": "pair buck6d/coul/gauss/long cut_ljsq",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair buck6d/coul/gauss/long cut_ljsq * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 14819.9567831491 0"
+  },
+  {
+   "case": "colloid_ii_d1_d2",
+   "line": 12,
+   "text": "pair_style colloid 12.0",
+   "style": "pair colloid a12",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair colloid a12 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.0495858357390126 0.000847737871466597 -9.29734420103134e-05"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 14,
+   "text": "pair_style coul/cut 20.0",
+   "style": "pair coul/cut cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/cut cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.26360540091214 -24.9940602298087 0"
+  },
+  {
+   "case": "w226cs_diel_cutcoul",
+   "line": 6,
+   "text": "pair_style coul/cut/dielectric 8.0",
+   "style": "pair coul/cut/dielectric cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/cut/dielectric cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -62.0865789868097 -177.382429777811 0"
+  },
+  {
+   "case": "w219xp_coul_cut_global",
+   "line": 12,
+   "text": "pair_style coul/cut/global 2.5",
+   "style": "pair coul/cut/global scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/cut/global scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.979164439917822 0.504627143772141 -5.0133219325005"
+  },
+  {
+   "case": "w69fep_coulcutsoft",
+   "line": 17,
+   "text": "pair_style coul/cut/soft 2 2.6 4.0",
+   "style": "pair coul/cut/soft lambda",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/cut/soft lambda * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 2.44919501393033 1.60206011794794 2.00430343175105"
+  },
+  {
+   "case": "w69fep_gapsys_coul",
+   "line": 17,
+   "text": "pair_style coul/cut/soft/gapsys 0.1 1.5 4.0",
+   "style": "pair coul/cut/soft/gapsys lambda",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/cut/soft/gapsys lambda * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 1.64292804495646 1.48096736429921 0.31579444125282"
+  },
+  {
+   "case": "w1coul_debye",
+   "line": 22,
+   "text": "pair_style coul/debye 1.5 2.5",
+   "style": "pair coul/debye cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/debye cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.0392764268291797 0.264106621878778 0"
+  },
+  {
+   "case": "w244es_ortho",
+   "line": 15,
+   "text": "pair_style coul/esp 8.0",
+   "style": "pair coul/esp scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/esp scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -15930.6613152935 -32922.3391529722 -26.2255615471963"
+  },
+  {
+   "case": "w117cf_pppm_mesh8_real",
+   "line": 10,
+   "text": "pair_style coul/long 12.0",
+   "style": "pair coul/long scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/long scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.1801228299563 -1.86289587992503 0.250852908011737"
+  },
+  {
+   "case": "w9pair_coul_cs_short",
+   "line": 7,
+   "text": "pair_style coul/long/cs 10.0",
+   "style": "pair coul/long/cs scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/long/cs scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.38565469569585e-05 -0.000182244334426768 8.39314024070302"
+  },
+  {
+   "case": "w226cs_diel_coullong_t12",
+   "line": 7,
+   "text": "pair_style coul/long/dielectric 8.0",
+   "style": "pair coul/long/dielectric scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/long/dielectric scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1199.97046625944 -760.72170267743 -1.17053508275426"
+  },
+  {
+   "case": "w69fep_coullongsoft",
+   "line": 17,
+   "text": "pair_style coul/long/soft 2 2.6 4.0",
+   "style": "pair coul/long/soft scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/long/soft scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.768988749440707 0.574675684362941 -0.220107038481803"
+  },
+  {
+   "case": "w209ms_shrink_hybrid",
+   "line": 18,
+   "text": "pair_style hybrid/overlay lj/cut 7.0 coul/msm 7.0",
+   "style": "pair coul/msm scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/msm scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -261.114593649566 -117039.069242053 -2.41700925905522"
+  },
+  {
+   "case": "w219xp_coul_slater_cut",
+   "line": 16,
+   "text": "pair_style coul/slater/cut 0.7 2.5",
+   "style": "pair coul/slater/cut cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/slater/cut cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 0.325007777780061 0.93040587186578 0"
+  },
+  {
+   "case": "w130pr_coulslater_ewald",
+   "line": 14,
+   "text": "pair_style coul/slater/long 0.929 3.0",
+   "style": "pair coul/slater/long scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/slater/long scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.0474547171695645 0.191785942069386 -0.0361191486128747"
+  },
+  {
+   "case": "w43st_dsf_alone",
+   "line": 18,
+   "text": "pair_style coul/streitz 12.0 dsf 0.3",
+   "style": "pair coul/streitz scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/streitz scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 15.6786825265023 -27959.4553472936 0"
+  },
+  {
+   "case": "w72drude_eglycol0",
+   "line": 16,
+   "text": "pair_style hybrid/overlay lj/cut/coul/long 8.0 8.0 thole 2.600 8.0 coul/tt 4 8.0",
+   "style": "pair coul/tt scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair coul/tt scale 2 4 v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 82,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 86.7211205925217 -557.595273747546 -0.000213442639505956"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 18,
+   "text": "pair_style dpd/coul/slater/long 1.0 1.0 165412 0.25 2.0",
+   "style": "pair dpd/coul/slater/long a0",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair dpd/coul/slater/long a0 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 8.08347667864379 8.33671332649846 0.126590560390923"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 9,
+   "text": "pair_style eam",
+   "style": "pair eam scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair eam scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -906.240000583541 -0.0278603750180239 -9.0624000057154"
+  },
+  {
+   "case": "w47pkg_dtreset_metal",
+   "line": 11,
+   "text": "pair_style eam/alloy",
+   "style": "pair eam/alloy scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair eam/alloy scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -902.289254798578 64238.580670187 -9.02289254784444"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 16,
+   "text": "pair_style hybrid/overlay eam/apip pace/precise/apip",
+   "style": "pair eam/apip scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair eam/apip scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "ERROR: Unrecognized compute style 'fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "APIP",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w204sg_fs_vcsgc",
+   "line": 11,
+   "text": "pair_style eam/fs",
+   "style": "pair eam/fs scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair eam/fs scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -4269.31674147192 103217.103656518 -42.6931674088501"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 15,
+   "text": "pair_style hybrid/overlay eam/fs/apip pace/apip",
+   "style": "pair eam/fs/apip scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair eam/fs/apip scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "ERROR: Unrecognized compute style 'fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "APIP",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w222me_eamhe_pdhhe",
+   "line": 16,
+   "text": "pair_style eam/he",
+   "style": "pair eam/he scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair eam/he scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -421.510406774773 2769.27792776478 -4.21510406774763"
+  },
+  {
+   "case": "w1misc_gauss",
+   "line": 20,
+   "text": "pair_style gauss 2.5",
+   "style": "pair gauss a",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair gauss a * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -2.8072874747441 -2.35575403280862 -2.69351827021626"
+  },
+  {
+   "case": "w17harmcut",
+   "line": 11,
+   "text": "pair_style harmonic/cut",
+   "style": "pair harmonic/cut k",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair harmonic/cut k * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 0.97323839104744 4.15173778076023 0.210594208559186"
+  },
+  {
+   "case": "w219xp_lennard_mdf",
+   "line": 14,
+   "text": "pair_style lennard/mdf 2.0 2.5",
+   "style": "pair lennard/mdf a",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lennard/mdf a * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -6.01235962617026 -5.8888206399489 3.84754391355182"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 9,
+   "text": "pair_style lj/charmm/coul/charmm 7.0 8.0",
+   "style": "pair lj/charmm/coul/charmm lj14_1",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/charmm/coul/charmm lj14_1 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 179.4 0 0"
+  },
+  {
+   "case": "w3charmm_implicit",
+   "line": 21,
+   "text": "pair_style lj/charmm/coul/charmm/implicit 8.0 10.0",
+   "style": "pair lj/charmm/coul/charmm/implicit lj14_1",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/charmm/coul/charmm/implicit lj14_1 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1869.41603249625 -2405.06728354795 0"
+  },
+  {
+   "case": "w50il_peptide_run0",
+   "line": 6,
+   "text": "pair_style lj/charmm/coul/long 8.0 10.0 10.0",
+   "style": "pair lj/charmm/coul/long lj14_1",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/charmm/coul/long lj14_1 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 88.4623527778298 -59.5033969151855 0"
+  },
+  {
+   "case": "w69fep_charmmsoft",
+   "line": 17,
+   "text": "pair_style lj/charmm/coul/long/soft 2 0.5 2.6 8.0 10.0",
+   "style": "pair lj/charmm/coul/long/soft lj14_1",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/charmm/coul/long/soft lj14_1 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.04075828990871 19.3096171198355 0"
+  },
+  {
+   "case": "w209ms_charmm_water",
+   "line": 8,
+   "text": "pair_style lj/charmm/coul/msm 3.5 4.5",
+   "style": "pair lj/charmm/coul/msm lj14_1",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/charmm/coul/msm lj14_1 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 54.5501183507124 17257.0373019069 0"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/charmmfsh 8.0 10.0 9.0",
+   "style": "pair lj/charmmfsw/coul/charmmfsh lj14_1",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/charmmfsw/coul/charmmfsh lj14_1 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 5264.26732587601 -18731.7502634035 0"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/long 8.0 10.0 9.0",
+   "style": "pair lj/charmmfsw/coul/long lj14_1",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/charmmfsw/coul/long lj14_1 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 5260.83834971158 -18731.852923879 0"
+  },
+  {
+   "case": "w1ljx_class2",
+   "line": 20,
+   "text": "pair_style lj/class2 2.5",
+   "style": "pair lj/class2 epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/class2 epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -5.03438381191534 -5.62723568173696 -5.69749769549441"
+  },
+  {
+   "case": "w51cs_c2cut_nylon",
+   "line": 6,
+   "text": "pair_style lj/class2/coul/cut 8.5",
+   "style": "pair lj/class2/coul/cut cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/class2/coul/cut cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "CRASH rc=139",
+   "skip": "native LAMMPS crashes (CRASH rc=139)"
+  },
+  {
+   "case": "w69fep_class2cutsoft",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/cut/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair lj/class2/coul/cut/soft epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/class2/coul/cut/soft epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -2.31177045420391 -0.122333962380157 -7.73258175656008"
+  },
+  {
+   "case": "w51cs_c2long_nylon",
+   "line": 7,
+   "text": "pair_style lj/class2/coul/long 8.5",
+   "style": "pair lj/class2/coul/long epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/class2/coul/long epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 114.636027418548 357.255874079363 20.8078263387058"
+  },
+  {
+   "case": "w226cs_class2",
+   "line": 6,
+   "text": "pair_style lj/class2/coul/long/cs 8.0",
+   "style": "pair lj/class2/coul/long/cs epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/class2/coul/long/cs epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 5.08714887505744 -6221.40851639705 -0.253685867984814"
+  },
+  {
+   "case": "w17soft_class2",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/long/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair lj/class2/coul/long/soft epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/class2/coul/long/soft epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -3.86126911730312 -0.613855666652343 -7.73258175656008"
+  },
+  {
+   "case": "w69fep_class2soft",
+   "line": 15,
+   "text": "pair_style lj/class2/soft 2 0.5 2.5",
+   "style": "pair lj/class2/soft epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/class2/soft epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -3.409573073204 -1.08082053638591 -8.51156138455963"
+  },
+  {
+   "case": "w88pair_shift_lj_cubic",
+   "line": 9,
+   "text": "pair_style lj/cubic",
+   "style": "pair lj/cubic epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cubic epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -5.550967438551 -4.89523374076538 -27.7548371924822"
+  },
+  {
+   "case": "w88pair_nofdotr",
+   "line": 9,
+   "text": "pair_style lj/cut 2.5",
+   "style": "pair lj/cut epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325466 -6.23531727008588 -33.8668402654416"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 5,
+   "text": "pair_style lj/cut/coul/cut 10.0",
+   "style": "pair lj/cut/coul/cut cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/cut cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.423675923062939 -4489.08964919723 0"
+  },
+  {
+   "case": "w243de_efield_cutcoul",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/cut/dielectric 0.2 8.0",
+   "style": "pair lj/cut/coul/cut/dielectric cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/cut/dielectric cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -62.0865789868097 -177.382429777811 0"
+  },
+  {
+   "case": "w17soft_coul",
+   "line": 17,
+   "text": "pair_style lj/cut/coul/cut/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair lj/cut/coul/cut/soft epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/cut/soft epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 0.509051564876056 20.7262480726874 -1.11459853733294"
+  },
+  {
+   "case": "w1lcoul_debye",
+   "line": 22,
+   "text": "pair_style lj/cut/coul/debye 1.5 2.5 3.0",
+   "style": "pair lj/cut/coul/debye cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/debye cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -6.26137343676823 -4.7201572722269 0"
+  },
+  {
+   "case": "w226cs_diel_debye",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/debye/dielectric 0.2 8.0",
+   "style": "pair lj/cut/coul/debye/dielectric cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/debye/dielectric cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 37060.0852806834 1273120.40719048 0"
+  },
+  {
+   "case": "w244es_ljfluid",
+   "line": 15,
+   "text": "pair_style lj/cut/coul/esp 6.0 8.0",
+   "style": "pair lj/cut/coul/esp epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/esp epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -6253.53316419517 -21349.8008708285 -8.9512397980302"
+  },
+  {
+   "case": "w75pppmslab_madelung_lowacc",
+   "line": 7,
+   "text": "pair_style lj/cut/coul/long 12",
+   "style": "pair lj/cut/coul/long epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/long epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 12,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 725.0719520152 814391.825720641 -0.107163385658339"
+  },
+  {
+   "case": "w226cs_ljcoul_t12",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/long/cs 8.0",
+   "style": "pair lj/cut/coul/long/cs epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/long/cs epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 5.58677765185416 -6020.50462283512 -0.153769101555554"
+  },
+  {
+   "case": "w243de_efield_ljlong_pppm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/long/dielectric 0.2 8.0",
+   "style": "pair lj/cut/coul/long/dielectric epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/long/dielectric epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -170.474129172385 -527.36396867753 0"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 4,
+   "text": "pair_style lj/cut/coul/long/soft 1 0.5 0.5 8.0 8.0",
+   "style": "pair lj/cut/coul/long/soft epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/long/soft epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -115.197404867989 -23.064704335665 -2.87575663509514"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm 4.5",
+   "style": "pair lj/cut/coul/msm epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/msm epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 47.4344616764454 17656.7308193997 -0.433945097093783"
+  },
+  {
+   "case": "w243de_efield_ljcoulmsm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm/dielectric 8.0",
+   "style": "pair lj/cut/coul/msm/dielectric epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/coul/msm/dielectric epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 36672.5785680405 -1448.18653074409 18558.8673118963"
+  },
+  {
+   "case": "w41sm_dipole_mol",
+   "line": 12,
+   "text": "pair_style lj/cut/dipole/cut 4.0",
+   "style": "pair lj/cut/dipole/cut cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/dipole/cut cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.745520327925512 0.00200524077580464 0"
+  },
+  {
+   "case": "w44dl_static_auto",
+   "line": 19,
+   "text": "pair_style lj/cut/dipole/long 5.0",
+   "style": "pair lj/cut/dipole/long epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/dipole/long epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 50.1648942132272 1998.44426909662 -0.000383228948965808"
+  },
+  {
+   "case": "w17soft_tail",
+   "line": 13,
+   "text": "pair_style lj/cut/soft 2 0.5 2.5",
+   "style": "pair lj/cut/soft epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/soft epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -2.57489793686513 -1.7090559250314 -6.17516388339504"
+  },
+  {
+   "case": "w69fep_gapsys_lj",
+   "line": 15,
+   "text": "pair_style lj/cut/soft/gapsys 0.5 2.5",
+   "style": "pair lj/cut/soft/gapsys epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/soft/gapsys epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 0.328938971280283 41.580095177675 0.571001560247595"
+  },
+  {
+   "case": "w220xp_ljcutsphere",
+   "line": 17,
+   "text": "pair_style lj/cut/sphere 2.5",
+   "style": "pair lj/cut/sphere epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/sphere epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -2.42032535131894 -1.36530485470653 -5.96821499755777"
+  },
+  {
+   "case": "w72drude_toluene_lang",
+   "line": 15,
+   "text": "pair_style lj/cut/thole/long 2.600 8.0 8.0",
+   "style": "pair lj/cut/thole/long epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/thole/long epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 188,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 144.926810433342 174.561712367311 6.72853824269987"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 8,
+   "text": "pair_style lj/cut/tip4p/cut 1 2 1 1 0.1546 4.5",
+   "style": "pair lj/cut/tip4p/cut epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/tip4p/cut epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "ERROR: Water H epsilon must be 0.0 for pair style lj/cut/tip4p/cut"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 7,
+   "text": "pair_style lj/cut/tip4p/long 1 2 1 1 0.1546 8.5",
+   "style": "pair lj/cut/tip4p/long epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/tip4p/long epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "ERROR: Water H epsilon must be 0.0 for pair style lj/cut/tip4p/long"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 124,
+   "text": "pair_style lj/cut/tip4p/long/soft 1 2 1 1 0.15 1 0.5 0.5 4.0 4.0",
+   "style": "pair lj/cut/tip4p/long/soft epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/cut/tip4p/long/soft epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 135,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "ERROR: Water H epsilon must be 0.0 for pair style lj/cut/tip4p/long/soft"
+  },
+  {
+   "case": "w88pair_expand_shift01",
+   "line": 9,
+   "text": "pair_style lj/expand 2.5",
+   "style": "pair lj/expand epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/expand epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -7.12537449246514 2.58962381232441 -35.6268724619717"
+  },
+  {
+   "case": "w220xp_ljexpandcoullong_special",
+   "line": 15,
+   "text": "pair_style lj/expand/coul/long 2.5 3.0",
+   "style": "pair lj/expand/coul/long epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/expand/coul/long epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -3.85972115218805 0.722054666948796 -8.64238544196724"
+  },
+  {
+   "case": "w220xp_ljexpandsphere",
+   "line": 17,
+   "text": "pair_style lj/expand/sphere 2.5",
+   "style": "pair lj/expand/sphere epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/expand/sphere epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -0.0382092156532581 0.161615175187588 -0.0943191291834538"
+  },
+  {
+   "case": "w1ljx_gromacs",
+   "line": 20,
+   "text": "pair_style lj/gromacs 2.0 2.5",
+   "style": "pair lj/gromacs epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/gromacs epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -5.43293998614782 -4.44801161520756 -6.53657191468653"
+  },
+  {
+   "case": "w220xp_gromacs",
+   "line": 15,
+   "text": "pair_style lj/gromacs/coul/gromacs 1.6 2.2 1.2 2.6",
+   "style": "pair lj/gromacs/coul/gromacs epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/gromacs/coul/gromacs epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -2.95961523329026 -1.17153793902664 -6.4036623135363"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 5,
+   "text": "pair_style lj/long/coul/long long off 2.5",
+   "style": "pair lj/long/coul/long B",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/long/coul/long B * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -5.3684858711066 -1.5517368922398 0"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 6,
+   "text": "pair_style lj/long/coul/long/dielectric long long 8.0",
+   "style": "pair lj/long/coul/long/dielectric B",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/long/coul/long/dielectric B * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 35917.7636187778 1272543.48617287 0"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 16,
+   "text": "pair_style lj/long/dipole/long cut long 2.5",
+   "style": "pair lj/long/dipole/long B",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/long/dipole/long B * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.87229757843494 -0.982827052387715 0"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 8,
+   "text": "pair_style lj/long/tip4p/long cut long 1 2 1 1 0.1546 8.5",
+   "style": "pair lj/long/tip4p/long B",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/long/tip4p/long B * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 24.2295886900583 11949.4577808999 0"
+  },
+  {
+   "case": "w219xp_lj_mdf",
+   "line": 14,
+   "text": "pair_style lj/mdf 2.0 2.5",
+   "style": "pair lj/mdf epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/mdf epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -6.30329923988728 -4.27173222144175 -35.2546585895298"
+  },
+  {
+   "case": "w220xp_lj_pirani",
+   "line": 15,
+   "text": "pair_style lj/pirani 2.5",
+   "style": "pair lj/pirani alpha",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/pirani alpha * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -2.99688753962081 -0.940796819793378 0.104010671975743"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 6,
+   "text": "pair_style lj/sdk 9.0",
+   "style": "pair lj/sdk epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/sdk epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 2442.19472853545 7.49878371868283 0"
+  },
+  {
+   "case": "w51cs_sdklong_dimer",
+   "line": 32,
+   "text": "pair_style lj/sdk/coul/long 9.0 8.0",
+   "style": "pair lj/sdk/coul/long epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/sdk/coul/long epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 41,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 69.2284750699064 17.5255526362684 0.163675276104399"
+  },
+  {
+   "case": "w9pair_ljsf",
+   "line": 22,
+   "text": "pair_style lj/sf 2.5",
+   "style": "pair lj/sf epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/sf epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -4.91122124512031 -0.835400001558733 -5.91859222391872"
+  },
+  {
+   "case": "w19dipole_special",
+   "line": 38,
+   "text": "pair_style lj/sf/dipole/sf 4.0",
+   "style": "pair lj/sf/dipole/sf epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/sf/dipole/sf epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 40,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 0.358981761560424 -0.00754967832035737 -0.000269265298251789"
+  },
+  {
+   "case": "w88pair_tail_lj_smooth",
+   "line": 9,
+   "text": "pair_style lj/smooth 1.5 2.5",
+   "style": "pair lj/smooth epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/smooth epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -7.90805732120052 -4.83398134349691 -39.5402866066388"
+  },
+  {
+   "case": "w88pair_shift_lj_smooth_linear",
+   "line": 9,
+   "text": "pair_style lj/smooth/linear 2.5",
+   "style": "pair lj/smooth/linear epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/smooth/linear epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -5.69327827571094 -5.67450648353555 -28.4663913782697"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 6,
+   "text": "pair_style lj/spica 9.0",
+   "style": "pair lj/spica epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/spica epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 2442.19472853545 7.49878371868283 0"
+  },
+  {
+   "case": "w51cs_spicalong_run",
+   "line": 22,
+   "text": "pair_style lj/spica/coul/long 8.0 9.0",
+   "style": "pair lj/spica/coul/long epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/spica/coul/long epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 35,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -2051.16237107883 -6163.47907134707 -15.1136188831946"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 20,
+   "text": "pair_style lj/spica/coul/msm 7.0",
+   "style": "pair lj/spica/coul/msm epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/spica/coul/msm epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -12212.1211635742 565562.327602241 288.664621867283"
+  },
+  {
+   "case": "w118yaff_mil53al_switch3_t0",
+   "line": 9,
+   "text": "pair_style lj/switch3/coulgauss/long 12.0000 4.0000",
+   "style": "pair lj/switch3/coulgauss/long epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj/switch3/coulgauss/long epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1566.64711882349 -17142.3804116178 -2.69464497184072"
+  },
+  {
+   "case": "w1ljv_lj96",
+   "line": 20,
+   "text": "pair_style lj96/cut 2.5",
+   "style": "pair lj96/cut epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair lj96/cut epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -3.81219862648206 -1.72918247782823 -4.61819552415818"
+  },
+  {
+   "case": "w33meamtrip_dim",
+   "line": 12,
+   "text": "pair_style meam",
+   "style": "pair meam scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair meam scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.35564625506306 -206.597040237402 -0.0135564625506306"
+  },
+  {
+   "case": "w128ms_msmeam",
+   "line": 16,
+   "text": "pair_style meam/ms",
+   "style": "pair meam/ms scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair meam/ms scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 46.3158410017502 491542.522293157 0.463158410017506"
+  },
+  {
+   "case": "w1ljx_mie",
+   "line": 20,
+   "text": "pair_style mie/cut 2.5",
+   "style": "pair mie/cut epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair mie/cut epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -5.98135950856686 -4.58045874536138 -7.17126387780309"
+  },
+  {
+   "case": "w115p_mm3_mof5",
+   "line": 8,
+   "text": "pair_style mm3/switch3/coulgauss/long 12.0000 4.0000",
+   "style": "pair mm3/switch3/coulgauss/long epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair mm3/switch3/coulgauss/long epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 26082.5511148173 154120.774279691 7371.85083290379"
+  },
+  {
+   "case": "w88pair_tail_morse",
+   "line": 9,
+   "text": "pair_style morse 2.5",
+   "style": "pair morse d0",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair morse d0 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -15.7068400275053 -6.47734791645271 -78.5342001376102"
+  },
+  {
+   "case": "w220xp_morse_smooth_linear",
+   "line": 15,
+   "text": "pair_style morse/smooth/linear 2.5",
+   "style": "pair morse/smooth/linear d0",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair morse/smooth/linear d0 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.01941748945921 -0.0476164812098195 -2.61086959475855"
+  },
+  {
+   "case": "w69fep_morse",
+   "line": 15,
+   "text": "pair_style morse/soft 2 0.8 2.5",
+   "style": "pair morse/soft d0",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair morse/soft d0 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -21.2488803943016 -15.6007650808814 -118.744896426582"
+  },
+  {
+   "case": "w220xp_nm_cut",
+   "line": 15,
+   "text": "pair_style nm/cut 2.5",
+   "style": "pair nm/cut e0",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair nm/cut e0 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -2.70524577472029 -1.24756361295965 -7.34161264117301"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_cut",
+   "line": 17,
+   "text": "pair_style nm/cut/coul/cut 2.5 3.0",
+   "style": "pair nm/cut/coul/cut cut_coul",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair nm/cut/coul/cut cut_coul * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -3.23659493998655 -1.24518110248188 0"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_long",
+   "line": 15,
+   "text": "pair_style nm/cut/coul/long 2.5 3.0",
+   "style": "pair nm/cut/coul/long e0",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair nm/cut/coul/long e0 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -3.74591371776686 -0.87243403386637 -9.47660680994193"
+  },
+  {
+   "case": "w220xp_nm_cut_split_tail",
+   "line": 15,
+   "text": "pair_style nm/cut/split 2.5",
+   "style": "pair nm/cut/split e0",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair nm/cut/split e0 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -5.49720739219683 -1.29138867011498 -8.19989673398675"
+  },
+  {
+   "case": "w57oxdna_duplex2_full",
+   "line": 16,
+   "text": "pair_style hybrid/overlay oxdna/excv oxdna/stk oxdna/hbond oxdna/xstk oxdna/coaxstk",
+   "style": "pair oxdna/coaxstk k_cxst",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna/coaxstk k_cxst * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.37479780034187 5.17454897263015e-05 -6.9655820290393e-05"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 12,
+   "text": "pair_style oxdna/excv",
+   "style": "pair oxdna/excv epsilon_bkbk",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna/excv epsilon_bkbk * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 13511077.0513329 13514.793940957 0"
+  },
+  {
+   "case": "w57oxdna_hbond_duplex",
+   "line": 16,
+   "text": "pair_style hybrid/overlay oxdna/excv oxdna/stk oxdna/hbond",
+   "style": "pair oxdna/hbond epsilon_hb",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna/hbond epsilon_hb * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.1987922654716 -4.70580748675966e-05 0.00157097340107804"
+  },
+  {
+   "case": "w57oxdna_excv_stk",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna/excv oxdna/stk",
+   "style": "pair oxdna/stk epsilon_st",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna/stk epsilon_st * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 362.382944733041 1.76522810841827 0.00466534930728812"
+  },
+  {
+   "case": "w57oxdna_xstk_duplex",
+   "line": 16,
+   "text": "pair_style hybrid/overlay oxdna/excv oxdna/stk oxdna/hbond oxdna/xstk",
+   "style": "pair oxdna/xstk k_xst",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna/xstk k_xst * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.30576219534369 -4.6816211201204e-05 -0.000225199852362579"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna2/excv oxdna2/stk oxdna2/hbond oxdna2/xstk oxdna2/coaxstk oxdna2/dh",
+   "style": "pair oxdna2/coaxstk k_cxst",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna2/coaxstk k_cxst * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 836.647655412811 6.69778475446283 0"
+  },
+  {
+   "case": "w57oxdna2_dh",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna2/excv oxdna2/dh",
+   "style": "pair oxdna2/dh kappa_dh",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna2/dh kappa_dh * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 363.267127561324 1.76508822914803 -0.00277196792831091"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 17,
+   "text": "pair_style oxdna2/excv",
+   "style": "pair oxdna2/excv epsilon_bkbk",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna2/excv epsilon_bkbk * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 363.248419221657 1.76508504344121 0"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna2/excv oxdna2/stk oxdna2/hbond oxdna2/xstk oxdna2/coaxstk oxdna2/dh",
+   "style": "pair oxdna2/hbond epsilon_hb",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna2/hbond epsilon_hb * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 836.647655412811 6.69778475446283 0"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna2/excv oxdna2/stk oxdna2/hbond oxdna2/xstk oxdna2/coaxstk oxdna2/dh",
+   "style": "pair oxdna2/stk epsilon_st",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna2/stk epsilon_st * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 836.647655412811 6.69778475446283 -0.0010815890836966"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna2/excv oxdna2/stk oxdna2/hbond oxdna2/xstk oxdna2/coaxstk oxdna2/dh",
+   "style": "pair oxdna2/xstk k_xst",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna2/xstk k_xst * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 836.647655412811 6.69778475446283 -8.0761055869516e-06"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/coaxstk k_cxst",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna3/coaxstk k_cxst * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.16125841358927 -0.000148823439763554 0"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/dh kappa_dh",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna3/dh kappa_dh * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.16125841358927 -0.000148823439763554 -0.00544546717783945"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/excv epsilon_bkbk",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna3/excv epsilon_bkbk * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.16125841358927 -0.000148823439763554 0"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/hbond epsilon_hb",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna3/hbond epsilon_hb * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.16125841358927 -0.000148823439763554 0.00248160291295463"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/stk epsilon_st",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna3/stk epsilon_st * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.16125841358927 -0.000148823439763554 0.0143798834101254"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/xstk k_xst",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxdna3/xstk k_xst * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1.16125841358927 -0.000148823439763554 -0.000296814533939482"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/coaxstk k_cxst",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxrna2/coaxstk k_cxst * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 837.151374587254 6.69770780297311 -1.61424395628273e-06"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/dh kappa_dh",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxrna2/dh kappa_dh * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 837.151374587254 6.69770780297311 -0.00215042825584533"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/excv epsilon_bkbk",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxrna2/excv epsilon_bkbk * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 837.151374587254 6.69770780297311 0"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/hbond epsilon_hb",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxrna2/hbond epsilon_hb * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 837.151374587254 6.69770780297311 0"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/stk epsilon_st",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxrna2/stk epsilon_st * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 837.151374587254 6.69770780297311 0.000707578214132809"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/xstk k_xst",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair oxrna2/xstk k_xst * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 837.151374587254 6.69770780297311 -0.000116615306978929"
+  },
+  {
+   "case": "w270ya_pace_yace_cu",
+   "line": 14,
+   "text": "pair_style pace",
+   "style": "pair pace scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair pace scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "ERROR: Unrecognized compute style 'fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "ML-PACE",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 15,
+   "text": "pair_style hybrid/overlay eam/fs/apip pace/apip",
+   "style": "pair pace/apip scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair pace/apip scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "ERROR: Unrecognized compute style 'fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "APIP",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 29,
+   "text": "pair_style hybrid/overlay pace/fast/apip pace/precise/apip",
+   "style": "pair pace/fast/apip scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair pace/fast/apip scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "ERROR: Unrecognized compute style 'fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "APIP",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 16,
+   "text": "pair_style hybrid/overlay eam/apip pace/precise/apip",
+   "style": "pair pace/precise/apip scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair pace/precise/apip scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "ERROR: Unrecognized compute style 'fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "APIP",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w48pb_pedone_triclinic",
+   "line": 22,
+   "text": "pair_style pedone 15.0",
+   "style": "pair pedone c0",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair pedone c0 * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 7.90192527284373 253942.923664383 5.21031250126924e-05"
+  },
+  {
+   "case": "w33snapchem_pair",
+   "line": 15,
+   "text": "pair_style snap",
+   "style": "pair snap scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair snap scale * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -15.6108921914901 -18004.6419492791 -0.156108921914903"
+  },
+  {
+   "case": "w88pair_shift_soft",
+   "line": 9,
+   "text": "pair_style soft 2.5",
+   "style": "pair soft a",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair soft a * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 98.1237759745449 94.3850960376589 49.0618879789472"
+  },
+  {
+   "case": "w371tgnh_couple_xy",
+   "line": 13,
+   "text": "pair_style hybrid/overlay lj/cut/coul/cut 8.0 8.0 thole 2.089 8.0",
+   "style": "pair thole scale",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair thole scale 1 * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 57,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 164.758488779317 -422.305473158691 -16.6860567179987"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 122,
+   "text": "pair_style tip4p/long/soft 1 2 1 1 0.15 1 0.5 4.0",
+   "style": "pair tip4p/long/soft lambda",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair tip4p/long/soft lambda * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 133,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -1648.70105208766 -13036.8308073839 25.4392839956585"
+  },
+  {
+   "case": "w219xp_ufm",
+   "line": 14,
+   "text": "pair_style ufm 2.5",
+   "style": "pair ufm epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair ufm epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 1.53665877760478 2.591059443007 11.9807373373249"
+  },
+  {
+   "case": "w219xp_wf_cut",
+   "line": 14,
+   "text": "pair_style wf/cut 2.5",
+   "style": "pair wf/cut epsilon",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair wf/cut epsilon * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL -3.09472185396482 -6.50447778242828 -17.3363026566967"
+  },
+  {
+   "case": "w88pair_tail_yukawa",
+   "line": 9,
+   "text": "pair_style yukawa 1.0 2.5",
+   "style": "pair yukawa alpha",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair yukawa alpha * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 5.70823444125327 4.12809315841313 14.2705861029676"
+  },
+  {
+   "case": "w5yukawa_colloid",
+   "line": 20,
+   "text": "pair_style yukawa/colloid 2.0 3.5",
+   "style": "pair yukawa/colloid alpha",
+   "pre": "variable adpd equal 0.01\ncompute adpf all fep 300.0 pair yukawa/colloid alpha * * v_adpd\nthermo_style custom step pe press c_adpf[1]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)\"\n",
+   "native": "OK | VAL 192.626340246269 73.4276056163854 1.69256446404324"
+  }
+ ]
+}

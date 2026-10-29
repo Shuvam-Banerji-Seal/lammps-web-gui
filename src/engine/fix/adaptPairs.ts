@@ -151,7 +151,7 @@ export const pairExtractDim = (styleName: string, pstyle: string, pparam: string
  * value native recomputes at every init (INERT), or the PairParams table of that name; an error naming the parameter
  * when the engine keeps no such value.
  */
-export const pairAdaptAccess = (style: Pair, styleName: string, pstyle: string, pparam: string): AdaptAccess => {
+export const pairAdaptAccess = (style: Pair, styleName: string, pstyle: string, pparam: string, command = 'Fix adapt'): AdaptAccess => {
   const entry = (PAIR_EXTRACT[styleName] ?? []).find((e) => e[0] === pparam)!;
   const [, dim, alias] = entry;
   const own = style.adaptParam(pparam);
@@ -180,7 +180,7 @@ export const pairAdaptAccess = (style: Pair, styleName: string, pstyle: string, 
     }
   }
   throw new StyleError(
-    `Fix adapt pair style ${pstyle} param ${pparam}: the browser engine cannot change this parameter of pair style ${styleName}`,
+    `${command} pair style ${pstyle} param ${pparam}: the browser engine cannot change this parameter of pair style ${styleName}`,
   );
 };
 

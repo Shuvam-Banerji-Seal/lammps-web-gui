@@ -583,6 +583,7 @@ export const MATRICES: Record<string, MatrixDef> = {
     about: 'compute fep 300.0 pair <style> <name> * * v_d (d = 0.01) for the first per-type-pair name of each pair style\'s native extract(), pe, press and the energy difference c_[1] compared after run 0',
     rows: throughRun(computeFepPairRows, THERMO_FEP, VALUES_FEP),
     undefined: { ...adaptPairUndefined(), ...fepUndefined(false) },
+  },
   'pair-modify': {
     about: 'pair_modify shift yes, tail yes and mix arithmetic before the first run 0 of each pair style, pe, press and fnorm compared',
     rows: throughRun(pairModifyRows, THERMO_F, VALUES_F),

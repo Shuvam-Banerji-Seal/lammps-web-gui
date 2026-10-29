@@ -506,6 +506,10 @@ export class FixShake extends Fix {
     // the setup forces and energies stay those of the uncorrected coordinates, as in native LAMMPS
     // (its step-0 thermo pe is the uncorrected one); the next step's integration starts from here
     for (let i = 0; i < this.sys.state.n; i++) this.sys.geom.remap(this.sys.state.x, this.sys.state.image, i);
+    // As native LAMMPS does (src/RIGID/fix_shake.cpp correct_coordinates at b332f28: comm->forward_comm(this) with
+    // xshake set to x): the ghosts take the corrected positions at once, so a force evaluation before the first
+    // step (compute fep at the setup's thermo output) sees them
+    if (this.sys.nb.nall > 0) this.sys.nb.forwardComm(this.sys.state, this.sys.geom);
   }
 
   postForce(): void {

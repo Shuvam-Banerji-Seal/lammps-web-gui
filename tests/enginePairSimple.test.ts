@@ -68,12 +68,14 @@ describe('simple pair styles: force = -dE/dr (central differences)', () => {
   });
 
   it('pair_modify shift changes the energy by E(rc) but not the force', () => {
-    for (const build of [
-      () => new PairBuck(),
-      () => new PairBuckCoulCut(),
-      () => new PairBorn(),
-      () => new PairMorse(),
-    ]) {
+    // E(rc) written out: single() is zero at r = rc itself (native tests rsq < cut_ljsq / cutsq)
+    const buck = (r: number) => 600.0 * Math.exp(-r / 0.15) - 1.0 / r ** 6;
+    for (const [build, energy] of [
+      [() => new PairBuck(), buck],
+      [() => new PairBuckCoulCut(), buck],
+      [() => new PairBorn(), (r: number) => 1.0 * Math.exp((1.0 - r) / 0.1) - 1.0 / r ** 6 + 0.5 / r ** 8],
+      [() => new PairMorse(), (r: number) => 1.0 * (Math.exp(-2 * 3.0 * (r - 1.12)) - 2 * Math.exp(-3.0 * (r - 1.12)))],
+    ] as [() => Pair, (r: number) => number][]) {
       const plain = build(), shifted = build();
       const styleArgs = build() instanceof PairBuckCoulCut ? ['2.5', '3.0'] : ['2.5'];
       const coeffs = build() instanceof PairBuckCoulCut
@@ -89,7 +91,7 @@ describe('simple pair styles: force = -dE/dr (central differences)', () => {
       const r = 1.4, rc = 2.5;
       const a = plain.single!(0, 0, 1, 1, r * r, 1, 1, 0, 0);
       const b = shifted.single!(0, 0, 1, 1, r * r, 1, 1, 0, 0);
-      const atRc = plain.single!(0, 0, 1, 1, rc * rc, 1, 1, 0, 0).eng;
+      const atRc = energy(rc);
       if (!close(b.eng, a.eng - atRc, 1e-12, 1e-12) || !close(b.fforce, a.fforce, 1e-12, 1e-14)) {
         throw new Error(`${plain.name}: shift yes must subtract E(rc) and leave the force unchanged`);
       }

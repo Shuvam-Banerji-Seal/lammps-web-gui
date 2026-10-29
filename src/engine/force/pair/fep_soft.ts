@@ -306,7 +306,32 @@ export class PairFepSoft extends Pair {
     this.kF = P * (EWALD_F * g * ex / (r * rs) + corr / (rs2 * rs));
   }
 
+  /** Coulomb prefactor of the last force evaluation (single() reads it). */
+  protected qqrd2eLast = 1;
+
+  /**
+   * Pair energy and force-over-r of one pair (compute pair/local): the force loop's soft LJ and Coulomb terms with the
+   * caller's special weights. As native LAMMPS does (src/FEP/pair_lj_cut_soft.cpp, pair_coul_cut_soft.cpp,
+   * pair_coul_long_soft.cpp and the other soft styles' single at b332f28), with no charge test.
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const t = itype * (this.ntypes + 1) + jtype;
+    let eng = 0, fforce = 0;
+    if (this.lj !== 'none' && rsq < this.cutLJsq[t]) {
+      this.ljPair(rsq, t);
+      eng += factorLJ * (this.kE - this.offset[t]);
+      fforce += factorLJ * this.kF;
+    }
+    if (this.coul !== 'none' && rsq < this.cutCsq[t]) {
+      this.coulPair(rsq, qi * qj, t, factorCoul, this.qqrd2eLast, this.gEwald);
+      eng += this.kE;
+      fforce += this.kF;
+    }
+    return { eng, fforce };
+  }
+
   compute(pc: PairCompute): void {
+    this.qqrd2eLast = pc.qqrd2e;
     const list = pc.half!;
     const { x, f, type, q } = pc;
     const nt = this.ntypes + 1;

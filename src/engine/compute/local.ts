@@ -529,13 +529,11 @@ export class ComputePropertyLocal extends Compute {
  * pair-local parity matrix lists them as gaps).
  */
 const SINGLE_GAPS = new Set<string>([
-  'bpm/peri', 'bpm/spring', 'buck/long/coul/long', 'colloid', 'coul/cut/dielectric', 'coul/cut/soft',
-  'coul/cut/soft/gapsys', 'coul/long/soft', 'coul/slater/long', 'dpd', 'dpd/coul/slater/long', 'dpd/ext', 'dpd/fdt',
-  'dpd/fdt/energy', 'edpd', 'granular/superellipsoid', 'lepton', 'lepton/coul', 'lepton/sphere',
-  'lj/charmm/coul/long/soft', 'lj/class2/coul/cut/soft', 'lj/class2/coul/long/soft', 'lj/class2/soft',
-  'lj/cut/coul/cut/dielectric', 'lj/cut/coul/cut/soft', 'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/dielectric',
-  'lj/cut/coul/long/soft', 'lj/cut/coul/msm/dielectric', 'lj/cut/soft', 'lj/cut/soft/gapsys', 'lj/long/coul/long',
-  'lj/long/coul/long/dielectric', 'lj/sf/dipole/sf', 'lj/switch3/coulgauss/long', 'local/density',
+  'bpm/peri', 'bpm/spring', 'buck/long/coul/long', 'colloid', 'coul/cut/dielectric', 'coul/cut/soft/gapsys',
+  'coul/slater/long', 'dpd', 'dpd/coul/slater/long', 'dpd/ext', 'dpd/fdt', 'dpd/fdt/energy', 'edpd',
+  'granular/superellipsoid', 'lepton', 'lepton/coul', 'lepton/sphere', 'lj/cut/coul/cut/dielectric',
+  'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/dielectric', 'lj/cut/coul/msm/dielectric', 'lj/cut/soft/gapsys',
+  'lj/long/coul/long', 'lj/long/coul/long/dielectric', 'lj/sf/dipole/sf', 'lj/switch3/coulgauss/long', 'local/density',
   'mm3/switch3/coulgauss/long', 'morse/soft', 'multi/lucy', 'peri/pmb', 'rheo/solid', 'smd/tlsph', 'sph/heatconduction',
   'tdpd', 'ylz', 'yukawa/colloid',
 ]);

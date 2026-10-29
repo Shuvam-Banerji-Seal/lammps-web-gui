@@ -75,6 +75,13 @@ export abstract class Fix {
    * replicas in lockstep (run/coupled.ts) and the fix reads them through System.replicaPeers.
    */
   replicaCoupled = false;
+  /**
+   * Native requests a perpetual full neighbor list of the default cutoff for this fix (NeighConst::REQ_FULL without
+   * REQ_OCCASIONAL or REQ_GHOST). src/neighbor.cpp Neighbor::morph_halffull at b332f28 then derives the pair style's
+   * half list and the occasional half lists of computes from it ("half/full from"), which sets the order of their rows
+   * (the native pair order of compute pair/local and of pair eam's single(), src/engine-gpl/neighbor/nativeOrder.ts).
+   */
+  nativeFullList = false;
   /** Supports fix_modify energy / virial, and their current settings. */
   energyGlobal = false;
   virialGlobal = false;

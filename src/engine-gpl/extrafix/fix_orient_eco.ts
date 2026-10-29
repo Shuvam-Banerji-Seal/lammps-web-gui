@@ -32,6 +32,8 @@ const newNbr = (): Nbr => ({
 
 export class FixOrientECO extends Fix {
   readonly style = 'orient/eco';
+  /** fix_orient_eco.cpp init: neighbor->add_request(this, NeighConst::REQ_FULL), a perpetual full list (Fix.nativeFullList). */
+  nativeFullList = true;
   private readonly u0: number;
   private readonly sign: number;
   private readonly eta: number;

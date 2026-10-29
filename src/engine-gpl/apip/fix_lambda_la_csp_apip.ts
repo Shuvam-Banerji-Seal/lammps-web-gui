@@ -62,6 +62,8 @@ const select2 = (k: number, n: number, a: Float64Array, ia: Int32Array): void =>
 
 export class FixLambdaLACSPAPIP extends Fix {
   readonly style = 'lambda/la/csp/apip';
+  /** fix_lambda_la_csp_apip.cpp init: neighbor->add_request(this, NeighConst::REQ_FULL), a perpetual full list (Fix.nativeFullList). */
+  nativeFullList = true;
   private readonly thresholdLo: number;
   private readonly thresholdHi: number;
   private readonly thresholdWidth: number;

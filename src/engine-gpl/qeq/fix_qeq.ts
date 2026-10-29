@@ -235,6 +235,9 @@ export class FixQeq extends Fix {
     super(sys, id, group, args);
     this.kind = kind;
     this.style = `qeq/${kind}`;
+    // fix_qeq_point.cpp, fix_qeq_shielded.cpp and fix_qeq_slater.cpp init: a perpetual full list (Fix.nativeFullList);
+    // qeq/dynamic and qeq/fire request the default half list
+    this.nativeFullList = kind === 'point' || kind === 'shielded' || kind === 'slater';
     const a = args;
     // As native LAMMPS does (src/QEQ/fix_qeq.cpp FixQEq::FixQEq at b332f28): the five arguments, checked together, then
     // the charges, then the qfile (read here, before the keywords of the style)

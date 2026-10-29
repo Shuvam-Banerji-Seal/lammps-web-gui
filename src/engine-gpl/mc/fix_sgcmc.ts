@@ -123,6 +123,11 @@ export class FixSgcmc extends Fix {
   private numSamplingWindowMoves = 8;
   private seed = 324234;
   private atomicEnergyFlag = false;
+  /**
+   * fix_sgcmc.cpp init: a perpetual full list, "NeighConst::REQ_FULL | NeighConst::REQ_GHOST" with atomic/energy (a ghost
+   * list, which no half list is derived from) and "NeighConst::REQ_FULL" otherwise (Fix.nativeFullList).
+   */
+  nativeFullList = true;
   private samplingWindowUserSize = 0;
   private samplingWindowPosition = 5;
   private kappa = 0;
@@ -234,6 +239,7 @@ export class FixSgcmc extends Fix {
       } else if (key === 'atomic/energy') {
         if (iarg + 2 > args.length) throw missing('fix sgcmc atomic/energy');
         this.atomicEnergyFlag = logical(args[iarg + 1]);
+        this.nativeFullList = !this.atomicEnergyFlag;
         iarg += 2;
       } else {
         throw new StyleError(`Unknown fix sgcmc keyword: ${key}`);

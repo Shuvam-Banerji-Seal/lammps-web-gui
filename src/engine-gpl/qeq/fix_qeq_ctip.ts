@@ -52,6 +52,8 @@ type VisitFn = (dx: number, dy: number, dz: number) => void;
 
 export class FixQeqCtip extends Fix {
   readonly style = 'qeq/ctip';
+  /** fix_qeq_ctip.cpp init: neighbor->add_request(this, NeighConst::REQ_FULL), a perpetual full list (Fix.nativeFullList). */
+  nativeFullList = true;
   scalarFlag = true;
   extscalar = 0;
 

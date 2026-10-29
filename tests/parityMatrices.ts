@@ -610,8 +610,6 @@ export const MATRICES: Record<string, MatrixDef> = {
     about: 'compute pair/local eng force reduced to sums before the first run 0 of each pair style (the style\'s single()), pe and the two sums compared',
     rows: throughRun(pairLocalRows, THERMO_PL, VALUES_PL),
     deviations: Object.fromEntries([
-      ...['eam/fs', 'eam/opt', 'eam/he'].map((st): [string, string] => [`pair_style ${st} pair/local`,
-        "each pair's embedding share F(rho_i)/numforce[i] and its i follow native's half-list rows, which the engine does not reproduce here (the energy sums agree)"]),
       // native PairLocalDensity::single (src/MANYBODY/pair_local_density.cpp at b332f28) only adds to fforce, and
       // ComputePairLocal::compute_pairs leaves its fpair uninitialised (src/compute_pair_local.cpp lines 185 and 272)
       ['pair_style local/density pair/local', "native single() adds each force to the caller's uninitialised fpair, so its force column is a running sum; the engine gives each pair its own force (pe and the energy sums agree)"],

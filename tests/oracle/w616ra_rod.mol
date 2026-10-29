@@ -1,0 +1,27 @@
+# rod of 3 sub-particles
+
+1 atoms
+1 15 body
+
+Coords
+
+1 0 0 0
+
+Types
+
+1 1
+
+Masses
+
+1 3.0
+
+Body Integers
+
+3
+
+Body Doubles
+
+1.0 1.0 2.0 0.0 0.0 0.0
+-1.0 0.0 0.0
+0.0 0.0 0.0
+1.0 0.0 0.0

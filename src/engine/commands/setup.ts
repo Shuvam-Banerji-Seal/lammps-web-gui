@@ -35,6 +35,7 @@ import type { Fix } from '../fix/fix';
 import type { Compute } from '../compute/compute';
 import { bitOfIndex, type DynamicGroup } from '../group';
 import { parseBalanceWeight, applyBalanceWeights, balanceNeighFactor, balanceUsesNeigh, balanceDump, type BalanceWeightAction } from '../fix/balance';
+import { bodyRadiusBody, parseBodyStyle, setBodyAtom } from '../bodies';
 import { parseMoleculeFile, geometricCenter, orientationMatrix, templateDipoles, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
 import { libm } from '../libm';
 
@@ -917,9 +918,16 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
   // both, radius 0.5 and mass 0.5235987755982988.
   let radius: Float64Array | undefined;
   let rmass: Float64Array | undefined;
+  // a body molecule (one atom): native Molecule sets "radius[0] = avec_body->radius_body(nibody, ndbody, ibodyparams,
+  // dbodyparams)" (src/molecule.cpp at b332f28), which Atom::add_molecule_atom copies
+  const bstyle = t.body ? parseBodyStyle(sys.atomStyle)?.bstyle ?? null : null;
   if (s.radius) {
     radius = new Float64Array(copies * t.natoms);
-    for (let c = 0; c < copies; c++) for (let i = 0; i < t.natoms; i++) radius[c * t.natoms + i] = t.diam ? t.diam[i] / 2 : SPHERE_DEFAULT_RADIUS;
+    for (let c = 0; c < copies; c++) {
+      for (let i = 0; i < t.natoms; i++) {
+        radius[c * t.natoms + i] = bstyle ? bodyRadiusBody(bstyle, t.body!.ints, t.body!.dbls) : t.diam ? t.diam[i] / 2 : SPHERE_DEFAULT_RADIUS;
+      }
+    }
   }
   if (s.rmass && (t.mass || radius)) {
     rmass = new Float64Array(copies * t.natoms);
@@ -927,6 +935,15 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
   }
   const mu = templateDipoles(t, copies, rotMu);
   const added = appendAtoms(s, { x, image, type: types, molecule: mol, q, mask: gbit, tmplIndex: tIdx, tmplAtom: tAt, radius, rmass, mu });
+  if (bstyle) {
+    // As native LAMMPS does (src/atom.cpp Atom::add_molecule_atom at b332f28): "body[ilocal] = 0; // as if a body read
+    // from data file", data_body() with the template's integers and doubles, and set_quat(ilocal, onemol->quat_external).
+    // create_atoms sets quat_external only "if (onemol->muflag)" (src/create_atoms.cpp at b332f28), which a body template
+    // never has, so the body keeps the Molecule constructor's quat_external of zeros: measured with native LAMMPS, its
+    // sub-particles all sit at the body's center (compute body/local) and fix nve/body then stops with "Non-numeric atom
+    // coords - simulation unstable"
+    for (let c = 0; c < copies; c++) setBodyAtom(s, s.n - copies + c, bstyle, t.body!.ints, t.body!.dbls, [0, 0, 0, 0]);
+  }
   for (let c = 0; c < copies; c++) {
     const id0 = base + c * t.natoms;
     for (const [what, list] of [['bonds', t.bonds], ['angles', t.angles], ['dihedrals', t.dihedrals], ['impropers', t.impropers]] as const) {
@@ -1089,8 +1106,6 @@ const checkCreateAtomsArgs = (sys: System, a: string[]): void => {
 
 const createAtoms: Handler = ({ sys }, a) => {
   checkCreateAtomsArgs(sys, a);
-  // atom_style body: a body needs its Bodies entry from read_data (bodies.ts); create_atoms cannot make one
-  if (isBodyStyle(sys.atomStyle)) throw new StyleError(`create_atoms is not supported for atom_style ${sys.atomStyle}: body particles come from read_data`);
   const s = sys.state;
   // create_atoms.html: "type = atom type (1-Ntypes or type label)"
   let type = int(typeLabelWord(sys, 'atom', a[0]), 'atom type');
@@ -1491,9 +1506,13 @@ const createAtoms: Handler = ({ sys }, a) => {
     return;
   }
   for (const t of types) if (t < 1 || t > s.ntypes) throw new StyleError(`create_atoms basis type ${t} is outside 1..${s.ntypes}`);
+  // As native LAMMPS does (src/atom_vec_body.cpp AtomVecBody::create_atom_post at b332f28): an atom of atom_style body
+  // has "radius[ilocal] = 0.5; rmass[ilocal] = 1.0; body[ilocal] = -1;" (a point particle, no body record)
+  const bodyAtoms = isBodyStyle(sys.atomStyle);
   const added = appendAtoms(s, {
     x: Float64Array.from(pts), type: Int32Array.from(types), mask: gbit,
-    radius: rad ? Float64Array.from(rad) : undefined, molecule: meshMol || undefined,
+    radius: rad ? Float64Array.from(rad) : bodyAtoms ? new Float64Array(types.length).fill(0.5) : undefined, molecule: meshMol || undefined,
+    rmass: bodyAtoms ? new Float64Array(types.length).fill(1.0) : undefined,
   });
   type = 0;
   sys.atomsChanged();
@@ -1519,6 +1538,7 @@ const molecule: Handler = ({ sys }, a) => {
     const o: MoleculeOptions = {
       toff: 0, boff: 0, aoff: 0, doff: 0, ioff: 0, scale: 1, units: sys.units.style,
       improperSymmatoms: improperSymmatoms(sys.ff.improper?.name),
+      bodyStyle: isBodyStyle(sys.atomStyle),
     };
     let checkWhich: CheckWhich | null = null;
     while (k < a.length && ['offset', 'toff', 'boff', 'aoff', 'doff', 'ioff', 'scale', 'auto', 'check_labels'].includes(a[k])) {

@@ -1,0 +1,21 @@
+# oracle: create_atoms of an nparticle body molecule (single, single with rotate, random with overlap): native gives each body the Molecule's quat_external of zeros (create_atoms sets it only for a molecule with dipoles), so every sub-particle sits at the body center; setup only (run 0), thermo and the body/local sums
+# oracle-inputs: w616ra_rod.mol
+# oracle-compare: thermo=all rel=1e-12 abs=1e-14
+units           lj
+atom_style      body nparticle 1 6
+region          reg block 0 20 0 20 0 20 units box
+create_box      1 reg
+molecule        rod w616ra_rod.mol
+create_atoms    0 single 5 5 5 mol rod 4567
+create_atoms    0 single 7.0 5.4 5.1 mol rod 1234 rotate 30 0 0 1
+create_atoms    0 random 3 777 NULL mol rod 999 overlap 3.0
+pair_style      body/nparticle 5.0
+pair_coeff      * * 1.0 1.0
+comm_modify     vel yes
+fix             1 all nve/body
+velocity        all create 1.0 8848
+compute         bl all body/local id 1 2 3
+compute         bls all reduce sum c_bl[2] c_bl[3] c_bl[4] inputs local
+thermo_style    custom step atoms ke pe etotal press c_bls[1] c_bls[2] c_bls[3]
+thermo_modify   format float %.15g
+run             0

@@ -1,6 +1,5 @@
 import { Compute } from './compute';
 import { StyleError, newAccum, type Accum, type Bonded, type BondedCompute, type Pair } from '../force/types';
-import { PairHybrid } from '../force/pair/hybrid';
 import { bondDelta, delta, dihedralGeometry } from '../force/bonded_util';
 import type { BondedCopies } from '../force/types';
 import { atomSubStyles, buildAtomMap, isTemplateStyle, massOf, nativeOrder } from '../atoms';
@@ -544,7 +543,9 @@ const SINGLE_GAPS = new Set<string>([
 
 /** The first style (a hybrid's sub-styles in order) that is a SINGLE_GAPS entry without a single(), or null. */
 const singleGap = (pair: Pair): string | null => {
-  const styles = pair instanceof PairHybrid ? pair.subs.map((x) => x.style) : [pair];
+  // a hybrid's sub-styles, read structurally as chunk17.ts does (importing PairHybrid here splits the engine chunks)
+  const subs = (pair as Pair & { subs?: { style: Pair }[] }).subs;
+  const styles = subs ? subs.map((x) => x.style) : [pair];
   for (const st of styles) if (!st.singleEnabled() && (st.singleIsGap() || SINGLE_GAPS.has(st.name))) return st.name;
   return null;
 };

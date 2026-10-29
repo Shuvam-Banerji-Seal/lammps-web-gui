@@ -247,6 +247,45 @@ export class PairLJCharmmCoulCharmm extends Pair {
     this.initCutoffs();
   }
 
+  /** Coulomb prefactor of the last force evaluation (single() reads it). */
+  protected qqrd2eLast = 1;
+
+  /**
+   * Pair energy and force-over-r of one pair (compute pair/local): the LJ term inside the outer cutoff and the Coulomb term
+   * inside the Coulomb cutoff, those of the force loop with the caller's special weights. As native LAMMPS does
+   * (src/MOLECULE/pair_lj_charmm_coul_charmm.cpp, pair_lj_charmm_coul_charmm_implicit.cpp,
+   * pair_lj_charmmfsw_coul_charmmfsh.cpp and src/KSPACE/pair_lj_charmm_coul_long.cpp, pair_lj_charmmfsw_coul_long.cpp
+   * single at b332f28), with no charge test.
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    let eng = 0, fforce = 0;
+    if (rsq < this.bL2) {
+      const lj = this.ljTerm(rsq, itype * (this.ntypes + 1) + jtype);
+      eng = factorLJ * lj.e;
+      fforce = factorLJ * lj.fpair;
+    }
+    if (rsq < this.cutCoul * this.cutCoul) {
+      const c = this.coulSingle(rsq, factorCoul, qi, qj);
+      eng += c.e;
+      fforce += c.f;
+    }
+    return { eng, fforce };
+  }
+
+  /** The LJ energy and fpair of one pair inside the outer cutoff, before special_lj: the force loop's terms. */
+  protected ljTerm(rsq: number, t: number): { e: number; fpair: number } {
+    const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
+    const u = r6inv * (this.lj3[t] * r6inv - this.lj4[t]);
+    const fstd = r6inv * (this.lj1[t] * r6inv - this.lj2[t]) * r2inv;
+    if (rsq <= this.aL2) return { e: u, fpair: fstd };
+    return { e: u * esw(rsq, this.aL2, this.bL2, this.invDL3), fpair: fstd * esw(rsq, this.aL2, this.bL2, this.invDL3) + eswForce(u, rsq, this.aL2, this.bL2, this.invDL3) };
+  }
+
+  /** The Coulomb energy and fpair of one pair inside the Coulomb cutoff with the special_coul weight. */
+  protected coulSingle(rsq: number, fc: number, qi: number, qj: number): { e: number; f: number } {
+    return this.coulTerm(rsq, fc, qi, qj, this.qqrd2eLast);
+  }
+
   /** The unswitched Coulomb pair term: energy U(r) and force coefficient -U'(r)/r. */
   protected coulombPair(rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     // C(r) = C q_i q_j / r with C = qqrd2e (dielectric folded in); F_std = C q_i q_j / r^3.
@@ -260,9 +299,8 @@ export class PairLJCharmmCoulCharmm extends Pair {
    * the switch multiplies the energy and the standard force,
    * E = C(r) S(r), F = S(r) F_std.
    */
-  protected coulTerm(pc: PairCompute, rsq: number, sb: number, qi: number, qj: number): { e: number; f: number } {
-    const c = this.coulombPair(rsq, qi, qj, pc.qqrd2e);
-    const fc = pc.specialCoul[sb];
+  protected coulTerm(rsq: number, fc: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
+    const c = this.coulombPair(rsq, qi, qj, qqrd2e);
     if (rsq > this.aC2) {
       const s = esw(rsq, this.aC2, this.bC2, this.invDC3);
       return { e: fc * c.e * s, f: fc * c.f * s };
@@ -271,6 +309,7 @@ export class PairLJCharmmCoulCharmm extends Pair {
   }
 
   compute(pc: PairCompute): void {
+    this.qqrd2eLast = pc.qqrd2e;
     const list = pc.half!;
     const { x, f, type, q } = pc;
     const nt = this.ntypes + 1;
@@ -311,7 +350,7 @@ export class PairLJCharmmCoulCharmm extends Pair {
           evdwl += e;
         }
         if (rsq < cutCoulSq && qi !== 0 && q[j] !== 0) {
-          const c = this.coulTerm(pc, rsq, sb, qi, q[j]);
+          const c = this.coulTerm(rsq, pc.specialCoul[sb], qi, q[j], pc.qqrd2e);
           ecoul += c.e;
           e += c.e;
           fpair += c.f;
@@ -361,9 +400,8 @@ export class PairLJCharmmCoulCharmmImplicit extends PairLJCharmmCoulCharmm {
     return { e: c, f: 2 * c / rsq };
   }
 
-  protected override coulTerm(pc: PairCompute, rsq: number, sb: number, qi: number, qj: number): { e: number; f: number } {
-    const c = this.coulombPair(rsq, qi, qj, pc.qqrd2e);
-    const fc = pc.specialCoul[sb];
+  protected override coulTerm(rsq: number, fc: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
+    const c = this.coulombPair(rsq, qi, qj, qqrd2e);
     if (rsq > this.aC2) {
       const s = esw(rsq, this.aC2, this.bC2, this.invDC3);
       return { e: fc * c.e * s, f: fc * (c.f * s + eswForce(c.e, rsq, this.aC2, this.bC2, this.invDC3)) };
@@ -438,6 +476,7 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
    */
   override compute(pc: PairCompute): void {
     if (Object.getPrototypeOf(this) !== PairLJCharmmCoulLong.prototype) { super.compute(pc); return; }
+    this.qqrd2eLast = pc.qqrd2e;
     const list = pc.half!;
     const { x, f, type, q } = pc;
     const nt = this.ntypes + 1;
@@ -525,17 +564,16 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     pc.acc.ecoul += ecoul;
   }
 
-  protected override coulTerm(pc: PairCompute, rsq: number, sb: number, qi: number, qj: number): { e: number; f: number } {
-    const c = this.coulombPair(rsq, qi, qj, pc.qqrd2e);
+  protected override coulTerm(rsq: number, fc: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
+    const c = this.coulombPair(rsq, qi, qj, qqrd2e);
     // special_bonds.html, as cited in coul_long.ts: excluded pairs stay in the
     // neighbor list for kspace styles; their Coulomb weight w removes (1 - w)
     // of the bare C q_i q_j / r term, which the reciprocal sum includes (from the 1/r table when
     // the table is in use, as native does).
-    const fc = pc.specialCoul[sb];
     if (fc < 1) {
       const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul, this.tabinnerRsq);
       const inv = tab && rsq > tab.inner ? tab.coul(rsq) : 1 / Math.sqrt(rsq);
-      const bare = pc.qqrd2e * qi * qj * inv;
+      const bare = qqrd2e * qi * qj * inv;
       return { e: c.e - (1 - fc) * bare, f: c.f - (1 - fc) * bare / rsq };
     }
     return c;
@@ -671,8 +709,16 @@ abstract class PairLJCharmmfswBase extends PairLJCharmmCoulCharmm {
     return { e, fpair: fstd * esw(rsq, this.aL2, this.bL2, this.invDL3) };
   }
 
+  protected override ljTerm(rsq: number, t: number): { e: number; fpair: number } {
+    return this.ljForceSwitched(rsq, t);
+  }
+
+  protected override coulSingle(rsq: number, fc: number, qi: number, qj: number): { e: number; f: number } {
+    return this.coulFswPair(rsq, fc, qi, qj, this.qqrd2eLast);
+  }
+
   /** The Coulomb term of one pair with the special_coul weight applied (energy, fpair). */
-  protected abstract coulFswPair(rsq: number, sb: number, qi: number, qj: number, qqr: number, pc: PairCompute): { e: number; f: number };
+  protected abstract coulFswPair(rsq: number, fc: number, qi: number, qj: number, qqr: number): { e: number; f: number };
 
   compute(pc: PairCompute): void {
     const list = pc.half!;
@@ -681,6 +727,7 @@ abstract class PairLJCharmmfswBase extends PairLJCharmmCoulCharmm {
     const { bL2 } = this;
     const cutCoulSq = this.cutCoul * this.cutCoul;
     const qqr = pc.qqrd2e;
+    this.qqrd2eLast = qqr;
     const sLJ = pc.specialLJ;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;
@@ -706,7 +753,7 @@ abstract class PairLJCharmmfswBase extends PairLJCharmmCoulCharmm {
           evdwl += e;
         }
         if (rsq < cutCoulSq && qi !== 0 && q[j] !== 0) {
-          const c = this.coulFswPair(rsq, sb, qi, q[j], qqr, pc);
+          const c = this.coulFswPair(rsq, pc.specialCoul[sb], qi, q[j], qqr);
           ecoul += c.e;
           e += c.e;
           fpair += c.f;
@@ -727,10 +774,10 @@ abstract class PairLJCharmmfswBase extends PairLJCharmmCoulCharmm {
 export class PairLJCharmmfswCoulCharmmfsh extends PairLJCharmmfswBase {
   readonly name: string = 'lj/charmmfsw/coul/charmmfsh';
 
-  protected coulFswPair(rsq: number, sb: number, qi: number, qj: number, qqr: number, pc: PairCompute): { e: number; f: number } {
+  protected coulFswPair(rsq: number, fc: number, qi: number, qj: number, qqr: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
     const b2 = this.cutCoul * this.cutCoul;
-    const pre = qqr * qi * qj * pc.specialCoul[sb];
+    const pre = qqr * qi * qj * fc;
     // E = pre (b-r)^2/(r b^2); radial F = pre (1/r^2 - 1/b^2); fpair = F/r (measured, see the header)
     return { e: pre * (this.cutCoul - r) * (this.cutCoul - r) / (r * b2), f: pre * (1 / rsq - 1 / b2) / r };
   }
@@ -744,7 +791,7 @@ export class PairLJCharmmfswCoulLong extends PairLJCharmmfswBase {
 
   private readonly erfcTables = new ErfcTableCache();
 
-  protected coulFswPair(rsq: number, sb: number, qi: number, qj: number, qqr: number, pc: PairCompute): { e: number; f: number } {
+  protected coulFswPair(rsq: number, fc: number, qi: number, qj: number, qqr: number): { e: number; f: number } {
     // pair_modify table N as in PairLJCharmmCoulLong (measured the same way for this style)
     const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul, this.tabinnerRsq);
     const useTab = tab !== null && rsq > tab.inner;
@@ -761,7 +808,6 @@ export class PairLJCharmmfswCoulLong extends PairLJCharmmfswBase {
       e = qq * erfc / r;
       f = qq * (erfc + EWALD_F * grij * ex) / (r * rsq);
     }
-    const fc = pc.specialCoul[sb];
     if (fc < 1) {
       // special_bonds: removes (1 - w) of the bare term, as in PairLJCharmmCoulLong
       const bare = qq * (useTab ? tab!.coul(rsq) : 1 / Math.sqrt(rsq));

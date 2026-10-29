@@ -55,7 +55,6 @@ import * as computeLocal from './registry/compute_local';
 import * as dihedralCharmm from './registry/dihedral_charmm';
 import * as fixWall16 from './registry/fix_wall16';
 import * as w17fixmove17 from './registry/fix_move17';
-import * as w17pairsoft17 from './registry/pair_soft17';
 import * as w17pairmisc17 from './registry/pair_misc17';
 import * as w17bond17 from './registry/bond17';
 import * as w17angle17 from './registry/angle17';
@@ -108,7 +107,7 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   'lj/cut/coul/long': () => new PairLJCutCoulLong(),
   ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairLJCoul.PAIRS, ...pairSimple2.PAIRS, ...pairLJ2.PAIRS,
   ...pairEAM.PAIRS,   ...pairZBL.PAIRS, ...pairTable.PAIRS, ...pairCharmm.PAIRS, ...pairCoulLong2.PAIRS,
-  ...w17pairsoft17.PAIRS, ...w17pairmisc17.PAIRS, ...w18pairmisc18.PAIRS, };
+  ...w17pairmisc17.PAIRS, ...w18pairmisc18.PAIRS, };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new BondHarmonic(),

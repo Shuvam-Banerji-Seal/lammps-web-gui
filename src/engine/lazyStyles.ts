@@ -105,6 +105,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'lepton', names: { ANGLES: ['lepton'], BONDS: ['lepton'], DIHEDRALS: ['lepton'], FIXES: ['efield/lepton', 'wall/lepton'], PAIRS: ['lepton', 'lepton/coul', 'lepton/sphere'] }, load: () => import('./registry/lepton') as Promise<StyleModule> },
   { id: 'pair_tersoff2', names: { PAIRS: ['tersoff/mod', 'tersoff/mod/c', 'tersoff/zbl'] }, load: () => import('./registry/pair_tersoff2') as Promise<StyleModule> },
   { id: 'pair_vashishta', names: { PAIRS: ['vashishta'] }, load: () => import('./registry/pair_vashishta') as Promise<StyleModule> },
+  { id: 'pair_soft17', names: { PAIRS: ['coul/cut/soft', 'coul/long/soft', 'lj/charmm/coul/long/soft', 'lj/class2/coul/cut/soft', 'lj/class2/coul/long/soft', 'lj/class2/soft', 'lj/cut/coul/cut/soft', 'lj/cut/coul/long/soft', 'lj/cut/soft'] }, load: () => import('./registry/pair_soft17') as Promise<StyleModule> },
   { id: 'pair_colloid', names: { PAIRS: ['colloid'] }, load: () => import('./registry/pair_colloid') as Promise<StyleModule> },
   { id: 'pair_ycolloid', names: { PAIRS: ['yukawa/colloid'] }, load: () => import('./registry/pair_ycolloid') as Promise<StyleModule> },
   { id: 'pair_relres', names: { PAIRS: ['lj/relres'] }, load: () => import('./registry/pair_relres') as Promise<StyleModule> },

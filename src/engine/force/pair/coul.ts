@@ -45,6 +45,8 @@ import { libm, SQRT_PI } from '../../libm';
  */
 
 const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);
+// The erfc polynomial of the Ewald styles (Abramowitz and Stegun 7.1.26), as erfc.ts erfcPoly
+const EWALD_P = 0.3275911, A1 = 0.254829592, A2 = -0.284496736, A3 = 1.421413741, A4 = -1.453152027, A5 = 1.061405429;
 
 /** Shared loop: a per-pair Coulomb cutoff 'cut' and a style-specific coulPair(). */
 abstract class PairCoul extends Pair {
@@ -95,6 +97,9 @@ abstract class PairCoul extends Pair {
     return this.cutPerPair ? p.get('cut', i, j) : this.cutGlobal;
   }
 
+  /** Coulomb prefactor of the last force evaluation (single() reads it, as native reads force->qqrd2e). */
+  protected qqrd2eLast = 1;
+
   /** Hook for per-pair shift constants (dsf/wolf). */
   protected initCoul(_i: number, _j: number): void {}
 
@@ -105,6 +110,7 @@ abstract class PairCoul extends Pair {
   protected abstract coulPair(t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number };
 
   compute(pc: PairCompute): void {
+    this.qqrd2eLast = pc.qqrd2e;
     const list = pc.half!;
     const { x, f, type, q } = pc;
     const nt = this.ntypes + 1;
@@ -189,6 +195,13 @@ export class PairCoulCut extends PairCoul {
     const pre = (qqrd2e * this.scale[t] * qi * qj) / Math.sqrt(rsq);
     return { e: pre, f: pre / rsq };
   }
+
+  /** As native LAMMPS does (src/pair_coul_cut.cpp single at b332f28): no cutoff test and no fix adapt scale. */
+  single(_i: number, _j: number, _it: number, _jt: number, rsq: number, factorCoul: number, _fl: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const r2inv = 1 / rsq;
+    const phi = this.qqrd2eLast * qi * qj * Math.sqrt(r2inv);
+    return { eng: factorCoul * phi, fforce: factorCoul * phi * r2inv };
+  }
 }
 
 /*
@@ -213,6 +226,15 @@ export class PairCoulDebye extends PairCoul {
     // native: qqrd2e * scale[itype][jtype] * qtmp * q[j] * screening ...
     const pre = (qqrd2e * this.scale[t] * qi * qj * libm.exp(-this.kappa * r)) / r;
     return { e: pre, f: (pre * (1 + this.kappa * r)) / rsq };
+  }
+
+  /** As native LAMMPS does (src/pair_coul_debye.cpp single at b332f28): no cutoff test and no fix adapt scale. */
+  single(_i: number, _j: number, _it: number, _jt: number, rsq: number, factorCoul: number, _fl: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const r2inv = 1 / rsq, r = Math.sqrt(rsq), rinv = 1 / r;
+    const screening = libm.exp(-this.kappa * r);
+    const forcecoul = this.qqrd2eLast * qi * qj * screening * (this.kappa + rinv);
+    const phicoul = this.qqrd2eLast * qi * qj * rinv * screening;
+    return { eng: factorCoul * phicoul, fforce: factorCoul * forcecoul * r2inv };
   }
 }
 
@@ -264,6 +286,30 @@ export class PairCoulDsf extends PairCoul {
       e: pref * (erfcc / r - this.eShift + this.fShift * (r - this.cutGlobal)),
       f: pref * (erfcc / (rsq * r) + (TWO_OVER_SQRTPI * this.alpha * ex) / rsq - this.fShift / r),
     };
+  }
+
+  /**
+   * As native LAMMPS does (src/pair_coul_dsf.cpp init_style and single at b332f28): inside the cutoff, the damped shifted
+   * pair term minus (1 - factor_coul) of the bare C q_i q_j / r; no self energy. f_shift and e_shift are native's.
+   */
+  single(_i: number, _j: number, _it: number, _jt: number, rsq: number, factorCoul: number, _fl: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    let forcecoul = 0, phicoul = 0;
+    const rc = this.cutGlobal, alpha = this.alpha;
+    if (rsq < rc * rc) {
+      const erfcRc = libm.erfc(alpha * rc), erfcdRc = libm.exp(-alpha * alpha * rc * rc);
+      const fShift = -(erfcRc / (rc * rc) + 2 / SQRT_PI * alpha * erfcdRc / rc);
+      const eShift = erfcRc / rc - fShift * rc;
+      const r = Math.sqrt(rsq);
+      const prefactor = this.qqrd2eLast * qi * qj / r;
+      const erfcd = libm.exp(-alpha * alpha * rsq);
+      const t = 1 / (1 + EWALD_P * alpha * r);
+      const erfcc = t * (A1 + t * (A2 + t * (A3 + t * (A4 + t * A5)))) * erfcd;
+      forcecoul = prefactor * (erfcc / r + 2 * alpha / SQRT_PI * erfcd + r * fShift) * r;
+      if (factorCoul < 1) forcecoul -= (1 - factorCoul) * prefactor;
+      phicoul = prefactor * (erfcc - r * eShift - rsq * fShift);
+      if (factorCoul < 1) phicoul -= (1 - factorCoul) * prefactor;
+    }
+    return { eng: phicoul, fforce: forcecoul / rsq };
   }
 }
 

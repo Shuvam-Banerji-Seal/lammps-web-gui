@@ -62,9 +62,47 @@ export class PairCoulEsp extends PairCoulLong {
     this.cutCoulInit = this.cutCoul;
   }
 
+  /**
+   * PairCoulEsp::single: the polynomial or table term with the special weight, no cutoff test and no fix adapt scale;
+   * r_scal reads cut_coul as it is now, the table is the one of the run's init.
+   */
+  single(_i: number, _j: number, _it: number, _jt: number, rsq: number, factorCoul: number, _fl: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const ks = this.kspace;
+    if (!ks) throw new StyleError('Pair style requires a KSpace style');
+    const qqrd2e = this.qqrd2eLast;
+    const fpoly = ks.forcePolyCoeff, epoly = ks.energyPolyCoeff;
+    const tab = this.table !== 0 ? this.espTable.get(this.cutCoulInit, this.tabinnerRsq, this.table, qqrd2e, fpoly, epoly) : null;
+    const r2inv = 1.0 / rsq;
+    let forcecoul: number, phicoul: number, prefactor = 0.0;
+    if (!tab || rsq <= tab.tabinnersq) {
+      const r = Math.sqrt(rsq);
+      const vals = espPolyValues(r, this.cutCoul, fpoly, epoly);
+      prefactor = qqrd2e * qi * qj / r;
+      forcecoul = prefactor * vals.force;
+      if (factorCoul < 1.0) forcecoul -= (1.0 - factorCoul) * prefactor;
+      phicoul = prefactor * vals.energy;
+    } else {
+      const F = bitsToFloat(floatBits(rsq));
+      const itable = (floatBits(rsq) & tab.ncoulmask) >>> tab.ncoulshiftbits;
+      const fraction = (F - tab.rtable[itable]) * tab.drtable[itable];
+      let table = tab.ftable[itable] + fraction * tab.dftable[itable];
+      forcecoul = qi * qj * table;
+      if (factorCoul < 1.0) {
+        table = tab.ctable[itable] + fraction * tab.dctable[itable];
+        prefactor = qi * qj * table;
+        forcecoul -= (1.0 - factorCoul) * prefactor;
+      }
+      table = tab.etable[itable] + fraction * tab.detable[itable];
+      phicoul = qi * qj * table;
+    }
+    if (factorCoul < 1.0) phicoul -= (1.0 - factorCoul) * prefactor;
+    return { eng: phicoul, fforce: forcecoul * r2inv };
+  }
+
   compute(pc: PairCompute): void {
     const ks = this.kspace;
     if (!ks) throw new StyleError('Pair style requires a KSpace style');
+    this.qqrd2eLast = pc.qqrd2e;
     const list = pc.half!;
     const { x, f, q, type } = pc;
     const nt = this.ntypes + 1;

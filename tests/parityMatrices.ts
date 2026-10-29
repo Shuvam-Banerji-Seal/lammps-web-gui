@@ -495,16 +495,13 @@ const THERMO_PL = 'thermo_style custom step pe c_zzpls[1] c_zzpls[2]\n';
  * list native's compute pair/local builds for itself, which the engine does not build yet.
  */
 const PAIR_LOCAL_GAPS = [
-  'bpm/peri', 'bpm/spring', 'buck/long/coul/long', 'colloid', 'coul/cut', 'coul/cut/dielectric', 'coul/cut/soft',
-  'coul/cut/soft/gapsys', 'coul/debye', 'coul/dsf', 'coul/esp', 'coul/long', 'coul/long/soft', 'coul/slater/long', 'dpd',
-  'dpd/coul/slater/long', 'dpd/ext', 'dpd/fdt', 'dpd/fdt/energy', 'edpd', 'gauss', 'granular/superellipsoid', 'harmonic/cut',
-  'lepton', 'lepton/coul', 'lepton/sphere', 'lj/charmm/coul/charmm', 'lj/charmm/coul/charmm/implicit', 'lj/charmm/coul/long',
-  'lj/charmm/coul/long/soft', 'lj/charmmfsw/coul/charmmfsh', 'lj/charmmfsw/coul/long', 'lj/class2/coul/cut/soft',
-  'lj/class2/coul/long/soft', 'lj/class2/soft', 'lj/cut/coul/cut/dielectric', 'lj/cut/coul/cut/soft',
-  'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/dielectric', 'lj/cut/coul/long/soft', 'lj/cut/coul/msm/dielectric',
-  'lj/cut/soft', 'lj/cut/soft/gapsys', 'lj/long/coul/long', 'lj/long/coul/long/dielectric', 'lj/sf/dipole/sf',
-  'lj/switch3/coulgauss/long', 'local/density', 'mm3/switch3/coulgauss/long', 'morse/soft', 'multi/lucy', 'peri/pmb',
-  'rheo/solid', 'smd/tlsph', 'soft', 'sph/heatconduction', 'tdpd', 'ylz', 'yukawa', 'yukawa/colloid',
+  'bpm/peri', 'bpm/spring', 'buck/long/coul/long', 'colloid', 'coul/cut/dielectric', 'coul/cut/soft/gapsys',
+  'coul/slater/long', 'dpd', 'dpd/coul/slater/long', 'dpd/ext', 'dpd/fdt', 'dpd/fdt/energy', 'edpd',
+  'granular/superellipsoid', 'lepton', 'lepton/coul', 'lepton/sphere', 'lj/cut/coul/cut/dielectric',
+  'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/dielectric', 'lj/cut/coul/msm/dielectric', 'lj/cut/soft/gapsys',
+  'lj/long/coul/long', 'lj/long/coul/long/dielectric', 'lj/sf/dipole/sf', 'lj/switch3/coulgauss/long', 'local/density',
+  'mm3/switch3/coulgauss/long', 'morse/soft', 'multi/lucy', 'peri/pmb', 'rheo/solid', 'smd/tlsph', 'sph/heatconduction',
+  'tdpd', 'ylz', 'yukawa/colloid',
 ];
 const VALUES_PL = 'print "VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)"\n';
 

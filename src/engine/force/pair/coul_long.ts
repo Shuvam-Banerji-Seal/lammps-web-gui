@@ -77,6 +77,8 @@ export class PairCoulLong extends Pair {
   private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
   /** The pairs pair_coeff set, holding fix adapt's scale (native scale[i][j]; coeff sets 1, init_one mirrors it). */
   protected set!: PairParams;
+  /** Coulomb prefactor of the last force evaluation (single() reads it). */
+  protected qqrd2eLast = 1;
 
   settings(args: string[]): void {
     if (args.length !== 1) throw new StyleError('usage: pair_style coul/long cutoff');
@@ -104,7 +106,17 @@ export class PairCoulLong extends Pair {
     return this.cutCoul;
   }
 
+  /**
+   * As native LAMMPS does (src/KSPACE/pair_coul_long.cpp single at b332f28): the real-space term with the special weight
+   * and no cutoff test or fix adapt scale.
+   */
+  single(_i: number, _j: number, _it: number, _jt: number, rsq: number, factorCoul: number, _fl: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const r = coulLongPair(rsq, qi, qj, this.gEwald, this.qqrd2eLast, factorCoul, this.table === 0, this.erfcTable(this.gEwald));
+    return { eng: r.e, fforce: r.f };
+  }
+
   compute(pc: PairCompute): void {
+    this.qqrd2eLast = pc.qqrd2e;
     const list = pc.half!;
     const { x, f, q, type } = pc;
     const nt = this.ntypes + 1;

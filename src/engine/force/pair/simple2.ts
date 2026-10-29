@@ -317,8 +317,6 @@ export class PairGauss extends Pair {
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.shift) throw new StyleError('pair_modify shift is not supported for pair style gauss (only gauss/cut supports it)');
-    if (this.tail) throw new StyleError('pair_modify tail is not supported for pair style gauss');
     if (this.mix === 'sixthpower') throw new StyleError('pair_modify mix sixthpower is not supported for pair style gauss (only arithmetic and geometric)');
   }
 
@@ -459,8 +457,6 @@ export class PairZero extends Pair {
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.shift) throw new StyleError('pair_modify shift is not supported for pair style zero');
-    if (this.tail) throw new StyleError('pair_modify tail is not supported for pair style zero');
   }
 
   initOne(i: number, j: number): number {

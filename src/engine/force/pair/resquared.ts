@@ -365,7 +365,6 @@ export class PairResquared extends Pair {
 
   init(ctx: StyleContext): void {
     // The page describes no tail correction for this style, so tail yes is refused rather than ignored.
-    if (this.tail) throw new StyleError('pair_modify tail is not supported by pair_style resquared');
     this.offset = new Float64Array(0);
     this.state = ctx.s;
     super.init(ctx);

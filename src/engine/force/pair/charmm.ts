@@ -236,12 +236,6 @@ export class PairLJCharmmCoulCharmm extends Pair {
   }
 
   init(ctx: StyleContext): void {
-    if (this.shift) {
-      throw new StyleError(`pair_modify shift yes is not supported for pair style ${this.name} (the Lennard-Jones portion of the pair interaction is smoothed to 0.0 at the cutoff)`);
-    }
-    if (this.tail) {
-      throw new StyleError(`pair_modify tail yes is not supported for pair style ${this.name} (the Lennard-Jones portion of the pair interaction is smoothed to 0.0 at the cutoff)`);
-    }
     if (!this.tableSupported && this.table !== 12) {
       throw new StyleError(`pair_modify table is not supported for pair style ${this.name}`);
     }

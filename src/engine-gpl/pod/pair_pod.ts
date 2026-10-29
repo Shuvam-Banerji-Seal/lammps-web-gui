@@ -65,7 +65,6 @@ export class PairPOD extends Pair {
 
   override initStyle(_ctx: StyleContext): void {
     if (!this.model) throw new StyleError('pair style pod needs a pair_coeff command with the POD parameter and coefficient files');
-    if (this.shift || this.tail) throw new StyleError('pair style pod does not support pair_modify shift and tail');
   }
 
   initOne(i: number, j: number): number {

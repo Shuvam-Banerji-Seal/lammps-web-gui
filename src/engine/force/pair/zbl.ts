@@ -135,8 +135,6 @@ export class PairZBL extends Pair {
     // cutoff." / "This pair style does not support the pair_modify tail option
     // for adding long-range tail corrections to energy and pressure, since
     // there are no corrections for a potential that goes to 0.0 at the cutoff."
-    if (this.shift) throw new StyleError('pair_modify shift yes is not supported for pair style zbl (the ZBL interaction is already smoothed to 0.0 at the cutoff)');
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style zbl (there are no corrections for a potential that goes to 0.0 at the cutoff)');
     // "LAMMPS will automatically convert these values to the distance unit of
     // the specified LAMMPS units setting" — the decay constants scale with
     // the Angstrom content of the distance unit.

@@ -111,7 +111,6 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
 
   initStyle(): void {
     if (!this.bondedLink) throw new StyleError(`pair style ${this.name}: the bond and angle equilibria are not available (force field hook)`);
-    if (this.tail) throw new StyleError(`pair_modify tail yes is not supported for pair style ${this.name}`);
     const r0 = this.bondedLink.bond(this.btype), th0 = this.bondedLink.angle(this.atype);
     if (!Number.isFinite(r0)) throw new StyleError(`pair style ${this.name}: bond type ${this.btype} has no equilibrium length (bond_style and bond_coeff needed)`);
     if (!Number.isFinite(th0)) throw new StyleError(`pair style ${this.name}: angle type ${this.atype} has no equilibrium angle (angle_style and angle_coeff needed)`);

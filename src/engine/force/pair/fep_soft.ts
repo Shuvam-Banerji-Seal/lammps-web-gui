@@ -188,12 +188,6 @@ export class PairFepSoft extends Pair {
 
   initStyle(_ctx: StyleContext): void {
     // pair_modify.html is the source of the shift/tail rules (the soft tail of the 9-6 class2 styles is measured, see tailSums)
-    if (this.tail && this.lj === 'none') {
-      throw new StyleError(`pair_modify tail yes is not applicable to pair style ${this.name} (it has no Lennard-Jones portion)`);
-    }
-    if (this.shift && this.lj === 'none') {
-      throw new StyleError(`pair_modify shift yes is not applicable to pair style ${this.name} (it has no Lennard-Jones portion)`);
-    }
   }
 
   initOne(i: number, j: number): number {
@@ -435,8 +429,6 @@ export class PairLJCharmmSoftCoulLong extends PairFepSoft {
 
   initStyle(ctx: StyleContext): void {
     // the page's shift and tail notes cover the lj/cut/soft and class2 families, not the charmm switch
-    if (this.shift) throw new StyleError(`pair_modify shift yes is not supported for pair style ${this.name} (the switching function already goes to 0.0 at the cutoff)`);
-    if (this.tail) throw new StyleError(`pair_modify tail yes is not supported for pair style ${this.name}`);
     super.initStyle(ctx);
   }
 

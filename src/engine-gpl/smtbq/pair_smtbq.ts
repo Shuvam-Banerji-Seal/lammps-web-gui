@@ -124,7 +124,6 @@ export class PairSMTBQ extends Pair {
 
   initStyle(): void {
     this.requireFile();
-    if (this.shift || this.tail) throw new StyleError('pair_modify shift and tail are not supported for pair style smtbq');
   }
 
   initOne(): number {

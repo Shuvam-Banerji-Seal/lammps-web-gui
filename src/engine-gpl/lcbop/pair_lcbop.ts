@@ -85,9 +85,6 @@ export class PairLCBOP extends Pair {
 
   override initStyle(_ctx: StyleContext): void {
     if (!this.p || !this.T) throw new StyleError('pair_style lcbop needs a pair_coeff command with a potential file');
-    if (this.shift || this.tail) {
-      throw new StyleError('pair_style lcbop does not support the pair_modify shift and tail options');
-    }
     if (this.table !== 12) throw new StyleError('pair_style lcbop does not support the pair_modify table option');
   }
 

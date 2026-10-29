@@ -292,9 +292,6 @@ export class PairNB3BHarmonic extends Pair {
   }
 
   override initStyle(_ctx: StyleContext): void {
-    if (this.shift || this.tail) {
-      throw new StyleError(`pair_style ${this.name} does not support the pair_modify shift and tail options`);
-    }
     if (!this.fileRead) throw new StyleError(`pair_style ${this.name} needs a pair_coeff command with a potential file`);
   }
 

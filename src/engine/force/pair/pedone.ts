@@ -78,7 +78,6 @@ export class PairPedone extends Pair {
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.tail) throw new StyleError('pair style pedone does not support the pair_modify tail option');
   }
 
   initOne(i: number, j: number): number {

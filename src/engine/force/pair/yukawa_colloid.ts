@@ -100,9 +100,6 @@ export class PairYukawaColloid extends Pair {
 
   initStyle(ctx: StyleContext): void {
     this.state = ctx.s;
-    if (this.tail) {
-      throw new StyleError('pair_modify tail is not supported for pair style yukawa/colloid');
-    }
     const s = ctx.s;
     if (s) {
       // "This pair style requires that atoms be finite-size spheres with a

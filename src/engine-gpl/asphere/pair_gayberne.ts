@@ -579,7 +579,6 @@ export class PairGayBerne extends Pair {
   init(ctx: StyleContext): void {
     // The page says that this style does not support the pair_modify tail option. Native LAMMPS ignores tail yes for
     // this style (measured, black box: the pair energy is unchanged); the engine refuses it instead.
-    if (this.tail) throw new StyleError('pair_modify tail is not supported by pair_style gayberne');
     this.newtonPair = ctx.newtonPair !== false;
     super.init(ctx);
   }

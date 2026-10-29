@@ -285,7 +285,6 @@ export class PairCoulStreitz extends Pair {
   }
 
   initStyle(ctx: StyleContext): void {
-    if (this.shift || this.tail) throw new StyleError('pair_style coul/streitz does not support the pair_modify shift and tail options');
     if (this.table !== 12) throw new StyleError('pair_style coul/streitz does not support the pair_modify table option');
     if (ctx.s && ctx.s.units.style !== 'metal') {
       throw new StyleError(`pair_style coul/streitz needs units metal (the potential file is in eV and Angstrom), got units ${ctx.s.units.style}`);

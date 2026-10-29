@@ -68,7 +68,6 @@ export class PairLJCutSoftGapsys extends Pair {
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/cut/soft/gapsys');
   }
 
   initOne(i: number, j: number): number {
@@ -184,7 +183,6 @@ export class PairCoulCutSoftGapsys extends Pair {
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style coul/cut/soft/gapsys');
   }
 
   initOne(i: number, j: number): number {

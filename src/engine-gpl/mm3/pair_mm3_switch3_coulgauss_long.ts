@@ -70,7 +70,6 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
 
   override initStyle(ctx: StyleContext): void {
     if (!ctx.s) throw new StyleError('pair_style mm3/switch3/coulgauss/long needs a box');
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style mm3/switch3/coulgauss/long');
     this.cutCoulsq = this.cutCoul * this.cutCoul;
     this.truncwi = this.truncw > 0 ? 1.0 / this.truncw : 0;
     const nt = this.ntypes + 1;

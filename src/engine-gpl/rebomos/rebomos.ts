@@ -191,7 +191,6 @@ export class PairREBOMoS extends Pair {
 
   override initStyle(_ctx: StyleContext): void {
     if (!this.fileRead) throw new StyleError('pair_style rebomos needs a pair_coeff command with a potential file');
-    if (this.shift || this.tail) throw new StyleError('pair_style rebomos does not support the pair_modify shift and tail options');
     for (let q = 0; q < 4; q++) {
       const s = this.sigma[q], e = this.epsilon[q];
       this.lj1[q] = 48.0 * e * powint(s, 12);

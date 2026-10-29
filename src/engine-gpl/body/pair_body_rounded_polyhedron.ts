@@ -100,7 +100,6 @@ export class PairBodyRoundedPolyhedron extends Pair {
   }
 
   init(ctx: StyleContext): void {
-    if (this.shift || this.tail) throw new StyleError('pair_modify shift and tail are not supported by pair_style body/rounded/polyhedron');
     super.init(ctx);
   }
 

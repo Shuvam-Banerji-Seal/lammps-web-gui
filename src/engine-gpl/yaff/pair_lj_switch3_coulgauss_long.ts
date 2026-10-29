@@ -94,7 +94,6 @@ export class PairLJSwitch3CoulGaussLong extends PairLJCutCoulLong {
   }
 
   initOne(i: number, j: number): number {
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/switch3/coulgauss/long');
     const p = this.p;
     if (!p.isSet(i, j)) {
       if (!p.isSet(i, i) || !p.isSet(j, j)) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);

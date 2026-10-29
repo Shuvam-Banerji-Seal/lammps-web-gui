@@ -224,8 +224,6 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
 
   initOne(i: number, j: number): number {
     if (this.ljLong) {
-      if (this.shift) throw new StyleError('pair_modify shift yes is not supported with flag_lj long (shift applies to flag_lj cut)');
-      if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/long/coul/long');
     }
     let cut = super.initOne(i, j);
     // As native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp init_one at b332f28): with dispersion

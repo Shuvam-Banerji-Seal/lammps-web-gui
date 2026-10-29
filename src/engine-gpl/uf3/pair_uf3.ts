@@ -72,7 +72,6 @@ export class PairUF3 extends Pair {
   override initStyle(ctx: StyleContext): void {
     const pot = this.pot;
     if (!pot) throw new StyleError('pair style uf3 needs a pair_coeff command with the unified UF3 potential file');
-    if (this.tail) throw new StyleError('pair style uf3 does not support pair_modify tail yes');
     this.noTermLog(ctx, 'shift');
     const N = this.ntypes, S = N + 1;
     for (let i = 1; i <= N; i++) {

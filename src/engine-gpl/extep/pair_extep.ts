@@ -217,7 +217,6 @@ export class PairExTeP extends Pair {
 
   initStyle(): void {
     if (!this.fileRead) throw new StyleError('pair_style extep needs a pair_coeff command with an ExTeP potential file');
-    if (this.shift || this.tail) throw new StyleError('pair_style extep does not support the pair_modify shift and tail options');
   }
 
   initOne(): number {

@@ -230,9 +230,6 @@ export class PairAIREBO extends Pair {
 
   override initStyle(_ctx: StyleContext): void {
     if (!this.fileRead) throw new StyleError(`pair_style ${this.name} needs a pair_coeff command with a potential file`);
-    if (this.shift || this.tail) {
-      throw new StyleError(`pair_style ${this.name} does not support the pair_modify shift and tail options`);
-    }
     if (this.table !== 12) throw new StyleError(`pair_style ${this.name} does not support the pair_modify table option`);
     this.setTables();
   }

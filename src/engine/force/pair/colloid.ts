@@ -172,7 +172,6 @@ export class PairColloid extends Pair {
   initStyle(_ctx: StyleContext): void {
     // "This pair style does not support the pair_modify tail option for adding
     // long-range tail corrections to energy and pressure."
-    if (this.tail) throw new StyleError('pair_modify tail is not supported for pair style colloid');
   }
 
   initOne(i: number, j: number): number {

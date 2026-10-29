@@ -1,5 +1,5 @@
 import { Compute } from './compute';
-import { StyleError, newAccum, type Accum, type Bonded, type BondedCompute } from '../force/types';
+import { StyleError, newAccum, type Accum, type Bonded, type BondedCompute, type Pair } from '../force/types';
 import { bondDelta, delta, dihedralGeometry } from '../force/bonded_util';
 import type { BondedCopies } from '../force/types';
 import { atomSubStyles, buildAtomMap, isTemplateStyle, massOf, nativeOrder } from '../atoms';
@@ -524,6 +524,33 @@ export class ComputePropertyLocal extends Compute {
 }
 
 /**
+ * The pair styles whose native class has a single() (single_enable) that this engine does not have yet: compute
+ * pair/local refuses them naming the engine, not with native's "Pair style does not support compute pair/local" (the
+ * pair-local parity matrix lists them as gaps).
+ */
+const SINGLE_GAPS = new Set<string>([
+  'bpm/peri', 'bpm/spring', 'buck/long/coul/long', 'colloid', 'coul/cut', 'coul/cut/dielectric', 'coul/cut/soft',
+  'coul/cut/soft/gapsys', 'coul/debye', 'coul/dsf', 'coul/esp', 'coul/long', 'coul/long/soft', 'coul/slater/long', 'dpd',
+  'dpd/coul/slater/long', 'dpd/ext', 'dpd/fdt', 'dpd/fdt/energy', 'edpd', 'gauss', 'granular/superellipsoid', 'harmonic/cut',
+  'lepton', 'lepton/coul', 'lepton/sphere', 'lj/charmm/coul/charmm', 'lj/charmm/coul/charmm/implicit', 'lj/charmm/coul/long',
+  'lj/charmm/coul/long/soft', 'lj/charmmfsw/coul/charmmfsh', 'lj/charmmfsw/coul/long', 'lj/class2/coul/cut/soft',
+  'lj/class2/coul/long/soft', 'lj/class2/soft', 'lj/cut/coul/cut/dielectric', 'lj/cut/coul/cut/soft',
+  'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/dielectric', 'lj/cut/coul/long/soft', 'lj/cut/coul/msm/dielectric',
+  'lj/cut/soft', 'lj/cut/soft/gapsys', 'lj/long/coul/long', 'lj/long/coul/long/dielectric', 'lj/sf/dipole/sf',
+  'lj/switch3/coulgauss/long', 'local/density', 'mm3/switch3/coulgauss/long', 'morse/soft', 'multi/lucy', 'peri/pmb',
+  'rheo/solid', 'smd/tlsph', 'soft', 'sph/heatconduction', 'tdpd', 'ylz', 'yukawa', 'yukawa/colloid',
+]);
+
+/** The first style (a hybrid's sub-styles in order) that is a SINGLE_GAPS entry without a single(), or null. */
+const singleGap = (pair: Pair): string | null => {
+  // a hybrid's sub-styles, read structurally as chunk17.ts does (importing PairHybrid here splits the engine chunks)
+  const subs = (pair as Pair & { subs?: { style: Pair }[] }).subs;
+  const styles = subs ? subs.map((x) => x.style) : [pair];
+  for (const st of styles) if (!st.singleEnabled() && (st.singleIsGap() || SINGLE_GAPS.has(st.name))) return st.name;
+  return null;
+};
+
+/**
  * The row order of compute pair/local: gplHook('pair/local') (src/engine-gpl/registry/pair_local.ts) gives the pairs of
  * the half list in native's enumeration (npair_bin.cpp order, newton on or off); the engine keeps its own cutoffs.
  * The enumeration is kept between neighbor builds (native bins the atoms only in Neighbor::build, so build_one of the
@@ -623,15 +650,19 @@ export class ComputePairLocal extends Compute {
   protected computeLocal(): Float64Array<ArrayBuffer> {
     const sys = this.sys;
     const pair = sys.ff.pair;
-    if (!pair) throw new StyleError(`compute ${this.id} pair/local needs a pair_style (none is defined)`);
+    // As native LAMMPS does (src/compute_pair_local.cpp init at b332f28), when a value needs single(): the pair style,
+    // its single_enable, then the pN fields of single_extra
+    if (!pair) throw new StyleError(this.needSingle ? 'No pair style is defined for compute pair/local' : `compute ${this.id} pair/local needs a pair_style (none is defined)`);
+    if (this.needSingle && !pair.singleEnabled()) {
+      const gap = singleGap(pair);
+      if (gap) throw new StyleError(`compute ${this.id} pair/local: the browser engine has no single() for pair style ${gap} yet (native LAMMPS has one)`);
+      throw new StyleError('Pair style does not support compute pair/local');
+    }
     const nExtra = pair.singleExtra();
     for (let c = 0; c < this.pIndex.length; c++) {
       const n = this.pIndex[c];
-      if (n >= 0 && n >= nExtra) {
-        throw new StyleError(`compute ${this.id} pair/local: pair style ${pair.name} does not have extra field ${this.values[c]} (native: "Pair style does not have extra field requested by compute pair/local")`);
-      }
+      if (n >= 0 && n >= nExtra) throw new StyleError('Pair style does not have extra field requested by compute pair/local');
     }
-    if (this.needSingle && !pair.single) throw new StyleError(`compute ${this.id} pair/local needs a pair_style that supports single() (the engine's pairwise evaluation)`);
     if (this.radiusCut && !sys.state.radius) throw new StyleError(`Compute pair/local with ID ${this.id} requires atom attribute radius`);
     sys.forces();
     const s = sys.state;

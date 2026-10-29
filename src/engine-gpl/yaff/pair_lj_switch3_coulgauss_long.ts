@@ -271,6 +271,8 @@ export class PairLJSwitch3CoulGaussLong extends PairLJCutCoulLong {
   }
 
   /** Pairwise energies (compute pair/local, hbond/local) are not reproduced for this style: refused by name. */
+  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
+  protected override singleMissing = true;
   single(): { eng: number; fforce: number } {
     throw new StyleError('pairwise energies (compute pair/local, hbond/local) are not supported for pair style lj/switch3/coulgauss/long');
   }

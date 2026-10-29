@@ -276,6 +276,8 @@ export class PairBuckLongCoulLong extends Pair {
     pc.acc.ecoul += ecoul;
   }
 
+  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
+  protected override singleMissing = true;
   single(): never {
     throw new StyleError('pair style buck/long/coul/long: single() (pair/local, pair_write) is not supported by the browser engine');
   }

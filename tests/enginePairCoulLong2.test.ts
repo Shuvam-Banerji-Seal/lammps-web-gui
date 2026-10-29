@@ -79,11 +79,14 @@ describe('born/coul/long and buck/coul/long: force = -dE/dr (central differences
   }
 
   it('pair_modify shift changes the non-Coulomb energy by E(rc) but not the force', () => {
-    const cases: [() => Pair, string[], string[]][] = [
-      [() => new PairBornCoulLong(), ['4.0', '3.0'], ['* * 1.5 0.25 0.9 0.7 0.3']],
-      [() => new PairBuckCoulLong(), ['4.0', '3.0'], ['* * 500.0 0.27 90.0']],
+    // E(rc) of the non-Coulomb part, written out: single() is zero at r = rc itself (native tests rsq < cut_ljsq)
+    const cases: [() => Pair, string[], string[], (r: number) => number][] = [
+      [() => new PairBornCoulLong(), ['4.0', '3.0'], ['* * 1.5 0.25 0.9 0.7 0.3'],
+        (r) => 1.5 * Math.exp((0.9 - r) / 0.25) - 0.7 / r ** 6 + 0.3 / r ** 8],
+      [() => new PairBuckCoulLong(), ['4.0', '3.0'], ['* * 500.0 0.27 90.0'],
+        (r) => 500.0 * Math.exp(-r / 0.27) - 90.0 / r ** 6],
     ];
-    for (const [build, styleArgs, coeffs] of cases) {
+    for (const [build, styleArgs, coeffs, energy] of cases) {
       const plain = build(), shifted = build();
       make(plain, styleArgs, coeffs);
       shifted.shift = true;
@@ -93,7 +96,7 @@ describe('born/coul/long and buck/coul/long: force = -dE/dr (central differences
       const a = plain.single!(0, 0, 1, 1, r * r, 1, 1, qi, qj);
       const b = shifted.single!(0, 0, 1, 1, r * r, 1, 1, qi, qj);
       // shift applies only to the exp(), 1/r^6 (and 1/r^8) part: E(rc) without Coulomb
-      const atRc = plain.single!(0, 0, 1, 1, rc * rc, 1, 1, 0, 0).eng;
+      const atRc = energy(rc);
       if (!close(b.eng, a.eng - atRc, 1e-12, 1e-12) || !close(b.fforce, a.fforce, 1e-12, 1e-14)) {
         throw new Error(`${plain.name}: shift yes must subtract E(rc) (non-Coulomb only) and leave the force unchanged`);
       }

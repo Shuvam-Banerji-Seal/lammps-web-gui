@@ -466,6 +466,9 @@ export class PairSW extends Pair {
   /**
    * PairSW::single: the two-body term alone, with threebody off only (native single_enable is set then).
    */
+  /** PairSW::settings: "single_enable = skip_threebody_flag ? 1 : 0" (compute pair/local refuses it with threebody on). */
+  override singleEnabled(): boolean { return !this.threebody; }
+
   override single(_i: number, _j: number, itype: number, jtype: number, rsq: number): { eng: number; fforce: number } {
     if (this.threebody) throw new StyleError('pair style sw: single() is only supported with threebody off');
     const nel = this.elements.length;

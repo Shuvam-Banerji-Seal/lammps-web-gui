@@ -1,0 +1,2401 @@
+{
+ "matrix": "pair-local",
+ "about": "compute pair/local eng force reduced to sums before the first run 0 of each pair style (the style's single()), pe and the two sums compared",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "w222me_adp_ni",
+   "line": 12,
+   "text": "pair_style adp",
+   "style": "pair_style adp pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w52airebo_airebo_00",
+   "line": 9,
+   "text": "pair_style airebo 3.0 0 0",
+   "style": "pair_style airebo pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w147ab_airebo_bc",
+   "line": 9,
+   "text": "pair_style airebo/bc 3.0 1 1",
+   "style": "pair_style airebo/bc pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w52airebo_morse_11",
+   "line": 9,
+   "text": "pair_style airebo/morse 3.0 1 1",
+   "style": "pair_style airebo/morse pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "amoeba_dimer_nokey",
+   "line": 14,
+   "text": "pair_style amoeba",
+   "style": "pair_style amoeba pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w10atm_pure",
+   "line": 20,
+   "text": "pair_style atm 4.5 4.0",
+   "style": "pair_style atm pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w219xp_beck",
+   "line": 14,
+   "text": "pair_style beck 2.5",
+   "style": "pair_style beck pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.727651876288027 -363.825938144013 -907.298933768293"
+  },
+  {
+   "case": "w48bd_free",
+   "line": 9,
+   "text": "pair_style body/nparticle 4.0",
+   "style": "pair_style body/nparticle pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w50bc_static",
+   "line": 8,
+   "text": "pair_style body/rounded/polygon 0 0 0 0.01 1.0",
+   "style": "pair_style body/rounded/polygon pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w126body_cubes_wall",
+   "line": 10,
+   "text": "pair_style body/rounded/polyhedron 20 5 0 1 0.5",
+   "style": "pair_style body/rounded/polyhedron pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w233bo_alcu",
+   "line": 16,
+   "text": "pair_style bop",
+   "style": "pair_style bop pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w1buck_born",
+   "line": 20,
+   "text": "pair_style born 2.5",
+   "style": "pair_style born pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.533451822003686 -57.6127967763981 428.027334470964"
+  },
+  {
+   "case": "w18borncoul_dsf",
+   "line": 22,
+   "text": "pair_style born/coul/dsf 0.6 2.5 3.0",
+   "style": "pair_style born/coul/dsf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w21borncs_dsf",
+   "line": 8,
+   "text": "pair_style born/coul/dsf/cs 0.3 8.0",
+   "style": "pair_style born/coul/dsf/cs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w3coullong_born",
+   "line": 21,
+   "text": "pair_style born/coul/long 10.0",
+   "style": "pair_style born/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 382.912578469321 2696.02577775514 11830.6830165918"
+  },
+  {
+   "case": "w9pair_born_cs",
+   "line": 8,
+   "text": "pair_style born/coul/long/cs 10.0 8.0",
+   "style": "pair_style born/coul/long/cs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w209ms_born",
+   "line": 24,
+   "text": "pair_style born/coul/msm 7.0",
+   "style": "pair_style born/coul/msm pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 34,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -867.032796254109 -499.582283515424 -136.673553149438"
+  },
+  {
+   "case": "w18borncoul_wolf",
+   "line": 22,
+   "text": "pair_style born/coul/wolf 0.6 2.5 3.0",
+   "style": "pair_style born/coul/wolf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w21borncs_wolf",
+   "line": 8,
+   "text": "pair_style born/coul/wolf/cs 0.3 8.0",
+   "style": "pair_style born/coul/wolf/cs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w219xp_born_gauss",
+   "line": 14,
+   "text": "pair_style born/gauss 2.5",
+   "style": "pair_style born/gauss pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -2.42547502067696 -1212.73751033848 -1417.4866530299"
+  },
+  {
+   "case": "w59bpm_peri_pmb",
+   "line": 22,
+   "text": "pair_style bpm/peri",
+   "style": "pair_style bpm/peri pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 42,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 192.357118379607 2198367.06719554"
+  },
+  {
+   "case": "w51bpm_pair_anh",
+   "line": 7,
+   "text": "pair_style bpm/spring anharmonic yes",
+   "style": "pair_style bpm/spring pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0.0104 0.0208 0.40896"
+  },
+  {
+   "case": "w231co_brownian_nohi",
+   "line": 13,
+   "text": "pair_style brownian 1.5 0 1 2.01 2.5 2.0 5878567 0 0",
+   "style": "pair_style brownian pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w231co_brownian_poly",
+   "line": 21,
+   "text": "pair_style brownian/poly 1.0 1 1 2.2 3.0 2.0 5878567",
+   "style": "pair_style brownian/poly pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w1buck_buck",
+   "line": 20,
+   "text": "pair_style buck 2.5",
+   "style": "pair_style buck pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.909613176346105 -98.2382230453793 -170.576630016899"
+  },
+  {
+   "case": "w1buck_buck_coul_cut",
+   "line": 22,
+   "text": "pair_style buck/coul/cut 2.5 3.0",
+   "style": "pair_style buck/coul/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.689823214365004 -74.5009071514205 -107.866386367075"
+  },
+  {
+   "case": "w3coullong_buck",
+   "line": 21,
+   "text": "pair_style buck/coul/long 10.0",
+   "style": "pair_style buck/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -3963.03766290827 -1649.92446362243 -1744.29195358351"
+  },
+  {
+   "case": "w9pair_buck_cs",
+   "line": 8,
+   "text": "pair_style buck/coul/long/cs 10.0 8.0",
+   "style": "pair_style buck/coul/long/cs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w209ms_buck",
+   "line": 24,
+   "text": "pair_style buck/coul/msm 7.0 8.0",
+   "style": "pair_style buck/coul/msm pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 36,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -898.974951644156 -472.999324901907 -248.505818981728"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 6,
+   "text": "pair_style buck/long/coul/long long long 8.0",
+   "style": "pair_style buck/long/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 12.2382550230811 1095.16128222907 498.759737083449"
+  },
+  {
+   "case": "w219xp_buck_mdf",
+   "line": 14,
+   "text": "pair_style buck/mdf 2.0 2.5",
+   "style": "pair_style buck/mdf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0.779979682057325 389.989841028663 1254.87150158965"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/dsf 0.9 12.0",
+   "style": "pair_style buck6d/coul/gauss/dsf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 82.4997600452355 1041.32557313618"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/long 0.9 1.0 12.0",
+   "style": "pair_style buck6d/coul/gauss/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 82.4997600452355 1041.32557313618"
+  },
+  {
+   "case": "colloid_ii_d1_d2",
+   "line": 12,
+   "text": "pair_style colloid 12.0",
+   "style": "pair_style colloid pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.0495858357390126 -1.33881756495334 -0.933323241120572"
+  },
+  {
+   "case": "w58comb_si0",
+   "line": 12,
+   "text": "pair_style comb",
+   "style": "pair_style comb pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w158cb_cu",
+   "line": 14,
+   "text": "pair_style comb3 polar_off",
+   "style": "pair_style comb3 pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w219xp_cosine_squared",
+   "line": 14,
+   "text": "pair_style cosine/squared 2.5",
+   "style": "pair_style cosine/squared pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -6.01884372381655 -3009.42186190827 -5129.69306874827"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 14,
+   "text": "pair_style coul/cut 20.0",
+   "style": "pair_style coul/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -1.26360540091214 -1.26360540091214 -0.421201800304046"
+  },
+  {
+   "case": "w226cs_diel_cutcoul",
+   "line": 6,
+   "text": "pair_style coul/cut/dielectric 8.0",
+   "style": "pair_style coul/cut/dielectric pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -62.0865789868097 -62.0865789868097 -19.8516348369565"
+  },
+  {
+   "case": "w219xp_coul_cut_global",
+   "line": 12,
+   "text": "pair_style coul/cut/global 2.5",
+   "style": "pair_style coul/cut/global pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.979164439917822 -501.332193237925 -242.865013774051"
+  },
+  {
+   "case": "w69fep_coulcutsoft",
+   "line": 17,
+   "text": "pair_style coul/cut/soft 2 2.6 4.0",
+   "style": "pair_style coul/cut/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 2.44919501393033 529.026123008951 112.024422101153"
+  },
+  {
+   "case": "w69fep_gapsys_coul",
+   "line": 17,
+   "text": "pair_style coul/cut/soft/gapsys 0.1 1.5 4.0",
+   "style": "pair_style coul/cut/soft/gapsys pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 1.64292804495646 354.872457710596 31.9666226852022"
+  },
+  {
+   "case": "w1coul_debye",
+   "line": 22,
+   "text": "pair_style coul/debye 1.5 2.5",
+   "style": "pair_style coul/debye pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.0392764268291797 -4.2418540975514 -10.8676371699224"
+  },
+  {
+   "case": "w49pb_coul_diel_dimer",
+   "line": 13,
+   "text": "pair_style coul/diel 3.5",
+   "style": "pair_style coul/diel pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 3295.63911104946 3295.63911104946 3844.10490914164"
+  },
+  {
+   "case": "w1coul_special_dsf",
+   "line": 8,
+   "text": "pair_style coul/dsf 0.6 3.5",
+   "style": "pair_style coul/dsf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 2.26416177577265 1.91071174152185 0.28429950174468"
+  },
+  {
+   "case": "w244es_ortho",
+   "line": 15,
+   "text": "pair_style coul/esp 8.0",
+   "style": "pair_style coul/esp pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -15930.6613152935 -2622.55615471902 -3286.09741157424"
+  },
+  {
+   "case": "w117cf_pppm_mesh8_real",
+   "line": 10,
+   "text": "pair_style coul/long 12.0",
+   "style": "pair_style coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -1.1801228299563 25.085290801174 1.52784951421169"
+  },
+  {
+   "case": "w9pair_coul_cs_short",
+   "line": 7,
+   "text": "pair_style coul/long/cs 10.0",
+   "style": "pair_style coul/long/cs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w226cs_diel_coullong_t12",
+   "line": 7,
+   "text": "pair_style coul/long/dielectric 8.0",
+   "style": "pair_style coul/long/dielectric pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w69fep_coullongsoft",
+   "line": 17,
+   "text": "pair_style coul/long/soft 2 2.6 4.0",
+   "style": "pair_style coul/long/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.768988749440707 -22.0107038483171 -90.9802326105041"
+  },
+  {
+   "case": "w219xp_coul_slater_cut",
+   "line": 16,
+   "text": "pair_style coul/slater/cut 0.7 2.5",
+   "style": "pair_style coul/slater/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0.325007777780061 162.503888890031 67.4067654726734"
+  },
+  {
+   "case": "w130pr_coulslater_ewald",
+   "line": 14,
+   "text": "pair_style coul/slater/long 0.929 3.0",
+   "style": "pair_style coul/slater/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.0474547171695645 -3.6119148612854 -4.05509442593196"
+  },
+  {
+   "case": "w43st_dsf_alone",
+   "line": 18,
+   "text": "pair_style coul/streitz 12.0 dsf 0.3",
+   "style": "pair_style coul/streitz pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w1coul_special_wolf",
+   "line": 8,
+   "text": "pair_style coul/wolf 0.6 3.5",
+   "style": "pair_style coul/wolf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w226cs_wolf",
+   "line": 6,
+   "text": "pair_style coul/wolf/cs 0.2 8.0",
+   "style": "pair_style coul/wolf/cs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w250d3_zerom",
+   "line": 13,
+   "text": "pair_style dispersion/d3 zerom pbe0 9.0 6.0",
+   "style": "pair_style dispersion/d3 pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w77dpd_noise_dpd3d_nosort",
+   "line": 14,
+   "text": "pair_style dpd 1.0 1.0 3854262",
+   "style": "pair_style dpd pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 1.83078769154555 109.847261492733 478.370836534808"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 18,
+   "text": "pair_style dpd/coul/slater/long 1.0 1.0 165412 0.25 2.0",
+   "style": "pair_style dpd/coul/slater/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 8.08347667864379 986.080366775159 4717.51217468622"
+  },
+  {
+   "case": "w77dpd_noise_ext3d",
+   "line": 13,
+   "text": "pair_style dpd/ext 1.0 1.0 3854262",
+   "style": "pair_style dpd/ext pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 1.83078769154555 109.847261492733 478.370836534808"
+  },
+  {
+   "case": "w319dpd_ext_tstat_ramp",
+   "line": 11,
+   "text": "pair_style dpd/ext/tstat 300.0 150.0 10.0 385262",
+   "style": "pair_style dpd/ext/tstat pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w95dreact_dpdvv_1000",
+   "line": 14,
+   "text": "pair_style dpd/fdt 300.0 8.6 245455",
+   "style": "pair_style dpd/fdt pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 10.5557860128194 10.5557860128194 8.05539059739339"
+  },
+  {
+   "case": "w95dreact_shardlow_dpde_1000",
+   "line": 15,
+   "text": "pair_style dpd/fdt/energy 10.0 245455",
+   "style": "pair_style dpd/fdt/energy pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 34,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 263.253838615411 263.253838615411 166.61080989392"
+  },
+  {
+   "case": "w77dpd_noise_tstat_spce",
+   "line": 11,
+   "text": "pair_style dpd/tstat 300.0 300.0 10.0 385262",
+   "style": "pair_style dpd/tstat pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w235mx_dsmc_gas",
+   "line": 16,
+   "text": "pair_style dsmc 2.5 34387 2000 1.0 10 20",
+   "style": "pair_style dsmc pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 9,
+   "text": "pair_style eam",
+   "style": "pair_style eam pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -906.240000583541 -906.240000583604 -355.404926890675"
+  },
+  {
+   "case": "w47pkg_dtreset_metal",
+   "line": 11,
+   "text": "pair_style eam/alloy",
+   "style": "pair_style eam/alloy pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -902.289254798578 -902.289254798447 13.6375966111605"
+  },
+  {
+   "case": "w222me_eamcd_fecr",
+   "line": 14,
+   "text": "pair_style eam/cd",
+   "style": "pair_style eam/cd pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w222me_eamcdold_fecr",
+   "line": 14,
+   "text": "pair_style eam/cd/old",
+   "style": "pair_style eam/cd/old pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w204sg_fs_vcsgc",
+   "line": 11,
+   "text": "pair_style eam/fs",
+   "style": "pair_style eam/fs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -4269.31674147192 -4269.31674147211 -696.74699518919"
+  },
+  {
+   "case": "w222me_eamhe_pdhhe",
+   "line": 16,
+   "text": "pair_style eam/he",
+   "style": "pair_style eam/he pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -421.510406774773 -421.510406774775 35.6285913722896"
+  },
+  {
+   "case": "w99phq_cu",
+   "line": 12,
+   "text": "pair_style eam/opt",
+   "style": "pair_style eam/opt pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -1812.48000116739 -1812.48000116726 -707.866227483795"
+  },
+  {
+   "case": "w48pb_edip_diamond",
+   "line": 27,
+   "text": "pair_style edip",
+   "style": "pair_style edip pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 35,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w48pb_edip_sic_example",
+   "line": 9,
+   "text": "pair_style edip/multi",
+   "style": "pair_style edip/multi pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w449dyngroup_edpd",
+   "line": 16,
+   "text": "pair_style edpd 1.58 9872598",
+   "style": "pair_style edpd pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 35,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 33.5665323232848 20139.9193939709 63770.4115481076"
+  },
+  {
+   "case": "w367eff_nph_couple_xy",
+   "line": 8,
+   "text": "pair_style eff/cut 6.447968 pressure/evirials",
+   "style": "pair_style eff/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w14eim_one",
+   "line": 10,
+   "text": "pair_style eim",
+   "style": "pair_style eim pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w145pr_pair_extep",
+   "line": 12,
+   "text": "pair_style extep",
+   "style": "pair_style extep pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w1misc_gauss",
+   "line": 20,
+   "text": "pair_style gauss 2.5",
+   "style": "pair_style gauss pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -2.8072874747441 -303.187047272363 -694.465421667645"
+  },
+  {
+   "case": "w49pb_gauss_cut_dimer",
+   "line": 13,
+   "text": "pair_style gauss/cut 8.0",
+   "style": "pair_style gauss/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0.0447896553766932 0.0447896553766932 -0.15539268191914"
+  },
+  {
+   "case": "w431rigidnh_ellipsoid",
+   "line": 16,
+   "text": "pair_style gayberne 1.0 3.0 1.0 4.0",
+   "style": "pair_style gayberne pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.821582788030194 -52.5812984339324 -170.813270336747"
+  },
+  {
+   "case": "w4gran_hertz_history",
+   "line": 25,
+   "text": "pair_style gran/hertz/history 20000.0 NULL 50.0 NULL 0.1 1",
+   "style": "pair_style gran/hertz/history pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 34,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 40045.9067829472"
+  },
+  {
+   "case": "w7pour_fewer",
+   "line": 10,
+   "text": "pair_style gran/hooke 2000.0 700.0 50.0 30.0 0.5 1",
+   "style": "pair_style gran/hooke pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w36pour2d",
+   "line": 10,
+   "text": "pair_style gran/hooke/history 4000.0 NULL 100.0 NULL 0.5 0",
+   "style": "pair_style gran/hooke/history pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w15gran_mdr_pair",
+   "line": 17,
+   "text": "pair_style granular",
+   "style": "pair_style granular pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0.0229923344698874"
+  },
+  {
+   "case": "w80superell_ellipsoid_gran",
+   "line": 24,
+   "text": "pair_style granular/superellipsoid",
+   "style": "pair_style granular/superellipsoid pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 39,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w223mb_gw",
+   "line": 19,
+   "text": "pair_style gw",
+   "style": "pair_style gw pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w223mb_gw_zbl",
+   "line": 19,
+   "text": "pair_style gw/zbl",
+   "style": "pair_style gw/zbl pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w17harmcut",
+   "line": 11,
+   "text": "pair_style harmonic/cut",
+   "style": "pair_style harmonic/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0.97323839104744 105.109746233124 1135.54632703678"
+  },
+  {
+   "case": "hippo_dimer_nokey",
+   "line": 14,
+   "text": "pair_style hippo",
+   "style": "pair_style hippo pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w234lc_diamond",
+   "line": 12,
+   "text": "pair_style lcbop",
+   "style": "pair_style lcbop pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w112ldd_molecule_ld",
+   "line": 9,
+   "text": "pair_style ldd",
+   "style": "pair_style ldd pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: All pair coeffs are not set. Status:"
+  },
+  {
+   "case": "w219xp_lennard_mdf",
+   "line": 14,
+   "text": "pair_style lennard/mdf 2.0 2.5",
+   "style": "pair_style lennard/mdf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -6.01235962617026 -3006.17981308513 -8845.97999086574"
+  },
+  {
+   "case": "w16lepton_shift",
+   "line": 13,
+   "text": "pair_style lepton 2.5",
+   "style": "pair_style lepton pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -5.46164768285366 -1398.18180681054 -3623.22524663455"
+  },
+  {
+   "case": "w16lepton_coul",
+   "line": 18,
+   "text": "pair_style lepton/coul 2.5",
+   "style": "pair_style lepton/coul pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -6.12830006762288 -1568.84481731146 -2966.88850678003"
+  },
+  {
+   "case": "w16lepton_sphere",
+   "line": 15,
+   "text": "pair_style lepton/sphere 2.0",
+   "style": "pair_style lepton/sphere pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w105cf_erotate_line",
+   "line": 11,
+   "text": "pair_style line/lj 2.5",
+   "style": "pair_style line/lj pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 9,
+   "text": "pair_style lj/charmm/coul/charmm 7.0 8.0",
+   "style": "pair_style lj/charmm/coul/charmm pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 179.4 0 0"
+  },
+  {
+   "case": "w3charmm_implicit",
+   "line": 21,
+   "text": "pair_style lj/charmm/coul/charmm/implicit 8.0 10.0",
+   "style": "pair_style lj/charmm/coul/charmm/implicit pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -1869.41603249625 -1869.41603249627 -1002.58354708491"
+  },
+  {
+   "case": "w50il_peptide_run0",
+   "line": 6,
+   "text": "pair_style lj/charmm/coul/long 8.0 10.0 10.0",
+   "style": "pair_style lj/charmm/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 88.4623527778298 -82.0975742780845 -69.1974307013355"
+  },
+  {
+   "case": "w69fep_charmmsoft",
+   "line": 17,
+   "text": "pair_style lj/charmm/coul/long/soft 2 0.5 2.6 8.0 10.0",
+   "style": "pair_style lj/charmm/coul/long/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -1.04075828990871 -188.244305605625 13241.7922286267"
+  },
+  {
+   "case": "w209ms_charmm_water",
+   "line": 8,
+   "text": "pair_style lj/charmm/coul/msm 3.5 4.5",
+   "style": "pair_style lj/charmm/coul/msm pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 54.5501183507124 1648.38534960557 250.492195927497"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/charmmfsh 8.0 10.0 9.0",
+   "style": "pair_style lj/charmmfsw/coul/charmmfsh pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 5264.26732587601 -5.20673927423483 -2.669676019332"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/long 8.0 10.0 9.0",
+   "style": "pair_style lj/charmmfsw/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 5260.83834971158 293.267956458171 27.926381034304"
+  },
+  {
+   "case": "w1ljx_class2",
+   "line": 20,
+   "text": "pair_style lj/class2 2.5",
+   "style": "pair_style lj/class2 pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -5.03438381191534 -506.616799388967 -1549.40220508092"
+  },
+  {
+   "case": "w51cs_c2cut_nylon",
+   "line": 6,
+   "text": "pair_style lj/class2/coul/cut 8.5",
+   "style": "pair_style lj/class2/coul/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 154.680726270582 162.928455601829 1034.16110896821"
+  },
+  {
+   "case": "w69fep_class2cutsoft",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/cut/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair_style lj/class2/coul/cut/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -2.31177045420391 -499.342418108078 -149.727868250838"
+  },
+  {
+   "case": "w51cs_c2long_nylon",
+   "line": 7,
+   "text": "pair_style lj/class2/coul/long 8.5",
+   "style": "pair_style lj/class2/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 114.636027418548 429.678211409338 1040.40012224264"
+  },
+  {
+   "case": "w226cs_class2",
+   "line": 6,
+   "text": "pair_style lj/class2/coul/long/cs 8.0",
+   "style": "pair_style lj/class2/coul/long/cs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w17soft_class2",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/long/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair_style lj/class2/coul/long/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -3.86126911730312 -689.943263306602 -281.597640946743"
+  },
+  {
+   "case": "w69fep_class2soft",
+   "line": 15,
+   "text": "pair_style lj/class2/soft 2 0.5 2.5",
+   "style": "pair_style lj/class2/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -3.409573073204 -736.467783812064 -365.194126154997"
+  },
+  {
+   "case": "w88pair_shift_lj_cubic",
+   "line": 9,
+   "text": "pair_style lj/cubic",
+   "style": "pair_style lj/cubic pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -5.550967438551 -2775.4837192755 -6996.60081423915"
+  },
+  {
+   "case": "w88pair_nofdotr",
+   "line": 9,
+   "text": "pair_style lj/cut 2.5",
+   "style": "pair_style lj/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325466 -3386.68402662733 -8142.98185618228"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 5,
+   "text": "pair_style lj/cut/coul/cut 10.0",
+   "style": "pair_style lj/cut/coul/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.423675923062939 -33.1433409737268 -8.53142053212167"
+  },
+  {
+   "case": "w243de_efield_cutcoul",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/cut/dielectric 0.2 8.0",
+   "style": "pair_style lj/cut/coul/cut/dielectric pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -62.0865789868097 -62.0865789868097 -39.8717077226751"
+  },
+  {
+   "case": "w17soft_coul",
+   "line": 17,
+   "text": "pair_style lj/cut/coul/cut/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair_style lj/cut/coul/cut/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0.509051564876056 109.955138013228 13628.1494219132"
+  },
+  {
+   "case": "w1lcoul_debye",
+   "line": 22,
+   "text": "pair_style lj/cut/coul/debye 1.5 2.5 3.0",
+   "style": "pair_style lj/cut/coul/debye pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -6.26137343676823 -676.228331170969 -1358.24800273103"
+  },
+  {
+   "case": "w226cs_diel_debye",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/debye/dielectric 0.2 8.0",
+   "style": "pair_style lj/cut/coul/debye/dielectric pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 37060.0852806834 37060.0852806834 698613.29188185"
+  },
+  {
+   "case": "w1lcoul_special_dsf",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/dsf 0.6 2.5 3.5",
+   "style": "pair_style lj/cut/coul/dsf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w244es_ljfluid",
+   "line": 15,
+   "text": "pair_style lj/cut/coul/esp 6.0 8.0",
+   "style": "pair_style lj/cut/coul/esp pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -6253.53316419517 -2589.37901871303 -1775.57093184723"
+  },
+  {
+   "case": "w75pppmslab_madelung_lowacc",
+   "line": 7,
+   "text": "pair_style lj/cut/coul/long 12",
+   "style": "pair_style lj/cut/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 12,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 725.0719520152 465.605102620139 562.316184232842"
+  },
+  {
+   "case": "w226cs_ljcoul_t12",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/long/cs 8.0",
+   "style": "pair_style lj/cut/coul/long/cs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w243de_efield_ljlong_pppm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/long/dielectric 0.2 8.0",
+   "style": "pair_style lj/cut/coul/long/dielectric pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -170.474129172385 -147.916066106448 -29.7671864045871"
+  },
+  {
+   "case": "w54accel_charged",
+   "line": 24,
+   "text": "pair_style lj/cut/coul/long/omp 7.0 7.5",
+   "style": "pair_style lj/cut/coul/long/omp pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 36,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -936.188745408136 -322.994007601696 -213.259438918701"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 4,
+   "text": "pair_style lj/cut/coul/long/soft 1 0.5 0.5 8.0 8.0",
+   "style": "pair_style lj/cut/coul/long/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -115.197404867989 -46.9593827746901 -52.9989274744662"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm 4.5",
+   "style": "pair_style lj/cut/coul/msm pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 47.4344616764454 1641.2696929313 258.935113518249"
+  },
+  {
+   "case": "w243de_efield_ljcoulmsm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm/dielectric 8.0",
+   "style": "pair_style lj/cut/coul/msm/dielectric pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 36672.5785680405 36858.357698667 698618.05102639"
+  },
+  {
+   "case": "w1lcoul_special_wolf",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/wolf 0.6 2.5 3.5",
+   "style": "pair_style lj/cut/coul/wolf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w41sm_dipole_mol",
+   "line": 12,
+   "text": "pair_style lj/cut/dipole/cut 4.0",
+   "style": "pair_style lj/cut/dipole/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w44dl_static_auto",
+   "line": 19,
+   "text": "pair_style lj/cut/dipole/long 5.0",
+   "style": "pair_style lj/cut/dipole/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w54accel_melt",
+   "line": 15,
+   "text": "pair_style lj/cut/omp 2.5",
+   "style": "pair_style lj/cut/omp pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -6.77336805325466 -3386.68402662733 -8142.98185618228"
+  },
+  {
+   "case": "w17soft_tail",
+   "line": 13,
+   "text": "pair_style lj/cut/soft 2 0.5 2.5",
+   "style": "pair_style lj/cut/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -2.57489793686513 -617.516388339183 -1511.27294883379"
+  },
+  {
+   "case": "w69fep_gapsys_lj",
+   "line": 15,
+   "text": "pair_style lj/cut/soft/gapsys 0.5 2.5",
+   "style": "pair_style lj/cut/soft/gapsys pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0.328938971280283 71.0508177965411 28374.3769428417"
+  },
+  {
+   "case": "w220xp_ljcutsphere",
+   "line": 17,
+   "text": "pair_style lj/cut/sphere 2.5",
+   "style": "pair_style lj/cut/sphere pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -2.42032535131894 -522.790275884891 -1668.86604775933"
+  },
+  {
+   "case": "w72drude_toluene_lang",
+   "line": 15,
+   "text": "pair_style lj/cut/thole/long 2.600 8.0 8.0",
+   "style": "pair_style lj/cut/thole/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 188,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 8,
+   "text": "pair_style lj/cut/tip4p/cut 1 2 1 1 0.1546 4.5",
+   "style": "pair_style lj/cut/tip4p/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 7,
+   "text": "pair_style lj/cut/tip4p/long 1 2 1 1 0.1546 8.5",
+   "style": "pair_style lj/cut/tip4p/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 124,
+   "text": "pair_style lj/cut/tip4p/long/soft 1 2 1 1 0.15 1 0.5 0.5 4.0 4.0",
+   "style": "pair_style lj/cut/tip4p/long/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 135,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w88pair_expand_shift01",
+   "line": 9,
+   "text": "pair_style lj/expand 2.5",
+   "style": "pair_style lj/expand pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -7.12537449246514 -3562.68724623257 5553.04788254129"
+  },
+  {
+   "case": "w220xp_ljexpandcoullong_special",
+   "line": 15,
+   "text": "pair_style lj/expand/coul/long 2.5 3.0",
+   "style": "pair_style lj/expand/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -3.85972115218805 -701.894784779772 783.002721658422"
+  },
+  {
+   "case": "w220xp_ljexpandsphere",
+   "line": 17,
+   "text": "pair_style lj/expand/sphere 2.5",
+   "style": "pair_style lj/expand/sphere pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -0.0382092156532581 -8.25319058110376 -70.5003016205417"
+  },
+  {
+   "case": "w1ljx_gromacs",
+   "line": 20,
+   "text": "pair_style lj/gromacs 2.0 2.5",
+   "style": "pair_style lj/gromacs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -5.43293998614782 -586.757518503965 -1305.15099771934"
+  },
+  {
+   "case": "w220xp_gromacs",
+   "line": 15,
+   "text": "pair_style lj/gromacs/coul/gromacs 1.6 2.2 1.2 2.6",
+   "style": "pair_style lj/gromacs/coul/gromacs pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -2.95961523329026 -639.276890390679 -1376.29290829941"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 5,
+   "text": "pair_style lj/long/coul/long long off 2.5",
+   "style": "pair_style lj/long/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -5.3684858711066 -1326.2934993294 -674.132332436514"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 6,
+   "text": "pair_style lj/long/coul/long/dielectric long long 8.0",
+   "style": "pair_style lj/long/coul/long/dielectric pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 35917.7636187778 37225.3502560968 698633.25812656"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 16,
+   "text": "pair_style lj/long/dipole/long cut long 2.5",
+   "style": "pair_style lj/long/dipole/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 8,
+   "text": "pair_style lj/long/tip4p/long cut long 1 2 1 1 0.1546 8.5",
+   "style": "pair_style lj/long/tip4p/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w219xp_lj_mdf",
+   "line": 14,
+   "text": "pair_style lj/mdf 2.0 2.5",
+   "style": "pair_style lj/mdf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -6.30329923988728 -3151.64961994364 -6181.99837309465"
+  },
+  {
+   "case": "w220xp_lj_pirani",
+   "line": 15,
+   "text": "pair_style lj/pirani 2.5",
+   "style": "pair_style lj/pirani pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -2.99688753962081 -647.327708558094 -1060.04164329329"
+  },
+  {
+   "case": "w6relres_mixed",
+   "line": 20,
+   "text": "pair_style lj/relres 1.4 1.7 2.0 2.5",
+   "style": "pair_style lj/relres pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -4.28203445931439 -462.459721605954 -818.540623047083"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 6,
+   "text": "pair_style lj/sdk 9.0",
+   "style": "pair_style lj/sdk pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 2442.19472853545 0 0"
+  },
+  {
+   "case": "w51cs_sdklong_dimer",
+   "line": 32,
+   "text": "pair_style lj/sdk/coul/long 9.0 8.0",
+   "style": "pair_style lj/sdk/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 41,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 69.2284750699064 59.1593270626111 345.622152450637"
+  },
+  {
+   "case": "w9pair_ljsf",
+   "line": 22,
+   "text": "pair_style lj/sf 2.5",
+   "style": "pair_style lj/sf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -4.91122124512031 -530.411894472994 -155.699480866178"
+  },
+  {
+   "case": "w19dipole_special",
+   "line": 38,
+   "text": "pair_style lj/sf/dipole/sf 4.0",
+   "style": "pair_style lj/sf/dipole/sf pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 40,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0.358981761560424 0.0693857244257211 0"
+  },
+  {
+   "case": "w88pair_tail_lj_smooth",
+   "line": 9,
+   "text": "pair_style lj/smooth 1.5 2.5",
+   "style": "pair_style lj/smooth pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -7.90805732120052 -3954.02866060026 -6948.32547714495"
+  },
+  {
+   "case": "w88pair_shift_lj_smooth_linear",
+   "line": 9,
+   "text": "pair_style lj/smooth/linear 2.5",
+   "style": "pair_style lj/smooth/linear pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -5.69327827571094 -2846.63913785547 -7616.48891057095"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 6,
+   "text": "pair_style lj/spica 9.0",
+   "style": "pair_style lj/spica pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 2442.19472853545 0 0"
+  },
+  {
+   "case": "w51cs_spicalong_run",
+   "line": 22,
+   "text": "pair_style lj/spica/coul/long 8.0 9.0",
+   "style": "pair_style lj/spica/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 35,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -2051.16237107883 -799.568280788506 -769.119959999491"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 20,
+   "text": "pair_style lj/spica/coul/msm 7.0",
+   "style": "pair_style lj/spica/coul/msm pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -12212.1211635742 -1021.62045846904 39670.8919290354"
+  },
+  {
+   "case": "w118yaff_mil53al_switch3_t0",
+   "line": 9,
+   "text": "pair_style lj/switch3/coulgauss/long 12.0000 4.0000",
+   "style": "pair_style lj/switch3/coulgauss/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -1566.64711882349 3030.50860446833 -88.3034011776967"
+  },
+  {
+   "case": "w1ljv_lj96",
+   "line": 20,
+   "text": "pair_style lj96/cut 2.5",
+   "style": "pair_style lj96/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -3.81219862648206 -411.717451660063 -426.031390595378"
+  },
+  {
+   "case": "w112ld_benzene_ld",
+   "line": 8,
+   "text": "pair_style local/density",
+   "style": "pair_style local/density pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -17.6086575774015 55753.28418916 -243053412.569795"
+  },
+  {
+   "case": "w231co_lubricate_nolog_fld",
+   "line": 18,
+   "text": "pair_style lubricate 1.5 0 1 0.61 2.5",
+   "style": "pair_style lubricate pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w231co_lubricate_poly",
+   "line": 21,
+   "text": "pair_style lubricate/poly 1.5 1 1 0.61 2.5",
+   "style": "pair_style lubricate/poly pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w231co_lubricateU_flaglog0",
+   "line": 16,
+   "text": "pair_style lubricateU 1.5 0 2.01 2.5 0.01 1 0",
+   "style": "pair_style lubricateU pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w231co_lubricateU_poly",
+   "line": 22,
+   "text": "pair_style lubricateU/poly 1.5 1 2.01 2.5 0.01 1 1",
+   "style": "pair_style lubricateU/poly pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w33meamtrip_dim",
+   "line": 12,
+   "text": "pair_style meam",
+   "style": "pair_style meam pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w128ms_msmeam",
+   "line": 16,
+   "text": "pair_style meam/ms",
+   "style": "pair_style meam/ms pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w47ms_si_min",
+   "line": 14,
+   "text": "pair_style meam/spline",
+   "style": "pair_style meam/spline pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w47ms_sw_ti_run",
+   "line": 18,
+   "text": "pair_style meam/sw/spline",
+   "style": "pair_style meam/sw/spline pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w157mt_bond_angle",
+   "line": 11,
+   "text": "pair_style mesocnt 40 chain id",
+   "style": "pair_style mesocnt pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w157mt_viscous",
+   "line": 15,
+   "text": "pair_style mesocnt/viscous 40 chain id",
+   "style": "pair_style mesocnt/viscous pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w212mg_vacmin",
+   "line": 16,
+   "text": "pair_style mgpt",
+   "style": "pair_style mgpt pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Unrecognized pair style 'mgpt' is part of the MGPT package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the MGPT package, which no native build here has"
+  },
+  {
+   "case": "w1ljx_mie",
+   "line": 20,
+   "text": "pair_style mie/cut 2.5",
+   "style": "pair_style mie/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -5.98135950856686 -645.986826925221 -1347.26505451022"
+  },
+  {
+   "case": "w37so3_dimer",
+   "line": 12,
+   "text": "pair_style mliap model linear w37so3_dimer.mliap.model descriptor so3 w37so3_dimer.mliap.descriptor",
+   "style": "pair_style mliap pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w115p_mm3_mof5",
+   "line": 8,
+   "text": "pair_style mm3/switch3/coulgauss/long 12.0000 4.0000",
+   "style": "pair_style mm3/switch3/coulgauss/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 26082.5511148173 33367.3017965779 73864.2419656539"
+  },
+  {
+   "case": "w49pb_momb_md",
+   "line": 22,
+   "text": "pair_style momb 12.0 0.75 20.0",
+   "style": "pair_style momb pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -9.43638014886593 -9.43638014886593 -8.99117769078304"
+  },
+  {
+   "case": "w88pair_tail_morse",
+   "line": 9,
+   "text": "pair_style morse 2.5",
+   "style": "pair_style morse pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -15.7068400275053 -7853.42001375266 -6074.94583079748"
+  },
+  {
+   "case": "w220xp_morse_smooth_linear",
+   "line": 15,
+   "text": "pair_style morse/smooth/linear 2.5",
+   "style": "pair_style morse/smooth/linear pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -1.01941748945921 -220.194177723189 -390.441843011825"
+  },
+  {
+   "case": "w69fep_morse",
+   "line": 15,
+   "text": "pair_style morse/soft 2 0.8 2.5",
+   "style": "pair_style morse/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -21.2488803943016 -10879.4267618824 -8073.81498990576"
+  },
+  {
+   "case": "w142mx_multi_lucy_lookup",
+   "line": 25,
+   "text": "pair_style multi/lucy lookup 2001",
+   "style": "pair_style multi/lucy pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 41,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -4.87575233110384 0 0"
+  },
+  {
+   "case": "w10nb3b_harmonic",
+   "line": 21,
+   "text": "pair_style nb3b/harmonic",
+   "style": "pair_style nb3b/harmonic pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w38nb3b_screened_random",
+   "line": 13,
+   "text": "pair_style nb3b/screened",
+   "style": "pair_style nb3b/screened pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w220xp_nm_cut",
+   "line": 15,
+   "text": "pair_style nm/cut 2.5",
+   "style": "pair_style nm/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -2.70524577472029 -584.333087339583 -1469.02898298855"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_cut",
+   "line": 17,
+   "text": "pair_style nm/cut/coul/cut 2.5 3.0",
+   "style": "pair_style nm/cut/coul/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -3.23659493998655 -699.104507037116 -1470.07891719676"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_long",
+   "line": 15,
+   "text": "pair_style nm/cut/coul/long 2.5 3.0",
+   "style": "pair_style nm/cut/coul/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -3.74591371776686 -677.3123789448 -889.55879208434"
+  },
+  {
+   "case": "w220xp_nm_cut_split_tail",
+   "line": 15,
+   "text": "pair_style nm/cut/split 2.5",
+   "style": "pair_style nm/cut/split pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -5.49720739219683 -657.309858983662 227.392191228452"
+  },
+  {
+   "case": "w62brown_point3d",
+   "line": 11,
+   "text": "pair_style none",
+   "style": "pair_style none pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: No pair style is defined for compute pair/local"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 12,
+   "text": "pair_style oxdna/excv",
+   "style": "pair_style oxdna/excv pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 17,
+   "text": "pair_style oxdna2/excv",
+   "style": "pair_style oxdna2/excv pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w270ya_pace_yace_cu",
+   "line": 14,
+   "text": "pair_style pace",
+   "style": "pair_style pace pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local",
+   "build": "ML-PACE"
+  },
+  {
+   "case": "pace_extrapolation_linear",
+   "line": 13,
+   "text": "pair_style pace/extrapolation",
+   "style": "pair_style pace/extrapolation pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local",
+   "build": "ML-PACE"
+  },
+  {
+   "case": "w48pb_pedone_triclinic",
+   "line": 22,
+   "text": "pair_style pedone 15.0",
+   "style": "pair_style pedone pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 7.90192527284373 7.90192527284373 180.350372926923"
+  },
+  {
+   "case": "w107peri_eps_block",
+   "line": 12,
+   "text": "pair_style peri/eps",
+   "style": "pair_style peri/eps pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w22peri_lps_data",
+   "line": 9,
+   "text": "pair_style peri/lps",
+   "style": "pair_style peri/lps pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w22peri_pmb_data",
+   "line": 9,
+   "text": "pair_style peri/pmb",
+   "style": "pair_style peri/pmb pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w107peri_ves_block",
+   "line": 12,
+   "text": "pair_style peri/ves",
+   "style": "pair_style peri/ves pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w128pod_ta_static",
+   "line": 17,
+   "text": "pair_style pod",
+   "style": "pair_style pod pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w223mb_poly_cuta_eam",
+   "line": 19,
+   "text": "pair_style polymorphic",
+   "style": "pair_style polymorphic pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w55reax_water",
+   "line": 8,
+   "text": "pair_style reaxff NULL checkqeq no",
+   "style": "pair_style reaxff pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 13,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w52airebo_rebo_ethane",
+   "line": 8,
+   "text": "pair_style rebo",
+   "style": "pair_style rebo pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 13,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w115p_rebomos",
+   "line": 10,
+   "text": "pair_style rebomos",
+   "style": "pair_style rebomos pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w133mf_region_ees",
+   "line": 12,
+   "text": "pair_style resquared 1",
+   "style": "pair_style resquared pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w390rheo_ideal_gas",
+   "line": 20,
+   "text": "pair_style rheo 3.0 artificial/visc 1.0",
+   "style": "pair_style rheo pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w96rheo_pair_solid",
+   "line": 20,
+   "text": "pair_style rheo/solid",
+   "style": "pair_style rheo/solid pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0.633339838727003"
+  },
+  {
+   "case": "w457dyngroup_smd_setvel",
+   "line": 67,
+   "text": "pair_style smd/tlsph",
+   "style": "pair_style smd/tlsph pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 90,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w189sq_al2o3",
+   "line": 20,
+   "text": "pair_style smtbq",
+   "style": "pair_style smtbq pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Unrecognized pair style 'smtbq' is part of the SMTBQ package which is not enabled in this LAMMPS binary.",
+   "skip": "needs the SMTBQ package, which no native build here has"
+  },
+  {
+   "case": "w33snapchem_pair",
+   "line": 15,
+   "text": "pair_style snap",
+   "style": "pair_style snap pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w88pair_shift_soft",
+   "line": 9,
+   "text": "pair_style soft 2.5",
+   "style": "pair_style soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 98.1237759745449 49061.8879872725 99468.0892437535"
+  },
+  {
+   "case": "w83sph_heat3d",
+   "line": 19,
+   "text": "pair_style sph/heatconduction",
+   "style": "pair_style sph/heatconduction pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 34,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  },
+  {
+   "case": "w228gs_sph_lj",
+   "line": 9,
+   "text": "pair_style sph/lj",
+   "style": "pair_style sph/lj pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 16,
+   "text": "pair_style spin/dipole/long 4.0",
+   "style": "pair_style spin/dipole/long pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w48sp2_dmi",
+   "line": 20,
+   "text": "pair_style spin/dmi 4.0",
+   "style": "pair_style spin/dmi pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w47spin_moving2",
+   "line": 13,
+   "text": "pair_style spin/exchange 4.0",
+   "style": "pair_style spin/exchange pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w48sp2_biquad",
+   "line": 20,
+   "text": "pair_style spin/exchange/biquadratic 4.0",
+   "style": "pair_style spin/exchange/biquadratic pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w48sp2_magelec",
+   "line": 20,
+   "text": "pair_style spin/magelec 4.5",
+   "style": "pair_style spin/magelec pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w2tsw_sw",
+   "line": 18,
+   "text": "pair_style sw",
+   "style": "pair_style sw pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w49mt_swang_spline",
+   "line": 15,
+   "text": "pair_style sw/angle/table",
+   "style": "pair_style sw/angle/table pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w22pot_sw_mod_mos",
+   "line": 20,
+   "text": "pair_style sw/mod",
+   "style": "pair_style sw/mod pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w113cf_benzene_table_spline",
+   "line": 9,
+   "text": "pair_style table spline 500",
+   "style": "pair_style table pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 2392.28357240099 2392.28357240099 3247.34437359019"
+  },
+  {
+   "case": "w450dyngroup_tdpd",
+   "line": 17,
+   "text": "pair_style tdpd 1.0 1.58 9872598",
+   "style": "pair_style tdpd pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 34,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 33.5665323232848 20139.9193939709 63770.4115481076"
+  },
+  {
+   "case": "w2tsw_tersoff",
+   "line": 18,
+   "text": "pair_style tersoff",
+   "style": "pair_style tersoff pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w22pot_tersoff_mod_si",
+   "line": 17,
+   "text": "pair_style tersoff/mod",
+   "style": "pair_style tersoff/mod pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w22pot_tersoff_modc_si",
+   "line": 17,
+   "text": "pair_style tersoff/mod/c",
+   "style": "pair_style tersoff/mod/c pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w223mb_tersoff_table_si",
+   "line": 16,
+   "text": "pair_style tersoff/table",
+   "style": "pair_style tersoff/table pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w108xf_elfit_sisi",
+   "line": 10,
+   "text": "pair_style tersoff/zbl",
+   "style": "pair_style tersoff/zbl pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w49mt_tri_edge",
+   "line": 13,
+   "text": "pair_style threebody/table",
+   "style": "pair_style threebody/table pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 122,
+   "text": "pair_style tip4p/long/soft 1 2 1 1 0.15 1 0.5 4.0",
+   "style": "pair_style tip4p/long/soft pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 133,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w61tri_pair",
+   "line": 8,
+   "text": "pair_style tri/lj 4.0",
+   "style": "pair_style tri/lj pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w146uf3_nb3b",
+   "line": 12,
+   "text": "pair_style uf3 3",
+   "style": "pair_style uf3 pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w219xp_ufm",
+   "line": 14,
+   "text": "pair_style ufm 2.5",
+   "style": "pair_style ufm pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 1.53665877760478 768.329388802389 2223.09044836086"
+  },
+  {
+   "case": "w5vash_si",
+   "line": 18,
+   "text": "pair_style vashishta",
+   "style": "pair_style vashishta pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w472vashtable_runs",
+   "line": 12,
+   "text": "pair_style vashishta/table 2000 0.2",
+   "style": "pair_style vashishta/table pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "ERROR: Pair style does not support compute pair/local"
+  },
+  {
+   "case": "w219xp_wf_cut",
+   "line": 14,
+   "text": "pair_style wf/cut 2.5",
+   "style": "pair_style wf/cut pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -3.09472185396482 -1547.36092698241 -10852.2548046943"
+  },
+  {
+   "case": "w115p_ylz_vesicle",
+   "line": 20,
+   "text": "pair_style ylz 2.6",
+   "style": "pair_style ylz pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL -3.24392752926394 -9530.65908097746 -1662.02458446854"
+  },
+  {
+   "case": "w88pair_tail_yukawa",
+   "line": 9,
+   "text": "pair_style yukawa 1.0 2.5",
+   "style": "pair_style yukawa pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 5.70823444125327 2854.11722062663 4810.89403017644"
+  },
+  {
+   "case": "w5yukawa_colloid",
+   "line": 20,
+   "text": "pair_style yukawa/colloid 2.0 3.5",
+   "style": "pair_style yukawa/colloid pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 192.626340246269 20803.644746597 41607.289493194"
+  },
+  {
+   "case": "w15snap_grid_local",
+   "line": 16,
+   "text": "pair_style zbl 4 4.8",
+   "style": "pair_style zbl pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 621.589265356777 621.589265356777 1968.30493395097"
+  },
+  {
+   "case": "w87bond_angle_fourier_linear",
+   "line": 8,
+   "text": "pair_style zero 5.0",
+   "style": "pair_style zero pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 4.44089209850063e-14 0 0"
+  },
+  {
+   "case": "w40ksp_zerocoul_zero",
+   "line": 21,
+   "text": "pair_style zero/coul 6.0",
+   "style": "pair_style zero/coul pair/local",
+   "pre": "compute zzpl all pair/local eng force\ncompute zzpls all reduce sum c_zzpl[1] c_zzpl[2] inputs local\nthermo_style custom step pe c_zzpls[1] c_zzpls[2]\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)\"\n",
+   "native": "OK | VAL 0 0 0"
+  }
+ ]
+}

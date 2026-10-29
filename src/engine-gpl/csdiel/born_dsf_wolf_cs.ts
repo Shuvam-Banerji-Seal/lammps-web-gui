@@ -41,6 +41,8 @@ const noSingle = (name: string): never => {
  * with the Born parameters stored as native (rhoinv = 1/rho, born1 = A/rho, born2 = 6C, born3 = 8D).
  */
 abstract class BornCoulCSBase extends PairBorn {
+  /** Native single_enable = 0 (src/CORESHELL/pair_born_coul_dsf_cs.cpp and pair_born_coul_wolf_cs.cpp at b332f28): compute pair/local refuses it. */
+  protected override singleOff = true;
   keepExcluded = true;
   /** alpha (native alpha / alf), the Coulomb cutoff cut_coul and cut_coul^2. */
   protected alpha = 0;

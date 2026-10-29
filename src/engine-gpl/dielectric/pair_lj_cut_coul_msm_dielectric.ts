@@ -171,6 +171,8 @@ export class PairLJCutCoulMSMDielectric extends PairLJCutCoulMSM {
     }
   }
 
+  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
+  protected override singleMissing = true;
   override single(): { eng: number; fforce: number } {
     throw new StyleError('pair lj/cut/coul/msm/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
   }

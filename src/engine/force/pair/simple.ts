@@ -160,6 +160,9 @@ export class PairBuck extends Pair {
 
   single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number, _qi: number, _qj: number) {
     const t = itype * (this.ntypes + 1) + jtype;
+    // As native LAMMPS does (src/pair_buck_coul_cut.cpp single at b332f28): the Buckingham part inside cut_lj[i][j] only
+    // (the coulomb variants' pair cutoff can be longer)
+    if (rsq >= this.cutSR[t] * this.cutSR[t]) return { fforce: 0, eng: 0 };
     const r = Math.sqrt(rsq);
     const ex = libm.exp(-r * this.buckIR[t]);
     const r2inv = 1 / rsq;

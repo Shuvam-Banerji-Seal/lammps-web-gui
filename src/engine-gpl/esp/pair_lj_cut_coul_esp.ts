@@ -33,9 +33,68 @@ export class PairLJCutCoulEsp extends PairLJCutCoulLong {
     this.cutCoulInit = this.cutCoul;
   }
 
+  /** The Coulomb prefactor of the last force evaluation (single() reads it). */
+  private qqrd2eSingle = 1;
+
+  /**
+   * PairLJCutCoulEsp::single: the per-pair terms of compute (the esp polynomials inside tabinner, the Coulomb table
+   * beyond it, the special-bond corrections) for one pair.
+   */
+  override single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const ks = this.kspace;
+    if (!ks) throw new StyleError('Pair style requires a KSpace style');
+    const nt = this.ntypes + 1;
+    const t = itype * nt + jtype;
+    const qqrd2e = this.qqrd2eSingle;
+    const fpoly = ks.forcePolyCoeff, epoly = ks.energyPolyCoeff;
+    const tab = this.table !== 0 ? this.espTable.get(this.cutCoulInit, this.tabinnerRsq, this.table, qqrd2e, fpoly, epoly) : null;
+    const cutCoulsq = this.cutCoulInit * this.cutCoulInit;
+    const cl = this.p.get('cut', itype, jtype);
+    const r2inv = 1.0 / rsq;
+    let forcecoul = 0.0, prefactor = 0.0, r = 0.0;
+    const usePoly = !tab || rsq <= tab.tabinnersq;
+    let itable = 0, fraction = 0;
+    if (rsq < cutCoulsq) {
+      if (usePoly) {
+        r = Math.sqrt(rsq);
+        const vals = espPolyValues(r, this.cutCoul, fpoly, epoly);
+        prefactor = qqrd2e * qi * qj / r;
+        forcecoul = prefactor * vals.force;
+        if (factorCoul < 1.0) forcecoul -= (1.0 - factorCoul) * prefactor;
+      } else {
+        itable = (floatBits(rsq) & tab!.ncoulmask) >>> tab!.ncoulshiftbits;
+        fraction = (bitsToFloat(floatBits(rsq)) - tab!.rtable[itable]) * tab!.drtable[itable];
+        let table = tab!.ftable[itable] + fraction * tab!.dftable[itable];
+        forcecoul = qi * qj * table;
+        if (factorCoul < 1.0) {
+          table = tab!.ctable[itable] + fraction * tab!.dctable[itable];
+          prefactor = qi * qj * table;
+          forcecoul -= (1.0 - factorCoul) * prefactor;
+        }
+      }
+    }
+    let forcelj = 0.0, r6inv = 0.0;
+    if (rsq < cl * cl) {
+      r6inv = r2inv * r2inv * r2inv;
+      forcelj = r6inv * (this.lj1[t] * r6inv - this.lj2[t]);
+    }
+    const fforce = (forcecoul + factorLJ * forcelj) * r2inv;
+    let eng = 0.0;
+    if (rsq < cutCoulsq) {
+      let phicoul: number;
+      if (usePoly) phicoul = prefactor * espPolyValues(r, this.cutCoul, fpoly, epoly).energy;
+      else phicoul = qi * qj * (tab!.etable[itable] + fraction * tab!.detable[itable]);
+      if (factorCoul < 1.0) phicoul -= (1.0 - factorCoul) * prefactor;
+      eng += phicoul;
+    }
+    if (rsq < cl * cl) eng += factorLJ * (r6inv * (this.lj3[t] * r6inv - this.lj4[t]) - this.offset[t]);
+    return { eng, fforce };
+  }
+
   compute(pc: PairCompute): void {
     const ks = this.kspace;
     if (!ks) throw new StyleError('Pair style requires a KSpace style');
+    this.qqrd2eSingle = pc.qqrd2e;
     const list = pc.half!;
     const { x, f, q, type } = pc;
     const nt = this.ntypes + 1;

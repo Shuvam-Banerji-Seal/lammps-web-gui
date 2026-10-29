@@ -225,6 +225,8 @@ export class PairBornCoulLongCS extends PairBorn {
     return super.extract(name);
   }
 
+  /** Native single_enable = 0 for this style (b332f28): compute pair/local refuses it as native does. */
+  protected override singleOff = true;
   single(): never { return noSingle(this.name); }
 }
 
@@ -358,5 +360,7 @@ export class PairBuckCoulLongCS extends PairBuck {
     return super.extract(name);
   }
 
+  /** Native single_enable = 0 for this style (b332f28): compute pair/local refuses it as native does. */
+  protected override singleOff = true;
   single(): never { return noSingle(this.name); }
 }

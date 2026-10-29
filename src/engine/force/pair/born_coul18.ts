@@ -66,6 +66,8 @@ const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);
 
 /** Shared born/coul/wolf and born/coul/dsf body: PairBorn + a global Coulomb cutoff and a coulPair() kernel. */
 abstract class PairBornCoul18 extends PairBorn {
+  /** Native single_enable = 0 (src/EXTRA-PAIR/pair_born_coul_wolf.cpp and pair_born_coul_dsf.cpp at b332f28): compute pair/local refuses it. */
+  protected override singleOff = true;
   /** Global Coulombic cutoff from pair_style; born/coul/wolf/dsf have no per-pair Coulomb cutoff. */
   cutCoul = 0;
   protected alpha = 0;

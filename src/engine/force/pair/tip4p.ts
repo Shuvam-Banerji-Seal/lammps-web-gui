@@ -96,6 +96,8 @@ export const tip4pTypes = (words: readonly string[], ctx: StyleContext | undefin
 };
 
 export class PairTIP4PBase extends PairLJCut {
+  /** Native single_enable = 0 (src/KSPACE/pair_tip4p_long.cpp and the other tip4p styles at b332f28): compute pair/local refuses it. */
+  protected override singleOff = true;
   /** Set by the subclasses: LJ term present, long-range (kspace) Coulomb. */
   hasLJ = true;
   coulLong = false;

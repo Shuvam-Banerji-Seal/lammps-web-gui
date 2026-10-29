@@ -96,7 +96,8 @@ describe('local computes: argument errors', () => {
 
   it('rejects pair/local pN values of a pair style that defines none, a bad cutoff keyword and radius without radius', async () => {
     // docs.lammps.org/compute_pair_local.html: "Most pair styles do not define any additional quantities, so N = 0."
-    await expect(molecule('compute c all pair/local dist p1\ndump d all local 1 pl.txt c_c[1] c_c[2]')).rejects.toThrow(/pair style lj\/cut does not have extra field p1/);
+    // The message is native's (src/compute_pair_local.cpp init at b332f28), which does not name the style or the field.
+    await expect(molecule('compute c all pair/local dist p1\ndump d all local 1 pl.txt c_c[1] c_c[2]')).rejects.toThrow(/Pair style does not have extra field requested by compute pair\/local/);
     await expect(molecule('compute c all pair/local dist cutoff bogus')).rejects.toThrow(/Unknown compute pair\/local cutoff keyword: bogus/);
     await expect(molecule('compute c all pair/local dist cutoff radius\ndump d all local 1 pl.txt c_c')).rejects.toThrow(/requires atom attribute radius/);
     await expect(molecule('compute c all pair/local dist p0')).rejects.toThrow(/Invalid keyword p0 in compute pair\/local command/);
@@ -129,7 +130,7 @@ describe('local computes: argument errors', () => {
       `);
       return writes;
     };
-    await expect(run('compute c all pair/local p13 cutoff radius\ndump d all local 1 pl.txt c_c')).rejects.toThrow(/pair style granular does not have extra field p13/);
+    await expect(run('compute c all pair/local p13 cutoff radius\ndump d all local 1 pl.txt c_c')).rejects.toThrow(/Pair style does not have extra field requested by compute pair\/local/);
     const w = await run('compute c all pair/local dist p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 cutoff radius\ndump d all local 1 pl.txt c_c[*]');
     // one pair in contact (overlap 0.1, no history yet): the dump row is dist, p1..p12 (no index column); p10..p12 are
     // x_i - x_j (+-0.9, 0, 0) and the tangential force p1..p3 is zero at the first contact step (no history, no velocity)

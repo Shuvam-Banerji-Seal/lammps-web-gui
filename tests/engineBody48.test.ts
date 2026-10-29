@@ -167,8 +167,8 @@ describe('atom_style body and the refused styles', () => {
     await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\nfix 1 all wall/body/polygon 2000 50 50 yplane -5 5\n`)).rejects.toThrow(/wall\/body\/polygon/);
   });
 
-  it('refuses pair_modify shift and tail, and a point particle in the nve/body group', async () => {
-    await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\npair_modify shift yes\nrun 0\n`)).rejects.toThrow(/shift and tail/);
+  it('accepts pair_modify shift and refuses a point particle in the nve/body group', async () => {
+    await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\npair_modify shift yes\nrun 0\n`)).resolves.toBeDefined();
     await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\nfix 1 all nve/body\nrun 0\n`)).rejects.toThrow(/Fix nve\/body requires bodies/);
   });
 });

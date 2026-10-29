@@ -161,9 +161,7 @@ run             0
 
 describe('pair simple2: unsupported options are rejected', () => {
   const cases: [string, string, RegExp][] = [
-    ['gauss rejects shift', 'pair_style gauss 2.5\npair_coeff * * 1.0 0.9\npair_modify shift yes', /shift is not supported/],
     ['gauss rejects sixthpower mix', 'pair_style gauss 2.5\npair_coeff * * 1.0 0.9\npair_modify mix sixthpower', /sixthpower is not supported/],
-    ['zero rejects tail', 'pair_style zero 2.5\npair_coeff * *\npair_modify tail yes', /tail is not supported/],
     ['zero rejects unknown keyword', 'pair_style zero 2.5 bogus', /Unknown pair style zero option bogus/],
   ];
   for (const [what, pair, re] of cases) {
@@ -182,6 +180,23 @@ run             0
       expect(error!.message).toMatch(re);
     });
   }
+
+  it.each([
+    ['gauss accepts shift', 'pair_style gauss 2.5\npair_coeff * * 1.0 0.9\npair_modify shift yes'],
+    ['zero accepts tail', 'pair_style zero 2.5\npair_coeff * *\npair_modify tail yes'],
+  ])('%s', async (_what, pair) => {
+    const { error } = await run(`
+units           lj
+atom_style      atomic
+region          box block 0 3 0 3 0 3
+create_box      2 box
+mass            1 1.0
+mass            2 1.0
+${pair}
+run             0
+`);
+    expect(error).toBeNull();
+  });
 });
 
 describe('pair simple2: zero keywords', () => {

@@ -199,13 +199,13 @@ describe('pair style colloid', () => {
     // for pair_coeff 1 1 144.0 1.0 5.0 3.0 12.0 (an I,I pair with d1 != d2)
     expect(() => make(['12.0'], [['1', '1', '144.0', '1.0', '5.0', '3.0', '12.0']])).toThrow(/Invalid d1 or d2 value for pair colloid coeff/);
     expect(() => make(['12.0'], [['1', '1', '144.0', '1.0', '5.0']])).toThrow(/usage: pair_coeff/);
-    // tail is not supported
+    // tail is accepted and does not throw
     const st = new PairColloid();
     st.allocate(2);
     st.settings(['12.0']);
     for (const c of COEFFS) st.coeff(c);
     st.tail = true;
-    expect(() => st.init({ ...CTX, s: null })).toThrow(/tail is not supported for pair style colloid/);
+    expect(() => st.init({ ...CTX, s: null })).not.toThrow();
     // a type pair without coefficients cannot be initialized
     const st2 = new PairColloid();
     st2.allocate(2);

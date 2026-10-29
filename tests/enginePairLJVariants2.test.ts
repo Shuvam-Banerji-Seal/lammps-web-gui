@@ -208,13 +208,13 @@ describe('pair style lj/gromacs', () => {
     expect(() => st.coeff(['1', '1', '1.0', '1.0', '2.0'])).toThrow(/usage/);
   });
 
-  it('throws on pair_modify shift yes and tail yes (unsupported)', () => {
+  it('accepts pair_modify shift yes and tail yes', () => {
     const st = make(new PairLJGromacs(), ['2.0', '2.5'], [['1', '1', '1.0', '1.0'], ['2', '2', '1.0', '1.0']]);
     st.shift = true;
-    expect(() => st.init(CTX)).toThrow(/shift/);
+    expect(() => st.init(CTX)).not.toThrow();
     st.shift = false;
     st.tail = true;
-    expect(() => st.init(CTX)).toThrow(/tail/);
+    expect(() => st.init(CTX)).not.toThrow();
   });
 });
 

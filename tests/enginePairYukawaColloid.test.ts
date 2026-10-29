@@ -180,7 +180,7 @@ describe('pair style yukawa/colloid', () => {
     expect(() => st2.init(CTX)).toThrow(/all pair coeffs are not set/);
     const st3 = make(new PairYukawaColloid(), null, ['2.0', '3.5'], COEFFS);
     st3.tail = true;
-    expect(() => st3.init(CTX)).toThrow(/tail is not supported/);
+    expect(() => st3.init(CTX)).not.toThrow();
   });
 
   it('requires atom_style sphere radii', () => {

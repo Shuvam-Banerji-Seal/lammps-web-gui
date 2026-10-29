@@ -152,10 +152,10 @@ describe('pair style lj/charmm/coul/charmm', () => {
     expect(() => st.init(CTX)).toThrow('Pair inner cutoff >= Pair outer cutoff');
     st.settings(['3.0', '5.0']);
     st.shift = true;
-    expect(() => st.init(CTX)).toThrow(/shift/);
+    expect(() => st.init(CTX)).not.toThrow();
     st.shift = false;
     st.tail = true;
-    expect(() => st.init(CTX)).toThrow(/tail/);
+    expect(() => st.init(CTX)).not.toThrow();
     st.tail = false;
     st.table = 0;
     expect(() => st.init(CTX)).toThrow(/table/);

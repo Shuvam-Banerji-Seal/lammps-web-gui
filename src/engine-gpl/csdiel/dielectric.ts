@@ -11,6 +11,7 @@
  * per visit); the virial is tallied pair by pair (no_virial_fdotr_compute in all three styles).
  * The arithmetic follows the native compute() order (efield self term of curvature and area, EPSILON = 1.0e-6 cut on
  * the Coulomb term of coul/cut and debye, the A&S polynomial erfc of coul/long, the table branch of pair_modify table N).
+ * single() (compute pair/local) of coul/cut/dielectric and lj/cut/coul/debye/dielectric is ported from the same files.
  */
 import { PairCoulCut } from '../../engine/force/pair/coul';
 import { PairCoulLong } from '../../engine/force/pair/coul_long';
@@ -18,13 +19,28 @@ import { PairLJCutCoulDebye } from '../../engine/force/pair/lj_coul';
 import { evTallyFull, StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { ErfcTableCache, erfcPoly, EWALD_F } from '../../engine/force/erfc';
-import { dielArrays } from '../dielectric/common';
+import { dielArrays, type DielArrays } from '../dielectric/common';
 import { exp as glibcExp } from '../libm/exp';
 
 /** Within this distance squared the Coulomb term of coul/cut and debye is left out (native EPSILON). */
 const EPSILON = 1.0e-6;
 /** sqrt(pi), MathConst::MY_PIS. */
 const MY_PIS = 1.77245385090551602729;
+
+/**
+ * The per-atom dielectric arrays of the last compute() (the styles' single() reads q_scaled and epsilon from them, as
+ * native does); a StyleError when no force evaluation has set them yet.
+ */
+export const singleArrays = (d: DielArrays | null, who: string): DielArrays => {
+  if (!d) throw new StyleError(`${who}: single() needs a force evaluation first (its per-atom dielectric arrays)`);
+  return d;
+};
+
+/**
+ * The dielectric constant as the native single() of the DIELECTRIC styles reads it: 0 when eps == 1 (native sets ei = 0
+ * for an unscreened atom in the energy), else eps.
+ */
+export const singleEps = (e: number): number => (e === 1 ? 0 : e);
 
 /** The self term of the field at owned atom i (Eq. (55) of Barros et al., as in every native dielectric compute). */
 export const selfField = (
@@ -58,9 +74,14 @@ export class PairCoulCutDielectric extends PairCoulCut {
   explicitVirial = true;
   /** Electric field at each owned atom from this pair (3 per atom; set by compute()). */
   efield = new Float64Array(0);
+  /** The per-atom arrays and Coulomb prefactor of the last compute() (single() reads them, as native reads q_scaled and force->qqrd2e). */
+  private dielSingle: DielArrays | null = null;
+  private qqrd2eSingle = 1;
 
   compute(pc: PairCompute): void {
     const d = dielArrays(pc.s, 'pair coul/cut/dielectric');
+    this.dielSingle = d;
+    this.qqrd2eSingle = pc.qqrd2e;
     const list = pc.full;
     if (!list) throw new StyleError('pair coul/cut/dielectric needs a full neighbor list');
     const nl = pc.nlocal;
@@ -101,10 +122,21 @@ export class PairCoulCutDielectric extends PairCoulCut {
     }
   }
 
-  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
-  protected override singleMissing = true;
-  single(): never {
-    throw new StyleError('pair style coul/cut/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
+  /**
+   * As native LAMMPS does (src/DIELECTRIC/pair_coul_cut_dielectric.cpp single at b332f28): no cutoff test; fforce carries
+   * eps_i but not factor_coul, and the energy is factor_coul qqrd2e q_i q_j (1/r) 0.5 (ei + ej), with q_scaled (the
+   * arrays of the last compute) and ei = 0 for eps == 1. The charges passed in are the unscaled ones and are not used.
+   */
+  single(i: number, j: number, _itype: number, _jtype: number, rsq: number, factorCoul: number, _factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const d = singleArrays(this.dielSingle, 'pair coul/cut/dielectric');
+    const qqrd2e = this.qqrd2eSingle;
+    const q = d.qs, eps = d.epsilon;
+    const r2inv = 1.0 / rsq;
+    const fforce = qqrd2e * q[i] * q[j] * Math.sqrt(r2inv) * eps[i];
+    const ei = singleEps(eps[i]), ej = singleEps(eps[j]);
+    let phicoul = qqrd2e * q[i] * q[j] * Math.sqrt(r2inv);
+    phicoul *= 0.5 * (ei + ej);
+    return { eng: factorCoul * phicoul, fforce };
   }
 }
 
@@ -221,9 +253,14 @@ export class PairLJCutCoulDebyeDielectric extends PairLJCutCoulDebye {
   explicitVirial = true;
   efield = new Float64Array(0);
   epot = new Float64Array(0);
+  /** The per-atom arrays and Coulomb prefactor of the last compute() (single() reads them). */
+  private dielSingle: DielArrays | null = null;
+  private qqrd2eSingle = 1;
 
   compute(pc: PairCompute): void {
     const d = dielArrays(pc.s, 'pair lj/cut/coul/debye/dielectric');
+    this.dielSingle = d;
+    this.qqrd2eSingle = pc.qqrd2e;
     const list = pc.full;
     if (!list) throw new StyleError('pair lj/cut/coul/debye/dielectric needs a full neighbor list');
     const nl = pc.nlocal;
@@ -292,9 +329,44 @@ export class PairLJCutCoulDebyeDielectric extends PairLJCutCoulDebye {
     }
   }
 
-  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
-  protected override singleMissing = true;
-  single(): never {
-    throw new StyleError('pair style lj/cut/coul/debye/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
+  /**
+   * As native LAMMPS does (src/DIELECTRIC/pair_lj_cut_coul_debye_dielectric.cpp single at b332f28): the screened Coulomb
+   * force (eps_i in it, no EPSILON test) inside cut_coul, the LJ force inside cut, fforce = (factor_coul forcecoul +
+   * factor_lj forcelj) / r^2, and the energy with ei = 0 for eps == 1 and the cutoffs of cut_coulsq and cut_ljsq.
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const d = singleArrays(this.dielSingle, 'pair lj/cut/coul/debye/dielectric');
+    const qqrd2e = this.qqrd2eSingle;
+    const q = d.qs, eps = d.epsilon;
+    const nt = this.ntypes + 1;
+    const t = itype * nt + jtype;
+    const cutCoulSq = this.p.get('cut_coul', itype, jtype) ** 2;
+    const cutLJSq = this.p.get('cut', itype, jtype) ** 2;
+    const r2inv = 1.0 / rsq;
+    let forcecoul = 0, rinv = 0, screening = 0;
+    if (rsq < cutCoulSq) {
+      const r = Math.sqrt(rsq);
+      rinv = 1.0 / r;
+      screening = glibcExp(-this.kappa * r);
+      forcecoul = qqrd2e * q[i] * q[j] * screening * (this.kappa + rinv) * eps[i];
+    }
+    let forcelj = 0, r6inv = 0;
+    if (rsq < cutLJSq) {
+      r6inv = r2inv * r2inv * r2inv;
+      forcelj = r6inv * (this.lj1[t] * r6inv - this.lj2[t]);
+    }
+    const fforce = (factorCoul * forcecoul + factorLJ * forcelj) * r2inv;
+    const ei = singleEps(eps[i]), ej = singleEps(eps[j]);
+    let eng = 0;
+    if (rsq < cutCoulSq) {
+      let phicoul = qqrd2e * q[i] * q[j] * rinv * screening;
+      phicoul *= 0.5 * (ei + ej);
+      eng += factorCoul * phicoul;
+    }
+    if (rsq < cutLJSq) {
+      const philj = r6inv * (this.lj3[t] * r6inv - this.lj4[t]) - this.offset[t];
+      eng += factorLJ * philj;
+    }
+    return { eng, fforce };
   }
 }

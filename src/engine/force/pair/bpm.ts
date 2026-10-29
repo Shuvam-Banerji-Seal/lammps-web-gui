@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type PairSep, type StyleContext, pairCoeffArgs } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { logical, missingArgs, parseNum, fmtCoeff } from '../util';
 import { tallyAtom } from './lj_cut';
@@ -75,11 +75,45 @@ export class PairBpmSpring extends Pair {
     return p.get('rc', i, j);
   }
 
+  /** The velocities of the last force evaluation (single() reads them by owned index). */
+  private velLast: Float64Array | null = null;
+
+  /**
+   * Pair energy and force of one pair for compute pair/local. As native LAMMPS does (src/BPM/pair_bpm_spring.cpp single
+   * at b332f28), which differs from its force loop: zero beyond the cutoff ("if (rsq > cutsq[itype][jtype]) return
+   * 0.0"), the spring term -k dr (and -k_a dr^3) is not divided by r while the damping term is, and the smoothing is
+   * "smooth = rsq / cutsq[itype][jtype]; smooth *= smooth; smooth = 1.0 - smooth"; both times factor_lj.
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number, _qi = 0, _qj = 0, del?: PairSep): { eng: number; fforce: number } {
+    const t = itype * (this.ntypes + 1) + jtype;
+    if (rsq > this.cutsq[t]) return { eng: 0, fforce: 0 };
+    const v = this.velLast;
+    if (!v || !del) throw new StyleError('pair bpm/spring single() needs a force evaluation and the pair separation');
+    const r = Math.sqrt(rsq), rinv = 1 / r;
+    const dr = r - this.rc[t];
+    let fpair = -this.kk[t] * dr;
+    let energy = -0.5 * fpair * dr;
+    if (this.anharmonic) {
+      const fa = -this.ka[t] * dr * dr * dr;
+      fpair += fa;
+      energy += -0.25 * fa * dr;
+    }
+    let smooth = rsq / this.cutsq[t];
+    smooth *= smooth;
+    smooth = 1 - smooth;
+    const dot = del.dx * (v[3 * i] - v[3 * j]) + del.dy * (v[3 * i + 1] - v[3 * j + 1]) + del.dz * (v[3 * i + 2] - v[3 * j + 2]);
+    fpair -= this.gg[t] * dot * rinv * smooth;
+    return { eng: energy * factorLJ, fforce: fpair * factorLJ };
+  }
+
+  override singleNeedsSeparation(): boolean { return true; }
+
   compute(pc: PairCompute): void {
     const list = pc.half!;
     const { x, f, type } = pc;
     const s = pc.s;
     const vel = s.v;
+    this.velLast = vel;
     const owner = pc.nb.owner;
     const nt = this.ntypes + 1;
     const { cutsq, kk, rc, gg, ka } = this;

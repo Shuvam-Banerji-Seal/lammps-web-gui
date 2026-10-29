@@ -9,6 +9,9 @@
  * diffusion term -kappa wcr^2 (c_i - c_j) plus a random term epsilon wcr (c_i + c_j) theta / sqrt(dt), with theta from the
  * same RanMars stream (clamped to +-5). The fluxes are kept in cc_flux (atom_style tdpd) and summed by fix mvv/tdpd.
  * Random numbers follow native's pair order (src/engine-gpl/neighbor/nativeOrder.ts).
+ *
+ * PairTDPD::single (pair_tdpd.cpp at b332f28, for compute pair/local) is the conservative term with its shifted energy:
+ * no random term, no species fluxes and no cutoff test, as the native single() body is written.
  */
 import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
@@ -115,6 +118,24 @@ export class PairTDPD extends Pair {
     const sigma = Math.sqrt(2.0 * this.boltz * this.temperature * p.get('gamma', i, j));
     this.sigma[p.idx(i, j)] = this.sigma[p.idx(j, i)] = sigma;
     return p.get('cut', i, j);
+  }
+
+  /**
+   * PairTDPD::single (pair_tdpd.cpp at b332f28): "wc = 1.0 - r/cut[itype][jtype]"; "fforce = a0*wc*factor_dpd*rinv";
+   * "phi = 0.5*a0*cut*wc*wc; return factor_dpd*phi" (with "if (r < EPSILON) { fforce = 0.0; return 0.0; }").
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _factorCoul: number, factorDpd: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const r = Math.sqrt(rsq);
+    if (r < EPSILON) return { eng: 0, fforce: 0 };
+    const p = this.p;
+    if (!p) throw new StyleError('pair tdpd single() used before pair_style');
+    const t = itype * (this.ntypes + 1) + jtype;
+    const a0 = p.p('a0')[t], cut = p.p('cut')[t];
+    const rinv = 1.0 / r;
+    const wc = 1.0 - r / cut;
+    const fforce = a0 * wc * factorDpd * rinv;
+    const phi = 0.5 * a0 * cut * wc * wc;
+    return { eng: factorDpd * phi, fforce };
   }
 
   compute(pc: PairCompute): void {

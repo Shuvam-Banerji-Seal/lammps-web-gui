@@ -11,6 +11,9 @@
  * perpendicular vector), in that order, from the same RanMars stream as pair dpd.
  *
  * The per-pair draw order is native LAMMPS's neighbor-list order (see pair_dpd.ts and nativeOrder.ts).
+ *
+ * PairDPDExt::single (pair_dpd_ext.cpp at b332f28) is the isotropic conservative term with the weight wd (not wd^ws), as
+ * the native single() body is written; compute pair/local uses it.
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
@@ -46,6 +49,8 @@ export class PairDPDExt extends Pair {
     super();
     this.tstat = tstat;
     this.name = tstat ? 'dpd/ext/tstat' : 'dpd/ext';
+    // pair_dpd_ext_tstat.cpp: "single_enable = 0;" (compute pair/local refuses this style)
+    if (tstat) this.singleOff = true;
   }
 
   settings(args: string[]): void {
@@ -216,6 +221,22 @@ export class PairDPDExt extends Pair {
       if (tally) tallyXYZ(pc, i, j, e, fx, fy, fz, delx, dely, delz);
     }
     pc.acc.evdwl += evdwl;
+  }
+
+  /**
+   * PairDPDExt::single (pair_dpd_ext.cpp at b332f28): "r = sqrt(rsq); if (r < EPSILON) { fforce = 0.0; return 0.0; }",
+   * "wd = 1.0 - r/cut[itype][jtype]", "fforce = a0*wd * factor_dpd*rinv", "phi = 0.5*a0*cut * wd*wd; return factor_dpd*phi".
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _factorCoul: number, factorDpd: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const r = Math.sqrt(rsq);
+    if (r < EPSILON) return { eng: 0, fforce: 0 };
+    const t = itype * this.nt + jtype;
+    const a0 = this.p.p('a0')[t], cut = this.cut[t];
+    const rinv = 1.0 / r;
+    const wd = 1.0 - r / cut;
+    const fforce = a0 * wd * factorDpd * rinv;
+    const phi = 0.5 * a0 * cut * wd * wd;
+    return { eng: factorDpd * phi, fforce };
   }
 
   dataCoeffs(): string[] { return []; }

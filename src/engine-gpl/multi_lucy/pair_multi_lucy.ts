@@ -320,6 +320,14 @@ export class PairMultiLucy extends Pair {
    * the cutoff, summed on the owners), then the pair forces from the tables of the two densities, and the per-atom
    * energy of each owned atom from its own density (the self table of its type, times pi rc^4 / 84).
    */
+  /**
+   * No native single() in this class (src/DPD-REACT/pair_multi_lucy.cpp at b332f28 defines none), so the base
+   * Pair::single runs (src/pair.h at b332f28: fforce = 0.0, return 0.0). single_enable stays 1 natively.
+   */
+  single(_i: number, _j: number, _it: number, _jt: number, _rsq: number, _factorCoul: number, _factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    return { eng: 0, fforce: 0 };
+  }
+
   compute(pc: PairCompute): void {
     if (pc.eatom || pc.vatom) throw new StyleError('pair multi/lucy: per-atom energy and virial are not supported by the browser engine');
     const list = pc.half!;

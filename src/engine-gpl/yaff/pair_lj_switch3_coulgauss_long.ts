@@ -25,9 +25,11 @@
  *    pair_modify table kernels of coul/long (erfc.ts), as native does with ncoultablebits.
  *  - shift: the offset is zero when the switching function is active (width > 0), as native init_one.
  *
+ * single (native PairLJSwitch3CoulGaussLong::single at b332f28): the pairwise energy and force-over-r of compute
+ * pair/local, with the special weights of the caller and the same cutoff tests and table branches as compute.
+ *
  * Not ported (StyleError): pair_modify tail yes (native has a closed-form tail for the switched LJ term, which is
- * not reproduced), single() (pairwise energies for compute pair/local), and the mm3/switch3/coulgauss/long style
- * (its MM3 vdW term is not registered here).
+ * not reproduced), and the mm3/switch3/coulgauss/long style (its MM3 vdW term is not registered here).
  */
 import { PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
@@ -108,6 +110,8 @@ export class PairLJSwitch3CoulGaussLong extends PairLJCutCoulLong {
   private ljB = new Float64Array(0);
   private offS = new Float64Array(0);
   private readonly erfcTabs = new ErfcTableCache();
+  /** Coulomb prefactor of the last force evaluation (single() reads it; the parent's qqrd2eLast is private). */
+  private qqrd2eSingle = 1;
 
   allocate(ntypes: number): void {
     super.allocate(ntypes);
@@ -186,6 +190,7 @@ export class PairLJSwitch3CoulGaussLong extends PairLJCutCoulLong {
   }
 
   compute(pc: PairCompute): void {
+    this.qqrd2eSingle = pc.qqrd2e;
     const list = pc.half!;
     const { x, f, type, q } = pc;
     const nt = this.ntypes + 1;
@@ -270,11 +275,54 @@ export class PairLJSwitch3CoulGaussLong extends PairLJCutCoulLong {
     pc.acc.ecoul += ecoul;
   }
 
-  /** Pairwise energies (compute pair/local, hbond/local) are not reproduced for this style: refused by name. */
-  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
-  protected override singleMissing = true;
-  single(): { eng: number; fforce: number } {
-    throw new StyleError('pairwise energies (compute pair/local, hbond/local) are not supported for pair style lj/switch3/coulgauss/long');
+  /**
+   * As native LAMMPS does (src/YAFF/pair_lj_switch3_coulgauss_long.cpp single at b332f28): the Coulomb real-space term
+   * inside cut_coul, the Gaussian correction and the switched LJ term inside cut_lj, each with its special weight; the
+   * table branch is the one compute uses. The returned fforce is the force divided by r.
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const nt = this.ntypes + 1;
+    const t = itype * nt + jtype;
+    const cutcsq = this.cutCoul * this.cutCoul;
+    const g = this.gEwald;
+    const qqrd2e = this.qqrd2eSingle;
+    const cutLJ = this.p.get('cut', itype, jtype);
+    const r2inv = 1 / rsq;
+    const r = Math.sqrt(rsq);
+    let fcoul = 0, ecoul = 0;
+    if (rsq < cutcsq) {
+      // native: the direct polynomial (or the table of pair_modify table N above tabinner) with the special weight
+      const c = coulLongPair(rsq, qi, qj, g, qqrd2e, factorCoul, this.table === 0, this.erfcTabs.get(this.table, g, cutcsq, this.tabinnerRsq));
+      fcoul = c.f;
+      ecoul = c.e;
+    }
+    let fgauss = 0, forcelj = 0, evdwl = 0;
+    if (rsq < cutLJ * cutLJ) {
+      // Gaussian-charge correction (native erfc2, prefactor2, forcecoul2); none when both gammas are 0 (lj2 = 0)
+      const gi = this.gaussInv[t];
+      if (gi !== 0) {
+        const rrij = gi * r;
+        const expn2 = libmExp(-rrij * rrij);
+        const erfc2 = libmErfc(rrij);
+        const prefactor2 = -qqrd2e * qi * qj / r;
+        const forcecoul2 = prefactor2 * (erfc2 + EWALD_F * rrij * expn2);
+        fgauss = factorCoul * forcecoul2 * r2inv;
+        ecoul += prefactor2 * erfc2 * factorCoul;
+      }
+      // switched Lennard-Jones (native forcelj, evdwl, then truncation by the switching function S_3)
+      const r6inv = r2inv * r2inv * r2inv;
+      forcelj = r6inv * (12 * this.ljA[t] * r6inv - 6 * this.ljB[t]);
+      evdwl = r6inv * (this.ljA[t] * r6inv - this.ljB[t]) - this.offS[t];
+      if (this.truncw > 0 && r > cutLJ - this.truncw) {
+        const trx = (cutLJ - r) * this.truncwi;
+        const tr = trx * trx * (3 - 2 * trx);
+        const ftr = 6 * trx * (1 - trx) * r * this.truncwi;
+        forcelj = forcelj * tr + evdwl * ftr;
+        evdwl *= tr;
+      }
+    }
+    const fforce = fcoul + fgauss + factorLJ * forcelj * r2inv;
+    return { eng: evdwl * factorLJ + ecoul, fforce };
   }
 
   /** write_data: "i epsilon sigma gamma" per type (native write_data). */

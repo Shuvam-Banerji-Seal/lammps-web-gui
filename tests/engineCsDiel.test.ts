@@ -147,12 +147,12 @@ describe('pair styles of src/engine-gpl/csdiel', () => {
     expect(two).toBeCloseTo(one / 2, 9);
   });
 
-  it('the core-shell and buck pairs refuse single() with a StyleError naming the style', () => {
+  it('the core-shell pairs refuse single() with a StyleError naming the style; coul/cut/dielectric and buck/long/coul/long have native\'s single()', () => {
     expect(() => new PairCoulWolfCS().single()).toThrow(StyleError);
     expect(() => new PairLJCutCoulLongCS().single()).toThrow(/lj\/cut\/coul\/long\/cs/);
     expect(() => new PairLJClass2CoulLongCS().single()).toThrow(/lj\/class2\/coul\/long\/cs/);
-    expect(() => new PairCoulCutDielectric().single()).toThrow(/coul\/cut\/dielectric/);
-    expect(() => new PairBuckLongCoulLong().single()).toThrow(/buck\/long\/coul\/long/);
+    expect(new PairCoulCutDielectric().singleEnabled()).toBe(true);
+    expect(new PairBuckLongCoulLong().singleEnabled()).toBe(true);
   });
 
   it('buck/long/coul/long refuses the native-invalid flags and does not mix coefficients', () => {

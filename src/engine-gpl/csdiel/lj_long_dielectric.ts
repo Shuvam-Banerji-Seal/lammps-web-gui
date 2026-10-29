@@ -9,16 +9,20 @@
  * eps_i, the energy 0.5 (eps_i + eps_j)), a full neighbor list, and the electric field and potential of the pair per owned
  * atom. The dispersion real-space series and its table (pair_modify table/disp), the special-bond LJ weight of the dispersion
  * kernel (the t = rn (1 - f) terms of the native compute()), the Coulomb table and the A&S erfc follow the native compute().
- * The field of the pair term carries no qqrd2e (native prefactorE = q_j / r), unlike coul/long/dielectric.
+ * The field of the pair term carries no qqrd2e (native prefactorE = q_j / r), unlike coul/long/dielectric. single() (compute
+ * pair/local) is the native single() of the same file (pair_lj_long_coul_long_dielectric.cpp at b332f28).
  */
 import { PairLJLongCoulLong, type DispTable } from '../../engine/force/pair/lj_long';
 import { evTallyFull, StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { ErfcTableCache, erfcPoly, EWALD_F, type ErfcTable } from '../../engine/force/erfc';
 import { makeDispTable } from '../pair_disp/dispTable';
-import { dielArrays } from '../dielectric/common';
+import { dielArrays, type DielArrays } from '../dielectric/common';
 import { exp as glibcExp } from '../libm/exp';
-import { selfField } from './dielectric';
+import { selfField, singleArrays, singleEps } from './dielectric';
+
+/** EWALD_P and the A&S coefficients of the erfc polynomial in native ewald_const.h (the same as erfc.ts erfcPoly). */
+const EWALD_P = 0.3275911, A1 = 0.254829592, A2 = -0.284496736, A3 = 1.421413741, A4 = -1.453152027, A5 = 1.061405429;
 
 export class PairLJLongCoulLongDielectric extends PairLJLongCoulLong {
   readonly name: string = 'lj/long/coul/long/dielectric';
@@ -29,6 +33,11 @@ export class PairLJLongCoulLongDielectric extends PairLJLongCoulLong {
   efield = new Float64Array(0);
   epot = new Float64Array(0);
   private readonly dieTables = new ErfcTableCache();
+  /** The Coulomb table of single(): native's double rsq lookup (lj/long/coul/long takes the double fraction). */
+  private readonly singleTables = new ErfcTableCache();
+  /** The per-atom arrays and Coulomb prefactor of the last compute() (single() reads them). */
+  private dielSingle: DielArrays | null = null;
+  private dielQqrd2e = 1;
   private dieDispTab: DispTable | null = null;
   private dieDispKey: number[] = [];
 
@@ -46,6 +55,8 @@ export class PairLJLongCoulLongDielectric extends PairLJLongCoulLong {
 
   compute(pc: PairCompute): void {
     const d = dielArrays(pc.s, 'pair lj/long/coul/long/dielectric');
+    this.dielSingle = d;
+    this.dielQqrd2e = pc.qqrd2e;
     const list = pc.full;
     if (!list) throw new StyleError('pair lj/long/coul/long/dielectric needs a full neighbor list');
     const nl = pc.nlocal;
@@ -178,9 +189,67 @@ export class PairLJLongCoulLongDielectric extends PairLJLongCoulLong {
     }
   }
 
-  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
-  protected override singleMissing = true;
-  single(): never {
-    throw new StyleError('pair style lj/long/coul/long/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
+  /**
+   * As native LAMMPS does (src/DIELECTRIC/pair_lj_long_coul_long_dielectric.cpp single at b332f28): the Coulomb term inside
+   * cut_coulsq, the series real space (the special term r = qq (1 - factor_coul) / r, the force on i with eps_i) or
+   * the table real space (rsq above the table's tabinner; the special term rounded to float as native's union), the LJ
+   * or dispersion term of the native single (its series with the factor_lj weight, no dispersion table), and ei = 0 for
+   * eps == 1. The field and the potential are compute()'s (not used here). The charges are the arrays of the last compute.
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const d = singleArrays(this.dielSingle, 'pair lj/long/coul/long/dielectric');
+    const qqrd2e = this.dielQqrd2e;
+    const q = d.qs, eps = d.epsilon;
+    const nt = this.ntypes + 1;
+    const t = itype * nt + jtype;
+    const order1 = this.coulLongFlag, order6 = this.ljLong;
+    const g = this.gEwald, gd = this.gEwaldDisp;
+    const g2 = gd * gd, g6 = g2 * g2 * g2, g8 = g6 * g2;
+    const cutCoulSq = this.coulSqInit;
+    const cutLJSq = this.p.get('cut', itype, jtype) ** 2;
+    const { lj1, lj2, lj3, lj4, offset } = this;
+    const ei = singleEps(eps[i]), ej = singleEps(eps[j]);
+    const r2inv = 1.0 / rsq;
+    let eng = 0.0, forceCoul = 0.0;
+    if (order1 && rsq < cutCoulSq) {
+      const coulTab = this.singleTables.get(this.table, g, cutCoulSq, this.tabinnerRsq, true);
+      const qiqj = q[i] * q[j];
+      if (!coulTab || rsq <= coulTab.inner) {
+        const r = Math.sqrt(rsq), x = g * r;
+        let s = qqrd2e * q[i] * q[j];
+        const tp = 1.0 / (1.0 + EWALD_P * x);
+        const special = s * (1.0 - factorCoul) / r;
+        s *= g * glibcExp(-x * x);
+        const poly = ((((tp * A5 + A4) * tp + A3) * tp + A2) * tp + A1);
+        const tn = tp * (poly * s / x);
+        forceCoul = tn + EWALD_F * s - special;
+        eng += (tn - special) * (ei + ej) * 0.5;
+      } else {
+        // native: the table holds qqrd2e; the special term is a float (t.f = (1 - factor_coul) ctable, rounded once)
+        const bare = Math.fround((1.0 - factorCoul) * (qqrd2e * coulTab.coul(rsq)));
+        forceCoul = qiqj * (qqrd2e * coulTab.force(rsq) - bare);
+        eng += qiqj * (qqrd2e * coulTab.energy(rsq) - bare) * (ei + ej) * 0.5;
+      }
+    }
+
+    let forceLJ = 0.0;
+    if (rsq < cutLJSq) {
+      let r6inv = r2inv * r2inv * r2inv;
+      if (order6) {
+        // native single: the dispersion series (x2 = g^2 r^2, a2 = 1 / x2), with "+ a2" in the force polynomial
+        const x2raw = g2 * rsq;
+        const a2 = 1.0 / x2raw;
+        const tt = r6inv * (1.0 - factorLJ);
+        const x2 = a2 * glibcExp(-x2raw) * lj4[t];
+        r6inv *= r6inv;
+        forceLJ = factorLJ * r6inv * lj1[t] - g8 * (((6.0 * a2 + 6.0) * a2 + 3.0) * a2 + a2) * x2 * rsq + tt * lj2[t];
+        eng += factorLJ * r6inv * lj3[t] - g6 * ((a2 + 1.0) * a2 + 0.5) * x2 + tt * lj4[t];
+      } else {
+        forceLJ = factorLJ * r6inv * (lj1[t] * r6inv - lj2[t]);
+        eng += factorLJ * (r6inv * (r6inv * lj3[t] - lj4[t]) - offset[t]);
+      }
+    }
+    const fforce = (forceCoul * eps[i] + forceLJ) * r2inv;
+    return { eng, fforce };
   }
 }

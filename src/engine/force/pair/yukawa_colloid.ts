@@ -178,15 +178,17 @@ export class PairYukawaColloid extends Pair {
     pc.acc.evdwl += evdwl;
   }
 
+  /**
+   * As native LAMMPS does (src/COLLOID/pair_yukawa_colloid.cpp single at b332f28): the per-type radii, no cutoff test,
+   * "fforce = factor_lj*forceyukawa * rinv" and "phi = a[itype][jtype]/kappa * screening - offset[itype][jtype]".
+   */
   single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number) {
-    const nt = this.ntypes + 1;
-    const t = itype * nt + jtype;
-    if (rsq >= this.cutsq[t]) return { eng: 0, fforce: 0 };
-    const r = Math.sqrt(rsq);
-    const ex = libm.exp(-this.kappa * (r - this.typeRadius[itype] - this.typeRadius[jtype]));
+    const t = itype * (this.ntypes + 1) + jtype;
+    const r = Math.sqrt(rsq), rinv = 1 / r;
+    const screening = libm.exp(-this.kappa * (r - (this.typeRadius[itype] + this.typeRadius[jtype])));
     return {
-      fforce: factorLJ * this.aTab[t] * ex / r,
-      eng: factorLJ * ((this.aTab[t] / this.kappa) * ex - this.offset[t]),
+      fforce: factorLJ * (this.aTab[t] * screening) * rinv,
+      eng: factorLJ * (this.aTab[t] / this.kappa * screening - this.offset[t]),
     };
   }
 

@@ -14,6 +14,7 @@
  * Ghost atoms: the sums that native LAMMPS does on ghosts (reverse communication) and the forward copies of fp are
  * done through the owner index (nb.owner), which gives the same totals. The half neighbour list is used as the
  * source does (newton on).
+ * single (PairLocalDensity::single at b332f28): the energy and fforce of one pair alone, from the tables.
  */
 import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
@@ -187,6 +188,59 @@ export class PairLocalDensity extends Pair {
     if (t.nLD !== this.ntypes * this.ntypes) ctx.log(`WARNING: Expected ${this.ntypes * this.ntypes} local density potentials but got ${t.nLD}`);
     this.ldTable = t;
     this.nlocalCache = -1;
+  }
+
+  /**
+   * PairLocalDensity::single (src/MANYBODY/pair_local_density.cpp at b332f28): the densities of the pair alone (LD[k][1]
+   * = phi b_k(jtype) for atom i, LD[k][2] = phi b_k(itype) for atom j), the embedding energy of each table with a
+   * filter on one of the two types, and fforce accumulated over the tables. Native evaluates the spline at nrho-1 for
+   * rho >= rho_max here (compute uses nrho-2); this follows single(). The per-atom arrays are not read.
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _factorCoul: number, _factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const t = this.ldTable;
+    if (!t) throw new StyleError('pair local/density used before pair_coeff');
+    const nLD = t.nLD, nt = this.nt, nrho = t.nrho, sp = t.spline;
+    let uLD = 0, fforce = 0;
+    const rsqinv = 1.0 / rsq;
+    for (let k = 0; k < nLD; k++) {
+      const aI = t.a[k * nt + itype], aJ = t.a[k * nt + jtype];
+      const bI = t.b[k * nt + itype], bJ = t.b[k * nt + jtype];
+      let phi: number;
+      if (rsq < t.lowerSq[k]) phi = 1.0;
+      else if (rsq > t.upperSq[k]) phi = 0.0;
+      else phi = t.c0[k] + rsq * (t.c2[k] + rsq * (t.c4[k] + t.c6[k] * rsq));
+      // LD[k][1] (atom i, filter on jtype) and LD[k][2] (atom j, filter on itype), each from this pair only
+      const ld1 = phi * bJ, ld2 = phi * bI;
+      // this LD potential contributes nothing for this pair of atom types
+      if (!aI && !aJ) continue;
+      const index = aJ ? 2 : 1;
+      const rho = index === 1 ? ld1 : ld2;
+      const base = k * nrho * 7;
+      let dFdrho: number;
+      if (rho <= t.rhoMin[k]) {
+        dFdrho = sp[base + 2];
+        uLD += aI * (sp[base + 6] + dFdrho * (rho - t.rhoMin[k]));
+      } else if (rho >= t.rhoMax[k]) {
+        const o = base + (nrho - 1) * 7;
+        dFdrho = sp[o] + sp[o + 1] + sp[o + 2];
+        uLD += aI * ((sp[o + 3] + sp[o + 4] + sp[o + 5] + sp[o + 6]) + dFdrho * (rho - t.rhoMax[k]));
+      } else {
+        let p = (rho - t.rhoMin[k]) / t.delta[k];
+        let m = Math.trunc(p);
+        m = Math.max(0, Math.min(m, nrho - 2));
+        p -= m;
+        p = Math.min(p, 1.0);
+        const o = base + m * 7;
+        dFdrho = (sp[o] * p + sp[o + 1]) * p + sp[o + 2];
+        uLD += aI * (((sp[o + 3] * p + sp[o + 4]) * p + sp[o + 5]) * p + sp[o + 6]);
+      }
+      let dphi: number;
+      if (rsq < t.lowerSq[k]) dphi = 0.0;
+      else if (rsq > t.upperSq[k]) dphi = 0.0;
+      else dphi = rsq * (2.0 * t.c2[k] + rsq * (4.0 * t.c4[k] + 6.0 * t.c6[k] * rsq));
+      fforce += -(aI * bJ * dFdrho + aJ * bI * dFdrho) * dphi * rsqinv;
+    }
+    return { eng: uLD, fforce };
   }
 
   /** init_style: the table spline is built at read time, so nothing is left to do here. */

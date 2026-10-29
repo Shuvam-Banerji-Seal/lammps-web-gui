@@ -19,6 +19,8 @@ import { tallyAtom } from '../../engine/force/pair/lj_cut';
  * switched-off cutoff (truncw), the Gaussian-smeared Coulomb correction of the bond-charge term (lj2 = 1 / sqrt(gamma_i^2
  * + gamma_j^2)) and the real-space part of the Ewald / PPPM Coulomb sum, through pair_modify table N as in coul/long.
  * Only the pair style is ported: the ylz-like torque and the lj/switch3/coulgauss/long variant are not.
+ * Functions: compute and single (pair_mm3_switch3_coulgauss_long.cpp at b332f28). single is the pairwise energy and
+ * force-over-r of compute pair/local, with the same cutoff tests and table branches as compute.
  */
 export class PairMM3Switch3CoulGaussLong extends Pair {
   readonly name = 'mm3/switch3/coulgauss/long';
@@ -99,6 +101,8 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
     return { etail, ptail };
   }
   private readonly erfcTables = new ErfcTableCache();
+  /** Coulomb prefactor of the last force evaluation (single() reads it). */
+  private qqrd2eLast = 1;
 
   override allocate(ntypes: number): void {
     super.allocate(ntypes);
@@ -197,8 +201,80 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
     return name === 'cut_coul' ? this.cutCoul : undefined;
   }
 
+  /**
+   * As native LAMMPS does (src/YAFF/pair_mm3_switch3_coulgauss_long.cpp single at b332f28): the Coulomb real-space term
+   * inside cut_coul (direct or table, as compute), the Gaussian correction and the switched MM3 term inside cut_lj, with
+   * the special weights of the caller. fforce is the force divided by r.
+   */
+  override single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const nt = this.ntypes + 1;
+    const lt = itype * nt + jtype;
+    const qqrd2e = this.qqrd2eLast;
+    const g = this.gEwald;
+    const r2inv = 1.0 / rsq;
+    const r = Math.sqrt(rsq);
+    let forcecoul = 0, ecoul = 0;
+    if (rsq < this.cutCoulsq) {
+      const tab: ErfcTable | null = this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq);
+      if (!tab || rsq <= this.tabinnerRsq) {
+        const grij = g * r;
+        const expm2 = libmExp(-grij * grij);
+        const erfc1 = erfcPoly(grij, expm2);
+        const prefactor = qqrd2e * qi * qj / r;
+        forcecoul = prefactor * (erfc1 + EWALD_F * grij * expm2);
+        ecoul = prefactor * erfc1;
+        if (factorCoul < 1.0) {
+          forcecoul -= (1.0 - factorCoul) * prefactor;
+          ecoul -= (1.0 - factorCoul) * prefactor;
+        }
+      } else {
+        const qqr = qqrd2e * qi * qj;
+        forcecoul = qqr * tab.force(rsq);
+        ecoul = qqr * tab.energy(rsq);
+        if (factorCoul < 1.0) {
+          const bare = qqr * tab.coul(rsq);
+          forcecoul -= (1.0 - factorCoul) * bare;
+          ecoul -= (1.0 - factorCoul) * bare;
+        }
+      }
+    }
+    let forcecoul2 = 0, forcelj = 0, evdwl = 0;
+    const cutLJsq = this.cutLJsq[lt];
+    if (rsq < cutLJsq) {
+      const expb = this.lj3[lt] * libmExp(-this.lj1[lt] * r);
+      forcelj = expb * this.lj1[lt] * r;
+      const r6inv = r2inv * r2inv * r2inv;
+      forcelj -= 6.0 * this.lj4[lt] * r6inv;
+      let prefactor2 = 0, erfc2 = 0;
+      if (this.lj2[lt] !== 0.0) {
+        // the Gaussian-smeared correction: erfc(lj2 r) with the C library's erfc (../libm/erf.ts)
+        const rrij = this.lj2[lt] * r;
+        const expn2 = libmExp(-rrij * rrij);
+        erfc2 = libmErfc(rrij);
+        prefactor2 = -qqrd2e * qi * qj / r;
+        forcecoul2 = prefactor2 * (erfc2 + EWALD_F * rrij * expn2);
+      }
+      ecoul += prefactor2 * erfc2 * factorCoul;
+      evdwl = expb - this.lj4[lt] * r6inv - this.offset[lt];
+      if (this.truncw > 0) {
+        const cutLJ = this.cutLJ[lt];
+        if (r > cutLJ - this.truncw) {
+          // switch3 truncation of the LJ term over the last truncw of the cutoff
+          const trx = (cutLJ - r) * this.truncwi;
+          const tr = trx * trx * (3.0 - 2.0 * trx);
+          const ftr = 6.0 * trx * (1.0 - trx) * r * this.truncwi;
+          forcelj = forcelj * tr + evdwl * ftr;
+          evdwl *= tr;
+        }
+      }
+    }
+    const fforce = (forcecoul + factorCoul * forcecoul2 + factorLJ * forcelj) * r2inv;
+    return { eng: ecoul + evdwl * factorLJ, fforce };
+  }
+
   override compute(pc: PairCompute): void {
     if (!pc.q) throw new StyleError('Pair style mm3/switch3/coulgauss/long requires atom attribute q');
+    this.qqrd2eLast = pc.qqrd2e;
     const list = pc.half!;
     const { x, f, q, type } = pc;
     const nt = this.ntypes + 1;

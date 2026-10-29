@@ -7,6 +7,7 @@
  * Heat conduction between SPH particles (docs.lammps.org/pair_sph_heatconduction.html): the rate of internal energy of
  * atom i gets 2 m_i m_j / (m_i + m_j) (rho_i + rho_j) / (rho_i rho_j) alpha (e_i - e_j) dW/dr, the partner receives the
  * opposite rate. No forces. The pair loop covers the half neighbour list; ghost partners are reverse-summed.
+ * single (PairSPHHeatConduction::single at b332f28): returns 0 and fforce 0.
  */
 import { StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
@@ -42,6 +43,11 @@ export class PairSPHHeatConduction extends PairSPHBase {
 
   protected override mirror(i: number, j: number): void {
     this.alpha[j * this.nt + i] = this.alpha[i * this.nt + j];
+  }
+
+  /** PairSPHHeatConduction::single (src/SPH/pair_sph_heatconduction.cpp at b332f28): fforce = 0.0 and the return is 0.0. */
+  single(_i: number, _j: number, _it: number, _jt: number, _rsq: number, _factorCoul: number, _factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    return { eng: 0, fforce: 0 };
   }
 
   compute(pc: PairCompute): void {

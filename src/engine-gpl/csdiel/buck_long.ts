@@ -11,6 +11,10 @@
  * per-pair arithmetic follows the native compute(): the Horner form of the erfc polynomial, the damped kernels a2 exp(-g^2 r^2),
  * and the special-bond corrections; the table branch subtracts the special Coulomb correction after a float32 rounding, as
  * native does (rsq_lookup.f is a float).
+ *
+ * Functions: compute and single (src/KSPACE/pair_buck_long_coul_long.cpp at b332f28, PairBuckLongCoulLong::single).
+ * single follows native's arithmetic: its dispersion term is always the series form (native single has no dispersion
+ * table), and its Coulomb term has the same series/table split as compute.
  */
 import { Pair, PairParams, StyleError, type AdaptAccess, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
@@ -69,6 +73,8 @@ export class PairBuckLongCoulLong extends Pair {
    */
   private coulSqInit = 0;
   private dispCut = 0;
+  /** Coulomb prefactor of the last force evaluation (single() reads it). */
+  private qqrd2eLast = 1;
 
   initStyle(_ctx: StyleContext): void {
     this.coulSqInit = this.cutCoul * this.cutCoul;
@@ -161,6 +167,7 @@ export class PairBuckLongCoulLong extends Pair {
     const nt = this.nt;
     const order1 = this.coulLongFlag, order6 = this.dispFlag;
     const qqrd2e = pc.qqrd2e;
+    this.qqrd2eLast = qqrd2e;
     const g = this.gEwald, gd = this.gEwaldDisp;
     const g2 = gd * gd, g6 = g2 * g2 * g2, g8 = g6 * g2;
     const cutCoulsq = this.coulSqInit;
@@ -276,10 +283,62 @@ export class PairBuckLongCoulLong extends Pair {
     pc.acc.ecoul += ecoul;
   }
 
-  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
-  protected override singleMissing = true;
-  single(): never {
-    throw new StyleError('pair style buck/long/coul/long: single() (pair/local, pair_write) is not supported by the browser engine');
+  /**
+   * As native LAMMPS does (src/KSPACE/pair_buck_long_coul_long.cpp single at b332f28): the Coulomb term inside cut_coul
+   * (series with the special correction "adjust", or the table with the float32 correction), and the Buckingham term
+   * inside cut_buck with the long-range dispersion (always the series form in native single) or the cut form. The
+   * special weight of the dispersion term is factor_buck; fforce is the force divided by r.
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorBuck: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const t = itype * this.nt + jtype;
+    const g = this.gEwald, gd = this.gEwaldDisp;
+    const g2 = gd * gd, g6 = g2 * g2 * g2, g8 = g6 * g2;
+    const qqrd2e = this.qqrd2eLast;
+    const r = Math.sqrt(rsq), r2inv = 1.0 / rsq;
+    let eng = 0, forceCoul = 0;
+    if (this.coulLongFlag && rsq < this.coulSqInit) {
+      const coulTab: ErfcTable | null = this.coulTables.get(this.table, g, this.coulSqInit, this.tabinnerRsq, true);
+      if (!coulTab || rsq <= coulTab.inner) {
+        // series real space, the native order: pre = qqrd2e q_i q_j, adjust = pre (1 - w) / r
+        const grij = g * r;
+        let pre = qqrd2e * qi * qj;
+        let tt = 1.0 / (1.0 + EWALD_P * grij);
+        const erfcPoly = ((((tt * A5 + A4) * tt + A3) * tt + A2) * tt + A1);
+        const adjust = pre * (1.0 - factorCoul) / r;
+        pre *= g * glibcExp(-grij * grij);
+        tt *= erfcPoly * pre / grij;
+        forceCoul = tt + EWALD_F * pre - adjust;
+        eng += tt - adjust;
+      } else {
+        // table real space: the special correction is rounded to float32 as native (rsq_lookup.f)
+        const qiqj = qi * qj;
+        const corr = f32((1.0 - factorCoul) * (qqrd2e * coulTab.coul(rsq)));
+        forceCoul = qiqj * (qqrd2e * coulTab.force(rsq) - corr);
+        eng += qiqj * (qqrd2e * coulTab.energy(rsq) - corr);
+      }
+    }
+    let forceBuck = 0;
+    if (rsq < this.cutBucksq[t]) {
+      const A = this.buckA[t], C = this.buckC[t], buck1 = this.buck1[t], buck2 = this.buck2[t];
+      const r6inv = r2inv * r2inv * r2inv;
+      if (this.dispFlag) {
+        // long-range dispersion: expr carries factor_buck (native single), series real space only
+        const expr = factorBuck * glibcExp(-r * this.rhoinv[t]);
+        const gr2 = g2 * rsq, a2 = 1.0 / gr2;
+        const expterm = a2 * glibcExp(-gr2) * C;
+        const tt = r6inv * (1.0 - factorBuck);
+        const g6term = g6 * ((a2 + 1.0) * a2 + 0.5) * expterm;
+        const g8term = g8 * (((6.0 * a2 + 6.0) * a2 + 3.0) * a2 + 1.0) * expterm * rsq;
+        forceBuck = buck1 * r * expr - g8term + tt * buck2;
+        eng += A * expr - g6term + tt * C;
+      } else {
+        // cut dispersion: expr already carries factor_buck, so the exponential term is not scaled again
+        const expr = factorBuck * glibcExp(-r * this.rhoinv[t]);
+        forceBuck = buck1 * r * expr - factorBuck * buck2 * r6inv;
+        eng += A * expr - factorBuck * (C * r6inv + this.offsetT[t]);
+      }
+    }
+    return { eng, fforce: (forceCoul + forceBuck) * r2inv };
   }
 
   extract(name: string): unknown {

@@ -1,7 +1,7 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/DPD-BASIC/pair_dpd.cpp and pair_dpd.h
- * (PairDPD: pair_style dpd), src/DPD-BASIC/pair_dpd_tstat.cpp (PairDPDTstat: pair_style dpd/tstat) and the
- * src/random_mars.cpp generator they draw from. LAMMPS is Copyright (2003) Sandia Corporation and distributed under
+ * (PairDPD: pair_style dpd), src/DPD-BASIC/pair_dpd_tstat.cpp (PairDPDTstat: pair_style dpd/tstat), the
+ * PairDPD::single() of pair_dpd.cpp (compute pair/local) and the src/random_mars.cpp generator they draw from. LAMMPS is Copyright (2003) Sandia Corporation and distributed under
  * the GNU General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  * Contributing author (from pair_dpd.cpp): Kurt Smith (U Pittsburgh).
  *
@@ -65,7 +65,11 @@ export class PairDPD extends Pair {
   constructor(tstat = false) {
     super();
     this.tstat = tstat;
-    if (tstat) this.name = 'dpd/tstat';
+    if (tstat) {
+      this.name = 'dpd/tstat';
+      // pair_dpd_tstat.cpp: "single_enable = 0;" (compute pair/local refuses this style)
+      this.singleOff = true;
+    }
   }
 
   settings(args: string[]): void {
@@ -214,6 +218,23 @@ export class PairDPD extends Pair {
       if (tally) tallyXYZ(pc, i, j, e, fx, fy, fz, delx, dely, delz);
     }
     pc.acc.evdwl += evdwl;
+  }
+
+  /**
+   * PairDPD::single (pair_dpd.cpp at b332f28): the conservative part only, with no random or drag term, no cutoff test.
+   * "if (r < EPSILON) { fforce = 0.0; return 0.0; }"; "wd = 1.0 - r/cut[itype][jtype]";
+   * "fforce = a0[itype][jtype]*wd * factor_dpd*rinv"; "phi = 0.5*a0[itype][jtype]*cut[itype][jtype] * wd*wd; return factor_dpd*phi".
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _factorCoul: number, factorDpd: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const r = Math.sqrt(rsq);
+    if (r < EPSILON) return { eng: 0, fforce: 0 };
+    const t = itype * this.nt + jtype;
+    const a0 = this.p.p('a0')[t], cut = this.cut[t];
+    const rinv = 1.0 / r;
+    const wd = 1.0 - r / cut;
+    const fforce = a0 * wd * factorDpd * rinv;
+    const phi = 0.5 * a0 * cut * wd * wd;
+    return { eng: factorDpd * phi, fforce };
   }
 
   dataCoeffs(): string[] { return []; }

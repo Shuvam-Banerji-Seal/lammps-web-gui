@@ -14,6 +14,10 @@
  * and it is what this port uses.
  * - the radius used for the neighbour cutoff and the bounding sphere test is sqrt(a^2 + b^2 + c^2) for every particle (a
  * bound on the surface, not the C++ radius); the contact set does not depend on the bound, only the neighbour list does.
+ *
+ * Functions: compute and single (PairGranularSuperellipsoid::single at b332f28). single returns the energy 0.0 and
+ * fforce 0 as native does (native sets fforce only on its early returns and never on a contact); the contact forces
+ * native writes to svector (single_extra) are not reproduced here.
  */
 import { Pair, StyleError, pairCoeffArgs, tallyAtomXyz, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
@@ -474,6 +478,14 @@ export class PairGranularSuperellipsoid extends Pair {
     const b1 = block[2 * o], b2 = block[2 * o + 1];
     const R = quatToMat(quat[4 * o], quat[4 * o + 1], quat[4 * o + 2], quat[4 * o + 3]);
     return { R, shape: [shape[3 * o], shape[3 * o + 1], shape[3 * o + 2]], block: [b1, b2], flag: blockFlag(b1, b2) };
+  }
+
+  /**
+   * As native LAMMPS does (src/ASPHERE/pair_granular_superellipsoid.cpp single at b332f28): the energy is 0.0 and fforce is
+   * 0 (native assigns fforce only on the factor_lj == 0 and no-contact early returns, and returns 0.0 for the energy).
+   */
+  single(_i: number, _j: number, _itype: number, _jtype: number, _rsq: number, _factorCoul: number, _factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    return { eng: 0, fforce: 0 };
   }
 
   dataCoeffs(): string[] | null { return null; }

@@ -168,11 +168,46 @@ export class PairLepton extends Pair {
     return out;
   }
 
+  /** The Coulomb prefactor and radii of the last force evaluation (single() reads them). */
+  private qqrd2eLast = 1;
+  private radiusLast: Float64Array | null = null;
+
+  /**
+   * Pair energy and force-over-r of one pair (compute pair/local). As native LAMMPS does (src/LEPTON/pair_lepton.cpp,
+   * pair_lepton_coul.cpp and pair_lepton_sphere.cpp single at b332f28): the pair's expression with the v_ references
+   * substituted now, r and (lepton/coul) qi, qj times sqrt(qqrd2e) or (lepton/sphere) the two radii, "fforce =
+   * -pairforce.evaluate() / r * factor" with special_coul for lepton/coul and special_lj otherwise, and the energy times
+   * the same factor, less the pair_modify shift offset (only lepton accepts shift).
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const t = itype * (this.ntypes + 1) + jtype;
+    const prog = this.progs[t];
+    if (!prog) return { eng: 0, fforce: 0 };
+    const env = new Float64Array(prog.builtins.length + prog.vrefs.length);
+    fillVrefs(env, prog, (n) => this.varValue(n));
+    const r = Math.sqrt(rsq);
+    env[0] = r;
+    let factor = factorLJ;
+    if (this.name === 'lepton/coul') {
+      const q2e = Math.sqrt(this.qqrd2eLast);
+      env[1] = q2e * qi; env[2] = q2e * qj;
+      factor = factorCoul;
+    } else if (this.name === 'lepton/sphere' && this.radiusLast) {
+      env[1] = this.radiusLast[i]; env[2] = this.radiusLast[j];
+    }
+    return { eng: (prog.value(env) - this.shiftE[t]) * factor, fforce: -prog.deriv[0](env) / r * factor };
+  }
+
   compute(pc: PairCompute): void {
     const list = pc.half!;
     const { x, f, type } = pc;
     const nt = this.ntypes + 1;
     const { cutsq } = this;
+    this.qqrd2eLast = pc.qqrd2e;
+    this.radiusLast = pc.s.radius ?? null;
+    // As native LAMMPS does (src/LEPTON/pair_lepton_coul.cpp compute at b332f28): "q2e = sqrt(force->qqrd2e)" and the
+    // expression's qi, qj are q2e * q[i], q2e * q[j]
+    const q2e = Math.sqrt(pc.qqrd2e);
     const sLJ = pc.specialLJ, sCoul = pc.specialCoul;
     const coul = this.name === 'lepton/coul';
     const sphere = this.name === 'lepton/sphere';
@@ -217,7 +252,7 @@ export class PairLepton extends Pair {
         const env = envOf.get(prog)!;
         const r = Math.sqrt(rsq);
         env[0] = r;
-        if (coul) { env[1] = q[i]; env[2] = q[j]; }
+        if (coul) { env[1] = q2e * q[i]; env[2] = q2e * q[j]; }
         else if (sphere && radius) { env[1] = radius[owner[i]]; env[2] = radius[owner[j]]; }
         const factor = coul ? sCoul[jj >>> SBBITS] : sLJ[jj >>> SBBITS];
         const dEdr = prog.deriv[0](env);

@@ -12,6 +12,9 @@
  *
  * Random numbers are drawn in native's pair order (src/engine-gpl/neighbor/nativeOrder.ts), so the runs match native step
  * by step (oracle cases tests/oracle/w93meso_edpd_*.in).
+ *
+ * PairEDPD::single (pair_edpd.cpp at b332f28, for compute pair/local) reads the temperatures of the two owned atoms from the
+ * state of the run (simState, set at init and at each force evaluation), as the native single() reads atom->edpd_temp.
  */
 import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
@@ -41,6 +44,8 @@ export class PairEDPD extends Pair {
   private kappaFlag = false;
   private nt = 0;
   private readonly order = new NativePairOrder();
+  /** the simulation state whose edpd_temp single() reads (set at init and at each compute) */
+  private simState: PairCompute['s'] | null = null;
 
   settings(args: string[]): void {
     if (args.length !== 2) throw new StyleError('Illegal pair_style command');
@@ -106,6 +111,7 @@ export class PairEDPD extends Pair {
     if (ctx.newtonPair === false) throw new StyleError('pair_style edpd with newton pair off is not supported by the browser engine');
     if (!ctx.s || !isEdpdStyle(ctx.s.atomStyle)) throw new StyleError('Pair style edpd requires atom style edpd');
     this.nt = this.ntypes + 1;
+    this.simState = ctx.s;
   }
 
   initOne(i: number, j: number): number {
@@ -114,10 +120,32 @@ export class PairEDPD extends Pair {
     return p.get('cut', i, j);
   }
 
+  /**
+   * PairEDPD::single (pair_edpd.cpp at b332f28): the mean temperature T_ij of the pair in the conservative term, no
+   * random term, no cutoff test. "if (r < EPSILON) { fforce = 0.0; return 0.0; }"; "T_ij = 0.5*(T[i]+T[j])";
+   * "wc = 1.0 - r/cut[itype][jtype]"; "fforce = a0*T_ij*wc*factor_dpd*rinv"; "phi = 0.5*a0*T_ij*cut*wc*wc; return factor_dpd*phi".
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, _factorCoul: number, factorDpd: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const r = Math.sqrt(rsq);
+    if (r < EPSILON) return { eng: 0, fforce: 0 };
+    const s = this.simState, p = this.p;
+    if (!s || !p) throw new StyleError('pair edpd single() used before pair_style');
+    const T = s.custom.get(EDPD_TEMP)!.data;
+    const Tij = 0.5 * (T[i] + T[j]);
+    const t = itype * this.nt + jtype;
+    const a0 = p.p('a0')[t], cut = p.p('cut')[t];
+    const rinv = 1.0 / r;
+    const wc = 1.0 - r / cut;
+    const fforce = a0 * Tij * wc * factorDpd * rinv;
+    const phi = 0.5 * a0 * Tij * cut * wc * wc;
+    return { eng: factorDpd * phi, fforce };
+  }
+
   compute(pc: PairCompute): void {
     const s = pc.s;
     const rng = this.rng, rngT = this.rngT, p = this.p;
     if (!rng || !rngT || !p) throw new StyleError('pair edpd used before pair_style');
+    this.simState = s;
     const T = s.custom.get(EDPD_TEMP)!.data, Q = s.custom.get(EDPD_FLUX)!.data, cv = s.custom.get(EDPD_CV)!.data;
     // native force_clear(): the heat flux of every atom starts at zero for this force evaluation
     Q.fill(0, 0, s.n);

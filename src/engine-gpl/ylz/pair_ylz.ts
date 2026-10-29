@@ -3,9 +3,11 @@
  * Source: src/ASPHERE/pair_ylz.cpp and src/ASPHERE/pair_ylz.h at commit b332f28 (contributing authors in the
  * C++ file: Hongyan Yuan (SUSTech), Zhaoyan Huang (SUSTech)); copyright (2003) Sandia Corporation (GNU GPL).
  * Reference in the C++ file: Yuan H, Huang C, Li J, Lykotrafitis G and Zhang S (2010), Phys. Rev. E 82, 011905.
+ * PairYLZ::single (the same file at b332f28, for compute pair/local) is ported too: it recomputes the separation from the
+ * positions (the engine passes it as del) and the analytic energy of the two ellipsoids' orientations.
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  */
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type PairSep, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -97,6 +99,8 @@ export class PairYLZ extends Pair {
   private p = new PairParams(0, ['epsilon', 'sigma', 'zeta', 'mu', 'beta', 'cut']);
   private cutGlobal = 0;
   private allocatedTypes = false;
+  /** the simulation state whose quaternions single() reads (set at init and at each compute) */
+  private simState: PairCompute['s'] | null = null;
 
   override allocate(ntypes: number): void {
     super.allocate(ntypes);
@@ -120,6 +124,41 @@ export class PairYLZ extends Pair {
 
   override initStyle(ctx: StyleContext): void {
     if (!ctx.s) throw new StyleError('pair_style ylz needs a box');
+    this.simState = ctx.s;
+  }
+
+  /** The separation vector is needed (del = x_i - x_j), as for the ellipsoid styles (pair_gayberne.ts). */
+  override singleNeedsSeparation(): boolean { return true; }
+
+  /** Native single_extra = 6 (pair_ylz.cpp constructor): svector holds the force and the torque on i (pN 1..6). */
+  override singleExtra(): number { return 6; }
+  private readonly svec = new Float64Array(6);
+
+  /**
+   * PairYLZ::single (pair_ylz.cpp at b332f28): r12 = x[j] - x[i] (here -del), the two body matrices from the quaternions
+   * of i and j, and ylz_analytic; "svector[0] = factor_lj * fvec[0]" ... "svector[5] = factor_lj * ttor[2]",
+   * "fforce = factor_lj * (-MathExtra::dot3(fvec, r12) / rsq)"
+   * and "return factor_lj * one_eng".
+   */
+  override single(i: number, j: number, itype: number, jtype: number, rsq: number, _factorCoul: number, factorLJ: number, _qi = 0, _qj = 0, del?: PairSep): { eng: number; fforce: number; svector: Float64Array } {
+    const s = this.simState;
+    if (!s || !s.quat) throw new StyleError('pair ylz single() used before pair_style');
+    if (!del) throw new StyleError('pair ylz single() needs the separation vector');
+    const quat = s.quat;
+    const a1 = new Float64Array(3), a2 = new Float64Array(3);
+    bodyX(quat[4 * i], quat[4 * i + 1], quat[4 * i + 2], quat[4 * i + 3], a1);
+    bodyX(quat[4 * j], quat[4 * j + 1], quat[4 * j + 2], quat[4 * j + 3], a2);
+    const r12 = new Float64Array([-del.dx, -del.dy, -del.dz]);
+    const eps = this.p.get('epsilon', itype, jtype), sig = this.p.get('sigma', itype, jtype);
+    const zt = this.p.get('zeta', itype, jtype), muu = this.p.get('mu', itype, jtype);
+    const sint = this.p.get('beta', itype, jtype), rcut = this.p.get('cut', itype, jtype);
+    const fvec = new Float64Array(3), ttor = new Float64Array(3), rtor = new Float64Array(3);
+    const oneEng = ylzAnalytic(eps, sig, zt, muu, sint, rcut, a1, a2, r12, rsq, fvec, ttor, rtor);
+    const sv = this.svec;
+    sv[0] = factorLJ * fvec[0]; sv[1] = factorLJ * fvec[1]; sv[2] = factorLJ * fvec[2];
+    sv[3] = factorLJ * ttor[0]; sv[4] = factorLJ * ttor[1]; sv[5] = factorLJ * ttor[2];
+    const dot = fvec[0] * r12[0] + fvec[1] * r12[1] + fvec[2] * r12[2];
+    return { eng: factorLJ * oneEng, fforce: factorLJ * (-dot / rsq), svector: sv };
   }
 
   override initOne(i: number, j: number): number {
@@ -138,6 +177,7 @@ export class PairYLZ extends Pair {
   override compute(pc: PairCompute): void {
     const s = pc.s;
     if (!s.shape || !s.quat || !s.torque) throw new StyleError('Pair style ylz requires atom style ellipsoid');
+    this.simState = s;
     const nlocal = pc.nlocal, nall = pc.nall;
     const shape = s.shape, quat = s.quat;
     const owner = pc.nb.owner;

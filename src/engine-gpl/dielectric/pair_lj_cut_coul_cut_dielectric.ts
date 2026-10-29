@@ -8,11 +8,13 @@
  * dielectric constant (atom_style dielectric). Full neighbor list, the force on owned atom i only (LAMMPS
  * ev_tally_full halves each pair's energy and virial). It also stores the electric field at each owned atom (efield),
  * which the polarization fixes read. Documented on docs.lammps.org/pair_lj_cut_coul.html and dielectric.html.
+ * single() (compute pair/local) is the native single() of pair_lj_cut_coul_cut_dielectric.cpp at b332f28.
  */
 import { PairLJCutCoulCut } from '../../engine/force/pair/lj_coul';
 import { evTallyFull, StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
-import { dielArrays } from './common';
+import { dielArrays, type DielArrays } from './common';
+import { singleArrays, singleEps } from '../csdiel/dielectric';
 
 /** Within this distance squared the Coulomb term is left out (pair_coul_cut_dielectric.cpp EPSILON). */
 const EPSILON = 1.0e-6;
@@ -29,9 +31,14 @@ export class PairLJCutCoulCutDielectric extends PairLJCutCoulCut {
   efield = new Float64Array(0);
   /** Electric potential at each owned atom from this pair (pair_lj_cut_coul_cut_dielectric.cpp epot). */
   epot = new Float64Array(0);
+  /** The per-atom arrays and Coulomb prefactor of the last compute() (single() reads them). */
+  private dielSingle: DielArrays | null = null;
+  private qqrd2eSingle = 1;
 
   compute(pc: PairCompute): void {
     const d = dielArrays(pc.s, 'pair lj/cut/coul/cut/dielectric');
+    this.dielSingle = d;
+    this.qqrd2eSingle = pc.qqrd2e;
     const list = pc.full;
     if (!list) throw new StyleError('pair lj/cut/coul/cut/dielectric needs a full neighbor list');
     const nl = pc.nlocal;
@@ -113,9 +120,38 @@ export class PairLJCutCoulCutDielectric extends PairLJCutCoulCut {
     }
   }
 
-  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
-  protected override singleMissing = true;
-  single(): { eng: number; fforce: number } {
-    throw new StyleError('pair lj/cut/coul/cut/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
+  /**
+   * As native LAMMPS does (src/DIELECTRIC/pair_lj_cut_coul_cut_dielectric.cpp single at b332f28): the Coulomb force inside
+   * cut_coul (with eps_i, no EPSILON test), the LJ force inside cut, fforce = (factor_coul forcecoul + factor_lj forcelj) / r^2,
+   * and the energy with ei = 0 for eps == 1. The arrays are those of the last compute (q_scaled and epsilon).
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const d = singleArrays(this.dielSingle, 'pair lj/cut/coul/cut/dielectric');
+    const qqrd2e = this.qqrd2eSingle;
+    const q = d.qs, eps = d.epsilon;
+    const nt = this.ntypes + 1;
+    const t = itype * nt + jtype;
+    const cutCoulSq = this.p.get('cut_coul', itype, jtype) ** 2;
+    const cutLJSq = this.p.get('cut', itype, jtype) ** 2;
+    const r2inv = 1.0 / rsq;
+    const forcecoul = rsq < cutCoulSq ? qqrd2e * q[i] * q[j] * Math.sqrt(r2inv) * eps[i] : 0;
+    let forcelj = 0, r6inv = 0;
+    if (rsq < cutLJSq) {
+      r6inv = r2inv * r2inv * r2inv;
+      forcelj = r6inv * (this.lj1[t] * r6inv - this.lj2[t]);
+    }
+    const fforce = (factorCoul * forcecoul + factorLJ * forcelj) * r2inv;
+    const ei = singleEps(eps[i]), ej = singleEps(eps[j]);
+    let eng = 0;
+    if (rsq < cutCoulSq) {
+      let phicoul = qqrd2e * q[i] * q[j] * Math.sqrt(r2inv);
+      phicoul *= 0.5 * (ei + ej);
+      eng += factorCoul * phicoul;
+    }
+    if (rsq < cutLJSq) {
+      const philj = r6inv * (this.lj3[t] * r6inv - this.lj4[t]) - this.offset[t];
+      eng += factorLJ * philj;
+    }
+    return { eng, fforce };
   }
 }

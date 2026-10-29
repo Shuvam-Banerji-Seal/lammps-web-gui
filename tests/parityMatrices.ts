@@ -454,7 +454,7 @@ const THERMO_FEP = 'thermo_style custom step pe press c_adpf[1]\n';
 const fepUndefined = (fix: boolean): Record<string, string> => {
   const out: Record<string, string> = {};
   for (const [style, names] of Object.entries(PAIR_EXTRACT)) {
-    if (!/^pace|\/apip$/.test(style)) continue;
+    if (!style.startsWith('pace') && !style.endsWith('/apip')) continue;
     for (const [name] of names) out[`pair ${style} ${name}`] = 'the native builds with ML-PACE and APIP lack the FEP package';
   }
   if (fix) out['pair lepton/coul cut_coul'] = "native's extract() gives &cut as dim 2 without a kspace style (undefined behaviour)";

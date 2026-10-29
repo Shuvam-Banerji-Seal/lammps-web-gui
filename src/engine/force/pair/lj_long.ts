@@ -222,9 +222,15 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     super.coeff(args);
   }
 
+  /**
+   * As native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp init_one at b332f28, and its tip4p and dielectric
+   * variants): no etail_ij or ptail_ij is computed, so pair_modify tail yes adds nothing.
+   */
+  tailSums(_count: Float64Array): { etail: number; ptail: number } {
+    return { etail: 0, ptail: 0 };
+  }
+
   initOne(i: number, j: number): number {
-    if (this.ljLong) {
-    }
     let cut = super.initOne(i, j);
     // As native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp init_one at b332f28): with dispersion
     // (EWALD_DISP) a pair without its own pair_coeff cutoff takes the global LJ cutoff, not a mixed one.

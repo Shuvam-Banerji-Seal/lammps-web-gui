@@ -282,9 +282,8 @@ export class PairYukawa extends Pair {
  * "Negative A values are converted to positive A values (using abs(A))
  * before mixing, and converted back after mixing
  * (by multiplying by min(sign(Ai),sign(Aj)))."
- * "The gauss/cut style supports the pair_modify shift option for the
- * energy of the Gauss-potential portion of the pair interaction." — the
- * plain gauss style does not, nor tail.
+ * pair_modify shift: as native LAMMPS does (src/EXTRA-PAIR/pair_gauss.cpp init_one and compute at b332f28), offset =
+ * A exp(-B rc^2) and E = -(A exp(-B r^2) - offset); tail adds nothing (no etail_ij).
  *
  * Force from the documented energy: dE/dr = 2 A B r e^(-B r^2), so
  * f(r) = -(1/r) dE/dr = -2 A B e^(-B r^2) (attractive for A > 0).
@@ -296,6 +295,7 @@ export class PairGauss extends Pair {
   p!: PairParams;
   private pa = new Float64Array(0);
   private pb = new Float64Array(0);
+  private po = new Float64Array(0);
 
   settings(args: string[]): void {
     if (args.length !== 1) throw new StyleError('usage: pair_style gauss cutoff');
@@ -338,19 +338,21 @@ export class PairGauss extends Pair {
     if (this.pa.length !== nt * nt) {
       this.pa = new Float64Array(nt * nt);
       this.pb = new Float64Array(nt * nt);
+      this.po = new Float64Array(nt * nt);
     }
-    const a = p.get('a', i, j), b = p.get('b', i, j);
+    const a = p.get('a', i, j), b = p.get('b', i, j), cut = p.get('cut', i, j);
     const k1 = i * nt + j, k2 = j * nt + i;
     this.pa[k1] = this.pa[k2] = a;
     this.pb[k1] = this.pb[k2] = b;
-    return p.get('cut', i, j);
+    this.po[k1] = this.po[k2] = this.shift ? a * libm.exp(-b * cut * cut) : 0;
+    return cut;
   }
 
   compute(pc: PairCompute): void {
     const list = pc.half!;
     const { x, f, type } = pc;
     const nt = this.ntypes + 1;
-    const { cutsq, pa, pb } = this;
+    const { cutsq, pa, pb, po } = this;
     const sLJ = pc.specialLJ;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0;
@@ -373,7 +375,7 @@ export class PairGauss extends Pair {
         const fx = dx * fpair, fy = dy * fpair, fz = dz * fpair;
         fxi += fx; fyi += fy; fzi += fz;
         f[3 * j] -= fx; f[3 * j + 1] -= fy; f[3 * j + 2] -= fz;
-        const e = factor * -pa[t] * ek;
+        const e = factor * -(pa[t] * ek - po[t]);
         evdwl += e;
         if (tally) tallyAtom(pc, i, j, e, fpair, dx, dy, dz);
       }

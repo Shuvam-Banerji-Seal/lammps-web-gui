@@ -61,6 +61,8 @@ export interface EwaldDispPair {
   ewaldCut(): number;
   /** epsilon[i][i] and sigma[i][i] of a type after the pair's init. */
   epsilonOf(i: number): number;
+  /** False when the pair's extract() has no "epsilon" and "sigma" (buck/long/coul/long), which the arithmetic sum needs. */
+  readonly epsilonSigma?: boolean;
   sigmaOf(i: number): number;
   /** Sets the G-ewald parameters the real-space terms use. */
   setEwald(gEwald: number, gEwald6: number): void;
@@ -442,6 +444,8 @@ export class KSpaceEwaldDisp extends KSpaceBase {
       }
     }
     if (this.termflag[TERM_DISP_ARITH]) {
+      // ewald_disp.cpp init_coeffs: extract("epsilon") and extract("sigma") of the pair style
+      if (v.epsilonSigma === false) throw new StyleError('Epsilon or sigma reference not set by pair style in ewald/disp');
       this.B = new Float64Array(7 * n + 7);
       const c = [1.0, Math.sqrt(6.0), Math.sqrt(15.0), Math.sqrt(20.0), Math.sqrt(15.0), Math.sqrt(6.0), 1.0];
       for (let i = 1; i <= n; i++) {

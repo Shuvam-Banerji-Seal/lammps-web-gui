@@ -10,6 +10,7 @@ import { parseNum } from '../../engine/force/util';
 import { erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../../engine/force/erfc';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { log as libmLog } from '../libm/log';
 import { erfc as libmErfc } from '../libm/erf';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 
@@ -37,6 +38,66 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
   private offset = new Float64Array(0);
   private cutLJ = new Float64Array(0);
   private cutLJsq = new Float64Array(0);
+
+  /**
+   * Ported from src/YAFF/pair_mm3_switch3_coulgauss_long.cpp init_one at b332f28: the tail of the switched MM3 term
+   * (cg3 = 2 sigma, "Mind the factor 2 here"; the generated expressions as written).
+   */
+  tailSums(count: Float64Array): { etail: number; ptail: number } {
+    if (!this.tail) return { etail: 0, ptail: 0 };
+    const nt = this.ntypes + 1;
+    let etail = 0, ptail = 0;
+    for (let i = 1; i < nt; i++) {
+      for (let j = 1; j < nt; j++) {
+        const nn = count[i] * count[j];
+        const cg = this.p.get('epsilon', i, j), cg1 = this.cutLJ[i * nt + j], cg3 = 2.0 * this.p.get('sigma', i, j);
+        if (this.truncw > 0.0) {
+          const cg5 = this.truncw;
+          const t1 = cg3 * cg3;
+          const t2 = t1 * cg3;
+          const t3 = 0.5e1 / 0.216e3 * t2;
+          const t5 = cg1 / 0.9e1;
+          const t8 = -cg1 + cg5;
+          const t14 = t8 * t8;
+          const t17 = 0.1e1 / cg3;
+          const t20 = libmExp(0.12e2 * t17 * cg5);
+          const t30 = cg1 * cg1;
+          const t36 = libmExp(-0.12e2 * t17 * cg1);
+          const t37 = cg5 * cg5;
+          const t39 = 0.1e1 / t37 / cg5;
+          const t43 = cg1 * t8;
+          const t44 = libmLog(-t8);
+          const t47 = libmLog(cg1);
+          const t54 = t1 * t1;
+          const t64 = cg * (0.6388888889e3 * ((-t3 + (0.7e1 / 0.36e2 * cg5 - t5) * t1 - 0.2e1 / 0.3e1 * t8 * (cg5 - cg1 / 0.4e1) * cg3 + cg5 * t14) * t20 + t3 + (cg5 / 0.12e2 + t5) * t1 + (cg5 + cg1 / 0.3e1) * cg1 * cg3 / 0.2e1 + t30 * cg5) * t2 * t36 * t39 - 0.225e1 * (0.2e1 * t43 * t44 - 0.2e1 * t43 * t47 + cg5 * (cg5 - 0.2e1 * cg1)) * t54 * t1 / cg1 / t8 * t39);
+          etail += 2.0 * Math.PI * nn * t64;
+          ptail += 2.0 * Math.PI * nn * t64;
+        } else {
+          const t2 = cg3 * cg3;
+          const t3 = t2 * t2;
+          const t7 = 0.12e2 / cg3 * cg1;
+          const t8 = libmExp(t7);
+          const t11 = cg1 * cg1;
+          const t12 = t11 * t11;
+          const t17 = t11 * cg1;
+          const t21 = libmExp(-t7);
+          const t27 = -0.9259259259e-2 * cg3 * cg * (0.81e2 * t3 * cg3 * t8 - 0.1656000e7 * t12 * cg1 - 0.276000e6 * cg3 * t12 - 0.23000e5 * t2 * t17) * t21 / t17;
+          const u1 = cg3 * cg3;
+          const u2 = u1 * u1;
+          const u6 = 0.12e2 / cg3 * cg1;
+          const u7 = libmExp(u6);
+          const u10 = cg1 * cg1;
+          const u11 = u10 * u10;
+          const u19 = u10 * cg1;
+          const u25 = libmExp(-u6);
+          const t29 = 0.5555555556e-1 * cg * (0.81e2 * u2 * u1 * u7 - 0.3312000e7 * u11 * u10 - 0.828000e6 * cg3 * u11 * cg1 - 0.138000e6 * u1 * u11 - 0.11500e5 * u19 * u1 * cg3) * u25 / u19;
+          etail += 2.0 * Math.PI * nn * t27;
+          ptail += -2.0 / 3.0 * Math.PI * nn * t29;
+        }
+      }
+    }
+    return { etail, ptail };
+  }
   private readonly erfcTables = new ErfcTableCache();
 
   override allocate(ntypes: number): void {

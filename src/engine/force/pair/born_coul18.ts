@@ -177,28 +177,11 @@ abstract class PairBornCoul18 extends PairBorn {
   }
 
   /**
-   * Tail correction for the A,C,D part only (pair_born.html: "These styles
-   * support the pair_modify tail option for adding long-range tail
-   * corrections to energy and pressure."; the Coulomb term is not a plain
-   * 1/r tail). Uses the per-pair A,C,D cutoff, not the neighbour-list cutoff.
+   * As native LAMMPS does (src/EXTRA-PAIR/pair_born_coul_wolf.cpp and pair_born_coul_dsf.cpp at b332f28): their init_one
+   * sets no etail_ij or ptail_ij, which stay 0 (Pair's constructor), so pair_modify tail yes adds nothing.
    */
-  tailSums(count: Float64Array): { etail: number; ptail: number } {
-    if (!this.tail) return { etail: 0, ptail: 0 };
-    let e = 0, pr = 0;
-    const nt = this.ntypes + 1;
-    for (let i = 1; i < nt; i++) {
-      for (let j = 1; j < nt; j++) {
-        const a = this.p.get('A', i, j), rho = this.p.get('rho', i, j), sig = this.p.get('sigma', i, j);
-        const c = this.p.get('C', i, j), d = this.p.get('D', i, j);
-        const cut = this.p.get('cut', i, j);
-        const rc = Number.isNaN(cut) ? this.cutGlobal : cut;
-        if (!(rc > 0)) continue;
-        const nn = count[i] * count[j], ex = libm.exp((sig - rc) / rho);
-        e += nn * (a * rho * ex * (rc * rc + 2 * rho * rc + 2 * rho * rho) - c / (3 * rc ** 3) + d / (5 * rc ** 5));
-        pr += nn * (-(a / rho) * ex * (rc ** 3 * rho + 3 * rc * rc * rho * rho + 6 * rc * rho ** 3 + 6 * rho ** 4) + 2 * c / rc ** 3 - 8 * d / (5 * rc ** 5));
-      }
-    }
-    return { etail: 2 * Math.PI * e, ptail: -2 * Math.PI / 3 * pr };
+  tailSums(_count: Float64Array): { etail: number; ptail: number } {
+    return { etail: 0, ptail: 0 };
   }
 
   single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi: number, qj: number) {

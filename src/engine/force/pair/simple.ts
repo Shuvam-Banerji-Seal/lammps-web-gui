@@ -40,6 +40,12 @@ import { libm } from '../../libm';
  * in closed form for the exp/6 potential.
  */
 export class PairBuck extends Pair {
+  /**
+   * The Buckingham cutoff of each type pair (the coulomb variants have a larger pair cutoff): as native LAMMPS
+   * does (src/pair_buck.cpp and pair_buck_coul_cut.cpp init_one at b332f28), the tail integrals start at
+   * cut_lj[i][j].
+   */
+  protected cutSR = new Float64Array(0);
   readonly name: string = 'buck';
   virialFdotr = true;
   cutGlobal = 0;
@@ -88,6 +94,8 @@ export class PairBuck extends Pair {
     this.buckIR[k1] = this.buckIR[k2] = 1 / rho;
     this.buckC[k1] = this.buckC[k2] = c;
     this.offset[k1] = this.offset[k2] = this.shift && rc > 0 ? a * libm.exp(-rc / rho) - c / rc ** 6 : 0;
+    if (this.cutSR.length !== nt * nt) this.cutSR = new Float64Array(nt * nt);
+    this.cutSR[i * nt + j] = this.cutSR[j * nt + i] = rc;
     return rc;
   }
 
@@ -98,7 +106,7 @@ export class PairBuck extends Pair {
     for (let i = 1; i < nt; i++) {
       for (let j = 1; j < nt; j++) {
         const a = this.p.get('A', i, j), rho = this.p.get('rho', i, j), c = this.p.get('C', i, j);
-        const rc = this.cut[i * nt + j];
+        const rc = this.cutSR[i * nt + j];
         if (!(rc > 0)) continue;
         const nn = count[i] * count[j], ex = libm.exp(-rc / rho);
         // int_rc^inf u(r) r^2 dr = A rho e^{-rc/rho} (rc^2 + 2 rho rc + 2 rho^2) - C/(3 rc^3)
@@ -363,6 +371,12 @@ export class PairBuckCoulCut extends PairBuck {
  * pressure." (same Sun-form tail integrals as buck, plus the 1/r^8 term)
  */
 export class PairBorn extends Pair {
+  /**
+   * The Born cutoff of each type pair (the coulomb variants have a larger pair cutoff): as native LAMMPS
+   * does (src/EXTRA-PAIR/pair_born.cpp and its coul variants init_one at b332f28), the tail integrals start at
+   * cut_lj[i][j].
+   */
+  protected cutSR = new Float64Array(0);
   readonly name: string = 'born';
   virialFdotr = true;
   cutGlobal = 0;
@@ -422,6 +436,8 @@ export class PairBorn extends Pair {
     this.offset[k1] = this.offset[k2] = this.shift && rc > 0
       ? a * libm.exp((sig - rc) / rho) - c / rc ** 6 + d / rc ** 8
       : 0;
+    if (this.cutSR.length !== nt * nt) this.cutSR = new Float64Array(nt * nt);
+    this.cutSR[i * nt + j] = this.cutSR[j * nt + i] = rc;
     return rc;
   }
 
@@ -433,7 +449,7 @@ export class PairBorn extends Pair {
       for (let j = 1; j < nt; j++) {
         const a = this.p.get('A', i, j), rho = this.p.get('rho', i, j), sig = this.p.get('sigma', i, j);
         const c = this.p.get('C', i, j), d = this.p.get('D', i, j);
-        const rc = this.cut[i * nt + j];
+        const rc = this.cutSR[i * nt + j];
         if (!(rc > 0)) continue;
         const nn = count[i] * count[j], ex = libm.exp((sig - rc) / rho);
         // + D/(5 rc^5) and -8 D/(5 rc^5) from the 1/r^8 term

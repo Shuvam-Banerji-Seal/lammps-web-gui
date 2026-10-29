@@ -103,6 +103,28 @@ export class PairLJCutSoftGapsys extends Pair {
     return cut;
   }
 
+  /**
+   * pair_lj_cut_soft_gapsys.cpp init_one: the 12-6 tail at cut[i][j] without lambda, prefactor = 8 pi N_i N_j epsilon
+   * sigma^6 / (9 rc^9), etail = prefactor (sigma^6 - 3 rc^6), ptail = 2 prefactor (2 sigma^6 - 3 rc^6).
+   */
+  tailSums(count: Float64Array): { etail: number; ptail: number } {
+    if (!this.tail) return { etail: 0, ptail: 0 };
+    const nt = this.ntypes + 1;
+    let etail = 0, ptail = 0;
+    for (let i = 1; i < nt; i++) {
+      for (let j = 1; j < nt; j++) {
+        const sig = this.p.get('sigma', i, j), rc = this.p.get('cut', i, j);
+        if (!(rc > 0)) continue;
+        const sig2 = sig * sig, sig6 = sig2 * sig2 * sig2;
+        const rc3 = rc * rc * rc, rc6 = rc3 * rc3, rc9 = rc3 * rc6;
+        const prefactor = 8.0 * Math.PI * count[i] * count[j] * this.p.get('epsilon', i, j) * sig6 / (9.0 * rc9);
+        etail += prefactor * (sig6 - 3.0 * rc6);
+        ptail += 2.0 * prefactor * (2.0 * sig6 - 3.0 * rc6);
+      }
+    }
+    return { etail, ptail };
+  }
+
   /** pair_lj_cut_soft_gapsys.cpp extract: "epsilon", "sigma", "lambda" (dim 2). */
   extract(name: string): unknown {
     if (name === 'epsilon' || name === 'sigma' || name === 'lambda') return this.p.p(name);

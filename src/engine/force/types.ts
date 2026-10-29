@@ -653,6 +653,24 @@ export abstract class Pair {
   singleExtra(): number { return 0; }
 
   /**
+   * Native single_enable is 0 for this style (src/pair.h at b332f28): compute pair/local refuses it ("Pair style does not
+   * support compute pair/local") even where this engine has a single() for its own use.
+   */
+  protected singleOff = false;
+
+  /**
+   * Native has a single() for this style that this engine does not have (its single() is a refusal, or a parent class's
+   * that would give another style's values): compute pair/local refuses it naming the engine gap.
+   */
+  protected singleMissing = false;
+
+  /** Native single_enable: the style has a single() that compute pair/local may call. */
+  singleEnabled(): boolean { return this.single !== undefined && !this.singleOff && !this.singleMissing; }
+
+  /** The engine lacks a single() native has (singleMissing; a class native refuses, singleOff, is no gap). */
+  singleIsGap(): boolean { return this.singleMissing && !this.singleOff; }
+
+  /**
    * True when single() needs the separation vector del = x_i - x_j (the granular and ellipsoid styles: the contact normal
    * and the shear are defined by it). The callers that have no separation (widom's probe sum, tally, stress/prof, hbond/local
    * energies) treat such a style as one without single(), so they refuse or fall back as they do for that case.

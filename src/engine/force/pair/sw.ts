@@ -705,6 +705,12 @@ export abstract class PairSWBase extends Pair {
    * "The single() function of the sw pair style is only enabled and supported
    * for the case of the threebody off setting" — the two-body term alone.
    */
+  /**
+   * As native LAMMPS does (src/MANYBODY/pair_sw.cpp settings at b332f28: "single_enable = skip_threebody_flag ? 1 : 0";
+   * sw/mod and sw/angle/table keep the constructor's 0): compute pair/local only for sw with threebody off.
+   */
+  override singleEnabled(): boolean { return this.name === 'sw' && !this.threebody; }
+
   override single(_i: number, _j: number, itype: number, jtype: number, rsq: number): { eng: number; fforce: number } {
     if (this.threebody && !this.isMod) {
       throw new StyleError(`pair style ${this.name}: single() is only supported with threebody off`);

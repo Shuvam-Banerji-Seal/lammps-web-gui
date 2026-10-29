@@ -45,6 +45,11 @@ export const paritySuite = (matrix: string): void => {
         it.skip(`${name} [${row.skip}]`, () => {});
         continue;
       }
+      const deviation = MATRICES[matrix]?.deviations?.[row.style];
+      if (deviation) {
+        it.skip(`${name} [engine deviation: ${deviation}]`, () => {});
+        continue;
+      }
       const gap = MATRICES[matrix]?.gaps?.[row.style];
       it(gap ? `${name} [engine gap: ${gap}]` : name, async () => {
         const input = parityInput(textOf(row.case), row);

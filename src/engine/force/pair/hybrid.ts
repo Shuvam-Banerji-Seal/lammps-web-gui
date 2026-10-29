@@ -608,6 +608,9 @@ export class PairHybrid extends Pair {
    * Deviation: native copies the active sub-style's svector even when the pair is outside that sub-style's cutoff (a stale
    * value of its previous call); here that case gives zeros.
    */
+  /** As native LAMMPS does (src/pair_hybrid.cpp flags() at b332f28): single_enable when every sub-style has it. */
+  singleEnabled(): boolean { return this.subs.every((s) => s.style.singleEnabled()); }
+
   single(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi: number, qj: number, del?: PairSep): { eng: number; fforce: number; svector?: Float64Array } {
     let eng = 0, fforce = 0;
     const nt = this.ntypes + 1;

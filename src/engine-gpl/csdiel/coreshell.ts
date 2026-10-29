@@ -155,6 +155,8 @@ export class PairCoulWolfCS extends PairCoulWolf {
     pc.acc.ecoul += ecoul;
   }
 
+  /** Native single_enable = 0 for this style (b332f28): compute pair/local refuses it as native does. */
+  protected override singleOff = true;
   single(): never { return noSingle(this.name); }
 }
 
@@ -207,6 +209,8 @@ export class PairCoulLongCS extends PairCoulLong {
     pc.acc.ecoul += ecoul;
   }
 
+  /** Native single_enable = 0 for this style (b332f28): compute pair/local refuses it as native does. */
+  protected override singleOff = true;
   single(): never { return noSingle(this.name); }
 }
 
@@ -282,6 +286,8 @@ export class PairLJCutCoulLongCS extends PairLJCutCoulLong {
     return this.csTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq);
   }
 
+  /** Native single_enable = 0 for this style (b332f28): compute pair/local refuses it as native does. */
+  protected override singleOff = true;
   single(): never { return noSingle(this.name); }
 }
 
@@ -389,5 +395,7 @@ export class PairLJClass2CoulLongCS extends PairLJClass2Coul {
     pc.acc.ecoul += ecoul;
   }
 
+  /** Native single_enable = 0 for this style (b332f28): compute pair/local refuses it as native does. */
+  protected override singleOff = true;
   single(): never { return noSingle(this.name); }
 }

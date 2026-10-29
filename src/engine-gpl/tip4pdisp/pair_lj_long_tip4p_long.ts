@@ -76,6 +76,8 @@ export const checkTip4pHydrogens = (n: number, type: Int32Array, ids: Int32Array
 };
 
 export class PairLJLongTIP4PLong extends PairLJLongCoulLong {
+  /** Native single_enable = 0 (src/KSPACE/pair_lj_long_tip4p_long.cpp at b332f28): compute pair/local refuses it. */
+  protected override singleOff = true;
   override readonly name: string = 'lj/long/tip4p/long';
   /** The virial is tallied here pair by pair (PairLJCut sets fdotr; the TIP4P sites need this tally, as tip4p.ts does). */
   override virialFdotr = false;

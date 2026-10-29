@@ -76,6 +76,8 @@ const coulKernel = (
 };
 
 export class PairLJCutTholeLong extends PairLJCutCoulLong {
+  /** Native single_enable = 0 (src/DRUDE/pair_lj_cut_thole_long.cpp at b332f28): compute pair/local refuses it. */
+  protected override singleOff = true;
   override readonly name: string = 'lj/cut/thole/long';
   /** Global Thole screening and per-type-pair values (polar, thole, ascreen = thole / polar^(1/3)). */
   private tholeGlobal = 0;

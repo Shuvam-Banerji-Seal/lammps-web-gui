@@ -101,6 +101,8 @@ export class PairCoulCutDielectric extends PairCoulCut {
     }
   }
 
+  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
+  protected override singleMissing = true;
   single(): never {
     throw new StyleError('pair style coul/cut/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
   }
@@ -195,6 +197,8 @@ export class PairCoulLongDielectric extends PairCoulLong {
     }
   }
 
+  /** Native single_enable = 0 for this style (b332f28): compute pair/local refuses it as native does. */
+  protected override singleOff = true;
   single(): never {
     throw new StyleError('pair style coul/long/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
   }
@@ -288,6 +292,8 @@ export class PairLJCutCoulDebyeDielectric extends PairLJCutCoulDebye {
     }
   }
 
+  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
+  protected override singleMissing = true;
   single(): never {
     throw new StyleError('pair style lj/cut/coul/debye/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
   }

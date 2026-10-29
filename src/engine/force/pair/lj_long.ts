@@ -126,6 +126,8 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
    * of this style, so the pairwise energy used by pair/local and hbond/local is refused (an EngineError
    * names it) rather than returned wrong.
    */
+  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
+  protected override singleMissing = true;
   single(): { eng: number; fforce: number } {
     throw new StyleError(`pairwise energies (compute pair/local, hbond/local ehb) are not supported for pair style lj/long/coul/long: its dispersion real-space term is not in single()`);
   }

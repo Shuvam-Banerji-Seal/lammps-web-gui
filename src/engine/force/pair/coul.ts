@@ -281,6 +281,8 @@ export class PairCoulDsf extends PairCoul {
  * the shift -(erfc(a rc)/rc + 2a/sqrt(pi) exp(-a^2 rc^2))/rc.
  */
 export class PairCoulWolf extends PairCoul {
+  /** Native single_enable = 0 (src/pair_coul_wolf.cpp at b332f28): compute pair/local refuses it. */
+  protected override singleOff = true;
   readonly name: string = 'coul/wolf';
   protected cutPerPair = false;
   protected coulSpecialSubtract = true;

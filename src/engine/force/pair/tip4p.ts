@@ -347,6 +347,20 @@ export class PairTIP4PBase extends PairLJCut {
 /** lj/cut/tip4p/cut and lj/cut/tip4p/long (LJ on the O atoms, Coulomb on the M sites). */
 export class PairLJCutTIP4PCut extends PairTIP4PBase {
   readonly name: string = 'lj/cut/tip4p/cut';
+
+  /**
+   * As native LAMMPS does (src/MOLECULE/pair_lj_cut_tip4p_cut.cpp init_one at b332f28): "Water H epsilon must be
+   * 0.0 for pair style lj/cut/tip4p/cut" for a pair involving the water H type while its H-H epsilon is nonzero, also
+   * when fix adapt or compute fep re-initializes the style.
+   */
+  initOne(i: number, j: number): number {
+    const cut = super.initOne(i, j);
+    const h = this.htype;
+    if ((i === h || j === h) && this.p.get('epsilon', h, h) !== 0) {
+      throw new StyleError('Water H epsilon must be 0.0 for pair style lj/cut/tip4p/cut');
+    }
+    return cut;
+  }
 }
 
 export class PairLJCutTIP4PLong extends PairTIP4PBase {

@@ -1,0 +1,2141 @@
+{
+ "matrix": "adapt-fep-pair",
+ "about": "fix adapt/fep 0 pair <style> <name> * * v_x scale yes (x = 1.1) for the first per-type-pair and the first global name of each pair style's native extract(), pe, press and fnorm compared after run 0",
+ "lammps": "2 Sep 2026",
+ "rows": [
+  {
+   "case": "amoeba_dimer_nokey",
+   "line": 14,
+   "text": "pair_style amoeba",
+   "style": "pair amoeba opbend_cubic",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair amoeba opbend_cubic * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter opbend_cubic is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w1buck_born",
+   "line": 20,
+   "text": "pair_style born 2.5",
+   "style": "pair born a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair born a * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.426130950754638 1.78330405916136 20.5262237727671"
+  },
+  {
+   "case": "w3coullong_born",
+   "line": 21,
+   "text": "pair_style born/coul/long 10.0",
+   "style": "pair born/coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair born/coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w9pair_born_cs",
+   "line": 8,
+   "text": "pair_style born/coul/long/cs 10.0 8.0",
+   "style": "pair born/coul/long/cs cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair born/coul/long/cs cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w209ms_born",
+   "line": 24,
+   "text": "pair_style born/coul/msm 7.0",
+   "style": "pair born/coul/msm cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair born/coul/msm cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 34,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w219xp_born_gauss",
+   "line": 14,
+   "text": "pair_style born/gauss 2.5",
+   "style": "pair born/gauss biga0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair born/gauss biga0 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.27911031565664 -0.881294619622975 5.17334496525321"
+  },
+  {
+   "case": "w1buck_buck",
+   "line": 20,
+   "text": "pair_style buck 2.5",
+   "style": "pair buck a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck a * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.743838474323174 -0.0209443721742684 3.37587994930702"
+  },
+  {
+   "case": "w1buck_buck_coul_cut",
+   "line": 22,
+   "text": "pair_style buck/coul/cut 2.5 3.0",
+   "style": "pair buck/coul/cut a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck/coul/cut a * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.50732475535309 0.244489993493311 3.24418252094926"
+  },
+  {
+   "case": "w3coullong_buck",
+   "line": 21,
+   "text": "pair_style buck/coul/long 10.0",
+   "style": "pair buck/coul/long a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck/coul/long a * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3948.36374666699 -6594.30034429148 3.52736926266854"
+  },
+  {
+   "case": "w3coullong_buck",
+   "line": 21,
+   "text": "pair_style buck/coul/long 10.0",
+   "style": "pair buck/coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck/coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w9pair_buck_cs",
+   "line": 8,
+   "text": "pair_style buck/coul/long/cs 10.0 8.0",
+   "style": "pair buck/coul/long/cs a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck/coul/long/cs a * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.178638717608919 -4.88800408942573 2.98831034458779"
+  },
+  {
+   "case": "w9pair_buck_cs",
+   "line": 8,
+   "text": "pair_style buck/coul/long/cs 10.0 8.0",
+   "style": "pair buck/coul/long/cs cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck/coul/long/cs cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w209ms_buck",
+   "line": 24,
+   "text": "pair_style buck/coul/msm 7.0 8.0",
+   "style": "pair buck/coul/msm a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck/coul/msm a * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 36,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -891.466578898286 -29221.8134418404 2.09861066754362"
+  },
+  {
+   "case": "w209ms_buck",
+   "line": 24,
+   "text": "pair_style buck/coul/msm 7.0 8.0",
+   "style": "pair buck/coul/msm cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck/coul/msm cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 36,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 6,
+   "text": "pair_style buck/long/coul/long long long 8.0",
+   "style": "pair buck/long/coul/long B",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck/long/coul/long B * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 12.2382550230811 1237.47868620597 688.956958783729"
+  },
+  {
+   "case": "w226cs_buck_ewald_t0",
+   "line": 6,
+   "text": "pair_style buck/long/coul/long long long 8.0",
+   "style": "pair buck/long/coul/long ewald_cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck/long/coul/long ewald_cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter ewald_cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w219xp_buck_mdf",
+   "line": 14,
+   "text": "pair_style buck/mdf 2.0 2.5",
+   "style": "pair buck/mdf a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck/mdf a * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.862251244107321 1.91670266314482 1.88646505837026"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/dsf 0.9 12.0",
+   "style": "pair buck6d/coul/gauss/dsf cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck6d/coul/gauss/dsf cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w50bd_cosbuck6d",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/dsf 0.9 12.0",
+   "style": "pair buck6d/coul/gauss/dsf cut_ljsq",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck6d/coul/gauss/dsf cut_ljsq * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 14819.9567831491 890.888742494777"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/long 0.9 1.0 12.0",
+   "style": "pair buck6d/coul/gauss/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck6d/coul/gauss/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w50bd_cosbuck6d_long",
+   "line": 14,
+   "text": "pair_style buck6d/coul/gauss/long 0.9 1.0 12.0",
+   "style": "pair buck6d/coul/gauss/long cut_ljsq",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair buck6d/coul/gauss/long cut_ljsq * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 82.1160299634658 14819.9567831491 890.888742494777"
+  },
+  {
+   "case": "colloid_ii_d1_d2",
+   "line": 12,
+   "text": "pair_style colloid 12.0",
+   "style": "pair colloid a12",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair colloid a12 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.0545444193129139 0.00083621536231696 0.388039329675141"
+  },
+  {
+   "case": "w140ct_limits",
+   "line": 14,
+   "text": "pair_style hybrid/overlay eam/fs coul/ctip 0.30 12.0",
+   "style": "pair coul/ctip cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/ctip cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w32qeq_point2",
+   "line": 14,
+   "text": "pair_style coul/cut 20.0",
+   "style": "pair coul/cut cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/cut cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.26360540091214 -24.9940602298087 0.595669298485946"
+  },
+  {
+   "case": "w226cs_diel_cutcoul",
+   "line": 6,
+   "text": "pair_style coul/cut/dielectric 8.0",
+   "style": "pair coul/cut/dielectric cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/cut/dielectric cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -62.0865789868097 -177.382429777811 112.515450295729"
+  },
+  {
+   "case": "w219xp_coul_cut_global",
+   "line": 12,
+   "text": "pair_style coul/cut/global 2.5",
+   "style": "pair coul/cut/global cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/cut/global cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w219xp_coul_cut_global",
+   "line": 12,
+   "text": "pair_style coul/cut/global 2.5",
+   "style": "pair coul/cut/global scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/cut/global scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.07708088390971 0.480105119231248 3.21412173266673"
+  },
+  {
+   "case": "w69fep_coulcutsoft",
+   "line": 17,
+   "text": "pair_style coul/cut/soft 2 2.6 4.0",
+   "style": "pair coul/cut/soft lambda",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/cut/soft lambda * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2.80891971901527 1.63767392109939 1.34053356982447e-14"
+  },
+  {
+   "case": "w69fep_gapsys_coul",
+   "line": 17,
+   "text": "pair_style coul/cut/soft/gapsys 0.1 1.5 4.0",
+   "style": "pair coul/cut/soft/gapsys lambda",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/cut/soft/gapsys lambda * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.65309207776033 1.48488299010589 9.60522513578072e-15"
+  },
+  {
+   "case": "w1coul_debye",
+   "line": 22,
+   "text": "pair_style coul/debye 1.5 2.5",
+   "style": "pair coul/debye cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/debye cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.0392764268291797 0.264106621878778 0.218932536734012"
+  },
+  {
+   "case": "w1coul_special_dsf",
+   "line": 8,
+   "text": "pair_style coul/dsf 0.6 3.5",
+   "style": "pair coul/dsf cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/dsf cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w244es_ortho",
+   "line": 15,
+   "text": "pair_style coul/esp 8.0",
+   "style": "pair coul/esp cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/esp cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w244es_ortho",
+   "line": 15,
+   "text": "pair_style coul/esp 8.0",
+   "style": "pair coul/esp scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/esp scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -16192.9169307655 -32922.3391529722 56.3675991503462"
+  },
+  {
+   "case": "w219xp_coul_exclude",
+   "line": 12,
+   "text": "pair_style hybrid/overlay lj/cut 2.5 coul/cut/global 2.5 coul/exclude 2.5",
+   "style": "pair coul/exclude cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/exclude cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w117cf_pppm_mesh8_real",
+   "line": 10,
+   "text": "pair_style coul/long 12.0",
+   "style": "pair coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w117cf_pppm_mesh8_real",
+   "line": 10,
+   "text": "pair_style coul/long 12.0",
+   "style": "pair coul/long scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/long scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.32840625016109 -1.6518173931482 13.5037242628987"
+  },
+  {
+   "case": "w9pair_coul_cs_short",
+   "line": 7,
+   "text": "pair_style coul/long/cs 10.0",
+   "style": "pair coul/long/cs cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/long/cs cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w9pair_coul_cs_short",
+   "line": 7,
+   "text": "pair_style coul/long/cs 10.0",
+   "style": "pair coul/long/cs scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/long/cs scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 83.9313885504791 -0.000148628044802802 0.0320457202179257"
+  },
+  {
+   "case": "w226cs_diel_coullong_t12",
+   "line": 7,
+   "text": "pair_style coul/long/dielectric 8.0",
+   "style": "pair coul/long/dielectric cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/long/dielectric cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w226cs_diel_coullong_t12",
+   "line": 7,
+   "text": "pair_style coul/long/dielectric 8.0",
+   "style": "pair coul/long/dielectric scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/long/dielectric scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1211.67581708698 -771.87319932808 160.32452580948"
+  },
+  {
+   "case": "w69fep_coullongsoft",
+   "line": 17,
+   "text": "pair_style coul/long/soft 2 2.6 4.0",
+   "style": "pair coul/long/soft cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/long/soft cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w69fep_coullongsoft",
+   "line": 17,
+   "text": "pair_style coul/long/soft 2 2.6 4.0",
+   "style": "pair coul/long/soft scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/long/soft scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.779178890111203 0.563176647668419 9.40913053257615e-15"
+  },
+  {
+   "case": "w209ms_shrink_hybrid",
+   "line": 18,
+   "text": "pair_style hybrid/overlay lj/cut 7.0 coul/msm 7.0",
+   "style": "pair coul/msm cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/msm cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w209ms_shrink_hybrid",
+   "line": 18,
+   "text": "pair_style hybrid/overlay lj/cut 7.0 coul/msm 7.0",
+   "style": "pair coul/msm scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/msm scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -285.284686240142 -140493.842976839 4.78725853184458"
+  },
+  {
+   "case": "w219xp_coul_slater_cut",
+   "line": 16,
+   "text": "pair_style coul/slater/cut 0.7 2.5",
+   "style": "pair coul/slater/cut cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/slater/cut cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.325007777780061 0.93040587186578 11.9540538448943"
+  },
+  {
+   "case": "w130pr_coulslater_ewald",
+   "line": 14,
+   "text": "pair_style coul/slater/long 0.929 3.0",
+   "style": "pair coul/slater/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/slater/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w130pr_coulslater_ewald",
+   "line": 14,
+   "text": "pair_style coul/slater/long 0.929 3.0",
+   "style": "pair coul/slater/long scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/slater/long scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.0492606746002073 0.191643949665508 16.3965062051575"
+  },
+  {
+   "case": "w43st_dsf_alone",
+   "line": 18,
+   "text": "pair_style coul/streitz 12.0 dsf 0.3",
+   "style": "pair coul/streitz cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/streitz cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w43st_dsf_alone",
+   "line": 18,
+   "text": "pair_style coul/streitz 12.0 dsf 0.3",
+   "style": "pair coul/streitz scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/streitz scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 15.6786825265023 -27959.4553472936 40.7260076109014"
+  },
+  {
+   "case": "w72drude_eglycol0",
+   "line": 16,
+   "text": "pair_style hybrid/overlay lj/cut/coul/long 8.0 8.0 thole 2.600 8.0 coul/tt 4 8.0",
+   "style": "pair coul/tt scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair coul/tt scale 2 4 v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 82,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 86.7192761524296 -557.609827379952 849.437380509187"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 18,
+   "text": "pair_style dpd/coul/slater/long 1.0 1.0 165412 0.25 2.0",
+   "style": "pair dpd/coul/slater/long a0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair dpd/coul/slater/long a0 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 8.90631532118604 9.06947257389454 660.76195082338"
+  },
+  {
+   "case": "w130pr_dpd_coul_slater",
+   "line": 18,
+   "text": "pair_style dpd/coul/slater/long 1.0 1.0 165412 0.25 2.0",
+   "style": "pair dpd/coul/slater/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair dpd/coul/slater/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w88pair_shift_eam",
+   "line": 9,
+   "text": "pair_style eam",
+   "style": "pair eam scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair eam scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -996.864000641978 -0.0306464125200241 8.66083640682711e-14"
+  },
+  {
+   "case": "w47pkg_dtreset_metal",
+   "line": 11,
+   "text": "pair_style eam/alloy",
+   "style": "pair eam/alloy scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair eam/alloy scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -992.518180278311 64206.8400157217 8.50121293936317e-14"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 16,
+   "text": "pair_style hybrid/overlay eam/apip pace/precise/apip",
+   "style": "pair eam/apip scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair eam/apip scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Unrecognized fix style 'adapt/fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "APIP",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w204sg_fs_vcsgc",
+   "line": 11,
+   "text": "pair_style eam/fs",
+   "style": "pair eam/fs scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair eam/fs scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -4696.24841561558 112116.313881023 10.2552753668317"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 15,
+   "text": "pair_style hybrid/overlay eam/fs/apip pace/apip",
+   "style": "pair eam/fs/apip scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair eam/fs/apip scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Unrecognized fix style 'adapt/fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "APIP",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w222me_eamhe_pdhhe",
+   "line": 16,
+   "text": "pair_style eam/he",
+   "style": "pair eam/he scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair eam/he scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -463.661447452252 2302.59621337002 4.00352471624868"
+  },
+  {
+   "case": "w1misc_gauss",
+   "line": 20,
+   "text": "pair_style gauss 2.5",
+   "style": "pair gauss a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair gauss a * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.08801622221852 -2.61998118159891 2.78434087614603"
+  },
+  {
+   "case": "w17harmcut",
+   "line": 11,
+   "text": "pair_style harmonic/cut",
+   "style": "pair harmonic/cut k",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair harmonic/cut k * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.07056223015218 4.54238545263734 17.9537401256009"
+  },
+  {
+   "case": "hippo_dimer_nokey",
+   "line": 14,
+   "text": "pair_style hippo",
+   "style": "pair hippo opbend_cubic",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair hippo opbend_cubic * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter opbend_cubic is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w219xp_lennard_mdf",
+   "line": 14,
+   "text": "pair_style lennard/mdf 2.0 2.5",
+   "style": "pair lennard/mdf a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lennard/mdf a * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.77061493499071 -5.07178443219416 15.7028183408765"
+  },
+  {
+   "case": "w16lepton_coul",
+   "line": 18,
+   "text": "pair_style lepton/coul 2.5",
+   "style": "pair lepton/coul cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lepton/coul cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Fix adapt interface to pair style lepton/coul is not supported",
+   "skip": "native's extract() gives &cut as dim 2 without a kspace style (undefined behaviour)"
+  },
+  {
+   "case": "w76dih_fine_charmm",
+   "line": 9,
+   "text": "pair_style lj/charmm/coul/charmm 7.0 8.0",
+   "style": "pair lj/charmm/coul/charmm lj14_1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmm/coul/charmm lj14_1 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 15,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 179.4 0 74.9395596464245"
+  },
+  {
+   "case": "w3charmm_implicit",
+   "line": 21,
+   "text": "pair_style lj/charmm/coul/charmm/implicit 8.0 10.0",
+   "style": "pair lj/charmm/coul/charmm/implicit lj14_1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmm/coul/charmm/implicit lj14_1 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1869.41603249625 -2405.06728354795 7.5069912905957"
+  },
+  {
+   "case": "w50il_peptide_run0",
+   "line": 6,
+   "text": "pair_style lj/charmm/coul/long 8.0 10.0 10.0",
+   "style": "pair lj/charmm/coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmm/coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w50il_peptide_run0",
+   "line": 6,
+   "text": "pair_style lj/charmm/coul/long 8.0 10.0 10.0",
+   "style": "pair lj/charmm/coul/long lj14_1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmm/coul/long lj14_1 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 88.4623527778298 -59.5033969151855 208.893364972341"
+  },
+  {
+   "case": "w69fep_charmmsoft",
+   "line": 17,
+   "text": "pair_style lj/charmm/coul/long/soft 2 0.5 2.6 8.0 10.0",
+   "style": "pair lj/charmm/coul/long/soft cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmm/coul/long/soft cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w69fep_charmmsoft",
+   "line": 17,
+   "text": "pair_style lj/charmm/coul/long/soft 2 0.5 2.6 8.0 10.0",
+   "style": "pair lj/charmm/coul/long/soft lj14_1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmm/coul/long/soft lj14_1 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.04075828990871 19.3096171198355 6.41670642689508e-13"
+  },
+  {
+   "case": "w209ms_charmm_water",
+   "line": 8,
+   "text": "pair_style lj/charmm/coul/msm 3.5 4.5",
+   "style": "pair lj/charmm/coul/msm cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmm/coul/msm cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w209ms_charmm_water",
+   "line": 8,
+   "text": "pair_style lj/charmm/coul/msm 3.5 4.5",
+   "style": "pair lj/charmm/coul/msm lj14_1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmm/coul/msm lj14_1 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 54.5501183507124 17257.0373019069 282.57355977028"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/charmmfsh 8.0 10.0 9.0",
+   "style": "pair lj/charmmfsw/coul/charmmfsh cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmmfsw/coul/charmmfsh cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w10charmmfsw_fsh",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/charmmfsh 8.0 10.0 9.0",
+   "style": "pair lj/charmmfsw/coul/charmmfsh lj14_1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmmfsw/coul/charmmfsh lj14_1 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5264.26732587601 -18731.7502634035 3341.899451201"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/long 8.0 10.0 9.0",
+   "style": "pair lj/charmmfsw/coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmmfsw/coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w10charmmfsw_long",
+   "line": 10,
+   "text": "pair_style lj/charmmfsw/coul/long 8.0 10.0 9.0",
+   "style": "pair lj/charmmfsw/coul/long lj14_1",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/charmmfsw/coul/long lj14_1 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5260.83834971158 -18731.852923879 3341.8009393789"
+  },
+  {
+   "case": "w1ljx_class2",
+   "line": 20,
+   "text": "pair_style lj/class2 2.5",
+   "style": "pair lj/class2 epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2 epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.53782219310688 -6.21861099542009 5.10699782686558"
+  },
+  {
+   "case": "w51cs_c2cut_nylon",
+   "line": 6,
+   "text": "pair_style lj/class2/coul/cut 8.5",
+   "style": "pair lj/class2/coul/cut cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2/coul/cut cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "CRASH rc=139",
+   "skip": "native LAMMPS crashes (CRASH rc=139)"
+  },
+  {
+   "case": "w69fep_class2cutsoft",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/cut/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair lj/class2/coul/cut/soft cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2/coul/cut/soft cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w69fep_class2cutsoft",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/cut/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair lj/class2/coul/cut/soft epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2/coul/cut/soft epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.62145867477988 -0.242089019680747 4.40724653376364e-15"
+  },
+  {
+   "case": "w51cs_c2long_nylon",
+   "line": 7,
+   "text": "pair_style lj/class2/coul/long 8.5",
+   "style": "pair lj/class2/coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2/coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w51cs_c2long_nylon",
+   "line": 7,
+   "text": "pair_style lj/class2/coul/long 8.5",
+   "style": "pair lj/class2/coul/long epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2/coul/long epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 134.876621016107 395.344391880663 1203.0551685226"
+  },
+  {
+   "case": "w226cs_class2",
+   "line": 6,
+   "text": "pair_style lj/class2/coul/long/cs 8.0",
+   "style": "pair lj/class2/coul/long/cs cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2/coul/long/cs cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w226cs_class2",
+   "line": 6,
+   "text": "pair_style lj/class2/coul/long/cs 8.0",
+   "style": "pair lj/class2/coul/long/cs epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2/coul/long/cs epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 4.96030594106492 -6226.19183429119 483.079539224618"
+  },
+  {
+   "case": "w17soft_class2",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/long/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair lj/class2/coul/long/soft cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2/coul/long/soft cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w17soft_class2",
+   "line": 17,
+   "text": "pair_style lj/class2/coul/long/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair lj/class2/coul/long/soft epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2/coul/long/soft epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -4.1709573378791 -0.733610723952933 6.84839132317524e-15"
+  },
+  {
+   "case": "w69fep_class2soft",
+   "line": 15,
+   "text": "pair_style lj/class2/soft 2 0.5 2.5",
+   "style": "pair lj/class2/soft epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/class2/soft epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.75053038052468 -1.26094429484989 8.64479023982591e-15"
+  },
+  {
+   "case": "w88pair_shift_lj_cubic",
+   "line": 9,
+   "text": "pair_style lj/cubic",
+   "style": "pair lj/cubic epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cubic epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.10606418240566 -5.38475711484194 3.55365654936572e-13"
+  },
+  {
+   "case": "w88pair_nofdotr",
+   "line": 9,
+   "text": "pair_style lj/cut 2.5",
+   "style": "pair lj/cut epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -7.45070485857803 -6.85884899709364 4.65074479637468e-13"
+  },
+  {
+   "case": "w88pair_amber_coul",
+   "line": 5,
+   "text": "pair_style lj/cut/coul/cut 10.0",
+   "style": "pair lj/cut/coul/cut cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/cut cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.423675923062939 -4489.08964919723 121.846644245228"
+  },
+  {
+   "case": "w243de_efield_cutcoul",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/cut/dielectric 0.2 8.0",
+   "style": "pair lj/cut/coul/cut/dielectric cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/cut/dielectric cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -62.0865789868097 -177.382429777811 112.515450295729"
+  },
+  {
+   "case": "w17soft_coul",
+   "line": 17,
+   "text": "pair_style lj/cut/coul/cut/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair lj/cut/coul/cut/soft cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/cut/soft cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w17soft_coul",
+   "line": 17,
+   "text": "pair_style lj/cut/coul/cut/soft 2 0.5 4.0 2.4 2.6",
+   "style": "pair lj/cut/coul/cut/soft epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/cut/soft epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.481445546208024 22.6913512188936 7.93148199916712e-14"
+  },
+  {
+   "case": "w1lcoul_debye",
+   "line": 22,
+   "text": "pair_style lj/cut/coul/debye 1.5 2.5 3.0",
+   "style": "pair lj/cut/coul/debye cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/debye cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.26137343676823 -4.7201572722269 31.5037012208137"
+  },
+  {
+   "case": "w226cs_diel_debye",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/debye/dielectric 0.2 8.0",
+   "style": "pair lj/cut/coul/debye/dielectric cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/debye/dielectric cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 37060.0852806834 1273120.40719048 984693.129981862"
+  },
+  {
+   "case": "w1lcoul_special_dsf",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/dsf 0.6 2.5 3.5",
+   "style": "pair lj/cut/coul/dsf cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/dsf cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w244es_ljfluid",
+   "line": 15,
+   "text": "pair_style lj/cut/coul/esp 6.0 8.0",
+   "style": "pair lj/cut/coul/esp cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/esp cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w244es_ljfluid",
+   "line": 15,
+   "text": "pair_style lj/cut/coul/esp 6.0 8.0",
+   "style": "pair lj/cut/coul/esp epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/esp epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6262.4844039932 -20046.0797598646 133.245661176456"
+  },
+  {
+   "case": "w75pppmslab_madelung_lowacc",
+   "line": 7,
+   "text": "pair_style lj/cut/coul/long 12",
+   "style": "pair lj/cut/coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 12,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w75pppmslab_madelung_lowacc",
+   "line": 7,
+   "text": "pair_style lj/cut/coul/long 12",
+   "style": "pair lj/cut/coul/long epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/long epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 12,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 725.0719520152 814391.825720641 731.422584339404"
+  },
+  {
+   "case": "w226cs_ljcoul_t12",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/long/cs 8.0",
+   "style": "pair lj/cut/coul/long/cs cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/long/cs cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w226cs_ljcoul_t12",
+   "line": 6,
+   "text": "pair_style lj/cut/coul/long/cs 8.0",
+   "style": "pair lj/cut/coul/long/cs epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/long/cs epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 5.50989310107639 -6005.19766941671 484.107124291149"
+  },
+  {
+   "case": "w243de_efield_ljlong_pppm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/long/dielectric 0.2 8.0",
+   "style": "pair lj/cut/coul/long/dielectric cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/long/dielectric cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w243de_efield_ljlong_pppm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/long/dielectric 0.2 8.0",
+   "style": "pair lj/cut/coul/long/dielectric epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/long/dielectric epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -170.474129172385 -527.36396867753 110.533529043165"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 4,
+   "text": "pair_style lj/cut/coul/long/soft 1 0.5 0.5 8.0 8.0",
+   "style": "pair lj/cut/coul/long/soft cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/long/soft cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w69fep_adapt",
+   "line": 4,
+   "text": "pair_style lj/cut/coul/long/soft 1 0.5 0.5 8.0 8.0",
+   "style": "pair lj/cut/coul/long/soft epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/long/soft epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -118.073161503085 -67.4763623390111 0.0343950568410765"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm 4.5",
+   "style": "pair lj/cut/coul/msm cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/msm cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w209ms_water_flex",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm 4.5",
+   "style": "pair lj/cut/coul/msm epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/msm epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 46.7931759998723 18869.7433908551 282.247012738412"
+  },
+  {
+   "case": "w243de_efield_ljcoulmsm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm/dielectric 8.0",
+   "style": "pair lj/cut/coul/msm/dielectric cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/msm/dielectric cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w243de_efield_ljcoulmsm",
+   "line": 8,
+   "text": "pair_style lj/cut/coul/msm/dielectric 8.0",
+   "style": "pair lj/cut/coul/msm/dielectric epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/coul/msm/dielectric epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 40384.3520304198 -1448.18653074409 1083164.7325142"
+  },
+  {
+   "case": "w41sm_dipole_mol",
+   "line": 12,
+   "text": "pair_style lj/cut/dipole/cut 4.0",
+   "style": "pair lj/cut/dipole/cut cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/dipole/cut cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.745520327925512 0.00200524077580464 6.5613552246956"
+  },
+  {
+   "case": "w44dl_static_auto",
+   "line": 19,
+   "text": "pair_style lj/cut/dipole/long 5.0",
+   "style": "pair lj/cut/dipole/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/dipole/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w44dl_static_auto",
+   "line": 19,
+   "text": "pair_style lj/cut/dipole/long 5.0",
+   "style": "pair lj/cut/dipole/long epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/dipole/long epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 50.1648942132272 1998.44426909662 43.2944973758832"
+  },
+  {
+   "case": "w17soft_tail",
+   "line": 13,
+   "text": "pair_style lj/cut/soft 2 0.5 2.5",
+   "style": "pair lj/cut/soft epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/soft epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.83238773055164 -1.96222152869006 1.10401472550332e-13"
+  },
+  {
+   "case": "w69fep_gapsys_lj",
+   "line": 15,
+   "text": "pair_style lj/cut/soft/gapsys 0.5 2.5",
+   "style": "pair lj/cut/soft/gapsys epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/soft/gapsys epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.361832868408306 45.666062990617 1.90882810564061e-13"
+  },
+  {
+   "case": "w220xp_ljcutsphere",
+   "line": 17,
+   "text": "pair_style lj/cut/sphere 2.5",
+   "style": "pair lj/cut/sphere epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/sphere epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.66235788645087 -1.5516038586957 19.928979483338"
+  },
+  {
+   "case": "w72drude_toluene_lang",
+   "line": 15,
+   "text": "pair_style lj/cut/thole/long 2.600 8.0 8.0",
+   "style": "pair lj/cut/thole/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/thole/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 188,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w72drude_toluene_lang",
+   "line": 15,
+   "text": "pair_style lj/cut/thole/long 2.600 8.0 8.0",
+   "style": "pair lj/cut/thole/long epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/thole/long epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 188,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 149.878729359615 216.753145353355 2059.75646219379"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 8,
+   "text": "pair_style lj/cut/tip4p/cut 1 2 1 1 0.1546 4.5",
+   "style": "pair lj/cut/tip4p/cut epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/tip4p/cut epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 4195.3889754128 131078.662946988 179.124650534157"
+  },
+  {
+   "case": "w12tip4p_cut",
+   "line": 8,
+   "text": "pair_style lj/cut/tip4p/cut 1 2 1 1 0.1546 4.5",
+   "style": "pair lj/cut/tip4p/cut qdist",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/tip4p/cut qdist * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter qdist is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 7,
+   "text": "pair_style lj/cut/tip4p/long 1 2 1 1 0.1546 8.5",
+   "style": "pair lj/cut/tip4p/long epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/tip4p/long epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 22.8313874013979 16750.4813026671 114.143366312367"
+  },
+  {
+   "case": "w117cf_tip4p_pppm_water",
+   "line": 7,
+   "text": "pair_style lj/cut/tip4p/long 1 2 1 1 0.1546 8.5",
+   "style": "pair lj/cut/tip4p/long qdist",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/tip4p/long qdist * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter qdist is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 124,
+   "text": "pair_style lj/cut/tip4p/long/soft 1 2 1 1 0.15 1 0.5 0.5 4.0 4.0",
+   "style": "pair lj/cut/tip4p/long/soft epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/tip4p/long/soft epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 135,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -62.2385709571186 796.581467130107 52.2617594322871"
+  },
+  {
+   "case": "w69fep_tip4plj",
+   "line": 124,
+   "text": "pair_style lj/cut/tip4p/long/soft 1 2 1 1 0.15 1 0.5 0.5 4.0 4.0",
+   "style": "pair lj/cut/tip4p/long/soft qdist",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/cut/tip4p/long/soft qdist * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 135,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter qdist is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w88pair_expand_shift01",
+   "line": 9,
+   "text": "pair_style lj/expand 2.5",
+   "style": "pair lj/expand epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/expand epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -7.83791194171023 2.84858619355686 2.60757236841234e-12"
+  },
+  {
+   "case": "w220xp_ljexpandcoullong_special",
+   "line": 15,
+   "text": "pair_style lj/expand/coul/long 2.5 3.0",
+   "style": "pair lj/expand/coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/expand/coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w220xp_ljexpandcoullong_special",
+   "line": 15,
+   "text": "pair_style lj/expand/coul/long 2.5 3.0",
+   "style": "pair lj/expand/coul/long epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/expand/coul/long epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -4.21454473125593 0.742666090254282 53.2024818743854"
+  },
+  {
+   "case": "w220xp_ljexpandsphere",
+   "line": 17,
+   "text": "pair_style lj/expand/sphere 2.5",
+   "style": "pair lj/expand/sphere epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/expand/sphere epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -0.0420301372185847 0.15786928529894 0.761277630266411"
+  },
+  {
+   "case": "w1ljx_gromacs",
+   "line": 20,
+   "text": "pair_style lj/gromacs 2.0 2.5",
+   "style": "pair lj/gromacs epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/gromacs epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.97623398476259 -4.92146452223775 33.8866386286445"
+  },
+  {
+   "case": "w220xp_gromacs",
+   "line": 15,
+   "text": "pair_style lj/gromacs/coul/gromacs 1.6 2.2 1.2 2.6",
+   "style": "pair lj/gromacs/coul/gromacs epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/gromacs/coul/gromacs epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.2221370724016 -1.34868256683244 24.1930990796529"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 5,
+   "text": "pair_style lj/long/coul/long long off 2.5",
+   "style": "pair lj/long/coul/long B",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/long/coul/long B * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.3684858711066 -1.5517368922398 137.828485737582"
+  },
+  {
+   "case": "w16disp_lj",
+   "line": 5,
+   "text": "pair_style lj/long/coul/long long off 2.5",
+   "style": "pair lj/long/coul/long ewald_cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/long/coul/long ewald_cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter ewald_cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 6,
+   "text": "pair_style lj/long/coul/long/dielectric long long 8.0",
+   "style": "pair lj/long/coul/long/dielectric B",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/long/coul/long/dielectric B * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 35917.7636187778 1272543.48617287 984661.344937845"
+  },
+  {
+   "case": "w226cs_diel_ljlong",
+   "line": 6,
+   "text": "pair_style lj/long/coul/long/dielectric long long 8.0",
+   "style": "pair lj/long/coul/long/dielectric ewald_cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/long/coul/long/dielectric ewald_cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 17,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter ewald_cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 16,
+   "text": "pair_style lj/long/dipole/long cut long 2.5",
+   "style": "pair lj/long/dipole/long B",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/long/dipole/long B * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.87229757843494 -0.982827052387715 11.2504063002511"
+  },
+  {
+   "case": "w211ed_dipole_only",
+   "line": 16,
+   "text": "pair_style lj/long/dipole/long cut long 2.5",
+   "style": "pair lj/long/dipole/long ewald_cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/long/dipole/long ewald_cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter ewald_cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 8,
+   "text": "pair_style lj/long/tip4p/long cut long 1 2 1 1 0.1546 8.5",
+   "style": "pair lj/long/tip4p/long B",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/long/tip4p/long B * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 24.2295886900583 11949.4577808999 173.686149368887"
+  },
+  {
+   "case": "w242tp_ljcut_pppm_tip4p",
+   "line": 8,
+   "text": "pair_style lj/long/tip4p/long cut long 1 2 1 1 0.1546 8.5",
+   "style": "pair lj/long/tip4p/long qdist",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/long/tip4p/long qdist * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter qdist is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w219xp_lj_mdf",
+   "line": 14,
+   "text": "pair_style lj/mdf 2.0 2.5",
+   "style": "pair lj/mdf epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/mdf epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.93362916387653 -4.78315660358592 37.3020789032097"
+  },
+  {
+   "case": "w220xp_lj_pirani",
+   "line": 15,
+   "text": "pair_style lj/pirani 2.5",
+   "style": "pair lj/pirani alpha",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/pirani alpha * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.98951326572591 -0.946698555492255 1.71445621183113"
+  },
+  {
+   "case": "w51cs_sdk_angle",
+   "line": 6,
+   "text": "pair_style lj/sdk 9.0",
+   "style": "pair lj/sdk epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/sdk epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2442.91826688249 8.24866209055188 169.07492175077"
+  },
+  {
+   "case": "w51cs_sdklong_dimer",
+   "line": 32,
+   "text": "pair_style lj/sdk/coul/long 9.0 8.0",
+   "style": "pair lj/sdk/coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/sdk/coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 41,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w51cs_sdklong_dimer",
+   "line": 32,
+   "text": "pair_style lj/sdk/coul/long 9.0 8.0",
+   "style": "pair lj/sdk/coul/long epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/sdk/coul/long epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 41,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 70.9389465614057 18.9649039092032 624.836627659721"
+  },
+  {
+   "case": "w9pair_ljsf",
+   "line": 22,
+   "text": "pair_style lj/sf 2.5",
+   "style": "pair lj/sf epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/sf epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -5.40234336963235 -0.947591747224037 82.2993704311824"
+  },
+  {
+   "case": "w19dipole_special",
+   "line": 38,
+   "text": "pair_style lj/sf/dipole/sf 4.0",
+   "style": "pair lj/sf/dipole/sf epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/sf/dipole/sf epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 40,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 0.358550937083222 -0.00755251866032612 19.4807793452675"
+  },
+  {
+   "case": "w88pair_tail_lj_smooth",
+   "line": 9,
+   "text": "pair_style lj/smooth 1.5 2.5",
+   "style": "pair lj/smooth epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/smooth epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -8.69886305332285 -5.31737947784659 4.37916233316984e-13"
+  },
+  {
+   "case": "w88pair_shift_lj_smooth_linear",
+   "line": 9,
+   "text": "pair_style lj/smooth/linear 2.5",
+   "style": "pair lj/smooth/linear epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/smooth/linear epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.2626061032822 -6.24195713188911 4.66516152553291e-13"
+  },
+  {
+   "case": "w51cs_spica_angle",
+   "line": 6,
+   "text": "pair_style lj/spica 9.0",
+   "style": "pair lj/spica epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/spica epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 18,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 2442.91826688249 8.24866209055188 169.07492175077"
+  },
+  {
+   "case": "w51cs_spicalong_run",
+   "line": 22,
+   "text": "pair_style lj/spica/coul/long 8.0 9.0",
+   "style": "pair lj/spica/coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/spica/coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 35,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w51cs_spicalong_run",
+   "line": 22,
+   "text": "pair_style lj/spica/coul/long 8.0 9.0",
+   "style": "pair lj/spica/coul/long epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/spica/coul/long epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 35,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2096.54594719185 -6550.57620090826 3.29404630525613"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 20,
+   "text": "pair_style lj/spica/coul/msm 7.0",
+   "style": "pair lj/spica/coul/msm cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/spica/coul/msm cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w209ms_spica",
+   "line": 20,
+   "text": "pair_style lj/spica/coul/msm 7.0",
+   "style": "pair lj/spica/coul/msm epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/spica/coul/msm epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -11205.779995085 631591.356999425 1253.27592458673"
+  },
+  {
+   "case": "w118yaff_mil53al_switch3_t0",
+   "line": 9,
+   "text": "pair_style lj/switch3/coulgauss/long 12.0000 4.0000",
+   "style": "pair lj/switch3/coulgauss/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/switch3/coulgauss/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w118yaff_mil53al_switch3_t0",
+   "line": 9,
+   "text": "pair_style lj/switch3/coulgauss/long 12.0000 4.0000",
+   "style": "pair lj/switch3/coulgauss/long epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj/switch3/coulgauss/long epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1567.91095264553 -17193.423262725 157.932135657955"
+  },
+  {
+   "case": "w1ljv_lj96",
+   "line": 20,
+   "text": "pair_style lj96/cut 2.5",
+   "style": "pair lj96/cut epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair lj96/cut epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -4.19341848913028 -1.93075247112048 30.2294943108429"
+  },
+  {
+   "case": "w33meamtrip_dim",
+   "line": 12,
+   "text": "pair_style meam",
+   "style": "pair meam scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair meam scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.49121088056936 -227.256744261142 1.30929959287348"
+  },
+  {
+   "case": "w128ms_msmeam",
+   "line": 16,
+   "text": "pair_style meam/ms",
+   "style": "pair meam/ms scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair meam/ms scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 20,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 50.9474251019252 540696.774522473 240.593255612604"
+  },
+  {
+   "case": "w1ljx_mie",
+   "line": 20,
+   "text": "pair_style mie/cut 2.5",
+   "style": "pair mie/cut epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair mie/cut epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.57949545942357 -5.06715636540695 43.5661593585186"
+  },
+  {
+   "case": "w115p_mm3_mof5",
+   "line": 8,
+   "text": "pair_style mm3/switch3/coulgauss/long 12.0000 4.0000",
+   "style": "pair mm3/switch3/coulgauss/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair mm3/switch3/coulgauss/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w115p_mm3_mof5",
+   "line": 8,
+   "text": "pair_style mm3/switch3/coulgauss/long 12.0000 4.0000",
+   "style": "pair mm3/switch3/coulgauss/long epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair mm3/switch3/coulgauss/long epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 29934.1045406229 169642.301064932 2649.12568618919"
+  },
+  {
+   "case": "w88pair_tail_morse",
+   "line": 9,
+   "text": "pair_style morse 2.5",
+   "style": "pair morse d0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair morse d0 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -17.277524030257 -7.12508270809801 6.11070121335337e-14"
+  },
+  {
+   "case": "w220xp_morse_smooth_linear",
+   "line": 15,
+   "text": "pair_style morse/smooth/linear 2.5",
+   "style": "pair morse/smooth/linear d0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair morse/smooth/linear d0 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.12135923840509 -0.10214664784932 10.5204413973773"
+  },
+  {
+   "case": "w69fep_morse",
+   "line": 15,
+   "text": "pair_style morse/soft 2 0.8 2.5",
+   "style": "pair morse/soft d0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair morse/soft d0 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 26,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -23.3737684337338 -17.3264132264251 1.98707791791148e-13"
+  },
+  {
+   "case": "w220xp_nm_cut",
+   "line": 15,
+   "text": "pair_style nm/cut 2.5",
+   "style": "pair nm/cut e0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair nm/cut e0 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.97577035219227 -1.42208849277413 12.7729750192114"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_cut",
+   "line": 17,
+   "text": "pair_style nm/cut/coul/cut 2.5 3.0",
+   "style": "pair nm/cut/coul/cut cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair nm/cut/coul/cut cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.23659493998655 -1.24518110248188 27.7294453186414"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_long",
+   "line": 15,
+   "text": "pair_style nm/cut/coul/long 2.5 3.0",
+   "style": "pair nm/cut/coul/long cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair nm/cut/coul/long cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w220xp_nm_cut_coul_long",
+   "line": 15,
+   "text": "pair_style nm/cut/coul/long 2.5 3.0",
+   "style": "pair nm/cut/coul/long e0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair nm/cut/coul/long e0 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -4.08935655339264 -1.0112714806424 10.2062072615963"
+  },
+  {
+   "case": "w220xp_nm_cut_split_tail",
+   "line": 15,
+   "text": "pair_style nm/cut/split 2.5",
+   "style": "pair nm/cut/split e0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair nm/cut/split e0 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -6.04692813141651 -1.470296055645 5.31158978131141"
+  },
+  {
+   "case": "w57oxdna_duplex2_full",
+   "line": 16,
+   "text": "pair_style hybrid/overlay oxdna/excv oxdna/stk oxdna/hbond oxdna/xstk oxdna/coaxstk",
+   "style": "pair oxdna/coaxstk k_cxst",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna/coaxstk k_cxst * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.37680040517527 5.09478137407072e-05 28.8613817326256"
+  },
+  {
+   "case": "w57oxdna_excv_pair2",
+   "line": 12,
+   "text": "pair_style oxdna/excv",
+   "style": "pair oxdna/excv epsilon_bkbk",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna/excv epsilon_bkbk * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 16,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 13511077.0513329 13514.793940957 2293536586.07749"
+  },
+  {
+   "case": "w57oxdna_hbond_duplex",
+   "line": 16,
+   "text": "pair_style hybrid/overlay oxdna/excv oxdna/stk oxdna/hbond",
+   "style": "pair oxdna/hbond epsilon_hb",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna/hbond epsilon_hb * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.19710032711864 -4.95722710098618e-05 16.7963865033198"
+  },
+  {
+   "case": "w57oxdna_excv_stk",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna/excv oxdna/stk",
+   "style": "pair oxdna/stk epsilon_st",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna/stk epsilon_st * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 362.390458184793 1.76523873809988 154259.213178646"
+  },
+  {
+   "case": "w57oxdna_xstk_duplex",
+   "line": 16,
+   "text": "pair_style hybrid/overlay oxdna/excv oxdna/stk oxdna/hbond oxdna/xstk",
+   "style": "pair oxdna/xstk k_xst",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna/xstk k_xst * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.3164591883309 -4.67920248345648e-05 17.4418837292091"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna2/excv oxdna2/stk oxdna2/hbond oxdna2/xstk oxdna2/coaxstk oxdna2/dh",
+   "style": "pair oxdna2/coaxstk k_cxst",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna2/coaxstk k_cxst * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 836.647655412811 6.69778475446283 566083.939374078"
+  },
+  {
+   "case": "w57oxdna2_dh",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna2/excv oxdna2/dh",
+   "style": "pair oxdna2/dh kappa_dh",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna2/dh kappa_dh * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 25,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 363.263982164588 1.76508786134309 154261.651283359"
+  },
+  {
+   "case": "w57oxdna2_excv_bond",
+   "line": 17,
+   "text": "pair_style oxdna2/excv",
+   "style": "pair oxdna2/excv epsilon_bkbk",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna2/excv epsilon_bkbk * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 24,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 363.248419221657 1.76508504344121 154261.543475608"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna2/excv oxdna2/stk oxdna2/hbond oxdna2/xstk oxdna2/coaxstk oxdna2/dh",
+   "style": "pair oxdna2/hbond epsilon_hb",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna2/hbond epsilon_hb * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 836.647655412811 6.69778475446283 566083.939374078"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna2/excv oxdna2/stk oxdna2/hbond oxdna2/xstk oxdna2/coaxstk oxdna2/dh",
+   "style": "pair oxdna2/stk epsilon_st",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna2/stk epsilon_st * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 836.646560662141 6.69780820621183 566084.083690092"
+  },
+  {
+   "case": "w57oxdna2_coaxstk_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxdna2/excv oxdna2/stk oxdna2/hbond oxdna2/xstk oxdna2/coaxstk oxdna2/dh",
+   "style": "pair oxdna2/xstk k_xst",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna2/xstk k_xst * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 31,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 836.647415653438 6.6977857367305 566083.94349328"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/coaxstk k_cxst",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna3/coaxstk k_cxst * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.16125841358927 -0.000148823439763554 45.6941861661744"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/dh kappa_dh",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna3/dh kappa_dh * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.1651068749906 -0.000149343596511967 45.6963645345744"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/excv epsilon_bkbk",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna3/excv epsilon_bkbk * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.16125841358927 -0.000148823439763554 45.6941861661744"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/hbond epsilon_hb",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna3/hbond epsilon_hb * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.15977138236364 -0.000142867040192838 45.8526919635438"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/stk epsilon_st",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna3/stk epsilon_st * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.1461378749078 -0.000159256195271039 46.1078314089657"
+  },
+  {
+   "case": "w78oxdna3_lj_duplex2",
+   "line": 18,
+   "text": "pair_style hybrid/overlay oxdna3/excv oxdna3/stk oxdna3/hbond oxdna3/xstk oxdna3/coaxstk oxdna3/dh",
+   "style": "pair oxdna3/xstk k_xst",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxdna3/xstk k_xst * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 33,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1.17535710395138 -0.000152380396820612 46.5317606979004"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/coaxstk k_cxst",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxrna2/coaxstk k_cxst * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 837.151293875118 6.69770860196382 566085.913197095"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/dh kappa_dh",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxrna2/dh kappa_dh * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 837.149023886998 6.69770712018381 566085.887687083"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/excv epsilon_bkbk",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxrna2/excv epsilon_bkbk * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 837.151374587254 6.69770780297311 566085.901164713"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/hbond epsilon_hb",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxrna2/hbond epsilon_hb * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 837.151374587254 6.69770780297311 566085.901164713"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/stk epsilon_st",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxrna2/stk epsilon_st * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 837.152134775526 6.69770797254384 566085.928608301"
+  },
+  {
+   "case": "w57oxrna2_full",
+   "line": 17,
+   "text": "pair_style hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh",
+   "style": "pair oxrna2/xstk k_xst",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair oxrna2/xstk k_xst * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 837.147004239141 6.69771506811783 566086.135352024"
+  },
+  {
+   "case": "w270ya_pace_yace_cu",
+   "line": 14,
+   "text": "pair_style pace",
+   "style": "pair pace scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair pace scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Unrecognized fix style 'adapt/fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "ML-PACE",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w278ap_validate",
+   "line": 15,
+   "text": "pair_style hybrid/overlay eam/fs/apip pace/apip",
+   "style": "pair pace/apip scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair pace/apip scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Unrecognized fix style 'adapt/fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "APIP",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 29,
+   "text": "pair_style hybrid/overlay pace/fast/apip pace/precise/apip",
+   "style": "pair pace/fast/apip scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair pace/fast/apip scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 32,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Unrecognized fix style 'adapt/fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "APIP",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w278ap_funcfl_ace",
+   "line": 16,
+   "text": "pair_style hybrid/overlay eam/apip pace/precise/apip",
+   "style": "pair pace/precise/apip scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair pace/precise/apip scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Unrecognized fix style 'adapt/fep' is part of the FEP package which is not enabled in this LAMMPS binary.",
+   "build": "APIP",
+   "skip": "the native builds with ML-PACE and APIP lack the FEP package"
+  },
+  {
+   "case": "w48pb_pedone_triclinic",
+   "line": 22,
+   "text": "pair_style pedone 15.0",
+   "style": "pair pedone c0",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair pedone c0 * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 30,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 7.90472762630094 253963.222894226 5.99187409983612"
+  },
+  {
+   "case": "w33snapchem_pair",
+   "line": 15,
+   "text": "pair_style snap",
+   "style": "pair snap scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair snap scale * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 19,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -17.1719814106391 -19805.1061442071 25.0910252968271"
+  },
+  {
+   "case": "w88pair_shift_soft",
+   "line": 9,
+   "text": "pair_style soft 2.5",
+   "style": "pair soft a",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair soft a * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 107.936153571972 103.823605641425 2.17756664798153e-12"
+  },
+  {
+   "case": "w103spin_dipole_cut_frozen",
+   "line": 14,
+   "text": "pair_style hybrid/overlay spin/exchange 4.0 spin/dipole/cut 8.0",
+   "style": "pair spin/dipole/cut cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair spin/dipole/cut cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w267ed_spin_ptensor",
+   "line": 16,
+   "text": "pair_style spin/dipole/long 4.0",
+   "style": "pair spin/dipole/long cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair spin/dipole/long cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 27,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w48sp2_dmi",
+   "line": 20,
+   "text": "pair_style spin/dmi 4.0",
+   "style": "pair spin/dmi cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair spin/dmi cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w47spin_moving2",
+   "line": 13,
+   "text": "pair_style spin/exchange 4.0",
+   "style": "pair spin/exchange cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair spin/exchange cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 22,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w48sp2_biquad",
+   "line": 20,
+   "text": "pair_style spin/exchange/biquadratic 4.0",
+   "style": "pair spin/exchange/biquadratic cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair spin/exchange/biquadratic cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w48sp2_magelec",
+   "line": 20,
+   "text": "pair_style spin/magelec 4.5",
+   "style": "pair spin/magelec cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair spin/magelec cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 23,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w103spin_neel_frozen",
+   "line": 14,
+   "text": "pair_style hybrid/overlay spin/exchange 4.0 spin/neel 4.0",
+   "style": "pair spin/neel cut",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair spin/neel cut * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 28,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w371tgnh_couple_xy",
+   "line": 13,
+   "text": "pair_style hybrid/overlay lj/cut/coul/cut 8.0 8.0 thole 2.089 8.0",
+   "style": "pair thole scale",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair thole scale 1 * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 57,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -2.10207840065416 -488.868082294782 746.514040172532"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 122,
+   "text": "pair_style tip4p/long/soft 1 2 1 1 0.15 1 0.5 4.0",
+   "style": "pair tip4p/long/soft lambda",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair tip4p/long/soft lambda * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 133,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -1549.7954062702 -12430.8197807528 83.653824229599"
+  },
+  {
+   "case": "w69fep_tip4p",
+   "line": 122,
+   "text": "pair_style tip4p/long/soft 1 2 1 1 0.15 1 0.5 4.0",
+   "style": "pair tip4p/long/soft qdist",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair tip4p/long/soft qdist * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 133,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter qdist is not compatible with fix adapt/fep"
+  },
+  {
+   "case": "w219xp_ufm",
+   "line": 14,
+   "text": "pair_style ufm 2.5",
+   "style": "pair ufm epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair ufm epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 1.69032465536533 2.7659142273077 7.61997502045507"
+  },
+  {
+   "case": "w219xp_wf_cut",
+   "line": 14,
+   "text": "pair_style wf/cut 2.5",
+   "style": "pair wf/cut epsilon",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair wf/cut epsilon * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 21,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL -3.40419403936156 -7.23917672067111 42.9651852557109"
+  },
+  {
+   "case": "w88pair_tail_yukawa",
+   "line": 9,
+   "text": "pair_style yukawa 1.0 2.5",
+   "style": "pair yukawa alpha",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair yukawa alpha * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 14,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 6.27905788537803 4.54090247425443 9.88809424057214e-14"
+  },
+  {
+   "case": "w5yukawa_colloid",
+   "line": 20,
+   "text": "pair_style yukawa/colloid 2.0 3.5",
+   "style": "pair yukawa/colloid alpha",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair yukawa/colloid alpha * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "OK | VAL 211.888974270896 80.7677413922434 508.506953841303"
+  },
+  {
+   "case": "w40ksp_zerocoul_zero",
+   "line": 21,
+   "text": "pair_style zero/coul 6.0",
+   "style": "pair zero/coul cut_coul",
+   "pre": "variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair zero/coul cut_coul * * v_adpv scale yes\nthermo_style custom step pe press fnorm\n",
+   "until": 29,
+   "tail": "print \"VAL $(pe:%.15g) $(press:%.15g) $(fnorm:%.15g)\"\n",
+   "native": "ERROR: Pair style parameter cut_coul is not compatible with fix adapt/fep"
+  }
+ ]
+}

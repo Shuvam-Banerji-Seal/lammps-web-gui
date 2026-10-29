@@ -320,9 +320,9 @@ const adaptPairUndefined = (): Record<string, string> => {
  * (native refuses a range with pairs of another sub-style: "Fix adapt type pair range is not valid for pair hybrid
  * sub-style"); one row per extract() name that `names` keeps, with the attribute's lines before run 0.
  */
-const adaptRows = (cases: Case[], names: (name: string) => boolean, line: (style: string, name: string, ij: string) => string): ParityRow[] => {
+const adaptRows = (cases: Case[], names: (name: string, style: string) => boolean, line: (style: string, name: string, ij: string) => string): ParityRow[] => {
   const rowsOf = (r: ParityRow, style: string, ij: string): ParityRow[] =>
-    (PAIR_EXTRACT[style] ?? []).filter(([name]) => names(name)).map(([name]) => ({ ...r, pre: line(style, name, ij), style: `pair ${style} ${name}` }));
+    (PAIR_EXTRACT[style] ?? []).filter(([name]) => names(name, style)).map(([name]) => ({ ...r, pre: line(style, name, ij), style: `pair ${style} ${name}` }));
   const plain = pick(pairStyleKey, (w) => w)(cases);
   const out = plain.flatMap((r) => rowsOf(r, r.style.split(' ')[1], '* *'));
   const covered = new Set(plain.map((r) => r.style.split(' ')[1]));
@@ -413,6 +413,54 @@ const adaptBondedUndefined = (): Record<string, string> => {
   }
   return out;
 };
+
+/**
+ * fix adapt/fep and compute fep share fix adapt's per-name access (adapt-pair checks every name); their own rules are
+ * per style (src/FEP/fix_adapt_fep.cpp and compute_fep.cpp init at b332f28: Force::pair_match(pstyle, 1), extract(),
+ * the dim, the hybrid range, Pair::reinit). So their rows take, for each case of adapt-pair, the style's first
+ * extract() name of the dims given whose native result is defined.
+ */
+const firstNamesOf = (dims: readonly number[]) => {
+  const undef = adaptPairUndefined();
+  const chosen = new Map<string, Set<string>>();
+  return (name: string, style: string): boolean => {
+    if (!chosen.has(style)) {
+      const set = new Set<string>();
+      for (const d of dims) {
+        const e = (PAIR_EXTRACT[style] ?? []).find(([n, dim]) => dim === d && !undef[`pair ${style} ${n}`]);
+        if (e) set.add(e[0]);
+      }
+      chosen.set(style, set);
+    }
+    return chosen.get(style)!.has(name);
+  };
+};
+/** "fix adpv all adapt/fep 0 pair <style> <name> <I J> v_adpv scale yes" (x = 1.1) before run 0. */
+const adaptFepPairRows = (cases: Case[]): ParityRow[] => adaptRows(cases, firstNamesOf([2, 0]), (style, name, ij) =>
+  `variable adpv equal 1.1\nfix adpv all adapt/fep 0 pair ${style} ${name} ${ij} v_adpv scale yes\n`);
+/**
+ * "compute adpf all fep 300.0 pair <style> <name> <I J> v_adpd" with adpd = 0.01, its energy difference c_adpf[1]
+ * printed after run 0 (native compute fep writes a dim-0 name through its array pointer: undefined, so dim 2 only).
+ */
+const computeFepPairRows = (cases: Case[]): ParityRow[] => adaptRows(cases, firstNamesOf([2]), (style, name, ij) =>
+  `variable adpd equal 0.01\ncompute adpf all fep 300.0 pair ${style} ${name} ${ij} v_adpd\n`);
+const THERMO_FEP = 'thermo_style custom step pe press c_adpf[1]\n';
+/**
+ * Rows native cannot run or whose result is undefined: the styles only the ML-PACE and APIP native builds have
+ * (LMP_BUILDS), which are built without the FEP package, and, for fix adapt/fep, lepton/coul's cut_coul, which
+ * extract() hands out without a kspace style as dim 2 pointing at the address of its cut array pointer
+ * (src/LEPTON/pair_lepton_coul.cpp at b332f28: "return (void *) &cut").
+ */
+const fepUndefined = (fix: boolean): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const [style, names] of Object.entries(PAIR_EXTRACT)) {
+    if (!style.startsWith('pace') && !style.endsWith('/apip')) continue;
+    for (const [name] of names) out[`pair ${style} ${name}`] = 'the native builds with ML-PACE and APIP lack the FEP package';
+  }
+  if (fix) out['pair lepton/coul cut_coul'] = "native's extract() gives &cut as dim 2 without a kspace style (undefined behaviour)";
+  return out;
+};
+const VALUES_FEP = 'print "VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)"\n';
 
 /** The first number after the type words of a coefficient line multiplied by `factor`. */
 const coeffScaled = (factor: number): Change => (w, _lines) => {
@@ -514,6 +562,16 @@ export const MATRICES: Record<string, MatrixDef> = {
     about: 'fix adapt 0 <kind> <style> <name> * v_x scale yes (x = 1.1) for each name of each bond, angle, dihedral and improper style\'s native extract(), pe, press and fnorm compared after run 0',
     rows: throughRun(adaptBondedRows, THERMO_F, VALUES_F),
     undefined: adaptBondedUndefined(),
+  },
+  'adapt-fep-pair': {
+    about: 'fix adapt/fep 0 pair <style> <name> * * v_x scale yes (x = 1.1) for the first per-type-pair and the first global name of each pair style\'s native extract(), pe, press and fnorm compared after run 0',
+    rows: throughRun(adaptFepPairRows, THERMO_F, VALUES_F),
+    undefined: { ...adaptPairUndefined(), ...fepUndefined(true) },
+  },
+  'compute-fep-pair': {
+    about: 'compute fep 300.0 pair <style> <name> * * v_d (d = 0.01) for the first per-type-pair name of each pair style\'s native extract(), pe, press and the energy difference c_[1] compared after run 0',
+    rows: throughRun(computeFepPairRows, THERMO_FEP, VALUES_FEP),
+    undefined: { ...adaptPairUndefined(), ...fepUndefined(false) },
   },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };

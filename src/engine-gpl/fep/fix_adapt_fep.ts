@@ -164,32 +164,45 @@ export class FixAdaptFEP extends Fix {
       throw new StyleError('Fix adapt/fep changes atom radii but atom_style sphere is not dynamic');
     }
     if (this.hasCharge && !hasChargeStyle(s.atomStyle)) throw new StyleError('Fix adapt/fep requires atom attribute charge');
+    // the pair attributes are resolved and set once the force field is initialized (afterForceInit)
     this.pairs = [];
-    for (const p of this.pending) {
-      const table = resolvePairTable(this.sys, `fix ${this.id} (adapt/fep)`, p.pstyle, p.pparam);
-      const pairs = typePairs(p.iw, p.jw, s.ntypes, true);
-      if (!pairs.length) throw new StyleError(`fix ${this.id} (adapt/fep): no type pairs with I <= J in ${p.iw} ${p.jw}`);
-      const orig = new Float64Array(pairs.length);
-      pairs.forEach(([i, j], k) => { orig[k] = table.table.get(table.name, i, j); });
-      this.pairs.push({ vname: p.vname, table, pairs, orig });
-    }
     if (this.reset && this.atoms.length && !this.definedQ) this.storeAtoms();
     this.apply();
   }
 
-  /** The variables are written to the tables and the atoms (change_settings). */
-  private apply(): void {
-    const sys = this.sys, s = sys.state;
+  /**
+   * As native LAMMPS does (src/FEP/fix_adapt_fep.cpp at b332f28): FixAdaptFEP::init runs after the force field's init
+   * (the pair style and its extract() names, the values the run starts with), and setup_pre_force's change_settings
+   * writes them and re-initializes the pair style.
+   */
+  afterForceInit(): void {
+    const s = this.sys.state;
+    this.pairs = [];
+    for (const p of this.pending) {
+      const pairs = typePairs(p.iw, p.jw, s.ntypes, true);
+      const table = resolvePairTable(this.sys, 'fix adapt/fep', p.pstyle, p.pparam, pairs);
+      const orig = new Float64Array(pairs.length);
+      pairs.forEach(([i, j], k) => { orig[k] = table.access.get(i, j); });
+      this.pairs.push({ vname: p.vname, table, pairs, orig });
+    }
+    this.applyPairs();
+  }
+
+  /** The pair values (scale yes: times the run's starting values), then native's pair->reinit(). */
+  private applyPairs(): void {
     const owners = new Set<Pair>();
     for (const p of this.pairs) {
-      const v = sys.equalVariable(p.vname);
-      p.pairs.forEach(([i, j], k) => {
-        const val = this.scale ? v * p.orig[k] : v;
-        setPairValue(p.table, i, j, val);
-      });
+      const v = this.sys.equalVariable(p.vname);
+      p.pairs.forEach(([i, j], k) => setPairValue(p.table, i, j, this.scale ? v * p.orig[k] : v));
       owners.add(p.table.owner);
     }
-    for (const owner of owners) reinitPair(sys, owner);
+    for (const owner of owners) reinitPair(this.sys, owner);
+  }
+
+  /** The variables are written to the pair parameters and the atoms (change_settings). */
+  private apply(): void {
+    const sys = this.sys, s = sys.state;
+    this.applyPairs();
     // set kspace scale factor
     for (const vname of this.kspaces) sys.ff.kspace!.scale = sys.equalVariable(vname);
     for (const a of this.atoms) {

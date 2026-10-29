@@ -10,6 +10,7 @@
  * -15 K vfrac_eff (r - d_ij) / horizon, with the nodal volumes vfrac of the two nodes (the custom per-atom
  * property d_vfrac). Pairs with a special-bond weight of 0 (bonded partners) are skipped, as in the C++ loop.
  * Browser-engine difference: the nodal volume is read from the custom property of the owned atom.
+ * single: PairBPMPeri::single (src/BPM/pair_bpm_peri.cpp at b332f28), the same contact term for one pair.
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
@@ -23,6 +24,8 @@ export class PairBpmPeri extends Pair {
   private kk = new Float64Array(0);
   private cutK = new Float64Array(0);
   private dij = 0;
+  /** The per-atom vfrac of the last compute() (single() reads it by owned index). */
+  private vfracRef: ArrayLike<number> | null = null;
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length) throw new StyleError(`illegal pair_style bpm/peri argument '${args[0]}'`);
@@ -68,6 +71,7 @@ export class PairBpmPeri extends Pair {
     const vf = pc.s.custom.get('vfrac');
     if (!vf) throw new StyleError('Pair bpm/peri requires a per-atom vfrac property (fix property/atom d_vfrac)');
     const vfrac = vf.data;
+    this.vfracRef = vfrac;
     const dij = this.dij;
     let evdwl = 0;
     const nb = list.neighbors;
@@ -103,6 +107,23 @@ export class PairBpmPeri extends Pair {
       f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
     }
     pc.acc.evdwl += evdwl;
+  }
+
+  /**
+   * PairBPMPeri::single (src/BPM/pair_bpm_peri.cpp at b332f28): d_ij = 1.35 xlattice, the contact is 0 beyond it, the
+   * energy is 0.5 rk dr and fforce = -(rk / r). i and j are owned atoms; vfrac is the array of the last compute().
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, _factorCoul: number, _factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const vfrac = this.vfracRef;
+    if (!vfrac) throw new StyleError('Pair bpm/peri single() needs a compute() before it (per-atom vfrac)');
+    const r = Math.sqrt(rsq);
+    if (r >= this.dij) return { eng: 0, fforce: 0 };
+    const t = itype * (this.ntypes + 1) + jtype;
+    const dr = r - this.dij;
+    const vfracEff = 0.5 * (vfrac[i] + vfrac[j]);
+    const rk = 15.0 * this.kk[t] * vfracEff * (dr / this.cutK[t]);
+    const fforce = r > 0.0 ? -(rk / r) : 0.0;
+    return { eng: 0.5 * rk * dr, fforce };
   }
 
   dataCoeffs(): string[] {

@@ -14,8 +14,9 @@
  * which is the newton-off result for either setting. The virial is tallied per pair as native ev_tally does: an owned
  * pair takes the full product, a ghost pair half of it. Special bonds with a zero factor are skipped (native
  * "if (factor_lj == 0) continue").
+ * single (PairRHEOSolid::single at b332f28): the same spring and damper for one pair, with the smooth weight squared once.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { RHEO_STATUS } from '../../engine/atoms';
@@ -31,6 +32,10 @@ export class PairRHEOSolid extends Pair {
   private gamma = new Float64Array(0);
   private cutsqP = new Float64Array(0);
   private set = new Uint8Array(0);
+  /** The per-atom status, velocity and positions of the last compute() (single() reads them by owned index). */
+  private singleStatus: Float64Array | null = null;
+  private singleV: Float64Array | null = null;
+  private singleX: Float64Array | null = null;
 
   settings(args: string[]): void {
     if (args.length !== 0) throw new StyleError('Illegal pair_style rheo/solid command');
@@ -92,6 +97,35 @@ export class PairRHEOSolid extends Pair {
     return this.cutP[q];
   }
 
+  /**
+   * PairRHEOSolid::single (src/RHEO/pair_rheo_solid.cpp at b332f28): the spring and damper of one pair, zero unless both
+   * atoms are solid. The smooth weight is squared once there (smooth = (rsq / cutsq)^2, then 1 - smooth) and the
+   * returned fforce already has factor_lj; the energy is 0. del is x_i - x_j (native reads x[i] - x[j]).
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, _factorCoul: number, factorLJ: number, _qi = 0, _qj = 0, del?: PairSep): { eng: number; fforce: number } {
+    const status = this.singleStatus, v = this.singleV, x = this.singleX;
+    if (!status || !v || !x) throw new StyleError('Pair rheo/solid single() needs a compute() before it');
+    const n = this.ntypes;
+    const q = itype * (n + 1) + jtype;
+    if (rsq > this.cutsqP[q]) return { eng: 0, fforce: 0 };
+    if (!(status[i] & STATUS_SOLID)) return { eng: 0, fforce: 0 };
+    if (!(status[j] & STATUS_SOLID)) return { eng: 0, fforce: 0 };
+    const r = Math.sqrt(rsq);
+    const rinv = 1.0 / r;
+    let fpair = this.k[q] * (this.cutP[q] - r);
+    let smooth = rsq / this.cutsqP[q];
+    smooth *= smooth;
+    smooth = 1.0 - smooth;
+    const delx = del ? del.dx : x[3 * i] - x[3 * j];
+    const dely = del ? del.dy : x[3 * i + 1] - x[3 * j + 1];
+    const delz = del ? del.dz : x[3 * i + 2] - x[3 * j + 2];
+    const delvx = v[3 * i] - v[3 * j], delvy = v[3 * i + 1] - v[3 * j + 1], delvz = v[3 * i + 2] - v[3 * j + 2];
+    const dot = delx * delvx + dely * delvy + delz * delvz;
+    fpair -= this.gamma[q] * dot * rinv * smooth;
+    fpair *= factorLJ;
+    return { eng: 0, fforce: fpair };
+  }
+
   compute(pc: PairCompute): void {
     const s = pc.s;
     const nlocal = pc.nlocal;
@@ -103,6 +137,9 @@ export class PairRHEOSolid extends Pair {
     const vir = pc.acc.virial;
     const half = pc.half, full = pc.full;
     if (!half || !full) throw new StyleError('pair rheo/solid needs half and full neighbor lists');
+    this.singleStatus = status;
+    this.singleV = v;
+    this.singleX = x;
     const pairVisit = (i: number, jj: number, owned: boolean): void => {
       const j = jj & NEIGHMASK;
       const factor = sLJ[jj >>> SBBITS];

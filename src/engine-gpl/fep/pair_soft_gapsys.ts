@@ -21,6 +21,10 @@
  * pair_modify tail is refused (the source's tail sum is not reproduced here); pair_modify shift subtracts the LJ
  * offset from both regions.
  *
+ * single() of both classes (PairLJCutSoftGapsys::single and PairCoulCutSoftGapsys::single, src/FEP/pair_lj_cut_soft_gapsys.cpp
+ * and src/FEP/pair_coul_cut_soft_gapsys.cpp at b332f28): the native arithmetic and branch tests, the LJ one with no cutoff
+ * test and the Coulomb one with its rsq > cutsq return of 0.
+ *
  * Measured with native LAMMPS (black box): tests/oracle/w69fep_gapsys_lj.in and w69fep_gapsys_coul.in.
  */
 import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../../engine/force/types';
@@ -131,6 +135,33 @@ export class PairLJCutSoftGapsys extends Pair {
     return undefined;
   }
 
+  /**
+   * PairLJCutSoftGapsys::single (src/FEP/pair_lj_cut_soft_gapsys.cpp at b332f28): the 12-6 LJ outside r_inner and the
+   * quadratic inside it, with no cutoff test (native has none), the offset subtracted from the energy and factor_lj on
+   * both the energy and fforce. fforce is the force divided by r.
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _factorCoul: number, factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const t = itype * (this.ntypes + 1) + jtype;
+    const cin = this.innerT[t];
+    if (rsq > this.innerSq[t]) {
+      const r2inv = 1.0 / rsq;
+      const r6inv = r2inv * r2inv * r2inv;
+      const forcelj = r6inv * (this.lj1[t] * r6inv - this.lj2[t]);
+      const fforce = factorLJ * forcelj * r2inv;
+      const philj = r6inv * (this.lj3[t] * r6inv - this.lj4[t]) - this.offT[t];
+      return { eng: factorLJ * philj, fforce };
+    }
+    const epsln = this.eps[t], sig = this.sig[t];
+    const sRi6 = libmPow(sig / cin, 6), sRi12 = sRi6 * sRi6;
+    const b1 = (-24.0 * epsln * (26.0 * sRi12 - 7.0 * sRi6)) / (cin * cin);
+    const b2 = (96.0 * epsln * (7.0 * sRi12 - 2.0 * sRi6)) / cin;
+    const fforce = factorLJ * (b1 + b2 / Math.sqrt(rsq));
+    const a1 = (12.0 * epsln * (26.0 * sRi12 - 7.0 * sRi6)) / (cin * cin);
+    const a2 = (-96.0 * epsln * (7.0 * sRi12 - 2.0 * sRi6)) / cin;
+    const a3 = 28.0 * epsln * (13.0 * sRi12 - 4.0 * sRi6);
+    return { eng: factorLJ * (a1 * rsq + a2 * Math.sqrt(rsq) + a3 - this.offT[t]), fforce };
+  }
+
   compute(pc: PairCompute): void {
     const list = pc.half!;
     const { x, f, type } = pc;
@@ -185,6 +216,8 @@ export class PairCoulCutSoftGapsys extends Pair {
   p!: PairParams;
   private lamT = new Float64Array(0);
   private cutsqT = new Float64Array(0);
+  /** force->qqrd2e of the last compute (single() reads it, as native does from force). */
+  protected qqrd2eLast = 1;
 
   settings(args: string[]): void {
     if (args.length !== 3) throw new StyleError('usage: pair_style coul/cut/soft/gapsys sigma_C alpha_C cutoff');
@@ -227,6 +260,30 @@ export class PairCoulCutSoftGapsys extends Pair {
     return cut;
   }
 
+  /**
+   * PairCoulCutSoftGapsys::single (src/FEP/pair_coul_cut_soft_gapsys.cpp at b332f28): the soft Coulomb inside r_inner
+   * and the plain Coulomb outside, the special weight factor_coul on the energy and force, no factor_lj. Beyond cutsq it
+   * returns 0 as native does. The charges are the two atoms' (native atom->q[i], atom->q[j]).
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, _factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const t = itype * (this.ntypes + 1) + jtype;
+    if (rsq > this.cutsqT[t]) return { eng: 0, fforce: 0 };
+    const cin = (1.0 + this.sigmaQ * Math.abs(qi * qj)) * this.alphaQ * libmPow(this.lamT[t], 1.0 / 6.0);
+    const qqrd2e = this.qqrd2eLast;
+    let fforce = factorCoul * qqrd2e * qi * qj;
+    let phicoul = factorCoul * qqrd2e * qi * qj;
+    if (rsq > cin * cin) {
+      const r2inv = 1.0 / rsq;
+      const rinv = Math.sqrt(r2inv);
+      fforce *= rinv * r2inv;
+      phicoul *= rinv;
+    } else {
+      fforce *= -2.0 / libmPow(cin, 3) + 3.0 / (libmPow(cin, 2) * Math.sqrt(rsq));
+      phicoul *= rsq / libmPow(cin, 3) - (3 * Math.sqrt(rsq)) / libmPow(cin, 2) + 3 / cin;
+    }
+    return { eng: phicoul, fforce };
+  }
+
   compute(pc: PairCompute): void {
     const list = pc.half!;
     const { x, f, type, q } = pc;
@@ -234,6 +291,7 @@ export class PairCoulCutSoftGapsys extends Pair {
     const sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     const qqrd2e = pc.qqrd2e;
+    this.qqrd2eLast = pc.qqrd2e;
     let ecoul = 0;
     const nb = list.neighbors;
     for (let i = 0; i < list.inum; i++) {

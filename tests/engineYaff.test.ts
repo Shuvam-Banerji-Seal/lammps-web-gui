@@ -83,14 +83,14 @@ describe('pair_style lj/switch3/coulgauss/long (docs.lammps.org/pair_lj_switch3_
     expect(p.truncw).toBe(3);
   });
 
-  it('refuses malformed settings, pairwise energies and pair_modify tail', () => {
+  it('refuses malformed settings, has native\'s single() (compute pair/local) and accepts pair_modify tail', () => {
     const p = new PairLJSwitch3CoulGaussLong();
     expect(() => p.settings(['12.0'] as never)).toThrow(StyleError);
     p.settings(['12.0', '4.0'] as never);
     p.allocate(1);
     expect(() => p.coeff(['1', '1', '0.1', '1.0'])).toThrow(StyleError);
     p.coeff(['1', '1', '0.1', '1.0', '1.0']);
-    expect(() => p.single()).toThrow(StyleError);
+    expect(p.singleEnabled()).toBe(true);
     p.tail = true;
     expect(() => p.initOne(1, 1)).not.toThrow();
   });

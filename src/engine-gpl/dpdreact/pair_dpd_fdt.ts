@@ -4,6 +4,8 @@
  * pair_dpd_fdt_energy.h (PairDPDfdtEnergy: pair_style dpd/fdt/energy). LAMMPS is Copyright (2003) Sandia Corporation
  * and distributed under the GNU General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too
  * (src/engine-gpl/LICENSE). Contributing author (from both files): James Larentzos (U.S. Army Research Laboratory).
+ * The single() of both native classes (pair_dpd_fdt.cpp and pair_dpd_fdt_energy.cpp at b332f28, for compute pair/local)
+ * is the conservative term of the pair with its shifted energy, as written there.
  *
  * Forces (docs.lammps.org/pair_dpd_fdt.html): the conservative term a0 wr, the drag -gamma wd (dv . rhat) and the random
  * term sigma wr xi / sqrt(dt), with wr = 1 - r/rc and wd = wr^2; the whole pair force is scaled by factor_dpd (special
@@ -234,6 +236,23 @@ abstract class PairDPDfdtBase extends Pair {
       if (tally) tallyXYZ(pc, i, j, e, fx, fy, fz, delx, dely, delz);
     }
     pc.acc.evdwl += evdwl;
+  }
+
+  /**
+   * PairDPDfdt::single and PairDPDfdtEnergy::single (pair_dpd_fdt.cpp and pair_dpd_fdt_energy.cpp at b332f28, the same
+   * body): "wr = 1.0 - r/cut[itype][jtype]; wd = wr*wr; fforce = a0*wr * factor_dpd*rinv; phi = 0.5*a0*cut*wd; return factor_dpd*phi".
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _factorCoul: number, factorDpd: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const r = Math.sqrt(rsq);
+    if (r < EPSILON) return { eng: 0, fforce: 0 };
+    const t = itype * this.nt + jtype;
+    const a0 = this.p.p('a0')[t], cut = this.cutArr[t];
+    const rinv = 1.0 / r;
+    const wr = 1.0 - r / cut;
+    const wd = wr * wr;
+    const fforce = a0 * wr * factorDpd * rinv;
+    const phi = 0.5 * a0 * cut * wd;
+    return { eng: factorDpd * phi, fforce };
   }
 
   protected cutsqOf(t: number): number {

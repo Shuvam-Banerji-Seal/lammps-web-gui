@@ -341,6 +341,14 @@ export class PairSMDTlsph extends Pair {
     this.partners = partners;
   }
 
+  /**
+   * No native single() in this class (src/MACHDYN/pair_smd_tlsph.cpp at b332f28 defines none), so the base
+   * Pair::single runs (src/pair.h at b332f28: fforce = 0.0, return 0.0). single_enable stays 1 natively.
+   */
+  single(_i: number, _j: number, _it: number, _jt: number, _rsq: number, _factorCoul: number, _factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    return { eng: 0, fforce: 0 };
+  }
+
   compute(pc: PairCompute): void {
     const s = pc.s;
     const n = s.n;

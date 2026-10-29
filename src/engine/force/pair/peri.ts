@@ -1,4 +1,6 @@
-import { Pair, PairParams, StyleError, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type PairSep, type StyleContext, pairCoeffArgs } from '../types';
+import type { SimState } from '../../types';
+import type { Geometry } from '../../domain';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 
@@ -104,8 +106,16 @@ export class PairPeri extends Pair {
   private wvol = new Float64Array(0);
   private theta = new Float64Array(0);
 
+  /** The state and geometry of the last force evaluation, and the bonds of each atom pair (single() reads them). */
+  private stateLast: SimState | null = null;
+  private geomLast: Geometry | null = null;
+  private bondsOf: Map<number, number[]> | null = null;
+
   constructor(readonly model: 'pmb' | 'lps') {
     super();
+    // As native LAMMPS does (src/PERI/pair_peri.cpp and pair_peri_pmb.cpp constructors at b332f28): single_enable is 0
+    // for the peri styles except pmb, so compute pair/local refuses lps
+    this.singleOff = model !== 'pmb';
     this.name = model === 'pmb' ? 'peri/pmb' : 'peri/lps';
     this.names = model === 'pmb' ? ['c', 'horizon', 's00', 'alpha'] : ['K', 'G', 'horizon', 's00', 'alpha'];
   }
@@ -224,11 +234,69 @@ export class PairPeri extends Pair {
     this.idsBuilt = s.id.slice(0, nl);
     this.nBuilt = nl;
     this.built = true;
+    this.bondsOf = null;
+  }
+
+  /**
+   * Pair energy and force-over-r of one pair for compute pair/local (peri/pmb). As native LAMMPS does
+   * (src/PERI/pair_peri_pmb.cpp single at b332f28): the short-range contact term inside d_ij from the reference
+   * separation (minimum image), with the volume V_j, plus the bond term of each unbroken bond of the pair, all at the
+   * pair's current distance r: rk = c V_j nu (r - |xi|)/|xi| (dr below NEAR_ZERO taken as 0). Native finds the bonds
+   * of i whose partner maps to j, and atom->map gives the owned atom, so a pair with a ghost partner (a periodic image)
+   * has no bond term; here such a pair is the one whose separation del is not the owned atoms' separation.
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, _fc: number, _fl: number, _qi = 0, _qj = 0, del?: PairSep): { eng: number; fforce: number } {
+    const s = this.stateLast, g = this.geomLast;
+    if (!s?.vfrac || !s.x0 || !g) return { eng: 0, fforce: 0 };
+    const P = this.params();
+    const V = s.vfrac, x0 = s.x0;
+    const d0 = new Float64Array([x0[3 * i] - x0[3 * j], x0[3 * i + 1] - x0[3 * j + 1], x0[3 * i + 2] - x0[3 * j + 2]]);
+    g.minimumImage(d0);
+    const dij = periShortRangeDistance(Math.sqrt(d0[0] * d0[0] + d0[1] * d0[1] + d0[2] * d0[2]), this.rnode);
+    const r = Math.sqrt(rsq);
+    let energy = 0, fforce = 0;
+    if (r < dij) {
+      const dr = r - dij;
+      const rk = (P.cS * V[j]) * (dr / Math.sqrt(this.cutsq[itype * (this.ntypes + 1) + jtype]));
+      if (r > 0) fforce += -(rk / r);
+      energy += 0.5 * rk * dr;
+    }
+    const x = s.x;
+    const ghost = del !== undefined && (del.dx !== x[3 * i] - x[3 * j] || del.dy !== x[3 * i + 1] - x[3 * j + 1] || del.dz !== x[3 * i + 2] - x[3 * j + 2]);
+    if (!ghost) {
+      for (const e of this.pairBonds(i, j)) {
+        if (this.bBroken[e]) continue;
+        const r0 = this.bL0[e];
+        let dr = r - r0;
+        if (Math.abs(dr) < 2.2204e-16) dr = 0;
+        const rk = (P.c * V[j] * this.bNu[e]) * (dr / r0);
+        if (r > 0) fforce += -(rk / r);
+        energy += 0.5 * rk * dr;
+      }
+    }
+    return { eng: energy, fforce };
+  }
+
+  /** The bonds between owned atoms a and b (either order), from an index built on first use after the family. */
+  private pairBonds(a: number, b: number): number[] {
+    if (!this.bondsOf) {
+      this.bondsOf = new Map();
+      const n = this.nBuilt;
+      for (let e = 0; e < this.nBonds; e++) {
+        const lo = Math.min(this.bA[e], this.bB[e]), hi = Math.max(this.bA[e], this.bB[e]);
+        const key = lo * n + hi;
+        const list = this.bondsOf.get(key);
+        if (list) list.push(e); else this.bondsOf.set(key, [e]);
+      }
+    }
+    return this.bondsOf.get(Math.min(a, b) * this.nBuilt + Math.max(a, b)) ?? [];
   }
 
   compute(pc: PairCompute): void {
     const s = pc.s;
     if (!s.vfrac || !s.x0) throw new StyleError(`pair_style ${this.name} needs atom_style peri`);
+    this.stateLast = s;
+    this.geomLast = pc.geom;
     const nl = pc.nlocal;
     if (!this.built) this.buildFamily(pc);
     else {

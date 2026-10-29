@@ -1,4 +1,5 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext, pairCoeffArgs } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type PairSep, type StyleContext, pairCoeffArgs } from '../types';
+import type { SimState } from '../../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 
@@ -288,4 +289,69 @@ export class PairLJCutDipoleCut extends PairDipoleBase {
 export class PairLJSFDipoleSF extends PairDipoleBase {
   readonly name = 'lj/sf/dipole/sf';
   protected sf = true;
+  /** The state, Coulomb prefactor and log of the last force evaluation and init (single() reads them). */
+  private stateLast: SimState | null = null;
+  private qqrd2eLast = 1;
+  private log: ((msg: string) => void) | null = null;
+  private warnedSingle = false;
+
+  init(ctx: StyleContext): void {
+    this.log = ctx.log;
+    super.init(ctx);
+  }
+
+  compute(pc: PairCompute): void {
+    this.stateLast = pc.s;
+    this.qqrd2eLast = pc.qqrd2e;
+    super.compute(pc);
+  }
+
+  /**
+   * As native LAMMPS does (src/DIPOLE/pair_lj_sf_dipole_sf.cpp single at b332f28): the energy only, with fforce 0 and a
+   * one-time warning "Single method for lj/sf/dipole/sf does not compute forces". The dipole terms are taken where the
+   * dipole moment (mu[3]) is positive; the energy is the force loop's shifted-force charge, charge-dipole and
+   * dipole-dipole terms times special_coul, qqrd2e and scale, plus the shifted-force LJ term times special_lj.
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi = 0, qj = 0, del?: PairSep): { eng: number; fforce: number } {
+    if (!this.warnedSingle) {
+      this.warnedSingle = true;
+      this.log?.('WARNING: Single method for lj/sf/dipole/sf does not compute forces');
+    }
+    const t = itype * (this.ntypes + 1) + jtype;
+    const r2inv = 1 / rsq, rinv = Math.sqrt(r2inv);
+    let eng = 0;
+    const mu = this.stateLast?.mu;
+    if (rsq < this.cutCsq[t] && mu && del) {
+      const { dx, dy, dz } = del;
+      const r3inv = r2inv * rinv, r5inv = r3inv * r2inv;
+      const rc2inv = 1 / this.cutCsq[t];
+      const r3c3 = rsq * Math.sqrt(rsq) * rc2inv * Math.sqrt(rc2inv);
+      const diI = mu[4 * i + 3] > 0, diJ = mu[4 * j + 3] > 0;
+      const pidotr = mu[4 * i] * dx + mu[4 * i + 1] * dy + mu[4 * i + 2] * dz;
+      const pjdotr = mu[4 * j] * dx + mu[4 * j + 1] * dy + mu[4 * j + 2] * dz;
+      let ecoul = 1 - Math.sqrt(rsq) / Math.sqrt(this.cutCsq[t]);
+      ecoul *= ecoul;
+      ecoul *= qi * qj * rinv;
+      if (diI && diJ) {
+        const pdotp = mu[4 * i] * mu[4 * j] + mu[4 * i + 1] * mu[4 * j + 1] + mu[4 * i + 2] * mu[4 * j + 2];
+        const bfac = 1 - 4 * r3c3 + 3 * rsq * rsq * rc2inv * rc2inv;
+        ecoul += bfac * (r3inv * pdotp - 3 * r5inv * pidotr * pjdotr);
+      }
+      const pqfac = 1 - 3 * rsq * rc2inv + 2 * r3c3;
+      if (diI && qj !== 0) ecoul += -qj * r3inv * pqfac * pidotr;
+      if (diJ && qi !== 0) ecoul += qi * r3inv * pqfac * pjdotr;
+      ecoul *= factorCoul * this.qqrd2eLast * this.p.get('scale', itype, jtype);
+      eng += ecoul;
+    }
+    if (rsq < this.cutLJsq[t]) {
+      const eps = this.p.get('epsilon', itype, jtype), sig = this.p.get('sigma', itype, jtype);
+      const lj3 = 4 * eps * sig ** 12, lj4 = 4 * eps * sig ** 6;
+      const r6inv = r2inv * r2inv * r2inv;
+      const rcutlj2inv = 1 / this.cutLJsq[t], rcutlj6inv = rcutlj2inv * rcutlj2inv * rcutlj2inv;
+      const evdwl = r6inv * (lj3 * r6inv - lj4) + rcutlj6inv * (6 * lj3 * rcutlj6inv - 3 * lj4) * rsq * rcutlj2inv +
+        rcutlj6inv * (-7 * lj3 * rcutlj6inv + 4 * lj4);
+      eng += evdwl * factorLJ;
+    }
+    return { eng, fforce: 0 };
+  }
 }

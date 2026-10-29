@@ -8,6 +8,9 @@
  * lamda (docs.lammps.org/pair_coul.html, "coul/slater/long"): the Ewald erfc term minus the Slater term
  * S(r) = exp(-2r/lamda) (1 + 2r/lamda (1 + r/lamda)), with the Ewald erfc taken from the polynomial fit of
  * ewald_const.h (EWALD_P, A1..A5) as native does (no tables).
+ *
+ * single() of this style (PairCoulSlaterLong::single, src/EXTRA-PAIR/pair_coul_slater_long.cpp at b332f28) is the same
+ * arithmetic as the compute's pair term, with no cutoff test.
  */
 import { Pair, PairParams, StyleError, type AdaptAccess, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
@@ -16,9 +19,12 @@ import { parseNum } from '../../engine/force/util';
 import { EWALD_F } from '../../engine/force/erfc';
 import { exp as libmExp } from '../libm/exp';
 
-/** ewald_const.h: EWALD_P (the polynomial erfc of the direct branch uses the same A1..A5 as erfcPoly). */
-const EWALD_P = 0.3275911;
-const A1 = 0.254829592, A2 = -0.284496736, A3 = 1.421413741, A4 = -1.453152027, A5 = 1.061405429;
+/**
+ * ewald_const.h: EWALD_P (the polynomial erfc of the direct branch uses the same A1..A5 as erfcPoly). Exported for
+ * pair_dpd_coul_slater_long.ts, whose single() repeats the source's erfc polynomial.
+ */
+export const EWALD_P = 0.3275911;
+export const A1 = 0.254829592, A2 = -0.284496736, A3 = 1.421413741, A4 = -1.453152027, A5 = 1.061405429;
 
 /**
  * Energy and force-over-r^2 of one pair (coul/slater/long compute() and single()): the prefactor C q_i q_j / r with the
@@ -52,6 +58,8 @@ export class PairCoulSlaterLong extends Pair {
   lamda = 0;
   cutCoul = 0;
   private set!: PairParams;
+  /** force->qqrd2e of the last compute (single() reads it, as native does from force). */
+  protected qqrd2eLast = 1;
 
   settings(args: string[]): void {
     // pair_coul_slater_long.cpp settings(): if (narg != 2) error->all(FLERR,"Illegal pair_style command");
@@ -86,6 +94,16 @@ export class PairCoulSlaterLong extends Pair {
     return { dim: 0, get: () => this.lamda, set: (v) => { this.lamda = v; } };
   }
 
+  /**
+   * PairCoulSlaterLong::single: the Ewald-Slater energy and fforce (F/r) of one pair, with the special weight factor_coul
+   * and the scale of the type pair; no cutoff test and no factor_lj (native ignores it). qi, qj: atom->q of the pair.
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, _factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const scale = this.set.p('scale')[itype * (this.ntypes + 1) + jtype];
+    const r = slaterCoulPair(rsq, qi, qj, this.gEwald, this.qqrd2eLast, this.lamda, factorCoul, scale);
+    return { eng: r.e, fforce: r.f };
+  }
+
   compute(pc: PairCompute): void {
     const list = pc.half!;
     const { x, f, q, type } = pc;
@@ -93,6 +111,7 @@ export class PairCoulSlaterLong extends Pair {
     const scale = this.set.p('scale');
     const cutsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
+    this.qqrd2eLast = pc.qqrd2e;
     const sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let ecoul = 0;

@@ -529,13 +529,9 @@ export class ComputePropertyLocal extends Compute {
  * pair-local parity matrix lists them as gaps).
  */
 const SINGLE_GAPS = new Set<string>([
-  'bpm/peri', 'bpm/spring', 'buck/long/coul/long', 'colloid', 'coul/cut/dielectric', 'coul/cut/soft/gapsys',
-  'coul/slater/long', 'dpd', 'dpd/coul/slater/long', 'dpd/ext', 'dpd/fdt', 'dpd/fdt/energy', 'edpd',
-  'granular/superellipsoid', 'lepton', 'lepton/coul', 'lepton/sphere', 'lj/cut/coul/cut/dielectric',
-  'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/dielectric', 'lj/cut/coul/msm/dielectric', 'lj/cut/soft/gapsys',
-  'lj/long/coul/long', 'lj/long/coul/long/dielectric', 'lj/sf/dipole/sf', 'lj/switch3/coulgauss/long', 'local/density',
-  'mm3/switch3/coulgauss/long', 'morse/soft', 'multi/lucy', 'peri/pmb', 'rheo/solid', 'smd/tlsph', 'sph/heatconduction',
-  'tdpd', 'ylz', 'yukawa/colloid',
+  'bpm/spring', 'colloid', 'coul/cut/dielectric', 'lepton', 'lepton/coul', 'lepton/sphere',
+  'lj/cut/coul/cut/dielectric', 'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/dielectric',
+  'lj/cut/coul/msm/dielectric', 'lj/long/coul/long', 'lj/long/coul/long/dielectric', 'yukawa/colloid',
 ]);
 
 /** The first style (a hybrid's sub-styles in order) that is a SINGLE_GAPS entry without a single(), or null. */

@@ -6,7 +6,11 @@
  *
  * One pair style with two parts: the DPD thermostat of pair_style dpd (conservative a0 wd, drag, random sigma wd theta /
  * sqrt(dt), with the per-pair RanMars stream of pair_dpd.ts) inside the DPD cutoff, and the real-space Slater-Ewald
- * Coulomb of coul/slater/long (slater.ts slaterCoulPair) inside the Slater cutoff. pair_coeff I J a0 gamma [yes|no] [cut]:
+ * Coulomb of coul/slater/long (slater.ts slaterCoulPair) inside the Slater cutoff.
+ *
+ * single() (PairDPDCoulSlaterLong::single, src/DPD-BASIC/pair_dpd_coul_slater_long.cpp at b332f28): the DPD conservative
+ * force and energy (no random or dissipative part) plus the Slater Coulomb with the plain (1 - factor_coul) prefactor
+ * correction native single() uses, which is not the compute's Slater form. pair_coeff I J a0 gamma [yes|no] [cut]:
  * "yes" gives the pair the Slater Coulomb term out to the pair_style cutoff, "no" (default) gives it none.
  *
  * The random deviate is drawn only inside the DPD cutoff, after the r > EPSILON test, as native does, in the native
@@ -18,7 +22,9 @@ import { fmtCoeff, parseInt_, parseNum, logical } from '../../engine/force/util'
 import { RanMars } from '../random_mars';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { EPSILON, tallyXYZ } from '../dpd/pair_dpd';
-import { slaterCoulPair } from './pair_coul_slater_long';
+import { slaterCoulPair, EWALD_P, A1, A2, A3, A4, A5 } from './pair_coul_slater_long';
+import { EWALD_F } from '../../engine/force/erfc';
+import { exp as libmExp } from '../libm/exp';
 
 /** utils::logical accepts these words for the per-pair "do_slater" flag. */
 const logicalWord = (w: string | undefined): boolean => {
@@ -44,6 +50,8 @@ export class PairDPDCoulSlaterLong extends Pair {
   private sigma = new Float64Array(0);
   private boltz = 1;
   private nt = 0;
+  /** force->qqrd2e of the last compute (single() reads it, as native does from force). */
+  protected qqrd2eLast = 1;
   private readonly order = new NativePairOrder();
 
   settings(args: string[]): void {
@@ -113,6 +121,45 @@ export class PairDPDCoulSlaterLong extends Pair {
     return Math.max(cutDpd, Math.sqrt(cutSlater2));
   }
 
+  /**
+   * PairDPDCoulSlaterLong::single (src/DPD-BASIC/pair_dpd_coul_slater_long.cpp at b332f28): fforce and the returned energy
+   * of the DPD conservative part (factor_dpd = factorLJ) inside cut_dpd and r > EPSILON, plus the Slater Coulomb when
+   * q_i q_j != 0 and rsq < cut_slatersq. The Coulomb's (1 - factor_coul) correction is the plain prefactor, as native
+   * single() writes it. No cutoff test beyond these.
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorDpd: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const t = itype * this.nt + jtype;
+    const a0 = this.p.p('a0');
+    let fforce = 0.0;
+    let energy = 0.0;
+    const r = Math.sqrt(rsq);
+    if (rsq < this.cutDpdsq[t] && r > EPSILON) {
+      const rinv = 1.0 / r;
+      const wd = 1.0 - r / this.cutDpd[t];
+      fforce += a0[t] * wd * factorDpd * rinv;
+      const phi = 0.5 * a0[t] * this.cutDpd[t] * wd * wd;
+      energy += factorDpd * phi;
+    }
+    if (qi * qj !== 0.0 && rsq < this.cutSlatersq[t]) {
+      const r2inv = 1.0 / rsq;
+      const g = this.gEwald;
+      const qqrd2e = this.qqrd2eLast;
+      const grij = g * r;
+      const expm2 = libmExp(-grij * grij);
+      const tt = 1.0 / (1.0 + EWALD_P * grij);
+      const erfc = tt * (A1 + tt * (A2 + tt * (A3 + tt * (A4 + tt * A5)))) * expm2;
+      const slaterTerm = libmExp(-2 * r / this.lamda) * (1 + (2 * r / this.lamda * (1 + r / this.lamda)));
+      const prefactor = qqrd2e * qi * qj / r;
+      let forcecoul = prefactor * (erfc + EWALD_F * grij * expm2 - slaterTerm);
+      if (factorCoul < 1.0) forcecoul -= (1.0 - factorCoul) * prefactor;
+      fforce += forcecoul * r2inv;
+      let phicoul = prefactor * (erfc - (1 + r / this.lamda) * libmExp(-2 * r / this.lamda));
+      if (factorCoul < 1.0) phicoul -= (1.0 - factorCoul) * prefactor;
+      energy += phicoul;
+    }
+    return { eng: energy, fforce };
+  }
+
   compute(pc: PairCompute): void {
     const rng = this.rng;
     if (!rng) throw new StyleError('pair dpd/coul/slater/long used before pair_style');
@@ -129,6 +176,7 @@ export class PairDPDCoulSlaterLong extends Pair {
     const dtinvsqrt = 1.0 / Math.sqrt(s.dt);
     const tally = pc.eatom !== null || pc.vatom !== null;
     const g = this.gEwald;
+    this.qqrd2eLast = pc.qqrd2e;
     let evdwl = 0, ecoul = 0;
     for (let p = 0; p < pairs.length; p += 2) {
       const i = pairs[p];

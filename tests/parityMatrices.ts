@@ -495,13 +495,9 @@ const THERMO_PL = 'thermo_style custom step pe c_zzpls[1] c_zzpls[2]\n';
  * list native's compute pair/local builds for itself, which the engine does not build yet.
  */
 const PAIR_LOCAL_GAPS = [
-  'bpm/peri', 'bpm/spring', 'buck/long/coul/long', 'colloid', 'coul/cut/dielectric', 'coul/cut/soft/gapsys',
-  'coul/slater/long', 'dpd', 'dpd/coul/slater/long', 'dpd/ext', 'dpd/fdt', 'dpd/fdt/energy', 'edpd',
-  'granular/superellipsoid', 'lepton', 'lepton/coul', 'lepton/sphere', 'lj/cut/coul/cut/dielectric',
-  'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/dielectric', 'lj/cut/coul/msm/dielectric', 'lj/cut/soft/gapsys',
-  'lj/long/coul/long', 'lj/long/coul/long/dielectric', 'lj/sf/dipole/sf', 'lj/switch3/coulgauss/long', 'local/density',
-  'mm3/switch3/coulgauss/long', 'morse/soft', 'multi/lucy', 'peri/pmb', 'rheo/solid', 'smd/tlsph', 'sph/heatconduction',
-  'tdpd', 'ylz', 'yukawa/colloid',
+  'bpm/spring', 'colloid', 'coul/cut/dielectric', 'lepton', 'lepton/coul', 'lepton/sphere',
+  'lj/cut/coul/cut/dielectric', 'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/dielectric',
+  'lj/cut/coul/msm/dielectric', 'lj/long/coul/long', 'lj/long/coul/long/dielectric', 'yukawa/colloid',
 ];
 const VALUES_PL = 'print "VAL $(pe:%.15g) $(c_zzpls[1]:%.15g) $(c_zzpls[2]:%.15g)"\n';
 
@@ -624,8 +620,13 @@ export const MATRICES: Record<string, MatrixDef> = {
     about: 'compute pair/local eng force reduced to sums before the first run 0 of each pair style (the style\'s single()), pe and the two sums compared',
     rows: throughRun(pairLocalRows, THERMO_PL, VALUES_PL),
     gaps: Object.fromEntries(PAIR_LOCAL_GAPS.map((st) => [`pair_style ${st} pair/local`, 'no single() for this style in the engine yet'])),
-    deviations: Object.fromEntries(['eam/fs', 'eam/opt', 'eam/he'].map((st) => [`pair_style ${st} pair/local`,
-      "each pair's embedding share F(rho_i)/numforce[i] and its i follow native's half-list rows, which the engine does not reproduce here (the energy sums agree)"])),
+    deviations: Object.fromEntries([
+      ...['eam/fs', 'eam/opt', 'eam/he'].map((st): [string, string] => [`pair_style ${st} pair/local`,
+        "each pair's embedding share F(rho_i)/numforce[i] and its i follow native's half-list rows, which the engine does not reproduce here (the energy sums agree)"]),
+      // native PairLocalDensity::single (src/MANYBODY/pair_local_density.cpp at b332f28) only adds to fforce, and
+      // ComputePairLocal::compute_pairs leaves its fpair uninitialised (src/compute_pair_local.cpp lines 185 and 272)
+      ['pair_style local/density pair/local', "native single() adds each force to the caller's uninitialised fpair, so its force column is a running sum; the engine gives each pair its own force (pe and the energy sums agree)"],
+    ]),
   },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };

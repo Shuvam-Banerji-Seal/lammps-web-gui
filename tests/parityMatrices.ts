@@ -462,6 +462,17 @@ const fepUndefined = (fix: boolean): Record<string, string> => {
 };
 const VALUES_FEP = 'print "VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)"\n';
 
+/**
+ * pair_modify on each pair style, the smallest case that has it as its pair_style: "pair_modify shift yes",
+ * "pair_modify tail yes" and "pair_modify mix arithmetic" before its run 0 (docs.lammps.org/pair_modify.html: "The
+ * *shift* keyword determines whether a Lennard-Jones potential is shifted at its cutoff to 0.0", "The *tail* keyword
+ * controls whether long-range tail corrections are added", "The *mix* keyword affects pair coefficients for
+ * interactions between atoms of type I and J"), which reach the offset, tail and mixing parts of the style's init_one.
+ */
+const PAIR_MODIFY = ['shift yes', 'tail yes', 'mix arithmetic'];
+const pairModifyRows = (cases: Case[]): ParityRow[] =>
+  pick(pairStyleKey, (w) => w)(cases).flatMap((r) => PAIR_MODIFY.map((m) => ({ ...r, pre: `pair_modify ${m}\n`, style: `${r.style} ${m}` })));
+
 /** The first number after the type words of a coefficient line multiplied by `factor`. */
 const coeffScaled = (factor: number): Change => (w, _lines) => {
   const from = w[0] === 'pair_coeff' ? 3 : 2;
@@ -572,6 +583,9 @@ export const MATRICES: Record<string, MatrixDef> = {
     about: 'compute fep 300.0 pair <style> <name> * * v_d (d = 0.01) for the first per-type-pair name of each pair style\'s native extract(), pe, press and the energy difference c_[1] compared after run 0',
     rows: throughRun(computeFepPairRows, THERMO_FEP, VALUES_FEP),
     undefined: { ...adaptPairUndefined(), ...fepUndefined(false) },
+  'pair-modify': {
+    about: 'pair_modify shift yes, tail yes and mix arithmetic before the first run 0 of each pair style, pe, press and fnorm compared',
+    rows: throughRun(pairModifyRows, THERMO_F, VALUES_F),
   },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };

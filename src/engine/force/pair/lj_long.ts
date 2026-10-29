@@ -121,15 +121,49 @@ const coulShort = (
 
 export class PairLJLongCoulLong extends PairLJCutCoulLong {
   readonly name: string = 'lj/long/coul/long';
+  /** Coulomb prefactor of the last force evaluation (single() reads it). */
+  private qqrd2eSingle = 1;
+
   /**
-   * single() would give the plain lj/cut term for the LJ part, which is not the dispersion real-space term
-   * of this style, so the pairwise energy used by pair/local and hbond/local is refused (an EngineError
-   * names it) rather than returned wrong.
+   * Pair energy and force-over-r of one pair (compute pair/local, hbond/local). As native LAMMPS does
+   * (src/KSPACE/pair_lj_long_coul_long.cpp single at b332f28): the Coulomb real-space term inside the Coulomb cutoff
+   * (flag_coul long), with its special-bond correction; inside the LJ cutoff of the pair, with flag_lj long the
+   * repulsion with the weight factor_lj and the damped dispersion from its series (never the table/disp table), the part
+   * (1 - factor_lj) C6/r^6 of the dispersion taken back as in the force loop, and otherwise the 12-6 term with its
+   * offset. No charge test.
    */
-  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
-  protected override singleMissing = true;
-  single(): { eng: number; fforce: number } {
-    throw new StyleError(`pairwise energies (compute pair/local, hbond/local ehb) are not supported for pair style lj/long/coul/long: its dispersion real-space term is not in single()`);
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    const t = itype * (this.ntypes + 1) + jtype;
+    const r2inv = 1 / rsq;
+    let eng = 0, fforce = 0;
+    if (this.cutCoul > 0 && rsq < this.coulSqInit) {
+      const tab = this.ljErfcTables.get(this.table, this.gEwald, this.coulSqInit, this.tabinnerRsq, true);
+      const c = coulShort(rsq, qi, qj, this.gEwald, this.qqrd2eSingle, factorCoul, this.table === 0, tab);
+      eng += c.e;
+      fforce += c.f;
+    }
+    const cutlj = this.p.get('cut', itype, jtype);
+    if (rsq < cutlj * cutlj) {
+      const r6inv = r2inv * r2inv * r2inv;
+      const { lj1, lj2, lj3, lj4 } = this;
+      let forceLJ: number;
+      if (this.ljLong) {
+        const g2 = this.gEwaldDisp * this.gEwaldDisp, g6 = g2 * g2 * g2, g8 = g6 * g2;
+        const r12inv = r6inv * r6inv;
+        const gr2 = g2 * rsq, a2 = 1 / gr2;
+        const expterm = a2 * libm.exp(-gr2) * lj4[t];
+        const tw = r6inv * (1 - factorLJ);
+        const g6term = g6 * ((a2 + 1) * a2 + 0.5) * expterm;
+        const g8term = g8 * (((6 * a2 + 6) * a2 + 3) * a2 + 1) * expterm * rsq;
+        forceLJ = factorLJ * r12inv * lj1[t] - g8term + tw * lj2[t];
+        eng += factorLJ * r12inv * lj3[t] - g6term + tw * lj4[t];
+      } else {
+        forceLJ = factorLJ * r6inv * (lj1[t] * r6inv - lj2[t]);
+        eng += factorLJ * (r6inv * (r6inv * lj3[t] - lj4[t]) - this.offset[t]);
+      }
+      fforce += forceLJ * r2inv;
+    }
+    return { eng, fforce };
   }
   /** flag_lj long: the dispersion real-space term; the k-space part is kspace ewald/disp. */
   ljLong = false;
@@ -248,6 +282,7 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
 
   /** flag_lj long, cut or off: the lj/long/coul/long loop (its Coulomb table and special-bond rounding differ from lj/cut/coul/long's). */
   compute(pc: PairCompute): void {
+    this.qqrd2eSingle = pc.qqrd2e;
     this.computeLongLJ(pc);
   }
 

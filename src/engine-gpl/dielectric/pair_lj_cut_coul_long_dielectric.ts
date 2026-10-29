@@ -10,13 +10,15 @@
  * original form (-(1 - w) qq / r, not scaled by the dielectric constants). The electric field of the pair (efield) and
  * the potential (epot) at each owned atom are stored for the polarization fixes. The erfc is the polynomial fit of
  * LAMMPS (pair_modify table 0), or its interpolation table (default table 12) for r^2 >= 2, as the core coul/long pair.
+ * single() (compute pair/local) is the native single() of pair_lj_cut_coul_long_dielectric.cpp at b332f28.
  */
 import { PairLJCutCoulLong } from '../../engine/force/pair/coul_long';
 import { evTallyFull, StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { ErfcTableCache, EWALD_F, erfcPoly, TABLE_INNER_RSQ, type ErfcTable } from '../../engine/force/erfc';
-import { dielArrays } from './common';
+import { dielArrays, type DielArrays } from './common';
 import { exp as libmExp } from '../libm/exp';
+import { singleArrays, singleEps } from '../csdiel/dielectric';
 
 /** Within this distance squared the Coulomb term is left out (pair_lj_cut_coul_long_dielectric.cpp EPSILON). */
 const EPSILON = 1.0e-6;
@@ -46,9 +48,16 @@ export class PairLJCutCoulLongDielectric extends PairLJCutCoulLong {
   efield = new Float64Array(0);
   epot = new Float64Array(0);
   private readonly dieTables = new ErfcTableCache();
+  /** The table of single() (its own cache: the key includes tabinner, which compute() leaves at the default). */
+  private readonly singleTables = new ErfcTableCache();
+  /** The per-atom arrays and Coulomb prefactor of the last compute() (single() reads them). */
+  private dielSingle: DielArrays | null = null;
+  private qqrd2eSingle = 1;
 
   compute(pc: PairCompute): void {
     const d = dielArrays(pc.s, 'pair lj/cut/coul/long/dielectric');
+    this.dielSingle = d;
+    this.qqrd2eSingle = pc.qqrd2e;
     const list = pc.full;
     if (!list) throw new StyleError('pair lj/cut/coul/long/dielectric needs a full neighbor list');
     const nl = pc.nlocal;
@@ -128,9 +137,59 @@ export class PairLJCutCoulLongDielectric extends PairLJCutCoulLong {
     }
   }
 
-  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
-  protected override singleMissing = true;
-  single(): { eng: number; fforce: number } {
-    throw new StyleError('pair lj/cut/coul/long/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
+  /**
+   * As native LAMMPS does (src/DIELECTRIC/pair_lj_cut_coul_long_dielectric.cpp single at b332f28): inside cut_coul the
+   * direct A&S erfc (no table, or rsq <= tabinner) or the table of pair_modify table N (its ftable, ctable and etable hold
+   * qqrd2e), the special-bond correction -(1 - factor_coul) prefactor (not scaled by eps) in the energy too, the force on i
+   * with eps_i (fforce = (forcecoul eps_i + factor_lj forcelj) / r^2), and ei = 0 for eps == 1.
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const d = singleArrays(this.dielSingle, 'pair lj/cut/coul/long/dielectric');
+    const qqrd2e = this.qqrd2eSingle;
+    const q = d.qs, eps = d.epsilon;
+    const nt = this.ntypes + 1;
+    const t = itype * nt + jtype;
+    const cutCoulSq = this.cutCoul * this.cutCoul;
+    const cutLJSq = this.p.get('cut', itype, jtype) ** 2;
+    const g = this.gEwald;
+    const r2inv = 1.0 / rsq;
+    const ei = singleEps(eps[i]), ej = singleEps(eps[j]);
+    let forcecoul = 0, eng = 0;
+    if (rsq < cutCoulSq) {
+      const tab = this.singleTables.get(this.table, g, cutCoulSq, this.tabinnerRsq);
+      if (!tab || rsq <= tab.inner) {
+        const r = Math.sqrt(rsq);
+        const grij = g * r;
+        const expm2 = libmExp(-grij * grij);
+        const erfc = erfcPoly(grij, expm2);
+        const prefactor = qqrd2e * q[i] * q[j] / r;
+        forcecoul = prefactor * (erfc + EWALD_F * grij * expm2);
+        let phicoul = prefactor * 0.5 * (ei + ej) * erfc;
+        if (factorCoul < 1.0) {
+          forcecoul -= (1.0 - factorCoul) * prefactor;
+          phicoul -= (1.0 - factorCoul) * prefactor;
+        }
+        eng += phicoul;
+      } else {
+        // the table holds qqrd2e in native (ftable, ctable, etable); the engine's table is per unit product
+        const qq = qqrd2e * q[i] * q[j];
+        forcecoul = qq * tab.force(rsq);
+        let phicoul = qq * 0.5 * (ei + ej) * tab.energy(rsq);
+        if (factorCoul < 1.0) {
+          const prefactor = qq * tab.coul(rsq);
+          forcecoul -= (1.0 - factorCoul) * prefactor;
+          phicoul -= (1.0 - factorCoul) * prefactor;
+        }
+        eng += phicoul;
+      }
+    }
+    let forcelj = 0;
+    if (rsq < cutLJSq) {
+      const r6inv = r2inv * r2inv * r2inv;
+      forcelj = r6inv * (this.lj1[t] * r6inv - this.lj2[t]);
+      eng += factorLJ * (r6inv * (this.lj3[t] * r6inv - this.lj4[t]) - this.offset[t]);
+    }
+    const fforce = (forcecoul * eps[i] + factorLJ * forcelj) * r2inv;
+    return { eng, fforce };
   }
 }

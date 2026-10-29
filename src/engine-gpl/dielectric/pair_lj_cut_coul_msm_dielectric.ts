@@ -1,6 +1,7 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
  * Source: src/DIELECTRIC/pair_lj_cut_coul_msm_dielectric.cpp and pair_lj_cut_coul_msm_dielectric.h at commit b332f28
+ * (its compute and single())
  * (Trung Nguyen and Monica Olvera de la Cruz, Northwestern University, and the DIELECTRIC package authors), with the
  * MSM kernel and tables of ../msm/pair_coul_msm.ts. Copyright Sandia Corporation (GNU General Public License). This file
  * is GPL-2.0 too (src/engine-gpl/LICENSE).
@@ -17,7 +18,8 @@ import { StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { msmGamma, msmDgamma } from '../msm/tables';
 import { PairLJCutCoulMSM, msmOf } from '../msm/pair_coul_msm';
-import { dielArrays } from './common';
+import { dielArrays, type DielArrays } from './common';
+import { singleArrays, singleEps } from '../csdiel/dielectric';
 
 /** pair_lj_cut_coul_msm_dielectric.cpp EPSILON: within this distance squared the Coulomb term is left out. */
 const EPSILON = 1.0e-6;
@@ -35,12 +37,17 @@ export class PairLJCutCoulMSMDielectric extends PairLJCutCoulMSM {
   /** Electric field at each owned atom from this pair (3 per atom), read by the polarization fixes. */
   efield = new Float64Array(0);
   private ftmp = new Float64Array(0);
+  /** The per-atom arrays and Coulomb prefactor of the last compute() (single() reads them). */
+  private dielSingle: DielArrays | null = null;
+  private qqrd2eSingle = 1;
 
   override compute(pc: PairCompute): void {
     const msm = msmOf(this.kspace, this.name);
     const scalar = msm.scalarPressure;
     if (scalar && pc.vatom) throw new StyleError("Must use 'kspace_modify pressure/scalar no' to obtain per-atom virial with kspace_style MSM");
     const d = dielArrays(pc.s, 'Pair lj/cut/coul/msm/dielectric');
+    this.dielSingle = d;
+    this.qqrd2eSingle = pc.qqrd2e;
     const list = pc.full;
     if (!list) throw new StyleError('pair lj/cut/coul/msm/dielectric needs a full neighbor list');
     const nl = pc.nlocal;
@@ -171,9 +178,64 @@ export class PairLJCutCoulMSMDielectric extends PairLJCutCoulMSM {
     }
   }
 
-  /** Native has a single() for this style that this engine does not have yet (the parent's would be wrong): a named gap. */
-  protected override singleMissing = true;
-  override single(): { eng: number; fforce: number } {
-    throw new StyleError('pair lj/cut/coul/msm/dielectric: single() (pair/local, pair_write) is not supported by the browser engine');
+  /**
+   * As native LAMMPS does (src/DIELECTRIC/pair_lj_cut_coul_msm_dielectric.cpp single at b332f28): the MSM gamma split of the
+   * Coulomb term inside cut_coul (the direct branch, or the table of pair_modify table N when rsq > tabinner), with the
+   * special-bond correction and the energy as native writes them; fforce = (forcecoul + factor_lj forcelj) / r^2, with
+   * no eps_i factor (native's single has none, unlike its compute); ei = 0 for eps == 1.
+   */
+  override single(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, _qi = 0, _qj = 0): { eng: number; fforce: number } {
+    const msm = msmOf(this.kspace, this.name);
+    const d = singleArrays(this.dielSingle, 'pair lj/cut/coul/msm/dielectric');
+    const qqrd2e = this.qqrd2eSingle;
+    const q = d.qs, eps = d.epsilon;
+    const nt = this.ntypes + 1;
+    const t = itype * nt + jtype;
+    // cut_coulsq and the tables of the run's init, the gamma argument r / cut_coul as cut_coul is now (as compute)
+    const cutCoul = this.cutCoul, cutCoulsq = this.cutCoulInit * this.cutCoulInit;
+    const order = msm.order;
+    const tab = this.tables.get(this.table, this.tabinnerRsq, this.cutCoulInit, qqrd2e, order);
+    const r2inv = 1.0 / rsq;
+    const ei = singleEps(eps[i]), ej = singleEps(eps[j]);
+    let forcecoul = 0.0, eng = 0.0;
+    if (rsq < cutCoulsq) {
+      if (!tab || rsq <= tab.tabinnersq) {
+        const r = Math.sqrt(rsq);
+        const prefactor = (qqrd2e * q[i] * q[j]) / r;
+        const egamma = 1.0 - (r / cutCoul) * msmGamma(order, r / cutCoul);
+        const fgamma = 1.0 + (rsq / cutCoulsq) * msmDgamma(order, r / cutCoul);
+        forcecoul = prefactor * fgamma;
+        let phicoul = prefactor * 0.5 * (ei + ej) * egamma;
+        if (factorCoul < 1.0) {
+          forcecoul -= (1.0 - factorCoul) * prefactor;
+          phicoul -= (1.0 - factorCoul) * prefactor;
+        }
+        eng += phicoul;
+      } else {
+        f32[0] = rsq;
+        const itable = (i32[0] & tab.ncoulmask) >> tab.ncoulshiftbits;
+        const fraction = (f32[0] - tab.rtable[itable]) * tab.drtable[itable];
+        let table = tab.ftable[itable] + fraction * tab.dftable[itable];
+        forcecoul = q[i] * q[j] * table;
+        let prefactor = 0.0;
+        if (factorCoul < 1.0) {
+          table = tab.ctable[itable] + fraction * tab.dctable[itable];
+          prefactor = q[i] * q[j] * table;
+          forcecoul -= (1.0 - factorCoul) * prefactor;
+        }
+        table = tab.etable[itable] + fraction * tab.detable[itable];
+        let phicoul = q[i] * q[j] * 0.5 * (ei + ej) * table;
+        if (factorCoul < 1.0) phicoul -= (1.0 - factorCoul) * prefactor;
+        eng += phicoul;
+      }
+    }
+    let forcelj = 0.0;
+    if (rsq < this.cutljsq[t]) {
+      const r6inv = r2inv * r2inv * r2inv;
+      forcelj = r6inv * (this.lj1[t] * r6inv - this.lj2[t]);
+      eng += factorLJ * (r6inv * (this.lj3[t] * r6inv - this.lj4[t]) - this.offset[t]);
+    }
+    const fforce = (forcecoul + factorLJ * forcelj) * r2inv;
+    return { eng, fforce };
   }
 }

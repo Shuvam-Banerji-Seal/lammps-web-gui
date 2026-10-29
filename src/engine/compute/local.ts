@@ -524,22 +524,15 @@ export class ComputePropertyLocal extends Compute {
 }
 
 /**
- * The pair styles whose native class has a single() (single_enable) that this engine does not have yet: compute
- * pair/local refuses them naming the engine, not with native's "Pair style does not support compute pair/local" (the
- * pair-local parity matrix lists them as gaps).
+ * The first style (a hybrid's sub-styles in order) whose native class has a single() that this engine does not have yet
+ * (the class is marked singleMissing), or null: compute pair/local refuses it naming the engine, not with native's "Pair
+ * style does not support compute pair/local".
  */
-const SINGLE_GAPS = new Set<string>([
-  'bpm/spring', 'colloid', 'coul/cut/dielectric', 'lepton', 'lepton/coul', 'lepton/sphere',
-  'lj/cut/coul/cut/dielectric', 'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/dielectric',
-  'lj/cut/coul/msm/dielectric', 'lj/long/coul/long', 'lj/long/coul/long/dielectric', 'yukawa/colloid',
-]);
-
-/** The first style (a hybrid's sub-styles in order) that is a SINGLE_GAPS entry without a single(), or null. */
 const singleGap = (pair: Pair): string | null => {
   // a hybrid's sub-styles, read structurally as chunk17.ts does (importing PairHybrid here splits the engine chunks)
   const subs = (pair as Pair & { subs?: { style: Pair }[] }).subs;
   const styles = subs ? subs.map((x) => x.style) : [pair];
-  for (const st of styles) if (!st.singleEnabled() && (st.singleIsGap() || SINGLE_GAPS.has(st.name))) return st.name;
+  for (const st of styles) if (!st.singleEnabled() && st.singleIsGap()) return st.name;
   return null;
 };
 
@@ -660,7 +653,11 @@ export class ComputePairLocal extends Compute {
     sys.forces();
     const s = sys.state;
     const nb = sys.nb;
-    const list = nb.half;
+    // A pair style this engine runs on a full list only (colloid, yukawa/colloid, the dielectric styles): native compute
+    // pair/local requests its own occasional half list (src/compute_pair_local.cpp init at b332f28). The native row
+    // order (gplHook 'pair/local') walks native's half/bin enumeration and keeps a pair the list holds in either
+    // orientation, so the full list gives the same rows; a triclinic box keeps the list's own order and needs a half list.
+    const list = nb.half ?? (sys.geom.triclinic ? null : nb.full);
     if (!list) throw new StyleError(`compute ${this.id} pair/local: no half neighbour list is available`);
     // special-bond factors of the last force evaluation (index = special bits of the neighbour)
     const { specialLJ: sLJ, specialCoul: sCoul } = sys.ff as unknown as { specialLJ: Float64Array; specialCoul: Float64Array };

@@ -134,7 +134,6 @@ export class PairComb3 extends Pair {
 
   initStyle(): void {
     if (!this.fileRead) throw new StyleError('pair_style comb3 needs a pair_coeff command with a COMB3 potential file');
-    if (this.shift || this.tail) throw new StyleError('pair_style comb3 does not support the pair_modify shift and tail options');
   }
 
   initOne(): number {

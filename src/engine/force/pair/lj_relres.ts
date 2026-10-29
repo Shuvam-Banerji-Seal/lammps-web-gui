@@ -255,12 +255,12 @@ export class PairLJRelRes extends PairLJVariant {
     // docs.lammps.org/pair_lj_relres.html: "This pair style does not support the
     // pair_modify tail option for adding long-range tail corrections to energy and
     // pressure, since the energy of the pair interaction is smoothed to 0.0 at the cutoff."
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/relres (the energy of the pair interaction is smoothed to 0.0 at the cutoff)');
     super.init(ctx);
   }
 
+  /** As native LAMMPS does (its init_one computes no etail_ij or ptail_ij): pair_modify tail yes adds nothing. */
   tailSums(): { etail: number; ptail: number } {
-    throw new StyleError('pair_modify tail yes is not supported for pair style lj/relres (the energy of the pair interaction is smoothed to 0.0 at the cutoff)');
+    return { etail: 0, ptail: 0 };
   }
 
   /** write_data "Pair Coeffs": epsilon^FG sigma^FG epsilon^CG sigma^CG (measured with native LAMMPS). */

@@ -93,7 +93,8 @@ const PAIR_MODIFY_KEYS = new Set(['mix', 'shift', 'table', 'table/disp', 'tabinn
  */
 const pairModify: Handler = ({ sys }, a) => {
   const p = sys.ff.pair;
-  if (!p) throw new StyleError('pair_modify needs a pair_style first');
+  // As native LAMMPS does (src/input.cpp pair_modify at b332f28)
+  if (!p) throw new StyleError('Pair_modify command before pair_style is defined');
   // As native LAMMPS does (src/pair.cpp Pair::modify_params and src/pair_hybrid.cpp PairHybrid::modify_params at
   // b332f28): the keywords are read in order with native's checks and messages
   if (a.length === 0) throw p instanceof PairHybrid ? new StyleError('Illegal pair_modify command') : missingArgs('pair_modify');

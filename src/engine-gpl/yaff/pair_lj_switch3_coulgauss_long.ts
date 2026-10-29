@@ -37,6 +37,7 @@ import { EWALD_F, ErfcTableCache } from '../../engine/force/erfc';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { log as libmLog } from '../libm/log';
 import { erfc as libmErfc } from '../libm/erf';
 
 // LAMMPS: ewald_const.h EWALD_F; the engine's erfc.ts EWALD_F is the same rounded constant used by coul/long.
@@ -45,6 +46,61 @@ export class PairLJSwitch3CoulGaussLong extends PairLJCutCoulLong {
   readonly name: string = 'lj/switch3/coulgauss/long';
   /** Width of the switching function (pair_style third argument, or the second with one cutoff). */
   truncw = 0;
+
+  /**
+   * Ported from src/YAFF/pair_lj_switch3_coulgauss_long.cpp init_one at b332f28: the tail of the switched LJ term
+   * (the generated expressions as written; with a switching width the pressure term is the energy term t71, as there).
+   */
+  tailSums(count: Float64Array): { etail: number; ptail: number } {
+    if (!this.tail) return { etail: 0, ptail: 0 };
+    const nt = this.ntypes + 1;
+    let etail = 0, ptail = 0;
+    for (let i = 1; i < nt; i++) {
+      for (let j = 1; j < nt; j++) {
+        const nn = count[i] * count[j];
+        const cg = this.p.get('epsilon', i, j), cg1 = this.p.get('cut', i, j), cg3 = this.p.get('sigma', i, j);
+        if (this.truncw > 0.0) {
+          const cg5 = this.truncw;
+          const t1 = cg1 * cg1;
+          const t2 = t1 * cg1;
+          const t3 = t1 * t1;
+          const t4 = t3 * t2;
+          const t5 = -cg1 + cg5;
+          const t6 = t5 * t5;
+          const t8 = t6 * t6;
+          const t9 = t8 * t6 * t5;
+          const t10 = t4 * t9;
+          const t11 = libmLog(-t5);
+          const t14 = libmLog(cg1);
+          const t19 = cg5 * cg5;
+          const t20 = t19 * t19;
+          const t21 = t20 * t19;
+          const t24 = cg3 * cg3;
+          const t25 = t24 * t24;
+          const t26 = t25 * t24;
+          const t29 = t20 * cg5;
+          const t35 = t3 * t3;
+          const t41 = t19 * cg5;
+          const t58 = t21 * t3 * t1 - t21 * t26 / 0.84e2 - 0.6e1 * t29 * t4 + t29 * cg1 * t26 / 0.18e2 + 0.15e2 * t20 * t35 - t20 * t1 * t26 / 0.9e1 - 0.20e2 * t41 * t35 * cg1 + t41 * t2 * t26 / 0.9e1 + 0.15e2 * t19 * t35 * t1 - t19 * t3 * t26 / 0.18e2 - 0.6e1 * t35 * t2 * cg5 + t35 * t3;
+          const t71 = -0.4e1 * cg * (0.2e1 * t10 * t11 - 0.2e1 * t10 * t14 + (cg5 - 0.2e1 * cg1) * t58 * cg5) * t26 / t4 / t41 / t9;
+          etail += 2.0 * Math.PI * nn * t71;
+          ptail += 2.0 * Math.PI * nn * t71;
+        } else {
+          const t1 = cg3 * cg3;
+          const t2 = t1 * t1;
+          const t3 = t2 * t1;
+          const t5 = cg1 * cg1;
+          const t6 = t5 * t5;
+          const t10 = t6 * t6;
+          const t16 = -0.4e1 / 0.9e1 * t3 * cg * (0.3e1 * t6 * t5 - t3) / t10 / cg1;
+          const t17 = 0.8e1 / 0.3e1 * t3 * cg * (0.3e1 * t6 * t5 - 0.2e1 * t3) / t10 / cg1;
+          etail += 2.0 * Math.PI * nn * t16;
+          ptail += -2.0 / 3.0 * Math.PI * nn * t17;
+        }
+      }
+    }
+    return { etail, ptail };
+  }
   private truncwi = 0;
   /** 1/sqrt(gamma_ii^2 + gamma_jj^2) per type pair (0 when both gammas are 0). */
   private gaussInv = new Float64Array(0);
@@ -94,7 +150,6 @@ export class PairLJSwitch3CoulGaussLong extends PairLJCutCoulLong {
   }
 
   initOne(i: number, j: number): number {
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/switch3/coulgauss/long');
     const p = this.p;
     if (!p.isSet(i, j)) {
       if (!p.isSet(i, i) || !p.isSet(j, j)) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);

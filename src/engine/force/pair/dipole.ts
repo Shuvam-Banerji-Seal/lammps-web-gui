@@ -32,6 +32,11 @@ export abstract class PairDipoleBase extends Pair {
   cutCGlobal = 0;
   p!: PairParams;
   cutLJsq = new Float64Array(0);
+  /**
+   * lj/cut/dipole/cut with pair_modify shift: as native LAMMPS does (src/DIPOLE/pair_lj_cut_dipole_cut.cpp init_one at
+   * b332f28), offset = 4 epsilon ((sigma/rc)^12 - (sigma/rc)^6) at the LJ cutoff (lj/sf/dipole/sf is shifted by its form).
+   */
+  private offsetLJ = new Float64Array(0);
   cutCsq = new Float64Array(0);
   /** lj/sf/dipole/sf: shifted-force forms. */
   protected sf = false;
@@ -84,9 +89,17 @@ export abstract class PairDipoleBase extends Pair {
     if (this.cutLJsq.length !== nt * nt) {
       this.cutLJsq = new Float64Array(nt * nt);
       this.cutCsq = new Float64Array(nt * nt);
+      this.offsetLJ = new Float64Array(nt * nt);
     }
     const cl = p.get('cutlj', i, j), cc = p.get('cutc', i, j);
     this.cutLJsq[i * nt + j] = this.cutLJsq[j * nt + i] = cl * cl;
+    let off = 0;
+    if (this.shift && this.name === 'lj/cut/dipole/cut' && cl > 0) {
+      const ratio = p.get('sigma', i, j) / cl;
+      const r6 = ratio ** 6;
+      off = 4.0 * p.get('epsilon', i, j) * (r6 * r6 - r6);
+    }
+    this.offsetLJ[i * nt + j] = this.offsetLJ[j * nt + i] = off;
     this.cutCsq[i * nt + j] = this.cutCsq[j * nt + i] = cc * cc;
     return Math.max(cl, cc);
   }
@@ -154,7 +167,7 @@ export abstract class PairDipoleBase extends Pair {
           const sr2 = sig * sig * rinv2, sr6 = sr2 * sr2 * sr2, sr12 = sr6 * sr6;
           let elj: number, fljr: number;
           if (!sf) {
-            elj = 4 * eps * (sr12 - sr6);
+            elj = 4 * eps * (sr12 - sr6) - this.offsetLJ[t];
             fljr = (48 * eps * sr12 - 24 * eps * sr6) * rinv2;
           } else {
             const src2 = (sig / cutLJ) ** 2, src6 = src2 * src2 * src2, src12 = src6 * src6;

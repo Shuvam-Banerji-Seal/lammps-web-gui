@@ -68,7 +68,6 @@ export class PairGaussCut extends Pair {
 
   initStyle(_ctx: StyleContext): void {
     if (this.mix !== 'geometric' && this.mix !== 'arithmetic') throw new StyleError('pair gauss/cut supports only mix geometric or arithmetic');
-    if (this.tail) throw new StyleError('pair_modify tail is not supported by pair style gauss/cut');
   }
 
   initOne(i: number, j: number): number {
@@ -211,7 +210,6 @@ export class PairCoulDiel extends Pair {
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.tail) throw new StyleError('pair_modify tail is not supported by pair style coul/diel');
   }
 
   initOne(i: number, j: number): number {

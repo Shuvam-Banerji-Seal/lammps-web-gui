@@ -113,12 +113,12 @@ describe('zbl: errors', () => {
     expect(() => make(['4.0', '3.2'], ORACLE_COEFFS)).toThrow(/must be less than outer/);
   });
 
-  it('pair_modify shift and tail are not supported', () => {
+  it('pair_modify shift and tail are accepted as native does', () => {
     const shift = make(['2.0', '3.2'], ORACLE_COEFFS);
     shift.shift = true;
-    expect(() => shift.init(ctx)).toThrow(/shift yes is not supported for pair style zbl/);
+    expect(() => shift.init(ctx)).not.toThrow();
     const tail = make(['2.0', '3.2'], ORACLE_COEFFS);
     tail.tail = true;
-    expect(() => tail.init(ctx)).toThrow(/tail yes is not supported for pair style zbl/);
+    expect(() => tail.init(ctx)).not.toThrow();
   });
 });

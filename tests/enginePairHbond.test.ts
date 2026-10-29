@@ -220,10 +220,9 @@ describe('hbond/dreiding: argument and option errors', () => {
     expect(await run(`${base} 1.5 3.0 4.5 90.0\npair_coeff * * lj/cut 0.0 1.0\npair_coeff 1 3 hbond/dreiding/lj 2 i 1.0 2.0`)).not.toBeNull();
   });
 
-  it('pair_modify shift is not supported', async () => {
+  it('pair_modify shift is accepted as native does', async () => {
     const err = await run(`${base} 4 3.0 4.5 90.0\npair_coeff * * lj/cut 0.0 1.0\npair_coeff 1 3 hbond/dreiding/lj 2 i 1.0 2.0\npair_modify shift yes`);
-    expect(err).not.toBeNull();
-    expect(String(err?.message ?? '')).toMatch(/shift/);
+    expect(err).toBeNull();
   });
 
   it('the equilibrium angle is only accepted by the angleoffset styles', async () => {

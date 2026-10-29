@@ -462,6 +462,17 @@ const fepUndefined = (fix: boolean): Record<string, string> => {
 };
 const VALUES_FEP = 'print "VAL $(pe:%.15g) $(press:%.15g) $(c_adpf[1]:%.15g)"\n';
 
+/**
+ * pair_modify on each pair style, the smallest case that has it as its pair_style: "pair_modify shift yes",
+ * "pair_modify tail yes" and "pair_modify mix arithmetic" before its run 0 (docs.lammps.org/pair_modify.html: "The
+ * *shift* keyword determines whether a Lennard-Jones potential is shifted at its cutoff to 0.0", "The *tail* keyword
+ * controls whether long-range tail corrections are added", "The *mix* keyword affects pair coefficients for
+ * interactions between atoms of type I and J"), which reach the offset, tail and mixing parts of the style's init_one.
+ */
+const PAIR_MODIFY = ['shift yes', 'tail yes', 'mix arithmetic'];
+const pairModifyRows = (cases: Case[]): ParityRow[] =>
+  pick(pairStyleKey, (w) => w)(cases).flatMap((r) => PAIR_MODIFY.map((m) => ({ ...r, pre: `pair_modify ${m}\n`, style: `${r.style} ${m}` })));
+
 /** The first number after the type words of a coefficient line multiplied by `factor`. */
 const coeffScaled = (factor: number): Change => (w, _lines) => {
   const from = w[0] === 'pair_coeff' ? 3 : 2;
@@ -573,6 +584,10 @@ export const MATRICES: Record<string, MatrixDef> = {
     rows: throughRun(computeFepPairRows, THERMO_FEP, VALUES_FEP),
     undefined: { ...adaptPairUndefined(), ...fepUndefined(false) },
   },
+  'pair-modify': {
+    about: 'pair_modify shift yes, tail yes and mix arithmetic before the first run 0 of each pair style, pe, press and fnorm compared',
+    rows: throughRun(pairModifyRows, THERMO_F, VALUES_F),
+  },
   'file-name': { about: 'the first input file name of each line replaced by nofile.txt', rows: (cases, dir) => pick(fileKey, badFile(new Set(readdirSync(dir).filter((f) => !f.endsWith('.in')))))(cases) },
 };
 
@@ -615,13 +630,26 @@ const directive = (text: string, key: string): string[] => {
  * (third_party/lammps/potentials) and oracle-examples (third_party/lammps/examples, by base name), and any file of the
  * oracle directory that the input names without a directive. `latin1` marks gzipped inputs, read as bytes.
  */
+/** A file that is not UTF-8 text (a .gz, an .asi of numpy arrays) is handed to the engine byte for byte, as latin1. */
+const binaryFile = (path: string): boolean => {
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(path));
+    return false;
+  } catch {
+    return true;
+  }
+};
+
 export const parityFiles = (root: string, caseText: string, input: string): Record<string, { path: string; latin1: boolean }> => {
   const oracle = join(root, 'tests', 'oracle');
   const files: Record<string, { path: string; latin1: boolean }> = {};
-  for (const f of directive(caseText, 'oracle-inputs')) files[f] = { path: join(oracle, f), latin1: f.endsWith('.gz') };
+  for (const f of directive(caseText, 'oracle-inputs')) files[f] = { path: join(oracle, f), latin1: binaryFile(join(oracle, f)) };
   for (const f of directive(caseText, 'oracle-potentials')) files[f] = { path: join(root, 'third_party', 'lammps', 'potentials', f), latin1: false };
-  for (const f of directive(caseText, 'oracle-examples')) files[f.split('/').pop()!] = { path: join(root, 'third_party', 'lammps', 'examples', f), latin1: f.endsWith('.gz') };
+  for (const f of directive(caseText, 'oracle-examples')) {
+    const path = join(root, 'third_party', 'lammps', 'examples', f);
+    files[f.split('/').pop()!] = { path, latin1: binaryFile(path) };
+  }
   const own = new Set(readdirSync(oracle).filter((f) => !f.endsWith('.in')));
-  for (const w of input.split(/\s+/)) if (own.has(w) && !(w in files)) files[w] = { path: join(oracle, w), latin1: w.endsWith('.gz') };
+  for (const w of input.split(/\s+/)) if (own.has(w) && !(w in files)) files[w] = { path: join(oracle, w), latin1: binaryFile(join(oracle, w)) };
   return files;
 };

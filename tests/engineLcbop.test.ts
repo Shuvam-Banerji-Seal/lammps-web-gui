@@ -94,9 +94,9 @@ describe('pair_style lcbop: styles and refused options', () => {
     expect(r.errors.join('\n')).toContain('Incorrect args for pair coefficients');
   });
 
-  it('refuses pair_modify shift and tail, naming them', async () => {
+  it('accepts pair_modify tail yes as native does (no tail term)', async () => {
     const r = await run(`${box}pair_style lcbop\npair_coeff * * C.lcbop C\npair_modify tail yes\nrun 0\n`, { 'C.lcbop': potential('C.lcbop') });
-    expect(r.errors.join('\n')).toContain('pair_style lcbop does not support the pair_modify shift and tail options');
+    expect(r.errors).toEqual([]);
   });
 
   it('reproduces the native energy of a random carbon cluster (oracle w234lc_cl1)', async () => {

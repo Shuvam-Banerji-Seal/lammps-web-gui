@@ -206,9 +206,6 @@ export class PairATM extends Pair {
   }
 
   override initStyle(_ctx: StyleContext): void {
-    if (this.shift || this.tail) {
-      throw new StyleError('pair_style atm does not support the pair_modify shift and tail options');
-    }
     if (this.table !== 12) throw new StyleError('pair_style atm does not support the pair_modify table option');
   }
 

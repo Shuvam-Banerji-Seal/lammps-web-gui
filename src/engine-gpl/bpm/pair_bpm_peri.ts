@@ -42,7 +42,6 @@ export class PairBpmPeri extends Pair {
   }
 
   initStyle(ctx: StyleContext): void {
-    if (this.tail) throw new StyleError('pair_modify tail is not supported by pair style bpm/peri');
     const lc = ctx.xlattice ?? 1;
     this.dij = 1.35 * lc; // d_ij = 1.35 lattice spacing (pair_bpm_peri.cpp compute)
     const nt = this.ntypes + 1;

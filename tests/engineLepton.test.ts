@@ -206,9 +206,9 @@ describe('pair styles (measured with native LAMMPS, two atoms at r = 1.3)', () =
     const a = await run(pair2('lepton/coul 2.5', '1 1 "qi*qj/r"', 'pair_modify shift yes', 'q'));
     expect(a.error).toMatch(/shift/);
   });
-  it('lepton rejects tail (pair page: no tail corrections)', async () => {
+  it('lepton accepts pair_modify tail (native adds no tail)', async () => {
     const a = await run(pair2('lepton 2.5', '1 1 "r^2"', 'pair_modify tail yes'));
-    expect(a.error).toMatch(/tail/);
+    expect(a.error).toBe('');
   });
   it('lepton/coul rejects dispersion and tip4p keywords', async () => {
     expect((await run(pair2('lepton/coul 2.5 dispersion', '1 1 "qi*qj/r"', '', 'q'))).error).toMatch(/dispersion/);

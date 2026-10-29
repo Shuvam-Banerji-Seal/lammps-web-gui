@@ -69,7 +69,6 @@ export class PairMorseSoft extends Pair {
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style morse/soft (the source has no tail term for this style)');
   }
 
   initOne(i: number, j: number): number {

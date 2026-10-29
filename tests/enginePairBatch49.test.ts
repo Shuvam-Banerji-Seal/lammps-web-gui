@@ -81,11 +81,11 @@ describe('pair buck6d/coul/gauss/dsf and /long', () => {
     expect((await run(longNoKspace)).errors[0]).toContain('Pair style requires a KSpace style');
   });
 
-  it('refuses pair_modify shift and tail, which the doc says are not supported', async () => {
+  it('accepts pair_modify shift yes and tail yes', async () => {
     const shift = `${DIMER}pair_style buck6d/coul/gauss/dsf 0.9 12.0\n${BUCK.join('\n')}\npair_modify shift yes\nrun 0\n`;
-    expect((await run(shift)).errors[0]).toMatch(/pair_modify shift is not supported by pair style buck6d\/coul\/gauss\/dsf/);
+    expect((await run(shift)).errors).toEqual([]);
     const tail = `${DIMER}pair_style buck6d/coul/gauss/dsf 0.9 12.0\n${BUCK.join('\n')}\npair_modify tail yes\nrun 0\n`;
-    expect((await run(tail)).errors[0]).toMatch(/pair_modify tail is not supported/);
+    expect((await run(tail)).errors).toEqual([]);
   });
 
   it('is registered under its two names', () => {
@@ -161,9 +161,9 @@ describe('pair gauss/cut', () => {
 });
 
 describe('pair coul/diel', () => {
-  it('refuses tail, unset I,J pairs and special Coulomb factors other than 0 and 1', async () => {
+  it('accepts pair_modify tail; refuses unset I,J pairs and special Coulomb factors other than 0 and 1', async () => {
     const tail = `${DIMER}pair_style coul/diel 3.5\npair_coeff * * 78.0 1.375 0.112\npair_modify tail yes\nrun 0\n`;
-    expect((await run(tail)).errors[0]).toMatch(/pair_modify tail is not supported by pair style coul\/diel/);
+    expect((await run(tail)).errors).toEqual([]);
     const unset = `${DIMER}pair_style coul/diel 3.5\npair_coeff 1 1 78.0 1.375 0.112\nrun 0\n`;
     expect((await run(unset)).errors[0]).toMatch(/All pair coeffs are not set/);
   });

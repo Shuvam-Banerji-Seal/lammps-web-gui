@@ -293,11 +293,15 @@ export class PairBuckLongCoulLong extends Pair {
     return C;
   }
 
-  /** The ewald/disp view (native extract "ewald_order", "ewald_mix", "B"): B = sqrt(C_ii) for the geometric 1/r^6 sum. */
+  /**
+   * The ewald/disp view (native extract "ewald_order", "ewald_mix", "B"): B = sqrt(C_ii) for the geometric 1/r^6 sum; the
+   * mixing rule is the style's pair_modify mix (extract "ewald_mix" is mix_flag), and there are no epsilon and sigma.
+   */
   ewaldDisp(): EwaldDispPair {
     return {
       ewaldOrder: () => (this.coulLongFlag ? EWALD_COUL : 0) | (this.dispFlag ? EWALD_DISP : 0),
-      mix: 'geometric',
+      mix: this.mix,
+      epsilonSigma: false,
       ewaldCut: () => this.cutCoul,
       // ewald/disp reads B = sqrt(4 eps sigma^6) of these values: eps = C/4 and sigma = 1 give B = sqrt(C)
       epsilonOf: (i) => this.p.get('c', i, i) / 4,

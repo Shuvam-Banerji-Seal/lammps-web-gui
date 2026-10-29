@@ -134,12 +134,12 @@ export class PairLepton extends Pair {
 
   initStyle(ctx: StyleContext): void {
     this.ctx = ctx as LeptonStyleContext;
-    // pair_modify options that the pair page lists as unsupported
-    if (this.tail) throw new StyleError(`pair_modify tail yes is not supported for pair style ${this.name}`);
-    if (this.shift && this.name !== 'lepton') throw new StyleError(`pair_modify shift yes is not supported for pair style ${this.name}`);
     const s = ctx.s;
     if (this.name === 'lepton/coul' && s && !s.q) throw new StyleError(`pair_style ${this.name} requires atom_style charge (or full)`);
     if (this.name === 'lepton/sphere' && s && !s.radius) throw new StyleError(`pair_style ${this.name} requires atom_style sphere`);
+    // As native LAMMPS does (src/LEPTON/pair_lepton_coul.cpp and pair_lepton_sphere.cpp init_style at b332f28, its
+    // spelling kept): pair_modify shift is refused; tail is accepted and adds nothing
+    if (this.shift && this.name !== 'lepton') throw new StyleError(`Pair style ${this.name} does not suport pair_modify shift`);
     if (s) {
       this.zbl.qqr2e = s.units.qqr2e;
       this.zbl.angstrom = ANGSTROM_PER_UNIT[s.units.style] ?? 1;

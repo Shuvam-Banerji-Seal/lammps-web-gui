@@ -92,6 +92,6 @@ describe('pair_style lj/switch3/coulgauss/long (docs.lammps.org/pair_lj_switch3_
     p.coeff(['1', '1', '0.1', '1.0', '1.0']);
     expect(() => p.single()).toThrow(StyleError);
     p.tail = true;
-    expect(() => p.initOne(1, 1)).toThrow(StyleError);
+    expect(() => p.initOne(1, 1)).not.toThrow();
   });
 });

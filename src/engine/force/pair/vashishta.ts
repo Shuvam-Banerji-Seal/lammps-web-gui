@@ -303,9 +303,6 @@ export class PairVashishta extends Pair {
   }
 
   override initStyle(_ctx: StyleContext): void {
-    if (this.shift || this.tail) {
-      throw new StyleError(`pair_style ${this.name} does not support the pair_modify shift and tail options`);
-    }
     if (this.table !== 12) {
       throw new StyleError(`pair_style ${this.name} does not support the pair_modify table option`);
     }

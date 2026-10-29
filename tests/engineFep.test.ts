@@ -86,8 +86,8 @@ describe('lj/cut/soft/gapsys and coul/cut/soft/gapsys (src/engine-gpl/fep/pair_s
     }
   });
 
-  it('refuses pair_modify tail yes', async () => {
-    await expect(runLines([...dimer(1.5, null), 'pair_style lj/cut/soft/gapsys 0.5 2.5', 'pair_coeff * * 1.0 1.0 0.5', 'pair_modify tail yes', 'run 0'])).rejects.toThrow(/tail/);
+  it('accepts pair_modify tail yes (native computes the 12-6 tail)', async () => {
+    await expect(runLines([...dimer(1.5, null), 'pair_style lj/cut/soft/gapsys 0.5 2.5', 'pair_coeff * * 1.0 1.0 0.5', 'pair_modify tail yes', 'run 0'])).resolves.toBeDefined();
   });
 
   it('coul/cut/soft/gapsys is zero for uncharged atoms and rejects a lambda outside [0, 1] for lj', async () => {

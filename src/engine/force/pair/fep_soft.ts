@@ -82,6 +82,8 @@ export class PairFepSoft extends Pair {
   protected aL = new Float64Array(0);
   protected aC = new Float64Array(0);
   protected offset = new Float64Array(0);
+  /** Whether pair_modify shift sets the LJ offset (lj/charmm/coul/long/soft's init_one computes none). */
+  protected shiftApplies = true;
   protected cutLJT = new Float64Array(0);
   protected cutLJsq = new Float64Array(0);
   protected cutCsq = new Float64Array(0);
@@ -188,12 +190,6 @@ export class PairFepSoft extends Pair {
 
   initStyle(_ctx: StyleContext): void {
     // pair_modify.html is the source of the shift/tail rules (the soft tail of the 9-6 class2 styles is measured, see tailSums)
-    if (this.tail && this.lj === 'none') {
-      throw new StyleError(`pair_modify tail yes is not applicable to pair style ${this.name} (it has no Lennard-Jones portion)`);
-    }
-    if (this.shift && this.lj === 'none') {
-      throw new StyleError(`pair_modify shift yes is not applicable to pair style ${this.name} (it has no Lennard-Jones portion)`);
-    }
   }
 
   initOne(i: number, j: number): number {
@@ -249,8 +245,10 @@ export class PairFepSoft extends Pair {
       this.offset[k] = 0;
     }
     // pair_modify shift: the soft LJ energy at the cutoff (times lambda^n) is subtracted
-    if (this.shift && this.lj !== 'none') {
-      const off = pl * this.ljEnergyAt(cutLJ * cutLJ, eps, sinv6, aL);
+    if (this.shift && this.shiftApplies && this.lj !== 'none') {
+      // As native LAMMPS does (src/FEP/pair_lj_class2_coul_long_soft.cpp init_one at b332f28): this style alone leaves
+      // lambda^n out of its offset, "epsilon * (2.0*pow(denlj,-1.5) - 3.0*pow(denlj,-1.0))", while the energy keeps it
+      const off = (this.name === 'lj/class2/coul/long/soft' ? 1 : pl) * this.ljEnergyAt(cutLJ * cutLJ, eps, sinv6, aL);
       this.offset[k1] = this.offset[k2] = off;
     }
     if (this.lj === 'none') return cutC;
@@ -433,10 +431,17 @@ export class PairLJCharmmSoftCoulLong extends PairFepSoft {
     this.checkCutoffs();
   }
 
+  /**
+   * As native LAMMPS does (src/FEP/pair_lj_charmm_coul_long_soft.cpp init_one at b332f28): no offset and no etail_ij,
+   * so pair_modify shift and tail add nothing.
+   */
+  protected shiftApplies = false;
+
+  tailSums(_count: Float64Array): { etail: number; ptail: number } {
+    return { etail: 0, ptail: 0 };
+  }
+
   initStyle(ctx: StyleContext): void {
-    // the page's shift and tail notes cover the lj/cut/soft and class2 families, not the charmm switch
-    if (this.shift) throw new StyleError(`pair_modify shift yes is not supported for pair style ${this.name} (the switching function already goes to 0.0 at the cutoff)`);
-    if (this.tail) throw new StyleError(`pair_modify tail yes is not supported for pair style ${this.name}`);
     super.initStyle(ctx);
   }
 

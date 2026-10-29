@@ -158,6 +158,9 @@ export class PairBornCoulLongCS extends PairBorn {
       this.born3[k] = 8.0 * d;
       this.bSig[k] = sig; this.bA[k] = a; this.bC[k] = c; this.bD[k] = d; this.bOff[k] = off;
     }
+    // the tail integrals start at the short-range cutoff (cut_lj[i][j])
+    if (this.cutSR.length !== nt * nt) this.cutSR = new Float64Array(nt * nt);
+    this.cutSR[i * nt + j] = this.cutSR[j * nt + i] = cutLJ;
     return Math.max(cutLJ, this.cutCoul);
   }
 
@@ -288,6 +291,9 @@ export class PairBuckCoulLongCS extends PairBuck {
       this.buck2[k] = 6.0 * c;
       this.bA[k] = a; this.bC[k] = c; this.bOff[k] = off;
     }
+    // the tail integrals start at the short-range cutoff (cut_lj[i][j])
+    if (this.cutSR.length !== nt * nt) this.cutSR = new Float64Array(nt * nt);
+    this.cutSR[i * nt + j] = this.cutSR[j * nt + i] = cutLJ;
     return Math.max(cutLJ, this.cutCoul);
   }
 

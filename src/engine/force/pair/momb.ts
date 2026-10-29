@@ -63,7 +63,6 @@ export class PairMomb extends Pair {
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.tail) throw new StyleError('pair_modify tail is not supported by pair style momb');
   }
 
   initOne(i: number, j: number): number {

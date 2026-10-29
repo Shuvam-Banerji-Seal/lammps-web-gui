@@ -134,9 +134,9 @@ describe('pair_style pedone (batch 48)', () => {
     expect(run.error).toMatch(/not set/);
   });
 
-  it('refuses the tail option and wrong argument counts', async () => {
+  it('accepts the tail option and refuses wrong argument counts', async () => {
     const run = await evaluate(['pair_style pedone 15.0', 'pair_coeff * * 0.03 2.2 2.9 5.0', 'pair_modify tail yes'], [{ type: 1, x: [0, 0, 0] }, { type: 1, x: [2.5, 0, 0] }]);
-    expect(run.error).toMatch(/tail/);
+    expect(run.error).toBeFalsy();
     const bad = new PairPedone();
     bad.allocate(1);
     expect(() => bad.coeff(['1', '1', '0.1', '2.0', '2.9'], { s: null, log: () => {}, readFile: () => '' })).toThrow(/usage: pair_coeff/);

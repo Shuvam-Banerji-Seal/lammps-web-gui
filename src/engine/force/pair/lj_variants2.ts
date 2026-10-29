@@ -205,8 +205,6 @@ export class PairLJGromacs extends PairLJ2Variant {
     // support the pair_modify tail option for adding long-range tail corrections to
     // energy and pressure, since there are no corrections for a potential that goes
     // to 0.0 at the cutoff."
-    if (this.shift) throw new StyleError('pair_modify shift yes is not supported for pair style lj/gromacs (the interaction is already smoothed to 0.0 at the cutoff)');
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/gromacs (there are no corrections for a potential that goes to 0.0 at the cutoff)');
     super.init(ctx);
   }
 
@@ -256,8 +254,9 @@ export class PairLJGromacs extends PairLJ2Variant {
     };
   }
 
+  /** As native LAMMPS does (its init_one computes no etail_ij or ptail_ij): pair_modify tail yes adds nothing. */
   tailSums(): { etail: number; ptail: number } {
-    throw new StyleError('pair_modify tail yes is not supported for pair style lj/gromacs (there are no corrections for a potential that goes to 0.0 at the cutoff)');
+    return { etail: 0, ptail: 0 };
   }
 
   dataCoeffs(): string[] {

@@ -111,7 +111,6 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
 
   initStyle(): void {
     if (!this.bondedLink) throw new StyleError(`pair style ${this.name}: the bond and angle equilibria are not available (force field hook)`);
-    if (this.tail) throw new StyleError(`pair_modify tail yes is not supported for pair style ${this.name}`);
     const r0 = this.bondedLink.bond(this.btype), th0 = this.bondedLink.angle(this.atype);
     if (!Number.isFinite(r0)) throw new StyleError(`pair style ${this.name}: bond type ${this.btype} has no equilibrium length (bond_style and bond_coeff needed)`);
     if (!Number.isFinite(th0)) throw new StyleError(`pair style ${this.name}: angle type ${this.atype} has no equilibrium angle (angle_style and angle_coeff needed)`);
@@ -161,6 +160,29 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
       this.offT[k] = off; this.cutLJsq[k] = cutLJ * cutLJ; this.cutCsq[k] = this.coulSq;
     }
     return this.hasLJ ? Math.max(cutLJ, coulCut) : coulCut;
+  }
+
+  /**
+   * pair_lj_cut_coul_long_soft.cpp init_one (the init_one of lj/cut/tip4p/long/soft): the 12-6 tail at cut_lj[i][j]
+   * times lj1 = lambda^n, etail = 8 pi N_i N_j lj1 epsilon sigma^6 (sigma^6 - 3 rc^6) / (9 rc^9) and ptail = 16 pi N_i N_j lj1
+   * epsilon sigma^6 (2 sigma^6 - 3 rc^6) / (9 rc^9); tip4p/long/soft (no LJ term) has none.
+   */
+  tailSums(count: Float64Array): { etail: number; ptail: number } {
+    if (!this.tail || !this.hasLJ) return { etail: 0, ptail: 0 };
+    const nt = this.ntypes + 1;
+    let etail = 0, ptail = 0;
+    for (let i = 1; i < nt; i++) {
+      for (let j = 1; j < nt; j++) {
+        const sig = this.p.get('sigma', i, j), rc = this.p.get('cut', i, j);
+        if (!(rc > 0)) continue;
+        const sig2 = sig * sig, sig6 = sig2 * sig2 * sig2;
+        const rc3 = rc * rc * rc, rc6 = rc3 * rc3, rc9 = rc3 * rc6;
+        const f = Math.PI * count[i] * count[j] * this.lamN[i * nt + j] * this.p.get('epsilon', i, j) * sig6 / (9.0 * rc9);
+        etail += 8.0 * f * (sig6 - 3.0 * rc6);
+        ptail += 16.0 * f * (2.0 * sig6 - 3.0 * rc6);
+      }
+    }
+    return { etail, ptail };
   }
 
   compute(pc: PairCompute): void {

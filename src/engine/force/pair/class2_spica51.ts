@@ -95,7 +95,9 @@ abstract class PairPowerLJ extends Pair {
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.tail && !this.tailSupported) throw new StyleError(`Tail flag not supported by ${this.name} pair style`);
+    // As native LAMMPS does (src/CG-SPICA/pair_lj_spica.cpp and pair_lj_spica_coul_long.cpp init_style at b332f28): the
+    // class's own name, lj/spica, also for its lj/sdk alias
+    if (this.tail && !this.tailSupported) throw new StyleError(`Tail flag not supported by ${this.name.replace(/^lj\/sdk/, 'lj/spica')} pair style`);
   }
 
   protected ensureTables(nt: number): void {

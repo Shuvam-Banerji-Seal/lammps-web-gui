@@ -79,13 +79,17 @@ export class PairLJCut extends Pair {
     return cut;
   }
 
+  /**
+   * As native LAMMPS does (src/pair_lj_cut.cpp and the lj/cut/coul styles' init_one at b332f28): the tail integrals
+   * start at the LJ cutoff cut_lj[i][j] ('cut' here), not at the pair's cutoff, which a longer Coulomb cutoff raises.
+   */
   tailSums(count: Float64Array): { etail: number; ptail: number } {
     if (!this.tail) return { etail: 0, ptail: 0 };
     let e = 0, pr = 0;
     const nt = this.ntypes + 1;
     for (let i = 1; i < nt; i++) {
       for (let j = 1; j < nt; j++) {
-        const eps = this.p.get('epsilon', i, j), sig = this.p.get('sigma', i, j), rc = this.cut[i * nt + j];
+        const eps = this.p.get('epsilon', i, j), sig = this.p.get('sigma', i, j), rc = this.p.get('cut', i, j);
         if (!(rc > 0)) continue;
         const s6 = sig ** 6, s12 = s6 * s6, rc3 = rc ** 3, rc9 = rc3 ** 3;
         const nn = count[i] * count[j];

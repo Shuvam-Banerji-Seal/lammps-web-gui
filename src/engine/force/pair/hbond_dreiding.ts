@@ -192,7 +192,6 @@ export class PairHbondDreiding extends Pair {
 
   initStyle(_ctx: StyleContext): void {
     // pair_modify shift and tail are not supported by these styles (pair_hbond_dreiding.html)
-    if (this.shift || this.tail) throw new StyleError(`pair_modify shift and tail are not supported by pair style ${this.name}`);
   }
 
   /** Cutoff of a type pair: the largest outer cutoff of its donor/acceptor entries. */

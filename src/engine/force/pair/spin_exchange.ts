@@ -138,7 +138,6 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.shift || this.tail) throw new StyleError(`pair_modify shift/tail is not supported for pair style ${this.name}`);
   }
 
   initOne(i: number, j: number): number {

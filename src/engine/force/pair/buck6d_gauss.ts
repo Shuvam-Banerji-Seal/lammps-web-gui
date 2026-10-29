@@ -154,8 +154,6 @@ export class PairBuck6dCoulGauss extends Pair {
 
   initStyle(_ctx: StyleContext): void {
     // pair_modify shift / tail: refused (the doc says they are not supported; native ignores them, measured).
-    if (this.shift) throw new StyleError(`pair_modify shift is not supported by pair style ${this.name} (the doc says the smoothing function replaces it)`);
-    if (this.tail) throw new StyleError(`pair_modify tail is not supported by pair style ${this.name}`);
   }
 
   initOne(i: number, j: number): number {

@@ -152,7 +152,6 @@ export class PairComb extends Pair {
 
   initStyle(): void {
     if (!this.fileRead) throw new StyleError('pair_style comb needs a pair_coeff command with a COMB potential file');
-    if (this.shift || this.tail) throw new StyleError('pair_style comb does not support the pair_modify shift and tail options');
   }
 
   initOne(): number {

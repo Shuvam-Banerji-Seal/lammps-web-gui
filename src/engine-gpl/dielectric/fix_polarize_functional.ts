@@ -28,6 +28,8 @@ const EPSILON = 1.0e-6;
 
 export class FixPolarizeFunctional extends Fix {
   readonly style = 'polarize/functional';
+  /** fix_polarize_functional.cpp init: neighbor->add_request(this, NeighConst::REQ_FULL), a perpetual full list (Fix.nativeFullList). */
+  nativeFullList = true;
   private readonly every: number;
   private readonly tolerance: number;
   private kspaceOn = true;

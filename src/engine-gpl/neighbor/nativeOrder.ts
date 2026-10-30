@@ -22,6 +22,7 @@
 import type { Neighbor, NeighList } from '../../engine/neighbor';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { nativeOrder } from '../../engine/atoms';
+import { ANGSTROM_PER_UNIT } from '../../engine/lepton/units';
 import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
 
@@ -234,6 +235,8 @@ export interface NativeLayout {
   binDist: (i: number, j: number, k: number) => number;
   /** engine index of native atom k (owned or ghost), or -1 when the engine holds no such image */
   gEng: Int32Array;
+  /** the native index of the owned atom each native atom is (k for an owned atom) or is an image of (NativeGhosts.root) */
+  root: Int32Array;
   /** the engine's neighbor-list index of each (owned engine atom, engine atom) membership key */
   engByKey: IntTable;
   NA: number;
@@ -327,7 +330,7 @@ const nativeLayout = (s: SimState, nb: Neighbor, g: Geometry): NativeLayout => {
   return {
     order, n, two, X, binOf, bins, atomBin, chainStart, members, posInBin, binsize, bininv,
     sx: reach(0), sy: reach(1), sz: two ? 0 : reach(2), cutmaxsq: cutmax * cutmax,
-    binDist, gEng, engByKey, NA,
+    binDist, gEng, root: gh.root, engByKey, NA,
   };
 };
 
@@ -384,9 +387,20 @@ const takePair = (out: Growable, dense: Int32Array, gEng: Int32Array, ei: number
   pushPair(out, ei, ek | (m << SBBITS));
 };
 
-export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighList, newton = true): Int32Array => {
+/**
+ * How native builds the half list whose pairs are enumerated: by bins (npair_bin.cpp, the default) or all pairs
+ * (neighbor nsq: npair_nsq.cpp), and directly or derived from a perpetual full list (halffull: neighbor.cpp
+ * morph_halffull and npair_halffull.cpp), whose own rows are built by bins or nsq.
+ */
+export interface NativeListBuild {
+  nsq: boolean;
+  halffull: boolean;
+}
+
+export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighList, newton = true,
+  build: NativeListBuild = { nsq: false, halffull: false }): Int32Array => {
   const L = nativeLayout(s, nb, g);
-  const { order, n, two, X, binOf, bins, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng, engByKey, NA } = L;
+  const { order, n, two, X, binOf, bins, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng, root, engByKey, NA } = L;
   const gi = nb.gimage;
   let total = 0;
   for (let i = 0; i < nb.nlocal; i++) total += half.numneigh[i];
@@ -408,9 +422,10 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
   const rows = buildRows(nb.nlocal, cnt, rowOf, colOf, valOf);
   // half newton stencil (nstencil.cpp sx, sy, sz; nstencil_bin.cpp create)
   // newton off: npair_bin.cpp with the full stencil (neighbor.cpp: "request a full stencil if building full neighbor list
-  // or newton is off"), the central bin in its place, every bin in k, j, i order
+  // or newton is off"), the central bin in its place, every bin in k, j, i order; a half list derived from a full one
+  // walks the full list's rows, which use that stencil too
   const stencil: number[] = [];
-  if (!newton) {
+  if (!newton || build.halffull) {
     const szf = two ? 0 : sz;
     for (let k = -szf; k <= szf; k++) {
       for (let j = -sy; j <= sy; j++) {
@@ -439,12 +454,60 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
   // npair_bin.cpp build(): own bin after i (ghosts above and to the right only), then the stencil bins
   const dense = new Int32Array(NA).fill(-1);
   const out: Growable = { buf: new Int32Array(Math.max(16, 2 * total)), len: 0 };
+  const nall = gEng.length;
+  // the tag of native atom k: its owned atom's
+  const tagOf = (k: number): number => s.id[order[root[k]]];
   for (let i = 0; i < n; i++) {
     const ei = order[i];
     scatterRow(rows, ei, dense);
     const xi = X[3 * i], yi = X[3 * i + 1], zi = X[3 * i + 2];
     const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
-    if (!newton) {
+    // npair_halffull.cpp build, newton on (NPairHalffull<1, 0, 0>): the parent full list's row of i, "if (j < nlocal) {
+    // if (i > j) continue; }" and a ghost kept "above" i ("if (x[j][2] < ztmp) continue; if (x[j][2] == ztmp) { if
+    // (x[j][1] < ytmp) continue; if (x[j][1] == ytmp && x[j][0] < xtmp) continue; }"); newton off keeps "j > i", which
+    // the half newton off enumeration below already gives
+    const keepHalffull = (j: number): boolean => {
+      if (j < n) return j > i;
+      const zj = X[3 * j + 2], yj = X[3 * j + 1], xj = X[3 * j];
+      if (zj < zi) return false;
+      if (zj === zi) {
+        if (yj < yi) return false;
+        if (yj === yi && xj < xi) return false;
+      }
+      return true;
+    };
+    if (build.nsq) {
+      if (build.halffull && newton) {
+        // npair_nsq.cpp, full list (HALF = 0): "for (j = 0; j < nall; j++)" with "if (i == j) continue;"
+        for (let j = 0; j < nall; j++) if (j !== i && keepHalffull(j)) takePair(out, dense, gEng, ei, j);
+      } else {
+        // npair_nsq.cpp, half list: "jstart = i + 1"; newton on, a ghost by the tag parity rule ("if (itag > jtag) { if
+        // ((itag + jtag) % 2 == 0) continue; } else if (itag < jtag) { if ((itag + jtag) % 2 == 1) continue; }") and an
+        // image of i itself by the coordinate rule
+        const itag = tagOf(i);
+        for (let j = i + 1; j < nall; j++) {
+          if (newton && j >= n) {
+            const jtag = tagOf(j);
+            if (itag > jtag) {
+              if ((itag + jtag) % 2 === 0) continue;
+            } else if (itag < jtag) {
+              if ((itag + jtag) % 2 === 1) continue;
+            } else if (!keepHalffull(j)) continue;
+          }
+          takePair(out, dense, gEng, ei, j);
+        }
+      }
+    } else if (build.halffull && newton) {
+      // npair_bin.cpp, full list: every stencil bin (the central one in its place), "if (i == j) continue;"
+      for (let st = 0; st < stencil.length; st += 3) {
+        const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        if (b < 0) continue;
+        for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
+          const j = members[q];
+          if (j !== i && keepHalffull(j)) takePair(out, dense, gEng, ei, j);
+        }
+      }
+    } else if (!newton) {
       // npair_half_bin_newtoff: "only store pair if i < j" (own/own once), every ghost; the chains start at the bin head
       for (let st = 0; st < stencil.length; st += 3) {
         const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
@@ -712,18 +775,87 @@ export class NativePairOrder {
   private half: NeighList | null = null;
   private pairsCache: Int32Array = new Int32Array(0);
 
-  /** Pairs as (i, jEnc) entries in native order, for the current neighbor lists. */
+  private build = -1;
+
+  /**
+   * Pairs as (i, jEnc) entries in native order, for the current neighbor lists: by bins or nsq (Neighbor.nsqStyle), and
+   * from a half list native derives from a fix's perpetual full list when there is one (Neighbor.nativeFullParent).
+   */
   pairs(s: SimState, nb: Neighbor, g: Geometry, half: NeighList | null): Int32Array {
     if (!half) throw new Error('native pair order needs a half neighbor list');
-    if (this.nbuild === nb.nbuild && this.order === s.order && this.half === half) return this.pairsCache;
-    this.pairsCache = g.triclinic ? engineOrder(half, nb.nlocal)
-      : this.size ? nativeSizePairs(s, nb, g, this.newton, this.size) : nativePairs(s, nb, g, half, this.newton);
+    const build: NativeListBuild = { nsq: nb.nsqStyle, halffull: nb.nativeFullParent };
+    const key = (build.nsq ? 1 : 0) | (build.halffull ? 2 : 0);
+    if (this.nbuild === nb.nbuild && this.order === s.order && this.half === half && this.build === key) return this.pairsCache;
+    // force->angstrom of the unit style (update.cpp set_units): the 0.01 Angstrom delta of the triclinic tie rule
+    const angstrom = 1 / (ANGSTROM_PER_UNIT[s.units.style] ?? 1);
+    this.pairsCache = g.triclinic
+      ? (build.nsq && !build.halffull && this.newton && !this.size ? nsqTriPairs(s, nb, half, 0.01 * angstrom) : engineOrder(half, nb.nlocal))
+      : this.size ? nativeSizePairs(s, nb, g, this.newton, this.size) : nativePairs(s, nb, g, half, this.newton, build);
     this.nbuild = nb.nbuild;
     this.order = s.order;
     this.half = half;
+    this.build = key;
     return this.pairsCache;
   }
 }
+
+/**
+ * npair_nsq.cpp build, half list, newton on, triclinic box (NPairNsq<1, 1, 1, 0>), for one processor: each pair of the
+ * engine's half list goes to the row native gives it. Two owned atoms: the row of the one first in native's local order
+ * ("jstart = i + 1"). An owned atom and an image of another: the row of i where "if (itag > jtag) { if ((itag + jtag) % 2
+ * == 0) continue; } else if (itag < jtag) { if ((itag + jtag) % 2 == 1) continue; }" keeps it, else the mirror pair in the
+ * row of the other atom; an image of i itself by the triclinic rule ("if (fabs(x[j][2] - ztmp) > delta) { if (x[j][2] <
+ * ztmp) continue; } else if (fabs(x[j][1] - ytmp) > delta) { if (x[j][1] < ytmp) continue; } else { if (x[j][0] < xtmp)
+ * continue; }", delta = 0.01 force->angstrom). Rows follow native's local order and an owned partner native's index;
+ * the ghosts of a row keep the engine's order (native's triclinic ghosts are not built here), which leaves the rows' atoms,
+ * the pairs' orientation and numforce as native's.
+ */
+const nsqTriPairs = (s: SimState, nb: Neighbor, half: NeighList, delta: number): Int32Array => {
+  const order = nativeOrder(s);
+  const nlocal = nb.nlocal;
+  const rank = new Int32Array(nlocal);
+  for (let k = 0; k < order.length; k++) rank[order[k]] = k;
+  const NA = nb.nall, gi = nb.gimage, xa = nb.xall, owner = nb.owner, tag = s.id;
+  const engByKey = new IntTable(NA);
+  for (let k = 0; k < NA; k++) engByKey.set(imgKey(owner[k], gi[3 * k], gi[3 * k + 1], gi[3 * k + 2]), k);
+  // the pairs of each row: owned partners (sorted by native index below), then ghosts in the engine's order
+  const ownRows: number[][] = Array.from({ length: nlocal }, () => []);
+  const ghostRows: number[][] = Array.from({ length: nlocal }, () => []);
+  const keepGhost = (i: number, k: number): boolean => {
+    const itag = tag[i], jtag = tag[owner[k]];
+    if (itag > jtag) return (itag + jtag) % 2 !== 0;
+    if (itag < jtag) return (itag + jtag) % 2 !== 1;
+    const dz = xa[3 * k + 2] - xa[3 * i + 2], dy = xa[3 * k + 1] - xa[3 * i + 1];
+    if (Math.abs(dz) > delta) return dz >= 0;
+    if (Math.abs(dy) > delta) return dy >= 0;
+    return xa[3 * k] >= xa[3 * i];
+  };
+  for (let i = 0; i < nlocal; i++) {
+    const k0 = half.firstneigh[i], k1 = k0 + half.numneigh[i];
+    for (let q = k0; q < k1; q++) {
+      const jEnc = half.neighbors[q];
+      const k = jEnc & NEIGHMASK;
+      const code = jEnc & ~NEIGHMASK;
+      if (k < nlocal) {
+        if (rank[i] < rank[k]) ownRows[i].push(k | code); else ownRows[k].push(i | code);
+      } else if (keepGhost(i, k)) {
+        ghostRows[i].push(jEnc);
+      } else {
+        // the mirror: the image of i seen from the owner of k, with the opposite shift
+        const kr = engByKey.get(imgKey(i, -gi[3 * k], -gi[3 * k + 1], -gi[3 * k + 2]));
+        if (kr >= 0) ghostRows[owner[k]].push(kr | code); else ghostRows[i].push(jEnc);
+      }
+    }
+  }
+  const out: Growable = { buf: new Int32Array(16), len: 0 };
+  for (let r = 0; r < order.length; r++) {
+    const i = order[r];
+    ownRows[i].sort((a, b) => rank[a & NEIGHMASK] - rank[b & NEIGHMASK]);
+    for (const jEnc of ownRows[i]) pushPair(out, i, jEnc);
+    for (const jEnc of ghostRows[i]) pushPair(out, i, jEnc);
+  }
+  return out.buf.slice(0, out.len);
+};
 
 /** The engine's own list order (triclinic boxes, where the native enumeration is not reproduced). */
 const engineOrder = (half: NeighList, nlocal: number): Int32Array => {

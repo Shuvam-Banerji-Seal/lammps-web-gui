@@ -397,6 +397,7 @@ export class System {
     const pairDone = this.pairInitVersion === this.stateVersion && !this.ff.pairStale;
     this.pairInitVersion = -1;
     this.ff.init(s, this.nb, this.geom, this.styleContext(), pairDone);
+    this.nb.nativeFullParent = this.fixes.some((f) => f.nativeFullList);
     this.pbc();
     if (sort) this.sortAtoms(true);
     this.nb.build(s, this.geom, s.step);

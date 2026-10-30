@@ -26,6 +26,8 @@ import { bondKey } from './bond_rheo_shell';
 
 export class FixRHEOOxidation extends Fix {
   readonly style: string = 'rheo/oxidation';
+  /** fix_rheo_oxidation.cpp init: neighbor->add_request(this, NeighConst::REQ_FULL), a perpetual full list (Fix.nativeFullList). */
+  nativeFullList = true;
   private readonly cut: number;
   private readonly btype: number;
   private readonly rsurf: number;

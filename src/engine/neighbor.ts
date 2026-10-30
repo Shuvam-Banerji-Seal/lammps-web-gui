@@ -151,6 +151,11 @@ export class Neighbor {
   multiStyle = false;
   /** neighbor style nsq (neighbor.html); dump image autobond reads it to place a periodic pair as native's list does. */
   nsqStyle = false;
+  /**
+   * A fix of the run makes a perpetual full list request (Fix.nativeFullList), so native derives the half lists from it
+   * (src/neighbor.cpp morph_halffull at b332f28): the native pair order follows the full list's rows. Set at setup.
+   */
+  nativeFullParent = false;
   /** neigh_modify binsize (0 = half the largest neighbor cutoff). */
   binsize = 0;
   /** comm_modify cutoff: ghost cutoff at least this large. */

@@ -9,7 +9,8 @@
  * linear extension beyond both ends of the table.
  */
 import { StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
-import { NEIGHMASK } from '../../engine/neighbor';
+import { NEIGHMASK, type NeighList } from '../../engine/neighbor';
+import { NativePairOrder } from '../neighbor/nativeOrder';
 import { readFs, type EamFile } from './potential';
 import { EamFamilyBase, forwardCopy, reverseAdd, tallyPair } from './pair_base';
 
@@ -49,9 +50,39 @@ export class PairEAMHE extends EamFamilyBase {
     return { m, p };
   }
 
+  /** The lists of the last force evaluation, from which single() takes native's numforce (nativeNumforce). */
+  private lastLists: { pc: PairCompute; half: NeighList; build: number } | null = null;
+  private builds = 0;
+  private numforceNative = new Int32Array(0);
+  private numforceAt = -1;
+  private pairOrder: NativePairOrder | null = null;
+
+  /**
+   * numforce as native's compute counts it (pair_eam_he.cpp: the neighbors within cutforcesq of each atom's row of the
+   * half list), with the rows of native's half list (NativePairOrder), which the engine's own lists do not follow.
+   */
+  private nativeNumforce(): Int32Array {
+    const L = this.lastLists;
+    if (!L || this.numforceAt === L.build) return this.numforceNative;
+    const { s, nb, geom } = L.pc;
+    this.pairOrder ??= new NativePairOrder(true);
+    const pairs = this.pairOrder.pairs(s, nb, geom, L.half);
+    const counts = new Int32Array(nb.nlocal);
+    const xa = nb.xall;
+    for (let q = 0; q < pairs.length; q += 2) {
+      const i = pairs[q], j = pairs[q + 1] & NEIGHMASK;
+      const dx = xa[3 * i] - xa[3 * j], dy = xa[3 * i + 1] - xa[3 * j + 1], dz = xa[3 * i + 2] - xa[3 * j + 2];
+      if (dx * dx + dy * dy + dz * dz < this.cutforcesq) counts[nb.owner[i]]++;
+    }
+    this.numforceNative = counts;
+    this.numforceAt = L.build;
+    return counts;
+  }
+
   compute(pc: PairCompute): void {
     const half = pc.half;
     if (!half) throw new Error(`pair style ${this.name} needs a half neighbor list`);
+    this.lastLists = { pc, half, build: ++this.builds };
     const { x, f, type, nlocal, nall } = pc;
     const T = this.tables;
     const nt = this.ntypes + 1;
@@ -163,14 +194,15 @@ export class PairEAMHE extends EamFamilyBase {
     const T = this.tables;
     const nt = this.ntypes + 1;
     let phi: number;
-    if (this.numforce[i] > 0) {
+    const numforce = this.nativeNumforce();
+    if (numforce[i] > 0) {
       const { m, p } = this.embeddingIndex(this.rho[i]);
       const c = T.frho[T.type2frho[itype]];
       const o = m * 7;
       phi = ((c[o + 3] * p + c[o + 4]) * p + c[o + 5]) * p + c[o + 6];
       if (this.rho[i] < this.rhomin) phi += this.fp[i] * (this.rho[i] - this.rhomin);
       else if (this.rho[i] > this.rhomax) phi += this.fp[i] * (this.rho[i] - this.rhomax);
-      phi *= 1.0 / this.numforce[i];
+      phi *= 1.0 / numforce[i];
     } else {
       phi = 0.0;
     }

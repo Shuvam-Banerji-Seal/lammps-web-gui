@@ -48,6 +48,8 @@ interface Sort {
 
 export class FixOrientLattice extends Fix {
   readonly style: string;
+  /** fix_orient_fcc.cpp and fix_orient_bcc.cpp init: neighbor->add_request(this, NeighConst::REQ_FULL), a perpetual full list (Fix.nativeFullList). */
+  nativeFullList = true;
   private readonly spec: OrientSpec;
   private readonly nstats: number;
   private readonly a: number;

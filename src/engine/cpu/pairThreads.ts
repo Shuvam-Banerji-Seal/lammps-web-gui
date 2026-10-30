@@ -31,6 +31,13 @@ import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, t
 /** Below this many owned atoms the threads cost more than they save. */
 export const MIN_THREADED_ATOMS = 2000;
 
+/**
+ * Why the last pair evaluation ran on the engine thread, for the resource monitor: the system is below minAtoms, the
+ * pair style has no threaded kernel, per-atom energy or virial was asked for, the style needs a list the threads do not
+ * take, or the workers were still starting. null when it ran on the threads.
+ */
+export type ThreadSkip = 'small' | 'style' | 'peratom' | 'list' | 'starting' | null;
+
 const shared = (bytes: number): SharedArrayBuffer => new SharedArrayBuffer(Math.max(8, bytes));
 
 /**
@@ -62,6 +69,8 @@ interface NeighborShared {
 export class SharedPairThreads implements NeighborThreads {
   /** Force evaluations that ran on the threads. */
   calls = 0;
+  /** Why the last call did not run on the threads (null when it did). */
+  skip: ThreadSkip = null;
   private workers: PairWorkerLike[] = [];
   private readonly ctlBuf = shared(4 * CTL_WORDS);
   private readonly ctl = new Int32Array(this.ctlBuf);
@@ -113,15 +122,18 @@ export class SharedPairThreads implements NeighborThreads {
     // a half-list style, or a full-list one whose rows are independent (the three-body styles of THREADED_PAIRS)
     const fullStyle = pair.needsFull && !pair.needsHalf;
     const list = fullStyle ? pc.full : pc.half;
-    if (W === 0 || !list || (!fullStyle && (pc.full || pair.needsFull)) || pc.eatom || pc.vatom || !(pair.needsHalf || fullStyle)) return false;
-    if (!THREADED_NAMES.has(pair.name) || list.inum < this.minAtoms) return false;
+    if (pc.eatom || pc.vatom) { this.skip = 'peratom'; return false; }
+    if (W === 0 || !list || (!fullStyle && (pc.full || pair.needsFull)) || !(pair.needsHalf || fullStyle)) { this.skip = 'list'; return false; }
+    if (!THREADED_NAMES.has(pair.name)) { this.skip = 'style'; return false; }
+    if (list.inum < this.minAtoms) { this.skip = 'small'; return false; }
     const two = isTwoPass(pair) ? pair : null;
-    if (two && !two.twoPassReady()) return false;
+    if (two && !two.twoPassReady()) { this.skip = 'list'; return false; }
     // until every worker has started (READY, see pairThreadsCore.ts) the pair term runs on the engine thread: blocking
     // in Atomics.wait on a worker that has not started yet would deadlock
-    if (Atomics.load(this.ctl, READY) < W) return false;
+    if (Atomics.load(this.ctl, READY) < W) { this.skip = 'starting'; return false; }
     if (pair !== this.pairRef || pair.version !== this.pairVersion) this.sendPair(pair);
-    if (!this.pairOk) return false;
+    if (!this.pairOk) { this.skip = 'style'; return false; }
+    this.skip = null;
     const nall = pc.nall, nlocal = list.inum;
     let resend = false;
     if (nall > this.cap) { this.cap = Math.ceil(nall * 1.25); resend = true; }

@@ -302,7 +302,14 @@ export type EngineEvent =
    */
   | { kind: 'run'; from: number; to: number; dt: number; units: UnitStyle }
   /** Run speed, about twice a second and at the end of a run: steps per second over the last interval. */
-  | { kind: 'perf'; step: number; atoms: number; stepsPerSec: number; elapsed: number; threaded: boolean }
+  | {
+    kind: 'perf'; step: number; atoms: number; stepsPerSec: number; elapsed: number;
+    /**
+     * Where the forces of the interval were computed: on the GPU (whole steps when `resident`), on `threads` CPU threads,
+     * or on one thread, with the reason in `why` (the system is small, the style has no threaded kernel, ...).
+     */
+    path: 'gpu' | 'threads' | 'serial'; threads: number; resident: boolean; why: string | null;
+  }
   /**
    * A snapshot of the system at `step`: x, image, type, id (atom order as the engine stores it) and box.
    * Only when the session was asked for velocities (protocol reset frameVelocities, the notebook's default):

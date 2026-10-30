@@ -11,6 +11,11 @@ type Perf = Extract<EngineEvent, { kind: 'perf' }>;
 const fmt = (v: number, digits = 3): string =>
   v >= 1e6 ? `${(v / 1e6).toPrecision(digits)} M` : v >= 1e4 ? `${(v / 1e3).toPrecision(digits)} k` : v.toPrecision(digits);
 
+/** Where the run computes its forces. */
+const computeWhere = (p: Perf): string =>
+  p.path === 'gpu' ? (p.resident ? 'whole steps on the GPU' : 'forces on the GPU')
+    : p.path === 'threads' ? `pair term on ${p.threads} CPU threads` : 'one CPU thread';
+
 /** The page's JS heap (Chromium's performance.memory); the engine worker's heap is not visible from here. */
 const pageHeap = (): { used: number; limit: number } | null => {
   const m = (performance as Performance & { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
@@ -78,10 +83,11 @@ const ResourceMonitor: React.FC<{
           {sps > 0 && <span>{(1000 / sps).toPrecision(3)} ms/step</span>}
           <span title="atoms × steps per second, comparable across system sizes">{fmt(sps * perf.atoms)} atom-steps/s</span>
           {perDay && <span>{perDay}</span>}
-          <span className={ct.muted}>{perf.threaded ? 'pair term on threads' : 'one thread'}{running ? '' : ' · last run'}</span>
+          <span className={ct.muted}>{computeWhere(perf)}{running ? '' : ' · last run'}</span>
           <Spark values={history} className={ct.accentText} />
         </div>
       )}
+      {perf?.path === 'serial' && perf.why && <p className={ct.muted}>One thread: {perf.why}.</p>}
       {heap && <p className={`mt-1 ${ct.muted}`}>Page memory {(heap.used / 2 ** 20).toFixed(0)} MB of {(heap.limit / 2 ** 20).toFixed(0)} MB</p>}
       {hints.length > 0 && (
         <ul className={`mt-1 list-disc pl-4 ${ct.muted}`}>{hints.map((h) => <li key={h}>{h}</li>)}</ul>

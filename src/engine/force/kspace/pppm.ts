@@ -3,7 +3,7 @@ import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
 import { inumeric, parseNum } from '../util';
 import { KSpaceBase, invertUpper, ignoredKeyword } from './ewald';
-import { fft3d, isFFTSize } from '../fft';
+import { fft3d, isFFTSize, nextFFTSize } from '../fft';
 import { pppmGplHook } from './pppmHook';
 import { libm } from '../../libm';
 
@@ -274,8 +274,8 @@ export function selectPppmAuto(inp: PppmAutoInput): PppmAutoResult {
   const gGrid = inp.gUser > 0 ? inp.gUser : g0;
   let mesh: [number, number, number];
   // As native LAMMPS does (src/KSPACE/pppm.cpp set_grid_global at b332f28): "boost grid size until it is factorable",
-  // a mesh given by kspace_modify mesh too (7 7 7 runs as 8 8 8)
-  if (inp.meshUser) mesh = [factorableAtLeast(inp.meshUser[0]), factorableAtLeast(inp.meshUser[1]), factorableAtLeast(inp.meshUser[2])];
+  // a mesh given by kspace_modify mesh too (7 7 7 runs as 8 8 8; factorable(1) is true, so 1 stays 1)
+  if (inp.meshUser) mesh = [nextFFTSize(inp.meshUser[0]), nextFFTSize(inp.meshUser[1]), nextFFTSize(inp.meshUser[2])];
   else {
     // Measured with native LAMMPS (black box): the mesh starts at h = 1/G with n = int(L/h) + 1 and gains a point
     // while the error of the previous spacing is above the target (polystyrene box 16.5147 A, 320 atoms: 6 6 6 with

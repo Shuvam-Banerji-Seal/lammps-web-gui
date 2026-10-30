@@ -1341,17 +1341,24 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     // Measured with native LAMMPS (black box, 6 atoms, 2 bonds starting at each of atoms 1, 2 and 3): a read after
     // create_box bond/types 2 with extra/bond/per/atom 0 or 1 stops with "Subsequent read data induced too many bonds
     // per atom", and with 2 it reads; the same read as the first (box-making) read is accepted and sets the storage.
+    // As native LAMMPS does (src/read_data.cpp bonds at b332f28): the count is at the first atom, and also at the second
+    // with newton_bond off; a first read stores "maxall += atom->extra_bond_per_atom" (atom->bond_per_atom), which
+    // create_bonds checks
     const perAtom = new Map<number, number>();
     let most = 0;
+    const count = (id: number): void => {
+      const n = (perAtom.get(id) ?? 0) + 1;
+      perAtom.set(id, n);
+      if (n > most) most = n;
+    };
     for (const e of topo) {
       if (e.kind !== 'bonds') continue;
-      const n = (perAtom.get(e.ids[0]) ?? 0) + 1;
-      perAtom.set(e.ids[0], n);
-      if (n > most) most = n;
+      count(e.ids[0]);
+      if (!sys.newtonBond) count(e.ids[1]);
     }
     if (subsequentRead) {
       if (most > sys.extraBondPerAtom) throw new StyleError('Subsequent read data induced too many bonds per atom');
-    } else sys.extraBondPerAtom = Math.max(opts.extraBondPerAtom ?? 0, most);
+    } else sys.extraBondPerAtom = most + (opts.extraBondPerAtom ?? 0);
 
     // atom_style oxdna: each bond sets the 5'/3' partners (atoms.ts setOxdnaPartners)
     setOxdnaPartners(s, topo.filter((e) => e.kind === 'bonds').map((e) => [e.ids[0], e.ids[1]] as const));

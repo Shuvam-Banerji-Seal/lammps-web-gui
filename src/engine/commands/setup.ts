@@ -3878,6 +3878,17 @@ const cellCandidates = (s: SimState, order: number[], periodic: boolean[], rmax:
   };
 };
 
+/** Native num_bond by atom ID: the bonds each atom stores (the first atom of a bond, also the second with newton_bond off). */
+const bondsStored = (sys: System): Map<number, number> => {
+  const b = sys.state.topo.bonds, w = b.width;
+  const out = new Map<number, number>();
+  for (let k = 0; k < b.n; k++) {
+    out.set(b.atoms[w * k], (out.get(b.atoms[w * k]) ?? 0) + 1);
+    if (!sys.newtonBond) out.set(b.atoms[w * k + 1], (out.get(b.atoms[w * k + 1]) ?? 0) + 1);
+  }
+  return out;
+};
+
 const createBondsMany = (sys: System, a: string[]): void => {
   const s = sys.state;
   if (a.length !== 6) throw new StyleError('usage: create_bonds many group1 group2 btype rmin rmax (create_bonds many takes no keywords)');
@@ -3972,6 +3983,19 @@ const createBondsMany = (sys: System, a: string[]): void => {
       }
     }
   }
+  // As native LAMMPS does (src/create_bonds.cpp many at b332f28): a bond is stored with the lower ID (both atoms with
+  // newton_bond off), and "New bond exceeded bonds per atom limit of {} in create_bonds" when that atom's storage
+  // (atom->bond_per_atom) is full
+  const stored = bondsStored(sys);
+  const store = (id: number): void => {
+    const c = stored.get(id) ?? 0;
+    if (c >= sys.extraBondPerAtom) throw new StyleError(`New bond exceeded bonds per atom limit of ${sys.extraBondPerAtom} in create_bonds`);
+    stored.set(id, c + 1);
+  };
+  for (const [i, j] of newBonds) {
+    store(i);
+    if (!sys.newtonBond) store(j);
+  }
   for (const [i, j] of newBonds) pushTopo(s.topo.bonds, t, [i, j]);
   sys.atomsChanged();
 };
@@ -4000,6 +4024,14 @@ const createBonds: Handler = ({ sys }, a) => {
   // always rebuilds it after a topology change, so 'no' would silently differ: rejected instead
   if (kw.has('special') && yesno(kw.get('special')![0], 'create_bonds special') === false) {
     throw new StyleError('create_bonds special no is not supported (the browser engine always rebuilds the special list after a change)');
+  }
+  if (kind === 'bond') {
+    // As native LAMMPS does (src/create_bonds.cpp single_bond at b332f28): the bond goes to the first atom (and the second
+    // with newton_bond off), "New bond exceeded bonds per atom in create_bonds" when its storage is full
+    const stored = bondsStored(sys);
+    for (const id of sys.newtonBond ? [ids[0]] : [ids[0], ids[1]]) {
+      if ((stored.get(id) ?? 0) >= sys.extraBondPerAtom) throw new StyleError('New bond exceeded bonds per atom in create_bonds');
+    }
   }
   pushTopo(s.topo[`${kind}s` as 'bonds'], t, ids);
   sys.atomsChanged();

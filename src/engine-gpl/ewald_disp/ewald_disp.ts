@@ -148,7 +148,8 @@ export class KSpaceEwaldDisp extends KSpaceBase {
       case 'splittol': case 'eigtol': case 'disp/auto':
         return ignoredKeyword(key, values, 'ewald');
       case 'slab':
-        if (values[0] === 'auto') throw new StyleError(`kspace_modify slab auto is not supported by kspace_style ${this.name} in the browser engine`);
+        // As native LAMMPS does (src/kspace.cpp modify_params at b332f28): slab auto only for ewald and pppm without dispersion
+        if (values[0] === 'auto') throw new StyleError(`kspace_modify slab auto is not supported by kspace style ${this.name}`);
         return super.modify(key, values);
       default: return super.modify(key, values);
     }
@@ -197,7 +198,10 @@ export class KSpaceEwaldDisp extends KSpaceBase {
     if (s.dimension === 2) throw new StyleError('Cannot use EwaldDisp with 2d simulation');
     const p = geom.periodic;
     const slab = this.slab > 1;
-    if (!slab && (!p[0] || !p[1] || !p[2])) throw new StyleError('Cannot use non-periodic boundaries with EwaldDisp');
+    // As native LAMMPS does (src/KSPACE/ewald_disp.cpp init and compute at b332f28): any slab setting allows non-periodic
+    // boundaries ("if (slabflag == 0 && domain->nonperiodic > 0)"), only slabflag 1 checks them, and "if (slabflag)
+    // slabcorr();" applies the correction for nozforce and ew2d too, with slab_volfactor 1
+    if (!slab && !this.slabOther && (!p[0] || !p[1] || !p[2])) throw new StyleError('Cannot use non-periodic boundaries with EwaldDisp');
     if (slab) {
       const b = s.box.boundary;
       if (!p[0] || !p[1] || b[2][0] !== 'f' || b[2][1] !== 'f') throw new StyleError('Incorrect boundaries with slab EwaldDisp');
@@ -566,7 +570,7 @@ export class KSpaceEwaldDisp extends KSpaceBase {
     const virial = this.computeVirial();
     if (this.termflag[TERM_DIPOLE]) this.computeVirialDipole(s, virial, kc.vatom);
     if (kc.vatom) this.computeVirialPeratom(s, kc.vatom, self!.v);
-    if (this.slab > 1) energy += this.slabcorr(s, geom, kc.f, kc.torque ?? null, kc.eatom);
+    if (this.slab > 1 || this.slabOther) energy += this.slabcorr(s, geom, kc.f, kc.torque ?? null, kc.eatom);
     kc.acc.elong += energy;
     for (let c = 0; c < 6; c++) kc.acc.vlong[c] += virial[c];
   }

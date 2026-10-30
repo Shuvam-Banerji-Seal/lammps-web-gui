@@ -103,6 +103,8 @@ export interface MoleculeOptions {
   units?: string;
   /** The symmetry of the system's improper style (labelmap.ts improperSymmatoms, see inferImproperType). */
   improperSymmatoms?: readonly number[];
+  /** The atom style is body (a JSON file's "body" entry and a body header line need it); unset: not checked. */
+  bodyStyle?: boolean;
 }
 
 const HEADER: Record<string, number> = { atoms: 1, bonds: 1, angles: 1, dihedrals: 1, impropers: 1, fragments: 1, body: 2, mass: 1, com: 3, inertia: 6, lines: 1, triangles: 1 };
@@ -141,6 +143,9 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
   // molecule.html: "defining a *body* particle, which requires setting the number of *atoms* to 1, and setting the *inertia*
   // in a specific section". The Body Integers and Body Doubles counts come from the header (Ninteger, Ndouble).
   const bodyHeader = head.body !== undefined && (head.body[0] !== 0 || head.body[1] !== 0);
+  // As native LAMMPS does (src/molecule.cpp Molecule::read at b332f28): the body header line "Molecule file requires
+  // atom style body"
+  if (head.body !== undefined && o.bodyStyle === false) throw new StyleError('Molecule file requires atom style body');
   if (bodyHeader && (!hasAtoms || natoms !== 1)) throw new StyleError(`molecule ${id}: Molecule natoms must be 1 for body particle`);
   if (bodyHeader && (head.body![0] < 1 || head.body![1] < 1)) throw new StyleError(`molecule ${id}: a body molecule needs Ninteger and Ndouble values of at least 1 in ${name}`);
   if (bodyHeader && o.scale !== 1) throw new StyleError(`molecule ${id}: Molecule sizescale must be 1.0 for body particle`);
@@ -322,7 +327,12 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
         break;
       }
       default:
-        throw new StyleError(`molecule ${id}: section '${sec}' in ${name} is not supported by the browser engine`);
+        // As native LAMMPS does (src/molecule.cpp Molecule::read at b332f28): "Found data file section '{}' in molecule
+        // file" for a section of a data file, "Unknown section '{}' in molecule file" for another word, and a line that is
+        // no section keyword is "Unexpected line in molecule file while looking for the next section:\n{}"
+        if (DATA_FILE_SECTIONS.has(sec)) throw new StyleError(`Found data file section '${sec}' in molecule file`);
+        if (/^[A-Za-z ]+$/.test(sec)) throw new StyleError(`Unknown section '${sec}' in molecule file`);
+        throw new StyleError(`Unexpected line in molecule file while looking for the next section:\n${sec}`);
     }
   }
   if (bodyHeader) {
@@ -342,6 +352,9 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
   return t;
 };
 
+/** The data file sections native names in its molecule-file error (src/molecule.cpp Molecule::read at b332f28). */
+const DATA_FILE_SECTIONS = new Set(['Atoms', 'Velocities', 'Pair Coeffs', 'Bond Coeffs', 'Angle Coeffs', 'Dihedral Coeffs', 'Improper Coeffs']);
+
 /*
  * JSON molecule files — docs.lammps.org/molecule.html, "Format of a JSON molecule file": "The format of a JSON
  * format individual molecule file must follow the JSON format, ..."; "Unlike with the native molecule file
@@ -358,8 +371,6 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
  * Keywords that describe the template as a whole (title, schema, units, com, masstotal, inertia) do not change
  * the template as the native text reader does not use them either.
  */
-const JSON_IGNORED = new Set(['application', 'format', 'revision', 'title', 'schema', 'units', 'com', 'masstotal', 'inertia']);
-const JSON_SECTIONS = new Set(['coords', 'types', 'molecules', 'fragments', 'charges', 'diameters', 'masses', 'dipoles', 'bonds', 'angles', 'dihedrals', 'impropers', 'special', 'shake']);
 
 type JsonRow = unknown[];
 interface JsonBlock { format: string[]; data: JsonRow[] }
@@ -389,10 +400,15 @@ export const parseMoleculeJson = (id: string, name: string, text: string, o: Mol
   if ('units' in top && o.units !== undefined) {
     need(unitsCompatible(String(top.units), o.units), `Incompatible units in JSON molecule data: current = ${o.units}, JSON = ${String(top.units)}`);
   }
-  for (const key of Object.keys(top)) {
-    if (JSON_IGNORED.has(key) || JSON_SECTIONS.has(key)) continue;
-    if (key === 'body') throw new StyleError(`molecule ${id}: '${key}' molecules are not supported by the browser engine`);
-    throw new StyleError(`molecule ${id}: JSON section '${key}' in ${name} is not supported by the browser engine`);
+  // As native LAMMPS does (src/molecule.cpp Molecule::from_json at b332f28): only the entries it knows are read
+  // ("if (moldata.contains(...))"), any other entry is ignored
+  // body: "JSON molecule data requires atom style body", and both "integers" and "doubles" lists
+  const bodyEntry = top.body as { integers?: unknown; doubles?: unknown } | undefined;
+  if (bodyEntry !== undefined) {
+    if (o.bodyStyle === false) throw new StyleError(`Molecule template ${id}: JSON molecule data requires atom style body`);
+    if (!bodyEntry || typeof bodyEntry !== 'object' || !('integers' in bodyEntry) || !('doubles' in bodyEntry)) {
+      throw new StyleError(`Molecule template ${id}: JSON molecule "body" data requires "integers" and "doubles" sections`);
+    }
   }
 
   /** A data block: {format, data} with the expected format list (native checks the entries of the format list). */
@@ -541,6 +557,17 @@ export const parseMoleculeJson = (id: string, name: string, text: string, o: Mol
     for (const r of fl) t.shake.flags[atomIndex(r[0], 'atom-id') - 1] = num(r[1], 'shake flag');
     for (const r of at) t.shake.atoms[atomIndex(r[0], 'atom-id') - 1] = (r[1] as unknown[]).map((v) => num(v, 'shake atom'));
     for (const r of ty) t.shake.types[atomIndex(r[0], 'atom-id') - 1] = (r[1] as unknown[]).map((v) => num(v, 'shake type'));
+  }
+  if (bodyEntry !== undefined) {
+    // molecule.cpp from_json: the parameters ("ibodyparams[i] = moldata["body"]["integers"][i]"), then "if (bodyflag &&
+    // !rmassflag)" the masses check, then "Molecule natoms must be 1 for body particle" and "Molecule sizescale must be
+    // 1.0 for body particle"
+    const list = (v: unknown, what: string): number[] => (Array.isArray(v) ? v : [v]).map((x) => num(x, what));
+    const ints = list(bodyEntry.integers, 'body integer'), dbls = list(bodyEntry.doubles, 'body double');
+    if (!t.mass) throw new StyleError(`Molecule template ${id}: "body" JSON section requires "masses" section`);
+    if (natoms !== 1) throw new StyleError(`molecule ${id}: Molecule natoms must be 1 for body particle`);
+    if (o.scale !== 1) throw new StyleError(`molecule ${id}: Molecule sizescale must be 1.0 for body particle`);
+    t.body = { ints, dbls };
   }
   if (t.special) checkSpecial(t);
   return t;

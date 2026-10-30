@@ -489,6 +489,10 @@ export class System {
   pbc(): void {
     const s = this.state;
     const g = this.geom;
+    // As native LAMMPS does (src/domain.cpp Domain::pbc at b332f28): "verify owned atoms have valid numerical coords"
+    for (let k = 0, n3 = 3 * s.n; k < n3; k++) {
+      if (!Number.isFinite(s.x[k])) throw new StyleError(`Non-numeric atom coords - simulation unstable${errorUrl(6)}`);
+    }
     // the first reset of the box (domain->pbc and reset_box at setup) replaces the create_box expansion
     this.initSmall = null;
     if (g.triclinic) {

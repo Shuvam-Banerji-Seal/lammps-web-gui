@@ -63,11 +63,19 @@ import { SUPER_INERTIA } from '../superellipsoid';
  */
 
 /** Row-major rotation matrix (9 entries) of the unit quaternion w i j k: space = R body. */
-export const quatToMatrix = (w: number, x: number, y: number, z: number): number[] => [
-  1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y),
-  2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x),
-  2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y),
-];
+export const quatToMatrix = (w: number, x: number, y: number, z: number): number[] => {
+  // As native LAMMPS does (src/math_extra.cpp quat_to_mat at b332f28): the diagonal from the four squares, "mat[0][0] =
+  // w2+i2-j2-k2", which equals 1 - 2 (y^2 + z^2) for a unit quaternion but keeps native's rounding, and is the zero matrix
+  // for the zero quaternion a body created by create_atoms has (insertMolecules)
+  const w2 = w * w, i2 = x * x, j2 = y * y, k2 = z * z;
+  const twoij = 2 * x * y, twoik = 2 * x * z, twojk = 2 * y * z;
+  const twoiw = 2 * x * w, twojw = 2 * y * w, twokw = 2 * z * w;
+  return [
+    w2 + i2 - j2 - k2, twoij - twokw, twojw + twoik,
+    twoij + twokw, w2 - i2 + j2 - k2, twojk - twoiw,
+    twoik - twojw, twojk + twoiw, w2 - i2 - j2 + k2,
+  ];
+};
 
 /** R v for a row-major 3x3 matrix. */
 export const rotateVec = (R: number[], x: number, y: number, z: number): [number, number, number] => [

@@ -768,7 +768,7 @@ export class KSpacePPPMDisp extends KSpaceBase {
   protected addCoulombForce(kc: KSpaceCompute, i: number, fx: number, fy: number, fz: number): void {
     kc.f[3 * i] += fx;
     kc.f[3 * i + 1] += fy;
-    kc.f[3 * i + 2] += fz;
+    if (this.zForce) kc.f[3 * i + 2] += fz;
   }
 
   /** Whether this style's per-atom energy and virial are ported (the TIP4P and dielectric variants: not yet). */
@@ -904,7 +904,7 @@ export class KSpacePPPMDisp extends KSpaceBase {
         }
         kc.f[3 * i] += fx;
         kc.f[3 * i + 1] += fy;
-        kc.f[3 * i + 2] += fz;
+        if (this.zForce) kc.f[3 * i + 2] += fz;
       }
       for (let c = 0; c < 6; c++) virial[c] += 0.5 * V * vir[c];
       if (pa) {

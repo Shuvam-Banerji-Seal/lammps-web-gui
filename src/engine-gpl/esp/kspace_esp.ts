@@ -632,7 +632,7 @@ export class KSpaceESP extends KSpaceBase {
       sf = sfc[4] * libmSin(2 * MY_PI * s3);
       sf += sfc[5] * libmSin(4 * MY_PI * s3);
       sf *= 2 * q[i] * q[i];
-      kc.f[3 * i + 2] += qfactor * (ekz * q[i] - sf);
+      if (this.zForce) kc.f[3 * i + 2] += qfactor * (ekz * q[i] - sf);
     }
     // energy and virial (compute)
     let selfCoeff = 0.00;

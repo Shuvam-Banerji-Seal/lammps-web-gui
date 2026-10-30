@@ -278,13 +278,14 @@ const ROWS: [Row, string | null][] = [
   [{ ks: 'kspace_style ewald 1e-3', bnd: 'boundary p p f' }, 'Cannot use non-periodic boundaries with Ewald'],
   [{ ks: 'kspace_style pppm 1e-3\nkspace_modify slab auto', bnd: 'boundary p p s' }, 'Incorrect boundaries with slab PPPM'],
   [{ ks: '', post: 'kspace_modify gewald 0.5' }, 'Kspace_modify command before kspace_style is defined'],
+  // native boosts a mesh dimension to the next size that factors into 2, 3 and 5 (pppm.cpp set_grid_global)
+  [{ post: 'kspace_modify mesh 7 7 7' }, null],
 ];
 
 /** Inputs native runs (or stops on later) that the engine refuses: [row, engine message, native result]. */
 const REFUSED: [Row, string, string][] = [
   // pairs between type 2 atoms and the images of type 1 atoms: native keeps some of them by its bin order
   [{ pre: 'atom_modify first g1', post: 'comm_modify group g1' }, 'comm_modify group: ', 'OK'],
-  [{ post: 'kspace_modify mesh 7 7 7' }, 'kspace_modify mesh: each dimension must factor into 2, 3 and 5', 'OK'],
 ];
 
 describe('modify commands as native LAMMPS', () => {

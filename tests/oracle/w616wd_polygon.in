@@ -1,0 +1,24 @@
+# oracle: write_data of rounded/polygon bodies after 100 steps of w111body_squares_friction: the Bodies section (src/BODY/body_rounded_polygon.cpp pack_data_body) compared with native
+# oracle-inputs: w111body_squares.data
+# oracle-files: w616wd_polygon.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12 filerel=1e-12
+units           lj
+dimension       2
+atom_style      body rounded/polygon 1 6
+atom_modify     map array
+read_data       w111body_squares.data
+replicate       2 2 1
+velocity        all create 0.5 980411 dist gaussian mom yes rot yes
+pair_style      body/rounded/polygon 1 1 0.1 0.5 0.5
+pair_coeff      * * 100 2
+comm_modify     vel yes
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.001
+fix             1 all nve/body
+fix             2 all enforce2d
+thermo_style    custom step pe ke etotal press pxx pyy pxy
+thermo_modify   format float %.15g
+thermo          100
+run             100
+write_data      w616wd_polygon.data

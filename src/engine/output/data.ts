@@ -11,6 +11,7 @@ import type { TriBody } from '../triBonus';
 
 import { expandTemplateTopology } from '../template';
 import { BODY_RECORD, POLY_OFF, bodyRecordOffset, bodyRecordStride, parseBodyStyle, polyRecordLength, polyStoredCounts, polyhedronFrame, principalFrame } from '../bodies';
+import { gplHook } from '../gplHooks';
 import { makeBox, SHRINK_PAD } from '../domain';
 import { LABEL_KINDS, LABEL_SECTION, labelKindOfSection, type LabelKind } from '../labelmap';
 import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
@@ -1414,9 +1415,17 @@ const generalOutput = (s: SimState): { Q: Mat3; origin: V3; header: string[] } =
   };
 };
 
+/** The 'body' hook (src/engine-gpl/body/write_data_body.ts, loaded with atom_style body): the Bodies section of write_data. */
+export interface BodyWriteHook {
+  /** The lines of the Bodies section for the atoms of `order` that are bodies (record count > 0), in that order. */
+  bodiesSection(s: SimState, order: ArrayLike<number>, bstyle: string): string[];
+}
+
 export const writeData = (sys: System, opts: WriteDataOptions): string => {
   const s = sys.state;
-  if (parseBodyStyle(s.atomStyle)) throw new StyleError(`write_data is not supported for atom_style ${s.atomStyle} by the browser engine (body records are not written)`);
+  const bodyStyle = parseBodyStyle(s.atomStyle)?.bstyle ?? null;
+  const bodyRec = bodyStyle ? s.custom.get(BODY_RECORD)! : null;
+  const isBodyAtom = (i: number): boolean => bodyRec !== null && bodyRec.data[bodyRec.cols * i] > 0;
   const t = s.topo;
   const gen = opts.triclinicGeneral ? generalOutput(s) : null;
   const out: string[] = [
@@ -1432,6 +1441,12 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // N counts the atoms with lineflag or triangleflag 1 (three flagged atoms give 3 lines, and none gives 0 lines)
   if (isLineStyle(s.atomStyle)) out.push(`${flagCount(s, LINE_FLAG)} lines`);
   if (isTriStyle(s.atomStyle)) out.push(`${flagCount(s, TRI_FLAG)} triangles`);
+  // As native LAMMPS does (src/write_data.cpp header at b332f28): "{} bodies" (atom->nbodies, the atoms with a body)
+  if (bodyStyle) {
+    let nb = 0;
+    for (let i = 0; i < s.n; i++) if (isBodyAtom(i)) nb++;
+    out.push(`${nb} bodies`);
+  }
   const mol = isMolecularStyle(s.atomStyle);
   if (mol && isTemplateStyle(s.atomStyle)) {
     // measured with native write_data: a template style writes no bond, angle, dihedral or improper
@@ -1483,7 +1498,8 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section; a
   // hybrid style with sphere writes it (per-type and per-atom masses both exist there)
   // measured with native write_data: atom_style peri writes no Masses section either
-  if (s.atomStyle !== 'sphere' && s.atomStyle !== 'bpm/sphere' && s.atomStyle !== 'ellipsoid' && s.atomStyle !== 'peri' && !isLineStyle(s.atomStyle) && !isTriStyle(s.atomStyle)) {
+  // As native LAMMPS does (src/write_data.cpp at b332f28, "if (atom->mass)"): atom_style body has per-atom masses only
+  if (s.atomStyle !== 'sphere' && s.atomStyle !== 'bpm/sphere' && s.atomStyle !== 'ellipsoid' && s.atomStyle !== 'peri' && !isLineStyle(s.atomStyle) && !isTriStyle(s.atomStyle) && !bodyStyle) {
     out.push('', 'Masses', '');
     for (let k = 1; k <= s.ntypes; k++) out.push(`${k} ${shortest(s.massByType[k])}`);
   }
@@ -1551,6 +1567,10 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
           if (s.radius) return shortest(s.radius[i] > 0 ? s.rmass![i] / sphereMass(s.radius[i], 1) : s.rmass![i]);
           return shortest(isEllipsoid(s, i) ? s.rmass![i] / ellipsoidVolume(s, i) : s.rmass![i]);
         case 'ellipsoidflag': return isEllipsoid(s, i) ? '1' : '0';
+        // As native LAMMPS does (src/atom_vec_body.cpp pack_data_pre at b332f28): bodyflag 1 for an atom with a body, and
+        // the mass column is rmass
+        case 'bodyflag': return isBodyAtom(i) ? '1' : '0';
+        case 'mass': return shortest(s.rmass![i]);
         case 'lineflag': return isLineAtom(s, i) ? '1' : '0';
         case 'triangleflag': return isTriAtom(s, i) ? '1' : '0';
         // measured with native write_data: atom_style peri writes its volume and the density (= mass) column
@@ -1635,6 +1655,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       out.push(`${s.id[i]} ${pts.map(shortest).join(' ')}`);
     }
   }
+  // As native LAMMPS does (src/write_data.cpp at b332f28): "if (natoms && atom->body_flag) bonus(BODY);" after the
+  // ellipsoid, line and triangle sections, the bodies in local order (the 'body' hook)
+  if (bodyStyle && s.n > 0) out.push('', 'Bodies', '', ...gplHook<BodyWriteHook>('body').bodiesSection(s, order, bodyStyle));
   let maxId = 0;
   for (let i = 0; i < s.n; i++) if (s.id[i] > maxId) maxId = s.id[i];
   const local = new Int32Array(maxId + 1).fill(-1);

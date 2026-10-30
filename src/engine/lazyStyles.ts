@@ -25,6 +25,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_mathextra', names: { HOOKS: ['mathextra'] }, load: () => import('../engine-gpl/registry/mathextra') as Promise<StyleModule> },
   { id: 'gpl_wall_region_colloid', names: { HOOKS: ['colloid'] }, load: () => import('../engine-gpl/registry/wall_region_colloid') as Promise<StyleModule> },
   { id: 'gpl_restart', names: { HOOKS: ['native-restart'] }, load: () => import('../engine-gpl/registry/restart') as Promise<StyleModule> },
+  { id: 'gpl_write_data_body', names: { HOOKS: ['body'] }, load: () => import('../engine-gpl/registry/write_data_body') as Promise<StyleModule> },
   { id: 'gpl_dump_vtk', names: { HOOKS: ['vtk'] }, load: () => import('../engine-gpl/registry/dump_vtk') as Promise<StyleModule> },
   { id: 'gpl_dump_grid', names: { HOOKS: ['grid', 'grid/vtk'] }, load: () => import('../engine-gpl/registry/dump_grid') as Promise<StyleModule> },
   { id: 'gpl_dump_cfg', names: { HOOKS: ['cfg', 'cfg/uef'] }, load: () => import('../engine-gpl/registry/dump_cfg') as Promise<StyleModule> },

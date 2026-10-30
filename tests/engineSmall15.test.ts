@@ -139,13 +139,20 @@ create_bonds single/bond 1 2 3
     await expect(run(`${sc(3, 6, 1.5)}create_bonds many all all 1 0.9 1.1 special yes\n`)).rejects.toThrow(/keyword/);
     await expect(run(`${sc(3, 6, 1.5)}special_bonds lj 0.5 1 1\ncreate_bonds many all all 1 0.9 1.1\n`)).rejects.toThrow(/1-2/);
     await expect(run(`${sc(3, 6, 1.5)}create_bonds many all all 1 0.9 1.9\n`)).rejects.toThrow(/neighbor cutoff/);
-    await expect(run(`${sc(3, 6, 5.0)}create_bonds many all all 1 0.9 3.2\n`)).rejects.toThrow(/box length/);
-    await expect(run(`${sc(3, 6, 1.5)}create_bonds many all all 2 0.9 1.1\n`)).rejects.toThrow(/outside/);
+    await expect(run(`${sc(3, 6, 5.0)}create_bonds many all all 1 0.9 3.2\n`)).rejects.toThrow('Bond creation cutoff is larger than periodic domain');
+    await expect(run(`${sc(3, 6, 1.5)}create_bonds many all all 2 0.9 1.1\n`)).rejects.toThrow('Invalid bond type in create_bonds command');
     await expect(run(`${sc(3, 6, 1.5)}create_bonds many all nothere 1 0.9 1.1\n`)).rejects.toThrow(/nothere/);
   });
 
-  it('rejects special no for the single styles (the engine always rebuilds the special list)', async () => {
-    await expect(run(`${sc(3, 6, 1.5)}create_bonds single/bond 1 1 2 special no\n`)).rejects.toThrow(/special no/);
+  it('special no leaves the special list as it was: the new bond\'s pair keeps its LJ term (native special.build() is skipped)', async () => {
+    const pe = async (special: string) => {
+      const r = await run(`${sc(3, 6, 1.5)}create_bonds single/bond 1 1 5 special ${special}\nthermo_style custom step pe\nrun 0\n`);
+      return (r.events.filter((e: { kind: string }) => e.kind === 'thermo').pop() as unknown as { row: { pe: number } }).row.pe;
+    };
+    // special_bonds lj 0 1 1: with the list rebuilt the bonded pair (atoms 1 and 5, sqrt(2) apart) has no LJ term; without, it
+    // keeps it
+    expect(await pe('no')).not.toBeCloseTo(await pe('yes'), 6);
+    await expect(run(`${sc(3, 6, 1.5)}create_bonds many all all 1 0.9 1.1 special no\n`)).rejects.toThrow('No optional keywords allowed with create_bonds many');
   });
 });
 

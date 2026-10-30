@@ -3889,29 +3889,26 @@ const bondsStored = (sys: System): Map<number, number> => {
   return out;
 };
 
-const createBondsMany = (sys: System, a: string[]): void => {
+/**
+ * create_bonds many, after CreateBonds::command's checks. As native LAMMPS does (src/create_bonds.cpp many at b332f28):
+ * the pair style, the neighbor cutoff, the periodic box, the special 1-2 weights and kspace, in that order.
+ */
+const createBondsMany = (sys: System, bit1: number, bit2: number, t: number, rmin: number, rmax: number): void => {
   const s = sys.state;
-  if (a.length !== 6) throw new StyleError('usage: create_bonds many group1 group2 btype rmin rmax (create_bonds many takes no keywords)');
-  const bit1 = sys.groupBit(a[1]), bit2 = sys.groupBit(a[2]);
-  const t = int(a[3], 'bond type');
-  if (t < 1 || t > s.topo.nbondtypes) throw new StyleError(`bond type ${t} is outside 1..${s.topo.nbondtypes}`);
-  const rmin = num(a[4], 'rmin'), rmax = num(a[5], 'rmax');
-  if (!(rmin >= 0) || !(rmax >= rmin)) throw new StyleError('create_bonds many needs 0 <= rmin <= rmax');
   const ff = sys.ff;
-  if (!ff.pair) throw new StyleError('create_bonds many needs a pair_style (the neighbor list is used to find the pairs)');
-  if (ff.kspace) throw new StyleError('create_bonds many cannot be used with a kspace_style (see create_bonds.html restrictions)');
-  if (ff.special.lj[0] !== 0) throw new StyleError('create_bonds many requires special_bonds 1-2 (lj) weight 0.0');
-  // the system must be ready for a run (create_bonds.html: "similar to what a run command would require"):
-  // the force field is initialised and the neighbor cutoff (largest pair cutoff plus skin) is set
+  if (!ff.pair) throw new StyleError('Create_bonds requires a pair style be defined');
+  // the system must be ready for a run (native lmp->init()): the force field is initialised and the neighbor cutoff
+  // (largest pair cutoff plus skin) is set
   sys.setupNeighbors();
-  const cutneigh = sys.nb.cutneighmax;
-  if (rmax > cutneigh) throw new StyleError(`create_bonds many: rmax ${rmax} exceeds the neighbor cutoff ${cutneigh} (largest pair cutoff plus neighbor skin)`);
+  if (rmax > sys.nb.cutneighmax) throw new StyleError('Create_bonds max distance > neighbor cutoff');
   const g = sys.geom;
   const L = [g.hi[0] - g.lo[0], g.hi[1] - g.lo[1], g.hi[2] - g.lo[2]];
+  // "if ((domain->xperiodic && (rmax > domain->xprd)) || ... ((domain->dimension == 3) && domain->zperiodic && ...))"
+  for (let d = 0; d < (sys.dimension === 2 ? 2 : 3); d++) if (g.periodic[d] && rmax > L[d]) throw new StyleError('Bond creation cutoff is larger than periodic domain');
+  if (ff.special.lj[0] !== 0 || ff.special.coul[0] !== 0) throw new StyleError('Create_bonds command requires special_bonds 1-2 weights be 0.0');
+  if (ff.kspace) throw new StyleError('Create_bonds command is incompatible with Kspace styles');
   // the periodic image shifts are the box vectors a = (lx, 0, 0), b = (xy, ly, 0), c = (xz, yz, lz)
   const xy = g.triclinic ? g.xy : 0, xz = g.triclinic ? g.xz : 0, yz = g.triclinic ? g.yz : 0;
-  // measured with native LAMMPS (black box): in 2d the z extent is not checked (rmax 1.5 with a 1.17-thick box adds the bonds)
-  for (let d = 0; d < (sys.dimension === 2 ? 2 : 3); d++) if (g.periodic[d] && rmax > L[d]) throw new StyleError(`create_bonds many: rmax ${rmax} is larger than the periodic box length ${L[d]} in ${'xyz'[d]}`);
   // relation of two atoms by bond hops (1, 2 or 3); beyond three hops there is no special weight
   const adj = new Map<number, number[]>();
   for (let e = 0; e < s.topo.bonds.n; e++) {
@@ -3997,44 +3994,78 @@ const createBondsMany = (sys: System, a: string[]): void => {
     if (!sys.newtonBond) store(j);
   }
   for (const [i, j] of newBonds) pushTopo(s.topo.bonds, t, [i, j]);
-  sys.atomsChanged();
 };
 
 const createBonds: Handler = ({ sys }, a) => {
-  // As native LAMMPS does (src/create_bonds.cpp CreateBonds::command at b332f28): "if (narg < 4) utils::missing_cmd_args(FLERR, "create_bonds", error)"
+  // As native LAMMPS does (src/create_bonds.cpp CreateBonds::command at b332f28): the box, a molecular system, the count,
+  // the words of the style, the special keyword, the type range, then the style's own creation
+  if (!sys.hasBox) throw new StyleError(`Create_bonds command before simulation box is defined${errorUrl(33)}`);
+  if (!isMolecularStyle(sys.atomStyle) || isTemplateStyle(sys.atomStyle)) throw new StyleError('Cannot use create_bonds with non-molecular system');
   if (a.length < 4) throw missingArgs('create_bonds');
-  if (a[0] === 'many') { createBondsMany(sys, a); return; }
   const s = sys.state;
-  const width: Record<string, number> = { 'single/bond': 2, 'single/angle': 3, 'single/dihedral': 4, 'single/improper': 4 };
   const style = a[0];
-  if (!(style in width)) throw new StyleError('create_bonds supports many, single/bond, single/angle, single/dihedral and single/improper');
-  const kind = style.split('/')[1] as 'bond' | 'angle' | 'dihedral' | 'improper';
-  const t = int(a[1], `${kind} type`);
+  const groupBitOf = (w: string): number => {
+    if (sys.groups.find(w) < 0) throw new StyleError(`Could not find create_bonds group ID ${w}`);
+    return sys.groupBit(w);
+  };
+  const differ = (ids: number[]): boolean => ids.every((v, k) => ids.indexOf(v) === k);
+  let iarg: number;
+  let t: number;
+  let ids: number[] = [];
+  let many: { bit1: number; bit2: number; rmin: number; rmax: number } | null = null;
+  if (style === 'many') {
+    if (a.length !== 6) throw new StyleError('No optional keywords allowed with create_bonds many');
+    const bit1 = groupBitOf(a[1]), bit2 = groupBitOf(a[2]);
+    t = inumeric(a[3]);
+    const rmin = numeric(a[4]), rmax = numeric(a[5]);
+    if (rmin > rmax) throw new StyleError('Inconsistent cutoffs for create_bonds many');
+    many = { bit1, bit2, rmin, rmax };
+    iarg = 6;
+  } else if (style === 'single/bond') {
+    t = inumeric(a[1]);
+    ids = [bnumeric(a[2]), bnumeric(a[3])];
+    if (ids[0] === ids[1]) throw new StyleError('Bond atoms must be different');
+    iarg = 4;
+  } else if (style === 'single/angle') {
+    if (a.length < 5) throw missingArgs('create_bonds single/angle');
+    t = inumeric(a[1]);
+    ids = [bnumeric(a[2]), bnumeric(a[3]), bnumeric(a[4])];
+    if (!differ(ids)) throw new StyleError('Angle atoms must be different');
+    iarg = 5;
+  } else if (style === 'single/dihedral' || style === 'single/improper') {
+    if (a.length < 6) throw missingArgs(`create_bonds ${style}`);
+    t = inumeric(a[1]);
+    ids = [bnumeric(a[2]), bnumeric(a[3]), bnumeric(a[4]), bnumeric(a[5])];
+    if (!differ(ids)) throw new StyleError('Illegal create_bonds command');
+    iarg = 6;
+  } else throw new StyleError('Illegal create_bonds command');
+  let special = true;
+  while (iarg < a.length) {
+    if (a[iarg] !== 'special') throw new StyleError('Illegal create_bonds command');
+    if (iarg + 2 > a.length) throw new StyleError('Illegal create_bonds command');
+    special = logical(a[iarg + 1]);
+    iarg += 2;
+  }
+  const kind = (many ? 'bond' : style.split('/')[1]) as 'bond' | 'angle' | 'dihedral' | 'improper';
   const ntypes = { bond: s.topo.nbondtypes, angle: s.topo.nangletypes, dihedral: s.topo.ndihedraltypes, improper: s.topo.nimpropertypes }[kind];
-  if (t < 1 || t > ntypes) throw new StyleError(`${kind} type ${t} is outside 1..${ntypes}`);
-  const ids = a.slice(2, 2 + width[style]).map((w) => int(w, 'atom ID'));
-  if (ids.length < width[style]) throw new StyleError(`create_bonds ${style} needs ${width[style]} atom IDs`);
-  for (const id of ids) if (sys.indexOfId(id) < 0) throw new StyleError(`create_bonds: atom ${id} does not exist`);
-  // native create_bonds (src/create_bonds.cpp at b332f28): the only optional keyword is special, and any other word is
-  // "Illegal create_bonds command"
-  const kwRest = a.slice(2 + width[style]);
-  for (let i = 0; i < kwRest.length; i += 2) if (kwRest[i] !== 'special') throw new StyleError('Illegal create_bonds command');
-  const kw = keywords(kwRest, { special: 1 }, 'create_bonds');
-  // special no leaves the special list stale until a later special yes (create_bonds.html); the engine
-  // always rebuilds it after a topology change, so 'no' would silently differ: rejected instead
-  if (kw.has('special') && yesno(kw.get('special')![0], 'create_bonds special') === false) {
-    throw new StyleError('create_bonds special no is not supported (the browser engine always rebuilds the special list after a change)');
-  }
-  if (kind === 'bond') {
-    // As native LAMMPS does (src/create_bonds.cpp single_bond at b332f28): the bond goes to the first atom (and the second
-    // with newton_bond off), "New bond exceeded bonds per atom in create_bonds" when its storage is full
-    const stored = bondsStored(sys);
-    for (const id of sys.newtonBond ? [ids[0]] : [ids[0], ids[1]]) {
-      if ((stored.get(id) ?? 0) >= sys.extraBondPerAtom) throw new StyleError('New bond exceeded bonds per atom in create_bonds');
+  if (t <= 0 || t > ntypes) throw new StyleError(`Invalid ${kind} type in create_bonds command`);
+  if (many && !special) throw new StyleError('Cannot use special no with create_bonds many');
+  if (many) createBondsMany(sys, many.bit1, many.bit2, t, many.rmin, many.rmax);
+  else {
+    // single_bond and the others: "Create_bonds single/bond atoms do not exist"
+    if (ids.some((id) => sys.indexOfId(id) < 0)) throw new StyleError(`Create_bonds ${style} atoms do not exist`);
+    if (kind === 'bond') {
+      // As native LAMMPS does (src/create_bonds.cpp single_bond at b332f28): the bond goes to the first atom (and the
+      // second with newton_bond off), "New bond exceeded bonds per atom in create_bonds" when its storage is full
+      const stored = bondsStored(sys);
+      for (const id of sys.newtonBond ? [ids[0]] : [ids[0], ids[1]]) {
+        if ((stored.get(id) ?? 0) >= sys.extraBondPerAtom) throw new StyleError('New bond exceeded bonds per atom in create_bonds');
+      }
     }
+    pushTopo(s.topo[`${kind}s` as 'bonds'], t, ids);
   }
-  pushTopo(s.topo[`${kind}s` as 'bonds'], t, ids);
-  sys.atomsChanged();
+  // "if (specialflag) { Special special(lmp); special.build(); }": with special no the special lists stay as they were
+  sys.atomsChanged(!special);
 };
 
 /**

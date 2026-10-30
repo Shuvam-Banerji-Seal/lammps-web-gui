@@ -56,7 +56,8 @@ describe('DRUDE styles in a script', () => {
   });
 
   it('a Drude partner is found through the bond list', async () => {
-    const script = BOX + 'create_atoms 1 single 3 3 3\nset atom 3 type 2\ncreate_bonds single/bond 1 1 3\nfix F all drude C D\n';
+    // a second bond at atom 1 needs room for two (native: "New bond exceeded bonds per atom in create_bonds")
+    const script = BOX.replace('extra/bond/per/atom 1', 'extra/bond/per/atom 2') + 'create_atoms 1 single 3 3 3\nset atom 3 type 2\ncreate_bonds single/bond 1 1 3\nfix F all drude C D\n';
     expect(await run(script)).toBeNull();
   });
 

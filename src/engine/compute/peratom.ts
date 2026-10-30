@@ -2,7 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import { parseBodyStyle } from '../bodies';
 import type { System } from '../system';
-import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE, APIP_LAMBDA, APIP_LAMBDA_INPUT, APIP_E_FAST, APIP_E_PRECISE, isSuperEllipsoidStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { hasMolecule, massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE, APIP_LAMBDA, APIP_LAMBDA_INPUT, APIP_E_FAST, APIP_E_PRECISE, isSuperEllipsoidStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { lineEnds, triangleCorner } from '../lineTri';
 import { SUPER_INERTIA, superBlock } from '../superellipsoid';
 
@@ -503,6 +503,27 @@ export const peratomAttrProblem = (sys: System, a: string): string | null => {
 };
 
 /**
+ * Native num_bond of each atom (src/compute_property_atom.cpp pack_nbonds at b332f28): the bonds an atom stores, which is
+ * the first atom of a bond (read_data, create_bonds: the lower ID) with newton_bond on, and both atoms with it off.
+ */
+const bondCounts = (sys: System): Int32Array => {
+  const s = sys.state;
+  const local = new Map<number, number>();
+  for (let i = 0; i < s.n; i++) local.set(s.id[i], i);
+  const out = new Int32Array(s.n);
+  const b = s.topo.bonds, w = b.width;
+  for (let k = 0; k < b.n; k++) {
+    const i = local.get(b.atoms[w * k]);
+    if (i !== undefined) out[i]++;
+    if (!sys.newtonBond) {
+      const j = local.get(b.atoms[w * k + 1]);
+      if (j !== undefined) out[j]++;
+    }
+  }
+  return out;
+};
+
+/**
  * Writes the per-atom values of attribute `attr` for the atoms in the group (groupBit) into out at out[stride * i + col];
  * atoms outside the group are not written (callers zero them). The attribute must pass peratomAttrProblem.
  */
@@ -521,9 +542,11 @@ export const fillPeratomAttr = (sys: System, attr: string, groupBit: number, out
   const le = LINE_END.exec(attr), tc = TRI_CORNER.exec(attr);
   const lineBonus = le ? s.custom.get(LINE_BONUS)!.data : null;
   const triBonus = tc ? s.custom.get(TRI_BONUS)!.data : null;
+  const nbonds = attr === 'nbonds' ? bondCounts(sys) : null;
   for (let i = 0; i < s.n; i++) {
     if (!(s.mask[i] & groupBit)) continue;
     const set = (val: number) => { out[stride * i + col] = val; };
+    if (nbonds) { set(nbonds[i]); continue; }
     if (custom) { set(custom(i)); continue; }
     if (heat) { set(heat[i]); continue; }
     if (electron) { set(electron[i]); continue; }
@@ -647,6 +670,12 @@ export class ComputePropertyAtom extends Compute {
       }
       // compute_property_atom.html also lists "i_name, d_name, i2_name[I], d2_name[I]" (fix
       // property/atom) and the finite-size sphere attributes radius, diameter, omega*, tq*
+      // As native LAMMPS does (src/compute_property_atom.cpp at b332f28): nbonds needs atom->molecule_flag
+      if (a === 'nbonds') {
+        if (!hasMolecule(sys.state)) throw new StyleError('Compute property/atom nbonds is not available');
+        attrs.push(a);
+        continue;
+      }
       if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !SUPER_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a) && !APIP_ATTRS.has(a) && !LINE_END.test(a) && !TRI_CORNER.test(a)) {
         // a keyword of native's compute the engine does not have is refused by name; any other word is neither a keyword
         // of the compute nor a property of the atom style (src/compute_property_atom.cpp at b332f28)

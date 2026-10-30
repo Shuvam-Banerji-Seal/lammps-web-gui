@@ -155,13 +155,36 @@ describe('atom_style body and the refused styles', () => {
     await expect(newSession().execute('atom_style hybrid charge body nparticle 2 6\n')).rejects.toThrow(/body/);
   });
 
-  it('create_atoms makes a point particle (native AtomVecBody::create_atom_post); write_data is refused', async () => {
+  it('create_atoms makes a point particle (native AtomVecBody::create_atom_post)', async () => {
     // As native LAMMPS does (src/atom_vec_body.cpp create_atom_post at b332f28): "radius[ilocal] = 0.5; rmass[ilocal] =
     // 1.0; body[ilocal] = -1;" (oracle case w616ra_body_plain runs such atoms against native)
     const s = await run('units lj\natom_style body nparticle 1 4\nregion b block 0 5 0 5 0 5\ncreate_box 1 b\ncreate_atoms 1 single 1 1 1 units box\n', {});
     expect(s.sys.state.n).toBe(1);
     expect(s.sys.state.rmass?.[0]).toBe(1);
-    await expect(run(`${HEAD}write_data out.data\n`)).rejects.toThrow(/write_data is not supported for atom_style body/);
+  });
+
+  it('write_data writes the Bodies section that read_data reads back to the same energy (oracle cases w616wd_* compare the file with native)', async () => {
+    const files = new Map<string, string>();
+    const prints: string[] = [];
+    const session = (keep: boolean) => new Session({
+      emit: (e: { kind: string; text?: string }) => { if (e.kind === 'log' && e.text?.startsWith('PE ')) prints.push(e.text); },
+      writeFile: (n: string, t: string) => { if (keep) files.set(n, t); },
+    } as never);
+    const pair = 'pair_style body/nparticle 4.0\npair_coeff * * 1 1\n';
+    const writer = session(true);
+    writer.addFile('one.data', ONE);
+    await writer.execute(`${HEAD}${pair}run 0\nprint "PE $(pe:%.15g)"\nwrite_data out.data\n`);
+    const text = files.get('out.data')!;
+    expect(text).toMatch(/^1 bodies$/m);
+    expect(text).toMatch(/\nBodies\n/);
+    expect(text).not.toMatch(/\nMasses\n/);
+    const reader = session(false);
+    reader.addFile('out.data', text);
+    await reader.execute(`units lj\ndimension 3\natom_style body nparticle 1 4\nread_data out.data\n${pair}run 0\nprint "PE $(pe:%.15g)"\n`);
+    expect(reader.sys.state.n).toBe(writer.sys.state.n);
+    expect(prints).toHaveLength(2);
+    // the space-frame inertia written is diagonalised again when read, so the last digit may differ
+    expect(Number(prints[1].slice(3))).toBeCloseTo(Number(prints[0].slice(3)), 12);
   });
 
   it('refuses unsupported body computes and fixes by their name (unknown style)', async () => {

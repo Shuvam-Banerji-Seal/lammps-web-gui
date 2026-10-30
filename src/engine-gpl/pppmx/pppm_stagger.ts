@@ -153,7 +153,6 @@ export class KSpacePPPMStagger extends KSpaceBase {
       case 'mesh': {
         const m = [0, 1, 2].map((d) => parseNum(values[d], 'mesh'));
         if (m.every((v) => v === 0)) { this.meshUser = null; return 3; }
-        if (m.some((v) => !isFFTSize(v))) throw new StyleError('kspace_modify mesh: each dimension must factor into 2, 3 and 5');
         this.meshUser = m as [number, number, number];
         return 3;
       }

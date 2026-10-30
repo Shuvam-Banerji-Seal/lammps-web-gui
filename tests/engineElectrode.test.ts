@@ -235,11 +235,12 @@ describe('kspace_style pppm/electrode', () => {
     expect(wire.message).toMatch(/wire/);
   });
 
-  it('refuses diff ad (the port uses ik) and meshes that do not factor into 2, 3 and 5', async () => {
+  it('refuses diff ad (the port uses ik); a mesh that does not factor into 2, 3 and 5 is boosted as in native PPPM', async () => {
     const ad = await run(PPPM.replace('slab 8.0', 'slab 8.0 diff ad') + CONP);
     expect(ad.message).toMatch(/diff ad/);
+    // src/KSPACE/pppm.cpp set_grid_global (inherited by pppm/electrode): "boost grid size until it is factorable"
     const mesh = await run(PPPM.replace('slab 8.0', 'slab 8.0 mesh 5 5 7') + CONP);
-    expect(mesh.message).toMatch(/2, 3 and 5/);
+    expect(mesh.message).toBeNull();
   });
 
   it('runs the conp fix with an explicit mesh, g_ewald and order', async () => {

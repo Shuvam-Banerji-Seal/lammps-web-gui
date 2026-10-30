@@ -155,7 +155,8 @@ run             0
   const cases: [string, string, string, RegExp][] = [
     ['p p f', 'coul/long 4.0', 'kspace_style pppm 1e-4', /Cannot use non-periodic boundaries with PPPM/],
     ['p p f', 'coul/long 4.0', 'kspace_style ewald 1e-4\nkspace_modify slab 0.5', /Bad kspace_modify slab parameter/],
-    ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify mesh 7 8 8', /factor into 2, 3 and 5/],
+    // a mesh that does not factor into 2, 3 and 5 is boosted (src/KSPACE/pppm.cpp set_grid_global), not refused
+    ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify mesh 0 8 8', /Kspace_modify mesh parameters must be all zero or all positive/],
     ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify order 8', /PPPM order cannot be < 2 or > 7/],
     ['p p p', 'coul/long 4.0', 'kspace_style ewald 1e-4\nkspace_modify amat onestep', /'amat' available for pppm\/conp, only/],
     ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify kmax/ewald 4 -1 4', /Bad kspace_modify kmax\/ewald parameter/],

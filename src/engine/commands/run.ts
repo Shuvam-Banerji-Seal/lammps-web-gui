@@ -20,7 +20,8 @@ import type { EngineEvent } from '../types';
 import { hasCharge, massOf } from '../atoms';
 import { defaultMinSettings, minimize, MIN_STYLES } from '../run/min';
 import { MINIMIZERS } from '../run/minimizers';
-import { accelerator, runAccelerated } from '../run/accel';
+import { accelerator, runAccelerated, type Accel } from '../run/accel';
+import { sharedThreadsAvailable } from '../cpu/pairThreads';
 import { restartDue, startRestarts, writeRestarts } from './restart';
 import { clearHaltRequest, haltRequested, softHalted } from '../run/halt';
 
@@ -347,6 +348,36 @@ export const emitThermoRow = (sys: System): number => {
   return sys.state.step;
 };
 
+/**
+ * Where a run's forces were computed, for the resource monitor (EngineEvent 'perf'): the accelerated lj/cut path (the
+ * GPU, or the lj/cut CPU threads of cpu/parallel.ts), the general engine's pair threads when its last interval used them,
+ * else one thread and why.
+ */
+const computePath = (sys: System, accel: Accel | null, threaded: boolean):
+  { path: 'gpu' | 'threads' | 'serial'; threads: number; resident: boolean; why: string | null } => {
+  if (accel) {
+    if (accel.backend.kind === 'webgpu') return { path: 'gpu', threads: 1, resident: accel.resident, why: null };
+    const t = (accel.backend as { threads?: number }).threads ?? 1;
+    if (t > 1) return { path: 'threads', threads: t, resident: false, why: null };
+  }
+  const pt = sys.ff.pairThreads;
+  if (pt && threaded) return { path: 'threads', threads: pt.threads, resident: false, why: null };
+  const serial = (why: string | null) => ({ path: 'serial' as const, threads: 1, resident: false, why });
+  const name = sys.ff.pair?.name ?? 'none';
+  if (!pt) {
+    if (!sharedThreadsAvailable()) return serial('the page is not cross-origin isolated (no shared memory), so only plain lj/cut runs on threads');
+    return serial('Threads is set to 1');
+  }
+  switch (pt.skip) {
+    case 'small': return serial(`${sys.state.n} atoms; the pair threads start at ${pt.minAtoms} atoms, below that they cost more than they save`);
+    case 'style': return serial(`pair style ${name} has no threaded kernel; it runs on the engine thread`);
+    case 'peratom': return serial('per-atom energy or virial is computed on these steps');
+    case 'list': return serial(`pair style ${name} needs a neighbor list the threads do not take`);
+    case 'starting': return serial('the threads were still starting');
+    default: return serial(sys.ff.pair ? null : 'no pair style');
+  }
+};
+
 /** How often (wall-clock ms) a run reports its speed (EngineEvent 'perf'). */
 const PERF_EVERY_MS = 500;
 
@@ -548,6 +579,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   startRestarts(sys);
   // run speed for the resource monitor: steps per second over the last ~0.5 s of wall time
   const perf = { t: performance.now(), step: first, calls: sys.ff.pairThreads?.calls ?? 0 };
+  let accel: Accel | null = null;
   const emitPerf = (step: number, force = false) => {
     const now = performance.now();
     if (!force && now - perf.t < PERF_EVERY_MS) return;
@@ -556,7 +588,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     const calls = sys.ff.pairThreads?.calls ?? 0;
     sys.io.emit({
       kind: 'perf', step, atoms: s.n, stepsPerSec: (step - perf.step) / dtWall,
-      elapsed: (now - sys.run.t0) / 1000, threaded: calls > perf.calls,
+      elapsed: (now - sys.run.t0) / 1000, ...computePath(sys, accel, calls > perf.calls),
     });
     perf.t = now; perf.step = step; perf.calls = calls;
   };
@@ -570,9 +602,11 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     if (dumped || (frameEvery > 0 && step % frameEvery === 0)) emitFrame(sys);
   };
   // run_style respa runs on the CPU engine (the GPU paths step plain velocity Verlet only)
-  const { accel, reason } = sys.respa ? { accel: null, reason: null }
+  const chosen = sys.respa ? { accel: null, reason: null }
     : reuse ? { accel: null, reason: 'run pre no continues from the CPU forces of the previous run' }
       : accelerator(sys, session.forceBackend);
+  accel = chosen.accel;
+  const reason = chosen.reason;
   if (reason) sys.log(`${session.backendLabel}: this run uses the general fp64 CPU engine (${reason})`);
   const threadCalls0 = sys.ff.pairThreads?.calls ?? 0;
   const taken = accel
@@ -603,10 +637,13 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   sys.run.inRun = false;
   emitFrame(sys);
   const seconds = (performance.now() - sys.run.t0) / 1000;
-  // the general engine names the shared-memory threads only when its pair term ran on them
+  // the general engine names the shared-memory threads only when its pair term ran on them, and says why it did not
+  // when it had them
   const threaded = (sys.ff.pairThreads?.calls ?? 0) > threadCalls0;
   const label = accel || threaded ? session.backendLabel : 'CPU · fp64';
-  sys.log(`Loop time of ${seconds.toFixed(3)} s for ${taken} steps with ${s.n} atoms (${label})`);
+  const single = !accel && !threaded && taken > 0 && (sys.ff.pairThreads || session.forceBackend.kind === 'webgpu')
+    ? computePath(sys, null, false).why : null;
+  sys.log(`Loop time of ${seconds.toFixed(3)} s for ${taken} steps with ${s.n} atoms (${label}${single ? `; one thread: ${single}` : ''})`);
   sys.io.emit({ kind: 'done', steps: taken, seconds, backend: label });
   if (session.isCancelled) throw new RunCancelled();
   return taken;

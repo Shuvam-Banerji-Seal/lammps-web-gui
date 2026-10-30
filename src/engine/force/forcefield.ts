@@ -1,3 +1,4 @@
+import type { ThreadSkip } from '../cpu/pairThreads';
 import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, SpecialSettings } from '../neighbor';
@@ -87,7 +88,11 @@ export class ForceField {
    */
   pairNotRestarted: string | null = null;
   /** Shared-memory threads for the pair term (cpu/pairThreads.ts), set by the session when available. */
-  pairThreads: { run(pair: Pair, pc: PairCompute): boolean; readonly calls: number } | null = null;
+  pairThreads: {
+    run(pair: Pair, pc: PairCompute): boolean; readonly calls: number;
+    /** for the resource monitor: the thread count, the size threshold, and why the last call stayed on one thread */
+    readonly threads: number; readonly minAtoms: number; readonly skip: ThreadSkip;
+  } | null = null;
   bond: Bonded | null = null;
   angle: Bonded | null = null;
   dihedral: Bonded | null = null;

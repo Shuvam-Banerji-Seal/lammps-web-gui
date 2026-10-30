@@ -285,8 +285,6 @@ const REFUSED: [Row, string, string][] = [
   // pairs between type 2 atoms and the images of type 1 atoms: native keeps some of them by its bin order
   [{ pre: 'atom_modify first g1', post: 'comm_modify group g1' }, 'comm_modify group: ', 'OK'],
   [{ post: 'kspace_modify mesh 7 7 7' }, 'kspace_modify mesh: each dimension must factor into 2, 3 and 5', 'OK'],
-  [{ ks: 'kspace_style pppm 1e-3\nkspace_modify slab nozforce', bnd: 'boundary p p f' }, 'kspace_modify slab nozforce is not supported by the browser engine', 'ERROR: Out of range atoms - cannot compute PPPM'],
-  [{ ks: 'kspace_style pppm 1e-3\nkspace_modify slab ew2d', bnd: 'boundary p p f' }, 'kspace_modify slab ew2d is not supported by the browser engine', 'ERROR: Out of range atoms - cannot compute PPPM'],
 ];
 
 describe('modify commands as native LAMMPS', () => {

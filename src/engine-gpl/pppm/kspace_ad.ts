@@ -258,7 +258,7 @@ export class KSpacePPPMAd extends KSpacePPPM {
       const sz = this.selfForce(sfc, 4, z * hz, q);
       kc.f[3 * i] += qfactor * (Ex * q - sx);
       kc.f[3 * i + 1] += qfactor * (Ey * q - sy);
-      kc.f[3 * i + 2] += qfactor * (Ez * q - sz);
+      if (this.zForce) kc.f[3 * i + 2] += qfactor * (Ez * q - sz);
     }
     const pref = C / (2 * V);
     if (kc.eatom || kc.vatom) this.peratomMesh(kc, qg, first, wts, kc.eatom ? pot : null, vb, pref);

@@ -155,9 +155,12 @@ describe('atom_style body and the refused styles', () => {
     await expect(newSession().execute('atom_style hybrid charge body nparticle 2 6\n')).rejects.toThrow(/body/);
   });
 
-  it('refuses create_atoms and write_data for body particles', async () => {
-    await expect(run('units lj\natom_style body nparticle 1 4\nregion b block 0 5 0 5 0 5\ncreate_box 1 b\ncreate_atoms 1 single 1 1 1 units box\n', {}))
-      .rejects.toThrow(/create_atoms is not supported for atom_style body/);
+  it('create_atoms makes a point particle (native AtomVecBody::create_atom_post); write_data is refused', async () => {
+    // As native LAMMPS does (src/atom_vec_body.cpp create_atom_post at b332f28): "radius[ilocal] = 0.5; rmass[ilocal] =
+    // 1.0; body[ilocal] = -1;" (oracle case w616ra_body_plain runs such atoms against native)
+    const s = await run('units lj\natom_style body nparticle 1 4\nregion b block 0 5 0 5 0 5\ncreate_box 1 b\ncreate_atoms 1 single 1 1 1 units box\n', {});
+    expect(s.sys.state.n).toBe(1);
+    expect(s.sys.state.rmass?.[0]).toBe(1);
     await expect(run(`${HEAD}write_data out.data\n`)).rejects.toThrow(/write_data is not supported for atom_style body/);
   });
 

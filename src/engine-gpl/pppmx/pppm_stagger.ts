@@ -488,7 +488,8 @@ export class KSpacePPPMStagger extends KSpaceBase {
           }
         }
         const pre = (C * q) / V / NSTAGGER;
-        kc.f[3 * i] += pre * Ex; kc.f[3 * i + 1] += pre * Ey; kc.f[3 * i + 2] += pre * Ez;
+        kc.f[3 * i] += pre * Ex; kc.f[3 * i + 1] += pre * Ey;
+        if (this.zForce) kc.f[3 * i + 2] += pre * Ez;
       }
     }
     // energy and virial: 0.5 V / nstagger times the sum over the meshes, then the self and background terms

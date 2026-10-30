@@ -179,8 +179,15 @@ export abstract class KSpaceBase extends KSpace {
   protected cutCoul = 0;
   /** kspace_modify minorder (PPPM: the smallest order the grid stencil may be reduced to; 2 by default). */
   minorder = 2;
-  /** kspace_modify slab nozforce or ew2d (native slabflag 2 or 3): refused at init, after native's boundary check. */
+  /**
+   * kspace_modify slab nozforce or ew2d (native slabflag 2 or 3). As native LAMMPS does (src/KSPACE/ewald.cpp, pppm.cpp
+   * and the other solvers at b332f28): nozforce leaves out the kspace force on z ("if (slabflag != 2) f[i][2] += ..."),
+   * ew2d is the electrode styles' flag and the plain solvers run it without a slab correction.
+   */
   slabOther: '' | 'nozforce' | 'ew2d' = '';
+
+  /** The kspace force on z is applied (not kspace_modify slab nozforce). */
+  protected get zForce(): boolean { return this.slabOther !== 'nozforce'; }
   /**
    * Native warn_nonneutral (src/kspace.cpp at b332f28): kspace_modify wire sets it to 0, which makes a system that is
    * not charge neutral an error instead of a warning.
@@ -276,9 +283,11 @@ export abstract class KSpaceBase extends KSpace {
     if (slabOn && (!p[0] || !p[1] || bz[0] !== 'f' || bz[1] !== 'f')) {
       throw new StyleError(label ? `Incorrect boundaries with slab ${label}` : 'kspace_modify slab needs boundary p p f');
     }
-    // native nozforce drops the kspace z force of every atom (slabflag 2); ew2d (slabflag 3) is native's flag for the
-    // EW2D correction of the electrode styles, which plain ewald and pppm run without any slab correction
-    if (this.slabOther) throw new StyleError(`kspace_modify slab ${this.slabOther} is not supported by the browser engine`);
+    // As native LAMMPS does (src/KSPACE/ewald.cpp and pppm.cpp init at b332f28): "Triclinic boxes only support the
+    // 'kspace_modify slab <volfactor>' correction, not 'slab nozforce' or 'slab ew2d'"
+    if (this.slabOther && s.box.triclinic) {
+      throw new StyleError("Triclinic boxes only support the 'kspace_modify slab <volfactor>' correction, not 'slab nozforce' or 'slab ew2d'");
+    }
     if (this.slabAuto) {
       this.slab = this.autoSlabVolfactor(s, geom);
       ctx.log(`  auto slab volfactor = ${this.slab}\n  auto slab extended z = ${geom.lz * this.slab}`);
@@ -609,10 +618,12 @@ export class KSpaceEwald extends KSpaceBase {
       w[0] += vfac * (1 - b * kxv * kxv); w[1] += vfac * (1 - b * kyv * kyv); w[2] += vfac * (1 - b * kzv * kzv);
       w[3] += vfac * (-b * kxv * kyv); w[4] += vfac * (-b * kxv * kzv); w[5] += vfac * (-b * kyv * kzv);
       const pre = C * (8 * Math.PI / V) * A;
+      const zf = this.zForce;
       for (let i = 0; i < n; i++) {
         if (q[i] === 0) continue;
         const t = pre * q[i] * (sre * sink[i] - sim * cosk[i]);
-        kc.f[3 * i] += t * kxv; kc.f[3 * i + 1] += t * kyv; kc.f[3 * i + 2] += t * kzv;
+        kc.f[3 * i] += t * kxv; kc.f[3 * i + 1] += t * kyv;
+        if (zf) kc.f[3 * i + 2] += t * kzv;
       }
       if (eatom || vatom) {
         // the energy of this vector pair is (2 pi C / V) 2 A |S|^2; atom i's share is q_i (cos_i S_re + sin_i S_im)

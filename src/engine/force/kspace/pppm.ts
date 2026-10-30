@@ -650,7 +650,8 @@ export class KSpacePPPM extends KSpaceBase {
         }
       }
       const pre = (C * q) / V;
-      kc.f[3 * i] += pre * Ex; kc.f[3 * i + 1] += pre * Ey; kc.f[3 * i + 2] += pre * Ez;
+      kc.f[3 * i] += pre * Ex; kc.f[3 * i + 1] += pre * Ey;
+      if (this.zForce) kc.f[3 * i + 2] += pre * Ez;
     }
     const pref = C / (2 * V);
     if (peratom) this.peratomMesh(kc, qg, first, wts, ub, vb, pref);

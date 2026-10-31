@@ -17,7 +17,7 @@ import { RunCancelled } from '../errors';
 import { FIX_COMMAND_STYLE } from '../group';
 import type { System } from '../system';
 import type { EngineEvent } from '../types';
-import { hasCharge, massOf } from '../atoms';
+import { hasCharge, isMolecularStyle, massOf } from '../atoms';
 import { defaultMinSettings, minimize, MIN_STYLES } from '../run/min';
 import { MINIMIZERS } from '../run/minimizers';
 import { accelerator, runAccelerated, type Accel } from '../run/accel';
@@ -573,6 +573,8 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     emitThermo();
     const dumped = writeDumps(sys, true);
     if (dumped || frameEvery > 0) emitFrame(sys);
+    // the timing breakdown covers the loop, not the setup (native Run::command: integrate->setup(), then timer->init())
+    sys.timer.start();
   };
   startRestarts(sys);
   // run speed for the resource monitor: steps per second over the last ~0.5 s of wall time
@@ -626,6 +628,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
         // keep the page responsive: yield about every 30 ms
         yieldMs: 30,
       });
+  sys.timer.stop();
   // a cancelled run still reports its last step; a run stopped by fix halt does not print a row for a step
   // that is not on the thermo interval (measured with native LAMMPS, black box)
   if (lastThermo !== s.step && !haltRequested(sys)) emitThermo();
@@ -642,6 +645,8 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   const single = !accel && !threaded && taken > 0 && (sys.ff.pairThreads || session.forceBackend.kind === 'webgpu')
     ? computePath(sys, null, false).why : null;
   sys.log(`Loop time of ${seconds.toFixed(3)} s for ${taken} steps with ${s.n} atoms (${label}${single ? `; one thread: ${single}` : ''})`);
+  // src/finish.cpp at b332f28: the "MPI task timing breakdown" follows the loop time when there were steps
+  if (taken > 0) for (const line of sys.timer.breakdown(isMolecularStyle(s.atomStyle), !!sys.ff.kspace)) sys.log(line);
   sys.io.emit({ kind: 'done', steps: taken, seconds, backend: label });
   if (session.isCancelled) throw new RunCancelled();
   return taken;

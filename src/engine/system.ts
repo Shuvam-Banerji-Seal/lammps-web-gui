@@ -137,6 +137,8 @@ export class System {
   geom!: Geometry;
   readonly nb: Neighbor;
   readonly ff = new ForceField();
+  /** The run's timing breakdown (timer.ts; the timer command sets its level). */
+  readonly timer = this.ff.timer;
   readonly groups = new Groups();
   /** type labels (labelmap.ts): the labelmap command and the Type Labels sections of read_data */
   labels = new LabelMap();

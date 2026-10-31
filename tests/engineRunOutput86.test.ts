@@ -161,7 +161,9 @@ describe('log file thermo tables (thermo_style, thermo_modify format and line)',
     const lines = (out.files.get('run.log') ?? '').split('\n').filter((l) => l.trim() !== '');
     const header = lines.findIndex((l) => /^\s*Step\s+PotEng\s*$/.test(l));
     expect(header).toBeGreaterThanOrEqual(0);
-    const rows = lines.slice(header + 1).filter((l) => /^\s*[-0-9]/.test(l));
+    // the rows end at the loop time (the timing breakdown follows it, with a '----' rule of its own)
+    const end = lines.findIndex((l, i) => i > header && l.startsWith('Loop time'));
+    const rows = lines.slice(header + 1, end).filter((l) => /^\s*[-0-9]/.test(l));
     expect(rows.length).toBe(3);
     expect(rows[0].trim().split(/\s+/)[0]).toBe('0');
     expect(rows[2].trim().split(/\s+/)[0]).toBe('4');

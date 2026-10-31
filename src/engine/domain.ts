@@ -98,6 +98,11 @@ export class Geometry {
     return dimension === 3 ? this.lx * this.ly * this.lz : this.lx * this.ly;
   }
 
+  /** The upper-triangular inverse box matrix toLamda applies: i00, i01, i02, i11, i12, i22. */
+  get hInv(): [number, number, number, number, number, number] {
+    return [this.i00, this.i01, this.i02, this.i11, this.i12, this.i22];
+  }
+
   /** Fractional coordinates of x (out[0..2]). */
   toLamda(x: number, y: number, z: number, out: number[]): void {
     const dx = x - this.lo[0], dy = y - this.lo[1], dz = z - this.lo[2];

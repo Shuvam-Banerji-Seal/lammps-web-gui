@@ -7,6 +7,7 @@ export type PairFactories = Readonly<Record<string, () => Pair>>;
 /** Loads a style's factory on demand (cpu/threadedPairLoaders.ts: the pair worker loads only the styles it is sent). */
 export type PairLoader = (name: string) => Promise<(() => Pair) | null>;
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins } from './neighborKernel';
+import { pppmField, pppmWeights, weightScratch, type PppmGrid } from '../force/kspace/pppmKernel';
 
 /*
  * The worker side of the shared-memory pair threads (pairThreads.ts) and the helpers both sides
@@ -50,7 +51,17 @@ export type PairThreadMessage =
     rule: number; delta: number;
     /** a list with special bonds: the weights and the rest of neighborKernel.ts SpecialBins (the arrays are shared) */
     special: { lj: number[]; coul: number[]; keep: boolean; hx: number; hy: number; hz: number; sbbits: number } | null;
-  };
+  }
+  /** PPPM's shared arrays (force/kspace/pppmKernel.ts): positions, mesh charges, weights, field meshes, field forces */
+  | { type: 'pbuffers'; x: SharedArrayBuffer; q: SharedArrayBuffer; first: SharedArrayBuffer; wts: SharedArrayBuffer; ex: SharedArrayBuffer; ey: SharedArrayBuffer; ez: SharedArrayBuffer; out: SharedArrayBuffer }
+  /** one of PPPM's per-atom loops over chunks of atoms: 1 the weights (pppmWeights), 2 the field forces (pppmField) */
+  | { type: 'pppm'; phase: 1 | 2; g: PppmGrid; n: number; nchunks: number; C: number; V: number; zForce: boolean };
+
+/** Atoms [lo, hi) of chunk c when n atoms are cut into nchunks chunks (PPPM's loops). */
+export const atomChunk = (n: number, nchunks: number, c: number): [number, number] => {
+  const len = Math.ceil(n / nchunks);
+  return [Math.min(n, c * len), Math.min(n, (c + 1) * len)];
+};
 
 /**
  * A chunk of a threaded neighbor search (pairThreads.ts halfList) is recorded in chunkOut as three words: the thread
@@ -234,6 +245,12 @@ export class PairThreadWorker {
       return;
     }
     if (m.type === 'neigh') { this.neighbors_(m); return; }
+    if (m.type === 'pbuffers') {
+      this.pX = new Float64Array(m.x); this.pQ = new Float64Array(m.q); this.pFirst = new Int32Array(m.first); this.pWts = new Float64Array(m.wts);
+      this.pEx = new Float64Array(m.ex); this.pEy = new Float64Array(m.ey); this.pEz = new Float64Array(m.ez); this.pOut = new Float64Array(m.out);
+      return;
+    }
+    if (m.type === 'pppm') { this.pppm_(m); return; }
     if (m.type === 'buffers') {
       this.x = new Float64Array(m.x); this.t = new Int32Array(m.t); this.q = new Float64Array(m.q);
       this.numneigh = new Int32Array(m.numneigh); this.firstneigh = new Int32Array(m.firstneigh); this.neighbors = new Int32Array(m.neighbors);
@@ -298,6 +315,35 @@ export class PairThreadWorker {
     }
     Atomics.add(ctl, DONE2, 1);
     Atomics.notify(ctl, DONE2);
+  }
+
+  private pX: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pQ: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pFirst: Int32Array<ArrayBufferLike> = new Int32Array(0);
+  private pWts: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pEx: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pEy: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pEz: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pOut: Float64Array<ArrayBufferLike> = new Float64Array(0);
+
+  /** One of PPPM's per-atom loops: chunks of atoms claimed from NEXT, as the engine thread claims them too. */
+  private pppm_(m: Extract<PairThreadMessage, { type: 'pppm' }>): void {
+    const ctl = this.ctl!;
+    try {
+      const sc = weightScratch(m.g.order);
+      const xs = new Int32Array(3 * m.g.order);
+      for (;;) {
+        const c = Atomics.add(ctl, NEXT, 1);
+        if (c >= m.nchunks) break;
+        const [i0, i1] = atomChunk(m.n, m.nchunks, c);
+        if (m.phase === 1) pppmWeights(m.g, this.pX, i0, i1, this.pFirst as Int32Array, this.pWts as Float64Array, sc);
+        else pppmField(m.g, i0, i1, this.pQ, this.pFirst as Int32Array, this.pWts as Float64Array, this.pEx as Float64Array, this.pEy as Float64Array, this.pEz as Float64Array, m.C, m.V, m.zForce, this.pOut as Float64Array, xs);
+      }
+    } catch {
+      Atomics.add(ctl, FAILED, 1);
+    }
+    Atomics.add(ctl, DONE, 1);
+    Atomics.notify(ctl, DONE);
   }
 
   /** A threaded neighbor search: chunks of bins claimed from NEXT, their entries appended to this worker's arrays. */

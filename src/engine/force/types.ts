@@ -1,3 +1,4 @@
+import type { PppmThreads } from './kspace/pppmKernel';
 import { bounds } from './util';
 import type { AtomStyle, SimState } from '../types';
 import type { Geometry } from '../domain';
@@ -928,6 +929,8 @@ export interface KSpaceCompute {
   acc: Accum;
   eatom: Float64Array | null;
   vatom: Float64Array | null;
+  /** The pair threads, for PPPM's per-atom loops (force/kspace/pppmKernel.ts); absent or null: the engine thread. */
+  threads?: PppmThreads | null;
 }
 
 export abstract class KSpace {

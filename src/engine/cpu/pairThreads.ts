@@ -28,8 +28,14 @@ import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, t
  * reads (shared with the workers), and the threads run the second loop as a plain pair style.
  */
 
-/** Below this many owned atoms the threads cost more than they save. */
-export const MIN_THREADED_ATOMS = 2000;
+/**
+ * Below this many owned atoms the threads cost more than they save. Measured in Chromium 1243 (24 logical cores,
+ * cross-origin isolated, LJ melt, atom-steps/s at 1/2/4/8 threads, threshold off): 108 atoms 525k/595k/620k,
+ * 256 atoms 568k/793k/533k, 500 atoms 604k/926k/1.12M/1.11M, 1372 atoms 621k/1.03M/1.45M/1.74M, 2048 atoms
+ * 637k/1.04M/1.55M/1.65M. From 500 atoms every thread count beats one thread (the neighbor search and the force sum
+ * run on the threads too since #575/#576, which moved the break-even point down from about 2000 atoms).
+ */
+export const MIN_THREADED_ATOMS = 500;
 
 /**
  * Why the last pair evaluation ran on the engine thread, for the resource monitor: the system is below minAtoms, the

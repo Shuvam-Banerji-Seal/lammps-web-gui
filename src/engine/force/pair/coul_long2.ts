@@ -128,6 +128,8 @@ export class PairBornCoulLong extends PairBorn {
   private readonly erfcTables = new ErfcTableCache();
   /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
   private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
+  /** The table values of one pair (ErfcTable.all): erfc/r, the force kernel and 1/r. */
+  private readonly tabVals = new Float64Array(3);
   /** Coulomb prefactor of the current run (pc.qqrd2e); single() uses the last-seen value. */
   qqrd2e = 1;
 
@@ -154,6 +156,10 @@ export class PairBornCoulLong extends PairBorn {
     const cutcsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
     const tab = this.erfcTable(g);
+    const tabInner = tab ? tab.inner : Infinity;
+    const tv = this.tabVals;
+    const poly = this.table === 0;
+    const qqrd2e = pc.qqrd2e;
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;
@@ -187,10 +193,36 @@ export class PairBornCoulLong extends PairBorn {
           e += ev;
         }
         if (rsq < cutcsq && qi !== 0 && q[j] !== 0) {
-          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0, tab);
-          fpair += r.f;
-          ecoul += r.e;
-          e += r.e;
+          // coulLongPair written inline (the same arithmetic in the same order, so the same bits), without a result
+          // object per pair and with one table lookup (ErfcTable.all)
+          const fc = sC[sb];
+          let forcecoul: number, ce: number;
+          if (tab && rsq > tabInner) {
+            const qq = qqrd2e * qi * q[j];
+            const tabbed = tab.all(rsq, tv);
+            forcecoul = qq * (tabbed ? tv[1] : tab.force(rsq));
+            ce = qq * (tabbed ? tv[0] : tab.energy(rsq));
+            if (fc < 1) {
+              const bare = qq * (tabbed ? tv[2] : tab.coul(rsq));
+              forcecoul -= (1 - fc) * bare;
+              ce -= (1 - fc) * bare;
+            }
+          } else {
+            const r = Math.sqrt(rsq);
+            const grij = g * r;
+            const ex = libm.exp(-grij * grij);
+            const erfc = poly || tab ? erfcPoly(grij, ex) : erfcFast(grij, ex);
+            const pre = qqrd2e * qi * q[j] / r;
+            forcecoul = pre * (erfc + EWALD_F * grij * ex);
+            ce = pre * erfc;
+            if (fc < 1) {
+              forcecoul -= (1 - fc) * pre;
+              ce -= (1 - fc) * pre;
+            }
+          }
+          fpair += forcecoul / rsq;
+          ecoul += ce;
+          e += ce;
         }
         if (fpair === 0 && e === 0) continue;
         fxi += dx * fpair; fyi += dy * fpair; fzi += dz * fpair;
@@ -258,6 +290,8 @@ export class PairBuckCoulLong extends PairBuck {
   private readonly erfcTables = new ErfcTableCache();
   /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
   private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
+  /** The table values of one pair (ErfcTable.all): erfc/r, the force kernel and 1/r. */
+  private readonly tabVals = new Float64Array(3);
   /** Coulomb prefactor of the current run (pc.qqrd2e); single() uses the last-seen value. */
   qqrd2e = 1;
 
@@ -284,6 +318,10 @@ export class PairBuckCoulLong extends PairBuck {
     const cutcsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
     const tab = this.erfcTable(g);
+    const tabInner = tab ? tab.inner : Infinity;
+    const tv = this.tabVals;
+    const poly = this.table === 0;
+    const qqrd2e = pc.qqrd2e;
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;
@@ -313,10 +351,36 @@ export class PairBuckCoulLong extends PairBuck {
           e += ev;
         }
         if (rsq < cutcsq && qi !== 0 && q[j] !== 0) {
-          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0, tab);
-          fpair += r.f;
-          ecoul += r.e;
-          e += r.e;
+          // coulLongPair written inline (the same arithmetic in the same order, so the same bits), without a result
+          // object per pair and with one table lookup (ErfcTable.all)
+          const fc = sC[sb];
+          let forcecoul: number, ce: number;
+          if (tab && rsq > tabInner) {
+            const qq = qqrd2e * qi * q[j];
+            const tabbed = tab.all(rsq, tv);
+            forcecoul = qq * (tabbed ? tv[1] : tab.force(rsq));
+            ce = qq * (tabbed ? tv[0] : tab.energy(rsq));
+            if (fc < 1) {
+              const bare = qq * (tabbed ? tv[2] : tab.coul(rsq));
+              forcecoul -= (1 - fc) * bare;
+              ce -= (1 - fc) * bare;
+            }
+          } else {
+            const r = Math.sqrt(rsq);
+            const grij = g * r;
+            const ex = libm.exp(-grij * grij);
+            const erfc = poly || tab ? erfcPoly(grij, ex) : erfcFast(grij, ex);
+            const pre = qqrd2e * qi * q[j] / r;
+            forcecoul = pre * (erfc + EWALD_F * grij * ex);
+            ce = pre * erfc;
+            if (fc < 1) {
+              forcecoul -= (1 - fc) * pre;
+              ce -= (1 - fc) * pre;
+            }
+          }
+          fpair += forcecoul / rsq;
+          ecoul += ce;
+          e += ce;
         }
         if (fpair === 0 && e === 0) continue;
         fxi += dx * fpair; fyi += dy * fpair; fzi += dz * fpair;

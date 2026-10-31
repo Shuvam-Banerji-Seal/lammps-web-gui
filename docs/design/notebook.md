@@ -148,6 +148,15 @@ interface ForceBackend {
   positions; a WGSL kernel scans the 27 neighbour cells per atom and writes
   forces, per-atom energy and virial; the CPU integrates. This keeps the GPU
   path small enough to verify against the CPU path force-by-force.
+- **WebGPU, more pair styles** (`src/engine/gpu/pairSpec.ts`): besides lj/cut, the
+  GPU runs `lj/cut/coul/cut`, `coul/cut`, `buck`, `buck/coul/cut` and `morse` under
+  the same conditions (charges allowed). The coefficients are the engine style's own
+  after its init (the arrays its compute() reads), a second kernel switches on the
+  style per pair, and the charges ride in the integer buffer as f32 bits (WebGPU
+  compatibility mode allows four storage buffers). Van der Waals and Coulomb energies
+  come back separately. `pairSpecEval` is the kernel's law in fp64:
+  `tests/engineGpuPairSpec.test.ts` checks it against each CPU style force by force.
+  Whole-step GPU runs (`resident.ts`) remain lj/cut only.
 - **WebGPU resident stepping**, v2 (`src/engine/gpu/resident.ts`): for runs
   whose only fixes are `nve` (plus `enforce2d`), whole velocity-Verlet steps
   stay on the GPU — half kick + drift + wrap, cell list rebuilt on the GPU

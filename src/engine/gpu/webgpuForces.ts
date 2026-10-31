@@ -2,6 +2,7 @@ import type { ForceBackend, ForceResult, PairTable, SimState } from '../types';
 import { pairArrays, type PairArrays } from '../pairs';
 import { CpuForceBackend } from '../cpu/forces';
 import { ResidentStepper } from './resident';
+import type { GpuPairSpec } from './pairSpec';
 
 /*
  * WebGPU Lennard-Jones forces (docs/design/notebook.md, "Backends", v1).
@@ -108,6 +109,121 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   outv[o + 2u] = f.z;
   outv[o + 3u] = e;
   outv[o + 4u] = w;
+}
+`;
+
+/*
+ * The kernel of the other pair styles (gpu/pairSpec.ts): the same cell scan, a style switch per pair, coefficients
+ * [cutsqA cutsqC a b] [c d eshift cscale] [pad] per type pair, the charges as f32 bits after the cell indices in ints,
+ * and per slot fx fy fz evdwl ecoul w. The laws are the documented ones the CPU styles compute (pairSpec.ts
+ * pairSpecEval is the same arithmetic in fp64).
+ */
+const KERNEL_STYLES = /* wgsl */ `
+struct Params {
+  L : vec3<f32>,
+  n : u32,
+  nc : vec3<u32>,
+  stride : u32,
+  two : u32,
+  cellOfBase : u32,
+  style : u32,
+  qBase : u32,
+  qqrd2e : f32,
+  pad0 : u32,
+  pad1 : u32,
+  pad2 : u32,
+};
+
+@group(0) @binding(0) var<uniform> P : Params;
+@group(0) @binding(1) var<storage, read> pos : array<vec4<f32>>;
+@group(0) @binding(2) var<storage, read> ints : array<u32>;
+@group(0) @binding(3) var<storage, read> coef : array<vec4<f32>>;
+@group(0) @binding(4) var<storage, read_write> outv : array<f32>;
+
+fn wrapCell(c : i32, n : u32) -> u32 {
+  let m = i32(n);
+  return u32(((c % m) + m) % m);
+}
+
+@compute @workgroup_size(${WORKGROUP})
+fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
+  let i = gid.x;
+  if (i >= P.n) { return; }
+  let pi = pos[i];
+  let ti = u32(pi.w);
+  var qi = 0.0;
+  if (P.qBase > 0u) { qi = bitcast<f32>(ints[P.qBase + i]); }
+  let L = P.L;
+  let nc = P.nc;
+  let c = ints[P.cellOfBase + i];
+  let cx = i32(c % nc.x);
+  let cy = i32((c / nc.x) % nc.y);
+  let cz = i32(c / (nc.x * nc.y));
+  var zr = 1;
+  if (P.two == 1u) { zr = 0; }
+  var f = vec3<f32>(0.0, 0.0, 0.0);
+  var ev = 0.0;
+  var ec = 0.0;
+  var w = 0.0;
+  for (var dz = -zr; dz <= zr; dz = dz + 1) {
+    for (var dy = -1; dy <= 1; dy = dy + 1) {
+      for (var dx = -1; dx <= 1; dx = dx + 1) {
+        let c2 = (wrapCell(cz + dz, nc.z) * nc.y + wrapCell(cy + dy, nc.y)) * nc.x + wrapCell(cx + dx, nc.x);
+        let jEnd = ints[c2 + 1u];
+        for (var j = ints[c2]; j < jEnd; j = j + 1u) {
+          if (j == i) { continue; }
+          let pj = pos[j];
+          var d = pi.xyz - pj.xyz;
+          d = d - L * round(d / L);
+          if (P.two == 1u) { d.z = 0.0; }
+          let r2 = dot(d, d);
+          let k = 3u * (ti * P.stride + u32(pj.w));
+          let A = coef[k];
+          if (r2 >= max(A.x, A.y)) { continue; }
+          let B = coef[k + 1u];
+          var fp = 0.0;
+          if (r2 < A.x) {
+            if (P.style == 1u) {
+              let r2inv = 1.0 / r2;
+              let r6inv = r2inv * r2inv * r2inv;
+              fp = fp + r6inv * (A.z * r6inv - A.w) * r2inv;
+              ev = ev + 0.5 * (r6inv * (B.x * r6inv - B.y) - B.z);
+            } else if (P.style == 3u || P.style == 4u) {
+              let r = sqrt(r2);
+              let ex = exp(-r * A.w);
+              let r2inv = 1.0 / r2;
+              fp = fp + A.z * A.w * ex / r - 6.0 * B.x * r2inv * r2inv * r2inv * r2inv;
+              ev = ev + 0.5 * (A.z * ex - B.x * (r2inv * r2inv * r2inv) - B.z);
+            } else if (P.style == 5u) {
+              let r = sqrt(r2);
+              let dr = r - B.x;
+              let e1 = exp(-2.0 * A.w * dr);
+              let e2 = exp(-A.w * dr);
+              fp = fp + 2.0 * A.w * A.z * (e1 - e2) / r;
+              ev = ev + 0.5 * (A.z * (e1 - 2.0 * e2) - B.z);
+            }
+          }
+          if (r2 < A.y && P.qBase > 0u) {
+            let qj = bitcast<f32>(ints[P.qBase + j]);
+            if (qi != 0.0 && qj != 0.0) {
+              let pre = P.qqrd2e * B.w * qi * qj / sqrt(r2);
+              fp = fp + pre / r2;
+              ec = ec + 0.5 * pre;
+            }
+          }
+          f = f + fp * d;
+          w = w + 0.5 * fp * r2;
+        }
+      }
+    }
+  }
+  let o = 6u * i;
+  outv[o] = f.x;
+  outv[o + 1u] = f.y;
+  outv[o + 2u] = f.z;
+  outv[o + 3u] = ev;
+  outv[o + 4u] = ec;
+  outv[o + 5u] = w;
 }
 `;
 
@@ -305,53 +421,16 @@ export class WebGpuForceBackend implements ForceBackend {
   async compute(state: SimState, table: PairTable): Promise<ForceResult> {
     if (this.disposed) throw new Error('the WebGPU backend was disposed');
     const { arrays, coef } = this.coefFor(table);
-    const { n, x, type } = state;
+    const n = state.n;
     if (n === 0 || arrays.maxCutoff <= 0) {
       state.f.fill(0);
       return { pe: 0, virial: 0 };
     }
-    const two = state.dimension === 2;
-    const L = [0, 1, 2].map((d) => state.box.hi[d] - state.box.lo[d]);
-    const nc = [0, 1, 2].map((d) => (d === 2 && two ? 1 : Math.floor(L[d] / arrays.maxCutoff)));
-    if (nc.some((c, d) => !(d === 2 && two) && c < 3)) return this.cpu.compute(state, table);
-    const ncell = nc[0] * nc[1] * nc[2];
-
-    // --- counting sort by cell (same assignment as cpu/cells.ts) ---
-    if (this.sorted.length < n) {
-      this.sorted = new Int32Array(n);
-      this.cellOfAtom = new Int32Array(n);
-      this.posData = new Float32Array(4 * n);
-    }
-    if (this.intsData.length < ncell + 1 + n) this.intsData = new Uint32Array(ncell + 1 + n);
-    const { sorted, cellOfAtom, posData } = this;
-    // ints = [cellStart (ncell + 1) | cellOf per slot (n)]
+    const cells = this.sortByCell(state, arrays.maxCutoff, 0);
+    if (!cells) return this.cpu.compute(state, table);
+    const { L, nc, ncell, base, two } = cells;
+    const { sorted, posData } = this;
     const ints = this.intsData;
-    const base = ncell + 1;
-    ints.fill(0, 0, base);
-    const lo = state.box.lo;
-    const s = [nc[0] / L[0], nc[1] / L[1], nc[2] / L[2]];
-    for (let i = 0; i < n; i++) {
-      let c = 0;
-      for (let d = 2; d >= 0; d--) {
-        let k = d === 2 && two ? 0 : Math.floor((x[3 * i + d] - lo[d]) * s[d]);
-        if (k >= nc[d]) k = nc[d] - 1; else if (k < 0) k = 0;
-        c = c * nc[d] + k;
-      }
-      cellOfAtom[i] = c;
-      ints[c + 1]++;
-    }
-    for (let c = 0; c < ncell; c++) ints[c + 1] += ints[c];
-    const fill = ints.slice(0, ncell);
-    for (let i = 0; i < n; i++) {
-      const c = cellOfAtom[i];
-      const slot = fill[c]++;
-      sorted[slot] = i;
-      ints[base + slot] = c;
-      posData[4 * slot] = x[3 * i] - lo[0];
-      posData[4 * slot + 1] = x[3 * i + 1] - lo[1];
-      posData[4 * slot + 2] = two ? 0 : x[3 * i + 2] - lo[2];
-      posData[4 * slot + 3] = type[i];
-    }
 
     // --- upload, dispatch, read back ---
     const b = this.ensure(n, ncell, coef.byteLength);
@@ -392,6 +471,152 @@ export class WebGpuForceBackend implements ForceBackend {
     return { pe, virial };
   }
 
+  /**
+   * The counting sort by cell (the same assignment as cpu/cells.ts) of compute() and computeSpec(): sorted[slot] the
+   * atom of each slot, posData its fp32 position from the box origin and type, intsData the cell starts (ncell + 1) then
+   * the cell of each slot (n), with `extra` more words after them. Null when a periodic dimension has fewer than 3 cells
+   * (the 27-cell scan would not be exact; the CPU computes those).
+   */
+  private sortByCell(state: SimState, maxCutoff: number, extra: number):
+    { L: number[]; nc: number[]; ncell: number; base: number; two: boolean } | null {
+    const { n, x, type } = state;
+    const two = state.dimension === 2;
+    const L = [0, 1, 2].map((d) => state.box.hi[d] - state.box.lo[d]);
+    const nc = [0, 1, 2].map((d) => (d === 2 && two ? 1 : Math.floor(L[d] / maxCutoff)));
+    if (nc.some((c, d) => !(d === 2 && two) && c < 3)) return null;
+    const ncell = nc[0] * nc[1] * nc[2];
+    if (this.sorted.length < n) {
+      this.sorted = new Int32Array(n);
+      this.cellOfAtom = new Int32Array(n);
+      this.posData = new Float32Array(4 * n);
+    }
+    if (this.intsData.length < ncell + 1 + n + extra) this.intsData = new Uint32Array(ncell + 1 + n + extra);
+    const { sorted, cellOfAtom, posData } = this;
+    const ints = this.intsData;
+    const base = ncell + 1;
+    ints.fill(0, 0, base);
+    const lo = state.box.lo;
+    const s = [nc[0] / L[0], nc[1] / L[1], nc[2] / L[2]];
+    for (let i = 0; i < n; i++) {
+      let c = 0;
+      for (let d = 2; d >= 0; d--) {
+        let k = d === 2 && two ? 0 : Math.floor((x[3 * i + d] - lo[d]) * s[d]);
+        if (k >= nc[d]) k = nc[d] - 1; else if (k < 0) k = 0;
+        c = c * nc[d] + k;
+      }
+      cellOfAtom[i] = c;
+      ints[c + 1]++;
+    }
+    for (let c = 0; c < ncell; c++) ints[c + 1] += ints[c];
+    const fill = ints.slice(0, ncell);
+    for (let i = 0; i < n; i++) {
+      const c = cellOfAtom[i];
+      const slot = fill[c]++;
+      sorted[slot] = i;
+      ints[base + slot] = c;
+      posData[4 * slot] = x[3 * i] - lo[0];
+      posData[4 * slot + 1] = x[3 * i + 1] - lo[1];
+      posData[4 * slot + 2] = two ? 0 : x[3 * i + 2] - lo[2];
+      posData[4 * slot + 3] = type[i];
+    }
+    return { L, nc, ncell, base, two };
+  }
+
+  private stylesPipeline: GPUComputePipeline | null = null;
+  private styleParams: GPUBuffer | null = null;
+  private sbufs: { pos: GPUBuffer; out: GPUBuffer; staging: GPUBuffer; atomCap: number; ints: GPUBuffer; intsCap: number; coef: GPUBuffer; coefCap: number; bind: GPUBindGroup } | null = null;
+  private specCache: { key: string; coef: Float32Array } | null = null;
+
+  /**
+   * Forces, van der Waals and Coulomb energies and the scalar virial of the pair styles of gpu/pairSpec.ts (the kernel
+   * KERNEL_STYLES), fp32 on the GPU like compute(); the energies and the virial are summed in fp64 here.
+   */
+  async computeSpec(state: SimState, spec: GpuPairSpec): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    if (this.disposed) throw new Error('the WebGPU backend was disposed');
+    const n = state.n;
+    if (n === 0 || !(spec.maxCutoff > 0)) {
+      state.f.fill(0);
+      return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
+    }
+    const extra = spec.charges ? n : 0;
+    const cells = this.sortByCell(state, spec.maxCutoff, extra);
+    if (!cells) throw new Error('the box has fewer than 3 cutoffs in a periodic dimension');
+    const { L, nc, base, two } = cells;
+    const { sorted, posData } = this;
+    const ints = this.intsData;
+    if (spec.charges) {
+      // the charges as f32 bits after the cells of the slots
+      const qf = new Float32Array(ints.buffer, ints.byteOffset + 4 * (base + n), n);
+      for (let slot = 0; slot < n; slot++) qf[slot] = state.q[sorted[slot]];
+    }
+    if (!this.specCache || this.specCache.key !== spec.key) this.specCache = { key: spec.key, coef: Float32Array.from(spec.coef) };
+    const coef = this.specCache.coef;
+    const dev = this.device;
+    if (!this.stylesPipeline) {
+      const module = dev.createShaderModule({ code: KERNEL_STYLES });
+      this.stylesPipeline = dev.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
+      this.styleParams = dev.createBuffer({ size: 64, usage: BUF_UNIFORM | BUF_COPY_DST });
+    }
+    const intsLen = base + n + extra;
+    let b = this.sbufs;
+    if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < coef.byteLength) {
+      if (b) for (const buf of [b.pos, b.out, b.staging, b.ints, b.coef]) buf.destroy();
+      const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
+      const pos = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
+      const out = this.buffer(24 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
+      const staging = this.buffer(24 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
+      const intsBuf = this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST);
+      const coefBuf = this.buffer(coef.byteLength, BUF_STORAGE | BUF_COPY_DST);
+      const bind = dev.createBindGroup({
+        layout: this.stylesPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.styleParams! } },
+          { binding: 1, resource: { buffer: pos } },
+          { binding: 2, resource: { buffer: intsBuf } },
+          { binding: 3, resource: { buffer: coefBuf } },
+          { binding: 4, resource: { buffer: out } },
+        ],
+      });
+      b = this.sbufs = { pos, out, staging, atomCap, ints: intsBuf, intsCap, coef: coefBuf, coefCap: coef.byteLength, bind };
+    }
+    const params = new ArrayBuffer(64);
+    const pf = new Float32Array(params);
+    const pu = new Uint32Array(params);
+    pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
+    pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = spec.style; pu[11] = spec.charges ? base + n : 0;
+    pf[12] = spec.qqrd2e;
+    const q = dev.queue;
+    q.writeBuffer(this.styleParams!, 0, params);
+    q.writeBuffer(b.pos, 0, posData.buffer, posData.byteOffset, 16 * n);
+    q.writeBuffer(b.ints, 0, ints.buffer, ints.byteOffset, 4 * intsLen);
+    q.writeBuffer(b.coef, 0, coef.buffer, coef.byteOffset, coef.byteLength);
+    const enc = dev.createCommandEncoder();
+    const pass = enc.beginComputePass();
+    pass.setPipeline(this.stylesPipeline);
+    pass.setBindGroup(0, b.bind);
+    pass.dispatchWorkgroups(Math.ceil(n / WORKGROUP));
+    pass.end();
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 24 * n);
+    q.submit([enc.finish()]);
+    await b.staging.mapAsync(MAP_READ, 0, 24 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 24 * n));
+    const f = state.f;
+    let evdwl = 0, ecoul = 0, virial = 0;
+    for (let slot = 0; slot < n; slot++) {
+      const i = sorted[slot];
+      const o = 6 * slot;
+      f[3 * i] = outv[o];
+      f[3 * i + 1] = outv[o + 1];
+      f[3 * i + 2] = outv[o + 2];
+      evdwl += outv[o + 3];
+      ecoul += outv[o + 4];
+      virial += outv[o + 5];
+    }
+    b.staging.unmap();
+    return { pe: evdwl + ecoul, virial, evdwl, ecoul };
+  }
+
   /** True when `advance` can run this system entirely on the GPU. */
   canAdvance(state: SimState, table: PairTable): boolean {
     const { arrays } = this.coefFor(table);
@@ -421,6 +646,9 @@ export class WebGpuForceBackend implements ForceBackend {
     this.disposed = true;
     const b = this.bufs;
     if (b) for (const buf of [b.pos, b.out, b.staging, b.ints, b.coef]) buf.destroy();
+    const sb = this.sbufs;
+    if (sb) for (const buf of [sb.pos, sb.out, sb.staging, sb.ints, sb.coef]) buf.destroy();
+    this.styleParams?.destroy();
     this.params.destroy();
     this.bufs = null;
     this.cpu.dispose();

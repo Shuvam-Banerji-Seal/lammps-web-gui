@@ -5,7 +5,7 @@ import { unknownStyleError } from '../nativeStyles';
 import { errorUrl } from '../formula';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, Geometry, cloneBox } from '../domain';
-import { APIP_LAMBDA, isApipStyle, DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH, atomSubStyles, topologyLevel } from '../atoms';
+import { isLineStyle, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, APIP_LAMBDA, isApipStyle, DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH, atomSubStyles, topologyLevel } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { parseStl } from '../stl';
@@ -35,7 +35,7 @@ import type { Fix } from '../fix/fix';
 import type { Compute } from '../compute/compute';
 import { bitOfIndex, type DynamicGroup } from '../group';
 import { parseBalanceWeight, applyBalanceWeights, balanceNeighFactor, balanceUsesNeigh, balanceDump, type BalanceWeightAction } from '../fix/balance';
-import { bodyRadiusBody, parseBodyStyle, setBodyAtom } from '../bodies';
+import { BODY_RECORD, bodyRadiusBody, parseBodyStyle, setBodyAtom } from '../bodies';
 import { parseMoleculeFile, geometricCenter, orientationMatrix, templateDipoles, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
 import { libm } from '../libm';
 
@@ -2240,6 +2240,11 @@ const set: Handler = ({ sys }, a) => {
   if (a.length < 4) throw missingArgs('set');
   const atoms = selected(sys, a[0], a[1]);
   checkSetKeywords(sys, a);
+  // set.cpp (src/set.cpp at b332f28, the quat and quat/random branches): an atom has a quaternion when it is an
+  // ellipsoid, a triangle (tri: not for quat/random in 2d), a body, or its style has the per-atom quat array (quat_flag)
+  const bodyRec = s.custom.get(BODY_RECORD);
+  const quatOf = (i: number, tri: boolean): boolean => isEllipsoid(s, i) || (tri && isTriAtom(s, i))
+    || (!!bodyRec && bodyRec.data[bodyRec.cols * i] > 0) || isBpmSphereStyle(s.atomStyle);
   const value = (w: string | undefined, what: string): ((i: number) => number) => {
     if (w?.startsWith('v_')) {
       const v = sys.atomVariable(w.slice(2));
@@ -2628,6 +2633,97 @@ const set: Handler = ({ sys }, a) => {
       // which means the particle will be treated as a point particle.  Note that this command does not adjust
       // the particle mass". Measured with native LAMMPS (black box): one zero diameter among non-zero ones is
       // refused (Invalid shape in set command).
+      // As native LAMMPS does (src/set.cpp process_length and invoke_length, src/atom_vec_line.cpp set_length at
+      // b332f28): a length > 0 makes the atom a line segment (theta 0 when it was a point particle), 0 a point particle;
+      // the radius is half the length, 0.5 for a point; the mass is kept
+      case 'length': {
+        if (!isLineStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute length for atom style ${s.atomStyle}`);
+        if (k + 2 > a.length) throw missingArgs('set length');
+        const f = value(a[k + 1], 'length');
+        if (!a[k + 1].startsWith('v_') && f(0) < 0) throw new StyleError('Invalid length in set command');
+        const flag = s.custom.get(LINE_FLAG)!.data, bonus = s.custom.get(LINE_BONUS)!.data;
+        for (const i of atoms) {
+          const len = f(i);
+          if (len < 0) throw new StyleError('Invalid length in set command');
+          if (!flag[i]) {
+            if (len === 0) continue;
+            flag[i] = 1;
+            bonus[2 * i + 1] = 0;
+          } else if (len === 0) flag[i] = 0;
+          bonus[2 * i] = len;
+          s.radius![i] = len === 0 ? 0.5 : 0.5 * len;
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      // set.cpp process_theta and invoke_theta: a constant is in degrees ("DEG2RAD * utils::numeric"), a v_ value is used
+      // as it is; "Cannot set theta for atom which is not a line"
+      case 'theta': {
+        if (!isLineStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute theta for atom style ${s.atomStyle}`);
+        if (k + 2 > a.length) throw missingArgs('set theta');
+        const isVar = a[k + 1].startsWith('v_');
+        const f = value(a[k + 1], 'theta');
+        const flag = s.custom.get(LINE_FLAG)!.data, bonus = s.custom.get(LINE_BONUS)!.data;
+        for (const i of atoms) {
+          if (!flag[i]) throw new StyleError('Cannot set theta for atom which is not a line');
+          bonus[2 * i + 1] = isVar ? f(i) : (Math.PI / 180) * f(i);
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      // set.cpp process_theta_random and setrandom THETA_RANDOM: "ranpark->reset(seed,x[i])" and theta = 2 pi uniform()
+      case 'theta/random': {
+        if (!isLineStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute theta/random for atom style ${s.atomStyle}`);
+        if (k + 2 > a.length) throw missingArgs('set theta/random');
+        const seed = inumeric(a[k + 1]);
+        if (seed <= 0) throw new StyleError('Invalid random number seed in set command');
+        marsagliaSeed(seed);
+        const rnd = nativeRandom('theta/random');
+        const flag = s.custom.get(LINE_FLAG)!.data, bonus = s.custom.get(LINE_BONUS)!.data;
+        for (const i of atoms) {
+          if (!flag[i]) throw new StyleError('Cannot set theta for atom that is not a line');
+          bonus[2 * i + 1] = rnd.thetaRandom(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]);
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      // set.cpp process_tri and invoke_tri, src/atom_vec_tri.cpp set_equilateral at b332f28: an equilateral triangle of
+      // side `size` in the xy plane (c1 = (-size/2, -sqrt(3)/2 size/3, 0), ...), inertia sqrt(3)/96 size^4 (twice that
+      // about z), the quaternion 1 0 0 0 when the atom was a point, radius |c1|; size 0 makes it a point (radius 0.5)
+      case 'tri': {
+        if (!isTriStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute tri for atom style ${s.atomStyle}`);
+        if (k + 2 > a.length) throw missingArgs('set tri');
+        const f = value(a[k + 1], 'tri');
+        if (!a[k + 1].startsWith('v_') && f(0) < 0) throw new StyleError('Invalid tri size in set command');
+        const flag = s.custom.get(TRI_FLAG)!.data, bonus = s.custom.get(TRI_BONUS)!.data;
+        for (const i of atoms) {
+          const size = f(i);
+          if (size < 0) throw new StyleError('Invalid tri size in set command');
+          if (!flag[i]) {
+            if (size === 0) continue;
+            flag[i] = 1;
+            s.quat![4 * i] = 1; s.quat![4 * i + 1] = 0; s.quat![4 * i + 2] = 0; s.quat![4 * i + 3] = 0;
+          } else if (size === 0) {
+            s.radius![i] = 0.5;
+            flag[i] = 0;
+            continue;
+          }
+          const o = TRI_BONUS_COLS * i;
+          const c = [-size / 2.0, -Math.sqrt(3.0) / 2.0 * size / 3.0, 0.0, size / 2.0, -Math.sqrt(3.0) / 2.0 * size / 3.0, 0.0,
+            0.0, Math.sqrt(3.0) / 2.0 * size * 2.0 / 3.0, 0.0];
+          for (let m = 0; m < 9; m++) bonus[o + m] = c[m];
+          bonus[o + 9] = Math.sqrt(3.0) / 96.0 * size * size * size * size;
+          bonus[o + 10] = Math.sqrt(3.0) / 96.0 * size * size * size * size;
+          bonus[o + 11] = Math.sqrt(3.0) / 48.0 * size * size * size * size;
+          s.radius![i] = Math.sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
       case 'shape': {
         if (!s.shape) throw new StyleError(`Cannot set attribute shape for atom style ${s.atomStyle}`);
         const vs = [1, 2, 3].map((d) => value(a[k + d], 'shape'));
@@ -2679,7 +2775,7 @@ const set: Handler = ({ sys }, a) => {
         const vs = [1, 2, 3, 4].map((d) => value(a[k + d], 'quat'));
         for (const i of atoms) {
           // set.cpp (src/set.cpp at b332f28, the quat branch): ellipsoid, then tri (tri[i] >= 0), then body, then quat_flag
-          if (!isEllipsoid(s, i) && !isTriAtom(s, i) && !isBpmSphereStyle(s.atomStyle)) throw new StyleError('Cannot set quaternion for atom that has none');
+          if (!quatOf(i, true)) throw new StyleError('Cannot set quaternion for atom that has none');
           const [qa, qb, qc, th] = vs.map((f) => f(i));
           if (sys.dimension === 2 && (qa !== 0 || qb !== 0)) throw new StyleError('Cannot set quaternion with xy components for 2d system');
           const h = (th * Math.PI) / 360, sn = libm.sin(h);
@@ -2695,15 +2791,18 @@ const set: Handler = ({ sys }, a) => {
       // keyword *quat*, for ellipsoidal particles, the 3 shape values must be non-zero for each particle set by this
       // command."; "For 2d systems, only orientations in the xy plane are generated." The per-atom streams are
       // native's (nativeRandom.ts).
+      // As native LAMMPS does (src/set.cpp process_quat_random and setrandom QUAT_RANDOM at b332f28): the quaternion of an
+      // ellipsoid, a triangle (3d only), a body, else the per-atom quat array (quat_flag); "Invalid random number seed"
       case 'quat/random': {
         if (!s.quat) throw new StyleError(`Cannot set attribute quat/random for atom style ${s.atomStyle}`);
-        const seed = int(a[k + 1], 'seed');
-        if (seed <= 0) throw new StyleError('set quat/random: seed must be a positive integer');
+        if (k + 2 > a.length) throw missingArgs('set quat/random');
+        const seed = inumeric(a[k + 1]);
+        if (seed <= 0) throw new StyleError(`Invalid random number seed ${a[k + 1]} in set command`);
         marsagliaSeed(seed);
         const rnd = nativeRandom('quat/random');
         const q = new Float64Array(4);
         for (const i of atoms) {
-          if (!isEllipsoid(s, i)) throw new StyleError('Cannot set quaternion for atom that has none');
+          if (!quatOf(i, sys.dimension === 3)) throw new StyleError('Cannot set quaternion for atom that has none');
           rnd.quatRandom(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], sys.dimension, q);
           for (let d = 0; d < 4; d++) s.quat[4 * i + d] = q[d];
         }

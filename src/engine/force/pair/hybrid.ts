@@ -100,6 +100,12 @@ export class PairHybrid extends Pair {
   readonly name: string;
   /** Sub-style selector for one run_style respa level (set by ForceField.compute); null computes all. */
   subSelect: ((k: number) => boolean) | null = null;
+  /**
+   * Runs sub-style k on the pair threads (cpu/pairThreads.ts, pair slot 1 + k), or returns false to run it here; set by
+   * the force field for an ordinary force evaluation. Only sub-styles on the direct path use it (each adds to the shared
+   * forces and accumulators, as on the threads).
+   */
+  subRunner: ((style: Pair, pc: PairCompute, k: number) => boolean) | null = null;
   subs: Sub[] = [];
   /** The arguments of the last settings() call (pair_style args), kept for write_restart (restart.ts replays them). */
   settingsArgs: string[] = [];
@@ -533,7 +539,7 @@ export class PairHybrid extends Pair {
       if (direct) {
         // the sub-style's own energy is the change of the shared accumulator over its call
         const e0 = pc.acc.evdwl, c0 = pc.acc.ecoul;
-        s.style.compute(sub);
+        if (!this.subRunner?.(s.style, sub, k)) s.style.compute(sub);
         s.evdwl = pc.acc.evdwl - e0;
         s.ecoul = pc.acc.ecoul - c0;
         s.evaluated = true;

@@ -98,7 +98,7 @@ export class ForceField {
   /** The run's section timer (timer.ts), stamped around the pair, bonded and kspace terms and the reverse comm. */
   readonly timer = new RunTimer();
   pairThreads: {
-    run(pair: Pair, pc: PairCompute): boolean; readonly calls: number;
+    run(pair: Pair, pc: PairCompute, slot?: number): boolean; readonly calls: number;
     /** for the resource monitor: the thread count, the size threshold, and why the last call stayed on one thread */
     readonly threads: number; readonly minAtoms: number; readonly skip: ThreadSkip;
   } | null = null;
@@ -431,6 +431,11 @@ export class ForceField {
         // a level evaluation runs the pair term directly (the threaded path has no sub-style selection)
         if (this.pair instanceof PairHybrid) this.pair.subSelect = sel.subPair ?? null;
         try { this.pair.compute(pc); } finally { if (this.pair instanceof PairHybrid) this.pair.subSelect = null; }
+      } else if (this.pair instanceof PairHybrid) {
+        // a hybrid's sub-styles run on the threads one by one (pair slots 1 + k); the hybrid itself is not threaded
+        const threads = this.pairThreads;
+        this.pair.subRunner = threads ? (style, spc, k) => threads.run(style, spc, 1 + k) : null;
+        try { this.pair.compute(pc); } finally { this.pair.subRunner = null; }
       } else if (!this.pairThreads?.run(this.pair, pc)) this.pair.compute(pc);
       if (this.pair.virialFdotr && !pc.fdotrDone) {
         const xa = nb.xall, fa = nb.fall;

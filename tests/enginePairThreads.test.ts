@@ -294,6 +294,29 @@ describe('shared-memory pair threads: every threaded style matches the single-th
   });
 });
 
+/**
+ * pair_style hybrid and hybrid/overlay: each threaded sub-style runs on the threads in its own pair slot (force/pair/
+ * hybrid.ts subRunner), the others on the engine thread.
+ */
+const HYBRID_CASES: [string, string, string, boolean][] = [
+  ['hybrid/overlay lj/cut coul/cut', 'pair_style hybrid/overlay lj/cut 2.5 coul/cut 2.5\npair_coeff * * lj/cut 1.0 1.0\npair_coeff * * coul/cut', BOX, false],
+  ['hybrid lj/cut morse (by type pair)', 'pair_style hybrid lj/cut 2.5 morse 2.5\npair_coeff 1 1 lj/cut 1.0 1.0\npair_coeff 2 2 lj/cut 1.0 1.0\npair_coeff 1 2 morse 1.0 2.0 1.1', BOX, false],
+  ['hybrid/overlay eam/alloy lj/cut (two passes in a slot)', 'pair_style hybrid/overlay eam/alloy lj/cut 3.0\npair_coeff * * eam/alloy CuNi.eam.alloy Cu Ni\npair_coeff 1 2 lj/cut 0.01 2.5', EAM_BOX, false],
+  ['hybrid/overlay tersoff lj/cut (full list in a slot)', 'pair_style hybrid/overlay tersoff lj/cut 3.0\npair_coeff * * tersoff Si.tersoff Si Si\npair_coeff * * lj/cut 0.001 2.0', SI_BOX, false],
+  ['hybrid/overlay sw lj/cut (a GPL sub-style)', 'pair_style hybrid/overlay sw lj/cut 3.0\npair_coeff * * sw Si.sw Si Si\npair_coeff * * lj/cut 0.001 2.0', SI_BOX, true],
+];
+
+describe('shared-memory pair threads: the sub-styles of pair_style hybrid', () => {
+  for (const [name, lines, box, gpl] of HYBRID_CASES) {
+    it(name, async () => {
+      const serial = await runCase(lines, 1, '', box, gpl);
+      const threaded = await runCase(lines, 4, '', box, gpl);
+      expect(threaded.threadedComputes).toBeGreaterThan(0);
+      expectClose(serial, threaded, 1e-10);
+    });
+  }
+});
+
 describe('shared-memory pair threads: refresh and fallback', () => {
   it('follows fix adapt changing the pair coefficients during the run', async () => {
     const extra = 'variable e equal 1.0+0.01*elapsed\nfix ad all adapt 1 pair lj/cut epsilon * * v_e';

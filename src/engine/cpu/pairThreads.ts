@@ -4,7 +4,7 @@ import { THREADED_NAMES, isTwoPass } from './threadedPairs';
 import { GPL_THREADED_PAIRS, loadGplThreadedPair } from '../lazyStyles';
 import { CpuForceBackend } from './forces';
 import {
-  ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, atomChunk, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PAIR_READY, PHASE, READY, cloneableFields, sumForces, pairFromFactory, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
+  ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, atomChunk, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, MAX_PAIR_SLOTS, PHASE, READY, readyIndex, cloneableFields, sumForces, pairFromFactory, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, type NeighborThreads, type SpecialBins } from './neighborKernel';
 import { PPPM_PARAMS, pppmField, pppmWeights, weightScratch, writePppmParams, type PppmGrid } from '../force/kspace/pppmKernel';
@@ -82,9 +82,10 @@ export class SharedPairThreads implements NeighborThreads {
   private workers: PairWorkerLike[] = [];
   private readonly ctlBuf = shared(4 * CTL_WORDS);
   private readonly ctl = new Int32Array(this.ctlBuf);
-  private pairRef: Pair | null = null;
-  private pairVersion = -1;
-  private pairOk = false;
+  /** per pair slot (pairThreadsCore.ts MAX_PAIR_SLOTS): the style last sent, its version, and whether it can run here */
+  private readonly slotRef: (Pair | null)[] = [];
+  private readonly slotVersion: number[] = [];
+  private readonly slotOk: boolean[] = [];
   private listRef: NeighList | null = null;
   private listArrays: Int32Array | null = null;
   /** Chunk boundaries of the current half list (nchunks + 1 entries), shared with the workers. */
@@ -130,7 +131,7 @@ export class SharedPairThreads implements NeighborThreads {
   }
 
   /** Runs pair.compute(pc) on the threads; false (nothing done) when this style or call cannot use them. */
-  run(pair: Pair, pc: PairCompute): boolean {
+  run(pair: Pair, pc: PairCompute, slot = 0): boolean {
     const W = this.workers.length;
     // a half-list style, or a full-list one whose rows are independent (the three-body styles of THREADED_PAIRS)
     const fullStyle = pair.needsFull && !pair.needsHalf;
@@ -144,10 +145,11 @@ export class SharedPairThreads implements NeighborThreads {
     // until every worker has started (READY, see pairThreadsCore.ts) the pair term runs on the engine thread: blocking
     // in Atomics.wait on a worker that has not started yet would deadlock
     if (Atomics.load(this.ctl, READY) < W) { this.skip = 'starting'; return false; }
-    if (pair !== this.pairRef || pair.version !== this.pairVersion) this.sendPair(pair);
-    if (!this.pairOk) { this.skip = 'style'; return false; }
+    if (slot >= MAX_PAIR_SLOTS) { this.skip = 'style'; return false; }
+    if (pair !== this.slotRef[slot] || pair.version !== this.slotVersion[slot]) this.sendPair(pair, slot);
+    if (!this.slotOk[slot]) { this.skip = 'style'; return false; }
     // until every worker has built the style (it may load its module first) the pair term runs on the engine thread
-    if (Atomics.load(this.ctl, PAIR_READY) < W) { this.skip = 'starting'; return false; }
+    if (Atomics.load(this.ctl, readyIndex(slot)) < W) { this.skip = 'starting'; return false; }
     this.skip = null;
     const nall = pc.nall, nlocal = list.inum;
     let resend = false;
@@ -194,7 +196,7 @@ export class SharedPairThreads implements NeighborThreads {
       // the first loop: every thread sums into its own array, the engine thread adds them in worker order
       const sums = this.sums;
       sums.fill(0, 0, nall);
-      const firstFailed = this.dispatch({ type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F: null, phase, nslices, pass: 1, aux: null, ordered: ordered !== null, tags: !!pair.threadTags }, (c) => two.densities(chunk(c), sums));
+      const firstFailed = this.dispatch({ type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F: null, phase, nslices, pass: 1, aux: null, ordered: ordered !== null, tags: !!pair.threadTags, slot }, (c) => two.densities(chunk(c), sums));
       if (firstFailed) throw new Error(`pair style ${pair.name} failed in a force thread`);
       for (let w = 0; w < W; w++) {
         const a = this.fs[w];
@@ -203,7 +205,7 @@ export class SharedPairThreads implements NeighborThreads {
       two.embed(pc, sums, this.aux as Float64Array);
     }
     const failed = this.dispatch(
-      { type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F, phase, nslices, pass: two ? 2 : 0, aux: two ? this.auxBuf : null, ordered: ordered !== null, tags: !!pair.threadTags },
+      { type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F, phase, nslices, pass: two ? 2 : 0, aux: two ? this.auxBuf : null, ordered: ordered !== null, tags: !!pair.threadTags, slot },
       two ? (c) => two.forces(chunk(c), this.aux as Float64Array) : (c) => pair.compute(chunk(c)),
     );
     const f = pc.f, acc = pc.acc;
@@ -267,20 +269,20 @@ export class SharedPairThreads implements NeighborThreads {
     this.nchunks = k;
   }
 
-  private sendPair(pair: Pair): void {
-    this.pairRef = pair;
-    this.pairVersion = pair.version;
+  private sendPair(pair: Pair, slot: number): void {
+    this.slotRef[slot] = pair;
+    this.slotVersion[slot] = pair.version;
     const fields = cloneableFields(pair);
     // the worker must be able to rebuild exactly this style (same classes for every member that is
     // not a cache it rebuilds itself); otherwise the style runs on the engine thread
     // the engine's own class rebuilt from the cloned fields (the worker builds its copy from threadedPairFactories.ts)
     const own = pair.constructor as new () => Pair;
     const copy = pairFromFactory(() => new own(), structuredClone(fields));
-    this.pairOk = copy !== null && sameShape(pair, copy);
-    if (!this.pairOk) return;
-    Atomics.store(this.ctl, PAIR_READY, 0);
+    this.slotOk[slot] = copy !== null && sameShape(pair, copy);
+    if (!this.slotOk[slot]) return;
+    Atomics.store(this.ctl, readyIndex(slot), 0);
     if (!GPL_THREADED_PAIRS.includes(pair.name)) {
-      for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields } satisfies PairThreadMessage);
+      for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, slot } satisfies PairThreadMessage);
       return;
     }
     // a GPL-ported style: its registry module is loaded here once (lazyStyles.ts), then the workers import it by URL;
@@ -288,15 +290,15 @@ export class SharedPairThreads implements NeighborThreads {
     // again, at once with the URL known.
     const known = this.gplUrls.get(pair.name);
     if (known !== undefined) {
-      for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, url: known } satisfies PairThreadMessage);
+      for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, url: known, slot } satisfies PairThreadMessage);
       return;
     }
-    const version = this.pairVersion;
+    const version = this.slotVersion[slot];
     void loadGplThreadedPair(pair.name).then((g) => {
       if (!g) return;
       this.gplUrls.set(pair.name, g.url);
-      if (this.pairRef !== pair || this.pairVersion !== version) return;
-      for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, url: g.url } satisfies PairThreadMessage);
+      if (this.slotRef[slot] !== pair || this.slotVersion[slot] !== version) return;
+      for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, url: g.url, slot } satisfies PairThreadMessage);
     });
   }
 

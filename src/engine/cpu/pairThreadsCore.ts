@@ -215,11 +215,11 @@ export const sameShape = (orig: object, copy: object, depth = 0): boolean => {
 export class PairThreadWorker {
   constructor(private readonly factories: PairFactories | PairLoader) {}
   /** per pair slot: the last 'pair' message (a slower load of an older style must not replace a newer one) */
-  private readonly pairGens: number[] = [];
+  private readonly pairGens = new Map<number, number>();
 
   private ctl: Int32Array | null = null;
   /** the pair copies by slot (MAX_PAIR_SLOTS) */
-  private readonly pairs: (Pair | null)[] = [];
+  private readonly pairs = new Map<number, Pair | null>();
   private x: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private t: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private q: Float64Array<ArrayBufferLike> = new Float64Array(0);
@@ -280,14 +280,15 @@ export class PairThreadWorker {
     }
     if (m.type === 'pair') {
       const slot = m.slot ?? 0;
-      const gen = (this.pairGens[slot] ?? 0) + 1;
-      this.pairGens[slot] = gen;
+      if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_PAIR_SLOTS) return;
+      const gen = (this.pairGens.get(slot) ?? 0) + 1;
+      this.pairGens.set(slot, gen);
       const ready = (pair: Pair | null) => {
-        if (gen !== this.pairGens[slot]) return;
-        this.pairs[slot] = pair;
+        if (gen !== this.pairGens.get(slot)) return;
+        this.pairs.set(slot, pair);
         if (pair && this.ctl) Atomics.add(this.ctl, readyIndex(slot), 1);
       };
-      this.pairs[slot] = null;
+      this.pairs.set(slot, null);
       const f = this.factories;
       if (typeof f !== 'function') { ready(pairFromFields(m.name, m.fields, f)); return; }
       f(m.name, m.url).then((make) => ready(make ? pairFromFactory(make, m.fields) : null), () => ready(null));
@@ -295,7 +296,7 @@ export class PairThreadWorker {
     }
     const ctl = this.ctl!;
     try {
-      const pair = this.pairs[m.slot] ?? null;
+      const pair = this.pairs.get(m.slot) ?? null;
       if (!pair) throw new Error('no pair style');
       this.f.fill(0, 0, m.pass === 1 ? m.nall : 3 * m.nall);
       const a = newAccum();

@@ -8,11 +8,12 @@ import { CpuForceBackend } from '../src/engine/cpu/forces';
 import type { EngineEvent, ForceBackend, ForceResult, SimState, ThermoRow } from '../src/engine/types';
 
 /*
- * Molecular systems on the GPU path (run/accel.ts): the bonded terms run on the CPU and the GPU adds the pair term,
- * with the special_bonds weights of 1-2, 1-3 and 1-4 pairs applied in the kernel (webgpuForces.ts KERNEL_STYLES).
- * The backend here does what that kernel does in fp64 (every pair by the minimum image, the special entry of the
- * partner scaling the short-range and the Coulomb parts, a pair with both weights 0 skipped), so a run through the
- * accelerated loop must give the CPU engine's thermo. The WGSL kernel itself is checked in Chromium (SwiftShader).
+ * Molecular and kspace systems on the GPU path (run/accel.ts): the bonded terms and the kspace style run on the CPU
+ * and the GPU adds the pair term, with the special_bonds weights of 1-2, 1-3 and 1-4 pairs applied in the kernel
+ * (webgpuForces.ts KERNEL_STYLES). The backend here does what that kernel does in fp64 (every pair by the minimum
+ * image, the special entry of the partner weighting the short-range and the Coulomb parts, a pair with both weights 0
+ * skipped unless the style is a long-range one), so a run through the accelerated loop must give the CPU engine's
+ * thermo. The WGSL kernel itself is checked in Chromium (SwiftShader).
  */
 
 /** Chains of 8 atoms along x on a simple cubic lattice of 8 x 8 x 8 sites (spacing 1.125, box 9). */
@@ -81,13 +82,12 @@ class KernelInFp64 implements ForceBackend {
         const o = orderOf(i, j);
         if (o > 0) this.specialSeen = true;
         const flj = o ? spec.special!.lj[o] : 1, fc = o ? spec.special!.coul[o] : 1;
-        if (flj === 0 && fc === 0) continue;
+        if (flj === 0 && fc === 0 && spec.gewald === 0) continue;
         const qi = spec.charges ? st.q[i] : 0, qj = spec.charges ? st.q[j] : 0;
-        const short = pairSpecEval(spec, st.type[i], st.type[j], rsq, 0, 0);
-        const all = pairSpecEval(spec, st.type[i], st.type[j], rsq, qi, qj);
-        const fpair = flj * short.fpair + fc * (all.fpair - short.fpair);
-        evdwl += flj * short.evdwl;
-        ecoul += fc * all.ecoul;
+        const r = pairSpecEval(spec, st.type[i], st.type[j], rsq, qi, qj, flj, fc);
+        const fpair = r.fpair;
+        evdwl += r.evdwl;
+        ecoul += r.ecoul;
         virial += fpair * rsq;
         for (let k = 0; k < 3; k++) { st.f[3 * i + k] += fpair * d[k]; st.f[3 * j + k] -= fpair * d[k]; }
       }
@@ -96,7 +96,7 @@ class KernelInFp64 implements ForceBackend {
   }
 }
 
-const SETUP = (charged: boolean, pair: string) => `units lj
+const SETUP = (charged: boolean, pair: string, dihedral = 'dihedral_style opls\ndihedral_coeff 1 0.5 0.2 0.3 0.0', special = 'special_bonds lj 0.0 0.5 0.8 coul 0.0 0.0 0.6') => `units lj
 atom_style ${charged ? 'full' : 'molecular'}
 read_data chains.data
 ${pair}
@@ -104,17 +104,16 @@ bond_style harmonic
 bond_coeff 1 200.0 1.125
 angle_style harmonic
 angle_coeff 1 20.0 170.0
-dihedral_style opls
-dihedral_coeff 1 0.5 0.2 0.3 0.0
-special_bonds lj 0.0 0.5 0.8 coul 0.0 0.0 0.6
+${dihedral}
+${special}
 velocity all create 1.0 4928 loop geom
 fix 1 all nve
-thermo_style custom step temp pe ke etotal evdwl ecoul ebond eangle edihed press
+thermo_style custom step temp pe ke etotal evdwl ecoul elong ebond eangle edihed press
 thermo 10
 run 40
 `;
 
-const run = async (backend: ForceBackend, charged: boolean, pair: string): Promise<{ rows: ThermoRow[]; logs: string[]; sys: System }> => {
+const run = async (backend: ForceBackend, charged: boolean, pair: string, dihedral?: string, special?: string): Promise<{ rows: ThermoRow[]; logs: string[]; sys: System }> => {
   const rows: ThermoRow[] = [], logs: string[] = [];
   const s = new Session({
     emit: (ev: EngineEvent) => {
@@ -124,21 +123,33 @@ const run = async (backend: ForceBackend, charged: boolean, pair: string): Promi
     writeFile: () => {},
   }, backend);
   s.addFile('chains.data', chainData(charged));
-  await s.execute(SETUP(charged, pair));
+  await s.execute(SETUP(charged, pair, dihedral, special));
   return { rows, logs, sys: (s as unknown as { sys: System }).sys };
 };
 
-const CASES: Record<string, { charged: boolean; pair: string; style: number }> = {
+const CASES: Record<string, { charged: boolean; pair: string; style: number; dihedral?: string; special?: string }> = {
   'lj/cut (spec style 10)': { charged: false, pair: 'pair_style lj/cut 2.5\npair_coeff * * 1.0 1.0\npair_coeff 1 2 0.8 1.05 2.4\npair_modify shift yes', style: 10 },
   'lj/cut/coul/cut': { charged: true, pair: 'pair_style lj/cut/coul/cut 2.5 2.9\npair_coeff * * 1.0 1.0\npair_coeff 1 2 0.8 1.05', style: 1 },
+  // kspace on the CPU: special pairs with both weights 0 keep the Coulomb correction (special_bonds.html)
+  'lj/cut/coul/long + pppm': {
+    charged: true, style: 12,
+    pair: 'pair_style lj/cut/coul/long 2.5 2.9\npair_coeff * * 1.0 1.0\npair_coeff 1 2 0.8 1.05\npair_modify table 0\nkspace_style pppm 1e-4',
+  },
+  'coul/long + ewald': { charged: true, style: 11, pair: 'pair_style coul/long 2.9\npair_coeff * *\npair_modify table 0\nkspace_style ewald 1e-4' },
+  // dihedral charmm tallies its weighted 1-4 pairs into evdwl and ecoul (special_bonds charmm: 0 0 0)
+  'lj/charmm/coul/long + pppm, dihedral charmm': {
+    charged: true, style: 13,
+    pair: 'pair_style lj/charmm/coul/long 2.0 2.5 2.9\npair_coeff * * 1.0 1.0 0.5 0.95\npair_coeff 1 2 0.8 1.05 0.4 1.0\npair_modify table 0\nkspace_style pppm 1e-4',
+    dihedral: 'dihedral_style charmm\ndihedral_coeff 1 0.5 1 180 0.5', special: 'special_bonds charmm',
+  },
 };
 
 describe('molecular systems on the GPU path: CPU bonded terms plus the GPU pair term with special weights', () => {
   for (const [name, c] of Object.entries(CASES)) {
     it(`${name}: the thermo of the CPU engine`, async () => {
-      const cpu = await run(new CpuForceBackend(), c.charged, c.pair);
+      const cpu = await run(new CpuForceBackend(), c.charged, c.pair, c.dihedral, c.special);
       const fake = new KernelInFp64();
-      const gpu = await run(fake, c.charged, c.pair);
+      const gpu = await run(fake, c.charged, c.pair, c.dihedral, c.special);
       // the run took the GPU path (no fallback line), the special list reached the kernel
       expect(gpu.logs.filter((l) => l.includes('general fp64 CPU engine'))).toEqual([]);
       expect(fake.calls).toBe(41);
@@ -146,7 +157,7 @@ describe('molecular systems on the GPU path: CPU bonded terms plus the GPU pair 
       expect(gpu.rows.length).toBe(cpu.rows.length);
       expect(cpu.rows.length).toBe(5);
       for (let r = 0; r < cpu.rows.length; r++) {
-        for (const k of ['temp', 'pe', 'ke', 'etotal', 'evdwl', 'ecoul', 'ebond', 'eangle', 'edihed', 'press']) {
+        for (const k of ['temp', 'pe', 'ke', 'etotal', 'evdwl', 'ecoul', 'elong', 'ebond', 'eangle', 'edihed', 'press']) {
           const a = cpu.rows[r][k], b = gpu.rows[r][k];
           expect(Math.abs(a - b), `row ${r} ${k}: ${a} vs ${b}`).toBeLessThan(1e-9 * Math.max(1, Math.abs(a)));
         }
@@ -155,10 +166,13 @@ describe('molecular systems on the GPU path: CPU bonded terms plus the GPU pair 
       expect(Math.abs(cpu.rows[0].ebond)).toBeGreaterThan(1e-3);
       expect(Math.abs(cpu.rows[0].edihed)).toBeGreaterThan(1e-3);
       if (c.charged) expect(Math.abs(cpu.rows[0].ecoul)).toBeGreaterThan(1e-3);
+      if (c.style >= 11) expect(Math.abs(cpu.rows[0].elong)).toBeGreaterThan(1e-3);
+      const acc = accelerator(gpu.sys, fake);
+      expect(acc.accel?.spec?.style).toBe(c.style);
     });
   }
 
-  it('the accelerator: a spec with the special weights, not resident; kspace and the lj/cut threads stay on the CPU', async () => {
+  it('the accelerator: a spec with the special weights, not resident; the lj/cut threads, fix adapt and pair_modify compute no stay on the CPU', async () => {
     const gpu = { kind: 'webgpu', label: 'WebGPU · test', compute: () => ({ pe: 0, virial: 0 }), dispose() {}, canAdvance: () => true, canAdvanceSpec: () => true } as unknown as ForceBackend;
     const { sys } = await run(new CpuForceBackend(), false, CASES['lj/cut (spec style 10)'].pair);
     const a = accelerator(sys, gpu);
@@ -171,6 +185,15 @@ describe('molecular systems on the GPU path: CPU bonded terms plus the GPU pair 
     const threads = { kind: 'cpu', label: 'CPU · threads', compute: () => ({ pe: 0, virial: 0 }), dispose() {} } as unknown as ForceBackend;
     expect(accelerator(sys, threads).reason).toBe('bonded terms or molecular topology');
     const charged = await run(new CpuForceBackend(), true, 'pair_style lj/cut/coul/long 2.5 2.9\npair_coeff * * 1.0 1.0\nkspace_style ewald 1e-4');
-    expect(accelerator(charged.sys, gpu).reason).toMatch(/pair style lj\/cut\/coul\/long|kspace/);
+    const long = accelerator(charged.sys, gpu);
+    expect(long.reason).toBeNull();
+    expect(long.accel?.kspace).toBe(true);
+    expect(long.accel?.resident).toBe(false);
+    expect(long.accel?.spec?.gewald).toBeGreaterThan(0);
+    // a kspace style with a pair style the GPU does not run
+    const buck = await run(new CpuForceBackend(), true, 'pair_style buck/coul/long 2.5 2.9\npair_coeff * * 100.0 0.3 1.0\nkspace_style ewald 1e-4');
+    expect(accelerator(buck.sys, gpu).reason).toMatch(/pair style buck\/coul\/long/);
+    const adapt = await run(new CpuForceBackend(), false, `${CASES['lj/cut (spec style 10)'].pair}\nfix 9 all adapt 1 pair lj/cut epsilon 1 1 v_e\nvariable e equal 1.0`);
+    expect(accelerator(adapt.sys, gpu).reason).toBe('fix adapt (it changes the pair coefficients during the run)');
   });
 });

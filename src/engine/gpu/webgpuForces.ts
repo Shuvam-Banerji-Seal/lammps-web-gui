@@ -20,6 +20,8 @@ import { WGSL_STYLE_LAWS } from './styleLaws';
  *
  * Boxes shorter than 3 cutoffs in some dimension have too few cells for the
  * 27-cell scan to be exact; those (small) systems use the fp64 CPU backend.
+ * The pair-style kernel (KERNEL_STYLES) scans every cell once along such an
+ * edge instead, which the minimum image keeps exact down to 2 cutoffs.
  *
  * Kernel physics, with u = 1/r^2 and u3 = u^3 (pairs.ts):
  *   F.r/r^2 = u u3 (f12 u3 - f6),  E = u3 (e12 u3 - e6) - eshift,  W = F.r.
@@ -132,7 +134,7 @@ struct Params {
   qBase : u32,
   qqrd2e : f32,
   specBase : u32,   // special bonds: each slot's first entry in ints at specBase + slot (0: none)
-  pad1 : u32,
+  gewald : f32,     // G-ewald of the long-range Coulomb styles (0: the bare Coulomb term)
   pad2 : u32,
   wlj : vec4<f32>,  // special_bonds lj weights by order (1-2, 1-3, 1-4 at 1..3)
   wc : vec4<f32>,   // and coul weights
@@ -165,15 +167,17 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   let cx = i32(c % nc.x);
   let cy = i32((c / nc.x) % nc.y);
   let cz = i32(c / (nc.x * nc.y));
-  var zr = 1;
-  if (P.two == 1u) { zr = 0; }
+  // the 27 cells around the atom's own; along an edge of fewer than 3 cells (an edge of 2 to 3 cutoffs, or z in 2D)
+  // each cell once, where the minimum image finds the one copy of a partner within the cutoff
+  let lo = vec3<i32>(select(-1, 0, nc.x < 3u), select(-1, 0, nc.y < 3u), select(-1, 0, nc.z < 3u));
+  let hi = vec3<i32>(select(1, i32(nc.x) - 1, nc.x < 3u), select(1, i32(nc.y) - 1, nc.y < 3u), select(1, i32(nc.z) - 1, nc.z < 3u));
   var f = vec3<f32>(0.0, 0.0, 0.0);
   var ev = 0.0;
   var ec = 0.0;
   var w = 0.0;
-  for (var dz = -zr; dz <= zr; dz = dz + 1) {
-    for (var dy = -1; dy <= 1; dy = dy + 1) {
-      for (var dx = -1; dx <= 1; dx = dx + 1) {
+  for (var dz = lo.z; dz <= hi.z; dz = dz + 1) {
+    for (var dy = lo.y; dy <= hi.y; dy = dy + 1) {
+      for (var dx = lo.x; dx <= hi.x; dx = dx + 1) {
         let c2 = (wrapCell(cz + dz, nc.z) * nc.y + wrapCell(cy + dy, nc.y)) * nc.x + wrapCell(cx + dx, nc.x);
         let jEnd = ints[c2 + 1u];
         for (var j = ints[c2]; j < jEnd; j = j + 1u) {
@@ -187,7 +191,8 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
           let A = coef[k];
           if (r2 >= max(A.x, A.y)) { continue; }
           let B = coef[k + 1u];
-          // a special pair (1-2, 1-3, 1-4): its weights, and no pair at all when both are 0 (as the neighbor list)
+          // a special pair (1-2, 1-3, 1-4): its weights, and no pair at all when both are 0 (as the neighbor list
+          // without kspace; with it the pair stays, for the Coulomb correction below)
           var flj = 1.0;
           var fc = 1.0;
           if (P.specBase > 0u) {
@@ -200,7 +205,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
                 break;
               }
             }
-            if (flj == 0.0 && fc == 0.0) { continue; }
+            if (flj == 0.0 && fc == 0.0 && P.gewald == 0.0) { continue; }
           }
           var fp = 0.0;
           if (r2 < A.x) {
@@ -211,9 +216,21 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
           if (r2 < A.y && P.qBase > 0u) {
             let qj = bitcast<f32>(ints[P.qBase + j]);
             if (qi != 0.0 && qj != 0.0) {
-              let pre = fc * P.qqrd2e * B.w * qi * qj / sqrt(r2);
-              fp = fp + pre / r2;
-              ec = ec + 0.5 * pre;
+              let r = sqrt(r2);
+              let pre = P.qqrd2e * B.w * qi * qj / r;
+              if (P.gewald > 0.0) {
+                // the Ewald real-space term, erfc by the polynomial fit (erfc.ts erfcPoly), less (1 - w) of the bare
+                // term for a special pair (pairSpec.ts pairSpecEval)
+                let gr = P.gewald * r;
+                let ex = exp(-gr * gr);
+                let t = 1.0 / (1.0 + 0.3275911 * gr);
+                let erfc = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * ex;
+                fp = fp + pre * (erfc + 1.12837917 * gr * ex - (1.0 - fc)) / r2;
+                ec = ec + 0.5 * pre * (erfc - (1.0 - fc));
+              } else {
+                fp = fp + fc * pre / r2;
+                ec = ec + 0.5 * fc * pre;
+              }
             }
           }
           f = f + fp * d;
@@ -479,16 +496,16 @@ export class WebGpuForceBackend implements ForceBackend {
   /**
    * The counting sort by cell (the same assignment as cpu/cells.ts) of compute() and computeSpec(): sorted[slot] the
    * atom of each slot, posData its fp32 position from the box origin and type, intsData the cell starts (ncell + 1) then
-   * the cell of each slot (n), with `extra` more words after them. Null when a periodic dimension has fewer than 3 cells
-   * (the 27-cell scan would not be exact; the CPU computes those).
+   * the cell of each slot (n), with `extra` more words after them. Null when a periodic dimension has fewer than minCells
+   * cells: 3 for the 27-cell scan of compute(); the scan of KERNEL_STYLES takes every cell once along a shorter edge.
    */
-  private sortByCell(state: SimState, maxCutoff: number, extra: number):
+  private sortByCell(state: SimState, maxCutoff: number, extra: number, minCells = 3):
     { L: number[]; nc: number[]; ncell: number; base: number; two: boolean } | null {
     const { n, x, type } = state;
     const two = state.dimension === 2;
     const L = [0, 1, 2].map((d) => state.box.hi[d] - state.box.lo[d]);
     const nc = [0, 1, 2].map((d) => (d === 2 && two ? 1 : Math.floor(L[d] / maxCutoff)));
-    if (nc.some((c, d) => !(d === 2 && two) && c < 3)) return null;
+    if (nc.some((c, d) => !(d === 2 && two) && c < minCells)) return null;
     const ncell = nc[0] * nc[1] * nc[2];
     if (this.sorted.length < n) {
       this.sorted = new Int32Array(n);
@@ -547,8 +564,13 @@ export class WebGpuForceBackend implements ForceBackend {
     const sp = spec.special && special ? special : null;
     const spEntries = sp ? sp.offset[n] : 0;
     const extra = (spec.charges ? n : 0) + (sp ? n + 1 + spEntries : 0);
-    const cells = this.sortByCell(state, spec.maxCutoff, extra);
-    if (!cells) throw new Error('the box has fewer than 3 cutoffs in a periodic dimension');
+    // the minimum image is the only copy of a partner within the cutoff while each edge is at least 2 cutoffs
+    const flat = state.dimension === 2;
+    if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
+      throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
+    }
+    const cells = this.sortByCell(state, spec.maxCutoff, extra, 1);
+    if (!cells) throw new Error('the box has no cell in a periodic dimension');
     const { L, nc, base, two } = cells;
     const { sorted, posData } = this;
     const ints = this.intsData;
@@ -618,7 +640,7 @@ export class WebGpuForceBackend implements ForceBackend {
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
     pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
     pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = spec.style; pu[11] = spec.charges ? base + n : 0;
-    pf[12] = spec.qqrd2e; pu[13] = specBase;
+    pf[12] = spec.qqrd2e; pu[13] = specBase; pf[14] = spec.gewald;
     if (spec.special) for (let o = 0; o < 4; o++) { pf[16 + o] = spec.special.lj[o]; pf[20 + o] = spec.special.coul[o]; }
     const q = dev.queue;
     q.writeBuffer(this.styleParams!, 0, params);

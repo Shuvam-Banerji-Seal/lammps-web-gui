@@ -34,6 +34,11 @@ const STYLES: Record<string, string> = {
   yukawa: 'pair_style yukawa 0.4 6.5\npair_coeff * * 40.0\npair_coeff 1 2 60.0 6.0\npair_modify shift yes',
   'lj96/cut': 'pair_style lj96/cut 6.5\npair_coeff * * 0.2 3.2\npair_coeff 1 2 0.3 3.0 6.0\npair_modify shift yes',
   born: 'pair_style born 6.5\npair_coeff * * 6000.0 0.32 2.6 100.0 50.0\npair_coeff 1 2 5000.0 0.30 2.4 80.0 40.0 6.0\npair_modify shift yes',
+  // the real-space part of the long-range styles: the kspace style sets G-ewald and computes nothing here (compute no),
+  // and table 0 makes the CPU style use the polynomial erfc the kernel uses
+  'coul/long': 'pair_style coul/long 7.0\npair_coeff * *\npair_modify table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
+  'lj/cut/coul/long': 'pair_style lj/cut/coul/long 6.0 7.0\npair_coeff 1 1 0.2 3.0\npair_coeff 2 2 0.1 3.4 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
+  'lj/charmm/coul/long': 'pair_style lj/charmm/coul/long 5.0 6.5 7.0\npair_coeff 1 1 0.2 3.0\npair_coeff 2 2 0.1 3.4\npair_modify table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
 };
 
 const systemFor = async (lines: string): Promise<System> => {
@@ -68,6 +73,7 @@ describe('GPU pair-style specs against the CPU styles', () => {
       const p = sys.ff.pair!;
       const spec = gpuPairSpec(p, st.ntypes, st.units.qqr2e * (p.coulConstScale ?? 1) / sys.ff.dielectric);
       if (typeof spec === 'string') throw new Error(spec);
+      if (/long/.test(name)) expect(spec.gewald).toBeGreaterThan(0);
       expect(spec.maxCutoff).toBeLessThan((st.box.hi[0] - st.box.lo[0]) / 2);
       const got = specForces(sys, spec);
       const acc = sys.ff.acc;
@@ -92,16 +98,20 @@ describe('GPU pair-style specs against the CPU styles', () => {
     const gpuRes = { ...gpu, canAdvance: () => true, advance: async () => ({ pe: 0, virial: 0 }), canAdvanceSpec: () => true } as unknown as ForceBackend;
     const res = await (async () => accelerator(await systemFor(`${STYLES.morse}\nfix 1 all nve`), gpuRes))();
     expect(res.accel?.resident).toBe(true);
-    // (cutoffs within a third of the 20.4 A box: a longer one keeps the run on the CPU altogether)
+    // (cutoffs within a third of the 20.4 A box for whole steps; past half of it the run stays on the CPU altogether)
     const charged = await (async () => accelerator(await systemFor('pair_style buck/coul/cut 6.0 6.5\npair_coeff * * 20000.0 0.3 120.0\nfix 1 all nve'), gpuRes))();
     expect(charged.reason).toBeNull();
     expect(charged.accel?.resident).toBe(true);
     // and not with a thermostat (the GPU steps integrate fix nve only)
     const langevin = await (async () => accelerator(await systemFor('pair_style buck/coul/cut 6.0 6.5\npair_coeff * * 20000.0 0.3 120.0\nfix 1 all nve\nfix 2 all langevin 300 300 100 4928'), gpuRes))();
     expect(langevin.accel?.resident).toBe(false);
-    const long = await (async () => accelerator(await systemFor(`${STYLES['buck/coul/cut']}\nfix 1 all nve`), gpuRes))();
-    expect(long.reason).toBe('a box shorter than 3 pair cutoffs along an edge');
+    // between 2 and 3 cutoffs: the per-step kernel (every cell once along the edge), not whole steps
+    const mid = await (async () => accelerator(await systemFor(`${STYLES['buck/coul/cut']}\nfix 1 all nve`), { ...gpuRes, canAdvanceSpec: () => false } as unknown as ForceBackend))();
+    expect(mid.reason).toBeNull();
+    expect(mid.accel?.resident).toBe(false);
+    const long = await (async () => accelerator(await systemFor('pair_style buck/coul/cut 6.0 10.5\npair_coeff * * 20000.0 0.3 120.0\nfix 1 all nve'), gpuRes))();
+    expect(long.reason).toBe('a box shorter than 2 pair cutoffs along an edge');
     const expand = await withFix('pair_style lj/expand 6.0\npair_coeff * * 0.2 3.0 0.5');
-    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born only\)/);
+    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born, coul\/long, lj\/cut\/coul\/long, lj\/charmm\/coul\/long only\)/);
   });
 });

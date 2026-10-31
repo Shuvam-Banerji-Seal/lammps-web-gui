@@ -88,6 +88,16 @@ describe('GPU pair-style specs against the CPU styles', () => {
     const ok = await withFix(STYLES.buck);
     expect(ok.reason).toBeNull();
     expect(ok.accel?.spec?.style).toBe(3);
+    // whole steps on the GPU (resident.ts) for an uncharged style with only fix nve, not for a charged one
+    const gpuRes = { ...gpu, canAdvance: () => true, advance: async () => ({ pe: 0, virial: 0 }), canAdvanceSpec: (_s: unknown, sp: { charges: boolean }) => !sp.charges } as unknown as ForceBackend;
+    const res = await (async () => accelerator(await systemFor(`${STYLES.morse}\nfix 1 all nve`), gpuRes))();
+    expect(res.accel?.resident).toBe(true);
+    // (cutoffs within a third of the 20.4 A box: a longer one keeps the run on the CPU altogether)
+    const charged = await (async () => accelerator(await systemFor('pair_style buck/coul/cut 6.0 6.5\npair_coeff * * 20000.0 0.3 120.0\nfix 1 all nve'), gpuRes))();
+    expect(charged.reason).toBeNull();
+    expect(charged.accel?.resident).toBe(false);
+    const long = await (async () => accelerator(await systemFor(`${STYLES['buck/coul/cut']}\nfix 1 all nve`), gpuRes))();
+    expect(long.reason).toBe('a box shorter than 3 pair cutoffs along an edge');
     const expand = await withFix('pair_style lj/expand 6.0\npair_coeff * * 0.2 3.0 0.5');
     expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born only\)/);
   });

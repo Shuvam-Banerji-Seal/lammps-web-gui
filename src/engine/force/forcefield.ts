@@ -1,3 +1,4 @@
+import { BOND, COMM, KSPACE, PAIR, RunTimer } from '../timer';
 import type { ThreadSkip } from '../cpu/pairThreads';
 import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
@@ -88,6 +89,8 @@ export class ForceField {
    */
   pairNotRestarted: string | null = null;
   /** Shared-memory threads for the pair term (cpu/pairThreads.ts), set by the session when available. */
+  /** The run's section timer (timer.ts), stamped around the pair, bonded and kspace terms and the reverse comm. */
+  readonly timer = new RunTimer();
   pairThreads: {
     run(pair: Pair, pc: PairCompute): boolean; readonly calls: number;
     /** for the resource monitor: the thread count, the size threshold, and why the last call stayed on one thread */
@@ -402,6 +405,9 @@ export class ForceField {
     s.custom.get(APIP_F_CONST_LAMBDA)?.data.fill(0);
     s.custom.get(APIP_F_DYN_LAMBDA)?.data.fill(0);
     nb.clearForces();
+    // native Verlet: force_clear() then timer->stamp(), so clearing the forces is "Other"
+    const timer = this.timer;
+    timer.mark();
     const nall = nb.nall;
     const eatomAll = flags.eatom ? new Float64Array(nall) : null;
     const vatomAll = flags.vatom ? new Float64Array(6 * nall) : null;
@@ -432,6 +438,7 @@ export class ForceField {
         const v = acc.virial;
         v[0] += v0; v[1] += v1; v[2] += v2; v[3] += v3; v[4] += v4; v[5] += v5;
       }
+      timer.stamp(PAIR);
     }
     // per-atom energy and virial are tallied per term, then summed
     const eTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
@@ -471,9 +478,14 @@ export class ForceField {
       run(this.angle, 'angle', acc.vangle);
       run(this.dihedral, 'dihedral', acc.vdihed);
       run(this.improper, 'improper', acc.vimp);
+      timer.stamp(BOND);
     }
-    if (this.kspace && this.kspace.computeOn && want('kspace')) this.kspace.compute({ s, geom, f: s.f, qqrd2e: qqrd2e * this.kspace.scale, acc, torque: s.torque, ...termArrays('kspace') });
+    if (this.kspace && this.kspace.computeOn && want('kspace')) {
+      this.kspace.compute({ s, geom, f: s.f, qqrd2e: qqrd2e * this.kspace.scale, acc, torque: s.torque, ...termArrays('kspace') });
+      timer.stamp(KSPACE);
+    }
     nb.reverseComm(s.f);
+    timer.stamp(COMM);
     if (this.pair && (eatomAll || vatomAll)) {
       const pt = termArrays('pair');
       if (eatomAll && pt.eatom) nb.reverseSum(eatomAll, 1, pt.eatom);

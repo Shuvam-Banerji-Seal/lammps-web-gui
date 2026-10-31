@@ -1,3 +1,4 @@
+import { COMM, MODIFY, OUTPUT, PAIR } from '../timer';
 import type { System } from '../system';
 import type { ForceBackend, ForceResult, PairTable } from '../types';
 import { PairLJCut } from '../force/pair/lj_cut';
@@ -123,8 +124,10 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
   const fPostForce = has('postForce');
   const fFinal = has('finalIntegrate');
   const fEnd = has('endOfStep');
+  const timer = sys.timer;
   while (s.step < end) {
     if (hooks.cancelled()) break;
+    timer.mark();
     if (a.resident) {
       // whole steps on the GPU up to the next step the host needs
       let m = 1;
@@ -134,8 +137,11 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
       taken += m;
       sys.bump();
       store(sys, r);
+      // whole steps on the GPU: the force evaluation and the integration together
+      timer.stamp(PAIR);
       sys.refreshComputes();
       hooks.afterStep(s.step);
+      timer.stamp(OUTPUT);
       await yieldNow();
       lastYield = performance.now();
       continue;
@@ -145,16 +151,22 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
     sys.refreshComputes();
     for (const f of fInitial) f.initialIntegrate!();
     for (const f of fPostInt) f.postIntegrate!();
+    timer.stamp(MODIFY);
     remap();
     sys.bump();
+    timer.stamp(COMM);
     for (const f of fPreForce) f.preForce!();
+    timer.stamp(MODIFY);
     store(sys, await a.backend.compute(s, a.table));
+    timer.stamp(PAIR);
     for (const f of fPostForce) f.postForce!();
     for (const f of fFinal) f.finalIntegrate!();
     for (const f of fEnd) if (s.step % f.nevery === 0) f.endOfStep!();
+    timer.stamp(MODIFY);
     sys.refreshComputes();
     taken++;
     hooks.afterStep(s.step);
+    timer.stamp(OUTPUT);
     if (haltRequested(sys)) break;
     if (performance.now() - lastYield > 30) { await yieldNow(); lastYield = performance.now(); }
   }

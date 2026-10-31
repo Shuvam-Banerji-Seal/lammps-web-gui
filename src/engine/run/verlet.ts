@@ -1,3 +1,4 @@
+import { COMM, MODIFY, NEIGH, OUTPUT } from '../timer';
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { restartDue } from '../commands/restart';
@@ -141,6 +142,7 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
   const fFinal = has('finalIntegrate');
   const fEnd = has('endOfStep');
   const flags = sys.computeFlags();
+  const timer = sys.timer;
 
   if (!hooks.skipSetup) setupRun(sys);
   hooks.afterSetup();
@@ -149,26 +151,35 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
   for (let k = 0; k < nsteps; k++) {
     if (hooks.cancelled()) break;
     s.step++;
+    timer.mark();
     // forces still belong to the current positions here (barostats read the pressure);
     // only compute values must be refreshed for the new step
     sys.refreshComputes();
     for (const f of fInitial) f.initialIntegrate!();
     for (const f of fPostInt) f.postIntegrate!();
     sys.bump();
+    timer.stamp(MODIFY);
     const fReneigh = fixes.some((f) => f.reneighborDue?.(s.step) === true);
     nb.forceBuildStep = restartDue(sys, s.step) ? s.step : -1;
     nb.fixBuildStep = fReneigh ? s.step : -1;
     if (nb.decide(s.step, s, sys.geom)) {
       for (const f of fPreEx) f.preExchange!();
+      timer.stamp(MODIFY);
       sys.pbc();
       sys.sortAtoms(false);
+      timer.stamp(COMM);
       for (const f of fPreNeigh) f.preNeighbor!();
+      timer.stamp(MODIFY);
       nb.build(s, sys.geom, s.step);
+      timer.stamp(NEIGH);
       for (const f of fPostNeigh) f.postNeighbor!();
+      timer.stamp(MODIFY);
     } else {
       nb.forwardComm(s, sys.geom);
+      timer.stamp(COMM);
     }
     for (const f of fPreForce) f.preForce!();
+    timer.stamp(MODIFY);
     sys.computeForcesInRun({ ...flags, step: true });
     sys.forcesCurrent();
     sys.assignDynamicGroups(false);
@@ -176,9 +187,11 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
     for (const f of fPostForce) f.postForce!();
     for (const f of fFinal) f.finalIntegrate!();
     for (const f of fEnd) if (s.step % f.nevery === 0) f.endOfStep!();
+    timer.stamp(MODIFY);
     sys.refreshComputes();
     taken++;
     hooks.afterStep(s.step);
+    timer.stamp(OUTPUT);
     // fix halt (fix_halt.html): the run ends after the step on which the condition was met
     if (haltRequested(sys)) break;
     if (hooks.yieldMs >= 0 && performance.now() - lastYield > hooks.yieldMs) {

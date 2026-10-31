@@ -77,14 +77,15 @@ const timespecSeconds = (spec: string): number | null => {
   return vals[0];
 };
 
-/** timer args — timer.html; timing breakdowns are not collected in the browser, timeout is not supported. */
+/** timer args — timer.html; the level selects the timing breakdown (timer.ts), timeout is not supported. */
 const timer: Handler = ({ sys }, a) => {
   // As native LAMMPS does (src/timer.cpp Timer::modify_params at b332f28): the styles and modes, timeout with a time
   // (utils::timespec2seconds: off, unlimited, or [[HH:]MM:]SS), every with a check frequency (utils::inumeric, > 0); the
   // messages name the keyword, not the value
   for (let k = 0; k < a.length; k++) {
     const w = a[k];
-    if (['off', 'loop', 'normal', 'full', 'sync', 'nosync'].includes(w)) continue;
+    if (w === 'off' || w === 'loop' || w === 'normal' || w === 'full') { sys.timer.level = w; continue; }
+    if (w === 'sync' || w === 'nosync') continue;
     if (w === 'timeout') {
       if (++k >= a.length) throw missingArgs('timer timeout');
       const t = timespecSeconds(a[k]);
@@ -103,7 +104,8 @@ const timer: Handler = ({ sys }, a) => {
     }
     throw new StyleError(`Unknown timer keyword ${w}`);
   }
-  sys.log('timer: accepted (the browser engine reports only the loop time)');
+  // timer.html: off and loop collect no section times, normal and full print the breakdown after each run (full's
+  // %CPU column needs the CPU time, which the browser does not give: the engine prints the normal table)
 };
 
 /** info [categories] — info.html; prints what the browser engine knows. */

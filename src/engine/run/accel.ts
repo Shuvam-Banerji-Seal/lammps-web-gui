@@ -73,7 +73,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 3 * spec.maxCutoff);
     if (short) return why('a box shorter than 3 pair cutoffs along an edge');
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    // whole steps on the GPU (resident.ts) for an uncharged style with only nve / enforce2d on all atoms, as for lj/cut
+    // whole steps on the GPU (resident.ts) with only nve / enforce2d on all atoms, as for lj/cut
     const allBit = sys.groupBit('all');
     const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
     const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };

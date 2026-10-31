@@ -13,6 +13,7 @@ import type { ColorMap } from './image_colormap';
 import { gplHook } from '../gplHooks';
 import { expandGridRefs } from '../grid';
 import { gzipText } from '../gzip';
+import { zstdText } from '../zstd';
 
 /**
  * The compression extension of a dump file name (the extensions of native platform::find_compress_type,
@@ -312,8 +313,11 @@ export class Dump {
   private refreshId: string | null = null;
   private written: string[] = [];
   private opened = false;
-  /** The file is written gzipped (a .gz name, or a COMPRESS /gz style). */
+  /** The file is written compressed (a .gz or .zst name, or a COMPRESS /gz or /zstd style). */
   private gz = false;
+  /** Zstandard rather than gzip (a .zst name or a /zstd style), and its content checksum (dump_modify checksum). */
+  private zst = false;
+  private zstChecksum = true;
   private nextStep = -1;
   /** dump image: the image renderer (dump_image.ts); null for every other style. */
   private imageDump: ImageDump | null = null;
@@ -410,23 +414,28 @@ export class Dump {
   }
 
   constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[], private readonly multifileOverride = false,
-    /** A COMPRESS style (atom/gz, custom/gz, ...): its name, for dump_modify compression_level and the messages. */
+    /** A COMPRESS style (atom/gz, custom/zstd, ...): its name, for dump_modify compression_level and the messages. */
     private readonly gzStyle: string | null = null) {
     // dump.html: "If the filename ends with ".gz", the dump file (or files, if "*" or "%" is also used) is written in
     // gzipped format." As native LAMMPS does (src/dump.cpp at b332f28, Dump::openfile): a name with a compression
     // extension is written through the compressor, and dump_modify append is then ignored (the file is rewritten).
-    // The browser engine writes gzip only: each snapshot is one gzip member (stored blocks), and the members of a
-    // file decompress to the whole dump. A COMPRESS /gz style always writes gzip and needs a compressed name.
+    // The browser engine writes gzip and Zstandard: each snapshot is one gzip member (stored blocks) or one Zstandard
+    // frame (raw blocks, zstd.ts), and the members or frames of a file decompress to the whole dump. A COMPRESS style
+    // writes its own format (src/COMPRESS/dump_atom_zstd.cpp at b332f28: "if (!compressed) error->all(FLERR, "Dump
+    // atom/zstd only writes compressed files")") whatever the compressed name; a .zst name with any other style is
+    // written through the zstd tool by native, with its default content checksum.
     const ext = compressExtension(file);
     if (gzStyle) {
       if (!ext) throw new StyleError(`Dump ${gzStyle} only writes compressed files`);
       this.gz = true;
+      this.zst = gzStyle.endsWith('/zstd');
     } else if (ext && style !== 'dcd' && style !== 'xtc') {
       // (dump dcd and xtc stop with their own "Invalid dump ... filename")
-      if (style === 'image' || style === 'vtk' || style === 'grid/vtk' || ext !== 'gz') {
-        throw new StyleError(`dump ${id}: a compressed (.${ext}) ${style} dump file is not supported by the browser engine; ${style === 'image' || style === 'vtk' || style === 'grid/vtk' ? 'use a plain file name' : 'use .gz or a plain file name'}`);
+      if (style === 'image' || style === 'vtk' || style === 'grid/vtk' || (ext !== 'gz' && ext !== 'zst')) {
+        throw new StyleError(`dump ${id}: a compressed (.${ext}) ${style} dump file is not supported by the browser engine; ${style === 'image' || style === 'vtk' || style === 'grid/vtk' ? 'use a plain file name' : 'use .gz, .zst or a plain file name'}`);
       }
       this.gz = true;
+      this.zst = ext === 'zst';
     }
     this.groupBit = sys.groupBit(group);
     if (typeof every === 'string') this.everyVar = every;
@@ -638,7 +647,7 @@ export class Dump {
         if (n > 0) { k += n; continue; }
       }
       if (!this.vtkStyle && !this.gridStyle && !BASE_KEYWORDS.has(key) && !STYLE_KEYWORDS[this.style]?.has(key)
-        && !(key === 'compression_level' && this.gzStyle)) {
+        && !(key === 'compression_level' && this.gzStyle) && !(key === 'checksum' && this.gzStyle?.endsWith('/zstd'))) {
         throw new StyleError(`Unknown dump_modify keyword: ${key}`);
       }
       // As native LAMMPS does (src/dump.cpp Dump::modify_params at b332f28): each base keyword without its value is
@@ -671,7 +680,19 @@ export class Dump {
           if (v === undefined) throw new StyleError('Illegal dump_modify command');
           const level = intArg(v, key);
           if (this.opened) throw new StyleError('Illegal dump_modify command: Compression level can not be changed while file is open');
-          if (level < -1 || level > 9) throw new StyleError('Illegal dump_modify command: Compression level must in the range of [-1, 9]');
+          // src/COMPRESS/zstd_file_writer.cpp setCompressionLevel: [ZSTD_minCLevel(), ZSTD_maxCLevel()] = [-131072, 22]
+          const [lo, hi] = this.zst ? [-131072, 22] : [-1, 9];
+          if (level < lo || level > hi) throw new StyleError(`Illegal dump_modify command: Compression level must in the range of [${lo}, ${hi}]`);
+          k += 2;
+          break;
+        }
+        // As native LAMMPS does (src/COMPRESS/dump_atom_zstd.cpp modify_param and zstd_file_writer.cpp setChecksum at
+        // b332f28): checksum yes/no for a /zstd style while its file is not open (default yes)
+        case 'checksum': {
+          if (v === undefined) throw new StyleError('Illegal dump_modify command');
+          const on = yesno(v, key);
+          if (this.opened) throw new StyleError('Illegal dump_modify command: Checksum flag can not be changed while file is open');
+          this.zstChecksum = on;
           k += 2;
           break;
         }
@@ -896,7 +917,7 @@ export class Dump {
    * are removed from the file store once a newer one is written (dump_modify.html).
    */
   private writeSnapshot(name: string, text: string, append: boolean): void {
-    this.sys.writeFileAt(name, this.gz ? gzipText(text) : text, append);
+    this.sys.writeFileAt(name, !this.gz ? text : this.zst ? zstdText(text, this.zstChecksum) : gzipText(text), append);
     if (this.maxfiles <= 0) return;
     if (!this.written.includes(name)) this.written.push(name);
     while (this.written.length > this.maxfiles) {

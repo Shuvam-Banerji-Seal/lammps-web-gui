@@ -233,15 +233,13 @@ export const LAZY_DUMP_STYLES: string[] = ['vtk', 'grid', 'grid/vtk', 'dcd', 'xt
 /** The COMPRESS package's gzip dump styles (dump.html: "atom/gz, cfg/gz, custom/gz, local/gz, xyz/gz"). */
 export const GZ_STYLES = ['atom/gz', 'cfg/gz', 'custom/gz', 'local/gz', 'xyz/gz'];
 
-/**
- * A COMPRESS style name: its base style and the /gz name (null for an uncompressed style). The zstd styles need the
- * Zstandard compressor, which the browser engine does not have.
- */
+/** The COMPRESS package's Zstandard dump styles (dump.html: "atom/zstd, cfg/zstd, custom/zstd, local/zstd, xyz/zstd"). */
+export const ZSTD_STYLES = ['atom/zstd', 'cfg/zstd', 'custom/zstd', 'local/zstd', 'xyz/zstd'];
+
+/** A COMPRESS style name: its base style and the /gz or /zstd name (null for an uncompressed style). */
 const compressStyle = (style: string): { base: string; gzStyle: string | null } => {
   if (GZ_STYLES.includes(style)) return { base: style.slice(0, -3), gzStyle: style };
-  if (/^(atom|cfg|custom|local|xyz)\/zstd$/.test(style)) {
-    throw new StyleError(`dump ${style}: Zstandard compression is not available in the browser engine; use ${style.split('/')[0]}/gz or ${style.split('/')[0]}`);
-  }
+  if (ZSTD_STYLES.includes(style)) return { base: style.slice(0, -5), gzStyle: style };
   return { base: style, gzStyle: null };
 };
 
@@ -262,7 +260,7 @@ const dump: Handler = ({ sys }, a) => {
   // this command by the session)
   if (!(DUMP_STYLES as string[]).includes(base) && !LAZY_DUMP_STYLES.includes(base)) {
     return loadNativeStyles().then(() => {
-      throw unknownStyleError('dump', style, () => removedStyleError('dump', style) ?? new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${[...DUMP_STYLES, ...LAZY_DUMP_STYLES, ...GZ_STYLES].join(', ')}`));
+      throw unknownStyleError('dump', style, () => removedStyleError('dump', style) ?? new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${[...DUMP_STYLES, ...LAZY_DUMP_STYLES, ...GZ_STYLES, ...ZSTD_STYLES].join(', ')}`));
     });
   }
   sys.dumps.push(new Dump(sys, id, group, base as DumpStyle, n, file, cols, false, gzStyle));
@@ -291,7 +289,7 @@ const writeDump: Handler = ({ sys }, a) => {
   const mi = rest.indexOf('modify');
   const cols = mi >= 0 ? rest.slice(0, mi) : rest;
   const { base, gzStyle } = compressStyle(style);
-  if (!(DUMP_STYLES as string[]).includes(base) && base !== 'grid' && base !== 'dcd' && base !== 'xtc') throw new StyleError(`write_dump style '${style}' is not supported; supported: ${[...DUMP_STYLES, 'grid', 'dcd', 'xtc', ...GZ_STYLES].join(', ')}`);
+  if (!(DUMP_STYLES as string[]).includes(base) && base !== 'grid' && base !== 'dcd' && base !== 'xtc') throw new StyleError(`write_dump style '${style}' is not supported; supported: ${[...DUMP_STYLES, 'grid', 'dcd', 'xtc', ...GZ_STYLES, ...ZSTD_STYLES].join(', ')}`);
   // write_dump: a dump image or cfg file needs no '*' (multifile_override, see dump_image.ts; As native LAMMPS does
   // (src/write_dump.cpp at b332f28): "if (strcmp(arg[1], "cfg") == 0) dump->multifile_override = 1")
   const d = new Dump(sys, '__write_dump', group, base as DumpStyle, 1, file, cols, style === 'image' || style === 'cfg', gzStyle);

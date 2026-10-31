@@ -176,6 +176,22 @@ interface ForceBackend {
   in fp64 against the CPU engine; in Chromium, chains of 1728 atoms with lj/cut and with
   lj/cut/coul/cut matched the CPU thermo to the 6 printed digits over 100 steps). These runs
   are not resident: every step comes back to the host.
+- **WebGPU with kspace** (`gpu/pairSpec.ts` styles 11-13): `coul/long`, `lj/cut/coul/long` and
+  `lj/charmm/coul/long` run their real-space part on the GPU and the kspace style (Ewald, PPPM,
+  on the CPU threads) beside it, with the bonded terms. The kernel's Coulomb term is
+  C q_i q_j erfc(g r)/r with erfc from the polynomial fit native uses without tables
+  (`erfc.ts erfcPoly`; `pair_modify table` N > 0 interpolates the same function, below fp32
+  rounding), G-ewald from the kspace style each step. A special pair stays a pair even with
+  both weights 0 (special_bonds.html: with kspace the 1-2, 1-3 and 1-4 pairs are not excluded
+  from the neighbor list), and its coul weight w removes (1 - w) of the bare C q_i q_j / r term.
+  The GPU's pair energies are added to the accumulator, not stored over it, because dihedral
+  charmm tallies its weighted 1-4 pairs into evdwl and ecoul. Along an edge of 2 to 3 cutoffs
+  the kernel scans every cell once instead of the 27-cell neighbourhood; the minimum image keeps
+  that exact (the whole-step kernel still needs 3 cutoffs). In Chromium the LAMMPS peptide
+  example (27.4 A box, cutoff 10, PPPM, SHAKE, nvt) ran on this path and matched the CPU
+  engine's thermo over 100 steps to fp32 (pe -6372.39 vs -6372.38 at step 0, the other energy
+  terms to all printed digits). `fix adapt` keeps a run on the CPU, because the backends upload
+  the pair coefficients once.
 - **WebGPU resident stepping**, v2 (`src/engine/gpu/resident.ts`): for runs
   whose only fixes are `nve` (plus `enforce2d`), whole velocity-Verlet steps
   stay on the GPU — half kick + drift + wrap, cell list rebuilt on the GPU

@@ -1,4 +1,4 @@
-import { GPU_PAIR_STYLES, gpuPairSpec, type GpuPairSpec } from '../gpu/pairSpec';
+import { GPU_PAIR_STYLES, gpuPairSpec, LONG_COUL_STYLES, type GpuPairSpec } from '../gpu/pairSpec';
 import type { SpecialList } from '../atoms';
 import type { LevelSelect } from '../force/forcefield';
 import { COMM, MODIFY, OUTPUT, PAIR } from '../timer';
@@ -15,10 +15,11 @@ import { runLabelCheck } from '../labelcheck';
 
 /*
  * Accelerated force paths for the notebook's CPU-threads and WebGPU choices
- * (cpu/parallel.ts, gpu/webgpuForces.ts, gpu/resident.ts). They implement one
- * force field exactly — plain pair_style lj/cut in a fully periodic
- * orthogonal box, no bonds, charges or kspace — and return the pair forces,
- * energy and virial. The run then follows the usual velocity-Verlet hook
+ * (cpu/parallel.ts, gpu/webgpuForces.ts, gpu/resident.ts). The CPU threads
+ * implement plain pair_style lj/cut without bonds; the GPU the pair styles of
+ * gpu/pairSpec.ts, with the bonded terms and the kspace style computed on the
+ * CPU beside it each step. All need a fully periodic orthogonal box. They
+ * return the pair forces, energy and virial. The run then follows the usual velocity-Verlet hook
  * order with every fix (thermostats, force-modifying fixes, ...); only the
  * force evaluation is replaced. Whole steps stay on the GPU (resident.ts)
  * when the only fixes are nve / enforce2d on all atoms. Every other input
@@ -33,6 +34,8 @@ export interface Accel {
   spec: GpuPairSpec | null;
   /** Bonded terms: computed on the CPU each step and added to the GPU's pair forces (special bonds weighted there). */
   bonded: boolean;
+  /** The kspace style: computed on the CPU each step beside the GPU's real-space pair term. */
+  kspace: boolean;
   /** Whole NVE steps on the GPU (resident.ts) with readback only on output steps. */
   resident: boolean;
   enforce2d: boolean;
@@ -53,7 +56,14 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const names = Object.keys(GPU_PAIR_STYLES).filter((k) => k !== 'lj/cut').join(', ');
     return why(`pair style ${p?.name ?? 'none'} (the ${backend.kind === 'webgpu' ? `GPU path implements lj/cut, ${names}` : 'threaded path implements lj/cut'} only)`);
   }
-  if (sys.ff.kspace) return why('a kspace style (long-range terms)');
+  // the long-range Coulomb styles' real-space term runs on the GPU, the kspace style on the CPU beside it
+  const longStyle = gpuStyle && LONG_COUL_STYLES.has(GPU_PAIR_STYLES[p.name]);
+  const kspace = !!sys.ff.kspace;
+  if (kspace && !longStyle) return why('a kspace style (long-range terms)');
+  if (!p.computeOn) return why('pair_modify compute no');
+  // fix adapt changes the pair coefficients during the run; the backends upload them once
+  const adapt = sys.fixes.find((f) => f.style.startsWith('adapt'));
+  if (adapt) return why(`fix ${adapt.style} (it changes the pair coefficients during the run)`);
   // bonded terms run on the CPU beside the GPU's pair term (special bonds weighted in the kernel); the lj/cut threads
   // of cpu/parallel.ts have no special bonds
   const molecular = !!(sys.ff.bond || sys.ff.angle || sys.ff.dihedral || sys.ff.improper)
@@ -79,16 +89,17 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const sb = sys.ff.special;
     const spec = gpuPairSpec(p, s.ntypes, qqrd2e, molecular ? { lj: [1, ...sb.lj], coul: [1, ...sb.coul] } : null);
     if (typeof spec === 'string') return why(spec);
-    // the kernel's 27-cell scan needs at least 3 cutoffs along each periodic edge (webgpuForces.ts sortByCell)
-    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 3 * spec.maxCutoff);
-    if (short) return why('a box shorter than 3 pair cutoffs along an edge');
+    // the kernel's minimum image needs at least 2 cutoffs along each periodic edge (webgpuForces.ts KERNEL_STYLES; the
+    // whole-step kernel 3, resident.ts canAdvanceSpec): a shorter edge has two copies of a partner within the cutoff
+    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * spec.maxCutoff);
+    if (short) return why('a box shorter than 2 pair cutoffs along an edge');
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
     // whole steps on the GPU (resident.ts) with only nve / enforce2d on all atoms, as for lj/cut
     const allBit = sys.groupBit('all');
     const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
     const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };
-    const resident = !molecular && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, resident, enforce2d }, reason: null };
+    const resident = !molecular && !kspace && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, resident, enforce2d }, reason: null };
   }
   const t = newPairTable(s.ntypes, p.cutGlobal);
   t.shift = p.shift;
@@ -103,19 +114,25 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const allBit = sys.groupBit('all');
   const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
   const resident = onlyNve && isResident(backend) && backend.canAdvance(s, t);
-  return { accel: { backend, table: t, spec: null, bonded: false, resident, enforce2d }, reason: null };
+  return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, resident, enforce2d }, reason: null };
 };
 
 /**
- * Stores an accelerated force result as the system's current forces. With bonded terms the accumulator already holds
- * their energies and virials (evaluate() ran them first), so only the pair part is set.
+ * Stores an accelerated force result as the system's current forces. When the CPU ran terms beside it (bonded, kspace)
+ * the accumulator already holds their energies and virials (evaluate() ran them first), and the pair energies of the
+ * bonded styles that tally into them (dihedral charmm's 1-4 pairs), so the GPU's pair energies are added.
  */
-const store = (sys: System, r: ForceResult & { evdwl?: number; ecoul?: number }, bonded = false): void => {
+const store = (sys: System, r: ForceResult & { evdwl?: number; ecoul?: number }, cpuTerms = false): void => {
   const acc = sys.ff.acc;
-  if (bonded) acc.virial.fill(0);
-  else clearAccum(acc);
-  acc.evdwl = r.evdwl ?? r.pe;
-  acc.ecoul = r.ecoul ?? 0;
+  if (cpuTerms) {
+    acc.virial.fill(0);
+    acc.evdwl += r.evdwl ?? r.pe;
+    acc.ecoul += r.ecoul ?? 0;
+  } else {
+    clearAccum(acc);
+    acc.evdwl = r.evdwl ?? r.pe;
+    acc.ecoul = r.ecoul ?? 0;
+  }
   const w = r.virialTensor;
   if (w) for (let c = 0; c < 6; c++) acc.virial[c] = w[c];
   else {
@@ -133,8 +150,10 @@ export interface AccelHooks {
   hostStep(step: number): boolean;
 }
 
-/** The bonded terms only (force/forcefield.ts LevelSelect): the pair and kspace terms are the GPU's or absent. */
-const BONDED_TERMS = { has: (t: string) => t === 'bond' || t === 'angle' || t === 'dihedral' || t === 'improper' };
+/** The terms the CPU computes beside the GPU's pair term (force/forcefield.ts LevelSelect). */
+const cpuTerms = (a: Accel): LevelSelect => ({
+  has: (t) => (a.bonded && (t === 'bond' || t === 'angle' || t === 'dihedral' || t === 'improper')) || (a.kspace && t === 'kspace'),
+});
 
 type SpecBackend = ForceBackend & { computeSpec(s: SimState, spec: GpuPairSpec, special?: SpecialList | null): Promise<ForceResult> };
 
@@ -147,9 +166,11 @@ const evaluate = async (a: Accel, sys: System, step: boolean): Promise<ForceResu
   const s = sys.state;
   if (!a.spec) return a.backend.compute(s, a.table);
   const gb = a.backend as SpecBackend;
-  if (!a.bonded) return gb.computeSpec(s, a.spec);
+  if (!a.bonded && !a.kspace) return gb.computeSpec(s, a.spec);
+  // the kspace style's G-ewald of this step (Ewald sets it again when the box changes)
+  if (a.spec.gewald > 0) a.spec.gewald = sys.ff.pair!.gEwald;
   // the CPU neighbor list is not rebuilt on this path: the bonded partners by the minimum image
-  sys.ff.compute(s, sys.nb, sys.geom, { step, minimumImage: true }, BONDED_TERMS as LevelSelect);
+  sys.ff.compute(s, sys.nb, sys.geom, { step, minimumImage: true }, cpuTerms(a));
   const n3 = 3 * s.n;
   const fb = s.f.slice(0, n3);
   const r = await gb.computeSpec(s, a.spec, sys.ff.specialPartners);
@@ -168,7 +189,7 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
   sys.sortAtoms(true);
   for (const f of sys.fixes) f.setupPreForce?.();
   sys.bump();
-  store(sys, await evaluate(a, sys, false), a.bonded);
+  store(sys, await evaluate(a, sys, false), a.bonded || a.kspace);
   computeSetup(sys);
   for (const f of sys.fixes) f.setup();
   // labelmap check_labels: once, at the end of the setup (native Modify::setup)
@@ -221,7 +242,7 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
     timer.stamp(COMM);
     for (const f of fPreForce) f.preForce!();
     timer.stamp(MODIFY);
-    store(sys, await evaluate(a, sys, true), a.bonded);
+    store(sys, await evaluate(a, sys, true), a.bonded || a.kspace);
     timer.stamp(PAIR);
     for (const f of fPostForce) f.postForce!();
     for (const f of fFinal) f.finalIntegrate!();

@@ -31,10 +31,32 @@ export const GPU_PAIR_STYLES: Readonly<Record<string, number>> = {
   'coul/long': 11,
   'lj/cut/coul/long': 12,
   'lj/charmm/coul/long': 13,
+  // the 9-6 law of lj96/cut (class 2: E = eps (2 (sigma/r)^9 - 3 (sigma/r)^6)), the Buckingham and Born-Mayer-Huggins
+  // laws with the long-range Coulomb term
+  'lj/class2': 14,
+  'lj/class2/coul/cut': 15,
+  'lj/class2/coul/long': 16,
+  'buck/coul/long': 17,
+  'born/coul/long': 18,
+};
+
+/**
+ * The kernel's short-range law of each style (P.style of the WGSL kernels, styleLaws.ts shortRange): 1 the 12-6 LJ law,
+ * 2 none (Coulomb only), 3 Buckingham, 5 Morse, 6 soft, 7 Yukawa, 8 the 9-6 law, 9 Born-Mayer-Huggins, 13 CHARMM's
+ * switched 12-6 law.
+ */
+export const SPEC_LAW: Readonly<Record<number, number>> = {
+  1: 1, 2: 2, 3: 3, 4: 3, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 1, 11: 2, 12: 1, 13: 13, 14: 8, 15: 8, 16: 8, 17: 3, 18: 9,
 };
 
 /** The styles with the Ewald real-space Coulomb term (spec.gewald, set from the kspace style's G-ewald). */
-export const LONG_COUL_STYLES: ReadonlySet<number> = new Set([11, 12, 13]);
+export const LONG_COUL_STYLES: ReadonlySet<number> = new Set([11, 12, 13, 16, 17, 18]);
+
+/** The styles with a Coulomb term: the kernel reads the charges. */
+const CHARGED_STYLES: ReadonlySet<number> = new Set([1, 2, 4, 15, ...LONG_COUL_STYLES]);
+
+/** The pair cutoff of a buck or born type pair with a Coulomb part: its own, or the global one (coul_long2.ts). */
+const ownCut = (raw: number, cutGlobal: number): number => (Number.isNaN(raw) ? cutGlobal : raw);
 
 /**
  * Floats per type pair: [cutsqA cutsqC a b] [c d eshift cscale] [e f _ _] (three vec4). lj/charmm/coul/long keeps its
@@ -44,6 +66,8 @@ export const SPEC_STRIDE = 12;
 
 export interface GpuPairSpec {
   style: number;
+  /** The kernel's short-range law (SPEC_LAW). */
+  law: number;
   /** ntypes + 1: type pair (i, j) is entry i * stride + j. */
   stride: number;
   coef: Float64Array;
@@ -69,7 +93,9 @@ type Internals = Pair & {
   morseD0: Arr; morseAlpha: Arr; morseR0: Arr;
   pa: Arr; pk: Arr; kappa: number;
   bornA: Arr; bornIR: Arr; bornSig: Arr; bornC: Arr; bornD: Arr;
-  cutCoul: number; gEwald: number; aL2: number; bL2: number; invDL3: number;
+  cutCoul: number; gEwald: number; aL2: number; bL2: number; invDL3: number; cutGlobal: number;
+  f9: Arr; f6: Arr; e9: Arr; e6: Arr;
+  ta: Arr; tb: Arr; tn: Arr; tm: Arr; toff: Arr; tcutsq: Arr; tcutCsq: Arr;
   p: { get(name: string, i: number, j: number): number };
   coulCut(i: number, j: number): number;
 };
@@ -149,6 +175,28 @@ export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number, special:
           coef[o + 8] = st.aL2;
           coef[o + 9] = st.invDL3;
           break;
+        case 14: // lj/class2 (lj_variants2.ts): F/r = (f9 r^-9 - f6 r^-6)/r^2, E = e9 r^-9 - e6 r^-6 - offset
+          cutA = st.cutsq[t];
+          coef.set([st.f9[t], st.f6[t], st.e9[t], st.e6[t], st.offset[t]], o + 2);
+          break;
+        case 15: // lj/class2/coul/cut and /coul/long (class2_spica51.ts): E = a r^-9 - b r^-6, F/r = (9 a r^-9 - 6 b r^-6)/r^2
+        case 16:
+          if (st.tn[t] !== 9 || st.tm[t] !== 6) return `pair style ${pair.name} with exponents ${st.tn[t]}-${st.tm[t]}`;
+          cutA = st.tcutsq[t];
+          cutC = st.tcutCsq[t];
+          coef.set([9 * st.ta[t], 6 * st.tb[t], st.ta[t], st.tb[t], st.toff[t]], o + 2);
+          break;
+        case 17: // buck/coul/long: the Buckingham pair cutoff (its own or the global one), the global Coulomb cutoff
+          cutA = ownCut(st.p.get('cut', i, j), st.cutGlobal) ** 2;
+          cutC = st.cutCoul ** 2;
+          coef.set([st.buckA[t], st.buckIR[t], st.buckC[t], 0, st.offset[t]], o + 2);
+          break;
+        case 18: // born/coul/long: as buck/coul/long, with D in the third vec4
+          cutA = ownCut(st.p.get('cut', i, j), st.cutGlobal) ** 2;
+          cutC = st.cutCoul ** 2;
+          coef.set([st.bornA[t], st.bornIR[t], st.bornSig[t], st.bornC[t], st.offset[t]], o + 2);
+          coef[o + 8] = st.bornD[t];
+          break;
       }
       coef[o] = cutA;
       coef[o + 1] = cutC;
@@ -156,10 +204,11 @@ export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number, special:
       maxCut = Math.max(maxCut, Math.sqrt(Math.max(cutA, cutC)));
     }
   }
-  const charges = style === 1 || style === 2 || style === 4 || LONG_COUL_STYLES.has(style);
+  const charges = CHARGED_STYLES.has(style);
+  const law = SPEC_LAW[style];
   const gewald = LONG_COUL_STYLES.has(style) ? st.gEwald : 0;
   if (LONG_COUL_STYLES.has(style) && !(gewald > 0)) return `pair style ${pair.name} without a kspace style's G-ewald`;
-  return { style, stride: nt, coef, maxCutoff: maxCut, charges, qqrd2e, gewald, special, key: `${style}|${qqrd2e}|${Array.from(coef).join(',')}` };
+  return { style, law, stride: nt, coef, maxCutoff: maxCut, charges, qqrd2e, gewald, special, key: `${style}|${qqrd2e}|${Array.from(coef).join(',')}` };
 };
 
 /**
@@ -174,12 +223,13 @@ export const pairSpecEval = (spec: GpuPairSpec, ti: number, tj: number, rsq: num
   const cutA = c[o], cutC = c[o + 1], a = c[o + 2], b = c[o + 3], cc = c[o + 4], d = c[o + 5], eshift = c[o + 6], cscale = c[o + 7];
   const e5 = c[o + 8];
   let fpair = 0, evdwl = 0, ecoul = 0;
+  const law = spec.law;
   if (rsq < cutA) {
-    if (spec.style === 1 || spec.style === 10 || spec.style === 12) {
+    if (law === 1) {
       const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
       fpair += r6inv * (a * r6inv - b) * r2inv;
       evdwl += r6inv * (cc * r6inv - d) - eshift;
-    } else if (spec.style === 13) {
+    } else if (law === 13) {
       // charmm.ts: E = U S(r) past the inner cutoff, F = F_std S + 12 U (b^2 - r^2)(r^2 - a^2) / (b^2 - a^2)^3
       const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
       const u = r6inv * (cc * r6inv - d);
@@ -193,28 +243,28 @@ export const pairSpecEval = (spec: GpuPairSpec, ti: number, tj: number, rsq: num
         fpair += fstd * s + 12 * u * tt * (rsq - e5) * inv;
         evdwl += u * s;
       }
-    } else if (spec.style === 3 || spec.style === 4) {
+    } else if (law === 3) {
       const r = Math.sqrt(rsq), ex = Math.exp(-r * b), r2inv = 1 / rsq;
       fpair += a * b * ex / r - 6 * cc * r2inv * r2inv * r2inv * r2inv;
       evdwl += a * ex - cc * (r2inv * r2inv * r2inv) - eshift;
-    } else if (spec.style === 5) {
+    } else if (law === 5) {
       const r = Math.sqrt(rsq), dr = r - cc;
       const e1 = Math.exp(-2 * b * dr), e2 = Math.exp(-b * dr);
       fpair += 2 * b * a * (e1 - e2) / r;
       evdwl += a * (e1 - 2 * e2) - eshift;
-    } else if (spec.style === 6) {
+    } else if (law === 6) {
       const r = Math.sqrt(rsq), arg = r * b;
       fpair += a * b * Math.sin(arg) / r;
       evdwl += a * (1 + Math.cos(arg));
-    } else if (spec.style === 7) {
+    } else if (law === 7) {
       const r = Math.sqrt(rsq), ir = 1 / r, ir2 = 1 / rsq, ek = Math.exp(-b * r);
       fpair += a * ek * (b * ir2 + ir2 * ir);
       evdwl += a * ir * ek - eshift;
-    } else if (spec.style === 8) {
+    } else if (law === 8) {
       const rinv = 1 / Math.sqrt(rsq), r2inv = rinv * rinv, r3inv = r2inv * rinv, r6inv = r3inv * r3inv, r9inv = r6inv * r3inv;
       fpair += r2inv * (a * r9inv - b * r6inv);
       evdwl += r9inv * cc - r6inv * d - eshift;
-    } else if (spec.style === 9) {
+    } else if (law === 9) {
       const r = Math.sqrt(rsq), rinv = 1 / r, ex = Math.exp((cc - r) * b);
       const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv, r8inv = r6inv * r2inv;
       fpair += a * b * ex * rinv - 6 * d * r8inv + 8 * e5 * r8inv * r2inv;

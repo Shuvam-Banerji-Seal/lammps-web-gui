@@ -1,5 +1,5 @@
 /*
- * The short-range force laws of the pair styles of gpu/pairSpec.ts in WGSL, shared by the per-step kernel
+ * The short-range force laws (pairSpec.ts SPEC_LAW) of the pair styles of gpu/pairSpec.ts in WGSL, shared by the per-step kernel
  * (webgpuForces.ts KERNEL_STYLES) and the whole-step kernel (resident.ts): shortRange returns F/r and the pair energy
  * of one pair inside its short-range cutoff, from the coefficients [cutsqA cutsqC a b] [c d eshift cscale] [e f _ _]
  * of the type pair (pairSpec.ts pairSpecEval is the same arithmetic in fp64).
@@ -19,7 +19,7 @@ fn sinCos(x : f32) -> vec2<f32> {
   return vec2<f32>(s, sc * c);
 }
 
-// F/r and E of one pair of style s (pairSpec.ts GPU_PAIR_STYLES) inside its short-range cutoff
+// F/r and E of one pair with law s (pairSpec.ts SPEC_LAW) inside its short-range cutoff
 fn shortRange(s : u32, r2 : f32, A : vec4<f32>, B : vec4<f32>, C3 : vec4<f32>) -> vec2<f32> {
   if (s == 13u) {
     // lj/charmm/coul/long: switched past the inner cutoff (C3.x its square, C3.y 1/(outer^2 - inner^2)^3)
@@ -32,8 +32,8 @@ fn shortRange(s : u32, r2 : f32, A : vec4<f32>, B : vec4<f32>, C3 : vec4<f32>) -
     let sw = tt * tt * (A.x + 2.0 * r2 - 3.0 * C3.x) * C3.y;
     return vec2<f32>(fstd * sw + 12.0 * u * tt * (r2 - C3.x) * C3.y, u * sw);
   }
-  if (s == 1u || s == 8u || s == 10u || s == 12u) {
-    if (s != 8u) {
+  if (s == 1u || s == 8u) {
+    if (s == 1u) {
       let r2inv = 1.0 / r2;
       let r6inv = r2inv * r2inv * r2inv;
       return vec2<f32>(r6inv * (A.z * r6inv - A.w) * r2inv, r6inv * (B.x * r6inv - B.y) - B.z);
@@ -46,7 +46,7 @@ fn shortRange(s : u32, r2 : f32, A : vec4<f32>, B : vec4<f32>, C3 : vec4<f32>) -
     return vec2<f32>(r2inv * (A.z * r9inv - A.w * r6inv), r9inv * B.x - r6inv * B.y - B.z);
   }
   let r = sqrt(r2);
-  if (s == 3u || s == 4u) {
+  if (s == 3u) {
     let ex = exp(-r * A.w);
     let r2inv = 1.0 / r2;
     return vec2<f32>(A.z * A.w * ex / r - 6.0 * B.x * r2inv * r2inv * r2inv * r2inv, A.z * ex - B.x * (r2inv * r2inv * r2inv) - B.z);

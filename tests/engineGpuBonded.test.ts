@@ -135,6 +135,10 @@ const CASES: Record<string, { charged: boolean; pair: string; style: number; dih
     charged: true, style: 12,
     pair: 'pair_style lj/cut/coul/long 2.5 2.9\npair_coeff * * 1.0 1.0\npair_coeff 1 2 0.8 1.05\npair_modify table 0\nkspace_style pppm 1e-4',
   },
+  'lj/class2/coul/long + pppm': {
+    charged: true, style: 16,
+    pair: 'pair_style lj/class2/coul/long 2.5 2.9\npair_coeff * * 1.0 1.0\npair_coeff 1 2 0.8 1.05\npair_modify table 0\nkspace_style pppm 1e-4',
+  },
   'coul/long + ewald': { charged: true, style: 11, pair: 'pair_style coul/long 2.9\npair_coeff * *\npair_modify table 0\nkspace_style ewald 1e-4' },
   // dihedral charmm tallies its weighted 1-4 pairs into evdwl and ecoul (special_bonds charmm: 0 0 0)
   'lj/charmm/coul/long + pppm, dihedral charmm': {
@@ -191,8 +195,8 @@ describe('molecular systems on the GPU path: CPU bonded terms plus the GPU pair 
     expect(long.accel?.resident).toBe(false);
     expect(long.accel?.spec?.gewald).toBeGreaterThan(0);
     // a kspace style with a pair style the GPU does not run
-    const buck = await run(new CpuForceBackend(), true, 'pair_style buck/coul/long 2.5 2.9\npair_coeff * * 100.0 0.3 1.0\nkspace_style ewald 1e-4');
-    expect(accelerator(buck.sys, gpu).reason).toMatch(/pair style buck\/coul\/long/);
+    const hybrid = await run(new CpuForceBackend(), true, 'pair_style hybrid/overlay lj/cut 2.5 coul/long 2.9\npair_coeff * * lj/cut 1.0 1.0\npair_coeff * * coul/long\nkspace_style ewald 1e-4');
+    expect(accelerator(hybrid.sys, gpu).reason).toMatch(/pair style hybrid\/overlay/);
     const adapt = await run(new CpuForceBackend(), false, `${CASES['lj/cut (spec style 10)'].pair}\nfix 9 all adapt 1 pair lj/cut epsilon 1 1 v_e\nvariable e equal 1.0`);
     expect(accelerator(adapt.sys, gpu).reason).toBe('fix adapt (it changes the pair coefficients during the run)');
   });

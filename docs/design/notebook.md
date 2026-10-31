@@ -150,7 +150,7 @@ interface ForceBackend {
   path small enough to verify against the CPU path force-by-force.
 - **WebGPU, more pair styles** (`src/engine/gpu/pairSpec.ts`): besides lj/cut, the
   GPU runs `lj/cut/coul/cut`, `coul/cut`, `buck`, `buck/coul/cut`, `morse`, `soft`,
-  `yukawa`, `lj96/cut` and `born` under
+  `yukawa`, `lj96/cut`, `born`, `lj/class2` and `lj/class2/coul/cut` under
   the same conditions (charges allowed). The coefficients are the engine style's own
   after its init (the arrays its compute() reads), a second kernel switches on the
   style per pair, and the charges ride in the integer buffer as f32 bits (WebGPU
@@ -158,7 +158,8 @@ interface ForceBackend {
   come back separately. `pairSpecEval` is the kernel's law in fp64:
   `tests/engineGpuPairSpec.test.ts` checks it against each CPU style force by force.
   Whole-step GPU runs (`resident.ts`) take lj/cut and these styles (the force laws are
-  one WGSL module, `src/engine/gpu/styleLaws.ts`, shared by both kernels). For a charged
+  one WGSL module, `src/engine/gpu/styleLaws.ts`, shared by both kernels; the kernels switch
+  on the short-range law, `SPEC_LAW`, so styles that share a law share its WGSL). For a charged
   style the force entry point has no fifth storage buffer to spare, so the charges ride
   after the coefficients in the coefficient buffer and the scatter pass records the atom
   of each slot in the cell-data buffer.
@@ -176,8 +177,9 @@ interface ForceBackend {
   in fp64 against the CPU engine; in Chromium, chains of 1728 atoms with lj/cut and with
   lj/cut/coul/cut matched the CPU thermo to the 6 printed digits over 100 steps). These runs
   are not resident: every step comes back to the host.
-- **WebGPU with kspace** (`gpu/pairSpec.ts` styles 11-13): `coul/long`, `lj/cut/coul/long` and
-  `lj/charmm/coul/long` run their real-space part on the GPU and the kspace style (Ewald, PPPM,
+- **WebGPU with kspace** (`gpu/pairSpec.ts` LONG_COUL_STYLES): `coul/long`, `lj/cut/coul/long`,
+  `lj/charmm/coul/long`, `lj/class2/coul/long`, `buck/coul/long` and `born/coul/long` run their
+  real-space part on the GPU and the kspace style (Ewald, PPPM,
   on the CPU threads) beside it, with the bonded terms. The kernel's Coulomb term is
   C q_i q_j erfc(g r)/r with erfc from the polynomial fit native uses without tables
   (`erfc.ts erfcPoly`; `pair_modify table` N > 0 interpolates the same function, below fp32

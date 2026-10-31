@@ -2,8 +2,10 @@ import { newAccum, type Pair } from '../force/types';
 import type { NeighList } from '../neighbor';
 import type { TwoPassPair } from './threadedPairs';
 
-/** The style factories a worker builds its copy with (cpu/threadedPairFactories.ts in the worker). */
+/** The style factories a worker builds its copy with (cpu/threadedPairFactories.ts: the tests run workers in-process with them). */
 export type PairFactories = Readonly<Record<string, () => Pair>>;
+/** Loads a style's factory on demand (cpu/threadedPairLoaders.ts: the pair worker loads only the styles it is sent). */
+export type PairLoader = (name: string) => Promise<(() => Pair) | null>;
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins } from './neighborKernel';
 
 /*
@@ -77,6 +79,12 @@ export const NEXT = 3;
  * element, each worker's force in worker order (the order of the one-thread sum), and DONE2 counts the finished threads.
  */
 export const PHASE = 4, NEXT2 = 5, DONE2 = 6;
+/**
+ * PAIR_READY counts the workers that have built the style of the last 'pair' message: the engine sets it to 0 before
+ * sending a style and runs the pair term on its own thread until every worker has built it (a worker that loads the
+ * style's module on demand needs a moment, and the engine never blocks on it).
+ */
+export const PAIR_READY = 7;
 /** Words of the control array. */
 export const CTL_WORDS = 8;
 /** Adds every worker's forces into F over elements [k0, k1), each element in worker order. */
@@ -147,9 +155,11 @@ export const adoptFields = (target: Record<string, unknown>, src: Record<string,
 };
 
 /** A pair style rebuilt from the engine's fields with one of the factories (null when there is none for the name). */
-export const pairFromFields = (name: string, fields: Record<string, unknown>, factories: PairFactories): Pair | null => {
-  if (!Object.hasOwn(factories, name)) return null;
-  const make = factories[name];
+export const pairFromFields = (name: string, fields: Record<string, unknown>, factories: PairFactories): Pair | null =>
+  Object.hasOwn(factories, name) ? pairFromFactory(factories[name], fields) : null;
+
+/** The style built by `make`, with the engine style's cloned fields. */
+export const pairFromFactory = (make: () => Pair, fields: Record<string, unknown>): Pair => {
   const p = make();
   // allocate() creates the class-typed members (coefficient tables) the cloned fields go into
   if (typeof fields.ntypes === 'number' && fields.ntypes > 0) p.allocate(fields.ntypes);
@@ -176,7 +186,9 @@ export const sameShape = (orig: object, copy: object, depth = 0): boolean => {
 
 /** One worker's side of the protocol, also run in-process by tests. */
 export class PairThreadWorker {
-  constructor(private readonly factories: PairFactories) {}
+  constructor(private readonly factories: PairFactories | PairLoader) {}
+  /** the last 'pair' message (a slower load of an older style must not replace a newer one) */
+  private pairGen = 0;
 
   private ctl: Int32Array | null = null;
   private pair: Pair | null = null;
@@ -229,7 +241,19 @@ export class PairThreadWorker {
       this.fs = m.fs.map((b) => new Float64Array(b));
       return;
     }
-    if (m.type === 'pair') { this.pair = pairFromFields(m.name, m.fields, this.factories); return; }
+    if (m.type === 'pair') {
+      const gen = ++this.pairGen;
+      const ready = (pair: Pair | null) => {
+        if (gen !== this.pairGen) return;
+        this.pair = pair;
+        if (pair && this.ctl) Atomics.add(this.ctl, PAIR_READY, 1);
+      };
+      this.pair = null;
+      const f = this.factories;
+      if (typeof f !== 'function') { ready(pairFromFields(m.name, m.fields, f)); return; }
+      f(m.name).then((make) => ready(make ? pairFromFactory(make, m.fields) : null), () => ready(null));
+      return;
+    }
     const ctl = this.ctl!;
     try {
       const pair = this.pair;

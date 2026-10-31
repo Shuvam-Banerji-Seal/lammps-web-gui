@@ -3,7 +3,7 @@ import type { NeighList } from '../neighbor';
 import { THREADED_NAMES, isTwoPass } from './threadedPairs';
 import { CpuForceBackend } from './forces';
 import {
-  ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PHASE, READY, cloneableFields, sumForces, pairFromFields, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
+  ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PAIR_READY, PHASE, READY, cloneableFields, sumForces, pairFromFactory, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, type NeighborThreads, type SpecialBins } from './neighborKernel';
 
@@ -139,6 +139,8 @@ export class SharedPairThreads implements NeighborThreads {
     if (Atomics.load(this.ctl, READY) < W) { this.skip = 'starting'; return false; }
     if (pair !== this.pairRef || pair.version !== this.pairVersion) this.sendPair(pair);
     if (!this.pairOk) { this.skip = 'style'; return false; }
+    // until every worker has built the style (it may load its module first) the pair term runs on the engine thread
+    if (Atomics.load(this.ctl, PAIR_READY) < W) { this.skip = 'starting'; return false; }
     this.skip = null;
     const nall = pc.nall, nlocal = list.inum;
     let resend = false;
@@ -254,9 +256,11 @@ export class SharedPairThreads implements NeighborThreads {
     // not a cache it rebuilds itself); otherwise the style runs on the engine thread
     // the engine's own class rebuilt from the cloned fields (the worker builds its copy from threadedPairFactories.ts)
     const own = pair.constructor as new () => Pair;
-    const copy = pairFromFields(pair.name, structuredClone(fields), { [pair.name]: () => new own() });
+    const copy = pairFromFactory(() => new own(), structuredClone(fields));
     this.pairOk = copy !== null && sameShape(pair, copy);
-    if (this.pairOk) for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields } satisfies PairThreadMessage);
+    if (!this.pairOk) return;
+    Atomics.store(this.ctl, PAIR_READY, 0);
+    for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields } satisfies PairThreadMessage);
   }
 
   private copyList(list: NeighList): void {

@@ -8,7 +8,7 @@ import { localDumpColumns, localColumnSource, localOutputOf } from '../compute/l
 import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
 import { fillWildcard } from '../commands/restart';
 import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, hasQuatStyle, isTriStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
-import { ImageDump } from './dump_image';
+import type { ImageDump } from './dump_image';
 import type { ColorMap } from './image_colormap';
 import { gplHook } from '../gplHooks';
 import { expandGridRefs } from '../grid';
@@ -107,6 +107,9 @@ const DIPOLE_COLS = new Set(['mux', 'muy', 'muz', 'mu']);
  * cache keeps this cheap for large dumps.
  */
 export const fmt = (f: string): ((v: number) => string) => compileCFormat(f, 'float', 'Invalid dump format');
+
+/** Creates the dump image writer (registry/dump_image.ts, HOOKS image.createDump). */
+export type ImageDumpFactory = (sys: System, id: string, group: string, file: string, cols: string[], multifileOverride: boolean | undefined, every: number) => ImageDump;
 
 export type DumpStyle = 'atom' | 'custom' | 'cfg' | 'cfg/uef' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk' | 'grid' | 'grid/vtk' | 'dcd' | 'xtc';
 
@@ -433,7 +436,8 @@ export class Dump {
     // default."
     this.sort = style === 'xyz' || style === 'extxyz' || style === 'grid/vtk' || style === 'dcd' || style === 'xtc' ? 'id' : 'off';
     if (style === 'image') {
-      this.imageDump = new ImageDump(sys, id, group, file, cols, multifileOverride, typeof every === 'number' ? every : 0);
+      // dump image is loaded on first use (lazyStyles.ts group dump_image, slot 'image'), out of the engine's first chunk
+      this.imageDump = gplHook<{ createDump: ImageDumpFactory }>('image').createDump(sys, id, group, file, cols, multifileOverride, typeof every === 'number' ? every : 0);
       this.columns = [];
     } else if (style === 'atom') {
       // As native LAMMPS does (src/dump_atom.cpp at b332f28, DumpAtom::DumpAtom): narg must be 5, so any extra word is illegal

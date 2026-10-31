@@ -10,8 +10,14 @@ const slots = new Map<string, unknown>();
 
 /** Called once per helper when its lazy group is loaded (styles.ts loadStyleGroup). */
 export const setGplHook = (word: string, hook: unknown): void => {
-  slots.set(word, hook);
+  // two groups that serve the same word add their helpers to one object (the word image loads gpl_graphics' shading
+  // helpers and dump_image's writer)
+  const prev = slots.get(word);
+  slots.set(word, isPlainObject(prev) && isPlainObject(hook) ? { ...prev, ...hook } : hook);
 };
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && Object.getPrototypeOf(v) === Object.prototype;
 
 /** The helper stored under a command word; throws naming the word when the session did not load it. */
 export const gplHook = <T>(word: string): T => {

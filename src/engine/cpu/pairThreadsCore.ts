@@ -330,12 +330,17 @@ export class PairThreadWorker {
   private pppm_(m: Extract<PairThreadMessage, { type: 'pppm' }>): void {
     const ctl = this.ctl!;
     try {
-      const sc = weightScratch(m.g.order);
-      const xs = new Int32Array(3 * m.g.order);
+      // the counts and the mesh come from the engine thread; anything but numbers is a failed loop
+      const g = m.g;
+      if (typeof m.n !== 'number' || typeof m.nchunks !== 'number' || typeof g.order !== 'number'
+        || typeof g.nx !== 'number' || typeof g.ny !== 'number' || typeof g.nz !== 'number') throw new Error('bad pppm message');
+      const n = Math.trunc(m.n), nchunks = Math.trunc(m.nchunks);
+      const sc = weightScratch(g.order);
+      const xs = new Int32Array(3 * g.order);
       for (;;) {
         const c = Atomics.add(ctl, NEXT, 1);
-        if (c >= m.nchunks) break;
-        const [i0, i1] = atomChunk(m.n, m.nchunks, c);
+        if (c >= nchunks) break;
+        const [i0, i1] = atomChunk(n, nchunks, c);
         if (m.phase === 1) pppmWeights(m.g, this.pX, i0, i1, this.pFirst as Int32Array, this.pWts as Float64Array, sc);
         else pppmField(m.g, i0, i1, this.pQ, this.pFirst as Int32Array, this.pWts as Float64Array, this.pEx as Float64Array, this.pEy as Float64Array, this.pEz as Float64Array, m.C, m.V, m.zForce, this.pOut as Float64Array, xs);
       }

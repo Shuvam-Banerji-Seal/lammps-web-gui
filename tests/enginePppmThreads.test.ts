@@ -66,7 +66,7 @@ const run = async (kspace: string, threads: number) => {
 
 describe('PPPM on the pair threads', () => {
   for (const kspace of ['kspace_style pppm 1e-5', 'kspace_style pppm 1e-4\nkspace_modify order 4', 'kspace_style pppm/cg 1e-5']) {
-    it(`${kspace.replace('\n', ', ')}: the same run, bit for bit, with the mesh loops on 3 threads`, async () => {
+    it(`${kspace.replaceAll('\n', ', ')}: the same run, bit for bit, with the mesh loops on 3 threads`, async () => {
       const serial = await run(kspace, 1);
       const threaded = await run(kspace, 3);
       // the weights and the field forces of every step ran on the workers (two loops per force evaluation)

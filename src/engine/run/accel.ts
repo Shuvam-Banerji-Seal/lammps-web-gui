@@ -1,6 +1,7 @@
+import { GPU_PAIR_STYLES, gpuPairSpec, type GpuPairSpec } from '../gpu/pairSpec';
 import { COMM, MODIFY, OUTPUT, PAIR } from '../timer';
 import type { System } from '../system';
-import type { ForceBackend, ForceResult, PairTable } from '../types';
+import type { ForceBackend, ForceResult, PairTable, SimState } from '../types';
 import { PairLJCut } from '../force/pair/lj_cut';
 import { newPairTable } from '../pairs';
 import { clearAccum } from '../force/types';
@@ -26,6 +27,8 @@ import { runLabelCheck } from '../labelcheck';
 export interface Accel {
   backend: ForceBackend;
   table: PairTable;
+  /** A pair style of gpu/pairSpec.ts on the GPU (computeSpec); null for plain lj/cut (compute with the table). */
+  spec: GpuPairSpec | null;
   /** Whole NVE steps on the GPU (resident.ts) with readback only on output steps. */
   resident: boolean;
   enforce2d: boolean;
@@ -39,7 +42,12 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const s = sys.state;
   const why = (r: string) => ({ accel: null, reason: r });
   const p = sys.ff.pair;
-  if (!(p instanceof PairLJCut) || p.name !== 'lj/cut') return why(`pair style ${p?.name ?? 'none'} (the ${backend.kind === 'webgpu' ? 'GPU' : 'threaded'} path implements lj/cut only)`);
+  const ljcut = p instanceof PairLJCut && p.name === 'lj/cut';
+  // the GPU also runs the pair styles of gpu/pairSpec.ts; the lj/cut threads of cpu/parallel.ts only lj/cut
+  const gpuStyle = backend.kind === 'webgpu' && !!p && GPU_PAIR_STYLES[p.name] !== undefined;
+  if (!ljcut && !gpuStyle) {
+    return why(`pair style ${p?.name ?? 'none'} (the ${backend.kind === 'webgpu' ? `GPU path implements lj/cut, ${Object.keys(GPU_PAIR_STYLES).join(', ')}` : 'threaded path implements lj/cut'} only)`);
+  }
   if (sys.ff.kspace || sys.ff.bond || sys.ff.angle || sys.ff.dihedral || sys.ff.improper) return why('bonded or long-range terms');
   if (s.topo.bonds.n || s.topo.angles.n || s.topo.dihedrals.n || s.topo.impropers.n) return why('molecular topology');
   if (s.box.triclinic || !s.box.periodic.every(Boolean)) return why('a triclinic or non-periodic box');
@@ -57,6 +65,16 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   if (sys.computes.some((c) => c.pressFlag && c.id !== 'thermo_press')) return why('a user pressure compute');
   // the table from the initialized (mixed) coefficients
   p.init(sys.styleContext());
+  if (!ljcut) {
+    const qqrd2e = s.units.qqr2e * (p.coulConstScale ?? 1) / sys.ff.dielectric;
+    const spec = gpuPairSpec(p, s.ntypes, qqrd2e);
+    if (typeof spec === 'string') return why(spec);
+    // the kernel's 27-cell scan needs at least 3 cutoffs along each periodic edge (webgpuForces.ts sortByCell)
+    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 3 * spec.maxCutoff);
+    if (short) return why('a box shorter than 3 pair cutoffs along an edge');
+    const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, resident: false, enforce2d }, reason: null };
+  }
   const t = newPairTable(s.ntypes, p.cutGlobal);
   t.shift = p.shift;
   for (let i = 1; i <= s.ntypes; i++) {
@@ -70,14 +88,15 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const allBit = sys.groupBit('all');
   const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
   const resident = onlyNve && isResident(backend) && backend.canAdvance(s, t);
-  return { accel: { backend, table: t, resident, enforce2d }, reason: null };
+  return { accel: { backend, table: t, spec: null, resident, enforce2d }, reason: null };
 };
 
 /** Stores an accelerated force result as the system's current forces. */
-const store = (sys: System, r: ForceResult): void => {
+const store = (sys: System, r: ForceResult & { evdwl?: number; ecoul?: number }): void => {
   const acc = sys.ff.acc;
   clearAccum(acc);
-  acc.evdwl = r.pe;
+  acc.evdwl = r.evdwl ?? r.pe;
+  acc.ecoul = r.ecoul ?? 0;
   const w = r.virialTensor;
   if (w) for (let c = 0; c < 6; c++) acc.virial[c] = w[c];
   else {
@@ -95,6 +114,10 @@ export interface AccelHooks {
   hostStep(step: number): boolean;
 }
 
+/** One force evaluation on the accelerated backend: the style kernel of computeSpec, or lj/cut with the table. */
+const evaluate = (a: Accel, s: SimState): ForceResult | Promise<ForceResult> =>
+  a.spec ? (a.backend as ForceBackend & { computeSpec(s: SimState, spec: GpuPairSpec): Promise<ForceResult> }).computeSpec(s, a.spec) : a.backend.compute(s, a.table);
+
 /** The run loop on an accelerated backend. Returns steps taken. */
 export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: AccelHooks): Promise<number> => {
   const s = sys.state;
@@ -106,7 +129,7 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
   sys.sortAtoms(true);
   for (const f of sys.fixes) f.setupPreForce?.();
   sys.bump();
-  store(sys, await a.backend.compute(s, a.table));
+  store(sys, await evaluate(a, s));
   computeSetup(sys);
   for (const f of sys.fixes) f.setup();
   // labelmap check_labels: once, at the end of the setup (native Modify::setup)
@@ -157,7 +180,7 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
     timer.stamp(COMM);
     for (const f of fPreForce) f.preForce!();
     timer.stamp(MODIFY);
-    store(sys, await a.backend.compute(s, a.table));
+    store(sys, await evaluate(a, s));
     timer.stamp(PAIR);
     for (const f of fPostForce) f.postForce!();
     for (const f of fFinal) f.finalIntegrate!();

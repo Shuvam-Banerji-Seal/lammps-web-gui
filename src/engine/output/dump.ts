@@ -317,7 +317,10 @@ export class Dump {
    * The name the files are written under. As native LAMMPS does (src/dump.cpp Dump::Dump at b332f28): the first "%" of
    * the file name becomes the processor ID ("multiname = filename up to %, me, the rest"), 0 for the engine's one process.
    */
-  private get outFile(): string { return this.file.replace('%', '0'); }
+  private get outFile(): string {
+    const k = this.file.indexOf('%');
+    return k < 0 ? this.file : `${this.file.slice(0, k)}0${this.file.slice(k + 1)}`;
+  }
   /** The file is written compressed (a .gz or .zst name, or a COMPRESS /gz or /zstd style). */
   private gz = false;
   /** Zstandard rather than gzip (a .zst name or a /zstd style), and its content checksum (dump_modify checksum). */

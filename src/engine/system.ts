@@ -8,6 +8,7 @@ import { Neighbor } from './neighbor';
 import { ForceField, type ComputeFlags } from './force/forcefield';
 import { gunzip } from './gunzip';
 import { StyleError, type Accum, type FileOpener, type StyleContext } from './force/types';
+import type { ProcGrid } from './procGrid';
 import { Groups } from './group';
 import type { Region, RegionEnv } from './region';
 import type { Compute } from './compute/compute';
@@ -116,6 +117,8 @@ export class System {
    * the rule is measured with native LAMMPS, see data.ts).
    */
   extraBondPerAtom = 0;
+  /** The processors command's grid (procGrid.ts), checked when the box is created; null without that command. */
+  procGrid: ProcGrid | null = null;
   /**
    * The amounts a create_box expanded its shrink-wrapped faces by (SMALL = 1e-4 of the box length, native
    * set_initial_box); null once the box has been reset (pbc), or for a box read from a file. See create_atoms.

@@ -42,8 +42,8 @@ const LMP = process.env.LMP ?? 'lmp';
 const MPIRUN = process.env.MPIRUN ?? 'mpirun';
 
 export const FINAL_DUMP = 'write_dump all custom oracle_final.dump id type xu yu zu vx vy vz fx fy fz modify format float %.17g sort id';
-/** Binary output files (dump dcd and xtc), stored in the fixture as base64. */
-const BINARY_FILE = /\.(dcd|xtc)$/;
+/** Binary output files (dump dcd, xtc and h5md), stored in the fixture as base64. */
+const BINARY_FILE = /\.(dcd|xtc|h5)$/;
 
 /** Partitioned (non-NEB) cases: the per-partition final dump, one file per partition (see the header above). */
 export const partitionFinalDump = (n) => `variable oracle_p world ${[...Array(n).keys()].join(' ')}\nwrite_dump all custom oracle_final.\${oracle_p}.dump id type xu yu zu vx vy vz fx fy fz modify format float %.17g sort id`;
@@ -215,7 +215,7 @@ for (const name of cases) {
   }
   const log = readFileSync(join(dir, 'log.lammps'), 'utf8');
   const files = {};
-  // binary files (dump dcd and xtc) are kept as base64 with a "base64:" prefix
+  // binary files (dump dcd, xtc and h5md) are kept as base64 with a "base64:" prefix
   for (const f of header(text, 'oracle-files')) files[f] = BINARY_FILE.test(f) ? `base64:${readFileSync(join(dir, f)).toString('base64')}` : readFileSync(join(dir, f), 'utf8');
   const version = (/LAMMPS \((.*?)\)/.exec(log) ?? [])[1] ?? 'unknown';
   if (partitions > 1 && /^\s*Step\s+MaxReplica(Force|Torque)\b/m.test(log)) {

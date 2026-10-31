@@ -229,7 +229,7 @@ const runStyle: Handler = ({ sys }, a) => {
 // name is a word of the command)
 export const DUMP_STYLES: DumpStyle[] = ['atom', 'custom', 'cfg', 'cfg/uef', 'xyz', 'extxyz', 'yaml', 'local', 'image'];
 /** Dump styles of lazily loaded helpers (lazyStyles.ts). */
-export const LAZY_DUMP_STYLES: string[] = ['vtk', 'grid', 'grid/vtk', 'dcd', 'xtc'];
+export const LAZY_DUMP_STYLES: string[] = ['vtk', 'grid', 'grid/vtk', 'dcd', 'xtc', 'h5md'];
 /** The COMPRESS package's gzip dump styles (dump.html: "atom/gz, cfg/gz, custom/gz, local/gz, xyz/gz"). */
 export const GZ_STYLES = ['atom/gz', 'cfg/gz', 'custom/gz', 'local/gz', 'xyz/gz'];
 
@@ -289,10 +289,18 @@ const writeDump: Handler = ({ sys }, a) => {
   const mi = rest.indexOf('modify');
   const cols = mi >= 0 ? rest.slice(0, mi) : rest;
   const { base, gzStyle } = compressStyle(style);
-  if (!(DUMP_STYLES as string[]).includes(base) && base !== 'grid' && base !== 'dcd' && base !== 'xtc') throw new StyleError(`write_dump style '${style}' is not supported; supported: ${[...DUMP_STYLES, 'grid', 'dcd', 'xtc', ...GZ_STYLES, ...ZSTD_STYLES].join(', ')}`);
+  if (!(DUMP_STYLES as string[]).includes(base) && base !== 'grid' && base !== 'dcd' && base !== 'xtc' && base !== 'h5md') throw new StyleError(`write_dump style '${style}' is not supported; supported: ${[...DUMP_STYLES, 'grid', 'dcd', 'xtc', 'h5md', ...GZ_STYLES, ...ZSTD_STYLES].join(', ')}`);
   // write_dump: a dump image or cfg file needs no '*' (multifile_override, see dump_image.ts; As native LAMMPS does
   // (src/write_dump.cpp at b332f28): "if (strcmp(arg[1], "cfg") == 0) dump->multifile_override = 1")
-  const d = new Dump(sys, '__write_dump', group, base as DumpStyle, 1, file, cols, style === 'image' || style === 'cfg', gzStyle);
+  // dump h5md writes an element when the step is a multiple of the dump's N: as native LAMMPS does
+  // (src/write_dump.cpp at b332f28), N is "MAX(1, update->nsteps)" plus "update->ntimestep % dumpfreq" (the last run's
+  // length); the other styles do not read it
+  let every = 1;
+  if (base === 'h5md') {
+    every = Math.max(1, sys.run.lastStep - sys.run.firstStep);
+    every += sys.state.step % every;
+  }
+  const d = new Dump(sys, '__write_dump', group, base as DumpStyle, every, file, cols, style === 'image' || style === 'cfg', gzStyle);
   if (mi >= 0) d.modify(rest.slice(mi + 1));
   // write_dump's dump->init(): the file checks, dump cfg/uef's fix, dump dcd and xtc's init_style (with the dump ID WRITE_DUMP)
   d.initWriteDump();

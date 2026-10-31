@@ -112,7 +112,7 @@ export const fmt = (f: string): ((v: number) => string) => compileCFormat(f, 'fl
 /** Creates the dump image writer (registry/dump_image.ts, HOOKS image.createDump). */
 export type ImageDumpFactory = (sys: System, id: string, group: string, file: string, cols: string[], multifileOverride: boolean | undefined, every: number) => ImageDump;
 
-export type DumpStyle = 'atom' | 'custom' | 'cfg' | 'cfg/uef' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk' | 'grid' | 'grid/vtk' | 'dcd' | 'xtc';
+export type DumpStyle = 'atom' | 'custom' | 'cfg' | 'cfg/uef' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk' | 'grid' | 'grid/vtk' | 'dcd' | 'xtc' | 'h5md';
 
 /**
  * The core side of the lazily loaded dump vtk helper (engine-gpl/dump/dump_vtk.ts, HOOKS 'vtk' of group gpl_dump_vtk):
@@ -223,6 +223,12 @@ export interface DumpTrajHost {
   create(): void;
   /** Appends bytes (one character per byte) to the file, or with `at` overwrites the bytes from that offset on. */
   writeBytes(bytes: string, at?: number): void;
+  /** The dump command's N (write_dump: native's interval, src/write_dump.cpp dumpfreq). */
+  readonly nevery: number;
+  /** The name of the dump group. */
+  readonly groupName: string;
+  /** Another dump's helper of this kind by dump ID (dump h5md file_from), or null. */
+  otherTraj(id: string): DumpTrajStyle | null;
 }
 
 /** What the helper's init checks (Dump::init then the style's init_style, at each run and at write_dump). */
@@ -249,6 +255,10 @@ export interface DumpTrajFrame {
   box: { triclinic: boolean; lo: readonly number[]; hi: readonly number[]; xprd: number; yprd: number; zprd: number; xy: number; xz: number; yz: number };
   /** x, y, z of each atom in ID order (dump_modify pbc applied to a copy), unwrapped when the helper's unwrap is set. */
   coords: Float64Array;
+  /** The atoms (state indices) in ID order. */
+  rows: readonly number[];
+  /** The image flags of each atom in ID order after dump_modify pbc, for a helper that wants them (else null). */
+  images: Int32Array | null;
 }
 
 export interface DumpTrajStyle {
@@ -258,6 +268,10 @@ export interface DumpTrajStyle {
   modify(args: string[], k: number): number;
   init(settings: DumpTrajSettings): void;
   write(frame: DumpTrajFrame): void;
+  /** The helper writes forces: they are computed before the snapshot (as for dump custom). */
+  readonly needsForces?: boolean;
+  /** The helper writes image flags (DumpTrajFrame.images). */
+  readonly wantsImages?: boolean;
 }
 
 export type DumpTrajFactory = (host: DumpTrajHost, args: string[]) => DumpTrajStyle;
@@ -336,7 +350,8 @@ export class Dump {
   /** dump cfg: the lazily loaded helper (null for every other style). */
   private cfgStyle: DumpCfgStyle | null = null;
   /** dump dcd and xtc: the lazily loaded helper (null for every other style). */
-  private trajStyle: DumpTrajStyle | null = null;
+  /** A binary-trajectory helper (dcd, xtc, h5md); other dumps' file_from reads it. */
+  trajStyle: DumpTrajStyle | null = null;
   /** dump_modify flush as set (null: not set). */
   private flush: boolean | null = null;
   /** dump_modify every/time was given (dump dcd and xtc only, whose init then stops; other styles refuse it). */
@@ -437,7 +452,7 @@ export class Dump {
       if (!ext) throw new StyleError(`Dump ${gzStyle} only writes compressed files`);
       this.gz = true;
       this.zst = gzStyle.endsWith('/zstd');
-    } else if (ext && style !== 'dcd' && style !== 'xtc') {
+    } else if (ext && style !== 'dcd' && style !== 'xtc' && style !== 'h5md') {
       // (dump dcd and xtc stop with their own "Invalid dump ... filename")
       if (style === 'image' || style === 'vtk' || style === 'grid/vtk' || (ext !== 'gz' && ext !== 'zst')) {
         throw new StyleError(`dump ${id}: a compressed (.${ext}) ${style} dump file is not supported by the browser engine; ${style === 'image' || style === 'vtk' || style === 'grid/vtk' ? 'use a plain file name' : 'use .gz, .zst or a plain file name'}`);
@@ -451,7 +466,8 @@ export class Dump {
     this.nevery = this.every;
     // dump.html: "For the dcd, extxyz, grid/vtk, xtc, xyz, and molfile styles, sorting by atom ID or grid ID is on by
     // default."
-    this.sort = style === 'xyz' || style === 'extxyz' || style === 'grid/vtk' || style === 'dcd' || style === 'xtc' ? 'id' : 'off';
+    // dump h5md: as native LAMMPS does (src/H5MD/dump_h5md.cpp at b332f28): "sort_flag = 1; sortcol = 0;"
+    this.sort = style === 'xyz' || style === 'extxyz' || style === 'grid/vtk' || style === 'dcd' || style === 'xtc' || style === 'h5md' ? 'id' : 'off';
     if (style === 'image') {
       // dump image is loaded on first use (lazyStyles.ts group dump_image, slot 'image'), out of the engine's first chunk
       this.imageDump = gplHook<{ createDump: ImageDumpFactory }>('image').createDump(sys, id, group, file, cols, multifileOverride, typeof every === 'number' ? every : 0);
@@ -490,7 +506,7 @@ export class Dump {
         fillWildcard,
         writeText: (text) => this.writeText(text),
       }, this.columns);
-    } else if (style === 'dcd' || style === 'xtc') {
+    } else if (style === 'dcd' || style === 'xtc' || style === 'h5md') {
       // dump dcd and xtc: the helper checks the arguments and the file name, and creates the file (as native LAMMPS does,
       // src/EXTRA-DUMP/dump_dcd.cpp and dump_xtc.cpp at b332f28: the constructor opens it)
       this.columns = [];
@@ -505,6 +521,9 @@ export class Dump {
         },
         create: () => sys.writeFileAt(key, '', false),
         writeBytes: (bytes, at) => sys.writeFileAt(key, bytes, at === undefined, at),
+        nevery: this.nevery,
+        groupName: group,
+        otherTraj: (id) => sys.dumps.find((d) => d.id === id)?.trajStyle ?? null,
       }, cols);
     } else if (style === 'vtk') {
       // dump vtk: the attributes are parsed by the helper, which reads the live pad and the core's column access
@@ -1007,10 +1026,13 @@ export class Dump {
       if (this.skipSnapshot()) return false;
       rows.sort((a, b) => s.id[a] - s.id[b]);
       const g = sys.geom;
+      if (this.trajStyle.needsForces) sys.forces();
       this.trajStyle.write({
         step, dt: s.dt, natoms: rows.length, header: this.header,
         box: { triclinic: g.triclinic, lo: s.box.lo, hi: s.box.hi, xprd: g.lx, yprd: g.ly, zprd: g.lz, xy: g.xy, xz: g.xz, yz: g.yz },
         coords: this.trajCoords(rows, this.trajStyle.unwrap),
+        rows,
+        images: this.trajStyle.wantsImages ? this.trajImages(rows) : null,
       });
       this.opened = true;
       return true;
@@ -1111,6 +1133,20 @@ export class Dump {
    * pbc, Dump::write first remaps a copy of x and the image counts into the box; with unwrap, "x[i][0] + ix * xprd + iy *
    * xy + iz * xz", "x[i][1] + iy * yprd + iz * yz", "x[i][2] + iz * zprd" (the xy, xz and yz terms for a triclinic box only).
    */
+  /** The image flags of the atoms in ID order, after dump_modify pbc as trajCoords applies it. */
+  private trajImages(rows: number[]): Int32Array {
+    const s = this.sys.state, g = this.sys.geom;
+    const out = new Int32Array(3 * rows.length);
+    const x = new Float64Array(3), im = new Int32Array(3);
+    for (let k = 0; k < rows.length; k++) {
+      const i = rows[k];
+      for (let d = 0; d < 3; d++) { x[d] = s.x[3 * i + d]; im[d] = s.image[3 * i + d]; }
+      if (this.pbc) g.remap(x, im, 0);
+      out[3 * k] = im[0]; out[3 * k + 1] = im[1]; out[3 * k + 2] = im[2];
+    }
+    return out;
+  }
+
   private trajCoords(rows: number[], unwrap: boolean): Float64Array {
     const s = this.sys.state, g = this.sys.geom;
     const out = new Float64Array(3 * rows.length);

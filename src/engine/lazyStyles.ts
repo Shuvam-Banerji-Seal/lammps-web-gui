@@ -30,6 +30,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_dump_grid', names: { HOOKS: ['grid', 'grid/vtk'] }, load: () => import('../engine-gpl/registry/dump_grid') as Promise<StyleModule> },
   { id: 'gpl_dump_cfg', names: { HOOKS: ['cfg', 'cfg/uef'] }, load: () => import('../engine-gpl/registry/dump_cfg') as Promise<StyleModule> },
   { id: 'gpl_dump_traj', names: { HOOKS: ['dcd', 'xtc'] }, load: () => import('../engine-gpl/registry/dump_traj') as Promise<StyleModule> },
+  { id: 'gpl_dump_h5md', names: { HOOKS: ['h5md'] }, load: () => import('../engine-gpl/registry/dump_h5md') as Promise<StyleModule> },
   { id: 'gpl_group_group', names: { HOOKS: ['group/group'] }, load: () => import('../engine-gpl/registry/group_group') as Promise<StyleModule> },
   { id: 'gpl_tally2', names: { COMPUTES: ['heat/flux/tally', 'heat/flux/virial/tally'] }, load: () => import('../engine-gpl/registry/tally2') as Promise<StyleModule> },
   { id: 'gpl_uef', names: { COMPUTES: ['pressure/uef', 'temp/uef'], FIXES: ['npt/uef', 'nvt/uef'] }, load: () => import('../engine-gpl/registry/uef') as Promise<StyleModule> },

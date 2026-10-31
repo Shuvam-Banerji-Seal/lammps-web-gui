@@ -499,7 +499,7 @@ export class PairTable extends Pair {
     let evdwl = 0;
     const nb = list.neighbors;
     const { tRsq1, tInvDelta, tE, tG, tE2, tG2 } = this;
-    for (let i = 0; i < list.inum; i++) {
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const ti = type[i] * nt;
       let fxi = 0, fyi = 0, fzi = 0;

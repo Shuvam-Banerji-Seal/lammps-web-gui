@@ -61,6 +61,36 @@ const STYLES: Record<string, string> = {
   born: 'pair_style born 2.5\npair_coeff * * 1.0 0.3 1.0 1.0 1.0',
   'born/coul/long': 'pair_style born/coul/long 2.5\npair_coeff * * 1.0 0.3 1.0 1.0 1.0\nkspace_style ewald 1e-4',
   morse: 'pair_style morse 2.5\npair_coeff * * 1.0 2.0 1.1',
+  'lj/cut/coul/dsf': 'pair_style lj/cut/coul/dsf 0.5 2.5\npair_coeff * * 1.0 1.0',
+  'lj/cut/coul/wolf': 'pair_style lj/cut/coul/wolf 0.5 2.5\npair_coeff * * 1.0 1.0',
+  'coul/dsf': 'pair_style coul/dsf 0.5 2.5\npair_coeff * *',
+  'coul/wolf': 'pair_style coul/wolf 0.5 2.5\npair_coeff * *',
+  'lj/class2': 'pair_style lj/class2 2.5\npair_coeff * * 1.0 1.0\npair_coeff 1 2 0.8 1.1',
+  'lj/class2/coul/cut': 'pair_style lj/class2/coul/cut 2.5\npair_coeff * * 1.0 1.0',
+  'lj/class2/coul/long': 'pair_style lj/class2/coul/long 2.5\npair_coeff * * 1.0 1.0\nkspace_style ewald 1e-4',
+  'lj96/cut': 'pair_style lj96/cut 2.5\npair_coeff * * 1.0 1.0',
+  'lj/expand': 'pair_style lj/expand 2.5\npair_coeff * * 1.0 0.8 0.2',
+  'lj/smooth': 'pair_style lj/smooth 2.0 2.5\npair_coeff * * 1.0 1.0',
+  'lj/smooth/linear': 'pair_style lj/smooth/linear 2.5\npair_coeff * * 1.0 1.0',
+  'lj/gromacs': 'pair_style lj/gromacs 2.0 2.5\npair_coeff * * 1.0 1.0',
+  'lj/cubic': 'pair_style lj/cubic\npair_coeff * * 1.0 0.8908987',
+  'mie/cut': 'pair_style mie/cut 2.5\npair_coeff * * 1.0 1.0 12.0 6.0',
+  soft: 'pair_style soft 1.12\npair_coeff * * 10.0',
+  yukawa: 'pair_style yukawa 2.0 2.5\npair_coeff * * 1.0',
+  gauss: 'pair_style gauss 2.5\npair_coeff * * 1.0 1.0',
+  table: 'pair_style table linear 1000\npair_coeff * * lj.table LJ',
+  zbl: 'pair_style zbl 0.8 1.2\npair_coeff * * 1.0 1.0',
+};
+
+/** A tabulated 12-6 LJ (pair_table.html file format: keyword, N and R, then index r e f per line) for pair style table. */
+const ljTable = (): string => {
+  const n = 1000, lo = 0.5, hi = 2.5;
+  const lines = ['# LJ for the threads test', 'LJ', `N ${n} R ${lo} ${hi}`, ''];
+  for (let k = 0; k < n; k++) {
+    const r = lo + (k * (hi - lo)) / (n - 1), r6 = r ** -6;
+    lines.push(`${k + 1} ${r} ${4 * (r6 * r6 - r6)} ${(48 * r6 * r6 - 24 * r6) / r}`);
+  }
+  return lines.join('\n');
 };
 
 /** The EAM styles (two-pass styles, threadedPairs.ts TwoPassPair): a metal box and the potential files they read. */
@@ -111,6 +141,7 @@ const runCase = async (pairLines: string, threads: number, extra = '', box = BOX
   const files = new Map<string, string>();
   const session = new Session({ emit: (e) => events.push(e), writeFile: (n, t) => files.set(n, t) }, backend);
   if (box === EAM_BOX || box === SI_BOX) for (const f of POTENTIALS) session.addFile(f, potential(f));
+  if (pairLines.includes('lj.table')) session.addFile('lj.table', ljTable());
   await session.execute(`${box}${pairLines}
 neighbor 0.3 bin
 fix 1 all nve
@@ -281,8 +312,8 @@ describe('shared-memory pair threads: refresh and fallback', () => {
     expectClose(serial, threaded, 1e-10);
   });
 
-  it('leaves styles outside the list (dsf) to the engine thread', async () => {
-    const lines = 'pair_style lj/cut/coul/dsf 0.8 2.5\npair_coeff * * 1.0 1.0';
+  it('leaves styles outside the list (born/coul/dsf) to the engine thread', async () => {
+    const lines = 'pair_style born/coul/dsf 0.8 2.5\npair_coeff * * 1.0 0.3 1.0 1.0 1.0';
     const serial = await runCase(lines, 1);
     const threaded = await runCase(lines, 3);
     expect(threaded.threadedComputes).toBe(0);

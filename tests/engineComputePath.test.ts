@@ -65,8 +65,8 @@ describe('where a run computes its forces', () => {
   });
 
   it('a style without a threaded kernel names itself', async () => {
-    const { last } = await run('pair_style soft 1.0\npair_coeff 1 1 10.0', { threads: 3, minAtoms: 1 });
-    expect(last).toMatchObject({ path: 'serial', why: 'pair style soft has no threaded kernel; it runs on the engine thread' });
+    const { last } = await run('pair_style nm/cut 2.5\npair_coeff 1 1 1.0 1.1 12.0 6.0', { threads: 3, minAtoms: 1 });
+    expect(last).toMatchObject({ path: 'serial', why: 'pair style nm/cut has no threaded kernel; it runs on the engine thread' });
   });
 
   it('without shared memory (not cross-origin isolated) only plain lj/cut can use threads', async () => {

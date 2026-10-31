@@ -84,7 +84,7 @@ export class PairSoft extends Pair {
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0;
     const nb = list.neighbors;
-    for (let i = 0; i < list.inum; i++) {
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const ti = type[i] * nt;
       let fxi = 0, fyi = 0, fzi = 0;
@@ -229,7 +229,7 @@ export class PairYukawa extends Pair {
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0;
     const nb = list.neighbors;
-    for (let i = 0; i < list.inum; i++) {
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const ti = type[i] * nt;
       let fxi = 0, fyi = 0, fzi = 0;
@@ -381,7 +381,7 @@ export class PairGauss extends Pair {
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0;
     const nb = list.neighbors;
-    for (let i = 0; i < list.inum; i++) {
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const ti = type[i] * nt;
       let fxi = 0, fyi = 0, fzi = 0;

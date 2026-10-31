@@ -19,6 +19,8 @@ export const GPU_PAIR_STYLES: Readonly<Record<string, number>> = {
   yukawa: 7,
   'lj96/cut': 8,
   born: 9,
+  // lj/cut of a system with molecular topology (special bonds): the analytic lj/cut kernel has no special weights
+  'lj/cut': 10,
 };
 
 /** Floats per type pair: [cutsqA cutsqC a b] [c d eshift cscale] [e _ _ _] (three vec4). */
@@ -33,6 +35,11 @@ export interface GpuPairSpec {
   /** The style has a Coulomb term: the kernel reads the charges. */
   charges: boolean;
   qqrd2e: number;
+  /**
+   * special_bonds weights of 1-2, 1-3 and 1-4 pairs (index 1..3; index 0 is 1) for a system with molecular topology,
+   * else null: the kernel scales such a pair's terms, and skips it when both are 0, as the neighbor list does.
+   */
+  special: { lj: number[]; coul: number[] } | null;
   /** Changes when the coefficients do (the backend caches the packed buffer by it). */
   key: string;
 }
@@ -52,7 +59,7 @@ type Internals = Pair & {
  * The spec of an initialized pair style (pair.init() has run), or why the GPU cannot run it. qqrd2e is the Coulomb
  * prefactor of the force evaluation (force/forcefield.ts: units qqr2e times the style's scale over the dielectric).
  */
-export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number): GpuPairSpec | string => {
+export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number, special: { lj: number[]; coul: number[] } | null = null): GpuPairSpec | string => {
   const style = GPU_PAIR_STYLES[pair.name];
   if (style === undefined) return `pair style ${pair.name}`;
   const st = pair as Internals;
@@ -65,6 +72,10 @@ export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number): GpuPair
       const o = SPEC_STRIDE * t;
       let cutA = 0, cutC = 0, cscale = 1;
       switch (style) {
+        case 10: // lj/cut (with special bonds): lj1..lj4 and offset, inside the pair cutoff
+          cutA = st.cutsq[t];
+          coef.set([st.lj1[t], st.lj2[t], st.lj3[t], st.lj4[t], st.offset[t]], o + 2);
+          break;
         case 1: // lj/cut/coul/cut: lj1..lj4 and offset of lj/cut; the Coulomb cutoff as its compute() bounds it
           cutA = st.p.get('cut', i, j) ** 2;
           cutC = Math.min(st.cutsq[t], st.coulCut(i, j) ** 2);
@@ -112,7 +123,7 @@ export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number): GpuPair
     }
   }
   const charges = style === 1 || style === 2 || style === 4;
-  return { style, stride: nt, coef, maxCutoff: maxCut, charges, qqrd2e, key: `${style}|${qqrd2e}|${Array.from(coef).join(',')}` };
+  return { style, stride: nt, coef, maxCutoff: maxCut, charges, qqrd2e, special, key: `${style}|${qqrd2e}|${Array.from(coef).join(',')}` };
 };
 
 /**
@@ -127,7 +138,7 @@ export const pairSpecEval = (spec: GpuPairSpec, ti: number, tj: number, rsq: num
   const e5 = c[o + 8];
   let fpair = 0, evdwl = 0, ecoul = 0;
   if (rsq < cutA) {
-    if (spec.style === 1) {
+    if (spec.style === 1 || spec.style === 10) {
       const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
       fpair += r6inv * (a * r6inv - b) * r2inv;
       evdwl += r6inv * (cc * r6inv - d) - eshift;

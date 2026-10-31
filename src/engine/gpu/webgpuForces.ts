@@ -3,6 +3,7 @@ import { pairArrays, type PairArrays } from '../pairs';
 import { CpuForceBackend } from '../cpu/forces';
 import { ResidentStepper } from './resident';
 import type { GpuPairSpec } from './pairSpec';
+import { buildAtomMap, type SpecialList } from '../atoms';
 import { WGSL_STYLE_LAWS } from './styleLaws';
 
 /*
@@ -130,9 +131,11 @@ struct Params {
   style : u32,
   qBase : u32,
   qqrd2e : f32,
-  pad0 : u32,
+  specBase : u32,   // special bonds: each slot's first entry in ints at specBase + slot (0: none)
   pad1 : u32,
   pad2 : u32,
+  wlj : vec4<f32>,  // special_bonds lj weights by order (1-2, 1-3, 1-4 at 1..3)
+  wc : vec4<f32>,   // and coul weights
 };
 
 @group(0) @binding(0) var<uniform> P : Params;
@@ -184,16 +187,31 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
           let A = coef[k];
           if (r2 >= max(A.x, A.y)) { continue; }
           let B = coef[k + 1u];
+          // a special pair (1-2, 1-3, 1-4): its weights, and no pair at all when both are 0 (as the neighbor list)
+          var flj = 1.0;
+          var fc = 1.0;
+          if (P.specBase > 0u) {
+            let t1 = ints[P.specBase + i + 1u];
+            for (var t = ints[P.specBase + i]; t < t1; t = t + 1u) {
+              let e = ints[t];
+              if ((e >> 2u) == j) {
+                flj = P.wlj[e & 3u];
+                fc = P.wc[e & 3u];
+                break;
+              }
+            }
+            if (flj == 0.0 && fc == 0.0) { continue; }
+          }
           var fp = 0.0;
           if (r2 < A.x) {
             let sr = shortRange(P.style, r2, A, B, coef[k + 2u]);
-            fp = sr.x;
-            ev = ev + 0.5 * sr.y;
+            fp = flj * sr.x;
+            ev = ev + 0.5 * flj * sr.y;
           }
           if (r2 < A.y && P.qBase > 0u) {
             let qj = bitcast<f32>(ints[P.qBase + j]);
             if (qi != 0.0 && qj != 0.0) {
-              let pre = P.qqrd2e * B.w * qi * qj / sqrt(r2);
+              let pre = fc * P.qqrd2e * B.w * qi * qj / sqrt(r2);
               fp = fp + pre / r2;
               ec = ec + 0.5 * pre;
             }
@@ -518,14 +536,17 @@ export class WebGpuForceBackend implements ForceBackend {
    * Forces, van der Waals and Coulomb energies and the scalar virial of the pair styles of gpu/pairSpec.ts (the kernel
    * KERNEL_STYLES), fp32 on the GPU like compute(); the energies and the virial are summed in fp64 here.
    */
-  async computeSpec(state: SimState, spec: GpuPairSpec): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+  async computeSpec(state: SimState, spec: GpuPairSpec, special: SpecialList | null = null): Promise<ForceResult & { evdwl: number; ecoul: number }> {
     if (this.disposed) throw new Error('the WebGPU backend was disposed');
     const n = state.n;
     if (n === 0 || !(spec.maxCutoff > 0)) {
       state.f.fill(0);
       return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
     }
-    const extra = spec.charges ? n : 0;
+    // special bonds: each slot's entries (partner slot << 2 | order) after the charges, the slots' starts before them
+    const sp = spec.special && special ? special : null;
+    const spEntries = sp ? sp.offset[n] : 0;
+    const extra = (spec.charges ? n : 0) + (sp ? n + 1 + spEntries : 0);
     const cells = this.sortByCell(state, spec.maxCutoff, extra);
     if (!cells) throw new Error('the box has fewer than 3 cutoffs in a periodic dimension');
     const { L, nc, base, two } = cells;
@@ -536,15 +557,40 @@ export class WebGpuForceBackend implements ForceBackend {
       const qf = new Float32Array(ints.buffer, ints.byteOffset + 4 * (base + n), n);
       for (let slot = 0; slot < n; slot++) qf[slot] = state.q[sorted[slot]];
     }
+    let specBase = 0;
+    let intsLen = base + n + (spec.charges ? n : 0);
+    if (sp) {
+      specBase = intsLen;
+      const entryBase = specBase + n + 1;
+      const slotOf = new Int32Array(n);
+      for (let slot = 0; slot < n; slot++) slotOf[sorted[slot]] = slot;
+      const idx = buildAtomMap(state);
+      const wl = spec.special!.lj, wcl = spec.special!.coul;
+      let t = entryBase;
+      for (let slot = 0; slot < n; slot++) {
+        ints[specBase + slot] = t;
+        const a = sorted[slot];
+        const e1: number = sp.offset[a + 1];
+        for (let e: number = sp.offset[a]; e < e1; e++) {
+          const o: number = sp.order[e];
+          if (wl[o] === 1 && wcl[o] === 1) continue;
+          const pid: number = sp.partner[e];
+          const pb: number = pid < idx.length ? idx[pid] : -1;
+          if (pb < 0 || pb >= n) continue;
+          ints[t++] = (slotOf[pb] << 2) | o;
+        }
+      }
+      ints[specBase + n] = t;
+      intsLen = t;
+    }
     if (!this.specCache || this.specCache.key !== spec.key) this.specCache = { key: spec.key, coef: Float32Array.from(spec.coef) };
     const coef = this.specCache.coef;
     const dev = this.device;
     if (!this.stylesPipeline) {
       const module = dev.createShaderModule({ code: KERNEL_STYLES });
       this.stylesPipeline = dev.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
-      this.styleParams = dev.createBuffer({ size: 64, usage: BUF_UNIFORM | BUF_COPY_DST });
+      this.styleParams = dev.createBuffer({ size: 96, usage: BUF_UNIFORM | BUF_COPY_DST });
     }
-    const intsLen = base + n + extra;
     let b = this.sbufs;
     if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < coef.byteLength) {
       if (b) for (const buf of [b.pos, b.out, b.staging, b.ints, b.coef]) buf.destroy();
@@ -566,13 +612,14 @@ export class WebGpuForceBackend implements ForceBackend {
       });
       b = this.sbufs = { pos, out, staging, atomCap, ints: intsBuf, intsCap, coef: coefBuf, coefCap: coef.byteLength, bind };
     }
-    const params = new ArrayBuffer(64);
+    const params = new ArrayBuffer(96);
     const pf = new Float32Array(params);
     const pu = new Uint32Array(params);
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
     pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
     pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = spec.style; pu[11] = spec.charges ? base + n : 0;
-    pf[12] = spec.qqrd2e;
+    pf[12] = spec.qqrd2e; pu[13] = specBase;
+    if (spec.special) for (let o = 0; o < 4; o++) { pf[16 + o] = spec.special.lj[o]; pf[20 + o] = spec.special.coul[o]; }
     const q = dev.queue;
     q.writeBuffer(this.styleParams!, 0, params);
     q.writeBuffer(b.pos, 0, posData.buffer, posData.byteOffset, 16 * n);

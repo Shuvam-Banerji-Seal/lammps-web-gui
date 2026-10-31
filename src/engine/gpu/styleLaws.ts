@@ -21,8 +21,8 @@ fn sinCos(x : f32) -> vec2<f32> {
 
 // F/r and E of one pair of style s (pairSpec.ts GPU_PAIR_STYLES) inside its short-range cutoff
 fn shortRange(s : u32, r2 : f32, A : vec4<f32>, B : vec4<f32>, C3 : vec4<f32>) -> vec2<f32> {
-  if (s == 1u || s == 8u) {
-    if (s == 1u) {
+  if (s == 1u || s == 8u || s == 10u) {
+    if (s == 1u || s == 10u) {
       let r2inv = 1.0 / r2;
       let r6inv = r2inv * r2inv * r2inv;
       return vec2<f32>(r6inv * (A.z * r6inv - A.w) * r2inv, r6inv * (B.x * r6inv - B.y) - B.z);

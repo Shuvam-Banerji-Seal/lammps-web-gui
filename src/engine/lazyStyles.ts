@@ -69,6 +69,8 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_pod', names: { PAIRS: ['pod'], COMPUTES: ['pod/atom', 'podd/atom', 'pod/global', 'pod/local'] }, load: () => import('../engine-gpl/registry/pod') as Promise<StyleModule> },
   { id: 'gpl_slcsa', names: { COMPUTES: ['slcsa/atom'] }, load: () => import('../engine-gpl/registry/slcsa') as Promise<StyleModule> },
   { id: 'adapt_pairs', names: { HOOKS: ['adapt'] }, load: () => import('./registry/adapt_pairs') as Promise<StyleModule> },
+  // loaded by the word image (dump/write_dump ... image); its createDump joins gpl_graphics' shading helpers in that slot
+  { id: 'dump_image', names: { HOOKS: ['image'] }, load: () => import('./registry/dump_image') as Promise<StyleModule> },
   { id: 'pair_meam_spline', names: { PAIRS: ['meam/spline', 'meam/sw/spline'] }, load: () => import('./registry/pair_meam_spline') as Promise<StyleModule> },
   { id: 'pair_snap', names: { PAIRS: ['snap'] }, load: () => import('./registry/pair_snap') as Promise<StyleModule> },
   { id: 'compute_sna', names: { COMPUTES: ['sna/atom', 'snad/atom', 'snav/atom'] }, load: () => import('./registry/compute_sna') as Promise<StyleModule> },

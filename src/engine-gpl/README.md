@@ -32,6 +32,14 @@ National Security, LLC (LLNL-CODE-674031) and distributed under the GNU General 
 rest of this directory. Its LLNL preamble notice, which the authors state "is required to be provided", is kept in
 `mgpt/NOTICE.llnl`, and each ported file names it.
 
+## Third-party code: ch5md (BSD-3-Clause)
+
+`src/engine-gpl/h5md/` (dump h5md) follows the ch5md library that LAMMPS bundles for its H5MD package
+(`lib/h5md/src/ch5md.c` at commit `b332f28`, Copyright (C) 2013-2014 Pierre de Buyl). ch5md is distributed under a
+**BSD three-clause licence**, kept unchanged in `h5md/LICENSE.ch5md`; the ported files name it. The HDF5 files that
+ch5md writes through the HDF5 C library are produced by `h5md/hdf5.ts`, written from the HDF5 File Format
+Specification. The code here stays under GPL-2.0 as part of the LAMMPS port.
+
 ## Third-party code: voro++ (BSD-3-Clause)
 
 `src/engine-gpl/voro/` also holds a port of the subset of **voro++ 0.4.6** (<http://math.lbl.gov/voro++/>) that LAMMPS

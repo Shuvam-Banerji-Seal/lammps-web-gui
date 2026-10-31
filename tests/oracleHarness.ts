@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readH5, type H5Canon, type H5Node } from './h5read';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyFileWrite } from '../src/engine/fileWrite';
@@ -94,6 +95,14 @@ const compareWrittenFiles = (name: string, want: Record<string, string>, files: 
   for (const [f, ref] of Object.entries(want)) {
     const mine = files.get(f);
     expect(mine, `file ${f}`).toBeDefined();
+    if (ref.startsWith('base64:') && f.endsWith('.h5')) {
+      // dump h5md: native's HDF5 library stamps object times and lays out its blocks its own way, so the files are
+      // compared as HDF5 content (tests/h5read.ts): paths, attributes, types, dims, chunks and hard links exactly, the
+      // values within the case's tolerance
+      const diff = sameH5(readH5(mine!), readH5(new Uint8Array(Buffer.from(ref.slice(7), 'base64'))), filerel, fileabs);
+      if (diff) throw new Error(`${name}: file ${f} differs at ${diff}`);
+      continue;
+    }
     if (ref.startsWith('base64:')) {
       const diff = sameBytes(f, mine!, Buffer.from(ref.slice(7), 'base64'));
       if (diff) throw new Error(`${name}: file ${f} differs at ${diff}`);
@@ -119,6 +128,24 @@ const sameBytes = (f: string, mine: string, ref: Uint8Array): string | null => {
   for (let i = 0; i < ref.length; i++) {
     if (i >= skip[0] && i < skip[1]) continue;
     if ((mine.charCodeAt(i) & 0xff) !== ref[i] || mine.charCodeAt(i) > 0xff) return `byte ${i}: ${mine.charCodeAt(i)} vs ${ref[i]}`;
+  }
+  return null;
+};
+
+/** Two HDF5 files' contents (tests/h5read.ts), as compareWrittenFiles describes. */
+const sameH5 = (a: H5Canon, b: H5Canon, rel: number, abs: number): string | null => {
+  const ka = Object.keys(a.nodes).sort(), kb = Object.keys(b.nodes).sort();
+  if (JSON.stringify(ka) !== JSON.stringify(kb)) return `paths ${JSON.stringify(ka)} vs ${JSON.stringify(kb)}`;
+  if (JSON.stringify(a.hardlinks) !== JSON.stringify(b.hardlinks)) return `hard links ${JSON.stringify(a.hardlinks)} vs ${JSON.stringify(b.hardlinks)}`;
+  for (const p of ka) {
+    const x = a.nodes[p], y = b.nodes[p];
+    const shape = (n: H5Node) => JSON.stringify({ kind: n.kind, attrs: n.attrs, type: n.type, dims: n.dims, maxdims: n.maxdims, chunk: n.chunk });
+    if (shape(x) !== shape(y)) return `${p}: ${shape(x)} vs ${shape(y)}`;
+    const vx = x.values ?? [], vy = y.values ?? [];
+    for (let i = 0; i < vx.length; i++) {
+      const u = vx[i], v = vy[i];
+      if (typeof u === 'number' && typeof v === 'number' ? !close(u, v, rel, abs) : u !== v) return `${p} value ${i}: ${u} vs ${v}`;
+    }
   }
   return null;
 };

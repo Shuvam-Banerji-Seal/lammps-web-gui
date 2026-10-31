@@ -1,6 +1,7 @@
 import type { Pair, PairCompute } from '../force/types';
 import type { NeighList } from '../neighbor';
 import { THREADED_NAMES, isTwoPass } from './threadedPairs';
+import { GPL_THREADED_PAIRS, loadGplThreadedPair } from '../lazyStyles';
 import { CpuForceBackend } from './forces';
 import {
   ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, atomChunk, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PAIR_READY, PHASE, READY, cloneableFields, sumForces, pairFromFactory, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
@@ -99,6 +100,9 @@ export class SharedPairThreads implements NeighborThreads {
   private numneigh: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private firstneigh: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private neighbors: Int32Array<ArrayBufferLike> = new Int32Array(0);
+  /** The atom IDs of the owned and ghost atoms (Pair.threadTags), and the list they were filled for. */
+  private tags: Int32Array<ArrayBufferLike> = new Int32Array(0);
+  private tagsFor: Int32Array | null = null;
   private fs: Float64Array<ArrayBufferLike>[] = [];
   private accs: Float64Array<ArrayBufferLike>[] = [];
   /** A two-pass style's per-atom sums (engine thread) and the values its second loop reads (shared). */
@@ -146,20 +150,32 @@ export class SharedPairThreads implements NeighborThreads {
     const nall = pc.nall, nlocal = list.inum;
     let resend = false;
     if (nall > this.cap) { this.cap = Math.ceil(nall * 1.25); resend = true; }
-    if (list !== this.listRef || list.neighbors !== this.listArrays) {
+    // a style that reads its neighbors in another order (native order) gives the array the threads read; it is made
+    // once per neighbor build (the style caches it), so the copy below happens on rebuilds only
+    const ordered = pair.threadNeighbors ? pair.threadNeighbors(pc, list) : null;
+    const nbArr = ordered ?? list.neighbors;
+    if (list !== this.listRef || nbArr !== this.listArrays) {
       const nnb = list.inum > 0 ? list.firstneigh[nlocal - 1] + list.numneigh[nlocal - 1] : 0;
       if (nlocal > this.capL) { this.capL = Math.ceil(nlocal * 1.25); resend = true; }
       if (nnb > this.capN) { this.capN = Math.ceil(nnb * 1.25); resend = true; }
       if (resend) this.allocate();
       this.numneigh.set(list.numneigh.subarray(0, nlocal));
       this.firstneigh.set(list.firstneigh.subarray(0, nlocal));
-      this.neighbors.set(list.neighbors.subarray(0, nnb));
+      this.neighbors.set(nbArr.subarray(0, nnb));
       this.splitChunks(list, nlocal, W + 1);
       this.listRef = list;
-      this.listArrays = list.neighbors;
+      this.listArrays = nbArr;
+      this.tagsFor = null;
     } else if (resend) {
       this.allocate();
-      this.copyList(list);
+      this.copyList(list, nbArr);
+      this.tagsFor = null;
+    }
+    // the IDs of the owned and ghost atoms, for a style that reads them (they change with the lists only)
+    if (pair.threadTags && this.tagsFor !== nbArr) {
+      const id = pc.s.id, owner = pc.nb.owner;
+      for (let k = 0; k < nall; k++) this.tags[k] = id[owner[k]];
+      this.tagsFor = nbArr;
     }
     this.x.set(pc.x.subarray(0, 3 * nall));
     this.t.set(pc.type.subarray(0, nall));
@@ -170,13 +186,13 @@ export class SharedPairThreads implements NeighborThreads {
     const phase = Atomics.load(this.ctl, PHASE), nslices = CHUNKS_PER_THREAD * (W + 1);
     const chunk = (c: number): PairCompute => ({
       ...pc,
-      [fullStyle ? 'full' : 'half']: { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: list.numneigh, firstneigh: list.firstneigh, neighbors: list.neighbors },
+      [fullStyle ? 'full' : 'half']: { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: list.numneigh, firstneigh: list.firstneigh, neighbors: nbArr, nativeOrdered: ordered !== null },
     });
     if (two) {
       // the first loop: every thread sums into its own array, the engine thread adds them in worker order
       const sums = this.sums;
       sums.fill(0, 0, nall);
-      const firstFailed = this.dispatch({ type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F: null, phase, nslices, pass: 1, aux: null }, (c) => two.densities(chunk(c), sums));
+      const firstFailed = this.dispatch({ type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F: null, phase, nslices, pass: 1, aux: null, ordered: ordered !== null, tags: !!pair.threadTags }, (c) => two.densities(chunk(c), sums));
       if (firstFailed) throw new Error(`pair style ${pair.name} failed in a force thread`);
       for (let w = 0; w < W; w++) {
         const a = this.fs[w];
@@ -185,7 +201,7 @@ export class SharedPairThreads implements NeighborThreads {
       two.embed(pc, sums, this.aux as Float64Array);
     }
     const failed = this.dispatch(
-      { type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F, phase, nslices, pass: two ? 2 : 0, aux: two ? this.auxBuf : null },
+      { type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F, phase, nslices, pass: two ? 2 : 0, aux: two ? this.auxBuf : null, ordered: ordered !== null, tags: !!pair.threadTags },
       two ? (c) => two.forces(chunk(c), this.aux as Float64Array) : (c) => pair.compute(chunk(c)),
     );
     const f = pc.f, acc = pc.acc;
@@ -261,20 +277,31 @@ export class SharedPairThreads implements NeighborThreads {
     this.pairOk = copy !== null && sameShape(pair, copy);
     if (!this.pairOk) return;
     Atomics.store(this.ctl, PAIR_READY, 0);
-    for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields } satisfies PairThreadMessage);
+    if (!GPL_THREADED_PAIRS.includes(pair.name)) {
+      for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields } satisfies PairThreadMessage);
+      return;
+    }
+    // a GPL-ported style: its registry module is loaded here (lazyStyles.ts), then the workers import it by URL; until
+    // they have built it (PAIR_READY) the pair term runs on the engine thread
+    const version = this.pairVersion;
+    void loadGplThreadedPair(pair.name).then((g) => {
+      if (!g || this.pairRef !== pair || this.pairVersion !== version) return;
+      for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, url: g.url } satisfies PairThreadMessage);
+    });
   }
 
-  private copyList(list: NeighList): void {
+  private copyList(list: NeighList, neighbors: Int32Array = list.neighbors): void {
     const nlocal = list.inum;
     const nnb = nlocal > 0 ? list.firstneigh[nlocal - 1] + list.numneigh[nlocal - 1] : 0;
     this.numneigh.set(list.numneigh.subarray(0, nlocal));
     this.firstneigh.set(list.firstneigh.subarray(0, nlocal));
-    this.neighbors.set(list.neighbors.subarray(0, nnb));
+    this.neighbors.set(neighbors.subarray(0, nnb));
   }
 
   /** New shared buffers at the current capacities, announced to every worker. */
   private allocate(): void {
-    const xb = shared(24 * this.cap), tb = shared(4 * this.cap), qb = shared(8 * this.cap);
+    const xb = shared(24 * this.cap), tb = shared(4 * this.cap), qb = shared(8 * this.cap), idb = shared(4 * this.cap);
+    this.tags = new Int32Array(idb);
     const nb = shared(4 * this.capL), fb = shared(4 * this.capL), lb = shared(4 * this.capN);
     this.x = new Float64Array(xb); this.t = new Int32Array(tb); this.q = new Float64Array(qb);
     this.numneigh = new Int32Array(nb); this.firstneigh = new Int32Array(fb); this.neighbors = new Int32Array(lb);
@@ -287,7 +314,7 @@ export class SharedPairThreads implements NeighborThreads {
     this.workers.forEach((w, k) => {
       const acc = shared(8 * ACC_LEN);
       this.accs.push(new Float64Array(acc));
-      w.postMessage({ type: 'buffers', x: xb, t: tb, q: qb, numneigh: nb, firstneigh: fb, neighbors: lb, f: fbufs[k], fs: fbufs, acc, chunks: this.chunksBuf } satisfies PairThreadMessage);
+      w.postMessage({ type: 'buffers', x: xb, t: tb, q: qb, numneigh: nb, firstneigh: fb, neighbors: lb, f: fbufs[k], fs: fbufs, acc, chunks: this.chunksBuf, tags: idb } satisfies PairThreadMessage);
     });
   }
 

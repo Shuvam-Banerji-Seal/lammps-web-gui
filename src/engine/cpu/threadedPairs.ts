@@ -57,6 +57,8 @@ export const THREADED_NAMES: ReadonlySet<string> = new Set([
   'tersoff/mod/c',
   'tersoff/zbl',
   'sw/mod',
+  // GPL-ported (lazyStyles.ts GPL_THREADED_PAIRS): the threads get the neighbors in native order and the atom IDs
+  'sw',
 ]);
 
 /**

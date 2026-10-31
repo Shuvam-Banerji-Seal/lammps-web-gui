@@ -5,7 +5,7 @@ import type { TwoPassPair } from './threadedPairs';
 /** The style factories a worker builds its copy with (cpu/threadedPairFactories.ts: the tests run workers in-process with them). */
 export type PairFactories = Readonly<Record<string, () => Pair>>;
 /** Loads a style's factory on demand (cpu/threadedPairLoaders.ts: the pair worker loads only the styles it is sent). */
-export type PairLoader = (name: string) => Promise<(() => Pair) | null>;
+export type PairLoader = (name: string, url?: string) => Promise<(() => Pair) | null>;
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins } from './neighborKernel';
 import { PPPM_PARAMS, pppmField, pppmWeights, readPppmParams, weightScratch } from '../force/kspace/pppmKernel';
 
@@ -24,8 +24,8 @@ export interface PairWorkerLike {
 
 export type PairThreadMessage =
   | { type: 'init'; ctl: SharedArrayBuffer; index: number }
-  | { type: 'buffers'; x: SharedArrayBuffer; t: SharedArrayBuffer; q: SharedArrayBuffer; numneigh: SharedArrayBuffer; firstneigh: SharedArrayBuffer; neighbors: SharedArrayBuffer; f: SharedArrayBuffer; fs: SharedArrayBuffer[]; acc: SharedArrayBuffer; chunks: SharedArrayBuffer }
-  | { type: 'pair'; name: string; fields: Record<string, unknown> }
+  | { type: 'buffers'; x: SharedArrayBuffer; t: SharedArrayBuffer; q: SharedArrayBuffer; numneigh: SharedArrayBuffer; firstneigh: SharedArrayBuffer; neighbors: SharedArrayBuffer; f: SharedArrayBuffer; fs: SharedArrayBuffer[]; acc: SharedArrayBuffer; chunks: SharedArrayBuffer; tags: SharedArrayBuffer }
+  | { type: 'pair'; name: string; fields: Record<string, unknown>; url?: string }
   | {
     type: 'compute'; nlocal: number; nall: number;
     /** the style reads the full list (a three-body style of THREADED_PAIRS), else the half list */
@@ -37,6 +37,8 @@ export type PairThreadMessage =
      * force array (one value per atom), the second reading the per-atom values in aux
      */
     pass: 0 | 1 | 2; aux: SharedArrayBuffer | null;
+    /** the shared neighbors are in the style's order (Pair.threadNeighbors); the style reads atom IDs (tags) */
+    ordered: boolean; tags: boolean;
   }
   | {
     type: 'nbuffers'; bL: SharedArrayBuffer; bG: SharedArrayBuffer; rLo: SharedArrayBuffer; rHi: SharedArrayBuffer;
@@ -212,6 +214,7 @@ export class PairThreadWorker {
   private numneigh: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private firstneigh: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private neighbors: Int32Array<ArrayBufferLike> = new Int32Array(0);
+  private tags: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private f: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private fs: Float64Array[] = [];
   private acc: Float64Array<ArrayBufferLike> = new Float64Array(0);
@@ -260,6 +263,7 @@ export class PairThreadWorker {
       this.numneigh = new Int32Array(m.numneigh); this.firstneigh = new Int32Array(m.firstneigh); this.neighbors = new Int32Array(m.neighbors);
       this.f = new Float64Array(m.f); this.acc = new Float64Array(m.acc); this.chunks = new Int32Array(m.chunks);
       this.fs = m.fs.map((b) => new Float64Array(b));
+      this.tags = new Int32Array(m.tags);
       return;
     }
     if (m.type === 'pair') {
@@ -272,7 +276,7 @@ export class PairThreadWorker {
       this.pair = null;
       const f = this.factories;
       if (typeof f !== 'function') { ready(pairFromFields(m.name, m.fields, f)); return; }
-      f(m.name).then((make) => ready(make ? pairFromFactory(make, m.fields) : null), () => ready(null));
+      f(m.name, m.url).then((make) => ready(make ? pairFromFactory(make, m.fields) : null), () => ready(null));
       return;
     }
     const ctl = this.ctl!;
@@ -287,12 +291,12 @@ export class PairThreadWorker {
       for (;;) {
         const c = Atomics.add(ctl, NEXT, 1);
         if (c >= m.nchunks) break;
-        const rows: NeighList = { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: this.numneigh, firstneigh: this.firstneigh, neighbors: this.neighbors };
+        const rows: NeighList = { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: this.numneigh, firstneigh: this.firstneigh, neighbors: this.neighbors, nativeOrdered: m.ordered };
         const pc = {
           x: this.x, f: this.f, type: this.t, q: this.q, nlocal: m.nlocal, nall: m.nall,
           half: m.full ? null : rows, full: m.full ? rows : null,
           specialLJ, specialCoul, qqrd2e: m.qqrd2e,
-          acc: a, eatom: null, vatom: null,
+          acc: a, eatom: null, vatom: null, tags: m.tags ? this.tags : undefined,
           // THREADED_PAIRS styles do not read these
           s: undefined as never, nb: undefined as never, geom: undefined as never,
         };

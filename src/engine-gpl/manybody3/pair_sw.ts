@@ -11,7 +11,7 @@
  * by the half list (threebody off), as native LAMMPS does.
  */
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
-import { NEIGHMASK } from '../../engine/neighbor';
+import { NEIGHMASK, type NeighList } from '../../engine/neighbor';
 import { NativeFullOrder } from '../neighbor/nativeOrder';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
@@ -42,6 +42,11 @@ export class PairSW extends Pair {
   override readonly name: string = 'sw';
   manybody = true;
   virialFdotr = true;
+  /** On the pair threads: the full list in native order (made once per neighbor build) and the atom IDs. */
+  override threadNeighbors(pc: PairCompute, list: NeighList): Int32Array {
+    return this.threebody ? this.natOrder.neighbors(pc.s, pc.nb, pc.geom, list) : list.neighbors;
+  }
+  override threadTags = true;
   /** threebody on: the full list (every pair seen from both ends); off: the half list. */
   needsFull = true;
   needsHalf = false;
@@ -364,14 +369,17 @@ export class PairSW extends Pair {
     const d1 = this.d1, d2 = this.d2;
     const fj = this.fj, fk = this.fk;
     // the neighbours in native full-list order (the list order for a half list, where only pairs matter)
-    const nbrs = three ? this.natOrder.neighbors(pc.s, pc.nb, pc.geom, list) : list.neighbors;
-    const cut2 = this.pairCutsq, ids = pc.s.id, owner = pc.nb.owner;
+    // on the pair threads the list arrives in native order with the atom IDs (threadNeighbors, threadTags)
+    const nbrs = three && !list.nativeOrdered ? this.natOrder.neighbors(pc.s, pc.nb, pc.geom, list) : list.neighbors;
+    const tags = pc.tags ?? null;
+    const ids = tags ? null : pc.s.id, owner = tags ? null : pc.nb.owner;
+    const cut2 = this.pairCutsq;
 
     for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const itype = map[type[i]];
       if (itype < 0) continue;
       const xtmp = x[3 * i], ytmp = x[3 * i + 1], ztmp = x[3 * i + 2];
-      const itag = ids[i];
+      const itag = tags ? tags[i] : ids![i];
       let fxi = 0, fyi = 0, fzi = 0;
       const jnum = list.numneigh[i];
       const k0 = list.firstneigh[i];
@@ -390,7 +398,7 @@ export class PairSW extends Pair {
         const ijparam = e3[(itype * nel + jtype) * nel + jtype];
         neighshort[numshort++] = j;
         if (three) {
-          const jtag = ids[owner[j]];
+          const jtag = tags ? tags[j] : ids![owner![j]];
           if (itag > jtag) {
             if ((itag + jtag) % 2 === 0) continue;
           } else if (itag < jtag) {

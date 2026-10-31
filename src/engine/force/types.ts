@@ -117,6 +117,11 @@ export interface PairCompute {
    * and folded its ghost forces into their owners: the force field then skips its own dot product.
    */
   fdotrDone?: boolean;
+  /**
+   * The ID of each owned and ghost atom (a ghost's is its owner's), for a style run on the pair threads that reads IDs
+   * (Pair.threadTags): a force thread has no s or nb.
+   */
+  tags?: Int32Array;
 }
 
 /**
@@ -390,6 +395,14 @@ export abstract class Pair {
    */
   hybridSub = false;
   needsFull = false;
+  /**
+   * A style on the pair threads (cpu/threadedPairs.ts) whose loop takes the neighbors in another order than the list
+   * (native LAMMPS's full-list order): the array the threads read, made on the engine thread from the list (the same
+   * firstneigh and numneigh layout). The threads' lists then carry nativeOrdered.
+   */
+  threadNeighbors?(pc: PairCompute, list: NeighList): Int32Array;
+  /** A style on the pair threads that reads atom IDs (PairCompute.tags). */
+  threadTags?: boolean;
   needsHalf = true;
   /**
    * The neighbor list keeps a pair only within the two radii plus the skin. As native LAMMPS does (src/npair_bin.cpp at

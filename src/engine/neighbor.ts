@@ -60,6 +60,8 @@ export interface NeighList {
   firstneigh: Int32Array;
   /** Encoded neighbors: index into the owned+ghost arrays | (order << SBBITS). */
   neighbors: Int32Array;
+  /** The neighbors are already in the order the style asked for (Pair.threadNeighbors), on the pair threads. */
+  nativeOrdered?: boolean;
 }
 
 export interface SpecialSettings {

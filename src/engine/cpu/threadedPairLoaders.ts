@@ -6,7 +6,7 @@ import type { PairLoader } from './pairThreadsCore';
  * the protocol only, and each style module is its own chunk. The same styles and classes as cpu/threadedPairFactories.ts
  * (which the in-process tests use; tests/enginePairThreads.test.ts checks that the two agree).
  */
-export const loadThreadedPair: PairLoader = async (name) => {
+export const loadThreadedPair: PairLoader = async (name, url) => {
   switch (name) {
     case 'lj/cut': { const m = await import('../force/pair/lj_cut'); return () => new m.PairLJCut(); }
     case 'lj/cut/coul/cut': { const m = await import('../force/pair/lj_coul'); return () => new m.PairLJCutCoulCut(); }
@@ -50,6 +50,13 @@ export const loadThreadedPair: PairLoader = async (name) => {
     case 'tersoff/mod/c': { const m = await import('../force/pair/tersoff_variants'); return () => new m.PairTersoffModC(); }
     case 'tersoff/zbl': { const m = await import('../force/pair/tersoff_variants'); return () => new m.PairTersoffZBL(); }
     case 'sw/mod': { const m = await import('../force/pair/sw'); return () => new m.PairSWMod(); }
-    default: return null;
+    // the GPL-ported styles (src/engine-gpl), through the lazy registries' loader (rule 7)
+    // a GPL-ported style (src/engine-gpl): the engine thread loaded its registry module through the lazy registries
+    // (lazyStyles.ts loadGplThreadedPair, rule 7) and sends that module's own URL, which the worker imports as it is
+    default: {
+      if (!url) return null;
+      const m = (await import(/* @vite-ignore */ url)) as { THREADED?: Record<string, () => import('../force/types').Pair> };
+      return m.THREADED?.[name] ?? null;
+    }
   }
 };

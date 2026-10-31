@@ -4,6 +4,8 @@ import { THREADED_PAIRS } from '../src/engine/cpu/threadedPairFactories';
 import { loadThreadedPair } from '../src/engine/cpu/threadedPairLoaders';
 import { CTL_WORDS, PAIR_READY, PairThreadWorker, cloneableFields, type PairLoader } from '../src/engine/cpu/pairThreadsCore';
 import type { Pair } from '../src/engine/force/types';
+import { GPL_THREADED_PAIRS, loadGplThreadedPair } from '../src/engine/lazyStyles';
+import { THREADED as GPL_THREADED } from '../src/engine-gpl/registry/threaded_pairs';
 
 /*
  * The pair worker loads each style's module when the engine first sends it (cpu/threadedPairLoaders.ts), and counts
@@ -13,9 +15,13 @@ import type { Pair } from '../src/engine/force/types';
 describe('pair worker style loaders', () => {
   it('build the same class as the in-process factories for every threaded style', async () => {
     for (const name of THREADED_NAMES) {
-      const make = await loadThreadedPair(name);
+      // a GPL port comes with its registry module's URL, which the engine thread gets from the lazy registries
+      const url = GPL_THREADED_PAIRS.includes(name) ? (await loadGplThreadedPair(name))!.url : undefined;
+      const make = await loadThreadedPair(name, url);
       expect(make, name).not.toBeNull();
-      expect(make!().constructor, name).toBe(THREADED_PAIRS[name]().constructor);
+      // a GPL port: the class of the GPL registry the worker loads through lazyStyles.ts
+      const ref = GPL_THREADED_PAIRS.includes(name) ? GPL_THREADED[name] : THREADED_PAIRS[name];
+      expect(make!().constructor, name).toBe(ref().constructor);
     }
     expect(await loadThreadedPair('nm/cut')).toBeNull();
   });

@@ -61,6 +61,8 @@ export interface DumpReadSpec {
   labels: Map<string, string>;
   scaled: boolean;
   wrapped: boolean;
+  /** read_dump.rst: "format arg = native or xyz or adios or molfile"; the engine reads native and xyz. */
+  format: 'native' | 'xyz';
 }
 
 /** The words each read_dump keyword needs, the keyword included (read_dump.cpp fields_and_keywords at b332f28). */
@@ -79,7 +81,7 @@ const READ_KEYWORD_WORDS = new Map<string, number>([
 export const parseDumpSpec = (words: string[], what: string): DumpReadSpec => {
   const spec: DumpReadSpec = {
     fields: [], box: true, timestep: true, timestepGiven: false, replace: true, purge: false, trim: false,
-    add: 'no', labels: new Map(), scaled: false, wrapped: true,
+    add: 'no', labels: new Map(), scaled: false, wrapped: true, format: 'native',
   };
   let k = 0;
   while (k < words.length && (READ_FIELDS as readonly string[]).includes(words[k])) {
@@ -121,7 +123,8 @@ export const parseDumpSpec = (words: string[], what: string): DumpReadSpec => {
       }
       case 'format': {
         const v = words[k + 1];
-        if (v !== 'native') throw new StyleError(`${what}: dump format '${v ?? ''}' is not supported by the browser engine (native text dumps only)`);
+        if (v !== 'native' && v !== 'xyz') throw new StyleError(`${what}: dump format '${v ?? ''}' is not supported by the browser engine (native and xyz)`);
+        spec.format = v;
         if (k + 2 < words.length) throw new StyleError(`${what}: keyword format must be the last keyword, but '${words[k + 2]}' follows`);
         k = words.length; break;
       }
@@ -157,12 +160,60 @@ export interface DumpSnapshot {
   columns: string[];
   /** Atom lines of the snapshot. */
   rows: string[];
+  /** An xyz frame: no box in the file (native ReaderXYZ::read_header "boxinfo = 0"). */
+  noBox?: boolean;
 }
 
 export interface DumpFile {
   name: string;
   snapshots: DumpSnapshot[];
+  /** read_dump format xyz: the frames carry type x y z only, ids are the line numbers. */
+  xyz?: boolean;
 }
+
+/**
+ * The frames of an XYZ file for read_dump format xyz. As native LAMMPS does (src/reader_xyz.cpp at b332f28): a frame is
+ * the atom count (the first word of its line, "Dump file is incorrectly formatted" below 1), a comment line, and one
+ * "label x y z" line per atom; frames are numbered 0, 1, ... ("fake time step numbers"); an atom's ID is its line
+ * number in the frame; a label that is not an integer is a type label, which needs a complete atom labelmap ("Must
+ * define atom labelmap to parse XYZ files with strings for types"); the file has no box.
+ */
+export const parseXyzDump = (name: string, text: string, sys: System): DumpFile => {
+  const lines = text.split('\n');
+  const s = sys.state;
+  const snapshots: DumpSnapshot[] = [];
+  let i = 0;
+  const boundary = s.box.boundary.map((x) => x.join('')).join(' ');
+  while (i < lines.length) {
+    const head = lines[i++];
+    if (head.trim() === '' && i >= lines.length) break;
+    const natoms = Number(head.trim().split(/\s+/)[0]);
+    if (!Number.isInteger(natoms)) throw new StyleError(`Expected integer parameter instead of '${head.trim().split(/\s+/)[0] ?? ''}' in input script or data file`);
+    if (natoms < 1) throw new StyleError('Dump file is incorrectly formatted');
+    if (i >= lines.length) throw new StyleError('Unexpected end of dump file');
+    i++;
+    const rows: string[] = [];
+    for (let a = 0; a < natoms; a++) {
+      if (i >= lines.length || (i === lines.length - 1 && lines[i] === '')) throw new StyleError('Unexpected end of dump file');
+      const w = lines[i++].trim().split(/\s+/);
+      let type = Number(w[0]);
+      if (!/^[+-]?\d+$/.test(w[0] ?? '')) {
+        if (!sys.labels.defined || !sys.labels.complete('atom', s.ntypes)) throw new StyleError('Must define atom labelmap to parse XYZ files with strings for types');
+        const t = sys.labels.typeOf('atom', w[0]);
+        if (t === undefined) throw new StyleError(`Atom type string ${w[0]} not found in labelmap`);
+        type = t;
+      }
+      if (w.length < 4) throw new StyleError('Error reading xyz file: Not enough tokens');
+      for (const v of w.slice(1, 4)) if (!Number.isFinite(Number(v))) throw new StyleError(`Error reading xyz file: Not a valid floating-point number: '${v}'`);
+      rows.push(`${a + 1} ${type} ${w[1]} ${w[2]} ${w[3]}`);
+    }
+    snapshots.push({
+      step: snapshots.length, n: natoms, lo: [...s.box.lo] as [number, number, number], hi: [...s.box.hi] as [number, number, number],
+      tilt: [...s.box.tilt] as [number, number, number], triclinic: s.box.triclinic, boundary, columns: ['id', 'type', 'x', 'y', 'z'], rows, noBox: true,
+    });
+  }
+  return { name, snapshots, xyz: true };
+};
 
 /**
  * Splits a native text dump ("ITEM: TIMESTEP", "ITEM: NUMBER OF ATOMS",
@@ -266,6 +317,13 @@ const planColumns = (sys: System, file: DumpFile, snap: DumpSnapshot, spec: Dump
       kinds.push([spec.scaled, spec.wrapped]);
       return;
     }
+    // an xyz file's coordinates are what the scaled and wrapped keywords say (src/reader_xyz.cpp read_header:
+    // "xflag = 2 * scaleflag + wrapflag + 1")
+    if (file.xyz) {
+      coord[d] = cols.indexOf(ax);
+      kinds.push([spec.scaled, spec.wrapped]);
+      return;
+    }
     const c = COORD_CANDIDATES[ax].find((l) => cols.includes(l));
     if (c === undefined) throw new StyleError(`read_dump: no column for field ${ax} in ${file.name} (labels ${COORD_CANDIDATES[ax].join(', ')}); columns: ${cols.join(' ')}`);
     coord[d] = cols.indexOf(c);
@@ -282,6 +340,7 @@ const planColumns = (sys: System, file: DumpFile, snap: DumpSnapshot, spec: Dump
   const planCols: Partial<Record<ReadField, number>> = {};
   for (const f of spec.fields) {
     if (f === 'x' || f === 'y' || f === 'z') continue;
+    if (file.xyz) throw new StyleError(`read_dump: field ${f} is not in an xyz file (src/reader_xyz.cpp reads type x y z)`);
     planCols[f] = find(spec.labels.get(f) ?? f, `field ${f}`);
   }
   return { id, type, coord, scaled, wrapped, cols: planCols };
@@ -298,6 +357,9 @@ export const readDumpSnapshot = (
   spec: DumpReadSpec,
 ): { replaced: number; added: number; trimmed: number } => {
   const s = sys.state;
+  // As native LAMMPS does (src/read_dump.cpp ReadDump::header at b332f28): "if (!boxinfo) error->all(FLERR,"No box
+  // information in dump, must use 'box no'")" when the box is read
+  if (spec.box && snap.noBox) throw new StyleError("No box information in dump, must use 'box no'");
   // read_dump.rst: "an error is generated if the snapshot is for a triclinic box and the current simulation box is orthogonal or vice versa"
   if (snap.triclinic !== s.box.triclinic) {
     throw new StyleError(`read_dump: snapshot ${file.name} @${snap.step} is ${snap.triclinic ? 'triclinic' : 'orthogonal'} but the simulation box is ${s.box.triclinic ? 'triclinic' : 'orthogonal'}`);

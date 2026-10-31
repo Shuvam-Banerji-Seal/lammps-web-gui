@@ -1,0 +1,18 @@
+# oracle: read_dump format xyz (src/reader_xyz.cpp at b332f28): frame 1 of two (frames are numbered 0, 1, ...), box no,
+#   the IDs are the line numbers; the timestep becomes the frame number
+# oracle-inputs: w624rd_xyz.xyz
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14
+units lj
+region b block 0 3 0 3 0 3
+create_box 2 b
+create_atoms 1 single 0.5 0.5 0.5
+create_atoms 2 single 1.5 0.5 0.5
+create_atoms 1 single 0.5 1.5 0.5
+create_atoms 2 single 1.5 1.5 1.5
+mass * 1.0
+pair_style lj/cut 2.5
+pair_coeff * * 1.0 1.0
+read_dump w624rd_xyz.xyz 1 x y z box no format xyz
+thermo_style custom step pe press
+thermo_modify format float %.15g
+run 0

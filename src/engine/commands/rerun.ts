@@ -7,7 +7,7 @@ import { RunCancelled } from '../errors';
 import { emitFrame, ensureThermoComputes } from './run';
 import { initRun, setupRun } from '../run/verlet';
 import {
-  findSnapshot, parseDumpFile, parseDumpSpec, readDumpSnapshot, selectSnapshots, type DumpFile, type DumpReadSpec,
+  findSnapshot, parseDumpFile, parseDumpSpec, parseXyzDump, readDumpSnapshot, selectSnapshots, type DumpFile, type DumpReadSpec,
 } from '../output/read_dump';
 
 /*
@@ -92,7 +92,7 @@ const rerun: Handler = async (ctx: Ctx, a) => {
   if (a.length < 2) throw missingArgs('rerun');
   const args = parseRerunArgs(a);
   const { sys, session } = ctx;
-  const files: DumpFile[] = args.files.map((name) => parseDumpFile(name, sys.readFile(name)));
+  const files: DumpFile[] = args.files.map((name) => (args.spec.format === 'xyz' ? parseXyzDump(name, sys.readFile(name), sys) : parseDumpFile(name, sys.readFile(name))));
   const selected = selectSnapshots(files, { first: args.first, last: args.last, every: args.every, skip: args.skip });
   const s = sys.state;
   if (selected.length === 0) {
@@ -145,7 +145,7 @@ const readDump: Handler = ({ sys }, a) => {
   const [file, nstep] = a;
   const step = int(nstep, 'read_dump Nstep');
   const spec = parseDumpSpec(a.slice(2), 'read_dump');
-  const dump = parseDumpFile(file, sys.readFile(file));
+  const dump = spec.format === 'xyz' ? parseXyzDump(file, sys.readFile(file), sys) : parseDumpFile(file, sys.readFile(file));
   readDumpSnapshot(sys, dump, findSnapshot(dump, step), spec);
 };
 

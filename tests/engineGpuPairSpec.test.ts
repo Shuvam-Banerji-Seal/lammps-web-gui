@@ -30,6 +30,10 @@ const STYLES: Record<string, string> = {
   buck: 'pair_style buck 6.5\npair_coeff * * 20000.0 0.3 120.0\npair_coeff 1 2 15000.0 0.28 90.0 5.8\npair_modify shift yes',
   'buck/coul/cut': 'pair_style buck/coul/cut 6.0 7.5\npair_coeff * * 20000.0 0.3 120.0\npair_coeff 1 2 15000.0 0.28 90.0 5.5 7.0',
   morse: 'pair_style morse 6.5\npair_coeff * * 0.3 1.2 3.3\npair_coeff 1 2 0.5 1.5 3.1 6.0\npair_modify shift yes',
+  soft: 'pair_style soft 6.0\npair_coeff * * 2.0\npair_coeff 1 2 3.0 5.0',
+  yukawa: 'pair_style yukawa 0.4 6.5\npair_coeff * * 40.0\npair_coeff 1 2 60.0 6.0\npair_modify shift yes',
+  'lj96/cut': 'pair_style lj96/cut 6.5\npair_coeff * * 0.2 3.2\npair_coeff 1 2 0.3 3.0 6.0\npair_modify shift yes',
+  born: 'pair_style born 6.5\npair_coeff * * 6000.0 0.32 2.6 100.0 50.0\npair_coeff 1 2 5000.0 0.30 2.4 80.0 40.0 6.0\npair_modify shift yes',
 };
 
 const systemFor = async (lines: string): Promise<System> => {
@@ -84,7 +88,7 @@ describe('GPU pair-style specs against the CPU styles', () => {
     const ok = await withFix(STYLES.buck);
     expect(ok.reason).toBeNull();
     expect(ok.accel?.spec?.style).toBe(3);
-    const soft = await withFix('pair_style soft 3.0\npair_coeff * * 10.0');
-    expect(soft.reason).toMatch(/pair style soft \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse only\)/);
+    const expand = await withFix('pair_style lj/expand 6.0\npair_coeff * * 0.2 3.0 0.5');
+    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born only\)/);
   });
 });

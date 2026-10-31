@@ -103,6 +103,8 @@ export class SharedPairThreads implements NeighborThreads {
   /** The atom IDs of the owned and ghost atoms (Pair.threadTags), and the list they were filled for. */
   private tags: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private tagsFor: Int32Array | null = null;
+  /** The module URL of each GPL-ported style's registry, once loaded (lazyStyles.ts loadGplThreadedPair). */
+  private readonly gplUrls = new Map<string, string>();
   private fs: Float64Array<ArrayBufferLike>[] = [];
   private accs: Float64Array<ArrayBufferLike>[] = [];
   /** A two-pass style's per-atom sums (engine thread) and the values its second loop reads (shared). */
@@ -281,11 +283,19 @@ export class SharedPairThreads implements NeighborThreads {
       for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields } satisfies PairThreadMessage);
       return;
     }
-    // a GPL-ported style: its registry module is loaded here (lazyStyles.ts), then the workers import it by URL; until
-    // they have built it (PAIR_READY) the pair term runs on the engine thread
+    // a GPL-ported style: its registry module is loaded here once (lazyStyles.ts), then the workers import it by URL;
+    // until they have built it (PAIR_READY) the pair term runs on the engine thread. Each run's init sends the style
+    // again, at once with the URL known.
+    const known = this.gplUrls.get(pair.name);
+    if (known !== undefined) {
+      for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, url: known } satisfies PairThreadMessage);
+      return;
+    }
     const version = this.pairVersion;
     void loadGplThreadedPair(pair.name).then((g) => {
-      if (!g || this.pairRef !== pair || this.pairVersion !== version) return;
+      if (!g) return;
+      this.gplUrls.set(pair.name, g.url);
+      if (this.pairRef !== pair || this.pairVersion !== version) return;
       for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, url: g.url } satisfies PairThreadMessage);
     });
   }

@@ -149,7 +149,8 @@ interface ForceBackend {
   forces, per-atom energy and virial; the CPU integrates. This keeps the GPU
   path small enough to verify against the CPU path force-by-force.
 - **WebGPU, more pair styles** (`src/engine/gpu/pairSpec.ts`): besides lj/cut, the
-  GPU runs `lj/cut/coul/cut`, `coul/cut`, `buck`, `buck/coul/cut` and `morse` under
+  GPU runs `lj/cut/coul/cut`, `coul/cut`, `buck`, `buck/coul/cut`, `morse`, `soft`,
+  `yukawa`, `lj96/cut` and `born` under
   the same conditions (charges allowed). The coefficients are the engine style's own
   after its init (the arrays its compute() reads), a second kernel switches on the
   style per pair, and the charges ride in the integer buffer as f32 bits (WebGPU

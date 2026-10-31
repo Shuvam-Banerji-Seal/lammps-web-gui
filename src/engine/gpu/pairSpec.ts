@@ -15,9 +15,13 @@ export const GPU_PAIR_STYLES: Readonly<Record<string, number>> = {
   buck: 3,
   'buck/coul/cut': 4,
   morse: 5,
+  soft: 6,
+  yukawa: 7,
+  'lj96/cut': 8,
+  born: 9,
 };
 
-/** Floats per type pair: [cutsqA cutsqC a b] [c d eshift cscale] (12 with padding to three vec4). */
+/** Floats per type pair: [cutsqA cutsqC a b] [c d eshift cscale] [e _ _ _] (three vec4). */
 export const SPEC_STRIDE = 12;
 
 export interface GpuPairSpec {
@@ -38,6 +42,8 @@ type Internals = Pair & {
   lj1: Arr; lj2: Arr; lj3: Arr; lj4: Arr; offset: Arr; cutsq: Arr; scale: Arr;
   buckA: Arr; buckIR: Arr; buckC: Arr; buckCutSq: Arr; coulCutSq: Arr;
   morseD0: Arr; morseAlpha: Arr; morseR0: Arr;
+  pa: Arr; pk: Arr; kappa: number;
+  bornA: Arr; bornIR: Arr; bornSig: Arr; bornC: Arr; bornD: Arr;
   p: { get(name: string, i: number, j: number): number };
   coulCut(i: number, j: number): number;
 };
@@ -81,6 +87,23 @@ export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number): GpuPair
           cutA = st.cutsq[t];
           coef.set([st.morseD0[t], st.morseAlpha[t], st.morseR0[t], 0, st.offset[t]], o + 2);
           break;
+        case 6: // soft: A and pi / rc (no shift: the energy is already 0 at rc)
+          cutA = st.cutsq[t];
+          coef.set([st.pa[t], st.pk[t]], o + 2);
+          break;
+        case 7: // yukawa: A and the global kappa
+          cutA = st.cutsq[t];
+          coef.set([st.pa[t], st.kappa, 0, 0, st.offset[t]], o + 2);
+          break;
+        case 8: // lj96/cut: lj1..lj4 and offset of its 9-6 law
+          cutA = st.cutsq[t];
+          coef.set([st.lj1[t], st.lj2[t], st.lj3[t], st.lj4[t], st.offset[t]], o + 2);
+          break;
+        case 9: // born: A, 1/rho, sigma, C, then D in the third vec4
+          cutA = st.cutsq[t];
+          coef.set([st.bornA[t], st.bornIR[t], st.bornSig[t], st.bornC[t], st.offset[t]], o + 2);
+          coef[o + 8] = st.bornD[t];
+          break;
       }
       coef[o] = cutA;
       coef[o + 1] = cutC;
@@ -101,6 +124,7 @@ export const pairSpecEval = (spec: GpuPairSpec, ti: number, tj: number, rsq: num
   const o = SPEC_STRIDE * (ti * spec.stride + tj);
   const c = spec.coef;
   const cutA = c[o], cutC = c[o + 1], a = c[o + 2], b = c[o + 3], cc = c[o + 4], d = c[o + 5], eshift = c[o + 6], cscale = c[o + 7];
+  const e5 = c[o + 8];
   let fpair = 0, evdwl = 0, ecoul = 0;
   if (rsq < cutA) {
     if (spec.style === 1) {
@@ -116,6 +140,23 @@ export const pairSpecEval = (spec: GpuPairSpec, ti: number, tj: number, rsq: num
       const e1 = Math.exp(-2 * b * dr), e2 = Math.exp(-b * dr);
       fpair += 2 * b * a * (e1 - e2) / r;
       evdwl += a * (e1 - 2 * e2) - eshift;
+    } else if (spec.style === 6) {
+      const r = Math.sqrt(rsq), arg = r * b;
+      fpair += a * b * Math.sin(arg) / r;
+      evdwl += a * (1 + Math.cos(arg));
+    } else if (spec.style === 7) {
+      const r = Math.sqrt(rsq), ir = 1 / r, ir2 = 1 / rsq, ek = Math.exp(-b * r);
+      fpair += a * ek * (b * ir2 + ir2 * ir);
+      evdwl += a * ir * ek - eshift;
+    } else if (spec.style === 8) {
+      const rinv = 1 / Math.sqrt(rsq), r2inv = rinv * rinv, r3inv = r2inv * rinv, r6inv = r3inv * r3inv, r9inv = r6inv * r3inv;
+      fpair += r2inv * (a * r9inv - b * r6inv);
+      evdwl += r9inv * cc - r6inv * d - eshift;
+    } else if (spec.style === 9) {
+      const r = Math.sqrt(rsq), rinv = 1 / r, ex = Math.exp((cc - r) * b);
+      const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv, r8inv = r6inv * r2inv;
+      fpair += a * b * ex * rinv - 6 * d * r8inv + 8 * e5 * r8inv * r2inv;
+      evdwl += a * ex - d * r6inv + e5 * r8inv - eshift;
     }
   }
   if (rsq < cutC && qi !== 0 && qj !== 0) {

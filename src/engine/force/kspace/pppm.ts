@@ -394,10 +394,14 @@ export class KSpacePPPM extends KSpaceBase {
     // summation each factor is the finite cosine series of the autocorrelation
     // of the order-P B-spline (the order-2P B-spline at the integers):
     //   sum_m U^2(x + m) = sum_{|j| < P} M_2P(P + j) cos(2 pi j x),  x = n / N
+    // the coefficients M_2P(P + j) once per setup: bspline's recursion costs 2^(2P) calls per value, and a changing box
+    // (fix npt, nph) rebuilds the Green's function every step (the same values, so the same sums)
+    const m2p = new Float64Array(2 * P - 1);
+    for (let j = 1 - P; j < P; j++) m2p[j + P - 1] = bspline(2 * P, P + j);
     const den1 = N.map((nn) => {
       const out = new Float64Array(nn);
       for (let i = 0; i < nn; i++) {
-        for (let j = 1 - P; j < P; j++) out[i] += bspline(2 * P, P + j) * libm.cos((2 * Math.PI * j * i) / nn);
+        for (let j = 1 - P; j < P; j++) out[i] += m2p[j + P - 1] * libm.cos((2 * Math.PI * j * i) / nn);
       }
       return out;
     });

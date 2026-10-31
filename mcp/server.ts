@@ -96,10 +96,13 @@ export const createMcpServer = (k: Knowledge, opts: ServerOptions = {}) => {
     return set.has(plain) ? 'supported' : 'not supported';
   };
 
+  // the only requests this server makes: a documentation page (a plain file name) of LAMMPS on GitHub at a fixed commit
+  const RAW = /^https:\/\/raw\.githubusercontent\.com\/lammps\/lammps\/[0-9a-f]{7,40}\/doc\/src\/$/;
   const pageCache = new Map<string, string>();
   const fetchPage = async (page: string): Promise<string> => {
     const hit = pageCache.get(page);
     if (hit !== undefined) return hit;
+    if (!RAW.test(idx.raw) || !/^[A-Za-z0-9_-]+$/.test(page)) throw new ToolError(`refusing to fetch documentation page "${page}" from ${idx.raw}`);
     const url = `${idx.raw}${page}.rst`;
     let r;
     try {

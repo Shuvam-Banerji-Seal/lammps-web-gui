@@ -100,6 +100,13 @@ describe('LAMMPS documentation', () => {
     expect((await tool('get_lammps_doc', { name: 'pair lj/cut/omp' })).structuredContent).toMatchObject({ page: 'pair_lj', name: 'pair_style lj/cut' });
   });
 
+  it('fetches only plain page names from the LAMMPS repository on GitHub', async () => {
+    const odd = createMcpServer({ ...k, docIndex: { ...k.docIndex, raw: 'https://example.com/' } }, { fetch: fakeFetch });
+    const r = (await odd.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_lammps_doc', arguments: { name: 'read_data' } } }))!;
+    expect(r.result).toMatchObject({ isError: true });
+    expect(JSON.stringify(r.result)).toMatch(/refusing to fetch/);
+  });
+
   it('get_lammps_doc reports an unknown name and a failed fetch as tool errors', async () => {
     const unknown = await tool('get_lammps_doc', { name: 'fix nosuchstyle' });
     expect(unknown.isError).toBe(true);

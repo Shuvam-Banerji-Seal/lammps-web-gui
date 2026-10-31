@@ -17,7 +17,7 @@ describe('pair worker style loaders', () => {
       expect(make, name).not.toBeNull();
       expect(make!().constructor, name).toBe(THREADED_PAIRS[name]().constructor);
     }
-    expect(await loadThreadedPair('soft')).toBeNull();
+    expect(await loadThreadedPair('nm/cut')).toBeNull();
   });
 
   it('count a worker in PAIR_READY only once its style is built, and ignore a stale load', async () => {

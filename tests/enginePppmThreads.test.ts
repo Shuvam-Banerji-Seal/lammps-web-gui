@@ -8,7 +8,7 @@ import { THREADED_PAIRS } from '../src/engine/cpu/threadedPairFactories';
 /*
  * PPPM's per-atom loops on the pair threads (force/kspace/pppmKernel.ts, cpu/pairThreads.ts pppmWeights / pppmField):
  * each atom's weights and field force come from the same code whichever thread computes them, so a run with threads
- * equals the run without them bit for bit. The pair style here is not a threaded one (lj/class2/coul/long), so the
+ * equals the run without them bit for bit. The pair style here is not a threaded one (lj/spica/coul/long), so the
  * mesh loops are the only threaded part. The workers run in-process, as in enginePairThreads.test.ts.
  */
 
@@ -36,8 +36,8 @@ set type 1 charge 0.42
 set type 2 charge -0.42
 displace_atoms all random 0.3 0.3 0.3 8191
 velocity all create 300.0 87287 loop geom
-pair_style lj/class2/coul/long 8.0
-pair_coeff * * 0.15 3.0
+pair_style lj/spica/coul/long 8.0
+pair_coeff * * lj9_6 0.15 3.0
 ${kspace}
 neighbor 1.0 bin
 fix 1 all nve

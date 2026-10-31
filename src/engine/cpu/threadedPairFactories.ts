@@ -12,6 +12,14 @@ import { PairBornCoulLong, PairBuckCoulLong } from '../force/pair/coul_long2';
 import { PairTersoff } from '../force/pair/tersoff';
 import { PairTersoffMod, PairTersoffModC, PairTersoffZBL } from '../force/pair/tersoff_variants';
 import { PairSWMod } from '../force/pair/sw';
+import { PairCoulDsf, PairCoulWolf } from '../force/pair/coul';
+import { PairLJCutCoulDsf, PairLJCutCoulWolf } from '../force/pair/lj_coul';
+import { PairLJClass2, PairLJCubic, PairLJGromacs, PairMieCut } from '../force/pair/lj_variants2';
+import { PairLJClass2Coul } from '../force/pair/class2_spica51';
+import { PairLJ96Cut, PairLJExpand, PairLJSmooth, PairLJSmoothLinear } from '../force/pair/lj_variants';
+import { PairGauss, PairSoft, PairYukawa } from '../force/pair/simple2';
+import { PairTable } from '../force/pair/table';
+import { PairZBL } from '../force/pair/zbl';
 
 /*
  * The factories of the styles cpu/threadedPairs.ts names (THREADED_NAMES): the pair worker (src/workers/pair.worker.ts)
@@ -36,6 +44,25 @@ export const THREADED_PAIRS: Record<string, () => Pair> = {
   born: () => new PairBorn(),
   'born/coul/long': () => new PairBornCoulLong(),
   morse: () => new PairMorse(),
+  'lj/cut/coul/dsf': () => new PairLJCutCoulDsf(),
+  'lj/cut/coul/wolf': () => new PairLJCutCoulWolf(),
+  'coul/dsf': () => new PairCoulDsf(),
+  'coul/wolf': () => new PairCoulWolf(),
+  'lj/class2': () => new PairLJClass2(),
+  'lj/class2/coul/cut': () => new PairLJClass2Coul('lj/class2/coul/cut'),
+  'lj/class2/coul/long': () => new PairLJClass2Coul('lj/class2/coul/long'),
+  'lj96/cut': () => new PairLJ96Cut(),
+  'lj/expand': () => new PairLJExpand(),
+  'lj/smooth': () => new PairLJSmooth(),
+  'lj/smooth/linear': () => new PairLJSmoothLinear(),
+  'lj/gromacs': () => new PairLJGromacs(),
+  'lj/cubic': () => new PairLJCubic(),
+  'mie/cut': () => new PairMieCut(),
+  soft: () => new PairSoft(),
+  yukawa: () => new PairYukawa(),
+  gauss: () => new PairGauss(),
+  table: () => new PairTable(),
+  zbl: () => new PairZBL(),
   // two-pass styles (TwoPassPair): the threads run each loop over their ranges of the half list, with a copy that holds
   // only the loops (the engine's style reads the potential files and runs the embedding step between the loops)
   eam: () => new PairEAMKernel('eam'),

@@ -26,6 +26,24 @@ export const loadThreadedPair: PairLoader = async (name) => {
     case 'born': { const m = await import('../force/pair/simple'); return () => new m.PairBorn(); }
     case 'born/coul/long': { const m = await import('../force/pair/coul_long2'); return () => new m.PairBornCoulLong(); }
     case 'morse': { const m = await import('../force/pair/simple'); return () => new m.PairMorse(); }
+    case 'lj/cut/coul/dsf': { const m = await import('../force/pair/lj_coul'); return () => new m.PairLJCutCoulDsf(); }
+    case 'lj/cut/coul/wolf': { const m = await import('../force/pair/lj_coul'); return () => new m.PairLJCutCoulWolf(); }
+    case 'coul/dsf': { const m = await import('../force/pair/coul'); return () => new m.PairCoulDsf(); }
+    case 'coul/wolf': { const m = await import('../force/pair/coul'); return () => new m.PairCoulWolf(); }
+    case 'lj/class2': { const m = await import('../force/pair/lj_variants2'); return () => new m.PairLJClass2(); }
+    case 'lj/class2/coul/cut': case 'lj/class2/coul/long': { const m = await import('../force/pair/class2_spica51'); return () => new m.PairLJClass2Coul(name); }
+    case 'lj96/cut': { const m = await import('../force/pair/lj_variants'); return () => new m.PairLJ96Cut(); }
+    case 'lj/expand': { const m = await import('../force/pair/lj_variants'); return () => new m.PairLJExpand(); }
+    case 'lj/smooth': { const m = await import('../force/pair/lj_variants'); return () => new m.PairLJSmooth(); }
+    case 'lj/smooth/linear': { const m = await import('../force/pair/lj_variants'); return () => new m.PairLJSmoothLinear(); }
+    case 'lj/gromacs': { const m = await import('../force/pair/lj_variants2'); return () => new m.PairLJGromacs(); }
+    case 'lj/cubic': { const m = await import('../force/pair/lj_variants2'); return () => new m.PairLJCubic(); }
+    case 'mie/cut': { const m = await import('../force/pair/lj_variants2'); return () => new m.PairMieCut(); }
+    case 'soft': { const m = await import('../force/pair/simple2'); return () => new m.PairSoft(); }
+    case 'yukawa': { const m = await import('../force/pair/simple2'); return () => new m.PairYukawa(); }
+    case 'gauss': { const m = await import('../force/pair/simple2'); return () => new m.PairGauss(); }
+    case 'table': { const m = await import('../force/pair/table'); return () => new m.PairTable(); }
+    case 'zbl': { const m = await import('../force/pair/zbl'); return () => new m.PairZBL(); }
     case 'eam': case 'eam/alloy': case 'eam/fs': { const m = await import('../force/pair/eamKernel'); return () => new m.PairEAMKernel(name); }
     case 'tersoff': { const m = await import('../force/pair/tersoff'); return () => new m.PairTersoff(); }
     case 'tersoff/mod': { const m = await import('../force/pair/tersoff_variants'); return () => new m.PairTersoffMod(); }

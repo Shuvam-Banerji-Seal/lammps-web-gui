@@ -157,7 +157,10 @@ interface ForceBackend {
   compatibility mode allows four storage buffers). Van der Waals and Coulomb energies
   come back separately. `pairSpecEval` is the kernel's law in fp64:
   `tests/engineGpuPairSpec.test.ts` checks it against each CPU style force by force.
-  Whole-step GPU runs (`resident.ts`) remain lj/cut only.
+  Whole-step GPU runs (`resident.ts`) take lj/cut and the uncharged styles (the force
+  laws are one WGSL module, `src/engine/gpu/styleLaws.ts`, shared by both kernels); the
+  charged styles stay on the per-step path (the whole-step force entry point already
+  uses its four storage buffers).
 - **WebGPU resident stepping**, v2 (`src/engine/gpu/resident.ts`): for runs
   whose only fixes are `nve` (plus `enforce2d`), whole velocity-Verlet steps
   stay on the GPU — half kick + drift + wrap, cell list rebuilt on the GPU

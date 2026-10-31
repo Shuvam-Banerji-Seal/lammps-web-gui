@@ -1,5 +1,6 @@
 import type { ForceResult, SimState } from '../types';
 import { massOf } from '../atoms';
+import { WGSL_STYLE_LAWS } from './styleLaws';
 
 /*
  * GPU-resident velocity Verlet (docs/design/notebook.md, "Backends", v2).
@@ -39,6 +40,10 @@ struct P {
   ncell : u32,
   enforce2d : u32,
   dt : f32,
+  style : u32,
+  pad0 : u32,
+  pad1 : u32,
+  pad2 : u32,
 };
 
 @group(0) @binding(0) var<uniform> p : P;
@@ -49,8 +54,11 @@ struct P {
 @group(0) @binding(5) var<storage, read_write> counts : array<atomic<u32>>;  // atoms per cell
 @group(0) @binding(6) var<storage, read_write> cellData : array<u32>;        // start[ncell+1] | cellOf[n] | rank[n]
 @group(0) @binding(7) var<storage, read_write> sortedPos : array<vec4<f32>>; // per slot: x, w = type
-@group(0) @binding(8) var<storage, read> coef : array<vec4<f32>>;            // [cutsq f12 f6 _], [e12 e6 eshift _]
+// lj/cut (style 0): [cutsq f12 f6 _], [e12 e6 eshift _]; the styles of gpu/pairSpec.ts: three vec4 (styleLaws.ts)
+@group(0) @binding(8) var<storage, read> coef : array<vec4<f32>>;
 @group(0) @binding(9) var<storage, read_write> slotOut : array<vec4<f32>>;   // per slot: [f, e], [w, _, _, _]
+
+${WGSL_STYLE_LAWS}
 
 fn cellOf3(x : vec3<f32>) -> vec3<u32> {
   let q = vec3<f32>(p.nc) * x / p.L;
@@ -160,14 +168,24 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
           if (p.two == 1u) { d.z = 0.0; }
           let r2 = dot(d, d);
           let k = ti * p.stride + u32(pj.w);
-          let a = coef[2u * k];
-          if (r2 >= a.x) { continue; }
-          let b = coef[2u * k + 1u];
-          let u = 1.0 / r2;
-          let u3 = u * u * u;
-          let fpair = u * u3 * (a.y * u3 - a.z);
+          var fpair = 0.0;
+          if (p.style == 0u) {
+            let a = coef[2u * k];
+            if (r2 >= a.x) { continue; }
+            let b = coef[2u * k + 1u];
+            let u = 1.0 / r2;
+            let u3 = u * u * u;
+            fpair = u * u3 * (a.y * u3 - a.z);
+            e = e + 0.5 * (u3 * (b.x * u3 - b.y) - b.z);
+          } else {
+            // an uncharged style of gpu/pairSpec.ts (the whole-step path runs no Coulomb term)
+            let A = coef[3u * k];
+            if (r2 >= A.x) { continue; }
+            let sr = shortRange(p.style, r2, A, coef[3u * k + 1u], coef[3u * k + 2u]);
+            fpair = sr.x;
+            e = e + 0.5 * sr.y;
+          }
           f = f + fpair * d;
-          e = e + 0.5 * (u3 * (b.x * u3 - b.y) - b.z);
           w = w + 0.5 * fpair * r2;
         }
       }
@@ -209,8 +227,10 @@ const USES: Record<Entry, number[]> = {
 export interface AdvanceOptions {
   nc: [number, number, number];
   stride: number;
-  /** Coefficients as packed by webgpuForces.ts (8 floats per type pair). */
+  /** Coefficients as packed by webgpuForces.ts (lj/cut: 8 floats per type pair) or gpu/pairSpec.ts (12). */
   coef: Float32Array;
+  /** 0 for lj/cut, else the gpu/pairSpec.ts style code of an uncharged style. */
+  style: number;
   enforce2d: boolean;
 }
 
@@ -306,7 +326,7 @@ export class ResidentStepper {
     const pu = new Uint32Array(pbuf);
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
     pu[4] = o.nc[0]; pu[5] = o.nc[1]; pu[6] = o.nc[2]; pu[7] = o.stride;
-    pu[8] = two ? 1 : 0; pu[9] = ncell; pu[10] = o.enforce2d ? 1 : 0; pf[11] = s.dt;
+    pu[8] = two ? 1 : 0; pu[9] = ncell; pu[10] = o.enforce2d ? 1 : 0; pf[11] = s.dt; pu[12] = o.style;
     q.writeBuffer(this.params, 0, pbuf);
     q.writeBuffer(this.bufs[1], 0, X);
     q.writeBuffer(this.bufs[2], 0, V);

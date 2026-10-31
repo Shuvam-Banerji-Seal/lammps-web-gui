@@ -73,7 +73,12 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 3 * spec.maxCutoff);
     if (short) return why('a box shorter than 3 pair cutoffs along an edge');
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, resident: false, enforce2d }, reason: null };
+    // whole steps on the GPU (resident.ts) for an uncharged style with only nve / enforce2d on all atoms, as for lj/cut
+    const allBit = sys.groupBit('all');
+    const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
+    const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };
+    const resident = onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, resident, enforce2d }, reason: null };
   }
   const t = newPairTable(s.ntypes, p.cutGlobal);
   t.shift = p.shift;
@@ -155,7 +160,9 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
       // whole steps on the GPU up to the next step the host needs
       let m = 1;
       while (m < MAX_CHUNK && s.step + m < end && !hooks.hostStep(s.step + m)) m++;
-      const r = await (a.backend as ResidentBackend).advance(s, a.table, m, { enforce2d: a.enforce2d });
+      const r = a.spec
+        ? await (a.backend as ResidentBackend & { advanceSpec(s: SimState, spec: GpuPairSpec, n: number, o: { enforce2d: boolean }): Promise<ForceResult> }).advanceSpec(s, a.spec, m, { enforce2d: a.enforce2d })
+        : await (a.backend as ResidentBackend).advance(s, a.table, m, { enforce2d: a.enforce2d });
       s.step += m;
       taken += m;
       sys.bump();

@@ -155,9 +155,11 @@ export const adoptFields = (target: Record<string, unknown>, src: Record<string,
 };
 
 /** A pair style rebuilt from the engine's fields with one of the factories (null when there is none for the name). */
-export const pairFromFields = (name: string, fields: Record<string, unknown>, factories: PairFactories): Pair | null => {
-  if (!Object.hasOwn(factories, name)) return null;
-  const make = factories[name];
+export const pairFromFields = (name: string, fields: Record<string, unknown>, factories: PairFactories): Pair | null =>
+  Object.hasOwn(factories, name) ? pairFromFactory(factories[name], fields) : null;
+
+/** The style built by `make`, with the engine style's cloned fields. */
+export const pairFromFactory = (make: () => Pair, fields: Record<string, unknown>): Pair => {
   const p = make();
   // allocate() creates the class-typed members (coefficient tables) the cloned fields go into
   if (typeof fields.ntypes === 'number' && fields.ntypes > 0) p.allocate(fields.ntypes);
@@ -249,7 +251,7 @@ export class PairThreadWorker {
       this.pair = null;
       const f = this.factories;
       if (typeof f !== 'function') { ready(pairFromFields(m.name, m.fields, f)); return; }
-      f(m.name).then((make) => ready(make ? pairFromFields(m.name, m.fields, { [m.name]: make }) : null), () => ready(null));
+      f(m.name).then((make) => ready(make ? pairFromFactory(make, m.fields) : null), () => ready(null));
       return;
     }
     const ctl = this.ctl!;

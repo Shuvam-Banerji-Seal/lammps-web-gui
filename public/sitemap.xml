@@ -19,4 +19,10 @@
       <video:publication_date>2026-10-17</video:publication_date>
     </video:video>
   </url>
+  <url>
+    <loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/mcp/</loc>
+    <lastmod>2026-10-31</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
 </urlset>

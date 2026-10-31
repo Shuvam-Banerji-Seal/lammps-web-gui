@@ -98,7 +98,7 @@ const boundaryWords = (a: string[], cmd: 'boundary' | 'change_box'): SimState['b
   return b as SimState['box']['boundary'];
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo', 'rheo/thermal', 'dpd', 'smd', 'amoeba', 'apip'];
+export const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo', 'rheo/thermal', 'dpd', 'smd', 'amoeba', 'apip'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one

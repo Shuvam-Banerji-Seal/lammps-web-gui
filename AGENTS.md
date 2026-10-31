@@ -18,7 +18,7 @@ everything runs client-side.
 npm test             # vitest run — the whole suite (~7000 tests, a few minutes; ~2000 are native-LAMMPS oracle cases in 8 shard files)
 npx vitest run tests/<file>.test.ts   # one file
 npm run typecheck    # tsc --noEmit — must be clean
-npm run build        # tsc && vite build
+npm run build        # tsc && vite build && node mcp/build.mjs (the MCP server and /mcp/ page into dist/)
 npm run check:size   # gzip budgets: 426 KB initial JS, 140 KB lazy (notebook UI, storage panel, small workers incl. the pair-thread worker), 400 KB engine worker (+ its static engine-* chunks), 60 KB per lazy style chunk
 ```
 
@@ -73,6 +73,7 @@ b332f28): ...").
 | `tests/*.test.ts` | Vitest suites, one per module |
 | `tests/parityMatrices.ts`, `scripts/parity/`, `tests/fixtures/parity/` | Parity matrices: row generators, the native runner and its results (suites `tests/engineParity.*.test.ts`) |
 | `third_party/lammps/` | Unmodified LAMMPS potential files (GPL-2.0, own `LICENSE` and `README.md`; not under this project's licence). Data only: rule 7 still forbids LAMMPS source code |
+| `mcp/` | The MCP server for coding agents (`mcp/README.md`): `server.ts` (tools, transport-free), `main.ts` (stdio), `knowledge.ts` (built from the app's sources), `site.ts` (`/mcp/` page, `index.json`, `llms.txt`), `build.mjs` (run by `npm run build`, writes `dist/mcp/`), `data/lammps-doc-index.json` (regenerate with `mcp/scripts/doc-index.mjs` when the parity commit changes) |
 | `src/engine-gpl/` | Styles ported from the LAMMPS C++ source (GPL-2.0, own `LICENSE` and `README.md`; each file names its LAMMPS source file and commit). Registered through `src/engine/lazyStyles.ts` only (rule 7) |
 
 ## Rules that are enforced

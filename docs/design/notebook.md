@@ -162,6 +162,20 @@ interface ForceBackend {
   style the force entry point has no fifth storage buffer to spare, so the charges ride
   after the coefficients in the coefficient buffer and the scatter pass records the atom
   of each slot in the cell-data buffer.
+- **WebGPU with bonds** (`run/accel.ts`, `gpu/webgpuForces.ts`): a system with molecular
+  topology or bond, angle, dihedral or improper styles (no kspace style) runs the pair term
+  on the GPU with the styles above, lj/cut included (spec style 10, since the analytic
+  lj/cut kernel has no special weights). Each step the bonded terms run on the CPU in fp64
+  (`ForceField.compute` with only those terms, partners by the minimum image because the
+  CPU builds no neighbor list on this path) and the GPU's pair forces are added to theirs.
+  The special list goes up after the charges in the integer buffer: per slot a range of
+  entries `(partner slot << 2) | order`, only for orders whose `special_bonds` weights are
+  not both 1. The kernel scales the short-range part by the lj weight and the Coulomb part
+  by the coul weight, and skips a pair whose weights are both 0, as the neighbor list does
+  (`tests/engineGpuBonded.test.ts` runs chains through the loop with the kernel's arithmetic
+  in fp64 against the CPU engine; in Chromium, chains of 1728 atoms with lj/cut and with
+  lj/cut/coul/cut matched the CPU thermo to the 6 printed digits over 100 steps). These runs
+  are not resident: every step comes back to the host.
 - **WebGPU resident stepping**, v2 (`src/engine/gpu/resident.ts`): for runs
   whose only fixes are `nve` (plus `enforce2d`), whole velocity-Verlet steps
   stay on the GPU — half kick + drift + wrap, cell list rebuilt on the GPU
@@ -290,8 +304,8 @@ the chunks the same run went from about 75 to 92.8 steps/s (2.07x over one
 thread). The force reduction is still serial on the engine thread. The plain lj/cut path
 (`cpu/parallel.ts`) does not use shared memory and works without isolation.
 
-With the GPU selected, runs the GPU path cannot take (any style but plain
-lj/cut) use the CPU threads instead of one core (PR 34).
+With the GPU selected, runs the GPU path cannot take (a pair style it does not run, a kspace
+style, ...) use the CPU threads instead of one core (PR 34).
 
 ### Script hand-over to the Script Builder
 

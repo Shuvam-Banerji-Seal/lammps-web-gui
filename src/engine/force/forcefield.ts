@@ -64,6 +64,11 @@ export interface ComputeFlags {
   cvatom?: boolean;
   /** A force evaluation inside a timestep: history-dependent pair styles advance their history (not at setup or between runs). */
   step?: boolean;
+  /**
+   * The bonded terms place their partners by the minimum image, not by the ghost copies of the last neighbor build: the
+   * GPU path of run/accel.ts builds no CPU neighbor list during the run, so those copies would be stale.
+   */
+  minimumImage?: boolean;
 }
 
 /** The force-field terms compute pe/atom and stress/atom can select. */
@@ -462,7 +467,7 @@ export class ForceField {
         ? { ...s, topo: { ...s.topo, bonds: ov.bonds, angles: ov.angles } }
         : s;
       const sb = switchedOff(sb0.topo) ? { ...sb0, topo: withoutSwitchedOff(sb0.topo) } : sb0;
-      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, cvatom: null as Float64Array | null, pairEatom: pair14E, pairVatom: pair14V, virial: acc.vbond, warn: this.warn, historyUpdate: !!flags.step, nbuild: nb.nbuild, copies: nb.bondedCopies() };
+      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, cvatom: null as Float64Array | null, pairEatom: pair14E, pairVatom: pair14V, virial: acc.vbond, warn: this.warn, historyUpdate: !!flags.step, nbuild: nb.nbuild, copies: flags.minimumImage ? undefined : nb.bondedCopies() };
       const run = (style: Bonded | null, t: PerAtomTerm, virial: Float64Array) => {
         if (!style || !want(t)) return;
         Object.assign(bc, termArrays(t), { cvatom: centroidArray(t) });

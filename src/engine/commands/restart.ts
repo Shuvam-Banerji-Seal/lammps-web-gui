@@ -1,6 +1,7 @@
 import type { Handler } from './args';
 import { initializing, inumeric, missingArgs } from './args';
 import { StyleError } from '../force/types';
+import { setProcGrid } from '../procGrid';
 import { writeRestartText, readRestartText } from '../output/restart';
 import type { System } from '../system';
 
@@ -125,6 +126,8 @@ const readRestart: Handler = ({ sys }, a) => {
   if (file.endsWith('.mpiio')) throw new StyleError(`read_restart ${file}: MPI-IO restart files are not supported by the browser engine`);
   const name = file.includes('*') ? latestMatch(sys, file) : file;
   readRestartText(sys, sys.readFile(name, 'Cannot open restart file'), name);
+  // native read_restart: comm->set_proc_grid() once the header has set the box (src/read_restart.cpp at b332f28)
+  setProcGrid(sys.procGrid);
 };
 
 /**

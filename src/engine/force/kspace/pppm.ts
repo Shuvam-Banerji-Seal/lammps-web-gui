@@ -6,6 +6,7 @@ import { KSpaceBase, invertUpper, ignoredKeyword } from './ewald';
 import { fft3d, isFFTSize, nextFFTSize } from '../fft';
 import { pppmGplHook } from './pppmHook';
 import { libm } from '../../libm';
+import { pppmField, pppmWeights, weightScratch, wrap, type PppmGrid } from './pppmKernel';
 
 /*
  * kspace_style pppm accuracy — docs.lammps.org/kspace_style.html: "The pppm
@@ -72,30 +73,7 @@ const bspline = (p: number, x: number): number => {
   return (x * bspline(p - 1, x) + (p - x) * bspline(p - 1, x - 1)) / (p - 1);
 };
 
-/**
- * The p weights M_p(x0 - k), k = 0 .. p - 1, into out[o + k]: the recursion of bspline() evaluated once for every
- * argument it reaches (t_m = x0 - m by successive subtraction, as its x - 1), level by level, instead of once per call.
- * a and b are scratch arrays of at least 2p entries.
- */
-const bsplineWeights = (p: number, x0: number, out: Float64Array, o: number, t: Float64Array, a: Float64Array, b: Float64Array): void => {
-  const m1 = 2 * p - 1;
-  t[0] = x0;
-  for (let m = 1; m < m1; m++) t[m] = t[m - 1] - 1;
-  for (let m = 0; m < m1; m++) a[m] = t[m] >= 0 && t[m] < 1 ? 1 : 0;
-  let cur = a, nxt = b;
-  for (let n = 2; n <= p; n++) {
-    // level n needs the arguments t_0 .. t_(m1 - n)
-    for (let m = 0; m <= m1 - n; m++) {
-      const x = t[m];
-      nxt[m] = x <= 0 || x >= n ? 0 : (x * cur[m] + (n - x) * cur[m + 1]) / (n - 1);
-    }
-    const sw = cur; cur = nxt; nxt = sw;
-  }
-  for (let k = 0; k < p; k++) out[o + k] = cur[k];
-};
-
-/** m mod n in [0, n). */
-const wrap = (m: number, n: number): number => ((m % n) + n) % n;
+// the weights (bsplineWeights) and the per-atom loops are in pppmKernel.ts, which the pair threads run too
 
 /*
  * Automatic g_ewald, mesh (orthorhombic boxes, with or without slab).
@@ -462,26 +440,19 @@ export class KSpacePPPM extends KSpaceBase {
    * atom (the weights are shared by the charge spreading and the field interpolation).
    */
   protected assignWeights(s: SimState, geom: Geometry): { first: Int32Array; wts: Float64Array } {
-    const [nx, ny, nz] = this.mesh;
     const P = this.order;
     const n = s.n;
     const first = new Int32Array(3 * n);
     const wts = new Float64Array(3 * n * P);
-    const lam = [0, 0, 0];
-    const N = [nx, ny, nz];
-    const t = new Float64Array(2 * P), sa = new Float64Array(2 * P), sb = new Float64Array(2 * P);
-    for (let i = 0; i < n; i++) {
-      geom.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
-      lam[2] /= this.slab;
-      for (let d = 0; d < 3; d++) {
-        const u = lam[d] * N[d];
-        const i0 = P % 2 === 1 ? Math.round(u) - (P - 1) / 2 : Math.floor(u) - P / 2 + 1;
-        first[3 * i + d] = i0;
-        // the weights M_P(u - (i0 + k) + P/2) of the P mesh points from i0
-        bsplineWeights(P, u - i0 + P / 2, wts, (3 * i + d) * P, t, sa, sb);
-      }
-    }
+    pppmWeights(this.grid(geom), s.x, 0, n, first, wts, weightScratch(P));
     return { first, wts };
+  }
+
+  /** The box and mesh the per-atom loops of pppmKernel.ts need. */
+  protected grid(geom: Geometry): PppmGrid {
+    const [i00, i01, i02, i11, i12, i22] = geom.hInv;
+    const [nx, ny, nz] = this.mesh;
+    return { lo0: geom.lo[0], lo1: geom.lo[1], lo2: geom.lo[2], i00, i01, i02, i11, i12, i22, slab: this.slab, nx, ny, nz, order: this.order };
   }
 
   /** The P mesh indices of atom i in x, y and z (from first, wrapped into the mesh), in a reused array. */
@@ -578,14 +549,21 @@ export class KSpacePPPM extends KSpaceBase {
     const V = this.volume;
     this.buildGreen(geom);
     const ng = nx * ny * nz;
-    const { first, wts } = this.assignWeights(s, geom);
+    // the per-atom loops (weights, field interpolation) on the pair threads when there are any (pppmKernel.ts: the same
+    // code on ranges of atoms, so the result does not depend on the threads); a style that assigns its own weights
+    // keeps them on the engine thread
+    const thr = kc.threads && typeof kc.threads.pppmWeights === 'function' && n >= kc.threads.minAtoms ? kc.threads : null;
+    const grid = this.grid(geom);
+    const tw = thr && this.assignWeights === KSpacePPPM.prototype.assignWeights ? thr.pppmWeights(grid, s.x, n) : null;
+    const { first, wts } = tw ?? this.assignWeights(s, geom);
     const rho = new Float64Array(2 * ng);
     const qg = this.gridCharges(s);
     for (let i = 0; i < n; i++) if (qg[i] !== 0) this.spread(rho, i, qg[i], first, wts);
     fft3d(rho, nx, ny, nz, -1);
     // energy, virial and the three field components in k-space
     const inv = invertUpper(geom.lx, geom.xy, geom.xz, geom.ly, geom.yz, geom.lz * this.slab);
-    const ex = new Float64Array(2 * ng), ey = new Float64Array(2 * ng), ez = new Float64Array(2 * ng);
+    const meshes = tw ? thr!.pppmMeshes(2 * ng) : null;
+    const [ex, ey, ez] = meshes ?? [new Float64Array(2 * ng), new Float64Array(2 * ng), new Float64Array(2 * ng)];
     // per-atom energy and virial (compute pe/atom, stress/atom): the potential G rho and the six G rho vg_j on the mesh,
     // as native PPPM::poisson_peratom builds u_brick and v0_brick .. v5_brick
     const peratom = kc.eatom !== null || kc.vatom !== null;
@@ -630,29 +608,16 @@ export class KSpacePPPM extends KSpaceBase {
     fft3d(ez, nx, ny, nz, 1);
     if (ub) fft3d(ub, nx, ny, nz, 1);
     if (vb) for (const v of vb) fft3d(v, nx, ny, nz, 1);
-    // interpolate the field back and apply F = C q E / V
+    // interpolate the field back and apply F = C q E / V (pppmKernel.ts pppmField, on the threads when the weights were)
+    let fe = meshes ? thr!.pppmField(grid, n, qg, first, wts, ex, ey, ez, C, V, this.zForce) : null;
+    if (!fe) {
+      fe = new Float64Array(3 * n);
+      pppmField(grid, 0, n, qg, first, wts, ex, ey, ez, C, V, this.zForce, fe, new Int32Array(3 * P));
+    }
     for (let i = 0; i < n; i++) {
-      const q = qg[i];
-      if (q === 0) continue;
-      const xs = this.meshIndices(i, first);
-      let Ex = 0, Ey = 0, Ez = 0;
-      for (let c = 0; c < P; c++) {
-        const iz = xs[2 * P + c];
-        const wz = wts[(3 * i + 2) * P + c];
-        for (let b = 0; b < P; b++) {
-          const iy = xs[P + b];
-          const wyz = wz * wts[(3 * i + 1) * P + b];
-          const row = (iz * ny + iy) * nx;
-          for (let a = 0; a < P; a++) {
-            const ww = wyz * wts[(3 * i) * P + a];
-            const idx = 2 * (row + xs[a]);
-            Ex += ww * ex[idx]; Ey += ww * ey[idx]; Ez += ww * ez[idx];
-          }
-        }
-      }
-      const pre = (C * q) / V;
-      kc.f[3 * i] += pre * Ex; kc.f[3 * i + 1] += pre * Ey;
-      if (this.zForce) kc.f[3 * i + 2] += pre * Ez;
+      if (qg[i] === 0) continue;
+      kc.f[3 * i] += fe[3 * i]; kc.f[3 * i + 1] += fe[3 * i + 1];
+      if (this.zForce) kc.f[3 * i + 2] += fe[3 * i + 2];
     }
     const pref = C / (2 * V);
     if (peratom) this.peratomMesh(kc, qg, first, wts, ub, vb, pref);

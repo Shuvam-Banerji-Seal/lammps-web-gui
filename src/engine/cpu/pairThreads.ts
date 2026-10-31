@@ -3,9 +3,10 @@ import type { NeighList } from '../neighbor';
 import { THREADED_NAMES, isTwoPass } from './threadedPairs';
 import { CpuForceBackend } from './forces';
 import {
-  ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PAIR_READY, PHASE, READY, cloneableFields, sumForces, pairFromFactory, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
+  ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, atomChunk, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PAIR_READY, PHASE, READY, cloneableFields, sumForces, pairFromFactory, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, type NeighborThreads, type SpecialBins } from './neighborKernel';
+import { PPPM_PARAMS, pppmField, pppmWeights, weightScratch, writePppmParams, type PppmGrid } from '../force/kspace/pppmKernel';
 
 /*
  * Shared-memory threads for the pair term of the general engine. The engine thread copies the
@@ -416,6 +417,107 @@ export class SharedPairThreads implements NeighborThreads {
       id: new Int32Array(bufs.id), owner: new Int32Array(bufs.owner), pa, pj, caps,
     };
     return this.nshared;
+  }
+
+  // ---- PPPM's per-atom loops (force/kspace/pppmKernel.ts), on the same threads as the pair term
+
+  private pX: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pQ: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pFirst: Int32Array<ArrayBufferLike> = new Int32Array(0);
+  private pWts: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pMesh: Float64Array<ArrayBufferLike>[] = [];
+  private pOut: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pCapN = 0;
+  private pCapG = 0;
+  private pOrder = 0;
+  private readonly pParams = new Float64Array(shared(8 * PPPM_PARAMS));
+
+  /** The threads can take a loop now (every worker has started). */
+  private threadsUp(): boolean {
+    const W = this.workers.length;
+    return W > 0 && Atomics.load(this.ctl, READY) >= W;
+  }
+
+  /** PPPM's shared arrays for n atoms of order P and meshes of len values, announced to the workers when they grow. */
+  private pppmBuffers(n: number, P: number, len: number): void {
+    let resend = false;
+    if (n > this.pCapN || P !== this.pOrder) {
+      this.pCapN = Math.ceil(Math.max(n, this.pCapN) * 1.25);
+      this.pOrder = P;
+      const N = this.pCapN;
+      this.pX = new Float64Array(shared(24 * N)); this.pQ = new Float64Array(shared(8 * N));
+      this.pFirst = new Int32Array(shared(12 * N)); this.pWts = new Float64Array(shared(24 * N * P));
+      this.pOut = new Float64Array(shared(24 * N));
+      resend = true;
+    }
+    if (len > this.pCapG) {
+      this.pCapG = Math.ceil(len * 1.25);
+      this.pMesh = [0, 1, 2].map(() => new Float64Array(shared(8 * this.pCapG)));
+      resend = true;
+    }
+    if (!this.pMesh.length) { this.pMesh = [0, 1, 2].map(() => new Float64Array(shared(8))); resend = true; }
+    if (!resend) return;
+    const b = (a: { buffer: ArrayBufferLike }) => a.buffer as SharedArrayBuffer;
+    const msg: PairThreadMessage = {
+      type: 'pbuffers', x: b(this.pX), q: b(this.pQ), first: b(this.pFirst), wts: b(this.pWts),
+      ex: b(this.pMesh[0]), ey: b(this.pMesh[1]), ez: b(this.pMesh[2]), out: b(this.pOut), params: b(this.pParams),
+    };
+    for (const w of this.workers) w.postMessage(msg);
+  }
+
+  /** One PPPM loop over chunks of atoms on every thread, the engine thread claiming chunks too. */
+  private pppmLoop(phase: 1 | 2, g: PppmGrid, n: number, nchunks: number, C: number, V: number, zForce: boolean, own: (i0: number, i1: number) => void): void {
+    const W = this.workers.length;
+    writePppmParams(this.pParams, g, n, nchunks, C, V, zForce);
+    const msg: PairThreadMessage = { type: 'pppm', phase };
+    Atomics.store(this.ctl, DONE, 0);
+    Atomics.store(this.ctl, FAILED, 0);
+    Atomics.store(this.ctl, NEXT, 0);
+    for (const w of this.workers) w.postMessage(msg);
+    for (;;) {
+      const c = Atomics.add(this.ctl, NEXT, 1);
+      if (c >= nchunks) break;
+      const [i0, i1] = atomChunk(n, nchunks, c);
+      own(i0, i1);
+    }
+    for (;;) {
+      const done = Atomics.load(this.ctl, DONE);
+      if (done >= W) break;
+      if (Atomics.wait(this.ctl, DONE, done, 60_000) === 'timed-out') throw new Error('PPPM threads did not answer within 60 s');
+    }
+    if (Atomics.load(this.ctl, FAILED) > 0) throw new Error('PPPM failed in a force thread');
+  }
+
+  pppmWeights(g: PppmGrid, x: Float64Array, n: number): { first: Int32Array; wts: Float64Array } | null {
+    if (!this.threadsUp() || n < this.minAtoms) return null;
+    const P = g.order;
+    this.pppmBuffers(n, P, 0);
+    this.pX.set(x.subarray(0, 3 * n));
+    const nchunks = Math.min(n, CHUNKS_PER_THREAD * (this.workers.length + 1));
+    const sc = weightScratch(P);
+    this.pppmLoop(1, g, n, nchunks, 0, 1, false,
+      (i0, i1) => pppmWeights(g, this.pX, i0, i1, this.pFirst, this.pWts, sc));
+    return { first: this.pFirst.subarray(0, 3 * n), wts: this.pWts.subarray(0, 3 * n * P) };
+  }
+
+  pppmMeshes(len: number): [Float64Array, Float64Array, Float64Array] | null {
+    if (!this.threadsUp() || this.pCapN === 0) return null;
+    this.pppmBuffers(0, this.pOrder, len);
+    const m = this.pMesh.map((a) => { const v = a.subarray(0, len); v.fill(0); return v; });
+    return [m[0], m[1], m[2]];
+  }
+
+  pppmField(g: PppmGrid, n: number, q: ArrayLike<number>, first: Int32Array, wts: Float64Array,
+    ex: Float64Array, ey: Float64Array, ez: Float64Array, C: number, V: number, zForce: boolean): Float64Array | null {
+    // only the arrays these threads share: the weights of pppmWeights and the meshes of pppmMeshes
+    if (!this.threadsUp() || first.buffer !== this.pFirst.buffer || wts.buffer !== this.pWts.buffer
+      || ex.buffer !== this.pMesh[0].buffer || ey.buffer !== this.pMesh[1].buffer || ez.buffer !== this.pMesh[2].buffer || n > this.pCapN) return null;
+    for (let i = 0; i < n; i++) this.pQ[i] = q[i];
+    const nchunks = Math.min(n, CHUNKS_PER_THREAD * (this.workers.length + 1));
+    const xs = new Int32Array(3 * g.order);
+    this.pppmLoop(2, g, n, nchunks, C, V, zForce,
+      (i0, i1) => pppmField(g, i0, i1, this.pQ, this.pFirst, this.pWts, this.pMesh[0], this.pMesh[1], this.pMesh[2], C, V, zForce, this.pOut, xs));
+    return this.pOut.subarray(0, 3 * n);
   }
 
   dispose(): void {

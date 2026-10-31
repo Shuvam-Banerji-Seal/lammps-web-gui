@@ -15,7 +15,7 @@ import { styleNames } from '../src/engine/styles';
 import { SUPPORTED_COMMANDS } from '../src/engine/session';
 import { REFUSED_STYLES } from '../src/engine/refusedStyles';
 import { ATOM_STYLES } from '../src/engine/commands/setup';
-import { DUMP_STYLES, GZ_STYLES, LAZY_DUMP_STYLES } from '../src/engine/commands/run';
+import { DUMP_STYLES, GZ_STYLES, LAZY_DUMP_STYLES, ZSTD_STYLES } from '../src/engine/commands/run';
 import { LAZY_GROUPS } from '../src/engine/lazyStyles';
 
 export interface DocIndex {
@@ -133,7 +133,7 @@ export const buildKnowledge = (src: KnowledgeSources): Knowledge => ({
   engine: {
     // SUPPORTED_COMMANDS and the commands of the lazily loaded groups (prd, tad, temper, pair_write, ...)
     commands: [...new Set([...SUPPORTED_COMMANDS, ...LAZY_GROUPS.flatMap((g) => [...(g.names.COMMANDS ?? [])])])].sort(),
-    styles: { ...styleNames(), atom_style: [...ATOM_STYLES, 'hybrid'], dump: [...DUMP_STYLES, ...LAZY_DUMP_STYLES, ...GZ_STYLES] },
+    styles: { ...styleNames(), atom_style: [...ATOM_STYLES, 'hybrid'], dump: [...DUMP_STYLES, ...LAZY_DUMP_STYLES, ...GZ_STYLES, ...ZSTD_STYLES] },
     refused: Object.fromEntries(Object.entries(REFUSED_STYLES).map(([k, v]) => [REFUSED_KEYS[k] ?? k, [...(v ?? [])]])),
   },
   compiler: {

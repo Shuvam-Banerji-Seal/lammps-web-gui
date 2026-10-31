@@ -1740,13 +1740,11 @@ const writeDataCmd: Handler = ({ sys }, a) => {
   // As native LAMMPS does (src/write_data.cpp WriteData::command at b332f28): a box, then the file name
   if (!sys.hasBox) throw new StyleError(`Write_data command before simulation box is defined${errorUrl(33)}`);
   if (!a[0]) throw missingArgs('write_data');
-  let nocoeff = false, nofix = false, triclinicGeneral = false, nolabelmap = false, typesLabels = false;
+  let nocoeff = false, nofix = false, triclinicGeneral = false, nolabelmap = false, typesLabels = false, noinit = false;
   let pairStyle: 'ii' | 'ij' | null = null;
   for (let k = 1; k < a.length;) {
-    // noinit (undocumented; src/write_data.cpp at b332f28 then skips lmp->init() and the remap of the atoms into the box)
-    // is refused by name
-    if (a[k] === 'noinit') throw new StyleError('write_data noinit is not supported by the browser engine (native skips the system init and the remap of atoms into the box)');
-    if (a[k] === 'nocoeff') { nocoeff = true; k++; } else if (a[k] === 'nofix') { nofix = true; k++; } else if (a[k] === 'nolabelmap') { nolabelmap = true; k++; }
+    // noinit (undocumented; src/write_data.cpp at b332f28: "noinit is a hidden arg, only used by -r command-line switch")
+    if (a[k] === 'noinit') { noinit = true; k++; } else if (a[k] === 'nocoeff') { nocoeff = true; k++; } else if (a[k] === 'nofix') { nofix = true; k++; } else if (a[k] === 'nolabelmap') { nolabelmap = true; k++; }
     else if (a[k] === 'pair') {
       // As native LAMMPS does (src/write_data.cpp WriteData::command at b332f28)
       if (a[k + 1] === undefined) throw missingArgs('write_data pair');
@@ -1771,13 +1769,21 @@ const writeDataCmd: Handler = ({ sys }, a) => {
   // are written wrapped back in, so remap them even when forces are current. Measured likewise: the
   // forces are not recomputed (fx of an atom after a fix langevin run is unchanged by write_data,
   // random force included), so the wrapped state keeps the forces of the last run.
-  // write_data initializes the system first (native lmp->init(), src/write_data.cpp at b332f28)
-  sys.markComputesInitialized();
-  const wasCurrent = sys.hasForces;
-  sys.pbc();
-  sys.nb.lastBuild = -1;
-  sys.bump();
-  if (wasCurrent) sys.forcesCurrent(); else sys.forces();
+  // write_data initializes the system first (native lmp->init(), src/write_data.cpp at b332f28). As native LAMMPS does:
+  // "if (noinitflag == 0) { ... lmp->init(); ... domain->pbc(); ... }", so noinit writes the atoms where they are, and
+  // with pair ij "try computing mixed pair coeffs in case we skipped lmp->init()" with the warning "Computing missing
+  // pair coeffs from mixing" (Measured with native LAMMPS: x 4.0 in a box of 3.36 is written as 4, image unchanged).
+  if (!noinit) {
+    sys.markComputesInitialized();
+    const wasCurrent = sys.hasForces;
+    sys.pbc();
+    sys.nb.lastBuild = -1;
+    sys.bump();
+    if (wasCurrent) sys.forcesCurrent(); else sys.forces();
+  } else if (pairStyle === 'ij' && sys.ff.pair && !nocoeff) {
+    sys.warn('Computing missing pair coeffs from mixing');
+    sys.ff.pair.init(sys.styleContext());
+  }
   // write_data.html: "The file may also be a compressed text file (detected by its suffix)"; the browser
   // engine writes stored (uncompressed) gzip members, see gzip.ts.
   const text = writeData(sys, { nocoeff, pairStyle, nofix, triclinicGeneral, nolabelmap, typesLabels });

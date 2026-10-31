@@ -86,7 +86,9 @@ describe('read_dump field and keyword parsing', () => {
     // read_dump.html: "fx,fy,fz = force components"; the forces of replaced atoms are set (read_dump.cpp, case Reader::FX)
     expect(parseDumpSpec(['x', 'fx', 'fy', 'fz'], 'read_dump').fields).toEqual(['x', 'fx', 'fy', 'fz']);
     expect(() => parseDumpSpec(['apip_lambda'], 'read_dump')).toThrow(/field apip_lambda is not supported/);
-    expect(() => parseDumpSpec(['x', 'format', 'xyz'], 'read_dump')).toThrow(/dump format 'xyz' is not supported/);
+    // format xyz is read (src/reader_xyz.cpp; tests/engineReadDumpXyz.test.ts); adios and molfile are not
+    expect(parseDumpSpec(['x', 'format', 'xyz'], 'read_dump').format).toBe('xyz');
+    expect(() => parseDumpSpec(['x', 'format', 'adios'], 'read_dump')).toThrow(/dump format 'adios' is not supported/);
     expect(() => parseDumpSpec(['x', 'format', 'molfile', 'dcd'], 'read_dump')).toThrow(/molfile/);
     expect(() => parseDumpSpec(['x', 'format', 'native', 'box', 'no'], 'read_dump')).toThrow(/must be the last keyword/);
     expect(() => parseDumpSpec(['x', 'nfile', '2'], 'read_dump')).toThrow(/nfile/);
@@ -216,7 +218,7 @@ pair_coeff 1 1 1.0 1.0 2.5
   });
 
   it('rejects an unsupported read_dump format before reading the file', async () => {
-    await expect(run(`${setup}read_dump d.dump 0 x y z format xyz\n`, { 'd.dump': dumpText([0]) })).rejects.toThrow(/dump format 'xyz' is not supported/);
+    await expect(run(`${setup}read_dump d.dump 0 x y z format adios\n`, { 'd.dump': dumpText([0]) })).rejects.toThrow(/dump format 'adios' is not supported/);
   });
 
   it('rejects a field whose column is missing from the dump', async () => {

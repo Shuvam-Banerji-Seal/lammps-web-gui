@@ -1,0 +1,19 @@
+# oracle: read_dump format xyz with type labels (a complete atom labelmap) and add yes: the fifth line of the frame
+#   adds atom 5 with the type of its label (src/reader_xyz.cpp read_atoms at b332f28, utils::expand_type_int)
+# oracle-inputs: w624rd_xyz_labels.xyz
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14
+units lj
+region b block 0 3 0 3 0 3
+create_box 2 b
+labelmap atom 1 Ar 2 Kr
+create_atoms 1 single 0.5 0.5 0.5
+create_atoms 2 single 1.5 0.5 0.5
+create_atoms 1 single 0.5 1.5 0.5
+create_atoms 2 single 1.5 1.5 1.5
+mass * 1.0
+pair_style lj/cut 2.5
+pair_coeff * * 1.0 1.0
+read_dump w624rd_xyz_labels.xyz 0 x y z box no add yes format xyz
+thermo_style custom step atoms pe press
+thermo_modify format float %.15g
+run 0

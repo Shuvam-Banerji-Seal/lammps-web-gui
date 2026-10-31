@@ -1,0 +1,29 @@
+# oracle: set tri (v_ values, resize, 0 makes a point) with quat/random on atom_style tri (src/set.cpp process_tri and
+#   src/atom_vec_tri.cpp set_equilateral at b332f28): corners, radius and the rotational energy from the inertia
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14
+units           lj
+atom_style      tri
+lattice         sc 0.2
+region          box block 0 3 0 3 0 2
+create_box      2 box
+create_atoms    1 box
+set             group all type/fraction 2 0.5 2468
+variable        sz atom 0.6+0.05*(id%3)
+set             type 1 tri v_sz
+set             type 2 tri 1.1
+set             group all quat/random 7531
+set             type 2 tri 0.9
+variable        k atom (id%4)==0
+group           four variable k
+set             group four tri 0.0
+set             group four tri 0.0
+set             group all angmom 0.4 -0.3 0.8
+compute         p all property/atom corner1x corner2y corner3z radius
+compute         s all reduce sum c_p[1] c_p[2] c_p[3] c_p[4]
+group           ext subtract all four
+compute         r ext erotate/asphere
+pair_style      lj/cut 1.0
+pair_coeff      * * 0.0 1.0
+thermo_style    custom step c_s[1] c_s[2] c_s[3] c_s[4] c_r
+thermo_modify   format float %.15g
+run             0

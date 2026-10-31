@@ -39,6 +39,11 @@ const STYLES: Record<string, string> = {
   'coul/long': 'pair_style coul/long 7.0\npair_coeff * *\npair_modify table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
   'lj/cut/coul/long': 'pair_style lj/cut/coul/long 6.0 7.0\npair_coeff 1 1 0.2 3.0\npair_coeff 2 2 0.1 3.4 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
   'lj/charmm/coul/long': 'pair_style lj/charmm/coul/long 5.0 6.5 7.0\npair_coeff 1 1 0.2 3.0\npair_coeff 2 2 0.1 3.4\npair_modify table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
+  'lj/class2': 'pair_style lj/class2 6.5\npair_coeff * * 0.2 3.2\npair_coeff 1 2 0.3 3.0 6.0\npair_modify shift yes',
+  'lj/class2/coul/cut': 'pair_style lj/class2/coul/cut 6.0 7.0\npair_coeff 1 1 0.2 3.0\npair_coeff 2 2 0.1 3.4 5.5 6.5\npair_modify shift yes',
+  'lj/class2/coul/long': 'pair_style lj/class2/coul/long 6.0 7.0\npair_coeff 1 1 0.2 3.0\npair_coeff 2 2 0.1 3.4 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
+  'buck/coul/long': 'pair_style buck/coul/long 6.0 7.0\npair_coeff * * 20000.0 0.3 120.0\npair_coeff 1 2 15000.0 0.28 90.0 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
+  'born/coul/long': 'pair_style born/coul/long 6.0 7.0\npair_coeff * * 6000.0 0.32 2.6 100.0 50.0\npair_coeff 1 2 5000.0 0.30 2.4 80.0 40.0 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
 };
 
 const systemFor = async (lines: string): Promise<System> => {
@@ -112,6 +117,6 @@ describe('GPU pair-style specs against the CPU styles', () => {
     const long = await (async () => accelerator(await systemFor('pair_style buck/coul/cut 6.0 10.5\npair_coeff * * 20000.0 0.3 120.0\nfix 1 all nve'), gpuRes))();
     expect(long.reason).toBe('a box shorter than 2 pair cutoffs along an edge');
     const expand = await withFix('pair_style lj/expand 6.0\npair_coeff * * 0.2 3.0 0.5');
-    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born, coul\/long, lj\/cut\/coul\/long, lj\/charmm\/coul\/long only\)/);
+    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born, coul\/long, lj\/cut\/coul\/long, lj\/charmm\/coul\/long, lj\/class2, lj\/class2\/coul\/cut, lj\/class2\/coul\/long, buck\/coul\/long, born\/coul\/long only\)/);
   });
 });

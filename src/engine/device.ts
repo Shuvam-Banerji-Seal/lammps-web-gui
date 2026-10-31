@@ -73,7 +73,7 @@ export const autoPlan = (d: DeviceProfile): AutoPlan => {
   const threads = autoThreads(d);
   const cpu = `${threads} CPU thread${threads === 1 ? '' : 's'}`;
   if (d.gpu.kind === 'hardware') {
-    return { backend: 'webgpu', threads, why: `hardware GPU${d.gpu.name ? ` (${d.gpu.name})` : ''} for lj/cut, lj/cut/coul/cut, coul/cut, buck, buck/coul/cut, morse, soft, yukawa, lj96/cut, born, coul/long, lj/cut/coul/long and lj/charmm/coul/long runs (bonded terms and kspace on the CPU beside them); ${cpu} for everything else` };
+    return { backend: 'webgpu', threads, why: `hardware GPU${d.gpu.name ? ` (${d.gpu.name})` : ''} for the pair styles of its kernels (the lj/cut, lj/class2, buck, born, morse, soft, yukawa and lj96/cut families with cut or long-range Coulomb, coul/cut, coul/long and lj/charmm/coul/long; bonded terms and kspace on the CPU beside them); ${cpu} for everything else` };
   }
   const gpuNote = d.gpu.kind === 'software'
     ? 'the only WebGPU adapter is a software one (slower than the CPU)'

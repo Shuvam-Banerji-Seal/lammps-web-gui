@@ -130,7 +130,7 @@ struct Params {
   stride : u32,
   two : u32,
   cellOfBase : u32,
-  style : u32,
+  style : u32,      // the short-range law (pairSpec.ts SPEC_LAW)
   qBase : u32,
   qqrd2e : f32,
   specBase : u32,   // special bonds: each slot's first entry in ints at specBase + slot (0: none)
@@ -639,7 +639,7 @@ export class WebGpuForceBackend implements ForceBackend {
     const pu = new Uint32Array(params);
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
     pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
-    pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = spec.style; pu[11] = spec.charges ? base + n : 0;
+    pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = spec.law; pu[11] = spec.charges ? base + n : 0;
     pf[12] = spec.qqrd2e; pu[13] = specBase; pf[14] = spec.gewald;
     if (spec.special) for (let o = 0; o < 4; o++) { pf[16 + o] = spec.special.lj[o]; pf[20 + o] = spec.special.coul[o]; }
     const q = dev.queue;
@@ -689,7 +689,7 @@ export class WebGpuForceBackend implements ForceBackend {
     const nc = [0, 1, 2].map((d) => (d === 2 && two ? 1 : Math.floor((state.box.hi[d] - state.box.lo[d]) / spec.maxCutoff))) as [number, number, number];
     this.resident ??= ResidentStepper.create(this.device);
     const charges = spec.charges ? { q: state.q, qqrd2e: spec.qqrd2e } : null;
-    return (await this.resident).advance(state, nsteps, { nc, stride: spec.stride, coef: this.specCache.coef, style: spec.style, charges, enforce2d: opts.enforce2d });
+    return (await this.resident).advance(state, nsteps, { nc, stride: spec.stride, coef: this.specCache.coef, style: spec.law, charges, enforce2d: opts.enforce2d });
   }
 
   /** True when `advance` can run this system entirely on the GPU. */

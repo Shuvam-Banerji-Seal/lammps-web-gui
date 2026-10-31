@@ -250,7 +250,7 @@ export interface AdvanceOptions {
   stride: number;
   /** Coefficients as packed by webgpuForces.ts (lj/cut: 8 floats per type pair) or gpu/pairSpec.ts (12). */
   coef: Float32Array;
-  /** 0 for lj/cut, else the gpu/pairSpec.ts style code. */
+  /** 0 for lj/cut, else the short-range law of a gpu/pairSpec.ts style (SPEC_LAW). */
   style: number;
   /** A charged style: the charge of each atom (in atom order) and the Coulomb prefactor. */
   charges?: { q: ArrayLike<number>; qqrd2e: number } | null;

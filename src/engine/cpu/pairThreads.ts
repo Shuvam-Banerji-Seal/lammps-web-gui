@@ -6,7 +6,7 @@ import {
   ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, atomChunk, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, PAIR_READY, PHASE, READY, cloneableFields, sumForces, pairFromFactory, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, type NeighborThreads, type SpecialBins } from './neighborKernel';
-import { pppmField, pppmWeights, weightScratch, type PppmGrid } from '../force/kspace/pppmKernel';
+import { PPPM_PARAMS, pppmField, pppmWeights, weightScratch, writePppmParams, type PppmGrid } from '../force/kspace/pppmKernel';
 
 /*
  * Shared-memory threads for the pair term of the general engine. The engine thread copies the
@@ -430,6 +430,7 @@ export class SharedPairThreads implements NeighborThreads {
   private pCapN = 0;
   private pCapG = 0;
   private pOrder = 0;
+  private readonly pParams = new Float64Array(shared(8 * PPPM_PARAMS));
 
   /** The threads can take a loop now (every worker has started). */
   private threadsUp(): boolean {
@@ -459,22 +460,24 @@ export class SharedPairThreads implements NeighborThreads {
     const b = (a: { buffer: ArrayBufferLike }) => a.buffer as SharedArrayBuffer;
     const msg: PairThreadMessage = {
       type: 'pbuffers', x: b(this.pX), q: b(this.pQ), first: b(this.pFirst), wts: b(this.pWts),
-      ex: b(this.pMesh[0]), ey: b(this.pMesh[1]), ez: b(this.pMesh[2]), out: b(this.pOut),
+      ex: b(this.pMesh[0]), ey: b(this.pMesh[1]), ez: b(this.pMesh[2]), out: b(this.pOut), params: b(this.pParams),
     };
     for (const w of this.workers) w.postMessage(msg);
   }
 
   /** One PPPM loop over chunks of atoms on every thread, the engine thread claiming chunks too. */
-  private pppmLoop(msg: Extract<PairThreadMessage, { type: 'pppm' }>, own: (i0: number, i1: number) => void): void {
+  private pppmLoop(phase: 1 | 2, g: PppmGrid, n: number, nchunks: number, C: number, V: number, zForce: boolean, own: (i0: number, i1: number) => void): void {
     const W = this.workers.length;
+    writePppmParams(this.pParams, g, n, nchunks, C, V, zForce);
+    const msg: PairThreadMessage = { type: 'pppm', phase };
     Atomics.store(this.ctl, DONE, 0);
     Atomics.store(this.ctl, FAILED, 0);
     Atomics.store(this.ctl, NEXT, 0);
     for (const w of this.workers) w.postMessage(msg);
     for (;;) {
       const c = Atomics.add(this.ctl, NEXT, 1);
-      if (c >= msg.nchunks) break;
-      const [i0, i1] = atomChunk(msg.n, msg.nchunks, c);
+      if (c >= nchunks) break;
+      const [i0, i1] = atomChunk(n, nchunks, c);
       own(i0, i1);
     }
     for (;;) {
@@ -492,7 +495,7 @@ export class SharedPairThreads implements NeighborThreads {
     this.pX.set(x.subarray(0, 3 * n));
     const nchunks = Math.min(n, CHUNKS_PER_THREAD * (this.workers.length + 1));
     const sc = weightScratch(P);
-    this.pppmLoop({ type: 'pppm', phase: 1, g, n, nchunks, C: 0, V: 1, zForce: false },
+    this.pppmLoop(1, g, n, nchunks, 0, 1, false,
       (i0, i1) => pppmWeights(g, this.pX, i0, i1, this.pFirst, this.pWts, sc));
     return { first: this.pFirst.subarray(0, 3 * n), wts: this.pWts.subarray(0, 3 * n * P) };
   }
@@ -512,7 +515,7 @@ export class SharedPairThreads implements NeighborThreads {
     for (let i = 0; i < n; i++) this.pQ[i] = q[i];
     const nchunks = Math.min(n, CHUNKS_PER_THREAD * (this.workers.length + 1));
     const xs = new Int32Array(3 * g.order);
-    this.pppmLoop({ type: 'pppm', phase: 2, g, n, nchunks, C, V, zForce },
+    this.pppmLoop(2, g, n, nchunks, C, V, zForce,
       (i0, i1) => pppmField(g, i0, i1, this.pQ, this.pFirst, this.pWts, this.pMesh[0], this.pMesh[1], this.pMesh[2], C, V, zForce, this.pOut, xs));
     return this.pOut.subarray(0, 3 * n);
   }

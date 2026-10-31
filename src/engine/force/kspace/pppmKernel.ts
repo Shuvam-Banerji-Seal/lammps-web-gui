@@ -55,6 +55,26 @@ export interface PppmThreads {
     ex: Float64Array, ey: Float64Array, ez: Float64Array, C: number, V: number, zForce: boolean): Float64Array | null;
 }
 
+/**
+ * The parameters of one threaded loop in a shared array (cpu/pairThreads.ts writes them, the workers read them):
+ * the grid, the atom count, the chunk count, C, V and zForce. Words of the array.
+ */
+export const PPPM_PARAMS = 19;
+
+export const writePppmParams = (a: Float64Array, g: PppmGrid, n: number, nchunks: number, C: number, V: number, zForce: boolean): void => {
+  a[0] = g.lo0; a[1] = g.lo1; a[2] = g.lo2; a[3] = g.i00; a[4] = g.i01; a[5] = g.i02; a[6] = g.i11; a[7] = g.i12; a[8] = g.i22;
+  a[9] = g.slab; a[10] = g.nx; a[11] = g.ny; a[12] = g.nz; a[13] = g.order; a[14] = n; a[15] = nchunks; a[16] = C; a[17] = V;
+  a[18] = zForce ? 1 : 0;
+};
+
+export const readPppmParams = (a: Float64Array): { g: PppmGrid; n: number; nchunks: number; C: number; V: number; zForce: boolean } => ({
+  g: {
+    lo0: a[0], lo1: a[1], lo2: a[2], i00: a[3], i01: a[4], i02: a[5], i11: a[6], i12: a[7], i22: a[8], slab: a[9],
+    nx: a[10], ny: a[11], nz: a[12], order: a[13],
+  },
+  n: a[14], nchunks: a[15], C: a[16], V: a[17], zForce: a[18] !== 0,
+});
+
 /** The scratch arrays of one thread for pppmWeights. */
 export const weightScratch = (P: number) => ({
   t: new Float64Array(2 * P), sa: new Float64Array(2 * P), sb: new Float64Array(2 * P),

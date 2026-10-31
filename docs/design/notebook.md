@@ -254,7 +254,7 @@ threads, for every style in `THREADED_PAIRS` (`cpu/threadedPairs.ts`), when:
 
 - the page is cross-origin isolated (the COI service worker, `src/coi.ts` and
   `public/coi-sw.js`), so SharedArrayBuffer and Atomics exist;
-- the system has at least `MIN_THREADED_ATOMS` (2000) owned atoms, below which
+- the system has at least `MIN_THREADED_ATOMS` (500) owned atoms, below which
   threads cost more than they save.
 
 Each force evaluation the engine thread copies positions, types and charges into

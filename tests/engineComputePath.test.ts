@@ -47,10 +47,15 @@ const LJ = 'pair_style lj/cut 2.5\npair_coeff 1 1 1.0 1.0 2.5';
 
 describe('where a run computes its forces', () => {
   it('a system below the threads threshold runs on one thread and says so', async () => {
-    const { last, loop } = await run(LJ, { threads: 3 });
-    expect(last).toMatchObject({ path: 'serial', threads: 1, atoms: 500 });
-    expect(last.why).toBe(`500 atoms; the pair threads start at ${MIN_THREADED_ATOMS} atoms, below that they cost more than they save`);
-    expect(loop).toContain('(CPU · fp64; one thread: 500 atoms; the pair threads start at');
+    const { last, loop } = await run(LJ, { threads: 3, cells: 4 });
+    expect(last).toMatchObject({ path: 'serial', threads: 1, atoms: 256 });
+    expect(last.why).toBe(`256 atoms; the pair threads start at ${MIN_THREADED_ATOMS} atoms, below that they cost more than they save`);
+    expect(loop).toContain('(CPU · fp64; one thread: 256 atoms; the pair threads start at');
+  });
+
+  it('the notebook starter (500 atoms) is large enough for the threads', async () => {
+    const { last } = await run(LJ, { threads: 3 });
+    expect(last).toMatchObject({ path: 'threads', threads: 3, atoms: 500 });
   });
 
   it('a threaded style above the threshold runs on the pair threads', async () => {

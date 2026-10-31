@@ -1,4 +1,5 @@
 import type { Handler } from './args';
+import { setProcGrid, type ProcGrid } from '../procGrid';
 import { int, num, yesno, latticeScale, keywords, missingArgs, logical, numeric, inumeric, bnumeric, bounds, initializing } from './args';
 import { StyleError } from '../force/types';
 import { unknownStyleError } from '../nativeStyles';
@@ -362,6 +363,8 @@ const processors: Handler = ({ sys }, a) => {
   const mapStyles = ['cart', 'cart/reorder', 'xyz', 'xzy', 'yxz', 'yzx', 'zxy', 'zyx'];
   let gridflag = 'onelevel';
   let mapflag = 'cart';
+  let ncores = 1;
+  let core: [number, number, number] = [0, 0, 0];
   for (let k = 3; k < a.length;) {
     const kw = a[k];
     if (kw === 'grid') {
@@ -370,9 +373,10 @@ const processors: Handler = ({ sys }, a) => {
       if (g === 'twolevel') {
         // native: ncores and the three core-grid counts (* or a number) follow
         if (k + 6 > a.length) throw illegal();
-        const ncores = inumeric(a[k + 2]);
+        ncores = inumeric(a[k + 2]);
         const cg = [a[k + 3], a[k + 4], a[k + 5]].map((w) => (w === '*' ? 0 : inumeric(w)));
         if (ncores <= 0 || cg.some((v) => v < 0)) throw illegal();
+        core = [cg[0], cg[1], cg[2]];
         k += 4;
       } else if (g === 'custom') {
         if (k + 3 > a.length) throw illegal();
@@ -402,6 +406,8 @@ const processors: Handler = ({ sys }, a) => {
     }
   }
   if (gridflag === 'numa' && mapflag !== 'cart') throw new StyleError('Processors grid numa and map style are incompatible');
+  // the grid is checked against the one process when the box is created (procGrid.ts setProcGrid)
+  sys.procGrid = { user: [p[0], p[1], p[2]], grid: gridflag as ProcGrid['grid'], ncores, core };
   sys.log('processors: accepted (the browser engine runs one process; this setting has no effect)');
 };
 
@@ -842,6 +848,8 @@ const createBox: Handler = ({ sys }, a) => {
   sys.ff.improper?.allocate(s.topo.nimpropertypes);
   const f = (v: number[]) => v.map((x) => Number(x.toPrecision(8))).join(' ');
   sys.log(`Created ${tilt ? 'triclinic' : 'orthogonal'} box = (${f(lo)}) to (${f(hi)})${tilt ? ` with tilt (${f(tilt)})` : ''}`);
+  // native create_box: print_box, then comm->set_proc_grid()
+  setProcGrid(sys.procGrid);
 };
 
 /**

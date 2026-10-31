@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
+import { setProcGrid } from '../procGrid';
 import { bnumeric, inumeric, numeric } from '../force/util';
 import { errorUrl } from '../formula';
 import { isSmdStyle, SMD_CONTACT } from '../smd';
@@ -514,6 +515,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     s.topo.ndihedraltypes = (h['dihedral types'] ?? 0) + opts.extraTypes[3];
     s.topo.nimpropertypes = (h['improper types'] ?? 0) + opts.extraTypes[4];
     sys.setState(s);
+    // native read_data: the box from the header, then comm->set_proc_grid() before the sections are read
+    setProcGrid(sys.procGrid);
     sys.ff.bond?.allocate(s.topo.nbondtypes);
     sys.ff.angle?.allocate(s.topo.nangletypes);
     sys.ff.dihedral?.allocate(s.topo.ndihedraltypes);

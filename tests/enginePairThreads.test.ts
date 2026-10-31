@@ -9,7 +9,7 @@ import {
 } from '../src/engine/cpu/pairThreadsCore';
 import { THREADED_PAIRS } from '../src/engine/cpu/threadedPairFactories';
 import { THREADED_NAMES } from '../src/engine/cpu/threadedPairs';
-import { loadThreadedPair } from '../src/engine/cpu/threadedPairLoaders';
+import { THREADED as GPL_THREADED } from '../src/engine-gpl/registry/threaded_pairs';
 import { GPL_THREADED_PAIRS } from '../src/engine/lazyStyles';
 import { PairLJCutCoulLong } from '../src/engine/force/pair/coul_long';
 
@@ -21,8 +21,11 @@ import { PairLJCutCoulLong } from '../src/engine/force/pair/coul_long';
 
 class InProcessWorker implements PairWorkerLike {
   onmessage: ((ev: MessageEvent) => void) | null = null;
-  /** with `load`, the worker builds its styles as the browser's pair worker does (threadedPairLoaders.ts, async) */
-  constructor(load = false) { this.worker = new PairThreadWorker(load ? loadThreadedPair : THREADED_PAIRS); }
+  /**
+   * with `load`, the worker also builds the GPL-ported styles (the factories the browser's pair worker imports by URL,
+   * threadedPairLoaders.ts; enginePairLoaders.test.ts checks that import), at once as for the others
+   */
+  constructor(load = false) { this.worker = new PairThreadWorker(load ? { ...THREADED_PAIRS, ...GPL_THREADED } : THREADED_PAIRS); }
   readonly worker: PairThreadWorker;
   computes = 0;
   postMessage(msg: unknown): void {
@@ -135,6 +138,18 @@ const THREEBODY_STYLES: Record<string, string> = {
 /** GPL-ported styles on the threads (lazyStyles.ts GPL_THREADED_PAIRS), in the Si box. */
 const GPL_STYLES: Record<string, string> = {
   sw: 'pair_style sw\npair_coeff * * Si.sw Si Si',
+};
+/** GPL-ported pairwise styles on the threads, in the charged LJ box. */
+const GPL_PAIR_STYLES: Record<string, string> = {
+  'born/coul/long/cs': 'pair_style born/coul/long/cs 2.5\npair_coeff * * 1.0 0.3 1.0 1.0 1.0\nkspace_style ewald 1e-4',
+  'buck/coul/long/cs': 'pair_style buck/coul/long/cs 2.5\npair_coeff * * 100.0 0.3 1.0\nkspace_style ewald 1e-4',
+  'born/coul/dsf/cs': 'pair_style born/coul/dsf/cs 0.5 2.5\npair_coeff * * 1.0 0.3 1.0 1.0 1.0',
+  'born/coul/wolf/cs': 'pair_style born/coul/wolf/cs 0.5 2.5\npair_coeff * * 1.0 0.3 1.0 1.0 1.0',
+  'coul/wolf/cs': 'pair_style coul/wolf/cs 0.5 2.5\npair_coeff * *',
+  'coul/long/cs': 'pair_style coul/long/cs 2.5\npair_coeff * *\nkspace_style ewald 1e-4',
+  'lj/cut/coul/long/cs': 'pair_style lj/cut/coul/long/cs 2.5\npair_coeff * * 1.0 1.0\nkspace_style ewald 1e-4',
+  'lj/class2/coul/long/cs': 'pair_style lj/class2/coul/long/cs 2.5\npair_coeff * * 1.0 1.0\nkspace_style ewald 1e-4',
+  'buck/long/coul/long': 'pair_style buck/long/coul/long cut long 2.5\npair_coeff * * 100.0 0.3 1.0\nkspace_style ewald 1e-4',
 };
 const POTENTIALS = ['Cu_u3.eam', 'CuNi.eam.alloy', 'AlFe_mm.eam.fs', 'Si.tersoff', 'Si.tersoff.mod', 'Si.tersoff.modc', 'SiC.tersoff.zbl', 'Si.sw'];
 const potential = (f: string): string => readFileSync(join(__dirname, '..', 'third_party', 'lammps', 'potentials', f), 'utf8');
@@ -262,9 +277,17 @@ describe('shared-memory pair threads: every threaded style matches the single-th
       expectClose(serial, threaded, 1e-10);
     });
   }
+  for (const [name, lines] of Object.entries(GPL_PAIR_STYLES)) {
+    it(`${name} (GPL port)`, async () => {
+      const serial = await runCase(lines, 1, '', BOX, true);
+      const threaded = await runCase(lines, 4, '', BOX, true);
+      expect(threaded.threadedComputes).toBeGreaterThan(0);
+      expectClose(serial, threaded, 1e-10);
+    });
+  }
   it('covers every style of THREADED_PAIRS', () => {
     expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES), ...Object.keys(THREEBODY_STYLES)].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
-    expect(Object.keys(GPL_STYLES).sort()).toEqual([...GPL_THREADED_PAIRS].sort());
+    expect([...Object.keys(GPL_STYLES), ...Object.keys(GPL_PAIR_STYLES)].sort()).toEqual([...GPL_THREADED_PAIRS].sort());
     // the engine side knows the styles by name only (threadedPairs.ts), the worker by factory (threadedPairFactories.ts,
     // and for the GPL ports the lazy registries)
     expect([...THREADED_NAMES].sort()).toEqual([...Object.keys(THREADED_PAIRS), ...GPL_THREADED_PAIRS].sort());

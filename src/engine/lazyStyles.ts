@@ -23,7 +23,11 @@ export interface LazyGroup {
  * The GPL-ported pair styles the pair threads run (cpu/threadedPairs.ts THREADED_NAMES): the pair worker loads their
  * factories with loadGplThreadedPair (the core reaches src/engine-gpl only through this module, rule 7).
  */
-export const GPL_THREADED_PAIRS: readonly string[] = ['sw'];
+export const GPL_THREADED_PAIRS: readonly string[] = [
+  'sw',
+  // pairwise styles of the CORESHELL and KSPACE ports whose loops read nothing but the PairCompute arrays
+  'born/coul/long/cs', 'buck/coul/long/cs', 'born/coul/dsf/cs', 'born/coul/wolf/cs', 'coul/wolf/cs', 'coul/long/cs', 'lj/cut/coul/long/cs', 'lj/class2/coul/long/cs', 'buck/long/coul/long',
+];
 
 /**
  * The registry module of the GPL-ported pair styles for the pair threads (engine-gpl/registry/threaded_pairs.ts), loaded

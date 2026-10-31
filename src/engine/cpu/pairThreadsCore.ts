@@ -25,7 +25,7 @@ export interface PairWorkerLike {
 export type PairThreadMessage =
   | { type: 'init'; ctl: SharedArrayBuffer; index: number }
   | { type: 'buffers'; x: SharedArrayBuffer; t: SharedArrayBuffer; q: SharedArrayBuffer; numneigh: SharedArrayBuffer; firstneigh: SharedArrayBuffer; neighbors: SharedArrayBuffer; f: SharedArrayBuffer; fs: SharedArrayBuffer[]; acc: SharedArrayBuffer; chunks: SharedArrayBuffer; tags: SharedArrayBuffer }
-  | { type: 'pair'; name: string; fields: Record<string, unknown>; url?: string }
+  | { type: 'pair'; name: string; fields: Record<string, unknown>; url?: string; slot?: number }
   | {
     type: 'compute'; nlocal: number; nall: number;
     /** the style reads the full list (a three-body style of THREADED_PAIRS), else the half list */
@@ -39,6 +39,8 @@ export type PairThreadMessage =
     pass: 0 | 1 | 2; aux: SharedArrayBuffer | null;
     /** the shared neighbors are in the style's order (Pair.threadNeighbors); the style reads atom IDs (tags) */
     ordered: boolean; tags: boolean;
+    /** the pair slot (MAX_PAIR_SLOTS) whose copy computes */
+    slot: number;
   }
   | {
     type: 'nbuffers'; bL: SharedArrayBuffer; bG: SharedArrayBuffer; rLo: SharedArrayBuffer; rHi: SharedArrayBuffer;
@@ -101,8 +103,17 @@ export const PHASE = 4, NEXT2 = 5, DONE2 = 6;
  * style's module on demand needs a moment, and the engine never blocks on it).
  */
 export const PAIR_READY = 7;
+/**
+ * Pair slots: slot 0 is the pair style; slot 1 + k is sub-style k of a pair_style hybrid, whose sub-styles run on the
+ * threads one after another (force/pair/hybrid.ts subRunner). Each slot keeps its own copy in the workers, so the
+ * sub-styles are not sent again every step, and its own PAIR_READY count: slot 0 at PAIR_READY, slot s > 0 at
+ * CTL_BASE + s - 1.
+ */
+export const MAX_PAIR_SLOTS = 16;
+const CTL_BASE = 8;
+export const readyIndex = (slot: number): number => (slot === 0 ? PAIR_READY : CTL_BASE + slot - 1);
 /** Words of the control array. */
-export const CTL_WORDS = 8;
+export const CTL_WORDS = CTL_BASE + MAX_PAIR_SLOTS - 1;
 /** Adds every worker's forces into F over elements [k0, k1), each element in worker order. */
 export const sumForces = (F: Float64Array, fs: readonly Float64Array[], k0: number, k1: number): void => {
   for (let k = k0; k < k1; k++) {
@@ -203,11 +214,12 @@ export const sameShape = (orig: object, copy: object, depth = 0): boolean => {
 /** One worker's side of the protocol, also run in-process by tests. */
 export class PairThreadWorker {
   constructor(private readonly factories: PairFactories | PairLoader) {}
-  /** the last 'pair' message (a slower load of an older style must not replace a newer one) */
-  private pairGen = 0;
+  /** per pair slot: the last 'pair' message (a slower load of an older style must not replace a newer one) */
+  private readonly pairGens: number[] = [];
 
   private ctl: Int32Array | null = null;
-  private pair: Pair | null = null;
+  /** the pair copies by slot (MAX_PAIR_SLOTS) */
+  private readonly pairs: (Pair | null)[] = [];
   private x: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private t: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private q: Float64Array<ArrayBufferLike> = new Float64Array(0);
@@ -267,13 +279,15 @@ export class PairThreadWorker {
       return;
     }
     if (m.type === 'pair') {
-      const gen = ++this.pairGen;
+      const slot = m.slot ?? 0;
+      const gen = (this.pairGens[slot] ?? 0) + 1;
+      this.pairGens[slot] = gen;
       const ready = (pair: Pair | null) => {
-        if (gen !== this.pairGen) return;
-        this.pair = pair;
-        if (pair && this.ctl) Atomics.add(this.ctl, PAIR_READY, 1);
+        if (gen !== this.pairGens[slot]) return;
+        this.pairs[slot] = pair;
+        if (pair && this.ctl) Atomics.add(this.ctl, readyIndex(slot), 1);
       };
-      this.pair = null;
+      this.pairs[slot] = null;
       const f = this.factories;
       if (typeof f !== 'function') { ready(pairFromFields(m.name, m.fields, f)); return; }
       f(m.name, m.url).then((make) => ready(make ? pairFromFactory(make, m.fields) : null), () => ready(null));
@@ -281,7 +295,7 @@ export class PairThreadWorker {
     }
     const ctl = this.ctl!;
     try {
-      const pair = this.pair;
+      const pair = this.pairs[m.slot] ?? null;
       if (!pair) throw new Error('no pair style');
       this.f.fill(0, 0, m.pass === 1 ? m.nall : 3 * m.nall);
       const a = newAccum();

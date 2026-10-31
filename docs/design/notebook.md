@@ -333,6 +333,14 @@ thread and copied into the shared list) and the atom IDs (`Pair.threadTags`, a s
 worker has no `SimState` or `Neighbor`. Measured in Chromium (24-core Xeon), SW silicon with 4096 atoms, 200 steps:
 loop 3.13 s on one thread, 1.33 s on 8 (pair term 2.89 s and 1.14 s), the same thermo.
 
+`pair_style hybrid`, `hybrid/overlay` and `hybrid/molecular` run each threaded sub-style on the threads in its own
+pair slot (`pairThreadsCore.ts` MAX_PAIR_SLOTS: slot 0 is a plain pair style, slot 1 + k sub-style k), so the
+workers keep one copy per sub-style instead of being sent a new style every step. The force field hands the hybrid a
+runner (`PairHybrid.subRunner`) for ordinary evaluations: sub-styles on its direct path (each adds to the shared
+forces and accumulators) go to the threads when they can, the rest run on the engine thread. Measured in Chromium,
+`hybrid/overlay lj/cut coul/cut` with 4000 atoms, 100 steps: loop 1.10 s on one thread, 0.50 s on 8 (pair term 0.82 s
+and 0.29 s), the same thermo.
+
 ### Script hand-over to the Script Builder
 
 - **Notebook to Builder:** "Open in Script Builder" joins the non-empty cells

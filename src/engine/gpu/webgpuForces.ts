@@ -604,22 +604,23 @@ export class WebGpuForceBackend implements ForceBackend {
     return { pe: evdwl + ecoul, virial, evdwl, ecoul };
   }
 
-  /** True when `advanceSpec` can run this system entirely on the GPU: an uncharged style, 3 cells per periodic edge. */
+  /** True when `advanceSpec` can run this system entirely on the GPU: 3 cells per periodic edge. */
   canAdvanceSpec(state: SimState, spec: GpuPairSpec): boolean {
-    if (spec.charges || state.n === 0 || !(spec.maxCutoff > 0)) return false;
+    if (state.n === 0 || !(spec.maxCutoff > 0)) return false;
     const two = state.dimension === 2;
     return [0, 1, 2].every((d) => (d === 2 && two)
       || (state.box.periodic[d] && Math.floor((state.box.hi[d] - state.box.lo[d]) / spec.maxCutoff) >= 3));
   }
 
-  /** `advance` for an uncharged style of gpu/pairSpec.ts. */
+  /** `advance` for a style of gpu/pairSpec.ts (the charges of a charged one go up with the coefficients). */
   async advanceSpec(state: SimState, spec: GpuPairSpec, nsteps: number, opts: { enforce2d: boolean }): Promise<ForceResult> {
     if (this.disposed) throw new Error('the WebGPU backend was disposed');
     if (!this.specCache || this.specCache.key !== spec.key) this.specCache = { key: spec.key, coef: Float32Array.from(spec.coef) };
     const two = state.dimension === 2;
     const nc = [0, 1, 2].map((d) => (d === 2 && two ? 1 : Math.floor((state.box.hi[d] - state.box.lo[d]) / spec.maxCutoff))) as [number, number, number];
     this.resident ??= ResidentStepper.create(this.device);
-    return (await this.resident).advance(state, nsteps, { nc, stride: spec.stride, coef: this.specCache.coef, style: spec.style, enforce2d: opts.enforce2d });
+    const charges = spec.charges ? { q: state.q, qqrd2e: spec.qqrd2e } : null;
+    return (await this.resident).advance(state, nsteps, { nc, stride: spec.stride, coef: this.specCache.coef, style: spec.style, charges, enforce2d: opts.enforce2d });
   }
 
   /** True when `advance` can run this system entirely on the GPU. */

@@ -41,9 +41,9 @@ struct P {
   enforce2d : u32,
   dt : f32,
   style : u32,
-  pad0 : u32,
-  pad1 : u32,
-  pad2 : u32,
+  qBase : u32,      // charged styles: the charges' first vec4 in coef (0: no charges)
+  slotBase : u32,   // charged styles: the atom of each slot in cellData (written by scatter)
+  qqrd2e : f32,
 };
 
 @group(0) @binding(0) var<uniform> p : P;
@@ -135,6 +135,12 @@ fn scatter(@builtin(global_invocation_id) gid : vec3<u32>) {
   let c = cellData[p.ncell + 1u + i];
   let slot = cellData[c] + cellData[p.ncell + 1u + p.n + i];
   sortedPos[slot] = atomX[i];
+  if (p.qBase > 0u) { cellData[p.slotBase + slot] = i; }
+}
+
+// the charge of atom a: four per vec4 after the coefficients
+fn chargeOf(a : u32) -> f32 {
+  return coef[p.qBase + a / 4u][a % 4u];
 }
 
 fn wrapCell(c : i32, n : u32) -> u32 {
@@ -154,7 +160,10 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
   if (p.two == 1u) { zr = 0; }
   var f = vec3<f32>(0.0, 0.0, 0.0);
   var e = 0.0;
+  var ec = 0.0;
   var w = 0.0;
+  var qi = 0.0;
+  if (p.qBase > 0u) { qi = chargeOf(cellData[p.slotBase + i]); }
   for (var dz = -zr; dz <= zr; dz = dz + 1) {
     for (var dy = -1; dy <= 1; dy = dy + 1) {
       for (var dx = -1; dx <= 1; dx = dx + 1) {
@@ -178,12 +187,24 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
             fpair = u * u3 * (a.y * u3 - a.z);
             e = e + 0.5 * (u3 * (b.x * u3 - b.y) - b.z);
           } else {
-            // an uncharged style of gpu/pairSpec.ts (the whole-step path runs no Coulomb term)
+            // a style of gpu/pairSpec.ts: the short-range law, and the Coulomb term of the charged ones (as the per-step
+            // kernel webgpuForces.ts KERNEL_STYLES)
             let A = coef[3u * k];
-            if (r2 >= A.x) { continue; }
-            let sr = shortRange(p.style, r2, A, coef[3u * k + 1u], coef[3u * k + 2u]);
-            fpair = sr.x;
-            e = e + 0.5 * sr.y;
+            if (r2 >= max(A.x, A.y)) { continue; }
+            let B = coef[3u * k + 1u];
+            if (r2 < A.x) {
+              let sr = shortRange(p.style, r2, A, B, coef[3u * k + 2u]);
+              fpair = sr.x;
+              e = e + 0.5 * sr.y;
+            }
+            if (r2 < A.y && p.qBase > 0u) {
+              let qj = chargeOf(cellData[p.slotBase + j]);
+              if (qi != 0.0 && qj != 0.0) {
+                let pre = p.qqrd2e * B.w * qi * qj / sqrt(r2);
+                fpair = fpair + pre / r2;
+                ec = ec + 0.5 * pre;
+              }
+            }
           }
           f = f + fpair * d;
           w = w + 0.5 * fpair * r2;
@@ -192,7 +213,7 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
   }
   slotOut[2u * i] = vec4<f32>(f, e);
-  slotOut[2u * i + 1u] = vec4<f32>(w, 0.0, 0.0, 0.0);
+  slotOut[2u * i + 1u] = vec4<f32>(w, ec, 0.0, 0.0);
 }
 
 @compute @workgroup_size(${WG})
@@ -229,8 +250,10 @@ export interface AdvanceOptions {
   stride: number;
   /** Coefficients as packed by webgpuForces.ts (lj/cut: 8 floats per type pair) or gpu/pairSpec.ts (12). */
   coef: Float32Array;
-  /** 0 for lj/cut, else the gpu/pairSpec.ts style code of an uncharged style. */
+  /** 0 for lj/cut, else the gpu/pairSpec.ts style code. */
   style: number;
+  /** A charged style: the charge of each atom (in atom order) and the Coulomb prefactor. */
+  charges?: { q: ArrayLike<number>; qqrd2e: number } | null;
   enforce2d: boolean;
 }
 
@@ -260,7 +283,7 @@ export class ResidentStepper {
 
   private ensure(n: number, ncell: number, coefBytes: number): void {
     const needAtoms = this.atomCap < n;
-    const needCells = this.cellCap < ncell + 1 + 2 * n || needAtoms;
+    const needCells = this.cellCap < ncell + 1 + 3 * n || needAtoms;
     const needCoef = this.coefCap < coefBytes;
     if (!needAtoms && !needCells && !needCoef && this.groups) return;
     const mk = (size: number, usage: number) => this.device.createBuffer({ size: Math.max(16, size), usage });
@@ -278,7 +301,8 @@ export class ResidentStepper {
       this.staging = mk(96 * this.atomCap, BUF_MAP_READ | BUF_COPY_DST);
     }
     if (needCells) {
-      this.cellCap = Math.max(256, Math.ceil((ncell + 1 + 2 * this.atomCap) * 1.25));
+      // start[ncell+1] | cellOf[n] | rank[n] | atom of each slot[n] (charged styles)
+      this.cellCap = Math.max(256, Math.ceil((ncell + 1 + 3 * this.atomCap) * 1.25));
       this.bufs[5]?.destroy();
       this.bufs[6]?.destroy();
       this.bufs[5] = mk(4 * this.cellCap, S);
@@ -300,7 +324,14 @@ export class ResidentStepper {
     const n = s.n;
     const two = s.dimension === 2;
     const ncell = o.nc[0] * o.nc[1] * o.nc[2];
-    this.ensure(n, ncell, o.coef.byteLength);
+    // a charged style: the charges after the coefficients, four per vec4
+    let coef = o.coef;
+    if (o.charges) {
+      coef = new Float32Array(o.coef.length + 4 * Math.ceil(n / 4));
+      coef.set(o.coef);
+      for (let i = 0; i < n; i++) coef[o.coef.length + i] = o.charges.q[i];
+    }
+    this.ensure(n, ncell, coef.byteLength);
     const lo = s.box.lo;
     const L = [0, 1, 2].map((d) => s.box.hi[d] - lo[d]);
     // upload the host state (it may have changed between runs: velocity, ...)
@@ -327,12 +358,13 @@ export class ResidentStepper {
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
     pu[4] = o.nc[0]; pu[5] = o.nc[1]; pu[6] = o.nc[2]; pu[7] = o.stride;
     pu[8] = two ? 1 : 0; pu[9] = ncell; pu[10] = o.enforce2d ? 1 : 0; pf[11] = s.dt; pu[12] = o.style;
+    pu[13] = o.charges ? o.coef.length / 4 : 0; pu[14] = ncell + 1 + 2 * n; pf[15] = o.charges?.qqrd2e ?? 0;
     q.writeBuffer(this.params, 0, pbuf);
     q.writeBuffer(this.bufs[1], 0, X);
     q.writeBuffer(this.bufs[2], 0, V);
     q.writeBuffer(this.bufs[3], 0, F);
     q.writeBuffer(this.bufs[4], 0, I);
-    q.writeBuffer(this.bufs[8], 0, o.coef);
+    q.writeBuffer(this.bufs[8], 0, coef);
 
     const enc = this.device.createCommandEncoder();
     const pass = enc.beginComputePass();
@@ -370,6 +402,7 @@ export class ResidentStepper {
     const So = new Float32Array(raw, 64 * n, 8 * n);
     let pe = 0;
     let virial = 0;
+    let ecoul = 0;
     for (let i = 0; i < n; i++) {
       for (let d = 0; d < 3; d++) {
         s.x[3 * i + d] = Xo[4 * i + d] + lo[d];
@@ -379,9 +412,10 @@ export class ResidentStepper {
       }
       pe += So[8 * i + 3];
       virial += So[8 * i + 4];
+      ecoul += So[8 * i + 5];
     }
     st.unmap();
-    return { pe, virial };
+    return { pe: pe + ecoul, virial, evdwl: pe, ecoul } as ForceResult;
   }
 
   dispose(): void {

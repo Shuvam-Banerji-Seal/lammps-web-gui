@@ -163,6 +163,28 @@ Open the [live demo](https://shuvam-banerji-seal.github.io/lammps-web-gui/) and:
 
 Your files never leave your machine — parsing happens locally in the browser.
 
+## 🤖 MCP server for coding agents
+
+Any coding agent that speaks the [Model Context Protocol](https://modelcontextprotocol.io) can use what the site knows
+about writing LAMMPS input. That includes Claude Code, Codex, Cursor, VS Code, Windsurf, Cline, Gemini CLI and
+opencode. The server gives them:
+
+- the LAMMPS documentation: search, and every page at the engine's LAMMPS commit;
+- the script checker;
+- which commands and styles the browser engine runs;
+- the starter scripts and example notebooks;
+- CMake build scripts.
+
+```bash
+claude mcp add lammps -- npx -y --allow-remote=all https://shuvam-banerji-seal.github.io/lammps-web-gui/mcp/lammps-mcp.tgz
+```
+
+Setup for every client is on the [MCP page](https://shuvam-banerji-seal.github.io/lammps-web-gui/mcp/). The server is
+one JavaScript file that runs locally over stdio. The site is static, so it cannot host an MCP HTTP endpoint. Agents
+without MCP can read [`llms.txt`](https://shuvam-banerji-seal.github.io/lammps-web-gui/llms.txt) and
+[`mcp/knowledge.json`](https://shuvam-banerji-seal.github.io/lammps-web-gui/mcp/knowledge.json). Sources:
+[`mcp/`](mcp/README.md).
+
 ## ⌨️ Keyboard shortcuts
 
 ### Script Builder

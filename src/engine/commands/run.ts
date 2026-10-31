@@ -227,11 +227,11 @@ const runStyle: Handler = ({ sys }, a) => {
 
 // cfg is a lazily loaded helper (lazyStyles.ts group gpl_dump_cfg, loaded before the dump command by the session: its
 // name is a word of the command)
-const DUMP_STYLES: DumpStyle[] = ['atom', 'custom', 'cfg', 'cfg/uef', 'xyz', 'extxyz', 'yaml', 'local', 'image'];
+export const DUMP_STYLES: DumpStyle[] = ['atom', 'custom', 'cfg', 'cfg/uef', 'xyz', 'extxyz', 'yaml', 'local', 'image'];
 /** Dump styles of lazily loaded helpers (lazyStyles.ts). */
-const LAZY_DUMP_STYLES: string[] = ['vtk', 'grid', 'grid/vtk', 'dcd', 'xtc'];
+export const LAZY_DUMP_STYLES: string[] = ['vtk', 'grid', 'grid/vtk', 'dcd', 'xtc'];
 /** The COMPRESS package's gzip dump styles (dump.html: "atom/gz, cfg/gz, custom/gz, local/gz, xyz/gz"). */
-const GZ_STYLES = ['atom/gz', 'cfg/gz', 'custom/gz', 'local/gz', 'xyz/gz'];
+export const GZ_STYLES = ['atom/gz', 'cfg/gz', 'custom/gz', 'local/gz', 'xyz/gz'];
 
 /**
  * A COMPRESS style name: its base style and the /gz name (null for an uncompressed style). The zstd styles need the

@@ -313,6 +313,11 @@ export class Dump {
   private refreshId: string | null = null;
   private written: string[] = [];
   private opened = false;
+  /**
+   * The name the files are written under. As native LAMMPS does (src/dump.cpp Dump::Dump at b332f28): the first "%" of
+   * the file name becomes the processor ID ("multiname = filename up to %, me, the rest"), 0 for the engine's one process.
+   */
+  private get outFile(): string { return this.file.replace('%', '0'); }
   /** The file is written compressed (a .gz or .zst name, or a COMPRESS /gz or /zstd style). */
   private gz = false;
   /** Zstandard rather than gzip (a .zst name or a /zstd style), and its content checksum (dump_modify checksum). */
@@ -357,7 +362,7 @@ export class Dump {
     if (this.cfgStyle && !this.file.includes('*') && !this.multifileOverride) throw new StyleError('Dump cfg requires one snapshot per file');
     // As native LAMMPS does (src/EXTRA-DUMP/dump_extxyz.cpp at b332f28, init_style, at the init of a run)
     if (this.style === 'extxyz' && !this.element.length) throw new StyleError(EXTXYZ_NO_NAMES);
-    if (!this.file.includes('*') && this.singleKey === null) this.singleKey = this.sys.resolveFile(this.file);
+    if (!this.file.includes('*') && this.singleKey === null) this.singleKey = this.sys.resolveFile(this.outFile);
   }
 
   /**
@@ -455,6 +460,8 @@ export class Dump {
     } else if (style === 'xyz' || style === 'extxyz') {
       // As native LAMMPS does (src/dump_xyz.cpp at b332f28, DumpXYZ::DumpXYZ): narg must be 5
       if (cols.length) throw new StyleError(`Illegal dump ${style} command`);
+      // then "if (binary || multiproc) error->all(FLERR, 4, "Invalid dump {} filename", style)": no "%" file name
+      if (file.includes('%')) throw new StyleError(`Invalid dump ${style} filename`);
       this.columns = ['type', 'x', 'y', 'z'];
     } else if (style === 'local') {
       this.columns = localDumpColumns(sys, id, cols);
@@ -971,7 +978,7 @@ export class Dump {
     if (this.everyVar) this.nextStep = Math.trunc(sys.equalVariable(this.everyVar));
     if (this.imageDump) {
       const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
-      const name = this.file.includes('*') ? fillWildcard(this.file, stepText) : this.file;
+      const name = this.file.includes('*') ? fillWildcard(this.outFile, stepText) : this.outFile;
       // dump_image.cpp create_image: the drawn atoms are DumpCustom::count()'s choice (group, dump_modify region and
       // thresh), which also bounds a dynamic colour map and selects both atoms of a drawn bond
       if (this.thresh.length) sys.forces();
@@ -1032,7 +1039,7 @@ export class Dump {
     if (this.cfgStyle) {
       // dump cfg: one snapshot per file (the "*" name, or write_dump's single file)
       const text = this.cfgStyle.text({ rows: keep, values, formatters: this.columnFormatters(), element: this.element, colnames: this.colnames, header: this.header });
-      const name = this.sys.resolveFile(multi ? fillWildcard(this.file, stepText) : this.file);
+      const name = this.sys.resolveFile(multi ? fillWildcard(this.outFile, stepText) : this.outFile);
       this.writeSnapshot(name, text, false);
       this.opened = true;
       return true;
@@ -1088,7 +1095,7 @@ export class Dump {
         lines.push(this.columns.map((c, k) => (c === 'element' ? elementName(i) : formatters[k](values[k][i]))).join(' '));
       }
     }
-    const name = multi ? this.sys.resolveFile(fillWildcard(this.file, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.file));
+    const name = multi ? this.sys.resolveFile(fillWildcard(this.outFile, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.outFile));
     const appendNow = multi ? false : this.opened || (this.append && !this.gz);
     this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;
@@ -1129,7 +1136,7 @@ export class Dump {
     const step = this.sys.state.step;
     const multi = this.file.includes('*');
     const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
-    const name = multi ? this.sys.resolveFile(fillWildcard(this.file, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.file));
+    const name = multi ? this.sys.resolveFile(fillWildcard(this.outFile, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.outFile));
     const appendNow = multi ? false : this.opened || (this.append && !this.gz);
     this.writeSnapshot(name, text, appendNow);
     this.opened = true;
@@ -1183,7 +1190,7 @@ export class Dump {
     }
     const multi = this.file.includes('*');
     const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
-    const name = multi ? this.sys.resolveFile(fillWildcard(this.file, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.file));
+    const name = multi ? this.sys.resolveFile(fillWildcard(this.outFile, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.outFile));
     const appendNow = multi ? false : this.opened || (this.append && !this.gz);
     this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;

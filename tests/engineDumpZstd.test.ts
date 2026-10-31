@@ -108,3 +108,15 @@ describe('Zstandard dump files', () => {
       .toContain('Checksum flag can not be changed while file is open');
   });
 });
+
+describe('"%" in a dump file name', () => {
+  it('becomes the processor ID 0, as native writes it with one process; dump xyz refuses it', async () => {
+    // Measured with native LAMMPS (one process): dump atom p%.dump writes p0.dump, dump custom q.*.%.dump writes
+    // q.0.0.dump and q.1.0.dump; dump xyz w%.xyz stops with ERROR: Invalid dump xyz filename
+    const r = await exec(`${LJ}\ndump 1 all atom 1 p%.dump\ndump 2 all custom 1 q.*.%.dump id x\nrun 1\n`);
+    expect(r.errors).toEqual([]);
+    expect([...r.files.keys()].sort()).toEqual(['p0.dump', 'q.0.0.dump', 'q.1.0.dump']);
+    expect(r.files.get('q.1.0.dump')).toMatch(/^ITEM: TIMESTEP\n1\n/);
+    expect((await exec(`${LJ}\ndump 1 all xyz 1 w%.xyz\n`)).errors[0]).toContain('Invalid dump xyz filename');
+  });
+});

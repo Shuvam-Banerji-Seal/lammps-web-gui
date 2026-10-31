@@ -131,7 +131,9 @@ main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
 h1 { font-size: 26px; margin: 0 0 4px; } h2 { font-size: 18px; margin: 32px 0 8px; }
 p, li { color: var(--fg); } .muted { color: var(--muted); }
 a { color: var(--accent); }
-pre { background: var(--code); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 13px; }
+.codewrap { position: relative; }
+pre { background: var(--code); border: 1px solid var(--line); border-radius: 6px; padding: 10px 64px 10px 12px; overflow-x: auto; font-size: 13px; }
+.copy { position: absolute; top: 6px; right: 6px; font: 12px system-ui, sans-serif; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--fg); cursor: pointer; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; vertical-align: top; padding: 8px; border-top: 1px solid var(--line); }
@@ -183,6 +185,23 @@ ${tools.map((t) => `<tr><td>${esc(t.name)}</td><td>${esc(t.description)}</td></t
 </ul>
 <p class="muted">Version ${esc(k.version)}. The documentation index and the fetched pages are from <a href="https://github.com/lammps/lammps">LAMMPS</a> (GPL-2.0). The server and the rest of this site are covered by the project's licence.</p>
 </main>
+<script>
+// a Copy button on each code block
+for (const pre of document.querySelectorAll('pre')) {
+  const b = document.createElement('button');
+  b.className = 'copy'; b.type = 'button'; b.textContent = 'Copy';
+  b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(pre.querySelector('code').textContent); b.textContent = 'Copied'; }
+    catch { b.textContent = 'Select and copy'; }
+    setTimeout(() => { b.textContent = 'Copy'; }, 1500);
+  });
+  // the button sits on a wrapper so it stays put when a long line scrolls
+  const wrap = document.createElement('div');
+  wrap.className = 'codewrap';
+  pre.replaceWith(wrap);
+  wrap.append(pre, b);
+}
+</script>
 </body>
 </html>
 `;

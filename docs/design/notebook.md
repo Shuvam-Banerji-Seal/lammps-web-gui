@@ -325,6 +325,14 @@ thread). The force reduction is still serial on the engine thread. The plain lj/
 With the GPU selected, runs the GPU path cannot take (a pair style it does not run, a kspace
 style, ...) use the CPU threads instead of one core (PR 34).
 
+GPL-ported pair styles run on the same threads when `lazyStyles.ts` lists them in `GPL_THREADED_PAIRS` (`sw` first).
+The pair worker's bundle holds no GPL code: the engine thread loads `engine-gpl/registry/threaded_pairs.ts` through the
+lazy registries (rule 7), and the 'pair' message carries that module's own URL, which each worker imports. Such a style
+can take its neighbors in native LAMMPS's order (`Pair.threadNeighbors`, made once per neighbor build on the engine
+thread and copied into the shared list) and the atom IDs (`Pair.threadTags`, a shared array filled on rebuilds), since a
+worker has no `SimState` or `Neighbor`. Measured in Chromium (24-core Xeon), SW silicon with 4096 atoms, 200 steps:
+loop 3.13 s on one thread, 1.33 s on 8 (pair term 2.89 s and 1.14 s), the same thermo.
+
 ### Script hand-over to the Script Builder
 
 - **Notebook to Builder:** "Open in Script Builder" joins the non-empty cells

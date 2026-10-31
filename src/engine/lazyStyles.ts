@@ -19,6 +19,24 @@ export interface LazyGroup {
   load: () => Promise<StyleModule>;
 }
 
+/**
+ * The GPL-ported pair styles the pair threads run (cpu/threadedPairs.ts THREADED_NAMES): the pair worker loads their
+ * factories with loadGplThreadedPair (the core reaches src/engine-gpl only through this module, rule 7).
+ */
+export const GPL_THREADED_PAIRS: readonly string[] = ['sw'];
+
+/**
+ * The registry module of the GPL-ported pair styles for the pair threads (engine-gpl/registry/threaded_pairs.ts), loaded
+ * on the engine thread: its factory for `name` and the module's own URL, which the pair worker imports (the worker's
+ * bundle then holds no GPL code and none of this table), or null for a style it does not list.
+ */
+export const loadGplThreadedPair = async (name: string): Promise<{ make: () => import('./force/types').Pair; url: string } | null> => {
+  if (!GPL_THREADED_PAIRS.includes(name)) return null;
+  const m = await import('../engine-gpl/registry/threaded_pairs');
+  const make = (m.THREADED as Partial<Record<string, () => import('./force/types').Pair>>)[name];
+  return make ? { make, url: m.MODULE_URL } : null;
+};
+
 export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_libm', names: { HOOKS: ['libm'] }, load: () => import('../engine-gpl/registry/libm') as Promise<StyleModule> },
   { id: 'gpl_neigh_one', names: { HOOKS: ['neigh_one'] }, load: () => import('../engine-gpl/registry/neigh_one') as Promise<StyleModule> },

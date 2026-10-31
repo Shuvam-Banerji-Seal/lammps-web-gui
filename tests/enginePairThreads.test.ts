@@ -9,6 +9,8 @@ import {
 } from '../src/engine/cpu/pairThreadsCore';
 import { THREADED_PAIRS } from '../src/engine/cpu/threadedPairFactories';
 import { THREADED_NAMES } from '../src/engine/cpu/threadedPairs';
+import { loadThreadedPair } from '../src/engine/cpu/threadedPairLoaders';
+import { GPL_THREADED_PAIRS } from '../src/engine/lazyStyles';
 import { PairLJCutCoulLong } from '../src/engine/force/pair/coul_long';
 
 /*
@@ -19,7 +21,9 @@ import { PairLJCutCoulLong } from '../src/engine/force/pair/coul_long';
 
 class InProcessWorker implements PairWorkerLike {
   onmessage: ((ev: MessageEvent) => void) | null = null;
-  readonly worker = new PairThreadWorker(THREADED_PAIRS);
+  /** with `load`, the worker builds its styles as the browser's pair worker does (threadedPairLoaders.ts, async) */
+  constructor(load = false) { this.worker = new PairThreadWorker(load ? loadThreadedPair : THREADED_PAIRS); }
+  readonly worker: PairThreadWorker;
   computes = 0;
   postMessage(msg: unknown): void {
     const m = msg as PairThreadMessage;
@@ -128,14 +132,19 @@ const THREEBODY_STYLES: Record<string, string> = {
   'tersoff/zbl': 'pair_style tersoff/zbl\npair_coeff * * SiC.tersoff.zbl Si C',
   'sw/mod': 'pair_style sw/mod\npair_coeff * * Si.sw Si Si',
 };
+/** GPL-ported styles on the threads (lazyStyles.ts GPL_THREADED_PAIRS), in the Si box. */
+const GPL_STYLES: Record<string, string> = {
+  sw: 'pair_style sw\npair_coeff * * Si.sw Si Si',
+};
 const POTENTIALS = ['Cu_u3.eam', 'CuNi.eam.alloy', 'AlFe_mm.eam.fs', 'Si.tersoff', 'Si.tersoff.mod', 'Si.tersoff.modc', 'SiC.tersoff.zbl', 'Si.sw'];
 const potential = (f: string): string => readFileSync(join(__dirname, '..', 'third_party', 'lammps', 'potentials', f), 'utf8');
 
 interface Outcome { rows: Record<string, number>[]; x: number[]; threadedComputes: number }
 
-const runCase = async (pairLines: string, threads: number, extra = '', box = BOX): Promise<Outcome> => {
+const runCase = async (pairLines: string, threads: number, extra = '', box = BOX, load = false): Promise<Outcome> => {
   const workers: InProcessWorker[] = [];
-  const backend = threads > 1 ? new SharedThreadsBackend(threads, () => { const w = new InProcessWorker(); workers.push(w); return w; }) : undefined;
+  // load: the workers build their styles as the browser's pair worker does, and the input runs a run 0 first
+  const backend = threads > 1 ? new SharedThreadsBackend(threads, () => { const w = new InProcessWorker(load); workers.push(w); return w; }) : undefined;
   if (backend) backend.pairThreads.minAtoms = 1;
   const events: EngineEvent[] = [];
   const files = new Map<string, string>();
@@ -150,7 +159,11 @@ thermo_style custom step pe evdwl ecoul elong press pxx pyz
 thermo_modify format float %.16g
 thermo 10
 ${extra}
-run 30
+${load ? 'run 0' : ''}`);
+  // a GPL port reaches the workers after the engine thread has loaded its registry module (asynchronously): a run 0
+  // sends it, and a moment later every worker has built it
+  if (load) await new Promise((r) => setTimeout(r, 200));
+  await session.execute(`run 30
 write_dump all custom out.dump id x y z fx fy fz modify sort id format float %.17g
 `);
   const rows = events.filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo').map((e) => e.row);
@@ -239,10 +252,22 @@ describe('shared-memory pair threads: every threaded style matches the single-th
       expectClose(serial, threaded, 1e-10);
     });
   }
+  // the GPL-ported styles (lazyStyles.ts GPL_THREADED_PAIRS): the worker loads them through the lazy registries, and
+  // gets the neighbors in native order and the atom IDs (Pair.threadNeighbors, threadTags)
+  for (const [name, lines] of Object.entries(GPL_STYLES)) {
+    it(`${name} (GPL port, full list in native order, atom IDs)`, async () => {
+      const serial = await runCase(lines, 1, '', SI_BOX, true);
+      const threaded = await runCase(lines, 4, '', SI_BOX, true);
+      expect(threaded.threadedComputes).toBeGreaterThan(0);
+      expectClose(serial, threaded, 1e-10);
+    });
+  }
   it('covers every style of THREADED_PAIRS', () => {
     expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES), ...Object.keys(THREEBODY_STYLES)].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
-    // the engine side knows the styles by name only (threadedPairs.ts), the worker by factory (threadedPairFactories.ts)
-    expect([...THREADED_NAMES].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
+    expect(Object.keys(GPL_STYLES).sort()).toEqual([...GPL_THREADED_PAIRS].sort());
+    // the engine side knows the styles by name only (threadedPairs.ts), the worker by factory (threadedPairFactories.ts,
+    // and for the GPL ports the lazy registries)
+    expect([...THREADED_NAMES].sort()).toEqual([...Object.keys(THREADED_PAIRS), ...GPL_THREADED_PAIRS].sort());
   });
 });
 

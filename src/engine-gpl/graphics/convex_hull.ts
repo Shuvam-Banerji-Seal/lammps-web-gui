@@ -7,8 +7,15 @@
  * License, version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * The output is a list of triangles with their normals and, per vertex, the index of the input point it came from
- * (the caller maps that index to an atom). The C++ keeps the faces of its std::map in key order; the map is kept in
- * the same order here, so the triangle order is the C++ order as well.
+ * (the caller maps that index to an atom). The C++ keeps the faces of its std::map in key order; the faces are sorted
+ * by the same key (the sorted vertex triple) here, so the triangle order is the C++ order as well.
+ *
+ * The tetrahedra are flat typed arrays, and the valid ones are listed in creation order (the bad ones of each insertion
+ * are dropped from the list in the same pass that finds them): the C++ scans its vector in index order and skips the
+ * invalid entries, so the valid tetrahedra are visited in the same order and every result is the same. The in-sphere
+ * test is written out with the same operations as vec3dot of the difference. (The arrays of small Vec3 objects and the
+ * string face keys, re-split at every comparison of the key sort, made the Delaunay step of the rhodopsin
+ * graphics/chunk example take about 30 s.)
  */
 import type { Vec3 } from './objects';
 
@@ -71,27 +78,71 @@ function circumsphere(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3): { center: Vec3; r
   return { center: add(rel, p0), radiusSq: dot(rel, rel) };
 }
 
-/** The sorted triple used as the key of the C++ std::map of faces. */
-function sortedKey(v: [number, number, number]): string {
-  const s = [...v].sort((x, y) => x - y);
-  return `${s[0]},${s[1]},${s[2]}`;
+/** A face of the C++ std::map of faces: its first-seen vertex order, its count, and the sorted triple (the map key). */
+interface FaceCount {
+  v0: number; v1: number; v2: number;
+  s0: number; s1: number; s2: number;
+  count: number;
 }
 
-/** Keys iterated in std::map order: lexicographic on the sorted triple. */
-function inKeyOrder<T>(m: Map<string, T>): Array<[string, T]> {
-  return [...m.entries()].sort((a, b) => {
-    const ka = a[0].split(',').map(Number);
-    const kb = b[0].split(',').map(Number);
-    for (let k = 0; k < 3; k++) if (ka[k] !== kb[k]) return ka[k] - kb[k];
-    return 0;
-  });
+/**
+ * The faces seen while scanning tetrahedra, keyed by their sorted vertex triple: a number s0 N^2 + s1 N + s2 while that
+ * is exact in a double (N = the number of points plus the 4 super vertices), else the string of the triple.
+ */
+class FaceTable {
+  private readonly map = new Map<number | string, FaceCount>();
+  constructor(private readonly n: number) {}
+  private readonly exact = this.n * this.n * this.n < 2 ** 53;
+
+  clear(): void { this.map.clear(); }
+
+  add(a: number, b: number, c: number): FaceCount {
+    // the sorted triple
+    let s0 = a, s1 = b, s2 = c, t: number;
+    if (s0 > s1) { t = s0; s0 = s1; s1 = t; }
+    if (s1 > s2) { t = s1; s1 = s2; s2 = t; }
+    if (s0 > s1) { t = s0; s0 = s1; s1 = t; }
+    const key = this.exact ? (s0 * this.n + s1) * this.n + s2 : `${s0},${s1},${s2}`;
+    const found = this.map.get(key);
+    if (found) { found.count++; return found; }
+    const f: FaceCount = { v0: a, v1: b, v2: c, s0, s1, s2, count: 1 };
+    this.map.set(key, f);
+    return f;
+  }
+
+  /** The faces seen once, in std::map order (lexicographic on the sorted triple). */
+  singles(): FaceCount[] {
+    const out: FaceCount[] = [];
+    for (const f of this.map.values()) if (f.count === 1) out.push(f);
+    out.sort((x, y) => (x.s0 - y.s0) || (x.s1 - y.s1) || (x.s2 - y.s2));
+    return out;
+  }
 }
 
-interface Tet {
-  v: [number, number, number, number];
-  cc: Vec3;
-  crSq: number;
-  valid: boolean;
+/** The tetrahedra: vertices, circumcentres and squared radii by index, and the valid ones in creation order. */
+class TetStore {
+  v = new Int32Array(0);
+  cc = new Float64Array(0);
+  crSq = new Float64Array(0);
+  count = 0;
+  active = new Int32Array(0);
+  nactive = 0;
+  constructor(cap: number) { this.grow(Math.max(64, cap)); }
+
+  private grow(cap: number): void {
+    const v = new Int32Array(4 * cap), cc = new Float64Array(3 * cap), crSq = new Float64Array(cap), active = new Int32Array(cap);
+    v.set(this.v); cc.set(this.cc); crSq.set(this.crSq); active.set(this.active.subarray(0, this.nactive));
+    this.v = v; this.cc = cc; this.crSq = crSq; this.active = active;
+  }
+
+  add(v0: number, v1: number, v2: number, v3: number, cx: number, cy: number, cz: number, r: number): void {
+    if (this.count === this.crSq.length) this.grow(2 * this.count);
+    const t = this.count++;
+    this.v[4 * t] = v0; this.v[4 * t + 1] = v1; this.v[4 * t + 2] = v2; this.v[4 * t + 3] = v3;
+    this.cc[3 * t] = cx; this.cc[3 * t + 1] = cy; this.cc[3 * t + 2] = cz;
+    this.crSq[t] = r;
+    this.active[this.nactive++] = t;
+  }
 }
 
 /** Build the triangulated surface of a point cloud (ConvexHullObj::build). */
@@ -207,7 +258,7 @@ export function buildConvexHull(points: Vec3[], smooth: boolean, alpha: number):
   const sv2 = npts + 2;
   const sv3 = npts + 3;
 
-  const tets: Tet[] = [];
+  const tets = new TetStore(8 * npts);
   {
     const v: [number, number, number, number] = [sv0, sv1, sv2, sv3];
     const ab = sub(pts[sv1], pts[sv0]);
@@ -215,7 +266,8 @@ export function buildConvexHull(points: Vec3[], smooth: boolean, alpha: number):
     const ad = sub(pts[sv3], pts[sv0]);
     if (dot(ab, cross(ac, ad)) < 0.0) [v[2], v[3]] = [v[3], v[2]];
     const cs = circumsphere(pts[v[0]], pts[v[1]], pts[v[2]], pts[v[3]]);
-    tets.push({ v, cc: cs ? cs.center : [0, 0, 0], crSq: cs ? cs.radiusSq : 0, valid: true });
+    const c: Vec3 = cs ? cs.center : [0, 0, 0];
+    tets.add(v[0], v[1], v[2], v[3], c[0], c[1], c[2], cs ? cs.radiusSq : 0);
   }
 
   const INSPHERE_REL_EPS = 1.0e-7;
@@ -228,58 +280,60 @@ export function buildConvexHull(points: Vec3[], smooth: boolean, alpha: number):
     [order[j], order[k]] = [order[k], order[j]];
   }
 
+  const faces0 = new FaceTable(npts + 4);
+  const bad: number[] = [];
   for (let idx = 0; idx < npts; idx++) {
     const i = order[idx];
     const p = pts[i];
-    const bad: number[] = [];
-    for (let t = 0; t < tets.length; t++) {
-      const tet = tets[t];
-      if (!tet.valid) continue;
-      const diff = sub(p, tet.cc);
-      if (dot(diff, diff) < tet.crSq * (1.0 + INSPHERE_REL_EPS)) bad.push(t);
+    const px = p[0], py = p[1], pz = p[2];
+    // the tetrahedra whose circumsphere holds the point (in index order), dropped from the valid list as found
+    bad.length = 0;
+    const act = tets.active, tcc = tets.cc, tcr = tets.crSq;
+    const na = tets.nactive;
+    let w = 0;
+    for (let a = 0; a < na; a++) {
+      const t = act[a];
+      const dx = px - tcc[3 * t], dy = py - tcc[3 * t + 1], dz = pz - tcc[3 * t + 2];
+      if (dx * dx + dy * dy + dz * dz < tcr[t] * (1.0 + INSPHERE_REL_EPS)) bad.push(t);
+      else act[w++] = t;
     }
+    tets.nactive = w;
     if (bad.length === 0) continue;
 
     // boundary faces of the cavity: faces that occur once among the bad tetrahedra
-    const faceMap = new Map<string, { v: [number, number, number]; count: number }>();
-    for (const tIdx of bad) {
-      const tet = tets[tIdx];
+    faces0.clear();
+    const tv = tets.v;
+    for (const t of bad) {
       for (let skip = 0; skip < 4; skip++) {
-        const fv: [number, number, number] = [0, 0, 0];
-        let k = 0;
-        for (let j = 0; j < 4; j++) if (j !== skip) fv[k++] = tet.v[j];
-        const key = sortedKey(fv);
-        const found = faceMap.get(key);
-        if (found) found.count++;
-        else faceMap.set(key, { v: [fv[0], fv[1], fv[2]], count: 1 });
+        const fv: number[] = [];
+        for (let j = 0; j < 4; j++) if (j !== skip) fv.push(tv[4 * t + j]);
+        faces0.add(fv[0], fv[1], fv[2]);
       }
     }
-    for (const tIdx of bad) tets[tIdx].valid = false;
-    for (const [, cf] of inKeyOrder(faceMap)) {
-      if (cf.count !== 1) continue;
-      const v: [number, number, number, number] = [cf.v[0], cf.v[1], cf.v[2], i];
+    for (const cf of faces0.singles()) {
+      const v: [number, number, number, number] = [cf.v0, cf.v1, cf.v2, i];
       const ab = sub(pts[v[1]], pts[v[0]]);
       const ac = sub(pts[v[2]], pts[v[0]]);
       const ad = sub(pts[v[3]], pts[v[0]]);
       if (dot(ab, cross(ac, ad)) < 0.0) [v[0], v[1]] = [v[1], v[0]];
       const cs = circumsphere(pts[v[0]], pts[v[1]], pts[v[2]], pts[v[3]]);
-      if (cs) tets.push({ v, cc: cs.center, crSq: cs.radiusSq, valid: true });
+      if (cs) tets.add(v[0], v[1], v[2], v[3], cs.center[0], cs.center[1], cs.center[2], cs.radiusSq);
       else {
         const cc = scale(0.25, add(add(pts[v[0]], pts[v[1]]), add(pts[v[2]], pts[v[3]])));
-        tets.push({ v, cc, crSq: 1.0e30, valid: true });
+        tets.add(v[0], v[1], v[2], v[3], cc[0], cc[1], cc[2], 1.0e30);
       }
     }
   }
 
   // drop tetrahedra that touch the super-tetrahedron
-  for (const tet of tets) {
-    if (!tet.valid) continue;
-    for (let k = 0; k < 4; k++) {
-      if (tet.v[k] >= npts) {
-        tet.valid = false;
-        break;
-      }
+  {
+    const act = tets.active, tv = tets.v;
+    let w = 0;
+    for (let a = 0; a < tets.nactive; a++) {
+      const t = act[a];
+      if (tv[4 * t] < npts && tv[4 * t + 1] < npts && tv[4 * t + 2] < npts && tv[4 * t + 3] < npts) act[w++] = t;
     }
+    tets.nactive = w;
   }
 
   // === alpha ===
@@ -328,27 +382,23 @@ export function buildConvexHull(points: Vec3[], smooth: boolean, alpha: number):
 }
 
 /** The alpha-interior tetrahedra (or all of them when alphaSq is Infinity) and their outward boundary faces. */
-function boundaryFaces(tets: Tet[], pts: Vec3[], alphaSq: number): Array<[number, number, number]> {
-  const faceMap = new Map<string, { v: [number, number, number]; count: number }>();
-  for (const tet of tets) {
-    if (!tet.valid) continue;
-    if (tet.crSq > alphaSq) continue;
+function boundaryFaces(tets: TetStore, pts: Vec3[], alphaSq: number): Array<[number, number, number]> {
+  const table = new FaceTable(pts.length);
+  const tv = tets.v;
+  for (let a = 0; a < tets.nactive; a++) {
+    const t = tets.active[a];
+    if (tets.crSq[t] > alphaSq) continue;
     for (let skip = 0; skip < 4; skip++) {
       const fv: [number, number, number] = [0, 0, 0];
       let k = 0;
-      for (let j = 0; j < 4; j++) if (j !== skip) fv[k++] = tet.v[j];
+      for (let j = 0; j < 4; j++) if (j !== skip) fv[k++] = tv[4 * t + j];
       const fn = cross(sub(pts[fv[1]], pts[fv[0]]), sub(pts[fv[2]], pts[fv[0]]));
-      const toOpp = sub(pts[tet.v[skip]], pts[fv[0]]);
+      const toOpp = sub(pts[tv[4 * t + skip]], pts[fv[0]]);
       if (dot(fn, toOpp) > 0.0) [fv[1], fv[2]] = [fv[2], fv[1]];
-      const key = sortedKey(fv);
-      const found = faceMap.get(key);
-      if (found) found.count++;
-      else faceMap.set(key, { v: [fv[0], fv[1], fv[2]], count: 1 });
+      table.add(fv[0], fv[1], fv[2]);
     }
   }
-  const faces: Array<[number, number, number]> = [];
-  for (const [, af] of inKeyOrder(faceMap)) if (af.count === 1) faces.push(af.v);
-  return faces;
+  return table.singles().map((f): [number, number, number] => [f.v0, f.v1, f.v2]);
 }
 
 /** Mean of the nearest-neighbour distances (brute force below 64 points, a 3x3x3 cell search above). */

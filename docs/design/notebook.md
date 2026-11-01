@@ -194,6 +194,19 @@ interface ForceBackend {
   engine's thermo over 100 steps to fp32 (pe -6372.39 vs -6372.38 at step 0, the other energy
   terms to all printed digits). `fix adapt` keeps a run on the CPU, because the backends upload
   the pair coefficients once.
+- **WebGPU EAM** (`gpu/eamSpec.ts`, `gpu/eamKernels.ts`, `webgpuForces.ts computeEAM`): `eam`,
+  `eam/alloy` and `eam/fs` (not as hybrid sub-styles, no molecular topology). The style's own
+  density and r*phi tables after its init (the seven coefficients per grid interval its loops
+  read, `eamKernel.ts`) go up once as f32, table offsets as f32 integers (as u32 bit patterns
+  they would be denormals, which a GPU may flush). A step is two passes, each atom summing over
+  its cell neighbourhood without atomics: the densities, read back; F'(rho) and the embedding
+  energy on the CPU in fp64 with the style's own embedding spline (`eam.ts embedOwned`, the loop
+  `embed()` runs); F' up as f32 bits after the cell data; then the forces, pair energies and
+  virial. `eamDensity` and `eamPair` are the kernels' arithmetic in fp64
+  (`tests/engineGpuEam.test.ts` checks them against the CPU styles and runs 30 steps through the
+  loop). In Chromium a 4000-atom CuNi eam/alloy run matched the CPU engine's thermo over 100
+  steps (pe -15872.5 both at step 0, press -9173.83 vs -9173.9). Two round trips per step; not
+  resident.
 - **WebGPU resident stepping**, v2 (`src/engine/gpu/resident.ts`): for runs
   whose only fixes are `nve` (plus `enforce2d`), whole velocity-Verlet steps
   stay on the GPU — half kick + drift + wrap, cell list rebuilt on the GPU

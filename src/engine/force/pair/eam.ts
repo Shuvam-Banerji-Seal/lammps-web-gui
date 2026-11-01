@@ -503,6 +503,38 @@ export abstract class PairEAMBase extends Pair {
   }
 
   /**
+   * F'(rho) and the embedding energy of atoms 0 .. n-1 (native compute_embedding, as embed() runs it on the owned atoms;
+   * the GPU path of run/accel.ts calls it with the densities its kernel summed): fp[i] set, the energy returned (and
+   * added to eatom when given).
+   */
+  embedOwned(type: ArrayLike<number>, rho: ArrayLike<number>, n: number, fp: Float64Array, eatom: Float64Array | null = null): number {
+    const nt = this.ntypes + 1;
+    let evdwl = 0;
+    for (let i = 0; i < n; i++) {
+      // embedding_index: p = rho rdrho + 1, m clamped to [1, nrho - 1], p -= m clamped to 1 from above only
+      const emb = this.fTab[type[i]];
+      const sp = emb.sp;
+      let p = rho[i] * sp.rdx + 1.0;
+      let m = Math.trunc(p);
+      if (m > sp.n - 1) m = sp.n - 1;
+      if (m < 1) m = 1;
+      p -= m;
+      if (p > 1.0) p = 1.0;
+      const c = sp.coef, o = 7 * (m - 1);
+      fp[i] = (c[o] * p + c[o + 1]) * p + c[o + 2];
+      let phi = ((c[o + 3] * p + c[o + 4]) * p + c[o + 5]) * p + c[o + 6];
+      if (rho[i] > emb.rhoMax) phi += fp[i] * (rho[i] - emb.rhoMax);
+      phi *= this.scale[type[i] * nt + type[i]];
+      evdwl += phi;
+      if (eatom) eatom[i] += phi;
+    }
+    return evdwl;
+  }
+
+  /** The density and r*phi tables, cutoffs and scale factors as the loops read them (the GPU path packs them, gpu/eamSpec.ts). */
+  gpuTables(): EAMKernelTables { return this.kernelTables(); }
+
+  /**
    * pair_write (src/pair.cpp Pair::write_file at b332f28) swaps in a dummy F' of zeros for single(); returns the restore.
    */
   swapEamFp(fp: Float64Array): () => void {
@@ -527,30 +559,8 @@ export abstract class PairEAMBase extends Pair {
    * ghosts (forward communication).
    */
   embed(pc: PairCompute, rho: Float64Array, fp: Float64Array): void {
-    const { type } = pc;
-    const nlocal = pc.nlocal;
-    const nt = this.ntypes + 1;
     pc.nb.reverseAddGhosts(rho, 1);
-    const eatom = pc.eatom;
-    let evdwl = 0;
-    for (let i = 0; i < nlocal; i++) {
-      // embedding_index: p = rho rdrho + 1, m clamped to [1, nrho - 1], p -= m clamped to 1 from above only
-      const emb = this.fTab[type[i]];
-      const sp = emb.sp;
-      let p = rho[i] * sp.rdx + 1.0;
-      let m = Math.trunc(p);
-      if (m > sp.n - 1) m = sp.n - 1;
-      if (m < 1) m = 1;
-      p -= m;
-      if (p > 1.0) p = 1.0;
-      const c = sp.coef, o = 7 * (m - 1);
-      fp[i] = (c[o] * p + c[o + 1]) * p + c[o + 2];
-      let phi = ((c[o + 3] * p + c[o + 4]) * p + c[o + 5]) * p + c[o + 6];
-      if (rho[i] > emb.rhoMax) phi += fp[i] * (rho[i] - emb.rhoMax);
-      phi *= this.scale[type[i] * nt + type[i]];
-      evdwl += phi;
-      if (eatom) eatom[i] += phi;
-    }
+    const evdwl = this.embedOwned(pc.type, rho, pc.nlocal, fp, pc.eatom);
     pc.nb.forwardCopy(fp, 1);
     pc.acc.evdwl += evdwl;
     // the arrays fix pair reads, also when the shared-memory threads ran the two loops (cpu/pairThreads.ts)

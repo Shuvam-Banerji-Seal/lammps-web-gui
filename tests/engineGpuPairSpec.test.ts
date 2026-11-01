@@ -150,6 +150,6 @@ describe('GPU pair-style specs against the CPU styles', () => {
     const long = await (async () => accelerator(await systemFor('pair_style buck/coul/cut 6.0 10.5\npair_coeff * * 20000.0 0.3 120.0\nfix 1 all nve'), gpuRes))();
     expect(long.reason).toBe('a box shorter than 2 pair cutoffs along an edge');
     const expand = await withFix('pair_style lj/expand 6.0\npair_coeff * * 0.2 3.0 0.5');
-    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born, coul\/long, lj\/cut\/coul\/long, lj\/charmm\/coul\/long, lj\/class2, lj\/class2\/coul\/cut, lj\/class2\/coul\/long, buck\/coul\/long, born\/coul\/long, table, eam, eam\/alloy, eam\/fs, sw, sw\/mod only\)/);
+    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born, coul\/long, lj\/cut\/coul\/long, lj\/charmm\/coul\/long, lj\/class2, lj\/class2\/coul\/cut, lj\/class2\/coul\/long, buck\/coul\/long, born\/coul\/long, table, eam, eam\/alloy, eam\/fs, sw, sw\/mod, tersoff only\)/);
   });
 });

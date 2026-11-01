@@ -5,7 +5,7 @@ import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, SpecialSettings } from '../neighbor';
 import { buildAtomMap, buildSpecial, filterTopo, hasCharge, type SpecialList, APIP_F_CONST_LAMBDA, APIP_F_DYN_LAMBDA, APIP_LAMBDA_REQUIRED } from '../atoms';
-import { BOND_REMOVED, clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type StyleContext } from './types';
+import { BOND_REMOVED, clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type PairKernels, type StyleContext } from './types';
 import { PairHybrid } from './pair/hybrid';
 import { checkKspacePair } from './kspaceCheck';
 import { SMD_DESPH } from '../smd';
@@ -99,6 +99,9 @@ export class ForceField {
   readonly timer = new RunTimer();
   pairThreads: {
     run(pair: Pair, pc: PairCompute, slot?: number): boolean; readonly calls: number;
+    /** the threads for the loops of a style computed here (Pair.threadKernel), or null; and how many such loops ran */
+    kernelsFor?(pair: Pair, slot?: number): PairKernels | null;
+    readonly kernelCalls?: number;
     /** loads the threads' module of each GPL-ported style among `names` before a run (cpu/pairThreads.ts) */
     preload?(names: readonly string[]): Promise<void>;
     /** for the resource monitor: the thread count, the size threshold, and why the last call stayed on one thread */
@@ -438,7 +441,11 @@ export class ForceField {
         const threads = this.pairThreads;
         this.pair.subRunner = threads ? (style, spc, k) => threads.run(style, spc, 1 + k) : null;
         try { this.pair.compute(pc); } finally { this.pair.subRunner = null; }
-      } else if (!this.pairThreads?.run(this.pair, pc)) this.pair.compute(pc);
+      } else if (!this.pairThreads?.run(this.pair, pc)) {
+        // computed here: a style whose own loops can share the threads gets them (PairCompute.kernels)
+        pc.kernels = this.pairThreads?.kernelsFor?.(this.pair) ?? null;
+        this.pair.compute(pc);
+      }
       if (this.pair.virialFdotr && !pc.fdotrDone) {
         const xa = nb.xall, fa = nb.fall;
         let v0 = 0, v1 = 0, v2 = 0, v3 = 0, v4 = 0, v5 = 0;

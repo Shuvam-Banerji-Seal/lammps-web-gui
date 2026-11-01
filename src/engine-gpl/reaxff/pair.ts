@@ -11,10 +11,10 @@
  * ported. Compute pe/atom and stress/atom are tallied per atom at the native tally calls (tally.ts). The memory keywords safezone, mincap and
  * minhbonds only size LAMMPS's buffers and do not change results, so they are accepted.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type PairKernels, type StyleContext } from '../../engine/force/types';
 import { inumeric, logical, parseNum } from '../../engine/force/util';
 import {
-  allocBondList, buildFarList, computeBondOrders, computeTotalForce, ensureHBondList, initForces,
+  allocBondList, bondOrderTerms as bondOrderTermsOf, buildFarList, computeBondOrders, computeTotalForce, ensureHBondList, initForces,
   newEnergies, regionCounts, resetHydrogenIndex, resetWorkspace, taperCoefficients, workspaceFor,
   type RxSystem,
 } from './core';
@@ -28,6 +28,34 @@ import { nativeOrder } from '../../engine/atoms';
 const REAX_MIN_CAP = 50;
 
 /** pair_style reaxff (PairReaxFF). Many-body: builds its own far neighbor lists from the owned and ghost positions. */
+/**
+ * The members of a PairReaxFF that are large or rebuilt from the run (the last evaluation's lists, the native order,
+ * the vdW/Coulomb tables, the bond-order scratch): kept here rather than on the instance, so the copy the pair threads
+ * rebuild from the instance's cloned fields (cpu/pairThreadsCore.ts) does not carry them.
+ */
+interface ReaxState {
+  lastBonds: RxSystem | null;
+  nativeInfo: NativeFarOrder | null;
+  nativeOrderRef: Int32Array | null;
+  lookup: LookupTables | null;
+  /** bondOrderTerms inputs and results when there are no threads: d, out (f64) and the type pair (i32) of each item */
+  bopF64: Float64Array[];
+  bopI32: Int32Array[];
+  bopIdx: Int32Array;
+}
+const STATE = new WeakMap<object, ReaxState>();
+const stateOf = (p: object): ReaxState => {
+  let st = STATE.get(p);
+  if (!st) {
+    st = { lastBonds: null, nativeInfo: null, nativeOrderRef: null, lookup: null, bopF64: [new Float64Array(0), new Float64Array(0)], bopI32: [new Int32Array(0)], bopIdx: new Int32Array(0) };
+    STATE.set(p, st);
+  }
+  return st;
+};
+
+/** Below this many pairs within the bond cutoff the bond-order terms are computed here rather than on the threads. */
+const MIN_THREADED_BOP = 4096;
+
 export class PairReaxFF extends Pair {
   readonly name = 'reaxff';
   manybody = true;
@@ -49,7 +77,9 @@ export class PairReaxFF extends Pair {
   /** element index (into param.sbp) per LAMMPS atom type; -1 for NULL. */
   protected map = new Int32Array(0);
   protected Tap: Float64Array<ArrayBufferLike> = new Float64Array(8);
-  protected lookup: LookupTables | null = null;
+  /** The vdW/Coulomb tables of control tabulate (kept outside the instance, see ReaxState). */
+  protected get lookup(): LookupTables | null { return stateOf(this).lookup; }
+  protected set lookup(v: LookupTables | null) { stateOf(this).lookup = v; }
   protected lookupKey = '';
   protected cutmax = 0;
   /** LAMMPS pvector: the 14 energy terms of the last evaluation (compute pair reaxff). */
@@ -57,11 +87,77 @@ export class PairReaxFF extends Pair {
   /** Set by fix reaxff/bonds and fix reaxff/species: keep the bond list and the native order of the last evaluation. */
   nativeWanted = false;
   /** The bond list of the last evaluation (with the state the output fixes read); null before the first one. */
-  lastBonds: RxSystem | null = null;
+  get lastBonds(): RxSystem | null { return stateOf(this).lastBonds; }
+  set lastBonds(v: RxSystem | null) { stateOf(this).lastBonds = v; }
   /** Native far-list order of the current neighbor build (computed when nativeWanted). */
-  nativeInfo: NativeFarOrder | null = null;
+  get nativeInfo(): NativeFarOrder | null { return stateOf(this).nativeInfo; }
+  set nativeInfo(v: NativeFarOrder | null) { stateOf(this).nativeInfo = v; }
   private nativeBuild = -1;
-  private nativeOrderRef: Int32Array | null = null;
+  private get nativeOrderRef(): Int32Array | null { return stateOf(this).nativeOrderRef; }
+  private set nativeOrderRef(v: Int32Array | null) { stateOf(this).nativeOrderRef = v; }
+
+  /**
+   * The uncorrected bond-order terms (core.ts bondOrderTerms) of every far pair initForces gives to BOp (both types
+   * mapped, d <= bond_cut), on the pair threads when there are (threadKernel 'bop'), else here; the same values either
+   * way.
+   */
+  private bondOrderTerms(sys: RxSystem, kernels: PairKernels | null): { idx: Int32Array; out: Float64Array } {
+    const { far, type, N, param, ctrl } = sys;
+    const st = stateOf(this);
+    if (st.bopIdx.length < far.count) st.bopIdx = new Int32Array(Math.ceil(1.25 * far.count));
+    const idx = st.bopIdx;
+    let m = 0;
+    for (let i = 0; i < N; i++) {
+      if (type[i] < 0) {
+        for (let p = far.start[i]; p < far.end[i]; p++) idx[p] = -1;
+        continue;
+      }
+      for (let p = far.start[i]; p < far.end[i]; p++) {
+        idx[p] = far.d[p] <= ctrl.bondCut && type[far.nbr[p]] >= 0 ? m++ : -1;
+      }
+    }
+    const shared = kernels && m >= MIN_THREADED_BOP ? kernels.arrays([m, 6 * m], [m]) : null;
+    let f64: Float64Array[], i32: Int32Array[];
+    if (shared) {
+      ({ f64, i32 } = shared);
+    } else {
+      if (st.bopI32[0].length < m) {
+        const c = Math.ceil(1.25 * m);
+        st.bopF64 = [new Float64Array(c), new Float64Array(6 * c)];
+        st.bopI32 = [new Int32Array(c)];
+      }
+      f64 = st.bopF64;
+      i32 = st.bopI32;
+    }
+    const d = f64[0], tp = i32[0], nt = param.numAtomTypes;
+    for (let i = 0; i < N; i++) {
+      const ti = type[i];
+      if (ti < 0) continue;
+      for (let p = far.start[i]; p < far.end[i]; p++) {
+        const k = idx[p];
+        if (k < 0) continue;
+        d[k] = far.d[p];
+        tp[k] = ti * nt + type[far.nbr[p]];
+      }
+    }
+    const args = [ctrl.boCut];
+    if (!(shared && kernels!.run('bop', m, args))) this.threadKernel('bop', 0, m, f64, i32, args);
+    return { idx, out: f64[1] };
+  }
+
+  /** The loops the pair threads share (PairCompute.kernels): 'bop', the bond-order terms of items [i0, i1). */
+  threadKernel(name: string, i0: number, i1: number, f64: readonly Float64Array[], i32: readonly Int32Array[], args: readonly number[]): void {
+    if (name !== 'bop') throw new StyleError(`pair style reaxff has no threaded loop ${name}`);
+    const param = this.param;
+    if (!param) throw new StyleError('pair style reaxff has no force field');
+    const d = f64[0], out = f64[1], tp = i32[0], nt = param.numAtomTypes, boCut = args[0];
+    const sbp = param.sbp, tbp = param.tbp;
+    for (let k = i0; k < i1; k++) {
+      const t = tp[k];
+      const ti = (t / nt) | 0;
+      bondOrderTermsOf(d[k], sbp[ti], sbp[t - ti * nt], tbp[t], boCut, out, 6 * k);
+    }
+  }
 
   override allocate(ntypes: number): void {
     super.allocate(ntypes);
@@ -225,6 +321,7 @@ export class PairReaxFF extends Pair {
       pa: pc.eatom || pc.vatom ? { eatom: pc.eatom, vatom: pc.vatom } : null,
     };
     resetWorkspace(sys.ws);
+    sys.bop = this.bondOrderTerms(sys, pc.kernels ?? null);
     initForces(sys);
     computeBondOrders(sys);
     bondsTerm(sys);

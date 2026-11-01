@@ -88,6 +88,7 @@ const ResourceMonitor: React.FC<{
         </div>
       )}
       {perf?.path === 'serial' && perf.why && <p className={ct.muted}>One thread: {perf.why}.</p>}
+      {perf?.path === 'threads' && perf.why && <p className={ct.muted}>Partly threaded: {perf.why}.</p>}
       {heap && <p className={`mt-1 ${ct.muted}`}>Page memory {(heap.used / 2 ** 20).toFixed(0)} MB of {(heap.limit / 2 ** 20).toFixed(0)} MB</p>}
       {hints.length > 0 && (
         <ul className={`mt-1 list-disc pl-4 ${ct.muted}`}>{hints.map((h) => <li key={h}>{h}</li>)}</ul>

@@ -34,12 +34,21 @@ export const GPL_THREADED_PAIRS: readonly string[] = [
 ];
 
 /**
+ * The GPL-ported pair styles computed on the engine thread whose own loops the pair threads share (Pair.threadKernel,
+ * PairCompute.kernels; not in THREADED_NAMES): the workers load their factories as those of GPL_THREADED_PAIRS.
+ */
+export const GPL_KERNEL_PAIRS: readonly string[] = [
+  // reaxff: the uncorrected bond orders of every far pair within the bond cutoff (its loop 'bop')
+  'reaxff',
+];
+
+/**
  * The registry module of the GPL-ported pair styles for the pair threads (engine-gpl/registry/threaded_pairs.ts), loaded
  * on the engine thread: its factory for `name` and the module's own URL, which the pair worker imports (the worker's
  * bundle then holds no GPL code and none of this table), or null for a style it does not list.
  */
 export const loadGplThreadedPair = async (name: string): Promise<{ make: () => import('./force/types').Pair; url: string } | null> => {
-  if (!GPL_THREADED_PAIRS.includes(name)) return null;
+  if (!GPL_THREADED_PAIRS.includes(name) && !GPL_KERNEL_PAIRS.includes(name)) return null;
   const m = await import('../engine-gpl/registry/threaded_pairs');
   const make = (m.THREADED as Partial<Record<string, () => import('./force/types').Pair>>)[name];
   return make ? { make, url: m.MODULE_URL } : null;

@@ -487,6 +487,25 @@ thread and copied into the shared list) and the atom IDs (`Pair.threadTags`, a s
 worker has no `SimState` or `Neighbor`. Measured in Chromium (24-core Xeon), SW silicon with 4096 atoms, 200 steps:
 loop 3.13 s on one thread, 1.33 s on 8 (pair term 2.89 s and 1.14 s), the same thermo.
 
+A style computed on the engine thread can still share some of its own loops with the threads (`Pair.threadKernel`).
+`ForceField.compute` hands such a style `PairCompute.kernels` (`SharedPairThreads.kernelsFor`):
+- `arrays(f64Lens, i32Lens)` gives shared arrays, announced to the workers once with 'kbuffers' while they need not
+  grow;
+- `run(name, n, args)` sends 'kernel': every thread, the engine thread included, claims chunks of the items `[0, n)`
+  and calls `threadKernel(name, i0, i1, ...)` on its copy of the style. It returns false, with nothing done, until the
+  workers have started and built that copy (`sendPair`, as for a threaded style); the style then runs the same loop
+  itself over every item, so both ways give the same values.
+
+These styles are listed in `GPL_KERNEL_PAIRS`, not in `GPL_THREADED_PAIRS` or `THREADED_NAMES`. The workers load them
+from the same GPL registry. The run log and the resource monitor say "some of its loops ran on the N threads". `reaxff`
+is the first: before `initForces`, it compacts the far pairs that BOp may make into bonds (both types mapped, d <=
+bond_cut), and its loop 'bop' computes their uncorrected sigma, pi and pi-pi bond orders and exponents
+(`core.ts bondOrderTerms`: three glibc-exact pow and three exp per pair). BOp then reads them. It keeps its last bond
+list, native order and tables outside its fields, so the workers' copy is small. Measured in Chromium (24 cores, a
+loaded machine), examples/reaxff in.reaxff.tatb (384 atoms, 152636 such pairs per evaluation, 25 steps): 69 ms per
+evaluation on one thread, 19 ms on 8 once the workers' code is warm. The loop went from 7.7 to 7.0 s, and every
+thermo row was the same as on one thread (`tests/engineReaxffThreads.test.ts`: bit for bit).
+
 The full-list many-body styles `snap` (chemflag 0 and 1), `meam/spline`, `meam/sw/spline` and `vashishta` run on the
 threads too: each row adds its energy (SNAP's self term included) and forces to its own atoms only, so a thread runs
 the rows `[ilo, inum)` of its chunk. SNAP keeps its lazily built Wigner tables and chemflag engine outside its fields,

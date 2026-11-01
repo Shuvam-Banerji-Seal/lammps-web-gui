@@ -359,7 +359,7 @@ export const emitThermoRow = (sys: System): number => {
  * GPU, or the lj/cut CPU threads of cpu/parallel.ts), the general engine's pair threads when its last interval used them,
  * else one thread and why.
  */
-const computePath = (sys: System, accel: Accel | null, threaded: boolean):
+const computePath = (sys: System, accel: Accel | null, threaded: boolean, partly = false):
   { path: 'gpu' | 'threads' | 'serial'; threads: number; resident: boolean; why: string | null } => {
   if (accel) {
     if (accel.backend.kind === 'webgpu') return { path: 'gpu', threads: 1, resident: accel.resident, why: null };
@@ -368,6 +368,8 @@ const computePath = (sys: System, accel: Accel | null, threaded: boolean):
   }
   const pt = sys.ff.pairThreads;
   if (pt && threaded) return { path: 'threads', threads: pt.threads, resident: false, why: null };
+  // a style computed on the engine thread whose own loops used the threads (Pair.threadKernel)
+  if (pt && partly) return { path: 'threads', threads: pt.threads, resident: false, why: partlyWhy(sys) };
   const serial = (why: string | null) => ({ path: 'serial' as const, threads: 1, resident: false, why });
   const name = sys.ff.pair?.name ?? 'none';
   if (!pt) {
@@ -382,6 +384,10 @@ const computePath = (sys: System, accel: Accel | null, threaded: boolean):
     default: return serial(sys.ff.pair ? null : 'no pair style');
   }
 };
+
+/** A style computed on the engine thread that ran some of its loops on the threads (Pair.threadKernel). */
+const partlyWhy = (sys: System): string =>
+  `pair style ${sys.ff.pair?.name ?? 'none'} runs on the engine thread; some of its loops ran on the ${sys.ff.pairThreads?.threads ?? 1} threads`;
 
 /**
  * Loads the pair threads' module of every GPL-ported pair style in use (the style, or each hybrid sub-style) before a
@@ -595,7 +601,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   };
   startRestarts(sys);
   // run speed for the resource monitor: steps per second over the last ~0.5 s of wall time
-  const perf = { t: performance.now(), step: first, calls: sys.ff.pairThreads?.calls ?? 0 };
+  const perf = { t: performance.now(), step: first, calls: sys.ff.pairThreads?.calls ?? 0, kcalls: sys.ff.pairThreads?.kernelCalls ?? 0 };
   let accel: Accel | null = null;
   const emitPerf = (step: number, force = false) => {
     const now = performance.now();
@@ -603,11 +609,12 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     const dtWall = (now - perf.t) / 1000;
     if (dtWall <= 0 || step === perf.step) return;
     const calls = sys.ff.pairThreads?.calls ?? 0;
+    const kcalls = sys.ff.pairThreads?.kernelCalls ?? 0;
     sys.io.emit({
       kind: 'perf', step, atoms: s.n, stepsPerSec: (step - perf.step) / dtWall,
-      elapsed: (now - sys.run.t0) / 1000, ...computePath(sys, accel, calls > perf.calls),
+      elapsed: (now - sys.run.t0) / 1000, ...computePath(sys, accel, calls > perf.calls, kcalls > perf.kcalls),
     });
-    perf.t = now; perf.step = step; perf.calls = calls;
+    perf.t = now; perf.step = step; perf.calls = calls; perf.kcalls = kcalls;
   };
   const afterStep = (step: number) => {
     emitPerf(step);
@@ -627,6 +634,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   if (reason) sys.log(`${session.backendLabel}: this run uses the general fp64 CPU engine (${reason})`);
   if (!accel) await preloadThreadedPairs(sys);
   const threadCalls0 = sys.ff.pairThreads?.calls ?? 0;
+  const kernelCalls0 = sys.ff.pairThreads?.kernelCalls ?? 0;
   const taken = accel
     ? await runAccelerated(sys, n, accel, {
       cancelled: () => session.isCancelled,
@@ -662,10 +670,12 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   // the general engine names the shared-memory threads only when its pair term ran on them, and says why it did not
   // when it had them
   const threaded = (sys.ff.pairThreads?.calls ?? 0) > threadCalls0;
-  const label = accel || threaded ? session.backendLabel : 'CPU · fp64';
-  const single = !accel && !threaded && taken > 0 && (sys.ff.pairThreads || session.forceBackend.kind === 'webgpu')
+  const partly = !accel && !threaded && (sys.ff.pairThreads?.kernelCalls ?? 0) > kernelCalls0;
+  const label = accel || threaded || partly ? session.backendLabel : 'CPU · fp64';
+  const single = !accel && !threaded && !partly && taken > 0 && (sys.ff.pairThreads || session.forceBackend.kind === 'webgpu')
     ? computePath(sys, null, false).why : null;
-  sys.log(`Loop time of ${seconds.toFixed(3)} s for ${taken} steps with ${s.n} atoms (${label}${single ? `; one thread: ${single}` : ''})`);
+  const note = partly ? `; ${partlyWhy(sys)}` : single ? `; one thread: ${single}` : '';
+  sys.log(`Loop time of ${seconds.toFixed(3)} s for ${taken} steps with ${s.n} atoms (${label}${note})`);
   // src/finish.cpp at b332f28: the "MPI task timing breakdown" follows the loop time when there were steps
   if (taken > 0) for (const line of sys.timer.breakdown(isMolecularStyle(s.atomStyle), !!sys.ff.kspace)) sys.log(line);
   sys.io.emit({ kind: 'done', steps: taken, seconds, backend: label });

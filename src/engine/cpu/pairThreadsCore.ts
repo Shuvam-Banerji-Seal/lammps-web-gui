@@ -75,7 +75,11 @@ export type PairThreadMessage =
    * One of PPPM's threaded loops: 1 the weights, 2 the field interpolation (chunks of atoms), 3 the charge spread (chunks
    * of mesh z planes), 4 one pass of the FFTs of the meshes in mask (bit k: ex, ey, ez, rho; chunks of lines of pass dim)
    */
-  | { type: 'pppm'; phase: 1 | 2 | 3 | 4; fft?: { mask: number; dim: number; sign: -1 | 1 } };
+  | { type: 'pppm'; phase: 1 | 2 | 3 | 4; fft?: { mask: number; dim: number; sign: -1 | 1 } }
+  /** the shared arrays of the style in a pair slot whose own loops the threads share (Pair.threadKernel) */
+  | { type: 'kbuffers'; slot: number; f64: SharedArrayBuffer[]; i32: SharedArrayBuffer[] }
+  /** one such loop: items [0, n) in nchunks chunks claimed from NEXT, each run by the slot's copy of the style */
+  | { type: 'kernel'; slot: number; name: string; n: number; nchunks: number; args: number[] };
 
 /** Atoms [lo, hi) of chunk c when n atoms are cut into nchunks chunks (PPPM's loops). */
 export const atomChunk = (n: number, nchunks: number, c: number): [number, number] => {
@@ -234,6 +238,8 @@ export class PairThreadWorker {
   private ctl: Int32Array | null = null;
   /** the pair copies by slot (MAX_PAIR_SLOTS) */
   private readonly pairs = new Map<number, Pair | null>();
+  /** per pair slot: the shared arrays of the style's loops ('kbuffers') */
+  private readonly kbufs = new Map<number, { f64: Float64Array[]; i32: Int32Array[] }>();
   private x: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private t: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private q: Float64Array<ArrayBufferLike> = new Float64Array(0);
@@ -291,6 +297,11 @@ export class PairThreadWorker {
       return;
     }
     if (m.type === 'pppm') { this.pppm_(m); return; }
+    if (m.type === 'kbuffers') {
+      this.kbufs.set(m.slot, { f64: m.f64.map((b) => new Float64Array(b)), i32: m.i32.map((b) => new Int32Array(b)) });
+      return;
+    }
+    if (m.type === 'kernel') { this.kernel_(m); return; }
     if (m.type === 'buffers') {
       this.x = new Float64Array(m.x); this.t = new Int32Array(m.t); this.q = new Float64Array(m.q);
       this.numneigh = new Int32Array(m.numneigh); this.firstneigh = new Int32Array(m.firstneigh); this.neighbors = new Int32Array(m.neighbors);
@@ -413,6 +424,26 @@ export class PairThreadWorker {
         else if (m.phase === 2) pppmField(g, i0, i1, this.pQ, this.pFirst as Int32Array, this.pWts as Float64Array, this.pEx as Float64Array, this.pEy as Float64Array, this.pEz as Float64Array, C, V, zForce, this.pOut as Float64Array, xs);
         else if (m.phase === 3) pppmSpread(g, n, this.pQ, this.pFirst as Int32Array, this.pWts as Float64Array, this.pRho as Float64Array, i0, i1, xs);
         else for (const a of fftMeshes) fftPassLines(a, g.nx, g.ny, g.nz, m.fft!.dim, i0, i1, m.fft!.sign);
+      }
+    } catch {
+      Atomics.add(ctl, FAILED, 1);
+    }
+    Atomics.add(ctl, DONE, 1);
+    Atomics.notify(ctl, DONE);
+  }
+
+  /** A loop of the style in a pair slot (Pair.threadKernel): chunks of items claimed from NEXT. */
+  private kernel_(m: Extract<PairThreadMessage, { type: 'kernel' }>): void {
+    const ctl = this.ctl!;
+    try {
+      const pair = this.pairs.get(m.slot);
+      const k = this.kbufs.get(m.slot);
+      if (!pair || !pair.threadKernel || !k) throw new Error(`no style or arrays in pair slot ${m.slot}`);
+      for (;;) {
+        const c = Atomics.add(ctl, NEXT, 1);
+        if (c >= m.nchunks) break;
+        const [i0, i1] = atomChunk(m.n, m.nchunks, c);
+        pair.threadKernel(m.name, i0, i1, k.f64, k.i32, m.args);
       }
     } catch {
       Atomics.add(ctl, FAILED, 1);

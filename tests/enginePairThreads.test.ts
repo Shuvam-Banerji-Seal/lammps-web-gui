@@ -10,7 +10,7 @@ import {
 import { THREADED_PAIRS } from '../src/engine/cpu/threadedPairFactories';
 import { THREADED_NAMES } from '../src/engine/cpu/threadedPairs';
 import { THREADED as GPL_THREADED } from '../src/engine-gpl/registry/threaded_pairs';
-import { GPL_THREADED_PAIRS } from '../src/engine/lazyStyles';
+import { GPL_KERNEL_PAIRS, GPL_THREADED_PAIRS } from '../src/engine/lazyStyles';
 import { PairLJCutCoulLong } from '../src/engine/force/pair/coul_long';
 
 /*
@@ -377,6 +377,10 @@ describe('shared-memory pair threads: every threaded style matches the single-th
     // the engine side knows the styles by name only (threadedPairs.ts), the worker by factory (threadedPairFactories.ts,
     // and for the GPL ports the lazy registries)
     expect([...THREADED_NAMES].sort()).toEqual([...Object.keys(THREADED_PAIRS), ...GPL_THREADED_PAIRS].sort());
+    // the styles whose own loops share the threads (Pair.threadKernel) are not threaded styles; the workers build them
+    // from the same GPL registry (reaxff: engineReaxffThreads.test.ts)
+    expect(GPL_KERNEL_PAIRS.filter((n) => THREADED_NAMES.has(n))).toEqual([]);
+    expect(GPL_KERNEL_PAIRS.every((n) => typeof (GPL_THREADED as Record<string, unknown>)[n] === 'function')).toBe(true);
   });
 });
 

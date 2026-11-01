@@ -124,6 +124,23 @@ export interface PairCompute {
   tags?: Int32Array;
   /** In a chunk of a threaded call of a style with Pair.threadExtras: its inputs, this thread's outputs and scalars. */
   extra?: ThreadExtraData;
+  /**
+   * The pair threads for a style whose own loops share them (Pair.threadKernel) while its compute runs here; absent or
+   * null without threads.
+   */
+  kernels?: PairKernels | null;
+}
+
+/**
+ * Loops of a style that the pair threads share (cpu/pairThreads.ts): the style keeps its inputs and results in the
+ * arrays of arrays(), runs a loop with run() and, when that returns false (the threads are starting, or not ready for
+ * this style), runs the same loop itself with Pair.threadKernel over every item.
+ */
+export interface PairKernels {
+  /** The style's shared arrays, at least these lengths (their contents survive while they need not grow). */
+  arrays(f64Lens: readonly number[], i32Lens: readonly number[]): { f64: Float64Array[]; i32: Int32Array[] };
+  /** Runs Pair.threadKernel(name, ...) over items [0, n) on the threads and this one; false when it did not. */
+  run(name: string, n: number, args: readonly number[]): boolean;
 }
 
 /**
@@ -434,6 +451,12 @@ export abstract class Pair {
   threadAdopt?(): void;
   /** False while a style on the pair threads cannot run there in its present configuration (it then runs here). */
   threadable?(): boolean;
+  /**
+   * One loop of the style that the pair threads share (PairCompute.kernels): items [i0, i1) of the loop `name`, reading
+   * and writing the arrays of PairKernels.arrays, with the call's numbers in args. The threads run it on their copy of
+   * the style (rebuilt from its cloned fields); the engine thread on the style itself.
+   */
+  threadKernel?(name: string, i0: number, i1: number, f64: readonly Float64Array[], i32: readonly Int32Array[], args: readonly number[]): void;
   needsHalf = true;
   /**
    * The neighbor list keeps a pair only within the two radii plus the skin. As native LAMMPS does (src/npair_bin.cpp at

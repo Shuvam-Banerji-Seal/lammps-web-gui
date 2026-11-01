@@ -302,7 +302,9 @@ describe('shared-memory pair threads: every threaded style matches the single-th
     });
   }
   it('covers every style of THREADED_PAIRS', () => {
-    expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES), ...Object.keys(THREEBODY_STYLES)].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
+    // the TIP4P styles (M sites as shared inputs, Pair.threadExtras) have their own test, engineTip4pThreads.test.ts
+    const tip4p = ['lj/cut/tip4p/cut', 'lj/cut/tip4p/long', 'tip4p/cut', 'tip4p/long'];
+    expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES), ...Object.keys(THREEBODY_STYLES), ...tip4p].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
     // eff/cut (per-atom inputs and outputs, Pair.threadExtras) has its own test, engineEffThreads.test.ts
     expect([...Object.keys(GPL_STYLES), ...Object.keys(GPL_PAIR_STYLES), 'eff/cut'].sort()).toEqual([...GPL_THREADED_PAIRS].sort());
     // the engine side knows the styles by name only (threadedPairs.ts), the worker by factory (threadedPairFactories.ts,

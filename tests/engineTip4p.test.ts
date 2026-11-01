@@ -187,3 +187,19 @@ describe('TIP4P as a sub-style of pair_style hybrid/overlay', () => {
     expect(ov[0].ecoul - pure[0].ecoul).toBeCloseTo(0, 9);
   });
 });
+
+describe('tip4p/cut and tip4p/long on their own: pair_coeff I J sets the type pairs', () => {
+  // As native LAMMPS does (src/MOLECULE/pair_tip4p_cut.cpp and src/KSPACE/pair_coul_long.cpp coeff at b332f28): setflag
+  // for every I <= J of the ranges. Measured with native LAMMPS (waterIonData: a water and an ion of a third type):
+  // pair_coeff 1 * leaves 2 2 unset, and init stops with the status list; pair_coeff * * runs (the oracle cases
+  // pair_tip4p_cut_alone and pair_tip4p_long_alone compare the run).
+  for (const [style, kspace] of [['tip4p/cut 1 2 1 1 0.15 8.0', ''], ['tip4p/long 1 2 1 1 0.15 8.0', 'kspace_style pppm/tip4p 1e-4']]) {
+    it(style.split(' ')[0], async () => {
+      const head = ['units real', 'atom_style full', 'boundary p p p', 'read_data w.data', bondedScript, `pair_style ${style}`];
+      const partial = await run([...head, 'pair_coeff 1 *', kspace, 'run 0'].join('\n'), { 'w.data': waterIonData([0, 8, 0]) });
+      expect(partial.error).toMatch(/All pair coeffs are not set\. Status:\n\s+1\s+1: is set\n\s+1\s+2: is set\n\s+1\s+3: is set\n\s+2\s+2: is not set/);
+      const all = await run([...head, 'pair_coeff * *', kspace, 'run 0'].join('\n'), { 'w.data': waterIonData([0, 8, 0]) });
+      expect(all.error).toBe('');
+    });
+  }
+});

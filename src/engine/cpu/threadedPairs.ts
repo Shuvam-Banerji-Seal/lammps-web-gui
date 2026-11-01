@@ -57,6 +57,11 @@ export const THREADED_NAMES: ReadonlySet<string> = new Set([
   'tersoff/mod/c',
   'tersoff/zbl',
   'sw/mod',
+  // M sites, hydrogens and owners as shared inputs (Pair.threadExtras)
+  'lj/cut/tip4p/cut',
+  'lj/cut/tip4p/long',
+  'tip4p/cut',
+  'tip4p/long',
   // GPL-ported (lazyStyles.ts GPL_THREADED_PAIRS); sw gets the neighbors in native order and the atom IDs
   'sw',
   'eff/cut',

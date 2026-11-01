@@ -9,7 +9,8 @@ import { WGSL_STYLE_LAWS } from './styleLaws';
  *          the force pass flags the atom so the backend can run again with longer lists);
  *   force: the forces on the atom from its pairs, from the triplets it centers and from those centered on a neighbor
  *          in which it is a leg; half of each pair's energy and virial, and a triplet's energy and virial at its center:
- *          outv[6 slot ..] = fx fy fz e flag w (flag -1: a neighbor list was cut short).
+ *          outv[12 slot ..] = fx fy fz e flag w, then the virial tensor xx yy zz xy xz yz (flag -1: a neighbor list was cut
+ *          short).
  */
 export const SW_WORKGROUP = 64;
 
@@ -104,11 +105,12 @@ fn legOf(ctr : u32, j : u32) -> Leg {
   return Leg(d, r, exp(gs / den), gs / (den * den), true);
 }
 
-struct Trip { f1 : vec3<f32>, f2 : vec3<f32>, e3 : f32, w : f32, ok : bool };
+// vd and vo: the triplet's virial tensor, l1.d (x) f1 + l2.d (x) f2 (xx yy zz, then xy xz yz)
+struct Trip { f1 : vec3<f32>, f2 : vec3<f32>, e3 : f32, w : f32, vd : vec3<f32>, vo : vec3<f32>, ok : bool };
 
 // the triplet centered at ctr with legs to j (first) and k: the forces on j and k, its energy and virial
 fn tripletOf(ctr : u32, j : u32, k : u32) -> Trip {
-  let none = Trip(vec3<f32>(0.0), vec3<f32>(0.0), 0.0, 0.0, false);
+  let none = Trip(vec3<f32>(0.0), vec3<f32>(0.0), 0.0, 0.0, vec3<f32>(0.0), vec3<f32>(0.0), false);
   let l1 = legOf(ctr, j);
   if (!l1.ok) { return none; }
   let l2 = legOf(ctr, k);
@@ -142,7 +144,7 @@ fn tripletOf(ctr : u32, j : u32, k : u32) -> Trip {
   let a2 = dEdc * cs / (l2.r * l2.r) + e3 * l2.w / l2.r;
   let f1 = a1 * l1.d - bk * l2.d;
   let f2 = a2 * l2.d - bk * l1.d;
-  return Trip(f1, f2, e3, dot(f1, l1.d) + dot(f2, l2.d), true);
+  return Trip(f1, f2, e3, dot(f1, l1.d) + dot(f2, l2.d), l1.d * f1 + l2.d * f2, vec3<f32>(l1.d.x * f1.y + l2.d.x * f2.y, l1.d.x * f1.z + l2.d.x * f2.z, l1.d.y * f1.z + l2.d.y * f2.z), true);
 }
 
 @compute @workgroup_size(${SW_WORKGROUP})
@@ -157,6 +159,8 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
   var f = vec3<f32>(0.0, 0.0, 0.0);
   var ev = 0.0;
   var w = 0.0;
+  var vd = vec3<f32>(0.0, 0.0, 0.0); // the virial tensor xx yy zz, then xy xz yz
+  var vo = vec3<f32>(0.0, 0.0, 0.0);
   for (var a = 0u; a < cnt; a = a + 1u) {
     let j = ints[P.listBase + i * P.maxn + a];
     let o = pairBase(ti, u32(pos[j].w));
@@ -183,6 +187,8 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
       f = f - fpair * d;
       ev = ev + 0.5 * coef[o + 4u] * f2 * es;
       w = w + 0.5 * fpair * r2;
+      vd = vd + (0.5 * fpair) * d * d;
+      vo = vo + (0.5 * fpair) * vec3<f32>(d.x * d.y, d.x * d.z, d.y * d.z);
     }
   }
   if (P.three == 1u) {
@@ -196,6 +202,8 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
         f = f - (t.f1 + t.f2);
         ev = ev + t.e3;
         w = w + t.w;
+        vd = vd + t.vd;
+        vo = vo + t.vo;
       }
     }
     // the triplets centered at a neighbor j in which i is a leg
@@ -213,12 +221,18 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
     }
   }
-  let o = 6u * i;
+  let o = 12u * i;
   outv[o] = f.x;
   outv[o + 1u] = f.y;
   outv[o + 2u] = f.z;
   outv[o + 3u] = ev;
   outv[o + 4u] = select(0.0, -1.0, bad);
   outv[o + 5u] = w;
+  outv[o + 6u] = vd.x;
+  outv[o + 7u] = vd.y;
+  outv[o + 8u] = vd.z;
+  outv[o + 9u] = vo.x;
+  outv[o + 10u] = vo.y;
+  outv[o + 11u] = vo.z;
 }
 `;

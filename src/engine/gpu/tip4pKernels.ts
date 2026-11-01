@@ -4,7 +4,8 @@
  * site forces). One invocation per atom (cell-sorted slot) scans the cells around its own (every cell once along an edge
  * of fewer than 3 cells, where the minimum image finds the one copy of a partner) and writes
  *   outv[10 slot ..] = fA.xyz (Lennard-Jones force on the atom), fS.xyz (Coulomb force on its charge site), evdwl,
- *   ecoul and the virial, each pair's energies and virial halved at both of its atoms.
+ *   ecoul and the virial, then the virial tensor xx yy zz xy xz yz (outv[16 slot + 10 ..]), each pair's energies and
+ *   virial halved at both of its atoms.
  * site[slot].xyz is the site offset (M - x for an oxygen, 0 otherwise).
  */
 export const TIP4P_WORKGROUP = 64;
@@ -64,6 +65,8 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   var ev = 0.0;
   var ec = 0.0;
   var w = 0.0;
+  var vd = vec3<f32>(0.0, 0.0, 0.0); // the virial tensor xx yy zz, then xy xz yz (half of each pair's at each atom)
+  var vo = vec3<f32>(0.0, 0.0, 0.0);
   for (var dz = lo.z; dz <= hi.z; dz = dz + 1) {
     for (var dy = lo.y; dy <= hi.y; dy = dy + 1) {
       for (var dx = lo.x; dx <= hi.x; dx = dx + 1) {
@@ -102,6 +105,8 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
             fA = fA + fpair * d;
             ev = ev + 0.5 * flj * (r6inv * (coef[k + 3u] * r6inv - coef[k + 4u]) - coef[k + 5u]);
             w = w + 0.5 * fpair * r2;
+            vd = vd + (0.5 * fpair) * d * d;
+            vo = vo + (0.5 * fpair) * vec3<f32>(d.x * d.y, d.x * d.z, d.y * d.z);
           }
           let qj = bitcast<f32>(ints[P.qBase + j]);
           if (qi == 0.0 || qj == 0.0 || r2 >= P.cutCsqPlus) { continue; }
@@ -128,11 +133,13 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
           }
           fS = fS + cf * e;
           w = w + 0.5 * cf * rc;
+          vd = vd + (0.5 * cf) * e * e;
+          vo = vo + (0.5 * cf) * vec3<f32>(e.x * e.y, e.x * e.z, e.y * e.z);
         }
       }
     }
   }
-  let o = 10u * i;
+  let o = 16u * i;
   outv[o] = fA.x;
   outv[o + 1u] = fA.y;
   outv[o + 2u] = fA.z;
@@ -143,5 +150,11 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   outv[o + 7u] = ec;
   outv[o + 8u] = w;
   outv[o + 9u] = 0.0;
+  outv[o + 10u] = vd.x;
+  outv[o + 11u] = vd.y;
+  outv[o + 12u] = vd.z;
+  outv[o + 13u] = vo.x;
+  outv[o + 14u] = vo.y;
+  outv[o + 15u] = vo.z;
 }
 `;

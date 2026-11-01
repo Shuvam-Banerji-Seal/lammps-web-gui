@@ -114,6 +114,8 @@ export class CpuForceBackend implements ForceBackend {
     const { cutsq, e12, e6, f12, f6, eshift } = pa;
     let pe = 0;
     let virial = 0;
+    // the virial tensor xx yy zz xy xz yz (sum over pairs of d (x) F)
+    const vt = [0, 0, 0, 0, 0, 0];
     const stencil = two ? FORWARD_2D : FORWARD_3D;
     const neighbours = new Int32Array(stencil.length);
 
@@ -154,6 +156,7 @@ export class CpuForceBackend implements ForceBackend {
                 fs[3 * b] -= fx; fs[3 * b + 1] -= fy; fs[3 * b + 2] -= fz;
                 pe += u3 * (e12[k] * u3 - e6[k]) - eshift[k];
                 virial += fpair * r2;
+                vt[0] += fx * dx; vt[1] += fy * dy; vt[2] += fz * dz; vt[3] += fy * dx; vt[4] += fz * dx; vt[5] += fz * dy;
               }
             }
             fs[3 * a] += fxi; fs[3 * a + 1] += fyi; fs[3 * a + 2] += fzi;
@@ -166,7 +169,7 @@ export class CpuForceBackend implements ForceBackend {
       const i = sorted[k];
       f[3 * i] = fs[3 * k]; f[3 * i + 1] = fs[3 * k + 1]; f[3 * i + 2] = fs[3 * k + 2];
     }
-    return { pe, virial };
+    return { pe, virial, virialTensor: vt };
   }
 
   dispose(): void {
@@ -187,6 +190,7 @@ export const allImages = (s: SimState, pa: PairArrays, L: number[]): ForceResult
   const { cutsq, e12, e6, f12, f6, eshift } = pa;
   let pe = 0;
   let virial = 0;
+  const vt = [0, 0, 0, 0, 0, 0];
   for (let i = 0; i < n; i++) {
     for (let j = i; j < n; j++) {
       const self = i === j;
@@ -215,16 +219,20 @@ export const allImages = (s: SimState, pa: PairArrays, L: number[]): ForceResult
               // and the two forces cancel; energy and virial count half each
               pe += 0.5 * e;
               virial += 0.5 * fpair * r2;
+              vt[0] += 0.5 * fpair * dx * dx; vt[1] += 0.5 * fpair * dy * dy; vt[2] += 0.5 * fpair * dz * dz;
+              vt[3] += 0.5 * fpair * dx * dy; vt[4] += 0.5 * fpair * dx * dz; vt[5] += 0.5 * fpair * dy * dz;
               continue;
             }
             f[3 * i] += fpair * dx; f[3 * i + 1] += fpair * dy; f[3 * i + 2] += fpair * dz;
             f[3 * j] -= fpair * dx; f[3 * j + 1] -= fpair * dy; f[3 * j + 2] -= fpair * dz;
             pe += e;
             virial += fpair * r2;
+            vt[0] += fpair * dx * dx; vt[1] += fpair * dy * dy; vt[2] += fpair * dz * dz;
+            vt[3] += fpair * dx * dy; vt[4] += fpair * dx * dz; vt[5] += fpair * dy * dz;
           }
         }
       }
     }
   }
-  return { pe, virial };
+  return { pe, virial, virialTensor: vt };
 };

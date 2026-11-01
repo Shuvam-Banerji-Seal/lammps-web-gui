@@ -10,7 +10,8 @@ import { WGSL_STYLE_LAWS } from './styleLaws';
  *   bond:  per slot of an atom's list, the bond's b_ij and C_ij = 1/2 f_C f_A db/dzeta (b = -1: outside the pair cutoff);
  *   force: the forces on the atom from its own bonds, its neighbors' bonds toward it and their bonds in whose zeta it is
  *          the third atom; half of each of its own bonds' energy, and their virial:
- *          outv[6 slot ..] = fx fy fz e flag w (flag -1: a neighbor list was cut short).
+ *          outv[12 slot ..] = fx fy fz e flag w, then the virial tensor xx yy zz xy xz yz (flag -1: a neighbor list was cut
+ *          short).
  */
 export const TERSOFF_WORKGROUP = 64;
 
@@ -229,6 +230,8 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
   var f = vec3<f32>(0.0, 0.0, 0.0);
   var ev = 0.0;
   var w = 0.0;
+  var vd = vec3<f32>(0.0, 0.0, 0.0); // the virial tensor xx yy zz, then xy xz yz
+  var vo = vec3<f32>(0.0, 0.0, 0.0);
   // the bonds of i: the radial term, and the zeta terms it centers
   for (var a = 0u; a < cnt; a = a + 1u) {
     let bo = bondv[i * P.maxn + a];
@@ -242,6 +245,9 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
     f = f + 0.5 * rad.y * e1;
     ev = ev + 0.5 * rad.x;
     w = w - 0.5 * rad.y * r1;
+    // d1 (x) F_j with F_j = -1/2 dV/dr e1
+    vd = vd - (0.5 * rad.y / r1) * d1 * d1;
+    vo = vo - (0.5 * rad.y / r1) * vec3<f32>(d1.x * d1.y, d1.x * d1.z, d1.y * d1.z);
     if (bo.y == 0.0) { continue; }
     for (var b = 0u; b < cnt; b = b + 1u) {
       if (b == a) { continue; }
@@ -251,6 +257,8 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
       let fk = zforceK(bo.y, e1, z);
       f = f - (fj + fk);
       w = w + dot(d1, fj) + dot(z.d2, fk);
+      vd = vd + d1 * fj + z.d2 * fk;
+      vo = vo + vec3<f32>(d1.x * fj.y + z.d2.x * fk.y, d1.x * fj.z + z.d2.x * fk.z, d1.y * fj.z + z.d2.y * fk.z);
     }
   }
   // the bonds of each neighbor j: toward i (its radial term and the zeta terms of j -> i), and to another atom l (the
@@ -286,12 +294,18 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
     }
   }
-  let o = 6u * i;
+  let o = 12u * i;
   outv[o] = f.x;
   outv[o + 1u] = f.y;
   outv[o + 2u] = f.z;
   outv[o + 3u] = ev;
   outv[o + 4u] = select(0.0, -1.0, bad);
   outv[o + 5u] = w;
+  outv[o + 6u] = vd.x;
+  outv[o + 7u] = vd.y;
+  outv[o + 8u] = vd.z;
+  outv[o + 9u] = vo.x;
+  outv[o + 10u] = vo.y;
+  outv[o + 11u] = vo.z;
 }
 `;

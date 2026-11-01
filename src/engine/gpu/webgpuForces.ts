@@ -89,6 +89,8 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   var f = vec3<f32>(0.0, 0.0, 0.0);
   var e = 0.0;
   var w = 0.0;
+  var vd = vec3<f32>(0.0, 0.0, 0.0); // the virial tensor xx yy zz, then xy xz yz (half of each pair's at each atom)
+  var vo = vec3<f32>(0.0, 0.0, 0.0);
   for (var dz = -zr; dz <= zr; dz = dz + 1) {
     for (var dy = -1; dy <= 1; dy = dy + 1) {
       for (var dx = -1; dx <= 1; dx = dx + 1) {
@@ -111,16 +113,24 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
           f = f + fpair * d;
           e = e + 0.5 * (u3 * (b.x * u3 - b.y) - b.z);
           w = w + 0.5 * fpair * r2;
+          vd = vd + (0.5 * fpair) * d * d;
+          vo = vo + (0.5 * fpair) * vec3<f32>(d.x * d.y, d.x * d.z, d.y * d.z);
         }
       }
     }
   }
-  let o = 5u * i;
+  let o = 11u * i;
   outv[o] = f.x;
   outv[o + 1u] = f.y;
   outv[o + 2u] = f.z;
   outv[o + 3u] = e;
   outv[o + 4u] = w;
+  outv[o + 5u] = vd.x;
+  outv[o + 6u] = vd.y;
+  outv[o + 7u] = vd.z;
+  outv[o + 8u] = vo.x;
+  outv[o + 9u] = vo.y;
+  outv[o + 10u] = vo.z;
 }
 `;
 
@@ -218,6 +228,8 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   var ev = 0.0;
   var ec = 0.0;
   var w = 0.0;
+  var vd = vec3<f32>(0.0, 0.0, 0.0); // the virial tensor xx yy zz, then xy xz yz (half of each pair's at each atom)
+  var vo = vec3<f32>(0.0, 0.0, 0.0);
   var bad = 0.0;
   for (var dz = lo.z; dz <= hi.z; dz = dz + 1) {
     for (var dy = lo.y; dy <= hi.y; dy = dy + 1) {
@@ -285,17 +297,25 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
           }
           f = f + fp * d;
           w = w + 0.5 * fp * r2;
+          vd = vd + (0.5 * fp) * d * d;
+          vo = vo + (0.5 * fp) * vec3<f32>(d.x * d.y, d.x * d.z, d.y * d.z);
         }
       }
     }
   }
-  let o = 6u * i;
+  let o = 12u * i;
   outv[o] = f.x;
   outv[o + 1u] = f.y;
   outv[o + 2u] = f.z;
   outv[o + 3u] = ev;
   outv[o + 4u] = select(ec, -1.0, bad > 0.0);
   outv[o + 5u] = w;
+  outv[o + 6u] = vd.x;
+  outv[o + 7u] = vd.y;
+  outv[o + 8u] = vd.z;
+  outv[o + 9u] = vo.x;
+  outv[o + 10u] = vo.y;
+  outv[o + 11u] = vo.z;
 }
 `;
 
@@ -509,8 +529,8 @@ export class WebGpuForceBackend implements ForceBackend {
     if (b && needCoef) b.coef.destroy();
     b = {
       pos: needAtoms ? this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST) : b!.pos,
-      out: needAtoms ? this.buffer(20 * atomCap, BUF_STORAGE | BUF_COPY_SRC) : b!.out,
-      staging: needAtoms ? this.buffer(20 * atomCap, BUF_MAP_READ | BUF_COPY_DST) : b!.staging,
+      out: needAtoms ? this.buffer(44 * atomCap, BUF_STORAGE | BUF_COPY_SRC) : b!.out,
+      staging: needAtoms ? this.buffer(44 * atomCap, BUF_MAP_READ | BUF_COPY_DST) : b!.staging,
       atomCap,
       ints: needInts ? this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST) : b!.ints,
       intsCap,
@@ -565,24 +585,26 @@ export class WebGpuForceBackend implements ForceBackend {
     pass.setBindGroup(0, b.bind!);
     pass.dispatchWorkgroups(Math.ceil(n / WORKGROUP));
     pass.end();
-    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 20 * n);
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 44 * n);
     q.submit([enc.finish()]);
-    await b.staging.mapAsync(MAP_READ, 0, 20 * n);
-    const outv = new Float32Array(b.staging.getMappedRange(0, 20 * n));
+    await b.staging.mapAsync(MAP_READ, 0, 44 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 44 * n));
     const f = state.f;
     let pe = 0;
     let virial = 0;
+    const vt = [0, 0, 0, 0, 0, 0];
     for (let slot = 0; slot < n; slot++) {
       const i = sorted[slot];
-      const o = 5 * slot;
+      const o = 11 * slot;
       f[3 * i] = outv[o];
       f[3 * i + 1] = outv[o + 1];
       f[3 * i + 2] = outv[o + 2];
       pe += outv[o + 3];
       virial += outv[o + 4];
+      for (let c = 0; c < 6; c++) vt[c] += outv[o + 5 + c];
     }
     b.staging.unmap();
-    return { pe, virial };
+    return { pe, virial, virialTensor: vt };
   }
 
   /**
@@ -693,8 +715,8 @@ export class WebGpuForceBackend implements ForceBackend {
       if (b) for (const buf of [b.pos, b.out, b.staging, b.ints, b.coef]) buf.destroy();
       const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
       const pos = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
-      const out = this.buffer(24 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
-      const staging = this.buffer(24 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
+      const out = this.buffer(48 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
+      const staging = this.buffer(48 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
       const intsBuf = this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST);
       const coefBuf = this.buffer(coef.byteLength, BUF_STORAGE | BUF_COPY_DST);
       const bind = dev.createBindGroup({
@@ -728,18 +750,19 @@ export class WebGpuForceBackend implements ForceBackend {
     pass.setBindGroup(0, b.bind);
     pass.dispatchWorkgroups(Math.ceil(n / WORKGROUP));
     pass.end();
-    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 24 * n);
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 48 * n);
     q.submit([enc.finish()]);
-    await b.staging.mapAsync(MAP_READ, 0, 24 * n);
-    const outv = new Float32Array(b.staging.getMappedRange(0, 24 * n));
+    await b.staging.mapAsync(MAP_READ, 0, 48 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 48 * n));
     const f = state.f;
     let evdwl = 0, ecoul = 0, virial = 0;
+    const vt = [0, 0, 0, 0, 0, 0];
     // pair_style table: an atom with a pair inside a table's inner cutoff (ecoul slot -1; the style has no Coulomb)
     const table = spec.law === TABLE_LAW;
     let bad = -1;
     for (let slot = 0; slot < n; slot++) {
       const i = sorted[slot];
-      const o = 6 * slot;
+      const o = 12 * slot;
       f[3 * i] = outv[o];
       f[3 * i + 1] = outv[o + 1];
       f[3 * i + 2] = outv[o + 2];
@@ -747,10 +770,11 @@ export class WebGpuForceBackend implements ForceBackend {
       if (table && outv[o + 4] < 0 && bad < 0) bad = i;
       else ecoul += outv[o + 4];
       virial += outv[o + 5];
+      for (let c = 0; c < 6; c++) vt[c] += outv[o + 6 + c];
     }
     b.staging.unmap();
     if (bad >= 0) throw new Error(tableInnerError(spec, state, bad));
-    return { pe: evdwl + ecoul, virial, evdwl, ecoul };
+    return { pe: evdwl + ecoul, virial, evdwl, ecoul, virialTensor: vt };
   }
 
   /**
@@ -845,8 +869,8 @@ export class WebGpuForceBackend implements ForceBackend {
       const coefCap = Math.max(coefF32.byteLength, b?.coefCap ?? 0);
       const pos = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
       const siteBuf = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
-      const out = this.buffer(40 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
-      const staging = this.buffer(40 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
+      const out = this.buffer(64 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
+      const staging = this.buffer(64 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
       const intsBuf = this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST);
       const coefBuf = this.buffer(coefCap, BUF_STORAGE | BUF_COPY_DST);
       const bind = dev.createBindGroup({
@@ -885,24 +909,26 @@ export class WebGpuForceBackend implements ForceBackend {
     pass.setBindGroup(0, b.bind);
     pass.dispatchWorkgroups(Math.ceil(n / TIP4P_WORKGROUP));
     pass.end();
-    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 40 * n);
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 64 * n);
     q.submit([enc.finish()]);
-    await b.staging.mapAsync(MAP_READ, 0, 40 * n);
-    const outv = new Float32Array(b.staging.getMappedRange(0, 40 * n));
+    await b.staging.mapAsync(MAP_READ, 0, 64 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 64 * n));
     if (this.t4fA.length < 3 * n) { this.t4fA = new Float64Array(3 * n); this.t4fS = new Float64Array(3 * n); }
     const fA = this.t4fA, fS = this.t4fS;
     let evdwl = 0, ecoul = 0, virial = 0;
+    const vt = [0, 0, 0, 0, 0, 0];
     for (let slot = 0; slot < n; slot++) {
-      const i = sorted[slot], o = 10 * slot;
+      const i = sorted[slot], o = 16 * slot;
       fA[3 * i] = outv[o]; fA[3 * i + 1] = outv[o + 1]; fA[3 * i + 2] = outv[o + 2];
       fS[3 * i] = outv[o + 3]; fS[3 * i + 1] = outv[o + 4]; fS[3 * i + 2] = outv[o + 5];
       evdwl += outv[o + 6];
       ecoul += outv[o + 7];
       virial += outv[o + 8];
+      for (let c = 0; c < 6; c++) vt[c] += outv[o + 10 + c];
     }
     b.staging.unmap();
     spreadSiteForces(n, state.type, fA, fS, sites, spec, state.f);
-    return { pe: evdwl + ecoul, virial, evdwl, ecoul };
+    return { pe: evdwl + ecoul, virial, evdwl, ecoul, virialTensor: vt };
   }
 
   /** True when `advanceSpec` can run this system entirely on the GPU: 3 cells per periodic edge. */
@@ -955,8 +981,8 @@ export class WebGpuForceBackend implements ForceBackend {
       const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
       const coefCap = Math.max(spec.coef.byteLength, b?.coefCap ?? 0);
       const pos = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
-      const out = this.buffer(24 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
-      const staging = this.buffer(24 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
+      const out = this.buffer(48 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
+      const staging = this.buffer(48 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
       const intsBuf = this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST);
       const coefBuf = this.buffer(coefCap, BUF_STORAGE | BUF_COPY_DST);
       const entries = [
@@ -1016,24 +1042,26 @@ export class WebGpuForceBackend implements ForceBackend {
     pass.setBindGroup(0, b.bindForce);
     pass.dispatchWorkgroups(groups);
     pass.end();
-    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 24 * n);
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 48 * n);
     q.submit([enc.finish()]);
-    await b.staging.mapAsync(MAP_READ, 0, 24 * n);
-    const outv = new Float32Array(b.staging.getMappedRange(0, 24 * n));
+    await b.staging.mapAsync(MAP_READ, 0, 48 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 48 * n));
     const f = state.f;
     let epair = 0, virial = 0;
+    const vt = [0, 0, 0, 0, 0, 0];
     for (let slot = 0; slot < n; slot++) {
       const i = sorted[slot];
-      const o = 6 * slot;
+      const o = 12 * slot;
       f[3 * i] = outv[o];
       f[3 * i + 1] = outv[o + 1];
       f[3 * i + 2] = outv[o + 2];
       epair += outv[o + 3];
       virial += outv[o + 5];
+      for (let c = 0; c < 6; c++) vt[c] += outv[o + 6 + c];
     }
     b.staging.unmap();
     const evdwl = epair + eEmbed;
-    return { pe: evdwl, virial, evdwl, ecoul: 0 };
+    return { pe: evdwl, virial, evdwl, ecoul: 0, virialTensor: vt };
   }
 
   private swPipes: { nbr: GPUComputePipeline; force: GPUComputePipeline; params: GPUBuffer } | null = null;
@@ -1088,8 +1116,8 @@ export class WebGpuForceBackend implements ForceBackend {
       const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
       const coefCap = Math.max(coefF32.byteLength, b?.coefCap ?? 0);
       const pos = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
-      const out = this.buffer(24 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
-      const staging = this.buffer(24 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
+      const out = this.buffer(48 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
+      const staging = this.buffer(48 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
       const intsBuf = this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST);
       const coefBuf = this.buffer(coefCap, BUF_STORAGE | BUF_COPY_DST);
       const entries = [
@@ -1130,26 +1158,28 @@ export class WebGpuForceBackend implements ForceBackend {
       pass.dispatchWorkgroups(groups);
       pass.end();
     }
-    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 24 * n);
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 48 * n);
     q.submit([enc.finish()]);
-    await b.staging.mapAsync(MAP_READ, 0, 24 * n);
-    const outv = new Float32Array(b.staging.getMappedRange(0, 24 * n));
+    await b.staging.mapAsync(MAP_READ, 0, 48 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 48 * n));
     let short = false;
-    for (let slot = 0; slot < n && !short; slot++) if (outv[6 * slot + 4] < 0) short = true;
+    for (let slot = 0; slot < n && !short; slot++) if (outv[12 * slot + 4] < 0) short = true;
     if (short) { b.staging.unmap(); return null; }
     const f = state.f;
     let e = 0, virial = 0;
+    const vt = [0, 0, 0, 0, 0, 0];
     for (let slot = 0; slot < n; slot++) {
       const i = sorted[slot];
-      const o = 6 * slot;
+      const o = 12 * slot;
       f[3 * i] = outv[o];
       f[3 * i + 1] = outv[o + 1];
       f[3 * i + 2] = outv[o + 2];
       e += outv[o + 3];
       virial += outv[o + 5];
+      for (let c = 0; c < 6; c++) vt[c] += outv[o + 6 + c];
     }
     b.staging.unmap();
-    return { pe: e, virial, evdwl: e, ecoul: 0 };
+    return { pe: e, virial, evdwl: e, ecoul: 0, virialTensor: vt };
   }
 
   private terPipes: { nbr: GPUComputePipeline; bond: GPUComputePipeline; force: GPUComputePipeline; params: GPUBuffer } | null = null;
@@ -1204,8 +1234,8 @@ export class WebGpuForceBackend implements ForceBackend {
       const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
       const coefCap = Math.max(coefF32.byteLength, b?.coefCap ?? 0), bondCap = Math.max(64, Math.ceil(n * maxn * 1.25));
       const pos = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
-      const out = this.buffer(24 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
-      const staging = this.buffer(24 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
+      const out = this.buffer(48 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
+      const staging = this.buffer(48 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
       const intsBuf = this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST);
       const coefBuf = this.buffer(coefCap, BUF_STORAGE | BUF_COPY_DST);
       const bond = this.buffer(8 * bondCap, BUF_STORAGE);
@@ -1247,26 +1277,28 @@ export class WebGpuForceBackend implements ForceBackend {
       pass.dispatchWorkgroups(groups);
       pass.end();
     }
-    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 24 * n);
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 48 * n);
     q.submit([enc.finish()]);
-    await b.staging.mapAsync(MAP_READ, 0, 24 * n);
-    const outv = new Float32Array(b.staging.getMappedRange(0, 24 * n));
+    await b.staging.mapAsync(MAP_READ, 0, 48 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 48 * n));
     let short = false;
-    for (let slot = 0; slot < n && !short; slot++) if (outv[6 * slot + 4] < 0) short = true;
+    for (let slot = 0; slot < n && !short; slot++) if (outv[12 * slot + 4] < 0) short = true;
     if (short) { b.staging.unmap(); return null; }
     const f = state.f;
     let e = 0, virial = 0;
+    const vt = [0, 0, 0, 0, 0, 0];
     for (let slot = 0; slot < n; slot++) {
       const i = sorted[slot];
-      const o = 6 * slot;
+      const o = 12 * slot;
       f[3 * i] = outv[o];
       f[3 * i + 1] = outv[o + 1];
       f[3 * i + 2] = outv[o + 2];
       e += outv[o + 3];
       virial += outv[o + 5];
+      for (let c = 0; c < 6; c++) vt[c] += outv[o + 6 + c];
     }
     b.staging.unmap();
-    return { pe: e, virial, evdwl: e, ecoul: 0 };
+    return { pe: e, virial, evdwl: e, ecoul: 0, virialTensor: vt };
   }
 
   canAdvanceSpec(state: SimState, spec: GpuPairSpec): boolean {

@@ -174,7 +174,13 @@ const cutoff = (r: number, R: number, D: number): [number, number] => {
  * The three kernels' arithmetic in fp64 over every atom (minimum image in an orthogonal periodic box): forces, energy
  * and the scalar virial (the sum of r . F over the pair and three-body terms), in the gather form described above.
  */
-export const tersoffGather = (spec: GpuTersoffSpec, n: number, x: ArrayLike<number>, type: ArrayLike<number>, L: number[]): { f: Float64Array; e: number; virial: number } => {
+/** vt += s a (x) b in the order xx yy zz xy xz yz (the separation first: native v_tally3's delr[0] * f[1], ...). */
+const addOuter = (vt: number[], s: number, a: ArrayLike<number>, b: ArrayLike<number>): void => {
+  vt[0] += s * a[0] * b[0]; vt[1] += s * a[1] * b[1]; vt[2] += s * a[2] * b[2];
+  vt[3] += s * a[0] * b[1]; vt[4] += s * a[0] * b[2]; vt[5] += s * a[1] * b[2];
+};
+
+export const tersoffGather = (spec: GpuTersoffSpec, n: number, x: ArrayLike<number>, type: ArrayLike<number>, L: number[]): { f: Float64Array; e: number; virial: number; virialTensor: number[] } => {
   const nt = spec.stride, c = spec.coef, sft = spec.shift;
   const PS = TERSOFF_PAIR_STRIDE, TS = TERSOFF_TRIP_STRIDE;
   const dvec = (i: number, j: number): number[] => {
@@ -252,6 +258,7 @@ export const tersoffGather = (spec: GpuTersoffSpec, n: number, x: ArrayLike<numb
   // pass 3: the forces gathered per atom
   const f = new Float64Array(3 * n);
   let e = 0, virial = 0;
+  const vt = [0, 0, 0, 0, 0, 0];
   for (let i = 0; i < n; i++) {
     const ti = type[i], L1 = nbr[i];
     const fi = [0, 0, 0];
@@ -262,6 +269,7 @@ export const tersoffGather = (spec: GpuTersoffSpec, n: number, x: ArrayLike<numb
       for (let m = 0; m < 3; m++) fi[m] += 0.5 * dRad * e1[m];
       e += 0.5 * v;
       virial -= 0.5 * dRad * r1;
+      addOuter(vt, -0.5 * dRad / r1, d1, d1);
       const C = bc[i][a];
       if (C === 0) continue;
       for (let b = 0; b < L1.length; b++) {
@@ -271,6 +279,8 @@ export const tersoffGather = (spec: GpuTersoffSpec, n: number, x: ArrayLike<numb
         const { fj, fk } = zforces(C, e1, r1, z);
         for (let m = 0; m < 3; m++) fi[m] -= fj[m] + fk[m];
         virial += dot(d1, fj) + dot(z.d2, fk);
+        addOuter(vt, 1, d1, fj);
+        addOuter(vt, 1, z.d2, fk);
       }
     }
     for (const j of L1) {
@@ -300,5 +310,5 @@ export const tersoffGather = (spec: GpuTersoffSpec, n: number, x: ArrayLike<numb
     }
     f[3 * i] = fi[0]; f[3 * i + 1] = fi[1]; f[3 * i + 2] = fi[2];
   }
-  return { f, e, virial };
+  return { f, e, virial, virialTensor: vt };
 };

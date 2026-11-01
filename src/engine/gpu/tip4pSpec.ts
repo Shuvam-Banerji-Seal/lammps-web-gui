@@ -141,6 +141,12 @@ export const tip4pCoul = (spec: GpuTip4pSpec, rc: number, qq: number, fc: number
   return [(fc * pre) / rc, fc * pre];
 };
 
+/** vt += s a (x) b in the order xx yy zz xy xz yz (the separation first: native v_tally3's delr[0] * f[1], ...). */
+const addOuter = (vt: number[], s: number, a: ArrayLike<number>, b: ArrayLike<number>): void => {
+  vt[0] += s * a[0] * b[0]; vt[1] += s * a[1] * b[1]; vt[2] += s * a[2] * b[2];
+  vt[3] += s * a[0] * b[1]; vt[4] += s * a[0] * b[2]; vt[5] += s * a[1] * b[2];
+};
+
 /**
  * The kernel's arithmetic in fp64 over every atom (minimum image in an orthogonal periodic box) and the host's
  * spreading of the site forces: forces, the van der Waals and Coulomb energies, and the scalar virial. order(i, j) is
@@ -149,10 +155,11 @@ export const tip4pCoul = (spec: GpuTip4pSpec, rc: number, qq: number, fc: number
 export const tip4pGather = (
   spec: GpuTip4pSpec, n: number, x: ArrayLike<number>, type: ArrayLike<number>, q: ArrayLike<number>, sites: Tip4pSites,
   order: (i: number, j: number) => number, L: number[],
-): { f: Float64Array; evdwl: number; ecoul: number; virial: number } => {
+): { f: Float64Array; evdwl: number; ecoul: number; virial: number; virialTensor: number[] } => {
   const nt = spec.stride, c = spec.coef;
   const fA = new Float64Array(3 * n), fS = new Float64Array(3 * n);
   let evdwl = 0, ecoul = 0, virial = 0;
+  const vt = [0, 0, 0, 0, 0, 0];
   const maxsq = spec.maxCutoff * spec.maxCutoff;
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
@@ -170,6 +177,7 @@ export const tip4pGather = (
         for (let m = 0; m < 3; m++) fA[3 * i + m] += fpair * d[m];
         evdwl += 0.5 * flj * (r6inv * (c[k + 3] * r6inv - c[k + 4]) - c[k + 5]);
         virial += 0.5 * fpair * r2;
+        addOuter(vt, 0.5 * fpair, d, d);
       }
       if (q[i] === 0 || q[j] === 0 || r2 >= spec.cutCsqPlus) continue;
       const e = [0, 1, 2].map((m) => d[m] + sites.delta[3 * i + m] - sites.delta[3 * j + m]);
@@ -179,9 +187,10 @@ export const tip4pGather = (
       for (let m = 0; m < 3; m++) fS[3 * i + m] += cf * e[m];
       ecoul += 0.5 * ce;
       virial += 0.5 * cf * rc;
+      addOuter(vt, 0.5 * cf, e, e);
     }
   }
   const f = new Float64Array(3 * n);
   spreadSiteForces(n, type, fA, fS, sites, spec, f);
-  return { f, evdwl, ecoul, virial };
+  return { f, evdwl, ecoul, virial, virialTensor: vt };
 };

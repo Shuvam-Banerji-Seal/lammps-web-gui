@@ -7,6 +7,7 @@
  */
 import type { Pair } from '../../engine/force/types';
 import { PairSW } from '../manybody3/pair_sw';
+import { PairEffCut } from '../eff/pair_eff_cut';
 import { PairBornCoulLongCS, PairBuckCoulLongCS } from '../csdiel/born_buck_long_cs';
 import { PairBornCoulDsfCS, PairBornCoulWolfCS } from '../csdiel/born_dsf_wolf_cs';
 import { PairBuckLongCoulLong } from '../csdiel/buck_long';
@@ -18,6 +19,7 @@ export const MODULE_URL: string = import.meta.url;
 /** Factories of the worker's copies, by style name. */
 export const THREADED: Record<string, () => Pair> = {
   sw: () => new PairSW(),
+  'eff/cut': () => new PairEffCut(),
   'born/coul/long/cs': () => new PairBornCoulLongCS(),
   'buck/coul/long/cs': () => new PairBuckCoulLongCS(),
   'born/coul/dsf/cs': () => new PairBornCoulDsfCS(),

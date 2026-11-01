@@ -8,7 +8,7 @@
  * LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU General Public License, version 2
  * (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { Pair, PairParams, StyleError, mixDistance, type PairCompute, type PairMinPerAtom, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, mixDistance, type PairCompute, type PairMinPerAtom, type StyleContext, type ThreadExtras } from '../../engine/force/types';
 import { inumeric, parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { ELECTRON_RADIUS, ELECTRON_RFORCE, ELECTRON_SPIN, isElectronStyle } from '../../engine/atoms';
@@ -257,29 +257,86 @@ export class PairEffCut extends Pair {
     }
   }
 
+  /** The electron spin and radius of every owned and ghost atom (a ghost has its owner's, as LAMMPS ghosts carry them). */
+  private electronInputs(pc: PairCompute): Float64Array[] {
+    const owner = pc.nb.owner, nall = pc.nall;
+    const spinO = electronArray(pc.s, ELECTRON_SPIN), eradO = electronArray(pc.s, ELECTRON_RADIUS);
+    const spin = new Float64Array(nall), erad = new Float64Array(nall);
+    for (let k = 0; k < nall; k++) {
+      const o = owner[k];
+      spin[k] = spinO[o];
+      erad[k] = eradO[o];
+    }
+    return [spin, erad];
+  }
+
+  /** The box as limit/eradius reads it: any periodic dimension (1 or 0) and the three edge lengths. */
+  private boxScalars(pc: PairCompute): number[] {
+    const box = pc.s.box;
+    return [box.periodic[0] || box.periodic[1] || box.periodic[2] ? 1 : 0, box.hi[0] - box.lo[0], box.hi[1] - box.lo[1], box.hi[2] - box.lo[2]];
+  }
+
+  /**
+   * After the loop: the radial forces of the owned electrons are the sum over their owned and ghost copies (reverse
+   * communication), and with pressure/evirials the radial electron virial (virial_eff_compute) over all copies.
+   */
+  private finishRadial(pc: PairCompute, spin: Float64Array, erad: Float64Array, erf: Float64Array): void {
+    const erfO = electronArray(pc.s, ELECTRON_RFORCE);
+    erfO.fill(0);
+    pc.nb.reverseSum(erf, 1, erfO);
+    if (this.pressureEvirials) {
+      for (let k = 0; k < pc.nall; k++) {
+        if (spin[k]) {
+          const ev = erf[k] * erad[k] / 3;
+          pc.acc.virial[0] += ev;
+          pc.acc.virial[1] += ev;
+          pc.acc.virial[2] += ev;
+        }
+      }
+    }
+  }
+
+  /**
+   * On the pair threads (cpu/pairThreads.ts ThreadExtras): the electron spin and radius in, the radial electron force
+   * and the pvector terms out, finished on the engine thread as the one-thread loop finishes.
+   */
+  override threadExtras(): ThreadExtras {
+    return {
+      inputs: (pc) => this.electronInputs(pc),
+      perAtom: 1,
+      globals: 4,
+      scalars: (pc) => this.boxScalars(pc),
+      finish: (pc, ins, perAtom, globals) => {
+        this.pvector.set(globals);
+        this.finishRadial(pc, ins[0], ins[1], perAtom[0]);
+      },
+    };
+  }
+
   compute(pc: PairCompute): void {
     const list = pc.half;
     if (!list) throw new Error('pair style eff/cut needs a half neighbor list');
-    const s = pc.s;
-    const nb = pc.nb;
-    const owner = nb.owner;
     const nall = pc.nall;
     const { x, f, type, q } = pc;
     const nt = this.ntypes + 1;
     const { cutsq } = this;
     const qqrd2e = pc.qqrd2e;
     const hh = this.hhmss2e;
-    const pv = this.pvector;
-    pv.fill(0);
-    // owned electron properties; ghost copies (owner image) are built here, as the ghosts carry them in LAMMPS
-    const spinO = electronArray(s, ELECTRON_SPIN), eradO = electronArray(s, ELECTRON_RADIUS), erfO = electronArray(s, ELECTRON_RFORCE);
-    const spin = new Float64Array(nall), erad = new Float64Array(nall), erf = new Float64Array(nall);
-    for (let k = 0; k < nall; k++) {
-      const o = owner[k];
-      spin[k] = spinO[o];
-      erad[k] = eradO[o];
+    // on the pair threads the inputs, this thread's outputs and the box come with the chunk (threadExtras)
+    const ex = pc.extra ?? null;
+    let spin: Float64Array, erad: Float64Array, erf: Float64Array, pv: Float64Array, bs: number[];
+    if (ex) {
+      [spin, erad] = ex.inputs;
+      erf = ex.perAtom[0];
+      pv = ex.globals;
+      bs = ex.scalars;
+    } else {
+      [spin, erad] = this.electronInputs(pc);
+      erf = new Float64Array(nall);
+      pv = this.pvector;
+      pv.fill(0);
+      bs = this.boxScalars(pc);
     }
-    const box = s.box;
 
     for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
@@ -564,9 +621,9 @@ export class PairEffCut extends Pair {
       // limit electron size (stiffness) for periodic systems, to max = half the box size (limit/eradius)
       if (Math.abs(si) === 1 && this.limitEradius) {
         const kfactor = hh * 1.0;
-        const periodic = box.periodic[0] || box.periodic[1] || box.periodic[2];
+        const periodic = bs[0] !== 0;
         if (periodic) {
-          const lx = box.hi[0] - box.lo[0], ly = box.hi[1] - box.lo[1], lz = box.hi[2] - box.lo[2];
+          const lx = bs[1], ly = bs[2], lz = bs[3];
           const halfBoxLength = 0.5 * Math.min(lx, Math.min(ly, lz));
           if (ei > halfBoxLength) {
             const dr = ei - halfBoxLength;
@@ -581,19 +638,7 @@ export class PairEffCut extends Pair {
       }
     }
 
-    // the radial forces of the owned electrons are the sum over their owned and ghost copies (reverse communication)
-    erfO.fill(0);
-    nb.reverseSum(erf, 1, erfO);
-    // virial_eff_compute: the radial electron virial, summed over owned and ghost atoms
-    if (this.pressureEvirials) {
-      for (let k = 0; k < nall; k++) {
-        if (spin[k]) {
-          const ev = erf[k] * erad[k] / 3;
-          pc.acc.virial[0] += ev;
-          pc.acc.virial[1] += ev;
-          pc.acc.virial[2] += ev;
-        }
-      }
-    }
+    // one thread: the reverse sum and the radial virial here; on the pair threads after every thread (threadExtras)
+    if (!ex) this.finishRadial(pc, spin, erad, erf);
   }
 }

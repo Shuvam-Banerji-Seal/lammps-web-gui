@@ -377,11 +377,20 @@ const computePath = (sys: System, accel: Accel | null, threaded: boolean):
   switch (pt.skip) {
     case 'small': return serial(`${sys.state.n} atoms; the pair threads start at ${pt.minAtoms} atoms, below that they cost more than they save`);
     case 'style': return serial(`pair style ${name} has no threaded kernel; it runs on the engine thread`);
-    case 'peratom': return serial('per-atom energy or virial is computed on these steps');
     case 'list': return serial(`pair style ${name} needs a neighbor list the threads do not take`);
     case 'starting': return serial('the threads were still starting');
     default: return serial(sys.ff.pair ? null : 'no pair style');
   }
+};
+
+/**
+ * Loads the pair threads' module of every GPL-ported pair style in use (the style, or each hybrid sub-style) before a
+ * run or minimization (SharedPairThreads.preload).
+ */
+const preloadThreadedPairs = async (sys: System): Promise<void> => {
+  const pt = sys.ff.pairThreads, pair = sys.ff.pair;
+  if (!pt?.preload || !pair) return;
+  await pt.preload(pair instanceof PairHybrid ? pair.subs.map((sub) => sub.style.name) : [pair.name]);
 };
 
 /** How often (wall-clock ms) a run reports its speed (EngineEvent 'perf'). */
@@ -616,6 +625,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   accel = chosen.accel;
   const reason = chosen.reason;
   if (reason) sys.log(`${session.backendLabel}: this run uses the general fp64 CPU engine (${reason})`);
+  if (!accel) await preloadThreadedPairs(sys);
   const threadCalls0 = sys.ff.pairThreads?.calls ?? 0;
   const taken = accel
     ? await runAccelerated(sys, n, accel, {
@@ -771,6 +781,7 @@ const minimizeCmd: Handler = async (ctx, a) => {
   // (maxiter 0, or a thermo step) is not repeated (measured with native LAMMPS: minimize ... 0 0
   // prints the step-0 row once)
   let lastThermo = -1;
+  await preloadThreadedPairs(sys);
   const result = await minimize(sys, { etol, ftol, maxiter, maxeval }, {
     cancelled: () => session.isCancelled || haltRequested(sys),
     thermo: (iterDone) => {

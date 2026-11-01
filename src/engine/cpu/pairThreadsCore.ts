@@ -26,6 +26,10 @@ export type PairThreadMessage =
   | { type: 'init'; ctl: SharedArrayBuffer; index: number }
   | { type: 'buffers'; x: SharedArrayBuffer; t: SharedArrayBuffer; q: SharedArrayBuffer; numneigh: SharedArrayBuffer; firstneigh: SharedArrayBuffer; neighbors: SharedArrayBuffer; f: SharedArrayBuffer; fs: SharedArrayBuffer[]; acc: SharedArrayBuffer; chunks: SharedArrayBuffer; tags: SharedArrayBuffer }
   | { type: 'pair'; name: string; fields: Record<string, unknown>; url?: string; slot?: number }
+  /** a ThreadExtras style's shared arrays: the inputs, and this worker's per-atom outputs and global sums */
+  | { type: 'xbuffers'; inputs: SharedArrayBuffer[]; perAtom: SharedArrayBuffer[]; globals: SharedArrayBuffer }
+  /** this worker's per-atom energy (nall) and virial (6 nall) arrays, for calls that tally them */
+  | { type: 'ebuffers'; eatom: SharedArrayBuffer; vatom: SharedArrayBuffer }
   | {
     type: 'compute'; nlocal: number; nall: number;
     /** the style reads the full list (a three-body style of THREADED_PAIRS), else the half list */
@@ -41,6 +45,10 @@ export type PairThreadMessage =
     ordered: boolean; tags: boolean;
     /** the pair slot (MAX_PAIR_SLOTS) whose copy computes */
     slot: number;
+    /** a ThreadExtras style: the call's scalars (the outputs are zeroed and filled), else null */
+    extras: number[] | null;
+    /** the call tallies per-atom energy, per-atom virial (into this worker's 'ebuffers' arrays, zeroed first) */
+    eatom: boolean; vatom: boolean;
   }
   | {
     type: 'nbuffers'; bL: SharedArrayBuffer; bG: SharedArrayBuffer; rLo: SharedArrayBuffer; rHi: SharedArrayBuffer;
@@ -227,6 +235,13 @@ export class PairThreadWorker {
   private firstneigh: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private neighbors: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private tags: Int32Array<ArrayBufferLike> = new Int32Array(0);
+  /** a ThreadExtras style's shared inputs and this worker's outputs ('xbuffers') */
+  private xIn: Float64Array[] = [];
+  private xPerAtom: Float64Array[] = [];
+  private xGlobals: Float64Array = new Float64Array(0);
+  /** this worker's per-atom energy and virial ('ebuffers') */
+  private eatom: Float64Array = new Float64Array(0);
+  private vatom: Float64Array = new Float64Array(0);
   private f: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private fs: Float64Array[] = [];
   private acc: Float64Array<ArrayBufferLike> = new Float64Array(0);
@@ -278,6 +293,17 @@ export class PairThreadWorker {
       this.tags = new Int32Array(m.tags);
       return;
     }
+    if (m.type === 'xbuffers') {
+      this.xIn = m.inputs.map((b) => new Float64Array(b));
+      this.xPerAtom = m.perAtom.map((b) => new Float64Array(b));
+      this.xGlobals = new Float64Array(m.globals);
+      return;
+    }
+    if (m.type === 'ebuffers') {
+      this.eatom = new Float64Array(m.eatom);
+      this.vatom = new Float64Array(m.vatom);
+      return;
+    }
     if (m.type === 'pair') {
       const slot = m.slot ?? 0;
       if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_PAIR_SLOTS) return;
@@ -286,7 +312,11 @@ export class PairThreadWorker {
       const ready = (pair: Pair | null) => {
         if (gen !== this.pairGens.get(slot)) return;
         this.pairs.set(slot, pair);
-        if (pair && this.ctl) Atomics.add(this.ctl, readyIndex(slot), 1);
+        if (pair && this.ctl) {
+          Atomics.add(this.ctl, readyIndex(slot), 1);
+          // the engine thread may be waiting for every worker to build it (SharedPairThreads.awaitPair)
+          Atomics.notify(this.ctl, readyIndex(slot));
+        }
       };
       this.pairs.set(slot, null);
       const f = this.factories;
@@ -302,6 +332,14 @@ export class PairThreadWorker {
       const a = newAccum();
       const specialLJ = Float64Array.from(m.specialLJ), specialCoul = Float64Array.from(m.specialCoul);
       const two = pair as Pair & TwoPassPair;
+      // a ThreadExtras style: this worker's outputs start at zero for the call
+      const extra = m.extras ? { inputs: this.xIn, perAtom: this.xPerAtom, globals: this.xGlobals, scalars: m.extras } : undefined;
+      if (extra) {
+        for (const a of extra.perAtom) a.fill(0, 0, m.nall);
+        extra.globals.fill(0);
+      }
+      const eatom = m.eatom ? this.eatom.fill(0, 0, m.nall) : null;
+      const vatom = m.vatom ? this.vatom.fill(0, 0, 6 * m.nall) : null;
       const values = m.pass === 2 ? new Float64Array(m.aux!) : null;
       for (;;) {
         const c = Atomics.add(ctl, NEXT, 1);
@@ -311,7 +349,7 @@ export class PairThreadWorker {
           x: this.x, f: this.f, type: this.t, q: this.q, nlocal: m.nlocal, nall: m.nall,
           half: m.full ? null : rows, full: m.full ? rows : null,
           specialLJ, specialCoul, qqrd2e: m.qqrd2e,
-          acc: a, eatom: null, vatom: null, tags: m.tags ? this.tags : undefined,
+          acc: a, eatom, vatom, tags: m.tags ? this.tags : undefined, extra,
           // THREADED_PAIRS styles do not read these
           s: undefined as never, nb: undefined as never, geom: undefined as never,
         };

@@ -99,6 +99,8 @@ export class ForceField {
   readonly timer = new RunTimer();
   pairThreads: {
     run(pair: Pair, pc: PairCompute, slot?: number): boolean; readonly calls: number;
+    /** loads the threads' module of each GPL-ported style among `names` before a run (cpu/pairThreads.ts) */
+    preload?(names: readonly string[]): Promise<void>;
     /** for the resource monitor: the thread count, the size threshold, and why the last call stayed on one thread */
     readonly threads: number; readonly minAtoms: number; readonly skip: ThreadSkip;
   } | null = null;

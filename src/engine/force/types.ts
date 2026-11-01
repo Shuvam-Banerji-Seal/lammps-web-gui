@@ -122,7 +122,28 @@ export interface PairCompute {
    * (Pair.threadTags): a force thread has no s or nb.
    */
   tags?: Int32Array;
+  /** In a chunk of a threaded call of a style with Pair.threadExtras: its inputs, this thread's outputs and scalars. */
+  extra?: ThreadExtraData;
 }
+
+/**
+ * Per-atom data a style on the pair threads needs beyond the PairCompute arrays, and the per-atom and global sums its
+ * loop makes (pair eff/cut: the electron spin and radius in; the radial electron force and its energy terms out).
+ */
+export interface ThreadExtras {
+  /** per-atom inputs, nall values each, made on the engine thread for each call */
+  inputs(pc: PairCompute): Float64Array[];
+  /** the number of per-atom outputs (nall values each) and of global sums the loop adds into */
+  readonly perAtom: number;
+  readonly globals: number;
+  /** the call's scalars */
+  scalars(pc: PairCompute): number[];
+  /** on the engine thread after the loop: the inputs, and every thread's per-atom outputs and global sums added */
+  finish(pc: PairCompute, inputs: Float64Array[], perAtom: Float64Array[], globals: Float64Array): void;
+}
+
+/** One chunk's view of a ThreadExtras call: the inputs, this thread's outputs (zeroed for the call) and the scalars. */
+export interface ThreadExtraData { inputs: Float64Array[]; perAtom: Float64Array[]; globals: Float64Array; scalars: number[] }
 
 /**
  * Tallies one pair (i owned or ghost, j owned or ghost; i, j are indices
@@ -403,6 +424,8 @@ export abstract class Pair {
   threadNeighbors?(pc: PairCompute, list: NeighList): Int32Array;
   /** A style on the pair threads that reads atom IDs (PairCompute.tags). */
   threadTags?: boolean;
+  /** A style on the pair threads with per-atom inputs and outputs besides the forces (ThreadExtras). */
+  threadExtras?(): ThreadExtras;
   needsHalf = true;
   /**
    * The neighbor list keeps a pair only within the two radii plus the skin. As native LAMMPS does (src/npair_bin.cpp at

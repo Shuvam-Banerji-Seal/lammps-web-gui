@@ -38,13 +38,15 @@ import { PPPM_PARAMS, pppmField, pppmWeights, weightScratch, writePppmParams, ty
  * run on the threads too since #575/#576, which moved the break-even point down from about 2000 atoms).
  */
 export const MIN_THREADED_ATOMS = 500;
+/** How long (ms) a call that has just sent its style waits for the workers to build it (SharedPairThreads.awaitPair). */
+const PAIR_WAIT_MS = 1000;
 
 /**
  * Why the last pair evaluation ran on the engine thread, for the resource monitor: the system is below minAtoms, the
  * pair style has no threaded kernel, per-atom energy or virial was asked for, the style needs a list the threads do not
  * take, or the workers were still starting. null when it ran on the threads.
  */
-export type ThreadSkip = 'small' | 'style' | 'peratom' | 'list' | 'starting' | null;
+export type ThreadSkip = 'small' | 'style' | 'list' | 'starting' | null;
 
 const shared = (bytes: number): SharedArrayBuffer => new SharedArrayBuffer(Math.max(8, bytes));
 
@@ -104,6 +106,15 @@ export class SharedPairThreads implements NeighborThreads {
   /** The atom IDs of the owned and ghost atoms (Pair.threadTags), and the list they were filled for. */
   private tags: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private tagsFor: Int32Array | null = null;
+  /** a ThreadExtras style's shared inputs, the workers' per-atom outputs and global sums, and their shape */
+  private xIn: Float64Array[] = [];
+  private xOut: Float64Array[][] = [];
+  private xGlob: Float64Array[] = [];
+  private xShape = '';
+  /** each worker's per-atom energy and virial arrays ('ebuffers'), and the capacity they were made for */
+  private eW: Float64Array[] = [];
+  private vW: Float64Array[] = [];
+  private eCap = 0;
   /** The module URL of each GPL-ported style's registry, once loaded (lazyStyles.ts loadGplThreadedPair). */
   private readonly gplUrls = new Map<string, string>();
   private fs: Float64Array<ArrayBufferLike>[] = [];
@@ -130,13 +141,26 @@ export class SharedPairThreads implements NeighborThreads {
     }
   }
 
+  /**
+   * Loads the registry module of each GPL-ported style among `names` (lazyStyles.ts loadGplThreadedPair) before a run,
+   * so that the run's first call sends the workers its URL at once. Started inside the run instead, the import would
+   * advance only at the run's yields between steps; a style whose steps take seconds (eff/cut on a large system)
+   * reaches too few of them, and its whole run stayed on the engine thread.
+   */
+  async preload(names: readonly string[]): Promise<void> {
+    for (const name of names) {
+      if (this.gplUrls.has(name) || !GPL_THREADED_PAIRS.includes(name)) continue;
+      const g = await loadGplThreadedPair(name);
+      if (g) this.gplUrls.set(name, g.url);
+    }
+  }
+
   /** Runs pair.compute(pc) on the threads; false (nothing done) when this style or call cannot use them. */
   run(pair: Pair, pc: PairCompute, slot = 0): boolean {
     const W = this.workers.length;
     // a half-list style, or a full-list one whose rows are independent (the three-body styles of THREADED_PAIRS)
     const fullStyle = pair.needsFull && !pair.needsHalf;
     const list = fullStyle ? pc.full : pc.half;
-    if (pc.eatom || pc.vatom) { this.skip = 'peratom'; return false; }
     if (W === 0 || !list || (!fullStyle && (pc.full || pair.needsFull)) || !(pair.needsHalf || fullStyle)) { this.skip = 'list'; return false; }
     if (!THREADED_NAMES.has(pair.name)) { this.skip = 'style'; return false; }
     if (list.inum < this.minAtoms) { this.skip = 'small'; return false; }
@@ -146,7 +170,11 @@ export class SharedPairThreads implements NeighborThreads {
     // in Atomics.wait on a worker that has not started yet would deadlock
     if (Atomics.load(this.ctl, READY) < W) { this.skip = 'starting'; return false; }
     if (slot >= MAX_PAIR_SLOTS) { this.skip = 'style'; return false; }
-    if (pair !== this.slotRef[slot] || pair.version !== this.slotVersion[slot]) this.sendPair(pair, slot);
+    if (pair !== this.slotRef[slot] || pair.version !== this.slotVersion[slot]) {
+      // a run's init sends the style again: real workers rebuild it in a few ms once its module is loaded, so this call
+      // waits for them rather than computing the setup forces on one thread
+      if (this.sendPair(pair, slot) && this.parallelSum) this.awaitPair(slot, W);
+    }
     if (!this.slotOk[slot]) { this.skip = 'style'; return false; }
     // until every worker has built the style (it may load its module first) the pair term runs on the engine thread
     if (Atomics.load(this.ctl, readyIndex(slot)) < W) { this.skip = 'starting'; return false; }
@@ -188,15 +216,31 @@ export class SharedPairThreads implements NeighborThreads {
     // a shared force array is summed by all the threads (sumForces), else by the engine thread below
     const F = this.parallelSum && pc.f.buffer instanceof SharedArrayBuffer && pc.f.byteOffset === 0 ? pc.f.buffer : null;
     const phase = Atomics.load(this.ctl, PHASE), nslices = CHUNKS_PER_THREAD * (W + 1);
+    // a style with per-atom inputs and outputs (ThreadExtras): the inputs go to the shared arrays, every thread adds
+    // into its own outputs (the engine thread into ownX), summed below before the style finishes
+    const ex = pair.threadExtras ? pair.threadExtras() : null;
+    let exScalars: number[] | null = null;
+    let ownX: { perAtom: Float64Array[]; globals: Float64Array } | null = null;
+    if (ex) {
+      const ins = ex.inputs(pc);
+      this.ensureExtras(ins.length, ex.perAtom, ex.globals);
+      for (let k = 0; k < ins.length; k++) this.xIn[k].set(ins[k].subarray(0, nall));
+      exScalars = ex.scalars(pc);
+      ownX = { perAtom: Array.from({ length: ex.perAtom }, () => new Float64Array(nall)), globals: new Float64Array(ex.globals) };
+    }
+    // per-atom energy or virial: each thread tallies into its own arrays, the engine thread's chunks into pc's, and the
+    // threads' arrays are added below in worker order
+    if ((pc.eatom || pc.vatom) && this.eCap !== this.cap) this.ensurePerAtom();
     const chunk = (c: number): PairCompute => ({
       ...pc,
       [fullStyle ? 'full' : 'half']: { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: list.numneigh, firstneigh: list.firstneigh, neighbors: nbArr, nativeOrdered: ordered !== null },
+      extra: ex ? { inputs: this.xIn, perAtom: ownX!.perAtom, globals: ownX!.globals, scalars: exScalars! } : undefined,
     });
     if (two) {
       // the first loop: every thread sums into its own array, the engine thread adds them in worker order
       const sums = this.sums;
       sums.fill(0, 0, nall);
-      const firstFailed = this.dispatch({ type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F: null, phase, nslices, pass: 1, aux: null, ordered: ordered !== null, tags: !!pair.threadTags, slot }, (c) => two.densities(chunk(c), sums));
+      const firstFailed = this.dispatch({ type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F: null, phase, nslices, pass: 1, aux: null, ordered: ordered !== null, tags: !!pair.threadTags, slot, extras: null, eatom: false, vatom: false }, (c) => two.densities(chunk(c), sums));
       if (firstFailed) throw new Error(`pair style ${pair.name} failed in a force thread`);
       for (let w = 0; w < W; w++) {
         const a = this.fs[w];
@@ -205,7 +249,7 @@ export class SharedPairThreads implements NeighborThreads {
       two.embed(pc, sums, this.aux as Float64Array);
     }
     const failed = this.dispatch(
-      { type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F, phase, nslices, pass: two ? 2 : 0, aux: two ? this.auxBuf : null, ordered: ordered !== null, tags: !!pair.threadTags, slot },
+      { type: 'compute', full: fullStyle, nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks: this.nchunks, F, phase, nslices, pass: two ? 2 : 0, aux: two ? this.auxBuf : null, ordered: ordered !== null, tags: !!pair.threadTags, slot, extras: exScalars, eatom: !!pc.eatom, vatom: !!pc.vatom },
       two ? (c) => two.forces(chunk(c), this.aux as Float64Array) : (c) => pair.compute(chunk(c)),
     );
     const f = pc.f, acc = pc.acc;
@@ -229,6 +273,32 @@ export class SharedPairThreads implements NeighborThreads {
     }
     if (failed) throw new Error(`pair style ${pair.name} failed in a force thread`);
     if (!F) sumForces(f, this.fs, 0, 3 * nall);
+    if (pc.eatom) {
+      const e = pc.eatom;
+      for (let w = 0; w < W; w++) {
+        const a = this.eW[w];
+        for (let i = 0; i < nall; i++) e[i] += a[i];
+      }
+    }
+    if (pc.vatom) {
+      const v = pc.vatom, n6 = 6 * nall;
+      for (let w = 0; w < W; w++) {
+        const a = this.vW[w];
+        for (let i = 0; i < n6; i++) v[i] += a[i];
+      }
+    }
+    if (ex) {
+      // the threads' per-atom outputs and global sums, added in worker order after the engine thread's own
+      for (let w = 0; w < W; w++) {
+        for (let k = 0; k < ex.perAtom; k++) {
+          const o = ownX!.perAtom[k], a = this.xOut[w][k];
+          for (let i = 0; i < nall; i++) o[i] += a[i];
+        }
+        const g = this.xGlob[w];
+        for (let k = 0; k < ex.globals; k++) ownX!.globals[k] += g[k];
+      }
+      ex.finish(pc, this.xIn.map((a) => a.subarray(0, nall)), ownX!.perAtom, ownX!.globals);
+    }
     for (let w = 0; w < W; w++) {
       const a = this.accs[w];
       acc.evdwl += a[0];
@@ -269,7 +339,24 @@ export class SharedPairThreads implements NeighborThreads {
     this.nchunks = k;
   }
 
-  private sendPair(pair: Pair, slot: number): void {
+  /**
+   * Blocks until every worker has built the style just sent to `slot` (its PAIR_READY count, which the workers raise
+   * with Atomics.notify), for at most PAIR_WAIT_MS: a worker that loads the style's module for the first time, or
+   * fails to build it, leaves the call on the engine thread as before.
+   */
+  private awaitPair(slot: number, W: number): void {
+    const idx = readyIndex(slot), until = performance.now() + PAIR_WAIT_MS;
+    for (;;) {
+      const r = Atomics.load(this.ctl, idx);
+      if (r >= W) return;
+      const left = until - performance.now();
+      if (left <= 0) return;
+      Atomics.wait(this.ctl, idx, r, left);
+    }
+  }
+
+  /** Sends the style of `slot` to the workers; false when it was not sent (no threaded copy, or its module still loads). */
+  private sendPair(pair: Pair, slot: number): boolean {
     this.slotRef[slot] = pair;
     this.slotVersion[slot] = pair.version;
     const fields = cloneableFields(pair);
@@ -279,11 +366,11 @@ export class SharedPairThreads implements NeighborThreads {
     const own = pair.constructor as new () => Pair;
     const copy = pairFromFactory(() => new own(), structuredClone(fields));
     this.slotOk[slot] = copy !== null && sameShape(pair, copy);
-    if (!this.slotOk[slot]) return;
+    if (!this.slotOk[slot]) return false;
     Atomics.store(this.ctl, readyIndex(slot), 0);
     if (!GPL_THREADED_PAIRS.includes(pair.name)) {
       for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, slot } satisfies PairThreadMessage);
-      return;
+      return true;
     }
     // a GPL-ported style: its registry module is loaded here once (lazyStyles.ts), then the workers import it by URL;
     // until they have built it (PAIR_READY) the pair term runs on the engine thread. Each run's init sends the style
@@ -291,7 +378,7 @@ export class SharedPairThreads implements NeighborThreads {
     const known = this.gplUrls.get(pair.name);
     if (known !== undefined) {
       for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, url: known, slot } satisfies PairThreadMessage);
-      return;
+      return true;
     }
     const version = this.slotVersion[slot];
     void loadGplThreadedPair(pair.name).then((g) => {
@@ -299,6 +386,41 @@ export class SharedPairThreads implements NeighborThreads {
       this.gplUrls.set(pair.name, g.url);
       if (this.slotRef[slot] !== pair || this.slotVersion[slot] !== version) return;
       for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, url: g.url, slot } satisfies PairThreadMessage);
+    });
+    return false;
+  }
+
+  /** Each worker's per-atom energy and virial arrays at the current atom capacity (announced with 'ebuffers'). */
+  private ensurePerAtom(): void {
+    this.eCap = this.cap;
+    this.eW = [];
+    this.vW = [];
+    for (const w of this.workers) {
+      const e = shared(8 * this.cap), v = shared(48 * this.cap);
+      this.eW.push(new Float64Array(e));
+      this.vW.push(new Float64Array(v));
+      w.postMessage({ type: 'ebuffers', eatom: e, vatom: v } satisfies PairThreadMessage);
+    }
+  }
+
+  /**
+   * The shared arrays of a ThreadExtras style at the current atom capacity: the inputs, and each worker's per-atom
+   * outputs and global sums (announced to the workers with 'xbuffers' when they change).
+   */
+  private ensureExtras(nin: number, nout: number, nglob: number): void {
+    const shape = `${this.cap}|${nin}|${nout}|${nglob}`;
+    if (shape === this.xShape) return;
+    this.xShape = shape;
+    const inBufs = Array.from({ length: nin }, () => shared(8 * this.cap));
+    this.xIn = inBufs.map((b) => new Float64Array(b));
+    this.xOut = [];
+    this.xGlob = [];
+    this.workers.forEach((w) => {
+      const outBufs = Array.from({ length: nout }, () => shared(8 * this.cap));
+      const glob = shared(8 * Math.max(1, nglob));
+      this.xOut.push(outBufs.map((b) => new Float64Array(b)));
+      this.xGlob.push(new Float64Array(glob));
+      w.postMessage({ type: 'xbuffers', inputs: inBufs, perAtom: outBufs, globals: glob } satisfies PairThreadMessage);
     });
   }
 

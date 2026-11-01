@@ -59,6 +59,7 @@ export const THREADED_NAMES: ReadonlySet<string> = new Set([
   'sw/mod',
   // GPL-ported (lazyStyles.ts GPL_THREADED_PAIRS); sw gets the neighbors in native order and the atom IDs
   'sw',
+  'eff/cut',
   'born/coul/long/cs',
   'buck/coul/long/cs',
   'born/coul/dsf/cs',

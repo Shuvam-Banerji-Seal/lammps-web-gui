@@ -154,9 +154,9 @@ const GPL_PAIR_STYLES: Record<string, string> = {
 const POTENTIALS = ['Cu_u3.eam', 'CuNi.eam.alloy', 'AlFe_mm.eam.fs', 'Si.tersoff', 'Si.tersoff.mod', 'Si.tersoff.modc', 'SiC.tersoff.zbl', 'Si.sw'];
 const potential = (f: string): string => readFileSync(join(__dirname, '..', 'third_party', 'lammps', 'potentials', f), 'utf8');
 
-interface Outcome { rows: Record<string, number>[]; x: number[]; threadedComputes: number }
+interface Outcome { rows: Record<string, number>[]; x: number[]; threadedComputes: number; pa: number[] }
 
-const runCase = async (pairLines: string, threads: number, extra = '', box = BOX, load = false): Promise<Outcome> => {
+const runCase = async (pairLines: string, threads: number, extra = '', box = BOX, load = false, steps = 30): Promise<Outcome> => {
   const workers: InProcessWorker[] = [];
   // load: the workers build their styles as the browser's pair worker does, and the input runs a run 0 first
   const backend = threads > 1 ? new SharedThreadsBackend(threads, () => { const w = new InProcessWorker(load); workers.push(w); return w; }) : undefined;
@@ -178,15 +178,18 @@ ${load ? 'run 0' : ''}`);
   // a GPL port reaches the workers after the engine thread has loaded its registry module (asynchronously): a run 0
   // sends it, and a moment later every worker has built it
   if (load) await new Promise((r) => setTimeout(r, 200));
-  await session.execute(`run 30
+  await session.execute(`run ${steps}
 write_dump all custom out.dump id x y z fx fy fz modify sort id format float %.17g
 `);
   const rows = events.filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo').map((e) => e.row);
   const dump = files.get('out.dump')!.trim().split('\n');
   const k0 = dump.findIndex((l) => l.startsWith('ITEM: ATOMS'));
   const x = dump.slice(k0 + 1).flatMap((l) => l.trim().split(/\s+/).slice(1).map(Number));
+  // a dump of per-atom values the extra lines define (every frame's columns after the ID)
+  const pa = (files.get('pa.dump') ?? '').split('\n').filter((l) => /^\s*\d+\s/.test(l) && l.trim().split(/\s+/).length > 2)
+    .flatMap((l) => l.trim().split(/\s+/).slice(1).map(Number));
   backend?.dispose();
-  return { rows, x, threadedComputes: workers.reduce((s, w) => s + w.computes, 0) };
+  return { rows, x, threadedComputes: workers.reduce((s, w) => s + w.computes, 0), pa };
 };
 
 const expectClose = (a: Outcome, b: Outcome, rel: number): void => {
@@ -200,7 +203,20 @@ const expectClose = (a: Outcome, b: Outcome, rel: number): void => {
   let worst = 0;
   for (let i = 0; i < a.x.length; i++) worst = Math.max(worst, Math.abs(a.x[i] - b.x[i]) / Math.max(1, Math.abs(a.x[i])));
   expect(worst).toBeLessThanOrEqual(rel);
+  expect(a.pa.length).toBe(b.pa.length);
+  let worstPa = 0;
+  for (let i = 0; i < a.pa.length; i++) worstPa = Math.max(worstPa, Math.abs(a.pa[i] - b.pa[i]) / Math.max(1, Math.abs(a.pa[i])));
+  expect(worstPa).toBeLessThanOrEqual(rel);
 };
+
+/** The pair term's per-atom energy and virial, dumped every 5 steps (they are tallied on every step of the run). */
+const PERATOM = `compute pea all pe/atom pair
+compute sa all stress/atom NULL pair
+compute spe all reduce sum c_pea c_sa[1] c_sa[5]
+thermo_style custom step pe press c_spe[1] c_spe[2] c_spe[3]
+thermo_modify format float %.16g
+dump pa all custom 5 pa.dump id c_pea c_sa[1] c_sa[2] c_sa[3] c_sa[4] c_sa[5] c_sa[6]
+dump_modify pa sort id format float %.17g`;
 
 describe('shared-memory pair threads: helpers', () => {
   it('splits the atoms into ranges of about equal work that cover every atom once', () => {
@@ -287,11 +303,36 @@ describe('shared-memory pair threads: every threaded style matches the single-th
   }
   it('covers every style of THREADED_PAIRS', () => {
     expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES), ...Object.keys(THREEBODY_STYLES)].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
-    expect([...Object.keys(GPL_STYLES), ...Object.keys(GPL_PAIR_STYLES)].sort()).toEqual([...GPL_THREADED_PAIRS].sort());
+    // eff/cut (per-atom inputs and outputs, Pair.threadExtras) has its own test, engineEffThreads.test.ts
+    expect([...Object.keys(GPL_STYLES), ...Object.keys(GPL_PAIR_STYLES), 'eff/cut'].sort()).toEqual([...GPL_THREADED_PAIRS].sort());
     // the engine side knows the styles by name only (threadedPairs.ts), the worker by factory (threadedPairFactories.ts,
     // and for the GPL ports the lazy registries)
     expect([...THREADED_NAMES].sort()).toEqual([...Object.keys(THREADED_PAIRS), ...GPL_THREADED_PAIRS].sort());
   });
+});
+
+/*
+ * Per-atom energy and virial (compute pe/atom, stress/atom): every thread tallies into its own arrays ('ebuffers'), the
+ * engine thread adds them to its own in worker order.
+ */
+describe('shared-memory pair threads: per-atom energy and virial of every threaded style', () => {
+  const cases: [string, string, string, boolean][] = [
+    ...Object.entries(STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, BOX, false]),
+    ...Object.entries(EAM_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, EAM_BOX, false]),
+    ...Object.entries(THREEBODY_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, SI_BOX, false]),
+    ...Object.entries(GPL_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, SI_BOX, true]),
+    ...Object.entries(GPL_PAIR_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, BOX, true]),
+  ];
+  for (const [name, lines, box, load] of cases) {
+    it(name, async () => {
+      const serial = await runCase(lines, 1, PERATOM, box, load, 10);
+      const threaded = await runCase(lines, 3, PERATOM, box, load, 10);
+      expect(threaded.threadedComputes).toBeGreaterThan(0);
+      expect(serial.pa.length).toBeGreaterThan(0);
+      expect(serial.pa.some((v) => v !== 0)).toBe(true);
+      expectClose(serial, threaded, 1e-10);
+    });
+  }
 });
 
 /**
@@ -342,10 +383,11 @@ describe('shared-memory pair threads: refresh and fallback', () => {
     expect(Math.abs(plain.rows[3].pe - eSerial.rows[3].pe)).toBeGreaterThan(1e-3);
   });
 
-  it('runs per-atom energy evaluations on the engine thread', async () => {
+  it('runs per-atom energy evaluations on the threads', async () => {
     const extra = 'compute pea all pe/atom\ncompute spe all reduce sum c_pea\nthermo_style custom step pe c_spe';
     const serial = await runCase(STYLES['lj/cut'], 1, extra);
     const threaded = await runCase(STYLES['lj/cut'], 3, extra);
+    expect(threaded.threadedComputes).toBeGreaterThan(0);
     expectClose(serial, threaded, 1e-10);
   });
 
@@ -376,10 +418,11 @@ describe('shared-memory pair threads: refresh and fallback', () => {
     expectClose(serial, threaded, 1e-10);
   });
 
-  it('runs eam/alloy per-atom energy evaluations on the engine thread', async () => {
+  it('runs eam/alloy per-atom energy evaluations on the threads (the embedding energy on the engine thread)', async () => {
     const extra = 'compute pea all pe/atom\ncompute spe all reduce sum c_pea\nthermo_style custom step pe c_spe';
     const serial = await runCase(EAM_STYLES['eam/alloy'], 1, extra, EAM_BOX);
     const threaded = await runCase(EAM_STYLES['eam/alloy'], 3, extra, EAM_BOX);
+    expect(threaded.threadedComputes).toBeGreaterThan(0);
     expectClose(serial, threaded, 1e-10);
   });
 

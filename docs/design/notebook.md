@@ -194,6 +194,15 @@ interface ForceBackend {
   engine's thermo over 100 steps to fp32 (pe -6372.39 vs -6372.38 at step 0, the other energy
   terms to all printed digits). `fix adapt` keeps a run on the CPU, because the backends upload
   the pair coefficients once.
+- **WebGPU pair_style table** (`gpu/pairSpec.ts` style 19, kernel law 20): the style's own
+  interpolation tables after its init (`table.ts`: energy and F/r on a uniform r^2 grid, and the
+  spline's second derivatives) follow the type pairs' coefficients in the coefficient buffer,
+  which the kernel reads as flat floats. Lookup, linear and spline interpolation are table.ts's
+  arithmetic (`pairSpecEval` checks it force by force). A pair inside a table's inner cutoff
+  flags its atom; the CPU then finds the pair in fp64 and stops with the CPU style's error, so the
+  GPU never integrates garbage. Per-step only: the whole-step kernel has the analytic laws.
+  In Chromium a 4000-atom LJ melt through `table linear` and `table spline` matched the CPU
+  engine's thermo over 100 steps.
 - **WebGPU EAM** (`gpu/eamSpec.ts`, `gpu/eamKernels.ts`, `webgpuForces.ts computeEAM`): `eam`,
   `eam/alloy` and `eam/fs` (not as hybrid sub-styles, no molecular topology). The style's own
   density and r*phi tables after its init (the seven coefficients per grid interval its loops

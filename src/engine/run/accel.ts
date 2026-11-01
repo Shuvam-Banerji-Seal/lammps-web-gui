@@ -1,4 +1,4 @@
-import { GPU_PAIR_STYLES, gpuPairSpec, LONG_COUL_STYLES, type GpuPairSpec } from '../gpu/pairSpec';
+import { GPU_PAIR_STYLES, gpuPairSpec, LONG_COUL_STYLES, TABLE_LAW, type GpuPairSpec } from '../gpu/pairSpec';
 import { GPU_EAM_STYLES, gpuEamSpec, isGpuEam, type EamPair, type GpuEamSpec } from '../gpu/eamSpec';
 import type { SpecialList } from '../atoms';
 import type { LevelSelect } from '../force/forcefield';
@@ -112,7 +112,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const allBit = sys.groupBit('all');
     const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
     const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };
-    const resident = !molecular && !kspace && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
+    const resident = !molecular && !kspace && spec.law !== TABLE_LAW && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
     return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, resident, enforce2d }, reason: null };
   }
   const t = newPairTable(s.ntypes, p.cutGlobal);

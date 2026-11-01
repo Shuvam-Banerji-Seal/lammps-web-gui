@@ -2,7 +2,7 @@ import type { ForceBackend, ForceResult, PairTable, SimState } from '../types';
 import { pairArrays, type PairArrays } from '../pairs';
 import { CpuForceBackend } from '../cpu/forces';
 import { ResidentStepper } from './resident';
-import type { GpuPairSpec } from './pairSpec';
+import { TABLE_LAW, tableInnerError, type GpuPairSpec } from './pairSpec';
 import { buildAtomMap, type SpecialList } from '../atoms';
 import { WGSL_STYLE_LAWS } from './styleLaws';
 import { EAM_WORKGROUP, KERNEL_EAM } from './eamKernels';
@@ -155,6 +155,41 @@ fn wrapCell(c : i32, n : u32) -> u32 {
 
 ${WGSL_STYLE_LAWS}
 
+// pair_style table (pairSpec.ts tableLaw): the tables after the type pairs' coefficients, read as flat floats; A =
+// [cutsq 0 rsq1 1/delta], B = [e g e2 cscale] offsets, C = [g2 last h^2/6 mode (0 linear, 1 spline, 2 lookup)]
+fn tabAt(k : u32) -> f32 {
+  return coef[k >> 2u][k & 3u];
+}
+
+fn tableLaw(r2 : f32, A : vec4<f32>, B : vec4<f32>, C : vec4<f32>) -> vec2<f32> {
+  let p = (r2 - A.z) * A.w;
+  let last = i32(C.y);
+  let eo = u32(B.x);
+  let go = u32(B.y);
+  if (C.w == 2.0) {
+    let m = u32(clamp(i32(floor(p)), 0, last));
+    return vec2<f32>(tabAt(go + m), tabAt(eo + m));
+  }
+  var m = i32(floor(p));
+  var t = p - floor(p);
+  if (m >= last) { m = last - 1; t = 1.0; } else if (m < 0) { m = 0; t = 0.0; }
+  let um = u32(m);
+  if (C.w == 1.0) {
+    let a = 1.0 - t;
+    let b = t;
+    let ca = a * a * a - a;
+    let cb = b * b * b - b;
+    let e2o = u32(B.z);
+    let g2o = u32(C.x);
+    let e = a * tabAt(eo + um) + b * tabAt(eo + um + 1u) + (ca * tabAt(e2o + um) + cb * tabAt(e2o + um + 1u)) * C.z;
+    let g = a * tabAt(go + um) + b * tabAt(go + um + 1u) + (ca * tabAt(g2o + um) + cb * tabAt(g2o + um + 1u)) * C.z;
+    return vec2<f32>(g, e);
+  }
+  let e0 = tabAt(eo + um);
+  let g0 = tabAt(go + um);
+  return vec2<f32>(g0 + t * (tabAt(go + um + 1u) - g0), e0 + t * (tabAt(eo + um + 1u) - e0));
+}
+
 @compute @workgroup_size(${WORKGROUP})
 fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   let i = gid.x;
@@ -177,6 +212,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   var ev = 0.0;
   var ec = 0.0;
   var w = 0.0;
+  var bad = 0.0;
   for (var dz = lo.z; dz <= hi.z; dz = dz + 1) {
     for (var dy = lo.y; dy <= hi.y; dy = dy + 1) {
       for (var dx = lo.x; dx <= hi.x; dx = dx + 1) {
@@ -211,7 +247,13 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
           }
           var fp = 0.0;
           if (r2 < A.x) {
-            let sr = shortRange(P.style, r2, A, B, coef[k + 2u]);
+            var sr = vec2<f32>(0.0, 0.0);
+            if (P.style == 20u) {
+              // inside a table's inner cutoff: flagged (the CPU names the pair and stops, as the CPU style does)
+              if (r2 < A.z) { bad = 1.0; } else { sr = tableLaw(r2, A, B, coef[k + 2u]); }
+            } else {
+              sr = shortRange(P.style, r2, A, B, coef[k + 2u]);
+            }
             fp = flj * sr.x;
             ev = ev + 0.5 * flj * sr.y;
           }
@@ -246,7 +288,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   outv[o + 1u] = f.y;
   outv[o + 2u] = f.z;
   outv[o + 3u] = ev;
-  outv[o + 4u] = ec;
+  outv[o + 4u] = select(ec, -1.0, bad > 0.0);
   outv[o + 5u] = w;
 }
 `;
@@ -363,6 +405,13 @@ interface Buffers {
   coefCap: number;
   bind: GPUBindGroup | null;
 }
+
+/** The f32 coefficients for the kernels' array<vec4<f32>> (a multiple of four floats; pair table's data ends anywhere). */
+const padToVec4 = (c: Float64Array): Float32Array => {
+  const out = new Float32Array(Math.ceil(c.length / 4) * 4);
+  out.set(c);
+  return out;
+};
 
 export class WebGpuForceBackend implements ForceBackend {
   readonly kind = 'webgpu' as const;
@@ -607,7 +656,7 @@ export class WebGpuForceBackend implements ForceBackend {
       ints[specBase + n] = t;
       intsLen = t;
     }
-    if (!this.specCache || this.specCache.key !== spec.key) this.specCache = { key: spec.key, coef: Float32Array.from(spec.coef) };
+    if (!this.specCache || this.specCache.key !== spec.key) this.specCache = { key: spec.key, coef: padToVec4(spec.coef) };
     const coef = this.specCache.coef;
     const dev = this.device;
     if (!this.stylesPipeline) {
@@ -661,6 +710,9 @@ export class WebGpuForceBackend implements ForceBackend {
     const outv = new Float32Array(b.staging.getMappedRange(0, 24 * n));
     const f = state.f;
     let evdwl = 0, ecoul = 0, virial = 0;
+    // pair_style table: an atom with a pair inside a table's inner cutoff (ecoul slot -1; the style has no Coulomb)
+    const table = spec.law === TABLE_LAW;
+    let bad = -1;
     for (let slot = 0; slot < n; slot++) {
       const i = sorted[slot];
       const o = 6 * slot;
@@ -668,10 +720,12 @@ export class WebGpuForceBackend implements ForceBackend {
       f[3 * i + 1] = outv[o + 1];
       f[3 * i + 2] = outv[o + 2];
       evdwl += outv[o + 3];
-      ecoul += outv[o + 4];
+      if (table && outv[o + 4] < 0 && bad < 0) bad = i;
+      else ecoul += outv[o + 4];
       virial += outv[o + 5];
     }
     b.staging.unmap();
+    if (bad >= 0) throw new Error(tableInnerError(spec, state, bad));
     return { pe: evdwl + ecoul, virial, evdwl, ecoul };
   }
 
@@ -803,7 +857,8 @@ export class WebGpuForceBackend implements ForceBackend {
   }
 
   canAdvanceSpec(state: SimState, spec: GpuPairSpec): boolean {
-    if (state.n === 0 || !(spec.maxCutoff > 0)) return false;
+    // the whole-step kernel has the analytic laws only (styleLaws.ts), not pair_style table's tables
+    if (state.n === 0 || !(spec.maxCutoff > 0) || spec.law === TABLE_LAW) return false;
     const two = state.dimension === 2;
     return [0, 1, 2].every((d) => (d === 2 && two)
       || (state.box.periodic[d] && Math.floor((state.box.hi[d] - state.box.lo[d]) / spec.maxCutoff) >= 3));
@@ -812,7 +867,7 @@ export class WebGpuForceBackend implements ForceBackend {
   /** `advance` for a style of gpu/pairSpec.ts (the charges of a charged one go up with the coefficients). */
   async advanceSpec(state: SimState, spec: GpuPairSpec, nsteps: number, opts: { enforce2d: boolean }): Promise<ForceResult> {
     if (this.disposed) throw new Error('the WebGPU backend was disposed');
-    if (!this.specCache || this.specCache.key !== spec.key) this.specCache = { key: spec.key, coef: Float32Array.from(spec.coef) };
+    if (!this.specCache || this.specCache.key !== spec.key) this.specCache = { key: spec.key, coef: padToVec4(spec.coef) };
     const two = state.dimension === 2;
     const nc = [0, 1, 2].map((d) => (d === 2 && two ? 1 : Math.floor((state.box.hi[d] - state.box.lo[d]) / spec.maxCutoff))) as [number, number, number];
     this.resident ??= ResidentStepper.create(this.device);

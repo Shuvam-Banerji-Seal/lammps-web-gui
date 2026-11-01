@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 import type { System } from '../src/engine/system';
-import { gpuPairSpec, pairSpecEval, type GpuPairSpec } from '../src/engine/gpu/pairSpec';
+import { gpuPairSpec, pairSpecEval, tableInnerError, type GpuPairSpec } from '../src/engine/gpu/pairSpec';
 import { accelerator } from '../src/engine/run/accel';
 import type { ForceBackend } from '../src/engine/types';
 
@@ -44,10 +44,29 @@ const STYLES: Record<string, string> = {
   'lj/class2/coul/long': 'pair_style lj/class2/coul/long 6.0 7.0\npair_coeff 1 1 0.2 3.0\npair_coeff 2 2 0.1 3.4 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
   'buck/coul/long': 'pair_style buck/coul/long 6.0 7.0\npair_coeff * * 20000.0 0.3 120.0\npair_coeff 1 2 15000.0 0.28 90.0 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
   'born/coul/long': 'pair_style born/coul/long 6.0 7.0\npair_coeff * * 6000.0 0.32 2.6 100.0 50.0\npair_coeff 1 2 5000.0 0.30 2.4 80.0 40.0 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
+  // pair_style table in its three interpolation styles, two tables (the 1-2 pair its own)
+  'table linear': 'pair_style table linear 1000\npair_coeff * * lj.table LJA 6.5\npair_coeff 1 2 lj.table LJB 6.0',
+  'table spline': 'pair_style table spline 1000\npair_coeff * * lj.table LJA 6.5\npair_coeff 1 2 lj.table LJB 6.0',
+  'table lookup': 'pair_style table lookup 2000\npair_coeff * * lj.table LJA 6.5\npair_coeff 1 2 lj.table LJB 6.0',
+};
+
+/** Two 12-6 LJ tables in r spacing (pair_table.html: keyword, N and R, then index r e f per line), 1 to 7 A. */
+const ljTables = (): string => {
+  const out = ['# LJ tables for the GPU table test'];
+  for (const [name, eps, sig] of [['LJA', 0.2, 3.1], ['LJB', 0.3, 2.9]] as const) {
+    const n = 601, lo = 1.0, hi = 7.0;
+    out.push('', name, `N ${n} R ${lo} ${hi}`, '');
+    for (let k = 0; k < n; k++) {
+      const r = lo + (k * (hi - lo)) / (n - 1), s6 = (sig / r) ** 6;
+      out.push(`${k + 1} ${r} ${4 * eps * (s6 * s6 - s6)} ${(24 * eps * (2 * s6 * s6 - s6)) / r}`);
+    }
+  }
+  return out.join('\n');
 };
 
 const systemFor = async (lines: string): Promise<System> => {
   const s = new Session({ emit: () => {}, writeFile: () => {} });
+  if (lines.includes('lj.table')) s.addFile('lj.table', ljTables());
   await s.execute(`${BOX}${lines}\nrun 0\n`);
   return (s as unknown as { sys: System }).sys;
 };
@@ -90,6 +109,20 @@ describe('GPU pair-style specs against the CPU styles', () => {
     });
   }
 
+  it('pair_style table: per-step only, and a pair inside the inner cutoff stops the run with the CPU style\'s error', async () => {
+    const gpuRes = { kind: 'webgpu', label: 'WebGPU · test', compute: () => ({ pe: 0, virial: 0 }), dispose() {}, canAdvance: () => true, advance: async () => ({ pe: 0, virial: 0 }), canAdvanceSpec: () => true } as unknown as ForceBackend;
+    const sys = await systemFor(`${STYLES['table linear']}\nfix 1 all nve`);
+    const a = accelerator(sys, gpuRes);
+    expect(a.reason).toBeNull();
+    expect(a.accel?.spec?.style).toBe(19);
+    expect(a.accel?.resident).toBe(false);
+    const spec = a.accel!.spec!;
+    // the fp64 law and the readback's message: two atoms 0.5 A apart (the tables start at 1 A)
+    expect(() => pairSpecEval(spec, 1, 1, 0.5 * 0.5, 0, 0)).toThrow('pair distance 0.5 below the table inner cutoff 1');
+    const st = { n: 2, x: [1, 1, 1, 1.5, 1, 1], type: [1, 1], box: { lo: [0, 0, 0], hi: [20, 20, 20] }, dimension: 3 };
+    expect(tableInnerError(spec, st, 0)).toBe('pair distance 0.5 below the table inner cutoff 1');
+  });
+
   it('the GPU accelerator takes these styles, and names the ones it does not run', async () => {
     const gpu = { kind: 'webgpu', label: 'WebGPU · test', compute: () => ({ pe: 0, virial: 0 }), dispose() {} } as unknown as ForceBackend;
     const withFix = async (lines: string) => {
@@ -117,6 +150,6 @@ describe('GPU pair-style specs against the CPU styles', () => {
     const long = await (async () => accelerator(await systemFor('pair_style buck/coul/cut 6.0 10.5\npair_coeff * * 20000.0 0.3 120.0\nfix 1 all nve'), gpuRes))();
     expect(long.reason).toBe('a box shorter than 2 pair cutoffs along an edge');
     const expand = await withFix('pair_style lj/expand 6.0\npair_coeff * * 0.2 3.0 0.5');
-    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born, coul\/long, lj\/cut\/coul\/long, lj\/charmm\/coul\/long, lj\/class2, lj\/class2\/coul\/cut, lj\/class2\/coul\/long, buck\/coul\/long, born\/coul\/long, eam, eam\/alloy, eam\/fs only\)/);
+    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born, coul\/long, lj\/cut\/coul\/long, lj\/charmm\/coul\/long, lj\/class2, lj\/class2\/coul\/cut, lj\/class2\/coul\/long, buck\/coul\/long, born\/coul\/long, table, eam, eam\/alloy, eam\/fs only\)/);
   });
 });

@@ -38,7 +38,12 @@ export const GPU_PAIR_STYLES: Readonly<Record<string, number>> = {
   'lj/class2/coul/long': 16,
   'buck/coul/long': 17,
   'born/coul/long': 18,
+  // tabulated (pair_style table: lookup, linear, spline); per-step kernel only (the whole-step kernel has no tables)
+  table: 19,
 };
+
+/** The kernel law of pair_style table (P.style 20): the tables after the type pairs' coefficients. */
+export const TABLE_LAW = 20;
 
 /**
  * The kernel's short-range law of each style (P.style of the WGSL kernels, styleLaws.ts shortRange): 1 the 12-6 LJ law,
@@ -47,6 +52,7 @@ export const GPU_PAIR_STYLES: Readonly<Record<string, number>> = {
  */
 export const SPEC_LAW: Readonly<Record<number, number>> = {
   1: 1, 2: 2, 3: 3, 4: 3, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 1, 11: 2, 12: 1, 13: 13, 14: 8, 15: 8, 16: 8, 17: 3, 18: 9,
+  19: TABLE_LAW,
 };
 
 /** The styles with the Ewald real-space Coulomb term (spec.gewald, set from the kspace style's G-ewald). */
@@ -94,6 +100,7 @@ type Internals = Pair & {
   pa: Arr; pk: Arr; kappa: number;
   bornA: Arr; bornIR: Arr; bornSig: Arr; bornC: Arr; bornD: Arr;
   cutCoul: number; gEwald: number; aL2: number; bL2: number; invDL3: number; cutGlobal: number;
+  mode: 'lookup' | 'linear' | 'spline'; tRsq1: Arr; tInvDelta: Arr; tE: Arr[]; tG: Arr[]; tE2: Arr[]; tG2: Arr[];
   f9: Arr; f6: Arr; e9: Arr; e6: Arr;
   ta: Arr; tb: Arr; tn: Arr; tm: Arr; toff: Arr; tcutsq: Arr; tcutCsq: Arr;
   p: { get(name: string, i: number, j: number): number };
@@ -109,7 +116,26 @@ export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number, special:
   if (style === undefined) return `pair style ${pair.name}`;
   const st = pair as Internals;
   const nt = ntypes + 1;
-  const coef = new Float64Array(SPEC_STRIDE * nt * nt);
+  // pair_style table: each distinct table once after the type pairs' coefficients (f32 indices, exact below 2^24)
+  const tables: Float64Array[] = [];
+  const tabOffset = new Map<Float64Array, number>();
+  let tabLen = SPEC_STRIDE * nt * nt;
+  const place = (a: Float64Array): number => {
+    let o = tabOffset.get(a);
+    if (o === undefined) { o = tabLen; tabOffset.set(a, o); tables.push(a); tabLen += a.length; }
+    return o;
+  };
+  if (style === 19) {
+    for (let i = 1; i < nt; i++) {
+      for (let j = 1; j < nt; j++) {
+        const t = i * nt + j;
+        for (const a of [st.tE[t], st.tG[t], st.tE2[t], st.tG2[t]]) if (a) place(a);
+      }
+    }
+    if (tabLen >= 2 ** 24) return `pair style ${pair.name} with tables too large for the GPU kernel`;
+  }
+  const coef = new Float64Array(tabLen);
+  for (const a of tables) coef.set(a, tabOffset.get(a)!);
   let maxCut = 0;
   for (let i = 1; i < nt; i++) {
     for (let j = 1; j < nt; j++) {
@@ -197,6 +223,21 @@ export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number, special:
           coef.set([st.bornA[t], st.bornIR[t], st.bornSig[t], st.bornC[t], st.offset[t]], o + 2);
           coef[o + 8] = st.bornD[t];
           break;
+        case 19: { // table (table.ts): [cutsq 0 rsq1 1/delta] [e g e2 cscale] [g2 last h^2/6 mode]
+          const e = st.tE[t], g = st.tG[t];
+          if (!e || !g) break;
+          cutA = st.cutsq[t];
+          coef[o + 2] = st.tRsq1[t];
+          coef[o + 3] = st.tInvDelta[t];
+          coef[o + 4] = place(e);
+          coef[o + 5] = place(g);
+          coef[o + 6] = place(st.tE2[t] ?? e);
+          coef[o + 8] = place(st.tG2[t] ?? g);
+          coef[o + 9] = e.length - 1;
+          coef[o + 10] = 1 / (6 * st.tInvDelta[t] * st.tInvDelta[t]);
+          coef[o + 11] = st.mode === 'spline' ? 1 : st.mode === 'lookup' ? 2 : 0;
+          break;
+        }
       }
       coef[o] = cutA;
       coef[o + 1] = cutC;
@@ -224,7 +265,11 @@ export const pairSpecEval = (spec: GpuPairSpec, ti: number, tj: number, rsq: num
   const e5 = c[o + 8];
   let fpair = 0, evdwl = 0, ecoul = 0;
   const law = spec.law;
-  if (rsq < cutA) {
+  if (rsq < cutA && law === TABLE_LAW) {
+    const r = tableLaw(c, o, rsq);
+    fpair += r.fpair;
+    evdwl += r.e;
+  } else if (rsq < cutA) {
     if (law === 1) {
       const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
       fpair += r6inv * (a * r6inv - b) * r2inv;
@@ -287,4 +332,50 @@ export const pairSpecEval = (spec: GpuPairSpec, ti: number, tj: number, rsq: num
     }
   }
   return { fpair, evdwl, ecoul };
+};
+
+/**
+ * One pair of pair_style table with the packed tables, in fp64: table.ts compute's lookup, linear and spline
+ * arithmetic (uniform r^2 abscissa from rsq1, nearest entry, two surrounding entries, or the cubic spline). Throws the
+ * CPU style's error below the table's inner cutoff.
+ */
+const tableLaw = (c: Float64Array, o: number, rsq: number): { fpair: number; e: number } => {
+  const rsq1 = c[o + 2], invDelta = c[o + 3];
+  if (rsq < rsq1) throw new Error(`pair distance ${Math.sqrt(rsq)} below the table inner cutoff ${Math.sqrt(rsq1)}`);
+  const eo = c[o + 4], go = c[o + 5], e2o = c[o + 6], g2o = c[o + 8], last = c[o + 9], h2_6 = c[o + 10], mode = c[o + 11];
+  const p = (rsq - rsq1) * invDelta;
+  if (mode === 2) {
+    let m = Math.floor(p);
+    if (m > last) m = last; else if (m < 0) m = 0;
+    return { fpair: c[go + m], e: c[eo + m] };
+  }
+  let m = Math.floor(p), t = p - m;
+  if (m >= last) { m = last - 1; t = 1; } else if (m < 0) { m = 0; t = 0; }
+  if (mode === 1) {
+    const a = 1 - t, b = t;
+    const sp = (y: number, y2: number) => a * c[y + m] + b * c[y + m + 1] + ((a * a * a - a) * c[y2 + m] + (b * b * b - b) * c[y2 + m + 1]) * h2_6;
+    return { fpair: sp(go, g2o), e: sp(eo, e2o) };
+  }
+  return { fpair: c[go + m] + t * (c[go + m + 1] - c[go + m]), e: c[eo + m] + t * (c[eo + m + 1] - c[eo + m]) };
+};
+
+/**
+ * The CPU style's error for a pair inside a table's inner cutoff (the kernel flags atom i; this finds its pair in
+ * fp64, minimum image in the orthogonal box).
+ */
+export const tableInnerError = (spec: GpuPairSpec, state: { n: number; x: ArrayLike<number>; type: ArrayLike<number>; box: { lo: number[]; hi: number[] }; dimension: number }, i: number): string => {
+  const L = [0, 1, 2].map((d) => state.box.hi[d] - state.box.lo[d]);
+  const c = spec.coef;
+  for (let j = 0; j < state.n; j++) {
+    if (j === i) continue;
+    let rsq = 0;
+    for (let d = 0; d < (state.dimension === 2 ? 2 : 3); d++) {
+      let v = state.x[3 * i + d] - state.x[3 * j + d];
+      v -= L[d] * Math.round(v / L[d]);
+      rsq += v * v;
+    }
+    const o = SPEC_STRIDE * (state.type[i] * spec.stride + state.type[j]);
+    if (rsq < c[o] && rsq < c[o + 2]) return `pair distance ${Math.sqrt(rsq)} below the table inner cutoff ${Math.sqrt(c[o + 2])}`;
+  }
+  return 'a pair distance below the table inner cutoff';
 };

@@ -645,6 +645,9 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
         skipSetup: reuse,
         // keep the page responsive: yield about every 30 ms
         yieldMs: 30,
+        // per-atom energy and virial on the steps whose thermo or dump output may read them, and the run's last step
+        peratomDue: (step) => step === first + n || th.due(step, first, first + n) || (th.everyVar !== null && step >= nextThermoVar)
+          || sys.dumps.some((d) => step >= d.delay && (d.everyVar ? true : d.every > 0 && step % d.every === 0)),
       });
   sys.timer.stop();
   // a cancelled run still reports its last step; a run stopped by fix halt does not print a row for a step

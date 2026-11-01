@@ -594,10 +594,26 @@ export class System {
     return this.ff.acc;
   }
 
-  /** Per-atom energy / virial for the current state. */
-  peratomEnergy(): { eatom: Float64Array | null; vatom: Float64Array | null } {
+  /**
+   * The step of a run whose force evaluation left per-atom energy and virial out (runVerlet's peratomDue: no thermo
+   * or dump output was due), or -1.
+   */
+  peratomSkippedStep = -1;
+
+  /**
+   * Per-atom energy / virial for the current state. need: what the calling compute reads (pe/atom the energy,
+   * stress/atom and centroid/stress/atom the virial), for the message on a step that left them out.
+   */
+  peratomEnergy(need: 'energy' | 'virial' = 'energy'): { eatom: Float64Array | null; vatom: Float64Array | null } {
     const want = this.computeFlags();
-    if ((want.eatom && !this.flagsUsed.eatom) || (want.vatom && !this.flagsUsed.vatom) || (want.cvatom && !this.flagsUsed.cvatom)) this.forcesVersion = -1;
+    if ((want.eatom && !this.flagsUsed.eatom) || (want.vatom && !this.flagsUsed.vatom) || (want.cvatom && !this.flagsUsed.cvatom)) {
+      // As native LAMMPS does (src/compute_pe_atom.cpp, compute_stress_atom.cpp and compute_centroid_stress_atom.cpp
+      // compute_peratom at b332f28): a compute invoked on a step whose per-atom terms were not tallied is an error
+      if (this.run.inRun && this.peratomSkippedStep === this.state.step) {
+        throw new StyleError(`Per-atom ${need} was not tallied on needed timestep${errorUrl(22)}`);
+      }
+      this.forcesVersion = -1;
+    }
     this.forces();
     return { eatom: this.ff.eatom, vatom: this.ff.vatom };
   }

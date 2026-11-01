@@ -200,7 +200,7 @@ export class ComputeStressAtom extends Compute {
   protected computePeratom(): void {
     const s = this.sys.state;
     const v = s.v;
-    const per = this.sys.peratomEnergy();
+    const per = this.sys.peratomEnergy('virial');
     const a = this.sys.forces();
     const vsum = new Float64Array(6 * s.n);
     for (const t of VIRIAL_TERMS) {
@@ -332,7 +332,7 @@ export class ComputeCentroidStressAtom extends Compute {
     const s = sys.state;
     const n = s.n;
     const v = s.v;
-    sys.peratomEnergy();
+    sys.peratomEnergy('virial');
     const ff = sys.ff;
     const out = new Float64Array(9 * n);
     // CENTROID_SAME terms: the per-atom virial, yx zx zy = xy xz yz

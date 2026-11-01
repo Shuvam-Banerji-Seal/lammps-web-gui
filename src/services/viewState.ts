@@ -11,7 +11,7 @@ import { COLOR_BY_LABELS, COLOR_MAP_NAMES } from './colorMaps';
  */
 
 const MATERIALS: MaterialType[] = ['realistic', 'plastic', 'metallic', 'toon'];
-const MODES: VisualizationMode[] = ['ball-and-stick', 'space-fill', 'wireframe', 'licorice', 'element-balls', 'points'];
+const MODES: VisualizationMode[] = ['ball-and-stick', 'space-fill', 'wireframe', 'licorice', 'element-balls', 'points', 'lines', 'cubes', 'glass', 'flat'];
 const LIGHTING: LightingPreset[] = ['studio', 'lab', 'outdoor', 'space', 'soft'];
 const QUALITY: RenderQuality[] = ['low', 'auto', 'high', 'ultra'];
 const TONE: ToneMappingMode[] = ['aces', 'agx', 'neutral', 'none'];

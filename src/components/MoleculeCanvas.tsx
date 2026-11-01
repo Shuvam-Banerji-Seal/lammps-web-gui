@@ -9,6 +9,7 @@ import { getActiveGL, registerActiveGL } from '../services/glRegistry';
 import InstancedAtomMesh from './InstancedAtomMesh';
 import PointAtoms from './PointAtoms';
 import InstancedBondMesh from './InstancedBondMesh';
+import BondLines from './BondLines';
 import SimulationBox from './SimulationBox';
 import LightingRig from './LightingRig';
 import CameraRig from './CameraRig';
@@ -16,7 +17,7 @@ import AtomLabels from './AtomLabels';
 import MeasurementOverlay from './MeasurementOverlay';
 import { CanvasErrorBoundary } from './CanvasErrorBoundary';
 import SceneEffects from './SceneEffects';
-import { qualityDpr, shadowLimit, shadowMapSize } from '../services/atomStyle';
+import { qualityDpr, shadowLimit, shadowMapSize, meshMode, cylinderBondMode } from '../services/atomStyle';
 import { COLOR_BY_LABELS, colorMapGradient, isContinuous, scalarRange } from '../services/colorMaps';
 
 interface MoleculeCanvasProps {
@@ -176,11 +177,8 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
 
   const shadowsEnabled = config.shadowsEnabled && atoms.length <= shadowLimit(quality);
 
-  const shouldShowBonds =
-    config.showBonds &&
-    config.visualizationMode !== 'space-fill' &&
-    config.visualizationMode !== 'points' &&
-    bonds.length > 0;
+  const shouldShowBonds = config.showBonds && cylinderBondMode(config.visualizationMode) && bonds.length > 0;
+  const bondLines = config.showBonds && config.visualizationMode === 'lines' && bonds.length > 0;
 
   // Hover updates: immediate on atom change, position refresh throttled to
   // ~12 Hz. Returning the previous state object when unchanged lets React
@@ -284,8 +282,8 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
 
         <group position={groupPosition}>
           {config.showAxes && <axesHelper args={[boundingRadius * 1.2]} />}
-          {config.visualizationMode === 'points' ? (
-            <PointAtoms atoms={atoms} config={config} />
+          {!meshMode(config.visualizationMode) ? (
+            <PointAtoms atoms={atoms} config={config} flat={config.visualizationMode === 'flat'} />
           ) : (
             <InstancedAtomMesh
               atoms={atoms}
@@ -294,6 +292,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
               onSelectAtom={onSelectAtom}
             />
           )}
+          {bondLines && <BondLines bonds={bonds} atomMap={atomMap} config={config} maxBondLength={maxBondLength} />}
           {shouldShowBonds && (
             <InstancedBondMesh
               bonds={bonds}

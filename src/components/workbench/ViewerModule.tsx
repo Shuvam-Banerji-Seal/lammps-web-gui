@@ -42,6 +42,10 @@ const VIZ_MODES: { value: VisualizationMode; label: string; desc: string; key: s
   { value: 'licorice', label: 'Licorice', desc: 'Bond-centric sticks', key: '4' },
   { value: 'element-balls', label: 'Element balls', desc: 'Sized by covalent radius', key: '6' },
   { value: 'points', label: 'Points', desc: 'Fast shaded dots, huge systems', key: '0' },
+  { value: 'lines', label: 'Lines', desc: 'Bonds as thin lines, large molecules', key: 'V' },
+  { value: 'cubes', label: 'Cubes', desc: 'A cube per atom, lattices', key: 'V' },
+  { value: 'glass', label: 'Glass', desc: 'See-through space fill', key: 'V' },
+  { value: 'flat', label: 'Flat discs', desc: 'Outlined discs, 2D systems', key: 'V' },
 ];
 
 const MATERIALS: { value: VisualizationConfig['materialType']; label: string }[] = [
@@ -675,6 +679,10 @@ const ViewerModule: React.FC<{
     onOrbit: (dx, dy) => emitCameraCommand({ type: 'orbit', dx, dy }),
     onVisualizationMode: idx =>
       updateConfig('visualizationMode', VIZ_MODES[idx].value),
+    onCycleVisualizationMode: () => setVizConfig(p => {
+      const i = VIZ_MODES.findIndex(m => m.value === p.visualizationMode);
+      return { ...p, visualizationMode: VIZ_MODES[(i + 1) % VIZ_MODES.length].value };
+    }),
     onToggleBonds: () => setVizConfig(p => ({ ...p, showBonds: !p.showBonds })),
     onToggleBox: () => setVizConfig(p => ({ ...p, showBox: !p.showBox })),
     onToggleLabels: () => setVizConfig(p => ({ ...p, showLabels: !p.showLabels })),

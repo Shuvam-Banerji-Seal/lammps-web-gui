@@ -98,7 +98,9 @@ export enum ParseSection {
 
 export type MaterialType = 'realistic' | 'plastic' | 'toon' | 'metallic';
 
-export type VisualizationMode = 'ball-and-stick' | 'space-fill' | 'wireframe' | 'licorice' | 'element-balls' | 'points';
+export type VisualizationMode =
+  | 'ball-and-stick' | 'space-fill' | 'wireframe' | 'licorice' | 'element-balls' | 'points'
+  | 'lines' | 'cubes' | 'glass' | 'flat';
 
 export type FileFormat = 'lammps' | 'xyz' | 'pdb' | 'cif' | 'lammpsdump';
 

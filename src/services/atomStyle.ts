@@ -1,4 +1,4 @@
-import { Atom, RenderQuality, VisualizationConfig } from '../types';
+import { Atom, RenderQuality, VisualizationConfig, VisualizationMode } from '../types';
 import { COVALENT_RADII, ELEMENT_RADII } from '../constants';
 
 /**
@@ -8,8 +8,16 @@ import { COVALENT_RADII, ELEMENT_RADII } from '../constants';
  */
 export const atomDisplayRadius = (atom: Atom, config: VisualizationConfig): number => {
   const s = config.atomScale * (config.typeRadii?.[atom.type] ?? 1);
-  if (config.visualizationMode === 'space-fill') {
+  if (config.visualizationMode === 'space-fill' || config.visualizationMode === 'glass') {
     return (ELEMENT_RADII[atom.type] ?? 1.7) * s * 0.5;
+  }
+  if (config.visualizationMode === 'lines') {
+    // a small dot at each atom, so atoms without bonds stay visible
+    return 0.1 * s;
+  }
+  if (config.visualizationMode === 'flat') {
+    // touching discs for unit-spaced particles (LAMMPS lj units: sigma = 1)
+    return 0.5 * s;
   }
   if (config.visualizationMode === 'wireframe') {
     return 0.16 * s;
@@ -23,8 +31,16 @@ export const atomDisplayRadius = (atom: Atom, config: VisualizationConfig): numb
   if (config.visualizationMode === 'points') {
     return 0.4 * s;
   }
-  return 0.45 * s; // ball-and-stick
+  return 0.45 * s; // ball-and-stick, and the half edge of a cube
 };
+
+/** Modes drawn with the instanced mesh of InstancedAtomMesh (the others are point sprites, PointAtoms). */
+export const meshMode = (mode: VisualizationMode): boolean =>
+  mode !== 'points' && mode !== 'flat' && mode !== 'lines';
+
+/** Modes that draw bonds as cylinders (InstancedBondMesh); 'lines' draws them as lines (BondLines). */
+export const cylinderBondMode = (mode: VisualizationMode): boolean =>
+  mode !== 'space-fill' && mode !== 'glass' && mode !== 'points' && mode !== 'flat' && mode !== 'lines';
 
 /** A key of everything atomDisplayRadius reads from the view (instance matrices are rewritten when it changes). */
 export const radiusKeyOf = (config: VisualizationConfig): string => {

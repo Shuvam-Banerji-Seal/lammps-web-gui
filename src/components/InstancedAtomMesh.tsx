@@ -79,12 +79,17 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
   const colorKey = colorKeyOf(config);
 
   const segments = sphereSegments(config.quality, atoms.length);
+  // 'cubes' draws an axis-aligned cube per atom (half edge = the display radius); the rest spheres
+  const cubes = config.visualizationMode === 'cubes';
+  const glass = config.visualizationMode === 'glass';
   // Tessellation tiers: visual quality is indistinguishable at these
   // densities, while triangle count drops ~4x per tier.
   const geometry = useMemo(
-    () => new THREE.SphereGeometry(1, segments, Math.max(6, Math.round(segments / 2))),
-    [segments],
+    () => (cubes ? new THREE.BoxGeometry(2, 2, 2) : new THREE.SphereGeometry(1, segments, Math.max(6, Math.round(segments / 2)))),
+    [segments, cubes],
   );
+  // a new mesh for a new size, tessellation, shape or material: the effects below must write its matrices and colours
+  const meshKey = `${atoms.length}|${segments}|${cubes ? 'cube' : 'sphere'}|${glass ? 'glass' : ''}`;
 
   // R3F disposes what it constructs from `args`, but a useMemo'd geometry that
   // is REPLACED when the tier changes is not R3F's to clean up — without this
@@ -112,7 +117,7 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
     // Correct frustum culling: derive bounds from actual instance placements.
     mesh.computeBoundingSphere();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atoms, radiusKey, segments]);
+  }, [atoms, radiusKey, meshKey]);
 
   // --- Colors: only when the mapping changes ---
   useEffect(() => {
@@ -123,7 +128,7 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
     applied.current.colours = colours !== null;
     invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atoms, colorKey, segments]);
+  }, [atoms, colorKey, meshKey]);
 
   // --- Render overrides (the notebook's Render panel): applied at once, without a React render ---
   useEffect(() => onAtomRenderOverride(() => {
@@ -182,14 +187,28 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
   return (
     <instancedMesh
       // a new mesh for a new size or tessellation (the effects above write its matrices and colours)
-      key={`${atoms.length}|${segments}`}
+      key={meshKey}
       ref={meshRef}
       args={[geometry, undefined, atoms.length]}
-      castShadow={config.shadowsEnabled}
-      receiveShadow={config.shadowsEnabled}
+      castShadow={config.shadowsEnabled && !glass}
+      receiveShadow={config.shadowsEnabled && !glass}
       {...pointerProps}
     >
-      {config.materialType === 'realistic' && (
+      {/* 'glass': translucent van der Waals spheres that show what is inside a structure (no depth writes, so the
+          spheres behind stay visible; the instances are not sorted, which a uniform low opacity hides) */}
+      {glass && (
+        <meshPhysicalMaterial
+          transparent
+          opacity={0.3}
+          depthWrite={false}
+          roughness={0.08}
+          metalness={0}
+          clearcoat={1.0}
+          clearcoatRoughness={0.05}
+          envMapIntensity={1.2}
+        />
+      )}
+      {!glass && config.materialType === 'realistic' && (
         <meshPhysicalMaterial
           roughness={0.15}
           metalness={0.05}
@@ -198,13 +217,13 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
           envMapIntensity={1.1}
         />
       )}
-      {config.materialType === 'plastic' && (
+      {!glass && config.materialType === 'plastic' && (
         <meshStandardMaterial roughness={0.4} metalness={0.0} envMapIntensity={0.7} />
       )}
-      {config.materialType === 'metallic' && (
+      {!glass && config.materialType === 'metallic' && (
         <meshStandardMaterial roughness={0.22} metalness={0.9} envMapIntensity={1.3} />
       )}
-      {config.materialType === 'toon' && <meshToonMaterial />}
+      {!glass && config.materialType === 'toon' && <meshToonMaterial />}
     </instancedMesh>
   );
 };

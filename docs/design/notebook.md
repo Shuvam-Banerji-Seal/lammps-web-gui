@@ -289,7 +289,7 @@ interface ForceBackend {
   the whole-step kernel and the lj/cut threads keep fully periodic boxes. The 2-cutoff minimum applies to periodic edges
   only. Triclinic boxes stay on the CPU. Tests: `tests/engineGpuNonPeriodic.test.ts`. In Chromium (SwiftShader
   WebGPU), shortened LAMMPS examples on WebGPU matched the CPU engine:
-  - shear/in.shear (s s p, EAM, both runs): every printed digit of temp, pe and etotal; press to 0.05 in 10^4;
+  - shear/in.shear (s s p, EAM, both runs): every printed digit of temp, pe and etotal; press within 0.1 (values to 1.4e4);
   - indent/in.indent (p s p, fix indent), friction/in.friction (p s p) and wall/in.wall.specular (p f p) over 1500
     to 3000 steps: to the printed digits, save the sixth of a few;
   - crack/in.crack (s s p, 8141 atoms): matched through step 400.

@@ -10,6 +10,8 @@ import { KERNEL_SW, SW_WORKGROUP } from './swKernels';
 import type { GpuSwSpec } from './swSpec';
 import { KERNEL_TERSOFF, TERSOFF_WORKGROUP } from './tersoffKernels';
 import type { GpuTersoffSpec } from './tersoffSpec';
+import { KERNEL_TIP4P, TIP4P_WORKGROUP } from './tip4pKernels';
+import { spreadSiteForces, type GpuTip4pSpec, type Tip4pSites } from './tip4pSpec';
 import type { GpuEamSpec } from './eamSpec';
 
 /*
@@ -677,27 +679,7 @@ export class WebGpuForceBackend implements ForceBackend {
     let intsLen = base + n + (spec.charges ? n : 0);
     if (sp) {
       specBase = intsLen;
-      const entryBase = specBase + n + 1;
-      const slotOf = new Int32Array(n);
-      for (let slot = 0; slot < n; slot++) slotOf[sorted[slot]] = slot;
-      const idx = buildAtomMap(state);
-      const wl = spec.special!.lj, wcl = spec.special!.coul;
-      let t = entryBase;
-      for (let slot = 0; slot < n; slot++) {
-        ints[specBase + slot] = t;
-        const a = sorted[slot];
-        const e1: number = sp.offset[a + 1];
-        for (let e: number = sp.offset[a]; e < e1; e++) {
-          const o: number = sp.order[e];
-          if (wl[o] === 1 && wcl[o] === 1) continue;
-          const pid: number = sp.partner[e];
-          const pb: number = pid < idx.length ? idx[pid] : -1;
-          if (pb < 0 || pb >= n) continue;
-          ints[t++] = (slotOf[pb] << 2) | o;
-        }
-      }
-      ints[specBase + n] = t;
-      intsLen = t;
+      intsLen = this.writeSpecial(state, sp, spec.special!, specBase);
     }
     if (!this.specCache || this.specCache.key !== spec.key) this.specCache = { key: spec.key, coef: padToVec4(spec.coef) };
     const coef = this.specCache.coef;
@@ -768,6 +750,158 @@ export class WebGpuForceBackend implements ForceBackend {
     }
     b.staging.unmap();
     if (bad >= 0) throw new Error(tableInnerError(spec, state, bad));
+    return { pe: evdwl + ecoul, virial, evdwl, ecoul };
+  }
+
+  /**
+   * The special list of the cell-sorted slots in intsData from `start`: each slot's first entry (n + 1 starts), then
+   * its entries (partner slot << 2 | order), leaving out the orders whose weights are both 1. Returns the end.
+   */
+  private writeSpecial(state: SimState, sp: SpecialList, w: { lj: number[]; coul: number[] }, start: number): number {
+    const n = state.n, ints = this.intsData, sorted = this.sorted;
+    const slotOf = new Int32Array(n);
+    for (let slot = 0; slot < n; slot++) slotOf[sorted[slot]] = slot;
+    const idx = buildAtomMap(state);
+    let t = start + n + 1;
+    for (let slot = 0; slot < n; slot++) {
+      ints[start + slot] = t;
+      const a = sorted[slot];
+      const e1: number = sp.offset[a + 1];
+      for (let e: number = sp.offset[a]; e < e1; e++) {
+        const o: number = sp.order[e];
+        if (w.lj[o] === 1 && w.coul[o] === 1) continue;
+        const pid: number = sp.partner[e];
+        const pb: number = pid < idx.length ? idx[pid] : -1;
+        if (pb < 0 || pb >= n) continue;
+        ints[t++] = (slotOf[pb] << 2) | o;
+      }
+    }
+    ints[start + n] = t;
+    return t;
+  }
+
+  private tip4pPipe: { main: GPUComputePipeline; params: GPUBuffer } | null = null;
+  private t4bufs: {
+    pos: GPUBuffer; site: GPUBuffer; out: GPUBuffer; staging: GPUBuffer; ints: GPUBuffer; coef: GPUBuffer;
+    atomCap: number; intsCap: number; coefCap: number; bind: GPUBindGroup; coefKey: string;
+  } | null = null;
+  private t4site = new Float32Array(0);
+  private t4fA = new Float64Array(0);
+  private t4fS = new Float64Array(0);
+
+  /**
+   * One force evaluation of a TIP4P pair style (gpu/tip4pSpec.ts, gpu/tip4pKernels.ts): the cells, charges, special
+   * list and the sites' offsets go up, one pass gathers each atom's Lennard-Jones force and its site's Coulomb force,
+   * and the site forces are spread here on the waters (spreadSiteForces). The sums are fp64 here.
+   */
+  async computeTip4p(state: SimState, spec: GpuTip4pSpec, special: SpecialList | null, sites: Tip4pSites): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    return validated(this.device, () => this.computeTip4pUnchecked(state, spec, special, sites));
+  }
+
+  private async computeTip4pUnchecked(state: SimState, spec: GpuTip4pSpec, special: SpecialList | null, sites: Tip4pSites): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    if (this.disposed) throw new Error('the WebGPU backend was disposed');
+    const n = state.n;
+    if (n === 0) return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
+    const sp = spec.special && special ? special : null;
+    const extra = n + (sp ? n + 1 + sp.offset[n] : 0);
+    const flat = state.dimension === 2;
+    if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
+      throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
+    }
+    const cells = this.sortByCell(state, spec.maxCutoff, extra, 1);
+    if (!cells) throw new Error('the box has no cell in a periodic dimension');
+    const { L, nc, base, two } = cells;
+    const { sorted, posData } = this;
+    const ints = this.intsData;
+    // the charges as f32 bits after the cells of the slots, then the special list
+    const qBase = base + n;
+    const qf = new Float32Array(ints.buffer, ints.byteOffset + 4 * qBase, n);
+    for (let slot = 0; slot < n; slot++) qf[slot] = state.q[sorted[slot]];
+    let intsLen = qBase + n, specBase = 0;
+    if (sp) {
+      specBase = intsLen;
+      intsLen = this.writeSpecial(state, sp, spec.special!, specBase);
+    }
+    if (this.t4site.length < 4 * n) this.t4site = new Float32Array(4 * Math.ceil(n * 1.25));
+    const site = this.t4site;
+    for (let slot = 0; slot < n; slot++) {
+      const a = sorted[slot];
+      site[4 * slot] = sites.delta[3 * a];
+      site[4 * slot + 1] = sites.delta[3 * a + 1];
+      site[4 * slot + 2] = two ? 0 : sites.delta[3 * a + 2];
+      site[4 * slot + 3] = 0;
+    }
+    const coefF32 = Float32Array.from(spec.coef);
+    const dev = this.device;
+    if (!this.tip4pPipe) {
+      const pl = await checkedPipelines(dev, KERNEL_TIP4P, ['main'] as const);
+      this.tip4pPipe = { main: pl.main, params: dev.createBuffer({ size: 112, usage: BUF_UNIFORM | BUF_COPY_DST }) };
+    }
+    const pipe = this.tip4pPipe;
+    let b = this.t4bufs;
+    if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < coefF32.byteLength) {
+      if (b) for (const buf of [b.pos, b.site, b.out, b.staging, b.ints, b.coef]) buf.destroy();
+      const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
+      const coefCap = Math.max(coefF32.byteLength, b?.coefCap ?? 0);
+      const pos = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
+      const siteBuf = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
+      const out = this.buffer(40 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
+      const staging = this.buffer(40 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
+      const intsBuf = this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST);
+      const coefBuf = this.buffer(coefCap, BUF_STORAGE | BUF_COPY_DST);
+      const bind = dev.createBindGroup({
+        layout: pipe.main.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: pipe.params } },
+          { binding: 1, resource: { buffer: pos } },
+          { binding: 2, resource: { buffer: intsBuf } },
+          { binding: 3, resource: { buffer: coefBuf } },
+          { binding: 4, resource: { buffer: siteBuf } },
+          { binding: 5, resource: { buffer: out } },
+        ],
+      });
+      b = this.t4bufs = { pos, site: siteBuf, out, staging, ints: intsBuf, coef: coefBuf, atomCap, intsCap, coefCap, bind, coefKey: '' };
+    }
+    const params = new ArrayBuffer(112);
+    const pf = new Float32Array(params), pu = new Uint32Array(params);
+    pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
+    pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = qBase; pu[11] = specBase;
+    pf[12] = spec.qqrd2e; pf[13] = spec.gewald; pf[14] = spec.cutCsq; pf[15] = spec.cutCsqPlus;
+    pu[16] = spec.hasLJ ? 1 : 0;
+    if (spec.special) for (let o = 0; o < 4; o++) { pf[20 + o] = spec.special.lj[o]; pf[24 + o] = spec.special.coul[o]; }
+    const q = dev.queue;
+    q.writeBuffer(pipe.params, 0, params);
+    q.writeBuffer(b.pos, 0, posData.buffer, posData.byteOffset, 16 * n);
+    q.writeBuffer(b.site, 0, site.buffer, site.byteOffset, 16 * n);
+    q.writeBuffer(b.ints, 0, ints.buffer, ints.byteOffset, 4 * intsLen);
+    if (b.coefKey !== spec.key) {
+      q.writeBuffer(b.coef, 0, coefF32.buffer, coefF32.byteOffset, coefF32.byteLength);
+      b.coefKey = spec.key;
+    }
+    const enc = dev.createCommandEncoder();
+    const pass = enc.beginComputePass();
+    pass.setPipeline(pipe.main);
+    pass.setBindGroup(0, b.bind);
+    pass.dispatchWorkgroups(Math.ceil(n / TIP4P_WORKGROUP));
+    pass.end();
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 40 * n);
+    q.submit([enc.finish()]);
+    await b.staging.mapAsync(MAP_READ, 0, 40 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 40 * n));
+    if (this.t4fA.length < 3 * n) { this.t4fA = new Float64Array(3 * n); this.t4fS = new Float64Array(3 * n); }
+    const fA = this.t4fA, fS = this.t4fS;
+    let evdwl = 0, ecoul = 0, virial = 0;
+    for (let slot = 0; slot < n; slot++) {
+      const i = sorted[slot], o = 10 * slot;
+      fA[3 * i] = outv[o]; fA[3 * i + 1] = outv[o + 1]; fA[3 * i + 2] = outv[o + 2];
+      fS[3 * i] = outv[o + 3]; fS[3 * i + 1] = outv[o + 4]; fS[3 * i + 2] = outv[o + 5];
+      evdwl += outv[o + 6];
+      ecoul += outv[o + 7];
+      virial += outv[o + 8];
+    }
+    b.staging.unmap();
+    spreadSiteForces(n, state.type, fA, fS, sites, spec, state.f);
     return { pe: evdwl + ecoul, virial, evdwl, ecoul };
   }
 
@@ -1193,6 +1327,9 @@ export class WebGpuForceBackend implements ForceBackend {
     const tb = this.terbufs;
     if (tb) for (const buf of [tb.pos, tb.out, tb.staging, tb.ints, tb.coef, tb.bond]) buf.destroy();
     this.terPipes?.params.destroy();
+    const t4 = this.t4bufs;
+    if (t4) for (const buf of [t4.pos, t4.site, t4.out, t4.staging, t4.ints, t4.coef]) buf.destroy();
+    this.tip4pPipe?.params.destroy();
     this.eamPipes?.params.destroy();
     this.styleParams?.destroy();
     this.params.destroy();

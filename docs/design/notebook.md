@@ -233,6 +233,23 @@ interface ForceBackend {
   arithmetic in fp64 (`tests/engineGpuTersoff.test.ts`). In Chromium a 4096-atom Si(B) crystal
   at 1600 K matched the CPU engine's thermo to all printed digits over 100 steps. A 4096-atom
   B/N/C system with `shift` gave forces within 5e-5 of the largest force at every 10th step.
+- **WebGPU TIP4P** (`gpu/tip4pSpec.ts`, `gpu/tip4pKernels.ts`, `webgpuForces.ts computeTip4p`):
+  `lj/cut/tip4p/long`, `lj/cut/tip4p/cut`, `tip4p/long` and `tip4p/cut` (not as hybrid sub-styles).
+  The bonded terms and `pppm/tip4p` run on the CPU beside the GPU, as for the other molecular
+  styles. Each step the host builds the M sites in fp64 (`tip4p_sites.ts buildOwnedSites`) and
+  uploads each oxygen's offset M - x_O. One pass gathers per atom the Lennard-Jones force on the
+  atom and the Coulomb force on its charge site. A site pair's separation is the atoms' minimum
+  image plus the difference of their offsets, so the sites need no image of their own. As the
+  CPU style does, a Coulomb pair is tested on the atoms against (cut_coul + 2 qdist)^2, then on
+  the sites against cut_coul^2. Special pairs keep the kspace correction with their site
+  separation. The host spreads each oxygen's site force (1 - alpha) to it and alpha/2 to each
+  hydrogen. `tip4pGather` is the arithmetic in fp64: setup forces match the CPU styles to 1e-10
+  and 40-step thermo to 1e-9 (`tests/engineGpuTip4p.test.ts`). In Chromium a 3000-atom TIP4P
+  water box (8.5 A cutoff, pppm/tip4p) matched the CPU engine's temperature to 6 digits over
+  100 steps, with and without SHAKE. The step-0 energy is within 0.02 kcal/mol (2e-7 of the
+  Coulomb energy) of the CPU with `pair_modify table 0`; the CPU's default table adds another
+  0.04. A box shorter than twice (cut_coul + 2 qdist) stays on the CPU, as do the gle water
+  examples (12.4 A).
 - **GPU validation errors stop the run.** Pipelines are created in a validation error scope
   (`checkedPipelines`), and each force evaluation runs in one (`validated`): WebGPU skips an
   invalid dispatch, which would otherwise leave zero forces (an entry point whose `auto`

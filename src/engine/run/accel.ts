@@ -2,6 +2,8 @@ import { GPU_PAIR_STYLES, gpuPairSpec, LONG_COUL_STYLES, TABLE_LAW, type GpuPair
 import { GPU_EAM_STYLES, gpuEamSpec, isGpuEam, type EamPair, type GpuEamSpec } from '../gpu/eamSpec';
 import { GPU_SW_STYLES, gpuSwSpec, isGpuSw, type GpuSwSpec, type SwPair } from '../gpu/swSpec';
 import { GPU_TERSOFF_STYLES, gpuTersoffSpec, isGpuTersoff, type GpuTersoffSpec, type TersoffPair } from '../gpu/tersoffSpec';
+import { GPU_TIP4P_STYLES, gpuTip4pSpec, isGpuTip4p, type GpuTip4pSpec, type Tip4pPair, type Tip4pSites } from '../gpu/tip4pSpec';
+import { buildOwnedSites } from '../force/pair/tip4p_sites';
 import type { SpecialList } from '../atoms';
 import type { LevelSelect } from '../force/forcefield';
 import { COMM, MODIFY, OUTPUT, PAIR } from '../timer';
@@ -45,6 +47,8 @@ export interface Accel {
   sw: GpuSwSpec | null;
   /** pair tersoff on the GPU (computeTersoff: neighbor lists, bond orders and gathered forces there). */
   tersoff: GpuTersoffSpec | null;
+  /** a TIP4P pair style on the GPU (computeTip4p: the M sites built here each step, their forces spread on the waters). */
+  tip4p: GpuTip4pSpec | null;
   /** Whole NVE steps on the GPU (resident.ts) with readback only on output steps. */
   resident: boolean;
   enforce2d: boolean;
@@ -64,12 +68,13 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const eamStyle = backend.kind === 'webgpu' && isGpuEam(p);
   const swStyle = backend.kind === 'webgpu' && isGpuSw(p);
   const tersoffStyle = backend.kind === 'webgpu' && isGpuTersoff(p);
-  if (!ljcut && !gpuStyle && !eamStyle && !swStyle && !tersoffStyle) {
-    const names = [...Object.keys(GPU_PAIR_STYLES).filter((k) => k !== 'lj/cut'), ...GPU_EAM_STYLES, ...GPU_SW_STYLES, ...GPU_TERSOFF_STYLES].join(', ');
+  const tip4pStyle = backend.kind === 'webgpu' && isGpuTip4p(p);
+  if (!ljcut && !gpuStyle && !eamStyle && !swStyle && !tersoffStyle && !tip4pStyle) {
+    const names = [...Object.keys(GPU_PAIR_STYLES).filter((k) => k !== 'lj/cut'), ...GPU_EAM_STYLES, ...GPU_SW_STYLES, ...GPU_TERSOFF_STYLES, ...GPU_TIP4P_STYLES].join(', ');
     return why(`pair style ${p?.name ?? 'none'} (the ${backend.kind === 'webgpu' ? `GPU path implements lj/cut, ${names}` : 'threaded path implements lj/cut'} only)`);
   }
   // the long-range Coulomb styles' real-space term runs on the GPU, the kspace style on the CPU beside it
-  const longStyle = gpuStyle && LONG_COUL_STYLES.has(GPU_PAIR_STYLES[p.name]);
+  const longStyle = (gpuStyle && LONG_COUL_STYLES.has(GPU_PAIR_STYLES[p.name])) || (tip4pStyle && p.name.endsWith('/long'));
   const kspace = !!sys.ff.kspace;
   if (kspace && !longStyle) return why('a kspace style (long-range terms)');
   if (!p.computeOn) return why('pair_modify compute no');
@@ -104,7 +109,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * eam.maxCutoff);
     if (short) return why('a box shorter than 2 pair cutoffs along an edge');
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam, sw: null, tersoff: null, resident: false, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam, sw: null, tersoff: null, tip4p: null, resident: false, enforce2d }, reason: null };
   }
   if (swStyle) {
     if (molecular) return why('bonded terms with an sw pair style');
@@ -114,7 +119,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * sw.maxCutoff);
     if (short) return why('a box shorter than 2 pair cutoffs along an edge');
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw, tersoff: null, resident: false, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw, tersoff: null, tip4p: null, resident: false, enforce2d }, reason: null };
   }
   if (tersoffStyle) {
     if (molecular) return why('bonded terms with a tersoff pair style');
@@ -124,7 +129,18 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * tersoff.maxCutoff);
     if (short) return why('a box shorter than 2 pair cutoffs along an edge');
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff, resident: false, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff, tip4p: null, resident: false, enforce2d }, reason: null };
+  }
+  if (tip4pStyle) {
+    const qqrd2e = s.units.qqr2e * (p.coulConstScale ?? 1) / sys.ff.dielectric;
+    const sb = sys.ff.special;
+    const tip4p = gpuTip4pSpec(p as Tip4pPair, qqrd2e, molecular ? { lj: [1, ...sb.lj], coul: [1, ...sb.coul] } : null);
+    if (typeof tip4p === 'string') return why(tip4p);
+    // the kernel's minimum image needs at least 2 cutoffs along each periodic edge (gpu/tip4pKernels.ts)
+    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * tip4p.maxCutoff);
+    if (short) return why('a box shorter than 2 pair cutoffs along an edge');
+    const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p, resident: false, enforce2d }, reason: null };
   }
   if (!ljcut || molecular) {
     const qqrd2e = s.units.qqr2e * (p.coulConstScale ?? 1) / sys.ff.dielectric;
@@ -141,7 +157,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
     const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };
     const resident = !molecular && !kspace && spec.law !== TABLE_LAW && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, resident, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p: null, resident, enforce2d }, reason: null };
   }
   const t = newPairTable(s.ntypes, p.cutGlobal);
   t.shift = p.shift;
@@ -156,7 +172,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const allBit = sys.groupBit('all');
   const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
   const resident = onlyNve && isResident(backend) && backend.canAdvance(s, t);
-  return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff: null, resident, enforce2d }, reason: null };
+  return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff: null, tip4p: null, resident, enforce2d }, reason: null };
 };
 
 /**
@@ -219,6 +235,7 @@ const evaluate = async (a: Accel, sys: System, step: boolean): Promise<ForceResu
     const gb = a.backend as ForceBackend & { computeEAM(s: SimState, spec: GpuEamSpec, embed: (rho: Float64Array, fp: Float64Array) => number): Promise<ForceResult> };
     return gb.computeEAM(s, a.eam, (rho, fp) => pair.embedOwned(s.type, rho, s.n, fp));
   }
+  if (a.tip4p) return evaluateTip4p(a, a.tip4p, sys, step);
   if (!a.spec) return a.backend.compute(s, a.table);
   const gb = a.backend as SpecBackend;
   if (!a.bonded && !a.kspace) return gb.computeSpec(s, a.spec);
@@ -229,6 +246,33 @@ const evaluate = async (a: Accel, sys: System, step: boolean): Promise<ForceResu
   const n3 = 3 * s.n;
   const fb = s.f.slice(0, n3);
   const r = await gb.computeSpec(s, a.spec, sys.ff.specialPartners);
+  for (let k = 0; k < n3; k++) s.f[k] += fb[k];
+  return r;
+};
+
+type Tip4pBackend = ForceBackend & { computeTip4p(s: SimState, spec: GpuTip4pSpec, special: SpecialList | null, sites: Tip4pSites): Promise<ForceResult> };
+
+/**
+ * A TIP4P style on the GPU: the CPU's bonded and kspace terms first (as for computeSpec), then the M sites of this step
+ * (tip4p_sites.ts buildOwnedSites, fp64) and the GPU's pair forces with the site forces spread on the waters.
+ */
+const evaluateTip4p = async (a: Accel, spec: GpuTip4pSpec, sys: System, step: boolean): Promise<ForceResult> => {
+  const s = sys.state;
+  const pair = sys.ff.pair as Tip4pPair & { siteModel(): { otype: number; htype: number; alpha: number } | null };
+  // the kspace style's G-ewald of this step (Ewald sets it again when the box changes)
+  if (spec.gewald > 0) spec.gewald = pair.gEwald;
+  const model = pair.siteModel();
+  if (!model) throw new Error(`pair style ${pair.name} is not initialized`);
+  const own = buildOwnedSites(s.n, s.x, s.type, s.id, sys.geom, model);
+  const delta = new Float64Array(3 * s.n);
+  for (let k = 0; k < 3 * s.n; k++) delta[k] = own.M[k] - s.x[k];
+  const sites: Tip4pSites = { delta, h1: own.h1, h2: own.h2 };
+  const gb = a.backend as Tip4pBackend;
+  if (!a.bonded && !a.kspace) return gb.computeTip4p(s, spec, null, sites);
+  sys.ff.compute(s, sys.nb, sys.geom, { step, minimumImage: true }, cpuTerms(a));
+  const n3 = 3 * s.n;
+  const fb = s.f.slice(0, n3);
+  const r = await gb.computeTip4p(s, spec, sys.ff.specialPartners, sites);
   for (let k = 0; k < n3; k++) s.f[k] += fb[k];
   return r;
 };

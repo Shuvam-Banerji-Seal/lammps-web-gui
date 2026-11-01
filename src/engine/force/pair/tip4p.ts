@@ -5,6 +5,7 @@ import { inumeric, parseNum } from '../util';
 import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
 import { buildOwnedSites, tip4pAlpha, type OwnedSites, type Tip4pModel } from './tip4p_sites';
 import { libm } from '../../libm';
+import type { GpuTip4pData } from '../../gpu/tip4pSpec';
 
 /*
  * pair_style lj/cut/tip4p/cut, lj/cut/tip4p/long, tip4p/cut and tip4p/long.
@@ -224,6 +225,20 @@ export class PairTIP4PBase extends PairLJCut {
   extract(name: string): unknown {
     if (name === 'cut_coul') return this.cutCoul;
     return super.extract(name);
+  }
+
+  /** The tables for the GPU path (gpu/tip4pSpec.ts) after init, or null before it. */
+  gpuTip4p(): GpuTip4pData | null {
+    const model = this.siteModel();
+    if (!model) return null;
+    const nt = this.ntypes + 1;
+    const cutLJsq = new Float64Array(nt * nt);
+    if (this.hasLJ) for (let i = 1; i < nt; i++) for (let j = 1; j < nt; j++) cutLJsq[i * nt + j] = this.p.get('cut', i, j) ** 2;
+    return {
+      ntypes: this.ntypes, hasLJ: this.hasLJ, coulLong: this.coulLong, cutLJsq, lj1: this.lj1, lj2: this.lj2, lj3: this.lj3,
+      lj4: this.lj4, offset: this.offset, cutCoul: this.cutCoul, qdist: this.qdist, otype: model.otype, htype: model.htype,
+      alpha: model.alpha, gEwald: this.gEwald,
+    };
   }
 
   /** Reused arrays of siteInputs. */

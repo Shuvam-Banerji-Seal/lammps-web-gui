@@ -112,6 +112,11 @@ export interface RxSystem {
   en: Energies;
   /** Three-body list (thb_intrs): per bond index [start, end). */
   thb: ThreeBodyList;
+  /**
+   * The uncorrected bond-order terms of BOp, computed before initForces (bondOrderTerms, on the pair threads when there
+   * are): the far pair p's six values at 6 idx[p] of out, idx[p] -1 when p has none. Absent: BOp computes them itself.
+   */
+  bop?: { idx: Int32Array; out: Float64Array } | null;
   /** The three-body list of the previous evaluation, whose arrays valenceAngles reuses when they are large enough. */
   thbReuse?: ThreeBodyList | null;
   /** Hydrogen bond list: per H index [start, end). */
@@ -393,14 +398,14 @@ export const initForces = (sys: RxSystem): void => {
  * BOp (reaxff_bond_orders.cpp): creates the bond i-j and j-i when the uncorrected bond order is
  * at least bo_cut. The bond of i goes at btopI in i's region, the bond of j at the end of j's region.
  */
-const bondOrderPair = (
-  sys: RxSystem, i: number, btopI: number, pj: number, sbpI: SingleBody, sbpJ: SingleBody, twbp: TwoBody,
-): boolean => {
-  const { far, bonds: b, ws } = sys;
-  const boCut = sys.ctrl.boCut;
-  const j = far.nbr[pj];
-  const d = far.d[pj];
-  const rr2 = 1.0 / (d * d);
+/**
+ * The first part of BOp (reaxff_bond_orders.cpp): the uncorrected sigma, pi and pi-pi bond orders of a pair at distance
+ * d and their exponents, out[o..o+5] = C12, BO_s, C34, BO_pi, C56, BO_pi2 (0 for a kind the pair has not). A function of
+ * d and the two types only, so the pair threads compute it for every pair (PairReaxFF.threadKernel 'bop').
+ */
+export const bondOrderTerms = (
+  d: number, sbpI: SingleBody, sbpJ: SingleBody, twbp: TwoBody, boCut: number, out: Float64Array, o: number,
+): void => {
   let BO_s = 0, C12 = 0, BO_pi = 0, C34 = 0, BO_pi2 = 0, C56 = 0;
   if (sbpI.r_s > 0.0 && sbpJ.r_s > 0.0) {
     C12 = twbp.p_bo1 * libmPow(d / twbp.r_s, twbp.p_bo2);
@@ -414,6 +419,31 @@ const bondOrderPair = (
     C56 = twbp.p_bo5 * libmPow(d / twbp.r_pp, twbp.p_bo6);
     BO_pi2 = libmExp(C56);
   }
+  out[o] = C12; out[o + 1] = BO_s; out[o + 2] = C34; out[o + 3] = BO_pi; out[o + 4] = C56; out[o + 5] = BO_pi2;
+};
+
+/** Scratch of bondOrderPair when the terms were not computed before (RxSystem.bop absent). */
+const bopOne = new Float64Array(6);
+
+const bondOrderPair = (
+  sys: RxSystem, i: number, btopI: number, pj: number, sbpI: SingleBody, sbpJ: SingleBody, twbp: TwoBody,
+): boolean => {
+  const { far, bonds: b, ws } = sys;
+  const boCut = sys.ctrl.boCut;
+  const j = far.nbr[pj];
+  const d = far.d[pj];
+  const rr2 = 1.0 / (d * d);
+  const pre = sys.bop;
+  let t: Float64Array, o: number;
+  if (pre && pre.idx[pj] >= 0) {
+    t = pre.out;
+    o = 6 * pre.idx[pj];
+  } else {
+    bondOrderTerms(d, sbpI, sbpJ, twbp, boCut, bopOne, 0);
+    t = bopOne;
+    o = 0;
+  }
+  const C12 = t[o], BO_s = t[o + 1], C34 = t[o + 2], BO_pi = t[o + 3], C56 = t[o + 4], BO_pi2 = t[o + 5];
   // Initially BO values are the uncorrected ones, page 1
   const BO = BO_s + BO_pi + BO_pi2;
   if (!(BO >= boCut)) return false;

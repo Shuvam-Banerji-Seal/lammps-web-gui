@@ -1,7 +1,7 @@
-import type { Pair, PairCompute } from '../force/types';
+import type { Pair, PairCompute, PairKernels } from '../force/types';
 import type { NeighList } from '../neighbor';
 import { THREADED_NAMES, isTwoPass } from './threadedPairs';
-import { GPL_THREADED_PAIRS, loadGplThreadedPair } from '../lazyStyles';
+import { GPL_KERNEL_PAIRS, GPL_THREADED_PAIRS, loadGplThreadedPair } from '../lazyStyles';
 import { CpuForceBackend } from './forces';
 import {
   ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, atomChunk, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, MAX_PAIR_SLOTS, PHASE, READY, readyIndex, cloneableFields, sumForces, pairFromFactory, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
@@ -150,7 +150,7 @@ export class SharedPairThreads implements NeighborThreads {
    */
   async preload(names: readonly string[]): Promise<void> {
     for (const name of names) {
-      if (this.gplUrls.has(name) || !GPL_THREADED_PAIRS.includes(name)) continue;
+      if (this.gplUrls.has(name) || !(GPL_THREADED_PAIRS.includes(name) || GPL_KERNEL_PAIRS.includes(name))) continue;
       const g = await loadGplThreadedPair(name);
       if (g) this.gplUrls.set(name, g.url);
     }
@@ -370,7 +370,7 @@ export class SharedPairThreads implements NeighborThreads {
     this.slotOk[slot] = copy !== null && sameShape(pair, copy);
     if (!this.slotOk[slot]) return false;
     Atomics.store(this.ctl, readyIndex(slot), 0);
-    if (!GPL_THREADED_PAIRS.includes(pair.name)) {
+    if (!GPL_THREADED_PAIRS.includes(pair.name) && !GPL_KERNEL_PAIRS.includes(pair.name)) {
       for (const w of this.workers) w.postMessage({ type: 'pair', name: pair.name, fields, slot } satisfies PairThreadMessage);
       return true;
     }
@@ -728,6 +728,75 @@ export class SharedPairThreads implements NeighborThreads {
         for (const a of own) fftPassLines(a, g.nx, g.ny, g.nz, dim, l0, l1, sign);
       }, lines, { mask, dim, sign });
     }
+    return true;
+  }
+
+  // ---- the loops of a style that runs on the engine thread but shares some of its loops (Pair.threadKernel)
+
+  /** Per pair slot: the shared arrays of the style's loops, as announced to the workers ('kbuffers'). */
+  private readonly kbufs = new Map<number, { f64: Float64Array[]; i32: Int32Array[] }>();
+  /** How many loops ran on the threads (for tests). */
+  kernelCalls = 0;
+
+  /** The threads for the loops of `pair` (in pair slot `slot`), or null without workers or without such loops. */
+  kernelsFor(pair: Pair, slot = 0): PairKernels | null {
+    if (this.workers.length === 0 || typeof pair.threadKernel !== 'function' || slot >= MAX_PAIR_SLOTS) return null;
+    return {
+      arrays: (f64Lens, i32Lens) => this.kernelArrays(slot, f64Lens, i32Lens),
+      run: (name, n, args) => this.runKernel(pair, slot, name, n, args),
+    };
+  }
+
+  /** The slot's shared arrays of at least these lengths: the current ones, or new ones with a quarter more room. */
+  private kernelArrays(slot: number, f64Lens: readonly number[], i32Lens: readonly number[]): { f64: Float64Array[]; i32: Int32Array[] } {
+    const k = this.kbufs.get(slot);
+    if (k && k.f64.length === f64Lens.length && k.i32.length === i32Lens.length
+      && f64Lens.every((l, a) => k.f64[a].length >= l) && i32Lens.every((l, a) => k.i32[a].length >= l)) return k;
+    const room = (l: number) => Math.max(1, Math.ceil(1.25 * l));
+    const nk = {
+      f64: f64Lens.map((l) => new Float64Array(shared(8 * room(l)))),
+      i32: i32Lens.map((l) => new Int32Array(shared(4 * room(l)))),
+    };
+    this.kbufs.set(slot, nk);
+    const msg: PairThreadMessage = {
+      type: 'kbuffers', slot, f64: nk.f64.map((a) => a.buffer as SharedArrayBuffer), i32: nk.i32.map((a) => a.buffer as SharedArrayBuffer),
+    };
+    for (const w of this.workers) w.postMessage(msg);
+    return nk;
+  }
+
+  /**
+   * Pair.threadKernel(name, ...) over items [0, n) on the threads and this one (chunks claimed from NEXT); false, with
+   * nothing done, until every worker has started and built the slot's style (sendPair, as for the pair term).
+   */
+  private runKernel(pair: Pair, slot: number, name: string, n: number, args: readonly number[]): boolean {
+    const W = this.workers.length;
+    if (!this.threadsUp() || n <= 0) return false;
+    if (pair !== this.slotRef[slot] || pair.version !== this.slotVersion[slot]) {
+      if (this.sendPair(pair, slot) && this.parallelSum) this.awaitPair(slot, W);
+    }
+    if (!this.slotOk[slot] || Atomics.load(this.ctl, readyIndex(slot)) < W) return false;
+    const k = this.kbufs.get(slot);
+    if (!k) return false;
+    const nchunks = Math.min(n, CHUNKS_PER_THREAD * (W + 1));
+    Atomics.store(this.ctl, DONE, 0);
+    Atomics.store(this.ctl, FAILED, 0);
+    Atomics.store(this.ctl, NEXT, 0);
+    const msg: PairThreadMessage = { type: 'kernel', slot, name, n, nchunks, args: Array.from(args) };
+    for (const w of this.workers) w.postMessage(msg);
+    for (;;) {
+      const c = Atomics.add(this.ctl, NEXT, 1);
+      if (c >= nchunks) break;
+      const [i0, i1] = atomChunk(n, nchunks, c);
+      pair.threadKernel!(name, i0, i1, k.f64, k.i32, args);
+    }
+    for (;;) {
+      const done = Atomics.load(this.ctl, DONE);
+      if (done >= W) break;
+      if (Atomics.wait(this.ctl, DONE, done, 60_000) === 'timed-out') throw new Error(`the threads of pair style ${pair.name} did not answer within 60 s`);
+    }
+    if (Atomics.load(this.ctl, FAILED) > 0) throw new Error(`pair style ${pair.name}: loop ${name} failed in a force thread`);
+    this.kernelCalls++;
     return true;
   }
 

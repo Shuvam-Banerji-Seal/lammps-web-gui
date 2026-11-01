@@ -13,6 +13,7 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { NEIGHMASK, type NeighList } from '../../engine/neighbor';
 import { NativeFullOrder } from '../neighbor/nativeOrder';
+import type { GpuSwData } from '../../engine/gpu/swSpec';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 import { log as libmLog } from '../libm/log';
@@ -64,6 +65,43 @@ export class PairSW extends Pair {
     if (this.threebody) return this.map[i] >= 0 && this.map[j] >= 0;
     const a = Math.min(i, j), b = Math.max(i, j);
     return this.setflag[a * (this.ntypes + 1) + b] === 1;
+  }
+
+  /**
+   * The parameters for the GPU path of the engine (src/engine/gpu/swSpec.ts) by type, from params and elem3param: the
+   * entry (I,J,J) of each type pair (two-body term and three-body leg, both within its cut = sigma * littlea, as
+   * native's compute uses them) and the entry (I,J,K) of each triplet (lambda_epsilon, costheta).
+   */
+  gpuSW(): GpuSwData | null {
+    if (!this.paramsMapped) return null;
+    const nt = this.ntypes + 1, nel = this.elements.length;
+    const active = Array.from({ length: nt }, (_, t) => t > 0 && this.map[t] >= 0);
+    const pairArr = () => new Float64Array(nt * nt);
+    const cutsq = pairArr(), cut2 = pairArr(), eps = pairArr(), sigma = pairArr(), a = pairArr(), A = pairArr(), B = pairArr();
+    const p = pairArr(), q = pairArr(), legCut = pairArr(), gammaSigma = pairArr();
+    const lambdaEps = new Float64Array(nt * nt * nt), cos0 = new Float64Array(nt * nt * nt);
+    for (let i = 1; i < nt; i++) {
+      const ei = this.map[i];
+      if (ei < 0) continue;
+      for (let j = 1; j < nt; j++) {
+        const ej = this.map[j];
+        if (ej < 0) continue;
+        // threebody off: only the type pairs of pair_coeff commands interact
+        if (!this.threebody && !this.coeffSet(i, j)) continue;
+        const t = i * nt + j;
+        const pr = this.params[this.elem3param[(ei * nel + ej) * nel + ej]];
+        cutsq[t] = pr.cutsq; cut2[t] = pr.cut; legCut[t] = pr.cut; gammaSigma[t] = pr.sigma_gamma;
+        eps[t] = pr.epsilon; sigma[t] = pr.sigma; a[t] = pr.littlea; A[t] = pr.biga; B[t] = pr.bigb; p[t] = pr.powerp; q[t] = pr.powerq;
+        for (let k = 1; k < nt; k++) {
+          const ek = this.map[k];
+          if (ek < 0) continue;
+          const pk = this.params[this.elem3param[(ei * nel + ej) * nel + ek]];
+          lambdaEps[t * nt + k] = pk.lambda_epsilon;
+          cos0[t * nt + k] = pk.costheta;
+        }
+      }
+    }
+    return { ntypes: this.ntypes, active, cutsq, cut2, eps, sigma, a, A, B, p, q, legCut, gammaSigma, lambdaEps, cos0, threebody: this.threebody, mod: null };
   }
 
   /** Native setflag[i][j] (threebody off: only the pairs of pair_coeff commands; j >= i). */

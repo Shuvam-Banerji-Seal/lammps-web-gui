@@ -148,7 +148,7 @@ describe('pair eam on the GPU path', () => {
     expect(a.accel?.eam).not.toBeNull();
     expect(a.accel?.resident).toBe(false);
     const hybrid = await run(BOX, 'pair_style hybrid eam/alloy lj/cut 3.0\npair_coeff * * eam/alloy CuNi.eam.alloy Cu NULL\npair_coeff 2 2 lj/cut 0.1 2.5\npair_coeff 1 2 lj/cut 0.1 2.5', ['CuNi.eam.alloy']);
-    expect(hybrid.reason).toMatch(/pair style hybrid .*eam, eam\/alloy, eam\/fs only\)/);
+    expect(hybrid.reason).toMatch(/pair style hybrid .*eam, eam\/alloy, eam\/fs, sw, sw\/mod only\)/);
     const small = await run(BOX.replace('block 0 5 0 5 0 5', 'block 0 2 0 2 0 2'), STYLES['eam/alloy'].lines, ['CuNi.eam.alloy']);
     expect(small.reason).toBe('a box shorter than 2 pair cutoffs along an edge');
   });

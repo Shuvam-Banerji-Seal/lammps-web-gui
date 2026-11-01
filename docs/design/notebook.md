@@ -203,6 +203,24 @@ interface ForceBackend {
   GPU never integrates garbage. Per-step only: the whole-step kernel has the analytic laws.
   In Chromium a 4000-atom LJ melt through `table linear` and `table spline` matched the CPU
   engine's thermo over 100 steps.
+- **WebGPU Stillinger-Weber** (`gpu/swSpec.ts`, `gpu/swKernels.ts`, `webgpuForces.ts computeSW`):
+  `sw` (the GPL port) and `sw/mod` (core) hand their parameters to the GPU through a `gpuSW()`
+  accessor (the two-body entry and leg of each type pair, the angular entry of each triplet).
+  Two passes in one submission: each atom's neighbor list (written after the cell data in the
+  integer buffer, which the first pass writes and the second reads), then a gather: each atom
+  adds the forces on itself from its pairs, from the triplets it centers and from those
+  centered on a neighbor in which it is a leg, so no atomics are needed; a triplet's energy
+  and virial count at its center. Lists grow and the evaluation reruns when an atom has more
+  neighbors than they hold. Asymmetric (I,J,K)/(I,K,J) entries are refused (native's result
+  depends on its neighbor order there). In fp32 the two-body term must test `r - a sigma < 0`
+  as well as `r^2 < cutoff^2`: sqrt can land an ulp past `a sigma`, and `exp(sigma / den)` of
+  a tiny positive `den` is infinite (a 4096-atom sw/mod run went to inf at step 45 before
+  that). `swGather` is the arithmetic in fp64 (`tests/engineGpuSw.test.ts`); in Chromium a
+  4096-atom Si crystal matched the CPU engine's thermo over 100 steps with both styles.
+- **GPU validation errors stop the run.** Pipelines are created in a validation error scope
+  (`checkedPipelines`), and each force evaluation runs in one (`validated`): WebGPU skips an
+  invalid dispatch, which would otherwise leave zero forces (an entry point whose `auto`
+  layout lacked a binding did exactly that).
 - **WebGPU EAM** (`gpu/eamSpec.ts`, `gpu/eamKernels.ts`, `webgpuForces.ts computeEAM`): `eam`,
   `eam/alloy` and `eam/fs` (not as hybrid sub-styles, no molecular topology). The style's own
   density and r*phi tables after its init (the seven coefficients per grid interval its loops

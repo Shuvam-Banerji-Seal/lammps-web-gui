@@ -6,6 +6,8 @@ import { TABLE_LAW, tableInnerError, type GpuPairSpec } from './pairSpec';
 import { buildAtomMap, type SpecialList } from '../atoms';
 import { WGSL_STYLE_LAWS } from './styleLaws';
 import { EAM_WORKGROUP, KERNEL_EAM } from './eamKernels';
+import { KERNEL_SW, SW_WORKGROUP } from './swKernels';
+import type { GpuSwSpec } from './swSpec';
 import type { GpuEamSpec } from './eamSpec';
 
 /*
@@ -413,6 +415,41 @@ const padToVec4 = (c: Float64Array): Float32Array => {
   return out;
 };
 
+/**
+ * The compute pipelines of one WGSL module, created inside a validation error scope: a kernel that does not compile, or
+ * an entry point that does not validate, stops the run with the compiler's message. Without the scope an invalid
+ * pipeline dispatches nothing, and the run would integrate with zero forces.
+ */
+const checkedPipelines = async <E extends string>(dev: GPUDevice, code: string, entries: readonly E[]): Promise<Record<E, GPUComputePipeline>> => {
+  dev.pushErrorScope('validation');
+  const module = dev.createShaderModule({ code });
+  const out = {} as Record<E, GPUComputePipeline>;
+  for (const e of entries) out[e] = dev.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: e } });
+  const err = await dev.popErrorScope();
+  if (err) {
+    const info = await module.getCompilationInfo();
+    const first = info.messages.find((m) => m.type === 'error');
+    throw new Error(`a GPU kernel did not compile: ${first ? `line ${first.lineNum}: ${first.message}` : err.message}`);
+  }
+  return out;
+};
+
+/**
+ * Runs one force evaluation inside a validation error scope, so that an invalid bind group or dispatch (which WebGPU
+ * skips, leaving the output buffer as it was) stops the run instead of giving zero forces.
+ */
+const validated = async <T>(dev: GPUDevice, run: () => Promise<T>): Promise<T> => {
+  dev.pushErrorScope('validation');
+  let out: T;
+  try {
+    out = await run();
+  } finally {
+    const err = await dev.popErrorScope();
+    if (err) throw new Error(`a GPU force evaluation failed validation: ${err.message}`);
+  }
+  return out!;
+};
+
 export class WebGpuForceBackend implements ForceBackend {
   readonly kind = 'webgpu' as const;
   private pipeline: GPUComputePipeline;
@@ -605,6 +642,10 @@ export class WebGpuForceBackend implements ForceBackend {
    * KERNEL_STYLES), fp32 on the GPU like compute(); the energies and the virial are summed in fp64 here.
    */
   async computeSpec(state: SimState, spec: GpuPairSpec, special: SpecialList | null = null): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    return validated(this.device, () => this.computeSpecUnchecked(state, spec, special));
+  }
+
+  private async computeSpecUnchecked(state: SimState, spec: GpuPairSpec, special: SpecialList | null): Promise<ForceResult & { evdwl: number; ecoul: number }> {
     if (this.disposed) throw new Error('the WebGPU backend was disposed');
     const n = state.n;
     if (n === 0 || !(spec.maxCutoff > 0)) {
@@ -660,8 +701,7 @@ export class WebGpuForceBackend implements ForceBackend {
     const coef = this.specCache.coef;
     const dev = this.device;
     if (!this.stylesPipeline) {
-      const module = dev.createShaderModule({ code: KERNEL_STYLES });
-      this.stylesPipeline = dev.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
+      this.stylesPipeline = (await checkedPipelines(dev, KERNEL_STYLES, ['main'] as const)).main;
       this.styleParams = dev.createBuffer({ size: 96, usage: BUF_UNIFORM | BUF_COPY_DST });
     }
     let b = this.sbufs;
@@ -745,6 +785,10 @@ export class WebGpuForceBackend implements ForceBackend {
    * Two round trips per call; the sums are fp64 here.
    */
   async computeEAM(state: SimState, spec: GpuEamSpec, embed: (rho: Float64Array, fp: Float64Array) => number): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    return validated(this.device, () => this.computeEAMUnchecked(state, spec, embed));
+  }
+
+  private async computeEAMUnchecked(state: SimState, spec: GpuEamSpec, embed: (rho: Float64Array, fp: Float64Array) => number): Promise<ForceResult & { evdwl: number; ecoul: number }> {
     if (this.disposed) throw new Error('the WebGPU backend was disposed');
     const n = state.n;
     if (n === 0) return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
@@ -761,10 +805,10 @@ export class WebGpuForceBackend implements ForceBackend {
     const fpBase = base + n, intsLen = fpBase + n;
     const dev = this.device;
     if (!this.eamPipes) {
-      const module = dev.createShaderModule({ code: KERNEL_EAM });
+      const pl = await checkedPipelines(dev, KERNEL_EAM, ['rho', 'force'] as const);
       this.eamPipes = {
-        rho: dev.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'rho' } }),
-        force: dev.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'force' } }),
+        rho: pl.rho,
+        force: pl.force,
         params: dev.createBuffer({ size: 64, usage: BUF_UNIFORM | BUF_COPY_DST }),
       };
     }
@@ -856,6 +900,122 @@ export class WebGpuForceBackend implements ForceBackend {
     return { pe: evdwl, virial, evdwl, ecoul: 0 };
   }
 
+  private swPipes: { nbr: GPUComputePipeline; force: GPUComputePipeline; params: GPUBuffer } | null = null;
+  private swbufs: {
+    pos: GPUBuffer; out: GPUBuffer; staging: GPUBuffer; ints: GPUBuffer; coef: GPUBuffer;
+    atomCap: number; intsCap: number; coefCap: number; bindNbr: GPUBindGroup; bindForce: GPUBindGroup; coefKey: string;
+  } | null = null;
+  /** The neighbor-list length of computeSW (grown when an atom has more neighbors). */
+  private swMaxn = 32;
+
+  /**
+   * One force evaluation of pair sw or sw/mod (gpu/swSpec.ts, gpu/swKernels.ts): the neighbor lists and the gathered
+   * forces in one submission, one readback; the sums are fp64 here. When an atom has more neighbors than the lists
+   * hold, the lists grow and the evaluation runs again.
+   */
+  async computeSW(state: SimState, spec: GpuSwSpec): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    if (this.disposed) throw new Error('the WebGPU backend was disposed');
+    const n = state.n;
+    if (n === 0) return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
+    const flat = state.dimension === 2;
+    if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
+      throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
+    }
+    for (;;) {
+      const maxn = this.swMaxn;
+      const r = await validated(this.device, () => this.swOnce(state, spec, maxn));
+      if (r) return r;
+      // a list was cut short: twice as long, and again
+      if (maxn >= 4096) throw new Error('more than 4096 neighbors within the sw cutoff of an atom');
+      this.swMaxn = 2 * maxn;
+    }
+  }
+
+  private async swOnce(state: SimState, spec: GpuSwSpec, maxn: number): Promise<(ForceResult & { evdwl: number; ecoul: number }) | null> {
+    const n = state.n;
+    const cells = this.sortByCell(state, spec.maxCutoff, 0, 1);
+    if (!cells) throw new Error('the box has no cell in a periodic dimension');
+    const { L, nc, base, two } = cells;
+    const { sorted, posData } = this;
+    const ints = this.intsData;
+    const countBase = base + n, listBase = countBase + n, intsLen = listBase + n * maxn;
+    const dev = this.device;
+    if (!this.swPipes) {
+      const pl = await checkedPipelines(dev, KERNEL_SW, ['nbr', 'force'] as const);
+      this.swPipes = { nbr: pl.nbr, force: pl.force, params: dev.createBuffer({ size: 80, usage: BUF_UNIFORM | BUF_COPY_DST }) };
+    }
+    const pipes = this.swPipes;
+    const coefF32 = Float32Array.from(spec.coef);
+    let b = this.swbufs;
+    if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < coefF32.byteLength) {
+      if (b) for (const buf of [b.pos, b.out, b.staging, b.ints, b.coef]) buf.destroy();
+      const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
+      const coefCap = Math.max(coefF32.byteLength, b?.coefCap ?? 0);
+      const pos = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
+      const out = this.buffer(24 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
+      const staging = this.buffer(24 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
+      const intsBuf = this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST);
+      const coefBuf = this.buffer(coefCap, BUF_STORAGE | BUF_COPY_DST);
+      const entries = [
+        { binding: 0, resource: { buffer: pipes.params } },
+        { binding: 1, resource: { buffer: pos } },
+        { binding: 2, resource: { buffer: intsBuf } },
+        { binding: 3, resource: { buffer: coefBuf } },
+        { binding: 4, resource: { buffer: out } },
+      ];
+      b = this.swbufs = {
+        pos, out, staging, ints: intsBuf, coef: coefBuf, atomCap, intsCap, coefCap, coefKey: '',
+        // the nbr pass does not use outv, so its 'auto' layout has no binding 4 (a bind group with it is invalid)
+        bindNbr: dev.createBindGroup({ layout: pipes.nbr.getBindGroupLayout(0), entries: entries.slice(0, 4) }),
+        bindForce: dev.createBindGroup({ layout: pipes.force.getBindGroupLayout(0), entries }),
+      };
+    }
+    const params = new ArrayBuffer(80);
+    const pf = new Float32Array(params), pu = new Uint32Array(params);
+    pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
+    pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = maxn; pu[11] = countBase;
+    pu[12] = listBase; pu[13] = spec.tripBase; pu[14] = spec.threebody ? 1 : 0; pu[15] = spec.mod ? 1 : 0;
+    pf[16] = spec.mod?.delta1 ?? 0; pf[17] = spec.mod?.delta2 ?? 0;
+    const q = dev.queue;
+    q.writeBuffer(pipes.params, 0, params);
+    q.writeBuffer(b.pos, 0, posData.buffer, posData.byteOffset, 16 * n);
+    q.writeBuffer(b.ints, 0, ints.buffer, ints.byteOffset, 4 * countBase);
+    if (b.coefKey !== spec.key) {
+      q.writeBuffer(b.coef, 0, coefF32.buffer, coefF32.byteOffset, coefF32.byteLength);
+      b.coefKey = spec.key;
+    }
+    const groups = Math.ceil(n / SW_WORKGROUP);
+    const enc = dev.createCommandEncoder();
+    for (const [pipe, bind] of [[pipes.nbr, b.bindNbr], [pipes.force, b.bindForce]] as const) {
+      const pass = enc.beginComputePass();
+      pass.setPipeline(pipe);
+      pass.setBindGroup(0, bind);
+      pass.dispatchWorkgroups(groups);
+      pass.end();
+    }
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 24 * n);
+    q.submit([enc.finish()]);
+    await b.staging.mapAsync(MAP_READ, 0, 24 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 24 * n));
+    let short = false;
+    for (let slot = 0; slot < n && !short; slot++) if (outv[6 * slot + 4] < 0) short = true;
+    if (short) { b.staging.unmap(); return null; }
+    const f = state.f;
+    let e = 0, virial = 0;
+    for (let slot = 0; slot < n; slot++) {
+      const i = sorted[slot];
+      const o = 6 * slot;
+      f[3 * i] = outv[o];
+      f[3 * i + 1] = outv[o + 1];
+      f[3 * i + 2] = outv[o + 2];
+      e += outv[o + 3];
+      virial += outv[o + 5];
+    }
+    b.staging.unmap();
+    return { pe: e, virial, evdwl: e, ecoul: 0 };
+  }
+
   canAdvanceSpec(state: SimState, spec: GpuPairSpec): boolean {
     // the whole-step kernel has the analytic laws only (styleLaws.ts), not pair_style table's tables
     if (state.n === 0 || !(spec.maxCutoff > 0) || spec.law === TABLE_LAW) return false;
@@ -908,6 +1068,9 @@ export class WebGpuForceBackend implements ForceBackend {
     if (sb) for (const buf of [sb.pos, sb.out, sb.staging, sb.ints, sb.coef]) buf.destroy();
     const eb = this.ebufs;
     if (eb) for (const buf of [eb.pos, eb.out, eb.staging, eb.ints, eb.coef]) buf.destroy();
+    const wb = this.swbufs;
+    if (wb) for (const buf of [wb.pos, wb.out, wb.staging, wb.ints, wb.coef]) buf.destroy();
+    this.swPipes?.params.destroy();
     this.eamPipes?.params.destroy();
     this.styleParams?.destroy();
     this.params.destroy();

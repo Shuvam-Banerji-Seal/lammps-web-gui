@@ -164,6 +164,8 @@ export class PairVashishta extends Pair {
   manybody = true;
   needsFull = true;
   needsHalf = false;
+  /** On the pair threads the rows read the atom IDs (pc.tags): the two-body term counts a pair at one of its rows. */
+  override threadTags = true;
   virialFdotr = true;
 
   private fileName = '';
@@ -370,7 +372,6 @@ export class PairVashishta extends Pair {
     const list = pc.full;
     if (!list) throw new Error(`pair style ${this.name} needs a full neighbor list`);
     const { x, f, type } = pc;
-    const nlocal = pc.nlocal;
     const nt = this.ntypes + 1;
     const cutsq = this.cutsq;
     const elemOf = this.elemOf;
@@ -393,13 +394,16 @@ export class PairVashishta extends Pair {
     }
     const nIdx = this.sIdx, nDx = this.sDx, nDy = this.sDy, nDz = this.sDz;
     const nR = this.sR, nInvR = this.sInvR, nES = this.sES, nW = this.sW;
-    const ids = pc.s.id, owner = pc.nb.owner;
+    // on the pair threads the atom IDs arrive as pc.tags (Pair.threadTags; a ghost's is its owner's)
+    const tags = pc.tags ?? null;
+    const ids = tags ? null : pc.s.id, owner = tags ? null : pc.nb.owner;
 
-    for (let i = 0; i < nlocal; i++) {
+    // the rows [ilo, inum) of the full list (a shared-memory thread runs a range of them, cpu/pairThreads.ts)
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const tiv = type[i];
       if (elemOf[tiv] < 0) continue;
       const ti = tiv * nt;
-      const itag = ids[i];
+      const itag = tags ? tags[i] : ids![i];
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const k0 = list.firstneigh[i];
       const k1 = k0 + list.numneigh[i];
@@ -420,7 +424,7 @@ export class PairVashishta extends Pair {
         if (rsq >= cutsq[t]) continue;
         const r = Math.sqrt(rsq);
         const rc = this.tbRc[t];
-        const jtag = ids[owner[j]];
+        const jtag = tags ? tags[j] : ids![owner![j]];
         let mine: boolean;
         if (itag > jtag) mine = (itag + jtag) % 2 !== 0;
         else if (itag < jtag) mine = (itag + jtag) % 2 !== 1;

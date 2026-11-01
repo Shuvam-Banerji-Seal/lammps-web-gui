@@ -199,6 +199,7 @@ export const pairFromFactory = (make: () => Pair, fields: Record<string, unknown
   // allocate() creates the class-typed members (coefficient tables) the cloned fields go into
   if (typeof fields.ntypes === 'number' && fields.ntypes > 0) p.allocate(fields.ntypes);
   adoptFields(p as unknown as Record<string, unknown>, fields);
+  p.threadAdopt?.();
   return p;
 };
 

@@ -50,6 +50,10 @@ export const loadThreadedPair: PairLoader = async (name, url) => {
     case 'tersoff/mod/c': { const m = await import('../force/pair/tersoff_variants'); return () => new m.PairTersoffModC(); }
     case 'tersoff/zbl': { const m = await import('../force/pair/tersoff_variants'); return () => new m.PairTersoffZBL(); }
     case 'sw/mod': { const m = await import('../force/pair/sw'); return () => new m.PairSWMod(); }
+    case 'snap': { const m = await import('../force/pair/snap'); return () => new m.PairSnap(); }
+    case 'meam/spline': { const m = await import('../force/pair/meam_spline'); return () => new m.PairMeamSpline(); }
+    case 'meam/sw/spline': { const m = await import('../force/pair/meam_spline'); return () => new m.PairMeamSWSpline(); }
+    case 'vashishta': { const m = await import('../force/pair/vashishta'); return () => new m.PairVashishta(); }
     case 'lj/cut/tip4p/cut': { const m = await import('../force/pair/tip4p'); return () => new m.PairLJCutTIP4PCut(); }
     case 'lj/cut/tip4p/long': { const m = await import('../force/pair/tip4p'); return () => new m.PairLJCutTIP4PLong(); }
     case 'tip4p/cut': { const m = await import('../force/pair/tip4p'); return () => new m.PairTIP4PCut(); }

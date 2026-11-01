@@ -12,6 +12,9 @@ import { PairBornCoulLong, PairBuckCoulLong } from '../force/pair/coul_long2';
 import { PairTersoff } from '../force/pair/tersoff';
 import { PairTersoffMod, PairTersoffModC, PairTersoffZBL } from '../force/pair/tersoff_variants';
 import { PairSWMod } from '../force/pair/sw';
+import { PairSnap } from '../force/pair/snap';
+import { PairMeamSpline, PairMeamSWSpline } from '../force/pair/meam_spline';
+import { PairVashishta } from '../force/pair/vashishta';
 import { PairCoulDsf, PairCoulWolf } from '../force/pair/coul';
 import { PairLJCutCoulDsf, PairLJCutCoulWolf } from '../force/pair/lj_coul';
 import { PairLJClass2, PairLJCubic, PairLJGromacs, PairMieCut } from '../force/pair/lj_variants2';
@@ -75,6 +78,11 @@ export const THREADED_PAIRS: Record<string, () => Pair> = {
   'tersoff/mod/c': () => new PairTersoffModC(),
   'tersoff/zbl': () => new PairTersoffZBL(),
   'sw/mod': () => new PairSWMod(),
+  // full-list many-body styles whose rows add only to their own atoms (bispectrum, spline embedding)
+  snap: () => new PairSnap(),
+  'meam/spline': () => new PairMeamSpline(),
+  'meam/sw/spline': () => new PairMeamSWSpline(),
+  vashishta: () => new PairVashishta(),
   // the TIP4P styles read the M sites, hydrogens and owners as shared inputs (Pair.threadExtras)
   'lj/cut/tip4p/cut': () => new PairLJCutTIP4PCut(),
   'lj/cut/tip4p/long': () => new PairLJCutTIP4PLong(),

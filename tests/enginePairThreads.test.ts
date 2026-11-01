@@ -134,6 +134,28 @@ const THREEBODY_STYLES: Record<string, string> = {
   'tersoff/mod/c': 'pair_style tersoff/mod/c\npair_coeff * * Si.tersoff.modc Si Si',
   'tersoff/zbl': 'pair_style tersoff/zbl\npair_coeff * * SiC.tersoff.zbl Si C',
   'sw/mod': 'pair_style sw/mod\npair_coeff * * Si.sw Si Si',
+  // full-list many-body styles whose rows add only to their own atoms; the spline files' CubicSpline objects get their
+  // class back on the thread's copy (Pair.threadAdopt)
+  'meam/spline': 'pair_style meam/spline\npair_coeff * * TiO.meam.spline Ti O',
+  'meam/sw/spline': 'pair_style meam/sw/spline\npair_coeff * * Si.b.meam.sw.spline Si Si',
+  vashishta: 'pair_style vashishta\npair_coeff * * SiC.vashishta Si C',
+};
+/** pair snap (full list; each row's bispectrum energy, with its self term, is added once by the thread owning the row). */
+const SNAP_BOX = `units metal
+atom_style atomic
+lattice bcc 3.316
+region box block 0 3 0 3 0 3
+create_box 2 box
+create_atoms 1 box
+mass * 180.88
+set group all type/fraction 2 0.5 4321
+displace_atoms all random 0.05 0.05 0.05 8191
+velocity all create 1000.0 87287 loop geom
+`;
+const SNAP_STYLES: Record<string, string> = {
+  snap: 'pair_style snap\npair_coeff * * Ta06A.snapcoeff Ta06A.snapparam Ta Ta',
+  // chemflag 1 (the explicit multi-element bispectrum, built by each thread's copy on its first compute)
+  'snap (chemflag)': 'pair_style snap\npair_coeff * * InP_JCPA2020.snapcoeff InP_JCPA2020.snapparam In P',
 };
 /** GPL-ported styles on the threads (lazyStyles.ts GPL_THREADED_PAIRS), in the Si box. */
 const GPL_STYLES: Record<string, string> = {
@@ -151,7 +173,8 @@ const GPL_PAIR_STYLES: Record<string, string> = {
   'lj/class2/coul/long/cs': 'pair_style lj/class2/coul/long/cs 2.5\npair_coeff * * 1.0 1.0\nkspace_style ewald 1e-4',
   'buck/long/coul/long': 'pair_style buck/long/coul/long cut long 2.5\npair_coeff * * 100.0 0.3 1.0\nkspace_style ewald 1e-4',
 };
-const POTENTIALS = ['Cu_u3.eam', 'CuNi.eam.alloy', 'AlFe_mm.eam.fs', 'Si.tersoff', 'Si.tersoff.mod', 'Si.tersoff.modc', 'SiC.tersoff.zbl', 'Si.sw'];
+const POTENTIALS = ['Cu_u3.eam', 'CuNi.eam.alloy', 'AlFe_mm.eam.fs', 'Si.tersoff', 'Si.tersoff.mod', 'Si.tersoff.modc', 'SiC.tersoff.zbl', 'Si.sw',
+  'TiO.meam.spline', 'Si.b.meam.sw.spline', 'Ta06A.snapcoeff', 'Ta06A.snapparam', 'InP_JCPA2020.snapcoeff', 'InP_JCPA2020.snapparam', 'SiC.vashishta'];
 const potential = (f: string): string => readFileSync(join(__dirname, '..', 'third_party', 'lammps', 'potentials', f), 'utf8');
 
 interface Outcome { rows: Record<string, number>[]; x: number[]; threadedComputes: number; pa: number[] }
@@ -164,7 +187,7 @@ const runCase = async (pairLines: string, threads: number, extra = '', box = BOX
   const events: EngineEvent[] = [];
   const files = new Map<string, string>();
   const session = new Session({ emit: (e) => events.push(e), writeFile: (n, t) => files.set(n, t) }, backend);
-  if (box === EAM_BOX || box === SI_BOX) for (const f of POTENTIALS) session.addFile(f, potential(f));
+  if (box === EAM_BOX || box === SI_BOX || box === SNAP_BOX) for (const f of POTENTIALS) session.addFile(f, potential(f));
   if (pairLines.includes('lj.table')) session.addFile('lj.table', ljTable());
   await session.execute(`${box}${pairLines}
 neighbor 0.3 bin
@@ -283,6 +306,14 @@ describe('shared-memory pair threads: every threaded style matches the single-th
       expectClose(serial, threaded, 1e-10);
     });
   }
+  for (const [name, lines] of Object.entries(SNAP_STYLES)) {
+    it(`${name} (full list, many-body)`, async () => {
+      const serial = await runCase(lines, 1, '', SNAP_BOX);
+      const threaded = await runCase(lines, 4, '', SNAP_BOX);
+      expect(threaded.threadedComputes).toBeGreaterThan(0);
+      expectClose(serial, threaded, 1e-10);
+    });
+  }
   // the GPL-ported styles (lazyStyles.ts GPL_THREADED_PAIRS): the worker loads them through the lazy registries, and
   // gets the neighbors in native order and the atom IDs (Pair.threadNeighbors, threadTags)
   for (const [name, lines] of Object.entries(GPL_STYLES)) {
@@ -304,7 +335,7 @@ describe('shared-memory pair threads: every threaded style matches the single-th
   it('covers every style of THREADED_PAIRS', () => {
     // the TIP4P styles (M sites as shared inputs, Pair.threadExtras) have their own test, engineTip4pThreads.test.ts
     const tip4p = ['lj/cut/tip4p/cut', 'lj/cut/tip4p/long', 'tip4p/cut', 'tip4p/long'];
-    expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES), ...Object.keys(THREEBODY_STYLES), ...tip4p].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
+    expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES), ...Object.keys(THREEBODY_STYLES), 'snap', ...tip4p].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
     // eff/cut (per-atom inputs and outputs, Pair.threadExtras) has its own test, engineEffThreads.test.ts
     expect([...Object.keys(GPL_STYLES), ...Object.keys(GPL_PAIR_STYLES), 'eff/cut'].sort()).toEqual([...GPL_THREADED_PAIRS].sort());
     // the engine side knows the styles by name only (threadedPairs.ts), the worker by factory (threadedPairFactories.ts,
@@ -322,6 +353,7 @@ describe('shared-memory pair threads: per-atom energy and virial of every thread
     ...Object.entries(STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, BOX, false]),
     ...Object.entries(EAM_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, EAM_BOX, false]),
     ...Object.entries(THREEBODY_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, SI_BOX, false]),
+    ...Object.entries(SNAP_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, SNAP_BOX, false]),
     ...Object.entries(GPL_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, SI_BOX, true]),
     ...Object.entries(GPL_PAIR_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, BOX, true]),
   ];

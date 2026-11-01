@@ -89,14 +89,12 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     || s.topo.bonds.n > 0 || s.topo.angles.n > 0 || s.topo.dihedrals.n > 0 || s.topo.impropers.n > 0;
   if (molecular && backend.kind !== 'webgpu') return why('bonded terms or molecular topology');
   if (s.box.triclinic || !s.box.periodic.every(Boolean)) return why('a triclinic or non-periodic box');
-  if (p.tail) return why('pair_modify tail yes');
   if (sys.nb.excludes.length || sys.nb.includeBit) return why('neigh_modify exclude/include');
   // the backends build their own cell lists, so fixes that act at neighbor-list time cannot run with them
   for (const f of sys.fixes) {
     if (f.preExchange || f.preNeighbor || f.postNeighbor || f.preReverse) return why(`fix ${f.style} (it acts when neighbor lists are rebuilt)`);
   }
   if (!sys.fixes.some((f) => f.timeIntegrate)) return why('no time-integration fix');
-  if (sys.groups.dynamic.size) return why('a dynamic group (atoms are reassigned between force evaluations)');
   if (sys.computes.some((c) => c.needsEatom || c.needsVatom)) return why('per-atom energy or stress computes');
   // the accelerated backends return a scalar virial only
   // the pressure tensor: the GPU kernels return the six virial components with the forces (not the whole-step kernel
@@ -165,7 +163,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const allBit = sys.groupBit('all');
     const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
     const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };
-    const resident = !molecular && !kspace && !needTensor && spec.law !== TABLE_LAW && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
+    const resident = !molecular && !kspace && !needTensor && !sys.groups.dynamic.size && spec.law !== TABLE_LAW && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
     return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p: null, resident, enforce2d }, reason: null };
   }
   const t = newPairTable(s.ntypes, p.cutGlobal);
@@ -180,7 +178,8 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
   const allBit = sys.groupBit('all');
   const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
-  const resident = onlyNve && !needTensor && isResident(backend) && backend.canAdvance(s, t);
+  // whole GPU steps cannot reassign a dynamic group between steps
+  const resident = onlyNve && !needTensor && !sys.groups.dynamic.size && isResident(backend) && backend.canAdvance(s, t);
   return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff: null, tip4p: null, resident, enforce2d }, reason: null };
 };
 
@@ -200,6 +199,9 @@ const store = (sys: System, r: ForceResult & { evdwl?: number; ecoul?: number },
     acc.evdwl = r.evdwl ?? r.pe;
     acc.ecoul = r.ecoul ?? 0;
   }
+  // pair_modify tail yes: the energy correction etail / V, which ForceField.compute adds to evdwl when it computes every
+  // term (its pressure term comes from the pressure compute, ForceField.ptail)
+  if (sys.ff.etailV !== 0) acc.evdwl += sys.ff.etailV / sys.geom.volume(sys.dimension);
   const w = r.virialTensor;
   if (w) for (let c = 0; c < 6; c++) acc.virial[c] = w[c];
   else {
@@ -298,6 +300,8 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
   for (const f of sys.fixes) f.setupPreForce?.();
   sys.bump();
   store(sys, await evaluate(a, sys, false), a.bonded || a.kspace);
+  // the dynamic groups at the setup, after its forces (as run/coupled.ts and native group.html)
+  sys.assignDynamicGroups(true);
   computeSetup(sys);
   for (const f of sys.fixes) f.setup();
   // labelmap check_labels: once, at the end of the setup (native Modify::setup)
@@ -352,6 +356,9 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
     timer.stamp(MODIFY);
     store(sys, await evaluate(a, sys, true), a.bonded || a.kspace);
     timer.stamp(PAIR);
+    // group.html: "The point in the timestep at which atoms are assigned to a dynamic group is after interatomic forces
+    // have been computed, but before any fixes which alter forces or otherwise update the system have been invoked."
+    sys.assignDynamicGroups(false);
     for (const f of fPostForce) f.postForce!();
     for (const f of fFinal) f.finalIntegrate!();
     for (const f of fEnd) if (s.step % f.nevery === 0) f.endOfStep!();

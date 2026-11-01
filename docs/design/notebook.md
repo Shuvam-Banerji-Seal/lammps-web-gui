@@ -302,7 +302,7 @@ interface ForceBackend {
   the one copy of a partner within the cutoff while every periodic width is at least 2 cutoffs; the accelerator checks
   the widths. With tilt 0 it is the same arithmetic as before. lj/cut runs as the styles kernel's style 10; the plain
   lj/cut kernel, the whole-step kernel and the lj/cut threads take orthogonal boxes. Box flips (fix deform, the
-  barostats with flip yes) come in pre_exchange, which keeps those runs on the CPU. Tests:
+  barostats with flip yes) come in pre_exchange (below). Tests:
   `tests/engineGpuTriclinic.test.ts`. In Chromium, the triclinic examples on WebGPU matched the CPU engine:
   - rigid/in.rigid.cubes.tri (styles kernel, molecule/intra exclusions, 1000 steps): every printed digit;
   - threebody/in.mos2.sw.mod (sw/mod, p p f, xy tilt, 1000 steps): to the last printed digit, plus or minus 1;
@@ -312,6 +312,25 @@ interface ForceBackend {
   - TIP4P water (lj/cut/tip4p/cut, all three tilts): to 5 or 6 digits through 250 steps of a hot (1800 K) system;
   - orthogonal runs of the changed kernels (shear/in.shear EAM, tersoff/in.tersoff, TIP4P with pppm/tip4p): the
     printed numbers of shear are those before the change.
+- **Fixes that act at neighbor-list time on the GPU path** (`run/accel.ts` NEIGHBOR_TIME_FIXES). The accelerated loop
+  runs the fixes' pre_exchange before System.pbc and their pre_neighbor after the sort, on the reneighboring steps, as
+  the CPU loop does. This applies to fixes whose hooks need no CPU neighbor list:
+  - the box flips of fix deform, of the Nose-Hoover family (nvt/npt/nph and their variants, sllod, cauchy, uef, nphug,
+    the Drude tgnvt/tgnpt) and of press/langevin;
+  - fix deform's remap bookkeeping (it reads the neighbor settings and `Neighbor.movedTooFar`, which `markBuilt` keeps
+    current);
+  - deposit, pour and evaporate (their pre_exchange is a stub; the work is in post_integrate);
+  - append/atoms;
+  - the body remap of the Nose-Hoover small rigid fixes.
+
+  Fixes with post_neighbor or pre_reverse hooks stay on the CPU, and so do balance (its weights read the half list),
+  gcmc, gemc, atom/swap and mol/swap (they evaluate energies), srd and srp. Tests: `tests/engineGpuNeighborFixes.test.ts`
+  records the steps each hook runs on in both engines and requires them to be equal. In Chromium, shortened examples
+  on WebGPU tracked the CPU engine:
+  - nemd/in.nemd (fix deform, nvt/sllod): 5 to 6 digits over 300 steps;
+  - PACKAGES/uef nvt_uniaxial: 6 digits through 200 steps, 0.1% apart by step 600 (a chaotic sheared fluid);
+  - PACKAGES/cauchy (npt/cauchy, EAM, two runs): temperature to 5 digits, pressures to 4 or 5;
+  - PACKAGES/phonon 3-3D-FCC-Cu-EAM (triclinic fix npt): 5 to 6 digits over 300 steps.
 - **GPU validation errors stop the run.** Pipelines are created in a validation error scope
   (`checkedPipelines`), and each force evaluation runs in one (`validated`): WebGPU skips an
   invalid dispatch, which would otherwise leave zero forces (an entry point whose `auto`

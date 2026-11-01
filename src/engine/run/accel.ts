@@ -60,6 +60,17 @@ export interface Accel {
 }
 
 const PRESSURE_TENSOR = new Set(['pxx', 'pyy', 'pzz', 'pxy', 'pxz', 'pyz']);
+/**
+ * The fix styles whose pre_exchange and pre_neighbor hooks need no CPU neighbor list, so they run on the accelerated
+ * loop's reneighboring steps as on the CPU path: the box flips of fix deform and of the Nose-Hoover family and
+ * press/langevin (FixNH.flipIfNeeded and the like), the reduction of the uef box, fix deform's remap bookkeeping (it
+ * reads the neighbor settings and Neighbor.movedTooFar, which Neighbor.markBuilt keeps current), the insertions of
+ * deposit, pour and evaporate (their pre_exchange is a stub; the work is in post_integrate), append/atoms (its own
+ * System.setupNeighbors), and the body remap of the small rigid fixes. Not here: balance (its weights read the half list),
+ * gcmc, gemc, atom/swap, mol/swap (they evaluate energies), srd, srp.
+ */
+const NEIGHBOR_TIME_FIXES = /^(deform|deposit|pour|evaporate|append\/atoms|press\/langevin|nphug|tg(npt|nvt)\/drude|(npt|nph|nvt)(\/(asphere|sphere|body|eff|cauchy|uef|sllod|sllod\/eff))?|rigid(\/(nve|nvt|npt|nph))?\/small)$/;
+
 /** The fix styles that change the box during a run (barostats, fix deform). */
 const BOX_CHANGING = /^(npt|nph|press\/|deform|rigid\/np[th]|nphug|msst|qbmsst|bocs)/;
 
@@ -112,9 +123,11 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     if (ex.rules.length > MAX_GPU_EXCLUSION_RULES) return why(`more than ${MAX_GPU_EXCLUSION_RULES} neigh_modify exclude group or molecule rules`);
     if (!gpuStyle && !ljcut) return why(`neigh_modify exclude/include with pair style ${p.name}`);
   }
-  // the backends build their own cell lists, so fixes that act at neighbor-list time cannot run with them
+  // the backends build their own cell lists and the loop no CPU lists: fixes that act at neighbor-list time run on the
+  // reneighboring steps (runAccelerated) when they need no list (NEIGHBOR_TIME_FIXES); the others stay on the CPU
   for (const f of sys.fixes) {
-    if (f.preExchange || f.preNeighbor || f.postNeighbor || f.preReverse) return why(`fix ${f.style} (it acts when neighbor lists are rebuilt)`);
+    const listFree = NEIGHBOR_TIME_FIXES.test(f.style);
+    if (((f.preExchange || f.preNeighbor) && !listFree) || f.postNeighbor || f.preReverse) return why(`fix ${f.style} (it acts when neighbor lists are rebuilt)`);
   }
   if (!sys.fixes.some((f) => f.timeIntegrate)) return why('no time-integration fix');
   if (sys.computes.some((c) => c.needsEatom || c.needsVatom)) return why('per-atom energy or stress computes');
@@ -360,6 +373,8 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
   const has = <K extends keyof (typeof fixes)[number]>(k: K) => fixes.filter((f) => typeof f[k] === 'function');
   const fInitial = has('initialIntegrate');
   const fPostInt = has('postIntegrate');
+  const fPreEx = has('preExchange');
+  const fPreNeigh = has('preNeighbor');
   const fPreForce = has('preForce');
   const fPostForce = has('postForce');
   const fFinal = has('finalIntegrate');
@@ -396,14 +411,17 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
     sys.bump();
     timer.stamp(MODIFY);
     // the reneighboring decision of verlet.ts runVerlet (neigh_modify every, delay, check; restart files; fixes): on
-    // those steps the periodic wrap, the reset of a shrink-wrapped box and the lost atoms of a fixed boundary (System.pbc)
-    // and the sort, as there; between them the atoms move on unwrapped, which the backends' binning and minimum image take
+    // those steps the fixes' pre_exchange, the periodic wrap, the reset of a shrink-wrapped box and the lost atoms of a
+    // fixed boundary (System.pbc), the sort and the fixes' pre_neighbor, as there; between them the atoms move on
+    // unwrapped, which the backends' binning and minimum image take
     const fReneigh = fixes.some((f) => f.reneighborDue?.(s.step) === true);
     nb.forceBuildStep = restartDue(sys, s.step) ? s.step : -1;
     nb.fixBuildStep = fReneigh ? s.step : -1;
     if (nb.decide(s.step, s, g)) {
+      for (const f of fPreEx) f.preExchange!();
       sys.pbc();
       sys.sortAtoms(false);
+      for (const f of fPreNeigh) f.preNeighbor!();
       nb.markBuilt(s, g, s.step);
       sys.bump();
     }

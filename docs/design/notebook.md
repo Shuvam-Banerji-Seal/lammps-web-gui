@@ -250,6 +250,18 @@ interface ForceBackend {
   Coulomb energy) of the CPU with `pair_modify table 0`; the CPU's default table adds another
   0.04. A box shorter than twice (cut_coul + 2 qdist) stays on the CPU, as do the gle water
   examples (12.4 A).
+- **The virial tensor on the GPU path.** Every per-step kernel (lj/cut, the styles kernel, EAM, SW,
+  Tersoff, TIP4P) accumulates the six virial components (xx yy zz xy xz yz) next to its scalar
+  virial: half of 0.5 F/r d (x) d at each atom of a pair, d1 (x) F1 + d2 (x) F2 for a three-body
+  term at its center. The host sums them in fp64 into `virialTensor`. Barostats (whose own
+  pressure compute is a user pressure compute: `fix npt`, `nph`), user pressure computes and
+  `pxx`..`pyz` therefore take the GPU path; only the whole-step kernel (resident.ts) and the
+  lj/cut threads of cpu/parallel.ts still give the scalar virial, so such runs are not resident
+  there and stay off those threads. A fix that changes the box (a barostat, fix deform) needs 3
+  pair cutoffs per periodic edge at the start instead of 2, so a shrinking box keeps the 2 the
+  kernels' minimum image needs. In Chromium, fix npt aniso on WebGPU tracked the CPU engine's
+  pxx..pyz and volume for lj/cut, EAM, SW, Tersoff, TIP4P water and rhodopsin (32000 atoms,
+  CHARMM + PPPM + SHAKE) to fp32 precision.
 - **GPU validation errors stop the run.** Pipelines are created in a validation error scope
   (`checkedPipelines`), and each force evaluation runs in one (`validated`): WebGPU skips an
   invalid dispatch, which would otherwise leave zero forces (an entry point whose `auto`

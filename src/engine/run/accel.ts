@@ -55,6 +55,8 @@ export interface Accel {
 }
 
 const PRESSURE_TENSOR = new Set(['pxx', 'pyy', 'pzz', 'pxy', 'pxz', 'pyz']);
+/** The fix styles that change the box during a run (barostats, fix deform). */
+const BOX_CHANGING = /^(npt|nph|press\/|deform|rigid\/np[th]|nphug|msst|qbmsst|bocs)/;
 
 /** Whether the chosen backend can run this system, and how. */
 export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel | null; reason: string | null } => {
@@ -97,8 +99,20 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   if (sys.groups.dynamic.size) return why('a dynamic group (atoms are reassigned between force evaluations)');
   if (sys.computes.some((c) => c.needsEatom || c.needsVatom)) return why('per-atom energy or stress computes');
   // the accelerated backends return a scalar virial only
-  if (sys.thermo.keywords.some((k) => PRESSURE_TENSOR.has(k))) return why('pressure-tensor thermo keywords');
-  if (sys.computes.some((c) => c.pressFlag && c.id !== 'thermo_press')) return why('a user pressure compute');
+  // the pressure tensor: the GPU kernels return the six virial components with the forces (not the whole-step kernel
+  // of resident.ts, nor the lj/cut threads of cpu/parallel.ts, which give the scalar virial only); a barostat's own
+  // pressure compute is a user pressure compute here (fix npt, nph)
+  const needTensor = sys.thermo.keywords.some((k) => PRESSURE_TENSOR.has(k)) || sys.computes.some((c) => c.pressFlag && c.id !== 'thermo_press');
+  if (needTensor && backend.kind !== 'webgpu') {
+    if (sys.thermo.keywords.some((k) => PRESSURE_TENSOR.has(k))) return why('pressure-tensor thermo keywords');
+    return why('a user pressure compute');
+  }
+  // a fix that changes the box (a barostat, fix deform) may shrink it during the run: the kernels' minimum image needs
+  // 2 cutoffs per periodic edge at every step, so such runs start with 3
+  const boxMayChange = sys.fixes.some((f) => BOX_CHANGING.test(f.style));
+  const edgeCutoffs = boxMayChange ? 3 : 2;
+  const shortBox = (cut: number) => [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < edgeCutoffs * cut);
+  const shortWhy = `a box shorter than ${edgeCutoffs} pair cutoffs along an edge${boxMayChange ? ' (a fix that changes the box)' : ''}`;
   // the table from the initialized (mixed) coefficients
   p.init(sys.styleContext());
   if (eamStyle) {
@@ -106,8 +120,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const eam = gpuEamSpec(p as EamPair);
     if (typeof eam === 'string') return why(eam);
     // the kernels' minimum image needs at least 2 cutoffs along each periodic edge (gpu/eamKernels.ts)
-    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * eam.maxCutoff);
-    if (short) return why('a box shorter than 2 pair cutoffs along an edge');
+    if (shortBox(eam.maxCutoff)) return why(shortWhy);
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
     return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam, sw: null, tersoff: null, tip4p: null, resident: false, enforce2d }, reason: null };
   }
@@ -116,8 +129,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const sw = gpuSwSpec(p as SwPair);
     if (typeof sw === 'string') return why(sw);
     // the kernels' minimum image needs at least 2 cutoffs along each periodic edge (gpu/swKernels.ts)
-    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * sw.maxCutoff);
-    if (short) return why('a box shorter than 2 pair cutoffs along an edge');
+    if (shortBox(sw.maxCutoff)) return why(shortWhy);
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
     return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw, tersoff: null, tip4p: null, resident: false, enforce2d }, reason: null };
   }
@@ -126,8 +138,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const tersoff = gpuTersoffSpec(p as TersoffPair);
     if (typeof tersoff === 'string') return why(tersoff);
     // the kernels' minimum image needs at least 2 cutoffs along each periodic edge (gpu/tersoffKernels.ts)
-    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * tersoff.maxCutoff);
-    if (short) return why('a box shorter than 2 pair cutoffs along an edge');
+    if (shortBox(tersoff.maxCutoff)) return why(shortWhy);
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
     return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff, tip4p: null, resident: false, enforce2d }, reason: null };
   }
@@ -137,8 +148,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const tip4p = gpuTip4pSpec(p as Tip4pPair, qqrd2e, molecular ? { lj: [1, ...sb.lj], coul: [1, ...sb.coul] } : null);
     if (typeof tip4p === 'string') return why(tip4p);
     // the kernel's minimum image needs at least 2 cutoffs along each periodic edge (gpu/tip4pKernels.ts)
-    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * tip4p.maxCutoff);
-    if (short) return why('a box shorter than 2 pair cutoffs along an edge');
+    if (shortBox(tip4p.maxCutoff)) return why(shortWhy);
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
     return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p, resident: false, enforce2d }, reason: null };
   }
@@ -149,14 +159,13 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     if (typeof spec === 'string') return why(spec);
     // the kernel's minimum image needs at least 2 cutoffs along each periodic edge (webgpuForces.ts KERNEL_STYLES; the
     // whole-step kernel 3, resident.ts canAdvanceSpec): a shorter edge has two copies of a partner within the cutoff
-    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * spec.maxCutoff);
-    if (short) return why('a box shorter than 2 pair cutoffs along an edge');
+    if (shortBox(spec.maxCutoff)) return why(shortWhy);
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
     // whole steps on the GPU (resident.ts) with only nve / enforce2d on all atoms, as for lj/cut
     const allBit = sys.groupBit('all');
     const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
     const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };
-    const resident = !molecular && !kspace && spec.law !== TABLE_LAW && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
+    const resident = !molecular && !kspace && !needTensor && spec.law !== TABLE_LAW && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
     return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p: null, resident, enforce2d }, reason: null };
   }
   const t = newPairTable(s.ntypes, p.cutGlobal);
@@ -171,7 +180,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
   const allBit = sys.groupBit('all');
   const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
-  const resident = onlyNve && isResident(backend) && backend.canAdvance(s, t);
+  const resident = onlyNve && !needTensor && isResident(backend) && backend.canAdvance(s, t);
   return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff: null, tip4p: null, resident, enforce2d }, reason: null };
 };
 

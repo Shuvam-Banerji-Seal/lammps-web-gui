@@ -128,7 +128,13 @@ const switchFc = (mod: { delta1: number; delta2: number } | null, dc: number): [
  * The two kernels' arithmetic in fp64 over every atom (minimum image in an orthogonal periodic box): forces, energy
  * and the scalar virial sum_pairs r . F, in the gather form described above.
  */
-export const swGather = (spec: GpuSwSpec, n: number, x: ArrayLike<number>, type: ArrayLike<number>, L: number[]): { f: Float64Array; e: number; virial: number } => {
+/** vt += s a (x) b in the order xx yy zz xy xz yz (the separation first: native v_tally3's delr[0] * f[1], ...). */
+const addOuter = (vt: number[], s: number, a: ArrayLike<number>, b: ArrayLike<number>): void => {
+  vt[0] += s * a[0] * b[0]; vt[1] += s * a[1] * b[1]; vt[2] += s * a[2] * b[2];
+  vt[3] += s * a[0] * b[1]; vt[4] += s * a[0] * b[2]; vt[5] += s * a[1] * b[2];
+};
+
+export const swGather = (spec: GpuSwSpec, n: number, x: ArrayLike<number>, type: ArrayLike<number>, L: number[]): { f: Float64Array; e: number; virial: number; virialTensor: number[] } => {
   const nt = spec.stride, c = spec.coef;
   const dvec = (i: number, j: number): [number, number, number] => {
     const v: [number, number, number] = [0, 0, 0];
@@ -172,10 +178,11 @@ export const swGather = (spec: GpuSwSpec, n: number, x: ArrayLike<number>, type:
     const a2 = (dEdc * cs) / (l2.r * l2.r) + (e3 * l2.w) / l2.r;
     const f1 = [0, 1, 2].map((m) => a1 * l1.d[m] - bk * l2.d[m]);
     const f2 = [0, 1, 2].map((m) => a2 * l2.d[m] - bk * l1.d[m]);
-    return { f1, f2, e3, w: f1[0] * l1.d[0] + f1[1] * l1.d[1] + f1[2] * l1.d[2] + f2[0] * l2.d[0] + f2[1] * l2.d[1] + f2[2] * l2.d[2] };
+    return { f1, f2, d1: l1.d, d2: l2.d, e3, w: f1[0] * l1.d[0] + f1[1] * l1.d[1] + f1[2] * l1.d[2] + f2[0] * l2.d[0] + f2[1] * l2.d[1] + f2[2] * l2.d[2] };
   };
   const f = new Float64Array(3 * n);
   let e = 0, virial = 0;
+  const vt = [0, 0, 0, 0, 0, 0];
   for (let i = 0; i < n; i++) {
     const ti = type[i];
     for (const j of nbr[i]) {
@@ -194,6 +201,7 @@ export const swGather = (spec: GpuSwSpec, n: number, x: ArrayLike<number>, type:
         for (let m = 0; m < 3; m++) f[3 * i + m] -= fpair * d[m];
         e += 0.5 * c[o + 4] * f2 * es;
         virial += 0.5 * fpair * r2;
+        addOuter(vt, 0.5 * fpair, d, d);
       }
     }
     if (!spec.threebody) continue;
@@ -206,6 +214,8 @@ export const swGather = (spec: GpuSwSpec, n: number, x: ArrayLike<number>, type:
         for (let m = 0; m < 3; m++) f[3 * i + m] -= t.f1[m] + t.f2[m];
         e += t.e3;
         virial += t.w;
+        addOuter(vt, 1, t.d1, t.f1);
+        addOuter(vt, 1, t.d2, t.f2);
       }
     }
     // triplets centered at a neighbor j with i as a leg
@@ -218,5 +228,5 @@ export const swGather = (spec: GpuSwSpec, n: number, x: ArrayLike<number>, type:
       }
     }
   }
-  return { f, e, virial };
+  return { f, e, virial, virialTensor: vt };
 };

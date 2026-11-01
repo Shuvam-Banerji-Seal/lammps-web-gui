@@ -5,7 +5,8 @@
  * atomics are needed:
  *   rho:   the density of the slot's atom, outv[slot];
  *   force: with F' of every atom in ints at fpBase (f32 bits, written by the CPU after its embedding step), the force,
- *          half of each pair's energy and half of its virial, outv[6 slot .. 6 slot + 5] = fx fy fz e 0 w.
+ *          half of each pair's energy and half of its virial, outv[12 slot ..] = fx fy fz e 0 w, then the virial tensor xx yy
+ *          zz xy xz yz.
  * The table arithmetic is eamSpec.ts eamDensity and eamPair (eamKernel.ts, as native LAMMPS's pair_eam.cpp).
  */
 export const EAM_WORKGROUP = 64;
@@ -123,6 +124,8 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
   var f = vec3<f32>(0.0, 0.0, 0.0);
   var ev = 0.0;
   var w = 0.0;
+  var vd = vec3<f32>(0.0, 0.0, 0.0); // the virial tensor xx yy zz, then xy xz yz (half of each pair's at each atom)
+  var vo = vec3<f32>(0.0, 0.0, 0.0);
   for (var dz = lo.z; dz <= hi.z; dz = dz + 1) {
     for (var dy = lo.y; dy <= hi.y; dy = dy + 1) {
       for (var dx = lo.x; dx <= hi.x; dx = dx + 1) {
@@ -157,16 +160,24 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
           f = f + fpair * d;
           ev = ev + 0.5 * sc * phi;
           w = w + 0.5 * fpair * r2;
+          vd = vd + (0.5 * fpair) * d * d;
+          vo = vo + (0.5 * fpair) * vec3<f32>(d.x * d.y, d.x * d.z, d.y * d.z);
         }
       }
     }
   }
-  let o = 6u * i;
+  let o = 12u * i;
   outv[o] = f.x;
   outv[o + 1u] = f.y;
   outv[o + 2u] = f.z;
   outv[o + 3u] = ev;
   outv[o + 4u] = 0.0;
   outv[o + 5u] = w;
+  outv[o + 6u] = vd.x;
+  outv[o + 7u] = vd.y;
+  outv[o + 8u] = vd.z;
+  outv[o + 9u] = vo.x;
+  outv[o + 10u] = vo.y;
+  outv[o + 11u] = vo.z;
 }
 `;

@@ -219,6 +219,9 @@ export const nativeFarOrder = (s: SimState, nb: Neighbor, g: Geometry, x: Float6
     }
   }
 
+  // the engine index of every native atom, looked up once (each is a partner of many owned atoms)
+  const engOf = new Int32Array(nall);
+  for (let k = 0; k < nall; k++) engOf[k] = engineIndex(k);
   // each owned atom's partners in native order, by native index; then regrouped by engine index
   const lists: Int32Array[] = new Array(n);
   let buf = new Int32Array(1024);
@@ -230,7 +233,7 @@ export const nativeFarOrder = (s: SimState, nb: Neighbor, g: Geometry, x: Float6
       if (!chain) continue;
       for (const j of chain) {
         if (j <= k) continue;
-        const ek = engineIndex(j);
+        const ek = engOf[j];
         if (ek < 0) continue;
         if (r === buf.length) { const b2 = new Int32Array(2 * r); b2.set(buf); buf = b2; }
         buf[r++] = ek;

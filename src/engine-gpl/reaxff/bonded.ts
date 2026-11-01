@@ -27,9 +27,19 @@ const CUBE = (x: number) => x * x * x;
 const dot3 = (a: Float64Array | number[], ao: number, b: Float64Array | number[], bo: number): number =>
   a[ao] * b[bo] + a[ao + 1] * b[bo + 1] + a[ao + 2] * b[bo + 2];
 
-/** The 3-body list (thb_intrs) arrays are grown on demand. */
-const newThreeBodyList = (nBondSlots: number, cap: number): ThreeBodyList => {
+/**
+ * The 3-body list (thb_intrs) arrays are grown on demand: those of the previous evaluation (reuse) when they are large
+ * enough, with start and end zeroed (every entry is written when it is pushed), else new ones.
+ */
+const newThreeBodyList = (nBondSlots: number, cap: number, reuse: ThreeBodyList | null = null): ThreeBodyList => {
   const c = Math.max(cap, 1);
+  const ns = Math.max(nBondSlots, 1);
+  if (reuse && reuse.thb.length >= c && reuse.start.length === ns) {
+    reuse.start.fill(0);
+    reuse.end.fill(0);
+    reuse.count = 0;
+    return reuse;
+  }
   return {
     start: new Int32Array(Math.max(nBondSlots, 1)), end: new Int32Array(Math.max(nBondSlots, 1)),
     thb: new Int32Array(c), pthb: new Int32Array(c), theta: new Float64Array(c),
@@ -269,7 +279,8 @@ export const valenceAngles = (sys: RxSystem): void => {
     const nb = b.end[j] - b.start[j];
     cap += nb * nb;
   }
-  const thb = newThreeBodyList(nBondSlots, cap);
+  const thb = newThreeBodyList(nBondSlots, cap, sys.thbReuse ?? null);
+  sys.thbReuse = null;
   sys.thb = thb;
   let numThb = 0;
   const thbPush = (): number => numThb++;

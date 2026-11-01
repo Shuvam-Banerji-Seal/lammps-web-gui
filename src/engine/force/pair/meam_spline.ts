@@ -394,6 +394,16 @@ abstract class PairMeamSplineBase extends Pair {
   }
 
   // scratch for the gathered neighbours of one owned atom and for the angular pairs (a < b)
+  /** On a pair thread's copy (Pair.threadAdopt): the splines of the cloned file are CubicSpline objects again. */
+  override threadAdopt(): void {
+    const f = this.file;
+    if (!f) return;
+    const adopt = (sp: CubicSpline | null) => { if (sp && !(sp instanceof CubicSpline)) Object.setPrototypeOf(sp, CubicSpline.prototype); };
+    for (const list of [f.phi, f.rho, f.U, f.f, f.g]) for (const sp of list) adopt(sp);
+    adopt(f.F);
+    adopt(f.G);
+  }
+
   private cap = 0;
   private nJ = new Int32Array(0);
   private nDx = new Float64Array(0);
@@ -454,7 +464,6 @@ abstract class PairMeamSplineBase extends Pair {
     const file = this.file;
     if (!file) throw new Error(`pair style ${this.name} has no potential`);
     const { x, f, type } = pc;
-    const nlocal = pc.nlocal;
     const cutsq = this.globalCut * this.globalCut;
     const nel = file.multi ? file.names.length : 1;
     const eatom = pc.eatom, vatom = pc.vatom;
@@ -467,7 +476,8 @@ abstract class PairMeamSplineBase extends Pair {
     const multi = file.multi;
     let evdwl = 0;
 
-    for (let i = 0; i < nlocal; i++) {
+    // the rows [ilo, inum) of the full list (a shared-memory thread runs a range of them, cpu/pairThreads.ts)
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const ei = this.elemOf[type[i]];
       if (ei < 0) continue;
       const k0 = list.firstneigh[i];

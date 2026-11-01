@@ -177,6 +177,13 @@ export const parseSnapCoeff = (text: string, filename: string, K: number, quadra
   return out;
 };
 
+/**
+ * What a compute builds on first use (the Wigner tables of a twojmax, the chemflag engine): kept outside the style's own
+ * fields, so that the pair threads' structured copy of the style (cpu/pairThreadsCore.ts cloneableFields) leaves them
+ * out and each copy builds its own.
+ */
+const lazyCaches = new WeakMap<object, { tables?: WignerTables; tj?: number; chem?: ChemSna }>();
+
 export class PairSnap extends Pair {
   readonly name = 'snap';
   manybody = true;
@@ -199,15 +206,25 @@ export class PairSnap extends Pair {
   private b0: Float64Array = new Float64Array(0);
   private normOf: Float64Array = new Float64Array(0);
   private setupDone = false;
-  private tables: WignerTables | null = null;
   /**
    * Per type pair 'scale' (fix adapt pair snap:N scale). Only the diagonal entry scale[t][t] of the
    * central atom's type multiplies its atomic energy and every force and virial term it generates
    * (measured with native LAMMPS, black box: see tests/oracle/w43ad_snap_scale.in).
    */
   scaleP: PairParams = new PairParams(0, ['scale']);
-  /** Explicit multi-element bispectrum (chemflag 1), created on first compute after coeff(). */
-  private chemEng: ChemSna | null = null;
+  /** The lazy caches of this instance (lazyCaches). */
+  private caches(): { tables?: WignerTables; tj?: number; chem?: ChemSna } {
+    let c = lazyCaches.get(this);
+    if (!c) { c = {}; lazyCaches.set(this, c); }
+    return c;
+  }
+
+  /** The Wigner tables of twojmax tj, built once per value. */
+  private wigner(tj: number): WignerTables {
+    const c = this.caches();
+    if (!c.tables || c.tj !== tj) { c.tables = new WignerTables(tj); c.tj = tj; }
+    return c.tables;
+  }
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError(`pair_style snap takes no arguments (got ${args.length})`);
@@ -253,7 +270,8 @@ export class PairSnap extends Pair {
     this.scaleP = new PairParams(this.ntypes, ['scale']);
     for (let i = 1; i <= this.ntypes; i++) for (let j = i; j <= this.ntypes; j++) this.scaleP.set(i, j, [1]);
     this.setupDone = false;
-    this.chemEng = null;
+    // the explicit multi-element bispectrum (chemflag 1) is built again at the next compute
+    this.caches().chem = undefined;
   }
 
   /** Cutoff rcutfac (R_i + R_j) between mapped types; 0 for NULL-mapped types. */
@@ -297,7 +315,6 @@ export class PairSnap extends Pair {
     const list = pc.full;
     if (!list) throw new Error('pair style snap needs a full neighbor list');
     const { x, f, type } = pc;
-    const nlocal = pc.nlocal;
     const K = this.K, tj = p.twojmax, triples = this.triples;
     const zs = newZStore(triples);
     const quad = this.quadratic;
@@ -311,7 +328,7 @@ export class PairSnap extends Pair {
       gr.push({ r: new Float64Array(nn), i: new Float64Array(nn) });
       gi.push({ r: new Float64Array(nn), i: new Float64Array(nn) });
     }
-    const WT = this.tables ?? (this.tables = new WignerTables(tj));
+    const WT = this.wigner(tj);
     // the gradient of E_i in the layout of WT.contract, and the contraction of one neighbour
     const gpR = new Float64Array(WT.size), gpI = new Float64Array(WT.size), cs5 = new Float64Array(5);
     const grR = gr.map((x) => x.r), giR = gi.map((x) => x.r);
@@ -329,7 +346,8 @@ export class PairSnap extends Pair {
     // virial (oracle cases w19vatom_snap and w19vatom_nn).
     const va = pc.vatom;
 
-    for (let i = 0; i < nlocal; i++) {
+    // the rows [ilo, inum) of the full list (a shared-memory thread runs a range of them, cpu/pairThreads.ts)
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const ei = this.elemOf[type[i]];
       if (ei < 0) continue;
       const coef = file.coeff[ei];
@@ -482,15 +500,14 @@ export class PairSnap extends Pair {
     const list = pc.full;
     if (!list) throw new Error('pair style snap needs a full neighbor list');
     const { x, f, type } = pc;
-    const nlocal = pc.nlocal;
     const nbase = this.nbase;
-    if (!this.chemEng) {
-      this.chemEng = new ChemSna({
-        triples: this.triples, twojmax: p.twojmax, nelem: this.nelem, rfac0: p.rfac0, rmin0: p.rmin0,
-        switchflag: p.switchflag, wselfall: this.wselfall, normOf: this.normOf, b0: this.b0,
-      }, this.tables ?? (this.tables = new WignerTables(p.twojmax)));
-    }
-    const chem = this.chemEng;
+    const cache = this.caches();
+    // the explicit multi-element bispectrum (chemflag 1), created on the first compute after coeff()
+    cache.chem ??= new ChemSna({
+      triples: this.triples, twojmax: p.twojmax, nelem: this.nelem, rfac0: p.rfac0, rmin0: p.rmin0,
+      switchflag: p.switchflag, wselfall: this.wselfall, normOf: this.normOf, b0: this.b0,
+    }, this.wigner(p.twojmax));
+    const chem = cache.chem;
     const Bf = new Float64Array(nbase), gam = new Float64Array(nbase);
     const G0 = [0, 0, 0];
     let evdwl = 0;
@@ -499,7 +516,8 @@ export class PairSnap extends Pair {
     chem.reserve(mx);
     const va = pc.vatom;
 
-    for (let i = 0; i < nlocal; i++) {
+    // the rows [ilo, inum) of the full list (a shared-memory thread runs a range of them, cpu/pairThreads.ts)
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const ei = this.elemOf[type[i]];
       if (ei < 0) continue;
       const coef = file.coeff[ei];

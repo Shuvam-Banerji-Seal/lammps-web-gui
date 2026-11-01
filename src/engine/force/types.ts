@@ -426,6 +426,12 @@ export abstract class Pair {
   threadTags?: boolean;
   /** A style on the pair threads with per-atom inputs and outputs besides the forces (ThreadExtras). */
   threadExtras?(): ThreadExtras;
+  /**
+   * A style on the pair threads whose fields hold class instances inside plain objects or arrays (which structured
+   * cloning returns as plain objects): called on the copy rebuilt from the cloned fields (cpu/pairThreadsCore.ts
+   * pairFromFactory) to give them their class again.
+   */
+  threadAdopt?(): void;
   needsHalf = true;
   /**
    * The neighbor list keeps a pair only within the two radii plus the skin. As native LAMMPS does (src/npair_bin.cpp at

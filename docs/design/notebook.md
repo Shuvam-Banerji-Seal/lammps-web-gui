@@ -406,6 +406,16 @@ thread and copied into the shared list) and the atom IDs (`Pair.threadTags`, a s
 worker has no `SimState` or `Neighbor`. Measured in Chromium (24-core Xeon), SW silicon with 4096 atoms, 200 steps:
 loop 3.13 s on one thread, 1.33 s on 8 (pair term 2.89 s and 1.14 s), the same thermo.
 
+The full-list many-body styles `snap` (chemflag 0 and 1), `meam/spline`, `meam/sw/spline` and `vashishta` run on the
+threads too: each row adds its energy (SNAP's self term included) and forces to its own atoms only, so a thread runs
+the rows `[ilo, inum)` of its chunk. SNAP keeps its lazily built Wigner tables and chemflag engine outside its fields,
+so each worker's structured copy builds its own. meam/spline's file holds `CubicSpline` objects inside plain arrays,
+which structured cloning returns as plain objects; `Pair.threadAdopt`, called on the copy rebuilt from the cloned
+fields (`pairThreadsCore.ts pairFromFactory`), gives them their class again. vashishta reads the atom IDs on the threads
+(`Pair.threadTags`) to count each two-body pair at one of its rows. Measured in Chromium (24-core Xeon, shared with
+other jobs at a load of about 17), 1 vs 8 threads with the same thermo: SNAP Ta06A, 2000 atoms, 20 steps 8.39 s -> 2.17 s;
+vashishta SiC, 4096 atoms, 100 steps 13.5 s -> 3.96 s; meam/sw/spline Si, 2744 atoms, 100 steps 5.15 s -> 1.26 s.
+
 `pair_style hybrid`, `hybrid/overlay` and `hybrid/molecular` run each threaded sub-style on the threads in its own
 pair slot (`pairThreadsCore.ts` MAX_PAIR_SLOTS: slot 0 is a plain pair style, slot 1 + k sub-style k), so the
 workers keep one copy per sub-style instead of being sent a new style every step. The force field hands the hybrid a

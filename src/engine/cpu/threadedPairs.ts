@@ -57,6 +57,10 @@ export const THREADED_NAMES: ReadonlySet<string> = new Set([
   'tersoff/mod/c',
   'tersoff/zbl',
   'sw/mod',
+ 'snap',
+ 'meam/spline',
+ 'meam/sw/spline',
+ 'vashishta',
   // M sites, hydrogens and owners as shared inputs (Pair.threadExtras)
   'lj/cut/tip4p/cut',
   'lj/cut/tip4p/long',

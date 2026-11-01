@@ -1,6 +1,22 @@
 import type { SimState } from '../types';
 
 /**
+ * The cell along a periodic dimension of nc cells (sc = nc / len per unit length) of an atom at offset dx from the box's
+ * lower bound. Inside the box as a plain floor, an atom on hi after rounding in the last cell; an atom outside it (it
+ * has moved since the last periodic wrap, which the accelerated run loop does on the reneighboring steps only,
+ * run/accel.ts) in the cell of its periodic image.
+ */
+export const periodicCell = (dx: number, len: number, sc: number, nc: number): number => {
+  let c = Math.floor(dx * sc);
+  if (dx < 0 || dx >= len) {
+    c %= nc;
+    if (c < 0) c += nc;
+    return c === nc ? 0 : c;
+  }
+  return c >= nc ? nc - 1 : c;
+};
+
+/**
  * Atoms counting-sorted by cell: cells of edge >= `rc` (nc per dimension,
  * 1 along z in 2D), `start[c]..start[c+1]` the sorted slots of cell c,
  * `sorted[slot]` the original atom index, `xs`/`ts` positions and types in
@@ -47,13 +63,11 @@ export const sortIntoCells = (
   const cellOf = new Int32Array(n);
   const [lx, ly, lz] = s.box.lo;
   const sx = nc[0] / L[0], sy = nc[1] / L[1], sz = nc[2] / L[2];
+  // a fully periodic box (cpu/parallel.ts)
   for (let i = 0; i < n; i++) {
-    let cx = Math.floor((x[3 * i] - lx) * sx);
-    let cy = Math.floor((x[3 * i + 1] - ly) * sy);
-    let cz = two ? 0 : Math.floor((x[3 * i + 2] - lz) * sz);
-    if (cx >= nc[0]) cx = nc[0] - 1; else if (cx < 0) cx = 0;   // x == hi after rounding
-    if (cy >= nc[1]) cy = nc[1] - 1; else if (cy < 0) cy = 0;
-    if (cz >= nc[2]) cz = nc[2] - 1; else if (cz < 0) cz = 0;
+    const cx = periodicCell(x[3 * i] - lx, L[0], sx, nc[0]);
+    const cy = periodicCell(x[3 * i + 1] - ly, L[1], sy, nc[1]);
+    const cz = two ? 0 : periodicCell(x[3 * i + 2] - lz, L[2], sz, nc[2]);
     const c = (cz * nc[1] + cy) * nc[0] + cx;
     cellOf[i] = c;
     start[c + 1]++;

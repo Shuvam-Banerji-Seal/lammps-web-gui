@@ -1,5 +1,6 @@
 import type { ForceBackend, ForceResult, PairTable, SimState } from '../types';
 import { pairArrays, type PairArrays } from '../pairs';
+import { periodicCell } from './cells';
 
 /*
  * Reference fp64 Lennard-Jones forces (Allen & Tildesley ch. 5).
@@ -81,12 +82,9 @@ export class CpuForceBackend implements ForceBackend {
     const [lx, ly, lz] = s.box.lo;
     const sx = ncx / L[0], sy = ncy / L[1], sz = ncz / L[2];
     for (let i = 0; i < n; i++) {
-      let cx = Math.floor((x[3 * i] - lx) * sx);
-      let cy = Math.floor((x[3 * i + 1] - ly) * sy);
-      let cz = two ? 0 : Math.floor((x[3 * i + 2] - lz) * sz);
-      if (cx >= ncx) cx = ncx - 1; else if (cx < 0) cx = 0;   // x == hi after rounding
-      if (cy >= ncy) cy = ncy - 1; else if (cy < 0) cy = 0;
-      if (cz >= ncz) cz = ncz - 1; else if (cz < 0) cz = 0;
+      const cx = periodicCell(x[3 * i] - lx, L[0], sx, ncx);
+      const cy = periodicCell(x[3 * i + 1] - ly, L[1], sy, ncy);
+      const cz = two ? 0 : periodicCell(x[3 * i + 2] - lz, L[2], sz, ncz);
       const c = (cz * ncy + cy) * ncx + cx;
       cellOfAtom[i] = c;
       start[c + 1]++;

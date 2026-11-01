@@ -120,6 +120,6 @@ describe('pair sw and sw/mod on the GPU path', () => {
     expect(a.accel?.sw).not.toBeNull();
     expect(a.accel?.resident).toBe(false);
     const small = await run(BOX(1).replace('block 0 3 0 3 0 3', 'block 0 1 0 1 0 1'), CASES.sw.lines);
-    expect(small.reason).toBe('a box shorter than 2 pair cutoffs along an edge');
+    expect(small.reason).toBe('a box shorter than 2 pair cutoffs along a periodic edge');
   });
 });

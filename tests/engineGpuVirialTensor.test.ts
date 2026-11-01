@@ -260,6 +260,6 @@ describe('the virial tensor on the GPU path: fix npt aniso', () => {
     expect(accelerator(pxx, threads).reason).toBe('pressure-tensor thermo keywords');
     // 5 lattice cells of 1.68 sigma: 8.4 sigma, more than 3 cutoffs of 2.5; 3 cells: 5.0 sigma, between 2 and 3 cutoffs
     const smallNpt = await run(LJ(true).replace('block 0 5 0 5 0 5', 'block 0 3 0 3 0 3'), 'fix 1 all npt temp 1 1 0.5 iso 1 1 2\npair_style lj/cut/coul/cut 2.5\npair_coeff * * 1.0 1.0');
-    expect(accelerator(smallNpt, gpu).reason).toBe('a box shorter than 3 pair cutoffs along an edge (a fix that changes the box)');
+    expect(accelerator(smallNpt, gpu).reason).toBe('a box shorter than 3 pair cutoffs along a periodic edge (a fix that changes the box)');
   });
 });

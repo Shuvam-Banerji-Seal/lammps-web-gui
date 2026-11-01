@@ -276,6 +276,23 @@ interface ForceBackend {
   kernels and rules on dynamic groups stay on the CPU. In Chromium, examples/rigid in.rigid (9 group rules) and
   in.rigid.cubes (molecule/intra) ran on WebGPU: in.rigid.cubes matched the CPU engine to all printed digits at step
   1000, in.rigid to 1e-5 through the clump collision (fp32), its later steps diverging chaotically.
+- **Non-periodic boxes on the GPU path** (boundary `f`, `s`, `m`; `gpu/cellSort.ts`). The kernels' minimum image is
+  `d - L round(d / L)`; along a non-periodic dimension the cell sort hands them a box length of 1e30 there, so it is
+  the identity, and every edge of any length has at least one cell. Atoms past a non-periodic edge go into the edge
+  cell, which keeps every partner within the cutoff in the cells the scan takes. The accelerated loop now makes the CPU
+  loop's reneighboring decision each step (`Neighbor.decide`: every, delay, check, restart files, fixes). On those
+  steps it does what the CPU loop does: the periodic wrap, the reset of a shrink-wrapped box and the lost atoms of a
+  fixed boundary (`System.pbc`), and the sort. It records the build without the CPU lists (`Neighbor.markBuilt`), so
+  `nbuild` and `ndanger` count as there. Between those steps the atoms move on unwrapped, as on the CPU path. The
+  cell sorts (the GPU's, `cpu/cells.ts`, the lj/cut cell list of `cpu/forces.ts`) bin an atom past a periodic edge in
+  its image's cell (`periodicCell`). lj/cut in such a box runs as the styles kernel's style 10; the plain lj/cut kernel,
+  the whole-step kernel and the lj/cut threads keep fully periodic boxes. The 2-cutoff minimum applies to periodic edges
+  only. Triclinic boxes stay on the CPU. Tests: `tests/engineGpuNonPeriodic.test.ts`. In Chromium (SwiftShader
+  WebGPU), shortened LAMMPS examples on WebGPU matched the CPU engine:
+  - shear/in.shear (s s p, EAM, both runs): every printed digit of temp, pe and etotal; press within 0.1 (values to 1.4e4);
+  - indent/in.indent (p s p, fix indent), friction/in.friction (p s p) and wall/in.wall.specular (p f p) over 1500
+    to 3000 steps: to the printed digits, save the sixth of a few;
+  - crack/in.crack (s s p, 8141 atoms): matched through step 400.
 - **GPU validation errors stop the run.** Pipelines are created in a validation error scope
   (`checkedPipelines`), and each force evaluation runs in one (`validated`): WebGPU skips an
   invalid dispatch, which would otherwise leave zero forces (an entry point whose `auto`

@@ -14,6 +14,7 @@ import type { GpuTersoffSpec } from './tersoffSpec';
 import { KERNEL_TIP4P, TIP4P_WORKGROUP } from './tip4pKernels';
 import { spreadSiteForces, type GpuTip4pSpec, type Tip4pSites } from './tip4pSpec';
 import type { GpuEamSpec } from './eamSpec';
+import { newCellScratch, sortByCell, type CellGrid, type CellScratch } from './cellSort';
 
 /*
  * WebGPU Lennard-Jones forces (docs/design/notebook.md, "Backends", v1).
@@ -45,6 +46,10 @@ const BUF_COPY_DST = 0x0008;
 const BUF_UNIFORM = 0x0040;
 const BUF_STORAGE = 0x0080;
 const MAP_READ = 0x0001;
+
+/** A periodic edge shorter than 2 cutoffs: the minimum image is not the only copy of a partner within the cutoff. */
+const shortPeriodicEdge = (state: SimState, cut: number): boolean => [0, 1, 2].some((d) =>
+  !(d === 2 && state.dimension === 2) && state.box.periodic[d] && state.box.hi[d] - state.box.lo[d] < 2 * cut);
 
 const WORKGROUP = 64;
 
@@ -490,10 +495,7 @@ export class WebGpuForceBackend implements ForceBackend {
   private cpu = new CpuForceBackend();
   private cache: { key: string; arrays: PairArrays; coef: Float32Array } | null = null;
   // CPU-side scratch reused across calls
-  private sorted = new Int32Array(0);
-  private cellOfAtom = new Int32Array(0);
-  private posData = new Float32Array(0);
-  private intsData = new Uint32Array(0);
+  private cs: CellScratch = newCellScratch();
   private disposed = false;
   private resident: Promise<ResidentStepper> | null = null;
 
@@ -568,11 +570,15 @@ export class WebGpuForceBackend implements ForceBackend {
       state.f.fill(0);
       return { pe: 0, virial: 0 };
     }
+    // the 27-cell scan of KERNEL wraps every edge: a fully periodic box (run/accel.ts takes other boxes to computeSpec)
+    if ([0, 1, 2].some((d) => !(d === 2 && state.dimension === 2) && !state.box.periodic[d])) {
+      throw new Error('the lj/cut kernel takes a fully periodic box');
+    }
     const cells = this.sortByCell(state, arrays.maxCutoff, 0);
     if (!cells) return this.cpu.compute(state, table);
     const { L, nc, ncell, base, two } = cells;
-    const { sorted, posData } = this;
-    const ints = this.intsData;
+    const { sorted, posData } = this.cs;
+    const ints = this.cs.intsData;
 
     // --- upload, dispatch, read back ---
     const b = this.ensure(n, ncell, coef.byteLength);
@@ -615,55 +621,9 @@ export class WebGpuForceBackend implements ForceBackend {
     return { pe, virial, virialTensor: vt };
   }
 
-  /**
-   * The counting sort by cell (the same assignment as cpu/cells.ts) of compute() and computeSpec(): sorted[slot] the
-   * atom of each slot, posData its fp32 position from the box origin and type, intsData the cell starts (ncell + 1) then
-   * the cell of each slot (n), with `extra` more words after them. Null when a periodic dimension has fewer than minCells
-   * cells: 3 for the 27-cell scan of compute(); the scan of KERNEL_STYLES takes every cell once along a shorter edge.
-   */
-  private sortByCell(state: SimState, maxCutoff: number, extra: number, minCells = 3):
-    { L: number[]; nc: number[]; ncell: number; base: number; two: boolean } | null {
-    const { n, x, type } = state;
-    const two = state.dimension === 2;
-    const L = [0, 1, 2].map((d) => state.box.hi[d] - state.box.lo[d]);
-    const nc = [0, 1, 2].map((d) => (d === 2 && two ? 1 : Math.floor(L[d] / maxCutoff)));
-    if (nc.some((c, d) => !(d === 2 && two) && c < minCells)) return null;
-    const ncell = nc[0] * nc[1] * nc[2];
-    if (this.sorted.length < n) {
-      this.sorted = new Int32Array(n);
-      this.cellOfAtom = new Int32Array(n);
-      this.posData = new Float32Array(4 * n);
-    }
-    if (this.intsData.length < ncell + 1 + n + extra) this.intsData = new Uint32Array(ncell + 1 + n + extra);
-    const { sorted, cellOfAtom, posData } = this;
-    const ints = this.intsData;
-    const base = ncell + 1;
-    ints.fill(0, 0, base);
-    const lo = state.box.lo;
-    const s = [nc[0] / L[0], nc[1] / L[1], nc[2] / L[2]];
-    for (let i = 0; i < n; i++) {
-      let c = 0;
-      for (let d = 2; d >= 0; d--) {
-        let k = d === 2 && two ? 0 : Math.floor((x[3 * i + d] - lo[d]) * s[d]);
-        if (k >= nc[d]) k = nc[d] - 1; else if (k < 0) k = 0;
-        c = c * nc[d] + k;
-      }
-      cellOfAtom[i] = c;
-      ints[c + 1]++;
-    }
-    for (let c = 0; c < ncell; c++) ints[c + 1] += ints[c];
-    const fill = ints.slice(0, ncell);
-    for (let i = 0; i < n; i++) {
-      const c = cellOfAtom[i];
-      const slot = fill[c]++;
-      sorted[slot] = i;
-      ints[base + slot] = c;
-      posData[4 * slot] = x[3 * i] - lo[0];
-      posData[4 * slot + 1] = x[3 * i + 1] - lo[1];
-      posData[4 * slot + 2] = two ? 0 : x[3 * i + 2] - lo[2];
-      posData[4 * slot + 3] = type[i];
-    }
-    return { L, nc, ncell, base, two };
+  /** The counting sort by cell of every force evaluation (gpu/cellSort.ts), into this backend's scratch. */
+  private sortByCell(state: SimState, maxCutoff: number, extra: number, minCells = 3): CellGrid | null {
+    return sortByCell(this.cs, state, maxCutoff, extra, minCells);
   }
 
   private stylesPipeline: GPUComputePipeline | null = null;
@@ -691,15 +651,12 @@ export class WebGpuForceBackend implements ForceBackend {
     const spEntries = sp ? sp.offset[n] : 0;
     const extra = (spec.charges ? n : 0) + (sp ? n + 1 + spEntries : 0) + (ex ? 2 * n : 0);
     // the minimum image is the only copy of a partner within the cutoff while each edge is at least 2 cutoffs
-    const flat = state.dimension === 2;
-    if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
-      throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
-    }
+    if (shortPeriodicEdge(state, spec.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
     const cells = this.sortByCell(state, spec.maxCutoff, extra, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
     const { L, nc, base, two } = cells;
-    const { sorted, posData } = this;
-    const ints = this.intsData;
+    const { sorted, posData } = this.cs;
+    const ints = this.cs.intsData;
     if (spec.charges) {
       // the charges as f32 bits after the cells of the slots
       const qf = new Float32Array(ints.buffer, ints.byteOffset + 4 * (base + n), n);
@@ -806,7 +763,7 @@ export class WebGpuForceBackend implements ForceBackend {
    * its entries (partner slot << 2 | order), leaving out the orders whose weights are both 1. Returns the end.
    */
   private writeSpecial(state: SimState, sp: SpecialList, w: { lj: number[]; coul: number[] }, start: number): number {
-    const n = state.n, ints = this.intsData, sorted = this.sorted;
+    const n = state.n, ints = this.cs.intsData, sorted = this.cs.sorted;
     const slotOf = new Int32Array(n);
     for (let slot = 0; slot < n; slot++) slotOf[sorted[slot]] = slot;
     const idx = buildAtomMap(state);
@@ -852,15 +809,12 @@ export class WebGpuForceBackend implements ForceBackend {
     if (n === 0) return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
     const sp = spec.special && special ? special : null;
     const extra = n + (sp ? n + 1 + sp.offset[n] : 0);
-    const flat = state.dimension === 2;
-    if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
-      throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
-    }
+    if (shortPeriodicEdge(state, spec.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
     const cells = this.sortByCell(state, spec.maxCutoff, extra, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
     const { L, nc, base, two } = cells;
-    const { sorted, posData } = this;
-    const ints = this.intsData;
+    const { sorted, posData } = this.cs;
+    const ints = this.cs.intsData;
     // the charges as f32 bits after the cells of the slots, then the special list
     const qBase = base + n;
     const qf = new Float32Array(ints.buffer, ints.byteOffset + 4 * qBase, n);
@@ -979,15 +933,12 @@ export class WebGpuForceBackend implements ForceBackend {
     const n = state.n;
     if (n === 0) return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
     // the minimum image is the only copy of a partner within the cutoff while each edge is at least 2 cutoffs
-    const flat = state.dimension === 2;
-    if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
-      throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
-    }
+    if (shortPeriodicEdge(state, spec.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
     const cells = this.sortByCell(state, spec.maxCutoff, n, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
     const { L, nc, base, two } = cells;
-    const { sorted, posData } = this;
-    const ints = this.intsData;
+    const { sorted, posData } = this.cs;
+    const ints = this.cs.intsData;
     const fpBase = base + n, intsLen = fpBase + n;
     const dev = this.device;
     if (!this.eamPipes) {
@@ -1105,10 +1056,7 @@ export class WebGpuForceBackend implements ForceBackend {
     if (this.disposed) throw new Error('the WebGPU backend was disposed');
     const n = state.n;
     if (n === 0) return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
-    const flat = state.dimension === 2;
-    if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
-      throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
-    }
+    if (shortPeriodicEdge(state, spec.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
     for (;;) {
       const maxn = this.swMaxn;
       const r = await validated(this.device, () => this.swOnce(state, spec, maxn));
@@ -1124,8 +1072,8 @@ export class WebGpuForceBackend implements ForceBackend {
     const cells = this.sortByCell(state, spec.maxCutoff, 0, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
     const { L, nc, base, two } = cells;
-    const { sorted, posData } = this;
-    const ints = this.intsData;
+    const { sorted, posData } = this.cs;
+    const ints = this.cs.intsData;
     const countBase = base + n, listBase = countBase + n, intsLen = listBase + n * maxn;
     const dev = this.device;
     if (!this.swPipes) {
@@ -1223,10 +1171,7 @@ export class WebGpuForceBackend implements ForceBackend {
     if (this.disposed) throw new Error('the WebGPU backend was disposed');
     const n = state.n;
     if (n === 0) return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
-    const flat = state.dimension === 2;
-    if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
-      throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
-    }
+    if (shortPeriodicEdge(state, spec.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
     for (;;) {
       const maxn = this.terMaxn;
       const r = await validated(this.device, () => this.tersoffOnce(state, spec, maxn));
@@ -1242,8 +1187,8 @@ export class WebGpuForceBackend implements ForceBackend {
     const cells = this.sortByCell(state, spec.maxCutoff, 0, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
     const { L, nc, base, two } = cells;
-    const { sorted, posData } = this;
-    const ints = this.intsData;
+    const { sorted, posData } = this.cs;
+    const ints = this.cs.intsData;
     const countBase = base + n, listBase = countBase + n, intsLen = listBase + n * maxn;
     const dev = this.device;
     if (!this.terPipes) {

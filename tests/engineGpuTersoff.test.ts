@@ -124,7 +124,7 @@ describe('pair tersoff on the GPU path', () => {
     expect(a.accel?.tersoff).not.toBeNull();
     expect(a.accel?.resident).toBe(false);
     const small = await run(BOX(1).replace('block 0 3 0 3 0 3', 'block 0 1 0 1 0 1'), CASES.tersoff.lines, 'Si.tersoff');
-    expect(small.reason).toBe('a box shorter than 2 pair cutoffs along an edge');
+    expect(small.reason).toBe('a box shorter than 2 pair cutoffs along a periodic edge');
     const mod = await run(BOX(1), 'pair_style tersoff/mod\npair_coeff * * Si.tersoff.mod Si', 'Si.tersoff.mod');
     expect(mod.reason).toMatch(/^pair style tersoff\/mod \(the GPU path implements/);
   });

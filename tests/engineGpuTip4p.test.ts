@@ -155,6 +155,6 @@ describe('the TIP4P pair styles on the GPU path', () => {
     expect(a.accel?.resident).toBe(false);
     const big = session();
     await big.s.execute(`${SETUP(CASES['lj/cut/tip4p/long + pppm/tip4p'].replace('0.1546 3.5', '0.1546 4.5'))}fix 1 all nve\nrun 0\n`);
-    expect(accelerator(big.sys(), gpu).reason).toBe('a box shorter than 2 pair cutoffs along an edge');
+    expect(accelerator(big.sys(), gpu).reason).toBe('a box shorter than 2 pair cutoffs along a periodic edge');
   });
 });

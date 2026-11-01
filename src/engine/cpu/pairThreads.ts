@@ -163,6 +163,7 @@ export class SharedPairThreads implements NeighborThreads {
     const list = fullStyle ? pc.full : pc.half;
     if (W === 0 || !list || (!fullStyle && (pc.full || pair.needsFull)) || !(pair.needsHalf || fullStyle)) { this.skip = 'list'; return false; }
     if (!THREADED_NAMES.has(pair.name)) { this.skip = 'style'; return false; }
+    if (pair.threadable && !pair.threadable()) { this.skip = 'style'; return false; }
     if (list.inum < this.minAtoms) { this.skip = 'small'; return false; }
     const two = isTwoPass(pair) ? pair : null;
     if (two && !two.twoPassReady()) { this.skip = 'list'; return false; }

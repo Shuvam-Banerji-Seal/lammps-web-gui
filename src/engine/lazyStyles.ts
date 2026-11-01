@@ -29,6 +29,8 @@ export const GPL_THREADED_PAIRS: readonly string[] = [
   // eff/cut: the electron spin and radius in, the radial electron force out (Pair.threadExtras)
   'eff/cut',
   'born/coul/long/cs', 'buck/coul/long/cs', 'born/coul/dsf/cs', 'born/coul/wolf/cs', 'coul/wolf/cs', 'coul/long/cs', 'lj/cut/coul/long/cs', 'lj/class2/coul/long/cs', 'buck/long/coul/long',
+  // pace: full list in native order, rows add to their own atoms; a worker's copy rebuilds the basis (Pair.threadAdopt)
+  'pace',
 ];
 
 /**

@@ -78,6 +78,7 @@ export const THREADED_NAMES: ReadonlySet<string> = new Set([
   'lj/cut/coul/long/cs',
   'lj/class2/coul/long/cs',
   'buck/long/coul/long',
+  'pace',
 ]);
 
 /**

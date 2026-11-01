@@ -432,6 +432,8 @@ export abstract class Pair {
    * pairFromFactory) to give them their class again.
    */
   threadAdopt?(): void;
+  /** False while a style on the pair threads cannot run there in its present configuration (it then runs here). */
+  threadable?(): boolean;
   needsHalf = true;
   /**
    * The neighbor list keeps a pair only within the two radii plus the skin. As native LAMMPS does (src/npair_bin.cpp at

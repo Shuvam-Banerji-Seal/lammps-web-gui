@@ -416,6 +416,14 @@ fields (`pairThreadsCore.ts pairFromFactory`), gives them their class again. vas
 other jobs at a load of about 17), 1 vs 8 threads with the same thermo: SNAP Ta06A, 2000 atoms, 20 steps 8.39 s -> 2.17 s;
 vashishta SiC, 4096 atoms, 100 steps 13.5 s -> 3.96 s; meam/sw/spline Si, 2744 atoms, 100 steps 5.15 s -> 1.26 s.
 
+`pace` (the ML-PACE port) runs on the threads through `GPL_THREADED_PAIRS`. Its rows take their neighbors in native
+full-list order (`Pair.threadNeighbors`), as the evaluator's sums do. The C-tilde basis and the evaluator stay outside
+the fields a worker clones (a module `WeakMap` behind accessors); the style keeps the potential text, and a worker's
+copy builds its basis and evaluator from it in `threadAdopt` (the last parsed text is reused, so a run's re-sent style
+is not parsed again). While `fix pair` reads the per-atom `corerep` factor, `Pair.threadable()` keeps the style on the
+engine thread for that evaluation, since each worker copy would hold its own factors. Measured in Chromium (load
+about 16), Cu-PBE-core-rep.ace, 864 atoms, 20 steps: 24.6 s on 1 thread, 4.1 s on 8, the same thermo.
+
 `pair_style hybrid`, `hybrid/overlay` and `hybrid/molecular` run each threaded sub-style on the threads in its own
 pair slot (`pairThreadsCore.ts` MAX_PAIR_SLOTS: slot 0 is a plain pair style, slot 1 + k sub-style k), so the
 workers keep one copy per sub-style instead of being sent a new style every step. The force field hands the hybrid a

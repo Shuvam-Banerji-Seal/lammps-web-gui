@@ -15,7 +15,7 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../../eng
 import { inumeric, logical, parseNum } from '../../engine/force/util';
 import {
   allocBondList, buildFarList, computeBondOrders, computeTotalForce, ensureHBondList, initForces,
-  newEnergies, newWorkspace, regionCounts, resetHydrogenIndex, resetWorkspace, taperCoefficients,
+  newEnergies, regionCounts, resetHydrogenIndex, resetWorkspace, taperCoefficients, workspaceFor,
   type RxSystem,
 } from './core';
 import { bonds as bondsTerm, atomEnergy, hydrogenBonds, torsionAngles, valenceAngles } from './bonded';
@@ -207,15 +207,19 @@ export class PairReaxFF extends Pair {
     const q = pc.q;
     this.Tap = taperCoefficients(ctrl.nonbLow, ctrl.nonbCut);
     const far = buildFarList(ctrl, n, N, x, type);
+    // the lists and workspace of the previous evaluation are reused when they are large enough (they are written in full
+    // where they are read, core.ts allocBondList)
+    const prev = this.lastBonds;
     const { Hindex, numH } = resetHydrogenIndex(type, n, param, ctrl.hbondCut);
     const counts = regionCounts(far, N, n, type, Hindex, numH, param, ctrl.hbondCut);
     const sys: RxSystem = {
       ctrl, param, n, N, type, orig, x, q, Hindex, numH, Tap: this.Tap, far,
       acks2s: this.acks2Source ? this.acks2Source() : null,
-      bonds: allocBondList(N, far, counts.bondCount),
-      ws: newWorkspace(N),
+      bonds: allocBondList(N, far, counts.bondCount, prev?.bonds ?? null),
+      ws: workspaceFor(N, prev?.ws ?? null),
       en: newEnergies(),
       thb: { start: new Int32Array(0), end: new Int32Array(0), thb: new Int32Array(0), pthb: new Int32Array(0), theta: new Float64Array(0), dcos_di: new Float64Array(0), dcos_dj: new Float64Array(0), dcos_dk: new Float64Array(0), count: 0 },
+      thbReuse: prev?.thb ?? null,
       hb: ensureHBondList(counts.hbCount, numH),
       // compute pe/atom and stress/atom: the per-atom tallies of the native tally calls (tally.ts), or null
       pa: pc.eatom || pc.vatom ? { eatom: pc.eatom, vatom: pc.vatom } : null,

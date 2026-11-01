@@ -112,6 +112,8 @@ export interface RxSystem {
   en: Energies;
   /** Three-body list (thb_intrs): per bond index [start, end). */
   thb: ThreeBodyList;
+  /** The three-body list of the previous evaluation, whose arrays valenceAngles reuses when they are large enough. */
+  thbReuse?: ThreeBodyList | null;
   /** Hydrogen bond list: per H index [start, end). */
   hb: HBondList;
   /** Per-atom energy and virial of compute pe/atom and stress/atom (pc.eatom, pc.vatom), or null when not requested. */
@@ -139,6 +141,13 @@ export interface HBondList {
   ptr: Int32Array;
   count: number;
 }
+
+/** newWorkspace, or the previous evaluation's workspace zeroed when it has N atoms (the same state as a new one). */
+export const workspaceFor = (N: number, reuse: Workspace | null): Workspace => {
+  if (!reuse || reuse.Deltap.length !== N) return newWorkspace(N);
+  for (const a of Object.values(reuse)) (a as Float64Array | Int32Array).fill(0);
+  return reuse;
+};
 
 export const newWorkspace = (N: number): Workspace => {
   const d = () => new Float64Array(N);
@@ -227,7 +236,13 @@ export const buildFarList = (ctrl: ControlParams, n: number, N: number, x: Float
   for (let c = 0; c < ncell; c++) cstart[c + 1] += cstart[c];
   const fill = cstart.slice(0, ncell);
   const cellAtoms = new Int32Array(N);
-  for (let a = 0; a < N; a++) cellAtoms[fill[cellOf[a]]++] = a;
+  // the positions in cell order too, so the scan of a cell reads them in sequence (the same values as x)
+  const xs = new Float64Array(3 * N);
+  for (let a = 0; a < N; a++) {
+    const q = fill[cellOf[a]]++;
+    cellAtoms[q] = a;
+    xs[3 * q] = x[3 * a]; xs[3 * q + 1] = x[3 * a + 1]; xs[3 * q + 2] = x[3 * a + 2];
+  }
   let nbr = farNbr, dd = farD, dv = farV;
   let count = 0;
   for (let i = 0; i < N; i++) {
@@ -253,10 +268,21 @@ export const buildFarList = (ctrl: ControlParams, n: number, N: number, x: Float
           const xx = cx + dx;
           if (xx < 0 || xx >= nx) continue;
           const c = xx + nx * (y + ny * z);
-          for (let q = cstart[c]; q < cstart[c + 1]; q++) {
+          // a cell's atoms are in ascending index: start at its first atom above i
+          let q = cstart[c];
+          const q1 = cstart[c + 1];
+          if (q === q1 || cellAtoms[q1 - 1] <= i) continue;
+          if (cellAtoms[q] <= i) {
+            let lo = q, hi = q1 - 1;
+            while (lo < hi) {
+              const mid = (lo + hi) >> 1;
+              if (cellAtoms[mid] > i) hi = mid; else lo = mid + 1;
+            }
+            q = lo;
+          }
+          for (; q < q1; q++) {
             const j = cellAtoms[q];
-            if (j <= i) continue;
-            const dvx = x[3 * j] - xi, dvy = x[3 * j + 1] - yi, dvz = x[3 * j + 2] - zi;
+            const dvx = xs[3 * q] - xi, dvy = xs[3 * q + 1] - yi, dvz = xs[3 * q + 2] - zi;
             const dsq = dvx * dvx + dvy * dvy + dvz * dvz;
             if (dsq <= cutoffSq) {
               if (count === nbr.length) {
@@ -441,6 +467,12 @@ const bondOrderPair = (
   ws.total_bond_order[j] += b.BO[jb];
   b.Cdbo[ib] = b.Cdbopi[ib] = b.Cdbopi2[ib] = 0.0;
   b.Cdbo[jb] = b.Cdbopi[jb] = b.Cdbopi2[jb] = 0.0;
+  // the rest of the slot as a new list has it (allocBondList reuses the arrays of the previous evaluation)
+  b.C1dbo[ib] = b.C2dbo[ib] = b.C3dbo[ib] = b.C1dbo[jb] = b.C2dbo[jb] = b.C3dbo[jb] = 0.0;
+  b.C1dbopi[ib] = b.C2dbopi[ib] = b.C3dbopi[ib] = b.C4dbopi[ib] = 0.0;
+  b.C1dbopi[jb] = b.C2dbopi[jb] = b.C3dbopi[jb] = b.C4dbopi[jb] = 0.0;
+  b.C1dbopi2[ib] = b.C2dbopi2[ib] = b.C3dbopi2[ib] = b.C4dbopi2[ib] = 0.0;
+  b.C1dbopi2[jb] = b.C2dbopi2[jb] = b.C3dbopi2[jb] = b.C4dbopi2[jb] = 0.0;
   return true;
 };
 
@@ -691,10 +723,19 @@ export const regionCounts = (far: FarList, N: number, n: number, type: Int32Arra
   return { bondCount, hbCount };
 };
 
-export const allocBondList = (N: number, far: FarList, bondCount: Int32Array): BondList => {
+export const allocBondList = (N: number, far: FarList, bondCount: Int32Array, reuse: BondList | null = null): BondList => {
   // every far pair makes at most two bond slots (one in each atom's region)
   const cap = 2 * far.count;
-  const b = newBondList(N, cap);
+  // the arrays of the previous evaluation when they hold cap slots (else new ones with a quarter more room): a slot is
+  // written in full when its bond is made (bondOrderPair), and only the slots of made bonds are read
+  let b: BondList;
+  if (reuse && reuse.nbr.length >= cap) {
+    b = reuse;
+    if (b.start.length !== N) { b.start = new Int32Array(N); b.end = new Int32Array(N); }
+    b.count = 0;
+  } else {
+    b = newBondList(N, reuse ? Math.ceil(1.25 * cap) : cap);
+  }
   let top = 0;
   for (let i = 0; i < N; i++) {
     b.start[i] = top;

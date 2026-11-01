@@ -1,3 +1,4 @@
+import { WGSL_BOX_IMAGE } from './cellSort';
 /*
  * The TIP4P pair styles in WGSL (gpu/tip4pSpec.ts packs the coefficients and is the fp64 statement of this arithmetic,
  * tip4pGather; webgpuForces.ts computeTip4p builds the cells, charges, special list and site offsets and spreads the
@@ -30,7 +31,10 @@ struct Params {
   pad2 : u32,
   wlj : vec4<f32>,  // special_bonds lj weights by order (1-2, 1-3, 1-4 at 1..3)
   wc : vec4<f32>,   // and coul weights
+  tilt : vec4<f32>,  // xy xz yz: the minimum image of a triclinic box (cellSort.ts WGSL_BOX_IMAGE)
 };
+
+${WGSL_BOX_IMAGE}
 
 @group(0) @binding(0) var<uniform> P : Params;
 @group(0) @binding(1) var<storage, read> pos : array<vec4<f32>>;
@@ -52,7 +56,6 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   let ti = u32(pi.w);
   let qi = bitcast<f32>(ints[P.qBase + i]);
   let si = site[i].xyz;
-  let L = P.L;
   let nc = P.nc;
   let c = ints[P.cellOfBase + i];
   let cx = i32(c % nc.x);
@@ -76,7 +79,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
           if (j == i) { continue; }
           let pj = pos[j];
           var d = pi.xyz - pj.xyz;
-          d = d - L * round(d / L);
+          d = boxImage(d);
           if (P.two == 1u) { d.z = 0.0; }
           let r2 = dot(d, d);
           let k = 8u * (ti * P.stride + u32(pj.w));

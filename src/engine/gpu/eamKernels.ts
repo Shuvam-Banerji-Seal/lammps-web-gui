@@ -1,3 +1,4 @@
+import { WGSL_BOX_IMAGE } from './cellSort';
 /*
  * pair eam, eam/alloy and eam/fs in WGSL (gpu/eamSpec.ts packs the tables; webgpuForces.ts computeEAM runs the step).
  * One invocation per atom slot scans the cells around its own (every cell once along an edge of fewer than 3 cells,
@@ -25,7 +26,10 @@ struct Params {
   pad0 : u32,
   pad1 : u32,
   pad2 : u32,
+  tilt : vec4<f32>,  // xy xz yz: the minimum image of a triclinic box (cellSort.ts WGSL_BOX_IMAGE)
 };
+
+${WGSL_BOX_IMAGE}
 
 @group(0) @binding(0) var<uniform> P : Params;
 @group(0) @binding(1) var<storage, read> pos : array<vec4<f32>>;
@@ -80,7 +84,6 @@ fn rho(@builtin(global_invocation_id) gid : vec3<u32>) {
   if (i >= P.n) { return; }
   let pi = pos[i];
   let ti = u32(pi.w);
-  let L = P.L;
   let nc = P.nc;
   let c = cellOf(i);
   let lo = scanLo();
@@ -95,7 +98,7 @@ fn rho(@builtin(global_invocation_id) gid : vec3<u32>) {
           if (j == i) { continue; }
           let pj = pos[j];
           var d = pi.xyz - pj.xyz;
-          d = d - L * round(d / L);
+          d = boxImage(d);
           if (P.two == 1u) { d.z = 0.0; }
           let r2 = dot(d, d);
           let h = 4u * (ti * P.stride + u32(pj.w));
@@ -116,7 +119,6 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
   let pi = pos[i];
   let ti = u32(pi.w);
   let fpi = bitcast<f32>(ints[P.fpBase + i]);
-  let L = P.L;
   let nc = P.nc;
   let c = cellOf(i);
   let lo = scanLo();
@@ -135,7 +137,7 @@ fn force(@builtin(global_invocation_id) gid : vec3<u32>) {
           if (j == i) { continue; }
           let pj = pos[j];
           var d = pi.xyz - pj.xyz;
-          d = d - L * round(d / L);
+          d = boxImage(d);
           if (P.two == 1u) { d.z = 0.0; }
           let r2 = dot(d, d);
           let tj = u32(pj.w);

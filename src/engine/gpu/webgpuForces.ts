@@ -14,7 +14,7 @@ import type { GpuTersoffSpec } from './tersoffSpec';
 import { KERNEL_TIP4P, TIP4P_WORKGROUP } from './tip4pKernels';
 import { spreadSiteForces, type GpuTip4pSpec, type Tip4pSites } from './tip4pSpec';
 import type { GpuEamSpec } from './eamSpec';
-import { newCellScratch, sortByCell, type CellGrid, type CellScratch } from './cellSort';
+import { boxWidths, newCellScratch, sortByCell, WGSL_BOX_IMAGE, type CellGrid, type CellScratch } from './cellSort';
 
 /*
  * WebGPU Lennard-Jones forces (docs/design/notebook.md, "Backends", v1).
@@ -47,9 +47,19 @@ const BUF_UNIFORM = 0x0040;
 const BUF_STORAGE = 0x0080;
 const MAP_READ = 0x0001;
 
-/** A periodic edge shorter than 2 cutoffs: the minimum image is not the only copy of a partner within the cutoff. */
-const shortPeriodicEdge = (state: SimState, cut: number): boolean => [0, 1, 2].some((d) =>
-  !(d === 2 && state.dimension === 2) && state.box.periodic[d] && state.box.hi[d] - state.box.lo[d] < 2 * cut);
+/** The tilt factors of the kernels' minimum image (cellSort.ts WGSL_BOX_IMAGE): P.tilt at float `at` of the uniform. */
+const writeTilt = (pf: Float32Array, at: number, tilt: number[]): void => {
+  pf[at] = tilt[0]; pf[at + 1] = tilt[1]; pf[at + 2] = tilt[2];
+};
+
+/**
+ * A periodic width (cellSort.ts boxWidths: the edge length of an orthogonal box) shorter than 2 cutoffs: the minimum
+ * image is not the only copy of a partner within the cutoff.
+ */
+const shortPeriodicEdge = (state: SimState, cut: number): boolean => {
+  const w = boxWidths(state.box);
+  return [0, 1, 2].some((d) => !(d === 2 && state.dimension === 2) && state.box.periodic[d] && w[d] < 2 * cut);
+};
 
 const WORKGROUP = 64;
 
@@ -167,7 +177,10 @@ struct Params {
   incl : u32,
   pad3 : u32,
   rules : array<vec4<u32>, ${MAX_GPU_EXCLUSION_RULES}>,
+  tilt : vec4<f32>,  // xy xz yz: the minimum image of a triclinic box (cellSort.ts WGSL_BOX_IMAGE)
 };
+
+${WGSL_BOX_IMAGE}
 
 @group(0) @binding(0) var<uniform> P : Params;
 @group(0) @binding(1) var<storage, read> pos : array<vec4<f32>>;
@@ -226,7 +239,6 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   let ti = u32(pi.w);
   var qi = 0.0;
   if (P.qBase > 0u) { qi = bitcast<f32>(ints[P.qBase + i]); }
-  let L = P.L;
   let nc = P.nc;
   let c = ints[P.cellOfBase + i];
   let cx = i32(c % nc.x);
@@ -253,7 +265,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
           if (P.exclBase > 0u && excludedPair(i, j)) { continue; }
           let pj = pos[j];
           var d = pi.xyz - pj.xyz;
-          d = d - L * round(d / L);
+          d = boxImage(d);
           if (P.two == 1u) { d.z = 0.0; }
           let r2 = dot(d, d);
           let k = 3u * (ti * P.stride + u32(pj.w));
@@ -570,9 +582,10 @@ export class WebGpuForceBackend implements ForceBackend {
       state.f.fill(0);
       return { pe: 0, virial: 0 };
     }
-    // the 27-cell scan of KERNEL wraps every edge: a fully periodic box (run/accel.ts takes other boxes to computeSpec)
-    if ([0, 1, 2].some((d) => !(d === 2 && state.dimension === 2) && !state.box.periodic[d])) {
-      throw new Error('the lj/cut kernel takes a fully periodic box');
+    // the 27-cell scan of KERNEL wraps every edge of an orthogonal box: a fully periodic one (run/accel.ts takes other
+    // boxes to computeSpec)
+    if (state.box.triclinic || [0, 1, 2].some((d) => !(d === 2 && state.dimension === 2) && !state.box.periodic[d])) {
+      throw new Error('the lj/cut kernel takes a fully periodic orthogonal box');
     }
     const cells = this.sortByCell(state, arrays.maxCutoff, 0);
     if (!cells) return this.cpu.compute(state, table);
@@ -654,7 +667,7 @@ export class WebGpuForceBackend implements ForceBackend {
     if (shortPeriodicEdge(state, spec.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
     const cells = this.sortByCell(state, spec.maxCutoff, extra, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
-    const { L, nc, base, two } = cells;
+    const { L, tilt, nc, base, two } = cells;
     const { sorted, posData } = this.cs;
     const ints = this.cs.intsData;
     if (spec.charges) {
@@ -685,7 +698,7 @@ export class WebGpuForceBackend implements ForceBackend {
     const dev = this.device;
     if (!this.stylesPipeline) {
       this.stylesPipeline = (await checkedPipelines(dev, KERNEL_STYLES, ['main'] as const)).main;
-      this.styleParams = dev.createBuffer({ size: 112 + 16 * MAX_GPU_EXCLUSION_RULES, usage: BUF_UNIFORM | BUF_COPY_DST });
+      this.styleParams = dev.createBuffer({ size: 128 + 16 * MAX_GPU_EXCLUSION_RULES, usage: BUF_UNIFORM | BUF_COPY_DST });
     }
     let b = this.sbufs;
     if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < coef.byteLength) {
@@ -708,10 +721,11 @@ export class WebGpuForceBackend implements ForceBackend {
       });
       b = this.sbufs = { pos, out, staging, atomCap, ints: intsBuf, intsCap, coef: coefBuf, coefCap: coef.byteLength, bind };
     }
-    const params = new ArrayBuffer(112 + 16 * MAX_GPU_EXCLUSION_RULES);
+    const params = new ArrayBuffer(128 + 16 * MAX_GPU_EXCLUSION_RULES);
     const pf = new Float32Array(params);
     const pu = new Uint32Array(params);
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    writeTilt(pf, (112 + 16 * MAX_GPU_EXCLUSION_RULES) / 4, tilt);
     pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
     pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = spec.law; pu[11] = spec.charges ? base + n : 0;
     pf[12] = spec.qqrd2e; pu[13] = specBase; pf[14] = spec.gewald;
@@ -812,7 +826,7 @@ export class WebGpuForceBackend implements ForceBackend {
     if (shortPeriodicEdge(state, spec.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
     const cells = this.sortByCell(state, spec.maxCutoff, extra, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
-    const { L, nc, base, two } = cells;
+    const { L, tilt, nc, base, two } = cells;
     const { sorted, posData } = this.cs;
     const ints = this.cs.intsData;
     // the charges as f32 bits after the cells of the slots, then the special list
@@ -837,7 +851,7 @@ export class WebGpuForceBackend implements ForceBackend {
     const dev = this.device;
     if (!this.tip4pPipe) {
       const pl = await checkedPipelines(dev, KERNEL_TIP4P, ['main'] as const);
-      this.tip4pPipe = { main: pl.main, params: dev.createBuffer({ size: 112, usage: BUF_UNIFORM | BUF_COPY_DST }) };
+      this.tip4pPipe = { main: pl.main, params: dev.createBuffer({ size: 128, usage: BUF_UNIFORM | BUF_COPY_DST }) };
     }
     const pipe = this.tip4pPipe;
     let b = this.t4bufs;
@@ -864,9 +878,10 @@ export class WebGpuForceBackend implements ForceBackend {
       });
       b = this.t4bufs = { pos, site: siteBuf, out, staging, ints: intsBuf, coef: coefBuf, atomCap, intsCap, coefCap, bind, coefKey: '' };
     }
-    const params = new ArrayBuffer(112);
+    const params = new ArrayBuffer(128);
     const pf = new Float32Array(params), pu = new Uint32Array(params);
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    writeTilt(pf, 28, tilt);
     pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
     pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = qBase; pu[11] = specBase;
     pf[12] = spec.qqrd2e; pf[13] = spec.gewald; pf[14] = spec.cutCsq; pf[15] = spec.cutCsqPlus;
@@ -936,7 +951,7 @@ export class WebGpuForceBackend implements ForceBackend {
     if (shortPeriodicEdge(state, spec.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
     const cells = this.sortByCell(state, spec.maxCutoff, n, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
-    const { L, nc, base, two } = cells;
+    const { L, tilt, nc, base, two } = cells;
     const { sorted, posData } = this.cs;
     const ints = this.cs.intsData;
     const fpBase = base + n, intsLen = fpBase + n;
@@ -946,7 +961,7 @@ export class WebGpuForceBackend implements ForceBackend {
       this.eamPipes = {
         rho: pl.rho,
         force: pl.force,
-        params: dev.createBuffer({ size: 64, usage: BUF_UNIFORM | BUF_COPY_DST }),
+        params: dev.createBuffer({ size: 80, usage: BUF_UNIFORM | BUF_COPY_DST }),
       };
     }
     const pipes = this.eamPipes;
@@ -973,9 +988,10 @@ export class WebGpuForceBackend implements ForceBackend {
         bindForce: dev.createBindGroup({ layout: pipes.force.getBindGroupLayout(0), entries }),
       };
     }
-    const params = new ArrayBuffer(64);
+    const params = new ArrayBuffer(80);
     const pf = new Float32Array(params), pu = new Uint32Array(params);
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    writeTilt(pf, 16, tilt);
     pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
     pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = fpBase; pu[11] = spec.nr;
     pf[12] = spec.rdr;
@@ -1071,14 +1087,14 @@ export class WebGpuForceBackend implements ForceBackend {
     const n = state.n;
     const cells = this.sortByCell(state, spec.maxCutoff, 0, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
-    const { L, nc, base, two } = cells;
+    const { L, tilt, nc, base, two } = cells;
     const { sorted, posData } = this.cs;
     const ints = this.cs.intsData;
     const countBase = base + n, listBase = countBase + n, intsLen = listBase + n * maxn;
     const dev = this.device;
     if (!this.swPipes) {
       const pl = await checkedPipelines(dev, KERNEL_SW, ['nbr', 'force'] as const);
-      this.swPipes = { nbr: pl.nbr, force: pl.force, params: dev.createBuffer({ size: 80, usage: BUF_UNIFORM | BUF_COPY_DST }) };
+      this.swPipes = { nbr: pl.nbr, force: pl.force, params: dev.createBuffer({ size: 96, usage: BUF_UNIFORM | BUF_COPY_DST }) };
     }
     const pipes = this.swPipes;
     const coefF32 = Float32Array.from(spec.coef);
@@ -1106,9 +1122,10 @@ export class WebGpuForceBackend implements ForceBackend {
         bindForce: dev.createBindGroup({ layout: pipes.force.getBindGroupLayout(0), entries }),
       };
     }
-    const params = new ArrayBuffer(80);
+    const params = new ArrayBuffer(96);
     const pf = new Float32Array(params), pu = new Uint32Array(params);
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    writeTilt(pf, 20, tilt);
     pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
     pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = maxn; pu[11] = countBase;
     pu[12] = listBase; pu[13] = spec.tripBase; pu[14] = spec.threebody ? 1 : 0; pu[15] = spec.mod ? 1 : 0;
@@ -1186,14 +1203,14 @@ export class WebGpuForceBackend implements ForceBackend {
     const n = state.n;
     const cells = this.sortByCell(state, spec.maxCutoff, 0, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
-    const { L, nc, base, two } = cells;
+    const { L, tilt, nc, base, two } = cells;
     const { sorted, posData } = this.cs;
     const ints = this.cs.intsData;
     const countBase = base + n, listBase = countBase + n, intsLen = listBase + n * maxn;
     const dev = this.device;
     if (!this.terPipes) {
       const pl = await checkedPipelines(dev, KERNEL_TERSOFF, ['nbr', 'bond', 'force'] as const);
-      this.terPipes = { ...pl, params: dev.createBuffer({ size: 64, usage: BUF_UNIFORM | BUF_COPY_DST }) };
+      this.terPipes = { ...pl, params: dev.createBuffer({ size: 80, usage: BUF_UNIFORM | BUF_COPY_DST }) };
     }
     const pipes = this.terPipes;
     const coefF32 = Float32Array.from(spec.coef);
@@ -1223,9 +1240,10 @@ export class WebGpuForceBackend implements ForceBackend {
         binds: [bindFor(pipes.nbr, 4), bindFor(pipes.bond, 5), bindFor(pipes.force, 6)],
       };
     }
-    const params = new ArrayBuffer(64);
+    const params = new ArrayBuffer(80);
     const pf = new Float32Array(params), pu = new Uint32Array(params);
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    writeTilt(pf, 16, tilt);
     pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
     pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = maxn; pu[11] = countBase;
     pu[12] = listBase; pu[13] = spec.tripBase; pf[14] = spec.shift;
@@ -1272,7 +1290,7 @@ export class WebGpuForceBackend implements ForceBackend {
 
   canAdvanceSpec(state: SimState, spec: GpuPairSpec): boolean {
     // the whole-step kernel has the analytic laws only (styleLaws.ts), not pair_style table's tables
-    if (state.n === 0 || !(spec.maxCutoff > 0) || spec.law === TABLE_LAW) return false;
+    if (state.n === 0 || !(spec.maxCutoff > 0) || spec.law === TABLE_LAW || state.box.triclinic) return false;
     const two = state.dimension === 2;
     return [0, 1, 2].every((d) => (d === 2 && two)
       || (state.box.periodic[d] && Math.floor((state.box.hi[d] - state.box.lo[d]) / spec.maxCutoff) >= 3));
@@ -1292,7 +1310,8 @@ export class WebGpuForceBackend implements ForceBackend {
   /** True when `advance` can run this system entirely on the GPU. */
   canAdvance(state: SimState, table: PairTable): boolean {
     const { arrays } = this.coefFor(table);
-    if (state.n === 0 || !(arrays.maxCutoff > 0)) return false;
+    // the whole-step kernel (resident.ts) wraps an orthogonal box
+    if (state.n === 0 || !(arrays.maxCutoff > 0) || state.box.triclinic) return false;
     const two = state.dimension === 2;
     return [0, 1, 2].every((d) => (d === 2 && two)
       || (state.box.periodic[d] && Math.floor((state.box.hi[d] - state.box.lo[d]) / arrays.maxCutoff) >= 3));

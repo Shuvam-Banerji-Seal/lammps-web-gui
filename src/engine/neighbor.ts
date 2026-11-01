@@ -393,6 +393,8 @@ export class Neighbor {
    */
   markBuilt(s: SimState, g: Geometry, step: number): void {
     this.specialStale = false;
+    // the lamda System.pbc left for this build's ghosts (a triclinic box) has no use without them
+    this.freshLamda = null;
     this.recordBuild(s, g, step);
   }
 

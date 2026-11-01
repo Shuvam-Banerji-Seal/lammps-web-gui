@@ -2,6 +2,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, pair
 import { NEIGHMASK } from '../../neighbor';
 import { logical, missingArgs, numeric, parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
+import type { GpuSwData } from '../../gpu/swSpec';
 
 /*
  * pair_style sw/mod — docs.lammps.org/pair_sw.html (pair_style sw is the GPL port in src/engine-gpl/manybody3/pair_sw.ts)
@@ -334,6 +335,25 @@ export abstract class PairSWBase extends Pair {
     this.aE = P * zeta * zeta;
     this.aD = P * 2 * zeta * (fc + dc * this.angleScaleDeriv(dc));
     return true;
+  }
+
+  /**
+   * The parameters for the GPU (gpu/swSpec.ts), by type: the two-body entry and the leg of each type pair, the angular
+   * entry of each triplet (lambda eps of the doc's phi3, cos theta0). Null for sw/angle/table (tabulated angles).
+   */
+  gpuSW(): GpuSwData | null {
+    if (this.tabulatedAngle) return null;
+    const nt = this.ntypes + 1;
+    const active = Array.from({ length: nt }, (_, t) => t > 0 && this.elemOf[t] >= 0);
+    const legCut = new Float64Array(nt * nt), gammaSigma = new Float64Array(nt * nt);
+    for (let t = 0; t < nt * nt; t++) { legCut[t] = this.aS[t] * this.sigS[t]; gammaSigma[t] = this.gam[t] * this.sigS[t]; }
+    const lambdaEps = new Float64Array(nt * nt * nt);
+    for (let t = 0; t < nt * nt * nt; t++) lambdaEps[t] = this.lam3[t] * this.eps3[t];
+    return {
+      ntypes: this.ntypes, active, cutsq: this.cutsq, cut2: this.cut2, eps: this.eps2, sigma: this.sigma2, a: this.a2,
+      A: this.pA, B: this.pB, p: this.pP, q: this.pQ, legCut, gammaSigma, lambdaEps, cos0: this.c03,
+      threebody: this.threebody, mod: null,
+    };
   }
 
   /** Output of angular(): energy and dE/dcos (see there). */
@@ -740,6 +760,11 @@ export class PairSWMod extends PairSWBase {
   protected override setDeltas(d1: number, d2: number): void {
     this.delta1 = d1;
     this.delta2 = d2;
+  }
+
+  override gpuSW(): GpuSwData | null {
+    const d = super.gpuSW();
+    return d && { ...d, mod: { delta1: this.delta1, delta2: this.delta2 } };
   }
 
   /** f_C(delta) of the doc page (verbatim formula in the file header). */

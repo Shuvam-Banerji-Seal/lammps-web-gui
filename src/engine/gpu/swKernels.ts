@@ -1,3 +1,4 @@
+import { WGSL_BOX_IMAGE } from './cellSort';
 import { WGSL_STYLE_LAWS } from './styleLaws';
 
 /*
@@ -32,7 +33,10 @@ struct Params {
   delta2 : f32,
   pad0 : f32,
   pad1 : f32,
+  tilt : vec4<f32>,  // xy xz yz: the minimum image of a triclinic box (cellSort.ts WGSL_BOX_IMAGE)
 };
+
+${WGSL_BOX_IMAGE}
 
 @group(0) @binding(0) var<uniform> P : Params;
 @group(0) @binding(1) var<storage, read> pos : array<vec4<f32>>;
@@ -49,7 +53,7 @@ fn wrapCell(c : i32, n : u32) -> u32 {
 
 fn minImage(a : vec3<f32>, b : vec3<f32>) -> vec3<f32> {
   var d = b - a;
-  d = d - P.L * round(d / P.L);
+  d = boxImage(d);
   if (P.two == 1u) { d.z = 0.0; }
   return d;
 }

@@ -219,7 +219,7 @@ describe('non-periodic boxes on the GPU path', () => {
     expect(gpu.sys().state.step).toBe(cpu.sys().state.step);
   });
 
-  it('the accelerator: the styles kernel for lj/cut, not resident; the lj/cut threads and triclinic boxes stay on the CPU', async () => {
+  it('the accelerator: the styles kernel for lj/cut, not resident; the lj/cut threads stay on the CPU', async () => {
     const run = async (boundary: string, extra = '') => {
       const { s, sys } = session();
       await s.execute(`units lj\nboundary ${boundary}\nlattice fcc 0.8442\nregion box block 0 5 0 5 0 5\ncreate_box 1 box\n`
@@ -241,8 +241,10 @@ describe('non-periodic boxes on the GPU path', () => {
     expect(accelerator(thinPeriodic, gpu).reason).toBe('a box shorter than 2 pair cutoffs along a periodic edge');
     const thinFixed = await run('p p f', 'change_box all z final 0 4 remap units box\n');
     expect(accelerator(thinFixed, gpu).reason).toBeNull();
+    // a triclinic box: the GPU path (tests/engineGpuTriclinic.test.ts), not the lj/cut threads
     const tri = await run('p p p', 'change_box all triclinic\n');
-    expect(accelerator(tri, gpu).reason).toBe('a triclinic box');
+    expect(accelerator(tri, gpu).reason).toBeNull();
+    expect(accelerator(tri, threads).reason).toBe('a triclinic box');
     // a fully periodic box keeps the plain lj/cut kernel
     const plain = accelerator(await run('p p p'), gpu);
     expect(plain.accel?.spec).toBeNull();

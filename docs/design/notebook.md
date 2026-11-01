@@ -287,12 +287,31 @@ interface ForceBackend {
   cell sorts (the GPU's, `cpu/cells.ts`, the lj/cut cell list of `cpu/forces.ts`) bin an atom past a periodic edge in
   its image's cell (`periodicCell`). lj/cut in such a box runs as the styles kernel's style 10; the plain lj/cut kernel,
   the whole-step kernel and the lj/cut threads keep fully periodic boxes. The 2-cutoff minimum applies to periodic edges
-  only. Triclinic boxes stay on the CPU. Tests: `tests/engineGpuNonPeriodic.test.ts`. In Chromium (SwiftShader
+  only. Tests: `tests/engineGpuNonPeriodic.test.ts`. In Chromium (SwiftShader
   WebGPU), shortened LAMMPS examples on WebGPU matched the CPU engine:
   - shear/in.shear (s s p, EAM, both runs): every printed digit of temp, pe and etotal; press within 0.1 (values to 1.4e4);
   - indent/in.indent (p s p, fix indent), friction/in.friction (p s p) and wall/in.wall.specular (p f p) over 1500
     to 3000 steps: to the printed digits, save the sixth of a few;
   - crack/in.crack (s s p, 8141 atoms): matched through step 400.
+- **Triclinic boxes on the GPU path** (`gpu/cellSort.ts`). The cell sort bins the atoms' fractional coordinates
+  (lamda = h^-1 (x - lo), by back substitution in the upper-triangular h of the edge vectors), nc_d cells along d with
+  the box's width perpendicular to the other two edges (`boxWidths`: volume over the opposite face) at least nc_d
+  cutoffs, so two atoms within the cutoff are in the same or neighbouring cells. The positions stay Cartesian. The
+  styles, EAM, SW, Tersoff and TIP4P kernels take the tilt in a `tilt` vec4 at the end of their uniform. Their minimum
+  image (`WGSL_BOX_IMAGE`) rounds the separation's fractional coordinates and subtracts that lattice vector, which is
+  the one copy of a partner within the cutoff while every periodic width is at least 2 cutoffs; the accelerator checks
+  the widths. With tilt 0 it is the same arithmetic as before. lj/cut runs as the styles kernel's style 10; the plain
+  lj/cut kernel, the whole-step kernel and the lj/cut threads take orthogonal boxes. Box flips (fix deform, the
+  barostats with flip yes) come in pre_exchange, which keeps those runs on the CPU. Tests:
+  `tests/engineGpuTriclinic.test.ts`. In Chromium, the triclinic examples on WebGPU matched the CPU engine:
+  - rigid/in.rigid.cubes.tri (styles kernel, molecule/intra exclusions, 1000 steps): every printed digit;
+  - threebody/in.mos2.sw.mod (sw/mod, p p f, xy tilt, 1000 steps): to the last printed digit, plus or minus 1;
+  - PACKAGES/entropy/in.entropy (eam/fs, 4096 atoms, 1000 steps): every printed digit of pe and etotal, and of temp
+    except a last-digit difference at step 1000; press within 0.011;
+  - PACKAGES/phonon/4-Graphene/in.graphene (tersoff, 600 steps): to 5 or 6 digits;
+  - TIP4P water (lj/cut/tip4p/cut, all three tilts): to 5 or 6 digits through 250 steps of a hot (1800 K) system;
+  - orthogonal runs of the changed kernels (shear/in.shear EAM, tersoff/in.tersoff, TIP4P with pppm/tip4p): the
+    printed numbers of shear are those before the change.
 - **GPU validation errors stop the run.** Pipelines are created in a validation error scope
   (`checkedPipelines`), and each force evaluation runs in one (`validated`): WebGPU skips an
   invalid dispatch, which would otherwise leave zero forces (an entry point whose `auto`

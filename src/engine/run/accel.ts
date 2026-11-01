@@ -5,6 +5,7 @@ import { GPU_TERSOFF_STYLES, gpuTersoffSpec, isGpuTersoff, type GpuTersoffSpec, 
 import { GPU_TIP4P_STYLES, gpuTip4pSpec, isGpuTip4p, type GpuTip4pSpec, type Tip4pPair, type Tip4pSites } from '../gpu/tip4pSpec';
 import { buildOwnedSites } from '../force/pair/tip4p_sites';
 import { exclusionGroupBits, gpuExclusions, MAX_GPU_EXCLUSION_RULES, type GpuExclusions } from '../gpu/exclusions';
+import { boxWidths } from '../gpu/cellSort';
 import type { SpecialList } from '../atoms';
 import type { LevelSelect } from '../force/forcefield';
 import { COMM, MODIFY, OUTPUT, PAIR } from '../timer';
@@ -25,8 +26,8 @@ import { restartDue } from '../commands/restart';
  * (cpu/parallel.ts, gpu/webgpuForces.ts, gpu/resident.ts). The CPU threads
  * implement plain pair_style lj/cut without bonds; the GPU the pair styles of
  * gpu/pairSpec.ts, with the bonded terms and the kspace style computed on the
- * CPU beside it each step. All need an orthogonal box; the CPU threads a fully
- * periodic one. They return the pair forces, energy and virial. The run then follows the usual velocity-Verlet hook
+ * CPU beside it each step. The CPU threads need a fully periodic orthogonal
+ * box. They return the pair forces, energy and virial. The run then follows the usual velocity-Verlet hook
  * order with every fix (thermostats, force-modifying fixes, ...); only the
  * force evaluation is replaced. Whole steps stay on the GPU (resident.ts)
  * when the only fixes are nve / enforce2d on all atoms. Every other input
@@ -92,10 +93,12 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const molecular = !!(sys.ff.bond || sys.ff.angle || sys.ff.dihedral || sys.ff.improper)
     || s.topo.bonds.n > 0 || s.topo.angles.n > 0 || s.topo.dihedrals.n > 0 || s.topo.impropers.n > 0;
   if (molecular && backend.kind !== 'webgpu') return why('bonded terms or molecular topology');
-  if (s.box.triclinic) return why('a triclinic box');
-  // a non-periodic dimension (f, s, m): the GPU kernels take no image along it (webgpuForces.ts sortByCell); the box
-  // resets and lost atoms of System.pbc() come on the reneighboring steps of the CPU path (runAccelerated). The lj/cut
-  // threads of cpu/parallel.ts wrap every edge.
+  // a triclinic box: the GPU kernels bin the fractional coordinates and take the triclinic minimum image
+  // (gpu/cellSort.ts); the lj/cut threads of cpu/parallel.ts take an orthogonal box
+  if (s.box.triclinic && backend.kind !== 'webgpu') return why('a triclinic box');
+  // a non-periodic dimension (f, s, m): the GPU kernels take no image along it (gpu/cellSort.ts); the box resets and
+  // lost atoms of System.pbc() come on the reneighboring steps of the CPU path (runAccelerated). The lj/cut threads of
+  // cpu/parallel.ts wrap every edge.
   const nonPeriodic = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && !s.box.periodic[d]);
   if (nonPeriodic && backend.kind !== 'webgpu') return why('a non-periodic box');
   // neigh_modify exclude/include: on the GPU's styles kernel (gpu/exclusions.ts), lj/cut there as style 10. Native applies
@@ -128,7 +131,9 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   // 2 cutoffs per periodic edge at every step, so such runs start with 3. A non-periodic edge has no image (any length)
   const boxMayChange = sys.fixes.some((f) => BOX_CHANGING.test(f.style));
   const edgeCutoffs = boxMayChange ? 3 : 2;
-  const shortBox = (cut: number) => [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && s.box.periodic[d] && (s.box.hi[d] - s.box.lo[d]) < edgeCutoffs * cut);
+  // the widths of a triclinic box perpendicular to the other two edges (the edge lengths of an orthogonal one)
+  const widths = boxWidths(s.box);
+  const shortBox = (cut: number) => [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && s.box.periodic[d] && widths[d] < edgeCutoffs * cut);
   const shortWhy = `a box shorter than ${edgeCutoffs} pair cutoffs along a periodic edge${boxMayChange ? ' (a fix that changes the box)' : ''}`;
   // the table from the initialized (mixed) coefficients
   p.init(sys.styleContext());
@@ -169,8 +174,9 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
     return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p, exclude: null, resident: false, enforce2d }, reason: null };
   }
-  // lj/cut in a non-periodic box as style 10 of the styles kernel too: the plain lj/cut kernel wraps every edge
-  if (!ljcut || molecular || ex || nonPeriodic) {
+  // lj/cut in a non-periodic or triclinic box as style 10 of the styles kernel too: the plain lj/cut kernel wraps every
+  // edge of an orthogonal box
+  if (!ljcut || molecular || ex || nonPeriodic || s.box.triclinic) {
     const qqrd2e = s.units.qqr2e * (p.coulConstScale ?? 1) / sys.ff.dielectric;
     const sb = sys.ff.special;
     const spec0 = gpuPairSpec(p, s.ntypes, qqrd2e, molecular ? { lj: [1, ...sb.lj], coul: [1, ...sb.coul] } : null);

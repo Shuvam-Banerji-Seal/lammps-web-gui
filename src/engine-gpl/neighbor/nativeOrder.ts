@@ -214,6 +214,8 @@ export interface NativeLayout {
   binOf: Int32Array;
   /** bin key (binKey) -> bin number, -1 when no atom is in that bin */
   bins: IntTable;
+  /** the bin number of bin (bx, by, bz), -1 when no atom is in it: bins.get(binKey(bx, by, bz)) from a dense grid */
+  binAt: (bx: number, by: number, bz: number) => number;
   /** the bin number of each native atom */
   atomBin: Int32Array;
   /**
@@ -297,6 +299,32 @@ const nativeLayout = (s: SimState, nb: Neighbor, g: Geometry): NativeLayout => {
     atomBin[k] = b;
     binCount[b]++;
   }
+  // the occupied bins as a dense grid over their bounding range (each stencil lookup then indexes it instead of
+  // hashing), unless that range is very large for the number of atoms
+  let mnx = Infinity, mny = Infinity, mnz = Infinity, mxx = -Infinity, mxy = -Infinity, mxz = -Infinity;
+  for (let k = 0; k < nall; k++) {
+    const bx = binOf[3 * k], by = binOf[3 * k + 1], bz = binOf[3 * k + 2];
+    if (bx < mnx) mnx = bx;
+    if (bx > mxx) mxx = bx;
+    if (by < mny) mny = by;
+    if (by > mxy) mxy = by;
+    if (bz < mnz) mnz = bz;
+    if (bz > mxz) mxz = bz;
+  }
+  const gx = mxx - mnx + 1, gy = mxy - mny + 1, gz = mxz - mnz + 1;
+  const cells = nall > 0 ? gx * gy * gz : 0;
+  let binAt: (bx: number, by: number, bz: number) => number;
+  if (nall > 0 && cells <= Math.max(1 << 22, 64 * nall)) {
+    const grid = new Int32Array(cells).fill(-1);
+    for (let k = 0; k < nall; k++) grid[((binOf[3 * k + 2] - mnz) * gy + (binOf[3 * k + 1] - mny)) * gx + (binOf[3 * k] - mnx)] = atomBin[k];
+    binAt = (bx, by, bz) => {
+      const x = bx - mnx, y = by - mny, z = bz - mnz;
+      if (x < 0 || y < 0 || z < 0 || x >= gx || y >= gy || z >= gz) return -1;
+      return grid[(z * gy + y) * gx + x];
+    };
+  } else {
+    binAt = (bx, by, bz) => bins.get(binKey(bx, by, bz));
+  }
   const chainStart = new Int32Array(nbins + 1);
   for (let b = 0; b < nbins; b++) chainStart[b + 1] = chainStart[b] + binCount[b];
   const fill = chainStart.slice(0, nbins);
@@ -328,7 +356,7 @@ const nativeLayout = (s: SimState, nb: Neighbor, g: Geometry): NativeLayout => {
     gEng[k] = engByKey.get(imgKey(e, gh.img[3 * k], gh.img[3 * k + 1], gh.img[3 * k + 2]));
   }
   return {
-    order, n, two, X, binOf, bins, atomBin, chainStart, members, posInBin, binsize, bininv,
+    order, n, two, X, binOf, bins, binAt, atomBin, chainStart, members, posInBin, binsize, bininv,
     sx: reach(0), sy: reach(1), sz: two ? 0 : reach(2), cutmaxsq: cutmax * cutmax,
     binDist, gEng, root: gh.root, engByKey, NA,
   };
@@ -400,7 +428,7 @@ export interface NativeListBuild {
 export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighList, newton = true,
   build: NativeListBuild = { nsq: false, halffull: false }): Int32Array => {
   const L = nativeLayout(s, nb, g);
-  const { order, n, two, X, binOf, bins, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng, root, engByKey, NA } = L;
+  const { order, n, two, X, binOf, bins, binAt, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng, root, engByKey, NA } = L;
   const gi = nb.gimage;
   let total = 0;
   for (let i = 0; i < nb.nlocal; i++) total += half.numneigh[i];
@@ -500,7 +528,7 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
     } else if (build.halffull && newton) {
       // npair_bin.cpp, full list: every stencil bin (the central one in its place), "if (i == j) continue;"
       for (let st = 0; st < stencil.length; st += 3) {
-        const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        const b = binAt(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]);
         if (b < 0) continue;
         for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
           const j = members[q];
@@ -510,7 +538,7 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
     } else if (!newton) {
       // npair_half_bin_newtoff: "only store pair if i < j" (own/own once), every ghost; the chains start at the bin head
       for (let st = 0; st < stencil.length; st += 3) {
-        const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        const b = binAt(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]);
         if (b < 0) continue;
         for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
           const j = members[q];
@@ -533,7 +561,7 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
         takePair(out, dense, gEng, ei, j);
       }
       for (let st = 0; st < stencil.length; st += 3) {
-        const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        const b = binAt(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]);
         if (b < 0) continue;
         for (let q = chainStart[b]; q < chainStart[b + 1]; q++) takePair(out, dense, gEng, ei, members[q]);
       }
@@ -559,7 +587,7 @@ export interface SizeListSpec {
  */
 export const nativeSizePairs = (s: SimState, nb: Neighbor, g: Geometry, newton: boolean, spec: SizeListSpec): Int32Array => {
   const L = nativeLayout(s, nb, g);
-  const { order, n, two, X, binOf, bins, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng } = L;
+  const { order, n, two, X, binOf, bins, binAt, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng } = L;
   const radius = s.radius;
   if (!radius) throw new Error('native size list needs per-atom radii');
   const owner = nb.owner;
@@ -611,7 +639,7 @@ export const nativeSizePairs = (s: SimState, nb: Neighbor, g: Geometry, newton: 
     const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
     if (!newton) {
       for (let st = 0; st < stencil.length; st += 3) {
-        const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        const b = binAt(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]);
         if (b < 0) continue;
         for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
           const j = members[q];
@@ -633,7 +661,7 @@ export const nativeSizePairs = (s: SimState, nb: Neighbor, g: Geometry, newton: 
         consider(j);
       }
       for (let st = 0; st < stencil.length; st += 3) {
-        const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        const b = binAt(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]);
         if (b < 0) continue;
         for (let q = chainStart[b]; q < chainStart[b + 1]; q++) consider(members[q]);
       }
@@ -651,7 +679,7 @@ export const nativeSizePairs = (s: SimState, nb: Neighbor, g: Geometry, newton: 
  */
 export const nativeFullLast = (s: SimState, nb: Neighbor, g: Geometry, full: NeighList): Int32Array => {
   const L = nativeLayout(s, nb, g);
-  const { order, n, binOf, bins, chainStart, members, sx, sy, sz, cutmaxsq, binDist, gEng, NA } = L;
+  const { order, n, binOf, binAt, chainStart, members, sx, sy, sz, cutmaxsq, binDist, gEng, NA } = L;
   let total = 0;
   for (let i = 0; i < nb.nlocal; i++) total += full.numneigh[i];
   const rowOf = new Int32Array(total), colOf = new Int32Array(total), valOf = new Int32Array(total).fill(1);
@@ -677,7 +705,7 @@ export const nativeFullLast = (s: SimState, nb: Neighbor, g: Geometry, full: Nei
     const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
     let found = -1;
     for (let st = 0; st < stencil.length; st += 3) {
-      const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+      const b = binAt(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]);
       if (b < 0) continue;
       for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
         const j = members[q];
@@ -700,7 +728,7 @@ export const nativeFullLast = (s: SimState, nb: Neighbor, g: Geometry, full: Nei
  */
 export const nativeFullOrder = (s: SimState, nb: Neighbor, g: Geometry, full: NeighList): Int32Array => {
   const L = nativeLayout(s, nb, g);
-  const { order, n, binOf, bins, chainStart, members, sx, sy, sz, cutmaxsq, binDist, gEng, NA } = L;
+  const { order, n, binOf, binAt, chainStart, members, sx, sy, sz, cutmaxsq, binDist, gEng, NA } = L;
   const out = full.neighbors.slice();
   const stencil: number[] = [];
   for (let k = -sz; k <= sz; k++) {
@@ -719,7 +747,7 @@ export const nativeFullOrder = (s: SimState, nb: Neighbor, g: Geometry, full: Ne
     let w = k0;
     const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
     for (let st = 0; st < stencil.length; st += 3) {
-      const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+      const b = binAt(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]);
       if (b < 0) continue;
       for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
         const j = members[q];

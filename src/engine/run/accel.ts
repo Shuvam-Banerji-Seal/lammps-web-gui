@@ -1,6 +1,7 @@
 import { GPU_PAIR_STYLES, gpuPairSpec, LONG_COUL_STYLES, TABLE_LAW, type GpuPairSpec } from '../gpu/pairSpec';
 import { GPU_EAM_STYLES, gpuEamSpec, isGpuEam, type EamPair, type GpuEamSpec } from '../gpu/eamSpec';
 import { GPU_SW_STYLES, gpuSwSpec, isGpuSw, type GpuSwSpec, type SwPair } from '../gpu/swSpec';
+import { GPU_TERSOFF_STYLES, gpuTersoffSpec, isGpuTersoff, type GpuTersoffSpec, type TersoffPair } from '../gpu/tersoffSpec';
 import type { SpecialList } from '../atoms';
 import type { LevelSelect } from '../force/forcefield';
 import { COMM, MODIFY, OUTPUT, PAIR } from '../timer';
@@ -42,6 +43,8 @@ export interface Accel {
   eam: GpuEamSpec | null;
   /** pair sw or sw/mod on the GPU (computeSW: neighbor lists and gathered three-body forces there). */
   sw: GpuSwSpec | null;
+  /** pair tersoff on the GPU (computeTersoff: neighbor lists, bond orders and gathered forces there). */
+  tersoff: GpuTersoffSpec | null;
   /** Whole NVE steps on the GPU (resident.ts) with readback only on output steps. */
   resident: boolean;
   enforce2d: boolean;
@@ -60,8 +63,9 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const gpuStyle = backend.kind === 'webgpu' && !!p && GPU_PAIR_STYLES[p.name] !== undefined;
   const eamStyle = backend.kind === 'webgpu' && isGpuEam(p);
   const swStyle = backend.kind === 'webgpu' && isGpuSw(p);
-  if (!ljcut && !gpuStyle && !eamStyle && !swStyle) {
-    const names = [...Object.keys(GPU_PAIR_STYLES).filter((k) => k !== 'lj/cut'), ...GPU_EAM_STYLES, ...GPU_SW_STYLES].join(', ');
+  const tersoffStyle = backend.kind === 'webgpu' && isGpuTersoff(p);
+  if (!ljcut && !gpuStyle && !eamStyle && !swStyle && !tersoffStyle) {
+    const names = [...Object.keys(GPU_PAIR_STYLES).filter((k) => k !== 'lj/cut'), ...GPU_EAM_STYLES, ...GPU_SW_STYLES, ...GPU_TERSOFF_STYLES].join(', ');
     return why(`pair style ${p?.name ?? 'none'} (the ${backend.kind === 'webgpu' ? `GPU path implements lj/cut, ${names}` : 'threaded path implements lj/cut'} only)`);
   }
   // the long-range Coulomb styles' real-space term runs on the GPU, the kspace style on the CPU beside it
@@ -100,7 +104,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * eam.maxCutoff);
     if (short) return why('a box shorter than 2 pair cutoffs along an edge');
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam, sw: null, resident: false, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam, sw: null, tersoff: null, resident: false, enforce2d }, reason: null };
   }
   if (swStyle) {
     if (molecular) return why('bonded terms with an sw pair style');
@@ -110,7 +114,17 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * sw.maxCutoff);
     if (short) return why('a box shorter than 2 pair cutoffs along an edge');
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw, resident: false, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw, tersoff: null, resident: false, enforce2d }, reason: null };
+  }
+  if (tersoffStyle) {
+    if (molecular) return why('bonded terms with a tersoff pair style');
+    const tersoff = gpuTersoffSpec(p as TersoffPair);
+    if (typeof tersoff === 'string') return why(tersoff);
+    // the kernels' minimum image needs at least 2 cutoffs along each periodic edge (gpu/tersoffKernels.ts)
+    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * tersoff.maxCutoff);
+    if (short) return why('a box shorter than 2 pair cutoffs along an edge');
+    const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff, resident: false, enforce2d }, reason: null };
   }
   if (!ljcut || molecular) {
     const qqrd2e = s.units.qqr2e * (p.coulConstScale ?? 1) / sys.ff.dielectric;
@@ -127,7 +141,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
     const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };
     const resident = !molecular && !kspace && spec.law !== TABLE_LAW && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, sw: null, resident, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, resident, enforce2d }, reason: null };
   }
   const t = newPairTable(s.ntypes, p.cutGlobal);
   t.shift = p.shift;
@@ -142,7 +156,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const allBit = sys.groupBit('all');
   const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
   const resident = onlyNve && isResident(backend) && backend.canAdvance(s, t);
-  return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, eam: null, sw: null, resident, enforce2d }, reason: null };
+  return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff: null, resident, enforce2d }, reason: null };
 };
 
 /**
@@ -195,6 +209,10 @@ const evaluate = async (a: Accel, sys: System, step: boolean): Promise<ForceResu
   if (a.sw) {
     const gb = a.backend as ForceBackend & { computeSW(s: SimState, spec: GpuSwSpec): Promise<ForceResult> };
     return gb.computeSW(s, a.sw);
+  }
+  if (a.tersoff) {
+    const gb = a.backend as ForceBackend & { computeTersoff(s: SimState, spec: GpuTersoffSpec): Promise<ForceResult> };
+    return gb.computeTersoff(s, a.tersoff);
   }
   if (a.eam) {
     const pair = sys.ff.pair as EamPair;

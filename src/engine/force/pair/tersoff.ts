@@ -2,6 +2,7 @@ import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } 
 import { NEIGHMASK } from '../../neighbor';
 import { numeric, parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
+import type { GpuTersoffData } from '../../gpu/tersoffSpec';
 
 /*
  * pair_style tersoff — docs.lammps.org/pair_tersoff.html
@@ -443,6 +444,20 @@ export class PairTersoff extends Pair {
         if (this.cut2[t] > this.pairCut) this.pairCut = this.cut2[t];
       }
     }
+  }
+
+  /**
+   * The tables for the GPU path (gpu/tersoffSpec.ts) after init. The variants that change the functional form
+   * (tersoff/mod, mod/c, zbl) override the hooks below and are not in its style list.
+   */
+  gpuTersoff(): GpuTersoffData {
+    const nt = this.ntypes + 1;
+    return {
+      ntypes: this.ntypes, active: Array.from({ length: nt }, (_, t) => t > 0 && this.elemOf[t] >= 0), shift: this.shiftDelta,
+      A: this.A2, B: this.B2, lam1: this.lam1, lam2: this.lam2, beta: this.beta2, n: this.n2, R: this.R2, D: this.D2,
+      cut2: this.cut2, m: this.m3, gamma: this.gam3, lam3p: this.lam3p, c: this.c3, d: this.d3, ct0: this.ct03,
+      R3: this.R3, D3: this.D3, cut3: this.cut3, valid3: this.valid3,
+    };
   }
 
   /** Hook: the two-body table of type index t (ordered, ti*nt+tj) was filled from entry e. */

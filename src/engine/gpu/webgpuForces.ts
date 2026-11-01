@@ -8,6 +8,8 @@ import { WGSL_STYLE_LAWS } from './styleLaws';
 import { EAM_WORKGROUP, KERNEL_EAM } from './eamKernels';
 import { KERNEL_SW, SW_WORKGROUP } from './swKernels';
 import type { GpuSwSpec } from './swSpec';
+import { KERNEL_TERSOFF, TERSOFF_WORKGROUP } from './tersoffKernels';
+import type { GpuTersoffSpec } from './tersoffSpec';
 import type { GpuEamSpec } from './eamSpec';
 
 /*
@@ -1016,6 +1018,123 @@ export class WebGpuForceBackend implements ForceBackend {
     return { pe: e, virial, evdwl: e, ecoul: 0 };
   }
 
+  private terPipes: { nbr: GPUComputePipeline; bond: GPUComputePipeline; force: GPUComputePipeline; params: GPUBuffer } | null = null;
+  private terbufs: {
+    pos: GPUBuffer; out: GPUBuffer; staging: GPUBuffer; ints: GPUBuffer; coef: GPUBuffer; bond: GPUBuffer;
+    atomCap: number; intsCap: number; coefCap: number; bondCap: number; binds: [GPUBindGroup, GPUBindGroup, GPUBindGroup]; coefKey: string;
+  } | null = null;
+  /** The neighbor-list length of computeTersoff (grown when an atom has more neighbors). */
+  private terMaxn = 16;
+
+  /**
+   * One force evaluation of pair tersoff (gpu/tersoffSpec.ts, gpu/tersoffKernels.ts): the neighbor lists, the bond
+   * orders and the gathered forces in one submission, one readback; the sums are fp64 here. When an atom has more
+   * neighbors than the lists hold, the lists grow and the evaluation runs again.
+   */
+  async computeTersoff(state: SimState, spec: GpuTersoffSpec): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    if (this.disposed) throw new Error('the WebGPU backend was disposed');
+    const n = state.n;
+    if (n === 0) return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
+    const flat = state.dimension === 2;
+    if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
+      throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
+    }
+    for (;;) {
+      const maxn = this.terMaxn;
+      const r = await validated(this.device, () => this.tersoffOnce(state, spec, maxn));
+      if (r) return r;
+      // a list was cut short: twice as long, and again
+      if (maxn >= 4096) throw new Error('more than 4096 neighbors within the tersoff cutoff of an atom');
+      this.terMaxn = 2 * maxn;
+    }
+  }
+
+  private async tersoffOnce(state: SimState, spec: GpuTersoffSpec, maxn: number): Promise<(ForceResult & { evdwl: number; ecoul: number }) | null> {
+    const n = state.n;
+    const cells = this.sortByCell(state, spec.maxCutoff, 0, 1);
+    if (!cells) throw new Error('the box has no cell in a periodic dimension');
+    const { L, nc, base, two } = cells;
+    const { sorted, posData } = this;
+    const ints = this.intsData;
+    const countBase = base + n, listBase = countBase + n, intsLen = listBase + n * maxn;
+    const dev = this.device;
+    if (!this.terPipes) {
+      const pl = await checkedPipelines(dev, KERNEL_TERSOFF, ['nbr', 'bond', 'force'] as const);
+      this.terPipes = { ...pl, params: dev.createBuffer({ size: 64, usage: BUF_UNIFORM | BUF_COPY_DST }) };
+    }
+    const pipes = this.terPipes;
+    const coefF32 = Float32Array.from(spec.coef);
+    let b = this.terbufs;
+    if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < coefF32.byteLength || b.bondCap < n * maxn) {
+      if (b) for (const buf of [b.pos, b.out, b.staging, b.ints, b.coef, b.bond]) buf.destroy();
+      const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
+      const coefCap = Math.max(coefF32.byteLength, b?.coefCap ?? 0), bondCap = Math.max(64, Math.ceil(n * maxn * 1.25));
+      const pos = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
+      const out = this.buffer(24 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
+      const staging = this.buffer(24 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
+      const intsBuf = this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST);
+      const coefBuf = this.buffer(coefCap, BUF_STORAGE | BUF_COPY_DST);
+      const bond = this.buffer(8 * bondCap, BUF_STORAGE);
+      const entries = [
+        { binding: 0, resource: { buffer: pipes.params } },
+        { binding: 1, resource: { buffer: pos } },
+        { binding: 2, resource: { buffer: intsBuf } },
+        { binding: 3, resource: { buffer: coefBuf } },
+        { binding: 4, resource: { buffer: bond } },
+        { binding: 5, resource: { buffer: out } },
+      ];
+      // each entry point's 'auto' layout has only the bindings it uses (a bind group with more is invalid)
+      const bindFor = (pipe: GPUComputePipeline, k: number) => dev.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: entries.slice(0, k) });
+      b = this.terbufs = {
+        pos, out, staging, ints: intsBuf, coef: coefBuf, bond, atomCap, intsCap, coefCap, bondCap, coefKey: '',
+        binds: [bindFor(pipes.nbr, 4), bindFor(pipes.bond, 5), bindFor(pipes.force, 6)],
+      };
+    }
+    const params = new ArrayBuffer(64);
+    const pf = new Float32Array(params), pu = new Uint32Array(params);
+    pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
+    pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = maxn; pu[11] = countBase;
+    pu[12] = listBase; pu[13] = spec.tripBase; pf[14] = spec.shift;
+    const q = dev.queue;
+    q.writeBuffer(pipes.params, 0, params);
+    q.writeBuffer(b.pos, 0, posData.buffer, posData.byteOffset, 16 * n);
+    q.writeBuffer(b.ints, 0, ints.buffer, ints.byteOffset, 4 * countBase);
+    if (b.coefKey !== spec.key) {
+      q.writeBuffer(b.coef, 0, coefF32.buffer, coefF32.byteOffset, coefF32.byteLength);
+      b.coefKey = spec.key;
+    }
+    const groups = Math.ceil(n / TERSOFF_WORKGROUP);
+    const enc = dev.createCommandEncoder();
+    for (const [pipe, bind] of [[pipes.nbr, b.binds[0]], [pipes.bond, b.binds[1]], [pipes.force, b.binds[2]]] as const) {
+      const pass = enc.beginComputePass();
+      pass.setPipeline(pipe);
+      pass.setBindGroup(0, bind);
+      pass.dispatchWorkgroups(groups);
+      pass.end();
+    }
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 24 * n);
+    q.submit([enc.finish()]);
+    await b.staging.mapAsync(MAP_READ, 0, 24 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 24 * n));
+    let short = false;
+    for (let slot = 0; slot < n && !short; slot++) if (outv[6 * slot + 4] < 0) short = true;
+    if (short) { b.staging.unmap(); return null; }
+    const f = state.f;
+    let e = 0, virial = 0;
+    for (let slot = 0; slot < n; slot++) {
+      const i = sorted[slot];
+      const o = 6 * slot;
+      f[3 * i] = outv[o];
+      f[3 * i + 1] = outv[o + 1];
+      f[3 * i + 2] = outv[o + 2];
+      e += outv[o + 3];
+      virial += outv[o + 5];
+    }
+    b.staging.unmap();
+    return { pe: e, virial, evdwl: e, ecoul: 0 };
+  }
+
   canAdvanceSpec(state: SimState, spec: GpuPairSpec): boolean {
     // the whole-step kernel has the analytic laws only (styleLaws.ts), not pair_style table's tables
     if (state.n === 0 || !(spec.maxCutoff > 0) || spec.law === TABLE_LAW) return false;
@@ -1071,6 +1190,9 @@ export class WebGpuForceBackend implements ForceBackend {
     const wb = this.swbufs;
     if (wb) for (const buf of [wb.pos, wb.out, wb.staging, wb.ints, wb.coef]) buf.destroy();
     this.swPipes?.params.destroy();
+    const tb = this.terbufs;
+    if (tb) for (const buf of [tb.pos, tb.out, tb.staging, tb.ints, tb.coef, tb.bond]) buf.destroy();
+    this.terPipes?.params.destroy();
     this.eamPipes?.params.destroy();
     this.styleParams?.destroy();
     this.params.destroy();

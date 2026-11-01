@@ -217,6 +217,22 @@ interface ForceBackend {
   a tiny positive `den` is infinite (a 4096-atom sw/mod run went to inf at step 45 before
   that). `swGather` is the arithmetic in fp64 (`tests/engineGpuSw.test.ts`); in Chromium a
   4096-atom Si crystal matched the CPU engine's thermo over 100 steps with both styles.
+- **WebGPU Tersoff** (`gpu/tersoffSpec.ts`, `gpu/tersoffKernels.ts`, `webgpuForces.ts computeTersoff`):
+  `pair_style tersoff` (with or without `shift`; not the mod, mod/c or zbl variants, not as a
+  hybrid sub-style, no molecular topology) hands its tables to the GPU through `gpuTersoff()`.
+  Three passes in one submission: neighbor lists, then per bond i -> j its bond order b_ij and
+  C_ij = 1/2 f_C f_A db/dzeta (zeta_ij sums over i's other neighbors), then a gather in which
+  each atom adds the forces of its own bonds, of its neighbors' bonds toward it, and of its
+  neighbors' other bonds in whose zeta it is the third atom. The gather needs symmetric lists,
+  so a type pair's list cutoff is the larger of its two orders. fp32 traps: the angular term
+  `1 + c^2/d^2 - c^2/(d^2 + q^2)` is evaluated as `1 + c^2 q^2 / (d^2 (d^2 + q^2))` (c^2/d^2 is
+  ~4e7 for the Si and C sets), and the bond order is evaluated from `u = n ln(beta zeta)` in
+  two overflow-free forms. Before that, `zeta^n` overflowed fp32 with Si(B)'s n = 22.956: a bond
+  at the cutoff beside a short one gave zeta = 51 and `db/dzeta = 0 * inf = NaN` at step 43 of a
+  4096-atom run. zeta's exponent is capped at 69.0776 as native does. `tersoffGather` is the
+  arithmetic in fp64 (`tests/engineGpuTersoff.test.ts`). In Chromium a 4096-atom Si(B) crystal
+  at 1600 K matched the CPU engine's thermo to all printed digits over 100 steps. A 4096-atom
+  B/N/C system with `shift` gave forces within 5e-5 of the largest force at every 10th step.
 - **GPU validation errors stop the run.** Pipelines are created in a validation error scope
   (`checkedPipelines`), and each force evaluation runs in one (`validated`): WebGPU skips an
   invalid dispatch, which would otherwise leave zero forces (an entry point whose `auto`

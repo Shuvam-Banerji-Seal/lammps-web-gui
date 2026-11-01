@@ -268,6 +268,14 @@ interface ForceBackend {
   CPU path (`tests/engineGpuTail.test.ts`, fix npt included). Dynamic groups are reassigned on the accelerated loop
   where the CPU loop does it (after the forces, before the fixes; group.html), so runs with them take the GPU path
   too, though not the whole-step one.
+- **`neigh_modify exclude` and `include` on the GPU path** (`gpu/exclusions.ts`): runs with exclusions take the styles
+  kernel (lj/cut as its style 10). Excluded type pairs get zero cutoffs in the packed coefficients; group,
+  molecule/intra, molecule/inter rules (up to 16) and the include group are tested per pair in the kernel from each
+  slot's group mask and molecule ID, before the special-bond lookup, so an excluded pair has no pair term, special
+  weight or kspace correction, as on the CPU path. Not resident; the lj/cut threads, the EAM, SW, Tersoff and TIP4P
+  kernels and rules on dynamic groups stay on the CPU. In Chromium, examples/rigid in.rigid (9 group rules) and
+  in.rigid.cubes (molecule/intra) ran on WebGPU: in.rigid.cubes matched the CPU engine to all printed digits at step
+  1000, in.rigid to 1e-5 through the clump collision (fp32), its later steps diverging chaotically.
 - **GPU validation errors stop the run.** Pipelines are created in a validation error scope
   (`checkedPipelines`), and each force evaluation runs in one (`validated`): WebGPU skips an
   invalid dispatch, which would otherwise leave zero forces (an entry point whose `auto`

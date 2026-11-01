@@ -8,6 +8,7 @@ import { WGSL_STYLE_LAWS } from './styleLaws';
 import { EAM_WORKGROUP, KERNEL_EAM } from './eamKernels';
 import { KERNEL_SW, SW_WORKGROUP } from './swKernels';
 import type { GpuSwSpec } from './swSpec';
+import { MAX_GPU_EXCLUSION_RULES, WGSL_EXCLUDED, type GpuExclusions } from './exclusions';
 import { KERNEL_TERSOFF, TERSOFF_WORKGROUP } from './tersoffKernels';
 import type { GpuTersoffSpec } from './tersoffSpec';
 import { KERNEL_TIP4P, TIP4P_WORKGROUP } from './tip4pKernels';
@@ -156,6 +157,11 @@ struct Params {
   pad2 : u32,
   wlj : vec4<f32>,  // special_bonds lj weights by order (1-2, 1-3, 1-4 at 1..3)
   wc : vec4<f32>,   // and coul weights
+  exclBase : u32,   // neigh_modify exclude/include (gpu/exclusions.ts): mask, molecule per slot at exclBase (0: none)
+  nrules : u32,
+  incl : u32,
+  pad3 : u32,
+  rules : array<vec4<u32>, ${MAX_GPU_EXCLUSION_RULES}>,
 };
 
 @group(0) @binding(0) var<uniform> P : Params;
@@ -170,6 +176,7 @@ fn wrapCell(c : i32, n : u32) -> u32 {
 }
 
 ${WGSL_STYLE_LAWS}
+${WGSL_EXCLUDED}
 
 // pair_style table (pairSpec.ts tableLaw): the tables after the type pairs' coefficients, read as flat floats; A =
 // [cutsq 0 rsq1 1/delta], B = [e g e2 cscale] offsets, C = [g2 last h^2/6 mode (0 linear, 1 spline, 2 lookup)]
@@ -238,6 +245,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
         let jEnd = ints[c2 + 1u];
         for (var j = ints[c2]; j < jEnd; j = j + 1u) {
           if (j == i) { continue; }
+          if (P.exclBase > 0u && excludedPair(i, j)) { continue; }
           let pj = pos[j];
           var d = pi.xyz - pj.xyz;
           d = d - L * round(d / L);
@@ -667,11 +675,11 @@ export class WebGpuForceBackend implements ForceBackend {
    * Forces, van der Waals and Coulomb energies and the scalar virial of the pair styles of gpu/pairSpec.ts (the kernel
    * KERNEL_STYLES), fp32 on the GPU like compute(); the energies and the virial are summed in fp64 here.
    */
-  async computeSpec(state: SimState, spec: GpuPairSpec, special: SpecialList | null = null): Promise<ForceResult & { evdwl: number; ecoul: number }> {
-    return validated(this.device, () => this.computeSpecUnchecked(state, spec, special));
+  async computeSpec(state: SimState, spec: GpuPairSpec, special: SpecialList | null = null, ex: GpuExclusions | null = null): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    return validated(this.device, () => this.computeSpecUnchecked(state, spec, special, ex));
   }
 
-  private async computeSpecUnchecked(state: SimState, spec: GpuPairSpec, special: SpecialList | null): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+  private async computeSpecUnchecked(state: SimState, spec: GpuPairSpec, special: SpecialList | null, ex: GpuExclusions | null): Promise<ForceResult & { evdwl: number; ecoul: number }> {
     if (this.disposed) throw new Error('the WebGPU backend was disposed');
     const n = state.n;
     if (n === 0 || !(spec.maxCutoff > 0)) {
@@ -681,7 +689,7 @@ export class WebGpuForceBackend implements ForceBackend {
     // special bonds: each slot's entries (partner slot << 2 | order) after the charges, the slots' starts before them
     const sp = spec.special && special ? special : null;
     const spEntries = sp ? sp.offset[n] : 0;
-    const extra = (spec.charges ? n : 0) + (sp ? n + 1 + spEntries : 0);
+    const extra = (spec.charges ? n : 0) + (sp ? n + 1 + spEntries : 0) + (ex ? 2 * n : 0);
     // the minimum image is the only copy of a partner within the cutoff while each edge is at least 2 cutoffs
     const flat = state.dimension === 2;
     if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
@@ -703,12 +711,24 @@ export class WebGpuForceBackend implements ForceBackend {
       specBase = intsLen;
       intsLen = this.writeSpecial(state, sp, spec.special!, specBase);
     }
+    // neigh_modify exclude/include: each slot's group mask and molecule ID (gpu/exclusions.ts)
+    let exclBase = 0;
+    if (ex) {
+      exclBase = intsLen;
+      const mol = state.molecule;
+      for (let slot = 0; slot < n; slot++) {
+        const a = sorted[slot];
+        ints[exclBase + 2 * slot] = state.mask[a] >>> 0;
+        ints[exclBase + 2 * slot + 1] = mol ? mol[a] >>> 0 : 0;
+      }
+      intsLen += 2 * n;
+    }
     if (!this.specCache || this.specCache.key !== spec.key) this.specCache = { key: spec.key, coef: padToVec4(spec.coef) };
     const coef = this.specCache.coef;
     const dev = this.device;
     if (!this.stylesPipeline) {
       this.stylesPipeline = (await checkedPipelines(dev, KERNEL_STYLES, ['main'] as const)).main;
-      this.styleParams = dev.createBuffer({ size: 96, usage: BUF_UNIFORM | BUF_COPY_DST });
+      this.styleParams = dev.createBuffer({ size: 112 + 16 * MAX_GPU_EXCLUSION_RULES, usage: BUF_UNIFORM | BUF_COPY_DST });
     }
     let b = this.sbufs;
     if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < coef.byteLength) {
@@ -731,7 +751,7 @@ export class WebGpuForceBackend implements ForceBackend {
       });
       b = this.sbufs = { pos, out, staging, atomCap, ints: intsBuf, intsCap, coef: coefBuf, coefCap: coef.byteLength, bind };
     }
-    const params = new ArrayBuffer(96);
+    const params = new ArrayBuffer(112 + 16 * MAX_GPU_EXCLUSION_RULES);
     const pf = new Float32Array(params);
     const pu = new Uint32Array(params);
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
@@ -739,6 +759,10 @@ export class WebGpuForceBackend implements ForceBackend {
     pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = spec.law; pu[11] = spec.charges ? base + n : 0;
     pf[12] = spec.qqrd2e; pu[13] = specBase; pf[14] = spec.gewald;
     if (spec.special) for (let o = 0; o < 4; o++) { pf[16 + o] = spec.special.lj[o]; pf[20 + o] = spec.special.coul[o]; }
+    if (ex) {
+      pu[24] = exclBase; pu[25] = ex.rules.length; pu[26] = ex.include;
+      ex.rules.forEach((r, k) => { pu[28 + 4 * k] = r[0]; pu[29 + 4 * k] = r[1]; pu[30 + 4 * k] = r[2]; });
+    }
     const q = dev.queue;
     q.writeBuffer(this.styleParams!, 0, params);
     q.writeBuffer(b.pos, 0, posData.buffer, posData.byteOffset, 16 * n);

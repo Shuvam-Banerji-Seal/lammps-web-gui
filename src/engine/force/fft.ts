@@ -193,3 +193,20 @@ export const fft3d = (data: Float64Array, nx: number, ny: number, nz: number, si
   for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) fft1d(data, iz * ny * nx + ix, nx, ny, sign);
   for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) fft1d(data, iy * nx + ix, nx * ny, nz, sign);
 };
+
+/**
+ * Lines [l0, l1) of one pass of fft3d (dim 0: the x lines, (iz, iy) = (l / ny, l % ny); dim 1: the y lines, (iz, ix) =
+ * (l / nx, l % nx); dim 2: the z lines, (iy, ix) = (l / nx, l % nx)), each exactly as fft3d transforms it. The lines of
+ * a pass are independent, so the pair threads split them (force/kspace/pppmKernel.ts); a pass ends before the next.
+ */
+export const fftPassLines = (data: Float64Array, nx: number, ny: number, nz: number, dim: number, l0: number, l1: number, sign: -1 | 1): void => {
+  for (let l = l0; l < l1; l++) {
+    if (dim === 0) fft1d(data, (Math.floor(l / ny) * ny + (l % ny)) * nx, 1, nx, sign);
+    else if (dim === 1) fft1d(data, Math.floor(l / nx) * ny * nx + (l % nx), nx, ny, sign);
+    else fft1d(data, Math.floor(l / nx) * nx + (l % nx), nx * ny, nz, sign);
+  }
+};
+
+/** The number of lines of each pass of fftPassLines. */
+export const fftPassCount = (nx: number, ny: number, nz: number, dim: number): number =>
+  dim === 0 ? ny * nz : dim === 1 ? nz * nx : nx * ny;

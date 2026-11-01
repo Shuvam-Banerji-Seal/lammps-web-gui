@@ -7,7 +7,8 @@ import {
   ACC_LEN, CHUNKS_PER_THREAD, CTL_WORDS, atomChunk, DONE, DONE2, FAILED, NEXT, NEXT2, NOT_DONE, MAX_PAIR_SLOTS, PHASE, READY, readyIndex, cloneableFields, sumForces, pairFromFactory, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins, type ListSegment, type NeighborThreads, type SpecialBins } from './neighborKernel';
-import { PPPM_PARAMS, pppmField, pppmWeights, weightScratch, writePppmParams, type PppmGrid } from '../force/kspace/pppmKernel';
+import { PPPM_PARAMS, pppmField, pppmSpread, pppmWeights, weightScratch, writePppmParams, type PppmGrid } from '../force/kspace/pppmKernel';
+import { fftPassCount, fftPassLines } from '../force/fft';
 
 /*
  * Shared-memory threads for the pair term of the general engine. The engine thread copies the
@@ -583,6 +584,8 @@ export class SharedPairThreads implements NeighborThreads {
 
   // ---- PPPM's per-atom loops (force/kspace/pppmKernel.ts), on the same threads as the pair term
 
+  /** The smallest PPPM mesh (points) whose FFTs go to the threads (pppmFft); tests lower it. */
+  fftMinPoints = 16384;
   private pX: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private pQ: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private pFirst: Int32Array<ArrayBufferLike> = new Int32Array(0);
@@ -612,26 +615,31 @@ export class SharedPairThreads implements NeighborThreads {
       this.pOut = new Float64Array(shared(24 * N));
       resend = true;
     }
+    // the meshes ex, ey, ez of the field, and rho (the charges) at index 3
     if (len > this.pCapG) {
       this.pCapG = Math.ceil(len * 1.25);
-      this.pMesh = [0, 1, 2].map(() => new Float64Array(shared(8 * this.pCapG)));
+      this.pMesh = [0, 1, 2, 3].map(() => new Float64Array(shared(8 * this.pCapG)));
       resend = true;
     }
-    if (!this.pMesh.length) { this.pMesh = [0, 1, 2].map(() => new Float64Array(shared(8))); resend = true; }
+    if (!this.pMesh.length) { this.pMesh = [0, 1, 2, 3].map(() => new Float64Array(shared(8))); resend = true; }
     if (!resend) return;
     const b = (a: { buffer: ArrayBufferLike }) => a.buffer as SharedArrayBuffer;
     const msg: PairThreadMessage = {
       type: 'pbuffers', x: b(this.pX), q: b(this.pQ), first: b(this.pFirst), wts: b(this.pWts),
-      ex: b(this.pMesh[0]), ey: b(this.pMesh[1]), ez: b(this.pMesh[2]), out: b(this.pOut), params: b(this.pParams),
+      ex: b(this.pMesh[0]), ey: b(this.pMesh[1]), ez: b(this.pMesh[2]), rho: b(this.pMesh[3]), out: b(this.pOut), params: b(this.pParams),
     };
     for (const w of this.workers) w.postMessage(msg);
   }
 
-  /** One PPPM loop over chunks of atoms on every thread, the engine thread claiming chunks too. */
-  private pppmLoop(phase: 1 | 2, g: PppmGrid, n: number, nchunks: number, C: number, V: number, zForce: boolean, own: (i0: number, i1: number) => void): void {
+  /**
+   * One PPPM loop over chunks of items (atoms, mesh z planes or FFT lines) on every thread, the engine thread claiming
+   * chunks too.
+   */
+  private pppmLoop(phase: 1 | 2 | 3 | 4, g: PppmGrid, n: number, nchunks: number, C: number, V: number, zForce: boolean,
+    own: (i0: number, i1: number) => void, items = n, fft?: { mask: number; dim: number; sign: -1 | 1 }): void {
     const W = this.workers.length;
-    writePppmParams(this.pParams, g, n, nchunks, C, V, zForce);
-    const msg: PairThreadMessage = { type: 'pppm', phase };
+    writePppmParams(this.pParams, g, n, nchunks, C, V, zForce, items);
+    const msg: PairThreadMessage = fft ? { type: 'pppm', phase, fft } : { type: 'pppm', phase };
     Atomics.store(this.ctl, DONE, 0);
     Atomics.store(this.ctl, FAILED, 0);
     Atomics.store(this.ctl, NEXT, 0);
@@ -639,7 +647,7 @@ export class SharedPairThreads implements NeighborThreads {
     for (;;) {
       const c = Atomics.add(this.ctl, NEXT, 1);
       if (c >= nchunks) break;
-      const [i0, i1] = atomChunk(n, nchunks, c);
+      const [i0, i1] = atomChunk(items, nchunks, c);
       own(i0, i1);
     }
     for (;;) {
@@ -665,7 +673,8 @@ export class SharedPairThreads implements NeighborThreads {
   pppmMeshes(len: number): [Float64Array, Float64Array, Float64Array] | null {
     if (!this.threadsUp() || this.pCapN === 0) return null;
     this.pppmBuffers(0, this.pOrder, len);
-    const m = this.pMesh.map((a) => { const v = a.subarray(0, len); v.fill(0); return v; });
+    // the field meshes (index 3 is the charge mesh rho, which the k-space loop reads while it fills these)
+    const m = this.pMesh.slice(0, 3).map((a) => { const v = a.subarray(0, len); v.fill(0); return v; });
     return [m[0], m[1], m[2]];
   }
 
@@ -680,6 +689,46 @@ export class SharedPairThreads implements NeighborThreads {
     this.pppmLoop(2, g, n, nchunks, C, V, zForce,
       (i0, i1) => pppmField(g, i0, i1, this.pQ, this.pFirst, this.pWts, this.pMesh[0], this.pMesh[1], this.pMesh[2], C, V, zForce, this.pOut, xs));
     return this.pOut.subarray(0, 3 * n);
+  }
+
+  pppmSpread(g: PppmGrid, n: number, q: ArrayLike<number>, first: Int32Array, wts: Float64Array, len: number): Float64Array | null {
+    // only with the weights of pppmWeights (in the shared arrays)
+    if (!this.threadsUp() || first.buffer !== this.pFirst.buffer || wts.buffer !== this.pWts.buffer || n > this.pCapN) return null;
+    this.pppmBuffers(0, this.pOrder, len);
+    const rho = this.pMesh[3].subarray(0, len);
+    rho.fill(0);
+    for (let i = 0; i < n; i++) this.pQ[i] = q[i];
+    // chunks of mesh z planes: each thread adds every atom's charge to its own planes, in atom order (every chunk scans
+    // all atoms, so a few chunks per thread rather than CHUNKS_PER_THREAD)
+    const nchunks = Math.min(g.nz, 3 * (this.workers.length + 1));
+    const xs = new Int32Array(3 * g.order);
+    this.pppmLoop(3, g, n, nchunks, 0, 1, false,
+      (z0, z1) => pppmSpread(g, n, this.pQ, this.pFirst, this.pWts, this.pMesh[3], z0, z1, xs), g.nz);
+    return rho;
+  }
+
+  pppmFft(g: PppmGrid, meshes: Float64Array[], sign: -1 | 1): boolean {
+    // a small mesh transforms faster on one thread than over three passes of messages and waits. Measured in Chromium
+    // (8 threads, rhodopsin): ~4000 points (peptide) 0.32 s threaded vs 0.26 s serial per 300 steps, ~21000 even,
+    // 72^3 2.74 s serial vs 0.83 s threaded per 20 steps
+    if (!this.threadsUp() || meshes.length === 0 || g.nx * g.ny * g.nz < this.fftMinPoints) return false;
+    // each mesh one of the shared ones (bit k of the mask: ex, ey, ez, rho)
+    let mask = 0;
+    for (const m of meshes) {
+      const k = this.pMesh.findIndex((a) => a.buffer === m.buffer);
+      if (k < 0 || m.byteOffset !== 0 || m.length > this.pCapG) return false;
+      mask |= 1 << k;
+    }
+    const own = this.pMesh.filter((_, k) => (mask & (1 << k)) !== 0);
+    // the x lines, then the y lines, then the z lines, as fft3d, each pass split over the threads
+    for (let dim = 0; dim < 3; dim++) {
+      const lines = fftPassCount(g.nx, g.ny, g.nz, dim);
+      const nchunks = Math.min(lines, CHUNKS_PER_THREAD * (this.workers.length + 1));
+      this.pppmLoop(4, g, 0, nchunks, 0, 1, false, (l0, l1) => {
+        for (const a of own) fftPassLines(a, g.nx, g.ny, g.nz, dim, l0, l1, sign);
+      }, lines, { mask, dim, sign });
+    }
+    return true;
   }
 
   dispose(): void {

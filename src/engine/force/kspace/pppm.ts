@@ -405,6 +405,18 @@ export class KSpacePPPM extends KSpaceBase {
       }
       return out;
     });
+    // u2 of every mesh index and alias image, per dimension (the same calls as in the loop below, made once: the z factor
+    // was otherwise evaluated for every x and y image of every mesh point)
+    const u2tab = [0, 1, 2].map((d) => {
+      const nn = N[d], nbd = nb[d], w = 2 * nbd + 1;
+      const t = new Float64Array(nn * w);
+      for (let i = 0; i < nn; i++) {
+        const m = i < nn / 2 ? i : i - nn;
+        for (let a = -nbd; a <= nbd; a++) t[i * w + a + nbd] = u2(m + a * nn, nn);
+      }
+      return t;
+    });
+    const wx = 2 * nb[0] + 1, wy = 2 * nb[1] + 1, wz = 2 * nb[2] + 1;
     const k = [0, 0, 0], km = [0, 0, 0];
     for (let iz = 0; iz < nz; iz++) {
       const mz = iz < nz / 2 ? iz : iz - nz;
@@ -419,15 +431,15 @@ export class KSpacePPPM extends KSpaceBase {
           let num = 0;
           for (let ax = -nb[0]; ax <= nb[0]; ax++) {
             const nxm = mx + ax * nx;
-            const ux = u2(nxm, nx);
+            const ux = u2tab[0][ix * wx + ax + nb[0]];
             for (let ay = -nb[1]; ay <= nb[1]; ay++) {
               const nym = my + ay * ny;
-              const uy = u2(nym, ny);
+              const uy = u2tab[1][iy * wy + ay + nb[1]];
               for (let az = -nb[2]; az <= nb[2]; az++) {
                 const nzm = mz + az * nz;
                 kvec(nxm, nym, nzm, km);
                 const km2 = km[0] * km[0] + km[1] * km[1] + km[2] * km[2];
-                num += ux * uy * u2(nzm, nz) * ((k[0] * km[0] + k[1] * km[1] + k[2] * km[2]) / km2) * NATIVE_IK_FOUR_PI * libm.exp(-km2 / (4 * g * g));
+                num += ux * uy * u2tab[2][iz * wz + az + nb[2]] * ((k[0] * km[0] + k[1] * km[1] + k[2] * km[2]) / km2) * NATIVE_IK_FOUR_PI * libm.exp(-km2 / (4 * g * g));
               }
             }
           }
@@ -560,10 +572,15 @@ export class KSpacePPPM extends KSpaceBase {
     const grid = this.grid(geom);
     const tw = thr && this.assignWeights === KSpacePPPM.prototype.assignWeights ? thr.pppmWeights(grid, s.x, n) : null;
     const { first, wts } = tw ?? this.assignWeights(s, geom);
-    const rho = new Float64Array(2 * ng);
     const qg = this.gridCharges(s);
-    for (let i = 0; i < n; i++) if (qg[i] !== 0) this.spread(rho, i, qg[i], first, wts);
-    fft3d(rho, nx, ny, nz, -1);
+    // the charge spread and the FFTs on the threads too when the weights were (chunks of mesh z planes and of FFT lines;
+    // the same mesh as the loop below, bit for bit: pppmKernel.ts pppmSpread, fft.ts fftPassLines)
+    let rho = tw && thr!.pppmSpread ? thr!.pppmSpread(grid, n, qg, first, wts, 2 * ng) : null;
+    if (!rho) {
+      rho = new Float64Array(2 * ng);
+      for (let i = 0; i < n; i++) if (qg[i] !== 0) this.spread(rho, i, qg[i], first, wts);
+    }
+    if (!(thr?.pppmFft && thr.pppmFft(grid, [rho], -1))) fft3d(rho, nx, ny, nz, -1);
     // energy, virial and the three field components in k-space
     const inv = invertUpper(geom.lx, geom.xy, geom.xz, geom.ly, geom.yz, geom.lz * this.slab);
     const meshes = tw ? thr!.pppmMeshes(2 * ng) : null;
@@ -607,9 +624,11 @@ export class KSpacePPPM extends KSpaceBase {
         }
       }
     }
-    fft3d(ex, nx, ny, nz, 1);
-    fft3d(ey, nx, ny, nz, 1);
-    fft3d(ez, nx, ny, nz, 1);
+    if (!(meshes && thr!.pppmFft && thr!.pppmFft(grid, [ex, ey, ez], 1))) {
+      fft3d(ex, nx, ny, nz, 1);
+      fft3d(ey, nx, ny, nz, 1);
+      fft3d(ez, nx, ny, nz, 1);
+    }
     if (ub) fft3d(ub, nx, ny, nz, 1);
     if (vb) for (const v of vb) fft3d(v, nx, ny, nz, 1);
     // interpolate the field back and apply F = C q E / V (pppmKernel.ts pppmField, on the threads when the weights were)

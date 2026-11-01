@@ -394,9 +394,10 @@ export class System {
   /**
    * The force field's init, the periodic wrap and the neighbor lists. sort: a run's or minimization's setup, which sorts
    * the atoms before the lists are built (src/verlet.cpp Verlet::setup at b332f28: "if (atom->sortfreq > 0)
-   * atom->sort();" before "neighbor->build(1);"), so the storage order of the build is the sorted one.
+   * atom->sort();" before "neighbor->build(1);"), so the storage order of the build is the sorted one. lists false: the
+   * accelerated run loop (run/accel.ts), whose backends bin the atoms themselves, records the build without the lists.
    */
-  setupNeighbors(sort = false): void {
+  setupNeighbors(sort = false, lists = true): void {
     const s = this.state;
     // the run's init has initialized the pair style (initPair) and nothing has changed since
     const pairDone = this.pairInitVersion === this.stateVersion && !this.ff.pairStale;
@@ -405,7 +406,8 @@ export class System {
     this.nb.nativeFullParent = this.fixes.some((f) => f.nativeFullList);
     this.pbc();
     if (sort) this.sortAtoms(true);
-    this.nb.build(s, this.geom, s.step);
+    if (lists) this.nb.build(s, this.geom, s.step);
+    else this.nb.markBuilt(s, this.geom, s.step);
     for (const f of this.fixes) f.afterForceInit?.();
     this.checkDynamicWithin();
   }

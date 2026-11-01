@@ -383,6 +383,20 @@ export class Neighbor {
     this.xBuilt = this.xall.slice(0, 3 * this.nall);
     this.loBuilt = [g.lo[0], g.lo[1], g.lo[2]];
     this.hiBuilt = [g.hi[0], g.hi[1], g.hi[2]];
+    this.recordBuild(s, g, step);
+  }
+
+  /**
+   * A build of the accelerated run loop (run/accel.ts), whose backends bin the atoms themselves each step: what build()
+   * records for the next decide() (the reference positions and box of the check, the step, the count), without the
+   * ghosts and lists, so the box resets and lost-atom checks of System.pbc() come on the steps of the CPU path.
+   */
+  markBuilt(s: SimState, g: Geometry, step: number): void {
+    this.specialStale = false;
+    this.recordBuild(s, g, step);
+  }
+
+  private recordBuild(s: SimState, g: Geometry, step: number): void {
     if (!this.forcedDecision || this.xhold.length !== 3 * s.n) {
       this.xhold = Float64Array.from(s.x.subarray(0, 3 * s.n));
       this.boxhold = [g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2], g.xy, g.xz, g.yz];

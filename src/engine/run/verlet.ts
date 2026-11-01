@@ -44,7 +44,41 @@ export interface RunHooks {
   yieldMs: number;
   /** run pre no: the neighbor lists and forces of the previous run are kept; no setup (run.html "pre"). */
   skipSetup?: boolean;
+  /**
+   * Whether a compute may read per-atom energy or virial after this step (its thermo or dump output is due). With
+   * only quiet fixes (peratomQuiet), the other steps leave them out of the force evaluation, as native
+   * Integrate::ev_set does for steps no compute registered (src/integrate.cpp at b332f28). Absent: every step
+   * tallies them while a compute needs them.
+   */
+  peratomDue?: (step: number) => boolean;
 }
+
+/**
+ * Fix styles that invoke no compute between outputs when none of their arguments is a variable: native's fixes of this
+ * list call modify->addstep_compute only for a variable argument (e.g. src/fix_setforce.cpp, fix_langevin.cpp,
+ * fix_temp_berendsen.cpp at b332f28); their temperature and pressure computes need no per-atom energy or virial.
+ */
+const QUIET_FIXES = new Set([
+  'nve', 'nve/limit', 'nve/sphere', 'nve/asphere', 'nve/noforce', 'nvt', 'npt', 'nph', 'nvt/sllod',
+  'langevin', 'temp/berendsen', 'temp/rescale', 'temp/csvr', 'temp/csld', 'enforce2d', 'momentum', 'recenter', 'viscous',
+  'setforce', 'addforce', 'aveforce', 'gravity', 'efield', 'spring', 'spring/self', 'shake', 'rattle',
+  'rigid', 'rigid/nve', 'rigid/nvt', 'rigid/npt', 'rigid/nph', 'rigid/small', 'rigid/nve/small', 'rigid/nvt/small',
+  'rigid/npt/small', 'rigid/nph/small', 'wall/lj93', 'wall/lj126', 'wall/lj1043', 'wall/harmonic', 'wall/reflect',
+  'deform', 'nve/eff', 'nvt/eff', 'npt/eff', 'nph/eff',
+]);
+
+/**
+ * Whether per-atom energy and virial are read only at thermo and dump output: every fix is quiet (QUIET_FIXES, no
+ * variable argument) and no group is dynamic (a dynamic group's variable is evaluated on its own steps).
+ */
+export const peratomQuiet = (sys: System): boolean => {
+  if (sys.groups.dynamic.size) return false;
+  for (const f of sys.fixes) {
+    if (!QUIET_FIXES.has(f.style)) return false;
+    if (((f as unknown as { args?: readonly string[] }).args ?? []).some((a) => a.startsWith('v_'))) return false;
+  }
+  return true;
+};
 
 /**
  * Modify::setup's compute setup, before the fixes' setup: "compute setup needs to come before fix setup b/c NH fixes
@@ -142,6 +176,9 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
   const fFinal = has('finalIntegrate');
   const fEnd = has('endOfStep');
   const flags = sys.computeFlags();
+  // per-atom energy and virial only on the steps a compute may read them (hooks.peratomDue)
+  const peratomDue = (flags.eatom || flags.vatom || flags.cvatom) && hooks.peratomDue && peratomQuiet(sys) ? hooks.peratomDue : null;
+  const lean = { ...flags, eatom: false, vatom: false, cvatom: false, step: true };
   const timer = sys.timer;
 
   if (!hooks.skipSetup) setupRun(sys);
@@ -180,7 +217,13 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
     }
     for (const f of fPreForce) f.preForce!();
     timer.stamp(MODIFY);
-    sys.computeForcesInRun({ ...flags, step: true });
+    if (peratomDue && !peratomDue(s.step)) {
+      sys.computeForcesInRun(lean);
+      sys.peratomSkippedStep = s.step;
+    } else {
+      sys.computeForcesInRun({ ...flags, step: true });
+      sys.peratomSkippedStep = -1;
+    }
     sys.forcesCurrent();
     sys.assignDynamicGroups(false);
     for (const f of fPreRev) f.preReverse!();
@@ -199,6 +242,9 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
       lastYield = performance.now();
     }
   }
+  // a run stopped early (Stop button) may end on a step without per-atom terms: a compute read after the loop
+  // recomputes them (System.peratomEnergy), as between runs
+  sys.peratomSkippedStep = -1;
   for (const f of fixes) f.postRun?.();
   return taken;
 };

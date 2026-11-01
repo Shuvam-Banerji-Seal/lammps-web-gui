@@ -76,6 +76,8 @@ export const dynamics = async (run: RunApi, sys: System, nsteps: number, o: Dyna
     afterSetup: () => { run.emitThermoRow(sys); },
     afterStep: (step) => { if (sys.thermo.due(step, Number.NaN, o.laststep)) run.emitThermoRow(sys); },
     yieldMs: 30,
+    // per-atom energy and virial on the thermo steps only, the steps whose rows may read them
+    peratomDue: (step) => sys.thermo.due(step, Number.NaN, o.laststep),
   });
 };
 

@@ -177,8 +177,6 @@ const loadWorkspace = (): ScriptWorkspace => {
  */
 const ZOOM_MIN = 0.15;
 const ZOOM_MAX = 2.5;
-/** Fit to view never zooms out below this (text stays legible); see fitToView. */
-const FIT_MIN = 0.5;
 
 interface Transform {
   x: number;
@@ -885,14 +883,18 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
     const w = content.offsetWidth;
     const h = content.offsetHeight;
     if (w === 0 || h === 0) return;
+    // the user chose this view: the auto-centring (a pending frame after a template loads, or a canvas resize) must
+    // not snap it back to 100 %
+    viewUntouched.current = false;
     const fitW = (el.clientWidth - pad * 2) / w;
     const fitAll = Math.min(fitW, (el.clientHeight - pad * 2) / h);
-    // A long pipeline fitted whole became unreadable (20 steps: 21 %, 13 px titles at about 3 px). Below
-    // FIT_MIN the view fits the width instead (never below FIT_MIN), starts at the top and is panned.
-    const k = Math.min(ZOOM_MAX, fitAll >= FIT_MIN ? fitAll : Math.max(FIT_MIN, Math.min(fitW, 1)));
+    // The whole pipeline, as the button says: a long one becomes the bird's-eye overview ZOOM_MIN is for (before,
+    // below 50 % the view only fitted the width and stayed at 100 %, so Fit did nothing on a desktop). Never above
+    // 100 % for a short one (a 3-step pipeline blown up to fill the canvas reads as a mistake).
+    const k = Math.min(1, Math.max(ZOOM_MIN, fitAll));
     setViewTf({
-      x: Math.max(pad, (el.clientWidth - w * k) / 2),
-      y: fitAll >= FIT_MIN ? Math.max(pad, (el.clientHeight - h * k) / 2) : pad,
+      x: (el.clientWidth - w * k) / 2,
+      y: Math.max(pad, (el.clientHeight - h * k) / 2),
       k,
     });
   }, []);
@@ -975,7 +977,8 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
     if (view !== 'flow' || !viewUntouched.current) return;
     const el = canvasRef.current;
     if (!el) return;
-    const id = window.requestAnimationFrame(centerView);
+    // checked again when the frame comes: a Fit (or a pan, zoom) before it is the user's view
+    const id = window.requestAnimationFrame(() => { if (viewUntouched.current) centerView(); });
     const ro = new ResizeObserver(() => {
       if (viewUntouched.current) centerView();
     });
@@ -1120,8 +1123,10 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
         </div>
 
         {/* Toolbar (scrollable on mobile, two groups on desktop) */}
-        <div className={`flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-1 gap-y-1 border-b px-2 py-1 sm:gap-x-2 sm:px-3 ${ct.divider}`}>
-          <div className="flex min-w-0 shrink-0 items-center gap-1.5">
+        {/* a size container: the buttons' labels follow this row's width (the editor column, which the palette and the
+            step editor narrow), not the viewport, so the buttons fit in one row at every column width */}
+        <div className={`@container flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-1 gap-y-1 border-b px-2 py-1 sm:gap-x-2 sm:px-3 ${ct.divider}`}>
+          <div className="flex min-w-0 flex-1 basis-72 items-center gap-1.5">
             {!paletteOpen && (
               <button onClick={() => setPaletteOpen(true)} className={`inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Open palette">
                 <ChevronRight size={16} />
@@ -1130,7 +1135,8 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
             <input
               value={model.title}
               onChange={e => setModel(prev => ({ ...prev, title: e.target.value }))}
-              className={`w-24 min-w-0 flex-shrink rounded bg-transparent px-1 py-0.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-[#7fa66b] sm:w-40 sm:px-1.5 ${ct.headerText}`}
+              title={model.title}
+              className={`w-24 min-w-0 flex-1 truncate rounded bg-transparent px-1 py-0.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-[#7fa66b] sm:max-w-md sm:px-1.5 ${ct.headerText}`}
               aria-label="Script title"
             />
             <span className={`hidden whitespace-nowrap text-[10px] md:block ${ct.muted}`}>
@@ -1144,6 +1150,9 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
               Notebook was unclickable at ~768-1200px). */}
           {/* Phone: one scrolling strip whose buttons keep their width (shrunk
               to 24 px, the "Script" label ran over the next icon). */}
+          {/* md+: the title group takes the row's leftover width (basis 18rem), so when the buttons do not fit beside
+              it the whole group moves to its own row (at 1440 px one icon used to wrap alone onto a second row, and
+              the title was cut at 10rem); on a narrow column the group wraps its own buttons. */}
           <div className="flex min-w-0 items-center gap-0.5 max-md:overflow-x-auto max-md:*:shrink-0 md:ml-auto md:flex-wrap md:justify-end sm:gap-1.5">
             <button
               onClick={undo}
@@ -1173,7 +1182,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
               aria-label="Sort steps by section"
             >
               <ArrowDownUp size={13} />
-              <span className="hidden 2xl:inline">Sort</span>
+              <span className="hidden @6xl:inline">Sort</span>
             </button>
             <button
               onClick={() => forkHere(model.steps[model.steps.length - 1]?.uid ?? null)}
@@ -1182,7 +1191,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
               title="Fork a new concept branch at the end of the pipeline"
             >
               <GitBranch size={13} />
-              <span className="hidden 2xl:inline">Fork</span>
+              <span className="hidden @6xl:inline">Fork</span>
             </button>
             <button
               onClick={() => setLintOpen(v => !v)}
@@ -1206,7 +1215,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                     ? lintCounts.warnings
                     : ''}
               </span>
-              <span className="hidden 2xl:inline">Check</span>
+              <span className="hidden @6xl:inline">Check</span>
             </button>
             <div ref={templatesMenuRef} className="relative">
               <button
@@ -1215,7 +1224,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                 title="Start from a ready-made pipeline"
               >
                 <LayoutTemplate size={13} />
-                <span className="hidden md:inline">Templates</span>
+                <span className="hidden @lg:inline">Templates</span>
               </button>
               {templatesOpen && (
                 <div
@@ -1255,7 +1264,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
               title="Import a LAMMPS input script — builds the flowchart"
             >
               <FileInput size={13} />
-              <span className="hidden lg:inline">Import</span>
+              <span className="hidden @3xl:inline">Import</span>
             </button>
             <input
               ref={importInputRef}
@@ -1277,7 +1286,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                   title="Export the flowchart as a presentable SVG"
                 >
                   <FileImage size={13} />
-                  <span className="hidden md:inline">SVG</span>
+                  <span className="hidden @5xl:inline">SVG</span>
                 </button>
                 <button
                   onClick={() => exportFlowchart('png')}
@@ -1286,7 +1295,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                   title="Export the flowchart as a 2x PNG image"
                 >
                   <ImageDown size={13} />
-                  <span className="hidden md:inline">PNG</span>
+                  <span className="hidden @5xl:inline">PNG</span>
                 </button>
               </>
             )}
@@ -1308,7 +1317,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                 title="Discard manual edits and regenerate from your steps"
               >
                 <X size={13} />
-                <span className="hidden 2xl:inline">Exit manual</span>
+                <span className="hidden @6xl:inline">Exit manual</span>
               </button>
             ) : (
               <button
@@ -1317,7 +1326,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                 title="Override the generated script with hand-edited text"
               >
                 <PencilLine size={13} />
-                <span className="hidden 2xl:inline">Override</span>
+                <span className="hidden @6xl:inline">Override</span>
               </button>
             )}
             <button
@@ -1325,7 +1334,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
               className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Copy script to clipboard"
             >
-              {copied ? <span className={ct.accentText}>✓ Copied</span> : <><Copy size={13} /><span className="hidden lg:inline">Copy</span></>}
+              {copied ? <span className={ct.accentText}>✓ Copied</span> : <><Copy size={13} /><span className="hidden @3xl:inline">Copy</span></>}
             </button>
             <button
               onClick={() => downloadTextFile('in.lammps', activeText)}
@@ -1333,7 +1342,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
               title="Download in.lammps"
             >
               <Download size={13} />
-              <span className="hidden 2xl:inline">Download</span>
+              <span className="hidden @6xl:inline">Download</span>
             </button>
             {onRunInNotebook && (
               <button
@@ -1343,7 +1352,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                 aria-label="Run this script in the MD Notebook"
               >
                 <NotebookPen size={13} />
-                <span className="hidden whitespace-nowrap xl:inline">Run in Notebook</span>
+                <span className="hidden whitespace-nowrap @4xl:inline">Run in Notebook</span>
               </button>
             )}
             {onOpenViewer && (
@@ -1353,7 +1362,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                 title="Open 3D structure viewer"
               >
                 <AtomIcon size={13} />
-                <span className="hidden 2xl:inline">Viewer</span>
+                <span className="hidden @6xl:inline">Viewer</span>
               </button>
             )}
           </div>
@@ -1679,7 +1688,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                 <Maximize2 size={14} />
               </button>
             </div>
-            <p className={`pointer-events-none absolute bottom-3 left-3 hidden text-[10px] md:block ${ct.muted}`}>
+            <p className={`pointer-events-none absolute bottom-3 left-3 hidden max-w-[calc(100%-13rem)] truncate rounded-md border px-2 py-1 text-[10px] shadow-sm lg:block ${ct.card} ${ct.muted}`}>
               wheel = zoom · drag = pan · <kbd>F</kbd> fit · <kbd>0</kbd> centre · <kbd>B</kbd> fork · <kbd>[</kbd><kbd>]</kbd> concept · <kbd>/</kbd> search · <kbd>S</kbd> script · <kbd>C</kbd> check
             </p>
           </div>
@@ -1893,7 +1902,7 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
     const canForkHere = i === 0 || trunkSteps.some(t => t.uid === steps[i - 1]?.uid);
     return (
       <div key={`edge-${i}`} className="relative flex flex-col items-center">
-        <div className={`h-3 w-px bg-[#453a2b]`} />
+        <div className={`h-3 w-px ${ct.edgeLine}`} />
         <button
           ref={el => registerEdgePillRef(i, el)}
           onClick={(e) => { e.stopPropagation(); onEdgeClick(i); }}
@@ -1908,7 +1917,7 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
           <Link2 size={10} />
           connect
         </button>
-        <div className={`h-3 w-px bg-[#453a2b]`} />
+        <div className={`h-3 w-px ${ct.edgeLine}`} />
 
         {menuOpen && (
           <div
@@ -2015,8 +2024,7 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
   return (
     <div className={`flex flex-col items-center gap-0 p-6 ${dragUid ? 'select-none' : ''}`}>
       {/* START */}
-      <div className="flex items-center gap-2 text-[10px] text-[#a3937f]">
-        <div className={`h-px w-8 ${ct.edgeLine.replace('bg-', 'bg-')}`} />
+      <div className="flex items-center text-[10px]">
         <span className={`rounded-full px-3 py-0.5 ${ct.startBadge}`}>
           START
         </span>
@@ -2166,8 +2174,7 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
         </div>
       )}
 
-      <div className="mt-2 flex items-center gap-2 text-[10px] text-[#a3937f]">
-        <div className={`h-px w-8 ${ct.edgeLine}`} />
+      <div className="mt-2 flex items-center text-[10px]">
         <span className={`rounded-full px-3 py-0.5 ${ct.endBadge}`}>
           END
         </span>

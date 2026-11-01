@@ -164,7 +164,7 @@ const DARK: ThemeTokens = {
   chipIdle: 'bg-[#342b1d]/60 text-[#a9cba0] hover:bg-[#342b1d] hover:text-[#c4ddb2]',
   nodeCard: 'border-[#3f3526] bg-[#1e1913]/60 hover:border-[#659054]',
   nodeDisabled: 'border-[#332a1f] bg-[#1e1913]/20',
-  edgeLine: 'bg-[#453a2b]',
+  edgeLine: 'bg-[#6b5a44]',
   edgePill:
     'border-[#3f3526] bg-[#241e16] text-[#a3937f] hover:border-[#7fa66b] hover:text-[#c4ddb2]',
   edgeActive: 'border-[#7fa66b] bg-[#31402a] text-[#c4ddb2]',

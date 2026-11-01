@@ -1,9 +1,10 @@
-import { GPU_PAIR_STYLES, gpuPairSpec, LONG_COUL_STYLES, TABLE_LAW, type GpuPairSpec } from '../gpu/pairSpec';
+import { GPU_PAIR_STYLES, gpuPairSpec, LONG_COUL_STYLES, SPEC_STRIDE, TABLE_LAW, type GpuPairSpec } from '../gpu/pairSpec';
 import { GPU_EAM_STYLES, gpuEamSpec, isGpuEam, type EamPair, type GpuEamSpec } from '../gpu/eamSpec';
 import { GPU_SW_STYLES, gpuSwSpec, isGpuSw, type GpuSwSpec, type SwPair } from '../gpu/swSpec';
 import { GPU_TERSOFF_STYLES, gpuTersoffSpec, isGpuTersoff, type GpuTersoffSpec, type TersoffPair } from '../gpu/tersoffSpec';
 import { GPU_TIP4P_STYLES, gpuTip4pSpec, isGpuTip4p, type GpuTip4pSpec, type Tip4pPair, type Tip4pSites } from '../gpu/tip4pSpec';
 import { buildOwnedSites } from '../force/pair/tip4p_sites';
+import { exclusionGroupBits, gpuExclusions, MAX_GPU_EXCLUSION_RULES, type GpuExclusions } from '../gpu/exclusions';
 import type { SpecialList } from '../atoms';
 import type { LevelSelect } from '../force/forcefield';
 import { COMM, MODIFY, OUTPUT, PAIR } from '../timer';
@@ -49,6 +50,8 @@ export interface Accel {
   tersoff: GpuTersoffSpec | null;
   /** a TIP4P pair style on the GPU (computeTip4p: the M sites built here each step, their forces spread on the waters). */
   tip4p: GpuTip4pSpec | null;
+  /** neigh_modify exclude/include on the styles kernel (gpu/exclusions.ts; the type pairs are zero cutoffs in spec). */
+  exclude: GpuExclusions | null;
   /** Whole NVE steps on the GPU (resident.ts) with readback only on output steps. */
   resident: boolean;
   enforce2d: boolean;
@@ -89,7 +92,17 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     || s.topo.bonds.n > 0 || s.topo.angles.n > 0 || s.topo.dihedrals.n > 0 || s.topo.impropers.n > 0;
   if (molecular && backend.kind !== 'webgpu') return why('bonded terms or molecular topology');
   if (s.box.triclinic || !s.box.periodic.every(Boolean)) return why('a triclinic or non-periodic box');
-  if (sys.nb.excludes.length || sys.nb.includeBit) return why('neigh_modify exclude/include');
+  // neigh_modify exclude/include: on the GPU's styles kernel (gpu/exclusions.ts), lj/cut there as style 10. Native applies
+  // the rules when it builds a list, so rules on a dynamic group stay on the CPU path
+  const ex = gpuExclusions(sys.nb.excludes, sys.nb.includeBit);
+  if (ex) {
+    if (backend.kind !== 'webgpu') return why('neigh_modify exclude/include');
+    let dyn = 0;
+    for (const bit of sys.groups.dynamic.keys()) dyn |= bit;
+    if (exclusionGroupBits(ex) & dyn) return why('neigh_modify exclude/include of a dynamic group');
+    if (ex.rules.length > MAX_GPU_EXCLUSION_RULES) return why(`more than ${MAX_GPU_EXCLUSION_RULES} neigh_modify exclude group or molecule rules`);
+    if (!gpuStyle && !ljcut) return why(`neigh_modify exclude/include with pair style ${p.name}`);
+  }
   // the backends build their own cell lists, so fixes that act at neighbor-list time cannot run with them
   for (const f of sys.fixes) {
     if (f.preExchange || f.preNeighbor || f.postNeighbor || f.preReverse) return why(`fix ${f.style} (it acts when neighbor lists are rebuilt)`);
@@ -120,7 +133,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     // the kernels' minimum image needs at least 2 cutoffs along each periodic edge (gpu/eamKernels.ts)
     if (shortBox(eam.maxCutoff)) return why(shortWhy);
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam, sw: null, tersoff: null, tip4p: null, resident: false, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam, sw: null, tersoff: null, tip4p: null, exclude: null, resident: false, enforce2d }, reason: null };
   }
   if (swStyle) {
     if (molecular) return why('bonded terms with an sw pair style');
@@ -129,7 +142,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     // the kernels' minimum image needs at least 2 cutoffs along each periodic edge (gpu/swKernels.ts)
     if (shortBox(sw.maxCutoff)) return why(shortWhy);
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw, tersoff: null, tip4p: null, resident: false, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw, tersoff: null, tip4p: null, exclude: null, resident: false, enforce2d }, reason: null };
   }
   if (tersoffStyle) {
     if (molecular) return why('bonded terms with a tersoff pair style');
@@ -138,7 +151,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     // the kernels' minimum image needs at least 2 cutoffs along each periodic edge (gpu/tersoffKernels.ts)
     if (shortBox(tersoff.maxCutoff)) return why(shortWhy);
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff, tip4p: null, resident: false, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff, tip4p: null, exclude: null, resident: false, enforce2d }, reason: null };
   }
   if (tip4pStyle) {
     const qqrd2e = s.units.qqr2e * (p.coulConstScale ?? 1) / sys.ff.dielectric;
@@ -148,13 +161,14 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     // the kernel's minimum image needs at least 2 cutoffs along each periodic edge (gpu/tip4pKernels.ts)
     if (shortBox(tip4p.maxCutoff)) return why(shortWhy);
     const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p, resident: false, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p, exclude: null, resident: false, enforce2d }, reason: null };
   }
-  if (!ljcut || molecular) {
+  if (!ljcut || molecular || ex) {
     const qqrd2e = s.units.qqr2e * (p.coulConstScale ?? 1) / sys.ff.dielectric;
     const sb = sys.ff.special;
-    const spec = gpuPairSpec(p, s.ntypes, qqrd2e, molecular ? { lj: [1, ...sb.lj], coul: [1, ...sb.coul] } : null);
-    if (typeof spec === 'string') return why(spec);
+    const spec0 = gpuPairSpec(p, s.ntypes, qqrd2e, molecular ? { lj: [1, ...sb.lj], coul: [1, ...sb.coul] } : null);
+    if (typeof spec0 === 'string') return why(spec0);
+    const spec = ex ? withTypeExclusions(spec0, ex) : spec0;
     // the kernel's minimum image needs at least 2 cutoffs along each periodic edge (webgpuForces.ts KERNEL_STYLES; the
     // whole-step kernel 3, resident.ts canAdvanceSpec): a shorter edge has two copies of a partner within the cutoff
     if (shortBox(spec.maxCutoff)) return why(shortWhy);
@@ -163,8 +177,8 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const allBit = sys.groupBit('all');
     const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
     const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };
-    const resident = !molecular && !kspace && !needTensor && !sys.groups.dynamic.size && spec.law !== TABLE_LAW && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p: null, resident, enforce2d }, reason: null };
+    const resident = !molecular && !kspace && !needTensor && !ex && !sys.groups.dynamic.size && spec.law !== TABLE_LAW && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p: null, exclude: ex, resident, enforce2d }, reason: null };
   }
   const t = newPairTable(s.ntypes, p.cutGlobal);
   t.shift = p.shift;
@@ -180,7 +194,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
   // whole GPU steps cannot reassign a dynamic group between steps
   const resident = onlyNve && !needTensor && !sys.groups.dynamic.size && isResident(backend) && backend.canAdvance(s, t);
-  return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff: null, tip4p: null, resident, enforce2d }, reason: null };
+  return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, eam: null, sw: null, tersoff: null, tip4p: null, exclude: null, resident, enforce2d }, reason: null };
 };
 
 /**
@@ -224,7 +238,7 @@ const cpuTerms = (a: Accel): LevelSelect => ({
   has: (t) => (a.bonded && (t === 'bond' || t === 'angle' || t === 'dihedral' || t === 'improper')) || (a.kspace && t === 'kspace'),
 });
 
-type SpecBackend = ForceBackend & { computeSpec(s: SimState, spec: GpuPairSpec, special?: SpecialList | null): Promise<ForceResult> };
+type SpecBackend = ForceBackend & { computeSpec(s: SimState, spec: GpuPairSpec, special?: SpecialList | null, ex?: GpuExclusions | null): Promise<ForceResult> };
 
 /**
  * One force evaluation on the accelerated backend: the style kernel of computeSpec, or lj/cut with the table. With
@@ -249,14 +263,14 @@ const evaluate = async (a: Accel, sys: System, step: boolean): Promise<ForceResu
   if (a.tip4p) return evaluateTip4p(a, a.tip4p, sys, step);
   if (!a.spec) return a.backend.compute(s, a.table);
   const gb = a.backend as SpecBackend;
-  if (!a.bonded && !a.kspace) return gb.computeSpec(s, a.spec);
+  if (!a.bonded && !a.kspace) return gb.computeSpec(s, a.spec, null, a.exclude);
   // the kspace style's G-ewald of this step (Ewald sets it again when the box changes)
   if (a.spec.gewald > 0) a.spec.gewald = sys.ff.pair!.gEwald;
   // the CPU neighbor list is not rebuilt on this path: the bonded partners by the minimum image
   sys.ff.compute(s, sys.nb, sys.geom, { step, minimumImage: true }, cpuTerms(a));
   const n3 = 3 * s.n;
   const fb = s.f.slice(0, n3);
-  const r = await gb.computeSpec(s, a.spec, sys.ff.specialPartners);
+  const r = await gb.computeSpec(s, a.spec, sys.ff.specialPartners, a.exclude);
   for (let k = 0; k < n3; k++) s.f[k] += fb[k];
   return r;
 };
@@ -286,6 +300,24 @@ const evaluateTip4p = async (a: Accel, spec: GpuTip4pSpec, sys: System, step: bo
   const r = await gb.computeTip4p(s, spec, sys.ff.specialPartners, sites);
   for (let k = 0; k < n3; k++) s.f[k] += fb[k];
   return r;
+};
+
+/**
+ * The spec with the excluded type pairs (both orders) given zero cutoffs: no pair term and, as they are not in the
+ * neighbor list, no kspace correction (the first two floats of each type pair are its cutoffs squared, pairSpec.ts).
+ */
+const withTypeExclusions = (spec: GpuPairSpec, ex: GpuExclusions): GpuPairSpec => {
+  if (!ex.typePairs.length) return { ...spec, key: `${spec.key}|ex${ex.key}` };
+  const coef = Float64Array.from(spec.coef);
+  for (const [a, b] of ex.typePairs) {
+    for (const [i, j] of [[a, b], [b, a]]) {
+      if (i < 1 || j < 1 || i >= spec.stride || j >= spec.stride) continue;
+      const o = SPEC_STRIDE * (i * spec.stride + j);
+      coef[o] = 0;
+      coef[o + 1] = 0;
+    }
+  }
+  return { ...spec, coef, key: `${spec.key}|ex${ex.key}` };
 };
 
 /** The run loop on an accelerated backend. Returns steps taken. */

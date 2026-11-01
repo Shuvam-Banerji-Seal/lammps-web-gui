@@ -156,7 +156,7 @@ velocity all create 1000.0 87287 loop geom
 const PACE_BOX = `units metal
 atom_style atomic
 lattice fcc 3.615
-region box block 0 4 0 4 0 4
+region box block 0 3 0 3 0 3
 create_box 2 box
 create_atoms 1 box
 mass * 63.546
@@ -341,8 +341,10 @@ describe('shared-memory pair threads: every threaded style matches the single-th
   }
   for (const [name, lines] of Object.entries(PACE_STYLES)) {
     it(`${name} (GPL port, full list in native order, basis rebuilt by each worker)`, async () => {
-      const serial = await runCase(lines, 1, '', PACE_BOX, true);
-      const threaded = await runCase(lines, 4, '', PACE_BOX, true);
+      // 108 atoms and 10 steps: pace is the costliest style here, and the workers run in this process (the 256-atom,
+      // 30-step version took 20 s locally and over 30 s on the node 22 CI runner)
+      const serial = await runCase(lines, 1, '', PACE_BOX, true, 10);
+      const threaded = await runCase(lines, 4, '', PACE_BOX, true, 10);
       expect(threaded.threadedComputes).toBeGreaterThan(0);
       expectClose(serial, threaded, 1e-10);
     });

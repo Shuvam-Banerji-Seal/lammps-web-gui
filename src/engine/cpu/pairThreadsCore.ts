@@ -7,7 +7,8 @@ export type PairFactories = Readonly<Record<string, () => Pair>>;
 /** Loads a style's factory on demand (cpu/threadedPairLoaders.ts: the pair worker loads only the styles it is sent). */
 export type PairLoader = (name: string, url?: string) => Promise<(() => Pair) | null>;
 import { halfBinsPairs, halfBinsPairsSpecial, type HalfBins } from './neighborKernel';
-import { PPPM_PARAMS, pppmField, pppmWeights, readPppmParams, weightScratch } from '../force/kspace/pppmKernel';
+import { PPPM_PARAMS, pppmField, pppmSpread, pppmWeights, readPppmParams, weightScratch } from '../force/kspace/pppmKernel';
+import { fftPassLines } from '../force/fft';
 
 /*
  * The worker side of the shared-memory pair threads (pairThreads.ts) and the helpers both sides
@@ -65,12 +66,16 @@ export type PairThreadMessage =
     special: { lj: number[]; coul: number[]; keep: boolean; hx: number; hy: number; hz: number; sbbits: number } | null;
   }
   /** PPPM's shared arrays (force/kspace/pppmKernel.ts): positions, mesh charges, weights, field meshes, field forces */
-  | { type: 'pbuffers'; x: SharedArrayBuffer; q: SharedArrayBuffer; first: SharedArrayBuffer; wts: SharedArrayBuffer; ex: SharedArrayBuffer; ey: SharedArrayBuffer; ez: SharedArrayBuffer; out: SharedArrayBuffer; params: SharedArrayBuffer }
+  | { type: 'pbuffers'; x: SharedArrayBuffer; q: SharedArrayBuffer; first: SharedArrayBuffer; wts: SharedArrayBuffer; ex: SharedArrayBuffer; ey: SharedArrayBuffer; ez: SharedArrayBuffer; rho: SharedArrayBuffer; out: SharedArrayBuffer; params: SharedArrayBuffer }
   /**
    * one of PPPM's per-atom loops over chunks of atoms: 1 the weights (pppmWeights), 2 the field forces (pppmField); the
    * grid, the counts and the constants are in the shared params array (pppmKernel.ts writePppmParams)
    */
-  | { type: 'pppm'; phase: 1 | 2 };
+  /**
+   * One of PPPM's threaded loops: 1 the weights, 2 the field interpolation (chunks of atoms), 3 the charge spread (chunks
+   * of mesh z planes), 4 one pass of the FFTs of the meshes in mask (bit k: ex, ey, ez, rho; chunks of lines of pass dim)
+   */
+  | { type: 'pppm'; phase: 1 | 2 | 3 | 4; fft?: { mask: number; dim: number; sign: -1 | 1 } };
 
 /** Atoms [lo, hi) of chunk c when n atoms are cut into nchunks chunks (PPPM's loops). */
 export const atomChunk = (n: number, nchunks: number, c: number): [number, number] => {
@@ -281,7 +286,7 @@ export class PairThreadWorker {
     if (m.type === 'neigh') { this.neighbors_(m); return; }
     if (m.type === 'pbuffers') {
       this.pX = new Float64Array(m.x); this.pQ = new Float64Array(m.q); this.pFirst = new Int32Array(m.first); this.pWts = new Float64Array(m.wts);
-      this.pEx = new Float64Array(m.ex); this.pEy = new Float64Array(m.ey); this.pEz = new Float64Array(m.ez); this.pOut = new Float64Array(m.out);
+      this.pEx = new Float64Array(m.ex); this.pEy = new Float64Array(m.ey); this.pEz = new Float64Array(m.ez); this.pRho = new Float64Array(m.rho); this.pOut = new Float64Array(m.out);
       this.pParams = new Float64Array(m.params);
       return;
     }
@@ -386,6 +391,7 @@ export class PairThreadWorker {
   private pEx: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private pEy: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private pEz: Float64Array<ArrayBufferLike> = new Float64Array(0);
+  private pRho: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private pOut: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private pParams: Float64Array<ArrayBufferLike> = new Float64Array(PPPM_PARAMS);
 
@@ -394,15 +400,19 @@ export class PairThreadWorker {
     const ctl = this.ctl!;
     try {
       // the grid, the counts and the constants the engine thread wrote into the shared params array
-      const { g, n, nchunks, C, V, zForce } = readPppmParams(this.pParams as Float64Array);
+      const { g, n, nchunks, C, V, zForce, items } = readPppmParams(this.pParams as Float64Array);
       const sc = weightScratch(g.order);
       const xs = new Int32Array(3 * g.order);
+      const meshes = [this.pEx, this.pEy, this.pEz, this.pRho] as Float64Array[];
+      const fftMeshes = m.fft ? meshes.filter((_, k) => (m.fft!.mask & (1 << k)) !== 0) : [];
       for (;;) {
         const c = Atomics.add(ctl, NEXT, 1);
         if (c >= nchunks) break;
-        const [i0, i1] = atomChunk(n, nchunks, c);
+        const [i0, i1] = atomChunk(items, nchunks, c);
         if (m.phase === 1) pppmWeights(g, this.pX, i0, i1, this.pFirst as Int32Array, this.pWts as Float64Array, sc);
-        else pppmField(g, i0, i1, this.pQ, this.pFirst as Int32Array, this.pWts as Float64Array, this.pEx as Float64Array, this.pEy as Float64Array, this.pEz as Float64Array, C, V, zForce, this.pOut as Float64Array, xs);
+        else if (m.phase === 2) pppmField(g, i0, i1, this.pQ, this.pFirst as Int32Array, this.pWts as Float64Array, this.pEx as Float64Array, this.pEy as Float64Array, this.pEz as Float64Array, C, V, zForce, this.pOut as Float64Array, xs);
+        else if (m.phase === 3) pppmSpread(g, n, this.pQ, this.pFirst as Int32Array, this.pWts as Float64Array, this.pRho as Float64Array, i0, i1, xs);
+        else for (const a of fftMeshes) fftPassLines(a, g.nx, g.ny, g.nz, m.fft!.dim, i0, i1, m.fft!.sign);
       }
     } catch {
       Atomics.add(ctl, FAILED, 1);

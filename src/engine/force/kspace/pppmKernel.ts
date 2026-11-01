@@ -53,26 +53,34 @@ export interface PppmThreads {
   pppmMeshes(len: number): [Float64Array, Float64Array, Float64Array] | null;
   pppmField(g: PppmGrid, n: number, q: ArrayLike<number>, first: Int32Array, wts: Float64Array,
     ex: Float64Array, ey: Float64Array, ez: Float64Array, C: number, V: number, zForce: boolean): Float64Array | null;
+  /**
+   * The charge mesh (len values, re and im interleaved) spread from the weights of pppmWeights, in a shared array that
+   * pppmFft transforms; null when the threads cannot (the engine thread then spreads it).
+   */
+  pppmSpread?(g: PppmGrid, n: number, q: ArrayLike<number>, first: Int32Array, wts: Float64Array, len: number): Float64Array | null;
+  /** fft3d of each mesh (the threads' shared ones: pppmSpread's and pppmMeshes') on the threads; false when it cannot. */
+  pppmFft?(g: PppmGrid, meshes: Float64Array[], sign: -1 | 1): boolean;
 }
 
 /**
  * The parameters of one threaded loop in a shared array (cpu/pairThreads.ts writes them, the workers read them):
- * the grid, the atom count, the chunk count, C, V and zForce. Words of the array.
+ * the grid, the atom count, the chunk count, C, V, zForce, and the count of the items the chunks split (the atoms; the
+ * mesh z planes of the spread; the lines of an FFT pass). Words of the array.
  */
-export const PPPM_PARAMS = 19;
+export const PPPM_PARAMS = 20;
 
-export const writePppmParams = (a: Float64Array, g: PppmGrid, n: number, nchunks: number, C: number, V: number, zForce: boolean): void => {
+export const writePppmParams = (a: Float64Array, g: PppmGrid, n: number, nchunks: number, C: number, V: number, zForce: boolean, items = n): void => {
   a[0] = g.lo0; a[1] = g.lo1; a[2] = g.lo2; a[3] = g.i00; a[4] = g.i01; a[5] = g.i02; a[6] = g.i11; a[7] = g.i12; a[8] = g.i22;
   a[9] = g.slab; a[10] = g.nx; a[11] = g.ny; a[12] = g.nz; a[13] = g.order; a[14] = n; a[15] = nchunks; a[16] = C; a[17] = V;
-  a[18] = zForce ? 1 : 0;
+  a[18] = zForce ? 1 : 0; a[19] = items;
 };
 
-export const readPppmParams = (a: Float64Array): { g: PppmGrid; n: number; nchunks: number; C: number; V: number; zForce: boolean } => ({
+export const readPppmParams = (a: Float64Array): { g: PppmGrid; n: number; nchunks: number; C: number; V: number; zForce: boolean; items: number } => ({
   g: {
     lo0: a[0], lo1: a[1], lo2: a[2], i00: a[3], i01: a[4], i02: a[5], i11: a[6], i12: a[7], i22: a[8], slab: a[9],
     nx: a[10], ny: a[11], nz: a[12], order: a[13],
   },
-  n: a[14], nchunks: a[15], C: a[16], V: a[17], zForce: a[18] !== 0,
+  n: a[14], nchunks: a[15], C: a[16], V: a[17], zForce: a[18] !== 0, items: a[19],
 });
 
 /** The scratch arrays of one thread for pppmWeights. */
@@ -142,5 +150,46 @@ export const pppmField = (
     const pre = (C * qi) / V;
     out[3 * i] = pre * Ex; out[3 * i + 1] = pre * Ey;
     out[3 * i + 2] = zForce ? pre * Ez : 0;
+  }
+};
+
+/**
+ * The mesh z planes [z0, z1) of the charge mesh rho (re at even indices): every charged atom in index order adds
+ * q w_z w_y w_x to the points of its stencil in those planes, with the arithmetic of KSpacePPPM.spread. Each mesh point
+ * then receives the same additions in the same order as the engine thread's loop over all atoms gives it, so planes
+ * spread by different threads add up to the same mesh bit for bit. xs is a scratch array of 3P entries.
+ */
+/** wrap(m, n) without the remainders when m is already in [0, n) (the usual case); the same integer. */
+const wrapFast = (m: number, n: number): number => (m >= 0 && m < n ? m : wrap(m, n));
+
+export const pppmSpread = (
+  g: PppmGrid, n: number, q: ArrayLike<number>, first: Int32Array, wts: Float64Array, rho: Float64Array, z0: number, z1: number, xs: Int32Array,
+): void => {
+  const P = g.order, nx = g.nx, ny = g.ny, nz = g.nz, w = z1 - z0;
+  for (let i = 0; i < n; i++) {
+    const qi = q[i];
+    if (qi === 0) continue;
+    const fz = first[3 * i + 2];
+    // the stencil's planes wrap(fz + c), c < P: skip the atom unless one of them is in [z0, z1)
+    const rel = wrapFast(fz - z0, nz);
+    if (rel >= w && rel + P - 1 < nz && P <= nz) continue;
+    const fx = first[3 * i], fy = first[3 * i + 1];
+    for (let k = 0; k < P; k++) {
+      xs[k] = wrapFast(fx + k, nx);
+      xs[P + k] = wrapFast(fy + k, ny);
+    }
+    for (let c = 0; c < P; c++) {
+      const iz = wrapFast(fz + c, nz);
+      if (iz < z0 || iz >= z1) continue;
+      const wz = qi * wts[(3 * i + 2) * P + c];
+      for (let b = 0; b < P; b++) {
+        const iy = xs[P + b];
+        const wyz = wz * wts[(3 * i + 1) * P + b];
+        const row = (iz * ny + iy) * nx;
+        for (let a = 0; a < P; a++) {
+          rho[2 * (row + xs[a])] += wyz * wts[(3 * i) * P + a];
+        }
+      }
+    }
   }
 };

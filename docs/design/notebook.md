@@ -424,6 +424,21 @@ is not parsed again). While `fix pair` reads the per-atom `corerep` factor, `Pai
 engine thread for that evaluation, since each worker copy would hold its own factors. Measured in Chromium (load
 about 16), Cu-PBE-core-rep.ace, 864 atoms, 20 steps: 24.6 s on 1 thread, 4.1 s on 8, the same thermo.
 
+PPPM's mesh loops run on the same threads (`force/kspace/pppmKernel.ts`, `pairThreads.ts`), each giving the
+one-thread result bit for bit (`tests/enginePppmThreads.test.ts`):
+- the per-atom weights and the field interpolation, in chunks of atoms;
+- the charge spread, in chunks of mesh z planes. Every thread walks all atoms in index order and adds only to its own
+  planes, so each mesh point receives the same additions in the same order as on one thread;
+- the FFTs, each pass (x, y, z lines) split into its independent lines, with a barrier between passes, when the mesh
+  has at least 16384 points (`fftMinPoints`). A smaller mesh transforms faster on one thread than over three rounds
+  of messages: about 4000 points (peptide) took 0.32 s threaded against 0.26 s serial per 300 steps.
+
+The Green's function, rebuilt every step when the box changes (fix npt), evaluates each dimension's aliased
+`sinc^2P` factor once per mesh index and image instead of once per (x, y, z) image of every mesh point (the same calls,
+so the same values): 393 -> 93 ms per 20 steps on rhodopsin. Measured in Chromium, rhodopsin (32000 atoms, npt) on 8
+threads, 20 steps: Kspace 1.14 -> 0.71 s with pppm 1e-4; with a 72^3 mesh 8.06 -> 2.43 s (loop 16.8 -> 10.5 s).
+Still serial: the k-space loop (its energy and virial sums would change order) and the Green's function itself.
+
 `pair_style hybrid`, `hybrid/overlay` and `hybrid/molecular` run each threaded sub-style on the threads in its own
 pair slot (`pairThreadsCore.ts` MAX_PAIR_SLOTS: slot 0 is a plain pair style, slot 1 + k sub-style k), so the
 workers keep one copy per sub-style instead of being sent a new style every step. The force field hands the hybrid a

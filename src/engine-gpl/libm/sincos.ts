@@ -335,3 +335,26 @@ export const cos = (x: number): number => {
   // s_sin.c: "return x / x;" for an infinite or NaN argument, which is NaN
   return NaN;
 };
+
+/** The results of sincos(): SINCOS[0] = sin(x), SINCOS[1] = cos(x). */
+export const SINCOS = new Float64Array(2);
+
+/**
+ * sin(x) and cos(x) together, as __sincos of s_sin.c computes them: below |x| = 2.426265 each half as above; beyond,
+ * one argument reduction (reduce_sincos or __branred) and do_sincos for quadrants n and n + 1. The reduction is a
+ * function of x alone, so the results are those of sin(x) and cos(x) above, bit for bit, at the cost of one reduction
+ * (compute xrd and saed evaluate both for every atom and reciprocal-lattice point).
+ */
+export const sincos = (x: number): void => {
+  F[0] = x;
+  const k = U[1] & 0x7fffffff;
+  if (k < 0x400368fd || k >= 0x7ff00000) {
+    SINCOS[0] = sin(x);
+    SINCOS[1] = cos(x);
+    return;
+  }
+  const n = k < 0x419921FB ? reduceSincos(x) : branred(x);
+  const a = redA, da = redDa;
+  SINCOS[0] = doSincos(a, da, n);
+  SINCOS[1] = doSincos(a, da, n + 1);
+};

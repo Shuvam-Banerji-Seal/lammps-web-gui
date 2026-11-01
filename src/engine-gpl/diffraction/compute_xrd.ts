@@ -19,7 +19,7 @@ import { StyleError } from '../../engine/force/types';
 import { cInt } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { ASF_XRD, XRD_TYPE_LIST } from './asf_xrd';
-import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { SINCOS, sincos as libmSincos } from '../libm/sincos';
 import { sinFma as libmSinFma, cosFma as libmCosFma } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 
@@ -201,8 +201,10 @@ export class ComputeXRD extends Compute {
       for (let a = 0; a < xs.length / 3; a++) {
         const typei = ts[a] - 1;
         const inners = 2 * PI * (K[0] * xs[3 * a] + K[1] * xs[3 * a + 1] + K[2] * xs[3 * a + 2]);
-        F1 += f[typei] * libmCos(inners);
-        F2 += f[typei] * libmSin(inners);
+        // sin and cos of the same argument: gcc calls sincos() (one argument reduction)
+        libmSincos(inners);
+        F1 += f[typei] * SINCOS[1];
+        F2 += f[typei] * SINCOS[0];
       }
       if (this.LP === 1) {
         const sqrtLp = Math.sqrt((1 + Cos2Theta * Cos2Theta) / (CosTheta * SinTheta * SinTheta));

@@ -428,7 +428,7 @@ export interface NativeListBuild {
 export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighList, newton = true,
   build: NativeListBuild = { nsq: false, halffull: false }): Int32Array => {
   const L = nativeLayout(s, nb, g);
-  const { order, n, two, X, binOf, bins, binAt, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng, root, engByKey, NA } = L;
+  const { order, n, two, X, binOf, binAt, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng, root, engByKey, NA } = L;
   const gi = nb.gimage;
   let total = 0;
   for (let i = 0; i < nb.nlocal; i++) total += half.numneigh[i];
@@ -587,7 +587,7 @@ export interface SizeListSpec {
  */
 export const nativeSizePairs = (s: SimState, nb: Neighbor, g: Geometry, newton: boolean, spec: SizeListSpec): Int32Array => {
   const L = nativeLayout(s, nb, g);
-  const { order, n, two, X, binOf, bins, binAt, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng } = L;
+  const { order, n, two, X, binOf, binAt, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng } = L;
   const radius = s.radius;
   if (!radius) throw new Error('native size list needs per-atom radii');
   const owner = nb.owner;

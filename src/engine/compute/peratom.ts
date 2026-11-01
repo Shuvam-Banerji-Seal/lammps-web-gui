@@ -200,7 +200,7 @@ export class ComputeStressAtom extends Compute {
   protected computePeratom(): void {
     const s = this.sys.state;
     const v = s.v;
-    const per = this.sys.peratomEnergy('virial');
+    this.sys.peratomEnergy('virial');
     const a = this.sys.forces();
     const vsum = new Float64Array(6 * s.n);
     for (const t of VIRIAL_TERMS) {

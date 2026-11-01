@@ -262,6 +262,12 @@ interface ForceBackend {
   kernels' minimum image needs. In Chromium, fix npt aniso on WebGPU tracked the CPU engine's
   pxx..pyz and volume for lj/cut, EAM, SW, Tersoff, TIP4P water and rhodopsin (32000 atoms,
   CHARMM + PPPM + SHAKE) to fp32 precision.
+- **`pair_modify tail yes` on the accelerated paths.** The tail correction depends on the volume and the atom counts
+  only, so the accelerated loop adds etail / V to the pair energy after each GPU (or lj/cut threads) evaluation, as
+  `ForceField.compute` does when it computes every term; its pressure term comes from the pressure compute as on the
+  CPU path (`tests/engineGpuTail.test.ts`, fix npt included). Dynamic groups are reassigned on the accelerated loop
+  where the CPU loop does it (after the forces, before the fixes; group.html), so runs with them take the GPU path
+  too, though not the whole-step one.
 - **GPU validation errors stop the run.** Pipelines are created in a validation error scope
   (`checkedPipelines`), and each force evaluation runs in one (`validated`): WebGPU skips an
   invalid dispatch, which would otherwise leave zero forces (an entry point whose `auto`

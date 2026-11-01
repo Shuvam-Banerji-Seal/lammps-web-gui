@@ -152,6 +152,21 @@ set group all type/fraction 2 0.5 4321
 displace_atoms all random 0.05 0.05 0.05 8191
 velocity all create 1000.0 87287 loop geom
 `;
+/** pair pace (GPL port, full list in native order; a worker's copy rebuilds the basis from the potential text). */
+const PACE_BOX = `units metal
+atom_style atomic
+lattice fcc 3.615
+region box block 0 4 0 4 0 4
+create_box 2 box
+create_atoms 1 box
+mass * 63.546
+set group all type/fraction 2 0.5 4321
+displace_atoms all random 0.05 0.05 0.05 8191
+velocity all create 800.0 87287 loop geom
+`;
+const PACE_STYLES: Record<string, string> = {
+  pace: 'pair_style pace\npair_coeff * * Cu-PBE-core-rep.ace Cu Cu',
+};
 const SNAP_STYLES: Record<string, string> = {
   snap: 'pair_style snap\npair_coeff * * Ta06A.snapcoeff Ta06A.snapparam Ta Ta',
   // chemflag 1 (the explicit multi-element bispectrum, built by each thread's copy on its first compute)
@@ -174,7 +189,7 @@ const GPL_PAIR_STYLES: Record<string, string> = {
   'buck/long/coul/long': 'pair_style buck/long/coul/long cut long 2.5\npair_coeff * * 100.0 0.3 1.0\nkspace_style ewald 1e-4',
 };
 const POTENTIALS = ['Cu_u3.eam', 'CuNi.eam.alloy', 'AlFe_mm.eam.fs', 'Si.tersoff', 'Si.tersoff.mod', 'Si.tersoff.modc', 'SiC.tersoff.zbl', 'Si.sw',
-  'TiO.meam.spline', 'Si.b.meam.sw.spline', 'Ta06A.snapcoeff', 'Ta06A.snapparam', 'InP_JCPA2020.snapcoeff', 'InP_JCPA2020.snapparam', 'SiC.vashishta'];
+  'TiO.meam.spline', 'Si.b.meam.sw.spline', 'Ta06A.snapcoeff', 'Ta06A.snapparam', 'InP_JCPA2020.snapcoeff', 'InP_JCPA2020.snapparam', 'SiC.vashishta', 'Cu-PBE-core-rep.ace'];
 const potential = (f: string): string => readFileSync(join(__dirname, '..', 'third_party', 'lammps', 'potentials', f), 'utf8');
 
 interface Outcome { rows: Record<string, number>[]; x: number[]; threadedComputes: number; pa: number[] }
@@ -187,7 +202,7 @@ const runCase = async (pairLines: string, threads: number, extra = '', box = BOX
   const events: EngineEvent[] = [];
   const files = new Map<string, string>();
   const session = new Session({ emit: (e) => events.push(e), writeFile: (n, t) => files.set(n, t) }, backend);
-  if (box === EAM_BOX || box === SI_BOX || box === SNAP_BOX) for (const f of POTENTIALS) session.addFile(f, potential(f));
+  if (box === EAM_BOX || box === SI_BOX || box === SNAP_BOX || box === PACE_BOX) for (const f of POTENTIALS) session.addFile(f, potential(f));
   if (pairLines.includes('lj.table')) session.addFile('lj.table', ljTable());
   await session.execute(`${box}${pairLines}
 neighbor 0.3 bin
@@ -324,6 +339,25 @@ describe('shared-memory pair threads: every threaded style matches the single-th
       expectClose(serial, threaded, 1e-10);
     });
   }
+  for (const [name, lines] of Object.entries(PACE_STYLES)) {
+    it(`${name} (GPL port, full list in native order, basis rebuilt by each worker)`, async () => {
+      const serial = await runCase(lines, 1, '', PACE_BOX, true);
+      const threaded = await runCase(lines, 4, '', PACE_BOX, true);
+      expect(threaded.threadedComputes).toBeGreaterThan(0);
+      expectClose(serial, threaded, 1e-10);
+    });
+  }
+  it('pace runs on the engine thread on the steps fix pair reads its corerep factor (Pair.threadable)', async () => {
+    // fix pair raises the trigger before each output step's forces; only the second run's setup (step 0, already output
+    // by the first) evaluates without it, so at most that one evaluation goes to the 3 workers
+    const fix = 'fix g all pair 1 pace corerep 1\ndump pa all custom 5 pa.dump id type f_g\ndump_modify pa sort id format float %.17g';
+    const serial = await runCase(PACE_STYLES.pace, 1, fix, PACE_BOX, true, 10);
+    const threaded = await runCase(PACE_STYLES.pace, 4, fix, PACE_BOX, true, 10);
+    expect(threaded.threadedComputes).toBeLessThanOrEqual(3);
+    expect(serial.pa.length).toBeGreaterThan(0);
+    expect(serial.pa.some((v) => v !== 0)).toBe(true);
+    expectClose(serial, threaded, 1e-12);
+  });
   for (const [name, lines] of Object.entries(GPL_PAIR_STYLES)) {
     it(`${name} (GPL port)`, async () => {
       const serial = await runCase(lines, 1, '', BOX, true);
@@ -337,7 +371,7 @@ describe('shared-memory pair threads: every threaded style matches the single-th
     const tip4p = ['lj/cut/tip4p/cut', 'lj/cut/tip4p/long', 'tip4p/cut', 'tip4p/long'];
     expect([...Object.keys(STYLES), ...Object.keys(EAM_STYLES), ...Object.keys(THREEBODY_STYLES), 'snap', ...tip4p].sort()).toEqual(Object.keys(THREADED_PAIRS).sort());
     // eff/cut (per-atom inputs and outputs, Pair.threadExtras) has its own test, engineEffThreads.test.ts
-    expect([...Object.keys(GPL_STYLES), ...Object.keys(GPL_PAIR_STYLES), 'eff/cut'].sort()).toEqual([...GPL_THREADED_PAIRS].sort());
+    expect([...Object.keys(GPL_STYLES), ...Object.keys(GPL_PAIR_STYLES), ...Object.keys(PACE_STYLES), 'eff/cut'].sort()).toEqual([...GPL_THREADED_PAIRS].sort());
     // the engine side knows the styles by name only (threadedPairs.ts), the worker by factory (threadedPairFactories.ts,
     // and for the GPL ports the lazy registries)
     expect([...THREADED_NAMES].sort()).toEqual([...Object.keys(THREADED_PAIRS), ...GPL_THREADED_PAIRS].sort());
@@ -356,6 +390,7 @@ describe('shared-memory pair threads: per-atom energy and virial of every thread
     ...Object.entries(SNAP_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, SNAP_BOX, false]),
     ...Object.entries(GPL_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, SI_BOX, true]),
     ...Object.entries(GPL_PAIR_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, BOX, true]),
+    ...Object.entries(PACE_STYLES).map(([n, l]): [string, string, string, boolean] => [n, l, PACE_BOX, true]),
   ];
   for (const [name, lines, box, load] of cases) {
     it(name, async () => {

@@ -15,6 +15,7 @@
  * elements ("NULL" skips a type).
  */
 import { Pair, StyleError, type AdaptAccess, type PairCompute, type StyleContext } from '../../engine/force/types';
+import type { NeighList } from '../../engine/neighbor';
 import { scaleAccess, unitScaleTable } from '../../engine/force/pair/scaleTable';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { NativeFullOrder } from '../neighbor/nativeOrder';
@@ -34,6 +35,25 @@ export const ELEMENTS_PACE = [
   'Th', 'Pa', 'U', 'Np', 'Pu', 'Am', 'Cm', 'Bk', 'Cf', 'Es', 'Fm', 'Md', 'No', 'Lr',
 ];
 
+/**
+ * The basis and the evaluator of each PairPace (large, class-typed): kept outside the style's own fields, so that the
+ * pair threads' structured copy of the style (engine cpu/pairThreadsCore.ts cloneableFields) leaves them out; a
+ * worker's copy builds its own from the potential text (threadAdopt).
+ */
+const heavy = new WeakMap<object, { basis: CTildeBasis | null; ace: ACEPaceEvaluator | null }>();
+
+/** The last potential parsed in this realm (a worker rebuilds its copy at each run's init): text and file -> basis. */
+let lastParsed: { text: string; fileName: string; basis: CTildeBasis } | null = null;
+
+/** The C-tilde basis of a .ace, .yace or .yaml (B-basis) potential file. */
+const parseBasis = (text: string, fileName: string): CTildeBasis => {
+  if (lastParsed && lastParsed.fileName === fileName && lastParsed.text === text) return lastParsed.basis;
+  const basis = /\.yaml$/.test(fileName) ? BBasis.fromYaml(text, fileName).toCTilde()
+    : fileName.endsWith('.yace') ? loadYace(text, fileName) : CTildeBasis.fromText(text, fileName);
+  lastParsed = { text, fileName, basis };
+  return basis;
+};
+
 export class PairPace extends Pair {
   override readonly name: string = 'pace';
   manybody = true;
@@ -46,8 +66,18 @@ export class PairPace extends Pair {
   protected chunksize = 4096;
   /** LAMMPS type -> ACE species (-1 for NULL), index 1..ntypes */
   protected map = new Int32Array(0);
-  protected basis: CTildeBasis | null = null;
-  protected ace: ACEPaceEvaluator | null = null;
+  protected get basis(): CTildeBasis | null { return heavy.get(this)?.basis ?? null; }
+  protected set basis(b: CTildeBasis | null) { this.heavyOf().basis = b; }
+  protected get ace(): ACEPaceEvaluator | null { return heavy.get(this)?.ace ?? null; }
+  protected set ace(a: ACEPaceEvaluator | null) { this.heavyOf().ace = a; }
+  private heavyOf(): { basis: CTildeBasis | null; ace: ACEPaceEvaluator | null } {
+    let h = heavy.get(this);
+    if (!h) { h = { basis: null, ace: null }; heavy.set(this, h); }
+    return h;
+  }
+  /** The potential file read at pair_coeff, kept for a pair thread's copy to rebuild the basis (threadAdopt). */
+  private potFile = '';
+  private potText = '';
   protected readonly natOrder = new NativeFullOrder();
   private setflagAll = false;
   /**
@@ -115,9 +145,11 @@ export class PairPace extends Pair {
     const text = ctx.readFile(fileName, () => "Unrecognized file type of ''. Accept only .ace or .yace");
     const isYaml = /\.yaml$/.test(fileName);
     if (!isYaml && !fileName.endsWith('.ace') && !fileName.endsWith('.yace')) throw new StyleError(`Unrecognized file type of '${fileName}'. Accept only .ace or .yace`);
-    const basis = isYaml ? BBasis.fromYaml(text, fileName).toCTilde()
-      : fileName.endsWith('.yace') ? loadYace(text, fileName) : CTildeBasis.fromText(text, fileName);
+    void isYaml;
+    const basis = parseBasis(text, fileName);
     this.basis = basis;
+    this.potFile = fileName;
+    this.potText = text;
     // element map: LAMMPS type i -> species index (NULL skips the type)
     const map = new Int32Array(nt + 1).fill(-1);
     for (let i = 1; i <= nt; i++) {
@@ -135,6 +167,24 @@ export class PairPace extends Pair {
     this.ace = new ACEPaceEvaluator(basis, this.recursive, map);
     this.setflagAll = true;
     this.scale.fill(1);
+  }
+
+  /** On a pair thread's copy (Pair.threadAdopt): the basis and the evaluator, built from the potential text. */
+  override threadAdopt(): void {
+    if (!this.potFile || this.ace) return;
+    const basis = parseBasis(this.potText, this.potFile);
+    this.basis = basis;
+    this.ace = new ACEPaceEvaluator(basis, this.recursive, this.map);
+  }
+
+  /** On the pair threads the rows take their neighbors in native full-list order (the evaluator's sums follow it). */
+  override threadNeighbors(pc: PairCompute, list: NeighList): Int32Array {
+    return this.natOrder.neighbors(pc.s, pc.nb, pc.geom, list);
+  }
+
+  /** Not on the threads while fix pair reads the per-atom corerep factor (each thread's copy would hold its own). */
+  override threadable(): boolean {
+    return !this.flagCorerepFactor;
   }
 
   /** extract("corerep_flag"): the scalar trigger fix pair sets. */
@@ -181,7 +231,8 @@ export class PairPace extends Pair {
     if (this.flagCorerepFactor && pc.nlocal > (this.corerep?.length ?? 0)) this.corerep = new Float64Array(pc.nlocal);
     const x = pc.x, f = pc.f, type = pc.type;
     // the neighbours in native full-list order (the evaluator's sums follow this order)
-    const nbrs = this.natOrder.neighbors(pc.s, pc.nb, pc.geom, list);
+    // on the pair threads the list arrives in native order (threadNeighbors)
+    const nbrs = list.nativeOrdered ? list.neighbors : this.natOrder.neighbors(pc.s, pc.nb, pc.geom, list);
     for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const jnum = list.numneigh[i];
       const k0 = list.firstneigh[i];

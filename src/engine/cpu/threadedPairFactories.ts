@@ -20,6 +20,7 @@ import { PairLJ96Cut, PairLJExpand, PairLJSmooth, PairLJSmoothLinear } from '../
 import { PairGauss, PairSoft, PairYukawa } from '../force/pair/simple2';
 import { PairTable } from '../force/pair/table';
 import { PairZBL } from '../force/pair/zbl';
+import { PairLJCutTIP4PCut, PairLJCutTIP4PLong, PairTIP4PCut, PairTIP4PLong } from '../force/pair/tip4p';
 
 /*
  * The factories of the styles cpu/threadedPairs.ts names (THREADED_NAMES): the pair worker (src/workers/pair.worker.ts)
@@ -74,4 +75,9 @@ export const THREADED_PAIRS: Record<string, () => Pair> = {
   'tersoff/mod/c': () => new PairTersoffModC(),
   'tersoff/zbl': () => new PairTersoffZBL(),
   'sw/mod': () => new PairSWMod(),
+  // the TIP4P styles read the M sites, hydrogens and owners as shared inputs (Pair.threadExtras)
+  'lj/cut/tip4p/cut': () => new PairLJCutTIP4PCut(),
+  'lj/cut/tip4p/long': () => new PairLJCutTIP4PLong(),
+  'tip4p/cut': () => new PairTIP4PCut(),
+  'tip4p/long': () => new PairTIP4PLong(),
 };

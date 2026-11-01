@@ -1,0 +1,20 @@
+# oracle: pair_style tip4p/cut on its own (Coulomb only, pair_coeff * *): 64 TIP4P waters, 10 steps of fix nve
+# oracle-inputs: tip4p_coulonly_water.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-8
+units           real
+atom_style      full
+read_data       tip4p_coulonly_water.data
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+pair_style      tip4p/cut 1 2 1 1 0.1546 6.0
+pair_coeff      * *
+neighbor        2.0 bin
+velocity        all create 300.0 4928459 dist gaussian
+fix             1 all nve
+timestep        0.5
+thermo_style    custom step pe ebond eangle ecoul elong press pxx pyz
+thermo_modify   format float %.15g
+thermo          5
+run             10

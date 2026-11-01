@@ -17,7 +17,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { ASF_SAED, SAED_TYPE_LIST } from './asf_saed';
 import { reciprocalSpacing } from './compute_xrd';
-import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { SINCOS, sincos as libmSincos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
 
 const PI = Math.PI;
@@ -186,8 +186,10 @@ export class ComputeSAED extends Compute {
       for (let a = 0; a < ts.length; a++) {
         const typei = ts[a] - 1;
         const inners = 2 * PI * (K[0] * xs[3 * a] + K[1] * xs[3 * a + 1] + K[2] * xs[3 * a + 2]);
-        F1 += f[typei] * libmCos(inners);
-        F2 += f[typei] * libmSin(inners);
+        // sin and cos of the same argument: gcc calls sincos() (one argument reduction)
+        libmSincos(inners);
+        F1 += f[typei] * SINCOS[1];
+        F2 += f[typei] * SINCOS[0];
       }
       F[2 * r] = F1;
       F[2 * r + 1] = F2;

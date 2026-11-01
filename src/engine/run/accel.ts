@@ -1,4 +1,5 @@
 import { GPU_PAIR_STYLES, gpuPairSpec, LONG_COUL_STYLES, type GpuPairSpec } from '../gpu/pairSpec';
+import { GPU_EAM_STYLES, gpuEamSpec, isGpuEam, type EamPair, type GpuEamSpec } from '../gpu/eamSpec';
 import type { SpecialList } from '../atoms';
 import type { LevelSelect } from '../force/forcefield';
 import { COMM, MODIFY, OUTPUT, PAIR } from '../timer';
@@ -36,6 +37,8 @@ export interface Accel {
   bonded: boolean;
   /** The kspace style: computed on the CPU each step beside the GPU's real-space pair term. */
   kspace: boolean;
+  /** pair eam, eam/alloy or eam/fs on the GPU (computeEAM: densities and forces there, the embedding step on the CPU). */
+  eam: GpuEamSpec | null;
   /** Whole NVE steps on the GPU (resident.ts) with readback only on output steps. */
   resident: boolean;
   enforce2d: boolean;
@@ -52,8 +55,9 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const ljcut = p instanceof PairLJCut && p.name === 'lj/cut';
   // the GPU also runs the pair styles of gpu/pairSpec.ts; the lj/cut threads of cpu/parallel.ts only lj/cut
   const gpuStyle = backend.kind === 'webgpu' && !!p && GPU_PAIR_STYLES[p.name] !== undefined;
-  if (!ljcut && !gpuStyle) {
-    const names = Object.keys(GPU_PAIR_STYLES).filter((k) => k !== 'lj/cut').join(', ');
+  const eamStyle = backend.kind === 'webgpu' && isGpuEam(p);
+  if (!ljcut && !gpuStyle && !eamStyle) {
+    const names = [...Object.keys(GPU_PAIR_STYLES).filter((k) => k !== 'lj/cut'), ...GPU_EAM_STYLES].join(', ');
     return why(`pair style ${p?.name ?? 'none'} (the ${backend.kind === 'webgpu' ? `GPU path implements lj/cut, ${names}` : 'threaded path implements lj/cut'} only)`);
   }
   // the long-range Coulomb styles' real-space term runs on the GPU, the kspace style on the CPU beside it
@@ -84,6 +88,16 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   if (sys.computes.some((c) => c.pressFlag && c.id !== 'thermo_press')) return why('a user pressure compute');
   // the table from the initialized (mixed) coefficients
   p.init(sys.styleContext());
+  if (eamStyle) {
+    if (molecular) return why('bonded terms with an EAM pair style');
+    const eam = gpuEamSpec(p as EamPair);
+    if (typeof eam === 'string') return why(eam);
+    // the kernels' minimum image needs at least 2 cutoffs along each periodic edge (gpu/eamKernels.ts)
+    const short = [0, 1, 2].some((d) => !(d === 2 && sys.dimension === 2) && (s.box.hi[d] - s.box.lo[d]) < 2 * eam.maxCutoff);
+    if (short) return why('a box shorter than 2 pair cutoffs along an edge');
+    const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec: null, bonded: false, kspace: false, eam, resident: false, enforce2d }, reason: null };
+  }
   if (!ljcut || molecular) {
     const qqrd2e = s.units.qqr2e * (p.coulConstScale ?? 1) / sys.ff.dielectric;
     const sb = sys.ff.special;
@@ -99,7 +113,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
     const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };
     const resident = !molecular && !kspace && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
-    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, resident, enforce2d }, reason: null };
+    return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, resident, enforce2d }, reason: null };
   }
   const t = newPairTable(s.ntypes, p.cutGlobal);
   t.shift = p.shift;
@@ -114,7 +128,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const allBit = sys.groupBit('all');
   const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
   const resident = onlyNve && isResident(backend) && backend.canAdvance(s, t);
-  return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, resident, enforce2d }, reason: null };
+  return { accel: { backend, table: t, spec: null, bonded: false, kspace: false, eam: null, resident, enforce2d }, reason: null };
 };
 
 /**
@@ -164,6 +178,11 @@ type SpecBackend = ForceBackend & { computeSpec(s: SimState, spec: GpuPairSpec, 
  */
 const evaluate = async (a: Accel, sys: System, step: boolean): Promise<ForceResult> => {
   const s = sys.state;
+  if (a.eam) {
+    const pair = sys.ff.pair as EamPair;
+    const gb = a.backend as ForceBackend & { computeEAM(s: SimState, spec: GpuEamSpec, embed: (rho: Float64Array, fp: Float64Array) => number): Promise<ForceResult> };
+    return gb.computeEAM(s, a.eam, (rho, fp) => pair.embedOwned(s.type, rho, s.n, fp));
+  }
   if (!a.spec) return a.backend.compute(s, a.table);
   const gb = a.backend as SpecBackend;
   if (!a.bonded && !a.kspace) return gb.computeSpec(s, a.spec);

@@ -5,6 +5,8 @@ import { ResidentStepper } from './resident';
 import type { GpuPairSpec } from './pairSpec';
 import { buildAtomMap, type SpecialList } from '../atoms';
 import { WGSL_STYLE_LAWS } from './styleLaws';
+import { EAM_WORKGROUP, KERNEL_EAM } from './eamKernels';
+import type { GpuEamSpec } from './eamSpec';
 
 /*
  * WebGPU Lennard-Jones forces (docs/design/notebook.md, "Backends", v1).
@@ -674,6 +676,132 @@ export class WebGpuForceBackend implements ForceBackend {
   }
 
   /** True when `advanceSpec` can run this system entirely on the GPU: 3 cells per periodic edge. */
+  private eamPipes: { rho: GPUComputePipeline; force: GPUComputePipeline; params: GPUBuffer } | null = null;
+  private ebufs: {
+    pos: GPUBuffer; out: GPUBuffer; staging: GPUBuffer; ints: GPUBuffer; coef: GPUBuffer;
+    atomCap: number; intsCap: number; coefCap: number; bindRho: GPUBindGroup; bindForce: GPUBindGroup; coefKey: string;
+  } | null = null;
+  private eamRho = new Float64Array(0);
+  private eamFp = new Float64Array(0);
+
+  /**
+   * One force evaluation of pair eam, eam/alloy or eam/fs (gpu/eamSpec.ts, gpu/eamKernels.ts): the densities on the GPU,
+   * read back; embed(rho, fp) (the style's own fp64 embedding step, atoms in state order) returns the embedding energy
+   * and fills F'; F' goes up as f32 bits after the cell data; then the forces, pair energies and virial on the GPU.
+   * Two round trips per call; the sums are fp64 here.
+   */
+  async computeEAM(state: SimState, spec: GpuEamSpec, embed: (rho: Float64Array, fp: Float64Array) => number): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    if (this.disposed) throw new Error('the WebGPU backend was disposed');
+    const n = state.n;
+    if (n === 0) return { pe: 0, virial: 0, evdwl: 0, ecoul: 0 };
+    // the minimum image is the only copy of a partner within the cutoff while each edge is at least 2 cutoffs
+    const flat = state.dimension === 2;
+    if ([0, 1, 2].some((d) => !(d === 2 && flat) && state.box.hi[d] - state.box.lo[d] < 2 * spec.maxCutoff)) {
+      throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
+    }
+    const cells = this.sortByCell(state, spec.maxCutoff, n, 1);
+    if (!cells) throw new Error('the box has no cell in a periodic dimension');
+    const { L, nc, base, two } = cells;
+    const { sorted, posData } = this;
+    const ints = this.intsData;
+    const fpBase = base + n, intsLen = fpBase + n;
+    const dev = this.device;
+    if (!this.eamPipes) {
+      const module = dev.createShaderModule({ code: KERNEL_EAM });
+      this.eamPipes = {
+        rho: dev.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'rho' } }),
+        force: dev.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'force' } }),
+        params: dev.createBuffer({ size: 64, usage: BUF_UNIFORM | BUF_COPY_DST }),
+      };
+    }
+    const pipes = this.eamPipes;
+    let b = this.ebufs;
+    if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < spec.coef.byteLength) {
+      if (b) for (const buf of [b.pos, b.out, b.staging, b.ints, b.coef]) buf.destroy();
+      const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
+      const coefCap = Math.max(spec.coef.byteLength, b?.coefCap ?? 0);
+      const pos = this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST);
+      const out = this.buffer(24 * atomCap, BUF_STORAGE | BUF_COPY_SRC);
+      const staging = this.buffer(24 * atomCap, BUF_MAP_READ | BUF_COPY_DST);
+      const intsBuf = this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST);
+      const coefBuf = this.buffer(coefCap, BUF_STORAGE | BUF_COPY_DST);
+      const entries = [
+        { binding: 0, resource: { buffer: pipes.params } },
+        { binding: 1, resource: { buffer: pos } },
+        { binding: 2, resource: { buffer: intsBuf } },
+        { binding: 3, resource: { buffer: coefBuf } },
+        { binding: 4, resource: { buffer: out } },
+      ];
+      b = this.ebufs = {
+        pos, out, staging, ints: intsBuf, coef: coefBuf, atomCap, intsCap, coefCap, coefKey: '',
+        bindRho: dev.createBindGroup({ layout: pipes.rho.getBindGroupLayout(0), entries }),
+        bindForce: dev.createBindGroup({ layout: pipes.force.getBindGroupLayout(0), entries }),
+      };
+    }
+    const params = new ArrayBuffer(64);
+    const pf = new Float32Array(params), pu = new Uint32Array(params);
+    pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
+    pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = fpBase; pu[11] = spec.nr;
+    pf[12] = spec.rdr;
+    const q = dev.queue;
+    q.writeBuffer(pipes.params, 0, params);
+    q.writeBuffer(b.pos, 0, posData.buffer, posData.byteOffset, 16 * n);
+    q.writeBuffer(b.ints, 0, ints.buffer, ints.byteOffset, 4 * fpBase);
+    if (b.coefKey !== spec.key) {
+      q.writeBuffer(b.coef, 0, spec.coef.buffer, spec.coef.byteOffset, spec.coef.byteLength);
+      b.coefKey = spec.key;
+    }
+    const groups = Math.ceil(n / EAM_WORKGROUP);
+    // the densities
+    let enc = dev.createCommandEncoder();
+    let pass = enc.beginComputePass();
+    pass.setPipeline(pipes.rho);
+    pass.setBindGroup(0, b.bindRho);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 4 * n);
+    q.submit([enc.finish()]);
+    await b.staging.mapAsync(MAP_READ, 0, 4 * n);
+    if (this.eamRho.length < n) { this.eamRho = new Float64Array(n); this.eamFp = new Float64Array(n); }
+    const rho = this.eamRho.subarray(0, n), fp = this.eamFp.subarray(0, n);
+    {
+      const r = new Float32Array(b.staging.getMappedRange(0, 4 * n));
+      for (let slot = 0; slot < n; slot++) rho[sorted[slot]] = r[slot];
+    }
+    b.staging.unmap();
+    // the embedding step (fp64, the style's own), F' up in slot order
+    const eEmbed = embed(rho, fp);
+    const fpf = new Float32Array(ints.buffer, ints.byteOffset + 4 * fpBase, n);
+    for (let slot = 0; slot < n; slot++) fpf[slot] = fp[sorted[slot]];
+    q.writeBuffer(b.ints, 4 * fpBase, ints.buffer, ints.byteOffset + 4 * fpBase, 4 * n);
+    // the forces
+    enc = dev.createCommandEncoder();
+    pass = enc.beginComputePass();
+    pass.setPipeline(pipes.force);
+    pass.setBindGroup(0, b.bindForce);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, 24 * n);
+    q.submit([enc.finish()]);
+    await b.staging.mapAsync(MAP_READ, 0, 24 * n);
+    const outv = new Float32Array(b.staging.getMappedRange(0, 24 * n));
+    const f = state.f;
+    let epair = 0, virial = 0;
+    for (let slot = 0; slot < n; slot++) {
+      const i = sorted[slot];
+      const o = 6 * slot;
+      f[3 * i] = outv[o];
+      f[3 * i + 1] = outv[o + 1];
+      f[3 * i + 2] = outv[o + 2];
+      epair += outv[o + 3];
+      virial += outv[o + 5];
+    }
+    b.staging.unmap();
+    const evdwl = epair + eEmbed;
+    return { pe: evdwl, virial, evdwl, ecoul: 0 };
+  }
+
   canAdvanceSpec(state: SimState, spec: GpuPairSpec): boolean {
     if (state.n === 0 || !(spec.maxCutoff > 0)) return false;
     const two = state.dimension === 2;
@@ -723,6 +851,9 @@ export class WebGpuForceBackend implements ForceBackend {
     if (b) for (const buf of [b.pos, b.out, b.staging, b.ints, b.coef]) buf.destroy();
     const sb = this.sbufs;
     if (sb) for (const buf of [sb.pos, sb.out, sb.staging, sb.ints, sb.coef]) buf.destroy();
+    const eb = this.ebufs;
+    if (eb) for (const buf of [eb.pos, eb.out, eb.staging, eb.ints, eb.coef]) buf.destroy();
+    this.eamPipes?.params.destroy();
     this.styleParams?.destroy();
     this.params.destroy();
     this.bufs = null;

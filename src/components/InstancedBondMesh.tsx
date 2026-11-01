@@ -24,7 +24,7 @@ interface InstancedBondMeshProps {
  * trajectory that carries bonds). Typed arrays make the rebuild allocation-
  * free apart from the buffers themselves.
  */
-interface BondBuffers {
+export interface BondBuffers {
   count: number;
   ax: Float32Array; ay: Float32Array; az: Float32Array;
   bx: Float32Array; by: Float32Array; bz: Float32Array;
@@ -37,6 +37,44 @@ const EMPTY: BondBuffers = {
   ax: new Float32Array(0), ay: new Float32Array(0), az: new Float32Array(0),
   bx: new Float32Array(0), by: new Float32Array(0), bz: new Float32Array(0),
   atom: [],
+};
+
+/**
+ * The half bonds of a bond list (InstancedBondMesh, BondLines): atom1 to the midpoint, coloured by atom1, and the
+ * midpoint to atom2, coloured by atom2; a bond with a missing atom, of zero length, or longer than maxBondLength
+ * (wrapped across a periodic boundary) is skipped.
+ */
+export const halfBonds = (bonds: Bond[], atomMap: Map<number, Atom>, maxBondLength = Infinity): BondBuffers => {
+  if (bonds.length === 0) return EMPTY;
+  const cap = bonds.length * 2;
+  const ax = new Float32Array(cap), ay = new Float32Array(cap), az = new Float32Array(cap);
+  const bx = new Float32Array(cap), by = new Float32Array(cap), bz = new Float32Array(cap);
+  const atom: Atom[] = new Array(cap);
+
+  let n = 0;
+  for (let i = 0; i < bonds.length; i++) {
+    const bond = bonds[i];
+    const a1 = atomMap.get(bond.atom1Id);
+    const a2 = atomMap.get(bond.atom2Id);
+    if (!a1 || !a2) continue;
+
+    const dx = a2.x - a1.x, dy = a2.y - a1.y, dz = a2.z - a1.z;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 1e-6 || len > maxBondLength) continue;
+
+    const mx = (a1.x + a2.x) / 2, my = (a1.y + a2.y) / 2, mz = (a1.z + a2.z) / 2;
+
+    ax[n] = a1.x; ay[n] = a1.y; az[n] = a1.z;
+    bx[n] = mx;   by[n] = my;   bz[n] = mz;
+    atom[n] = a1;
+    n++;
+
+    ax[n] = mx;   ay[n] = my;   az[n] = mz;
+    bx[n] = a2.x; by[n] = a2.y; bz[n] = a2.z;
+    atom[n] = a2;
+    n++;
+  }
+  return { count: n, ax, ay, az, bx, by, bz, atom };
 };
 
 /**
@@ -62,39 +100,7 @@ const InstancedBondMesh: React.FC<InstancedBondMeshProps> = ({
   // Narrow colour dependency: identity of `config` must not rebuild buffers.
   const colorKey = config.bondColor ? `bond:${config.bondColor}` : colorKeyOf(config);
 
-  const buf = useMemo<BondBuffers>(() => {
-    if (bonds.length === 0) return EMPTY;
-    const cap = bonds.length * 2;
-    const ax = new Float32Array(cap), ay = new Float32Array(cap), az = new Float32Array(cap);
-    const bx = new Float32Array(cap), by = new Float32Array(cap), bz = new Float32Array(cap);
-    const atom: Atom[] = new Array(cap);
-
-    let n = 0;
-    for (let i = 0; i < bonds.length; i++) {
-      const bond = bonds[i];
-      const a1 = atomMap.get(bond.atom1Id);
-      const a2 = atomMap.get(bond.atom2Id);
-      if (!a1 || !a2) continue;
-
-      const dx = a2.x - a1.x, dy = a2.y - a1.y, dz = a2.z - a1.z;
-      const len = Math.hypot(dx, dy, dz);
-      if (len < 1e-6 || len > maxBondLength) continue;
-
-      const mx = (a1.x + a2.x) / 2, my = (a1.y + a2.y) / 2, mz = (a1.z + a2.z) / 2;
-
-      ax[n] = a1.x; ay[n] = a1.y; az[n] = a1.z;
-      bx[n] = mx;   by[n] = my;   bz[n] = mz;
-      atom[n] = a1;
-      n++;
-
-      ax[n] = mx;   ay[n] = my;   az[n] = mz;
-      bx[n] = a2.x; by[n] = a2.y; bz[n] = a2.z;
-      atom[n] = a2;
-      n++;
-    }
-    return { count: n, ax, ay, az, bx, by, bz, atom };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bonds, atomMap, maxBondLength]);
+  const buf = useMemo<BondBuffers>(() => halfBonds(bonds, atomMap, maxBondLength), [bonds, atomMap, maxBondLength]);
 
   // Tessellation follows the quality setting and adapts to system size (fewer segments for huge systems).
   const segments = bondSegments(config.quality, bonds.length);

@@ -7,10 +7,11 @@ import { atomDisplayRadius, radiusKeyOf } from '../services/atomStyle';
 import { colorKeyOf, makeAtomColorer } from '../services/colorMaps';
 
 /*
- * The 'points' representation: every atom one point of a single THREE.Points draw call, drawn as a shaded sphere
- * impostor (the fragment shader builds the sphere normal from the point coordinate and lights it from a fixed
- * view-space direction). Much cheaper than tessellated spheres, for systems of 10^5 atoms and more; the point size is
- * the atom's on-screen diameter, capped by the GPU's largest point size.
+ * The 'points', 'lines' and 'flat' representations: every atom one point of a single THREE.Points draw call. 'points'
+ * and 'lines' draw a shaded sphere impostor (the fragment shader builds the sphere normal from the point coordinate and
+ * lights it from a fixed view-space direction), much cheaper than tessellated spheres, for systems of 10^5 atoms and
+ * more. 'flat' draws an unlit disc with a darker rim, which keeps touching particles apart (2D simulations, 2D views).
+ * The point size is the atom's on-screen diameter, capped by the GPU's largest point size.
  */
 const VERTEX = `
 attribute float radius;
@@ -42,7 +43,22 @@ void main() {
   #include <fog_fragment>
 }`;
 
-const PointAtoms: React.FC<{ atoms: Atom[]; config: VisualizationConfig }> = ({ atoms, config }) => {
+/** A flat disc: the atom's colour, darkened over the outer rim (r^2 from 0.72 to 0.86 of the disc). */
+const FRAGMENT_FLAT = `
+varying vec3 vColor;
+#include <fog_pars_fragment>
+void main() {
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float r2 = dot(p, p);
+  if (r2 > 1.0) discard;
+  float rim = smoothstep(0.72, 0.86, r2);
+  gl_FragColor = vec4(mix(vColor, vColor * 0.45, rim), 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}`;
+
+const PointAtoms: React.FC<{ atoms: Atom[]; config: VisualizationConfig; flat?: boolean }> = ({ atoms, config, flat = false }) => {
   const invalidate = useThree((s) => s.invalidate);
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
@@ -56,12 +72,12 @@ const PointAtoms: React.FC<{ atoms: Atom[]; config: VisualizationConfig }> = ({ 
   const material = useMemo(
     () => new THREE.ShaderMaterial({
       vertexShader: VERTEX,
-      fragmentShader: FRAGMENT,
+      fragmentShader: flat ? FRAGMENT_FLAT : FRAGMENT,
       vertexColors: true,
       fog: true,
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { scale: { value: 1 } }]),
     }),
-    [],
+    [flat],
   );
   useEffect(() => () => material.dispose(), [material]);
 
@@ -101,6 +117,7 @@ const PointAtoms: React.FC<{ atoms: Atom[]; config: VisualizationConfig }> = ({ 
 
   // the point size of a sphere of radius r at depth z is 2 r scale / z pixels, scale = drawing-buffer height / (2 tan(fov/2))
   const scale = useRef(material.uniforms.scale);
+  scale.current = material.uniforms.scale;
   useFrame(({ camera, size, viewport }) => {
     const fov = (camera as THREE.PerspectiveCamera).fov ?? 40;
     scale.current.value = (size.height * viewport.dpr) / (2 * Math.tan((fov * Math.PI) / 360));

@@ -440,6 +440,8 @@ export function jklContact(delta: number, R: number, E: number, gamma: number): 
   while (jklDelta(hi, R, E, gamma) < delta) hi *= 2;
   for (let k = 0; k < 200; k++) {
     const mid = 0.5 * (lo + hi);
+    // the interval cannot shrink further (mid rounds to an end): the later steps would leave lo and hi as they are
+    if (mid === lo || mid === hi) break;
     if (jklDelta(mid, R, E, gamma) < delta) lo = mid; else hi = mid;
   }
   const a = 0.5 * (lo + hi);
@@ -1024,8 +1026,12 @@ export class PairGranular extends Pair {
         }
         const key = flip ? pairKey(b, a) : pairKey(a, b);
         const r = Math.sqrt(rsq), rinv = 1 / r;
-        const mj = rmass[oj];
         const delta = radsum - r;
+        // the pair's record from the last call, looked up once (a new record goes into the map below only when kept)
+        const stored = this.shear.get(key);
+        // jkr out of overlap without a record: no contact (granularContact's hysteresis test), nothing to evaluate
+        if (jkr && delta < 0 && stored === undefined) continue;
+        const mj = rmass[oj];
         const Rf = (ri * rj) / radsum;
         // m_eff; a contact with a particle of the fix freeze group uses the other particle's mass (measured in gran.ts)
         let meff = (mi * mj) / (mi + mj);
@@ -1033,8 +1039,6 @@ export class PairGranular extends Pair {
           if (s.mask[oi] & this.freezeBit) meff = mj;
           else if (s.mask[oj] & this.freezeBit) meff = mi;
         }
-        // the pair's record from the last call, looked up once (a new record goes into the map below only when kept)
-        const stored = this.shear.get(key);
         const sh = stored ?? new Float64Array(8);
         const normal = mdr && pm.normal === 'mdr'
           ? mdr.pairNormal({ ida: a, idb: b, oi, oj, ri, rj, delta, Rf, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, meff, hu: update })

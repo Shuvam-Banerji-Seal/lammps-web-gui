@@ -85,6 +85,14 @@ export class BondBpmPeri extends BondBPMBase {
   /** Per atom ID: the accumulated EPS plastic multiplier (LAMMPS lambdaValue, a diagnostic). */
   private lambdaAcc = new Map<number, number>();
   private stored = false;
+  /**
+   * The reference length of each bond slot of the topology (bonds.atoms) with the slot's atom IDs (lo, hi): refOf's Map
+   * entry, read once per bond, as long as the slot holds the same bond (the entries are only added, or rewritten by
+   * storeReference, which clears this).
+   */
+  private slotLo = new Int32Array(0);
+  private slotHi = new Int32Array(0);
+  private slotR0 = new Float64Array(0);
   /** Set in init from the active models (bond_bpm_peri.cpp init_style). */
   private stateBased = false;
   private plastic = false;
@@ -213,6 +221,7 @@ export class BondBpmPeri extends BondBPMBase {
       this.vinter.set(ia, (this.vinter.get(ia) ?? 0) + vfrac[i2]);
       this.vinter.set(ib, (this.vinter.get(ib) ?? 0) + vfrac[i1]);
     }
+    this.slotLo.fill(-1);
     this.stored = true;
   }
 
@@ -246,6 +255,13 @@ export class BondBpmPeri extends BondBPMBase {
       r: new Float64Array(b.n), r0: new Float64Array(b.n), dr: new Float64Array(b.n), scale: new Float64Array(b.n),
     };
     const d = [0, 0, 0];
+    if (this.slotLo.length < b.n) {
+      const c = Math.ceil(1.25 * b.n);
+      this.slotLo = new Int32Array(c).fill(-1);
+      this.slotHi = new Int32Array(c);
+      this.slotR0 = new Float64Array(c);
+    }
+    const sLo = this.slotLo, sHi = this.slotHi, sR0 = this.slotR0;
     for (let k = 0; k < b.n; k++) {
       const t = b.type[k];
       if (t <= 0) continue;
@@ -255,7 +271,12 @@ export class BondBpmPeri extends BondBPMBase {
       delta(bc, i1, i2, d); // x_i2 - x_i1
       const dx = -d[0], dy = -d[1], dz = -d[2]; // del = x_i1 - x_i2 as the C++ bond
       const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      const r0 = this.refOf(bondKey(lo, hi), r);
+      let r0: number;
+      if (sLo[k] === lo && sHi[k] === hi) r0 = sR0[k];
+      else {
+        r0 = this.refOf(bondKey(lo, hi), r);
+        sLo[k] = lo; sHi[k] = hi; sR0[k] = r0;
+      }
       let dr = r - r0;
       if (Math.abs(dr) < NEAR_ZERO) dr = 0;
       g.t[k] = t; g.i1[k] = i1; g.i2[k] = i2; g.lo[k] = lo; g.hi[k] = hi;

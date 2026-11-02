@@ -221,6 +221,11 @@ export class FixSRD extends Fix {
   private bigKind = new Uint8Array(0);
   private bigInv = new Float64Array(0);
   private bigAxes = new Float64Array(0);
+  /** views of one big particle's axes (9) and inverse squared semi-axes (3), made once per allocation of the arrays */
+  private axViews: Float64Array[] = [];
+  private invViews: Float64Array[] = [];
+  private axesOf(j: number): Float64Array { return (this.axViews[j] ??= this.bigAxes.subarray(9 * j, 9 * j + 9)); }
+  private invOf(j: number): Float64Array { return (this.invViews[j] ??= this.bigInv.subarray(3 * j, 3 * j + 3)); }
   private bigOmegaAll = new Float64Array(0);
   /** line big particles: segment length (big_static) and orientation theta (big_dynamic, from the line bonus) */
   private bigLength = new Float64Array(0);
@@ -497,6 +502,8 @@ export class FixSRD extends Fix {
       this.bigKind = new Uint8Array(n);
       this.bigInv = new Float64Array(3 * n);
       this.bigAxes = new Float64Array(9 * n);
+      this.axViews = [];
+      this.invViews = [];
       this.bigOmegaAll = new Float64Array(3 * n);
       this.bigLength = new Float64Array(n);
       this.bigTheta = new Float64Array(n);
@@ -1472,8 +1479,8 @@ export class FixSRD extends Fix {
           this.loadPair(i, c, xs, vs, xb);
           const rad = this.copyRadius[c];
           const ell = this.bigKind[j] === KIND_ELLIPSOID;
-          const ax = this.bigAxes.subarray(9 * j, 9 * j + 9);
-          const inv = this.bigInv.subarray(3 * j, 3 * j + 3);
+          const ax = this.axesOf(j);
+          const inv = this.invOf(j);
           const inside = ell ? insideEllipsoid(xs, xb, ax, inv) : insideSphere(xs, xb, rad * rad);
           if (!inside) continue;
 
@@ -1570,8 +1577,8 @@ export class FixSRD extends Fix {
           }
           const rad = this.copyRadius[c];
           const ell = kind === KIND_ELLIPSOID;
-          const ax = this.bigAxes.subarray(9 * j, 9 * j + 9);
-          const inv = this.bigInv.subarray(3 * j, 3 * j + 3);
+          const ax = this.axesOf(j);
+          const inv = this.invOf(j);
           const vb = this.bigVelocity(j);
           let tRemain: number;
           if (kind === KIND_LINE) {

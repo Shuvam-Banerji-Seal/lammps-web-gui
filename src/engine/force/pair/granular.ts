@@ -786,6 +786,9 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   return true;
 }
 
+/** The contact history key of atom IDs lo < hi: one number while hi < 2^26, else a string. */
+const pairKey = (lo: number, hi: number): number | string => (hi < 67108864 ? lo * 67108864 + hi : `${lo}:${hi}`);
+
 export class PairGranular extends Pair {
   readonly name = 'granular';
   /** As native LAMMPS does (src/GRANULAR/pair_granular.cpp at b332f28: no_virial_fdotr_compute = 1): the virial is
@@ -800,7 +803,8 @@ export class PairGranular extends Pair {
   /** Group bit of fix freeze (StyleContext.freezeGroupBit), 0 when none. */
   private freezeBit = 0;
   /** Contact history per atom-ID pair "lo:hi": [sx, sy, sz] in the frame of the lower ID. */
-  private shear = new Map<string, Float64Array>();
+  /** Contact history per atom-ID pair (lo, hi) (key: pairKey). */
+  private shear = new Map<number | string, Float64Array>();
   /** Some pair_coeff has a heat model (the temperature and heatflow properties are then needed). */
   private heatOn = false;
   /** The mdr contact model when a pair_coeff uses the mdr normal model (src/engine-gpl/granular/mdr). */
@@ -988,7 +992,9 @@ export class PairGranular extends Pair {
     const update = pc.historyUpdate === true;
     const nt = this.ntypes + 1;
     const tq = new Float64Array(3 * nall);
-    const seen = new Set<string>();
+    // the records kept past this call: those of the contacts that keep a history now (a pair out of contact, or whose
+    // contact ends, has no record; the others are dropped after the loop, where nothing reads them before)
+    const seen = new Set<number | string>();
     // mdr: the fix's pre-force update (per-atom state, penalty, mean surface displacement) before the contacts
     const mdr = this.mdr;
     if (mdr) mdr.beginStep(s, pc, update);
@@ -1010,14 +1016,13 @@ export class PairGranular extends Pair {
         if (!pm) continue;
         const a = id[oi], b = id[oj];
         const flip = a > b;
-        const key = flip ? `${b}:${a}` : `${a}:${b}`;
         const radsum = ri + rj;
         const jkr = pm.normal === 'jkr';
         if (rsq >= radsum * radsum && !jkr) {
-          this.shear.delete(key);
           if (mdr) mdr.pairDrop(a, b);
           continue;
         }
+        const key = flip ? pairKey(b, a) : pairKey(a, b);
         const r = Math.sqrt(rsq), rinv = 1 / r;
         const mj = rmass[oj];
         const delta = radsum - r;
@@ -1028,7 +1033,9 @@ export class PairGranular extends Pair {
           if (s.mask[oi] & this.freezeBit) meff = mj;
           else if (s.mask[oj] & this.freezeBit) meff = mi;
         }
-        const sh = this.shear.get(key) ?? new Float64Array(8);
+        // the pair's record from the last call, looked up once (a new record goes into the map below only when kept)
+        const stored = this.shear.get(key);
+        const sh = stored ?? new Float64Array(8);
         const normal = mdr && pm.normal === 'mdr'
           ? mdr.pairNormal({ ida: a, idb: b, oi, oj, ri, rj, delta, Rf, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, meff, hu: update })
           : undefined;
@@ -1038,14 +1045,11 @@ export class PairGranular extends Pair {
           oix: omega[3 * oi], oiy: omega[3 * oi + 1], oiz: omega[3 * oi + 2],
           ojx: omega[3 * oj], ojy: omega[3 * oj + 1], ojz: omega[3 * oj + 2],
           dt, update, sg: flip ? -1 : 1, normal,
-        }, sh, out, this.shear.has(key));
-        if (!ok) {
-          this.shear.delete(key);
-          continue;
-        }
+        }, sh, out, stored !== undefined);
+        if (!ok) continue;
         if (out.hist) {
           seen.add(key);
-          this.shear.set(key, sh);
+          if (!stored) this.shear.set(key, sh);
         }
         if (T && pm.heat !== 'none') {
           const q = heatFlowOf(pm.heat, pm.hk, out.a, T[oj] - T[oi]);
@@ -1109,7 +1113,7 @@ export class PairGranular extends Pair {
     }
     const a = id[i], b = id[j];
     const flip = a > b;
-    const key = flip ? `${b}:${a}` : `${a}:${b}`;
+    const key = flip ? pairKey(b, a) : pairKey(a, b);
     const stored = this.shear.get(key);
     // a copy: the contact code writes its history arrays even without an update
     const sh = stored ? Float64Array.from(stored) : new Float64Array(8);

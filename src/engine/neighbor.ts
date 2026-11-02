@@ -808,6 +808,8 @@ export class Neighbor {
       return gx * gx + gy * gy + gz * gz < cmax2;
     };
     const rowLo: number[] = [], rowHi: number[] = [];
+    // each row's bin offsets in y and z, and the bin index of its dx = 0 (for the bin gaps of a size list, below)
+    const rowDy: number[] = [], rowDz: number[] = [], rowBase: number[] = [];
     for (let dz = 0; dz <= sz; dz++) {
       for (let dy = -sy; dy <= sy; dy++) {
         if (dz === 0 && dy <= 0) continue;
@@ -816,11 +818,12 @@ export class Neighbor {
         if (m < 0) continue;
         const base = (dz * nby + dy) * nbx;
         rowLo.push(base - m); rowHi.push(base + m);
+        rowDy.push(dy); rowDz.push(dz); rowBase.push(base);
       }
     }
     let m0 = 0;
     for (let d = 1; d <= sx; d++) if (gapOK(d, 0, 0)) m0 = d;
-    if (m0 >= 1) { rowLo.push(1); rowHi.push(m0); }
+    if (m0 >= 1) { rowLo.push(1); rowHi.push(m0); rowDy.push(0); rowDz.push(0); rowBase.push(0); }
     const nrows = rowLo.length;
     const rLo = Int32Array.from(rowLo), rHi = Int32Array.from(rowHi);
 
@@ -874,6 +877,40 @@ export class Neighbor {
         if (gr) gr[p] = radius![owner[k]];
       }
     }
+    // a size list: the largest radius of each bin's atoms, so that a stencil bin farther from an owned atom than its
+    // radius + that radius + skin (every pair test there would fail) is not visited; the pairs and their order are
+    // unchanged (Neighbor.buildList with neighbor multi and a polydisperse granular system visits mostly such bins)
+    let binRmax: Float64Array | null = null;
+    if (lr) {
+      binRmax = new Float64Array(nbins).fill(-Infinity);
+      for (let k = 0; k < nall; k++) {
+        const b = binOf[k];
+        if (b < 0) continue;
+        const r = radius![k < nlocal ? k : owner[k]];
+        if (r > binRmax[b]) binRmax[b] = r;
+      }
+    }
+    // the [start, end) segments of a row's owned (or ghost) atoms that owned atom p may pair with: one segment, or for a
+    // size list one per bin within reach, in bin order (the atom order)
+    let segA = new Int32Array(64), segB = new Int32Array(64);
+    const rowSegments = (starts: Int32Array, r: number, b: number, rp: number): number => {
+      const ba = b + rLo[r], bb = b + rHi[r];
+      if (!binRmax) { segA[0] = starts[ba]; segB[0] = starts[bb + 1]; return 1; }
+      if (segA.length < bb - ba + 1) { segA = new Int32Array(2 * (bb - ba + 1)); segB = new Int32Array(2 * (bb - ba + 1)); }
+      const gy = Math.max(0, Math.abs(rowDy[r]) - 1) * by, gz = Math.max(0, Math.abs(rowDz[r]) - 1) * bz;
+      const gyz = gy * gy + gz * gz;
+      let n = 0;
+      for (let bi = ba; bi <= bb; bi++) {
+        const q0 = starts[bi], q1 = starts[bi + 1];
+        if (q1 === q0) continue;
+        const gx = Math.max(0, Math.abs(bi - b - rowBase[r]) - 1) * bx;
+        const reach = (rp + binRmax[bi] + skin) * (1 + 1e-9);
+        if (gx * gx + gyz > reach * reach) continue;
+        if (n > 0 && segB[n - 1] === q0) segB[n - 1] = q1;
+        else { segA[n] = q0; segB[n] = q1; n++; }
+      }
+      return n;
+    };
 
     // which copy of a pair through a periodic image the half list keeps (keepGhostPair): as native LAMMPS does
     // (src/npair_bin.cpp and src/npair_nsq.cpp at b332f28), by the atom IDs in a triclinic box and for neighbor nsq when
@@ -1001,7 +1038,9 @@ export class Neighbor {
               const na = new Int32Array(cap); na.set(pa.subarray(0, np)); pa = na;
               const nj = new Int32Array(cap); nj.set(pj.subarray(0, np)); pj = nj;
             }
-            for (let q = qs; q < lB; q++) {
+            let nseg = 1;
+            if (own) { segA[0] = qs; segB[0] = lB; } else nseg = rowSegments(bL, r, b, lr ? lr[p] : 0);
+            for (let sg = 0; sg < nseg; sg++) for (let q = segA[sg], q1 = segB[sg]; q < q1; q++) {
               const kq = lk[q], tq = lt[q];
               if (cutsq[tp * nt + tq] < 0) continue; // an excluded type pair (both orders)
               const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
@@ -1033,7 +1072,9 @@ export class Neighbor {
               const na = new Int32Array(cap); na.set(pa.subarray(0, np)); pa = na;
               const nj = new Int32Array(cap); nj.set(pj.subarray(0, np)); pj = nj;
             }
-            for (let q = gA; q < gB; q++) {
+            let ngs = 1;
+            if (own) { segA[0] = gA; segB[0] = gB; } else ngs = rowSegments(bG, r, b, lr ? lr[p] : 0);
+            for (let sg = 0; sg < ngs; sg++) for (let q = segA[sg], q1 = segB[sg]; q < q1; q++) {
               const kq = gk[q], tq = gt[q];
               if (cutsq[tp * nt + tq] < 0) continue;
               const dx = gxs[3 * q] - px, dy = gxs[3 * q + 1] - py, dz = gxs[3 * q + 2] - pz;

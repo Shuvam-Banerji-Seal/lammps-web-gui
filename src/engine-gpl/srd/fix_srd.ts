@@ -1361,22 +1361,35 @@ export class FixSRD extends Fix {
     this.nbounce = 0;
     this.ninside = 0;
 
-    // advect SRD particles; assign them to search bins when big particles exist
-    for (let k = 0; k < s.n; k++) {
-      const i = order[k];
-      if (!(mask[i] & this.groupBit)) continue;
-      x[3 * i] += this.dtBig * v[3 * i];
-      x[3 * i + 1] += this.dtBig * v[3 * i + 1];
-      x[3 * i + 2] += this.dtBig * v[3 * i + 2];
-      if (this.bigExist || this.wallFix) {
-        const ix = Math.trunc((x[3 * i] - this.blo2[0]) * this.bininv2[0]);
-        const iy = Math.trunc((x[3 * i + 1] - this.blo2[1]) * this.bininv2[1]);
-        const iz = Math.trunc((x[3 * i + 2] - this.blo2[2]) * this.bininv2[2]);
-        const [nx, ny, nz] = this.nbin2;
-        if (ix < 0 || ix >= nx || iy < 0 || iy >= ny || iz < 0 || iz >= nz) {
+    // advect SRD particles; assign them to search bins when big particles exist. Each particle on its own, so in index
+    // order (a bad bin assignment is reported for the first such particle in native order, as native stops there)
+    const dtBig = this.dtBig, bit = this.groupBit, binned = this.bigExist || this.wallFix !== null;
+    const nbx = this.nbin2[0], nby = this.nbin2[1], nbz = this.nbin2[2];
+    const blo0 = this.blo2[0], blo1 = this.blo2[1], blo2 = this.blo2[2];
+    const bi0 = this.bininv2[0], bi1 = this.bininv2[1], bi2 = this.bininv2[2];
+    const binsrd = this.binsrd;
+    let bad = false;
+    for (let i = 0; i < s.n; i++) {
+      if (!(mask[i] & bit)) continue;
+      x[3 * i] += dtBig * v[3 * i];
+      x[3 * i + 1] += dtBig * v[3 * i + 1];
+      x[3 * i + 2] += dtBig * v[3 * i + 2];
+      if (binned) {
+        const ix = Math.trunc((x[3 * i] - blo0) * bi0);
+        const iy = Math.trunc((x[3 * i + 1] - blo1) * bi1);
+        const iz = Math.trunc((x[3 * i + 2] - blo2) * bi2);
+        if (ix < 0 || ix >= nbx || iy < 0 || iy >= nby || iz < 0 || iz >= nbz) { bad = true; continue; }
+        binsrd[i] = iz * nby * nbx + iy * nbx + ix;
+      }
+    }
+    if (bad) {
+      for (let k = 0; k < s.n; k++) {
+        const i = order[k];
+        if (!(mask[i] & bit)) continue;
+        const ix = Math.trunc((x[3 * i] - blo0) * bi0), iy = Math.trunc((x[3 * i + 1] - blo1) * bi1), iz = Math.trunc((x[3 * i + 2] - blo2) * bi2);
+        if (ix < 0 || ix >= nbx || iy < 0 || iy >= nby || iz < 0 || iz >= nbz) {
           throw new StyleError(`Fix SRD: bad bin assignment for SRD advection (SRD particle ${s.id[i]} on step ${s.step})`);
         }
-        this.binsrd[i] = iz * ny * nx + iy * nx + ix;
       }
     }
 
@@ -1397,12 +1410,13 @@ export class FixSRD extends Fix {
     let flag = false;
     const geomP = this.triclinic ? boxMatrix(s.box.lo, s.box.hi, s.box.tilt) : null;
     if (geomP) x2lamdaAll(x, s.n, s.box.lo, geomP.hinv);
-    for (let k = 0; k < s.n && !flag; k++) {
-      const i = order[k];
-      if (!(mask[i] & this.groupBit)) continue;
-      for (let d = 0; d < 3; d++) {
-        if (x[3 * i + d] < this.srdloRe[d] || x[3 * i + d] > this.srdhiRe[d]) { flag = true; break; }
-      }
+    // any particle outside triggers it (index order: the result does not depend on the order)
+    const lo0 = this.srdloRe[0], lo1 = this.srdloRe[1], lo2 = this.srdloRe[2];
+    const hi0 = this.srdhiRe[0], hi1 = this.srdhiRe[1], hi2 = this.srdhiRe[2];
+    for (let i = 0; i < s.n && !flag; i++) {
+      if (!(mask[i] & bit)) continue;
+      const x0 = x[3 * i], x1 = x[3 * i + 1], x2 = x[3 * i + 2];
+      if (x0 < lo0 || x0 > hi0 || x1 < lo1 || x1 > hi1 || x2 < lo2 || x2 > hi2) flag = true;
     }
     if (geomP) lamda2xAll(x, s.n, s.box.lo, geomP.h);
     if (flag) {
@@ -1476,13 +1490,15 @@ export class FixSRD extends Fix {
             break;
           }
           const j = this.copyOwner[c];
-          this.loadPair(i, c, xs, vs, xb);
           const rad = this.copyRadius[c];
           const ell = this.bigKind[j] === KIND_ELLIPSOID;
           const ax = this.axesOf(j);
           const inv = this.invOf(j);
-          const inside = ell ? insideEllipsoid(xs, xb, ax, inv) : insideSphere(xs, xb, rad * rad);
+          // the inside test from the positions (the same differences as from the loaded copies); the pair is loaded
+          // only for a particle inside
+          const inside = ell ? insideEllipsoidAt(s.x, i, this.copyPos, c, ax, inv) : insideSphereAt(s.x, i, this.copyPos, c, rad * rad);
           if (!inside) continue;
+          this.loadPair(i, c, xs, vs, xb);
 
           // the big particle's velocity and angular velocity (the owner's v and omega)
           const vb = this.bigVelocity(j);
@@ -2187,6 +2203,25 @@ export class FixSRD extends Fix {
 }
 
 /* ---------------------------------------------------------------------- */
+
+/** insideSphere of SRD atom i (x) and big copy c (copy positions cp), without loading them. */
+const insideSphereAt = (x: Float64Array, i: number, cp: Float64Array, c: number, radsq: number): boolean => {
+  const dx = x[3 * i] - cp[3 * c];
+  const dy = x[3 * i + 1] - cp[3 * c + 1];
+  const dz = x[3 * i + 2] - cp[3 * c + 2];
+  return dx * dx + dy * dy + dz * dz <= radsq;
+};
+
+/** insideEllipsoid of SRD atom i and big copy c, without loading them. */
+const insideEllipsoidAt = (x: Float64Array, i: number, cp: Float64Array, c: number, ax: Float64Array, inv: Float64Array): boolean => {
+  const d0 = x[3 * i] - cp[3 * c];
+  const d1 = x[3 * i + 1] - cp[3 * c + 1];
+  const d2 = x[3 * i + 2] - cp[3 * c + 2];
+  const px = d0 * ax[0] + d1 * ax[1] + d2 * ax[2];
+  const py = d0 * ax[3] + d1 * ax[4] + d2 * ax[5];
+  const pz = d0 * ax[6] + d1 * ax[7] + d2 * ax[8];
+  return px * px * inv[0] + py * py * inv[1] + pz * pz * inv[2] <= 1.0;
+};
 
 /** inside_sphere(): SRD point inside (inclusive) the sphere of squared radius radsq */
 const insideSphere = (xs: Float64Array, xb: Float64Array, radsq: number): boolean => {

@@ -35,26 +35,39 @@ import { missingArgs } from '../force/util';
  * Errors: a point particle in the group (native stops with the same requirement).
  */
 
-/** One Richardson step of the orientation quaternion q (w i j k) over the full time step h, lab-frame omega. */
-export const orientStep = (q: Float64Array, off: number, w: [number, number, number], h: number): void => {
-  const dOf = (a0: number, a1: number, a2: number, a3: number): [number, number, number, number] => [
-    -(w[0] * a1 + w[1] * a2 + w[2] * a3),
-    a0 * w[0] + (w[1] * a3 - w[2] * a2),
-    a0 * w[1] + (w[2] * a1 - w[0] * a3),
-    a0 * w[2] + (w[0] * a2 - w[1] * a1),
-  ];
-  const normalise = (a: number[]): number[] => {
-    const n = Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2] + a[3] * a[3]);
-    return [a[0] / n, a[1] / n, a[2] / n, a[3] / n];
-  };
+/**
+ * One Richardson step of the orientation quaternion q (w i j k) over the full time step h, lab-frame omega (w0, w1, w2).
+ * As native LAMMPS does (src/math_extra.cpp richardson_sphere and src/math_extra.h vecquat, qnormalize at b332f28):
+ * wq = (0, omega) q as "c[1] = b[0] * a[0] + a[1] * b[3] - a[2] * b[2]" (and its cyclic forms), the stages q + dtq wq and
+ * q + 0.5 dtq wq with dtq = h/2, each normalised by "norm = 1.0 / sqrt(...); q[k] *= norm", then 2 qhalf - qfull.
+ */
+export const orientStep = (q: Float64Array, off: number, w0: number, w1: number, w2: number, h: number): void => {
+  const dtq = 0.5 * h, dtq2 = 0.5 * dtq;
   const q0 = q[off], q1 = q[off + 1], q2 = q[off + 2], q3 = q[off + 3];
-  const d = dOf(q0, q1, q2, q3);
-  const qfull = normalise([0, 1, 2, 3].map((k) => [q0, q1, q2, q3][k] + 0.5 * h * d[k]));
-  const qh = normalise([0, 1, 2, 3].map((k) => [q0, q1, q2, q3][k] + 0.25 * h * d[k]));
-  const dh = dOf(qh[0], qh[1], qh[2], qh[3]);
-  const qh2 = normalise([0, 1, 2, 3].map((k) => qh[k] + 0.25 * h * dh[k]));
-  const qn = normalise([0, 1, 2, 3].map((k) => 2 * qh2[k] - qfull[k]));
-  q[off] = qn[0]; q[off + 1] = qn[1]; q[off + 2] = qn[2]; q[off + 3] = qn[3];
+  let c0 = -w0 * q1 - w1 * q2 - w2 * q3;
+  let c1 = q0 * w0 + w1 * q3 - w2 * q2;
+  let c2 = q0 * w1 + w2 * q1 - w0 * q3;
+  let c3 = q0 * w2 + w0 * q2 - w1 * q1;
+  // full update
+  let f0 = q0 + dtq * c0, f1 = q1 + dtq * c1, f2 = q2 + dtq * c2, f3 = q3 + dtq * c3;
+  let norm = 1.0 / Math.sqrt(f0 * f0 + f1 * f1 + f2 * f2 + f3 * f3);
+  f0 *= norm; f1 *= norm; f2 *= norm; f3 *= norm;
+  // first half update
+  let h0 = q0 + dtq2 * c0, h1 = q1 + dtq2 * c1, h2 = q2 + dtq2 * c2, h3 = q3 + dtq2 * c3;
+  norm = 1.0 / Math.sqrt(h0 * h0 + h1 * h1 + h2 * h2 + h3 * h3);
+  h0 *= norm; h1 *= norm; h2 *= norm; h3 *= norm;
+  // second half update from the half-step quaternion
+  c0 = -w0 * h1 - w1 * h2 - w2 * h3;
+  c1 = h0 * w0 + w1 * h3 - w2 * h2;
+  c2 = h0 * w1 + w2 * h1 - w0 * h3;
+  c3 = h0 * w2 + w0 * h2 - w1 * h1;
+  h0 += dtq2 * c0; h1 += dtq2 * c1; h2 += dtq2 * c2; h3 += dtq2 * c3;
+  norm = 1.0 / Math.sqrt(h0 * h0 + h1 * h1 + h2 * h2 + h3 * h3);
+  h0 *= norm; h1 *= norm; h2 *= norm; h3 *= norm;
+  // corrected Richardson update
+  const n0 = 2.0 * h0 - f0, n1 = 2.0 * h1 - f1, n2 = 2.0 * h2 - f2, n3 = 2.0 * h3 - f3;
+  norm = 1.0 / Math.sqrt(n0 * n0 + n1 * n1 + n2 * n2 + n3 * n3);
+  q[off] = n0 * norm; q[off + 1] = n1 * norm; q[off + 2] = n2 * norm; q[off + 3] = n3 * norm;
 };
 
 export class FixNVEBpmSphere extends FixNVE {
@@ -119,7 +132,7 @@ export class FixNVEBpmSphere extends FixNVE {
     const omega = s.omega!;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      orientStep(s.quat!, 4 * i, [omega[3 * i], omega[3 * i + 1], omega[3 * i + 2]], this.dtv);
+      orientStep(s.quat!, 4 * i, omega[3 * i], omega[3 * i + 1], omega[3 * i + 2], this.dtv);
     }
     if (this.updateDipole) updateDipoles(this.sys, this.groupBit, this.dlm, this.dtv, this.dtf);
   }

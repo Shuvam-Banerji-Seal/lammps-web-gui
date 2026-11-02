@@ -20,7 +20,7 @@
  * native writes to svector (single_extra) are not reproduced here.
  */
 import { Pair, StyleError, pairCoeffArgs, tallyAtomXyz, type PairCompute, type StyleContext } from '../../engine/force/types';
-import { NEIGHMASK } from '../../engine/neighbor';
+import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { bounds, missingArgs, numeric, parseNum } from '../../engine/force/util';
 import { SUPER_BLOCK, SUPER_INERTIA } from '../../engine/superellipsoid';
 import type { SimState } from '../../engine/types';
@@ -221,11 +221,16 @@ export class PairGranularSuperellipsoid extends Pair {
     const size = this.sizeHistory, nh = this.defaultHist;
     const acc = pc.acc;
     const formulation = this.geometric ? FORMULATION_GEOMETRIC : FORMULATION_ALGEBRAIC;
+    const sLJ = pc.specialLJ;
 
     for (let i = 0; i < list.inum; i++) {
       for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
-        let a = i, b = list.neighbors[k] & NEIGHMASK;
+        const jraw = list.neighbors[k];
+        let a = i, b = jraw & NEIGHMASK;
         let oa = owner[a], ob = owner[b];
+        // compute: "factor_lj = special_lj[sbmask(j)]; ... if (factor_lj == 0) continue;" ahead of check_contact, so the
+        // pair's touch flag and history stay as they were
+        const factorLJ = sLJ[jraw >>> SBBITS];
         if (ids[oa] > ids[ob]) {
           [a, b] = [b, a];
           [oa, ob] = [ob, oa];
@@ -236,6 +241,7 @@ export class PairGranularSuperellipsoid extends Pair {
         let rec = this.hist.get(key);
         if (!rec) rec = { touch: 0, h: new Float64Array(size) };
         next.set(key, rec);
+        if (factorLJ === 0) continue;
         const h = rec.h;
 
         const xi: V3 = [x[3 * a], x[3 * a + 1], x[3 * a + 2]];
@@ -457,6 +463,15 @@ export class PairGranularSuperellipsoid extends Pair {
         const forces: V3 = [Fntot * nji[0] + fs[0], Fntot * nji[1] + fs[1], Fntot * nji[2] + fs[2]];
         const torqueI = cross3(crI, forces);
         const torqueJ = cross3(forces, crJ);
+        // compute: "scale3(factor_lj, forces)", "scale3(factor_lj, torquesi)", "scale3(factor_lj, torquesj)" on the
+        // torques calculate_forces made from the unscaled forces
+        if (factorLJ !== 1) {
+          for (let kk = 0; kk < 3; kk++) {
+            forces[kk] *= factorLJ;
+            torqueI[kk] *= factorLJ;
+            torqueJ[kk] *= factorLJ;
+          }
+        }
 
         f[3 * a] += forces[0]; f[3 * a + 1] += forces[1]; f[3 * a + 2] += forces[2];
         f[3 * b] -= forces[0]; f[3 * b + 1] -= forces[1]; f[3 * b + 2] -= forces[2];

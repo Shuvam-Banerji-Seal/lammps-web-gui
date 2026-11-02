@@ -2,7 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { missingArgs, numeric } from '../force/util';
 import type { System } from '../system';
-import { massOf, isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { massOf, isBpmSphereStyle, isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { libm } from '../libm';
 
 /*
@@ -113,6 +113,15 @@ const ARGS: Record<MoveStyle, number> = { linear: 3, wiggle: 4, rotate: 7, trans
  * a component (x, y, z, vx, vy, vz): null for NULL.
  */
 type MoveVar = { name: string; atom: boolean } | null;
+
+/** MathExtra::quatquat (src/math_extra.h at b332f28): c = a b, in its operation order. */
+const quatquat = (a: ArrayLike<number>, b: ArrayLike<number>, ob: number, c: Float64Array, oc: number): void => {
+  const b0 = b[ob], b1 = b[ob + 1], b2 = b[ob + 2], b3 = b[ob + 3];
+  c[oc] = a[0] * b0 - a[1] * b1 - a[2] * b2 - a[3] * b3;
+  c[oc + 1] = a[0] * b1 + b0 * a[1] + a[2] * b3 - a[3] * b2;
+  c[oc + 2] = a[0] * b2 + b0 * a[2] + a[3] * b1 - a[1] * b3;
+  c[oc + 3] = a[0] * b3 + b0 * a[3] + a[1] * b2 - a[2] * b1;
+};
 
 /** Rotation matrix of the unit quaternion q (w i j k), body to space. */
 const quatMatrix = (q: ArrayLike<number>, o: number, m: number[]): void => {
@@ -422,6 +431,7 @@ export class FixMove extends Fix {
     };
     const hr = libm.sin(th / 2);
     const r = [libm.cos(th / 2), R[0] * hr, R[1] * hr, R[2] * hr];
+    const quatAtom = !!this.quatOrig && !!s.quat && isBpmSphereStyle(s.atomStyle);
     const u = [0, 0, 0], xr = [0, 0, 0], A = new Array<number>(9).fill(0);
     for (let i = 0; i < s.n; i++) {
       if (!this.captured[i] || !(mask[i] & bit)) continue;
@@ -461,13 +471,11 @@ export class FixMove extends Fix {
         }
         const wb = [0, 1, 2].map((k) => A[k] * w * R[0] + A[3 + k] * w * R[1] + A[6 + k] * w * R[2]);
         for (let d = 0; d < 3; d++) s.angmom[3 * i + d] = A[3 * d] * inertia[0] * wb[0] + A[3 * d + 1] * inertia[1] * wb[1] + A[3 * d + 2] * inertia[2] * wb[2];
-        const q0 = this.quatOrig.subarray(4 * i, 4 * i + 4);
-        const q = s.quat;
-        q[4 * i] = r[0] * q0[0] - r[1] * q0[1] - r[2] * q0[2] - r[3] * q0[3];
-        q[4 * i + 1] = r[0] * q0[1] + r[1] * q0[0] + r[2] * q0[3] - r[3] * q0[2];
-        q[4 * i + 2] = r[0] * q0[2] - r[1] * q0[3] + r[2] * q0[0] + r[3] * q0[1];
-        q[4 * i + 3] = r[0] * q0[3] + r[1] * q0[2] - r[2] * q0[1] + r[3] * q0[0];
+        if (!quatAtom) quatquat(r, this.quatOrig, 4 * i, s.quat, 4 * i);
       }
+      // fix_move.cpp: "quats for ellipsoids, tris, bodies, and bpm/sphere": with a per-atom quaternion (atom style
+      // bpm/sphere, native quat_atom_flag) every moved atom gets "MathExtra::quatquat(qrotate, qoriginal[i], quat_atom[i])"
+      if (quatAtom) quatquat(r, this.quatOrig!, 4 * i, s.quat!, 4 * i);
     }
   }
 

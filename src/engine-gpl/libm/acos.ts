@@ -11,9 +11,10 @@
  * cor = fma(-P, x2 x, ((hp0 - r) - x) + hp1); in 0.96875 <= |x| < 1 r, the rt polynomial, 1.5 - (0.5 t) c, the split
  * y, z - y y and the denominator c w + y are fused (t = c w is not rounded on its own), while p (y + cc) is a plain
  * product added to cc (x > 0) or subtracted from hp1 - cc (x < 0). Checked against the native libm on 2,250,016
- * arguments covering every branch (tests/engineLibmAcos.test.ts holds a sample): no difference.
+ * arguments covering every branch (tests/engineLibmAcos.test.ts holds a sample): no difference. The fused steps use fmaF
+ * of ./log.ts, the correctly rounded fused multiply-add with its fast path (the same values as fma, which it falls back to).
  */
-import { fma } from './log';
+import { fmaF } from './log';
 
 /** asincos.tbl: asncs.x[0..2567], as the big-endian (high word, low word) pairs of the source. */
 const W = Uint32Array.from([
@@ -690,6 +691,8 @@ const POWTWO = Array.from({ length: 28 }, (_, k) => 2 ** k);
 const f1 = 1.66666666666664110590506577996662E-01, f2 = 7.50000000026122686814431784722623E-02, f3 = 4.46428561421059750978517350006940E-02;
 const f4 = 3.03821268582119319911193410625235E-02, f5 = 2.23551211026525610742786300334557E-02, f6 = 1.81382903404565056280372531963613E-02;
 const t27 = 134217728.0;
+/** Veltkamp split constant 2^27 + 1. */
+const SPLIT = 134217729;
 const rt0 = 9.99999999859990725855365213134618E-01, rt1 = 4.99999999495955425917856814202739E-01;
 const rt2 = 3.75017500867345182581453026130850E-01, rt3 = 3.12523626554518656309172508769531E-01;
 const hp0 = 1.5707963267948966; // 0x3FF921FB 0x54442D18
@@ -702,9 +705,9 @@ const U = new Uint32Array(F.buffer); // little-endian: U[0] low word, U[1] high 
 const tableBranch = (x: number, m: number, n: number, deg: number): number => {
   const xx = m > 0 ? x - ASNCS[n] : -x - ASNCS[n];
   let q = ASNCS[n + deg];
-  for (let k = deg - 1; k >= 2; k--) q = fma(xx, q, ASNCS[n + k]);
-  const p = fma(xx * xx, q, ASNCS[n + deg + 1]);
-  let t = fma(ASNCS[n + 1], xx, p);
+  for (let k = deg - 1; k >= 2; k--) q = fmaF(xx, q, ASNCS[n + k]);
+  const p = fmaF(xx * xx, q, ASNCS[n + deg + 1]);
+  let t = fmaF(ASNCS[n + 1], xx, p);
   const y = m > 0 ? hp0 - ASNCS[n + deg + 2] : hp0 + ASNCS[n + deg + 2];
   t = m > 0 ? hp1 - t : hp1 + t;
   return y + t;
@@ -718,9 +721,9 @@ export const acos = (x: number): number => {
   if (k < 0x3c880000) return hp0;
   if (k < 0x3fc00000) {
     const x2 = x * x;
-    const P = fma(fma(fma(fma(fma(f6, x2, f5), x2, f4), x2, f3), x2, f2), x2, f1);
+    const P = fmaF(fmaF(fmaF(fmaF(fmaF(f6, x2, f5), x2, f4), x2, f3), x2, f2), x2, f1);
     const r = hp0 - x;
-    const cor = fma(-P, x2 * x, ((hp0 - r) - x) + hp1);
+    const cor = fmaF(-P, x2 * x, ((hp0 - r) - x) + hp1);
     return r + cor;
   }
   if (k < 0x3fe00000) return tableBranch(x, m, k < 0x3fd00000 ? 11 * ((k & 0x000fffff) >> 15) : 11 * ((k & 0x000fffff) >> 14) + 352, 6);
@@ -733,13 +736,31 @@ export const acos = (x: number): number => {
     F[0] = z;
     const kz = U[1];
     let t = INROOT[(kz & 0x001fffff) >> 14] * POWTWO[511 - (kz >> 21)];
-    const r = fma(-(t * t), z, 1.0);
-    t = t * fma(r, fma(r, fma(r, rt3, rt2), rt1), rt0);
+    // r = fma(-(t t), z, 1.0): t approximates 1/sqrt(z), so p = -(t t) z lies in [-2, -0.5] and 1 + p is exact (Sterbenz);
+    // the fused value is then the one rounding 1 + p plus the exact error of the product (Dekker)
+    const tt = t * t;
+    const pr = -tt * z;
+    let r: number;
+    if (pr >= -2 && pr <= -0.5) {
+      let sp = SPLIT * tt;
+      const ah = sp - (sp - tt), al = tt - ah;
+      sp = SPLIT * z;
+      const bh = sp - (sp - z), bl = z - bh;
+      const el = ((ah * bh - (-pr)) + ah * bl + al * bh) + al * bl;
+      r = (1.0 + pr) - el;
+    } else {
+      r = fmaF(-tt, z, 1.0);
+    }
+    t = t * fmaF(r, fmaF(r, fmaF(r, rt3, rt2), rt1), rt0);
     const c = t * z;
-    const w = fma(-(0.5 * t), c, 1.5);
-    const y = fma(-t27, c, fma(t27, c, c));
-    const cc = fma(-y, y, z) / fma(w, c, y);
-    const p = fma(fma(fma(fma(fma(f6, z, f5), z, f4), z, f3), z, f2), z, f1) * z;
+    const w = fmaF(-(0.5 * t), c, 1.5);
+    // y = fma(-t27, c, fma(t27, c, c)) and fma(-y, y, z) need no fused arithmetic: t27 c is exact (t27 = 2^27), so each
+    // fused step has the one rounding of the plain sum; and y is a multiple of 2^-25 ulp-of-c units below 2^26 + 2 of
+    // them (at most 27 significant bits), so y y is exact and the residual is the plain z - y y
+    const tc = t27 * c;
+    const y = (tc + c) - tc;
+    const cc = (z - y * y) / fmaF(w, c, y);
+    const p = fmaF(fmaF(fmaF(fmaF(fmaF(f6, z, f5), z, f4), z, f3), z, f2), z, f1) * z;
     const prod = p * (y + cc);
     const res = m < 0 ? (hp1 - cc - prod) + (hp0 - y) : (cc + prod) + y;
     return res + res;

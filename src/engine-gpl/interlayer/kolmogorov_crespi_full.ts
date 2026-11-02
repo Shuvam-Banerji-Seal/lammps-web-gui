@@ -124,7 +124,7 @@ export class PairKolmogorovCrespiFull extends KCNormalBase<KCFullParam> {
     for (let i = 0; i < list.inum; i++) {
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const ti = type[i];
-      const ni = [this.normal[3 * i], this.normal[3 * i + 1], this.normal[3 * i + 2]];
+      const ni0 = this.normal[3 * i], ni1 = this.normal[3 * i + 1], ni2 = this.normal[3 * i + 2];
       const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
       for (let k = k0; k < k1; k++) {
         const j = list.neighbors[k] & NEIGHMASK;
@@ -138,7 +138,7 @@ export class PairKolmogorovCrespiFull extends KCNormalBase<KCFullParam> {
         const rc = tapOn ? Math.sqrt(cutsq[t]) : 0;
         const tap = tapOn ? calcTap(r, rc) : 1.0;
         const dtap = tapOn ? calcDTap(r, rc) : 0.0;
-        const prodnorm1 = ni[0] * delx + ni[1] * dely + ni[2] * delz;
+        const prodnorm1 = ni0 * delx + ni1 * dely + ni2 * delz;
         const rhosq1 = rsq - prodnorm1 * prodnorm1; // rho_ij
         const rho = rhosq1 * p.delta2inv; // (rho_ij/delta)^2
         const exp0 = libmExp(-p.lambda * (r - p.z0));
@@ -151,37 +151,42 @@ export class PairKolmogorovCrespiFull extends KCNormalBase<KCFullParam> {
         const fpair = p.lambda * exp0 / r * sumCff;
         const fpair1 = 2.0 * exp0 * exp1 * (p.delta2inv * sumC1 - sumC11);
         const fsum = fpair + fpair1;
-        // derivative of prodnorm1 with respect to atom i
-        const dpn = [0, 1, 2].map((b) => this.dnormdri[9 * i + b] * delx + this.dnormdri[9 * i + 3 + b] * dely + this.dnormdri[9 * i + 6 + b] * delz);
-        const fp1 = [0, 1, 2].map((a) => prodnorm1 * ni[a] * fpair1);
-        const fprod1 = [0, 1, 2].map((a) => prodnorm1 * dpn[a] * fpair1);
-        const fkc = [0, 1, 2].map((a) => {
-          const del = a === 0 ? delx : a === 1 ? dely : delz;
-          return (del * fsum - fp1[a]) * tap - vkc * dtap * del / r;
-        });
-        f[3 * i] += fkc[0] - fprod1[0] * tap;
-        f[3 * i + 1] += fkc[1] - fprod1[1] * tap;
-        f[3 * i + 2] += fkc[2] - fprod1[2] * tap;
-        f[3 * j] -= fkc[0];
-        f[3 * j + 1] -= fkc[1];
-        f[3 * j + 2] -= fkc[2];
+        // derivative of prodnorm1 with respect to atom i; the per-component terms as scalars (the same products in the
+        // same order as native's arrays)
+        const dn = this.dnormdri, o9 = 9 * i;
+        const dpn0 = dn[o9] * delx + dn[o9 + 3] * dely + dn[o9 + 6] * delz;
+        const dpn1 = dn[o9 + 1] * delx + dn[o9 + 4] * dely + dn[o9 + 7] * delz;
+        const dpn2 = dn[o9 + 2] * delx + dn[o9 + 5] * dely + dn[o9 + 8] * delz;
+        const fp10 = prodnorm1 * ni0 * fpair1, fp11 = prodnorm1 * ni1 * fpair1, fp12 = prodnorm1 * ni2 * fpair1;
+        const fprod10 = prodnorm1 * dpn0 * fpair1, fprod11 = prodnorm1 * dpn1 * fpair1, fprod12 = prodnorm1 * dpn2 * fpair1;
+        const fkc0 = (delx * fsum - fp10) * tap - vkc * dtap * delx / r;
+        const fkc1 = (dely * fsum - fp11) * tap - vkc * dtap * dely / r;
+        const fkc2 = (delz * fsum - fp12) * tap - vkc * dtap * delz / r;
+        f[3 * i] += fkc0 - fprod10 * tap;
+        f[3 * i + 1] += fkc1 - fprod11 * tap;
+        f[3 * i + 2] += fkc2 - fprod12 * tap;
+        f[3 * j] -= fkc0;
+        f[3 * j + 1] -= fkc1;
+        f[3 * j + 2] -= fkc2;
         // the KC neighbors of i move with the normal
-        const del = [delx, dely, delz];
+        const dnm = this.dnormal;
         for (let kk = 0; kk < this.kcN[i]; kk++) {
           const kidx = this.kcJ[this.maxKC * i + kk];
           if (kidx === i) continue;
           const base = 9 * this.maxKC * i + 9 * kk;
-          const dp = [0, 1, 2].map((b) => this.dnormal[base + b] * del[0] + this.dnormal[base + 3 + b] * del[1] + this.dnormal[base + 6 + b] * del[2]);
-          const fk = [0, 1, 2].map((a) => (-prodnorm1 * dp[a] * fpair1) * tap);
-          f[3 * kidx] += fk[0];
-          f[3 * kidx + 1] += fk[1];
-          f[3 * kidx + 2] += fk[2];
-          tallyXYZAtoms(pc, kidx, i, 0, fk[0], fk[1], fk[2], x[3 * kidx] - x[3 * i], x[3 * kidx + 1] - x[3 * i + 1], x[3 * kidx + 2] - x[3 * i + 2]);
+          const dp0 = dnm[base] * delx + dnm[base + 3] * dely + dnm[base + 6] * delz;
+          const dp1 = dnm[base + 1] * delx + dnm[base + 4] * dely + dnm[base + 7] * delz;
+          const dp2 = dnm[base + 2] * delx + dnm[base + 5] * dely + dnm[base + 8] * delz;
+          const fk0 = (-prodnorm1 * dp0 * fpair1) * tap, fk1 = (-prodnorm1 * dp1 * fpair1) * tap, fk2 = (-prodnorm1 * dp2 * fpair1) * tap;
+          f[3 * kidx] += fk0;
+          f[3 * kidx + 1] += fk1;
+          f[3 * kidx + 2] += fk2;
+          tallyXYZAtoms(pc, kidx, i, 0, fk0, fk1, fk2, x[3 * kidx] - x[3 * i], x[3 * kidx + 1] - x[3 * i + 1], x[3 * kidx + 2] - x[3 * i + 2]);
         }
         const e = tapOn ? tap * vkc : vkc - this.offset[t];
         evdwlSum += e;
         this.pvector[1] += e;
-        tallyXYZAtoms(pc, i, j, e, fkc[0], fkc[1], fkc[2], delx, dely, delz);
+        tallyXYZAtoms(pc, i, j, e, fkc0, fkc1, fkc2, delx, dely, delz);
       }
     }
     pc.acc.evdwl += evdwlSum;

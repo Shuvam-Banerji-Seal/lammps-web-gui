@@ -18,7 +18,7 @@ import { StyleError } from '../../engine/force/types';
 import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { PairReaxFF } from './pair';
-import { type HistoryMap, solveFictitious, taperFix } from './charge';
+import { type HistoryMap, RowCandidates, solveFictitious, taperFix } from './charge';
 import { efieldForModel, fieldOf, findEfield, qeqChiField } from './efield';
 import type { FixEfield } from '../../engine/fix/force_ext';
 import { pow as libmPow } from '../libm/pow';
@@ -63,6 +63,8 @@ export class FixQEqReaxFF extends Fix {
   private ntypes = 0;
   /** fictitious-charge histories keyed by atom id: [s_hist 0..3, t_hist 4..7] (most recent first). */
   private hist: HistoryMap = new Map();
+  /** the candidate partners of compute_H, kept between steps (charge.ts RowCandidates) */
+  private cands = new RowCandidates();
   private efieldFix: FixEfield | null = null;
   private matvecs = 0;
 
@@ -164,7 +166,7 @@ export class FixQEqReaxFF extends Fix {
     }
     const r = solveFictitious({
       sys: this.sys, groupBit: this.groupBit, swb: this.swb, ntypes: this.ntypes, shld: this.shld, Tap: this.Tap,
-      eta: p.eta, chiEff, hist: this.hist,
+      eta: p.eta, chiEff, hist: this.hist, cands: this.cands,
       opts: { tolerance: this.tolerance, imax: this.imax, maxwarn: this.maxwarn, warn: (t) => this.sys.warn(t), step: s.step, name: 'qeq/reaxff' },
     });
     this.matvecs = r.matvecsS + r.matvecsT;

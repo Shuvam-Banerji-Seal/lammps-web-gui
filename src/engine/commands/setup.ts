@@ -3609,9 +3609,11 @@ const replicate: Handler = ({ sys }, a) => {
   for (const w of a.slice(3)) if (w !== 'bbox' && w !== 'bond/periodic') throw new StyleError(`Unknown replicate keyword ${w}`);
   if (s.dimension === 2 && rep[2] !== 1) throw new StyleError('Cannot replicate 2d simulation in z dimension');
   // As native LAMMPS does (src/replicate.cpp at b332f28, bond_flag): without bond/periodic a copy's topology refers to the
-  // atoms of the same copy; with it, each partner is taken from the copy whose image is nearest to the first atom.
+  // atoms of the same copy; with it, Replicate::newtag picks the copy of each atom (below).
   const bondPeriodic = a.slice(3).includes('bond/periodic');
   const g = sys.geom;
+  // the old box's centre and half lengths (newtag: old_center, old_prd_half)
+  const oldCenter = [0, 1, 2].map((d) => 0.5 * (g.lo[d] + g.hi[d])), oldHalf = [0.5 * g.lx, 0.5 * g.ly, 0.5 * g.lz];
   const old: SimState = { ...s, x: s.x.slice(0, 3 * s.n), v: s.v.slice(0, 3 * s.n), image: s.image.slice(0, 3 * s.n), type: s.type.slice(0, s.n), id: s.id.slice(0, s.n), mask: s.mask.slice(0, s.n), molecule: s.molecule.slice(0, s.n), q: s.q.slice(0, s.n) };
   // measured with native LAMMPS: "Cannot replicate with fixes that store per-atom quantities"
   for (const f of sys.fixes) if (f.style === 'property/atom') throw new StyleError('Cannot replicate with fixes that store per-atom quantities');
@@ -3633,7 +3635,10 @@ const replicate: Handler = ({ sys }, a) => {
   for (let kx = 0; kx < rep[0]; kx++) for (let ky = 0; ky < rep[1]; ky++) for (let kz = 0; kz < rep[2]; kz++) {
     const copy = (kz * rep[1] + ky) * rep[0] + kx;
     for (let i = 0; i < n0; i++, c++) {
-      g.unwrap(old.x, old.image, i, u);
+      // As native LAMMPS does (src/replicate.cpp at b332f28): atoms are unmapped by their image flags first, which
+      // bond/periodic resets to zero, so its copies start from the stored (wrapped) positions
+      if (bondPeriodic) for (let d = 0; d < 3; d++) u[d] = old.x[3 * i + d];
+      else g.unwrap(old.x, old.image, i, u);
       x[3 * c] = u[0] + kx * g.lx + ky * g.xy + kz * g.xz;
       x[3 * c + 1] = u[1] + ky * g.ly + kz * g.yz;
       x[3 * c + 2] = u[2] + kz * g.lz;
@@ -3693,22 +3698,35 @@ const replicate: Handler = ({ sys }, a) => {
   for (let i = 0; i < s.n; i++) gnew.remap(s.x, s.image, i);
   const oldIdx = new Map<number, number>();
   for (let i = 0; i < n0; i++) oldIdx.set(old.id[i], i);
-  const ux = (i: number) => { const p = [0, 0, 0]; g.unwrap(old.x, old.image, i, p); return p; };
+  const indexOf = (aid: number): number => {
+    const i = oldIdx.get(aid);
+    if (i === undefined) throw new StyleError('Replicate: bond/angle/dihedral/improper references a non-existent atom');
+    return i;
+  };
   [topo.bonds, topo.angles, topo.dihedrals, topo.impropers].forEach((l, li) => {
     const src = lists[li];
+    // the atom that stores the entry: atom1 of a bond, atom2 of an angle, dihedral or improper (src/atom.cpp data_bonds,
+    // data_angles, data_dihedrals and data_impropers at b332f28, newton_bond on)
+    const home = li === 0 ? 0 : 1;
     for (let kz = 0; kz < rep[2]; kz++) for (let ky = 0; ky < rep[1]; ky++) for (let kx = 0; kx < rep[0]; kx++) {
       for (let e = 0; e < src.n; e++) {
         const ids = Array.from(src.atoms.subarray(e * src.width, (e + 1) * src.width));
-        const p0 = ux(oldIdx.get(ids[0])!);
-        const out = ids.map((aid, w) => {
-          // which copy holds the partner nearest to atom 0 of this copy
-          const p = ux(oldIdx.get(aid)!);
+        const i0 = bondPeriodic ? indexOf(ids[home]) : -1;
+        const out = ids.map((aid) => {
           const off = [kx, ky, kz];
-          if (w > 0 && bondPeriodic) {
-            const dd = [p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]];
-            const sh = [Math.round(dd[0] / g.lx), Math.round(dd[1] / g.ly), Math.round(dd[2] / g.lz)];
-            for (let d = 0; d < 3; d++) off[d] = (((off[d] + sh[d]) % rep[d]) + rep[d]) % rep[d];
-            void sh;
+          if (bondPeriodic) {
+            // As native LAMMPS does (src/replicate.cpp Replicate::newtag at b332f28): along each dimension where the atom
+            // is more than half the old box length from the storing atom (stored positions), it is taken from the next
+            // copy when the storing atom is above the old box centre, else from the previous one, wrapping around
+            const i2 = indexOf(aid);
+            for (let d = 0; d < 3; d++) {
+              const del = Math.abs(old.x[3 * i0 + d] - old.x[3 * i2 + d]);
+              const shift = del > oldHalf[d] ? (old.x[3 * i0 + d] > oldCenter[d] ? 1 : -1) : 0;
+              let r = off[d] + shift;
+              if (r >= rep[d]) r = 0;
+              if (r < 0) r = rep[d] - 1;
+              off[d] = r;
+            }
           }
           return aid + ((off[2] * rep[1] + off[1]) * rep[0] + off[0]) * maxId;
         });

@@ -22,4 +22,6 @@ export const HOOKS: Record<string, PairLocalHook> = {
   eam: pairLocal,
   'eam/alloy': pairLocal,
   'eam/fs': pairLocal,
+  // pair granular keeps its rolling and twisting histories in native's half-list orientation (engine/force/pair/granular.ts)
+  granular: pairLocal,
 };

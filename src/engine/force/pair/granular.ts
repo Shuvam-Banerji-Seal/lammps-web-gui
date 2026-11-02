@@ -3,6 +3,7 @@ import type { SimState } from '../../types';
 import { NEIGHMASK } from '../../neighbor';
 import { numeric, parseNum } from '../util';
 import { gplHook } from '../../gplHooks';
+import type { PairLocalHook, PairOrderSource } from '../../compute/local';
 import { HEAT_FLOW, HEAT_TEMPERATURE } from '../../atoms';
 import { libm } from '../../libm';
 
@@ -536,9 +537,10 @@ function frameRotate(vx: number, vy: number, vz: number, nx: number, ny: number,
 
 /**
  * One granular contact: normal (hooke/hertz/hertz-material/dmt/jkr), damping, tangential (linear, mindlin),
- * rolling sds and twisting. sh holds the history: [0..2] tangential displacement (or elastic force), [3] the
- * previous contact radius, [4..6] rolling displacement, [7] twisting displacement; it is read and written in
- * the frame given by sg. Returns false when there is no contact (the caller drops the history record).
+ * rolling sds and twisting. sh holds the history: [0..2] tangential displacement (or elastic force), read and written in
+ * the frame given by sg, [3] the previous contact radius, [4..6] rolling displacement and [7] twisting displacement, as
+ * native's pair stores them (PairGranular keeps them in native's frame: see nativeFrame); a pair style's record has two
+ * more entries ([8], [9]) for that. Returns false when there is no contact (the caller drops the history record).
  */
 export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut, hadHistory: boolean): boolean {
   const { pm, nx, ny, nz, delta, Rf, ri, rj, meff, dt, update, sg } = c;
@@ -788,6 +790,13 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   return true;
 }
 
+/**
+ * A pair style's contact record: the 8 values of granularContact, then native's orientation of the pair when its rolling
+ * and twisting values were last put in native's frame (+1: native's row atom has the lower ID, -1: the higher one, 0:
+ * not known) and the neighbor build it was read at.
+ */
+const HIST_LEN = 10;
+
 /** The contact history key of atom IDs lo < hi: one number while hi < 2^26, else a string. */
 const pairKey = (lo: number, hi: number): number | string => (hi < 67108864 ? lo * 67108864 + hi : `${lo}:${hi}`);
 
@@ -811,6 +820,70 @@ export class PairGranular extends Pair {
   private heatOn = false;
   /** The mdr contact model when a pair_coeff uses the mdr normal model (src/engine-gpl/granular/mdr). */
   private mdr: MdrApi | null = null;
+  /** newton pair (StyleContext.newtonPair): the half list native builds. */
+  private newton = true;
+  /** Native's pair order (the lazily loaded pair/local helper) and its rows of the current neighbor build. */
+  private pairOrder: PairOrderSource | null = null;
+  private rows: { build: number; start: Int32Array; part: Int32Array } | null = null;
+
+  /** Some type pair has a rolling or twisting model (their histories are kept in native's frame). */
+  private rollOrTwist(): boolean {
+    for (const p of this.pm) if (p && (p.roll !== 'none' || p.twist !== 'none')) return true;
+    return false;
+  }
+
+  /**
+   * The rows of native's half list at this neighbor build (pair/local's native pair order): the partners of each owned
+   * atom, as engine indices.
+   */
+  private nativeRows(pc: PairCompute): { build: number; start: Int32Array; part: Int32Array } {
+    const nb = pc.nb;
+    if (this.rows && this.rows.build === nb.nbuild) return this.rows;
+    this.pairOrder ??= gplHook<PairLocalHook>('granular').pairOrder(this.newton);
+    const pairs = this.pairOrder.pairs(pc.s, nb, pc.geom, pc.half!);
+    const n = nb.nlocal;
+    const start = new Int32Array(n + 1);
+    for (let p = 0; p < pairs.length; p += 2) start[pairs[p] + 1]++;
+    for (let i = 0; i < n; i++) start[i + 1] += start[i];
+    const fill = start.slice(0, n);
+    const part = new Int32Array(pairs.length >> 1);
+    for (let p = 0; p < pairs.length; p += 2) part[fill[pairs[p]]++] = pairs[p + 1] & NEIGHMASK;
+    this.rows = { build: nb.nbuild, start, part };
+    return this.rows;
+  }
+
+  /**
+   * Native's orientation of the pair of owned i and j (owned or ghost) at this build: +1 when native's half list has it in
+   * the row of the atom with the lower ID, -1 in the row of the other one, 0 when its rows do not have it.
+   */
+  private nativeSign(i: number, j: number, owner: Int32Array, id: Int32Array): number {
+    const { start, part } = this.rows!;
+    const oj = owner[j];
+    for (let e = start[i]; e < start[i + 1]; e++) if (owner[part[e]] === oj) return id[i] <= id[oj] ? 1 : -1;
+    if (oj < start.length - 1) for (let e = start[oj]; e < start[oj + 1]; e++) if (owner[part[e]] === i) return id[oj] <= id[i] ? 1 : -1;
+    return 0;
+  }
+
+  /**
+   * As native LAMMPS does (src/GRANULAR/granular_model.cpp init, src/GRANULAR/pair_granular.cpp transfer_history and
+   * src/fix_neigh_history.cpp pre_exchange at b332f28): a pair's history is kept by the atom whose row of the half list
+   * holds the pair, and the other atom gets it times transfer_history_factor, which is -1 for every value of a sub-model
+   * that keeps the default ("jvalues[n] = -onevalues[n]"; mindlin's contact radius and mdr keep theirs). When a neighbor
+   * build gives the pair to the other atom's row, the rolling and twisting displacements are therefore negated, although
+   * the rolling and twisting velocities do not change sign with the swap. The tangential displacement is antisymmetric
+   * and stays in the frame of the lower ID (sg). Here: a new record takes native's orientation at this build, and a kept
+   * one read at an earlier build has those values negated when the orientation changed.
+   */
+  private nativeFrame(sh: Float64Array, kept: boolean, i: number, j: number, nb: PairCompute['nb'], id: Int32Array): void {
+    const build = this.rows!.build;
+    if (kept && sh[9] === build) return;
+    const o = this.nativeSign(i, j, nb.owner, id);
+    if (kept && sh[8] !== 0 && o !== 0 && o !== sh[8]) {
+      sh[4] = -sh[4]; sh[5] = -sh[5]; sh[6] = -sh[6]; sh[7] = -sh[7];
+    }
+    sh[8] = o;
+    sh[9] = build;
+  }
 
   settings(args: string[]): void {
     // As native LAMMPS does (src/GRANULAR/pair_granular.cpp PairGranular::settings at b332f28): one word is the global
@@ -843,6 +916,8 @@ export class PairGranular extends Pair {
   initStyle(ctx: StyleContext): void {
     this.state = ctx.s;
     this.freezeBit = ctx.freezeGroupBit ?? 0;
+    if (this.newton !== (ctx.newtonPair !== false)) this.pairOrder = null;
+    this.newton = ctx.newtonPair !== false;
     if (!ctx.ghostVelocity) throw new StyleError('Pair granular requires ghost atoms store velocity\n(use comm_modify vel yes)');
     const s = ctx.s;
     if (s && (!s.radius || !s.rmass || !s.omega)) throw new StyleError('pair_style granular requires atom_style sphere (radius, rmass, omega)');
@@ -1004,6 +1079,8 @@ export class PairGranular extends Pair {
     // heat conduction: heatflow accumulates (zeroed by fix heat/flow), Q_i = heat(a, T_j - T_i) and Q_j = -Q_i
     const T = this.heatOn ? s.custom.get(HEAT_TEMPERATURE)!.data : null;
     const HF = this.heatOn ? s.custom.get(HEAT_FLOW)!.data : null;
+    // rolling and twisting histories follow native's half-list orientation (nativeFrame)
+    const frame = this.rollOrTwist() ? this.nativeRows(pc) : null;
     for (let i = 0; i < list.inum; i++) {
       const oi = owner[i];
       const ri = radius[oi], mi = rmass[oi];
@@ -1039,7 +1116,8 @@ export class PairGranular extends Pair {
           if (s.mask[oi] & this.freezeBit) meff = mj;
           else if (s.mask[oj] & this.freezeBit) meff = mi;
         }
-        const sh = stored ?? new Float64Array(8);
+        const sh = stored ?? new Float64Array(HIST_LEN);
+        if (frame && (pm.roll !== 'none' || pm.twist !== 'none')) this.nativeFrame(sh, stored !== undefined, i, j, nb, id);
         const normal = mdr && pm.normal === 'mdr'
           ? mdr.pairNormal({ ida: a, idb: b, oi, oj, ri, rj, delta, Rf, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, meff, hu: update })
           : undefined;

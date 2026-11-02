@@ -667,10 +667,11 @@ export class FixPour extends Fix {
     const g = this.g;
     const twoD = this.twoD;
     const fb = twoD ? 1 : 2;
-    const shift = this.rateV * (step - this.nfirst) * dt;
+    // As native LAMMPS does (src/GRANULAR/fix_pour.cpp pre_exchange at b332f28): "lo_current = zlo + (update->ntimestep -
+    // nfirst) * update->dt * rate"
+    const shift = (step - this.nfirst) * dt * this.rateV;
     const fLo = (fb === 2 ? reg.zlo : reg.ylo) + shift;
     const fHi = (fb === 2 ? reg.zhi : reg.yhi) + shift;
-    const H = fHi - fLo;
     const nper = Math.floor((this.vol * this.regionVolume(reg)) / this.particleVolume());
     if (nper === 0) throw new StyleError('Fix pour insertion count per timestep is 0');
     const nnew = Math.min(nper, this.N - this.inserted);
@@ -728,7 +729,8 @@ export class FixPour extends Fix {
     for (let k = 0; k < nnew; k++) {
       // the fall coordinate is drawn once per particle; overlap retries keep it
       const uz = this.rng.uniform();
-      const f = fLo + H * (1 - uz * uz);
+      // fix_pour.cpp pre_exchange: "h = hi_current - rn * rn * (hi_current - lo_current)"
+      const f = fHi - uz * uz * (fHi - fLo);
       if (templates.length) {
         let placed = false, pos: Float64Array | null = null, placedRot: number[][] | null = null, placedQuat: number[] | null = null;
         let imol = 0;
@@ -824,9 +826,12 @@ export class FixPour extends Fix {
       sys.setupNeighbors();
       this.inserted += n;
     }
-    // time until the particles fall out of the region: (-w + sqrt(w^2 + 2 g H)) / g, w = rate - vfall
-    const w = this.rateV - this.vel[4];
-    const tFall = (-w + Math.sqrt(w * w + 2 * g * H)) / g;
+    // time until the particles fall out of the region; as native LAMMPS does (src/GRANULAR/fix_pour.cpp FixPour at
+    // b332f28): "t = (-v_relative - sqrt(v_relative * v_relative - 2.0 * grav * delta)) / grav" with v_relative = vz - rate,
+    // delta = zhi - zlo of the region (not moved) and grav = -g
+    const grav = -g, vRel = this.vel[4] - this.rateV;
+    const delta = fb === 2 ? reg.zhi - reg.zlo : reg.yhi - reg.ylo;
+    const tFall = (-vRel - Math.sqrt(vRel * vRel - 2.0 * grav * delta)) / grav;
     this.nextStep = step + Math.max(1, Math.round(tFall / dt));
   }
 

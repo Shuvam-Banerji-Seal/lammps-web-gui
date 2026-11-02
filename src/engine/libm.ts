@@ -18,6 +18,8 @@ export const libm: {
   sinAlone: (x: number) => number; cosAlone: (x: number) => number;
   erf: (x: number) => number; erfc: (x: number) => number; acos: (x: number) => number;
   pow: (x: number, y: number) => number;
+  /** cbrt() of the C library (pair granular jkr's pull-off distance). */
+  cbrt: (x: number) => number;
 } = {
   exp: Math.exp,
   log: Math.log,
@@ -30,6 +32,7 @@ export const libm: {
   erfc: (x: number) => erfcExact(x),
   acos: Math.acos,
   pow: Math.pow,
+  cbrt: Math.cbrt,
 };
 
 /**

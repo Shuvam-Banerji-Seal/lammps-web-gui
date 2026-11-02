@@ -168,7 +168,7 @@ type DampKind = 'velocity' | 'mass_velocity' | 'viscoelastic' | 'tsuji' | 'coeff
  * linear_history_classic: the tangential model of the classic fstyles (fix wall/gran/region hooke/history and
  * hertz/history), which updates and projects its displacement as native GranSubModTangentialLinearHistoryClassic does.
  */
-type TangKind = 'linear_nohistory' | 'linear_history' | 'linear_history_classic' | 'mindlin' | 'mindlin/force' | 'mindlin_rescale' | 'mindlin_rescale/force';
+type TangKind = 'linear_nohistory' | 'linear_history' | 'linear_history_classic' | 'mindlin_classic' | 'mindlin' | 'mindlin/force' | 'mindlin_rescale' | 'mindlin_rescale/force';
 type RollKind = 'none' | 'sds';
 type TwistKind = 'none' | 'sds' | 'marshall';
 
@@ -212,8 +212,12 @@ export function heatFlowOf(heat: HeatKind, hk: number, a: number, dT: number): n
 export interface Pm {
   normal: NormalKind;
   kn: number;
-  /** Effective modulus E_eff (doc: E_eff = E/(2(1-nu^2)) for identical types). */
+  /** Effective modulus E_eff (Emix: mix_stiffnessE of the pair, or mix_stiffnessE_wall for a wall). */
   Eeff: number;
+  /** k of hertz/material, dmt and jkr: FOURTHIRDS Emix (gran_sub_mod_normal.cpp coeffs_to_local and mix_coeffs). */
+  kHM: number;
+  /** damp of the tsuji and coeff_restitution damping (gran_sub_mod_damping.cpp init), 0 for the others. */
+  dampC: number;
   gamma: number;
   eta: number;
   /** mdr fields (absent for the other models; the legacy wall path builds a Pm without them). */
@@ -239,10 +243,6 @@ const TANGS: Record<string, TangKind> = {
   linear_nohistory: 'linear_nohistory', linear_history: 'linear_history', mindlin: 'mindlin',
   'mindlin/force': 'mindlin/force', mindlin_rescale: 'mindlin_rescale', 'mindlin_rescale/force': 'mindlin_rescale/force',
 };
-
-/** Coefficient alpha of the tsuji damping, from e (doc: alpha = 1.2728 - 4.2783e + 11.087e^2 - 22.348e^3 + 27.467e^4 - 18.022e^5 + 4.8218e^6). */
-const tsujiAlpha = (e: number): number =>
-  1.2728 - 4.2783 * e + 11.087 * e ** 2 - 22.348 * e ** 3 + 27.467 * e ** 4 - 18.022 * e ** 5 + 4.8218 * e ** 6;
 
 /** Parses the arguments of one pair_coeff (after I J). */
 export function parseGranularSpec(args: string[]): Spec {
@@ -417,52 +417,6 @@ export function parseGranularSpec(args: string[]): Spec {
   return sp;
 }
 
-/** Effective modulus of a material pair from its own E and nu (doc: E_eff = E/(2(1-nu^2)) for like types). */
-const effModulus = (E: number, nu: number): number => E / (2 * (1 - nu * nu));
-
-/**
- * JKR contact (doc: "\\delta = a^2/R - 2\\sqrt{\\pi \\gamma a/E}" and
- * "\\mathbf{F}_{ne, jkr} = \\left(\\frac{4Ea^3}{3R} - 2\\pi a^2\\sqrt{\\frac{4\\gamma E}{\\pi a}}\\right)\\mathbf{n}").
- * a is the root on the stable branch (a >= a*, the minimum of delta(a) at which the
- * tensile branch ends); delta < delta_c (the pull-off overlap) is out of contact.
- * LAMMPS inverts the relation for a numerically (doc); here by bisection.
- */
-const jklDelta = (a: number, R: number, E: number, gamma: number): number => (a * a) / R - 2 * Math.sqrt((Math.PI * gamma * a) / E);
-/** Contact radius at pull-off (the stable branch ends there; the force is then -3 pi gamma R). Measured with native LAMMPS: contact is lost at delta(a_c), not at the minimum of delta(a). */
-const jklAStar = (R: number, E: number, gamma: number): number => Math.cbrt((9 * Math.PI * gamma * R * R) / (4 * E));
-/** Pull-off overlap delta_c = delta(a*) (negative): the separation at which the JKR force vanishes is radsum - delta_c. */
-export const jklPullOff = (R: number, E: number, gamma: number): number => jklDelta(jklAStar(R, E, gamma), R, E, gamma);
-
-export function jklContact(delta: number, R: number, E: number, gamma: number): { a: number; f: number } | null {
-  const aStar = jklAStar(R, E, gamma);
-  const dc = jklDelta(aStar, R, E, gamma);
-  if (delta < dc) return null;
-  let lo = aStar, hi = aStar;
-  while (jklDelta(hi, R, E, gamma) < delta) hi *= 2;
-  for (let k = 0; k < 200; k++) {
-    const mid = 0.5 * (lo + hi);
-    // the interval cannot shrink further (mid rounds to an end): the later steps would leave lo and hi as they are
-    if (mid === lo || mid === hi) break;
-    if (jklDelta(mid, R, E, gamma) < delta) lo = mid; else hi = mid;
-  }
-  const a = 0.5 * (lo + hi);
-  const f = (4 * E * a ** 3) / (3 * R) - 2 * Math.PI * a * a * Math.sqrt((4 * gamma * E) / (Math.PI * a));
-  return { a, f };
-}
-
-/**
- * Projects v onto the plane normal to the unit vector m and rescales the projection to the magnitude mag; the zero
- * vector when the projection vanishes.
- */
-function planeMap(vx: number, vy: number, vz: number, mx: number, my: number, mz: number, mag: number): [number, number, number] {
-  const d = vx * mx + vy * my + vz * mz;
-  const px = vx - d * mx, py = vy - d * my, pz = vz - d * mz;
-  const pn = Math.hypot(px, py, pz);
-  if (!(pn > 0)) return [0, 0, 0];
-  const sc = mag / pn;
-  return [px * sc, py * sc, pz * sc];
-}
-
 /** Inputs of one contact (pair or wall): unit normal n from j to i, overlap, effective and per-particle radii. */
 export interface ContactIn {
   pm: Pm;
@@ -480,6 +434,8 @@ export interface ContactIn {
   dt: number;
   /** True inside a timestep: the history advances. */
   update: boolean;
+  /** The squared separation and radius sum of the touch test (default r^2 and ri + rj), and x_i - x_j (synchronized). */
+  rsq?: number; radsum?: number; dx?: number; dy?: number; dz?: number;
   /** The mdr normal model's force and damping prefactor (the normal force replaces the elastic law above). */
   normal?: MdrNormalOut;
   /** -1 when the stored history is in the frame of the other atom (ID order). */
@@ -489,12 +445,6 @@ export interface ContactIn {
    * native LAMMPS for fix wall/gran granular); by default the arm is R_i - delta/2 (contact at the overlap centre).
    */
   surfaceArm?: boolean;
-  /**
-   * Legacy hertz/history wall forces (fix wall/gran hertz/history): the normal force, the damping and the
-   * tangential force (spring and damping, not the displacement update) are scaled by sqrt(delta R_eff).
-   * Measured-to-legacy: gran.ts and wall/gran use poly = sqrt(delta R) for the whole contact. Default 1.
-   */
-  poly?: number;
 }
 
 /** Outputs of one contact: force on i (minus on j), torques on i and j. */
@@ -518,22 +468,79 @@ export const newContactOut = (): ContactOut => ({ fx: 0, fy: 0, fz: 0, tix: 0, t
 /** Native EPSILON of the frame-update tests (GRANULAR/gran_sub_mod_tangential.cpp and gran_sub_mod_rolling.cpp: 1e-10). */
 const FRAME_EPS = 1e-10;
 
+/** src/math_const.h and gran_sub_mod_*.cpp constants at b332f28. */
+const MY_PI = 3.14159265358979323846;
+const MY_2PI = 6.28318530717958647692;
+const MY_SQRT2 = 1.41421356237309504880;
+const FOURTHIRDS = 1.33333333333333333333;
+const TWOTHIRDS = 2.0 / 3.0;
+const TWOROOTFIVEBYSIX = 1.82574185835055380345;
+const ROOTTHREEBYTWO = 1.22474487139158894067;
+
+/** MathExtra::len3 (src/math_extra.h at b332f28): sqrt(v0 v0 + v1 v1 + v2 v2). */
+const len3 = (x: number, y: number, z: number): number => Math.sqrt(x * x + y * y + z * z);
+
+/** The MAX(0, x) of src/pointers.h ("((A) > (B) ? (A) : (B))"): x itself for -0 and NaN. */
+const max0 = (x: number): number => (0 > x ? 0 : x);
+
 /**
- * A history vector moved into the tangent plane of the new normal n (native GranSubMod::rotate_rescale_vec: remove the normal
- * part, rescale to the previous magnitude), done only when native's frame-update test holds: |v . n| k > FRAME_EPS F_crit
- * (sn = v . n; F_crit = mu |F_n|, the tangential or rolling Fscrit/Frcrit). Otherwise the vector is returned unchanged.
+ * GranSubMod::rotate_rescale_vec (src/GRANULAR/gran_sub_mod.cpp at b332f28): v without its component along the unit n,
+ * rescaled to its previous length (zero when nothing is left).
  */
-function frameRotate(vx: number, vy: number, vz: number, nx: number, ny: number, nz: number, sn: number, k: number, fcrit: number): [number, number, number] {
-  if (!(Math.abs(sn) * k > FRAME_EPS * fcrit)) return [vx, vy, vz];
-  const mag0 = Math.hypot(vx, vy, vz);
-  let px = vx - sn * nx, py = vy - sn * ny, pz = vz - sn * nz;
-  const mag1 = Math.hypot(px, py, pz);
-  if (mag1 > 0) {
-    const cr = mag0 / mag1;
-    px *= cr; py *= cr; pz *= cr;
-  }
-  return [px, py, pz];
+function rotateRescale(vx: number, vy: number, vz: number, nx: number, ny: number, nz: number): [number, number, number] {
+  const rsht = vx * nx + vy * ny + vz * nz;
+  const shrmag = len3(vx, vy, vz);
+  const px = vx - rsht * nx, py = vy - rsht * ny, pz = vz - rsht * nz;
+  const prjmag = len3(px, py, pz);
+  const t = prjmag > 0 ? shrmag / prjmag : 0;
+  return [t * px, t * py, t * pz];
 }
+
+/** The JKR contact radius and pull-off distance of native's closed form (the lazy GPL hook 'jkr'). */
+export interface GranularJkrHook {
+  contactRadius(dR: number, Reff: number, Emix: number, cohesion: number): number;
+  pulloff(Reff: number, Emix: number, cohesion: number): number;
+}
+let jkrLoaded: GranularJkrHook | null = null;
+const jkrHook = (): GranularJkrHook => (jkrLoaded ??= gplHook<GranularJkrHook>('jkr'));
+
+/** GranSubMod::mix_stiffnessE, mix_stiffnessG, mix_stiffnessE_wall and mix_stiffnessG_wall (gran_sub_mod.cpp at b332f28). */
+const mixE = (E1: number, E2: number, n1: number, n2: number): number => 1 / ((1 - n1 * n1) / E1 + (1 - n2 * n2) / E2);
+const mixG = (E1: number, E2: number, n1: number, n2: number): number =>
+  1 / (2 * (2 - n1) * (1 + n1) / E1 + 2 * (2 - n2) * (1 + n2) / E2);
+const mixEwall = (E: number, n: number): number => E / (2 * (1 - n * n));
+const mixGwall = (E: number, n: number): number => E / (4.0 * (2 - n) * (1 + n));
+
+/** MathSpecial::powint (src/math_special.h at b332f28): x^n by binary powering. */
+const powint = (x: number, n: number): number => {
+  if (n === 0) return 1.0;
+  if (x === 0.0) return 0.0;
+  let nn = n > 0 ? n : -n;
+  let ww = x, yy = 1.0;
+  for (; nn !== 0; nn >>= 1, ww *= ww) if (nn & 1) yy *= ww;
+  return n > 0 ? yy : 1.0 / yy;
+};
+
+/**
+ * The damp of the tsuji damping (GranSubModDampingTsuji::init, "Eq. 53 from Marshall 2009", times MY_SQRT2) and of the
+ * coeff_restitution damping (GranSubModDampingCoeffRestitution::init) for the coefficient of restitution cor.
+ */
+const dampConstant = (damp: DampKind, normal: NormalKind, cor: number): number => {
+  if (damp === 'tsuji') {
+    let d = 1.2728 - 4.2783 * cor + 11.087 * (cor * cor);
+    d += -22.348 * (cor * cor * cor) + 27.467 * powint(cor, 4);
+    d += -18.022 * powint(cor, 5) + 4.8218 * powint(cor, 6);
+    return d * MY_SQRT2;
+  }
+  if (damp === 'coeff_restitution') {
+    const logcor = libm.log(cor);
+    if (normal === 'hooke') return -2 * logcor / Math.sqrt(MY_PI * MY_PI + logcor * logcor);
+    let d = -ROOTTHREEBYTWO * TWOROOTFIVEBYSIX * logcor;
+    d /= Math.sqrt(MY_PI * MY_PI + logcor * logcor);
+    return d;
+  }
+  return 0;
+};
 
 /**
  * One granular contact: normal (hooke/hertz/hertz-material/dmt/jkr), damping, tangential (linear, mindlin),
@@ -543,253 +550,251 @@ function frameRotate(vx: number, vy: number, vz: number, nx: number, ny: number,
  * more entries ([8], [9]) for that. Returns false when there is no contact (the caller drops the history record).
  */
 export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut, hadHistory: boolean): boolean {
+  // As native LAMMPS does (src/GRANULAR/granular_model.cpp GranularModel::check_contact and calculate_forces, and the
+  // sub-models of gran_sub_mod_normal.cpp, gran_sub_mod_damping.cpp, gran_sub_mod_tangential.cpp,
+  // gran_sub_mod_rolling.cpp and gran_sub_mod_twisting.cpp at b332f28): every quantity below is computed with native's
+  // operations in native's order (vector lengths as len3, rotate_rescale_vec, the caps), so a contact gives native's
+  // values bit for bit. The rolling displacement and force are kept with the opposite sign of native's (exact negations).
   const { pm, nx, ny, nz, delta, Rf, ri, rj, meff, dt, update, sg } = c;
   const jkr = pm.normal === 'jkr';
-  // jkr hysteresis (doc): the tensile range delta < 0 applies only once the pair has been in contact
-  if (jkr && delta < 0 && !hadHistory) return false;
-  const sqrtR = Math.sqrt(Rf);
+  const rsq = c.rsq ?? c.r * c.r;
+  const radsum = c.radsum ?? ri + rj;
+  // touch: JKR::touch (a contact in place holds on to the pull-off distance), the default rsq < radsum^2 otherwise
+  if (jkr && !c.normal) {
+    if (hadHistory) {
+      const dist = radsum + jkrHook().pulloff(Rf, pm.Eeff, pm.gamma);
+      if (!(rsq < dist * dist)) return false;
+    } else if (!(rsq < radsum * radsum)) return false;
+  }
   const vrx = c.vrx, vry = c.vry, vrz = c.vrz;
-  // synchronized_verlet (see the header): the normal force direction, the normal damping velocity and the tangential
-  // velocity use the half-step plane n' built from the half-step separation (also at setup, where the measured setup force
-  // is along n' with the setup velocities); the elastic normal magnitude keeps delta at the full step.
+  // synchronized_verlet: nx is the normalised half-step separation x_i - x_j - dt/2 (v_i - v_j) (norm3), and the full-step
+  // normal is kept (nx_unrotated)
   const sync = pm.sync === true;
   let hx = nx, hy = ny, hz = nz;
-  if (sync) {
-    const ex = c.r * nx - 0.5 * dt * vrx, ey = c.r * ny - 0.5 * dt * vry, ez = c.r * nz - 0.5 * dt * vrz;
-    const el = Math.hypot(ex, ey, ez);
-    if (el > 0) { hx = ex / el; hy = ey / el; hz = ez / el; }
+  if (sync && c.dx !== undefined) {
+    const t = 0.5 * dt;
+    const ex = c.dx - t * vrx, ey = c.dy! - t * vry, ez = c.dz! - t * vrz;
+    const scl = 1.0 / Math.sqrt(ex * ex + ey * ey + ez * ez);
+    hx = ex * scl; hy = ey * scl; hz = ez * scl;
   }
-  const vn = vrx * hx + vry * hy + vrz * hz; // (v_i - v_j) . n (n' when synchronized)
-  const vnx = hx * vn, vny = hy * vn, vnz = hz * vn;
-  // (R_i w_i + R_j w_j) x n
+  const vn = vrx * hx + vry * hy + vrz * hz; // vnnr = dot3(vr, nx)
+  const vnx = vn * hx, vny = vn * hy, vnz = vn * hz;
+  // wr = radi omega_i + radj omega_j; vtr = vt - wr x nx
   const Ax = ri * c.oix + rj * c.ojx;
   const Ay = ri * c.oiy + rj * c.ojy;
   const Az = ri * c.oiz + rj * c.ojz;
   const wnx = Ay * hz - Az * hy, wny = Az * hx - Ax * hz, wnz = Ax * hy - Ay * hx;
   const vtx = vrx - vnx - wnx, vty = vry - vny - wny, vtz = vrz - vnz - wnz;
-  // normal force along n (positive repulsive): elastic part, then damping
+  const vrel = len3(vtx, vty, vtz);
+  // normal force (positive repulsive): the elastic part, then the damping prefactor
   let fne = 0;
   let contactA = 0;
-  // pull-off force of the cohesive models (doc: F_pulloff = 4 pi gamma R for dmt, 3 pi gamma R for jkr)
-  const fPull = pm.normal === 'dmt' ? 4 * Math.PI * pm.gamma * Rf : jkr ? 3 * Math.PI * pm.gamma * Rf : 0;
+  // F_pulloff of the cohesive models (DMT: 4 pi cohesion Reff, JKR: 3 pi cohesion Reff)
+  const fPull = pm.normal === 'dmt' ? 4.0 * MY_PI * pm.gamma * Rf : jkr ? 3.0 * MY_PI * pm.gamma * Rf : 0;
+  const dR = delta * Rf;
   if (c.normal) {
     // mdr: the normal model is evaluated by the MDR hook (src/engine-gpl/granular/mdr); it has its own contact test
     fne = c.normal.fne;
     contactA = c.normal.a;
   } else if (jkr) {
-    const cc = jklContact(delta, Rf, pm.Eeff, pm.gamma);
-    if (!cc) return false;
-    fne = cc.f;
-    contactA = cc.a;
+    const a = jkrHook().contactRadius(dR, Rf, pm.Eeff, pm.gamma);
+    const a2 = a * a;
+    fne = pm.kHM * a * a2 / Rf - MY_2PI * a2 * Math.sqrt(4.0 * pm.gamma * pm.Eeff / (MY_PI * a));
+    contactA = a;
   } else {
-    if (delta <= 0) return false;
-    contactA = Math.sqrt(Rf * delta);
+    if (!(rsq < radsum * radsum)) return false;
+    contactA = Math.sqrt(dR);
     if (pm.normal === 'hooke') fne = pm.kn * delta;
-    else if (pm.normal === 'hertz') fne = pm.kn * sqrtR * delta * Math.sqrt(delta);
-    else fne = (4 / 3) * pm.Eeff * sqrtR * delta * Math.sqrt(delta);
-    // dmt: cohesion -4 pi gamma R on top of the Hertz term (doc: F_ne,dmt = (4/3 E R^1/2 delta^3/2 - 4 pi gamma R) n)
-    fne -= pm.normal === 'dmt' ? fPull : 0;
+    else if (pm.normal === 'hertz') fne = pm.kn * contactA * delta;
+    else fne = pm.kHM * contactA * delta;
+    if (pm.normal === 'dmt') fne -= fPull;
   }
-  const contact = contactA;
   // the mdr damping prefactor comes with the normal force (c.normal.etaN)
   let etaN = c.normal ? c.normal.etaN : 0;
   if (!c.normal) switch (pm.damp) {
     case 'velocity': etaN = pm.eta; break;
     case 'mass_velocity': etaN = pm.eta * meff; break;
-    case 'viscoelastic': etaN = pm.eta * contact * meff; break;
-    case 'coeff_restitution': {
-      // doc: eta_n = sqrt(4 m_eff k_nd / (1 + (pi / log e)^2)) for hooke; otherwise
-      // eta_n = -2 sqrt(5/6) log(e) / sqrt(pi^2 + log(e)^2) * sqrt(3/2 k_nd m_eff); k_nd = F_elastic / delta.
-      // Measured with native LAMMPS (black box): both forms match with no extra factor (ratio 1.0 for hooke and hertz).
-      const knd = fne / delta;
-      const le = libm.log(pm.eta);
-      etaN = pm.normal === 'hooke'
-        ? Math.sqrt((4 * meff * knd) / (1 + (Math.PI / le) ** 2))
-        : (-2 * Math.sqrt(5 / 6) * le / Math.sqrt(Math.PI * Math.PI + le * le)) * Math.sqrt(1.5 * knd * meff);
-      break;
-    }
+    case 'viscoelastic': etaN = pm.eta * meff * contactA; break;
     default: {
-      // knd: the elastic normal force per unit overlap; measured with native LAMMPS (black box):
-      // eta_n = sqrt(2) * alpha(e) * sqrt(m_eff * knd) for hooke, hertz and hertz/material alike
-      const knd = fne / delta;
-      etaN = Math.SQRT2 * tsujiAlpha(pm.eta) * Math.sqrt(meff * knd);
+      // tsuji and coeff_restitution: damp sqrt(MAX(0, meff Fnormal / delta)) (0 at delta <= 0)
+      const sqrt1 = delta > 0.0 ? max0(meff * fne / delta) : 0.0;
+      etaN = pm.dampC * Math.sqrt(sqrt1);
     }
   }
-  const poly = c.poly ?? 1;
-  const fn = poly * (fne - etaN * vn);
-  if (pm.limit && fn < 0) return false;
-  // F_n0 for the Coulomb cap: |F_ne| for non-cohesive models, |F_ne + 2 F_pulloff| for dmt and jkr (doc)
-  const fnAbs = pm.normal === 'dmt' || jkr ? Math.abs(fne + 2 * fPull) : Math.abs(fn);
-  // synchronized: the normal force acts along the half-step normal n' (measured with native LAMMPS, see the header)
+  let fn = fne - etaN * vn;
+  if (pm.limit && fn < 0.0) fn = 0.0;
+  // Fncrit: |Fne + 2 F_pulloff| for dmt and jkr, |Fntot| otherwise
+  const fnAbs = pm.normal === 'dmt' || jkr ? Math.abs(fne + 2.0 * fPull) : Math.abs(fn);
   const fnx = fn * hx, fny = fn * hy, fnz = fn * hz;
-  // tangential force: damping from eta_t = x_gamma_t eta_n; the spring is -k_t xi (linear_history),
-  // -k_t a xi with a = sqrt(R delta) (mindlin), or the stored elastic force F_te (mindlin/force)
+  // tangential: damp = xt damp_prefactor, Fscrit = Fncrit mu
   const etaT = pm.xgt * etaN;
-  // the poly factor scales the forces (not the displacement update, and not the history-cap coefficient)
-  const etaTf = etaT * poly;
-  // synchronized, history steps: the half-step tangential velocity is rotated to the full-step plane n and keeps its magnitude
-  // (at setup it is used unrotated, measured with native LAMMPS)
-  const [vdx, vdy, vdz] = sync && update ? planeMap(vtx, vty, vtz, nx, ny, nz, Math.hypot(vtx, vty, vtz)) : [vtx, vty, vtz];
-  const dampx = -etaTf * vdx, dampy = -etaTf * vdy, dampz = -etaTf * vdz;
+  const etaTf = etaT;
   const kind = pm.tang;
-  // jkr keeps a contact record too, so the tensile branch can be recognised (see hysteresis above)
+  // jkr keeps a contact record too, so the pull-off branch can be recognised (see touch above)
   const hist = kind !== 'linear_nohistory' || pm.roll !== 'none' || pm.twist !== 'none' || jkr;
   const forceVariant = kind === 'mindlin/force' || kind === 'mindlin_rescale/force';
   const rescale = kind === 'mindlin_rescale' || kind === 'mindlin_rescale/force';
   const aC = contactA;
-  const classic = kind === 'linear_history_classic';
-  const keff = kind === 'linear_history' || classic ? pm.kt : kind === 'linear_nohistory' ? 0 : pm.kt * aC;
-  // classic: the displacement magnitude after the update, before the projection (native shrmag)
-  let shrmag = 0;
+  // the classic models of fix wall/gran (GranSubModTangentialLinearHistoryClassic; mindlin_classic with
+  // contact_radius_flag scales k by the contact radius)
+  const classic = kind === 'linear_history_classic' || kind === 'mindlin_classic';
+  const keff = kind === 'linear_history' || kind === 'linear_history_classic' ? pm.kt : kind === 'linear_nohistory' ? 0 : pm.kt * aC;
+  const fcap = fnAbs * pm.mu;
+  let ftx = 0, fty = 0, ftz = 0;
   let shx = 0, shy = 0, shz = 0;
-  if (hist) {
+  if (kind === 'linear_nohistory') {
+    // Ft = MIN(Fscrit, damp vrel) / vrel, fs = -Ft vtr
+    const fsmag = etaTf * vrel;
+    const Ft = vrel !== 0.0 ? (pm.mu * fnAbs < fsmag ? pm.mu * fnAbs : fsmag) / vrel : 0.0;
+    ftx = -Ft * vtx; fty = -Ft * vty; ftz = -Ft * vtz;
+  } else {
     shx = sg * sh[0]; shy = sg * sh[1]; shz = sg * sh[2];
+    // the frame-update test: |h . n| k > EPSILON Fscrit (k_scaled for mindlin, none for the force variants)
+    const kTest = forceVariant ? 1 : keff;
+    let frameUpdate = false;
+    let shrmag = 0;
     if (classic) {
-      // As native LAMMPS does (src/GRANULAR/gran_sub_mod_tangential.cpp GranSubModTangentialLinearHistoryClassic::
-      // calculate_forces at b332f28): the displacement is advanced by vtr dt first, its magnitude taken, and then its
-      // component along n removed ("rotate shear displacements": rsht = dot3(history, nx)), without rescaling
-      if (update) { shx += vtx * dt; shy += vty * dt; shz += vtz * dt; }
-      shrmag = Math.hypot(shx, shy, shz);
+      if (update) { shx += dt * vtx; shy += dt * vty; shz += dt * vtz; }
+      shrmag = len3(shx, shy, shz);
       if (update) {
         const rsht = shx * nx + shy * ny + shz * nz;
         shx -= rsht * nx; shy -= rsht * ny; shz -= rsht * nz;
       }
-    } else if (sync && update) {
-      // synchronized history: the prior history is kept in the plane n' with its magnitude, advanced by the half-step
-      // tangential velocity, and returned to the plane n with the same magnitude
-      const [px, py, pz] = planeMap(shx, shy, shz, hx, hy, hz, Math.hypot(shx, shy, shz));
-      const ux = px + vtx * dt, uy = py + vty * dt, uz = pz + vtz * dt;
-      [shx, shy, shz] = planeMap(ux, uy, uz, nx, ny, nz, Math.hypot(ux, uy, uz));
-    } else if (update) {
-      // keep the prior displacement (or elastic force) in the tangent plane, rescaled to its previous magnitude (frameRotate)
-      const sn = shx * nx + shy * ny + shz * nz;
-      [shx, shy, shz] = frameRotate(shx, shy, shz, nx, ny, nz, sn, keff, fnAbs * pm.mu);
-      // mindlin_rescale: on unloading (a < a_prev) the stored value is scaled by a / a_prev
-      const aPrev = sh[3];
-      if (rescale && aPrev > 0 && aC < aPrev) {
-        const cr = aC / aPrev;
+    } else {
+      // mindlin_rescale: on unloading the shear displacements/force are scaled by contact_radius / history[3]
+      if (rescale && aC < sh[3]) {
+        const cr = aC / sh[3];
         shx *= cr; shy *= cr; shz *= cr;
       }
-      if (forceVariant) {
-        shx -= keff * vtx * dt; shy -= keff * vty * dt; shz -= keff * vtz * dt;
-      } else {
-        shx += vtx * dt; shy += vty * dt; shz += vtz * dt;
-      }
-    }
-  }
-  // spring force on the particle: F_s = -k_eff xi (displacement models) or F_te (force models)
-  const spring = (q: number) => poly * (forceVariant ? q : -keff * q);
-  let ftx = spring(shx) + dampx, fty = spring(shy) + dampy, ftz = spring(shz) + dampz;
-  const ft = Math.hypot(ftx, fty, ftz);
-  const fcap = pm.mu * fnAbs;
-  if (ft > fcap) {
-    let scale = ft > 0 ? fcap / ft : 0;
-    if (hist) {
-      // with no stored displacement (a contact at run setup) the capped force is dropped
-      // (classic: when the magnitude before the projection is 0, native zeroes the tangential force)
-      if (classic ? shrmag === 0 : shx === 0 && shy === 0 && shz === 0) scale = 0;
-      else if (keff > 0) {
+      if (update) {
+        let rsht = shx * hx + shy * hy + shz * hz;
+        frameUpdate = Math.abs(rsht) * kTest > FRAME_EPS * fcap;
+        if (frameUpdate) [shx, shy, shz] = rotateRescale(shx, shy, shz, hx, hy, hz);
         if (forceVariant) {
-          // F_te = s (F_te + F_damp) - F_damp
-          shx = scale * (shx + dampx) - dampx;
-          shy = scale * (shy + dampy) - dampy;
-          shz = scale * (shz + dampz) - dampz;
+          const kd = -keff * dt;
+          shx += kd * vtx; shy += kd * vty; shz += kd * vtz;
         } else {
-          const cr = etaT / keff;
-          shx = scale * (shx + cr * vdx) - cr * vdx;
-          shy = scale * (shy + cr * vdy) - cr * vdy;
-          shz = scale * (shz + cr * vdz) - cr * vdz;
+          shx += dt * vtx; shy += dt * vty; shz += dt * vtz;
+        }
+        if (sync) {
+          // second projection to the full-step normal
+          rsht = shx * nx + shy * ny + shz * nz;
+          frameUpdate = Math.abs(rsht) * kTest > FRAME_EPS * fcap;
+          if (frameUpdate) [shx, shy, shz] = rotateRescale(shx, shy, shz, nx, ny, nz);
         }
       }
     }
-    ftx *= scale; fty *= scale; ftz *= scale;
+    // fs = -k h (the elastic force itself for the force variants), then the damping of vtr (rotated to the full-step
+    // normal when synchronized and the frame was updated)
+    if (forceVariant) { ftx = shx; fty = shy; ftz = shz; } else {
+      // -k h; mindlin_classic: -k contact_radius h ("scale3(-k * contact_radius, history, fs)")
+      const mk = kind === 'mindlin_classic' ? -pm.kt * aC : -keff;
+      ftx = mk * shx; fty = mk * shy; ftz = mk * shz;
+    }
+    let vdx = vtx, vdy = vty, vdz = vtz;
+    if (frameUpdate && sync) [vdx, vdy, vdz] = rotateRescale(vtx, vty, vtz, nx, ny, nz);
+    const md = -etaTf;
+    const dampx = md * vdx, dampy = md * vdy, dampz = md * vdz;
+    ftx += dampx; fty += dampy; ftz += dampz;
+    const magfs = len3(ftx, fty, ftz);
+    if (magfs > fcap) {
+      if (!classic) shrmag = len3(shx, shy, shz);
+      if (shrmag !== 0.0) {
+        const s = fcap / magfs;
+        ftx = s * ftx; fty = s * fty; ftz = s * ftz;
+        // the history from the elastic part of the rescaled force
+        shx = ftx - dampx; shy = fty - dampy; shz = ftz - dampz;
+        if (!forceVariant) {
+          const ik = kind === 'mindlin_classic' ? -1.0 / (pm.kt * aC) : -1.0 / keff;
+          shx = ik * shx; shy = ik * shy; shz = ik * shz;
+        }
+      } else {
+        ftx = 0; fty = 0; ftz = 0;
+      }
+    }
+    if (rescale && update) sh[3] = aC;
   }
-  // rolling sds: pseudo-force F_roll = s (-k_r xi_r - gamma_r v_roll), acting as a torque only (measured sign)
+  // rolling sds (the displacement and pseudo-force with the opposite sign of native's: q = -history, rl = -fr)
   let rlx = 0, rly = 0, rlz = 0;
   if (pm.roll === 'sds') {
     const wdx = c.oix - c.ojx, wdy = c.oiy - c.ojy, wdz = c.oiz - c.ojz;
-    // v_roll = -R (w_i - w_j) x n, with R the effective radius
+    // -vrl: native vrl = Reff (relrot x nx)
     const vrlx = -Rf * (wdy * nz - wdz * ny), vrly = -Rf * (wdz * nx - wdx * nz), vrlz = -Rf * (wdx * ny - wdy * nx);
     let qx = sh[4], qy = sh[5], qz = sh[6];
     const k = pm.kr, g = pm.gr;
+    const frcrit = pm.mr * fnAbs;
     if (update) {
-      // prior rolling displacement rotated into the tangent plane (frameRotate), then the step's rolling velocity
-      const sn = qx * nx + qy * ny + qz * nz;
-      const [px, py, pz] = frameRotate(qx, qy, qz, nx, ny, nz, sn, k, fnAbs * pm.mr);
-      qx = px + vrlx * dt; qy = py + vrly * dt; qz = pz + vrlz * dt;
+      const rolldotn = qx * nx + qy * ny + qz * nz;
+      if (Math.abs(rolldotn) * k > FRAME_EPS * frcrit) [qx, qy, qz] = rotateRescale(qx, qy, qz, nx, ny, nz);
+      qx += dt * vrlx; qy += dt * vrly; qz += dt * vrlz;
     }
-    let fx0 = -k * qx - g * vrlx, fy0 = -k * qy - g * vrly, fz0 = -k * qz - g * vrlz;
-    const f0 = Math.hypot(fx0, fy0, fz0);
-    const cap = pm.mr * fnAbs;
-    if (f0 > cap) {
-      // measured as for the tangential force: with no stored displacement the capped rolling force is dropped
-      const sc = f0 > 0 && (qx !== 0 || qy !== 0 || qz !== 0) ? cap / f0 : 0;
-      // native (GranSubModRollingSDS::calculate_forces, the capped branch with a non-zero displacement): the displacement
-      // is rebuilt even when the cap is zero (s = 0 leaves -gamma v / k), and only a zero displacement is left alone
-      if (k > 0 && (qx !== 0 || qy !== 0 || qz !== 0)) {
-        // F0 = -k xi - gamma v; capped: xi = s xi - gamma v (1 - s) / k
-        const cr = -(g * (1 - sc)) / k;
-        qx = sc * qx + cr * vrlx; qy = sc * qy + cr * vrly; qz = sc * qz + cr * vrlz;
+    const mk = -k, mg = -g;
+    let fx0 = mk * qx + mg * vrlx, fy0 = mk * qy + mg * vrly, fz0 = mk * qz + mg * vrlz;
+    const magfr = len3(fx0, fy0, fz0);
+    if (magfr > frcrit) {
+      if (len3(qx, qy, qz) !== 0.0) {
+        const kInv = 1.0 / k, magfrInv = 1.0 / magfr;
+        const s1 = -frcrit * kInv * magfrInv, s2 = -g * kInv;
+        qx = s1 * fx0 + s2 * vrlx; qy = s1 * fy0 + s2 * vrly; qz = s1 * fz0 + s2 * vrlz;
+        const s3 = frcrit * magfrInv;
+        fx0 = s3 * fx0; fy0 = s3 * fy0; fz0 = s3 * fz0;
+      } else {
+        fx0 = 0; fy0 = 0; fz0 = 0;
       }
-      fx0 *= sc; fy0 *= sc; fz0 *= sc;
     }
-    // native GranSubModRollingSDS::calculate_forces (GRANULAR/gran_sub_mod_rolling.cpp, b332f28) writes the displacement
-    // back only "if (history_update)": the capped rebuild above is local to the force of a setup or force-only evaluation
-    // (history_update = 0), so the stored displacement is kept for the next full step
     if (update) { sh[4] = qx; sh[5] = qy; sh[6] = qz; }
     rlx = fx0; rly = fy0; rlz = fz0;
   }
-  // twisting: torque along n, tau = clamp(-k xi - gamma Omega_tw); no force
+  // twisting: torque along n, tau = -k h - damp magtwist, capped at Mtcrit = mu Fncrit
   let twq = 0;
   if (pm.twist !== 'none') {
     let k: number, g: number, mu: number;
     if (pm.twist === 'sds') { k = pm.kw; g = pm.gw; mu = pm.mw; }
     else {
-      // marshall: k_tw = 0.5 k_t a^2, gamma_tw = 0.5 eta_t a^2, mu_tw = 2/3 a mu_t
-      k = 0.5 * pm.kt * aC * aC; g = 0.5 * etaT * aC * aC; mu = (2 / 3) * aC * pm.mu;
+      // marshall: k = 0.5 k_tang a^2, damp = 0.5 tdamp a^2, mu = 2/3 mu_tang a
+      k = 0.5 * pm.kt * aC * aC; g = 0.5 * etaT * aC * aC; mu = TWOTHIRDS * pm.mu * aC;
     }
     const om = (c.oix - c.ojx) * nx + (c.oiy - c.ojy) * ny + (c.oiz - c.ojz) * nz;
     let q = sh[7];
     if (update) q += om * dt;
-    const t0 = -k * q - g * om;
-    const cap = mu * fnAbs;
-    let tau = t0;
-    if (Math.abs(t0) > cap) {
-      // doc: the capped twisting displacement is xi = (mu F sgn(Omega) - gamma Omega) / k, i.e. tau = -mu F sgn(Omega)
-      tau = om > 0 ? -cap : cap;
-      if (k > 0) q = -(tau + g * om) / k;
+    let tau = -k * q - g * om;
+    const signtwist = (om > 0 ? 1 : 0) - (om < 0 ? 1 : 0);
+    const mtcrit = mu * fnAbs;
+    if (Math.abs(tau) > mtcrit) {
+      q = (mtcrit * signtwist - g * om) / k;
+      tau = -mtcrit * signtwist;
     }
     sh[7] = q;
     twq = tau;
   }
-  if (hist) {
+  if (hist && kind !== 'linear_nohistory') {
     sh[0] = sg * shx; sh[1] = sg * shy; sh[2] = sg * shz;
-    sh[3] = aC;
+    if (!rescale) sh[3] = aC;
   }
   out.fx = fnx + ftx; out.fy = fny + fty; out.fz = fnz + ftz;
-  // torques: -(R - delta/2) n x F_t on each particle (contact point at the centre of the overlap)
+  // torques: -(nx x fs), scaled by radi - delta/2 and radj - delta/2 (a wall: radi)
   const cx = hy * ftz - hz * fty, cy = hz * ftx - hx * ftz, cz = hx * fty - hy * ftx;
   const ci = c.surfaceArm ? ri : ri - 0.5 * delta, cj = rj - 0.5 * delta;
-  out.tix = -ci * cx; out.tiy = -ci * cy; out.tiz = -ci * cz;
-  out.tjx = -cj * cx; out.tjy = -cj * cy; out.tjz = -cj * cz;
-  // rolling torque on i: R n x F_roll (and its opposite on j); twisting torque tau n on i
+  out.tix = -cx * ci; out.tiy = -cy * ci; out.tiz = -cz * ci;
+  out.tjx = -cx * cj; out.tjy = -cy * cj; out.tjz = -cz * cj;
+  // rolling torque Reff (nx x fr) on i (and its opposite on j); twisting torque tau nx on i
   if (pm.roll === 'sds') {
     const rx = -Rf * (ny * rlz - nz * rly), ry = -Rf * (nz * rlx - nx * rlz), rz = -Rf * (nx * rly - ny * rlx);
     out.tix += rx; out.tiy += ry; out.tiz += rz;
     out.tjx -= rx; out.tjy -= ry; out.tjz -= rz;
   }
-  if (twq !== 0) {
-    out.tix += twq * nx; out.tiy += twq * ny; out.tiz += twq * nz;
-    out.tjx -= twq * nx; out.tjy -= twq * ny; out.tjz -= twq * nz;
+  if (pm.twist !== 'none') {
+    const tx = twq * nx, ty = twq * ny, tz = twq * nz;
+    out.tix += tx; out.tiy += ty; out.tiz += tz;
+    out.tjx -= tx; out.tjy -= ty; out.tjz -= tz;
   }
   out.hist = hist;
   out.a = contactA;
   out.fntot = fn; out.fsx = ftx; out.fsy = fty; out.fsz = ftz;
-  // the rolling force is reported with native's sign (the engine's pseudo-force is the negative of native fr; its torque uses it so)
+  // the rolling force is reported with native's sign (the engine's pseudo-force is the negative of native fr)
   out.frx = -rlx; out.fry = -rly; out.frz = -rlz; out.mtt = twq;
   return true;
 }
-
 /**
  * A pair style's contact record: the 8 values of granularContact, then native's orientation of the pair when its rolling
  * and twisting values were last put in native's frame (+1: native's row atom has the lower ID, -1: the higher one, 0:
@@ -972,28 +977,30 @@ export class PairGranular extends Pair {
       for (let j = i; j < nt; j++) {
         const sp = this.specs[i * nt + j];
         if (sp) {
-          // the pair's own material values; the shear modulus for NULL k_t comes from the like-type pairs when set
-          const si = self(i) ?? sp, sj = self(j) ?? sp;
-          this.pm[i * nt + j] = this.pmOf(sp, sp.E ? effModulus(sp.E, sp.nu) : 0, si, sj);
+          // As native LAMMPS does (src/GRANULAR/gran_sub_mod_normal.cpp and gran_sub_mod_tangential.cpp coeffs_to_local
+          // at b332f28): a pair_coeff's own material values, Emix = mix_stiffnessE(E, E, nu, nu) and, for a NULL k_t,
+          // k = 8 mix_stiffnessG(E, E, nu, nu)
+          this.pm[i * nt + j] = this.pmOf(sp, sp.E ? mixE(sp.E, sp.E, sp.nu, sp.nu) : 0, () => 8.0 * mixG(sp.E, sp.E, sp.nu, sp.nu));
           continue;
         }
         const a = self(i), b = self(j);
         // a pair that cannot be mixed stays unset: initOne throws for it when this style is used for the pair, and a
         // hybrid sub-style never asks for the pairs of other sub-styles (pair_style hybrid granular surf/granular)
         if (!a || !b) continue;
-        const sa = this.pmOf(a, a.E ? effModulus(a.E, a.nu) : 0, a, a);
-        const sb = this.pmOf(b, b.E ? effModulus(b.E, b.nu) : 0, b, b);
-        if (sa.sig !== sb.sig) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j}): models of types ${i} and ${j} differ and cannot be mixed`);
+        const sigOf = (q: Spec) => [q.normal, q.damp, q.tang, q.roll, q.twist, q.limit ? 1 : 0, q.sync ? 1 : 0, q.heat].join('|');
+        if (sigOf(a) !== sigOf(b)) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j}): models of types ${i} and ${j} differ and cannot be mixed`);
+        // As native LAMMPS does (src/GRANULAR/granular_model.cpp mix_coeffs and the sub-models' mix_coeffs at b332f28):
+        // E by mix_stiffnessE(E_i, E_j, nu_i, nu_j), every other coefficient (nu, damping, cohesion, stiffnesses,
+        // friction) by mix_geom = sqrt(x_i x_j); a NULL k_t on either side stays NULL, and mindlin then takes
+        // 8 mix_stiffnessG of the mixed normal model's E and nu (its get_emod is the mixed Emix)
         const g = (x: number, y: number) => Math.sqrt(x * y);
-        const Eeff = sa.Eeff && sb.Eeff ? (2 * sa.Eeff * sb.Eeff) / (sa.Eeff + sb.Eeff) : 0;
-        // NULL k_t: k_t = 8 G_eff, G_eff = ((2-nu_i)/G_i + (2-nu_j)/G_j)^-1, G = E/(2(1+nu))
-        const kt = a.ktNull
-          ? 8 / ((2 - a.nu) / (a.E / (2 * (1 + a.nu))) + (2 - b.nu) / (b.E / (2 * (1 + b.nu))))
-          : g(a.kt, b.kt);
-        const mixed: Spec = { ...a, kn: g(a.kn, b.kn), E: a.E, nu: a.nu, gamma: g(a.gamma, b.gamma), eta: g(a.eta, b.eta),
-          kt, ktNull: false, xgt: g(a.xgt, b.xgt), mu: g(a.mu, b.mu), kr: g(a.kr, b.kr), gr: g(a.gr, b.gr), mr: g(a.mr, b.mr),
-          kw: g(a.kw, b.kw), gw: g(a.gw, b.gw), mw: g(a.mw, b.mw), cutoff: null, hk: g(a.hk, b.hk) };
-        const p = this.pmOf(mixed, Eeff, a, b);
+        const Eeff = a.E && b.E ? mixE(a.E, b.E, a.nu, b.nu) : 0;
+        const nuMix = g(a.nu, b.nu);
+        const ktNull = a.ktNull || b.ktNull;
+        const mixed: Spec = { ...a, kn: g(a.kn, b.kn), E: Eeff, nu: nuMix, gamma: g(a.gamma, b.gamma), eta: g(a.eta, b.eta),
+          kt: ktNull ? 0 : g(a.kt, b.kt), ktNull, xgt: g(a.xgt, b.xgt), mu: g(a.mu, b.mu), kr: g(a.kr, b.kr), gr: g(a.gr, b.gr),
+          mr: g(a.mr, b.mr), kw: g(a.kw, b.kw), gw: g(a.gw, b.gw), mw: g(a.mw, b.mw), cutoff: null, hk: g(a.hk, b.hk) };
+        const p = this.pmOf(mixed, Eeff, () => 8.0 * mixG(Eeff, Eeff, nuMix, nuMix));
         this.pm[i * nt + j] = p;
       }
     }
@@ -1002,25 +1009,27 @@ export class PairGranular extends Pair {
 
   /**
    * Resolved parameters of a wall/particle pair (fix wall/gran granular): the particle's own material
-   * against a flat wall; E_eff = E / (2 (1 - nu^2)) as in the doc note for fix wall/gran.
+   * against a flat wall; as native LAMMPS does (gran_sub_mod_normal.cpp and gran_sub_mod_tangential.cpp coeffs_to_local
+   * at b332f28, contact_type WALL): Emix = mix_stiffnessE_wall(E, nu) and a NULL k_t = 8 mix_stiffnessG_wall(E, nu).
    */
   wallParams(sp: Spec, region = false): Pm {
     // doc: "The *mdr* model currently only supports *fix wall/gran/region*, not *fix wall/gran*."
     if (sp.normal === 'mdr' && !region) throw new StyleError("fix wall/gran with normal model 'mdr' is not implemented in this engine (the doc supports fix wall/gran/region only)");
-    return this.pmOf(sp, sp.E ? effModulus(sp.E, sp.nu) : 0, sp, sp);
+    return this.pmOf(sp, sp.E ? mixEwall(sp.E, sp.nu) : 0, () => 8.0 * mixGwall(sp.E, sp.nu));
   }
 
-  /** Resolved parameters of a spec whose effective modulus is eff (kt NULL uses the given like-type specs). */
-  private pmOf(sp: Spec, eff: number, si: Spec, sj: Spec): Pm {
+  /** Resolved parameters of a spec whose effective modulus is eff (ktNull: the k_t of a NULL tangential stiffness). */
+  private pmOf(sp: Spec, eff: number, ktNull: () => number): Pm {
     let kt = sp.kt;
     if (sp.ktNull) {
-      const gi = si.E / (2 * (1 + si.nu)), gj = sj.E / (2 * (1 + sj.nu));
-      if (!(gi > 0) || !(gj > 0)) throw new StyleError('pair_style granular: tangential k_t NULL needs E and nu for the types');
-      kt = 8 / ((2 - si.nu) / gi + (2 - sj.nu) / gj);
+      kt = sp.E > 0 ? ktNull() : 0;
+      if (!(kt > 0)) throw new StyleError('pair_style granular: tangential k_t NULL needs E and nu for the types');
     }
+    const material = sp.normal === 'hertz/material' || sp.normal === 'dmt' || sp.normal === 'jkr';
     const sig = [sp.normal, sp.damp, sp.tang, sp.roll, sp.twist, sp.limit ? 1 : 0, sp.sync ? 1 : 0, sp.heat].join('|');
     return {
-      normal: sp.normal, kn: sp.kn, Eeff: eff, gamma: sp.gamma, eta: sp.eta, Y: sp.Y, psib: sp.psib, dtype: sp.dtype,
+      normal: sp.normal, kn: sp.kn, Eeff: eff, kHM: material ? FOURTHIRDS * eff : 0, dampC: dampConstant(sp.damp, sp.normal, sp.eta),
+      gamma: sp.gamma, eta: sp.eta, Y: sp.Y, psib: sp.psib, dtype: sp.dtype,
       damp: sp.damp, tang: sp.tang,
       kt, xgt: sp.xgt, mu: sp.mu, roll: sp.roll, kr: sp.kr, gr: sp.gr, mr: sp.mr,
       twist: sp.twist, kw: sp.kw, gw: sp.gw, mw: sp.mw, limit: sp.limit, sync: sp.sync,
@@ -1043,10 +1052,11 @@ export class PairGranular extends Pair {
     if (!p) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);
     if (p.cutoff > 0) return p.cutoff;
     const rs = this.maxRadius(i) + this.maxRadius(j);
-    // jkr: contacts extend to the pull-off separation radsum - delta_c (delta_c < 0)
+    // As native LAMMPS does (src/GRANULAR/pair_granular.cpp init_one at b332f28): a model acting beyond contact (jkr)
+    // adds the pull-off distance of the largest radii, "cutoff += pulloff"
     if (p.normal === 'jkr' && rs > 0) {
-      const rm = (this.maxRadius(i) * this.maxRadius(j)) / rs;
-      return rs - jklPullOff(rm, p.Eeff, p.gamma);
+      const ri = this.maxRadius(i), rj = this.maxRadius(j);
+      return rs + jkrHook().pulloff(ri * rj / (ri + rj), p.Eeff, p.gamma);
     }
     return rs;
   }
@@ -1106,8 +1116,8 @@ export class PairGranular extends Pair {
         const delta = radsum - r;
         // the pair's record from the last call, looked up once (a new record goes into the map below only when kept)
         const stored = this.shear.get(key);
-        // jkr out of overlap without a record: no contact (granularContact's hysteresis test), nothing to evaluate
-        if (jkr && delta < 0 && stored === undefined) continue;
+        // jkr without a record: native's touch test rsq < radsum^2 (granularContact), nothing to evaluate otherwise
+        if (jkr && stored === undefined && !(rsq < radsum * radsum)) continue;
         const mj = rmass[oj];
         const Rf = (ri * rj) / radsum;
         // m_eff; a contact with a particle of the fix freeze group uses the other particle's mass (measured in gran.ts)
@@ -1122,7 +1132,7 @@ export class PairGranular extends Pair {
           ? mdr.pairNormal({ ida: a, idb: b, oi, oj, ri, rj, delta, Rf, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, meff, hu: update })
           : undefined;
         const ok = granularContact({
-          pm, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, r, delta, Rf, ri, rj, meff,
+          pm, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, r, delta, Rf, ri, rj, meff, rsq, radsum, dx, dy, dz,
           vrx: v[3 * oi] - v[3 * oj], vry: v[3 * oi + 1] - v[3 * oj + 1], vrz: v[3 * oi + 2] - v[3 * oj + 2],
           oix: omega[3 * oi], oiy: omega[3 * oi + 1], oiz: omega[3 * oi + 2],
           ojx: omega[3 * oj], ojy: omega[3 * oj + 1], ojz: omega[3 * oj + 2],
@@ -1205,7 +1215,7 @@ export class PairGranular extends Pair {
       : undefined;
     const out = newContactOut();
     const ok = granularContact({
-      pm, nx, ny, nz, r, delta, Rf, ri, rj, meff,
+      pm, nx, ny, nz, r, delta, Rf, ri, rj, meff, rsq, radsum, dx: del.dx, dy: del.dy, dz: del.dz,
       vrx: v[3 * i] - v[3 * j], vry: v[3 * i + 1] - v[3 * j + 1], vrz: v[3 * i + 2] - v[3 * j + 2],
       oix: omega[3 * i], oiy: omega[3 * i + 1], oiz: omega[3 * i + 2],
       ojx: omega[3 * j], ojy: omega[3 * j + 1], ojz: omega[3 * j + 2],

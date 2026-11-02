@@ -451,7 +451,6 @@ export class FixWallGranGranular extends Fix {
   readonly style: string;
   private readonly pm: Pm;
   /** Legacy hertz/history: forces scaled by sqrt(delta R). */
-  private legacyHertz = false;
   private readonly planes: Plane[] = [];
   private motion: Motion | null = null;
   private readonly regionId: string | null;
@@ -488,15 +487,22 @@ export class FixWallGranGranular extends Fix {
     let pmOut: Pm;
     if (classic) {
       // fstyle_params: Kn Kt gamma_n gamma_t xmu dampflag [limit_damping], then the wallstyle region ID
-      const { kn, kt, gn, gt: gtEff, xmu } = classicModel(args);
+      const cm = classicModel(args);
+      const { gn, gt: gtEff, xmu } = cm;
+      // define_classic_model: "convert Kn and Kt from pressure units to force/distance^2 if Hertzian" (kn /= nktv2p)
+      const nktv2p = args[0] === 'hertz/history' ? sys.state.units.nktv2p : 1;
+      const kn = args[0] === 'hertz/history' ? cm.kn / nktv2p : cm.kn, kt = args[0] === 'hertz/history' ? cm.kt / nktv2p : cm.kt;
       k = 7;
       let limit = false;
       if (args[k] === 'limit_damping') { limit = true; k++; }
+      // As native LAMMPS does (src/GRANULAR/granular_model.cpp GranularModel::define_classic_model at b332f28): hooke is
+      // hooke + linear_nohistory + mass_velocity, hooke/history hooke + linear_history_classic + mass_velocity, and
+      // hertz/history hertz + mindlin_classic + viscoelastic; the tangential damping ratio is gamma_t / gamma_n
       const hist = args[0] !== 'hooke';
-      this.legacyHertz = args[0] === 'hertz/history';
+      const hertz = args[0] === 'hertz/history';
       pmOut = {
-        normal: 'hooke', kn, Eeff: 0, gamma: 0, eta: gn, damp: 'mass_velocity',
-        tang: hist ? 'linear_history_classic' : 'linear_nohistory', kt, xgt: gn > 0 ? gtEff / gn : 0, mu: xmu,
+        normal: hertz ? 'hertz' : 'hooke', kn, Eeff: 0, kHM: 0, dampC: 0, gamma: 0, eta: gn, damp: hertz ? 'viscoelastic' : 'mass_velocity',
+        tang: hertz ? 'mindlin_classic' : hist ? 'linear_history_classic' : 'linear_nohistory', kt, xgt: gn > 0 ? gtEff / gn : 0, mu: xmu,
         roll: 'none', kr: 0, gr: 0, mr: 0, twist: 'none', kw: 0, gw: 0, mw: 0, limit, cutoff: -1, heat: 'none', hk: 0, sig: 'legacy',
       };
     } else {
@@ -704,13 +710,17 @@ export class FixWallGranGranular extends Fix {
     const cmass = contactMassArray(s);
     if (!radius || !rmass || !omega || !torque) throw new StyleError('fix wall/gran requires atom_style sphere');
     const dt = s.dt;
-    const delta = (s.step - this.step0) * dt;
     const mv = [0, 0, 0];
-    let off = 0;
+    // wiggle: as native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp post_force at b332f28): "arg = omega *
+    // (update->ntimestep - time_origin) * dt", "wlo = lo + amplitude - amplitude * cos(arg)" and "vwall[axis] =
+    // amplitude * omega * sin(arg)"
+    let wigCos = 0, wiggle = false;
     const m = this.motion;
     if (m?.kind === 'wiggle') {
-      off = m.amp - m.amp * libm.cos(m.omega * delta);
-      mv[m.dim] = m.amp * m.omega * libm.sin(m.omega * delta);
+      const arg = m.omega * (s.step - this.step0) * dt;
+      wiggle = true;
+      wigCos = libm.cos(arg);
+      mv[m.dim] = m.amp * m.omega * libm.sin(arg);
     } else if (m?.kind === 'shear') {
       mv[m.dim] = m.vshear;
     }
@@ -744,15 +754,23 @@ export class FixWallGranGranular extends Fix {
         // only the faces in contact (jkr acts beyond contact; mdr drops the bulk record of each face out of contact)
         this.regionElements(xi, yi, zi, R, cand, jkr || mdr ? Infinity : R);
       } else {
-        for (let k = 0; k < this.planes.length; k++) {
-          const p = this.planes[k];
-          const c = p.coord + (m?.kind === 'wiggle' && m.dim === p.dim ? off : 0);
-          const sd = x[3 * i + p.dim] - c;
-          const dist = Math.abs(sd);
-          if (sd === 0) throw new StyleError(`fix wall/gran: particle ${id[i]} is at the wall position (zero distance); native LAMMPS gives NaN forces`);
-          const n = [0, 0, 0];
-          n[p.dim] = sd > 0 ? 1 : -1;
-          cand.push({ key: `${k}`, dist, nx: n[0], ny: n[1], nz: n[2], Rf: R, source: null });
+        // As native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp post_force at b332f28): the nearer of the lo and hi walls,
+        // "del1 = x[i][2] - wlo; del2 = whi - x[i][2]; if (del1 < del2) dz = del1; else dz = -del2", one contact (and one
+        // history) per atom; the model then takes r = sqrt(rsq) and nx = dx * (1 / r) (granular_model.cpp)
+        let wlo = -Infinity, whi = Infinity, dim: Dim = 0;
+        for (const p of this.planes) {
+          const c = wiggle && m!.dim === p.dim ? p.coord + m!.amp - m!.amp * wigCos : p.coord;
+          if (p.lo) wlo = c; else whi = c;
+          dim = p.dim;
+        }
+        if (this.planes.length) {
+          const xd = x[3 * i + dim];
+          const del1 = xd - wlo, del2 = whi - xd;
+          const d = del1 < del2 ? del1 : -del2;
+          if (d === 0) throw new StyleError(`fix wall/gran: particle ${id[i]} is at the wall position (zero distance); native LAMMPS gives NaN forces`);
+          const r = Math.sqrt(d * d);
+          const nd = d * (1.0 / r);
+          cand.push({ key: 'w', dist: r, nx: dim === 0 ? nd : 0, ny: dim === 1 ? nd : 0, nz: dim === 2 ? nd : 0, Rf: R, source: null });
         }
       }
       const aid = id[i];
@@ -796,7 +814,6 @@ export class FixWallGranGranular extends Fix {
           vrx, vry, vrz,
           oix: omega[3 * i], oiy: omega[3 * i + 1], oiz: omega[3 * i + 2],
           ojx: 0, ojy: 0, ojz: 0, dt, update, sg: 1, surfaceArm: true, normal,
-          poly: this.legacyHertz ? Math.sqrt((R - e.dist) * e.Rf) : 1,
         }, sh, this.out, had !== undefined);
         if (!ok) {
           hist?.delete(e.key);

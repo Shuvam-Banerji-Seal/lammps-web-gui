@@ -143,6 +143,22 @@ const boxCorners = (b: number[]): number[] => {
   return out;
 };
 
+/** Neighbor.occasionalFullCounts' state: the build it belongs to, the positions and cell grid of its first request, and
+ * the counts made so far (-1 for an atom not counted yet). */
+interface OccasionalCounts {
+  nbuild: number;
+  x: Float64Array;
+  cutsq: Float64Array;
+  nt: number;
+  mx: number;
+  my: number;
+  mz: number;
+  start: Int32Array;
+  cell: Int32Array;
+  members: Int32Array;
+  cache: Int32Array;
+}
+
 export class Neighbor {
   skin: number;
   every = 1;
@@ -646,6 +662,115 @@ export class Neighbor {
       specialSettings: { lj: [1, 1, 1, 1], coul: [1, 1, 1, 1], keepExcluded: true },
     };
     return this.buildList(s, needs, fullList, 0, true);
+  }
+
+  /**
+   * The numneigh of the given owned atoms in an occasional FULL list of the force field's cutoffs, without building the
+   * list. As native LAMMPS does (src/neighbor.cpp Neighbor::build_one and init at b332f28): an occasional list is built
+   * at its first request after each perpetual build ("if (np->last_build >= lastcall) return;", and build() "reset
+   * last_build in all occasional lists"), so the counts are of the positions at that first request and are kept until the
+   * next build; a pair is in the list when "rsq <= cutneighsq[itype][jtype]" with "cut = cutoff + delta" (delta = skin
+   * when the pair cutoff is above zero). The atoms j != i of the owned and ghost atoms are counted (r^2 is symmetric bit
+   * for bit, so it does not matter which of the two the list's stencil walk starts from), outside neigh_modify exclude
+   * type pairs and passing the include group and the other exclusions, as buildList and its encode() test them. The
+   * positions of that request are kept with a cell grid of edge at least the largest cutoff, and each atom is counted on
+   * its first request.
+   */
+  occasionalFullCounts(s: SimState, atoms: ArrayLike<number>, m: number): Int32Array {
+    const counts = new Int32Array(m);
+    if (m === 0) return counts;
+    let oc = this.occCounts;
+    if (oc === null || oc.nbuild !== this.nbuild || oc.cache.length !== this.nlocal) {
+      oc = this.occCounts = this.occasionalSnapshot(s);
+    }
+    for (let q = 0; q < m; q++) {
+      const a = atoms[q];
+      let c = oc.cache[a];
+      if (c < 0) c = oc.cache[a] = this.occasionalCount(s, oc, a);
+      counts[q] = c;
+    }
+    return counts;
+  }
+
+  /** occasionalFullCounts' positions, grid and counts since the last build. */
+  private occCounts: OccasionalCounts | null = null;
+
+  private occasionalSnapshot(s: SimState): OccasionalCounts {
+    const nall = this.nall, nt = s.ntypes + 1;
+    const x = Float64Array.from(this.xall.subarray(0, 3 * nall));
+    const cache = new Int32Array(this.nlocal).fill(-1);
+    // Neighbor::init: "cutneighsq[i][j] = cut * cut", cut = sqrt(pair->cutsq[i][j]) plus the skin when that is above zero
+    const cutsq = new Float64Array(nt * nt);
+    let cmax = 0;
+    const cut = this.needs?.cutoff;
+    if (cut && this.needs!.ntypes + 1 === nt) {
+      for (let k = 0; k < nt * nt; k++) {
+        const c = cut[k] > 0 ? cut[k] + this.skin : 0;
+        cutsq[k] = c * c;
+        if (c > cmax) cmax = c;
+      }
+    }
+    for (const e of this.excludes) {
+      if (e.kind !== 'type' || e.a < 1 || e.a >= nt || e.b < 1 || e.b >= nt) continue;
+      cutsq[e.a * nt + e.b] = -1;
+      cutsq[e.b * nt + e.a] = -1;
+    }
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let k = 0; k < nall; k++) {
+      const xx = x[3 * k], yy = x[3 * k + 1], zz = x[3 * k + 2];
+      if (xx < x0) x0 = xx; if (xx > x1) x1 = xx;
+      if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
+      if (zz < z0) z0 = zz; if (zz > z1) z1 = zz;
+    }
+    const edge = cmax > 0 ? cmax * 1.0001 : Infinity;
+    const mx = Math.max(1, Math.min(256, Math.floor((x1 - x0) / edge))), my = Math.max(1, Math.min(256, Math.floor((y1 - y0) / edge)));
+    const mz = Math.max(1, Math.min(256, Math.floor((z1 - z0) / edge)));
+    const hx = mx > 1 ? (x1 - x0) / mx : Infinity, hy = my > 1 ? (y1 - y0) / my : Infinity, hz = mz > 1 ? (z1 - z0) / mz : Infinity;
+    const ncell = mx * my * mz;
+    const start = new Int32Array(ncell + 1), cell = new Int32Array(nall);
+    for (let k = 0; k < nall; k++) {
+      const cx = Math.min(mx - 1, Math.floor((x[3 * k] - x0) / hx) | 0);
+      const cy = Math.min(my - 1, Math.floor((x[3 * k + 1] - y0) / hy) | 0);
+      const cz = Math.min(mz - 1, Math.floor((x[3 * k + 2] - z0) / hz) | 0);
+      cell[k] = (cz * my + cy) * mx + cx;
+      start[cell[k] + 1]++;
+    }
+    for (let c = 0; c < ncell; c++) start[c + 1] += start[c];
+    const fill = start.slice(0, ncell), members = new Int32Array(nall);
+    for (let k = 0; k < nall; k++) members[fill[cell[k]]++] = k;
+    return { nbuild: this.nbuild, x, cutsq, nt, mx, my, mz, start, cell, members, cache };
+  }
+
+  private occasionalCount(s: SimState, oc: OccasionalCounts, a: number): number {
+    const incl = this.includeBit;
+    if (incl && !(s.mask[a] & incl)) return 0;
+    const { x, cutsq, nt, mx, my, mz, start, cell, members } = oc;
+    const ta = this.typeall, owner = this.owner;
+    const exclude = this.excludeFn(s);
+    const c = cell[a];
+    const cx = c % mx, cy = ((c - cx) / mx) % my, cz = (c - cx - cy * mx) / (mx * my);
+    const xi = x[3 * a], yi = x[3 * a + 1], zi = x[3 * a + 2], row = ta[a] * nt;
+    let n = 0;
+    for (let kz = Math.max(0, cz - 1); kz <= Math.min(mz - 1, cz + 1); kz++) {
+      for (let ky = Math.max(0, cy - 1); ky <= Math.min(my - 1, cy + 1); ky++) {
+        for (let kx = Math.max(0, cx - 1); kx <= Math.min(mx - 1, cx + 1); kx++) {
+          const cc = (kz * my + ky) * mx + kx;
+          for (let e = start[cc]; e < start[cc + 1]; e++) {
+            const j = members[e];
+            if (j === a) continue;
+            const csq = cutsq[row + ta[j]];
+            if (csq < 0) continue;
+            const dx = x[3 * j] - xi, dy = x[3 * j + 1] - yi, dz = x[3 * j + 2] - zi;
+            if (!(dx * dx + dy * dy + dz * dz <= csq)) continue;
+            const jo = owner[j];
+            if (incl && !(s.mask[jo] & incl)) continue;
+            if (exclude && exclude(a, jo)) continue;
+            n++;
+          }
+        }
+      }
+    }
+    return n;
   }
 
   /** The neigh_modify exclusions as one predicate over owned indices (null when none). */

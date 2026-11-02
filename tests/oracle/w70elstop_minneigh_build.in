@@ -1,0 +1,29 @@
+# oracle: fix electron/stopping minneigh counts of the occasional full list built once per re-neighbor (neigh_modify every 10 check no) with per-type-pair cutoffs: a fast atom leaves a two-type cluster
+# oracle-inputs: w70elstop_two.table
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units metal
+atom_style atomic
+boundary s s s
+lattice fcc 3.615
+region cl block 0 3 0 3 0 3
+create_box 2 cl
+create_atoms 1 region cl
+set group all type/fraction 2 0.4 12345
+mass * 63.546
+pair_style lj/cut 3.0
+pair_coeff 1 1 0.4 2.3 3.0
+pair_coeff 1 2 0.3 2.3 3.0
+pair_coeff 2 2 0.2 2.3 8.0
+neighbor 1.0 bin
+neigh_modify every 10 delay 0 check no
+velocity all create 50 42534 mom yes rot yes
+group pka id 1 2
+set group pka type 1
+velocity pka set -300 -240 -180 units box
+fix fel all electron/stopping 10.0 w70elstop_two.table minneigh 4
+fix fnve all nve
+timestep 0.002
+thermo 5
+thermo_style custom step pe ke f_fel
+thermo_modify format float %.15g
+run 60

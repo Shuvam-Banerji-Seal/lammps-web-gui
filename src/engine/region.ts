@@ -138,6 +138,8 @@ export abstract class Region {
   }
 
   /** Inverse of the region's current displacement and rotation. */
+  /** toBodyFrame's result (read at once by its callers). */
+  private readonly bodyBuf: [number, number, number] = [0, 0, 0];
   private toBodyFrame(x: number, y: number, z: number): [number, number, number] {
     let px = x - this.moveAlong(0), py = y - this.moveAlong(1), pz = z - this.moveAlong(2);
     if (this.rotate) {
@@ -154,7 +156,9 @@ export abstract class Region {
       py = oy + vy * c + cy * s + uy * dot * (1 - c);
       pz = oz + vz * c + cz * s + uz * dot * (1 - c);
     }
-    return [px, py, pz];
+    const b = this.bodyBuf;
+    b[0] = px; b[1] = py; b[2] = pz;
+    return b;
   }
 
   /** A parameter's current value. */
@@ -205,7 +209,9 @@ export abstract class Region {
 
   /** Maps a lab-frame point into the region's body frame (identity when static). */
   bodyPoint(x: number, y: number, z: number): [number, number, number] {
-    return this.dynamic ? this.toBodyFrame(x, y, z) : [x, y, z];
+    if (!this.dynamic) return [x, y, z];
+    const b = this.toBodyFrame(x, y, z);
+    return [b[0], b[1], b[2]];
   }
 
   /** Maps a body-frame point back to the lab frame (move applied after rotate). */
@@ -238,13 +244,20 @@ export abstract class Region {
   contacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     let px = x, py = y, pz = z;
     if (this.env.remap) {
-      const p = [px, py, pz];
+      const p = this.remapBuf;
+      p[0] = px; p[1] = py; p[2] = pz;
       this.env.remap(p);
       px = p[0]; py = p[1]; pz = p[2];
     }
-    const [bx, by, bz] = this.dynamic ? this.toBodyFrame(px, py, pz) : [px, py, pz];
-    const body: SurfaceContact[] = [];
-    this.primitiveContacts(bx, by, bz, body);
+    let bx = px, by = py, bz = pz;
+    if (this.dynamic) {
+      const b = this.toBodyFrame(px, py, pz);
+      bx = b[0]; by = b[1]; bz = b[2];
+    }
+    // the primitive's faces closer than the cutoff (the list is reused: its contacts are new objects)
+    const body = this.bodyContacts;
+    body.length = 0;
+    this.primitiveContacts(bx, by, bz, body, cutoff);
     if (!this.dynamic) { for (const c of body) if (c.dist < cutoff) out.push(c); return; }
     for (const c of body) {
       if (!(c.dist < cutoff)) continue;
@@ -253,8 +266,10 @@ export abstract class Region {
     }
   }
 
-  /** The interior faces of a primitive region in its body frame (no motion). */
-  protected primitiveContacts(_x: number, _y: number, _z: number, _out: SurfaceContact[]): void {
+  private readonly bodyContacts: SurfaceContact[] = [];
+
+  /** The interior faces of a primitive region in its body frame (no motion) closer than the cutoff. */
+  protected primitiveContacts(_x: number, _y: number, _z: number, _out: SurfaceContact[], _cutoff = Infinity): void {
     throw new StyleError(`region style ${this.style} cannot be used as a wall`);
   }
 
@@ -399,16 +414,17 @@ export class BlockRegion extends Region {
     const b = this.b;
     return x >= this.val(b[0]) && x <= this.val(b[1]) && y >= this.val(b[2]) && y <= this.val(b[3]) && z >= this.val(b[4]) && z <= this.val(b[5]);
   }
-  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
-    const b = this.b.map((p) => this.val(p));
-    const lo = [b[0], b[2], b[4]], hi = [b[1], b[3], b[5]];
-    const p = [x, y, z];
-    for (let a = 0; a < 3; a++) if (p[a] < lo[a] || p[a] > hi[a]) return;
+  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
+    const b = this.b;
+    const xlo = this.val(b[0]), xhi = this.val(b[1]), ylo = this.val(b[2]), yhi = this.val(b[3]), zlo = this.val(b[4]), zhi = this.val(b[5]);
+    if (x < xlo || x > xhi || y < ylo || y > yhi || z < zlo || z > zhi) return;
     for (let a = 0; a < 3; a++) {
-      const e = [0, 0, 0];
-      e[a] = 1;
-      out.push({ key: FACE_LO[a], dist: p[a] - lo[a], nx: e[0], ny: e[1], nz: e[2], curvature: 0, source: this });
-      out.push({ key: FACE_HI[a], dist: hi[a] - p[a], nx: -e[0], ny: -e[1], nz: -e[2], curvature: 0, source: this });
+      const pa = a === 0 ? x : a === 1 ? y : z;
+      const lo = a === 0 ? xlo : a === 1 ? ylo : zlo, hi = a === 0 ? xhi : a === 1 ? yhi : zhi;
+      const e0 = a === 0 ? 1 : 0, e1 = a === 1 ? 1 : 0, e2 = a === 2 ? 1 : 0;
+      const dlo = pa - lo, dhi = hi - pa;
+      if (dlo < cutoff) out.push({ key: FACE_LO[a], dist: dlo, nx: e0, ny: e1, nz: e2, curvature: 0, source: this });
+      if (dhi < cutoff) out.push({ key: FACE_HI[a], dist: dhi, nx: -e0, ny: -e1, nz: -e2, curvature: 0, source: this });
     }
   }
   bbox() {
@@ -428,16 +444,16 @@ export class SphereRegion extends Region {
     const dx = x - this.val(this.c[0]), dy = y - this.val(this.c[1]), dz = z - this.val(this.c[2]);
     return dx * dx + dy * dy + dz * dz <= r * r;
   }
-  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
-    const [cx, cy, cz] = this.c.map((p) => this.val(p));
+  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
+    const cx = this.val(this.c[0]), cy = this.val(this.c[1]), cz = this.val(this.c[2]);
     const R = this.val(this.r);
     const dx = x - cx, dy = y - cy, dz = z - cz;
     const rho = Math.hypot(dx, dy, dz);
     if (rho > R) return;
     // concave wall as seen from the interior: radius of curvature -R (measured
     // with native LAMMPS: R_eff = R Rw / (R + Rw) with Rw = -R)
-    if (rho === 0) { out.push({ key: 'sphere', dist: R, nx: 0, ny: 0, nz: 0, curvature: -R, source: this }); return; }
-    out.push({ key: 'sphere', dist: R - rho, nx: -dx / rho, ny: -dy / rho, nz: -dz / rho, curvature: -R, source: this });
+    if (rho === 0) { if (R < cutoff) out.push({ key: 'sphere', dist: R, nx: 0, ny: 0, nz: 0, curvature: -R, source: this }); return; }
+    if (R - rho < cutoff) out.push({ key: 'sphere', dist: R - rho, nx: -dx / rho, ny: -dy / rho, nz: -dz / rho, curvature: -R, source: this });
   }
   /**
    * Bounding box of an interior sphere: the centre plus or minus the radius on each axis. create_atoms random
@@ -492,7 +508,7 @@ export class ConeRegion extends Region {
     const e1 = p[d1] - this.val(this.c1), e2 = p[d2] - this.val(this.c2);
     return e1 * e1 + e2 * e2 <= r * r;
   }
-  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     // lateral surface: the generator radius rho(a) = rl + slope (a - lo) (a
     // cylinder has slope 0).  Measured with native LAMMPS (black box, single
     // sphere, Hertz k_n): the overlap is the distance to the generator, the
@@ -503,18 +519,17 @@ export class ConeRegion extends Region {
     const rl = this.val(this.radlo), rh = this.val(this.radhi);
     const axis = this.axis;
     const c1 = this.val(this.c1), c2 = this.val(this.c2), lo = this.val(this.lo), hi = this.val(this.hi);
-    const p = [x, y, z];
-    const a = p[axis];
+    const a = axis === 0 ? x : axis === 1 ? y : z;
     if (a < lo || a > hi) return;
-    const [d1, d2] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
-    const e1 = p[d1] - c1, e2 = p[d2] - c2;
+    const d1 = axis === 0 ? 1 : 0, d2 = axis === 2 ? 1 : 2;
+    const e1 = (d1 === 0 ? x : y) - c1, e2 = (d2 === 1 ? y : z) - c2;
     const rho = Math.hypot(e1, e2);
     const slope = hi > lo ? (rh - rl) / (hi - lo) : 0;
     const rad = rl + slope * (a - lo);
     if (rho > rad) return;
     const f = rho - rad;
     const q = 1 + slope * slope;
-    if (rho > 0) {
+    if (rho > 0 && -f / Math.sqrt(q) < cutoff) {
       const u = [0, 0, 0];
       u[d1] = (-e1 / rho) / Math.sqrt(q);
       u[d2] = (-e2 / rho) / Math.sqrt(q);
@@ -522,10 +537,9 @@ export class ConeRegion extends Region {
       const rhoS = rho - f / q;
       out.push({ key: 'lat', dist: -f / Math.sqrt(q), nx: u[0], ny: u[1], nz: u[2], curvature: -2 * rhoS, source: this });
     }
-    const ax = [0, 0, 0];
-    ax[axis] = 1;
-    out.push({ key: 'lo', dist: a - lo, nx: ax[0], ny: ax[1], nz: ax[2], curvature: 0, source: this });
-    out.push({ key: 'hi', dist: hi - a, nx: -ax[0], ny: -ax[1], nz: -ax[2], curvature: 0, source: this });
+    const ax0 = axis === 0 ? 1 : 0, ax1 = axis === 1 ? 1 : 0, ax2 = axis === 2 ? 1 : 0;
+    if (a - lo < cutoff) out.push({ key: 'lo', dist: a - lo, nx: ax0, ny: ax1, nz: ax2, curvature: 0, source: this });
+    if (hi - a < cutoff) out.push({ key: 'hi', dist: hi - a, nx: -ax0, ny: -ax1, nz: -ax2, curvature: 0, source: this });
   }
   /**
    * Axis-aligned bounding box, as create_box.html describes for regions other than prism. Measured with
@@ -574,13 +588,13 @@ export class PlaneRegion extends Region {
    * 2(2.5 - r) n_hat = (1.68675134594813, 1.68675134594813, 1.68675134594813),
    * i.e. the projection onto the unit normal.
    */
-  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
-    const [px, py, pz] = this.pt.map((p) => this.val(p));
-    const [nx, ny, nz] = this.nrm.map((p) => this.val(p));
+  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
+    const px = this.val(this.pt[0]), py = this.val(this.pt[1]), pz = this.val(this.pt[2]);
+    const nx = this.val(this.nrm[0]), ny = this.val(this.nrm[1]), nz = this.val(this.nrm[2]);
     const n = Math.hypot(nx, ny, nz);
     const dist = ((x - px) * nx + (y - py) * ny + (z - pz) * nz) / n;
     if (dist < 0) return;
-    out.push({ key: 'plane', dist, nx: nx / n, ny: ny / n, nz: nz / n, curvature: 0, source: this });
+    if (dist < cutoff) out.push({ key: 'plane', dist, nx: nx / n, ny: ny / n, nz: nz / n, curvature: 0, source: this });
   }
 }
 

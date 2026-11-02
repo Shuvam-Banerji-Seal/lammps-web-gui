@@ -21,7 +21,7 @@ import {
 import { bonds as bondsTerm, atomEnergy, hydrogenBonds, torsionAngles, valenceAngles } from './bonded';
 import { readControlFile, readForceField, type ControlParams, type ReaxParam } from './ffield';
 import { initLookupTables, type LookupTables } from './lookup';
-import { tabulatedVdwCoulombEnergy, vdwCoulombEnergy } from './nonbonded';
+import { tabulatedVdwCoulombEnergy, vdwCoulombEnergy, vdwPairs, vdwPairTerms, type VdwTerms } from './nonbonded';
 import { nativeFarOrder, type NativeFarOrder } from './nativeFar';
 import { nativeOrder } from '../../engine/atoms';
 
@@ -38,23 +38,29 @@ interface ReaxState {
   nativeInfo: NativeFarOrder | null;
   nativeOrderRef: Int32Array | null;
   lookup: LookupTables | null;
-  /** bondOrderTerms inputs and results when there are no threads: d, out (f64) and the type pair (i32) of each item */
-  bopF64: Float64Array[];
-  bopI32: Int32Array[];
+  /** the inputs and results of the shared loops when they run here: d, out (f64) and the type pair (i32) of each item */
+  loopF64: Float64Array[];
+  loopI32: Int32Array[];
   bopIdx: Int32Array;
+  /** the far pairs of vdW_Coulomb_Energy and their owned atoms (nonbonded.ts vdwPairs) */
+  vdwPairs: Int32Array;
+  vdwOwner: Int32Array;
 }
 const STATE = new WeakMap<object, ReaxState>();
 const stateOf = (p: object): ReaxState => {
   let st = STATE.get(p);
   if (!st) {
-    st = { lastBonds: null, nativeInfo: null, nativeOrderRef: null, lookup: null, bopF64: [new Float64Array(0), new Float64Array(0)], bopI32: [new Int32Array(0)], bopIdx: new Int32Array(0) };
+    st = {
+      lastBonds: null, nativeInfo: null, nativeOrderRef: null, lookup: null, loopF64: [new Float64Array(0), new Float64Array(0)],
+      loopI32: [new Int32Array(0)], bopIdx: new Int32Array(0), vdwPairs: new Int32Array(0), vdwOwner: new Int32Array(0),
+    };
     STATE.set(p, st);
   }
   return st;
 };
 
-/** Below this many pairs within the bond cutoff the bond-order terms are computed here rather than on the threads. */
-const MIN_THREADED_BOP = 4096;
+/** Below this many items a shared loop (bond-order or vdW/Coulomb terms) runs here rather than on the threads. */
+const MIN_THREADED_ITEMS = 4096;
 
 export class PairReaxFF extends Pair {
   readonly name = 'reaxff';
@@ -116,19 +122,7 @@ export class PairReaxFF extends Pair {
         idx[p] = far.d[p] <= ctrl.bondCut && type[far.nbr[p]] >= 0 ? m++ : -1;
       }
     }
-    const shared = kernels && m >= MIN_THREADED_BOP ? kernels.arrays([m, 6 * m], [m]) : null;
-    let f64: Float64Array[], i32: Int32Array[];
-    if (shared) {
-      ({ f64, i32 } = shared);
-    } else {
-      if (st.bopI32[0].length < m) {
-        const c = Math.ceil(1.25 * m);
-        st.bopF64 = [new Float64Array(c), new Float64Array(6 * c)];
-        st.bopI32 = [new Int32Array(c)];
-      }
-      f64 = st.bopF64;
-      i32 = st.bopI32;
-    }
+    const { f64, i32, shared } = this.loopArrays(m, 6, kernels);
     const d = f64[0], tp = i32[0], nt = param.numAtomTypes;
     for (let i = 0; i < N; i++) {
       const ti = type[i];
@@ -145,13 +139,66 @@ export class PairReaxFF extends Pair {
     return { idx, out: f64[1] };
   }
 
-  /** The loops the pair threads share (PairCompute.kernels): 'bop', the bond-order terms of items [i0, i1). */
+  /**
+   * The arrays of a shared loop over m items: d (m values) and out (per m values), and the type pair of each item. The
+   * pair threads' arrays when the loop runs there (m >= MIN_THREADED_ITEMS), else this pair's own. Both loops use this
+   * layout, so they share one set of arrays; the bond-order results are read (initForces) before the vdW loop runs.
+   */
+  private loopArrays(m: number, per: number, kernels: PairKernels | null): { f64: Float64Array[]; i32: Int32Array[]; shared: boolean } {
+    if (kernels && m >= MIN_THREADED_ITEMS) return { ...kernels.arrays([m, per * m], [m]), shared: true };
+    const st = stateOf(this);
+    if (st.loopI32[0].length < m || st.loopF64[1].length < per * m) {
+      const c = Math.ceil(1.25 * m);
+      st.loopF64 = [new Float64Array(c), new Float64Array(6 * c)];
+      st.loopI32 = [new Int32Array(c)];
+    }
+    return { f64: st.loopF64, i32: st.loopI32, shared: false };
+  }
+
+  /**
+   * The per-pair terms of vdW_Coulomb_Energy (nonbonded.ts vdwPairTerms) of every far pair it evaluates, in its order,
+   * on the pair threads when there are (threadKernel 'vdw'), else here; the same values either way. vdwCoulombEnergy
+   * sums them.
+   */
+  private vdwTerms(sys: RxSystem, kernels: PairKernels | null): VdwTerms {
+    const { far, type, param } = sys;
+    const st = stateOf(this);
+    if (st.vdwPairs.length < far.count) {
+      const c = Math.ceil(1.25 * far.count);
+      st.vdwPairs = new Int32Array(c);
+      st.vdwOwner = new Int32Array(c);
+    }
+    const pairs = st.vdwPairs, owner = st.vdwOwner;
+    const m = vdwPairs(sys, pairs, owner);
+    const { f64, i32, shared } = this.loopArrays(m, 4, kernels);
+    const d = f64[0], tp = i32[0], nt = param.numAtomTypes;
+    for (let k = 0; k < m; k++) {
+      const pj = pairs[k];
+      d[k] = far.d[pj];
+      tp[k] = type[owner[k]] * nt + type[far.nbr[pj]];
+    }
+    // the taper of this evaluation, eight coefficients
+    const args = Array.from(sys.Tap);
+    if (!(shared && kernels!.run('vdw', m, args))) this.threadKernel('vdw', 0, m, f64, i32, args);
+    return { m, pairs, owner, out: f64[1] };
+  }
+
+  /**
+   * The loops the pair threads share (PairCompute.kernels), over items [i0, i1): 'bop', the bond-order terms, and 'vdw',
+   * the vdW/Coulomb pair terms.
+   */
   threadKernel(name: string, i0: number, i1: number, f64: readonly Float64Array[], i32: readonly Int32Array[], args: readonly number[]): void {
-    if (name !== 'bop') throw new StyleError(`pair style reaxff has no threaded loop ${name}`);
+    if (name !== 'bop' && name !== 'vdw') throw new StyleError(`pair style reaxff has no threaded loop ${name}`);
     const param = this.param;
     if (!param) throw new StyleError('pair style reaxff has no force field');
-    const d = f64[0], out = f64[1], tp = i32[0], nt = param.numAtomTypes, boCut = args[0];
+    const d = f64[0], out = f64[1], tp = i32[0], nt = param.numAtomTypes;
     const sbp = param.sbp, tbp = param.tbp;
+    if (name === 'vdw') {
+      const ctrl = this.ctrl;
+      for (let k = i0; k < i1; k++) vdwPairTerms(param, ctrl, args, d[k], tbp[tp[k]], out, 4 * k);
+      return;
+    }
+    const boCut = args[0];
     for (let k = i0; k < i1; k++) {
       const t = tp[k];
       const ti = (t / nt) | 0;
@@ -323,6 +370,8 @@ export class PairReaxFF extends Pair {
     resetWorkspace(sys.ws);
     sys.bop = this.bondOrderTerms(sys, pc.kernels ?? null);
     initForces(sys);
+    // read by initForces only; the vdW loop reuses its arrays
+    sys.bop = null;
     computeBondOrders(sys);
     bondsTerm(sys);
     atomEnergy(sys);
@@ -330,7 +379,7 @@ export class PairReaxFF extends Pair {
     torsionAngles(sys);
     if (ctrl.hbondCut > 0) hydrogenBonds(sys);
     if (ctrl.tabulate === 0) {
-      vdwCoulombEnergy(sys);
+      vdwCoulombEnergy(sys, this.vdwTerms(sys, pc.kernels ?? null));
     } else {
       tabulatedVdwCoulombEnergy(sys, this.tables(type, n));
     }

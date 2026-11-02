@@ -102,7 +102,7 @@ const pairFlag = (sys: RxSystem, i: number, j: number, p: number, cut: number): 
 };
 
 /** Taper and its derivative at r (the seventh-order polynomial of core.ts taperCoefficients). */
-const taperAt = (T: Float64Array, r: number): { Tap: number; dTap: number } => {
+const taperAt = (T: ArrayLike<number>, r: number): { Tap: number; dTap: number } => {
   let Tap = T[7] * r + T[6];
   Tap = Tap * r + T[5];
   Tap = Tap * r + T[4];
@@ -172,45 +172,76 @@ const directPair = (
   return { e_vdW, e_core, e_lg, CEvd, e_ele0, CEclmb };
 };
 
-/** vdW_Coulomb_Energy: direct evaluation of the van der Waals and Coulomb terms over the far pairs. */
-export const vdwCoulombEnergy = (sys: RxSystem): void => {
-  const { param, ctrl, ws, far, en, n } = sys;
-  const p_vdW1 = param.gpL[28];
+/**
+ * The far pairs vdW_Coulomb_Energy evaluates, in its order (owned i ascending, then the far list of i): the far-list
+ * index of each into pairs and its i into owner. Returns their count.
+ */
+export const vdwPairs = (sys: RxSystem, pairs: Int32Array, owner: Int32Array): number => {
+  const { ctrl, far, n } = sys;
+  let m = 0;
   for (let i = 0; i < n; i++) {
     if (sys.type[i] < 0) continue;
     for (let pj = far.start[i]; pj < far.end[i]; pj++) {
-      const j = far.nbr[pj];
-      if (sys.type[j] < 0) continue;
-      if (!pairFlag(sys, i, j, pj, ctrl.nonbCut)) continue;
-      const r_ij = far.d[pj];
-      const twbp = param.tbp[sys.type[i] * param.numAtomTypes + sys.type[j]];
-      const { Tap, dTap } = taperAt(ws_taper(sys), r_ij);
-      const r = directPair(param, ctrl, Tap, dTap, r_ij, twbp, twbp.gamma_w, p_vdW1);
-      const e_vdW_tot = Tap * (r.e_vdW + r.e_core + r.e_lg);
-      en.e_vdW += e_vdW_tot;
-      const qq = sys.q[i] * sys.q[j];
-      const e_ele = qq * r.e_ele0;
-      en.e_ele += e_ele;
-      const coef = r.CEvd + qq * r.CEclmb;
-      // native reaxff_nonbonded.cpp:202-207: ev_tally(i,j,n,1,pe_vdw,e_ele,-(CEvd+CEclmb),x_i-x_j)
-      if (sys.pa) {
-        const del = relPos(sys.x, i, j);
-        tallyPair(sys.pa, i, j, e_vdW_tot, e_ele, -coef, del[0], del[1], del[2]);
-      }
-      ws.f[3 * i] += -coef * far.dvec[3 * pj];
-      ws.f[3 * i + 1] += -coef * far.dvec[3 * pj + 1];
-      ws.f[3 * i + 2] += -coef * far.dvec[3 * pj + 2];
-      ws.f[3 * j] += coef * far.dvec[3 * pj];
-      ws.f[3 * j + 1] += coef * far.dvec[3 * pj + 1];
-      ws.f[3 * j + 2] += coef * far.dvec[3 * pj + 2];
+      if (sys.type[far.nbr[pj]] < 0) continue;
+      if (!pairFlag(sys, i, far.nbr[pj], pj, ctrl.nonbCut)) continue;
+      pairs[m] = pj;
+      owner[m] = i;
+      m++;
     }
+  }
+  return m;
+};
+
+/**
+ * The terms of one pair of vdW_Coulomb_Energy that depend on r_ij and the type pair only, into out[o..o+3]: the tapered
+ * vdW energy Tap (e_vdW + e_core + e_lg), the Coulomb energy and the vdW and Coulomb force coefficients per unit charge
+ * product (e_ele0, CEvd, CEclmb). T is the taper of the system.
+ */
+export const vdwPairTerms = (
+  param: ReaxParam, ctrl: ControlParams, T: ArrayLike<number>, r_ij: number, twbp: TwoBody, out: Float64Array, o: number,
+): void => {
+  const { Tap, dTap } = taperAt(T, r_ij);
+  const r = directPair(param, ctrl, Tap, dTap, r_ij, twbp, twbp.gamma_w, param.gpL[28]);
+  out[o] = Tap * (r.e_vdW + r.e_core + r.e_lg);
+  out[o + 1] = r.e_ele0;
+  out[o + 2] = r.CEvd;
+  out[o + 3] = r.CEclmb;
+};
+
+/** Pair terms of vdW_Coulomb_Energy computed before: the m pairs of vdwPairs and their vdwPairTerms at 4 k of out. */
+export interface VdwTerms { m: number; pairs: Int32Array; owner: Int32Array; out: Float64Array }
+
+/**
+ * vdW_Coulomb_Energy: direct evaluation of the van der Waals and Coulomb terms over the far pairs. The per-pair terms
+ * come from vdwPairTerms (pre, computed on the pair threads when there are); they are summed here in the native order.
+ */
+export const vdwCoulombEnergy = (sys: RxSystem, pre: VdwTerms): void => {
+  const { ws, far, en } = sys;
+  const { m, pairs, owner, out } = pre;
+  for (let k = 0; k < m; k++) {
+    const i = owner[k], pj = pairs[k];
+    const j = far.nbr[pj];
+    const e_vdW_tot = out[4 * k];
+    en.e_vdW += e_vdW_tot;
+    const qq = sys.q[i] * sys.q[j];
+    const e_ele = qq * out[4 * k + 1];
+    en.e_ele += e_ele;
+    const coef = out[4 * k + 2] + qq * out[4 * k + 3];
+    // native reaxff_nonbonded.cpp:202-207: ev_tally(i,j,n,1,pe_vdw,e_ele,-(CEvd+CEclmb),x_i-x_j)
+    if (sys.pa) {
+      const del = relPos(sys.x, i, j);
+      tallyPair(sys.pa, i, j, e_vdW_tot, e_ele, -coef, del[0], del[1], del[2]);
+    }
+    ws.f[3 * i] += -coef * far.dvec[3 * pj];
+    ws.f[3 * i + 1] += -coef * far.dvec[3 * pj + 1];
+    ws.f[3 * i + 2] += -coef * far.dvec[3 * pj + 2];
+    ws.f[3 * j] += coef * far.dvec[3 * pj];
+    ws.f[3 * j + 1] += coef * far.dvec[3 * pj + 1];
+    ws.f[3 * j + 2] += coef * far.dvec[3 * pj + 2];
   }
   acks2Pairs(sys);
   polarizationEnergy(sys);
 };
-
-/** The taper coefficients of the system (set by the pair style per evaluation). */
-const ws_taper = (sys: RxSystem): Float64Array => sys.Tap;
 
 /**
  * Tabulated_vdW_Coulomb_Energy: cubic-spline interpolation of the tables of lookup.ts. The table

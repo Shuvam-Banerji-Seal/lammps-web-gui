@@ -506,6 +506,15 @@ loaded machine), examples/reaxff in.reaxff.tatb (384 atoms, 152636 such pairs pe
 evaluation on one thread, 19 ms on 8 once the workers' code is warm. The loop went from 7.7 to 7.0 s, and every
 thermo row was the same as on one thread (`tests/engineReaxffThreads.test.ts`: bit for bit).
 
+Its second loop, 'vdw', computes the direct van der Waals and Coulomb terms (control tabulate 0, the default without a
+control file). `nonbonded.ts vdwPairs` lists the far pairs vdW_Coulomb_Energy evaluates, in its order. The loop
+computes, for each pair, the terms that depend on r_ij and the type pair only (`vdwPairTerms`: the tapered vdW energy,
+e_ele0, CEvd and CEclmb; up to five glibc-exact pow and three exp per pair). `vdwCoulombEnergy` then multiplies them by the
+charges and sums the energies and forces in the native order. Both loops use one layout (two f64 arrays and one i32
+array), so they share the slot's arrays: the bond orders are read before the vdW loop runs. Measured in Chromium (24
+cores, a loaded machine), examples/reaxff/water in.water.qeq (3000 atoms, fix qeq/reaxff, 20 steps): loop time 30.1 s on
+one thread, 20.2 s on 8 (30.6 s on 8 before this loop), the same thermo.
+
 The full-list many-body styles `snap` (chemflag 0 and 1), `meam/spline`, `meam/sw/spline` and `vashishta` run on the
 threads too: each row adds its energy (SNAP's self term included) and forces to its own atoms only, so a thread runs
 the rows `[ilo, inum)` of its chunk. SNAP keeps its lazily built Wigner tables and chemflag engine outside its fields,

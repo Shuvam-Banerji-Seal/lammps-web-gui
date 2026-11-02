@@ -20,7 +20,7 @@ import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import { inumeric, numeric } from '../../engine/force/util';
 import type { System } from '../../engine/system';
-import { buildRows, calcHValue, forwardGhosts, historyOf, NPREV, type HistoryMap, type SparseRows, taperFix } from './charge';
+import { buildRows, calcHValue, forwardGhosts, historyOf, NPREV, RowCandidates, type HistoryMap, type SparseRows, taperFix } from './charge';
 import type { PairReaxFF } from './pair';
 import type { QeqParams } from './qeq';
 import type { FixEfield } from '../../engine/fix/force_ext';
@@ -64,6 +64,8 @@ export class FixACKS2ReaxFF extends Fix {
   private ntypes = 0;
   /** per atom id: s history 0..3 and s^X history 4..7 (most recent first). */
   private hist: HistoryMap = new Map();
+  /** the candidate partners of compute_H and compute_X, kept between steps (charge.ts RowCandidates) */
+  private cands = new RowCandidates();
   /** the two Lagrange rows: their histories (4 each). */
   private histLast: Float64Array<ArrayBufferLike>[] = [new Float64Array(NPREV), new Float64Array(NPREV)];
   /** the solution of the last solve (2N + 2 entries), read by the pair style (ACKS2 terms). */
@@ -182,7 +184,8 @@ export class FixACKS2ReaxFF extends Fix {
     for (const i of grp) inGroup[i] = 1;
 
     // compute_H (the shielded Coulomb matrix, as fix qeq/reaxff)
-    const H = buildRows(x, n, N, orig, inGroup, this.swb, (i, j, r) => calcHValue(this.Tap, r, this.shld[typeAll[i] * nt1 + typeAll[j]]));
+    this.cands.update(x, n, N, this.swb, nb.skin, nb.nbuild);
+    const H = buildRows(x, n, N, orig, inGroup, this.swb, (i, j, r) => calcHValue(this.Tap, r, this.shld[typeAll[i] * nt1 + typeAll[j]]), this.cands);
     // compute_X: the bond-softness matrix within each bond cutoff; X_diag collects its row sums
     const xdiag = new Float64Array(N);
     const X = buildRows(x, n, N, orig, inGroup, this.swb, (i, j, r, rsq) => {
@@ -192,7 +195,7 @@ export class FixACKS2ReaxFF extends Fix {
       xdiag[i] -= v;
       xdiag[owner[j]] -= v;
       return v;
-    });
+    }, this.cands);
     const Xdia_inv = new Float64Array(N);
     for (let i = 0; i < n; i++) Xdia_inv[i] = xdiag[i] === 0.0 ? 1.0 : 1.0 / xdiag[i];
 
@@ -299,17 +302,24 @@ const sparseMatvecAcks2 = (w: BiWork, x: Float64Array, b: Float64Array): void =>
   }
   b[2 * N] = 0;
   b[2 * N + 1] = 0;
+  const hs = H.start, hj = H.jlist, hv = H.val, xs = X.start, xj = X.jlist, xv = X.val;
   for (const i of grp) {
-    for (let p = H.start[i]; p < H.start[i + 1]; p++) {
-      const j = H.jlist[p];
-      b[i] += H.val[p] * x[j];
-      b[j] += H.val[p] * x[i];
+    // the partners of row i are all above i (charge.ts buildRows), so b[i] and b[N + i] are summed here in the same order
+    const xi = x[i], xNi = x[N + i];
+    let bi = b[i];
+    for (let p = hs[i], e = hs[i + 1]; p < e; p++) {
+      const j = hj[p], v = hv[p];
+      bi += v * x[j];
+      b[j] += v * xi;
     }
-    for (let p = X.start[i]; p < X.start[i + 1]; p++) {
-      const j = X.jlist[p];
-      b[N + i] += X.val[p] * x[N + j];
-      b[N + j] += X.val[p] * x[N + i];
+    b[i] = bi;
+    let bNi = b[N + i];
+    for (let p = xs[i], e = xs[i + 1]; p < e; p++) {
+      const j = xj[p], v = xv[p];
+      bNi += v * x[N + j];
+      b[N + j] += v * xNi;
     }
+    b[N + i] = bNi;
     b[N + i] += x[i];
     b[i] += x[N + i];
     b[2 * N] += x[N + i];

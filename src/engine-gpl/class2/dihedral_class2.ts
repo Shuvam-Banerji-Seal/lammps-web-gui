@@ -394,6 +394,12 @@ export class DihedralClass2 extends SimpleBonded {
       // mid-bond/torsion coupling: energy on bond2 (middle bond)
       const cos2phi = libmCos(2.0 * phi);
       const cos3phi = libmCos(3.0 * phi);
+      // sin(2 phi), sin(3 phi) and the two bond angles, which every cross term below reads (the C++ calls sin() and
+      // acos() again for each; the same arguments give the same values)
+      const sin2phi = libmSin(2.0 * phi);
+      const sin3phi = libmSin(3.0 * phi);
+      const acos12 = libmAcos(costh12);
+      const acos23 = libmAcos(costh23);
 
       let bt1 = mbt_f1[type] * cosphi;
       let bt2 = mbt_f2[type] * cos2phi;
@@ -404,8 +410,8 @@ export class DihedralClass2 extends SimpleBonded {
 
       // force on bond2
       bt1 = -mbt_f1[type] * sinphi;
-      bt2 = -2.0 * mbt_f2[type] * libmSin(2.0 * phi);
-      bt3 = -3.0 * mbt_f3[type] * libmSin(3.0 * phi);
+      bt2 = -2.0 * mbt_f2[type] * sin2phi;
+      bt3 = -3.0 * mbt_f3[type] * sin3phi;
       let sumbtf = bt1 + bt2 + bt3;
 
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
@@ -423,8 +429,8 @@ export class DihedralClass2 extends SimpleBonded {
 
       // force on bond1
       bt1 = ebt_f1_1[type] * sinphi;
-      bt2 = 2.0 * ebt_f2_1[type] * libmSin(2.0 * phi);
-      bt3 = 3.0 * ebt_f3_1[type] * libmSin(3.0 * phi);
+      bt2 = 2.0 * ebt_f2_1[type] * sin2phi;
+      bt3 = 3.0 * ebt_f3_1[type] * sin3phi;
       sumbtf = bt1 + bt2 + bt3;
 
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
@@ -442,8 +448,8 @@ export class DihedralClass2 extends SimpleBonded {
 
       // force on bond3
       bt1 = -ebt_f1_2[type] * sinphi;
-      bt2 = -2.0 * ebt_f2_2[type] * libmSin(2.0 * phi);
-      bt3 = -3.0 * ebt_f3_2[type] * libmSin(3.0 * phi);
+      bt2 = -2.0 * ebt_f2_2[type] * sin2phi;
+      bt3 = -3.0 * ebt_f3_2[type] * sin3phi;
       sumbtf = bt1 + bt2 + bt3;
 
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
@@ -456,13 +462,13 @@ export class DihedralClass2 extends SimpleBonded {
       let at3 = at_f3_1[type] * cos3phi;
       sumbte = at1 + at2 + at3;
 
-      let da = libmAcos(costh12) - at_theta0_1[type];
+      let da = acos12 - at_theta0_1[type];
       edihedral += da * (at1 + at2 + at3);
 
       // force on angle1
       bt1 = at_f1_1[type] * sinphi;
-      bt2 = 2.0 * at_f2_1[type] * libmSin(2.0 * phi);
-      bt3 = 3.0 * at_f3_1[type] * libmSin(3.0 * phi);
+      bt2 = 2.0 * at_f2_1[type] * sin2phi;
+      bt3 = 3.0 * at_f3_1[type] * sin3phi;
       sumbtf = bt1 + bt2 + bt3;
 
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
@@ -475,13 +481,13 @@ export class DihedralClass2 extends SimpleBonded {
       at3 = at_f3_2[type] * cos3phi;
       sumbte = at1 + at2 + at3;
 
-      da = libmAcos(costh23) - at_theta0_2[type];
+      da = acos23 - at_theta0_2[type];
       edihedral += da * (at1 + at2 + at3);
 
       // force on angle2
       bt1 = -at_f1_2[type] * sinphi;
-      bt2 = -2.0 * at_f2_2[type] * libmSin(2.0 * phi);
-      bt3 = -3.0 * at_f3_2[type] * libmSin(3.0 * phi);
+      bt2 = -2.0 * at_f2_2[type] * sin2phi;
+      bt3 = -3.0 * at_f3_2[type] * sin3phi;
       sumbtf = bt1 + bt2 + bt3;
 
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
@@ -489,8 +495,8 @@ export class DihedralClass2 extends SimpleBonded {
       }
 
       // angle/angle/torsion coupling
-      const da1 = libmAcos(costh12) - aat_theta0_1[type];
-      const da2 = libmAcos(costh23) - aat_theta0_2[type];
+      const da1 = acos12 - aat_theta0_1[type];
+      const da2 = acos23 - aat_theta0_2[type];
 
       edihedral += aat_k[type] * da1 * da2 * cosphi;
 

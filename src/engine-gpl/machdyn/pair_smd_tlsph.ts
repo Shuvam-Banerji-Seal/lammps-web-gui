@@ -175,6 +175,8 @@ export class PairSMDTlsph extends Pair {
   /** Atom ID -> owned index for the current evaluation (set by compute). */
   private tagMap: Int32Array = new Int32Array(0);
   /** Scratch vectors of the partner loops (no allocation per partner). */
+  /** Scratch 3x3 matrices of preCompute. */
+  private readonly mats: Mat3[] = Array.from({ length: 7 }, () => mat3());
   private readonly scratch = { d0: new Float64Array(3), dx: new Float64Array(3), dv: new Float64Array(3), dvint: new Float64Array(3), g: new Float64Array(3), Fs: new Float64Array(3), fs: new Float64Array(3) };
   private log: ((text: string) => void) | null = null;
   /** pair_style smd/tlsph arguments: none are accepted in this port (the update keyword is not supported). */
@@ -407,13 +409,19 @@ export class PairSMDTlsph extends Pair {
       const vi0 = vest[3 * i], vi1 = vest[3 * i + 1], vi2 = vest[3 * i + 2];
       const vint0 = v[3 * i], vint1 = v[3 * i + 1], vint2 = v[3 * i + 2];
       let sm0 = 0, sm1 = 0, sm2 = 0;
+      // K, Fdot and Fincr summed in scalars (stored after the partners)
+      let k00 = 0, k01 = 0, k02 = 0, k10 = 0, k11 = 0, k12 = 0, k20 = 0, k21 = 0, k22 = 0;
+      let fd00 = 0, fd01 = 0, fd02 = 0, fd10 = 0, fd11 = 0, fd12 = 0, fd20 = 0, fd21 = 0, fd22 = 0;
+      let fi00 = 0, fi01 = 0, fi02 = 0, fi10 = 0, fi11 = 0, fi12 = 0, fi20 = 0, fi21 = 0, fi22 = 0;
+      // the partners still present, kept in their order (compacted in place)
       const plist = this.partners[i] ?? [];
-      const keep: Partner[] = [];
-      for (const p of plist) {
+      let nkeep = 0;
+      for (let pi = 0, np = plist.length; pi < np; pi++) {
+        const p = plist[pi];
         if (p.tag === 0) continue;
         const j = tagIndex[p.tag];
         if (j < 0) { p.tag = 0; continue; }
-        keep.push(p);
+        plist[nkeep++] = p;
         if (mol[j] < 0) continue;
         if (mol[i] !== mol[j]) continue;
         d0[0] = x0[3 * j] - x0i0; d0[1] = x0[3 * j + 1] - x0i1; d0[2] = x0[3 * j + 2] - x0i2;
@@ -426,19 +434,29 @@ export class PairSMDTlsph extends Pair {
         const scale = 1 - p.degradation;
         const wf = p.wf * scale, wfd = p.wfd * scale;
         const kf = wfd / r0;
-        g[0] = kf * d0[0]; g[1] = kf * d0[1]; g[2] = kf * d0[2];
-        for (let a2 = 0; a2 < 3; a2++) {
-          for (let b2 = 0; b2 < 3; b2++) {
-            K[3 * a2 + b2] += volj * (-g[a2] * d0[b2]);
-            Fdot[3 * a2 + b2] += volj * (-dv[a2] * g[b2]);
-            Fincr[3 * a2 + b2] += volj * (-(dx[a2] - d0[a2]) * g[b2]);
-          }
-        }
+        const g0 = kf * d0[0], g1 = kf * d0[1], g2 = kf * d0[2];
+        const d00 = d0[0], d01 = d0[1], d02 = d0[2];
+        const dv0 = dv[0], dv1 = dv[1], dv2 = dv[2];
+        const e0 = dx[0] - d00, e1 = dx[1] - d01, e2 = dx[2] - d02;
+        // each element sums its terms in the partners' order, as the matrix updates did
+        k00 += volj * (-g0 * d00); k01 += volj * (-g0 * d01); k02 += volj * (-g0 * d02);
+        k10 += volj * (-g1 * d00); k11 += volj * (-g1 * d01); k12 += volj * (-g1 * d02);
+        k20 += volj * (-g2 * d00); k21 += volj * (-g2 * d01); k22 += volj * (-g2 * d02);
+        fd00 += volj * (-dv0 * g0); fd01 += volj * (-dv0 * g1); fd02 += volj * (-dv0 * g2);
+        fd10 += volj * (-dv1 * g0); fd11 += volj * (-dv1 * g1); fd12 += volj * (-dv1 * g2);
+        fd20 += volj * (-dv2 * g0); fd21 += volj * (-dv2 * g1); fd22 += volj * (-dv2 * g2);
+        fi00 += volj * (-e0 * g0); fi01 += volj * (-e0 * g1); fi02 += volj * (-e0 * g2);
+        fi10 += volj * (-e1 * g0); fi11 += volj * (-e1 * g1); fi12 += volj * (-e1 * g2);
+        fi20 += volj * (-e2 * g0); fi21 += volj * (-e2 * g1); fi22 += volj * (-e2 * g2);
         shepard += volj * wf;
         sm0 += volj * wf * dvint[0]; sm1 += volj * wf * dvint[1]; sm2 += volj * wf * dvint[2];
         W.numNeighs[i]++;
       }
-      this.partners[i] = keep;
+      plist.length = nkeep;
+      this.partners[i] = plist;
+      K[0] = k00; K[1] = k01; K[2] = k02; K[3] = k10; K[4] = k11; K[5] = k12; K[6] = k20; K[7] = k21; K[8] = k22;
+      Fdot[0] = fd00; Fdot[1] = fd01; Fdot[2] = fd02; Fdot[3] = fd10; Fdot[4] = fd11; Fdot[5] = fd12; Fdot[6] = fd20; Fdot[7] = fd21; Fdot[8] = fd22;
+      Fincr[0] = fi00; Fincr[1] = fi01; Fincr[2] = fi02; Fincr[3] = fi10; Fincr[4] = fi11; Fincr[5] = fi12; Fincr[6] = fi20; Fincr[7] = fi21; Fincr[8] = fi22;
       if (shepard > 0) {
         W.smoothVel[3 * i] = sm0 / shepard;
         W.smoothVel[3 * i + 1] = sm1 / shepard;
@@ -446,25 +464,26 @@ export class PairSMDTlsph extends Pair {
       } else {
         W.smoothVel[3 * i] = W.smoothVel[3 * i + 1] = W.smoothVel[3 * i + 2] = 0;
       }
+      // the matrix products into this pair's scratch matrices (the same operations as fresh results)
+      const [T1, T2, T3, T4, U, L, Lt] = this.mats;
       pseudoInverseSVD(K);
-      setM(Fdot, mul3(Fdot, K));
-      setM(Fincr, mul3(Fincr, K));
+      setM(Fdot, mul3(Fdot, K, T1));
+      setM(Fincr, mul3(Fincr, K, T1));
       for (let c = 0; c < 9; c += 4) Fincr[c] += 1;
       // JAUMANN is false in the native code: the rotation comes from the polar decomposition of the increment
       const R = W.R[i];
-      const U = mat3();
       const status = polDec(Fincr, R, U);
       if (!status) {
         mol[i] = -1;
       } else {
-        setM(Fincr, mul3(R, U));
+        setM(Fincr, mul3(R, U, T1));
       }
       W.detF[i] = det3(Fincr);
-      setM(W.FincrInv[i], inverse3(Fincr));
-      const L = mul3(Fdot, W.FincrInv[i]);
-      const Lt = transpose3(L);
-      setM(W.W[i], scale3(sub3(L, Lt), 0.5));
-      setM(W.D[i], mul3(mul3(transpose3(R), scale3(add3(L, Lt), 0.5)), R));
+      setM(W.FincrInv[i], inverse3(Fincr, T1));
+      mul3(Fdot, W.FincrInv[i], L);
+      transpose3(L, Lt);
+      setM(W.W[i], scale3(sub3(L, Lt, T1), 0.5, T2));
+      setM(W.D[i], mul3(mul3(transpose3(R, T1), scale3(add3(L, Lt, T2), 0.5, T3), T4), R, T2));
       if (W.detF[i] < DETF_MIN || W.detF[i] > DETF_MAX || W.numNeighs[i] === 0) {
         this.log?.(`deleting particle [${s.id[i]}] because det(F)=${W.detF[i]}f is outside stable range ${DETF_MIN} -- ${DETF_MAX}`);
         mol[i] = -1;

@@ -1,0 +1,8 @@
+# Electronic stopping for two types (own test table, not a LAMMPS file)
+# eV    eV/Ang (type 1)   eV/Ang (type 2)
+# energy columns must be ascending
+  10      0      0
+ 100     20     12
+ 250     45     30
+ 500     80     55
+1000    100     70

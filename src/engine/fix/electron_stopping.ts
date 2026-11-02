@@ -63,16 +63,18 @@ export const parseStoppingTable = (text: string, ntypes: number, name: string): 
 
 /** Linear interpolation of S_e for type t (1-based) at energy E within the table range. */
 const interpolate = (tab: StoppingTable, t: number, E: number): number => {
+  // As native LAMMPS does (src/EXTRA-FIX/fix_electron_stopping.cpp post_force at b332f28): "ihalf = idown + (iup -
+  // idown) / 2; if (ihalf == idown) break; if (elstop_ranges[0][ihalf] < energy) idown = ihalf; else iup = ihalf;" and
+  // "Se = (Se_hi - Se_lo) / (E_hi - E_lo) * (energy - E_lo) + Se_lo"
   const e = tab.e, y = tab.se[t - 1];
-  const last = e.length - 1;
-  let lo = 0, hi = last;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (e[mid] <= E) lo = mid;
-    else hi = mid;
+  let iup = e.length - 1, idown = 0;
+  for (;;) {
+    const ihalf = idown + ((iup - idown) >> 1);
+    if (ihalf === idown) break;
+    if (e[ihalf] < E) idown = ihalf;
+    else iup = ihalf;
   }
-  const f = (E - e[lo]) / (e[hi] - e[lo]);
-  return y[lo] + f * (y[hi] - y[lo]);
+  return (y[iup] - y[idown]) / (e[iup] - e[idown]) * (E - e[idown]) + y[idown];
 };
 
 export class FixElectronStopping extends Fix {
@@ -127,41 +129,63 @@ export class FixElectronStopping extends Fix {
 
   init(): void { this.loss = 0; }
 
-  private applies(i: number): boolean {
-    const s = this.sys.state;
-    if (!(s.mask[i] & this.groupBit)) return false;
-    if (this.regionId === null) return true;
-    this.regionObj ??= this.sys.region(this.regionId);
-    return this.regionObj.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]);
-  }
-
+  /**
+   * As native LAMMPS does (src/EXTRA-FIX/fix_electron_stopping.cpp post_force at b332f28), per atom in index order: the
+   * group, "if (numneigh[i] < minneigh) continue" (the occasional full list of the pair cutoffs plus skin, built at the
+   * first request after each re-neighbor), "energy = 0.5 *
+   * force->mvv2e * massone * v2", the Ecut and lowest-table-energy skips, the error above the table, the region, then
+   * "factor = -Se / vabs; f[i][0] += v[i][0] * factor" and "SeLoss += Se * vabs * dt". The neighbor count only decides
+   * for atoms that pass the energy skips (the others are skipped either way), so it is counted for those only
+   * (Neighbor.occasionalFullCounts gives the list's numneigh).
+   */
   postForce(): void {
     const s = this.sys.state;
     const nb = this.sys.nb;
-    const counts = this.minneigh > 0 ? nb.occasionalList(s, nb.cutneighmax, true, s.ntypes).numneigh : null;
-    const eLow = Math.max(this.ecut, this.table.e[0]);
+    const eLow0 = this.ecut, eLow1 = this.table.e[0];
     const eHigh = this.table.e[this.table.e.length - 1];
     const dt = s.dt;
+    const mvv2e = s.units.mvv2e;
+    const v = s.v, f = s.f;
+    const cand = this.cand.length >= s.n ? this.cand : (this.cand = new Int32Array(s.n));
+    const en = this.ke.length >= s.n ? this.ke : (this.ke = new Float64Array(s.n));
+    let m = 0;
     for (let i = 0; i < s.n; i++) {
-      if (!this.applies(i)) continue;
-      if (counts && counts[i] < this.minneigh) continue;
-      const k = 3 * i;
-      const vx = s.v[k], vy = s.v[k + 1], vz = s.v[k + 2];
-      const v2 = vx * vx + vy * vy + vz * vz;
-      const vmag = Math.sqrt(v2);
-      if (!(vmag > 0)) continue;
-      const ke = 0.5 * massOf(s, i) * v2 * s.units.mvv2e;
-      if (ke < eLow) continue;
-      if (ke > eHigh) {
-        throw new StyleError(`fix ${this.id} (electron/stopping): kinetic energy ${ke} of atom ${s.id[i]} is above the largest table energy ${eHigh}`);
+      if (!(s.mask[i] & this.groupBit)) continue;
+      const v2 = v[3 * i] * v[3 * i] + v[3 * i + 1] * v[3 * i + 1] + v[3 * i + 2] * v[3 * i + 2];
+      const energy = 0.5 * mvv2e * massOf(s, i) * v2;
+      if (energy < eLow0) continue;
+      if (energy < eLow1) continue;
+      cand[m++] = i;
+      en[i] = energy;
+    }
+    if (m === 0) return;
+    const counts = this.minneigh > 0 ? nb.occasionalFullCounts(s, cand, m) : null;
+    for (let q = 0; q < m; q++) {
+      const i = cand[q];
+      if (counts && counts[q] < this.minneigh) continue;
+      const energy = en[i];
+      if (energy > eHigh) {
+        throw new StyleError(`fix ${this.id} (electron/stopping): kinetic energy ${energy} of atom ${s.id[i]} is above the largest table energy ${eHigh}`);
       }
-      const se = interpolate(this.table, s.type[i], ke);
-      s.f[k] -= (se * vx) / vmag;
-      s.f[k + 1] -= (se * vy) / vmag;
-      s.f[k + 2] -= (se * vz) / vmag;
-      this.loss += se * vmag * dt;
+      if (this.regionId !== null) {
+        this.regionObj ??= this.sys.region(this.regionId);
+        if (!this.regionObj.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2])) continue;
+      }
+      const k = 3 * i;
+      const v2 = v[k] * v[k] + v[k + 1] * v[k + 1] + v[k + 2] * v[k + 2];
+      const se = interpolate(this.table, s.type[i], energy);
+      const vabs = Math.sqrt(v2);
+      const factor = -se / vabs;
+      f[k] += v[k] * factor;
+      f[k + 1] += v[k + 1] * factor;
+      f[k + 2] += v[k + 2] * factor;
+      this.loss += se * vabs * dt;
     }
   }
+
+  /** postForce's candidate atoms and their kinetic energies. */
+  private cand = new Int32Array(0);
+  private ke = new Float64Array(0);
 
   computeScalar(): number { return this.loss; }
 }

@@ -735,43 +735,72 @@ export const nativeFullLast = (s: SimState, nb: Neighbor, g: Geometry, full: Nei
  * with each owned atom's row in native's order. The full stencil of nstencil_bin.cpp create (HALF = 0) is visited k, j,
  * i ascending over the bins with bin_distance < cutneighmax^2, and each bin chain in order. Rows keep the engine's
  * firstneigh and numneigh; an entry the native layout does not reach keeps its engine order after the native ones.
+ *
+ * Each native atom is one engine atom image (gEng is one-to-one where it is set), so instead of scanning the stencil the
+ * entries of a row are sorted by the key the scan visits them in: the rank of their bin's offset in the stencil, then
+ * their position in that bin's chain.
  */
 export const nativeFullOrder = (s: SimState, nb: Neighbor, g: Geometry, full: NeighList): Int32Array => {
   const L = nativeLayout(s, nb, g);
-  const { order, n, binOf, binAt, chainStart, members, sx, sy, sz, cutmaxsq, binDist, gEng, NA } = L;
+  const { order, n, binOf, posInBin, chainStart, sx, sy, sz, cutmaxsq, binDist, gEng, NA } = L;
   const out = full.neighbors.slice();
-  const stencil: number[] = [];
+  // rank of each stencil offset in visiting order, -1 for an offset outside the stencil
+  const wx = 2 * sx + 1, wy = 2 * sy + 1, wz = 2 * sz + 1;
+  const rank = new Int32Array(wx * wy * wz).fill(-1);
+  let nst = 0;
   for (let k = -sz; k <= sz; k++) {
     for (let j = -sy; j <= sy; j++) {
       for (let i = -sx; i <= sx; i++) {
-        if (binDist(i, j, k) < cutmaxsq) stencil.push(i, j, k);
+        if (binDist(i, j, k) < cutmaxsq) rank[((k + sz) * wy + (j + sy)) * wx + (i + sx)] = nst++;
       }
     }
   }
-  // slot[ek]: the list slot of engine atom ek in the current row, -1 when it is not (or no longer) in the row
-  const slot = new Int32Array(NA).fill(-1);
+  let chainMax = 1;
+  for (let b = 0; b + 1 < chainStart.length; b++) chainMax = Math.max(chainMax, chainStart[b + 1] - chainStart[b]);
+  // native atom of each engine atom, -1 when the native layout holds no such image
+  const nat = new Int32Array(NA).fill(-1);
+  for (let k = 0; k < gEng.length; k++) if (gEng[k] >= 0) nat[gEng[k]] = k;
+  let rowMax = 0;
+  for (let i = 0; i < n; i++) rowMax = Math.max(rowMax, full.numneigh[order[i]]);
+  const key = new Float64Array(rowMax);
+  const val = new Int32Array(rowMax);
+  const rest = new Int32Array(rowMax);
   for (let i = 0; i < n; i++) {
     const ei = order[i];
     const k0 = full.firstneigh[ei], k1 = k0 + full.numneigh[ei];
-    for (let q = k0; q < k1; q++) slot[full.neighbors[q] & NEIGHMASK] = q;
-    let w = k0;
     const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
-    for (let st = 0; st < stencil.length; st += 3) {
-      const b = binAt(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]);
-      if (b < 0) continue;
-      for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
-        const j = members[q];
-        if (j === i) continue;
-        const ek = gEng[j];
-        if (ek < 0 || slot[ek] < 0) continue;
-        out[w++] = full.neighbors[slot[ek]];
-        slot[ek] = -1;
-      }
-    }
+    let m = 0, nr = 0;
     for (let q = k0; q < k1; q++) {
-      const ek = full.neighbors[q] & NEIGHMASK;
-      if (slot[ek] >= 0) { out[w++] = full.neighbors[q]; slot[ek] = -1; }
+      const v = full.neighbors[q];
+      const j = nat[v & NEIGHMASK];
+      let r = -1;
+      if (j >= 0 && j !== i) {
+        const dx = binOf[3 * j] - bx, dy = binOf[3 * j + 1] - by, dz = binOf[3 * j + 2] - bz;
+        if (dx >= -sx && dx <= sx && dy >= -sy && dy <= sy && dz >= -sz && dz <= sz) {
+          r = rank[((dz + sz) * wy + (dy + sy)) * wx + (dx + sx)];
+        }
+      }
+      if (r < 0) { rest[nr++] = v; continue; }
+      key[m] = r * chainMax + posInBin[j];
+      val[m++] = v;
     }
+    // sort by key (keys are distinct: one native atom per bin position): insertion for short rows, else a numeric sort
+    // of key * m + slot
+    let w = k0;
+    if (m <= 32) {
+      for (let p = 1; p < m; p++) {
+        const kp = key[p], vp = val[p];
+        let t = p;
+        while (t > 0 && key[t - 1] > kp) { key[t] = key[t - 1]; val[t] = val[t - 1]; t--; }
+        key[t] = kp; val[t] = vp;
+      }
+      for (let p = 0; p < m; p++) out[w++] = val[p];
+    } else {
+      for (let p = 0; p < m; p++) key[p] = key[p] * m + p;
+      key.subarray(0, m).sort();
+      for (let p = 0; p < m; p++) out[w++] = val[key[p] % m];
+    }
+    for (let p = 0; p < nr; p++) out[w++] = rest[p];
   }
   return out;
 };

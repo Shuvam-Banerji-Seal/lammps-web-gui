@@ -133,7 +133,9 @@ export const hasMolecule = (s: SimState): boolean => isMolecularStyle(s.atomStyl
  * ("Their mass is set from the density and particle area").
  */
 export const sphereMass = (radius: number, density: number, disc = false): number =>
-  radius > 0 ? density * (disc ? Math.PI * radius * radius : (4 * Math.PI / 3) * radius ** 3) : density;
+  // As native LAMMPS does (src/set.cpp density, src/atom_vec_sphere.cpp and src/GRANULAR/fix_pour.cpp at b332f28):
+  // "4.0*MY_PI/3.0 * radius*radius*radius * value" (a disc: "MY_PI*radius*radius * value"), in that order
+  radius > 0 ? (disc ? Math.PI * radius * radius * density : 4.0 * Math.PI / 3.0 * radius * radius * radius * density) : density;
 
 /**
  * create_atoms defaults for atom_style sphere, measured with native LAMMPS

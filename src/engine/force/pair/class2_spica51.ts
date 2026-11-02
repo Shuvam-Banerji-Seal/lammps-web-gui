@@ -5,6 +5,18 @@ import { coulLongPair } from './coul_long';
 import { ErfcTableCache, type ErfcTable } from '../erfc';
 import { parseNum } from '../util';
 
+/** x^n for an integer 0 <= n <= 64 by repeated squaring. */
+const intPow = (x: number, n: number): number => {
+  let r = 1, b = x, e = n;
+  for (;;) {
+    if (e & 1) r *= b;
+    e >>= 1;
+    if (e === 0) return r;
+    b *= b;
+  }
+};
+const isSmallUint = (v: number): boolean => Number.isInteger(v) && v >= 0 && v <= 64;
+
 /*
  * pair_style lj/class2/coul/cut, lj/class2/coul/long, lj/spica, lj/spica/coul/long, and the
  * lj/sdk names that are their backward-compatible originals. Written from the documentation
@@ -58,6 +70,8 @@ abstract class PairPowerLJ extends Pair {
   protected ta = new Float64Array(0);
   protected tb = new Float64Array(0);
   protected toff = new Float64Array(0);
+  /** 1 when both exponents are small non-negative integers (ljPair multiplies, intPow). */
+  protected tint = new Uint8Array(0);
   protected tcut = new Float64Array(0);
   protected tcutsq = new Float64Array(0);
   protected tcutCsq = new Float64Array(0);
@@ -105,7 +119,7 @@ abstract class PairPowerLJ extends Pair {
     const n = nt * nt;
     this.tn = new Float64Array(n); this.tm = new Float64Array(n);
     this.ta = new Float64Array(n); this.tb = new Float64Array(n);
-    this.toff = new Float64Array(n); this.tcut = new Float64Array(n);
+    this.toff = new Float64Array(n); this.tcut = new Float64Array(n); this.tint = new Uint8Array(n);
     this.tcutsq = new Float64Array(n); this.tcutCsq = new Float64Array(n); this.tcutC = new Float64Array(n);
   }
 
@@ -119,6 +133,7 @@ abstract class PairPowerLJ extends Pair {
     const cutC = this.coulKind === 'long' ? this.cutCoul : this.coulKind === 'cut' ? t.cutC : 0;
     for (const k of [i * nt + j, j * nt + i]) {
       this.tn[k] = t.n; this.tm[k] = t.m; this.ta[k] = t.a; this.tb[k] = t.b; this.toff[k] = off;
+      this.tint[k] = isSmallUint(t.n) && isSmallUint(t.m) ? 1 : 0;
       this.tcut[k] = t.cutLJ; this.tcutsq[k] = t.cutLJ * t.cutLJ;
       this.tcutC[k] = cutC; this.tcutCsq[k] = cutC * cutC;
     }
@@ -128,13 +143,22 @@ abstract class PairPowerLJ extends Pair {
   private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
 
   /** LJ energy (no special factor) and F/r of one pair in table slot t. */
-  protected ljPair(t: number, rsq: number): { e: number; f: number } {
+  /** ljPair's results: the energy and F/r of the last pair. */
+  protected ljE = 0;
+  protected ljF = 0;
+
+  /**
+   * LJ energy (no special factor) and F/r of one pair in table slot t, into ljE and ljF. The exponents of these styles
+   * are integers (lj9_6, lj12_4, lj12_5, lj12_6 and class2's 9/6), whose powers are products (intPow); another exponent
+   * takes Math.pow.
+   */
+  protected ljPair(t: number, rsq: number): void {
     const rinv = 1 / Math.sqrt(rsq);
-    const rn = Math.pow(rinv, this.tn[t]), rm = Math.pow(rinv, this.tm[t]);
-    return {
-      e: this.ta[t] * rn - this.tb[t] * rm - this.toff[t],
-      f: (this.tn[t] * this.ta[t] * rn - this.tm[t] * this.tb[t] * rm) * rinv * rinv,
-    };
+    const n = this.tn[t], m = this.tm[t];
+    const rn = this.tint[t] ? intPow(rinv, n) : Math.pow(rinv, n);
+    const rm = this.tint[t] ? intPow(rinv, m) : Math.pow(rinv, m);
+    this.ljE = this.ta[t] * rn - this.tb[t] * rm - this.toff[t];
+    this.ljF = (n * this.ta[t] * rn - m * this.tb[t] * rm) * rinv * rinv;
   }
 
   /** Coulomb energy (with the special weight) and F/r of one pair. */
@@ -173,9 +197,9 @@ abstract class PairPowerLJ extends Pair {
         let fpair = 0, e = 0;
         if (rsq < this.tcutsq[t]) {
           const fac = sLJ[sb];
-          const r = this.ljPair(t, rsq);
-          fpair += fac * r.f;
-          const ev = fac * r.e;
+          this.ljPair(t, rsq);
+          fpair += fac * this.ljF;
+          const ev = fac * this.ljE;
           e += ev;
           evdwl += ev;
         }
@@ -200,9 +224,9 @@ abstract class PairPowerLJ extends Pair {
     const t = itype * (this.ntypes + 1) + jtype;
     let eng = 0, fforce = 0;
     if (rsq < this.tcutsq[t]) {
-      const r = this.ljPair(t, rsq);
-      eng += factorLJ * r.e;
-      fforce += factorLJ * r.f;
+      this.ljPair(t, rsq);
+      eng += factorLJ * this.ljE;
+      fforce += factorLJ * this.ljF;
     }
     if (this.coulKind !== null && rsq < this.tcutCsq[t] && qi !== 0 && qj !== 0) {
       const tab = this.coulKind === 'long' ? this.erfcTable(this.gEwald) : null;

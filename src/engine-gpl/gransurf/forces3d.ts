@@ -59,14 +59,16 @@ export function prewalk3d(ctx: Contacts3d): void {
     const c = cs[pos];
     if (nsidej === OPPOSITE_SIDE) for (let a = 0; a < 3; a++) c.surfNorm[a] = -c.surfNorm[a];
     const cn = conn.get(c.tag)!;
-    const nbrs = [...cn.e[0], ...cn.e[1], ...cn.e[2], ...cn.c[0], ...cn.c[1], ...cn.c[2]];
-    for (const nb of nbrs) {
-      const kpos = posByTag.get(nb.tag);
-      if (kpos === undefined) continue;
-      if (!walked.has(kpos) && !toWalk.has(kpos)) {
-        const nsidek = nsidej === OPPOSITE_SIDE ? flipSide(nb.nside) : nb.nside;
-        cs[kpos].nside = nsidek;
-        toWalk.set(kpos, nsidek);
+    // the neighbours across edges 1-3, then across corners 1-3, in that order
+    for (let list = 0; list < 6; list++) {
+      for (const nb of list < 3 ? cn.e[list] : cn.c[list - 3]) {
+        const kpos = posByTag.get(nb.tag);
+        if (kpos === undefined) continue;
+        if (!walked.has(kpos) && !toWalk.has(kpos)) {
+          const nsidek = nsidej === OPPOSITE_SIDE ? flipSide(nb.nside) : nb.nside;
+          cs[kpos].nside = nsidek;
+          toWalk.set(kpos, nsidek);
+        }
       }
     }
     if (toWalk.size === 0) {

@@ -485,8 +485,14 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
   const nall = gEng.length;
   // the tag of native atom k: its owned atom's
   const tagOf = (k: number): number => s.id[order[root[k]]];
+  // neigh_modify include: as native LAMMPS does (src/npair_bin.cpp and src/npair_nsq.cpp build at b332f28, "if
+  // (includegroup) nlocal = atom->nfirst", and src/nbin_standard.cpp bin_atoms, which bins only the group's atoms), only
+  // the group's atoms have rows. The other atoms are never partners either (the engine's list holds no pair with them, so
+  // takePair drops them), and leaving them in the bins keeps the order of the group's atoms in each bin
+  const incl = nb.includeBit;
   for (let i = 0; i < n; i++) {
     const ei = order[i];
+    if (incl && !(s.mask[ei] & incl)) continue;
     scatterRow(rows, ei, dense);
     const xi = X[3 * i], yi = X[3 * i + 1], zi = X[3 * i + 2];
     const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
@@ -621,14 +627,18 @@ export const nativeSizePairs = (s: SimState, nb: Neighbor, g: Geometry, newton: 
     }
   }
   const out: Growable = { buf: new Int32Array(64), len: 0 };
+  // neigh_modify include (see nativePairs): only the group's atoms have rows and partners
+  const incl = nb.includeBit;
   for (let i = 0; i < n; i++) {
     const ei = order[i];
+    if (incl && !(s.mask[ei] & incl)) continue;
     const xi = X[3 * i], yi = X[3 * i + 1], zi = X[3 * i + 2];
     const ri = radius[ei], ti = s.type[ei];
     const consider = (j: number): void => {
       const ek = gEng[j];
       if (ek < 0) return;
       const oj = owner[ek];
+      if (incl && !(s.mask[oj] & incl)) return;
       if (!spec.allow(ti, s.type[oj])) return;
       if (exclude && exclude(ei, oj)) return;
       const dx = xi - X[3 * j], dy = yi - X[3 * j + 1], dz = zi - X[3 * j + 2];

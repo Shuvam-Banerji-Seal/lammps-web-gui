@@ -132,31 +132,35 @@ export function overlapSphereTri(
   // the projected point is inside an edge when the edge cross product points along the normal
   // surf_extra.cpp uses its own EPSILON = 1e-14 for the edge tests
   const TRI_EPSILON = 1e-14;
-  const side = (a: ArrayLike<number>, b: ArrayLike<number>, q: ArrayLike<number>): { dot: number; xn: number } => {
-    const e = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    const pv = [pt[0] - q[0], pt[1] - q[1], pt[2] - q[2]];
-    const xp = [e[1] * pv[2] - e[2] * pv[1], e[2] * pv[0] - e[0] * pv[2], e[0] * pv[1] - e[1] * pv[0]];
-    return { dot: xp[0] * norm[0] + xp[1] * norm[1] + xp[2] * norm[2], xn: xp[0] * xp[0] + xp[1] * xp[1] + xp[2] * xp[2] };
+  // the edge test of edge a-b at q: dot = ((b - a) x (pt - q)) . norm and xn = |(b - a) x (pt - q)|^2, into sdDot, sdXn
+  // (scalars: this runs for every sphere-triangle pair of the list)
+  let sdDot = 0, sdXn = 0;
+  const side = (a: ArrayLike<number>, b: ArrayLike<number>, q: ArrayLike<number>): void => {
+    const e0 = b[0] - a[0], e1 = b[1] - a[1], e2 = b[2] - a[2];
+    const v0 = pt[0] - q[0], v1 = pt[1] - q[1], v2 = pt[2] - q[2];
+    const x0 = e1 * v2 - e2 * v1, x1 = e2 * v0 - e0 * v2, x2 = e0 * v1 - e1 * v0;
+    sdDot = x0 * norm[0] + x1 * norm[1] + x2 * norm[2];
+    sdXn = x0 * x0 + x1 * x1 + x2 * x2;
   };
   let inside = true;
   let e12 = false, e23 = false, e31 = false;
   let o12 = false, o23 = false, o31 = false;
-  let sd = side(p1, p2, p1);
-  if (sd.dot <= 0.0 && sd.xn > TRI_EPSILON) {
+  side(p1, p2, p1);
+  if (sdDot <= 0.0 && sdXn > TRI_EPSILON) {
     o12 = true;
-    if (sd.dot === 0.0) e12 = true;
+    if (sdDot === 0.0) e12 = true;
     else inside = false;
   }
-  sd = side(p2, p3, p2);
-  if (sd.dot <= 0.0 && sd.xn > TRI_EPSILON) {
+  side(p2, p3, p2);
+  if (sdDot <= 0.0 && sdXn > TRI_EPSILON) {
     o23 = true;
-    if (sd.dot === 0.0) e23 = true;
+    if (sdDot === 0.0) e23 = true;
     else inside = false;
   }
-  sd = side(p3, p1, p3);
-  if (sd.dot <= 0.0 && sd.xn > TRI_EPSILON) {
+  side(p3, p1, p3);
+  if (sdDot <= 0.0 && sdXn > TRI_EPSILON) {
     o31 = true;
-    if (sd.dot === 0.0) e31 = true;
+    if (sdDot === 0.0) e31 = true;
     else inside = false;
   }
   let flag = 0;

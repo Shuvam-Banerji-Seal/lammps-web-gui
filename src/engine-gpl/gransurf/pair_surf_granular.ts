@@ -249,10 +249,16 @@ export class PairSurfGranular extends Pair {
     const conn3 = this.conn3;
     const updating = pc.historyUpdate === true;
     const dt = s.dt;
-    const seen = new Set<string>();
+    // the history records kept past this step: those of the pairs of the list in contact now. A pair of the list out of
+    // contact loses its record, and so does one no longer in the list (the records are dropped after the loop; nothing
+    // reads them before)
+    const keep = new Set<string>();
 
     // 1. the sphere-surface pairs of the list, grouped per sphere
     const groups = new Map<number, ContactSurf[]>();
+    // the corners and normal of each triangle (by its atom index, owned or ghost), made once per evaluation: they depend
+    // on the triangle only, and nothing writes into them
+    const triAt: ReturnType<typeof triCorners>[] = [];
     const nbl = list.neighbors;
     for (let i = list.ilo ?? 0; i < list.inum; i++) {
       for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
@@ -266,24 +272,16 @@ export class PairSurfGranular extends Pair {
         const sph = surfI ? j : i;
         const lin = surfI ? i : j;
         const os = surfI ? oj : oi, ol = surfI ? oi : oj;
-        const key = `${id[os]}:${id[ol]}`;
-        seen.add(key);
         const dxc = x[3 * sph] - x[3 * lin], dyc = x[3 * sph + 1] - x[3 * lin + 1], dzc = x[3 * sph + 2] - x[3 * lin + 2];
         const rsqCom = dxc * dxc + dyc * dyc + dzc * dzc;
         const radi = radius[os], radsum = radi + radius[ol];
-        if (rsqCom > radsum * radsum) {
-          this.hist.delete(key);
-          continue;
-        }
+        if (rsqCom > radsum * radsum) continue;
         let jflag: number, rsq: number, normal: V3, dr: V3, dot: number;
         let rvec: V3, external: number, cornerPts: [V3, V3, V3] | null = null, ends: [V3, V3];
         if (is3) {
-          const tc = triCorners(x, lin, ol, s.quat!, tbonus!, TRI_BONUS_COLS);
+          const tc = triAt[lin] ??= triCorners(x, lin, ol, s.quat!, tbonus!, TRI_BONUS_COLS);
           const ov = overlapSphereTri(x, 3 * sph, radi, tc.c[0], tc.c[1], tc.c[2], tc.norm);
-          if (!ov) {
-            this.hist.delete(key);
-            continue;
-          }
+          if (!ov) continue;
           jflag = ov.flag;
           const cn = conn3!.get(id[ol]);
           if (!cn) throw new StyleError('Pair surf/granular: a surface triangle has no connectivity (fix surface/local)');
@@ -296,10 +294,7 @@ export class PairSurfGranular extends Pair {
         } else {
           const e = lineEnds(x, lin, bonus![2 * ol], bonus![2 * ol + 1]);
           const ov = overlapSphereLine(x, 3 * sph, radi, e.e0, e.e1);
-          if (!ov) {
-            this.hist.delete(key);
-            continue;
-          }
+          if (!ov) continue;
           jflag = ov.flag;
           const cn = conn!.get(id[ol]);
           if (!cn) throw new StyleError('Pair surf/granular: a surface line has no connectivity (fix surface/local)');
@@ -322,12 +317,13 @@ export class PairSurfGranular extends Pair {
           rsqCom, weight: 1.0, dr, surfNorm, drForce: [dr[0], dr[1], dr[2]], cindex: [], caflag: [], cwhich: [],
           ends, corners: cornerPts ?? [ends[0], ends[1], ends[1]], ck1: -1, ck2: -1, caflag1: -1, caflag2: -1,
         };
+        keep.add(`${id[os]}:${id[ol]}`);
         let g = groups.get(sph);
         if (!g) groups.set(sph, (g = []));
         g.push(contact);
       }
     }
-    for (const key of this.hist.keys()) if (!seen.has(key)) this.hist.delete(key);
+    for (const key of this.hist.keys()) if (!keep.has(key)) this.hist.delete(key);
 
     // 2. per sphere: sort, pre-walk the sides, walk the composite surfaces and add the forces (contact_flow.ts)
     const sphereOrder = [...groups.keys()].sort((a, b) => a - b);

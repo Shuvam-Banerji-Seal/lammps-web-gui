@@ -74,23 +74,30 @@ export function cornerConnection3d(inorm: V3, jnorm: V3, cwhich: number, flatthr
 export function triCorners(
   x: ArrayLike<number>, i: number, o: number, quat: ArrayLike<number>, bonus: ArrayLike<number>, cols: number,
 ): { c: [V3, V3, V3]; norm: V3 } {
-  // i: the position (x) of the atom, o: its owner (quaternion and body corners)
+  // i: the position (x) of the atom, o: its owner (quaternion and body corners). Corner k, component r, is
+  // x_r + R[3r] b0 + R[3r+1] b1 + R[3r+2] b2 (written out: this runs for every sphere-triangle pair of the list)
   const R = quatToMatrix(quat[4 * o], quat[4 * o + 1], quat[4 * o + 2], quat[4 * o + 3]);
-  const corner = (k: number): V3 => {
-    const b = [bonus[cols * o + 3 * k], bonus[cols * o + 3 * k + 1], bonus[cols * o + 3 * k + 2]];
-    return [0, 1, 2].map((r) => x[3 * i + r] + R[3 * r] * b[0] + R[3 * r + 1] * b[1] + R[3 * r + 2] * b[2]) as V3;
-  };
-  const c: [V3, V3, V3] = [corner(0), corner(1), corner(2)];
+  const x0 = x[3 * i], x1 = x[3 * i + 1], x2 = x[3 * i + 2];
+  const R0 = R[0], R1 = R[1], R2 = R[2], R3 = R[3], R4 = R[4], R5 = R[5], R6 = R[6], R7 = R[7], R8 = R[8];
+  const ob = cols * o;
+  let b0 = bonus[ob], b1 = bonus[ob + 1], b2 = bonus[ob + 2];
+  const c0: V3 = [x0 + R0 * b0 + R1 * b1 + R2 * b2, x1 + R3 * b0 + R4 * b1 + R5 * b2, x2 + R6 * b0 + R7 * b1 + R8 * b2];
+  b0 = bonus[ob + 3]; b1 = bonus[ob + 4]; b2 = bonus[ob + 5];
+  const c1: V3 = [x0 + R0 * b0 + R1 * b1 + R2 * b2, x1 + R3 * b0 + R4 * b1 + R5 * b2, x2 + R6 * b0 + R7 * b1 + R8 * b2];
+  b0 = bonus[ob + 6]; b1 = bonus[ob + 7]; b2 = bonus[ob + 8];
+  const c2: V3 = [x0 + R0 * b0 + R1 * b1 + R2 * b2, x1 + R3 * b0 + R4 * b1 + R5 * b2, x2 + R6 * b0 + R7 * b1 + R8 * b2];
+  const c: [V3, V3, V3] = [c0, c1, c2];
   return { c, norm: normOf(c) };
 }
 
 /** Unit normal of the triangle (p2 - p1) x (p3 - p1) (corners2norm). */
 export function normOf(c: [V3, V3, V3]): V3 {
-  const a = [c[1][0] - c[0][0], c[1][1] - c[0][1], c[1][2] - c[0][2]];
-  const b = [c[2][0] - c[0][0], c[2][1] - c[0][1], c[2][2] - c[0][2]];
-  const n: V3 = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-  const len = Math.hypot(n[0], n[1], n[2]);
-  return [n[0] / len, n[1] / len, n[2] / len];
+  const p = c[0], q = c[1], r = c[2];
+  const a0 = q[0] - p[0], a1 = q[1] - p[1], a2 = q[2] - p[2];
+  const b0 = r[0] - p[0], b1 = r[1] - p[1], b2 = r[2] - p[2];
+  const n0 = a1 * b2 - a2 * b1, n1 = a2 * b0 - a0 * b2, n2 = a0 * b1 - a1 * b0;
+  const len = Math.hypot(n0, n1, n2);
+  return [n0 / len, n1 / len, n2 / len];
 }
 
 /**

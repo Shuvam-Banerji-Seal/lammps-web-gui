@@ -318,7 +318,21 @@ export class FixShardlow extends Fix {
       lby0 = Math.min(lby0, byOf[k]); lby1 = Math.max(lby1, byOf[k] + 1);
       lbz0 = Math.min(lbz0, bzOf[k]); lbz1 = Math.max(lbz1, bzOf[k] + 1);
     }
-    const chainAt = (ix: number, iy: number, iz: number): number[] | undefined => chains.get(binKey(ix, iy, iz));
+    // the chains of the local bins as a dense grid over their extent (each stencil lookup indexes it; a bin outside
+    // the extent has no owned atoms)
+    const gx = Math.max(0, lbx1 - lbx0), gy = Math.max(0, lby1 - lby0), gz = Math.max(0, lbz1 - lbz0);
+    const chainList: number[][] = [];
+    const grid = new Int32Array(gx * gy * gz).fill(-1);
+    for (let k = 0; k < n; k++) {
+      const cell = ((bzOf[k] - lbz0) * gy + (byOf[k] - lby0)) * gx + (bxOf[k] - lbx0);
+      if (grid[cell] < 0) { grid[cell] = chainList.length; chainList.push(chains.get(binKey(bxOf[k], byOf[k], bzOf[k]))!); }
+    }
+    const chainAt = (ix: number, iy: number, iz: number): number[] | undefined => {
+      const x = ix - lbx0, y = iy - lby0, z = iz - lbz0;
+      if (x < 0 || y < 0 || z < 0 || x >= gx || y >= gy || z >= gz) return undefined;
+      const c = grid[(z * gy + y) * gx + x];
+      return c < 0 ? undefined : chainList[c];
+    };
 
     // phase count and the work-item estimate (npair_half_bin_newton_ssa.cpp: phaseLenEstimate, ssa_maxPhaseLen)
     const sx1 = sx + 1, sy1 = sy + 1, sz1 = sz + 1;

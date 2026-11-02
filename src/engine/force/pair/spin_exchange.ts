@@ -64,6 +64,13 @@ import { libm } from '../../libm';
 export const SPIN_HBAR = 4.135667403e-3 / (2 * Math.PI);
 
 /** J(r) of spin/exchange and its derivative with respect to r (pair_spin_exchange.html). */
+/** exchangeJ's J alone (the same arithmetic), for the precession vectors of every spin update. */
+export const exchangeJValue = (a: number, b: number, d: number, r: number): number => {
+  const x = (r / d) * (r / d);
+  const e = libm.exp(-x);
+  return 4 * a * x * (1 - b * x) * e;
+};
+
 export const exchangeJ = (a: number, b: number, d: number, r: number): { j: number; dj: number } => {
   const x = (r / d) * (r / d);
   const e = libm.exp(-x);
@@ -156,16 +163,30 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
     const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
     const ti = type[i] * nt;
     const si0 = sp[4 * i], si1 = sp[4 * i + 1], si2 = sp[4 * i + 2];
+    // the coefficient arrays (by type pair, the cutsq index): this runs for every spin of every sweep of fix nve/spin
+    const P = this.p, bq = this.biquadratic;
+    const A = P.p('a'), B = P.p('b'), D = P.p('d');
+    const AK = bq ? P.p('ak') : A, BK = bq ? P.p('bk') : B, DK = bq ? P.p('dk') : D;
+    // J and K of each list entry, kept while its distance and type pair stay the same (the sweeps between two position
+    // updates see the same distances): the values computed from them would be the same
+    const ec = this.entryCache(list.neighbors);
     for (let k = k0; k < k1; k++) {
       const j = list.neighbors[k] & NEIGHMASK;
       const dx = x[3 * j] - x[3 * i], dy = x[3 * j + 1] - x[3 * i + 1], dz = x[3 * j + 2] - x[3 * i + 2];
       const rsq = dx * dx + dy * dy + dz * dz;
       const t = ti + type[j];
       if (rsq >= this.cutsq[t]) continue;
-      const r = Math.sqrt(rsq);
       const o = owner[j];
-      const { j: J } = this.pairJK(type[i], type[j], r);
-      const kk = this.biquadratic ? this.pairK(type[i], type[j], r) : 0;
+      let J: number, kk: number;
+      if (ec.rsq[k] === rsq && ec.t[k] === t) {
+        J = ec.J[k];
+        kk = ec.K[k];
+      } else {
+        const r = Math.sqrt(rsq);
+        J = exchangeJValue(A[t], B[t], D[t], r);
+        kk = bq ? exchangeJValue(AK[t], BK[t], DK[t], r) : 0;
+        ec.rsq[k] = rsq; ec.t[k] = t; ec.J[k] = J; ec.K[k] = kk;
+      }
       const sj0 = sp[4 * o], sj1 = sp[4 * o + 1], sj2 = sp[4 * o + 2];
       const ss = si0 * sj0 + si1 * sj1 + si2 * sj2;
       const c = (J + 2 * kk * ss) / SPIN_HBAR;
@@ -173,12 +194,15 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
     }
   }
 
-  private pairJK(ti: number, tj: number, r: number): { j: number; dj: number } {
-    return exchangeJ(this.p.get('a', ti, tj), this.p.get('b', ti, tj), this.p.get('d', ti, tj), r);
-  }
-
-  private pairK(ti: number, tj: number, r: number): number {
-    return exchangeJ(this.p.get('ak', ti, tj), this.p.get('bk', ti, tj), this.p.get('dk', ti, tj), r).j;
+  /** omegaOf's J, K of each entry of the list `nbr` with its rsq and type pair (NaN: none yet), per list. */
+  private cache: { nbr: Int32Array; rsq: Float64Array; t: Int32Array; J: Float64Array; K: Float64Array } | null = null;
+  private entryCache(nbr: Int32Array): { rsq: Float64Array; t: Int32Array; J: Float64Array; K: Float64Array } {
+    let c = this.cache;
+    if (!c || c.nbr !== nbr || c.rsq.length < nbr.length) {
+      const n = nbr.length;
+      c = this.cache = { nbr, rsq: new Float64Array(n).fill(NaN), t: new Int32Array(n), J: new Float64Array(n), K: new Float64Array(n) };
+    }
+    return c;
   }
 
   compute(pc: PairCompute): void {
@@ -198,6 +222,10 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
     fmv.fill(0, 0, 3 * pc.nlocal);
     // Measured with native LAMMPS (black box): with pair spin/exchange alone (no fix nve/spin) the atom forces stay 0.
     const lattice = s.spinLattice === true;
+    // the coefficient arrays by type pair (the cutsq index)
+    const P = this.p, bq = this.biquadratic;
+    const A = P.p('a'), B = P.p('b'), D = P.p('d'), OFF = P.p('offset');
+    const AK = bq ? P.p('ak') : A, BK = bq ? P.p('bk') : B, DK = bq ? P.p('dk') : D;
     for (let i = 0; i < pc.nlocal; i++) {
       const ti = type[i] * nt;
       const si0 = sp[4 * i], si1 = sp[4 * i + 1], si2 = sp[4 * i + 2];
@@ -210,12 +238,12 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq >= cutsq[t]) continue;
         const r = Math.sqrt(rsq);
-        const { j: J, dj } = this.pairJK(type[i], tj, r);
-        const kk = this.biquadratic ? exchangeJ(this.p.get('ak', type[i], tj), this.p.get('bk', type[i], tj), this.p.get('dk', type[i], tj), r) : null;
+        const { j: J, dj } = exchangeJ(A[t], B[t], D[t], r);
+        const kk = bq ? exchangeJ(AK[t], BK[t], DK[t], r) : null;
         const o = owner[j];
         const sj0 = sp[4 * o], sj1 = sp[4 * o + 1], sj2 = sp[4 * o + 2];
         const sij = si0 * sj0 + si1 * sj1 + si2 * sj2;
-        const off = this.p.get('offset', type[i], tj) === 1 ? 1 : 0;
+        const off = OFF[t] === 1 ? 1 : 0;
         // Energy -J (s_i.s_j - offset) [- K ((s_i.s_j)^2 - offset)] per unordered pair: half per directed pair.
         let pe = -J * (sij - off);
         let c = J;

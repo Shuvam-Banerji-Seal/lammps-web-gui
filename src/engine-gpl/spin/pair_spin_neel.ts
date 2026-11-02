@@ -28,6 +28,9 @@ type Vec = [number, number, number];
 /** Distance functions of the pair (g1 ... q3 as in the source; the scaled g1 / q1 are per hbar). */
 interface NeelCoef { rc: number; g1: number; g1m: number; g2: number; g3: number; q1: number; q1m: number; q2: number; q3: number }
 
+/** Scratch vectors of the helpers below (each element is written before it is read). */
+const SV1 = new Float64Array(3), SV2 = new Float64Array(3), PD = new Float64Array(3), PQ1 = new Float64Array(3), PQ2 = new Float64Array(3);
+
 /** compute_neel: precession term of spin j on i, added to fmi. */
 const neelPrecession = (c: NeelCoef, rsq: number, e: Vec, fmi: Vec, si: Float64Array, i: number, sj: Float64Array, j: number): void => {
   let ra = rsq / c.g3 / c.g3;
@@ -41,11 +44,13 @@ const neelPrecession = (c: NeelCoef, rsq: number, e: Vec, fmi: Vec, si: Float64A
   const g1r = gr + 12.0 * qr / 35.0;
   const q1r = 9.0 * qr / 5.0;
   const q2r = -2.0 * qr / 5.0;
-  const sp = [si[i], si[i + 1], si[i + 2]], sq = [sj[j], sj[j + 1], sj[j + 2]];
+  const sp = SV1, sq = SV2;
+  sp[0] = si[i]; sp[1] = si[i + 1]; sp[2] = si[i + 2];
+  sq[0] = sj[j]; sq[1] = sj[j + 1]; sq[2] = sj[j + 2];
   const eiSi = e[0] * sp[0] + e[1] * sp[1] + e[2] * sp[2];
   const eiSj = e[0] * sq[0] + e[1] * sq[1] + e[2] * sq[2];
   const siSj = sp[0] * sq[0] + sp[1] * sq[1] + sp[2] * sq[2];
-  const pd = [0, 0, 0], pq1 = [0, 0, 0], pq2 = [0, 0, 0];
+  const pd = PD, pq1 = PQ1, pq2 = PQ2;
   for (let k = 0; k < 3; k++) {
     pd[k] = g1r * (eiSj * e[k] - sq[k] / 3.0);
   }
@@ -61,7 +66,9 @@ const neelPrecession = (c: NeelCoef, rsq: number, e: Vec, fmi: Vec, si: Float64A
 
 /** compute_neel_mech: mechanical force on i from the pair (i, j), before the 1/2 of the source (returned as fi). */
 const neelForce = (c: NeelCoef, rsq: number, e: Vec, fi: Vec, si: Float64Array, i: number, sj: Float64Array, j: number): void => {
-  const spi = [si[i], si[i + 1], si[i + 2]], spj = [sj[j], sj[j + 1], sj[j + 2]];
+  const spi = SV1, spj = SV2;
+  spi[0] = si[i]; spi[1] = si[i + 1]; spi[2] = si[i + 2];
+  spj[0] = sj[j]; spj[1] = sj[j + 1]; spj[2] = sj[j + 2];
   const drij = Math.sqrt(rsq);
   const sisj = spi[0] * spj[0] + spi[1] * spj[1] + spi[2] * spj[2];
   const eiSi = e[0] * spi[0] + e[1] * spi[1] + e[2] * spi[2];
@@ -78,7 +85,7 @@ const neelForce = (c: NeelCoef, rsq: number, e: Vec, fi: Vec, si: Float64Array, 
   const pdt1 = (dgij - 2.0 * gij / drij) * eiSi * eiSj - sisj * dgij / 3.0;
   const pdt2 = eiSj * gij / drij;
   const pdt3 = eiSi * gij / drij;
-  const pd = [0, 0, 0];
+  const pd = PD;
   for (let k = 0; k < 3; k++) pd[k] = -(pdt1 * e[k] + pdt2 * spi[k] + pdt3 * spj[k]);
   // quadrupolar part
   const iq3 = 1.0 / (c.q3 * c.q3);
@@ -92,7 +99,7 @@ const neelForce = (c: NeelCoef, rsq: number, e: Vec, fi: Vec, si: Float64Array, 
   const eiSi2 = eiSi * eiSi, eiSj2 = eiSj * eiSj;
   const pqt1 = eiSi2 - sisj / 3.0;
   const pqt2 = eiSj2 - sisj / 3.0;
-  const pq1 = [0, 0, 0], pq2 = [0, 0, 0];
+  const pq1 = PQ1, pq2 = PQ2;
   for (let k = 0; k < 3; k++) pq1[k] = dq1ij * pqt1 * pqt2 * e[k];
   const eiSi3 = eiSi * eiSi2, eiSj3 = eiSj * eiSj2;
   const sisj2 = sisj * sisj;
@@ -130,7 +137,9 @@ const neelEnergy = (c: NeelCoef, rsq: number, e: Vec, si: Float64Array, i: numbe
   const g1r = gr + 12.0 * qr / 35.0;
   const q1r = 9.0 * qr / 5.0;
   const q2r = -2.0 * qr / 5.0;
-  const spi = [si[i], si[i + 1], si[i + 2]], spj = [sj[j], sj[j + 1], sj[j + 2]];
+  const spi = SV1, spj = SV2;
+  spi[0] = si[i]; spi[1] = si[i + 1]; spi[2] = si[i + 2];
+  spj[0] = sj[j]; spj[1] = sj[j + 1]; spj[2] = sj[j + 2];
   const eiSi = e[0] * spi[0] + e[1] * spi[1] + e[2] * spi[2];
   const eiSj = e[0] * spj[0] + e[1] * spj[1] + e[2] * spj[2];
   const siSj = spi[0] * spj[0] + spi[1] * spj[1] + spi[2] * spj[2];
@@ -164,6 +173,7 @@ export class PairSpinNeel extends Pair implements SpinPairStyle {
   allocate(ntypes: number): void {
     super.allocate(ntypes);
     this.p = new PairParams(ntypes, ['rc', 'g1', 'g1m', 'g2', 'g3', 'q1', 'q1m', 'q2', 'q3']);
+    this.coefs = [];
   }
 
   coeff(args: string[], _ctx?: StyleContext): void {
@@ -174,6 +184,7 @@ export class PairSpinNeel extends Pair implements SpinPairStyle {
     if (!(rc > 0)) throw new StyleError('spin/neel: rc must be > 0');
     if (!(k3 > 0) || !(l3 > 0)) throw new StyleError('spin/neel: the distance parameters k3 and l3 must be > 0');
     this.p.setRange(args[0], args[1], [rc, k1 / HBAR, k1, k2, k3, l1 / HBAR, l1, l2, l3]);
+    this.coefs = [];
   }
 
   initStyle(_ctx: StyleContext): void {
@@ -184,13 +195,24 @@ export class PairSpinNeel extends Pair implements SpinPairStyle {
     return this.cutGlobal;
   }
 
+  /** The coefficients of each type pair, read from the parameters once (dropped by allocate and coeff). */
+  private coefs: (NeelCoef | undefined)[] = [];
   private coef(ti: number, tj: number): NeelCoef {
+    const k = ti * (this.ntypes + 1) + tj;
+    const cached = this.coefs[k];
+    if (cached) return cached;
     const p = this.p;
-    return {
+    const c: NeelCoef = {
       rc: p.get('rc', ti, tj), g1: p.get('g1', ti, tj), g1m: p.get('g1m', ti, tj), g2: p.get('g2', ti, tj),
       g3: p.get('g3', ti, tj), q1: p.get('q1', ti, tj), q1m: p.get('q1m', ti, tj), q2: p.get('q2', ti, tj), q3: p.get('q3', ti, tj),
     };
+    this.coefs[k] = c;
+    return c;
   }
+  /** Scratch vectors of the pair loops: the unit separation, the precession term and the force. */
+  private readonly eV: Vec = [0, 0, 0];
+  private readonly fmiV: Vec = [0, 0, 0];
+  private readonly fiV: Vec = [0, 0, 0];
 
   /** Precession vector of owned atom i from the current spins (compute_single_pair of the source). */
   omegaOf(i: number, nb: Neighbor, sp: Float64Array, type: Int32Array, x: Float64Array, list: { firstneigh: Int32Array; numneigh: Int32Array; neighbors: Int32Array }, out: Float64Array): void {
@@ -204,8 +226,9 @@ export class PairSpinNeel extends Pair implements SpinPairStyle {
       const c = this.coef(type[i], type[j]);
       if (rsq > c.rc * c.rc) continue;
       const inorm = 1 / Math.sqrt(rsq);
-      const e: Vec = [dx * inorm, dy * inorm, dz * inorm];
-      const fmi: Vec = [0, 0, 0];
+      const e = this.eV, fmi = this.fmiV;
+      e[0] = dx * inorm; e[1] = dy * inorm; e[2] = dz * inorm;
+      fmi[0] = 0; fmi[1] = 0; fmi[2] = 0;
       neelPrecession(c, rsq, e, fmi, sp, 4 * i, sp, 4 * owner[j]);
       out[0] += fmi[0]; out[1] += fmi[1]; out[2] += fmi[2];
     }
@@ -234,11 +257,12 @@ export class PairSpinNeel extends Pair implements SpinPairStyle {
         const c = this.coef(type[i], type[j]);
         if (rsq > c.rc * c.rc) continue;
         const inorm = 1 / Math.sqrt(rsq);
-        const e: Vec = [dx * inorm, dy * inorm, dz * inorm];
+        const e = this.eV, fmi = this.fmiV, fi = this.fiV;
+        e[0] = dx * inorm; e[1] = dy * inorm; e[2] = dz * inorm;
         const sj = 4 * owner[j];
-        const fmi: Vec = [0, 0, 0];
+        fmi[0] = 0; fmi[1] = 0; fmi[2] = 0;
         neelPrecession(c, rsq, e, fmi, sp, 4 * i, sp, sj);
-        const fi: Vec = [0, 0, 0];
+        fi[0] = 0; fi[1] = 0; fi[2] = 0;
         if (lattice) neelForce(c, rsq, e, fi, sp, 4 * i, sp, sj);
         f[3 * i] += fi[0]; f[3 * i + 1] += fi[1]; f[3 * i + 2] += fi[2];
         f[3 * j] -= fi[0]; f[3 * j + 1] -= fi[1]; f[3 * j + 2] -= fi[2];

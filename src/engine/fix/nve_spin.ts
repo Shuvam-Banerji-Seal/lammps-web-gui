@@ -106,8 +106,8 @@ export class FixNVESpin extends Fix {
         p.singlePair(i, nb, sp, nb.typeall, nb.xall, nb.full!, this.w);
         continue;
       }
-      const f = output && p.outputOf ? p.outputOf.bind(p) : p.omegaOf.bind(p);
-      f(i, nb, sp, nb.typeall, nb.xall, nb.full!, this.wbuf);
+      if (output && p.outputOf) p.outputOf(i, nb, sp, nb.typeall, nb.xall, nb.full!, this.wbuf);
+      else p.omegaOf(i, nb, sp, nb.typeall, nb.xall, nb.full!, this.wbuf);
       this.w[0] += this.wbuf[0]; this.w[1] += this.wbuf[1]; this.w[2] += this.wbuf[2];
     }
     for (const f of this.fields) {

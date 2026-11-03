@@ -16,6 +16,9 @@ import { FixStoreLocal } from '../tracker/fix_store_local';
 import type { System } from '../../engine/system';
 import { nativeOrder } from '../../engine/atoms';
 
+/** The atom index of an ID, or -1 when the atom is not here. */
+const mapIndexOrNeg = (map: Int32Array, id: number): number => (id >= 0 && id < map.length ? map[id] : -1);
+
 /** Key of a bond by its two atom IDs (IDs stay below 2^26 in the browser engine). */
 export const bondKey = (a: number, b: number): number => (a < b ? a * 0x4000000 + b : b * 0x4000000 + a);
 
@@ -167,18 +170,39 @@ export abstract class BondBPMBase extends SimpleBonded {
     }
     if (this.listBuild === bc.nbuild) return this.listOrder;
     this.listBuild = bc.nbuild ?? -1;
-    const at = new Map<number, number>();
-    for (let k = 0; k < b.n; k++) if (b.type[k] > 0) at.set(bondKey(b.atoms[2 * k], b.atoms[2 * k + 1]), k);
+    // the live bonds of each atom index as (partner ID, bond index) rows, the last live bond of a pair winning as the
+    // key map did ("at.set" in bond order); a key is found in its atom's row instead of a map of all keys
+    const n = s.n;
+    const start = new Int32Array(n + 1);
+    for (let k = 0; k < b.n; k++) {
+      if (b.type[k] <= 0) continue;
+      const i = mapIndexOrNeg(bc.map, b.atoms[2 * k]), j = mapIndexOrNeg(bc.map, b.atoms[2 * k + 1]);
+      if (i >= 0) start[i + 1]++;
+      if (j >= 0) start[j + 1]++;
+    }
+    for (let i = 0; i < n; i++) start[i + 1] += start[i];
+    const fill = start.slice(0, n);
+    const rowId = new Int32Array(start[n]), rowK = new Int32Array(start[n]);
+    for (let k = 0; k < b.n; k++) {
+      if (b.type[k] <= 0) continue;
+      const a1 = b.atoms[2 * k], a2 = b.atoms[2 * k + 1];
+      const i = mapIndexOrNeg(bc.map, a1), j = mapIndexOrNeg(bc.map, a2);
+      if (i >= 0) { rowId[fill[i]] = a2; rowK[fill[i]++] = k; }
+      if (j >= 0) { rowId[fill[j]] = a1; rowK[fill[j]++] = k; }
+    }
     const ord = nativeOrder(s);
-    const rank = new Int32Array(s.n);
-    for (let p = 0; p < s.n; p++) rank[ord[p]] = p;
+    const rank = new Int32Array(n);
+    for (let p = 0; p < n; p++) rank[ord[p]] = p;
     const out: number[] = [];
-    for (let p = 0; p < s.n; p++) {
+    for (let p = 0; p < n; p++) {
       const i = ord[p], id = s.id[i];
       for (const key of this.lists.get(id) ?? []) {
-        const k = at.get(key);
-        if (k === undefined) continue;
-        const other = b.atoms[2 * k] === id ? b.atoms[2 * k + 1] : b.atoms[2 * k];
+        // bondKey(lo, hi) = lo 2^26 + hi
+        const lo = Math.floor(key / 0x4000000), hi = key - lo * 0x4000000;
+        const other = lo === id ? hi : lo;
+        let k = -1;
+        for (let q = start[i]; q < start[i + 1]; q++) if (rowId[q] === other) k = rowK[q];
+        if (k < 0) continue;
         if (rank[i] < rank[atomIndex(bc, other, 'bond')]) out.push(k);
       }
     }

@@ -116,8 +116,9 @@ export interface MdrPairIn {
 
 /** One wall contact of fix wall/gran/region with the mdr model. */
 export interface MdrWallIn {
-  /** History key of the contact (the wall, the contact and the atom). */
-  key: string;
+  /** History key of the contact: the wall and its face ("fixID|face"), and the atom ID. */
+  face: string;
+  aid: number;
   ai: number;
   /** Apparent radius of the atom and its overlap with the wall surface. */
   R: number;
@@ -140,7 +141,7 @@ export interface MdrNormalOut {
 }
 
 /** Contacts of one wall for one atom: the history key and the distance to the surface (radius - overlap). */
-export type WallContacts = (i: number) => Array<{ key: string; dist: number }>;
+export type WallContacts = (i: number) => Array<{ face: string; aid: number; dist: number }>;
 
 /** The mdr contact model of one pair style instance (implemented in src/engine-gpl/granular/mdr/model.ts). */
 export interface MdrApi {
@@ -149,7 +150,7 @@ export interface MdrApi {
   pairNormal(c: MdrPairIn): MdrNormalOut;
   pairDrop(ida: number, idb: number): void;
   wallNormal(c: MdrWallIn): MdrNormalOut;
-  wallDrop(key: string): void;
+  wallDrop(face: string, aid: number): void;
   wallProvider(name: string, contacts: WallContacts): void;
 }
 

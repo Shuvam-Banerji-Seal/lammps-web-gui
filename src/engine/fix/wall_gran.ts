@@ -667,16 +667,25 @@ export class FixWallGranGranular extends Fix {
   }
 
   /** The wall contacts of atom i within its radius (the candidates of the force loop): the contacts of the bulk update. */
-  private mdrContacts(i: number): Array<{ key: string; dist: number }> {
+  private mdrContacts(i: number): Array<{ face: string; aid: number; dist: number }> {
     const s = this.sys.state;
     if (!(s.mask[i] & this.groupBit)) return [];
     const R = s.radius![i];
     const cand: WallElement[] = [];
     this.regionElements(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], R, cand);
-    const out: Array<{ key: string; dist: number }> = [];
-    for (const e of cand) if (e.dist < R) out.push({ key: `${this.id}|${e.key}:${s.id[i]}`, dist: e.dist });
+    const out: Array<{ face: string; aid: number; dist: number }> = [];
+    for (const e of cand) if (e.dist < R) out.push({ face: this.mdrFace(e.key), aid: s.id[i], dist: e.dist });
     return out;
   }
+
+  /** The mdr history key of a face of this wall, "fixID|face", one string per face (see faceKey). */
+  private mdrFace(face: string): string {
+    let k = this.mdrFaces.get(face);
+    if (k === undefined) this.mdrFaces.set(face, (k = `${this.id}|${face}`));
+    return k;
+  }
+
+  private readonly mdrFaces = new Map<string, string>();
 
   /**
    * The history key of a face of a (sub-)region, "regionID:face", one string per face: the shear history is looked up
@@ -786,7 +795,7 @@ export class FixWallGranGranular extends Fix {
       for (const e of cand) {
         if (e.dist >= R && !jkr) {
           hist?.delete(e.key);
-          if (mdr) mdr.wallDrop(`${this.id}|${e.key}:${aid}`);
+          if (mdr) mdr.wallDrop(this.mdrFace(e.key), aid);
           continue;
         }
         const key = `${e.key}:${aid}`;
@@ -813,7 +822,7 @@ export class FixWallGranGranular extends Fix {
         const had = hist?.get(e.key);
         const sh = had ?? new Float64Array(8);
         const normal = mdr && this.mdrMat
-          ? mdr.wallNormal({ key: `${this.id}|${key}`, ai: i, R, delta: R - e.dist, Rf: e.Rf, nx: e.nx, ny: e.ny, nz: e.nz, meff: mi, hu: update, p: this.mdrMat })
+          ? mdr.wallNormal({ face: this.mdrFace(e.key), aid, ai: i, R, delta: R - e.dist, Rf: e.Rf, nx: e.nx, ny: e.ny, nz: e.nz, meff: mi, hu: update, p: this.mdrMat })
           : undefined;
         // the contact input, one object refilled for every contact (granularContact only reads it); the touch test
         // values and the separation are left to granularContact's defaults, as before

@@ -25,8 +25,11 @@ const EPSILON = 1e-10;
 
 /** The MDR model of one pair style instance (pair granular with the mdr normal model). */
 export class MdrModel implements MdrApi {
-  private readonly pairHist = new Map<string, Float64Array>();
-  private readonly wallHist = new Map<string, Float64Array>();
+  private readonly pairHist = new Map<number | string, Float64Array>();
+  /** Wall contact histories by the wall face ("fixID|face") and then the atom ID. */
+  private readonly wallHist = new Map<string, Map<number, Float64Array>>();
+  /** The neighbor build of the last sweep of pairHist (beginStep). */
+  private sweptBuild = -1;
   private readonly walls = new Map<string, WallContacts>();
 
   /** The per-atom arrays of the current force evaluation (bound by beginStep). */
@@ -60,7 +63,7 @@ export class MdrModel implements MdrApi {
     };
   }
 
-  private entry(map: Map<string, Float64Array>, key: string): Float64Array {
+  private entry(map: Map<number | string, Float64Array>, key: number | string): Float64Array {
     let h = map.get(key);
     if (!h) {
       h = new Float64Array(HIST_SIZE);
@@ -69,9 +72,19 @@ export class MdrModel implements MdrApi {
     return h;
   }
 
-  /** The pair key of two atom IDs (lower ID first, as the core pair loop keys its shear history). */
-  static pairKey(a: number, b: number): string {
-    return a > b ? `${b}:${a}` : `${a}:${b}`;
+  /** The wall history of (face, atom ID), created zero on first use. */
+  private wallEntry(face: string, aid: number): Float64Array {
+    let m = this.wallHist.get(face);
+    if (!m) this.wallHist.set(face, (m = new Map()));
+    let h = m.get(aid);
+    if (!h) m.set(aid, (h = new Float64Array(HIST_SIZE)));
+    return h;
+  }
+
+  /** The pair key of two atom IDs (lower ID first, as the core pair loop keys its shear history): a number below 2^52. */
+  static pairKey(a: number, b: number): number | string {
+    const lo = a > b ? b : a, hi = a > b ? a : b;
+    return hi < 67108864 ? lo * 67108864 + hi : `${lo}:${hi}`;
   }
 
   /** A pair that does not touch drops its history (native zeroes the 27 values in the touch test). */
@@ -80,8 +93,8 @@ export class MdrModel implements MdrApi {
   }
 
   /** A wall contact that is gone drops its history. */
-  wallDrop(key: string): void {
-    this.wallHist.delete(key);
+  wallDrop(face: string, aid: number): void {
+    this.wallHist.get(face)?.delete(aid);
   }
 
   /**
@@ -154,19 +167,23 @@ export class MdrModel implements MdrApi {
       }
     }
     const list = pc.half;
-    // histories of pairs that left the neighbor list are gone (native rebuilds the list with the kept histories only)
-    const seen = new Set<string>();
     if (list) {
-      const owner = pc.nb.owner;
-      const id = s.id;
-      for (let i = 0; i < list.inum; i++) {
-        const oi = owner[i];
-        for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
-          const j = list.neighbors[k] & NEIGHMASK;
-          seen.add(MdrModel.pairKey(id[oi], id[owner[j]]));
+      // histories of pairs that left the neighbor list are gone (native rebuilds the list with the kept histories
+      // only); the pairs change only at a list build, and every history belongs to a pair of the list
+      if (this.sweptBuild !== pc.nb.nbuild) {
+        this.sweptBuild = pc.nb.nbuild;
+        const seen = new Set<number | string>();
+        const owner = pc.nb.owner;
+        const id = s.id;
+        for (let i = 0; i < list.inum; i++) {
+          const oi = owner[i];
+          for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
+            const j = list.neighbors[k] & NEIGHMASK;
+            seen.add(MdrModel.pairKey(id[oi], id[owner[j]]));
+          }
         }
+        for (const key of this.pairHist.keys()) if (!seen.has(key)) this.pairHist.delete(key);
       }
-      for (const key of this.pairHist.keys()) if (!seen.has(key)) this.pairHist.delete(key);
       if (hu) {
         this.penalty(s, pc);
         this.meanSurfDisp(s, pc);
@@ -316,7 +333,7 @@ export class MdrModel implements MdrApi {
     for (const contacts of this.walls.values()) {
       for (let i = 0; i < s.n; i++) {
         for (const c of contacts(i)) {
-          const h = this.wallHist.get(c.key);
+          const h = this.wallHist.get(c.face)?.get(c.aid);
           if (!h || Acon0[i] === 0.0) continue;
           const delta = radius[i] - c.dist;
           const ddelta = delta - h[DELTA_0];
@@ -381,7 +398,7 @@ export class MdrModel implements MdrApi {
 
   /** One wall contact (fix wall/gran/region with the mdr model): one side, the wall weight wfm. */
   wallNormal(c: MdrWallIn): MdrNormalOut {
-    const hist = this.entry(this.wallHist, c.key);
+    const hist = this.wallEntry(c.face, c.aid);
     const st = this.statsOf();
     const K = mdrConsts(c.p);
     const wij = Math.max(1.0 - hist[PENALTY], 0.0);

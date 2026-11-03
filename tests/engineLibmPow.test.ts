@@ -30,6 +30,16 @@ describe('glibc pow port', () => {
     expect(bad.slice(0, 5)).toEqual([]);
     expect(p15.pow15.length).toBe(3000);
   });
+  it('y = 2 (the shortcut that takes the exact square when it decides the rounding) matches the native libm', () => {
+    // glibc_pow2.json: 3000 (x, pow(x, 2)) from the same C program on the native libm: x in [0, 2) (normalised
+    // superellipsoid coordinates), negatives, log-uniform over e^(+-300), random bit patterns, and 800 values whose
+    // square lies within 0.03 ulp of a midpoint (about the shortcut's limit: the closer ones take the full computation). A 24,000,000-argument run of the first
+    // four classes had no difference.
+    const p2 = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'libm', 'glibc_pow2.json'), 'utf8')) as { pow2: [number, number][] };
+    const bad = p2.pow2.filter(([x, z]) => { pow(3, 0.25); return !Object.is(pow(x, 2), z); });
+    expect(bad.slice(0, 5)).toEqual([]);
+    expect(p2.pow2.length).toBe(3000);
+  });
   it('a repeated argument pair gives the same bits (the kept last result)', () => {
     for (const [x, y] of [[2, 1.5], [2, -4], [5.2, 1.5], [0.7, 3.3]]) expect(Object.is(pow(x, y), pow(x, y))).toBe(true);
     expect(pow(-0, -3)).toBe(-Infinity);

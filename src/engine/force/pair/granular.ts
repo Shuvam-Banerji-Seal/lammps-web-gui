@@ -798,9 +798,10 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
 /**
  * A pair style's contact record: the 8 values of granularContact, then native's orientation of the pair when its rolling
  * and twisting values were last put in native's frame (+1: native's row atom has the lower ID, -1: the higher one, 0:
- * not known) and the neighbor build it was read at.
+ * not known), the neighbor build it was read at, and the compute call that last kept it (SEEN).
  */
-const HIST_LEN = 10;
+const HIST_LEN = 11;
+const SEEN = 10;
 
 /** The contact history key of atom IDs lo < hi: one number while hi < 2^26, else a string. */
 const pairKey = (lo: number, hi: number): number | string => (hi < 67108864 ? lo * 67108864 + hi : `${lo}:${hi}`);
@@ -821,6 +822,14 @@ export class PairGranular extends Pair {
   /** Contact history per atom-ID pair "lo:hi": [sx, sy, sz] in the frame of the lower ID. */
   /** Contact history per atom-ID pair (lo, hi) (key: pairKey). */
   private shear = new Map<number | string, Float64Array>();
+  /** The compute calls so far: a record's SEEN slot holds the last one that kept it. */
+  private computeStamp = 0;
+  /** compute's contact input (refilled for every contact). */
+  private readonly contactIn: ContactIn = {
+    pm: null as unknown as Pm, nx: 0, ny: 0, nz: 0, r: 0, delta: 0, Rf: 0, ri: 0, rj: 0, meff: 0,
+    vrx: 0, vry: 0, vrz: 0, oix: 0, oiy: 0, oiz: 0, ojx: 0, ojy: 0, ojz: 0, dt: 0, update: false,
+    rsq: 0, radsum: 0, dx: 0, dy: 0, dz: 0, normal: undefined, sg: 1,
+  };
   /** Some pair_coeff has a heat model (the temperature and heatflow properties are then needed). */
   private heatOn = false;
   /** The mdr contact model when a pair_coeff uses the mdr normal model (src/engine-gpl/granular/mdr). */
@@ -1081,11 +1090,12 @@ export class PairGranular extends Pair {
     const tq = new Float64Array(3 * nall);
     // the records kept past this call: those of the contacts that keep a history now (a pair out of contact, or whose
     // contact ends, has no record; the others are dropped after the loop, where nothing reads them before)
-    const seen = new Set<number | string>();
+    const stamp = ++this.computeStamp;
     // mdr: the fix's pre-force update (per-atom state, penalty, mean surface displacement) before the contacts
     const mdr = this.mdr;
     if (mdr) mdr.beginStep(s, pc, update);
     const out = newContactOut();
+    const cin = this.contactIn;
     // heat conduction: heatflow accumulates (zeroed by fix heat/flow), Q_i = heat(a, T_j - T_i) and Q_j = -Q_i
     const T = this.heatOn ? s.custom.get(HEAT_TEMPERATURE)!.data : null;
     const HF = this.heatOn ? s.custom.get(HEAT_FLOW)!.data : null;
@@ -1109,7 +1119,8 @@ export class PairGranular extends Pair {
           if (this.shear.size) {
             const a0 = id[oi], b0 = id[oj];
             const key0 = a0 > b0 ? pairKey(b0, a0) : pairKey(a0, b0);
-            if (this.shear.has(key0)) seen.add(key0);
+            const rec = this.shear.get(key0);
+            if (rec) rec[SEEN] = stamp;
           }
           continue;
         }
@@ -1146,16 +1157,18 @@ export class PairGranular extends Pair {
         const normal = mdr && pm.normal === 'mdr'
           ? mdr.pairNormal({ ida: a, idb: b, oi, oj, ri, rj, delta, Rf, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, meff, hu: update })
           : undefined;
-        const ok = granularContact({
-          pm, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, r, delta, Rf, ri, rj, meff, rsq, radsum, dx, dy, dz,
-          vrx: v[3 * oi] - v[3 * oj], vry: v[3 * oi + 1] - v[3 * oj + 1], vrz: v[3 * oi + 2] - v[3 * oj + 2],
-          oix: omega[3 * oi], oiy: omega[3 * oi + 1], oiz: omega[3 * oi + 2],
-          ojx: omega[3 * oj], ojy: omega[3 * oj + 1], ojz: omega[3 * oj + 2],
-          dt, update, sg: flip ? -1 : 1, normal,
-        }, sh, out, stored !== undefined);
+        // the contact input, one object refilled for every contact (granularContact only reads it)
+        const c = cin;
+        c.pm = pm; c.nx = dx * rinv; c.ny = dy * rinv; c.nz = dz * rinv; c.r = r; c.delta = delta; c.Rf = Rf;
+        c.ri = ri; c.rj = rj; c.meff = meff; c.rsq = rsq; c.radsum = radsum; c.dx = dx; c.dy = dy; c.dz = dz;
+        c.vrx = v[3 * oi] - v[3 * oj]; c.vry = v[3 * oi + 1] - v[3 * oj + 1]; c.vrz = v[3 * oi + 2] - v[3 * oj + 2];
+        c.oix = omega[3 * oi]; c.oiy = omega[3 * oi + 1]; c.oiz = omega[3 * oi + 2];
+        c.ojx = omega[3 * oj]; c.ojy = omega[3 * oj + 1]; c.ojz = omega[3 * oj + 2];
+        c.dt = dt; c.update = update; c.sg = flip ? -1 : 1; c.normal = normal;
+        const ok = granularContact(c, sh, out, stored !== undefined);
         if (!ok) continue;
         if (out.hist) {
-          seen.add(key);
+          sh[SEEN] = stamp;
           if (!stored) this.shear.set(key, sh);
         }
         if (T && pm.heat !== 'none') {
@@ -1184,7 +1197,8 @@ export class PairGranular extends Pair {
         tq[3 * j] += out.tjx; tq[3 * j + 1] += out.tjy; tq[3 * j + 2] += out.tjz;
       }
     }
-    if (this.shear.size) for (const key of this.shear.keys()) if (!seen.has(key)) this.shear.delete(key);
+    // the records not kept by this call go (as the contacts that keep no history and the pairs out of the list)
+    if (this.shear.size) for (const [key, rec] of this.shear) if (rec[SEEN] !== stamp) this.shear.delete(key);
     nb.reverseSum(tq, 3, s.torque!);
   }
 

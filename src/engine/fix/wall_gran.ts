@@ -4,7 +4,7 @@ import { StyleError } from '../force/types';
 import { inumeric, numeric, parseNum } from '../force/util';
 import type { System } from '../system';
 import type { SimState } from '../types';
-import { granularContact, heatFlowOf, mdrPairOf, newContactOut, parseGranularSpec, PairGranular, type ContactOut, type MdrApi, type MdrMaterialCore, type Pm } from '../force/pair/granular';
+import { granularContact, heatFlowOf, mdrPairOf, newContactOut, parseGranularSpec, PairGranular, type ContactIn, type ContactOut, type MdrApi, type MdrMaterialCore, type Pm } from '../force/pair/granular';
 import { contactMassArray, HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
 
 /** The classic fstyles of fix wall/gran/region (hooke, hooke/history, hertz/history). */
@@ -465,6 +465,12 @@ export class FixWallGranGranular extends Fix {
   /** keyword temperature: a number, or the name of an equal-style variable (v_name); null when not given. */
   private wallT: number | string | null = null;
   private readonly out: ContactOut = newContactOut();
+  /** apply's contact input (refilled for every contact). */
+  private readonly cin: ContactIn = {
+    pm: null as unknown as Pm, nx: 0, ny: 0, nz: 0, r: 0, delta: 0, Rf: 0, ri: 0, rj: 0, meff: 0,
+    vrx: 0, vry: 0, vrz: 0, oix: 0, oiy: 0, oiz: 0, ojx: 0, ojy: 0, ojz: 0, dt: 0, update: false, sg: 1,
+    surfaceArm: true, normal: undefined, rsq: undefined, radsum: undefined, dx: undefined, dy: undefined, dz: undefined,
+  };
   /** Previous move/rotate state of every sub-region, for the surface velocity. */
   private readonly prevStates = new Map<Region, { d: [number, number, number]; theta: number }>();
   /** mdr normal model of this wall (its own coefficients) and whether it was checked against the pair style yet. */
@@ -809,12 +815,15 @@ export class FixWallGranGranular extends Fix {
         const normal = mdr && this.mdrMat
           ? mdr.wallNormal({ key: `${this.id}|${key}`, ai: i, R, delta: R - e.dist, Rf: e.Rf, nx: e.nx, ny: e.ny, nz: e.nz, meff: mi, hu: update, p: this.mdrMat })
           : undefined;
-        const ok = granularContact({
-          pm, nx: e.nx, ny: e.ny, nz: e.nz, r: e.dist, delta: R - e.dist, Rf: e.Rf, ri: R, rj: 0, meff: mi,
-          vrx, vry, vrz,
-          oix: omega[3 * i], oiy: omega[3 * i + 1], oiz: omega[3 * i + 2],
-          ojx: 0, ojy: 0, ojz: 0, dt, update, sg: 1, surfaceArm: true, normal,
-        }, sh, this.out, had !== undefined);
+        // the contact input, one object refilled for every contact (granularContact only reads it); the touch test
+        // values and the separation are left to granularContact's defaults, as before
+        const c = this.cin;
+        c.pm = pm; c.nx = e.nx; c.ny = e.ny; c.nz = e.nz; c.r = e.dist; c.delta = R - e.dist; c.Rf = e.Rf;
+        c.ri = R; c.rj = 0; c.meff = mi; c.vrx = vrx; c.vry = vry; c.vrz = vrz;
+        c.oix = omega[3 * i]; c.oiy = omega[3 * i + 1]; c.oiz = omega[3 * i + 2];
+        c.ojx = 0; c.ojy = 0; c.ojz = 0; c.dt = dt; c.update = update; c.sg = 1; c.surfaceArm = true; c.normal = normal;
+        c.rsq = undefined; c.radsum = undefined; c.dx = undefined; c.dy = undefined; c.dz = undefined;
+        const ok = granularContact(c, sh, this.out, had !== undefined);
         if (!ok) {
           hist?.delete(e.key);
           continue;

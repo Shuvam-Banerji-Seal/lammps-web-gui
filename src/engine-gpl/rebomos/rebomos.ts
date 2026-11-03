@@ -9,6 +9,7 @@
  */
 import { Pair, StyleError, type PairCompute, type StyleContext, potentialFile } from '../../engine/force/types';
 import { rowNeighbors } from '../airebo/neigh';
+import { NEIGHMASK } from '../../engine/neighbor';
 import { powint } from '../airebo/splines';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
@@ -467,14 +468,27 @@ export class PairREBOMoS extends Pair {
       cutsq[q] = this.rcLJmax[q] * this.rcLJmax[q];
       if (this.rcLJmax[q] > cutmax) cutmax = this.rcLJmax[q];
     }
-    const list = rowNeighbors(x, nlocal, nall, mt, cutsq, cutmax);
-    const delij = [0, 0, 0];
+    // As native PairREBOMoS::FLJ reads list->firstneigh: the full list (cut3rebo, at least the LJ cutoff, plus the skin),
+    // rebuilt at a reneighbor only; a pair beyond rcLJmax gets VLJ = 0 and dVLJ = 0 below. Without a full list (a caller
+    // outside the run loop) the pairs within the LJ cutoffs are found here.
+    const full = c.pc.full;
+    let first: Int32Array, num: Int32Array, nbr: Int32Array;
+    if (full && full.inum >= nlocal) {
+      first = full.firstneigh; num = full.numneigh; nbr = full.neighbors;
+    } else {
+      const built = rowNeighbors(x, nlocal, nall, mt, cutsq, cutmax);
+      first = built.start.subarray(0, nlocal);
+      num = new Int32Array(nlocal);
+      for (let i = 0; i < nlocal; i++) num[i] = built.start[i + 1] - built.start[i];
+      nbr = built.list;
+    }
+    const delij = [0.5, 0.5, 0.5];
     for (let i = 0; i < nlocal; i++) {
       const itag = tag[i];
       const itype = mt[i];
       const xtmp = x[3 * i], ytmp = x[3 * i + 1], ztmp = x[3 * i + 2];
-      for (let kk = list.start[i]; kk < list.start[i + 1]; kk++) {
-        const j = list.list[kk];
+      for (let kk = first[i], k1 = first[i] + num[i]; kk < k1; kk++) {
+        const j = nbr[kk] & NEIGHMASK;
         const jtag = tag[j];
         if (!keepPair(itag, jtag, j, x, xtmp, ytmp, ztmp)) continue;
         const jtype = mt[j];

@@ -76,7 +76,7 @@ import { NativeQeqSolver, type QeqLinearSystem, type QeqSolver } from './native_
  *     history extrapolation of the last five solutions, with the Jacobi
  *     preconditioner 1/eta and the stop test sqrt(r.d)/|b| > tolerance; the
  *     charges are q = s - (sum s / sum t) t. The fix global scalar is
- *     (iterations of s + iterations of t) / 2 (w123q_point_fixed, w123q_shield_fixed:
+ *     (iterations of s + iterations of t) / 2 in integer division, native's int matvecs (w701qeq_point_matvecs; w123q_point_fixed, w123q_shield_fixed:
  *     matches native to 1e-15 including the scalar), although the doc says these
  *     fixes store no global scalar;
  *   - qeq/dynamic and qeq/fire also expose the iteration count as the fix

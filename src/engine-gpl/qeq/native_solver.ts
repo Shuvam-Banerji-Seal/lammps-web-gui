@@ -155,7 +155,9 @@ export class NativeQeqSolver implements QeqSolver {
       out[a] = sRes.x[a] - u * tRes.x[a];
       pushAtomHistory(hist[a], sRes.x[a], tRes.x[a]);
     }
-    return { q: out, iterations: (sRes.loop + tRes.loop) / 2 };
+    // matvecs is an int (src/QEQ/fix_qeq.h "int matvecs;"; fix_qeq_point.cpp, fix_qeq_shielded.cpp and fix_qeq_slater.cpp:
+    // "matvecs = CG(b_s, s); matvecs += CG(b_t, t); matvecs /= 2;"), so an odd sum loses its half
+    return { q: out, iterations: Math.trunc((sRes.loop + tRes.loop) / 2) };
   }
 
   /**

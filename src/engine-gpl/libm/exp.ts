@@ -14,7 +14,7 @@
  * error terms with that 2^-60 (doubled) as margin. Anything closer goes through the fully fused computation. Checked
  * against the native libm (tests/engineLibmExp.test.ts and a 5,000,000-argument comparison): no difference.
  */
-import { fma, fmaS, splitHi } from './log';
+import { fmaF, fmaS, splitHi } from './log';
 
 const F = new Float64Array(1);
 const U = new Uint32Array(F.buffer); // little-endian: U[0] low word, U[1] high word
@@ -126,7 +126,7 @@ const specialNeg = (tmp: number, sHi: number, sLo: number): number => {
 /** The k > 0 special case: the fused scale + scale tmp of the rescaled scale, then 2^1009. */
 const specialPos = (tmp: number, sHi: number, sLo: number): number => {
   const scale = asDouble((sHi + 0xc0f00000) >>> 0, sLo);
-  return fma(scale, tmp, scale) * 5.486124068793689e+303; // 0x1p1009
+  return fmaF(scale, tmp, scale) * 5.486124068793689e+303; // 0x1p1009
 };
 
 /** The fully fused computation (every step as libm.so.6 does it). */
@@ -142,11 +142,11 @@ const expExact = (x: number, special: boolean): number => {
   const r2 = r * r;
   const t1 = fmaS(r, C3, SC2, C3 - SC2, C2);
   const t2 = fmaS(r, C5, SC4, C5 - SC4, C4);
-  const p = fma(t1, r2, tail + r);
-  const tmp = fma(r2 * r2, t2, p);
+  const p = fmaF(t1, r2, tail + r);
+  const tmp = fmaF(r2 * r2, t2, p);
   if (special) return (kiLo & 0x80000000) ? specialNeg(tmp, sHi, sLo) : specialPos(tmp, sHi, sLo);
   const scale = asDouble(sHi, sLo);
-  return fma(scale, tmp, scale);
+  return fmaF(scale, tmp, scale);
 };
 
 /**

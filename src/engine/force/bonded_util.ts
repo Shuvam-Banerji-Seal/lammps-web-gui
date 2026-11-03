@@ -123,7 +123,7 @@ export const mapIndex = (map: Int32Array, id: number, kind: string): number => {
 export const delta = (bc: BondedCompute, a: number, b: number, out: number[], o = 0): void => {
   const x = bc.s.x;
   const cp = bc.copies;
-  if (cp?.x && copyDelta(x, cp.x, cp.built, cp.start, a, b, out, o)) return;
+  if (cp?.x && copyDelta(x, cp.x, cp.built, cp.start, a, b, out, o, cp.reach2)) return;
   const dx = x[3 * b] - x[3 * a], dy = x[3 * b + 1] - x[3 * a + 1], dz = x[3 * b + 2] - x[3 * a + 2];
   if (!cp) {
     const d = [dx, dy, dz];
@@ -154,17 +154,20 @@ export const delta = (bc: BondedCompute, a: number, b: number, out: number[], o 
  * nearer; it is kept until the next build. False, with out untouched, when a or b has moved since xa was filled (x is
  * the current owned positions): delta() then places the images itself.
  */
-export const copyDelta = (x: Float64Array, xa: Float64Array, xb: Float64Array | undefined, start: Int32Array, a: number, b: number, out: number[], o: number): boolean => {
+export const copyDelta = (x: Float64Array, xa: Float64Array, xb: Float64Array | undefined, start: Int32Array, a: number, b: number, out: number[], o: number, reach2 = 0): boolean => {
   const ax = xa[3 * a], ay = xa[3 * a + 1], az = xa[3 * a + 2];
   if (ax !== x[3 * a] || ay !== x[3 * a + 1] || az !== x[3 * a + 2] || xa[3 * b] !== x[3 * b] || xa[3 * b + 1] !== x[3 * b + 1] || xa[3 * b + 2] !== x[3 * b + 2]) return false;
   const k1 = start[b + 1];
   let c = b;
   if (k1 > start[b]) {
-    const xc = xb !== undefined && xb.length === xa.length ? xb : xa;
+    const built = xb !== undefined && xb.length === xa.length;
+    const xc = built ? xb : xa;
     const cx = xc[3 * a], cy = xc[3 * a + 1], cz = xc[3 * a + 2];
     let dx = xc[3 * b] - cx, dy = xc[3 * b + 1] - cy, dz = xc[3 * b + 2] - cz;
     let best = dx * dx + dy * dy + dz * dz;
-    for (let k = start[b]; k < k1; k++) {
+    // closer than half the shortest period at the build: no image of b is nearer (reach2, BondedCopies)
+    const k0 = built && best < reach2 ? k1 : start[b];
+    for (let k = k0; k < k1; k++) {
       dx = xc[3 * k] - cx; dy = xc[3 * k + 1] - cy; dz = xc[3 * k + 2] - cz;
       const n2 = dx * dx + dy * dy + dz * dz;
       if (n2 < best) { best = n2; c = k; }
@@ -174,6 +177,9 @@ export const copyDelta = (x: Float64Array, xa: Float64Array, xb: Float64Array | 
   return true;
 };
 
+/** termDelta's two owner-relative vectors (reused; made with doubles so the stores keep one element kind). */
+const TERM_A = [0.5, 0.5, 0.5], TERM_B = [0.5, 0.5, 0.5];
+
 /**
  * r_b - r_a with both copies nearest to the owning atom o (the term's owner,
  * e.g. the central atom of an angle): every atom of a term is placed relative
@@ -181,7 +187,7 @@ export const copyDelta = (x: Float64Array, xa: Float64Array, xb: Float64Array | 
  * owner-relative copies, not from their own nearest copy.
  */
 export const termDelta = (bc: BondedCompute, o: number, a: number, b: number, out: number[], off = 0): void => {
-  const pa = [0, 0, 0], pb = [0, 0, 0];
+  const pa = TERM_A, pb = TERM_B;
   delta(bc, o, a, pa);
   delta(bc, o, b, pb);
   out[off] = pb[0] - pa[0]; out[off + 1] = pb[1] - pa[1]; out[off + 2] = pb[2] - pa[2];

@@ -1,6 +1,6 @@
 import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type PairSep, type StyleContext, pairCoeffArgs } from '../types';
 import type { SimState } from '../../types';
-import { NEIGHMASK } from '../../neighbor';
+import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { numeric, parseNum } from '../util';
 import { gplHook } from '../../gplHooks';
 import type { PairLocalHook, PairOrderSource } from '../../compute/local';
@@ -1091,13 +1091,28 @@ export class PairGranular extends Pair {
     const HF = this.heatOn ? s.custom.get(HEAT_FLOW)!.data : null;
     // rolling and twisting histories follow native's half-list orientation (nativeFrame)
     const frame = this.rollOrTwist() ? this.nativeRows(pc) : null;
+    const sLJ = pc.specialLJ;
     for (let i = 0; i < list.inum; i++) {
       const oi = owner[i];
       const ri = radius[oi], mi = rmass[oi];
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
-        const j = list.neighbors[k] & NEIGHMASK;
+        const jraw = list.neighbors[k];
+        const j = jraw & NEIGHMASK;
         const oj = owner[j];
+        // As native LAMMPS does (src/GRANULAR/pair_granular.cpp compute at b332f28): "factor_lj = special_lj[sbmask(j)];
+        // ... if (factor_lj == 0) continue;" ahead of the contact test, so the pair's touch flag and history stay as
+        // they were (special_bonds.html: "The LJ factors are applied to the remaining terms that the potential
+        // calculates, whether they represent LJ interactions or not.")
+        const factorLJ = sLJ[jraw >>> SBBITS];
+        if (factorLJ === 0) {
+          if (this.shear.size) {
+            const a0 = id[oi], b0 = id[oj];
+            const key0 = a0 > b0 ? pairKey(b0, a0) : pairKey(a0, b0);
+            if (this.shear.has(key0)) seen.add(key0);
+          }
+          continue;
+        }
         const rj = radius[oj];
         const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
@@ -1149,6 +1164,13 @@ export class PairGranular extends Pair {
           // measured with native LAMMPS (black box): a periodic image partner (j >= the owned atom count) does not get
           // its share back, so the heat of a contact across a periodic boundary is counted once, on the owned side
           if (j < s.n) HF![oj] -= q;
+        }
+        // native compute: "scale3(factor_lj, forces)", "scale3(factor_lj, torquesi)" and "scale3(factor_lj, torquesj)"
+        // (the heat flow is not scaled)
+        if (factorLJ !== 1) {
+          out.fx *= factorLJ; out.fy *= factorLJ; out.fz *= factorLJ;
+          out.tix *= factorLJ; out.tiy *= factorLJ; out.tiz *= factorLJ;
+          out.tjx *= factorLJ; out.tjy *= factorLJ; out.tjz *= factorLJ;
         }
         f[3 * i] += out.fx; f[3 * i + 1] += out.fy; f[3 * i + 2] += out.fz;
         f[3 * j] -= out.fx; f[3 * j + 1] -= out.fy; f[3 * j + 2] -= out.fz;

@@ -65,8 +65,9 @@ const CHARGED_STYLES: ReadonlySet<number> = new Set([1, 2, 4, 15, ...LONG_COUL_S
 const ownCut = (raw: number, cutGlobal: number): number => (Number.isNaN(raw) ? cutGlobal : raw);
 
 /**
- * Floats per type pair: [cutsqA cutsqC a b] [c d eshift cscale] [e f _ _] (three vec4). lj/charmm/coul/long keeps its
- * switching region in e and f: the inner cutoff squared and 1/(outer^2 - inner^2)^3.
+ * Floats per type pair: [cutsqA cutsqC a b] [c d eshift cscale] [e f _ law] (three vec4). lj/charmm/coul/long keeps its
+ * switching region in e and f: the inner cutoff squared and 1/(outer^2 - inner^2)^3. law is the type pair's short-range
+ * law (SPEC_LAW; a hybrid's type pairs have their sub-style's), except for pair_style table, whose last float is its mode.
  */
 export const SPEC_STRIDE = 12;
 
@@ -88,9 +89,32 @@ export interface GpuPairSpec {
    * else null: the kernel scales such a pair's terms, and skips it when both are 0, as the neighbor list does.
    */
   special: { lj: number[]; coul: number[] } | null;
+  /**
+   * Coefficient layers: the kernel sums the layers' terms of a type pair, layer l at SPEC_STRIDE (l stride^2 + type
+   * pair). 1 for a style; pair_style hybrid/overlay has one per sub-style of its most crowded type pair, an unused one
+   * with zero cutoffs.
+   */
+  layers: number;
   /** Changes when the coefficients do (the backend caches the packed buffer by it). */
   key: string;
 }
+
+/** The style number of a hybrid spec (its type pairs carry their sub-styles' laws). */
+export const HYBRID_STYLE = 100;
+
+/**
+ * The parts of pair_style hybrid (force/pair/hybrid.ts PairHybrid) that the spec reads, as a structural type: importing
+ * the class would pull every style the hybrid can build into the modules that import this one.
+ */
+export interface HybridPair extends Pair {
+  readonly mode: string;
+  readonly subs: readonly { style: Pair; name: string; specialLJ: Float64Array | null; specialCoul: Float64Array | null }[];
+  subsOf(i: number, j: number): readonly number[];
+}
+
+/** A pair_style hybrid or hybrid/overlay (the hybrids the spec can take; the others are named by gpuHybridSpec). */
+export const asHybrid = (pair: Pair | null | undefined): HybridPair | null =>
+  pair && (pair.name === 'hybrid' || pair.name.startsWith('hybrid/')) && 'subsOf' in pair ? pair as HybridPair : null;
 
 type Arr = Float64Array;
 type Internals = Pair & {
@@ -112,6 +136,8 @@ type Internals = Pair & {
  * prefactor of the force evaluation (force/forcefield.ts: units qqr2e times the style's scale over the dielectric).
  */
 export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number, special: { lj: number[]; coul: number[] } | null = null): GpuPairSpec | string => {
+  const hyb = asHybrid(pair);
+  if (hyb) return gpuHybridSpec(hyb, ntypes, qqrd2e, special);
   const style = GPU_PAIR_STYLES[pair.name];
   if (style === undefined) return `pair style ${pair.name}`;
   const st = pair as Internals;
@@ -242,6 +268,7 @@ export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number, special:
       coef[o] = cutA;
       coef[o + 1] = cutC;
       coef[o + 7] = cscale;
+      if (style !== 19) coef[o + 11] = SPEC_LAW[style];
       maxCut = Math.max(maxCut, Math.sqrt(Math.max(cutA, cutC)));
     }
   }
@@ -249,7 +276,59 @@ export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number, special:
   const law = SPEC_LAW[style];
   const gewald = LONG_COUL_STYLES.has(style) ? st.gEwald : 0;
   if (LONG_COUL_STYLES.has(style) && !(gewald > 0)) return `pair style ${pair.name} without a kspace style's G-ewald`;
-  return { style, law, stride: nt, coef, maxCutoff: maxCut, charges, qqrd2e, gewald, special, key: `${style}|${qqrd2e}|${Array.from(coef).join(',')}` };
+  return { style, law, stride: nt, coef, maxCutoff: maxCut, charges, qqrd2e, gewald, special, layers: 1, key: `${style}|${qqrd2e}|${Array.from(coef).join(',')}` };
+};
+
+/**
+ * pair_style hybrid and hybrid/overlay of the styles above: each sub-style's spec, and every type pair's blocks of the
+ * sub-styles pair_coeff assigned to it (PairHybrid.subsOf, in their order), one per layer; a type pair with fewer
+ * sub-styles than layers has zero cutoffs in the rest. The kernel sums the layers' terms, as the hybrid sums its
+ * sub-styles' forces and energies (pair_hybrid.html: "the hybrid/overlay style ... the sum of the interactions"). Not
+ * here: hybrid/scaled and hybrid/molecular, a sub-style with its own pair_modify special weights, pair_style table, and
+ * a cut Coulomb sub-style beside a long-range one (the kernel has one Coulomb kind).
+ */
+const gpuHybridSpec = (pair: HybridPair, ntypes: number, qqrd2e: number, special: { lj: number[]; coul: number[] } | null): GpuPairSpec | string => {
+  if (pair.mode !== 'hybrid' && pair.mode !== 'hybrid/overlay') return `pair style ${pair.mode}`;
+  const nt = ntypes + 1, nn = nt * nt;
+  const subs: (GpuPairSpec | null)[] = [];
+  for (const s of pair.subs) {
+    if (!s.style.computeOn) { subs.push(null); continue; }
+    if (s.specialLJ || s.specialCoul) return `pair style ${pair.mode} with pair_modify special for sub-style ${s.name}`;
+    const sp = gpuPairSpec(s.style, ntypes, qqrd2e, special);
+    if (typeof sp === 'string') return `${pair.mode} sub-style: ${sp}`;
+    if (sp.law === TABLE_LAW || sp.layers !== 1) return `pair style ${pair.mode} with sub-style ${s.name}`;
+    subs.push(sp);
+  }
+  let gewald = 0, bare = false, charges = false;
+  for (const sp of subs) {
+    if (!sp) continue;
+    if (sp.gewald > 0) gewald = sp.gewald;
+    else if (sp.charges) bare = true;
+    charges ||= sp.charges;
+  }
+  if (gewald > 0 && bare) return `pair style ${pair.mode} with both long-range and cut Coulomb sub-styles`;
+  let layers = 1;
+  for (let i = 1; i < nt; i++) for (let j = 1; j < nt; j++) layers = Math.max(layers, pair.subsOf(i, j).length);
+  const coef = new Float64Array(SPEC_STRIDE * nn * layers);
+  let maxCut = 0;
+  for (let i = 1; i < nt; i++) {
+    for (let j = 1; j < nt; j++) {
+      const t = i * nt + j;
+      let l = 0;
+      for (const k of pair.subsOf(i, j)) {
+        const sp = subs[k];
+        if (!sp) continue;
+        const src = SPEC_STRIDE * t, dst = SPEC_STRIDE * (l * nn + t);
+        coef.set(sp.coef.subarray(src, src + SPEC_STRIDE), dst);
+        maxCut = Math.max(maxCut, Math.sqrt(Math.max(coef[dst], coef[dst + 1])));
+        l++;
+      }
+    }
+  }
+  return {
+    style: HYBRID_STYLE, law: 0, stride: nt, coef, maxCutoff: maxCut, charges, qqrd2e, gewald, special, layers,
+    key: `${HYBRID_STYLE}|${layers}|${qqrd2e}|${gewald}|${Array.from(coef).join(',')}`,
+  };
 };
 
 /**
@@ -259,12 +338,25 @@ export const gpuPairSpec = (pair: Pair, ntypes: number, qqrd2e: number, special:
  */
 export const pairSpecEval = (spec: GpuPairSpec, ti: number, tj: number, rsq: number, qi: number, qj: number, flj = 1, fc = 1):
   { fpair: number; evdwl: number; ecoul: number } => {
-  const o = SPEC_STRIDE * (ti * spec.stride + tj);
+  const nn = spec.stride * spec.stride;
+  let fpair = 0, evdwl = 0, ecoul = 0;
+  for (let l = 0; l < spec.layers; l++) {
+    const r = layerEval(spec, SPEC_STRIDE * (l * nn + ti * spec.stride + tj), rsq, qi, qj, flj, fc);
+    fpair += r.fpair;
+    evdwl += r.evdwl;
+    ecoul += r.ecoul;
+  }
+  return { fpair, evdwl, ecoul };
+};
+
+/** One layer of pairSpecEval: the type pair's block at o, its own law (the table's for pair_style table). */
+const layerEval = (spec: GpuPairSpec, o: number, rsq: number, qi: number, qj: number, flj: number, fc: number):
+  { fpair: number; evdwl: number; ecoul: number } => {
   const c = spec.coef;
   const cutA = c[o], cutC = c[o + 1], a = c[o + 2], b = c[o + 3], cc = c[o + 4], d = c[o + 5], eshift = c[o + 6], cscale = c[o + 7];
   const e5 = c[o + 8];
   let fpair = 0, evdwl = 0, ecoul = 0;
-  const law = spec.law;
+  const law = spec.law === TABLE_LAW ? TABLE_LAW : c[o + 11];
   if (rsq < cutA && law === TABLE_LAW) {
     const r = tableLaw(c, o, rsq);
     fpair += r.fpair;

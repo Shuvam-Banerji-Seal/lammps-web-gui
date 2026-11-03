@@ -169,7 +169,7 @@ struct Params {
   qqrd2e : f32,
   specBase : u32,   // special bonds: each slot's first entry in ints at specBase + slot (0: none)
   gewald : f32,     // G-ewald of the long-range Coulomb styles (0: the bare Coulomb term)
-  pad2 : u32,
+  layers : u32,     // coefficient layers (pairSpec.ts: 1, or a hybrid/overlay's sub-styles per type pair)
   wlj : vec4<f32>,  // special_bonds lj weights by order (1-2, 1-3, 1-4 at 1..3)
   wc : vec4<f32>,   // and coul weights
   exclBase : u32,   // neigh_modify exclude/include (gpu/exclusions.ts): mask, molecule per slot at exclBase (0: none)
@@ -268,10 +268,15 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
           d = boxImage(d);
           if (P.two == 1u) { d.z = 0.0; }
           let r2 = dot(d, d);
-          let k = 3u * (ti * P.stride + u32(pj.w));
-          let A = coef[k];
-          if (r2 >= max(A.x, A.y)) { continue; }
-          let B = coef[k + 1u];
+          // the type pair's blocks, one per layer (pairSpec.ts layers: a hybrid/overlay's sub-styles)
+          let k0 = 3u * (ti * P.stride + u32(pj.w));
+          let nn3 = 3u * P.stride * P.stride;
+          var reach = false;
+          for (var l = 0u; l < P.layers; l = l + 1u) {
+            let Al = coef[k0 + l * nn3];
+            if (r2 < max(Al.x, Al.y)) { reach = true; }
+          }
+          if (!reach) { continue; }
           // a special pair (1-2, 1-3, 1-4): its weights, and no pair at all when both are 0 (as the neighbor list
           // without kspace; with it the pair stays, for the Coulomb correction below)
           var flj = 1.0;
@@ -289,34 +294,41 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
             if (flj == 0.0 && fc == 0.0 && P.gewald == 0.0) { continue; }
           }
           var fp = 0.0;
-          if (r2 < A.x) {
-            var sr = vec2<f32>(0.0, 0.0);
-            if (P.style == 20u) {
-              // inside a table's inner cutoff: flagged (the CPU names the pair and stops, as the CPU style does)
-              if (r2 < A.z) { bad = 1.0; } else { sr = tableLaw(r2, A, B, coef[k + 2u]); }
-            } else {
-              sr = shortRange(P.style, r2, A, B, coef[k + 2u]);
-            }
-            fp = flj * sr.x;
-            ev = ev + 0.5 * flj * sr.y;
-          }
-          if (r2 < A.y && P.qBase > 0u) {
-            let qj = bitcast<f32>(ints[P.qBase + j]);
-            if (qi != 0.0 && qj != 0.0) {
-              let r = sqrt(r2);
-              let pre = P.qqrd2e * B.w * qi * qj / r;
-              if (P.gewald > 0.0) {
-                // the Ewald real-space term, erfc by the polynomial fit (erfc.ts erfcPoly), less (1 - w) of the bare
-                // term for a special pair (pairSpec.ts pairSpecEval)
-                let gr = P.gewald * r;
-                let ex = exp(-gr * gr);
-                let t = 1.0 / (1.0 + 0.3275911 * gr);
-                let erfc = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * ex;
-                fp = fp + pre * (erfc + 1.12837917 * gr * ex - (1.0 - fc)) / r2;
-                ec = ec + 0.5 * pre * (erfc - (1.0 - fc));
+          for (var l = 0u; l < P.layers; l = l + 1u) {
+            let k = k0 + l * nn3;
+            let A = coef[k];
+            let B = coef[k + 1u];
+            let C3 = coef[k + 2u];
+            if (r2 < A.x) {
+              var sr = vec2<f32>(0.0, 0.0);
+              if (P.style == 20u) {
+                // inside a table's inner cutoff: flagged (the CPU names the pair and stops, as the CPU style does)
+                if (r2 < A.z) { bad = 1.0; } else { sr = tableLaw(r2, A, B, C3); }
               } else {
-                fp = fp + fc * pre / r2;
-                ec = ec + 0.5 * fc * pre;
+                // the type pair's own law (pairSpec.ts: the block's last float)
+                sr = shortRange(u32(C3.w), r2, A, B, C3);
+              }
+              fp = fp + flj * sr.x;
+              ev = ev + 0.5 * flj * sr.y;
+            }
+            if (r2 < A.y && P.qBase > 0u) {
+              let qj = bitcast<f32>(ints[P.qBase + j]);
+              if (qi != 0.0 && qj != 0.0) {
+                let r = sqrt(r2);
+                let pre = P.qqrd2e * B.w * qi * qj / r;
+                if (P.gewald > 0.0) {
+                  // the Ewald real-space term, erfc by the polynomial fit (erfc.ts erfcPoly), less (1 - w) of the bare
+                  // term for a special pair (pairSpec.ts pairSpecEval)
+                  let gr = P.gewald * r;
+                  let ex = exp(-gr * gr);
+                  let t = 1.0 / (1.0 + 0.3275911 * gr);
+                  let erfc = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * ex;
+                  fp = fp + pre * (erfc + 1.12837917 * gr * ex - (1.0 - fc)) / r2;
+                  ec = ec + 0.5 * pre * (erfc - (1.0 - fc));
+                } else {
+                  fp = fp + fc * pre / r2;
+                  ec = ec + 0.5 * fc * pre;
+                }
               }
             }
           }
@@ -728,7 +740,7 @@ export class WebGpuForceBackend implements ForceBackend {
     writeTilt(pf, (112 + 16 * MAX_GPU_EXCLUSION_RULES) / 4, tilt);
     pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = spec.stride;
     pu[8] = two ? 1 : 0; pu[9] = base; pu[10] = spec.law; pu[11] = spec.charges ? base + n : 0;
-    pf[12] = spec.qqrd2e; pu[13] = specBase; pf[14] = spec.gewald;
+    pf[12] = spec.qqrd2e; pu[13] = specBase; pf[14] = spec.gewald; pu[15] = spec.layers;
     if (spec.special) for (let o = 0; o < 4; o++) { pf[16 + o] = spec.special.lj[o]; pf[20 + o] = spec.special.coul[o]; }
     if (ex) {
       pu[24] = exclBase; pu[25] = ex.rules.length; pu[26] = ex.include;

@@ -1,4 +1,4 @@
-import { GPU_PAIR_STYLES, gpuPairSpec, LONG_COUL_STYLES, SPEC_STRIDE, TABLE_LAW, type GpuPairSpec } from '../gpu/pairSpec';
+import { asHybrid, GPU_PAIR_STYLES, gpuPairSpec, HYBRID_STYLE, LONG_COUL_STYLES, SPEC_STRIDE, TABLE_LAW, type GpuPairSpec } from '../gpu/pairSpec';
 import { GPU_EAM_STYLES, gpuEamSpec, isGpuEam, type EamPair, type GpuEamSpec } from '../gpu/eamSpec';
 import { GPU_SW_STYLES, gpuSwSpec, isGpuSw, type GpuSwSpec, type SwPair } from '../gpu/swSpec';
 import { GPU_TERSOFF_STYLES, gpuTersoffSpec, isGpuTersoff, type GpuTersoffSpec, type TersoffPair } from '../gpu/tersoffSpec';
@@ -82,17 +82,22 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   const p = sys.ff.pair;
   const ljcut = p instanceof PairLJCut && p.name === 'lj/cut';
   // the GPU also runs the pair styles of gpu/pairSpec.ts; the lj/cut threads of cpu/parallel.ts only lj/cut
-  const gpuStyle = backend.kind === 'webgpu' && !!p && GPU_PAIR_STYLES[p.name] !== undefined;
+  // pair_style hybrid and hybrid/overlay of those styles as layers of one spec (gpu/pairSpec.ts gpuHybridSpec)
+  const hyb = asHybrid(p);
+  const hybrid = hyb && (hyb.mode === 'hybrid' || hyb.mode === 'hybrid/overlay')
+    && hyb.subs.length > 0 && hyb.subs.every((s) => GPU_PAIR_STYLES[s.name] !== undefined) ? hyb : null;
+  const gpuStyle = backend.kind === 'webgpu' && !!p && (GPU_PAIR_STYLES[p.name] !== undefined || hybrid !== null);
   const eamStyle = backend.kind === 'webgpu' && isGpuEam(p);
   const swStyle = backend.kind === 'webgpu' && isGpuSw(p);
   const tersoffStyle = backend.kind === 'webgpu' && isGpuTersoff(p);
   const tip4pStyle = backend.kind === 'webgpu' && isGpuTip4p(p);
   if (!ljcut && !gpuStyle && !eamStyle && !swStyle && !tersoffStyle && !tip4pStyle) {
     const names = [...Object.keys(GPU_PAIR_STYLES).filter((k) => k !== 'lj/cut'), ...GPU_EAM_STYLES, ...GPU_SW_STYLES, ...GPU_TERSOFF_STYLES, ...GPU_TIP4P_STYLES].join(', ');
-    return why(`pair style ${p?.name ?? 'none'} (the ${backend.kind === 'webgpu' ? `GPU path implements lj/cut, ${names}` : 'threaded path implements lj/cut'} only)`);
+    return why(`pair style ${p?.name ?? 'none'} (the ${backend.kind === 'webgpu' ? `GPU path implements lj/cut, ${names}, and hybrid and hybrid/overlay of the pairwise ones` : 'threaded path implements lj/cut'} only)`);
   }
   // the long-range Coulomb styles' real-space term runs on the GPU, the kspace style on the CPU beside it
-  const longStyle = (gpuStyle && LONG_COUL_STYLES.has(GPU_PAIR_STYLES[p.name])) || (tip4pStyle && p.name.endsWith('/long'));
+  const longStyle = (gpuStyle && (hybrid ? hybrid.subs.some((s) => LONG_COUL_STYLES.has(GPU_PAIR_STYLES[s.name])) : LONG_COUL_STYLES.has(GPU_PAIR_STYLES[p.name])))
+    || (tip4pStyle && p.name.endsWith('/long'));
   const kspace = !!sys.ff.kspace;
   if (kspace && !longStyle) return why('a kspace style (long-range terms)');
   if (!p.computeOn) return why('pair_modify compute no');
@@ -203,7 +208,8 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     const allBit = sys.groupBit('all');
     const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
     const gb = backend as ForceBackend & { canAdvanceSpec?(s: SimState, spec: GpuPairSpec): boolean };
-    const resident = !molecular && !kspace && !needTensor && !ex && !sys.groups.dynamic.size && spec.law !== TABLE_LAW && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
+    // the whole-step kernel takes one law for every type pair: not a hybrid's layers
+    const resident = !molecular && !kspace && !needTensor && !ex && !sys.groups.dynamic.size && spec.law !== TABLE_LAW && spec.style !== HYBRID_STYLE && onlyNve && isResident(backend) && !!gb.canAdvanceSpec?.(s, spec);
     return { accel: { backend, table: newPairTable(s.ntypes, 0), spec, bonded: molecular, kspace, eam: null, sw: null, tersoff: null, tip4p: null, exclude: ex, resident, enforce2d }, reason: null };
   }
   const t = newPairTable(s.ntypes, p.cutGlobal);
@@ -335,12 +341,15 @@ const evaluateTip4p = async (a: Accel, spec: GpuTip4pSpec, sys: System, step: bo
 const withTypeExclusions = (spec: GpuPairSpec, ex: GpuExclusions): GpuPairSpec => {
   if (!ex.typePairs.length) return { ...spec, key: `${spec.key}|ex${ex.key}` };
   const coef = Float64Array.from(spec.coef);
+  const nn = spec.stride * spec.stride;
   for (const [a, b] of ex.typePairs) {
     for (const [i, j] of [[a, b], [b, a]]) {
       if (i < 1 || j < 1 || i >= spec.stride || j >= spec.stride) continue;
-      const o = SPEC_STRIDE * (i * spec.stride + j);
-      coef[o] = 0;
-      coef[o + 1] = 0;
+      for (let l = 0; l < spec.layers; l++) {
+        const o = SPEC_STRIDE * (l * nn + i * spec.stride + j);
+        coef[o] = 0;
+        coef[o + 1] = 0;
+      }
     }
   }
   return { ...spec, coef, key: `${spec.key}|ex${ex.key}` };

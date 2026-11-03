@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 import type { System } from '../src/engine/system';
-import { gpuPairSpec, pairSpecEval, tableInnerError, type GpuPairSpec } from '../src/engine/gpu/pairSpec';
+import { gpuPairSpec, HYBRID_STYLE, pairSpecEval, tableInnerError, type GpuPairSpec } from '../src/engine/gpu/pairSpec';
 import { accelerator } from '../src/engine/run/accel';
 import type { ForceBackend } from '../src/engine/types';
 
@@ -44,6 +44,12 @@ const STYLES: Record<string, string> = {
   'lj/class2/coul/long': 'pair_style lj/class2/coul/long 6.0 7.0\npair_coeff 1 1 0.2 3.0\npair_coeff 2 2 0.1 3.4 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
   'buck/coul/long': 'pair_style buck/coul/long 6.0 7.0\npair_coeff * * 20000.0 0.3 120.0\npair_coeff 1 2 15000.0 0.28 90.0 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
   'born/coul/long': 'pair_style born/coul/long 6.0 7.0\npair_coeff * * 6000.0 0.32 2.6 100.0 50.0\npair_coeff 1 2 5000.0 0.30 2.4 80.0 40.0 5.5\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
+  // pair_style hybrid and hybrid/overlay (pairSpec.ts gpuHybridSpec): a sub-style per type pair, two sub-styles on every
+  // type pair with the long-range Coulomb term, and one type pair with two layers where the others have one
+  'hybrid lj/cut buck': 'pair_style hybrid lj/cut 6.0 buck 6.5\npair_coeff 1 1 lj/cut 0.2 3.0\npair_coeff 2 2 lj/cut 0.1 3.4\npair_coeff 1 2 buck 15000.0 0.28 90.0\npair_modify shift yes',
+  'hybrid/overlay lj/cut coul/long': 'pair_style hybrid/overlay lj/cut 6.0 coul/long 7.0\npair_coeff * * lj/cut 0.2 3.0\npair_coeff 2 2 lj/cut 0.1 3.4 5.5\npair_coeff * * coul/long\npair_modify shift yes table 0\nkspace_style ewald 1e-4\nkspace_modify compute no',
+  'hybrid/overlay morse yukawa': 'pair_style hybrid/overlay morse 6.5 yukawa 0.4 6.5\npair_coeff * * morse 0.3 1.2 3.3\npair_coeff 1 2 yukawa 60.0 6.0\npair_modify shift yes',
+  'hybrid/overlay buck coul/cut': 'pair_style hybrid/overlay buck 6.5 coul/cut 7.0\npair_coeff * * buck 20000.0 0.3 120.0\npair_coeff * * coul/cut\npair_coeff 1 2 coul/cut 6.5',
   // pair_style table in its three interpolation styles, two tables (the 1-2 pair its own)
   'table linear': 'pair_style table linear 1000\npair_coeff * * lj.table LJA 6.5\npair_coeff 1 2 lj.table LJB 6.0',
   'table spline': 'pair_style table spline 1000\npair_coeff * * lj.table LJA 6.5\npair_coeff 1 2 lj.table LJB 6.0',
@@ -109,6 +115,25 @@ describe('GPU pair-style specs against the CPU styles', () => {
     });
   }
 
+  it('pair_style hybrid/overlay: layers per type pair, per-step only, and the hybrids the GPU spec does not take', async () => {
+    const gpuRes = { kind: 'webgpu', label: 'WebGPU · test', compute: () => ({ pe: 0, virial: 0 }), dispose() {}, canAdvance: () => true, advance: async () => ({ pe: 0, virial: 0 }), canAdvanceSpec: () => true } as unknown as ForceBackend;
+    const sys = await systemFor(`${STYLES['hybrid/overlay morse yukawa']}\nfix 1 all nve`);
+    const a = accelerator(sys, gpuRes);
+    expect(a.reason).toBeNull();
+    expect(a.accel?.spec?.style).toBe(HYBRID_STYLE);
+    expect(a.accel?.spec?.layers).toBe(2);
+    // the whole-step kernel takes one law for every type pair
+    expect(a.accel?.resident).toBe(false);
+    const refused = async (lines: string) => {
+      const s2 = await systemFor(`${lines}\nfix 1 all nve`);
+      return accelerator(s2, gpuRes).reason;
+    };
+    expect(await refused('pair_style hybrid/scaled 0.5 lj/cut 6.0 0.5 buck 6.5\npair_coeff * * lj/cut 0.2 3.0\npair_coeff * * buck 20000.0 0.3 120.0')).toMatch(/hybrid\/scaled/);
+    expect(await refused('pair_style hybrid/overlay lj/cut/coul/cut 6.0 coul/long 7.0\npair_coeff * * lj/cut/coul/cut 0.2 3.0\npair_coeff * * coul/long\nkspace_style ewald 1e-4\nkspace_modify compute no')).toMatch(/both long-range and cut Coulomb/);
+    expect(await refused('pair_style hybrid/overlay lj/cut 6.0 buck 6.5\npair_coeff * * lj/cut 0.2 3.0\npair_coeff * * buck 20000.0 0.3 120.0\npair_modify pair buck special lj 0.0 0.0 0.0')).toMatch(/pair_modify special for sub-style buck/);
+    expect(await refused('pair_style hybrid lj/cut 6.0 morse/smooth/linear 6.5\npair_coeff * * lj/cut 0.2 3.0\npair_coeff 1 2 morse/smooth/linear 0.3 1.2 3.3')).toMatch(/pair style hybrid/);
+  });
+
   it('pair_style table: per-step only, and a pair inside the inner cutoff stops the run with the CPU style\'s error', async () => {
     const gpuRes = { kind: 'webgpu', label: 'WebGPU · test', compute: () => ({ pe: 0, virial: 0 }), dispose() {}, canAdvance: () => true, advance: async () => ({ pe: 0, virial: 0 }), canAdvanceSpec: () => true } as unknown as ForceBackend;
     const sys = await systemFor(`${STYLES['table linear']}\nfix 1 all nve`);
@@ -150,6 +175,6 @@ describe('GPU pair-style specs against the CPU styles', () => {
     const long = await (async () => accelerator(await systemFor('pair_style buck/coul/cut 6.0 10.5\npair_coeff * * 20000.0 0.3 120.0\nfix 1 all nve'), gpuRes))();
     expect(long.reason).toBe('a box shorter than 2 pair cutoffs along a periodic edge');
     const expand = await withFix('pair_style lj/expand 6.0\npair_coeff * * 0.2 3.0 0.5');
-    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born, coul\/long, lj\/cut\/coul\/long, lj\/charmm\/coul\/long, lj\/class2, lj\/class2\/coul\/cut, lj\/class2\/coul\/long, buck\/coul\/long, born\/coul\/long, table, eam, eam\/alloy, eam\/fs, sw, sw\/mod, tersoff, lj\/cut\/tip4p\/long, lj\/cut\/tip4p\/cut, tip4p\/long, tip4p\/cut only\)/);
+    expect(expand.reason).toMatch(/pair style lj\/expand \(the GPU path implements lj\/cut, lj\/cut\/coul\/cut, coul\/cut, buck, buck\/coul\/cut, morse, soft, yukawa, lj96\/cut, born, coul\/long, lj\/cut\/coul\/long, lj\/charmm\/coul\/long, lj\/class2, lj\/class2\/coul\/cut, lj\/class2\/coul\/long, buck\/coul\/long, born\/coul\/long, table, eam, eam\/alloy, eam\/fs, sw, sw\/mod, tersoff, lj\/cut\/tip4p\/long, lj\/cut\/tip4p\/cut, tip4p\/long, tip4p\/cut, and hybrid and hybrid\/overlay of the pairwise ones only\)/);
   });
 });

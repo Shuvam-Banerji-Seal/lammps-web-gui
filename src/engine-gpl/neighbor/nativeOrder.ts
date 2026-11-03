@@ -479,6 +479,8 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
       }
     }
   }
+  // the common build (bins, newton on, not from a full list): each row's entries sorted by visiting order
+  if (newton && !build.nsq && !build.halffull) return halfPairsSorted(s, nb, L, rows, stencil, total);
   // npair_bin.cpp build(): own bin after i (ghosts above and to the right only), then the stencil bins
   const dense = new Int32Array(NA).fill(-1);
   const out: Growable = { buf: new Int32Array(Math.max(16, 2 * total)), len: 0 };
@@ -573,6 +575,85 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
       }
     }
     clearRow(rows, ei, dense);
+  }
+  return out.buf.slice(0, out.len);
+};
+
+/**
+ * nativePairs for a half list built by bins with newton on (npair_bin.cpp, HALF, NEWTON): for native atom i, the atoms
+ * after it in its own bin (a ghost only "above" it: "if (x[j][2] < ztmp) continue; if (x[j][2] == ztmp) { if (x[j][1] <
+ * ytmp) continue; if (x[j][1] == ytmp && x[j][0] < xtmp) continue; }"), then the bins of the half stencil in order, each
+ * chain in order, keeping the pairs the engine's list holds. Each native atom is one engine atom image (gEng is
+ * one-to-one where it is set), so instead of walking the bins the row's membership entries (first entry of a column
+ * wins, as scatterRow) are sorted by that visiting order: the own bin first, then the stencil rank, then the position in
+ * the bin's chain. Entries the walk does not reach are dropped, as there.
+ */
+const halfPairsSorted = (s: SimState, nb: Neighbor, L: NativeLayout, rows: Rows, stencil: number[], total: number): Int32Array => {
+  const { order, n, X, binOf, posInBin, chainStart, sx, sy, sz, gEng, NA } = L;
+  const wx = 2 * sx + 1, wy = 2 * sy + 1, wz = 2 * sz + 1;
+  const rank = new Int32Array(wx * wy * wz).fill(-1);
+  for (let st = 0, r = 0; st < stencil.length; st += 3, r++) {
+    rank[((stencil[st + 2] + sz) * wy + (stencil[st + 1] + sy)) * wx + (stencil[st] + sx)] = r;
+  }
+  let chainMax = 1;
+  for (let b = 0; b + 1 < chainStart.length; b++) chainMax = Math.max(chainMax, chainStart[b + 1] - chainStart[b]);
+  const nat = new Int32Array(NA).fill(-1);
+  for (let k = 0; k < gEng.length; k++) if (gEng[k] >= 0) nat[gEng[k]] = k;
+  let rowMax = 0;
+  for (let r = 0; r + 1 < rows.start.length; r++) rowMax = Math.max(rowMax, rows.start[r + 1] - rows.start[r]);
+  const key = new Float64Array(rowMax), val = new Int32Array(rowMax);
+  const seen = new Int32Array(NA);
+  const out: Growable = { buf: new Int32Array(Math.max(16, 2 * total)), len: 0 };
+  const incl = nb.includeBit;
+  for (let i = 0; i < n; i++) {
+    const ei = order[i];
+    if (incl && !(s.mask[ei] & incl)) continue;
+    const xi = X[3 * i], yi = X[3 * i + 1], zi = X[3 * i + 2];
+    const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2], pi = posInBin[i];
+    const stamp = i + 1;
+    let m = 0;
+    for (let p = rows.start[ei], p1 = rows.start[ei + 1]; p < p1; p++) {
+      const col = rows.col[p];
+      if (seen[col] === stamp) continue;
+      seen[col] = stamp;
+      const j = nat[col];
+      if (j < 0 || j === i) continue;
+      const dx = binOf[3 * j] - bx, dy = binOf[3 * j + 1] - by, dz = binOf[3 * j + 2] - bz;
+      let kq: number;
+      if (dx === 0 && dy === 0 && dz === 0) {
+        if (posInBin[j] <= pi) continue;
+        if (j >= n) {
+          const zj = X[3 * j + 2], yj = X[3 * j + 1], xj = X[3 * j];
+          if (zj < zi) continue;
+          if (zj === zi) {
+            if (yj < yi) continue;
+            if (yj === yi && xj < xi) continue;
+          }
+        }
+        kq = posInBin[j];
+      } else {
+        if (dx < -sx || dx > sx || dy < -sy || dy > sy || dz < -sz || dz > sz) continue;
+        const r = rank[((dz + sz) * wy + (dy + sy)) * wx + (dx + sx)];
+        if (r < 0) continue;
+        kq = (r + 1) * chainMax + posInBin[j];
+      }
+      key[m] = kq;
+      val[m++] = col | (rows.val[p] << SBBITS);
+    }
+    // keys are distinct (one native atom per bin position): insertion for short rows, else a numeric sort of key m + slot
+    if (m <= 32) {
+      for (let a = 1; a < m; a++) {
+        const ka = key[a], va = val[a];
+        let t = a;
+        while (t > 0 && key[t - 1] > ka) { key[t] = key[t - 1]; val[t] = val[t - 1]; t--; }
+        key[t] = ka; val[t] = va;
+      }
+      for (let a = 0; a < m; a++) pushPair(out, ei, val[a]);
+    } else {
+      for (let a = 0; a < m; a++) key[a] = key[a] * m + a;
+      key.subarray(0, m).sort();
+      for (let a = 0; a < m; a++) pushPair(out, ei, val[key[a] % m]);
+    }
   }
   return out.buf.slice(0, out.len);
 };

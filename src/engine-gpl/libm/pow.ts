@@ -18,7 +18,7 @@
  * inlined. Anything else goes through the fully fused computation (powExact). Checked against the native libm on
  * 3,000,000 pairs (tests/engineLibmPow.test.ts keeps 4033 of them): no difference.
  */
-import { fma } from './log';
+import { fma, fmaF } from './log';
 import {
   InvLn2N, Shift, NegLn2hiN, NegLn2loN, C2, C3, C4, C5, SLO, SC2, SC4, TAB, TAILD, SCALE2, POW2, POW2_OFF,
 } from './exp';
@@ -215,22 +215,22 @@ const logExact = (ixHi: number, ixLo: number): void => {
   const z = asDouble((ixHi - (tmpHi & 0xfff00000)) >>> 0, ixLo);
   const kd = k;
   const invc = TABL[3 * i], logc = TABL[3 * i + 1], logctail = TABL[3 * i + 2];
-  const r = fma(z, invc, -1.0);
-  const t1 = fma(kd, Ln2hi, logc);
+  const r = fmaF(z, invc, -1.0);
+  const t1 = fmaF(kd, Ln2hi, logc);
   const t2 = t1 + r;
-  const lo1 = fma(kd, Ln2lo, logctail);
+  const lo1 = fmaF(kd, Ln2lo, logctail);
   const lo2 = (t1 - t2) + r;
   const ar = A0 * r;
   const ar2 = r * ar;
   const ar3 = r * ar2;
   const hi = t2 + ar2;
-  const lo3 = fma(ar, r, -ar2);
+  const lo3 = fmaF(ar, r, -ar2);
   const lo4 = (t2 - hi) + ar2;
-  const q10 = fma(r, A2, A1);
-  const q11 = fma(r, A4, A3);
-  const q0 = fma(fma(r, A6, A5), ar2, q11);
-  const P = fma(ar2, q0, q10);
-  const lo = fma(ar3, P, ((lo1 + lo2) + lo3) + lo4);
+  const q10 = fmaF(r, A2, A1);
+  const q11 = fmaF(r, A4, A3);
+  const q0 = fmaF(fmaF(r, A6, A5), ar2, q11);
+  const P = fmaF(ar2, q0, q10);
+  const lo = fmaF(ar3, P, ((lo1 + lo2) + lo3) + lo4);
   const y = hi + lo;
   LOG[0] = y;
   LOG[1] = (hi - y) + lo;
@@ -253,23 +253,23 @@ const expExact = (x: number, xtail: number, signBias: number): number => {
     if (abstop >= 0x409) return (U[1] >>> 31) ? uflow(signBias) : oflow(signBias);
     abstop = 0; // large x: the special cases below
   }
-  const ks = fma(L_InvLn2N, x, L_Shift);
+  const ks = fmaF(L_InvLn2N, x, L_Shift);
   F[0] = ks;
   const kiLo = U[0];
   const kd = ks - L_Shift;
-  let r = fma(kd, L_NegLn2loN, fma(kd, L_NegLn2hiN, x));
+  let r = fmaF(kd, L_NegLn2loN, fmaF(kd, L_NegLn2hiN, x));
   r = xtail + r;
   const idx = 2 * (kiLo & 127);
   const tail = asDouble(L_TAB[2 * idx], L_TAB[2 * idx + 1]);
   const sHi = (L_TAB[2 * idx + 2] + ((kiLo + signBias) << 13)) >>> 0, sLo = L_TAB[2 * idx + 3];
   const r2 = r * r;
-  const p = fma(fma(r, L_C3, L_C2), r2, tail + r);
-  const tmp = fma(fma(r, L_C5, L_C4), r2 * r2, p);
+  const p = fmaF(fmaF(r, L_C3, L_C2), r2, tail + r);
+  const tmp = fmaF(fmaF(r, L_C5, L_C4), r2 * r2, p);
   if (abstop === 0) {
     if ((kiLo & 0x80000000) === 0) {
       // k > 0: the exponent of scale might have overflowed by <= 460
       const scale = asDouble((sHi + 0xc0f00000) >>> 0, sLo);
-      return fma(scale, tmp, scale) * 5.486124068793689e+303; // 0x1p1009
+      return fmaF(scale, tmp, scale) * 5.486124068793689e+303; // 0x1p1009
     }
     // k < 0: rounded in two steps near the subnormal range, unfused as compiled
     const sHi2 = (sHi + 0x3fe00000) >>> 0;
@@ -287,7 +287,7 @@ const expExact = (x: number, xtail: number, signBias: number): number => {
     return y * 2.2250738585072014e-308; // 0x1p-1022
   }
   const scale = asDouble(sHi, sLo);
-  return fma(tmp, scale, scale);
+  return fmaF(tmp, scale, scale);
 };
 
 /** The whole computation with every fused step (ix normalized as e_pow.c leaves it). */
@@ -295,7 +295,7 @@ const powExact = (ixHi: number, ixLo: number, y: number, signBias: number): numb
   logExact(ixHi, ixLo);
   const hi = LOG[0], lo = LOG[1];
   const ehi = y * hi;
-  const elo = fma(y, lo, fma(y, hi, -ehi));
+  const elo = fmaF(y, lo, fmaF(y, hi, -ehi));
   return expExact(ehi, elo, signBias);
 };
 

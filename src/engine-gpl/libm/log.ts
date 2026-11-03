@@ -301,23 +301,23 @@ export const log = (x: number): number => {
       const m = 4 * (Math.abs(r3) * 8.881784197001252e-16 + r2 * 8.271806125530277e-25) + 4.9e-324;
       if (y0 + (e0 + m) === y0 && y0 + (e0 - m) === y0) return y0;
     }
-    const a1 = fma(r, B[2], B[1]);
-    const a2 = fma(r, B[5], B[4]);
-    const a3 = fma(r, B[8], B[7]);
-    const b1 = fma(r2, B[3], a1);
-    const b2 = fma(r2, B[6], a2);
-    const b3 = fma(r2, B[9], a3);
-    const c3 = fma(r3, B[10], b3);
-    const c2 = fma(c3, r3, b2);
-    const c1 = fma(c2, r3, b1);
+    const a1 = fmaF(r, B[2], B[1]);
+    const a2 = fmaF(r, B[5], B[4]);
+    const a3 = fmaF(r, B[8], B[7]);
+    const b1 = fmaF(r2, B[3], a1);
+    const b2 = fmaF(r2, B[6], a2);
+    const b3 = fmaF(r2, B[9], a3);
+    const c3 = fmaF(r3, B[10], b3);
+    const c2 = fmaF(c3, r3, b2);
+    const c1 = fmaF(c2, r3, b1);
     // rhi = r + r 2^27 - r 2^27, the two steps fused as in libm
-    const rhi = fma(-134217728, r, fma(r, 134217728, r));
+    const rhi = fmaF(-134217728, r, fmaF(r, 134217728, r));
     const rlo = r - rhi;
     const rhi2 = rhi * rhi;
-    const h = fma(rhi2, B[0], r);
-    const l = fma(rhi2, B[0], r - h);
-    const l2 = fma(B[0] * rlo, r + rhi, l);
-    return h + fma(c1, r3, l2);
+    const h = fmaF(rhi2, B[0], r);
+    const l = fmaF(rhi2, B[0], r - h);
+    const l2 = fmaF(B[0] * rlo, r + rhi, l);
+    return h + fmaF(c1, r3, l2);
   }
   const top = hi >>> 16;
   if (((top - 0x0010) >>> 0) >= 0x7fe0) {

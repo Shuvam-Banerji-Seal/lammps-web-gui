@@ -99,6 +99,8 @@ export const initRun = (sys: System, opts: { verlet?: boolean } = {}): void => {
   // until a pair reinit or the next run (ForceField.tailHold)
   sys.ff.tailHold = null;
   sys.ff.holdTailAtInit = true;
+  // KSpace::init chooses G-ewald, kmax and the mesh again at every run's init (fixes freeze them only during a run)
+  if (sys.ff.kspace) sys.ff.kspace.paramsFrozen = false;
   // force->init comes before atom->init (the per-type masses) and modify->init (computes, then fixes)
   sys.initPair();
   if (!s.rmass) {

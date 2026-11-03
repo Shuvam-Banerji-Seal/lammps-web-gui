@@ -145,6 +145,18 @@ export const estimateRegion = (r: Region, rng: RanPark, fix: string): { lo: Vec3
   return { lo, hi, volume: boxVolume * inside / attempts };
 };
 
+/**
+ * As native LAMMPS does (src/KSPACE/ewald.cpp Ewald::init and pppm.cpp PPPM::init at b332f28): G-ewald, kmax and the
+ * mesh are chosen at the run's init only, and fix gcmc and fix widom refresh only the charge sums after a trial changes
+ * the atoms ("if (force->kspace) force->kspace->qsum_qsq();", src/MC/fix_gcmc.cpp and fix_widom.cpp). Their
+ * full-energy trials re-run the force field's init (System.forces), so the kspace parameters stay frozen from the
+ * run's setup to its end (KSpace.paramsFrozen; initRun clears it at the next run).
+ */
+export const freezeKspace = (sys: System, on: boolean): void => {
+  const k = sys.ff.kspace;
+  if (k) k.paramsFrozen = on;
+};
+
 export class FixWidom extends Fix {
   readonly style = 'widom';
   readonly N: number;
@@ -236,6 +248,10 @@ export class FixWidom extends Fix {
     this.extscalar = 0;
     this.extvector = 0;
   }
+
+  setupPreForce(): void { freezeKspace(this.sys, true); }
+
+  postRun(): void { freezeKspace(this.sys, false); }
 
   init(): void {
     const s = this.sys.state;

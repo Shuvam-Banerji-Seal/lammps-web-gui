@@ -197,6 +197,28 @@ export class BondBpmPeri extends BondBPMBase {
     return r0;
   }
 
+  /**
+   * histOf for the bond in topology slot k with atom IDs lo < hi, through a per-slot record of the entry (entries are
+   * created once and never replaced, so the record stays valid while the slot holds the same bond).
+   */
+  private histAt(k: number, lo: number, hi: number): Float64Array {
+    if (k < this.hSlotLo.length && this.hSlotLo[k] === lo && this.hSlotHi[k] === hi) return this.hSlotRef[k]!;
+    const h = this.histOf(bondKey(lo, hi));
+    if (k >= this.hSlotLo.length) {
+      const c = Math.max(k + 1, Math.ceil(1.25 * this.hSlotLo.length), 16);
+      const L = new Int32Array(c).fill(-1), H = new Int32Array(c);
+      L.set(this.hSlotLo); H.set(this.hSlotHi);
+      this.hSlotLo = L; this.hSlotHi = H;
+    }
+    this.hSlotLo[k] = lo; this.hSlotHi[k] = hi; this.hSlotRef[k] = h;
+    return h;
+  }
+
+  /** histAt's slot records (IDs and the entry of each topology slot). */
+  private hSlotLo = new Int32Array(0);
+  private hSlotHi = new Int32Array(0);
+  private hSlotRef: (Float64Array | undefined)[] = [];
+
   /** The two history values of bond (key), created zero on first use (bond_bpm_peri.cpp store_data). */
   private histOf(key: number): Float64Array {
     let h = this.hist.get(key);
@@ -246,14 +268,22 @@ export class BondBpmPeri extends BondBPMBase {
    * zeroed) and the partial-volume taper. All passes of the compute (dilatation, EPS norm, bond force) read it, as the
    * C++ passes read the same positions.
    */
+  /** buildGeo's arrays, reused while they are large enough. */
+  private geoBuf: Geo | null = null;
+
   private buildGeo(bc: BondedCompute, halfLc: number): Geo {
     const b = bc.s.topo.bonds;
-    const g: Geo = {
-      t: new Int32Array(b.n), i1: new Int32Array(b.n), i2: new Int32Array(b.n),
-      lo: new Int32Array(b.n), hi: new Int32Array(b.n),
-      dx: new Float64Array(b.n), dy: new Float64Array(b.n), dz: new Float64Array(b.n),
-      r: new Float64Array(b.n), r0: new Float64Array(b.n), dr: new Float64Array(b.n), scale: new Float64Array(b.n),
-    };
+    // the arrays of the last call when they hold this many bonds (a skipped slot gets type 0 below)
+    let g = this.geoBuf;
+    if (!g || g.t.length < b.n) {
+      const c = Math.ceil(1.25 * b.n);
+      g = this.geoBuf = {
+        t: new Int32Array(c), i1: new Int32Array(c), i2: new Int32Array(c),
+        lo: new Int32Array(c), hi: new Int32Array(c),
+        dx: new Float64Array(c), dy: new Float64Array(c), dz: new Float64Array(c),
+        r: new Float64Array(c), r0: new Float64Array(c), dr: new Float64Array(c), scale: new Float64Array(c),
+      };
+    }
     const d = [0, 0, 0];
     if (this.slotLo.length < b.n) {
       const c = Math.ceil(1.25 * b.n);
@@ -264,7 +294,7 @@ export class BondBpmPeri extends BondBPMBase {
     const sLo = this.slotLo, sHi = this.slotHi, sR0 = this.slotR0;
     for (let k = 0; k < b.n; k++) {
       const t = b.type[k];
-      if (t <= 0) continue;
+      if (t <= 0) { g.t[k] = 0; continue; }
       const ia = b.atoms[2 * k], ib = b.atoms[2 * k + 1];
       const lo = Math.min(ia, ib), hi = Math.max(ia, ib);
       const i1 = atomIndex(bc, lo, 'bond'), i2 = atomIndex(bc, hi, 'bond');
@@ -336,7 +366,7 @@ export class BondBpmPeri extends BondBPMBase {
       if (winv1 <= 0 || winv2 <= 0) continue;
       const r0 = g.r0[k];
       const dev = g.dr[k] - 0.5 * (theta[i1] + theta[i2]) * r0 * THIRD;
-      const edp = this.histOf(bondKey(g.lo[k], g.hi[k]))[0];
+      const edp = this.histAt(k, g.lo[k], g.hi[k])[0];
       const tdtrial = 15 * this.gshear[t] * (1 / r0) * (winv1 + winv2) * (dev - edp);
       tdn[i1] += tdtrial * tdtrial * vfrac[i2] * g.scale[k];
       tdn[i2] += tdtrial * tdtrial * vfrac[i1] * g.scale[k];
@@ -419,7 +449,7 @@ export class BondBpmPeri extends BondBPMBase {
           const c1 = this.tau[t] / bc.s.dt;
           const decay = libmExp(-1 / c1);
           const beta = 1 - c1 * (1 - decay);
-          const h = this.histOf(bondKey(lo, hi));
+          const h = this.histAt(k, lo, hi);
           const devPrior = h[0], devbackPrior = h[1];
           const edb = devPrior * (1 - decay) + devbackPrior * decay + beta * (dev - devPrior);
           const lam = this.lamb[t];
@@ -440,7 +470,7 @@ export class BondBpmPeri extends BondBPMBase {
         let rk = 0;
         if (w1 > 0 && w2 > 0) {
           const dev = dr - 0.5 * (theta[i1] + theta[i2]) * r0 * THIRD;
-          const h = this.histOf(bondKey(lo, hi));
+          const h = this.histAt(k, lo, hi);
           const edp = h[0];
           rk = 3 * this.kbulk[t] * (theta[i1] * w1 + theta[i2] * w2);
           const tdtrial = 15 * this.gshear[t] * rinv0 * (w1 + w2) * (dev - edp);

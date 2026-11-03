@@ -41,19 +41,41 @@ const cdiv = (a: Cx, b: Cx): Cx => {
  * exp(+2 pi i k.x / N). fix_phonon.cpp calls its fft3d with FORWARD = -1, which is the backward kernel of that
  * wrapper (measured with native LAMMPS, black box: the imaginary parts of Phi(q) have this sign). Separable 1d transforms.
  */
+/**
+ * cos and sin of the phase 2 pi m / n for m = 0 .. n - 1 (the DFT phase (2 pi ((j k) % n)) / n of every term is one of
+ * them), computed once per length n with the same expression and libm calls: the same values as calling cos and sin
+ * for each term.
+ */
+const twiddles = new Map<number, { c: Float64Array; s: Float64Array }>();
+const twiddlesOf = (n: number): { c: Float64Array; s: Float64Array } => {
+  let tw = twiddles.get(n);
+  if (!tw) {
+    const c = new Float64Array(n), s = new Float64Array(n);
+    for (let m = 0; m < n; m++) {
+      const ph = (2 * Math.PI * m) / n;
+      c[m] = libmCos(ph);
+      s[m] = libmSin(ph);
+    }
+    twiddles.set(n, (tw = { c, s }));
+  }
+  return tw;
+};
+
 const dft3 = (data: Cx[], nx: number, ny: number, nz: number): Cx[] => {
   const dft1 = (buf: Cx[], n: number, stride: number, count: number, base: (c: number) => number): void => {
     const tmp: Cx[] = new Array(n);
+    const { c: cosT, s: sinT } = twiddlesOf(n);
     for (let c = 0; c < count; c++) {
       const b = base(c);
       for (let k = 0; k < n; k++) {
         let re = 0, im = 0;
         for (let j = 0; j < n; j++) {
-          const ph = (2 * Math.PI * ((j * k) % n)) / n;
+          const m = (j * k) % n;
+          const cs = cosT[m], sn = sinT[m];
           const x = buf[b + j * stride];
           // exp(+i ph) times x: the sign of the transform of the fix's fft3d call (FORWARD = -1 there)
-          re += x[0] * libmCos(ph) - x[1] * libmSin(ph);
-          im += x[1] * libmCos(ph) + x[0] * libmSin(ph);
+          re += x[0] * cs - x[1] * sn;
+          im += x[1] * cs + x[0] * sn;
         }
         tmp[k] = [re, im];
       }

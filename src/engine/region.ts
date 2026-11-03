@@ -106,7 +106,10 @@ export abstract class Region {
       this.env.remap(p);
       x = p[0]; y = p[1]; z = p[2];
     }
-    if (this.dynamic) [x, y, z] = this.toBodyFrame(x, y, z);
+    if (this.dynamic) {
+      const b = this.toBodyFrame(x, y, z);
+      x = b[0]; y = b[1]; z = b[2];
+    }
     const ins = this.inside(x, y, z);
     return this.interior ? ins : !ins;
   }
@@ -305,12 +308,19 @@ export abstract class Region {
   outContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     let px = x, py = y, pz = z;
     if (this.env.remap) {
-      const p = [px, py, pz];
+      const p = this.remapBuf;
+      p[0] = px; p[1] = py; p[2] = pz;
       this.env.remap(p);
       px = p[0]; py = p[1]; pz = p[2];
     }
-    const [bx, by, bz] = this.dynamic ? this.toBodyFrame(px, py, pz) : [px, py, pz];
-    const body: SurfaceContact[] = [];
+    let bx = px, by = py, bz = pz;
+    if (this.dynamic) {
+      const b = this.toBodyFrame(px, py, pz);
+      bx = b[0]; by = b[1]; bz = b[2];
+    }
+    // the list is reused (contacts and outContacts of one region never nest): its contacts are new objects
+    const body = this.bodyContacts;
+    body.length = 0;
     this.primitiveSideOutContacts(bx, by, bz, body);
     if (!this.dynamic) { for (const c of body) if (c.dist < cutoff) out.push(c); return; }
     for (const c of body) {
@@ -332,15 +342,14 @@ export abstract class Region {
    */
   protected primitiveSideOutContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
     if (this instanceof BlockRegion) {
-      const b = this.b.map((p) => this.val(p));
-      const lo = [b[0], b[2], b[4]], hi = [b[1], b[3], b[5]];
-      const p = [x, y, z];
-      let inside = true;
-      for (let a = 0; a < 3; a++) if (p[a] < lo[a] || p[a] > hi[a]) inside = false;
-      if (inside) return;
-      const s = [0, 0, 0];
-      for (let a = 0; a < 3; a++) s[a] = p[a] < lo[a] ? lo[a] : p[a] > hi[a] ? hi[a] : p[a];
-      const dx = x - s[0], dy = y - s[1], dz = z - s[2];
+      const bp = this.b;
+      const xlo = this.val(bp[0]), xhi = this.val(bp[1]), ylo = this.val(bp[2]), yhi = this.val(bp[3]);
+      const zlo = this.val(bp[4]), zhi = this.val(bp[5]);
+      if (!(x < xlo || x > xhi || y < ylo || y > yhi || z < zlo || z > zhi)) return;
+      const sx = x < xlo ? xlo : x > xhi ? xhi : x;
+      const sy = y < ylo ? ylo : y > yhi ? yhi : y;
+      const sz = z < zlo ? zlo : z > zhi ? zhi : z;
+      const dx = x - sx, dy = y - sy, dz = z - sz;
       const d = Math.hypot(dx, dy, dz);
       if (!(d > 0)) return;
       out.push({ key: 'out', dist: d, nx: dx / d, ny: dy / d, nz: dz / d, curvature: 0, source: this });
@@ -668,30 +677,55 @@ export class CompoundRegion extends Region {
   contacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     let px = x, py = y, pz = z;
     if (this.env.remap) {
-      const p = [px, py, pz];
+      const p = this.cRemap;
+      p[0] = px; p[1] = py; p[2] = pz;
       this.env.remap(p);
       px = p[0]; py = p[1]; pz = p[2];
     }
-    const members = this.members.map((m) => {
-      const r = this.env.region(m);
-      if (!r) throw new StyleError(`region ${this.id}: sub-region ${m} no longer exists`);
-      return r;
-    });
+    const members = this.memberRegions();
     const base = out.length;
+    // the sub-region contacts go through this region's list (a nested compound has its own)
+    const sub = this.subBuf;
     for (const m of members) {
       if (!m.match(px, py, pz)) continue;
-      const sub: SurfaceContact[] = [];
+      sub.length = 0;
       m.contacts(px, py, pz, sub, cutoff);
       for (const c of sub) {
         const qx = px - c.dist * c.nx, qy = py - c.dist * c.ny, qz = pz - c.dist * c.nz;
-        const keep = this.style === 'intersect'
-          ? members.every((mm) => mm.match(qx, qy, qz))
-          : members.every((mm) => mm === m || !mm.match(qx, qy, qz));
+        const keep = this.style === 'intersect' ? this.allMatch(members, null, qx, qy, qz) : this.noneMatch(members, m, qx, qy, qz);
         if (keep) out.push(c);
       }
       if (m.rotate && sub.length) this.retransform(m, out, base, sub.length, px, py, pz);
     }
   }
+
+  /** The sub-regions, resolved into a reused array (the ids are looked up each time: a region may be redefined). */
+  private memberRegions(): Region[] {
+    const out = this.memberBuf;
+    out.length = 0;
+    for (const m of this.members) {
+      const r = this.env.region(m);
+      if (!r) throw new StyleError(`region ${this.id}: sub-region ${m} no longer exists`);
+      out.push(r);
+    }
+    return out;
+  }
+
+  /** Every sub-region other than skip matches the point (members.every with mm === skip passing). */
+  private allMatch(members: Region[], skip: Region | null, x: number, y: number, z: number): boolean {
+    for (const mm of members) if (mm !== skip && !mm.match(x, y, z)) return false;
+    return true;
+  }
+
+  /** No sub-region other than skip matches the point. */
+  private noneMatch(members: Region[], skip: Region, x: number, y: number, z: number): boolean {
+    for (const mm of members) if (mm !== skip && mm.match(x, y, z)) return false;
+    return true;
+  }
+
+  private readonly memberBuf: Region[] = [];
+  private readonly subBuf: SurfaceContact[] = [];
+  private readonly cRemap = [0, 0, 0];
 
   /**
    * As native LAMMPS does (src/region_intersect.cpp and src/region_union.cpp surface_interior and surface_exterior at
@@ -729,25 +763,22 @@ export class CompoundRegion extends Region {
   surfaceContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     let px = x, py = y, pz = z;
     if (this.env.remap) {
-      const p = [px, py, pz];
+      const p = this.cRemap;
+      p[0] = px; p[1] = py; p[2] = pz;
       this.env.remap(p);
       px = p[0]; py = p[1]; pz = p[2];
     }
-    const members = this.members.map((m) => {
-      const r = this.env.region(m);
-      if (!r) throw new StyleError(`region ${this.id}: sub-region ${m} no longer exists`);
-      return r;
-    });
+    const members = this.memberRegions();
     const base = out.length;
+    // the sub-region contacts go through this region's list (a nested compound has its own)
+    const sub = this.subBuf;
     for (const m of members) {
       if (!m.match(px, py, pz)) continue;
-      const sub: SurfaceContact[] = [];
+      sub.length = 0;
       m.surfaceContacts(px, py, pz, sub, cutoff);
       for (const c of sub) {
         const qx = px - c.dist * c.nx, qy = py - c.dist * c.ny, qz = pz - c.dist * c.nz;
-        const keep = this.style === 'intersect'
-          ? members.every((mm) => mm === m || mm.match(qx, qy, qz))
-          : members.every((mm) => mm === m || !mm.match(qx, qy, qz));
+        const keep = this.style === 'intersect' ? this.allMatch(members, m, qx, qy, qz) : this.noneMatch(members, m, qx, qy, qz);
         if (keep) out.push(c);
       }
       if (m.rotate && sub.length) this.retransform(m, out, base, sub.length, px, py, pz);

@@ -217,9 +217,24 @@ export class BondedHybrid extends Bonded {
 
   /** Topology changes of any sub-style (bpm breaks, rheo/shell removals) since the last call. */
   takeTopologyChange(): boolean {
-    let changed = false;
-    for (const st of this.subs ?? []) if (st.takeTopologyChange?.()) changed = true;
-    return changed;
+    this.changedSubs = [];
+    for (const st of this.subs ?? []) if (st.takeTopologyChange?.()) this.changedSubs.push(st);
+    return this.changedSubs.length > 0;
+  }
+
+  /** The sub-styles whose topology changed at the last takeTopologyChange. */
+  private changedSubs: Bonded[] = [];
+
+  /** The broken pairs of every sub-style, or null when a changed sub-style has none (its change needs a rebuild). */
+  takeBrokenPairs(): number[] | null {
+    const out: number[] = [];
+    let ok = true;
+    for (const st of this.subs ?? []) {
+      const p = st.takeBrokenPairs?.() ?? null;
+      if (p) for (let k = 0; k < p.length; k++) out.push(p[k]);
+      else if (this.changedSubs.includes(st)) ok = false;
+    }
+    return ok ? out : null;
   }
 
   /** The sub-style that owns the type decides whether its bonds ignore the special lists (see Bonded.ignoresSpecial). */

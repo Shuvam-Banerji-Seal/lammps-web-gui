@@ -67,7 +67,7 @@ export class BondBpmSpringPlastic extends BondBPMBase {
       let ep = st[1];
       const e = (r - r0) / r0;
       if (Math.abs(e) > ecrit[t] && updating && this.breakOn) {
-        this.breakBond(b.type, k);
+        this.breakBond(b.type, k, b.atoms);
         continue;
       }
       // plastic activation: the equilibrium strain follows the bond once |e - ep| exceeds epsilon_p

@@ -959,6 +959,11 @@ export abstract class Bonded {
   /** Bonds broken by the last compute() (bond_style bpm/spring): true once, then cleared. */
   takeTopologyChange?(): boolean;
   /**
+   * After takeTopologyChange: the (lower ID, higher ID) pairs of the bonds that broke, when only they changed and the
+   * special lists can be updated in place (native fix update/special/bonds); null when the special lists are rebuilt.
+   */
+  takeBrokenPairs?(): number[] | null;
+  /**
    * bond_style bpm/* keyword store/local ID N values: the fix store/local ID the style writes its broken-bond rows to
    * (bond_bpm.cpp settings). bond_style creates the fix from this request and hands the style its addRow sink.
    */

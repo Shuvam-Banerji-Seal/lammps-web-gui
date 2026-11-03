@@ -522,7 +522,8 @@ export class Thermo {
         for (let i = 0; i < 3 * s.n; i++) t += s.f[i] * s.f[i];
         return Math.sqrt(t);
       }
-      case 'nbuild': return sys.nb.nbuild;
+      // thermo_style.html: "nbuild = # of neighbor list builds"; native compute_nbuild reads neighbor->ncalls
+      case 'nbuild': return sys.nb.ncalls;
       case 'ndanger': return sys.nb.ndanger;
     }
     throw new StyleError(`unknown thermo keyword '${k}'`);

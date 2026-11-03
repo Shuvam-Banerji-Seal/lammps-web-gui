@@ -53,7 +53,7 @@ export class BondBpmZero extends BondBPMBase {
         this.ref.set(key, r0);
       }
       const e = (r - r0) / r0;
-      if (Math.abs(e) > ecrit[t] && updating && this.breakOn) this.breakBond(b.type, k);
+      if (Math.abs(e) > ecrit[t] && updating && this.breakOn) this.breakBond(b.type, k, b.atoms);
     }
   }
 }

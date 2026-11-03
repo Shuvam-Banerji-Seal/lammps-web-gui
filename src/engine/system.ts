@@ -405,9 +405,14 @@ export class System {
     this.ff.init(s, this.nb, this.geom, this.styleContext(), pairDone);
     this.nb.nativeFullParent = this.fixes.some((f) => f.nativeFullList);
     this.pbc();
+    // a run's or minimization's setup: as native LAMMPS does (src/neighbor.cpp Neighbor::init at b332f28: "ncalls =
+    // ndanger = 0"; src/verlet.cpp Verlet::setup: "neighbor->build(1); ... neighbor->ncalls = 0;"), the dangerous
+    // builds start from zero and the setup build is not counted
+    if (sort) this.nb.ndanger = 0;
     if (sort) this.sortAtoms(true);
     if (lists) this.nb.build(s, this.geom, s.step);
     else this.nb.markBuilt(s, this.geom, s.step);
+    if (sort) this.nb.ncalls = 0;
     for (const f of this.fixes) f.afterForceInit?.();
     this.checkDynamicWithin();
   }

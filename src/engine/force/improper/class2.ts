@@ -225,8 +225,17 @@ export class ImproperClass2 extends Bonded {
     const rel = new Array(12).fill(0);
     let e = 0;
     for (let q = 0; q < I.n; q++) {
-      const atoms = [0, 1, 2, 3].map((w) => atomIndex(bc, I.atoms[4 * q + w], 'improper'));
       const t = I.type[q];
+      // As native LAMMPS does (src/CLASS2/improper_class2.cpp at b332f28): compute() skips the out-of-plane term of a
+      // type with "if (k0[type] == 0.0) continue;" and angleangle() skips the angle-angle term of a type with
+      // "if ((aa_k1[type] == 0.0) && (aa_k2[type] == 0.0) && (aa_k3[type] == 0.0)) continue;"
+      const aa = this.M1[t] !== 0 || this.M2[t] !== 0 || this.M3[t] !== 0;
+      if (this.K[t] === 0 && !aa) {
+        // the atoms must still exist (native's improper list reports missing atoms whatever the coefficients)
+        for (let w = 0; w < 4; w++) atomIndex(bc, I.atoms[4 * q + w], 'improper');
+        continue;
+      }
+      const atoms = [0, 1, 2, 3].map((w) => atomIndex(bc, I.atoms[4 * q + w], 'improper'));
       fk.fill(0);
       let ei = 0;
       if (this.K[t] !== 0) {
@@ -239,15 +248,18 @@ export class ImproperClass2 extends Bonded {
         const coef = (2 * this.K[t] * P) / 3;
         for (let p = 0; p < 12; p++) fk[p] += -coef * (g1[p] + g2[p] + g3[p]);
       }
-      const th1 = this.t1[t], th2 = this.t2[t], th3 = this.t3[t];
-      const a = this.angleAt(bc, atoms, 0, 1, 2);
-      const b = this.angleAt(bc, atoms, 0, 1, 3);
-      const c = this.angleAt(bc, atoms, 2, 1, 3);
-      const da = a - th1, db = b - th2, dc = c - th3;
-      const eaa = this.M1[t] * da * dc + this.M2[t] * da * db + this.M3[t] * db * dc;
-      this.addAngleForce(bc, atoms, 0, 1, 2, this.M1[t] * dc + this.M2[t] * db, fk);
-      this.addAngleForce(bc, atoms, 0, 1, 3, this.M2[t] * da + this.M3[t] * dc, fk);
-      this.addAngleForce(bc, atoms, 2, 1, 3, this.M1[t] * da + this.M3[t] * db, fk);
+      let eaa = 0;
+      if (aa) {
+        const th1 = this.t1[t], th2 = this.t2[t], th3 = this.t3[t];
+        const a = this.angleAt(bc, atoms, 0, 1, 2);
+        const b = this.angleAt(bc, atoms, 0, 1, 3);
+        const c = this.angleAt(bc, atoms, 2, 1, 3);
+        const da = a - th1, db = b - th2, dc = c - th3;
+        eaa = this.M1[t] * da * dc + this.M2[t] * da * db + this.M3[t] * db * dc;
+        this.addAngleForce(bc, atoms, 0, 1, 2, this.M1[t] * dc + this.M2[t] * db, fk);
+        this.addAngleForce(bc, atoms, 0, 1, 3, this.M2[t] * da + this.M3[t] * dc, fk);
+        this.addAngleForce(bc, atoms, 2, 1, 3, this.M1[t] * da + this.M3[t] * db, fk);
+      }
       const et = ei + eaa;
       e += et;
       const f = bc.f;

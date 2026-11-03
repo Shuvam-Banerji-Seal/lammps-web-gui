@@ -130,8 +130,45 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
     this.ensureScratch(list.inum);
     this.buildKCNeighbors(pc, list);
     this.calcNormals(pc);
-    this.calcFvdW(pc, list);
-    this.calcFRep(pc, list);
+    const inter = this.interLayerList(pc, list);
+    this.calcFvdW(pc, inter);
+    this.calcFRep(pc, inter);
+  }
+
+  /** interLayerList's list, the full list it was made from, its build and the molecule IDs of the owned atoms then. */
+  private inter: { list: NeighList; from: NeighList; nbuild: number; mol: Int32Array } | null = null;
+
+  /**
+   * The entries of the full list between atoms of different molecules, in their order. calcFvdW and calcFRep take
+   * only those ("atom->molecule[i] != atom->molecule[j]" in native compute), so the others contribute nothing; with
+   * the interlayer cutoff (16 Angstrom and more) most entries of a layer are its own atoms. Made at each list build,
+   * and again when a molecule ID changed.
+   */
+  private interLayerList(pc: PairCompute, list: NeighList): NeighList {
+    const mol = pc.s.molecule!;
+    const n = pc.s.n, owner = pc.nb.owner;
+    const c = this.inter;
+    if (c && c.from === list && c.nbuild === pc.nb.nbuild && c.mol.length === n) {
+      let same = true;
+      for (let i = 0; i < n; i++) if (c.mol[i] !== mol[i]) { same = false; break; }
+      if (same) return c.list;
+    }
+    const inum = list.inum;
+    const numneigh = new Int32Array(inum), firstneigh = new Int32Array(inum);
+    const out = new Int32Array(list.neighbors.length);
+    let m = 0;
+    for (let i = 0; i < inum; i++) {
+      firstneigh[i] = m;
+      const mi = mol[owner[i]];
+      for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
+        const jj = list.neighbors[k];
+        if (mol[owner[jj & NEIGHMASK]] !== mi) out[m++] = jj;
+      }
+      numneigh[i] = m - firstneigh[i];
+    }
+    const inter: NeighList = { ...list, numneigh, firstneigh, neighbors: out.subarray(0, m) };
+    this.inter = { list: inter, from: list, nbuild: pc.nb.nbuild, mol: Int32Array.from(mol.subarray(0, n)) };
+    return inter;
   }
 
   private ensureScratch(n: number): void {

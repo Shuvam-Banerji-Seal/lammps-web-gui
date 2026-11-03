@@ -98,18 +98,36 @@ export abstract class BondBPMBase extends SimpleBonded {
     return rest;
   }
 
-  /** True once after a compute() that broke bonds (the force field then rebuilds the special lists). */
+  /** True once after a compute() that broke bonds (the force field then updates the special lists). */
   takeTopologyChange(): boolean {
     const c = this.changed;
     this.changed = false;
     // overlay/pair yes: the special lists are not updated when bonds break (bond_bpm.cpp init_style: no fix update_special_bonds)
+    if (this.overlay) this.broken = [];
     return c && !this.overlay;
   }
 
-  /** Breaks bond k: its type is set to 0 (the doc: "setting the bond type to 0"). */
-  protected breakBond(type: Int32Array, k: number): void {
+  /**
+   * The bonds broken since the last call, as (lower ID, higher ID) pairs: native BondBPM::process_broken hands each to
+   * fix update/special/bonds (add_broken_bond), which bond_bpm.cpp init_style creates with break yes and overlay/pair
+   * no. The force field clears their special bits in the current neighbor lists and updates the special lists for
+   * the next build, as that fix does.
+   */
+  takeBrokenPairs(): number[] | null {
+    const p = this.broken;
+    this.broken = [];
+    return p;
+  }
+
+  /** takeBrokenPairs' pairs. */
+  private broken: number[] = [];
+
+  /** Breaks bond k (its atom IDs in atoms): its type is set to 0 (the doc: "setting the bond type to 0"). */
+  protected breakBond(type: Int32Array, k: number, atoms: Int32Array): void {
     type[k] = 0;
     this.changed = true;
+    const a = atoms[2 * k], b = atoms[2 * k + 1];
+    this.broken.push(a < b ? a : b, a < b ? b : a);
   }
 
   /**

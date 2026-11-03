@@ -384,6 +384,29 @@ export class ForceField {
   }
 
   /**
+   * Whether broken bonds update the special lists as native fix update/special/bonds does (special_bonds lj 0 1 1 and
+   * coul 1 1 1, which bond_bpm.cpp init_style requires for it, so the lists hold the 1-2 partners only).
+   */
+  private updatesSpecialInPlace(): boolean {
+    const { lj, coul } = this.special;
+    return lj[0] === 0 && lj[1] === 1 && lj[2] === 1 && coul[0] === 1 && coul[1] === 1 && coul[2] === 1
+      && !this.special.one5 && !this.specialHook;
+  }
+
+  /**
+   * Bonds broke (pairs: lower ID, higher ID, ...). As native LAMMPS does (src/BPM/bond_bpm.cpp process_broken and
+   * src/BPM/fix_update_special_bonds.cpp at b332f28): the pairs lose their special bits in the current neighbor lists
+   * (pre_force) and the special lists change at the next re-neighboring (pre_exchange), with no extra list build, so
+   * the builds stay on their schedule.
+   */
+  private breakSpecialPairs(s: SimState, nb: Neighbor, pairs: readonly number[]): void {
+    if (!this.specialList || pairs.length === 0) return;
+    this.specialList = this.buildSpecialList(s);
+    nb.deferSpecial(this.specialList);
+    nb.clearSpecialPairs(s, pairs, this.map);
+  }
+
+  /**
    * Special lists from the bond topology, passed through specialHook when a fix has set one (fix drude
    * changes them for Drude particles, docs.lammps.org/fix_drude.html).
    */
@@ -493,7 +516,9 @@ export class ForceField {
       if (this.bond?.takeTopologyChange?.()) {
         // bonds a style deleted (BOND_REMOVED) leave the topology (native removes them from the atoms' bond lists)
         filterTopo(s.topo.bonds, (_ids, type) => type !== BOND_REMOVED);
-        this.topologyChanged(s, nb);
+        const pairs = this.bond.takeBrokenPairs?.() ?? null;
+        if (pairs && this.updatesSpecialInPlace()) this.breakSpecialPairs(s, nb, pairs);
+        else this.topologyChanged(s, nb);
       }
       run(this.angle, 'angle', acc.vangle);
       run(this.dihedral, 'dihedral', acc.vdihed);

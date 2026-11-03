@@ -248,7 +248,7 @@ export class BondBpmRotational extends BondBPMBase {
       const rf: Vec3 = [d[0], d[1], d[2]];
       const L = this.loads(bc, i1, i2, t, h);
       if (L.breaking >= 1 && this.breakOn) {
-        this.breakBond(b.type, k);
+        this.breakBond(b.type, k, b.atoms);
         this.emitBreak(bc, ia, ib);
         continue;
       }

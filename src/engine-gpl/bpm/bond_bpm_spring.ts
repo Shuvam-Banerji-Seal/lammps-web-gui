@@ -92,7 +92,7 @@ export class BondBpmSpring extends BondBPMBase {
 
   /** Breaks a bond (type 0) and records it; takeTopologyChange reads the flag. */
   private breakSpring(bc: BondedCompute, b: Int32Array, k: number, ia: number, ib: number): void {
-    this.breakBond(b, k);
+    this.breakBond(b, k, bc.s.topo.bonds.atoms);
     this.emitBreak(bc, ia, ib);
   }
 

@@ -265,8 +265,54 @@ export class Neighbor {
   /** Set when the special list changed (bonds broke): the next decide() rebuilds the lists. */
   private specialStale = false;
 
+  /** A special list for the next build (deferSpecial), or undefined. */
+  private pendingSpecial: SpecialList | null | undefined = undefined;
+
+  /**
+   * The special list from the next build on, without a rebuild now. As native LAMMPS does
+   * (src/BPM/fix_update_special_bonds.cpp at b332f28): the special arrays of broken bonds are updated at the next
+   * re-neighboring (pre_exchange), the lists of this step are edited instead (clearSpecialPairs).
+   */
+  deferSpecial(special: SpecialList | null): void {
+    this.pendingSpecial = special;
+  }
+
+  /**
+   * Clears the special bits of the entries between the atoms of each broken bond (pairs: ID, ID, ...) in the current
+   * lists, as native LAMMPS does (src/BPM/fix_update_special_bonds.cpp pre_force at b332f28): in the rows of both
+   * atoms, "j &= SPECIALMASK; if (tag[j] == tag2) jlist[jj] = j". A list that changes is replaced by an edited copy,
+   * so whatever was derived from the old list (keyed by the list) is derived again.
+   */
+  clearSpecialPairs(s: SimState, pairs: readonly number[], map: Int32Array): void {
+    const owner = this.owner, id = s.id;
+    const edit = (L: NeighList | null): NeighList | null => {
+      if (!L) return L;
+      let out: Int32Array | null = null;
+      for (let p = 0; p + 1 < pairs.length; p += 2) {
+        for (let side = 0; side < 2; side++) {
+          const ta = pairs[p + side], tb = pairs[p + 1 - side];
+          const i = ta >= 0 && ta < map.length ? map[ta] : -1;
+          if (i < 0 || i >= L.inum) continue;
+          const nbr: Int32Array = out ?? L.neighbors;
+          for (let q = L.firstneigh[i], q1 = q + L.numneigh[i]; q < q1; q++) {
+            const raw = nbr[q];
+            if (raw >>> SBBITS === 0) continue;
+            const j = raw & NEIGHMASK;
+            if (id[owner[j]] !== tb) continue;
+            if (!out) out = L.neighbors.slice();
+            out[q] = j;
+          }
+        }
+      }
+      return out ? { ...L, neighbors: out } : L;
+    };
+    this.half = edit(this.half);
+    this.full = edit(this.full);
+  }
+
   /** Replaces the special list of the needs (bonds broke or were created during a run). */
   setSpecial(special: SpecialList | null): void {
+    this.pendingSpecial = undefined;
     const old = this.needs?.special ?? null;
     if (this.needs) this.needs.special = special;
     // an unchanged list (the same pairs in the same order) needs no extra build: a forced build here would move
@@ -385,6 +431,7 @@ export class Neighbor {
     // every build uses the current special list, so a list handed over before it (read_data, create_bonds) needs
     // no extra build at the next step
     this.specialStale = false;
+    this.applyPendingSpecial();
     this.makeGhosts(s, g);
     if (this.cutneighmax > 0) {
       if (needs.half) this.half = this.buildList(s, needs, false);
@@ -409,9 +456,17 @@ export class Neighbor {
    */
   markBuilt(s: SimState, g: Geometry, step: number): void {
     this.specialStale = false;
+    this.applyPendingSpecial();
     // the lamda System.pbc left for this build's ghosts (a triclinic box) has no use without them
     this.freshLamda = null;
     this.recordBuild(s, g, step);
+  }
+
+  /** deferSpecial's list goes into the needs at a build (native pre_exchange runs before the re-neighboring). */
+  private applyPendingSpecial(): void {
+    if (this.pendingSpecial === undefined) return;
+    if (this.needs) this.needs.special = this.pendingSpecial;
+    this.pendingSpecial = undefined;
   }
 
   private recordBuild(s: SimState, g: Geometry, step: number): void {
@@ -422,7 +477,15 @@ export class Neighbor {
     this.forcedDecision = false;
     this.lastBuild = step;
     this.nbuild++;
+    this.ncalls++;
   }
+
+  /**
+   * The builds of the current run, the thermo keyword nbuild: native neighbor->ncalls, which Verlet::setup and
+   * Min::setup reset after the setup build (src/verlet.cpp and src/min.cpp at b332f28: "neighbor->build(1); ...
+   * neighbor->ncalls = 0;"). nbuild counts every build (the lists' identity for caches).
+   */
+  ncalls = 0;
 
   /**
    * neigh_modify one (neigh_modify.html: "one value = N  N = max # of neighbors of one atom"). As native LAMMPS does

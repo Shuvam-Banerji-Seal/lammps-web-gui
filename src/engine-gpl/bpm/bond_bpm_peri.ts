@@ -386,7 +386,7 @@ export class BondBpmPeri extends BondBPMBase {
       const stretch = dr / r0;
       const smin1 = sminPrev[i1], smin2 = sminPrev[i2];
       if (allow && stretch > this.s00[t] - this.alpha[t] * Math.max(smin1, smin2)) {
-        this.breakBond(b.type, k);
+        this.breakBond(b.type, k, b.atoms);
         continue;
       }
       const scale = g.scale[k];

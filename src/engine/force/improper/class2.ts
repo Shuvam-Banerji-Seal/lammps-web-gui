@@ -138,7 +138,7 @@ export class ImproperClass2 extends Bonded {
    */
   private oopOne(bc: BondedCompute, atoms: readonly number[], ci: number, ai: number, p1i: number, p2i: number, grad: number[]): number {
     const C = atoms[ci], Ap = atoms[ai], P1 = atoms[p1i], P2 = atoms[p2i];
-    const v = [0, 0, 0], b1 = [0, 0, 0], b2 = [0, 0, 0];
+    const v = this.sv, b1 = this.sb1, b2 = this.sb2;
     termDelta(bc, atoms[1], C, Ap, v);
     termDelta(bc, atoms[1], C, P1, b1);
     termDelta(bc, atoms[1], C, P2, b2);
@@ -179,8 +179,15 @@ export class ImproperClass2 extends Bonded {
   }
 
   /** Angle at J of the triplet (p, J, q) in radians. */
+  /** Scratch vectors of the geometry helpers (made with doubles so the stores keep one element kind). */
+  private readonly sv = [0.5, 0.5, 0.5];
+  private readonly sb1 = [0.5, 0.5, 0.5];
+  private readonly sb2 = [0.5, 0.5, 0.5];
+  private readonly sd1 = [0.5, 0.5, 0.5];
+  private readonly sd2 = [0.5, 0.5, 0.5];
+
   private angleAt(bc: BondedCompute, atoms: readonly number[], pi: number, ji: number, qi: number): number {
-    const d1 = [0, 0, 0], d2 = [0, 0, 0];
+    const d1 = this.sd1, d2 = this.sd2;
     termDelta(bc, atoms[1], atoms[ji], atoms[pi], d1);
     termDelta(bc, atoms[1], atoms[ji], atoms[qi], d2);
     const r1 = Math.hypot(d1[0], d1[1], d1[2]), r2 = Math.hypot(d2[0], d2[1], d2[2]);
@@ -192,7 +199,7 @@ export class ImproperClass2 extends Bonded {
 
   /** Adds f = -coef * d(theta)/dx for the triplet to fk (indexed by the positions pi, ji, qi). */
   private addAngleForce(bc: BondedCompute, atoms: readonly number[], pi: number, ji: number, qi: number, coef: number, fk: number[]): void {
-    const d1 = [0, 0, 0], d2 = [0, 0, 0];
+    const d1 = this.sd1, d2 = this.sd2;
     termDelta(bc, atoms[1], atoms[ji], atoms[pi], d1);
     termDelta(bc, atoms[1], atoms[ji], atoms[qi], d2);
     const r1 = Math.hypot(d1[0], d1[1], d1[2]), r2 = Math.hypot(d2[0], d2[1], d2[2]);

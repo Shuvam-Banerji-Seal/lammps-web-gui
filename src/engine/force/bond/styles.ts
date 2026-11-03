@@ -104,7 +104,7 @@ export class BondFene extends SimpleBonded {
       const j = mapIndex(map, atoms[2 * k + 1], 'bond');
       const t = type[k];
       // r_j - r_i (copy of j nearest to i)
-      if (!(cp?.x && copyDelta(x, cp.x, cp.built, cp.start, i, j, d, 0))) delta(bc, i, j, d);
+      if (!(cp?.x && copyDelta(x, cp.x, cp.built, cp.start, i, j, d, 0, cp.reach2))) delta(bc, i, j, d);
       const delx = -d[0], dely = -d[1], delz = -d[2];
       const rsq = delx * delx + dely * dely + delz * delz;
       const r0sq = R0[t] * R0[t];

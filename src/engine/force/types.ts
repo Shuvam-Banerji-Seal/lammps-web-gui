@@ -794,6 +794,11 @@ export interface BondedCopies {
   x?: Float64Array;
   /** The same positions at the last neighbor build (Neighbor.xBuilt), which choose the copy (see copyDelta). */
   built?: Float64Array;
+  /**
+   * A squared distance below which the owned copy is the nearest one at the last build (every other copy is a periodic
+   * image, at least the shortest period minus the distance away): (0.49 L_min)^2 for an orthogonal box, 0 otherwise.
+   */
+  reach2?: number;
 }
 
 /** What a bonded style sees during compute(). Positions are owned atoms only. */

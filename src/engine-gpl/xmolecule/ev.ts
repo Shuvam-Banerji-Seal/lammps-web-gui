@@ -76,7 +76,7 @@ export const evTallyAngle = (
  */
 export const evTallyFour = (
   bc: BondedCompute, atoms: readonly number[], kind: 'dihed' | 'imp', e: number,
-  f1: readonly number[], f3: readonly number[], f4: readonly number[],
+  f1: ArrayLike<number>, f3: ArrayLike<number>, f4: ArrayLike<number>,
   vb1: readonly number[], vb2: readonly number[], vb3: readonly number[],
 ): void => {
   if (kind === 'dihed') bc.acc.edihed += e; else bc.acc.eimp += e;

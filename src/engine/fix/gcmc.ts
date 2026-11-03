@@ -6,7 +6,7 @@ import { appendAtoms, deleteAtoms, hasChargeStyle, isMolecularStyle } from '../a
 import { appendMolecule, num } from './pour';
 import { inumeric, numeric } from '../force/util';
 import { rotationMatrix, type MoleculeTemplate } from '../molecule';
-import { estimateRegion, boxInsertionPoint, maxMoleculeId, topoList } from './widom';
+import { estimateRegion, boxInsertionPoint, freezeKspace, maxMoleculeId, topoList } from './widom';
 import { BlockRegion, type Region } from '../region';
 import { newAccum, type Bonded, type BondedCompute } from '../force/types';
 import type { System } from '../system';
@@ -425,6 +425,10 @@ export class FixGcmc extends Fix {
     this.nextStep = r.nextStep;
     [this.ntransAtt, this.ntransSucc, this.nrotAtt, this.nrotSucc, this.ndelAtt, this.ndelSucc, this.ninsAtt, this.ninsSucc] = r.counters;
   }
+
+  setupPreForce(): void { freezeKspace(this.sys, true); }
+
+  postRun(): void { freezeKspace(this.sys, false); }
 
   init(): void {
     const s = this.sys.state;

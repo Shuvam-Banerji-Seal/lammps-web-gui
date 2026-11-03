@@ -581,7 +581,10 @@ export class Neighbor {
     let owner = this.sGhostOwner, img = this.sGhostImage;
     let ng = 0;
     const lam = [0, 0, 0];
-    const gstart = new Int32Array(n + 1);
+    // the image range of the current atom (reused for every atom)
+    const lo = [0, 0, 0], hi = [0, 0, 0];
+    // every entry of these per-build arrays is rewritten below, so a build of the same size reuses them
+    const gstart = this.ghostStart.length === n + 1 ? this.ghostStart : new Int32Array(n + 1);
     const border = this.borderBit;
     const fresh = g.triclinic && this.freshLamda !== null && this.freshLamda.length === 3 * n ? this.freshLamda : null;
     this.freshLamda = null;
@@ -589,8 +592,8 @@ export class Neighbor {
       gstart[i] = n + ng;
       if (border !== 0 && (s.mask[i] & border) === 0) continue;
       if (fresh) { lam[0] = fresh[3 * i]; lam[1] = fresh[3 * i + 1]; lam[2] = fresh[3 * i + 2]; } else g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
-      const lo = [0, 0, 0], hi = [0, 0, 0];
       for (let d = 0; d < 3; d++) {
+        lo[d] = 0; hi[d] = 0;
         if (ext[d] < 0) continue;
         lo[d] = Math.ceil(-ext[d] - lam[d]);
         hi[d] = Math.floor(1 + ext[d] - lam[d]);
@@ -618,17 +621,18 @@ export class Neighbor {
     this.nlocal = n;
     this.nghost = ng;
     const nall = n + ng;
-    this.owner = new Int32Array(nall);
+    if (this.owner.length !== nall) this.owner = new Int32Array(nall);
     for (let i = 0; i < n; i++) this.owner[i] = i;
     this.owner.set(owner.subarray(0, ng), n);
-    this.gimage = new Int32Array(3 * nall);
+    if (this.gimage.length !== 3 * nall) this.gimage = new Int32Array(3 * nall);
+    this.gimage.fill(0, 0, 3 * n);
     this.gimage.set(img.subarray(0, 3 * ng), 3 * n);
     if (this.xall.length !== 3 * nall || (this.listThreads !== null && !(this.fall.buffer instanceof SharedArrayBuffer))) {
       this.xall = new Float64Array(3 * nall);
       this.fall = this.listThreads !== null && typeof SharedArrayBuffer !== 'undefined' ? new Float64Array(new SharedArrayBuffer(24 * nall)) : new Float64Array(3 * nall);
     }
-    this.typeall = new Int32Array(nall);
-    this.qall = new Float64Array(nall);
+    if (this.typeall.length !== nall) this.typeall = new Int32Array(nall);
+    if (this.qall.length !== nall) this.qall = new Float64Array(nall);
     for (let k = 0; k < nall; k++) {
       const o = this.owner[k];
       this.typeall[k] = s.type[o];

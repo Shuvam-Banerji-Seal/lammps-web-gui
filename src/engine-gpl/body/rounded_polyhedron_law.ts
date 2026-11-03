@@ -25,6 +25,8 @@ import { acos as libmAcos } from '../libm/acos';
 export type V3 = [number, number, number];
 
 const EPSILON = 1.0e-3;
+/** The band about inside_polygon's threshold within which the angle sum is formed with native's acos (insidePolygon). */
+const FAST_MARGIN = 1.0e-9;
 const PARALLEL_TOL = 1.0e-12;
 const CONE_TOL = 1.0e-10;
 const BIG = 1.0e20;
@@ -759,32 +761,42 @@ export class PolyhedronPairLaw {
     return { s: smax, n, nf };
   }
 
-  /** inside_polygon (native): whether q1 (and q2) are inside the face fi of body b, by the angle sum about the point. */
+  /**
+   * inside_polygon (native): whether q1 (and q2) are inside the face fi of body b, by the angle sum about the point: a
+   * point at a vertex, or one whose sum of the angles subtended by the edges is within EPSILON of 2 pi, is inside.
+   * Native's result is only that decision, so each sum is formed with Math.acos first (within 1 ulp; it differs from the
+   * native acos by under 7e-16 a term, the sum by under 1e-13) and formed again with native's acos (the libm port) only
+   * when it lies within FAST_MARGIN of the threshold, where the two could decide differently: the decision is native's.
+   */
   private insidePolygon(b: PBody, fi: number, xmi: V3, q1: V3, q2: V3 | null): { in1: boolean; in2: boolean } {
+    const in1 = this.insideOne(b, fi, xmi, q1);
+    const in2 = q2 === null ? false : this.insideOne(b, fi, xmi, q2);
+    return { in1, in2 };
+  }
+
+  private insideOne(b: PBody, fi: number, xmi: V3, q: V3): boolean {
+    let sum = this.angleSum(b, fi, xmi, q, Math.acos);
+    if (sum < 0) return true;
+    if (Math.abs(Math.abs(sum - MY_2PI) - EPSILON) <= FAST_MARGIN) sum = this.angleSum(b, fi, xmi, q, libmAcos);
+    return Math.abs(sum - MY_2PI) < EPSILON;
+  }
+
+  /** The angle sum of inside_polygon for q with the given acos, or -1 when q is at a vertex. */
+  private angleSum(b: PBody, fi: number, xmi: V3, q: V3, acos: (x: number) => number): number {
     const fv = b.faces[fi];
     const nv = fv.length;
     const rradsq = b.rrad * b.rrad;
-    let anglesum1 = 0, anglesum2 = 0;
-    let atvertex1 = false, atvertex2 = false;
+    let anglesum = 0;
+    let atvertex = false;
     for (let i = 0; i < nv; i++) {
       const xi1 = add(xmi, b.disc[fv[i]]);
       const xi2 = add(xmi, b.disc[fv[(i + 1) % nv]]);
-      let u = sub(xi1, q1), v = sub(xi2, q1);
-      let magu = len(u), magv = len(v);
-      if (magu * magv < EPSILON * rradsq) atvertex1 = true;
-      else anglesum1 += libmAcos(Math.max(-1.0, Math.min(1.0, dot(u, v) / (magu * magv))));
-      if (q2 !== null) {
-        u = sub(xi1, q2);
-        v = sub(xi2, q2);
-        magu = len(u);
-        magv = len(v);
-        if (magu * magv < EPSILON * rradsq) atvertex2 = true;
-        else anglesum2 += libmAcos(Math.max(-1.0, Math.min(1.0, dot(u, v) / (magu * magv))));
-      }
+      const u = sub(xi1, q), v = sub(xi2, q);
+      const magu = len(u), magv = len(v);
+      if (magu * magv < EPSILON * rradsq) atvertex = true;
+      else anglesum += acos(Math.max(-1.0, Math.min(1.0, dot(u, v) / (magu * magv))));
     }
-    const in1 = atvertex1 || Math.abs(anglesum1 - MY_2PI) < EPSILON;
-    const in2 = q2 === null ? false : atvertex2 || Math.abs(anglesum2 - MY_2PI) < EPSILON;
-    return { in1, in2 };
+    return atvertex ? -1 : anglesum;
   }
 
   /** vertex_against_core (native): vertices of ib inside the core of jb, pushed out through the nearest face. */

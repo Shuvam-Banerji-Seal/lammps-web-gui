@@ -91,11 +91,23 @@ export class PairSpinDipoleLong extends Pair implements SpinPairStyle {
   }
 
   /** Real-space screened terms B_0..B_3 of the source for a pair at distance r (rsq > 0). */
+  /** bterms' prefactors and the g_ewald they belong to. */
+  private preG = NaN;
+  private pre1 = 0;
+  private pre2 = 0;
+  private pre3 = 0;
+
   private bterms(rsq: number, out: Float64Array): void {
     const g = this.gEwald;
-    const pre1 = 2.0 * g / MY_PIS;
-    const pre2 = 4.0 * libmPow(g, 3.0) / MY_PIS;
-    const pre3 = 8.0 * libmPow(g, 5.0) / MY_PIS;
+    // native compute(): "pre1 = 2.0 * g_ewald / MY_PIS; pre2 = 4.0 * pow(g_ewald,3.0) / MY_PIS; pre3 = ..." once
+    // before the pair loop; kept here while g_ewald is the same
+    if (!Object.is(g, this.preG)) {
+      this.preG = g;
+      this.pre1 = 2.0 * g / MY_PIS;
+      this.pre2 = 4.0 * libmPow(g, 3.0) / MY_PIS;
+      this.pre3 = 8.0 * libmPow(g, 5.0) / MY_PIS;
+    }
+    const pre1 = this.pre1, pre2 = this.pre2, pre3 = this.pre3;
     const r2inv = 1 / rsq;
     const r = Math.sqrt(rsq);
     const rinv = 1 / r;

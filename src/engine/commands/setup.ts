@@ -659,7 +659,7 @@ const region: Handler = ({ sys }, a) => {
       const r = [numeric(rest[k + 5]), numeric(rest[k + 6]), numeric(rest[k + 7])];
       const len = Math.hypot(r[0], r[1], r[2]);
       if (!(len > 0)) throw new StyleError('region rotate axis must be non-zero');
-      rotate = { theta: th.slice(2), p: p as [number, number, number], r: r.map((x) => x / len) as [number, number, number] };
+      rotate = { theta: th.slice(2), p: p as [number, number, number], r: r.map((x) => x / len) as [number, number, number], a: r as [number, number, number] };
       k += 8;
     } else if (key === 'open') {
       if (k + 2 > rest.length) throw missingArgs('region open');

@@ -96,20 +96,20 @@ export interface GranSingleHook {
 const GRAN_SINGLE_EXTRA = 10;
 
 /** The shear-history key of the atom-ID pair (lo, hi): lo * 2^26 + hi, exact while hi < 2^26, else the string "lo:hi". */
-const pairKey = (lo: number, hi: number): number | string => (hi < 67108864 ? lo * 67108864 + hi : `${lo}:${hi}`);
+export const pairKey = (lo: number, hi: number): number | string => (hi < 67108864 ? lo * 67108864 + hi : `${lo}:${hi}`);
 
 export class PairGran extends Pair {
   readonly name: GranKind;
   virialFdotr = true;
   kn = 0; kt = 0; gn = 0; gt = 0; xmu = 0; dampflag = 1;
   limitDamping = false;
-  private readonly history: boolean;
-  private readonly hertz: boolean;
+  protected readonly history: boolean;
+  protected readonly hertz: boolean;
   private set = new Uint8Array(0);
   /** Contact shear displacement per atom-ID pair (lo, hi), oriented as seen from the lower ID (key: pairKey). */
-  private shear = new Map<number | string, Float64Array>();
+  protected shear = new Map<number | string, Float64Array>();
   /** Torque scratch of compute (3 per atom including ghosts), reused between calls. */
-  private tq = new Float64Array(0);
+  protected tq = new Float64Array(0);
 
   constructor(kind: GranKind) {
     super();
@@ -157,7 +157,7 @@ export class PairGran extends Pair {
   }
 
   /** Group bit of fix freeze (StyleContext.freezeGroupBit), 0 when none. */
-  private freezeBit = 0;
+  protected freezeBit = 0;
 
   initStyle(ctx: StyleContext): void {
     this.state = ctx.s;

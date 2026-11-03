@@ -44,9 +44,12 @@ describe('fix wall/gran granular argument errors', () => {
   it('needs both lo and hi (NULL allowed, not both)', async () => {
     await expect(fzOn(base('fix 2 all wall/gran granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity zplane NULL NULL'))).rejects.toThrow(/both NULL/);
   });
-  it('names an unsupported keyword and an unsupported region style', async () => {
+  it('names an unsupported keyword', async () => {
     await expect(fzOn(base('fix 2 all wall/gran granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity zplane 0.0 NULL frob'))).rejects.toThrow('Illegal fix wall/gran command');
-    await expect(fzOn(base('fix 2 all wall/gran/region granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity region reg', 'region reg plane 0 0 0 0 0 1 side out units box'))).rejects.toThrow(/side-out/);
+  });
+  it('accepts a side-out plane region (native RegPlane::surface_exterior; oracle w703wgr_plane_out)', async () => {
+    const f = await fzOn(base('fix 2 all wall/gran/region granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity region reg', 'region reg plane 0 0 0 0 0 1 side out units box'));
+    expect(Number.isFinite(f)).toBe(true);
   });
   it('accepts a side-out block region (contacts with its outer surface; oracle w36wgr_out_block)', async () => {
     const f = await fzOn(base('fix 2 all wall/gran/region granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity region reg', 'region reg block -1 1 -1 1 -1 1 side out units box'));

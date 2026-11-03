@@ -160,13 +160,15 @@ describe('fix wall/gran/region on compound regions with a side-out member', () =
 });
 
 describe('fix wall/gran/region side-out restrictions', () => {
-  it('a side-out plane region is a StyleError naming the style', async () => {
-    const text = sphereInput(
+  it('a side-out plane region is a wall on its non-normal side (native RegPlane::surface_exterior; oracle w703wgr_plane_out)', async () => {
+    // the sphere at (0.75, 0.75, 0.75) is 0.433 from the plane through (1, 1, 1) with normal (1, 1, 1), on the side
+    // opposite the normal: the wall pushes it along -(1, 1, 1)/sqrt(3) with hooke k_n delta, delta = 0.5 - 0.433
+    const f = await forceOn(sphereInput(
       'fix 2 all wall/gran/region hooke 100.0 50.0 0.0 0.0 0.0 1 region reg',
       'region reg plane 1.0 1.0 1.0 1.0 1.0 1.0 side out units box',
-      1.6, 1.5, 1.7,
-    );
-    const { error } = await runScript(text);
-    expect(message(error)).toMatch(/side-out wall/);
+      0.75, 0.75, 0.75,
+    ));
+    const delta = 0.5 - 0.75 / Math.sqrt(3);
+    for (const c of f) expect(c).toBeCloseTo(-100 * delta / Math.sqrt(3), 10);
   });
 });

@@ -7,8 +7,10 @@
  *
  * dihedral_style class2 (docs.lammps.org/dihedral_class2.html): the COMPASS class-2 torsion, E_d plus the
  * middle-bond, end-bond, angle-torsion, angle-angle-torsion and bond-bond-13 cross terms. The C++ compute is kept
- * in its own operation order: the dcosphidr, dphidr, dbonddr and dthetadr arrays and the fabcd accumulator, with the
- * energy terms added in native's order (dihedral, mbt, ebt (bond 1), ebt (bond 3), at (angle 1), at (angle 2), aat,
+ * in its own operation order. Its dcosphidr, dphidr, dbonddr and dthetadr arrays and the fabcd accumulator are scalars
+ * per atom and coordinate, each entry computed with native's expression. The dbonddr and dthetadr entries that native
+ * holds as 0 are left out of the force sums: adding sumbte * 0 changes no value, only the sign of an exact zero. The
+ * energy terms are added in native's order (dihedral, mbt, ebt (bond 1), ebt (bond 3), at (angle 1), at (angle 2), aat,
  * bb13). The bond vectors are the copies nearest to the second atom of the dihedral (bonded_util.ts delta). The
  * cos, sin, acos and exp calls use the glibc ports of src/engine-gpl/libm. The virial and per-atom tallies are
  * native's Dihedral::ev_tally (src/engine-gpl/xmolecule/ev.ts evTallyFour) with fabcd[0], fabcd[2], fabcd[3] and
@@ -18,7 +20,7 @@ import { SimpleBonded, atomIndex, delta, TypeParams } from '../../engine/force/b
 import { fmtCoeff } from '../../engine/force/util';
 import { StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { formatNumber } from '../../engine/cformat';
-import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sincos as libmSincos, SINCOS } from '../libm/sincos';
 import { acos as libmAcos } from '../libm/acos';
 import { evTallyFour } from '../xmolecule/ev';
 
@@ -189,14 +191,8 @@ export class DihedralClass2 extends SimpleBonded {
     const aat_k = this.aat.p('M'), aat_theta0_1 = this.aat.p('theta1'), aat_theta0_2 = this.aat.p('theta2');
     const bb13t_k = this.bb13.p('N'), bb13t_r10 = this.bb13.p('r1'), bb13t_r30 = this.bb13.p('r3');
 
-    // the 4 x 3 (atom, component) and 3 or 2 x 4 x 3 arrays of native compute(), flat: [i][j] at 3 i + j, [a][i][j] at
-    // 12 a + 3 i + j
-    const dcosphidr = new Float64Array(12);
-    const dphidr = new Float64Array(12);
-    const dbonddr = new Float64Array(36);
-    const dthetadr = new Float64Array(24);
-    const fabcd = new Float64Array(12);
-    const fab0 = fabcd.subarray(0, 3), fab2 = fabcd.subarray(6, 9), fab3 = fabcd.subarray(9, 12);
+    // fabcd[0], fabcd[2] and fabcd[3] of native compute() for the tally
+    const fab0 = new Float64Array(3), fab2 = new Float64Array(3), fab3 = new Float64Array(3);
     const vb1 = [0, 0, 0], vb2 = [0, 0, 0], vb3 = [0, 0, 0];
     const pI = [0, 0, 0], pK = [0, 0, 0], pL = [0, 0, 0];
 
@@ -300,102 +296,87 @@ export class DihedralClass2 extends SimpleBonded {
       const sz2 = a12 * vb1z + a22 * vb2z + a23 * vb3z;
       const sz12 = a13 * vb1z + a23 * vb2z + a33 * vb3z;
 
-      // set up d(cos(phi))/d(r) array
-      dcosphidr[0] = -sx1;
-      dcosphidr[1] = -sy1;
-      dcosphidr[2] = -sz1;
-      dcosphidr[3] = sx2 + sx1;
-      dcosphidr[4] = sy2 + sy1;
-      dcosphidr[5] = sz2 + sz1;
-      dcosphidr[6] = sx12 - sx2;
-      dcosphidr[7] = sy12 - sy2;
-      dcosphidr[8] = sz12 - sz2;
-      dcosphidr[9] = -sx12;
-      dcosphidr[10] = -sy12;
-      dcosphidr[11] = -sz12;
-
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) dphidr[3 * i + j] = -dcosphidr[3 * i + j] / sinphi;
+      // d(cos(phi))/d(r) (dcosphidr), d(phi)/d(r) = -dcosphidr / sinphi (dphidr) and the torsion forces (fabcd), as
+      // scalars per atom and coordinate: P<atom><coordinate>, F<atom><coordinate>
+      const P0x = sx1 / sinphi;
+      const P0y = sy1 / sinphi;
+      const P0z = sz1 / sinphi;
+      const P1x = -(sx2 + sx1) / sinphi;
+      const P1y = -(sy2 + sy1) / sinphi;
+      const P1z = -(sz2 + sz1) / sinphi;
+      const P2x = -(sx12 - sx2) / sinphi;
+      const P2y = -(sy12 - sy2) / sinphi;
+      const P2z = -(sz12 - sz2) / sinphi;
+      const P3x = sx12 / sinphi;
+      const P3y = sy12 / sinphi;
+      const P3z = sz12 / sinphi;
 
       // energy
       const dphi1 = phi - phi1[type];
       const dphi2 = 2.0 * phi - phi2[type];
       const dphi3 = 3.0 * phi - phi3[type];
 
-      let edihedral = k1[type] * (1.0 - libmCos(dphi1)) + k2[type] * (1.0 - libmCos(dphi2)) + k3[type] * (1.0 - libmCos(dphi3));
+      // sin and cos of each argument from one sincos (the same values as sin() and cos(), bit for bit); 2 phi and 3 phi
+      // reuse those of dphi2 and dphi3 when they are the same number (phi2 = phi3 = 0, as in most force fields)
+      libmSincos(dphi1);
+      const sn1 = SINCOS[0], cs1 = SINCOS[1];
+      libmSincos(dphi2);
+      const sn2 = SINCOS[0], cs2 = SINCOS[1];
+      libmSincos(dphi3);
+      const sn3 = SINCOS[0], cs3 = SINCOS[1];
 
-      const de_dihedral = k1[type] * libmSin(dphi1) + 2.0 * k2[type] * libmSin(dphi2) + 3.0 * k3[type] * libmSin(dphi3);
+      let edihedral = k1[type] * (1.0 - cs1) + k2[type] * (1.0 - cs2) + k3[type] * (1.0 - cs3);
+
+      const de_dihedral = k1[type] * sn1 + 2.0 * k2[type] * sn2 + 3.0 * k3[type] * sn3;
 
       // torsion forces on all 4 atoms
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) fabcd[3 * i + j] = de_dihedral * dphidr[3 * i + j];
+      let F0x = de_dihedral * P0x; let F0y = de_dihedral * P0y; let F0z = de_dihedral * P0z;
+      let F1x = de_dihedral * P1x; let F1y = de_dihedral * P1y; let F1z = de_dihedral * P1z;
+      let F2x = de_dihedral * P2x; let F2y = de_dihedral * P2y; let F2z = de_dihedral * P2z;
+      let F3x = de_dihedral * P3x; let F3y = de_dihedral * P3y; let F3z = de_dihedral * P3z;
 
-      // d(bond)/d(r): dbonddr[12 bond + 3 atom + coordinate]
-      for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) for (let k = 0; k < 3; k++) dbonddr[12 * i + 3 * j + k] = 0.0;
+      // d(bond)/d(r): bond 1 on atoms 1, 2; bond 2 on atoms 2, 3; bond 3 on atoms 3, 4 (dbonddr; the other entries are 0)
+      const B00x = vb1x / r1, B01x = -vb1x / r1;
+      const B00y = vb1y / r1, B01y = -vb1y / r1;
+      const B00z = vb1z / r1, B01z = -vb1z / r1;
+      const B11x = vb2x / r2, B12x = -vb2x / r2;
+      const B11y = vb2y / r2, B12y = -vb2y / r2;
+      const B11z = vb2z / r2, B12z = -vb2z / r2;
+      const B22x = vb3x / r3, B23x = -vb3x / r3;
+      const B22y = vb3y / r3, B23y = -vb3y / r3;
+      const B22z = vb3z / r3, B23z = -vb3z / r3;
 
-      // bond1
-      dbonddr[0] = vb1x / r1;
-      dbonddr[1] = vb1y / r1;
-      dbonddr[2] = vb1z / r1;
-      dbonddr[3] = -vb1x / r1;
-      dbonddr[4] = -vb1y / r1;
-      dbonddr[5] = -vb1z / r1;
-
-      // bond2
-      dbonddr[15] = vb2x / r2;
-      dbonddr[16] = vb2y / r2;
-      dbonddr[17] = vb2z / r2;
-      dbonddr[18] = -vb2x / r2;
-      dbonddr[19] = -vb2y / r2;
-      dbonddr[20] = -vb2z / r2;
-
-      // bond3
-      dbonddr[30] = vb3x / r3;
-      dbonddr[31] = vb3y / r3;
-      dbonddr[32] = vb3z / r3;
-      dbonddr[33] = -vb3x / r3;
-      dbonddr[34] = -vb3y / r3;
-      dbonddr[35] = -vb3z / r3;
-
-      // d(theta)/d(r) array: dthetadr[12 * angle + 3 * atom + coordinate]
-      for (let i = 0; i < 2; i++) for (let j = 0; j < 4; j++) for (let k = 0; k < 3; k++) dthetadr[12 * i + 3 * j + k] = 0.0;
-
+      // d(theta)/d(r) (dthetadr): angle12 on atoms 1-3, angle23 on atoms 2-4 (the other entries are 0)
       const t1 = costh12 / r1mag2;
       const t2 = costh23 / r2mag2;
       const t3 = costh12 / r2mag2;
       const t4 = costh23 / r3mag2;
-
-      // angle12
-      dthetadr[0] = sc1 * ((t1 * vb1x) - (vb2x * r12c1));
-      dthetadr[1] = sc1 * ((t1 * vb1y) - (vb2y * r12c1));
-      dthetadr[2] = sc1 * ((t1 * vb1z) - (vb2z * r12c1));
-
-      dthetadr[3] = sc1 * ((-t1 * vb1x) + (vb2x * r12c1) + (-t3 * vb2x) + (vb1x * r12c1));
-      dthetadr[4] = sc1 * ((-t1 * vb1y) + (vb2y * r12c1) + (-t3 * vb2y) + (vb1y * r12c1));
-      dthetadr[5] = sc1 * ((-t1 * vb1z) + (vb2z * r12c1) + (-t3 * vb2z) + (vb1z * r12c1));
-
-      dthetadr[6] = sc1 * ((t3 * vb2x) - (vb1x * r12c1));
-      dthetadr[7] = sc1 * ((t3 * vb2y) - (vb1y * r12c1));
-      dthetadr[8] = sc1 * ((t3 * vb2z) - (vb1z * r12c1));
-
-      // angle23
-      dthetadr[15] = sc2 * ((t2 * vb2x) + (vb3x * r12c2));
-      dthetadr[16] = sc2 * ((t2 * vb2y) + (vb3y * r12c2));
-      dthetadr[17] = sc2 * ((t2 * vb2z) + (vb3z * r12c2));
-
-      dthetadr[18] = sc2 * ((-t2 * vb2x) - (vb3x * r12c2) + (t4 * vb3x) + (vb2x * r12c2));
-      dthetadr[19] = sc2 * ((-t2 * vb2y) - (vb3y * r12c2) + (t4 * vb3y) + (vb2y * r12c2));
-      dthetadr[20] = sc2 * ((-t2 * vb2z) - (vb3z * r12c2) + (t4 * vb3z) + (vb2z * r12c2));
-
-      dthetadr[21] = -sc2 * ((t4 * vb3x) + (vb2x * r12c2));
-      dthetadr[22] = -sc2 * ((t4 * vb3y) + (vb2y * r12c2));
-      dthetadr[23] = -sc2 * ((t4 * vb3z) + (vb2z * r12c2));
+      const T00x = sc1 * ((t1 * vb1x) - (vb2x * r12c1));
+      const T00y = sc1 * ((t1 * vb1y) - (vb2y * r12c1));
+      const T00z = sc1 * ((t1 * vb1z) - (vb2z * r12c1));
+      const T01x = sc1 * ((-t1 * vb1x) + (vb2x * r12c1) + (-t3 * vb2x) + (vb1x * r12c1));
+      const T01y = sc1 * ((-t1 * vb1y) + (vb2y * r12c1) + (-t3 * vb2y) + (vb1y * r12c1));
+      const T01z = sc1 * ((-t1 * vb1z) + (vb2z * r12c1) + (-t3 * vb2z) + (vb1z * r12c1));
+      const T02x = sc1 * ((t3 * vb2x) - (vb1x * r12c1));
+      const T02y = sc1 * ((t3 * vb2y) - (vb1y * r12c1));
+      const T02z = sc1 * ((t3 * vb2z) - (vb1z * r12c1));
+      const T11x = sc2 * ((t2 * vb2x) + (vb3x * r12c2));
+      const T11y = sc2 * ((t2 * vb2y) + (vb3y * r12c2));
+      const T11z = sc2 * ((t2 * vb2z) + (vb3z * r12c2));
+      const T12x = sc2 * ((-t2 * vb2x) - (vb3x * r12c2) + (t4 * vb3x) + (vb2x * r12c2));
+      const T12y = sc2 * ((-t2 * vb2y) - (vb3y * r12c2) + (t4 * vb3y) + (vb2y * r12c2));
+      const T12z = sc2 * ((-t2 * vb2z) - (vb3z * r12c2) + (t4 * vb3z) + (vb2z * r12c2));
+      const T13x = -sc2 * ((t4 * vb3x) + (vb2x * r12c2));
+      const T13y = -sc2 * ((t4 * vb3y) + (vb2y * r12c2));
+      const T13z = -sc2 * ((t4 * vb3z) + (vb2z * r12c2));
 
       // mid-bond/torsion coupling: energy on bond2 (middle bond)
-      const cos2phi = libmCos(2.0 * phi);
-      const cos3phi = libmCos(3.0 * phi);
-      // sin(2 phi), sin(3 phi) and the two bond angles, which every cross term below reads (the C++ calls sin() and
-      // acos() again for each; the same arguments give the same values)
-      const sin2phi = libmSin(2.0 * phi);
-      const sin3phi = libmSin(3.0 * phi);
+      // cos and sin of 2 phi and 3 phi and the two bond angles, which every cross term below reads (the C++ calls sin()
+      // and acos() again for each; the same arguments give the same values)
+      const phi2x = 2.0 * phi, phi3x = 3.0 * phi;
+      let cos2phi = cs2, sin2phi = sn2, cos3phi = cs3, sin3phi = sn3;
+      if (!Object.is(phi2x, dphi2)) { libmSincos(phi2x); sin2phi = SINCOS[0]; cos2phi = SINCOS[1]; }
+      if (!Object.is(phi3x, dphi3)) { libmSincos(phi3x); sin3phi = SINCOS[0]; cos3phi = SINCOS[1]; }
       const acos12 = libmAcos(costh12);
       const acos23 = libmAcos(costh23);
 
@@ -412,9 +393,12 @@ export class DihedralClass2 extends SimpleBonded {
       bt3 = -3.0 * mbt_f3[type] * sin3phi;
       let sumbtf = bt1 + bt2 + bt3;
 
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
-        fabcd[3 * i + j] += db * sumbtf * dphidr[3 * i + j] + sumbte * dbonddr[12 * 1 + 3 * i + j];
-      }
+      // fabcd += db * sumbtf * dphidr + sumbte * dbonddr[1]
+      let g = db * sumbtf;
+      F0x += g * P0x; F0y += g * P0y; F0z += g * P0z;
+      F1x += g * P1x + sumbte * B11x; F1y += g * P1y + sumbte * B11y; F1z += g * P1z + sumbte * B11z;
+      F2x += g * P2x + sumbte * B12x; F2y += g * P2y + sumbte * B12y; F2z += g * P2z + sumbte * B12z;
+      F3x += g * P3x; F3y += g * P3y; F3z += g * P3z;
 
       // end-bond/torsion coupling: energy on bond1 (first bond)
       bt1 = ebt_f1_1[type] * cosphi;
@@ -431,9 +415,12 @@ export class DihedralClass2 extends SimpleBonded {
       bt3 = 3.0 * ebt_f3_1[type] * sin3phi;
       sumbtf = bt1 + bt2 + bt3;
 
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
-        fabcd[3 * i + j] -= db * sumbtf * dphidr[3 * i + j] + sumbte * dbonddr[12 * 0 + 3 * i + j];
-      }
+      // fabcd -= db * sumbtf * dphidr + sumbte * dbonddr[0]
+      g = db * sumbtf;
+      F0x -= g * P0x + sumbte * B00x; F0y -= g * P0y + sumbte * B00y; F0z -= g * P0z + sumbte * B00z;
+      F1x -= g * P1x + sumbte * B01x; F1y -= g * P1y + sumbte * B01y; F1z -= g * P1z + sumbte * B01z;
+      F2x -= g * P2x; F2y -= g * P2y; F2z -= g * P2z;
+      F3x -= g * P3x; F3y -= g * P3y; F3z -= g * P3z;
 
       // end-bond/torsion coupling: energy on bond3 (last bond)
       bt1 = ebt_f1_2[type] * cosphi;
@@ -450,9 +437,12 @@ export class DihedralClass2 extends SimpleBonded {
       bt3 = -3.0 * ebt_f3_2[type] * sin3phi;
       sumbtf = bt1 + bt2 + bt3;
 
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
-        fabcd[3 * i + j] += db * sumbtf * dphidr[3 * i + j] + sumbte * dbonddr[12 * 2 + 3 * i + j];
-      }
+      // fabcd += db * sumbtf * dphidr + sumbte * dbonddr[2]
+      g = db * sumbtf;
+      F0x += g * P0x; F0y += g * P0y; F0z += g * P0z;
+      F1x += g * P1x; F1y += g * P1y; F1z += g * P1z;
+      F2x += g * P2x + sumbte * B22x; F2y += g * P2y + sumbte * B22y; F2z += g * P2z + sumbte * B22z;
+      F3x += g * P3x + sumbte * B23x; F3y += g * P3y + sumbte * B23y; F3z += g * P3z + sumbte * B23z;
 
       // angle/torsion coupling: energy on angle1
       let at1 = at_f1_1[type] * cosphi;
@@ -469,9 +459,12 @@ export class DihedralClass2 extends SimpleBonded {
       bt3 = 3.0 * at_f3_1[type] * sin3phi;
       sumbtf = bt1 + bt2 + bt3;
 
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
-        fabcd[3 * i + j] -= da * sumbtf * dphidr[3 * i + j] + sumbte * dthetadr[12 * 0 + 3 * i + j];
-      }
+      // fabcd -= da * sumbtf * dphidr + sumbte * dthetadr[0]
+      g = da * sumbtf;
+      F0x -= g * P0x + sumbte * T00x; F0y -= g * P0y + sumbte * T00y; F0z -= g * P0z + sumbte * T00z;
+      F1x -= g * P1x + sumbte * T01x; F1y -= g * P1y + sumbte * T01y; F1z -= g * P1z + sumbte * T01z;
+      F2x -= g * P2x + sumbte * T02x; F2y -= g * P2y + sumbte * T02y; F2z -= g * P2z + sumbte * T02z;
+      F3x -= g * P3x; F3y -= g * P3y; F3z -= g * P3z;
 
       // energy on angle2
       at1 = at_f1_2[type] * cosphi;
@@ -488,9 +481,12 @@ export class DihedralClass2 extends SimpleBonded {
       bt3 = -3.0 * at_f3_2[type] * sin3phi;
       sumbtf = bt1 + bt2 + bt3;
 
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
-        fabcd[3 * i + j] += da * sumbtf * dphidr[3 * i + j] + sumbte * dthetadr[12 * 1 + 3 * i + j];
-      }
+      // fabcd += da * sumbtf * dphidr + sumbte * dthetadr[1]
+      g = da * sumbtf;
+      F0x += g * P0x; F0y += g * P0y; F0z += g * P0z;
+      F1x += g * P1x + sumbte * T11x; F1y += g * P1y + sumbte * T11y; F1z += g * P1z + sumbte * T11z;
+      F2x += g * P2x + sumbte * T12x; F2y += g * P2y + sumbte * T12y; F2z += g * P2z + sumbte * T12z;
+      F3x += g * P3x + sumbte * T13x; F3y += g * P3y + sumbte * T13y; F3z += g * P3z + sumbte * T13z;
 
       // angle/angle/torsion coupling
       const da1 = acos12 - aat_theta0_1[type];
@@ -498,10 +494,13 @@ export class DihedralClass2 extends SimpleBonded {
 
       edihedral += aat_k[type] * da1 * da2 * cosphi;
 
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
-        fabcd[3 * i + j] -= aat_k[type] *
-          (cosphi * (da2 * dthetadr[12 * 0 + 3 * i + j] - da1 * dthetadr[12 * 1 + 3 * i + j]) + sinphi * da1 * da2 * dphidr[3 * i + j]);
-      }
+      // fabcd -= aat_k * (cosphi * (da2 * dthetadr[0] - da1 * dthetadr[1]) + sinphi * da1 * da2 * dphidr)
+      const ak = aat_k[type];
+      const k = sinphi * da1 * da2;
+      F0x -= ak * (cosphi * (da2 * T00x) + k * P0x); F0y -= ak * (cosphi * (da2 * T00y) + k * P0y); F0z -= ak * (cosphi * (da2 * T00z) + k * P0z);
+      F1x -= ak * (cosphi * (da2 * T01x - da1 * T11x) + k * P1x); F1y -= ak * (cosphi * (da2 * T01y - da1 * T11y) + k * P1y); F1z -= ak * (cosphi * (da2 * T01z - da1 * T11z) + k * P1z);
+      F2x -= ak * (cosphi * (da2 * T02x - da1 * T12x) + k * P2x); F2y -= ak * (cosphi * (da2 * T02y - da1 * T12y) + k * P2y); F2z -= ak * (cosphi * (da2 * T02z - da1 * T12z) + k * P2z);
+      F3x -= ak * (cosphi * (0.0 - da1 * T13x) + k * P3x); F3y -= ak * (cosphi * (0.0 - da1 * T13y) + k * P3y); F3z -= ak * (cosphi * (0.0 - da1 * T13z) + k * P3z);
 
       // bond1/bond3 coupling (BondBond13)
       if (Math.abs(bb13t_k[type]) > SMALL) {
@@ -514,28 +513,36 @@ export class DihedralClass2 extends SimpleBonded {
 
         edihedral += bb13t_k[type] * dr1 * dr2;
 
-        fabcd[0] += tk2 * vb1x;
-        fabcd[1] += tk2 * vb1y;
-        fabcd[2] += tk2 * vb1z;
+        F0x += tk2 * vb1x;
+        F0y += tk2 * vb1y;
+        F0z += tk2 * vb1z;
 
-        fabcd[3] -= tk2 * vb1x;
-        fabcd[4] -= tk2 * vb1y;
-        fabcd[5] -= tk2 * vb1z;
+        F1x -= tk2 * vb1x;
+        F1y -= tk2 * vb1y;
+        F1z -= tk2 * vb1z;
 
-        fabcd[6] -= tk1 * vb3x;
-        fabcd[7] -= tk1 * vb3y;
-        fabcd[8] -= tk1 * vb3z;
+        F2x -= tk1 * vb3x;
+        F2y -= tk1 * vb3y;
+        F2z -= tk1 * vb3z;
 
-        fabcd[9] += tk1 * vb3x;
-        fabcd[10] += tk1 * vb3y;
-        fabcd[11] += tk1 * vb3z;
+        F3x += tk1 * vb3x;
+        F3y += tk1 * vb3y;
+        F3z += tk1 * vb3z;
       }
 
       // apply force to each of 4 atoms
-      for (let a = 0; a < 4; a++) for (let d = 0; d < 3; d++) bc.f[3 * atoms[a] + d] += fabcd[3 * a + d];
+      const f = bc.f;
+      f[3 * i1] += F0x; f[3 * i1 + 1] += F0y; f[3 * i1 + 2] += F0z;
+      f[3 * i2] += F1x; f[3 * i2 + 1] += F1y; f[3 * i2 + 2] += F1z;
+      f[3 * i3] += F2x; f[3 * i3 + 1] += F2y; f[3 * i3 + 2] += F2z;
+      f[3 * i4] += F3x; f[3 * i4 + 1] += F3y; f[3 * i4 + 2] += F3z;
 
       // Dihedral::ev_tally with f1 = fabcd[0], f3 = fabcd[2], f4 = fabcd[3] and the bond vectors vb1, vb2, vb3
+      fab0[0] = F0x; fab0[1] = F0y; fab0[2] = F0z;
+      fab2[0] = F2x; fab2[1] = F2y; fab2[2] = F2z;
+      fab3[0] = F3x; fab3[1] = F3y; fab3[2] = F3z;
       evTallyFour(bc, atoms, 'dihed', edihedral, fab0, fab2, fab3, vb1, vb2, vb3);
+
     }
   }
 }

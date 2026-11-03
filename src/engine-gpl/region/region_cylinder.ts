@@ -293,7 +293,7 @@ export class NativeCylinder extends NativeRegion {
             dx = 0;
             xp = x[0];
           }
-          d2 = d2prev = dr2 + dx * dx;
+          d2prev = dr2 + dx * dx;
           if (r > radius) {
             crad = 2.0 * radius;
             varflag = 1;
@@ -384,7 +384,7 @@ export class NativeCylinder extends NativeRegion {
             dx = 0;
             yp = x[1];
           }
-          d2 = d2prev = dr2 + dx * dx;
+          d2prev = dr2 + dx * dx;
           if (r > radius) {
             crad = 2.0 * radius;
             varflag = 1;

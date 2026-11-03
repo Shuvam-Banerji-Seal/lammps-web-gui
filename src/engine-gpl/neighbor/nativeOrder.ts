@@ -52,13 +52,27 @@ export interface NativeGhosts {
   from: Int32Array;
 }
 
-/** comm_brick.cpp CommBrick::setup (cutghost = comm cutoff, maxneed = 1 + cut/prd for one processor) and borders(). */
-export const nativeGhosts = (xn: Float64Array, n: number, g: Geometry, cut: number, two: boolean): NativeGhosts => {
-  const xs: number[] = Array.from(xn.subarray(0, 3 * n));
-  const roots: number[] = [];
-  const imgs: number[] = [];
-  const froms: number[] = [];
-  for (let i = 0; i < n; i++) { roots.push(i); imgs.push(0, 0, 0); froms.push(-1); }
+/**
+ * comm_brick.cpp CommBrick::setup (cutghost = comm cutoff, maxneed = 1 + cut/prd for one processor) and borders().
+ * send: the owned atoms that may be sent (comm_modify group: borders() sends "only atoms in bordergroup" of the owned
+ * atoms, and every ghost of an earlier swap, which is an image of one of them); null sends every atom.
+ */
+export const nativeGhosts = (xn: Float64Array, n: number, g: Geometry, cut: number, two: boolean, send: Uint8Array | null = null): NativeGhosts => {
+  // typed arrays grown as ghosts are added (the atoms in native index order: owned, then each swap's ghosts)
+  let cap = Math.max(16, n + (n >> 1) + 64);
+  let xs = new Float64Array(3 * cap), roots = new Int32Array(cap), froms = new Int32Array(cap), imgs = new Int32Array(3 * cap);
+  xs.set(xn.subarray(0, 3 * n));
+  for (let i = 0; i < n; i++) { roots[i] = i; froms[i] = -1; }
+  let count = n;
+  const grow = (need: number): void => {
+    if (need <= cap) return;
+    cap = Math.max(need, 2 * cap);
+    const x2 = new Float64Array(3 * cap); x2.set(xs); xs = x2;
+    const r2 = new Int32Array(cap); r2.set(roots); roots = r2;
+    const f2 = new Int32Array(cap); f2.set(froms); froms = f2;
+    const i2 = new Int32Array(3 * cap); i2.set(imgs); imgs = i2;
+  };
+  let sendlist = new Int32Array(64);
   const prd = [g.lx, g.ly, g.lz];
   for (let dim = 0; dim < (two ? 2 : 3); dim++) {
     if (!g.periodic[dim]) continue;
@@ -68,7 +82,7 @@ export const nativeGhosts = (xn: Float64Array, n: number, g: Geometry, cut: numb
     let nfirst = 0, nlast = 0;
     for (let ineed = 0; ineed < 2 * maxneed; ineed++) {
       const even = ineed % 2 === 0;
-      if (even) { nfirst = nlast; nlast = roots.length; }
+      if (even) { nfirst = nlast; nlast = count; }
       let slo: number, shi: number, sgn: number;
       if (even) {
         slo = ineed < 2 ? -BIG : mid;
@@ -79,30 +93,33 @@ export const nativeGhosts = (xn: Float64Array, n: number, g: Geometry, cut: numb
         shi = ineed < 2 ? BIG : mid;
         sgn = -1;
       }
-      const sendlist: number[] = [];
+      let ns = 0;
+      if (sendlist.length < nlast - nfirst) sendlist = new Int32Array(nlast - nfirst);
       for (let i = nfirst; i < nlast; i++) {
+        if (send && i < n && !send[i]) continue;
         const c = xs[3 * i + dim];
-        if (c >= slo && c <= shi) sendlist.push(i);
+        if (c >= slo && c <= shi) sendlist[ns++] = i;
       }
       // pack_border: the sent coordinate gets the periodic shift (pbc * prd) in this dimension only
-      for (const i of sendlist) {
-        const k = roots.length;
-        for (let c = 0; c < 3; c++) xs.push(xs[3 * i + c]);
+      grow(count + ns);
+      for (let q = 0; q < ns; q++) {
+        const i = sendlist[q];
+        const k = count++;
+        xs[3 * k] = xs[3 * i]; xs[3 * k + 1] = xs[3 * i + 1]; xs[3 * k + 2] = xs[3 * i + 2];
         xs[3 * k + dim] = xs[3 * i + dim] + sgn * len;
-        roots.push(roots[i]);
-        froms.push(i);
-        imgs.push(imgs[3 * i], imgs[3 * i + 1], imgs[3 * i + 2]);
+        roots[k] = roots[i];
+        froms[k] = i;
+        imgs[3 * k] = imgs[3 * i]; imgs[3 * k + 1] = imgs[3 * i + 1]; imgs[3 * k + 2] = imgs[3 * i + 2];
         imgs[3 * k + dim] += sgn;
       }
     }
   }
-  const nall = roots.length;
   return {
-    nall,
-    x: Float64Array.from(xs),
-    root: Int32Array.from(roots),
-    img: Int32Array.from(imgs),
-    from: Int32Array.from(froms),
+    nall: count,
+    x: xs.subarray(0, 3 * count),
+    root: roots.subarray(0, count),
+    img: imgs.subarray(0, 3 * count),
+    from: froms.subarray(0, count),
   };
 };
 
@@ -1051,7 +1068,13 @@ export class NativeReverseComm {
       const e = order[k];
       xn[3 * k] = s.x[3 * e]; xn[3 * k + 1] = s.x[3 * e + 1]; xn[3 * k + 2] = s.x[3 * e + 2];
     }
-    const gh = nativeGhosts(xn, n, g, nb.cutghost, s.dimension === 2);
+    // comm_modify group: only that group's atoms have ghosts (the engine's ghosts follow it too, Neighbor.borderBit)
+    let send: Uint8Array | null = null;
+    if (nb.borderBit !== 0) {
+      send = new Uint8Array(n);
+      for (let k = 0; k < n; k++) send[k] = (s.mask[order[k]] & nb.borderBit) !== 0 ? 1 : 0;
+    }
+    const gh = nativeGhosts(xn, n, g, nb.cutghost, s.dimension === 2, send);
     const eng = new Int32Array(gh.nall);
     const held = new Uint8Array(nb.nall);
     for (let k = 0; k < gh.nall; k++) {

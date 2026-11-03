@@ -16,7 +16,7 @@
  * image (or the periodic copy the bonded code uses) rather than LAMMPS' ghost-atom index. Atom pairs are ordered by
  * ID as the C++ does (i1 has the lower tag).
  */
-import { delta } from '../../engine/force/bonded_util';
+import { delta, mapIndex } from '../../engine/force/bonded_util';
 import { StyleError, bondedCoeffArgs, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { missingArgs } from '../../engine/force/util';
 import { parseNum } from '../../engine/force/util';
@@ -36,6 +36,22 @@ export class BondBpmSpring extends BondBPMBase {
   private av = new Float64Array(0);
   /** Reference length per bond, keyed by the two atom IDs. */
   private readonly ref = new Map<number, number>();
+  /** The ref entries by bond slot k (the IDs a1 < a2 it was taken for, and r0); a slot whose IDs differ is looked up again. */
+  private slotA = new Int32Array(0);
+  private slotB = new Int32Array(0);
+  private slotR0 = new Float64Array(0);
+  private slotN = 0;
+
+  private slot(n: number, k: number, a1: number, a2: number, r0: number): void {
+    if (this.slotA.length < n) {
+      const cap = Math.max(n, 2 * this.slotA.length);
+      const A = new Int32Array(cap).fill(-1), B = new Int32Array(cap).fill(-1), R = new Float64Array(cap);
+      A.set(this.slotA); B.set(this.slotB); R.set(this.slotR0);
+      this.slotA = A; this.slotB = B; this.slotR0 = R;
+    }
+    this.slotN = Math.max(this.slotN, k + 1);
+    this.slotA[k] = a1; this.slotB[k] = a2; this.slotR0[k] = r0;
+  }
   /** Per atom ID: the interaction volume now (vol), at the reference state (vol0) and its change (dvol0). */
   private vol = new Map<number, number>();
   private vol0 = new Map<number, number>();
@@ -131,17 +147,27 @@ export class BondBpmSpring extends BondBPMBase {
       const t = b.type[k];
       if (t === 0) continue; // broken bond: bpm/spring sets the type to 0 (docs: "bond type to 0")
       const ia = b.atoms[2 * k], ib = b.atoms[2 * k + 1];
-      const { i1, i2, a1, a2 } = this.pairOf(bc, ia, ib);
+      // pairOf: i1 is the atom with the lower ID
+      const a1 = ia < ib ? ia : ib, a2 = ia < ib ? ib : ia;
+      const i1 = mapIndex(bc.map, a1, 'bond'), i2 = mapIndex(bc.map, a2, 'bond');
       delta(bc, i1, i2, d); // x_i2 - x_i1 (nearest copy)
       // del = x_i1 - x_i2, the C++ bond vector (i1 has the lower ID)
       const dx = -d[0], dy = -d[1], dz = -d[2];
       const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      const key = bondKey(a1, a2);
-      let r0 = this.ref.get(key);
-      if (r0 === undefined) {
-        // the reference length is stored the first time the bond is computed (store_data / process_new)
-        r0 = r;
-        this.ref.set(key, r0);
+      // the reference length of the bond: the ref entry, set once (never changed), mirrored per bond slot with the IDs
+      let r0: number;
+      if (k < this.slotN && this.slotA[k] === a1 && this.slotB[k] === a2) {
+        r0 = this.slotR0[k];
+      } else {
+        const key = bondKey(a1, a2);
+        let rr = this.ref.get(key);
+        if (rr === undefined) {
+          // the reference length is stored the first time the bond is computed (store_data / process_new)
+          rr = r;
+          this.ref.set(key, rr);
+        }
+        r0 = rr;
+        this.slot(b.n, k, a1, a2, r0);
       }
       const e = (r - r0) / r0;
       if (Math.abs(e) > eps[t] && allowBreaks) {

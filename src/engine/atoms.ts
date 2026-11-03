@@ -912,8 +912,63 @@ export interface SpecialList {
   order: Int8Array;
 }
 
+/**
+ * buildSpecial with maxOrder 1 (the 1-2 partners only): for each atom, its bond partners other than itself, each
+ * once, in the order of their first bond in the topology, the same list as the breadth-first walk below gives at
+ * depth 1, from the bonds directly (no maps; the rows are short, so a repeat is found by scanning its row). Null when
+ * the atom IDs are too sparse for an ID table.
+ */
+const buildSpecial12 = (s: SimState, ignoreBond?: (type: number) => boolean): SpecialList | null => {
+  const b = s.topo.bonds, n = s.n;
+  let maxId = 0;
+  for (let i = 0; i < n; i++) if (s.id[i] > maxId) maxId = s.id[i];
+  // sparse IDs (a table of every ID would be large): the general walk
+  if (maxId > 8 * n + 1024) return null;
+  const live = (e: number): boolean => b.type[e] !== 0 && !(ignoreBond?.(b.type[e]));
+  // atom index of an ID (-1: no such atom here)
+  const idx = new Int32Array(maxId + 1).fill(-1);
+  for (let i = 0; i < n; i++) idx[s.id[i]] = i;
+  const at = (id: number): number => (id >= 0 && id <= maxId ? idx[id] : -1);
+  const deg = new Int32Array(n + 1);
+  for (let e = 0; e < b.n; e++) {
+    if (!live(e)) continue;
+    const i = at(b.atoms[2 * e]), j = at(b.atoms[2 * e + 1]);
+    if (i >= 0) deg[i + 1]++;
+    if (j >= 0) deg[j + 1]++;
+  }
+  for (let i = 0; i < n; i++) deg[i + 1] += deg[i];
+  const fill = deg.slice(0, n), cand = new Int32Array(deg[n]);
+  for (let e = 0; e < b.n; e++) {
+    if (!live(e)) continue;
+    const a = b.atoms[2 * e], c = b.atoms[2 * e + 1];
+    const i = at(a), j = at(c);
+    if (i >= 0) cand[fill[i]++] = c;
+    if (j >= 0) cand[fill[j]++] = a;
+  }
+  const offset = new Int32Array(n + 1);
+  const partner = new Int32Array(deg[n]);
+  let m = 0;
+  for (let i = 0; i < n; i++) {
+    offset[i] = m;
+    const me = s.id[i], row = m;
+    for (let q = deg[i]; q < deg[i + 1]; q++) {
+      const c = cand[q];
+      if (c === me) continue;
+      let dup = false;
+      for (let r = row; r < m; r++) if (partner[r] === c) { dup = true; break; }
+      if (!dup) partner[m++] = c;
+    }
+  }
+  offset[n] = m;
+  return { offset, partner: partner.slice(0, m), order: new Int8Array(m).fill(1) };
+};
+
 export const buildSpecial = (s: SimState, opts: { angle?: boolean; dihedral?: boolean; ignoreBond?: (type: number) => boolean; maxOrder?: 1 | 2 | 3 } = {}): SpecialList => {
   const maxOrder = opts.maxOrder ?? 3;
+  if (maxOrder === 1) {
+    const fast = buildSpecial12(s, opts.ignoreBond);
+    if (fast) return fast;
+  }
   const adj = new Map<number, number[]>();
   const b = s.topo.bonds;
   for (let e = 0; e < b.n; e++) {

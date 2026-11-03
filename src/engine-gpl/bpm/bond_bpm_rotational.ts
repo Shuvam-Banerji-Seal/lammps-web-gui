@@ -61,6 +61,43 @@ const decomposeSwingTwist = (q: Quat): { swing: Quat; twist: Quat } => {
   return { swing, twist };
 };
 
+/** quatrotvec's result (rotv). */
+const R3 = new Float64Array(3);
+/** quatrotvec (quat.ts, MathExtra::quatrotvec) of (b0, b1, b2) by (a0, a1, a2, a3), into R3. */
+const rotv = (a0: number, a1: number, a2: number, a3: number, b0: number, b1: number, b2: number): void => {
+  const t0 = -a1 * b0 - a2 * b1 - a3 * b2;
+  const t1 = a0 * b0 + a2 * b2 - a3 * b1;
+  const t2 = a0 * b1 + a3 * b0 - a1 * b2;
+  const t3 = a0 * b2 + a1 * b1 - a2 * b0;
+  R3[0] = -a1 * t0 + a0 * t1 - a3 * t2 + a2 * t3;
+  R3[1] = -a2 * t0 + a3 * t1 + a0 * t2 - a1 * t3;
+  R3[2] = -a3 * t0 - a2 * t1 + a1 * t2 + a0 * t3;
+};
+/** quatquat's result (qmul). */
+const Q4 = new Float64Array(4);
+/** quatquat (quat.ts, MathExtra::quatquat) a b, into Q4. */
+const qmul = (a0: number, a1: number, a2: number, a3: number, b0: number, b1: number, b2: number, b3: number): void => {
+  const r0 = a0 * b0 - a1 * b1 - a2 * b2 - a3 * b3;
+  const r1 = a0 * b1 + b0 * a1 + a2 * b3 - a3 * b2;
+  const r2 = a0 * b2 + b0 * a2 + a3 * b1 - a1 * b3;
+  const r3 = a0 * b3 + b0 * a3 + a1 * b2 - a2 * b1;
+  Q4[0] = r0; Q4[1] = r1; Q4[2] = r2; Q4[3] = r3;
+};
+/** decomposeSwingTwist's twist (0..3) and swing (4..7) (swingTwist). */
+const ST = new Float64Array(8);
+/** decomposeSwingTwist of (q0, q1, q2, q3) into ST, in its operation order. */
+const swingTwist = (q0: number, q1: number, q2: number, q3: number): void => {
+  const tmp = Math.sqrt(q0 * q0 + q3 * q3);
+  let psi = tmp < EPSILON ? 0 : 2 * acosLimit(q0 / tmp);
+  if (q3 < 0) psi = -psi;
+  const tw0 = libmCos(psi / 2), tw3 = libmSin(psi / 2);
+  // swing = qnormalize(quatquat(qconjugate(twist), q)), twist = (tw0, 0, 0, tw3)
+  qmul(tw0, -0, -0, -tw3, q0, q1, q2, q3);
+  const n = 1 / Math.sqrt(Q4[0] * Q4[0] + Q4[1] * Q4[1] + Q4[2] * Q4[2] + Q4[3] * Q4[3]);
+  ST[0] = tw0; ST[1] = 0; ST[2] = 0; ST[3] = tw3;
+  ST[4] = Q4[0] * n; ST[5] = Q4[1] * n; ST[6] = Q4[2] * n; ST[7] = Q4[3] * n;
+};
+
 /** The loads on a bond: force and torques on atom i2 (force1on2, torque1on2) and on atom i1 (torque2on1). */
 interface Loads {
   f1on2: Vec3;
@@ -148,16 +185,17 @@ export class BondBpmRotational extends BondBPMBase {
 
   /** The loads of a bond of type t between atoms i1 and i2 with reference state h (the frame and damping of the style). */
   private loads(bc: BondedCompute, i1: number, i2: number, t: number, h: Hist): Loads {
-    const P = (name: string): number => this.params.p(name)[t];
+    // the coefficient arrays in paramNames order (kr ks kt kb fcr fcs tct tcb gr gs gt gb)
+    const D = this.params.data;
     const r0 = h[0];
     const ri: Vec3 = [h[1] * r0, h[2] * r0, h[3] * r0];
     const d = [0, 0, 0];
     delta(bc, i1, i2, d);
     const rf: Vec3 = [d[0], d[1], d[2]];
     const params = {
-      Kr: P('kr'), Ks: P('ks'), Kt: P('kt'), Kb: P('kb'),
-      Fcr: P('fcr'), Fcs: P('fcs'), Tct: P('tct'), Tcb: P('tcb'),
-      gr: P('gr'), gs: P('gs'), gt: P('gt'), gb: P('gb'),
+      Kr: D[0][t], Ks: D[1][t], Kt: D[2][t], Kb: D[3][t],
+      Fcr: D[4][t], Fcs: D[5][t], Tct: D[6][t], Tcb: D[7][t],
+      gr: D[8][t], gs: D[9][t], gt: D[10][t], gb: D[11][t],
     };
     const L = this.frame === 'average' ? this.averageFrame(bc, i1, i2, params, ri, rf, h) : this.particleFrame(bc, i1, i2, params, ri, rf, h);
     if (this.damping === 'dem') this.demDamping(bc, i1, i2, params, rf, L);
@@ -236,70 +274,108 @@ export class BondBpmRotational extends BondBPMBase {
     }
   }
 
-  /** The average-frame elastic and derivative-damped loads (average_frame_forces). */
+  /**
+   * The average-frame elastic and derivative-damped loads (average_frame_forces), in scalars: every value and operation
+   * order is that of the vector form (quat.ts helpers: quatAverage, quatrotvec, cross3, normalize3, quatquat,
+   * qnormalize, decomposeSwingTwist), the quaternion products and rotations through rotv and qmul.
+   */
   private averageFrame(bc: BondedCompute, i1: number, i2: number, p: Record<string, number>, ri: Vec3, rf: Vec3, h: Hist): Loads {
     const quat = bc.s.quat!, v = bc.s.v;
-    const riNorm = len3(ri);
+    const ri0 = ri[0], ri1 = ri[1], ri2 = ri[2];
+    const rf0 = rf[0], rf1 = rf[1], rf2 = rf[2];
+    const riNorm = Math.sqrt(ri0 * ri0 + ri1 * ri1 + ri2 * ri2);
     let Kr = p.Kr, Ks = p.Ks;
     if (this.normalize) { Kr *= 1 / riNorm; Ks *= 1 / riNorm; }
-    const q1f: Quat = [quat[4 * i1], quat[4 * i1 + 1], quat[4 * i1 + 2], quat[4 * i1 + 3]];
-    const q2f: Quat = [quat[4 * i2], quat[4 * i2 + 1], quat[4 * i2 + 2], quat[4 * i2 + 3]];
-    const qcf = quatAverage(q1f, q2f);
-    const qcfInv = qconjugate(qcf);
-    const rc = quatrotvec(qcfInv, rf);
-    const rcNorm = len3(rc);
+    const a0 = quat[4 * i1], a1 = quat[4 * i1 + 1], a2 = quat[4 * i1 + 2], a3 = quat[4 * i1 + 3];
+    const b0 = quat[4 * i2], b1 = quat[4 * i2 + 1], b2 = quat[4 * i2 + 2], b3 = quat[4 * i2 + 3];
+    // qcf = quatAverage(q1f, q2f)
+    let dot = a0 * b0 + a1 * b1 + a2 * b2 + a3 * b3;
+    let u0 = b0, u1 = b1, u2 = b2, u3 = b3;
+    if (dot < 0) { u0 = -b0; u1 = -b1; u2 = -b2; u3 = -b3; dot = -dot; }
+    const sAvg = 1 / Math.sqrt(2 * (1 + dot));
+    const m0 = (a0 + u0) * sAvg, m1 = (a1 + u1) * sAvg, m2 = (a2 + u2) * sAvg, m3 = (a3 + u3) * sAvg;
+    const nAvg = 1 / Math.sqrt(m0 * m0 + m1 * m1 + m2 * m2 + m3 * m3);
+    const c0 = m0 * nAvg, c1 = m1 * nAvg, c2 = m2 * nAvg, c3 = m3 * nAvg;
+    // qcfInv = qconjugate(qcf); rc = quatrotvec(qcfInv, rf)
+    const ci1 = -c1, ci2 = -c2, ci3 = -c3;
+    rotv(c0, ci1, ci2, ci3, rf0, rf1, rf2);
+    const rc0 = R3[0], rc1 = R3[1], rc2 = R3[2];
+    const rcNorm = Math.sqrt(rc0 * rc0 + rc1 * rc1 + rc2 * rc2);
     const FrElastic = Kr * (rcNorm - riNorm);
     let Fr = FrElastic;
-    const riDotRc = dot3(ri, rc);
+    const riDotRc = ri0 * rc0 + ri1 * rc1 + ri2 * rc2;
     const gamma = acosLimit(riDotRc / (riNorm * rcNorm));
-    const rixrc = cross3(ri, rc);
-    const rixrcMag = len3(rixrc);
-    let FstC: Vec3 = [0, 0, 0];
-    let TstC: Vec3 = [0, 0, 0];
-    const rcHat = normalize3(rc);
+    const x0 = ri1 * rc2 - ri2 * rc1, x1 = ri2 * rc0 - ri0 * rc2, x2 = ri0 * rc1 - ri1 * rc0;
+    const rixrcMag = Math.sqrt(x0 * x0 + x1 * x1 + x2 * x2);
+    // rcHat = normalize3(rc)
+    let rh0 = 0, rh1 = 0, rh2 = 0;
+    if (rcNorm > 0) { const iv = 1 / rcNorm; rh0 = iv * rc0; rh1 = iv * rc1; rh2 = iv * rc2; }
     let FsElastic = 0, Fs = 0;
-    let sHat: Vec3 = [0, 0, 0], tHat: Vec3 = [0, 0, 0];
+    let sh0 = 0, sh1 = 0, sh2 = 0, th0 = 0, th1 = 0, th2 = 0;
     if (rixrcMag > EPSILON) {
-      tHat = normalize3(rixrc);
-      sHat = normalize3(cross3(tHat, rcHat));
+      const it = 1 / rixrcMag;
+      th0 = it * x0; th1 = it * x1; th2 = it * x2;
+      const y0 = th1 * rh2 - th2 * rh1, y1 = th2 * rh0 - th0 * rh2, y2 = th0 * rh1 - th1 * rh0;
+      const ny = Math.sqrt(y0 * y0 + y1 * y1 + y2 * y2);
+      if (ny > 0) { const iy = 1 / ny; sh0 = iy * y0; sh1 = iy * y1; sh2 = iy * y2; }
       FsElastic = Ks * rcNorm * gamma;
       Fs = FsElastic;
     }
-    const qu0 = qnormalize(quatquat(qcfInv, q2f));
-    // qm: the rotation that takes the z axis onto rc (MathExtra-style minimal rotation), built from rc
-    let temp = Math.max(0, rcNorm + rc[2]);
-    const qm: Quat = [0, 0, 0, 0];
-    qm[0] = SQRT2 * 0.5 * Math.sqrt(temp / rcNorm);
-    temp = Math.sqrt(rc[0] * rc[0] + rc[1] * rc[1]);
+    // qu0 = qnormalize(quatquat(qcfInv, q2f))
+    qmul(c0, ci1, ci2, ci3, b0, b1, b2, b3);
+    let n = 1 / Math.sqrt(Q4[0] * Q4[0] + Q4[1] * Q4[1] + Q4[2] * Q4[2] + Q4[3] * Q4[3]);
+    const p0 = Q4[0] * n, p1 = Q4[1] * n, p2 = Q4[2] * n, p3 = Q4[3] * n;
+    // qm: the rotation that takes the z axis onto rc
+    let temp = Math.max(0, rcNorm + rc2);
+    const qm0 = SQRT2 * 0.5 * Math.sqrt(temp / rcNorm);
+    let qm1 = 0, qm2 = 0;
+    temp = Math.sqrt(rc0 * rc0 + rc1 * rc1);
     if (temp > EPSILON) {
-      const temp2 = Math.max(0, rcNorm - rc[2]);
+      const temp2 = Math.max(0, rcNorm - rc2);
       const factor = (-SQRT2 * 0.5 * Math.sqrt(temp2 / rcNorm)) / temp;
-      qm[1] = factor * rc[1];
-      qm[2] = -factor * rc[0];
-    } else {
-      qm[1] = 0;
-      qm[2] = 0;
+      qm1 = factor * rc1;
+      qm2 = -factor * rc0;
     }
-    qm[3] = 0;
-    if (qm[0] === 0 && qm[1] === 0 && qm[2] === 0) qm[2] = 1;
-    const qmN = qnormalize(qm);
-    const qu = qnormalize(quatquat(quatquat(qconjugate(qmN), qu0), qmN));
-    const sw2 = decomposeSwingTwist(qu);
-    const sw1 = decomposeSwingTwist(qconjugate(qu));
-    const twist = quatquat(sw2.twist, qconjugate(sw1.twist));
-    const psi = 2 * acosLimit(twist[0]);
-    const taxis: Vec3 = Math.abs(psi) > EPSILON ? normalize3([twist[1], twist[2], twist[3]]) : [0, 0, 1];
-    const swing = quatquat(sw2.swing, qconjugate(sw1.swing));
-    const theta = 2 * acosLimit(swing[0]);
-    const baxis: Vec3 = Math.abs(theta) > EPSILON ? normalize3([swing[1], swing[2], swing[3]]) : [0, 0, 1];
+    const qm3 = 0;
+    if (qm0 === 0 && qm1 === 0 && qm2 === 0) qm2 = 1;
+    n = 1 / Math.sqrt(qm0 * qm0 + qm1 * qm1 + qm2 * qm2 + qm3 * qm3);
+    const e0 = qm0 * n, e1 = qm1 * n, e2 = qm2 * n, e3 = qm3 * n;
+    // qu = qnormalize(quatquat(quatquat(qconjugate(qmN), qu0), qmN))
+    qmul(e0, -e1, -e2, -e3, p0, p1, p2, p3);
+    qmul(Q4[0], Q4[1], Q4[2], Q4[3], e0, e1, e2, e3);
+    n = 1 / Math.sqrt(Q4[0] * Q4[0] + Q4[1] * Q4[1] + Q4[2] * Q4[2] + Q4[3] * Q4[3]);
+    const g0 = Q4[0] * n, g1 = Q4[1] * n, g2 = Q4[2] * n, g3 = Q4[3] * n;
+    // sw2 = decomposeSwingTwist(qu), sw1 = decomposeSwingTwist(qconjugate(qu))
+    swingTwist(g0, g1, g2, g3);
+    const tw20 = ST[0], tw23 = ST[3], sw20 = ST[4], sw21 = ST[5], sw22 = ST[6], sw23 = ST[7];
+    swingTwist(g0, -g1, -g2, -g3);
+    const tw10 = ST[0], tw13 = ST[3], sw10 = ST[4], sw11 = ST[5], sw12 = ST[6], sw13 = ST[7];
+    // twist = quatquat(sw2.twist, qconjugate(sw1.twist)) (the twists' i and j are 0, conjugated -0)
+    qmul(tw20, 0, 0, tw23, tw10, -0, -0, -tw13);
+    const k0 = Q4[0], k1 = Q4[1], k2 = Q4[2], k3 = Q4[3];
+    const psi = 2 * acosLimit(k0);
+    let ta0 = 0, ta1 = 0, ta2 = 1;
+    if (Math.abs(psi) > EPSILON) {
+      const nt = Math.sqrt(k1 * k1 + k2 * k2 + k3 * k3);
+      if (nt > 0) { const iv = 1 / nt; ta0 = iv * k1; ta1 = iv * k2; ta2 = iv * k3; } else { ta2 = 0; }
+    }
+    // swing = quatquat(sw2.swing, qconjugate(sw1.swing))
+    qmul(sw20, sw21, sw22, sw23, sw10, -sw11, -sw12, -sw13);
+    const w0 = Q4[0], w1 = Q4[1], w2 = Q4[2], w3 = Q4[3];
+    const theta = 2 * acosLimit(w0);
+    let ba0 = 0, ba1 = 0, ba2 = 1;
+    if (Math.abs(theta) > EPSILON) {
+      const nb = Math.sqrt(w1 * w1 + w2 * w2 + w3 * w3);
+      if (nb > 0) { const iv = 1 / nb; ba0 = iv * w1; ba1 = iv * w2; ba2 = iv * w3; } else { ba2 = 0; }
+    }
     const TtElastic = p.Kt * psi;
     let Tt = TtElastic;
     const TbElastic = p.Kb * theta;
     let Tb = TbElastic;
     if (this.damping === 'derivative') {
       const dtInv = 1 / bc.s.dt;
-      const dvc = quatrotvec(qcfInv, sub3([v[3 * i2], v[3 * i2 + 1], v[3 * i2 + 2]], [v[3 * i1], v[3 * i1 + 1], v[3 * i1 + 2]]));
-      Fr += p.gr * dot3(dvc, rcHat);
+      rotv(c0, ci1, ci2, ci3, v[3 * i2] - v[3 * i1], v[3 * i2 + 1] - v[3 * i1 + 1], v[3 * i2 + 2] - v[3 * i1 + 2]);
+      Fr += p.gr * (R3[0] * rh0 + R3[1] * rh1 + R3[2] * rh2);
       if (rixrcMag > EPSILON) Fs += p.gs * rcNorm * (wrap2pi(gamma - h[4]) * dtInv);
       Tt += p.gt * (wrap2pi(psi - h[6]) * dtInv);
       Tb += p.gb * (wrap2pi(theta - h[5]) * dtInv);
@@ -307,30 +383,34 @@ export class BondBpmRotational extends BondBPMBase {
       h[5] = theta;
       h[6] = psi;
     }
-    const FrC = scale3(Fr, rcHat);
+    const FrC0 = Fr * rh0, FrC1 = Fr * rh1, FrC2 = Fr * rh2;
+    let Fs0 = 0, Fs1 = 0, Fs2 = 0, Ts0 = 0, Ts1 = 0, Ts2 = 0;
     if (rixrcMag > EPSILON) {
-      FstC = scale3(Fs, sHat);
-      TstC = scale3(0.5 * rcNorm * Fs, tHat);
+      Fs0 = Fs * sh0; Fs1 = Fs * sh1; Fs2 = Fs * sh2;
+      const st = 0.5 * rcNorm * Fs;
+      Ts0 = st * th0; Ts1 = st * th1; Ts2 = st * th2;
     }
-    const TtP = scale3(Tt, taxis);
-    const TbP = scale3(Tb, baxis);
-    const TbC = quatrotvec(qmN, TbP);
-    const TtC = quatrotvec(qmN, TtP);
-    const F1C = add3(FrC, FstC);
-    const Ttmp = add3(TbC, TtC);
-    const T1C = add3(TstC, Ttmp);
-    const T2C = sub3(TstC, Ttmp);
-    const force2on1 = quatrotvec(qcf, F1C);
+    // TbC = quatrotvec(qmN, TbP), TtC = quatrotvec(qmN, TtP)
+    rotv(e0, e1, e2, e3, Tb * ba0, Tb * ba1, Tb * ba2);
+    const tb0 = R3[0], tb1 = R3[1], tb2 = R3[2];
+    rotv(e0, e1, e2, e3, Tt * ta0, Tt * ta1, Tt * ta2);
+    const tt0 = tb0 + R3[0], tt1 = tb1 + R3[1], tt2 = tb2 + R3[2];
+    const L = this.scratch;
+    // force2on1 = quatrotvec(qcf, F1C); f1on2 = -force2on1
+    rotv(c0, c1, c2, c3, FrC0 + Fs0, FrC1 + Fs1, FrC2 + Fs2);
+    L.f1on2[0] = -1 * R3[0]; L.f1on2[1] = -1 * R3[1]; L.f1on2[2] = -1 * R3[2];
+    rotv(c0, c1, c2, c3, Ts0 - tt0, Ts1 - tt1, Ts2 - tt2);
+    L.t1on2[0] = R3[0]; L.t1on2[1] = R3[1]; L.t1on2[2] = R3[2];
+    rotv(c0, c1, c2, c3, Ts0 + tt0, Ts1 + tt1, Ts2 + tt2);
+    L.t2on1[0] = R3[0]; L.t2on1[1] = R3[1]; L.t2on1[2] = R3[2];
     const breaking0 = Math.abs(FrElastic) / p.Fcr + FsElastic / p.Fcs + TbElastic / p.Tcb + TtElastic / p.Tct;
-    const ebond = 0.5 * (Kr * (rcNorm - riNorm) * (rcNorm - riNorm) + Ks * rcNorm * rcNorm * gamma * gamma + p.Kt * psi * psi + p.Kb * theta * theta);
-    return {
-      f1on2: scale3(-1, force2on1),
-      t1on2: quatrotvec(qcf, T2C),
-      t2on1: quatrotvec(qcf, T1C),
-      breaking: Math.max(0, breaking0),
-      ebond,
-    };
+    L.breaking = Math.max(0, breaking0);
+    L.ebond = 0.5 * (Kr * (rcNorm - riNorm) * (rcNorm - riNorm) + Ks * rcNorm * rcNorm * gamma * gamma + p.Kt * psi * psi + p.Kb * theta * theta);
+    return L;
   }
+
+  /** averageFrame's result (one bond at a time; read before the next call). */
+  private readonly scratch: Loads = { f1on2: [0, 0, 0], t1on2: [0, 0, 0], t2on1: [0, 0, 0], breaking: 0, ebond: 0 };
 
   /** The particle-frame loads (particle_frame_forces). */
   private particleFrame(bc: BondedCompute, i1: number, i2: number, p: Record<string, number>, r0neg: Vec3, r: Vec3, h: Hist): Loads {

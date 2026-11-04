@@ -228,6 +228,9 @@ export class FixBalance extends Fix {
   /** The out file (balance.cpp options: opened for writing when the fix is defined), and the step last written. */
   private outFile: string | null = null;
   private lastOut = -1;
+  /** The next rebalancing step, on which the neighbor lists are rebuilt (Nfreq > 0), and the last balanced step. */
+  private nextReneighbor = -1;
+  private lastBalance = -1;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -304,6 +307,25 @@ export class FixBalance extends Fix {
   setup(): void {
     // native: at run setup the neighbor list is not yet used, so no neighbor weights (measured)
     this.update(null);
+    this.balanced();
+  }
+
+  /**
+   * As native LAMMPS does (src/fix_balance.cpp at b332f28): with Nfreq > 0 the fix forces a reneighboring
+   * (force_reneighbor) on each rebalancing step, next_reneighbor = (step / Nfreq) * Nfreq + Nfreq, set by
+   * setup_pre_exchange at run setup and by pre_exchange on the rebalancing step, whatever the neighbor every and delay
+   * (examples/balance/in.balance.kspace, neigh_modify every 2 delay 4: native rebuilds on steps 20 and 40).
+   */
+  reneighborDue(step: number): boolean {
+    return this.nfreq > 0 && step === this.nextReneighbor;
+  }
+
+  /** Records a rebalancing on this step (once per step, as native's lastbalance) and schedules the next. */
+  private balanced(): void {
+    const step = this.sys.state.step;
+    if (step === this.lastBalance) return;
+    this.lastBalance = step;
+    if (this.nfreq > 0) this.nextReneighbor = Math.floor(step / this.nfreq) * this.nfreq + this.nfreq;
   }
 
   /**
@@ -315,6 +337,7 @@ export class FixBalance extends Fix {
    * neighbor rebuilds every 1 and every 10).
    */
   preExchange(): void {
+    if (this.nfreq === 0 || this.sys.state.step >= this.nextReneighbor) this.balanced();
     if (!balanceUsesNeigh(this.actions)) return;
     if (this.nfreq !== 0 && this.sys.state.step % this.nfreq !== 0) return;
     this.updateWeights();

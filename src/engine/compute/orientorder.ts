@@ -151,6 +151,9 @@ const w3jLLL = (l: number, m1: number, m2: number, m3: number): number => {
   return pref * sum;
 };
 
+
+/** Q_l below this gives a normalized W_l and components of 0 (native QEPSILON, compute_orientorder_atom.cpp). */
+const QEPSILON = 1.0e-6;
 export class ComputeOrientorderAtom extends Compute {
   readonly style = 'orientorder/atom';
   peratomFlag = true;
@@ -461,12 +464,17 @@ export class ComputeOrientorderAtom extends Compute {
         let norm2 = 0;
         for (let t = 0; t < 2 * l + 1; t++) norm2 += re[t] * re[t] + im[t] * im[t];
         // Q_l = sqrt(4 pi/(2l+1) sum |Ybar|^2), Ybar = raw/nsel
-        out[row + d] = Math.sqrt(((4 * Math.PI) / (2 * l + 1)) * norm2) * inv;
+        const ql = Math.sqrt(((4 * Math.PI) / (2 * l + 1)) * norm2) * inv;
+        out[row + d] = ql;
         const wr = this.wRaw(d);
         if (this.wl) out[row + wOff + d] = (wr * inv3) / Math.sqrt(2 * l + 1);
-        if (this.wlHat) out[row + hatOff + d] = norm2 > 0 ? wr / Math.pow(norm2, 1.5) : 0;
-        if (this.componentsDeg === l && norm2 > 0) {
-          const sc = 1 / Math.sqrt(norm2);
+        // As native LAMMPS does (src/compute_orientorder_atom.cpp calc_boop at b332f28, QEPSILON = 1.0e-6): with
+        // "qn[il] < QEPSILON" the normalized W_l and the normalized components are 0 (bcc Q_2 is about 1e-17, and
+        // dividing by it gave W_2 hat 0.00217 instead of 0 in examples/steinhardt/in.bcc)
+        const tiny = !(ql >= QEPSILON);
+        if (this.wlHat) out[row + hatOff + d] = tiny ? 0 : wr / Math.pow(norm2, 1.5);
+        if (this.componentsDeg === l) {
+          const sc = tiny ? 0 : 1 / Math.sqrt(norm2);
           for (let m = 0; m <= 2 * l; m++) {
             out[row + compOff + 2 * m] = re[m] * sc;
             out[row + compOff + 2 * m + 1] = im[m] * sc;

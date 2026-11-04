@@ -1,0 +1,29 @@
+# oracle: fix pimd/langevin with one replica (no -partition): as native LAMMPS does (src/REPLICA/fix_pimd_langevin.cpp
+#   constructor at b332f28: "if (nreplica == 1) mapflag = 0"), the positions are never unmapped by their image flags,
+#   so the virial estimator t_vir (f_1[6]) is -0.5 sum x . f with the wrapped positions. The engine unmapped them
+#   (examples/PACKAGES/pimd/langevin_reduced_units/in.lmp on one partition: f_1[6] -99.3 instead of 36.3). The atoms
+#   carry image flags (set image) so wrapped and unwrapped positions differ.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+atom_style atomic
+atom_modify map yes
+boundary p p p
+region box block -6 6 -6 6 -6 6
+create_box 1 box
+create_atoms 1 single -1.0 0.5 0.2
+create_atoms 1 single 1.5 -0.7 0.9
+create_atoms 1 single 0.3 2.0 -1.1
+set atom 1 image 1 0 -1
+set atom 2 image 0 2 0
+set atom 3 image -1 1 1
+mass 1 1.0
+pair_style lj/cut 2.8015
+pair_coeff * * 1.0 1.0
+pair_modify shift yes
+timestep 0.00044905847
+velocity all create 1.0 43210 mom yes rot no dist gaussian
+fix 1 all pimd/langevin ensemble nvt integrator obabo temp 1.00888 sp 0.1924 thermostat PILE_L 1234
+thermo_style custom step temp f_1[1] f_1[2] f_1[3] f_1[4] f_1[5] f_1[6] f_1[7] f_1[8] f_1[9] f_1[10] pe
+thermo_modify format float %.15g norm no
+thermo 5
+run 30

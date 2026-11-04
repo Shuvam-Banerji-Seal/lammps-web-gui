@@ -99,11 +99,16 @@ class GridEvaluator {
             const k = cand[t];
             if (!(s.mask[owner[k]] & gb)) continue;
             const dx = xa[3 * k] - x, dy = xa[3 * k + 1] - y, dz = xa[3 * k + 2] - z;
-            const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            const rsq = dx * dx + dy * dy + dz * dz;
+            const r = Math.sqrt(rsq);
             // the grid point has the type of its neighbour (doc: "i has the same type as the neighbor atom")
             const tk = ta[k] - 1;
             const Rii = p.rcutfac * (p.radius[tk] + p.radius[tk]);
-            if (!(r < Rii) || r === 0) continue;
+            // As native LAMMPS does (src/ML-SNAP/compute_sna_grid.cpp and compute_sna_grid_local.cpp at b332f28): an atom
+            // counts when "rsq < cutsq[jtype][jtype] && rsq > 1e-20", so an atom on the grid point is left out even when
+            // rounding puts it 4e-16 away (examples/snap/in.snap.grid.triclinic: the atom at grid point 13 has
+            // x = 3.3160000000000003; counting it gave B0 191.6 instead of 108.2)
+            if (!(r < Rii) || !(rsq > 1e-20)) continue;
             const [fc] = cutoffFactor(p, r, Rii);
             let fin = 1;
             if (p.switchinner) fin = innerSwitch(r, p.sinner[tk], p.dinner[tk])[0];

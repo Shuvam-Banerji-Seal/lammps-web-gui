@@ -226,48 +226,67 @@ export class FixNumdiffVirial extends FixNumdiffBase {
     return this.vector[i];
   }
 
+  /**
+   * The fixed point of the strain: the box centre when the fix is defined. As native LAMMPS does
+   * (src/EXTRA-FIX/fix_numdiff_virial.cpp constructor at b332f28): "fixedpoint[0] = 0.5 * (domain->boxlo[0] +
+   * domain->boxhi[0])" and likewise for y and z, set once.
+   */
+  private readonly fixedpoint = [0, 1, 2].map((d) => 0.5 * (this.sys.state.box.lo[d] + this.sys.state.box.hi[d]));
+
+  /**
+   * The six strain directions xx yy zz yz xz xy as (k, l): coordinate k of every atom moves by delta (x_l - fixedpoint_l).
+   * As native LAMMPS does (fix_numdiff_virial.cpp dirlist at b332f28): yz moves y by z, xz moves x by z, xy moves x by y.
+   */
+  private static readonly DIRS: readonly (readonly [number, number])[] = [[0, 0], [1, 1], [2, 2], [1, 2], [0, 2], [0, 1]];
+
+  /**
+   * As native LAMMPS does (fix_numdiff_virial.cpp calculate_virial and displace_atoms at b332f28): the owned and ghost
+   * atoms of the step's neighbor lists move together, "x[i][k] = temp_x[i][k] + delta * magnitude * (temp_x[i][l] -
+   * fixedpoint[l])" for i < nall, and the energy is evaluated on those lists without a ghost update; the box is not
+   * changed. virial[idir] = -0.5 / delta / V * nktv2p * (E(+) - E(-)). Moving only the owned atoms and rebuilding the
+   * ghosts from the unstrained box made the periodic images inconsistent (examples/numdiff/in.numdiff: about 0 instead
+   * of 912 for the xx virial).
+   */
   private computeVirial(): void {
     const sys = this.sys;
     const s = sys.state;
-    const box = s.box;
-    const cx = 0.5 * (box.lo[0] + box.hi[0]);
-    const cy = 0.5 * (box.lo[1] + box.hi[1]);
-    const cz = 0.5 * (box.lo[2] + box.hi[2]);
-    const center = [cx, cy, cz];
-    // one single-term (engineering) strain field per Voigt component: the
-    // displacement of atom i is delta * (coordinate ref - center ref) along
-    // axis, which gives dU/dstrain = -W(ref, axis); the reported value is
-    // -dU/dstrain / V * nktv2p, so it is +W(axis, ref) / V * nktv2p.
-    const fields: readonly (readonly [number, number])[] = [
-      [0, 0], // xx
-      [1, 1], // yy
-      [2, 2], // zz
-      [2, 1], // yz
-      [2, 0], // xz
-      [1, 0], // xy
-    ];
+    const nb = sys.nb;
+    const nall = nb.nall, n = s.n;
+    const xa = nb.xall;
+    const tempX = xa.slice(0, 3 * nall);
+    const fixedpoint = this.fixedpoint;
     const snap = this.snapshot();
-    try {
+    const displace = (k: number, l: number, magnitude: number): void => {
       const d = this.delta;
+      for (let i = 0; i < nall; i++) xa[3 * i + k] = tempX[3 * i + k] + d * magnitude * (tempX[3 * i + l] - fixedpoint[l]);
+      // the owned atoms' own coordinates follow (the bonded and kspace terms read them)
+      s.x.set(xa.subarray(0, 3 * n));
+    };
+    try {
       const vol = sys.geom.volume(sys.dimension);
-      const nktv2p = s.units.nktv2p;
-      for (let k = 0; k < 6; k++) {
-        const [axis, ref] = fields[k];
-        let ePlus = 0;
-        let eMinus = 0;
-        for (const sign of [1, -1]) {
-          s.x.set(snap.x);
-          for (let i = 0; i < s.n; i++) {
-            s.x[3 * i + axis] = snap.x[3 * i + axis] + sign * d * (snap.x[3 * i + ref] - center[ref]);
-          }
-          const e = this.energyNow();
-          if (sign === 1) ePlus = e;
-          else eMinus = e;
-        }
-        this.vector[k] = -((ePlus - eMinus) / (2 * d)) / vol * nktv2p;
+      const denominator = -0.5 / this.delta / vol * s.units.nktv2p;
+      for (let idir = 0; idir < 6; idir++) {
+        const [k, l] = FixNumdiffVirial.DIRS[idir];
+        displace(k, l, 1.0);
+        let v = this.energyOnLists();
+        xa.set(tempX);
+        displace(k, l, -1.0);
+        v -= this.energyOnLists();
+        xa.set(tempX);
+        this.vector[idir] = v * denominator;
       }
     } finally {
+      xa.set(tempX);
       this.restore(snap);
     }
+  }
+
+  /** The potential energy of the current list coordinates (nb.xall), without a ghost update (see computeVirial). */
+  private energyOnLists(): number {
+    const sys = this.sys;
+    sys.ff.compute(sys.state, sys.nb, sys.geom, {});
+    const a = sys.ff.acc;
+    const vol = sys.geom.volume(sys.dimension);
+    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp - sys.ff.etailV / vol;
   }
 }

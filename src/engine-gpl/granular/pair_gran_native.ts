@@ -19,6 +19,9 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { contactMassArray } from '../../engine/atoms';
 
 export class PairGranNative extends PairGran {
+  /** The call counter of compute; a contact record holds the stamp of the last call that touched it in entry 3. */
+  private stampN = 0;
+
   override compute(pc: PairCompute): void {
     const s = pc.s;
     const list = pc.half!;
@@ -33,7 +36,8 @@ export class PairGranNative extends PairGran {
     const tq = this.tq;
     tq.fill(0, 0, 3 * nall);
     const history = this.history, hertz = this.hertz;
-    const seen = history ? new Set<number | string>() : null;
+    // the stamp of this call: a contact record touched now gets it, the rest are dropped after the loop
+    const stamp = ++this.stampN;
     const kn = this.kn, kt = this.kt, gamman = this.gn, gammat = this.gt, xmu = this.xmu;
     const limit_damping = this.limitDamping;
     const freeze_group_bit = this.freezeBit;
@@ -122,8 +126,9 @@ export class PairGranNative extends PairGran {
           const a = id[oi], b = id[oj];
           const flip = a > b;
           const key = flip ? pairKey(b, a) : pairKey(a, b);
-          seen!.add(key);
-          const sh = this.shear.get(key) ?? new Float64Array(3);
+          let sh = this.shear.get(key);
+          if (sh === undefined) { sh = new Float64Array(4); this.shear.set(key, sh); }
+          sh[3] = stamp;
           const sg = flip ? -1 : 1;
           let shear0 = sg * sh[0], shear1 = sg * sh[1], shear2 = sg * sh[2];
           if (shearupdate) {
@@ -164,7 +169,6 @@ export class PairGranNative extends PairGran {
             } else fs1 = fs2 = fs3 = 0.0;
           }
           sh[0] = sg * shear0; sh[1] = sg * shear1; sh[2] = sg * shear2;
-          this.shear.set(key, sh);
         }
 
         // forces & torques
@@ -199,7 +203,7 @@ export class PairGranNative extends PairGran {
         if (pc.vatom) tallyAtomXyz(pc, ii, j, 0, fx, fy, fz, delx, dely, delz);
       }
     }
-    if (history) for (const key of this.shear.keys()) if (!seen!.has(key)) this.shear.delete(key);
+    if (history) for (const [key, sh] of this.shear) if (sh[3] !== stamp) this.shear.delete(key);
     nb.reverseSum(tq, 3, s.torque!);
   }
 }

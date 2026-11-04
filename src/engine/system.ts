@@ -762,6 +762,7 @@ export class System {
       region: (id) => this.regions.get(id),
       remap: (p) => { if (this.hasBox) this.geom.remapPoint(p); },
       stamp: () => this.variableStamp(),
+      dimension: () => this.dimension,
     };
   }
 

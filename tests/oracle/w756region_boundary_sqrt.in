@@ -1,0 +1,31 @@
+# oracle: region sphere, cylinder and cone test sqrt(r^2) <= radius and ellipsoid native's scaled products, so lattice points on the surface up to rounding ((0.3, 0.4) at radius 0.5: r^2 = 0.25000000000000006) are inside as in native
+units           metal
+atom_style      atomic
+lattice         sc 0.1 origin 0 0 0
+region          box block -6 6 -6 6 -6 6
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+region          s sphere 0 0 0 0.5 units box
+region          cz cylinder z 0 0 0.5 -0.25 0.25 units box
+region          cx cylinder x 0 0 0.5 INF INF units box
+region          k cone z 0 0 0.5 0.5 -0.25 0.25 units box
+region          e ellipsoid 0 0 0 0.5 0.5 0.5 units box
+region          e2 ellipsoid 0 0 0 0.3 0.4 0.5 units box
+group           s region s
+group           cz region cz
+group           cx region cx
+group           k region k
+group           e region e
+group           e2 region e2
+variable        ns equal count(s)
+variable        ncz equal count(cz)
+variable        ncx equal count(cx)
+variable        nk equal count(k)
+variable        ne equal count(e)
+variable        ne2 equal count(e2)
+neighbor        0.01 bin
+pair_style      zero 0.05
+pair_coeff      * *
+thermo_style    custom step v_ns v_ncz v_ncx v_nk v_ne v_ne2
+run             0

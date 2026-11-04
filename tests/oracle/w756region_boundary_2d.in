@@ -1,0 +1,23 @@
+# oracle: a 2d sphere and ellipsoid region on a square lattice of 0.1 (PACKAGES/dpd-smooth/2d-diffusion: radius 0.5 holds 81 points as in native, the 8 at (3,4)-type positions included); the 2d ellipsoid ignores z
+units           metal
+dimension       2
+atom_style      atomic
+lattice         sq 0.1 origin 0 0 0
+region          box block -6 6 -6 6 -0.5 0.5
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+region          s sphere 0 0 0 0.5 units box
+region          e ellipsoid 0 0 0 0.5 0.5 0.1 units box
+region          e2 ellipsoid 0 0 0 0.3 0.4 0.1 units box
+group           s region s
+group           e region e
+group           e2 region e2
+variable        ns equal count(s)
+variable        ne equal count(e)
+variable        ne2 equal count(e2)
+neighbor        0.01 bin
+pair_style      zero 0.05
+pair_coeff      * *
+thermo_style    custom step v_ns v_ne v_ne2
+run             0

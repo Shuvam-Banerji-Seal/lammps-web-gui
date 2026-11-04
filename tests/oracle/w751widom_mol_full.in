@@ -1,0 +1,36 @@
+# oracle: fix widom inserting water molecules with full_energy (kspace), as examples/mc/in.widom.spce. Two native rules
+#   (src/MC/fix_widom.cpp at b332f28): the template is centred on its centre of mass ("onemol->compute_com()" and
+#   "onemol->x[i][0] -= onemol->com[0]"), not its geometric centre, so the trial atoms sit where native puts them; and
+#   the fix asks for a reneighbor on each event step ("force_reneighbor = 1", next_reneighbor), so the step's forces do
+#   not use the lists of the last trial (main: evdwl 440 above native and a NaN pressure until the next build).
+# oracle-inputs: w751widom_h2o.mol
+# oracle-compare: thermo=all rel=1e-9 abs=1e-10
+units           real
+atom_style      full
+boundary        p p p
+region          box block 0 12 0 12 0 12
+create_box      2 box bond/types 1 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 2
+molecule        h2omol w751widom_h2o.mol
+mass            1 15.9994
+mass            2 1.008
+lattice         sc 4.0
+create_atoms    0 box mol h2omol 4123
+pair_style      lj/cut/coul/long 5.5
+pair_coeff      1 1 0.1502629 3.1169
+pair_coeff      1 2 0.0341116368 2.04845
+pair_coeff      2 2 0.00774378 0.98
+bond_style      harmonic
+bond_coeff      1 176.864 0.9611
+angle_style     harmonic
+angle_coeff     1 42.1845 109.4712
+kspace_style    ewald 1.0e-4
+velocity        all create 298.0 4321 loop geom
+fix             mywidom all widom 3 6 0 29494 298 mol h2omol
+fix             2 all nvt temp 298.0 298.0 100.0
+neighbor        2.0 bin
+neigh_modify    delay 10 every 2 check yes
+timestep        0.5
+thermo          1
+thermo_style    custom step etotal evdwl ecoul elong press f_mywidom[1] f_mywidom[2]
+thermo_modify   format float %.15g
+run             8

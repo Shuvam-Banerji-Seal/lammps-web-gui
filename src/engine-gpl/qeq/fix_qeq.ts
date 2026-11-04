@@ -679,6 +679,18 @@ export class FixQeq extends Fix {
         // collect the images of this pair that lie within the cutoff range
         let ni = 0;
         if (ortho) {
+          // no image within the cutoff when the nearest ones are past it (as in matrixTerms): nothing to collect
+          let m2 = 0;
+          for (let dd = 0; dd < 3; dd++) {
+            const dv = s.x[3 * i + dd] - s.x[3 * v + dd];
+            let dn = Math.abs(dv);
+            if (box.periodic[dd]) {
+              dn = Math.abs(dv - Ld[dd] * Math.round(dv / Ld[dd])) - 1e-9 * Ld[dd];
+              if (dn < 0) dn = 0;
+            }
+            m2 += dn * dn;
+          }
+          if (m2 > cut2) continue;
           dimRange(s.x[3 * i] - s.x[3 * v], 0, rng, 0);
           dimRange(s.x[3 * i + 1] - s.x[3 * v + 1], 1, rng, 2);
           dimRange(s.x[3 * i + 2] - s.x[3 * v + 2], 2, rng, 4);
@@ -820,6 +832,19 @@ export class FixQeq extends Fix {
         dv[1] = x[3 * i + 1] - x[3 * v + 1];
         dv[2] = x[3 * i + 2] - x[3 * v + 2];
         if (ortho) {
+          // the nearest image in each dimension (n = round(dv / L)): when even those are past the cutoff together, no
+          // image is within it and the loops below add nothing, so the pair is skipped; the 1e-9 L of slack keeps the
+          // test on the safe side of the rounding of dv - n L
+          let m2 = 0;
+          for (let dd = 0; dd < 3; dd++) {
+            let d = Math.abs(dv[dd]);
+            if (geom.periodic[dd]) {
+              d = Math.abs(dv[dd] - Ld[dd] * Math.round(dv[dd] / Ld[dd])) - 1e-9 * Ld[dd];
+              if (d < 0) d = 0;
+            }
+            m2 += d * d;
+          }
+          if (m2 > cut2) continue;
           for (let dd = 0; dd < 3; dd++) {
             if (!geom.periodic[dd]) { lo[dd] = 0; hi[dd] = 0; continue; }
             lo[dd] = Math.floor((dv[dd] - rc) / Ld[dd]);

@@ -159,10 +159,17 @@ export class FixPIMDLangevin extends Fix {
   protected stressTensor: Float64Array = new Float64Array(6);
   protected vw: Float64Array = new Float64Array(6);
   protected xcall: Float64Array = new Float64Array(0);
+  /**
+   * Native mapflag: with one replica (one partition) the positions are never unmapped by their image flags, so the
+   * estimators use the wrapped positions (x_unwrap = x: t_vir = -0.5 sum x . f).
+   */
+  protected mapflag = true;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     this.np = sys.replicaPeers().length;
+    // As native (fix_pimd_langevin.cpp constructor at b332f28): "if (nreplica == 1) mapflag = 0; else mapflag = 1;"
+    this.mapflag = this.np > 1;
     this.iworld = Math.max(0, sys.replicaPeers().indexOf(sys));
     this.kt = sys.state.units.boltz * this.temp;
     const num = (key: string, v: string | undefined): number => {
@@ -291,6 +298,7 @@ export class FixPIMDLangevin extends Fix {
     const s = sys.state;
     const u = s.units;
     this.np = sys.replicaPeers().length;
+    this.mapflag = this.np > 1;
     this.iworld = Math.max(0, sys.replicaPeers().indexOf(sys));
     this.maxId = 0;
     for (let i = 0; i < s.n; i++) if (s.id[i] > this.maxId) this.maxId = s.id[i];
@@ -410,6 +418,7 @@ export class FixPIMDLangevin extends Fix {
 
   /** domain->unmap (sign +1) or unmap_inv (sign -1) of every atom of every bead, with its image flags. */
   protected unmapAll(R: FixPIMDLangevin[], sign: 1 | -1): void {
+    if (!this.mapflag) return;
     for (const b of R) {
       const s = b.sys.state;
       const g = b.sys.geom;
@@ -884,7 +893,7 @@ export class FixPIMDLangevin extends Fix {
     const xu = R.map((b) => {
       const s = b.sys.state;
       const u = Float64Array.from(s.x);
-      for (let i = 0; i < s.n; i++) for (let d = 0; d < 3; d++) b.sys.geom.addEdge(u, i, d, s.image[3 * i + d]);
+      if (this.mapflag) for (let i = 0; i < s.n; i++) for (let d = 0; d < 3; d++) b.sys.geom.addEdge(u, i, d, s.image[3 * i + d]);
       return u;
     });
     const xcOf = (b: FixPIMDLangevin, i: number, d: number) => this.xcall[3 * (b.sys.state.id[i] - 1) + d];

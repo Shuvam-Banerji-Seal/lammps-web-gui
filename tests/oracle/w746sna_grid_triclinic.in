@@ -1,0 +1,22 @@
+# oracle: compute sna/grid in a triclinic box with grid points on atoms (examples/snap/in.snap.grid.triclinic). As
+#   native LAMMPS does (src/ML-SNAP/compute_sna_grid.cpp at b332f28), a neighbour counts when "rsq > 1e-20": the atom
+#   at grid point 13 is 4e-16 away from it after rounding (x = 3.3160000000000003) and is left out, so the grid row
+#   equals that atom's sna/atom values. The engine skipped only r = 0 and gave B0 191.6 instead of 108.2.
+# oracle-compare: thermo=all rel=1e-9 abs=1e-10
+units           metal
+atom_modify     map hash sort 0 0
+boundary        p p p
+lattice         custom 3.316 a1 1 0 0 a2 1 1 0 a3 1 1 1 basis 0 0 0 basis 0.0 0.0 0.5 spacing 1 1 1
+region          box prism 0 3 0 2 0 1 2 1 1
+create_box      1 box
+create_atoms    1 box
+mass            1 180.88
+pair_style      zero 4.67637
+pair_coeff      * *
+compute         b all sna/atom 4.67637 0.99363 2 0.5 1 rmin0 0 quadraticflag 0 bzeroflag 0 switchflag 1
+compute         g all sna/grid grid 6 4 2 4.67637 0.99363 2 0.5 1 rmin0 0 quadraticflag 0 bzeroflag 0 switchflag 1
+variable        a1 equal C_b[7][1]
+variable        a5 equal C_b[7][5]
+thermo_style    custom step c_g[13][4] c_g[13][5] c_g[13][6] c_g[13][7] c_g[13][8] v_a1 v_a5 c_g[1][4] c_g[24][8]
+thermo_modify   format float %.15g
+run             0

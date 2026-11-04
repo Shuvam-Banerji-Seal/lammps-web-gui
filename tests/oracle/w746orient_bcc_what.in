@@ -1,0 +1,23 @@
+# oracle: compute orientorder/atom wl/hat in a perfect bcc crystal (examples/steinhardt/in.bcc). Q_2 is about 1e-17
+#   there; as native LAMMPS does (src/compute_orientorder_atom.cpp calc_boop at b332f28, QEPSILON = 1e-6), a Q_l below
+#   1e-6 gives W_l hat 0 (and 0 normalized components). The engine divided by the tiny norm: W_2 hat 0.00217.
+#   Measured with native LAMMPS: compute reduce sumabs over the zero component columns printed 5.67130964533774e+255 for
+#   one of them (the per-atom values dump as 0), so the components are summed with reduce sum.
+# oracle-compare: thermo=all rel=1e-9 abs=1e-12
+units           lj
+boundary        p p p
+atom_style      atomic
+lattice         bcc 1.0
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 3.0
+pair_coeff      * * 1.0 1.0 3.0
+compute         q all orientorder/atom degrees 6 2 4 6 8 10 12 nnn 14 wl/hat yes components 2
+compute         avql all reduce ave c_q[1] c_q[2] c_q[3] c_q[4] c_q[5] c_q[6]
+compute         avwlhat all reduce ave c_q[7] c_q[8] c_q[9] c_q[10] c_q[11] c_q[12]
+compute         comp all reduce sum c_q[13] c_q[14] c_q[15] c_q[16] c_q[17] c_q[18] c_q[19] c_q[20] c_q[21] c_q[22]
+thermo_style    custom step pe c_avql[*] c_avwlhat[*] c_comp[*]
+thermo_modify   format float %.15g
+run             0

@@ -552,9 +552,11 @@ export class ComputeSnaAtom extends Compute {
         const k = cand[t];
         if (k === i) continue;
         const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
-        const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const rsq = dx * dx + dy * dy + dz * dz;
+        const r = Math.sqrt(rsq);
         const Rii = this.nnn > 0 ? rcNnn : rc * (this.radius[ti - 1] + this.radius[ta[k] - 1]);
-        if (!(r < Rii) || r === 0) continue;
+        // native compute_sna_atom.cpp (b332f28): "rsq < cutsq[itype][jtype] && rsq>1e-20"
+        if (!(r < Rii) || !(rsq > 1e-20)) continue;
         const wj = this.nnn > 0 ? 1 : this.weight[ta[k] - 1];
         const theta0 = (rfac0 * Math.PI * (r - rmin0)) / (Rii - rmin0);
         // positive radial normalization r0 = r / |sin theta0| (theta0 < 0 when r < rmin0)
@@ -1113,9 +1115,11 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
         const k = cand[t];
         if (k === ip) continue;
         const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
-        const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const rsq = dx * dx + dy * dy + dz * dz;
+        const r = Math.sqrt(rsq);
         const Rii = this.rcutfac * (this.radius[tI] + this.radius[ta[k] - 1]);
-        if (!(r < Rii) || r === 0) continue;
+        // native compute_snad_atom.cpp and compute_snav_atom.cpp (b332f28): "rsq < cutsq[itype][jtype]&&rsq>1e-20"
+        if (!(r < Rii) || !(rsq > 1e-20)) continue;
         nbJ[m] = k; nDx[m] = dx; nDy[m] = dy; nDz[m] = dz; nR[m] = r; nRc[m] = Rii;
         const span = Rii - rmin0;
         nTh[m] = (rfac0 * Math.PI * (r - rmin0)) / span;

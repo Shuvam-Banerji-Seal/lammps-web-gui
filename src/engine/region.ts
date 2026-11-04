@@ -72,6 +72,8 @@ export interface RegionEnv {
    * compute values, a command, a change of the variables. Absent: every use evaluates the variables.
    */
   stamp?(): number;
+  /** The dimension of the simulation (2 or 3); absent: 3. */
+  dimension?(): number;
 }
 
 export abstract class Region {
@@ -448,10 +450,15 @@ export class SphereRegion extends Region {
   /** The centre and the radius of the sphere (dump image draws it). */
   center(): [number, number, number] { const [x, y, z] = this.c.map((p) => this.val(p)); return [x, y, z]; }
   radius(): number { return this.val(this.r); }
+  /**
+   * As native LAMMPS does (src/region_sphere.cpp RegSphere::inside at b332f28): sqrt(dx^2 + dy^2 + dz^2) <= radius. A
+   * point whose squared distance rounds just above radius^2 can still be inside: on a square lattice of 0.1 the point
+   * (0.3, 0.4) has 0.25000000000000006, whose square root is 0.5 (PACKAGES/dpd-smooth/2d-diffusion, radius 0.5).
+   */
   protected inside(x: number, y: number, z: number): boolean {
     const r = this.val(this.r);
     const dx = x - this.val(this.c[0]), dy = y - this.val(this.c[1]), dz = z - this.val(this.c[2]);
-    return dx * dx + dy * dy + dz * dz <= r * r;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz) <= r;
   }
   protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     const cx = this.val(this.c[0]), cy = this.val(this.c[1]), cz = this.val(this.c[2]);
@@ -481,11 +488,19 @@ export class EllipsoidRegion extends Region {
   /** The centre and the half-axes of the ellipsoid (dump image draws it). */
   center(): [number, number, number] { const [x, y, z] = this.c.map((p) => this.val(p)); return [x, y, z]; }
   axes(): [number, number, number] { const [a, b, c] = this.ax.map((p) => this.val(p)); return [a, b, c]; }
+  /**
+   * As native LAMMPS does (src/region_ellipsoid.cpp RegEllipsoid::inside at b332f28): in 3d (b c dx)^2 + (a c dy)^2 +
+   * (a b dz)^2 <= a a b b c c, in 2d (b dx)^2 + (a dy)^2 <= a a b b (z is not tested), each rounded as native's.
+   */
   protected inside(x: number, y: number, z: number): boolean {
     const [cx, cy, cz] = this.c.map((p) => this.val(p));
     const [a, b, c] = this.ax.map((p) => this.val(p));
-    const dx = (x - cx) / a, dy = (y - cy) / b, dz = (z - cz) / c;
-    return dx * dx + dy * dy + dz * dz <= 1;
+    if ((this.env.dimension?.() ?? 3) === 3) {
+      const delx = b * c * (x - cx), dely = a * c * (y - cy), delz = a * b * (z - cz);
+      return delx * delx + dely * dely + delz * delz <= a * a * b * b * c * c;
+    }
+    const delx = b * (x - cx), dely = a * (y - cy);
+    return delx * delx + dely * dely <= a * a * b * b;
   }
   /** Bounding box of an interior ellipsoid: the centre plus or minus each semi-axis (see SphereRegion.bbox). */
   bbox(): { lo: number[]; hi: number[] } | null {
@@ -515,7 +530,9 @@ export class ConeRegion extends Region {
     const r1 = this.val(this.radlo), r2 = this.val(this.radhi);
     const r = hi > lo ? r1 + (r2 - r1) * (a - lo) / (hi - lo) : Math.max(r1, r2);
     const e1 = p[d1] - this.val(this.c1), e2 = p[d2] - this.val(this.c2);
-    return e1 * e1 + e2 * e2 <= r * r;
+    // As native LAMMPS does (src/region_cylinder.cpp and region_cone.cpp inside at b332f28): sqrt(e1^2 + e2^2) <= the
+    // radius (see SphereRegion.inside)
+    return Math.sqrt(e1 * e1 + e2 * e2) <= r;
   }
   protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[], cutoff = Infinity): void {
     // lateral surface: the generator radius rho(a) = rl + slope (a - lo) (a

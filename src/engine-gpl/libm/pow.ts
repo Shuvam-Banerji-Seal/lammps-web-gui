@@ -457,6 +457,24 @@ const pow15 = (x: number): number => {
   return Math.abs((hi - d) + lo) <= margin * ulp ? d : NaN;
 };
 
+/**
+ * pow(x, 2) when its value is certain without the libm computation, else NaN: the test of pow15 on x^2 = hi + lo, which
+ * is exact here (hi = RN(x x) and lo its error by a fused multiply-add). libm returns the double D = hi whenever x^2 lies
+ * within 1 - (0.509 + |ln x^2| 1.3 2^-15) - 0.005 ulp of it (every other double is then farther from x^2 than libm's
+ * error allows); a power of two and anything closer to a midpoint are left to the libm computation.
+ */
+const pow2 = (x: number): number => {
+  const hi = x * x;
+  const lo = fmaF(x, x, -hi);
+  F[0] = hi;
+  const top = U[1] & 0x7ff00000;
+  if ((U[1] & 0x000fffff) === 0 && U[0] === 0) return NaN;
+  const ulp = asDouble((top - 0x03400000) >>> 0, 0); // 2^(e - 52)
+  const lnd = (Math.abs((top >>> 20) - 1023) + 1) * 0.6931471805599453;
+  const margin = 1 - (0.509 + lnd * 3.96728515625e-5) - 0.005;
+  return Math.abs(lo) <= margin * ulp ? hi : NaN;
+};
+
 /** 1/3 = THIRD_HI + THIRD_LO (the low part to double precision). */
 const THIRD_HI = 0.3333333333333333, THIRD_LO = 1.850371707708594e-17;
 
@@ -502,6 +520,11 @@ let lastX = NaN, lastY = NaN, lastR = NaN;
  */
 export const pow = (x: number, y: number): number => {
   if (x === lastX && y === lastY) return lastR;
+  // y = 2 (superellipsoid shapes of blockiness 4, squared distances): the exact square when it decides libm's rounding
+  if (y === 2 && Math.abs(x) > 1e-150 && Math.abs(x) < 1e150) {
+    const v = pow2(x);
+    if (v === v) return v;
+  }
   // y = 1.5 (eFF's Pauli overlap per electron pair): the double-double value when it decides libm's rounding
   if (y === 1.5 && x > 1e-150 && x < 1e150) {
     const v = pow15(x);

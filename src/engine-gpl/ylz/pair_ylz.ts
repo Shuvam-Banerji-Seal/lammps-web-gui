@@ -29,11 +29,15 @@ const bodyX = (w: number, x: number, y: number, z: number, out: Float64Array): v
   out[2] = twoik - twojw;
 };
 
+/** Scratch vectors of ylzAnalytic (one call at a time). */
+const R12HAT = new Float64Array(3), DPHI_DRHAT = new Float64Array(3), DPHI_DNI1 = new Float64Array(3);
+const DPHI_DNJ1 = new Float64Array(3), DUDRHAT = new Float64Array(3), DUDNI1 = new Float64Array(3), DUDNJ1 = new Float64Array(3);
+
 /** The analytic energy, radial force and torques of ylz_analytic (pair_ylz.cpp), written into fforce, ttor, rtor. */
 const ylzAnalytic = (eps: number, sig: number, zt: number, muu: number, sint: number, rcut: number,
   ni1: Float64Array, nj1: Float64Array, r12: Float64Array, rsq: number,
   fforce: Float64Array, ttor: Float64Array, rtor: Float64Array): number => {
-  const r12hat = new Float64Array(3);
+  const r12hat = R12HAT;
   const sc = 1.0 / Math.sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
   r12hat[0] = r12[0] * sc;
   r12hat[1] = r12[1] * sc;
@@ -46,7 +50,7 @@ const ylzAnalytic = (eps: number, sig: number, zt: number, muu: number, sint: nu
   const nj1rhat = nj1[0] * r12hat[0] + nj1[1] * r12hat[1] + nj1[2] * r12hat[2];
   const a = ninj + (sint - ni1rhat) * (sint + nj1rhat) - 2.0 * sint * sint;
   const phi = 1.0 + (a - 1.0) * muu;
-  const dphiDrhat = new Float64Array(3), dphiDni1 = new Float64Array(3), dphiDnj1 = new Float64Array(3);
+  const dphiDrhat = DPHI_DRHAT, dphiDni1 = DPHI_DNI1, dphiDnj1 = DPHI_DNJ1;
   for (let k = 0; k < 3; k++) {
     dphiDrhat[k] = muu * ((sint - ni1rhat) * nj1[k] - ni1[k] * (sint + nj1rhat));
     dphiDni1[k] = muu * (nj1[k] - r12hat[k] * (sint + nj1rhat));
@@ -71,16 +75,18 @@ const ylzAnalytic = (eps: number, sig: number, zt: number, muu: number, sint: nu
     dUdr = MY_PI * zt / (rcut - rmin) * t1 * libmSin(t) * phi * energyWell;
     dUdphi = uA;
   }
-  const dUdrhat = new Float64Array(3);
+  const dUdrhat = DUDRHAT;
   for (let k = 0; k < 3; k++) dUdrhat[k] = dUdphi * dphiDrhat[k];
   const dUdrhatrhat = dUdrhat[0] * r12hat[0] + dUdrhat[1] * r12hat[1] + dUdrhat[2] * r12hat[2];
   for (let k = 0; k < 3; k++) fforce[k] = dUdr * r12hat[k] + (dUdrhat[k] - dUdrhatrhat * r12hat[k]) / r;
-  const dUdni1 = [dUdphi * dphiDni1[0], dUdphi * dphiDni1[1], dUdphi * dphiDni1[2]];
+  const dUdni1 = DUDNI1;
+  dUdni1[0] = dUdphi * dphiDni1[0]; dUdni1[1] = dUdphi * dphiDni1[1]; dUdni1[2] = dUdphi * dphiDni1[2];
   // cross3(dUdni1, ni1) (the minus sign of the C++ comment is absorbed by the operand order)
   ttor[0] = dUdni1[1] * ni1[2] - dUdni1[2] * ni1[1];
   ttor[1] = dUdni1[2] * ni1[0] - dUdni1[0] * ni1[2];
   ttor[2] = dUdni1[0] * ni1[1] - dUdni1[1] * ni1[0];
-  const dUdnj1 = [dUdphi * dphiDnj1[0], dUdphi * dphiDnj1[1], dUdphi * dphiDnj1[2]];
+  const dUdnj1 = DUDNJ1;
+  dUdnj1[0] = dUdphi * dphiDnj1[0]; dUdnj1[1] = dUdphi * dphiDnj1[1]; dUdnj1[2] = dUdphi * dphiDnj1[2];
   rtor[0] = dUdnj1[1] * nj1[2] - dUdnj1[2] * nj1[1];
   rtor[1] = dUdnj1[2] * nj1[0] - dUdnj1[0] * nj1[2];
   rtor[2] = dUdnj1[0] * nj1[1] - dUdnj1[1] * nj1[0];
@@ -194,6 +200,13 @@ export class PairYLZ extends Pair {
     const a1 = new Float64Array(3), a2 = new Float64Array(3);
     const fforce = new Float64Array(3), ttor = new Float64Array(3), rtor = new Float64Array(3);
     const r12 = new Float64Array(3);
+    // the coefficients of each type pair, read once per call (PairParams.get looks them up by name)
+    const tab = (name: string): Float64Array => {
+      const t = new Float64Array(nt * nt);
+      for (let a = 1; a < nt; a++) for (let b = 1; b < nt; b++) t[a * nt + b] = this.p.get(name, a, b);
+      return t;
+    };
+    const EPS = tab('epsilon'), SIG = tab('sigma'), ZT = tab('zeta'), MU = tab('mu'), BETA = tab('beta'), CUT = tab('cut');
     let evdwl = 0;
     for (let ii = 0; ii < list.inum; ii++) {
       const i = ii;
@@ -212,10 +225,8 @@ export class PairYLZ extends Pair {
         const jtype = type[j];
         if (!(rsq < cutsq[itype * nt + jtype])) continue;
         bodyX(quat[4 * oj], quat[4 * oj + 1], quat[4 * oj + 2], quat[4 * oj + 3], a2);
-        const eps = this.p.get('epsilon', itype, jtype), sig = this.p.get('sigma', itype, jtype);
-        const zt = this.p.get('zeta', itype, jtype), muu = this.p.get('mu', itype, jtype);
-        const sint = this.p.get('beta', itype, jtype), rcut = this.p.get('cut', itype, jtype);
-        const oneEng = ylzAnalytic(eps, sig, zt, muu, sint, rcut, a1, a2, r12, rsq, fforce, ttor, rtor);
+        const tp = itype * nt + jtype;
+        const oneEng = ylzAnalytic(EPS[tp], SIG[tp], ZT[tp], MU[tp], BETA[tp], CUT[tp], a1, a2, r12, rsq, fforce, ttor, rtor);
         for (let d = 0; d < 3; d++) {
           fforce[d] *= factorLJ;
           ttor[d] *= factorLJ;

@@ -67,26 +67,35 @@ const plan = (n: number): Plan => {
  * One Stockham autosort stage of radix R (textbook self-sorting decimation in time, no bit reversal): for each of
  * the n/R butterflies j, the inputs src[j + r n/R] times the twiddles w^(r k), k = j mod ns, go through a radix-R DFT
  * and land at dst[(j - k) R + k + r ns]; ns is the size of the transforms combined so far. sign = -1 forward.
+ * The butterflies are visited by k, then by group g = j - k (g a multiple of ns), so the twiddles of k are read once;
+ * every butterfly computes what it would in the order of j.
  */
 const stage = (p: Plan, src: Float64Array, dst: Float64Array, R: number, ns: number, sign: number): void => {
+  if (R === 4) stage4(p, src, dst, ns, sign);
+  else if (R === 2) stage2(p, src, dst, ns, sign);
+  else if (R === 3) stage3(p, src, dst, ns, sign);
+  else stage5(p, src, dst, ns, sign);
+};
+
+const stage4 = (p: Plan, src: Float64Array, dst: Float64Array, ns: number, sign: number): void => {
   const n = p.n, cos = p.cos, sin = p.sin;
-  const stride = n / R;          // input distance between the R points of a butterfly
-  const tw = n / (ns * R);       // twiddle table step: w^(r k) = exp(sign 2 pi i r k / (ns R))
-  for (let j = 0; j < stride; j++) {
-    const k = j % ns;
-    const out = (j - k) * R + k;
-    if (R === 4) {
-      let x0r = src[2 * j], x0i = src[2 * j + 1];
+  const stride = n / 4;
+  const tw = n / (ns * 4);
+  for (let k = 0; k < ns; k++) {
+    const twd = k !== 0;
+    const c1 = cos[k * tw], s1 = sign * sin[k * tw];
+    const c2 = cos[2 * k * tw], s2 = sign * sin[2 * k * tw];
+    const c3 = cos[3 * k * tw], s3 = sign * sin[3 * k * tw];
+    for (let g = 0; g < stride; g += ns) {
+      const j = g + k, out = g * 4 + k;
+      const x0r = src[2 * j], x0i = src[2 * j + 1];
       let x1r = src[2 * (j + stride)], x1i = src[2 * (j + stride) + 1];
       let x2r = src[2 * (j + 2 * stride)], x2i = src[2 * (j + 2 * stride) + 1];
       let x3r = src[2 * (j + 3 * stride)], x3i = src[2 * (j + 3 * stride) + 1];
-      if (k !== 0) {
-        let t = k * tw, c = cos[t], s = sign * sin[t];
-        let re = x1r * c - x1i * s; x1i = x1r * s + x1i * c; x1r = re;
-        t = 2 * k * tw; c = cos[t]; s = sign * sin[t];
-        re = x2r * c - x2i * s; x2i = x2r * s + x2i * c; x2r = re;
-        t = 3 * k * tw; c = cos[t]; s = sign * sin[t];
-        re = x3r * c - x3i * s; x3i = x3r * s + x3i * c; x3r = re;
+      if (twd) {
+        let re = x1r * c1 - x1i * s1; x1i = x1r * s1 + x1i * c1; x1r = re;
+        re = x2r * c2 - x2i * s2; x2i = x2r * s2 + x2i * c2; x2r = re;
+        re = x3r * c3 - x3i * s3; x3i = x3r * s3 + x3i * c3; x3r = re;
       }
       const t0r = x0r + x2r, t0i = x0i + x2i, t1r = x0r - x2r, t1i = x0i - x2i;
       const t2r = x1r + x3r, t2i = x1i + x3i;
@@ -96,53 +105,85 @@ const stage = (p: Plan, src: Float64Array, dst: Float64Array, R: number, ns: num
       dst[2 * (out + ns)] = t1r + t3r; dst[2 * (out + ns) + 1] = t1i + t3i;
       dst[2 * (out + 2 * ns)] = t0r - t2r; dst[2 * (out + 2 * ns) + 1] = t0i - t2i;
       dst[2 * (out + 3 * ns)] = t1r - t3r; dst[2 * (out + 3 * ns) + 1] = t1i - t3i;
-    } else if (R === 2) {
+    }
+  }
+};
+
+const stage2 = (p: Plan, src: Float64Array, dst: Float64Array, ns: number, sign: number): void => {
+  const n = p.n, cos = p.cos, sin = p.sin;
+  const stride = n / 2;
+  const tw = n / (ns * 2);
+  for (let k = 0; k < ns; k++) {
+    const twd = k !== 0;
+    const c = cos[k * tw], s = sign * sin[k * tw];
+    for (let g = 0; g < stride; g += ns) {
+      const j = g + k, out = g * 2 + k;
       const x0r = src[2 * j], x0i = src[2 * j + 1];
       let x1r = src[2 * (j + stride)], x1i = src[2 * (j + stride) + 1];
-      if (k !== 0) {
-        const t = k * tw, c = cos[t], s = sign * sin[t];
+      if (twd) {
         const re = x1r * c - x1i * s; x1i = x1r * s + x1i * c; x1r = re;
       }
       dst[2 * out] = x0r + x1r; dst[2 * out + 1] = x0i + x1i;
       dst[2 * (out + ns)] = x0r - x1r; dst[2 * (out + ns) + 1] = x0i - x1i;
-    } else if (R === 3) {
+    }
+  }
+};
+
+const stage3 = (p: Plan, src: Float64Array, dst: Float64Array, ns: number, sign: number): void => {
+  const n = p.n, cos = p.cos, sin = p.sin;
+  const stride = n / 3;
+  const tw = n / (ns * 3);
+  // (x1 - x2) times sign i sin(2 pi / 3)
+  const c3 = p.c3, sn3 = sign * p.s3;
+  for (let k = 0; k < ns; k++) {
+    const twd = k !== 0;
+    const c1 = cos[k * tw], s1 = sign * sin[k * tw];
+    const c2 = cos[2 * k * tw], s2 = sign * sin[2 * k * tw];
+    for (let g = 0; g < stride; g += ns) {
+      const j = g + k, out = g * 3 + k;
       const x0r = src[2 * j], x0i = src[2 * j + 1];
       let x1r = src[2 * (j + stride)], x1i = src[2 * (j + stride) + 1];
       let x2r = src[2 * (j + 2 * stride)], x2i = src[2 * (j + 2 * stride) + 1];
-      if (k !== 0) {
-        let t = k * tw, c = cos[t], s = sign * sin[t];
-        let re = x1r * c - x1i * s; x1i = x1r * s + x1i * c; x1r = re;
-        t = 2 * k * tw; c = cos[t]; s = sign * sin[t];
-        re = x2r * c - x2i * s; x2i = x2r * s + x2i * c; x2r = re;
+      if (twd) {
+        let re = x1r * c1 - x1i * s1; x1i = x1r * s1 + x1i * c1; x1r = re;
+        re = x2r * c2 - x2i * s2; x2i = x2r * s2 + x2i * c2; x2r = re;
       }
       const ar = x1r + x2r, ai = x1i + x2i, br = x1r - x2r, bi = x1i - x2i;
-      const mr = x0r + p.c3 * ar, mi = x0i + p.c3 * ai;
-      // (x1 - x2) times sign i sin(2 pi / 3)
-      const s3 = sign * p.s3;
-      const nr = -s3 * bi, ni = s3 * br;
+      const mr = x0r + c3 * ar, mi = x0i + c3 * ai;
+      const nr = -sn3 * bi, ni = sn3 * br;
       dst[2 * out] = x0r + ar; dst[2 * out + 1] = x0i + ai;
       dst[2 * (out + ns)] = mr + nr; dst[2 * (out + ns) + 1] = mi + ni;
       dst[2 * (out + 2 * ns)] = mr - nr; dst[2 * (out + 2 * ns) + 1] = mi - ni;
-    } else {
-      // R === 5
+    }
+  }
+};
+
+const stage5 = (p: Plan, src: Float64Array, dst: Float64Array, ns: number, sign: number): void => {
+  const n = p.n, cos = p.cos, sin = p.sin;
+  const stride = n / 5;
+  const tw = n / (ns * 5);
+  const c1 = p.c51, c2 = p.c52, s1 = sign * p.s51, s2 = sign * p.s52;
+  for (let k = 0; k < ns; k++) {
+    const twd = k !== 0;
+    const w1c = cos[k * tw], w1s = sign * sin[k * tw];
+    const w2c = cos[2 * k * tw], w2s = sign * sin[2 * k * tw];
+    const w3c = cos[3 * k * tw], w3s = sign * sin[3 * k * tw];
+    const w4c = cos[4 * k * tw], w4s = sign * sin[4 * k * tw];
+    for (let g = 0; g < stride; g += ns) {
+      const j = g + k, out = g * 5 + k;
       const x0r = src[2 * j], x0i = src[2 * j + 1];
       let x1r = src[2 * (j + stride)], x1i = src[2 * (j + stride) + 1];
       let x2r = src[2 * (j + 2 * stride)], x2i = src[2 * (j + 2 * stride) + 1];
       let x3r = src[2 * (j + 3 * stride)], x3i = src[2 * (j + 3 * stride) + 1];
       let x4r = src[2 * (j + 4 * stride)], x4i = src[2 * (j + 4 * stride) + 1];
-      if (k !== 0) {
-        let t = k * tw, c = cos[t], s = sign * sin[t];
-        let re = x1r * c - x1i * s; x1i = x1r * s + x1i * c; x1r = re;
-        t = 2 * k * tw; c = cos[t]; s = sign * sin[t];
-        re = x2r * c - x2i * s; x2i = x2r * s + x2i * c; x2r = re;
-        t = 3 * k * tw; c = cos[t]; s = sign * sin[t];
-        re = x3r * c - x3i * s; x3i = x3r * s + x3i * c; x3r = re;
-        t = 4 * k * tw; c = cos[t]; s = sign * sin[t];
-        re = x4r * c - x4i * s; x4i = x4r * s + x4i * c; x4r = re;
+      if (twd) {
+        let re = x1r * w1c - x1i * w1s; x1i = x1r * w1s + x1i * w1c; x1r = re;
+        re = x2r * w2c - x2i * w2s; x2i = x2r * w2s + x2i * w2c; x2r = re;
+        re = x3r * w3c - x3i * w3s; x3i = x3r * w3s + x3i * w3c; x3r = re;
+        re = x4r * w4c - x4i * w4s; x4i = x4r * w4s + x4i * w4c; x4r = re;
       }
       const a1r = x1r + x4r, a1i = x1i + x4i, b1r = x1r - x4r, b1i = x1i - x4i;
       const a2r = x2r + x3r, a2i = x2i + x3i, b2r = x2r - x3r, b2i = x2i - x3i;
-      const c1 = p.c51, c2 = p.c52, s1 = sign * p.s51, s2 = sign * p.s52;
       const m1r = x0r + c1 * a1r + c2 * a2r, m1i = x0i + c1 * a1i + c2 * a2i;
       const m2r = x0r + c2 * a1r + c1 * a2r, m2i = x0i + c2 * a1i + c1 * a2i;
       // i (s1 b1 + s2 b2) and i (s2 b1 - s1 b2)

@@ -40,6 +40,16 @@ describe('glibc pow port', () => {
     expect(bad.slice(0, 5)).toEqual([]);
     expect(p2.pow2.length).toBe(3000);
   });
+  it('integer powers from the compensated power match the native libm (glibc_powint.json)', () => {
+    // glibc_powint.json: 2940 (x, n, pow(x, n)) from the same C program on the native libm, for n in -16, -8, -6, -3,
+    // -2, -1, 3, 4, 5, 6, 7, 8, 12, 16: per n, x in [0, 2), negatives, log-uniform over the range where x^n stays normal,
+    // random bit patterns, and 60 values whose power lies within 0.03 ulp of a midpoint (the full computation's cases).
+    // A 40,000,000-argument run of the first four classes and x near 1, for 20 exponents in [-16, 16], had no difference.
+    const pi = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'libm', 'glibc_powint.json'), 'utf8')) as { powint: [number, number, number][] };
+    const bad = pi.powint.filter(([x, n, z]) => { pow(3, 0.25); return !Object.is(pow(x, n), z); });
+    expect(bad.slice(0, 5)).toEqual([]);
+    expect(pi.powint.length).toBe(2940);
+  });
   it('a repeated argument pair gives the same bits (the kept last result)', () => {
     for (const [x, y] of [[2, 1.5], [2, -4], [5.2, 1.5], [0.7, 3.3]]) expect(Object.is(pow(x, y), pow(x, y))).toBe(true);
     expect(pow(-0, -3)).toBe(-Infinity);

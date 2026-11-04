@@ -475,6 +475,56 @@ const pow2 = (x: number): number => {
   return Math.abs(lo) <= margin * ulp ? hi : NaN;
 };
 
+/**
+ * pow(x, n) for an integer n with 3 <= |n| <= 16 or n = -1, -2 when its value is certain without the libm computation,
+ * else NaN: the test of pow2 on a double-double value of x^n. x^|n| is formed by the compensated power (Graillat,
+ * Langlois and Louvet's CompPow): p_k = RN(p_(k-1) x) with its exact error pi_k (Dekker's product, x split once), the
+ * errors summed by Horner's rule, e = e x + pi_k, so that x^m = p_m + sum pi_k x^(m-k) and p + e is within about 2 m^2
+ * 2^-106 of it (below 2^-97 relative for m <= 16; the error terms stay off the chain of products). For n < 0 the
+ * inverse is q = RN(1 / h) and r = (1 - q h) - q l, where 1 - q h is exact (the remainder of a rounded quotient is a
+ * double; q h by Dekker), so 1 / x^|n| = q + q r within a further 2^-104. Together far inside the 0.005 ulp kept free
+ * of libm's bound. The value must be normal and away from overflow (1e-290 < |x|, |x^|n|| < 1e290, so no product error
+ * underflows); a power of two and anything closer to a midpoint are left to the libm computation.
+ */
+const powInt = (x: number, n: number): number => {
+  const m = n < 0 ? -n : n;
+  let t = SPLIT * x;
+  const xh = t - (t - x), xl = x - xh;
+  let p = x, e = 0;
+  for (let k = 1; k < m; k++) {
+    const q = p * x;
+    t = SPLIT * p;
+    const ph = t - (t - p), pl = p - ph;
+    e = e * x + ((((ph * xh - q) + ph * xl) + pl * xh) + pl * xl);
+    p = q;
+  }
+  const h = p + e;
+  const l = (p - h) + e;
+  const ah = h < 0 ? -h : h;
+  if (!(ah > 1e-290 && ah < 1e290)) return NaN;
+  let d = h, dist = l;
+  if (n < 0) {
+    const q = 1 / h;
+    const ph = q * h;
+    t = SPLIT * q;
+    const qh = t - (t - q), ql = q - qh;
+    t = SPLIT * h;
+    const hh = t - (t - h), hl = h - hh;
+    const pe = (((qh * hh - ph) + qh * hl) + ql * hh) + ql * hl;
+    const r = ((1 - ph) - pe) - q * l;
+    const lo = q * r;
+    d = q + lo;
+    dist = (q - d) + lo;
+  }
+  F[0] = d;
+  const top = U[1] & 0x7ff00000;
+  if ((U[1] & 0x000fffff) === 0 && U[0] === 0) return NaN;
+  const ulp = asDouble((top - 0x03400000) >>> 0, 0); // 2^(e - 52)
+  const lnd = (Math.abs((top >>> 20) - 1023) + 1) * 0.6931471805599453;
+  const margin = 1 - (0.509 + lnd * 3.96728515625e-5) - 0.005;
+  return Math.abs(dist) <= margin * ulp ? d : NaN;
+};
+
 /** 1/3 = THIRD_HI + THIRD_LO (the low part to double precision). */
 const THIRD_HI = 0.3333333333333333, THIRD_LO = 1.850371707708594e-17;
 
@@ -524,6 +574,14 @@ export const pow = (x: number, y: number): number => {
   if (y === 2 && Math.abs(x) > 1e-150 && Math.abs(x) < 1e150) {
     const v = pow2(x);
     if (v === v) return v;
+  }
+  // another small integer y (r^6, r^-2, ...): the double-double value when it decides libm's rounding
+  if ((y | 0) === y && y >= -16 && y <= 16 && (y > 2 || y < 0)) {
+    const ax = x < 0 ? -x : x;
+    if (ax > 1e-290 && ax < 1e290) {
+      const v = powInt(x, y);
+      if (v === v) return v;
+    }
   }
   // y = 1.5 (eFF's Pauli overlap per electron pair): the double-double value when it decides libm's rounding
   if (y === 1.5 && x > 1e-150 && x < 1e150) {

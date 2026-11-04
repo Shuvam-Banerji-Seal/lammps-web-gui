@@ -147,6 +147,8 @@ export class PairOxdnaXstk extends Pair {
     const nall = pc.nall;
     const nt = this.nt;
     const T = this.t;
+    // the coefficient tables, read once (the table object holds them by name)
+    const { a1: T_a1, a2: T_a2, a3: T_a3, a4: T_a4, a7: T_a7, a8: T_a8, b1: T_b1, b2: T_b2, b3: T_b3, b4: T_b4, b7: T_b7, b8: T_b8, bhi: T_bhi, blo: T_blo, cut0: T_cut0, cutc: T_cutc, cuthc: T_cuthc, cuthi: T_cuthi, cutlc: T_cutlc, cutlo: T_cutlo, dth1ast: T_dth1ast, dth1c: T_dth1c, dth2ast: T_dth2ast, dth2c: T_dth2c, dth3ast: T_dth3ast, dth3c: T_dth3c, dth4ast: T_dth4ast, dth4c: T_dth4c, dth7ast: T_dth7ast, dth7c: T_dth7c, dth8ast: T_dth8ast, dth8c: T_dth8c, k: T_k, th1: T_th1, th2: T_th2, th3: T_th3, th4: T_th4, th7: T_th7, th8: T_th8 } = T;
     const constants = oxdnaConstants(s.units.style);
     const dxCbs = constants.dx_cbs_oxdna1;
     const special = pc.specialLJ;
@@ -189,19 +191,19 @@ export class PairOxdnaXstk extends Pair {
         const rinv = 1.0 / r;
         for (let c = 0; c < 3; c++) drn[c] = delr[c] * rinv;
         const ij = atype * nt + btype;
-        const f2 = F2(r, T.k[ij], T.cut0[ij], T.cutlc[ij], T.cuthc[ij], T.cutlo[ij], T.cuthi[ij], T.blo[ij], T.bhi[ij], T.cutc[ij]);
+        const f2 = F2(r, T_k[ij], T_cut0[ij], T_cutlc[ij], T_cuthc[ij], T_cutlo[ij], T_cuthi[ij], T_blo[ij], T_bhi[ij], T_cutc[ij]);
         if (f2 === 0.0) continue;
         let cost1 = -dot(ax, bx); cost1 = clamp(cost1);
         const theta1 = libmAcos(cost1);
-        const f4t1 = F4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]);
+        const f4t1 = F4(theta1, T_a1[ij], T_th1[ij], T_dth1ast[ij], T_b1[ij], T_dth1c[ij]);
         if (f4t1 === 0.0) continue;
         let cost2 = -dot(ax, drn); cost2 = clamp(cost2);
         const theta2 = libmAcos(cost2);
-        const f4t2 = F4(theta2, T.a2[ij], T.th2[ij], T.dth2ast[ij], T.b2[ij], T.dth2c[ij]);
+        const f4t2 = F4(theta2, T_a2[ij], T_th2[ij], T_dth2ast[ij], T_b2[ij], T_dth2c[ij]);
         if (f4t2 === 0.0) continue;
         let cost3 = dot(bx, drn); cost3 = clamp(cost3);
         const theta3 = libmAcos(cost3);
-        const f4t3 = F4(theta3, T.a3[ij], T.th3[ij], T.dth3ast[ij], T.b3[ij], T.dth3c[ij]);
+        const f4t3 = F4(theta3, T_a3[ij], T_th3[ij], T_dth3ast[ij], T_b3[ij], T_dth3c[ij]);
         if (f4t3 === 0.0) continue;
         // the theta4 factor (oxDNA only): f4t4 = 1 otherwise, and the product with 1 leaves every bit unchanged
         let f4t4 = 1.0, theta4 = 0.0, theta4p = 0.0;
@@ -209,35 +211,35 @@ export class PairOxdnaXstk extends Pair {
           const cost4 = clamp(dot(az, bz));
           theta4 = libmAcos(cost4);
           theta4p = PI - theta4;
-          f4t4 = F4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
-            + F4(theta4p, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij]);
+          f4t4 = F4(theta4, T_a4[ij], T_th4[ij], T_dth4ast[ij], T_b4[ij], T_dth4c[ij])
+            + F4(theta4p, T_a4[ij], T_th4[ij], T_dth4ast[ij], T_b4[ij], T_dth4c[ij]);
           if (f4t4 === 0.0) continue;
         }
         let cost7 = -dot(az, drn); cost7 = clamp(cost7);
         const theta7 = libmAcos(cost7);
         const theta7p = PI - theta7;
-        const f4t7 = F4(theta7, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij])
-          + F4(theta7p, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij]);
+        const f4t7 = F4(theta7, T_a7[ij], T_th7[ij], T_dth7ast[ij], T_b7[ij], T_dth7c[ij])
+          + F4(theta7p, T_a7[ij], T_th7[ij], T_dth7ast[ij], T_b7[ij], T_dth7c[ij]);
         if (f4t7 === 0.0) continue;
         let cost8 = dot(bz, drn); cost8 = clamp(cost8);
         const theta8 = libmAcos(cost8);
         const theta8p = PI - theta8;
-        const f4t8 = F4(theta8, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij])
-          + F4(theta8p, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij]);
+        const f4t8 = F4(theta8, T_a8[ij], T_th8[ij], T_dth8ast[ij], T_b8[ij], T_dth8c[ij])
+          + F4(theta8p, T_a8[ij], T_th8[ij], T_dth8ast[ij], T_b8[ij], T_dth8c[ij]);
         const e = f2 * f4t1 * f4t2 * f4t3 * f4t4 * f4t7 * f4t8 * factorLJ;
         if (e === 0.0) continue;
-        const df2 = DF2(r, T.k[ij], T.cut0[ij], T.cutlc[ij], T.cuthc[ij], T.cutlo[ij], T.cuthi[ij], T.blo[ij], T.bhi[ij]);
-        const df4t1 = DF4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) / libmSin(theta1);
-        const df4t2 = DF4(theta2, T.a2[ij], T.th2[ij], T.dth2ast[ij], T.b2[ij], T.dth2c[ij]) / libmSin(theta2);
-        const df4t3 = DF4(theta3, T.a3[ij], T.th3[ij], T.dth3ast[ij], T.b3[ij], T.dth3c[ij]) / libmSin(theta3);
+        const df2 = DF2(r, T_k[ij], T_cut0[ij], T_cutlc[ij], T_cuthc[ij], T_cutlo[ij], T_cuthi[ij], T_blo[ij], T_bhi[ij]);
+        const df4t1 = DF4(theta1, T_a1[ij], T_th1[ij], T_dth1ast[ij], T_b1[ij], T_dth1c[ij]) / libmSin(theta1);
+        const df4t2 = DF4(theta2, T_a2[ij], T_th2[ij], T_dth2ast[ij], T_b2[ij], T_dth2c[ij]) / libmSin(theta2);
+        const df4t3 = DF4(theta3, T_a3[ij], T_th3[ij], T_dth3ast[ij], T_b3[ij], T_dth3c[ij]) / libmSin(theta3);
         const df4t4 = this.withTheta4
-          ? (DF4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
-            - DF4(theta4p, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])) / libmSin(theta4)
+          ? (DF4(theta4, T_a4[ij], T_th4[ij], T_dth4ast[ij], T_b4[ij], T_dth4c[ij])
+            - DF4(theta4p, T_a4[ij], T_th4[ij], T_dth4ast[ij], T_b4[ij], T_dth4c[ij])) / libmSin(theta4)
           : 0.0;
-        const df4t7 = (DF4(theta7, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij])
-          - DF4(theta7p, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij])) / libmSin(theta7);
-        const df4t8 = (DF4(theta8, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij])
-          - DF4(theta8p, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij])) / libmSin(theta8);
+        const df4t7 = (DF4(theta7, T_a7[ij], T_th7[ij], T_dth7ast[ij], T_b7[ij], T_dth7c[ij])
+          - DF4(theta7p, T_a7[ij], T_th7[ij], T_dth7ast[ij], T_b7[ij], T_dth7c[ij])) / libmSin(theta7);
+        const df4t8 = (DF4(theta8, T_a8[ij], T_th8[ij], T_dth8ast[ij], T_b8[ij], T_dth8c[ij])
+          - DF4(theta8p, T_a8[ij], T_th8[ij], T_dth8ast[ij], T_b8[ij], T_dth8c[ij])) / libmSin(theta8);
         delf[0] = 0.0; delf[1] = 0.0; delf[2] = 0.0;
         delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;
         deltb[0] = 0.0; deltb[1] = 0.0; deltb[2] = 0.0;

@@ -146,6 +146,8 @@ export class PairOxdna2Coaxstk extends Pair {
     const nall = pc.nall;
     const nt = this.nt;
     const T = this.t;
+    // the coefficient tables, read once (the table object holds them by name)
+    const { AA: T_AA, BB: T_BB, a1: T_a1, a4: T_a4, a5: T_a5, a6: T_a6, b1: T_b1, b4: T_b4, b5: T_b5, b6: T_b6, bhi: T_bhi, blo: T_blo, cut0: T_cut0, cutc: T_cutc, cuthc: T_cuthc, cuthi: T_cuthi, cutlc: T_cutlc, cutlo: T_cutlo, dth1ast: T_dth1ast, dth1c: T_dth1c, dth4ast: T_dth4ast, dth4c: T_dth4c, dth5ast: T_dth5ast, dth5c: T_dth5c, dth6ast: T_dth6ast, dth6c: T_dth6c, k: T_k, th1: T_th1, th4: T_th4, th5: T_th5, th6: T_th6 } = T;
     const constants = oxdnaConstants(s.units.style);
     const special = pc.specialLJ;
     const tq = new Float64Array(3 * nall);
@@ -196,41 +198,41 @@ export class PairOxdna2Coaxstk extends Pair {
         const cost1 = clamp(-dot(ax, bx));
         const theta1 = libmAcos(cost1);
         const theta1p = 2 * PI - theta1;
-        const f4f6t1 = F4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) + F6(theta1, T.AA[ij], T.BB[ij]);
+        const f4f6t1 = F4(theta1, T_a1[ij], T_th1[ij], T_dth1ast[ij], T_b1[ij], T_dth1c[ij]) + F6(theta1, T_AA[ij], T_BB[ij]);
         if (f4f6t1 === 0.0) continue;
         const cost4 = clamp(dot(az, bz));
         const theta4 = libmAcos(cost4);
-        const f4t4 = F4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
-          + F4(theta4, T.a4[ij], PI - T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij]);
+        const f4t4 = F4(theta4, T_a4[ij], T_th4[ij], T_dth4ast[ij], T_b4[ij], T_dth4c[ij])
+          + F4(theta4, T_a4[ij], PI - T_th4[ij], T_dth4ast[ij], T_b4[ij], T_dth4c[ij]);
         if (f4t4 === 0.0) continue;
         const cost5 = clamp(dot(drn, az));
         const theta5 = libmAcos(cost5);
         const theta5p = PI - theta5;
-        const f4t5 = F4(theta5, T.a5[ij], T.th5[ij], T.dth5ast[ij], T.b5[ij], T.dth5c[ij])
-          + F4(theta5p, T.a5[ij], T.th5[ij], T.dth5ast[ij], T.b5[ij], T.dth5c[ij]);
+        const f4t5 = F4(theta5, T_a5[ij], T_th5[ij], T_dth5ast[ij], T_b5[ij], T_dth5c[ij])
+          + F4(theta5p, T_a5[ij], T_th5[ij], T_dth5ast[ij], T_b5[ij], T_dth5c[ij]);
         if (f4t5 === 0.0) continue;
         const cost6 = clamp(dot(drn, bz));
         const theta6 = libmAcos(cost6);
         const theta6p = PI - theta6;
-        const f4t6 = F4(theta6, T.a6[ij], T.th6[ij], T.dth6ast[ij], T.b6[ij], T.dth6c[ij])
-          + F4(theta6p, T.a6[ij], T.th6[ij], T.dth6ast[ij], T.b6[ij], T.dth6c[ij]);
+        const f4t6 = F4(theta6, T_a6[ij], T_th6[ij], T_dth6ast[ij], T_b6[ij], T_dth6c[ij])
+          + F4(theta6p, T_a6[ij], T_th6[ij], T_dth6ast[ij], T_b6[ij], T_dth6c[ij]);
         // stacking strength by the direction of a -> b: 5'->3' keeps the types, 3'->5' swaps them
         const idA5 = id5p.data[a], idA3 = id3p.data[a], idB5 = id5p.data[ob], idB3 = id3p.data[ob];
         let kab: number;
-        if (idA5 === 0 && idB3 === 0) kab = T.k[ij];
-        else if (idA3 === 0 && idB5 === 0) kab = T.k[btype * nt + atype];
-        else kab = 0.5 * (T.k[ij] + T.k[btype * nt + atype]);
-        const f2 = F2(r, kab, T.cut0[ij], T.cutlc[ij], T.cuthc[ij], T.cutlo[ij], T.cuthi[ij], T.blo[ij], T.bhi[ij], T.cutc[ij]);
+        if (idA5 === 0 && idB3 === 0) kab = T_k[ij];
+        else if (idA3 === 0 && idB5 === 0) kab = T_k[btype * nt + atype];
+        else kab = 0.5 * (T_k[ij] + T_k[btype * nt + atype]);
+        const f2 = F2(r, kab, T_cut0[ij], T_cutlc[ij], T_cuthc[ij], T_cutlo[ij], T_cuthi[ij], T_blo[ij], T_bhi[ij], T_cutc[ij]);
         const e = f2 * f4f6t1 * f4t4 * f4t5 * f4t6 * factorLJ;
         if (e === 0.0) continue;
-        const df2 = DF2(r, kab, T.cut0[ij], T.cutlc[ij], T.cuthc[ij], T.cutlo[ij], T.cuthi[ij], T.blo[ij], T.bhi[ij]);
-        const df4f6t1 = (DF4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) + DF6(theta1, T.AA[ij], T.BB[ij])) / libmSin(theta1);
-        const df4t4 = (DF4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
-          + DF4(theta4, T.a4[ij], PI - T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])) / libmSin(theta4);
-        const df4t5 = (DF4(theta5, T.a5[ij], T.th5[ij], T.dth5ast[ij], T.b5[ij], T.dth5c[ij])
-          - DF4(theta5p, T.a5[ij], T.th5[ij], T.dth5ast[ij], T.b5[ij], T.dth5c[ij])) / libmSin(theta5);
-        const df4t6 = (DF4(theta6, T.a6[ij], T.th6[ij], T.dth6ast[ij], T.b6[ij], T.dth6c[ij])
-          - DF4(theta6p, T.a6[ij], T.th6[ij], T.dth6ast[ij], T.b6[ij], T.dth6c[ij])) / libmSin(theta6);
+        const df2 = DF2(r, kab, T_cut0[ij], T_cutlc[ij], T_cuthc[ij], T_cutlo[ij], T_cuthi[ij], T_blo[ij], T_bhi[ij]);
+        const df4f6t1 = (DF4(theta1, T_a1[ij], T_th1[ij], T_dth1ast[ij], T_b1[ij], T_dth1c[ij]) + DF6(theta1, T_AA[ij], T_BB[ij])) / libmSin(theta1);
+        const df4t4 = (DF4(theta4, T_a4[ij], T_th4[ij], T_dth4ast[ij], T_b4[ij], T_dth4c[ij])
+          + DF4(theta4, T_a4[ij], PI - T_th4[ij], T_dth4ast[ij], T_b4[ij], T_dth4c[ij])) / libmSin(theta4);
+        const df4t5 = (DF4(theta5, T_a5[ij], T_th5[ij], T_dth5ast[ij], T_b5[ij], T_dth5c[ij])
+          - DF4(theta5p, T_a5[ij], T_th5[ij], T_dth5ast[ij], T_b5[ij], T_dth5c[ij])) / libmSin(theta5);
+        const df4t6 = (DF4(theta6, T_a6[ij], T_th6[ij], T_dth6ast[ij], T_b6[ij], T_dth6c[ij])
+          - DF4(theta6p, T_a6[ij], T_th6[ij], T_dth6ast[ij], T_b6[ij], T_dth6c[ij])) / libmSin(theta6);
         delf[0] = 0.0; delf[1] = 0.0; delf[2] = 0.0;
         delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;
         deltb[0] = 0.0; deltb[1] = 0.0; deltb[2] = 0.0;

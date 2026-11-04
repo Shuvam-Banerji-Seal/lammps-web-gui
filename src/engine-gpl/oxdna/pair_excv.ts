@@ -288,12 +288,13 @@ export class PairOxdnaExcv extends Pair {
         const factorLJ = special[jj >>> SBBITS];
         const b = jj & NEIGHMASK;
         const btype = type[b];
-        const rb_bk = rbk.subarray(3 * b, 3 * b + 3), rb_bs = rbs.subarray(3 * b, 3 * b + 3);
+        // b's backbone and base sites (views of them only for the pairs in range, which apply() takes)
+        const ob = 3 * b;
         for (let d = 0; d < 3; d++) {
-          dbk[d] = rtBk[d] - (x[3 * b + d] + rb_bk[d]);
-          dbs[d] = rtBk[d] - (x[3 * b + d] + rb_bs[d]);
-          dsk[d] = rtBs[d] - (x[3 * b + d] + rb_bk[d]);
-          dss[d] = rtBs[d] - (x[3 * b + d] + rb_bs[d]);
+          dbk[d] = rtBk[d] - (x[ob + d] + rbk[ob + d]);
+          dbs[d] = rtBk[d] - (x[ob + d] + rbs[ob + d]);
+          dsk[d] = rtBs[d] - (x[ob + d] + rbk[ob + d]);
+          dss[d] = rtBs[d] - (x[ob + d] + rbs[ob + d]);
         }
         const rsqBk = dbk[0] * dbk[0] + dbk[1] * dbk[1] + dbk[2] * dbk[2];
         const rsqBkBs = dbs[0] * dbs[0] + dbs[1] * dbs[1] + dbs[2] * dbs[2];
@@ -309,19 +310,19 @@ export class PairOxdnaExcv extends Pair {
           fpair *= factorLJ;
           e *= factorLJ;
           tally(a, b, e, dbk[0] * fpair, dbk[1] * fpair, dbk[2] * fpair, rx, ry, rz);
-          apply(a, b, dbk, fpair, ra_bk, rb_bk, delf);
+          apply(a, b, dbk, fpair, ra_bk, rbk.subarray(ob, ob + 3), delf);
         }
         if (rsqBkBs < this.bs.cutsqC[ij]) {
           const e = F3(rsqBkBs, this.bs.cutsqAst[ij], this.bs.cutC[ij], this.bs.lj1[ij], this.bs.lj2[ij], this.bs.eps[ij], this.bs.b[ij], fp);
           const fpair = fp[0];
           tally(a, b, e, dbs[0] * fpair, dbs[1] * fpair, dbs[2] * fpair, rx, ry, rz);
-          apply(a, b, dbs, fpair, ra_bk, rb_bs, delf);
+          apply(a, b, dbs, fpair, ra_bk, rbs.subarray(ob, ob + 3), delf);
         }
         if (rsqBsBk < this.bs.cutsqC[ij]) {
           const e = F3(rsqBsBk, this.bs.cutsqAst[ij], this.bs.cutC[ij], this.bs.lj1[ij], this.bs.lj2[ij], this.bs.eps[ij], this.bs.b[ij], fp);
           const fpair = fp[0];
           tally(a, b, e, dsk[0] * fpair, dsk[1] * fpair, dsk[2] * fpair, rx, ry, rz);
-          apply(a, b, dsk, fpair, ra_bs, rb_bk, delf);
+          apply(a, b, dsk, fpair, ra_bs, rbk.subarray(ob, ob + 3), delf);
         }
         // bs-bs: the tetramer tables apply when a and b are 3'-5' neighbours in either order
         let eBsBs = 0;
@@ -347,7 +348,7 @@ export class PairOxdnaExcv extends Pair {
         }
         if (eBsBs !== 0) {
           tally(a, b, eBsBs, dss[0] * fBsBs, dss[1] * fBsBs, dss[2] * fBsBs, rx, ry, rz);
-          apply(a, b, dss, fBsBs, ra_bs, rb_bs, delf);
+          apply(a, b, dss, fBsBs, ra_bs, rbs.subarray(ob, ob + 3), delf);
         }
       }
     }

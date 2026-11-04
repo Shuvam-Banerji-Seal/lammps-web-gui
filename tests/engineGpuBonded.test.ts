@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 import type { System } from '../src/engine/system';
-import { pairSpecEval, type GpuPairSpec } from '../src/engine/gpu/pairSpec';
+import { HYBRID_STYLE, pairSpecEval, type GpuPairSpec } from '../src/engine/gpu/pairSpec';
 import { accelerator } from '../src/engine/run/accel';
 import { buildAtomMap, type SpecialList } from '../src/engine/atoms';
 import { CpuForceBackend } from '../src/engine/cpu/forces';
@@ -140,6 +140,15 @@ const CASES: Record<string, { charged: boolean; pair: string; style: number; dih
     pair: 'pair_style lj/class2/coul/long 2.5 2.9\npair_coeff * * 1.0 1.0\npair_coeff 1 2 0.8 1.05\npair_modify table 0\nkspace_style pppm 1e-4',
   },
   'coul/long + ewald': { charged: true, style: 11, pair: 'pair_style coul/long 2.9\npair_coeff * *\npair_modify table 0\nkspace_style ewald 1e-4' },
+  // pair_style hybrid/overlay and hybrid of GPU styles (gpu/pairSpec.ts gpuHybridSpec): the layers with the special weights
+  'hybrid/overlay lj/cut coul/long + pppm': {
+    charged: true, style: 100,
+    pair: 'pair_style hybrid/overlay lj/cut 2.5 coul/long 2.9\npair_coeff * * lj/cut 1.0 1.0\npair_coeff 1 2 lj/cut 0.8 1.05\npair_coeff * * coul/long\npair_modify table 0\nkspace_style pppm 1e-4',
+  },
+  'hybrid lj/cut lj/cut/coul/cut': {
+    charged: true, style: 100,
+    pair: 'pair_style hybrid lj/cut 2.5 lj/cut/coul/cut 2.5 2.9\npair_coeff 1 1 lj/cut 1.0 1.0\npair_coeff 2 2 lj/cut/coul/cut 1.0 1.0\npair_coeff 1 2 lj/cut/coul/cut 0.8 1.05',
+  },
   // dihedral charmm tallies its weighted 1-4 pairs into evdwl and ecoul (special_bonds charmm: 0 0 0)
   'lj/charmm/coul/long + pppm, dihedral charmm': {
     charged: true, style: 13,
@@ -170,7 +179,7 @@ describe('molecular systems on the GPU path: CPU bonded terms plus the GPU pair 
       expect(Math.abs(cpu.rows[0].ebond)).toBeGreaterThan(1e-3);
       expect(Math.abs(cpu.rows[0].edihed)).toBeGreaterThan(1e-3);
       if (c.charged) expect(Math.abs(cpu.rows[0].ecoul)).toBeGreaterThan(1e-3);
-      if (c.style >= 11) expect(Math.abs(cpu.rows[0].elong)).toBeGreaterThan(1e-3);
+      if (c.pair.includes('kspace_style')) expect(Math.abs(cpu.rows[0].elong)).toBeGreaterThan(1e-3);
       const acc = accelerator(gpu.sys, fake);
       expect(acc.accel?.spec?.style).toBe(c.style);
     });
@@ -194,9 +203,13 @@ describe('molecular systems on the GPU path: CPU bonded terms plus the GPU pair 
     expect(long.accel?.kspace).toBe(true);
     expect(long.accel?.resident).toBe(false);
     expect(long.accel?.spec?.gewald).toBeGreaterThan(0);
-    // a kspace style with a pair style the GPU does not run
+    // a kspace style with pair_style hybrid/overlay of GPU styles
     const hybrid = await run(new CpuForceBackend(), true, 'pair_style hybrid/overlay lj/cut 2.5 coul/long 2.9\npair_coeff * * lj/cut 1.0 1.0\npair_coeff * * coul/long\nkspace_style ewald 1e-4');
-    expect(accelerator(hybrid.sys, gpu).reason).toMatch(/pair style hybrid\/overlay/);
+    // hybrid/overlay of GPU styles: one spec with a layer per sub-style (gpu/pairSpec.ts gpuHybridSpec)
+    const hy = accelerator(hybrid.sys, gpu);
+    expect(hy.reason).toBeNull();
+    expect(hy.accel?.spec?.style).toBe(HYBRID_STYLE);
+    expect(hy.accel?.spec?.layers).toBe(2);
     const adapt = await run(new CpuForceBackend(), false, `${CASES['lj/cut (spec style 10)'].pair}\nfix 9 all adapt 1 pair lj/cut epsilon 1 1 v_e\nvariable e equal 1.0`);
     expect(accelerator(adapt.sys, gpu).reason).toBe('fix adapt (it changes the pair coefficients during the run)');
   });

@@ -261,6 +261,20 @@ export interface NativeLayout {
   NA: number;
 }
 
+/**
+ * The owned atoms' positions (engine order, 3 per atom) at the engine's last neighbor build, where native bins its atoms
+ * and orients its pairs: a list is kept between builds (native's own and an occasional list that is a copy of it,
+ * src/neighbor.cpp morph_copy_trim and build_one at b332f28). A compute that first asks for the order on a later step
+ * (thermo of stress/spherical between rebuilds) gets the order of the build, not one of the current positions. With a
+ * box that changed since the build (fix deform, a barostat) the current positions are used.
+ */
+const buildPositions = (s: SimState, nb: Neighbor, g: Geometry): Float64Array => {
+  const xb = nb.xBuilt;
+  if (xb.length < 3 * s.n) return s.x;
+  for (let d = 0; d < 3; d++) if (nb.loBuilt[d] !== g.lo[d] || nb.hiBuilt[d] !== g.hi[d]) return s.x;
+  return xb;
+};
+
 const nativeLayout = (s: SimState, nb: Neighbor, g: Geometry): NativeLayout => {
   const order = nativeOrder(s);
   const n = s.n;
@@ -270,11 +284,13 @@ const nativeLayout = (s: SimState, nb: Neighbor, g: Geometry): NativeLayout => {
   const gi = nb.gimage;
   const engByKey = new IntTable(NA);
   for (let k = 0; k < NA; k++) engByKey.set(imgKey(nb.owner[k], gi[3 * k], gi[3 * k + 1], gi[3 * k + 2]), k);
-  // native positions and ghosts (native local order: atom k of the native list is engine atom order[k])
+  // native positions and ghosts (native local order: atom k of the native list is engine atom order[k]), at the last
+  // build (see buildPositions)
+  const xs = buildPositions(s, nb, g);
   const xn = new Float64Array(3 * n);
   for (let k = 0; k < n; k++) {
     const e = order[k];
-    xn[3 * k] = s.x[3 * e]; xn[3 * k + 1] = s.x[3 * e + 1]; xn[3 * k + 2] = s.x[3 * e + 2];
+    xn[3 * k] = xs[3 * e]; xn[3 * k + 1] = xs[3 * e + 1]; xn[3 * k + 2] = xs[3 * e + 2];
   }
   const cutghost = nb.cutghost;
   const gh = nativeGhosts(xn, n, g, cutghost, two);
@@ -1064,10 +1080,11 @@ export class NativeReverseComm {
     const gi = nb.gimage;
     const engByKey = new Map<number, number>();
     for (let k = 0; k < nb.nall; k++) engByKey.set(imgKey(nb.owner[k], gi[3 * k], gi[3 * k + 1], gi[3 * k + 2]), k);
+    const xs = buildPositions(s, nb, g);
     const xn = new Float64Array(3 * n);
     for (let k = 0; k < n; k++) {
       const e = order[k];
-      xn[3 * k] = s.x[3 * e]; xn[3 * k + 1] = s.x[3 * e + 1]; xn[3 * k + 2] = s.x[3 * e + 2];
+      xn[3 * k] = xs[3 * e]; xn[3 * k + 1] = xs[3 * e + 1]; xn[3 * k + 2] = xs[3 * e + 2];
     }
     // comm_modify group: only that group's atoms have ghosts (the engine's ghosts follow it too, Neighbor.borderBit)
     let send: Uint8Array | null = null;

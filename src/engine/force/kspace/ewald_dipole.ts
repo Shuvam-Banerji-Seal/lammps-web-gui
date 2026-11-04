@@ -45,8 +45,9 @@ import { libm } from '../../libm';
  *   e_i = C (4 pi / V) sum_half G(K) (mu_i . K) Re(M* exp(i K . r_i)) - C (2 g^3 / (3 sqrt(pi))) mu_i^2 and
  *   w_i,ab = C (4 pi / V) sum_half G(K) Re(M* exp(i K . r_i)) [ (mu_i . K) (delta_ab - b K_a K_b) + 2 K_b mu_ia ],
  *   which sum to the energy and the virial above.
- * The k-vectors are |n_d| <= kmax_d and K^2 <= max_d (2 pi kmax_d / L_d)^2, the sphere used by
- * the ewald style; the boundary vectors are included (measured: excluding them changes elong by 3e-4).
+ * The k-vectors are |n_d| <= kmax_d and K^2 <= 1.00001 max_d (2 pi kmax_d / L_d)^2, with the axis vectors
+ * (m,0,0), (0,m,0), (0,0,m) up to max_d kmax_d, as native LAMMPS does (src/KSPACE/ewald_dipole.cpp setup()
+ * and coeffs() at b332f28); the boundary vectors are included (measured: excluding them changes elong by 3e-4).
  *
  * Refusals (with native behaviour where measured): point charges. Measured with native LAMMPS (black
  * box): ewald/dipole refuses any system with charges (a message says charges cannot be used with
@@ -164,20 +165,31 @@ export class KSpaceEwaldDipole extends KSpace {
     const [kx, ky, kz] = this.kmax;
     const km = [kx, ky, kz];
     let gsqmx = 0;
-    for (let d = 0; d < 3; d++) gsqmx = Math.max(gsqmx, (2 * Math.PI * km[d] / L[d]) ** 2);
+    for (let d = 0; d < 3; d++) {
+      const u = (2 * Math.PI) / L[d];
+      gsqmx = Math.max(gsqmx, u * u * km[d] * km[d]);
+    }
+    gsqmx *= 1.00001;
     const list: number[] = [], ns: number[] = [];
+    const add = (nx: number, ny: number, nz: number): void => {
+      const Kx = 2 * Math.PI * nx / L[0], Ky = 2 * Math.PI * ny / L[1], Kz = 2 * Math.PI * nz / L[2];
+      const K2 = Kx * Kx + Ky * Ky + Kz * Kz;
+      if (K2 > gsqmx) return;
+      list.push(Kx, Ky, Kz);
+      ns.push(nx, ny, nz);
+    };
     for (let nx = 0; nx <= kx; nx++) {
       for (let ny = -ky; ny <= ky; ny++) {
         for (let nz = -kz; nz <= kz; nz++) {
           if (nx === 0 && (ny < 0 || (ny === 0 && nz <= 0))) continue;
-          const Kx = 2 * Math.PI * nx / L[0], Ky = 2 * Math.PI * ny / L[1], Kz = 2 * Math.PI * nz / L[2];
-          const K2 = Kx * Kx + Ky * Ky + Kz * Kz;
-          if (K2 > gsqmx * (1 + 1e-12)) continue;
-          list.push(Kx, Ky, Kz);
-          ns.push(nx, ny, nz);
+          add(nx, ny, nz);
         }
       }
     }
+    const kall = Math.max(kx, ky, kz);
+    for (let m = kx + 1; m <= kall; m++) add(m, 0, 0);
+    for (let m = ky + 1; m <= kall; m++) add(0, m, 0);
+    for (let m = kz + 1; m <= kall; m++) add(0, 0, m);
     this.kvec = Float64Array.from(list);
     this.nvec = Int32Array.from(ns);
   }

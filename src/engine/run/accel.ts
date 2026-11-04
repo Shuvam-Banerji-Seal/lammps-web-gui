@@ -310,6 +310,7 @@ const evaluate = async (a: Accel, sys: System, step: boolean): Promise<ForceResu
   if (a.tip4p) return evaluateTip4p(a, a.tip4p, sys, step);
   if (a.atom) {
     const gb = a.backend as ForceBackend & { computeAtomKernel(s: SimState, k: GpuAtomKernel): Promise<ForceResult> };
+    a.atom.begin?.(s, step);
     return gb.computeAtomKernel(s, a.atom);
   }
   if (!a.spec) return a.backend.compute(s, a.table);

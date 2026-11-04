@@ -119,6 +119,8 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'superellipsoid', names: { PAIRS: ['granular/superellipsoid'] }, load: () => import('../engine-gpl/registry/superellipsoid') as Promise<StyleModule> },
   { id: 'gpl_pair_gran', names: { PAIRS: ['gran/hertz/history', 'gran/hooke', 'gran/hooke/history'] }, load: () => import('../engine-gpl/registry/pair_gran') as Promise<StyleModule> },
   { id: 'gpl_gran_single', names: { HOOKS: ['gran/hertz/history', 'gran/hooke', 'gran/hooke/history'] }, load: () => import('../engine-gpl/registry/gran_single') as Promise<StyleModule> },
+  // the WebGPU kernel of the gran pairs (gpu/atomKernel.ts), read by run/accel.ts through gplHook(<style name>)
+  { id: 'gpl_gran_gpu', names: { HOOKS: ['gran/hertz/history', 'gran/hooke', 'gran/hooke/history'] }, load: () => import('../engine-gpl/registry/gran_gpu') as Promise<StyleModule> },
   { id: 'fix_wallgran', names: { FIXES: ['freeze', 'heat/flow', 'wall/gran', 'wall/gran/region'] }, load: () => import('./registry/fix_wallgran') as Promise<StyleModule> },
   { id: 'fix_gcmc', names: { FIXES: ['gcmc'] }, load: () => import('./registry/fix_gcmc') as Promise<StyleModule> },
   { id: 'fix_external', names: { FIXES: ['external'] }, load: () => import('./registry/fix_external') as Promise<StyleModule> },

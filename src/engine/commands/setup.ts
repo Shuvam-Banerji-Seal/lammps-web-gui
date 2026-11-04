@@ -3644,7 +3644,7 @@ const replicate: Handler = ({ sys }, a) => {
   const old: SimState = { ...s, x: s.x.slice(0, 3 * s.n), v: s.v.slice(0, 3 * s.n), image: s.image.slice(0, 3 * s.n), type: s.type.slice(0, s.n), id: s.id.slice(0, s.n), mask: s.mask.slice(0, s.n), molecule: s.molecule.slice(0, s.n), q: s.q.slice(0, s.n) };
   // measured with native LAMMPS: "Cannot replicate with fixes that store per-atom quantities"
   for (const f of sys.fixes) if (f.style === 'property/atom') throw new StyleError('Cannot replicate with fixes that store per-atom quantities');
-  // every other per-atom field (sphere radius/mass/omega, dipoles, ellipsoid shape/quat/angmom) is copied as is
+  // every other per-atom field (sphere radius/mass/omega, dipoles, spins, ellipsoid shape/quat/angmom) is copied as is
   const base = gatherAtoms(s, Array.from({ length: s.n }, (_, i) => i));
   const maxId = maxAtomId(s);
   let maxMol = 0;
@@ -3692,6 +3692,8 @@ const replicate: Handler = ({ sys }, a) => {
   if (s.omega) s.omega = new Float64Array(0);
   if (s.torque) s.torque = new Float64Array(0);
   if (s.mu) s.mu = new Float64Array(0);
+  if (s.sp) s.sp = new Float64Array(0);
+  if (s.fm) s.fm = new Float64Array(0);
   if (s.shape) s.shape = new Float64Array(0);
   if (s.quat) s.quat = new Float64Array(0);
   if (s.angmom) s.angmom = new Float64Array(0);
@@ -3716,7 +3718,7 @@ const replicate: Handler = ({ sys }, a) => {
     rmass: tile(base.rmass as Float64Array | undefined), radius: tile(base.radius as Float64Array | undefined), omega: tile(base.omega),
     // peri and smd per-atom volume and reference positions are per-atom fields copied as they are (native replicate: pack_restart)
     vfrac: tile(base.vfrac as Float64Array | undefined), x0: tile(base.x0 as Float64Array | undefined),
-    mu: tile(base.mu), shape: tile(base.shape), quat: tile(base.quat), angmom: tile(base.angmom), custom,
+    mu: tile(base.mu), sp: tile(base.sp), shape: tile(base.shape), quat: tile(base.quat), angmom: tile(base.angmom), custom,
   });
   s.mask.set(mask);
   sys.setState(s);

@@ -499,7 +499,7 @@ export class PairAmoeba extends Pair {
         : [dispersionGridSize(pc.geom.lx), dispersionGridSize(pc.geom.ly), dispersionGridSize(pc.geom.lz)];
       for (let d = 0; d < 3; d++) if (!factorable(nfft[d])) throw new StyleError('pair hippo: dpme-grid must factor into 2, 3 and 5');
       const grid = makeDispersionGrid(nfft, key.bsdorder, [pc.geom.lo[0], pc.geom.lo[1], pc.geom.lo[2]], [pc.geom.lx, pc.geom.ly, pc.geom.lz]);
-      disp.e += dispersionKspace(x, f, n, cls, csix, grid, adew, csixpr);
+      disp.e += dispersionKspace(x, f, n, cls, csix, grid, adew, csixpr, disp.virial);
     }
 
     const felec = ELECTRIC / prm.dielectric;

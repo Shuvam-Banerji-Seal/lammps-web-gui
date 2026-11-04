@@ -31,10 +31,10 @@ import { libm } from '../../libm';
  * positional layout, not a search of the r and theta columns.
  *
  * Lookup: "For each triplet configuration occurring in the simulation within the cutoff distance, the next nearest
- * tabulated triplet configuration is looked up." "No interpolation is done." Measured with native LAMMPS (black box):
- * the nearest grid point is taken for both distances and for the angle, on the grid values of the file; an exact tie
- * goes to the lower grid point (r = 2.8 with rmin 2.55 and dr 0.1 gives 2.75; theta = 90 degrees with N = 12 gives
- * 86.25; r = 2.9 gives 2.85).
+ * tabulated triplet configuration is looked up." "No interpolation is done." The grid index of each distance and the
+ * angle bin follow native's rule (rIndex and thetaIndex below, checked against src/MANYBODY/pair_threebody_table.cpp
+ * at b332f28): r = 2.8 with rmin 2.55 and dr 0.1 gives 2.75, r = 2.9 gives 2.85, and theta = 90 degrees with N = 12
+ * gives 86.25.
  *
  * Forces: "The forces on all three particles I, J, and K of a triplet of this type of three-body interaction potential"
  * lie in the plane of the three distance vectors, and the six tabulated constants project them: f_i = f_i1 r_ij +
@@ -74,10 +74,7 @@ interface TriTable {
   n: number;
   rmin: number;
   rmax: number;
-  /** r grid (n values, the r_ij column of the file at b = a) and angle grid (2n values, degrees) */
-  gr: Float64Array;
-  gt: Float64Array;
-  /** r grid step (nominal) and angle grid step (degrees) */
+  /** r grid step, (rmax - rmin) / (n - 1), and angle bin width (degrees), 180 / (2n) */
   dr: number;
   dth: number;
   /** symmetric (element 2 == element 3) layout: rows of (a, b >= a, m) */
@@ -163,33 +160,34 @@ const buildTable = (text: string, entry: Entry3B, sym: boolean): TriTable => {
       }
       const off = new Int32Array(n);
       for (let a = 1; a < n; a++) off[a] = off[a - 1] + (n - (a - 1)) * 2 * n;
-      // the grid values as the file gives them: r_ij and theta of the grid points (decimal values, see gridIndexIn)
-      const gr = new Float64Array(n), gt = new Float64Array(2 * n);
-      for (let a = 0; a < n; a++) gr[a] = body[(sym ? off[a] : a * n * 2 * n)][1];
-      for (let m = 0; m < 2 * n; m++) gt[m] = body[m][3];
-      return { cut: entry.cut, n, rmin, rmax, gr, gt, dr: (rmax - rmin) / (n - 1), dth: 180 / (2 * n), sym, off, rows };
+      return { cut: entry.cut, n, rmin, rmax, dr: (rmax - rmin) / (n - 1), dth: 180 / (2 * n), sym, off, rows };
     }
   }
   throw new StyleError(`threebody/table table ${fileName} has no section with keyword '${entry.keyword}'`);
 };
 
 /**
- * Nearest point of the grid g (ascending) to the value r: the point with the smaller |r - g_i|, an exact tie going to
- * the lower point. Returns -1 when r lies more than half a grid step outside the grid: a distance up to half a step
- * beyond rmin or rmax still maps to the end point (measured with native LAMMPS, black box: 1.85 accepted and 1.8167
- * dropped for rmin = 2 and a step of 1/3). The grid values are the decimal values of the file: a distance on a
- * half-point (r = 2.9 between 2.85 and 2.95) is decided by |r - g| with those values, and native picks 2.85
- * (measured), so the file values are compared, not values computed as rmin + i dr.
+ * Grid index of a leg distance r, or -1 when r lies outside [rmin - dr/2, rmax + dr/2] (the triplet is dropped). As
+ * native LAMMPS does (src/MANYBODY/pair_threebody_table.cpp threebody and uf_lookup at b332f28): the index is
+ * trunc((r - rmin + dr/2 - 1e-8) / dr), and r = rmin - dr/2 gives 0. The 1e-8 shift sends a distance on a half-point
+ * to the lower grid point (r = 2.9 with rmin 2.55 and dr 0.1 gives 2.85).
  */
-const gridIndexIn = (r: number, g: Float64Array, step: number): number => {
-  const n = g.length;
-  const first = g[0];
-  const x = (r - first) / step;
-  if (x <= -0.5 || x > n - 0.5) return -1;
-  const lo = Math.min(Math.max(Math.floor(x), 0), n - 1);
-  const hi = Math.min(lo + 1, n - 1);
-  if (lo === hi) return lo;
-  return Math.abs(r - g[lo]) <= Math.abs(r - g[hi]) ? lo : hi;
+const rIndex = (r: number, rmin: number, rmax: number, dr: number): number => {
+  const lo = rmin - 0.5 * dr;
+  if (!(r >= lo && r <= rmax + 0.5 * dr)) return -1;
+  if (r === lo) return 0;
+  return Math.trunc((r - rmin + 0.5 * dr - 0.00000001) / dr);
+};
+
+/**
+ * Angle bin of theta (degrees) for 2N bins of width dth = 180 / (2N). As native LAMMPS does
+ * (src/MANYBODY/pair_threebody_table.cpp uf_lookup at b332f28): trunc((theta - 1e-8) / dth), and theta >= 180 gives
+ * the last bin. An angle on a bin edge, or up to 1e-8 degrees above it, goes to the lower bin (theta = 90 with N = 12
+ * gives 86.25, and so does 90.00000000000003, which a nearest-grid-point rule sent to 93.75).
+ */
+const thetaIndex = (theta: number, n: number, dth: number): number => {
+  if (theta >= 180.0) return 2 * n - 1;
+  return Math.trunc((theta - 0.00000001) / dth);
 };
 
 /**
@@ -379,15 +377,14 @@ export class PairThreebodyTable extends Pair {
           const rJ = nR[J], rK = nR[K];
           if (!(rJ < legCut[ti + nType[J]]) || !(rK < legCut[ti + nType[K]])) continue;
           const n = tab.n;
-          const a = gridIndexIn(rJ, tab.gr, tab.dr);
-          const b = gridIndexIn(rK, tab.gr, tab.dr);
+          const a = rIndex(rJ, tab.rmin, tab.rmax, tab.dr);
+          const b = rIndex(rK, tab.rmin, tab.rmax, tab.dr);
           if (a < 0 || b < 0) continue;
           const dJx = nDx[J], dJy = nDy[J], dJz = nDz[J];
           const dKx = nDx[K], dKy = nDy[K], dKz = nDz[K];
           const cosT = (dJx * dKx + dJy * dKy + dJz * dKz) / (rJ * rK);
           const theta = (libm.acos(cosT > 1 ? 1 : cosT < -1 ? -1 : cosT) * 180) / Math.PI;
-          const mm = gridIndexIn(theta, tab.gt, tab.dth);
-          if (mm < 0) continue;
+          const mm = thetaIndex(theta, n, tab.dth);
           const row = tab.sym ? tab.off[a] + (b - a) * 2 * n + mm : (a * n + b) * 2 * n + mm;
           const R = tab.rows;
           const o = 7 * row;

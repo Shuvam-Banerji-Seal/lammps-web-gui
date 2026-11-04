@@ -1,6 +1,6 @@
 # oracle: pair hippo on the HIPPO water hexamer (examples/amoeba: data.water_hexamer.hippo, hippo_water.prm and hippo_water.key: cutoff 10, taper 8, polar-eps 1e-5, usolve-diag 1.0; bond_style class2, angle_style amoeba, boundary s s s, one/five special bonds). The Pauli repulsion (c_p[2]), the damped dispersion (c_p[3]), the charge-penetration multipoles (c_p[4]), the induced-dipole polarization (c_p[5], pe) and the charge transfer (c_p[6]) energies and the forces at step 0 and after 10 NVE steps.
 # oracle-inputs: w119amoeba_hippo_hexamer.data w119amoeba_hippo_water.prm w119amoeba_hippo.key
-# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 skip=press,c_virial[1],c_virial[2],c_virial[3],c_virial[4],c_virial[5],c_virial[6]
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
 # Measured with native LAMMPS (black box): the engine agrees with native to 2.8e-14 relative in pe, 6.6e-15 in c_p[2], 2.1e-14 in c_p[4], 2.8e-15 in c_p[5] and the forces after 10 steps to 4.7e-12 relative.
 units           real
 boundary        s s s

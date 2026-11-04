@@ -1,0 +1,28 @@
+# oracle: replicate copies each atom's spin (atom_style spin, examples/SPIN/read_restart/in.spin.read_data: replicate
+#   1 1 2). As native LAMMPS does (src/replicate.cpp at b332f28), every per-atom field of the atom style goes with the
+#   copy (pack_restart/unpack_restart); the engine gave the copies zero spins, so the magnetization was half native's.
+# oracle-compare: thermo=all rel=1e-9 abs=1e-10
+units           metal
+atom_style      spin
+boundary        p p p
+atom_modify     map array
+lattice         bcc 2.8665
+region          box block 0 3 0 3 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+set             group all spin/atom/random 31 2.2
+replicate       1 1 2
+pair_style      spin/exchange 4.0
+pair_coeff      * * exchange 4.0 0.02726 0.2171 1.841
+neighbor        0.1 bin
+neigh_modify    every 10 check yes delay 20
+fix             1 all precession/spin zeeman 0.001 0.0 0.0 1.0
+fix_modify      1 energy yes
+fix             2 all nve/spin lattice frozen
+timestep        0.0001
+compute         s all spin
+thermo_style    custom step pe c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6]
+thermo_modify   format float %.15g
+thermo          10
+run             20

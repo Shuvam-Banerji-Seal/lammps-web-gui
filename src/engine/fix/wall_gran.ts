@@ -48,6 +48,26 @@ const classicModel = (args: string[]): { kn: number; kt: number; gn: number; gt:
   return { kn, kt, gn, gt, xmu, dampflag };
 };
 import { type Region, type SurfaceContact } from '../region';
+import { gplHook } from '../gplHooks';
+
+/**
+ * The native region wall of src/engine-gpl/granular/wall_gran_region.ts (lazy group gpl_wall_gran_region, HOOKS word
+ * wall/gran/region): native's region match, surface contacts, wall velocity and per-atom history slots.
+ */
+interface NativeRegionWall {
+  readonly region: {
+    readonly cDelx: Float64Array; readonly cDely: Float64Array; readonly cDelz: Float64Array;
+    readonly cR: Float64Array; readonly cRadius: Float64Array;
+    velocity_contact(vwall: Float64Array, x: ArrayLike<number>, ic: number, dt: number): void;
+  };
+  init(): void;
+  begin(step: number, dt: number): boolean;
+  atom(aid: number, x: number, y: number, z: number, cutoff: number): number;
+  history(ic: number): Float64Array;
+}
+interface RegionWallHook {
+  createRegionWall(sys: System, regionId: string, sizeHistory: number, useHistory: boolean): NativeRegionWall | null;
+}
 import { libm } from '../libm';
 
 /*
@@ -589,7 +609,36 @@ export class FixWallGranGranular extends Fix {
     }
   }
 
+  /** The native region wall of the region (undefined before the first use; null when a region style has no port). */
+  private nwall: NativeRegionWall | null | undefined = undefined;
+  private nwallRegion: Region | null = null;
+  private readonly vwall = new Float64Array(3);
+  private readonly xi3 = new Float64Array(3);
+  private readonly noHist = new Float64Array(8);
+
+  /**
+   * The native region wall, for the models that act only in contact (not jkr or mdr, which keep the engine's contact
+   * list). As native LAMMPS does (src/GRANULAR/fix_wall_gran_region.cpp init at b332f28): a region redefined between
+   * runs is a new region with its motion reset, "Region properties for region ID changed between runs, resetting its
+   * motion".
+   */
+  private nativeWall(): NativeRegionWall | null {
+    if (!this.regionId || this.pm.normal === 'jkr' || this.mdrMat) return null;
+    const core = this.sys.region(this.regionId);
+    if (this.nwall !== undefined && this.nwallRegion === core) return this.nwall;
+    if (this.nwall !== undefined) this.sys.warn(`Region properties for region ${this.regionId} changed between runs, resetting its motion`);
+    const pm = this.pm;
+    // native's use_history: a model with history (size_history > 0), as granularContact keeps one (granular.ts)
+    const useHistory = pm.tang !== 'linear_nohistory' || pm.roll !== 'none' || pm.twist !== 'none';
+    this.nwall = gplHook<RegionWallHook>('wall/gran/region').createRegionWall(this.sys, this.regionId, 8, useHistory);
+    this.nwallRegion = core;
+    this.nwallHistory = useHistory;
+    return this.nwall;
+  }
+  private nwallHistory = false;
+
   init(): void {
+    if (this.regionId) this.nativeWall()?.init();
     const s = this.sys.state;
     for (const p of this.planes) {
       if (s.dimension === 2 && p.dim === 2) throw new StyleError('fix wall/gran: cannot use a z wall in a 2d simulation');
@@ -720,6 +769,8 @@ export class FixWallGranGranular extends Fix {
   }
 
   private apply(update: boolean): void {
+    const nw = this.nativeWall();
+    if (nw) { this.applyRegion(nw, update); return; }
     const s = this.sys.state;
     const { x, v, f, id, mask, radius, rmass, omega, torque } = s;
     const cmass = contactMassArray(s);
@@ -860,6 +911,79 @@ export class FixWallGranGranular extends Fix {
       // skipped ("if (!region->match(...)) continue") and keeps its history
       if (hist && hist.size > touched.length && this.regionId && this.sys.region(this.regionId).match(xi, yi, zi)) {
         for (const k of hist.keys()) if (!touched.includes(k)) hist.delete(k);
+      }
+    }
+  }
+
+  /**
+   * fix wall/gran/region with the native region wall, as native LAMMPS does (src/GRANULAR/fix_wall_gran_region.cpp
+   * post_force at b332f28): prematch and set_velocity of a dynamic region, then for each group atom the region match,
+   * the contacts within its radius and the history upkeep (the hook), and for each contact GranularModel's WALLREGION
+   * geometry: rsq = r * r, radsum = radi, Reff = radi (flat) or radi * radj / (radi + radj), nx = dx * (1 / r)
+   * (granular_model.cpp check_contact and calculate_forces), the wall velocity of the contact (velocity_contact), and a
+   * contact out of touch zeroes its history slot.
+   */
+  private applyRegion(nw: NativeRegionWall, update: boolean): void {
+    const s = this.sys.state;
+    const { x, v, f, id, mask, radius, rmass, omega, torque } = s;
+    const cmass = contactMassArray(s);
+    if (!radius || !rmass || !omega || !torque) throw new StyleError('fix wall/gran requires atom_style sphere');
+    const dt = s.dt;
+    const bit = this.groupBit;
+    const pm = this.pm;
+    const regiondynamic = nw.begin(s.step, dt);
+    const vwall = this.vwall;
+    vwall[0] = vwall[1] = vwall[2] = 0.0;
+    if (this.contactsOn) {
+      // clear_stored_contacts: the per-atom contact data restart every step
+      if (this.arrayAtom.length !== this.sizePeratomCols * s.n) this.arrayAtom = new Float64Array(this.sizePeratomCols * s.n);
+      else this.arrayAtom.fill(0);
+    }
+    const heat = pm.heat !== 'none';
+    const T = heat ? s.custom.get(HEAT_TEMPERATURE)!.data : null;
+    const HF = heat ? s.custom.get(HEAT_FLOW)!.data : null;
+    const Tw = typeof this.wallT === 'string' ? this.sys.equalVariable(this.wallT) : (this.wallT ?? 0);
+    const reg = nw.region;
+    const useHistory = this.nwallHistory;
+    const xi3 = this.xi3;
+    const out = this.out;
+    const c = this.cin;
+    for (let i = 0; i < s.n; i++) {
+      if (!(mask[i] & bit)) continue;
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+      const R = radius[i];
+      const nc = nw.atom(id[i], xi, yi, zi, R);
+      if (nc <= 0) continue;
+      xi3[0] = xi; xi3[1] = yi; xi3[2] = zi;
+      const mi = cmass[i];
+      for (let ic = 0; ic < nc; ic++) {
+        const dx = reg.cDelx[ic], dy = reg.cDely[ic], dz = reg.cDelz[ic];
+        const r = reg.cR[ic], radj = reg.cRadius[ic];
+        const Rf = radj === 0 ? R : R * radj / (R + radj);
+        if (regiondynamic) reg.velocity_contact(vwall, xi3, ic, dt);
+        const sh = useHistory ? nw.history(ic) : this.noHist.fill(0);
+        const rinv = 1.0 / r;
+        c.pm = pm; c.nx = dx * rinv; c.ny = dy * rinv; c.nz = dz * rinv; c.r = r; c.delta = R - r; c.Rf = Rf;
+        c.ri = R; c.rj = 0; c.meff = mi;
+        c.vrx = v[3 * i] - vwall[0]; c.vry = v[3 * i + 1] - vwall[1]; c.vrz = v[3 * i + 2] - vwall[2];
+        c.oix = omega[3 * i]; c.oiy = omega[3 * i + 1]; c.oiz = omega[3 * i + 2];
+        c.ojx = 0; c.ojy = 0; c.ojz = 0; c.dt = dt; c.update = update; c.sg = 1; c.surfaceArm = true; c.normal = undefined;
+        c.rsq = undefined; c.radsum = undefined; c.dx = dx; c.dy = dy; c.dz = dz;
+        if (!granularContact(c, sh, out, false)) {
+          if (useHistory) sh.fill(0.0);
+          continue;
+        }
+        f[3 * i] += out.fx; f[3 * i + 1] += out.fy; f[3 * i + 2] += out.fz;
+        torque[3 * i] += out.tix; torque[3 * i + 1] += out.tiy; torque[3 * i + 2] += out.tiz;
+        if (HF) HF[i] += heatFlowOf(pm.heat, pm.hk, out.a, Tw - T![i]);
+        if (this.contactsOn) {
+          const base = i * this.sizePeratomCols;
+          const av = this.arrayAtom;
+          av[base] = 1.0;
+          av[base + 1] = out.fx; av[base + 2] = out.fy; av[base + 3] = out.fz;
+          av[base + 4] = xi - dx; av[base + 5] = yi - dy; av[base + 6] = zi - dz;
+          av[base + 7] = R;
+        }
       }
     }
   }

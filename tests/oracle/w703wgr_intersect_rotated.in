@@ -1,0 +1,30 @@
+# oracle: fix wall/gran/region hertz/history on an intersect of a cylinder (side in) and a block blade (side out) rotated by theta = 0.1 + 0.001 step about z: native's RegIntersect::surface_interior takes the blade's contacts from Region::surface, which rotates them back to the lab frame, and then rotates them once more (src/region_intersect.cpp at b332f28), so the contact normal is the blade's normal turned by theta again
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14
+units           lj
+atom_style      sphere
+boundary        p p f
+comm_modify     vel yes
+region          box block 0 20 0 20 0 10 units box
+create_box      1 box
+pair_style      gran/hertz/history 1000.0 NULL 50.0 NULL 0.5 1
+pair_coeff      * *
+neighbor        0.5 bin
+variable        theta equal 0.1+0.001*step
+region          cyl cylinder z 10 10 10 0 10 side in units box
+region          blade block 4 16 9 11 0 4 side out rotate v_theta 10 10 0 0 0 1 units box
+region          mix intersect 2 cyl blade side in
+create_atoms    1 single 11.843253 11.662323 1.0 units box
+create_atoms    1 single 7.161743 8.237844 1.5 units box
+create_atoms    1 single 13.334761 11.822023 2.0 units box
+create_atoms    1 single 7.863237 11.262989 2.5 units box
+set             type 1 diameter 1.0
+set             type 1 density 1.0
+velocity        all set 0.05 -0.1 0.0 units box
+fix             1 all nve/sphere
+fix             wall all wall/gran/region hertz/history 1000.0 NULL 50.0 NULL 0.5 1 region mix
+thermo_style    custom step ke pe
+thermo_modify   format float %.15g
+thermo          10
+timestep        0.001
+run             60
+

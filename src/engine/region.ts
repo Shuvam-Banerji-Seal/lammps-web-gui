@@ -78,8 +78,8 @@ export abstract class Region {
   interior = true;
   /** move: displacement variables (NULL = 0). */
   move: [string | null, string | null, string | null] | null = null;
-  /** rotate: theta variable, point P, unit axis R. */
-  rotate: { theta: string; p: [number, number, number]; r: [number, number, number] } | null = null;
+  /** rotate: theta variable, point P, unit axis R, and the axis as given (a). */
+  rotate: { theta: string; p: [number, number, number]; r: [number, number, number]; a?: [number, number, number] } | null = null;
   openFaces: number[] = [];
   private readonly remapBuf = [0, 0, 0];
   /** The variable values of the current stamp (see varValue). */

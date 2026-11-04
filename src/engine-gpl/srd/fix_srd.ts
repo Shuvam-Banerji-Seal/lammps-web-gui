@@ -94,7 +94,6 @@ export interface SrdWallFix extends Fix {
   readonly fwall: Float64Array;
   wallParams(flag: 0 | 1): void;
 }
-const EMPTY: number[] = [];
 /** fix_srd.cpp: static constexpr double TOLERANCE = 0.00001; static constexpr int MAXITER = 20; */
 const LINE_TOLERANCE = 0.00001;
 const LINE_MAXITER = 20;
@@ -167,7 +166,12 @@ export class FixSRD extends Fix {
   private nbins2 = 0;
   private stencil: number[][] = [];
   /** big copies (owned particles and periodic images) registered in each search bin */
-  private binbig: number[][] = [];
+  /**
+   * The big copies and walls of each search bin, as native's binbig[nbins2][ATOMPERBIN] with nbinbig: ATOMPERBIN
+   * entries per bin and the count of each bin.
+   */
+  private binbig = new Int32Array(0);
+  private nbinbig = new Int32Array(0);
   private binsrd = new Int32Array(0);
 
   /** big copies: owner index, periodic shift (3 per copy), radius, squared bin cutoff, position */
@@ -864,7 +868,10 @@ export class FixSRD extends Fix {
     if (s.dimension === 2) this.blo2[2] = s.box.lo[2];
 
     this.nbins2 = this.nbin2[0] * this.nbin2[1] * this.nbin2[2];
-    if (this.binbig.length !== this.nbins2) this.binbig = Array.from({ length: this.nbins2 }, () => []);
+    if (this.nbinbig.length !== this.nbins2) {
+      this.binbig = new Int32Array(this.nbins2 * ATOMPERBIN);
+      this.nbinbig = new Int32Array(this.nbins2);
+    }
   }
 
   /** fix_srd.cpp setup_search_stencil(): bin offsets a big particle can overlap. */
@@ -931,7 +938,7 @@ export class FixSRD extends Fix {
       this.setupSearchStencil();
     }
     // native: the search bins of big particles and walls are emptied before they are filled
-    if (this.bigExist || this.wallFix) for (const b of this.binbig) b.length = 0;
+    if (this.bigExist || this.wallFix) this.nbinbig.fill(0);
     if (this.bigExist) {
       this.buildCopies();
       this.registerCopies();
@@ -1048,8 +1055,8 @@ export class FixSRD extends Fix {
         const rsq = this.pointBinDistance(x, jx, jy, jz);
         if (rsq < this.copyCutbinsq[c]) {
           const jbin = ibin + off;
-          if (this.binbig[jbin].length === ATOMPERBIN) throw new StyleError('Fix SRD: too many big particles in bin');
-          this.binbig[jbin].push(c);
+          if (this.nbinbig[jbin] === ATOMPERBIN) throw new StyleError('Fix SRD: too many big particles in bin');
+          this.binbig[jbin * ATOMPERBIN + this.nbinbig[jbin]++] = c;
         }
       }
     }
@@ -1452,20 +1459,20 @@ export class FixSRD extends Fix {
       if (!(s.mask[i] & this.groupBit)) continue;
 
       let ibin = this.binsrd[i];
-      if ((this.binbig[ibin] ?? EMPTY).length === 0) continue;
+      if (!(this.nbinbig[ibin] > 0)) continue;
 
       let ibounce = 0;
       let collideFlag = true;
       let dt = this.dtBig;
 
       while (collideFlag) {
-        const cands = this.binbig[ibin] ?? EMPTY;
-        const nbig = cands.length;
+        const cands = this.binbig, base = ibin * ATOMPERBIN;
+        const nbig = this.nbinbig[ibin] ?? 0;
         if (ibounce === 0) this.ncheck += nbig;
 
         collideFlag = false;
         for (let m = 0; m < nbig; m++) {
-          const c = cands[m];
+          const c = cands[base + m];
           if (c >= this.copyOwner.length) {
             // a wall (native collisions_single, type WALL: inside_wall, collision_wall_exact or _inexact)
             const w = c - this.copyOwner.length;
@@ -1549,7 +1556,7 @@ export class FixSRD extends Fix {
       if (!(s.mask[i] & this.groupBit)) continue;
 
       let ibin = this.binsrd[i];
-      if ((this.binbig[ibin] ?? EMPTY).length === 0) continue;
+      if (!(this.nbinbig[ibin] > 0)) continue;
 
       let ibounce = 0;
       let jlast = -1;
@@ -1557,15 +1564,15 @@ export class FixSRD extends Fix {
       let dt = this.dtBig;
 
       for (;;) {
-        const cands = this.binbig[ibin] ?? EMPTY;
-        const nbig = cands.length;
+        const cands = this.binbig, base = ibin * ATOMPERBIN;
+        const nbig = this.nbinbig[ibin] ?? 0;
         if (ibounce === 0) this.ncheck += nbig;
 
         let tFirst = 0;
         let jfirst = -1;
         let kfirst = -1;
         for (let m = 0; m < nbig; m++) {
-          const c = cands[m];
+          const c = cands[base + m];
           const isWall = c >= this.copyOwner.length;
           const j = isWall ? c - this.copyOwner.length : this.copyOwner[c];
           const kind = isWall ? KIND_WALL : this.bigKind[j];
@@ -1593,21 +1600,21 @@ export class FixSRD extends Fix {
           }
           const rad = this.copyRadius[c];
           const ell = kind === KIND_ELLIPSOID;
-          const ax = this.axesOf(j);
-          const inv = this.invOf(j);
-          const vb = this.bigVelocity(j);
           let tRemain: number;
           if (kind === KIND_LINE) {
             // fix_srd.cpp collisions_multi(): inside_line(x[i], x[j], v[i], v[j], big, dt), then collision_line_exact
-            if (!this.insideLine(xs, xb, vs, vb, this.bigTheta[j], this.bigOmega(j)[2], this.bigLength[j], dt)) continue;
+            if (!this.insideLine(xs, xb, vs, this.bigVelocity(j), this.bigTheta[j], this.bigOmega(j)[2], this.bigLength[j], dt)) continue;
             tRemain = this.collisionLineExact(dt, xscoll, xbcoll, norm);
           } else if (kind === KIND_TRI) {
             // fix_srd.cpp collisions_multi(): inside_tri(x[i], x[j], v[i], v[j], big, dt), then collision_tri_exact
-            if (!this.insideTri(xs, xb, vs, vb, j, dt)) continue;
+            if (!this.insideTri(xs, xb, vs, this.bigVelocity(j), j, dt)) continue;
             tRemain = this.collisionTriExact(dt, xscoll, xbcoll, norm);
           } else {
+            const ax = this.axesOf(j);
+            const inv = this.invOf(j);
             const inside = ell ? insideEllipsoid(xs, xb, ax, inv) : insideSphere(xs, xb, rad * rad);
             if (!inside) continue;
+            const vb = this.bigVelocity(j);
             tRemain = ell
               ? collisionEllipsoidExact(xs, xb, vs, vb, this.bigOmega(j), ax, inv, xscoll, xbcoll, norm)
               : collisionSphereExact(xs, xb, vs, vb, rad * rad, xscoll, xbcoll, norm);
@@ -1963,8 +1970,8 @@ export class FixSRD extends Fix {
             const idx = dim === 0 ? ix : dim === 1 ? iy : iz;
             if (idx < lo || idx > hi) continue;
             const ibin = iz * ny * nx + iy * nx + ix;
-            if (this.binbig[ibin].length === ATOMPERBIN) throw new StyleError('Fix SRD: too many walls in bin');
-            this.binbig[ibin].push(nc + m);
+            if (this.nbinbig[ibin] === ATOMPERBIN) throw new StyleError('Fix SRD: too many walls in bin');
+            this.binbig[ibin * ATOMPERBIN + this.nbinbig[ibin]++] = nc + m;
           }
         }
       }
@@ -2142,9 +2149,12 @@ export class FixSRD extends Fix {
     tq[3 * j + 2] -= r0 * dp1 - r1 * dp0;
   }
 
+  /** The velocity of big particle j, copied into one scratch array (each caller reads it before the next call). */
+  private readonly vbBuf = new Float64Array(3);
   private bigVelocity(j: number): Float64Array {
-    const v = this.sys.state.v;
-    return v.subarray(3 * j, 3 * j + 3);
+    const v = this.sys.state.v, vb = this.vbBuf;
+    vb[0] = v[3 * j]; vb[1] = v[3 * j + 1]; vb[2] = v[3 * j + 2];
+    return vb;
   }
 
   /** omega of big particle j (bigDynamic(): its atom omega, or the angular velocity of an ellipsoid) */

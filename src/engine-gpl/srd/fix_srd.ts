@@ -1102,11 +1102,13 @@ export class FixSRD extends Fix {
     const lamB = tri && geomR ? Float64Array.from(x.subarray(0, 3 * s.n)) : null;
     if (lamB && geomR) x2lamdaAll(lamB, s.n, s.box.lo, geomR.hinv);
     let pos: Float64Array = lamB ?? x;
-    const cellOf = (i: number): [number, number, number] => [
-      clampInt(Math.trunc((pos[3 * i] - corner[0]) * this.bininv1[0]), 0, nbx - 1),
-      clampInt(Math.trunc((pos[3 * i + 1] - corner[1]) * this.bininv1[1]), 0, nby - 1),
-      clampInt(Math.trunc((pos[3 * i + 2] - corner[2]) * this.bininv1[2]), 0, nbz - 1),
-    ];
+    // the bin of SRD particle i, into cell (read before the next call)
+    const cell = new Int32Array(3);
+    const cellOf = (i: number): void => {
+      cell[0] = clampInt(Math.trunc((pos[3 * i] - corner[0]) * this.bininv1[0]), 0, nbx - 1);
+      cell[1] = clampInt(Math.trunc((pos[3 * i + 1] - corner[1]) * this.bininv1[1]), 0, nby - 1);
+      cell[2] = clampInt(Math.trunc((pos[3 * i + 2] - corner[2]) * this.bininv1[2]), 0, nbz - 1);
+    };
     // fix_srd.cpp reset_velocities(): h_rate = [lx, ly, lz, yz, xz, xy] rates and h_ratelo of fix deform (the tilt
     // rates are zero in an orthogonal box)
     const deformRates = this.deformFix ? this.deformFix.streamingRates() : null;
@@ -1119,7 +1121,8 @@ export class FixSRD extends Fix {
     for (let k = 0; k < s.n; k++) {
       const i = order[k];
       if (!(mask[i] & this.groupBit)) continue;
-      const [ix, iy, iz] = cellOf(i);
+      cellOf(i);
+      const ix = cell[0], iy = cell[1], iz = cell[2];
       // native "shift velocities in last bins": a particle in the extra bin (ix == nbin1x) of a periodic dimension
       // loses the box rate of that dimension
       if (deformRates) {
@@ -1319,7 +1322,8 @@ export class FixSRD extends Fix {
         for (let k = 0; k < s.n; k++) {
           const i = order[k];
           if (!(mask[i] & this.groupBit)) continue;
-          const [ix, iy, iz] = cellOf(i);
+          cellOf(i);
+      const ix = cell[0], iy = cell[1], iz = cell[2];
           if (per[0] && ix === this.nbin1[0]) v[3 * i] += hRate[0];
           if (per[1] && iy === this.nbin1[1]) {
             v[3 * i] += hRate[5];
@@ -1345,7 +1349,8 @@ export class FixSRD extends Fix {
         for (let k = 0; k < s.n; k++) {
           const i = order[k];
           if (!(mask[i] & this.groupBit)) continue;
-          const [ix, iy, iz] = cellOf(i);
+          cellOf(i);
+      const ix = cell[0], iy = cell[1], iz = cell[2];
           if (per[0] && ix === this.nbin1[0]) v[3 * i] += hRate[0];
           if (per[1] && iy === this.nbin1[1]) v[3 * i + 1] += hRate[1];
           if (per[2] && iz === this.nbin1[2]) v[3 * i + 2] += hRate[2];

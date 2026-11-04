@@ -459,8 +459,9 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
       const k = jj & NEIGHMASK;
       const m = jj >>> SBBITS;
       rowOf[cnt] = i; colOf[cnt] = k; valOf[cnt] = m; cnt++;
-      // the mirror of the pair (i, k) with image shift d is the pair (owner(k), the image of i with shift -d)
-      const kr = engByKey.get(imgKey(i, -gi[3 * k], -gi[3 * k + 1], -gi[3 * k + 2]));
+      // the mirror of the pair (i, k) with image shift d is the pair (owner(k), the image of i with shift -d); an owned k
+      // has no shift (a ghost always has one), so its mirror is (k, i) itself
+      const kr = k < nb.nlocal ? i : engByKey.get(imgKey(i, -gi[3 * k], -gi[3 * k + 1], -gi[3 * k + 2]));
       if (kr >= 0) { rowOf[cnt] = nb.owner[k]; colOf[cnt] = kr; valOf[cnt] = m; cnt++; }
     }
   }

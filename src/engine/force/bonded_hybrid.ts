@@ -203,13 +203,21 @@ export class BondedHybrid extends Bonded {
       this.energy[k] = 0;
       const list = buckets[k];
       if (list.n === 0) continue;
-      this.scratch[key] = 0;
+      const sc = this.scratch;
+      sc[key] = 0;
+      sc.evdwl = sc.ecoul = 0;
       const state = { ...bc.s, topo: { ...bc.s.topo, [listKey]: list } };
-      subs[k].compute({ ...bc, s: state, acc: this.scratch });
+      subs[k].compute({ ...bc, s: state, acc: sc });
+      // As native LAMMPS does (src/angle_hybrid.cpp compute and src/MOFFF/angle_cosine_buck6d.cpp at b332f28): a
+      // sub-style that tallies a pair term through force->pair->ev_tally (the 1-3 vdW of angle cosine/buck6d, the 1-4
+      // terms of dihedral charmm and charmmfsw, the LJ that bond quartic removes) adds it to the pair's energy
+      // directly; the hybrid sums only the sub-styles' own energy ("energy += styles[m]->energy")
+      bc.acc.evdwl += sc.evdwl;
+      bc.acc.ecoul += sc.ecoul;
       // the sub-style works on a copy of its entries: a type it sets (bpm breaks a bond: type 0) goes back to the topology
       const idx = index[k];
       for (let j = 0; j < list.n; j++) global.type[idx[j]] = list.type[j];
-      const e = this.scratch[key];
+      const e = sc[key];
       this.energy[k] = e;
       bc.acc[key] += e;
     }

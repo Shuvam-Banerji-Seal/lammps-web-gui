@@ -14,6 +14,7 @@ import type { GpuTersoffSpec } from './tersoffSpec';
 import { KERNEL_TIP4P, TIP4P_WORKGROUP } from './tip4pKernels';
 import { spreadSiteForces, type GpuTip4pSpec, type Tip4pSites } from './tip4pSpec';
 import type { GpuEamSpec } from './eamSpec';
+import { ATOM_KERNEL_OUT, ATOM_KERNEL_WORKGROUP, type GpuAtomKernel } from './atomKernel';
 import { boxWidths, newCellScratch, sortByCell, WGSL_BOX_IMAGE, type CellGrid, type CellScratch } from './cellSort';
 
 /*
@@ -1067,6 +1068,112 @@ export class WebGpuForceBackend implements ForceBackend {
     return { pe: evdwl, virial, evdwl, ecoul: 0, virialTensor: vt };
   }
 
+  /** The pipelines of the atom kernels (gpu/atomKernel.ts), by WGSL source, and their uniform. */
+  private atomPipes = new Map<string, GPUComputePipeline>();
+  private atomParams: GPUBuffer | null = null;
+  private atombufs: {
+    pos: GPUBuffer; ints: GPUBuffer; coef: GPUBuffer; ext: GPUBuffer; out: GPUBuffer; staging: GPUBuffer;
+    atomCap: number; intsCap: number; coefCap: number; coefKey: string; binds: Map<GPUComputePipeline, GPUBindGroup>;
+  } | null = null;
+  private atomExt = new Float32Array(0);
+  private atomExtSlot = new Float32Array(0);
+
+  /**
+   * One force evaluation of a pair style's own kernel (gpu/atomKernel.ts: pair eff/cut): the cell sort, the per-atom
+   * inputs in cell-slot order, one pass, one readback; the style's finish() takes the outputs in atom order and sums
+   * the energies and the virial in fp64.
+   */
+  async computeAtomKernel(state: SimState, k: GpuAtomKernel): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    if (this.disposed) throw new Error('the WebGPU backend was disposed');
+    if (state.n === 0) return k.finish(state, new Float64Array(0));
+    if (shortPeriodicEdge(state, k.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
+    return validated(this.device, () => this.atomOnce(state, k));
+  }
+
+  private async atomOnce(state: SimState, k: GpuAtomKernel): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+    const n = state.n;
+    const cells = this.sortByCell(state, k.maxCutoff, 0, 1);
+    if (!cells) throw new Error('the box has no cell in a periodic dimension');
+    const { L, tilt, nc, base, two } = cells;
+    const { sorted, posData } = this.cs;
+    const ints = this.cs.intsData;
+    const intsLen = base + n;
+    const dev = this.device;
+    let pipe = this.atomPipes.get(k.code);
+    if (!pipe) {
+      pipe = (await checkedPipelines(dev, k.code, ['force'] as const)).force;
+      this.atomPipes.set(k.code, pipe);
+    }
+    if (!this.atomParams) this.atomParams = dev.createBuffer({ size: 96, usage: BUF_UNIFORM | BUF_COPY_DST });
+    const coefF32 = Float32Array.from(k.coef);
+    let b = this.atombufs;
+    if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < coefF32.byteLength) {
+      if (b) for (const buf of [b.pos, b.ints, b.coef, b.ext, b.out, b.staging]) buf.destroy();
+      const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
+      const coefCap = Math.max(16, coefF32.byteLength, b?.coefCap ?? 0);
+      b = this.atombufs = {
+        pos: this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST),
+        ints: this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST),
+        coef: this.buffer(coefCap, BUF_STORAGE | BUF_COPY_DST),
+        ext: this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST),
+        out: this.buffer(4 * ATOM_KERNEL_OUT * atomCap, BUF_STORAGE | BUF_COPY_SRC),
+        staging: this.buffer(4 * ATOM_KERNEL_OUT * atomCap, BUF_MAP_READ | BUF_COPY_DST),
+        atomCap, intsCap, coefCap, coefKey: '', binds: new Map(),
+      };
+    }
+    let bind = b.binds.get(pipe);
+    if (!bind) {
+      bind = dev.createBindGroup({
+        layout: pipe.getBindGroupLayout(0),
+        entries: [this.atomParams, b.pos, b.ints, b.coef, b.ext, b.out].map((buffer, binding) => ({ binding, resource: { buffer } })),
+      });
+      b.binds.set(pipe, bind);
+    }
+    // the per-atom inputs in the slots of the cell sort
+    if (this.atomExt.length < 4 * n) { this.atomExt = new Float32Array(4 * b.atomCap); this.atomExtSlot = new Float32Array(4 * b.atomCap); }
+    const ext = this.atomExt, extSlot = this.atomExtSlot;
+    k.extra(state, ext);
+    for (let slot = 0; slot < n; slot++) {
+      const i = sorted[slot];
+      for (let c = 0; c < 4; c++) extSlot[4 * slot + c] = ext[4 * i + c];
+    }
+    const params = new ArrayBuffer(96);
+    const pf = new Float32Array(params), pu = new Uint32Array(params);
+    pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
+    pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = k.stride;
+    pu[8] = two ? 1 : 0; pu[9] = base;
+    writeTilt(pf, 12, tilt);
+    const sc = k.scalars(state);
+    for (let c = 0; c < 8; c++) pf[16 + c] = sc[c] ?? 0;
+    const q = dev.queue;
+    q.writeBuffer(this.atomParams, 0, params);
+    q.writeBuffer(b.pos, 0, posData.buffer, posData.byteOffset, 16 * n);
+    q.writeBuffer(b.ints, 0, ints.buffer, ints.byteOffset, 4 * intsLen);
+    q.writeBuffer(b.ext, 0, extSlot.buffer, extSlot.byteOffset, 16 * n);
+    if (b.coefKey !== k.key) {
+      q.writeBuffer(b.coef, 0, coefF32.buffer, coefF32.byteOffset, coefF32.byteLength);
+      b.coefKey = k.key;
+    }
+    const enc = dev.createCommandEncoder();
+    const pass = enc.beginComputePass();
+    pass.setPipeline(pipe);
+    pass.setBindGroup(0, bind);
+    pass.dispatchWorkgroups(Math.ceil(n / ATOM_KERNEL_WORKGROUP));
+    pass.end();
+    const bytes = 4 * ATOM_KERNEL_OUT * n;
+    enc.copyBufferToBuffer(b.out, 0, b.staging, 0, bytes);
+    q.submit([enc.finish()]);
+    await b.staging.mapAsync(MAP_READ, 0, bytes);
+    const outv = new Float32Array(b.staging.getMappedRange(0, bytes));
+    const out = new Float64Array(ATOM_KERNEL_OUT * n);
+    for (let slot = 0; slot < n; slot++) {
+      const i = sorted[slot];
+      for (let c = 0; c < ATOM_KERNEL_OUT; c++) out[ATOM_KERNEL_OUT * i + c] = outv[ATOM_KERNEL_OUT * slot + c];
+    }
+    b.staging.unmap();
+    return k.finish(state, out);
+  }
+
   private swPipes: { nbr: GPUComputePipeline; force: GPUComputePipeline; params: GPUBuffer } | null = null;
   private swbufs: {
     pos: GPUBuffer; out: GPUBuffer; staging: GPUBuffer; ints: GPUBuffer; coef: GPUBuffer;
@@ -1362,6 +1469,9 @@ export class WebGpuForceBackend implements ForceBackend {
     const t4 = this.t4bufs;
     if (t4) for (const buf of [t4.pos, t4.site, t4.out, t4.staging, t4.ints, t4.coef]) buf.destroy();
     this.tip4pPipe?.params.destroy();
+    const ab = this.atombufs;
+    if (ab) for (const buf of [ab.pos, ab.ints, ab.coef, ab.ext, ab.out, ab.staging]) buf.destroy();
+    this.atomParams?.destroy();
     this.eamPipes?.params.destroy();
     this.styleParams?.destroy();
     this.params.destroy();

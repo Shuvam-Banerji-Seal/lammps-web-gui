@@ -224,6 +224,19 @@ export class PairEffCut extends Pair {
     return name === 'pvector' ? this.pvector : undefined;
   }
 
+  /**
+   * The settings the GPU kernel (gpu_eff.ts) takes after init: the Hartree conversions, the keywords and each atom
+   * type's ECP Pauli parameters A..E (null for a type without an ecp element).
+   */
+  gpuParams(): { hhmss2e: number; h2e: number; limitEradius: boolean; pressureEvirials: boolean; ecp: (number[] | null)[] } {
+    const ecp: (number[] | null)[] = [];
+    for (let t = 0; t <= this.ntypes; t++) {
+      const z = this.ecpType[t];
+      ecp.push(z === undefined ? null : [this.pauliA[z], this.pauliB[z], this.pauliC[z], this.pauliD[z], this.pauliE[z]]);
+    }
+    return { hhmss2e: this.hhmss2e, h2e: this.h2e, limitEradius: this.limitEradius, pressureEvirials: this.pressureEvirials, ecp };
+  }
+
   /** Pair::ev_tally_xyz with the electron conventions of ev_tally_eff (pair_eff_cut.cpp): energy to ecoul, pair virial. */
   private tallyXYZ(pc: PairCompute, i: number, j: number, energy: number, fx: number, fy: number, fz: number, dx: number, dy: number, dz: number): void {
     // the six virial terms are written out (no array per pair: this runs for every neighbour pair)

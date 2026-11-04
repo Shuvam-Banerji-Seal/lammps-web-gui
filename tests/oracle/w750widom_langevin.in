@@ -1,0 +1,29 @@
+# oracle: fix widom without full_energy next to fix langevin (examples/mc/in.widom.lj cut down). As native LAMMPS does
+#   (src/MC/fix_widom.cpp pre_exchange at b332f28), a non-full event evaluates only each trial atom's pair energy, so no
+#   fix's post_force runs; the engine evaluated the system's energy once per event through the fixes' hooks, so fix
+#   langevin drew a second set of random forces and the trajectory left native's (Temp 1e-2 off at step 10).
+# oracle-compare: thermo=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      atomic
+lattice         fcc 0.8
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+set             type 1 type/fraction 2 0.25 4321
+mass            * 1.0
+pair_style      lj/cut 2.5
+pair_modify     shift yes
+pair_coeff      1 1 1.0 1.0 2.5
+pair_coeff      1 2 1.5 0.8 2.0
+pair_coeff      2 2 0.5 0.88 2.2
+neighbor        0.3 bin
+neigh_modify    delay 0 every 5 check yes
+velocity        all create 0.75 87287 loop geom
+fix             mywidom all widom 10 500 2 29494 0.75
+fix             1 all langevin 0.75 0.75 0.1 48279 zero yes
+fix             2 all nve
+timestep        0.002
+thermo_style    custom step temp pe etotal press f_mywidom[1] f_mywidom[2] f_mywidom[3]
+thermo_modify   format float %.15g
+thermo          10
+run             40

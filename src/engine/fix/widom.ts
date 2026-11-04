@@ -422,9 +422,15 @@ export class FixWidom extends Fix {
     // the event runs after the step's integration moved the atoms (the run loop marks the new positions after the
     // post_integrate fixes): energy_full evaluates them, not the forces of the previous step
     sys.bump();
-    const eBefore = this.potentialEnergy();
-    // decided here, after the energy call has set up the pair style's cutoffs (empty during init)
+    // As native LAMMPS does (src/MC/fix_widom.cpp pre_exchange at b332f28): the system's energy is evaluated only with
+    // full_energy ("if (full_flag) { energy_stored = energy_full(); ..."); otherwise each trial takes the probe's own
+    // pair energy and nothing else runs. The fast probe needs no stored energy, so the event evaluates none (an extra
+    // evaluation ran the fixes' post_force: fix langevin drew a second set of random forces per event,
+    // examples/mc/in.widom.lj)
     this.probeFast = this.canProbeFast();
+    const eBefore = this.probeFast ? 0 : this.potentialEnergy();
+    // the first energy call sets up the pair style's cutoffs (empty before the first force evaluation)
+    if (!this.probeFast) this.probeFast = this.canProbeFast();
     this.cells = this.probeFast ? this.buildCells() : null;
     // As native LAMMPS does (src/MC/fix_widom.cpp attempt_atomic_insertion and the molecule insertions at b332f28): the
     // average is a running one, ave += (exp(-dU/kT) - ave) / k for the k-th insertion, and a region trial that runs out
@@ -528,13 +534,20 @@ export class FixWidom extends Fix {
    * modify->post_force (a dynamic group's post_force_group fix first, then every post_force fix), and compute pe, with
    * the energies of the fixes that fix_modify energy yes adds.
    */
+  /**
+   * The potential energy of the current atoms. With full_energy, as native's energy_full (fix_widom.cpp at b332f28): the
+   * fixes' pre_force and post_force run around the force evaluation and their energy counts ("if
+   * (modify->n_post_force_any) modify->post_force(vflag)", then c_pe). Without it native evaluates only the trial atom's
+   * interactions (energy()), so no fix runs and no fix energy counts.
+   */
   private potentialEnergy(): number {
     const sys = this.sys;
-    for (const f of sys.fixes) f.preForce?.();
+    const hooks = this.fullEnergy;
+    if (hooks) for (const f of sys.fixes) f.preForce?.();
     const a: Accum = sys.forces();
     sys.assignDynamicGroups(false);
-    for (const f of sys.fixes) f.postForce?.();
-    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp + sys.fixEnergy();
+    if (hooks) for (const f of sys.fixes) f.postForce?.();
+    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp + (hooks ? sys.fixEnergy() : 0);
   }
 
   /**

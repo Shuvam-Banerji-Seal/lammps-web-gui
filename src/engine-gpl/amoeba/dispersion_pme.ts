@@ -29,11 +29,12 @@ export const makeDispersionGrid = (
 /**
  * dispersion_kspace: the reciprocal energy (added to the returned e, which the caller adds to edisp) and the forces (added
  * to f) of the dispersion sum over the n owned atoms. `cls` gives the class of each atom and `csix` the C6 per class.
- * `csixpr` is the constant of the self term (sum over class pairs csix_i csix_j n_i n_j).
+ * `csixpr` is the constant of the self term (sum over class pairs csix_i csix_j n_i n_j). The reciprocal virial (native
+ * virdisp under vflag_global: xx, yy, zz, xy, xz, yz) is added to `vir`.
  */
 export const dispersionKspace = (
   x: Float64Array, f: Float64Array, n: number, cls: Int32Array, csix: Float64Array,
-  g: PmeGrid, aewald: number, csixpr: number,
+  g: PmeGrid, aewald: number, csixpr: number, vir: Float64Array,
 ): number => {
   if (aewald < 1.0e-6) return 0.0;
   const [nfft1, nfft2, nfft3] = g.nfft;
@@ -75,6 +76,9 @@ export const dispersionKspace = (
   const nhalf1 = Math.floor((nfft1 + 1) / 2), nhalf2 = Math.floor((nfft2 + 1) / 2), nhalf3 = Math.floor((nfft3 + 1) / 2);
   const bs1 = g.bsmod[0], bs2 = g.bsmod[1], bs3 = g.bsmod[2];
   const w = new Float64Array(N);
+  // per wavevector: the virial factor 3 (fac1 erfc(b) h + fac3 exp(-b^2)) / denom of native (struc2 is applied below),
+  // and the components of h
+  const vfac = new Float64Array(N), vden = new Float64Array(N), hv = new Float64Array(3 * N);
   let nn = 0;
   for (let k = 0; k < nfft3; k++) {
     for (let j = 0; j < nfft2; j++) {
@@ -96,6 +100,9 @@ export const dispersionKspace = (
           const term1 = fac1 * erfcterm * hhh + expterm * (fac2 + fac3 * hsq);
           const denom = denom0 * bs1[i] * bs2[j] * bs3[k];
           w[nn] = -(term1 / denom);
+          vfac[nn] = 3.0 * (fac1 * erfcterm * h + fac3 * expterm);
+          vden[nn] = denom;
+          hv[3 * nn] = h1; hv[3 * nn + 1] = h2; hv[3 * nn + 2] = h3;
         }
         nn++;
       }
@@ -105,6 +112,21 @@ export const dispersionKspace = (
   const { fwd, pot } = convolveReal(grid, g, w);
   let e = 0.0;
   for (let q = 0; q < N; q++) e += w[q] * (fwd[2 * q] * fwd[2 * q] + fwd[2 * q + 1] * fwd[2 * q + 1]);
+  // the reciprocal virial, as native's loop over the transformed grid: with e_k = w_k struc2 and
+  // vterm = 3 (fac1 erfc h + fac3 exp) struc2 / denom, virdisp[a] -= h_a h_a vterm - e_k and virdisp[ab] -= h_a h_b vterm
+  for (let q = 0; q < N; q++) {
+    if (vden[q] === 0) continue;
+    const struc2 = fwd[2 * q] * fwd[2 * q] + fwd[2 * q + 1] * fwd[2 * q + 1];
+    const ek = w[q] * struc2;
+    const vterm = vfac[q] * struc2 / vden[q];
+    const h1 = hv[3 * q], h2 = hv[3 * q + 1], h3 = hv[3 * q + 2];
+    vir[0] -= h1 * h1 * vterm - ek;
+    vir[1] -= h2 * h2 * vterm - ek;
+    vir[2] -= h3 * h3 * vterm - ek;
+    vir[3] -= h1 * h2 * vterm;
+    vir[4] -= h1 * h3 * vterm;
+    vir[5] -= h2 * h3 * vterm;
+  }
   // gather (dispersion_kspace): forces from the potential grid and the B-spline derivatives
   const recipX = g.recip[0], recipY = g.recip[4], recipZ = g.recip[8];
   for (let m = 0; m < n; m++) {
@@ -138,6 +160,9 @@ export const dispersionKspace = (
   }
   // the constant self term of the reciprocal sum
   const term = (csixpr * aewald * aewald * aewald) / denom0;
+  vir[0] -= term;
+  vir[1] -= term;
+  vir[2] -= term;
   return e - term;
 };
 

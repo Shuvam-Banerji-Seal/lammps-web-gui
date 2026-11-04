@@ -1,0 +1,24 @@
+# oracle: threebody/table angle bins as native's uf_lookup (src/MANYBODY/pair_threebody_table.cpp at b332f28):
+#   ntheta = trunc((theta - 1e-8) / dtheta). A triplet at 90 + 5e-12 degrees (N = 12, dtheta = 7.5) takes the 86.25 bin;
+#   the engine's nearest-grid-point rule took 93.75 (examples/PACKAGES/manybody_table/in.spce: one triplet at
+#   90.00000000000003 degrees gave a step-0 press 2e-3 off). The first leg, 2.9, is on a half-point of the r grid
+#   (rmin 2.55, dr 0.1) and takes 2.85.
+# oracle-inputs: w49mt_spce.3b w49mt_1-1-1.table
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-12
+units           real
+atom_style      atomic
+boundary        f f f
+region          box block 0 12 0 12 0 12
+create_box      1 box
+mass            1 18.0154
+create_atoms    1 single 5.0 5.0 5.0
+create_atoms    1 single 7.9 5.0 5.0
+create_atoms    1 single 4.9999999999997 8.2 5.0
+create_atoms    1 single 9.0 9.0 9.0
+create_atoms    1 single 9.0 9.0 6.0
+create_atoms    1 single 6.0 9.0 9.0
+pair_style      threebody/table
+pair_coeff      * * w49mt_spce.3b type
+thermo_style    custom step pe press pxx pyy pzz fnorm
+thermo_modify   format float %.15g
+run             0

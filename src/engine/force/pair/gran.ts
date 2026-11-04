@@ -121,6 +121,11 @@ export class PairGran extends Pair {
     this.sizeList = true;
   }
 
+  /** The shear record of an atom-ID pair (lower ID first), oriented from the lower ID; undefined without contact. */
+  protected shearOf(key: number | string): Float64Array | undefined {
+    return this.shear.get(key);
+  }
+
   settings(args: string[]): void {
     // As native LAMMPS does (src/GRANULAR/pair_gran_hooke_history.cpp PairGranHookeHistory::settings at b332f28): the
     // values (utils::numeric, dampflag utils::inumeric, gamma_t 0 without damping), then one range check
@@ -193,7 +198,7 @@ export class PairGran extends Pair {
     const shear: [number, number, number] = [0, 0, 0];
     if (this.history) {
       const flip = id[i] > id[j];
-      const sh = this.shear.get(flip ? pairKey(id[j], id[i]) : pairKey(id[i], id[j]));
+      const sh = this.shearOf(flip ? pairKey(id[j], id[i]) : pairKey(id[i], id[j]));
       if (sh) { const sg = flip ? -1 : 1; shear[0] = sg * sh[0]; shear[1] = sg * sh[1]; shear[2] = sg * sh[2]; }
     }
     const inp: GranSingleInput = {

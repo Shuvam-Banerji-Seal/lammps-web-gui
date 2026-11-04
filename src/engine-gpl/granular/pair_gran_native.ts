@@ -10,17 +10,78 @@
  * update, its magnitude before the rotation into the tangent plane, the tangential force, the Coulomb rescale of the
  * shear ("(fn/fs) * (shear + meff*gammat*vtr/kt) - meff*gammat*vtr/kt") and of the force, and the forces and torques
  * scaled by the special_bonds LJ factor. gran/hooke has no history: ft = MIN(fn, fs) / vrel with fs = meff gammat vrel.
- * The settings, the neighbor list, the shear store per atom-ID pair (oriented from the lower ID) and single() are those
- * of the engine's PairGran (src/engine/force/pair/gran.ts), which this class extends.
+ * The settings, the neighbor list and single() are those of the engine's PairGran (src/engine/force/pair/gran.ts), which
+ * this class extends. The shear history is kept as native's fix neigh/history keeps it (src/fix_neigh_history.cpp at
+ * b332f28): with the entries of the neighbor list, three values per entry (oriented from the lower atom ID, as the
+ * engine's store), carried over by atom-ID pair when the list is built again; an entry out of contact holds none.
  */
 import { PairGran, pairKey } from '../../engine/force/pair/gran';
 import { tallyAtomXyz, type PairCompute } from '../../engine/force/types';
-import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
+import { NEIGHMASK, SBBITS, type NeighList } from '../../engine/neighbor';
 import { contactMassArray } from '../../engine/atoms';
 
 export class PairGranNative extends PairGran {
-  /** The call counter of compute; a contact record holds the stamp of the last call that touched it in entry 3. */
-  private stampN = 0;
+  /** The neighbor list (and its build) the history slots follow. */
+  private slotList: NeighList | null = null;
+  private slotBuild = -1;
+  /** Three shear values per list entry (lower-ID frame), and the entry's atom IDs (lower, higher; 0: no contact). */
+  private slotShear = new Float64Array(0);
+  private slotLo = new Int32Array(0);
+  private slotHi = new Int32Array(0);
+  /** single()'s index of the entries in contact by atom-ID pair (built on demand after a compute). */
+  private slotIndex: Map<number | string, number> | null = null;
+
+  override settings(args: string[]): void {
+    super.settings(args);
+    this.slotList = null;
+    this.slotBuild = -1;
+    this.slotLo = new Int32Array(0);
+    this.slotHi = new Int32Array(0);
+    this.slotShear = new Float64Array(0);
+    this.slotIndex = null;
+  }
+
+  /**
+   * The slots of a newly built list: each entry takes the record of its atom-ID pair from the previous list (native's
+   * fix neigh/history pre_exchange and post_neighbor: the partners and their values stored per atom, then copied into
+   * the new list's entries). The previous indices refer to the previous atoms and ghosts, so the IDs of each record are
+   * kept with it.
+   */
+  private ensureSlots(list: NeighList, nbuild: number, id: ArrayLike<number>, owner: Int32Array): void {
+    if (list === this.slotList && nbuild === this.slotBuild) return;
+    const oldShear = this.slotShear, oldLo = this.slotLo, oldHi = this.slotHi;
+    let prev: Map<number | string, number> | null = null;
+    for (let k = 0; k < oldLo.length; k++) if (oldLo[k] !== 0) (prev ??= new Map()).set(pairKey(oldLo[k], oldHi[k]), k);
+    const nent = list.neighbors.length;
+    const sh = new Float64Array(3 * nent), lo = new Int32Array(nent), hi = new Int32Array(nent);
+    if (prev) {
+      for (let ii = 0; ii < list.inum; ii++) {
+        const a = id[owner[ii]];
+        for (let k = list.firstneigh[ii], k1 = k + list.numneigh[ii]; k < k1; k++) {
+          const b = id[owner[list.neighbors[k] & NEIGHMASK]];
+          const l = a < b ? a : b, h = a < b ? b : a;
+          const o = prev.get(pairKey(l, h));
+          if (o === undefined) continue;
+          sh[3 * k] = oldShear[3 * o]; sh[3 * k + 1] = oldShear[3 * o + 1]; sh[3 * k + 2] = oldShear[3 * o + 2];
+          lo[k] = l; hi[k] = h;
+        }
+      }
+    }
+    this.slotShear = sh; this.slotLo = lo; this.slotHi = hi;
+    this.slotList = list;
+    this.slotBuild = nbuild;
+  }
+
+  protected override shearOf(key: number | string): Float64Array | undefined {
+    if (!this.slotIndex) {
+      const m = new Map<number | string, number>();
+      const lo = this.slotLo, hi = this.slotHi;
+      for (let k = 0; k < lo.length; k++) if (lo[k] !== 0) m.set(pairKey(lo[k], hi[k]), k);
+      this.slotIndex = m;
+    }
+    const k = this.slotIndex.get(key);
+    return k === undefined ? undefined : this.slotShear.subarray(3 * k, 3 * k + 3);
+  }
 
   override compute(pc: PairCompute): void {
     const s = pc.s;
@@ -36,8 +97,9 @@ export class PairGranNative extends PairGran {
     const tq = this.tq;
     tq.fill(0, 0, 3 * nall);
     const history = this.history, hertz = this.hertz;
-    // the stamp of this call: a contact record touched now gets it, the rest are dropped after the loop
-    const stamp = ++this.stampN;
+    if (history) this.ensureSlots(list, nb.nbuild, id, owner);
+    this.slotIndex = null;
+    const slotShear = this.slotShear, slotLo = this.slotLo, slotHi = this.slotHi;
     const kn = this.kn, kt = this.kt, gamman = this.gn, gammat = this.gt, xmu = this.xmu;
     const limit_damping = this.limitDamping;
     const freeze_group_bit = this.freezeBit;
@@ -50,7 +112,11 @@ export class PairGranNative extends PairGran {
         const jraw = list.neighbors[k];
         const factor_lj = special_lj[jraw >>> SBBITS];
         const j = jraw & NEIGHMASK;
-        if (factor_lj === 0) continue;
+        // a pair skipped or out of contact keeps no shear (native unsets touch and zeroes the shear)
+        if (factor_lj === 0) {
+          if (history) { slotShear[3 * k] = slotShear[3 * k + 1] = slotShear[3 * k + 2] = 0; slotLo[k] = 0; }
+          continue;
+        }
         const oj = owner[j];
         const delx = xtmp - x[3 * j];
         const dely = ytmp - x[3 * j + 1];
@@ -58,8 +124,10 @@ export class PairGranNative extends PairGran {
         const rsq = delx * delx + dely * dely + delz * delz;
         const radj = radius[oj];
         const radsum = radi + radj;
-        // a pair out of contact keeps no shear (native unsets touch and zeroes the shear): its entry is not seen this call
-        if (rsq >= radsum * radsum) continue;
+        if (rsq >= radsum * radsum) {
+          if (history) { slotShear[3 * k] = slotShear[3 * k + 1] = slotShear[3 * k + 2] = 0; slotLo[k] = 0; }
+          continue;
+        }
         const r = Math.sqrt(rsq);
         const rinv = 1.0 / r;
         const rsqinv = 1.0 / rsq;
@@ -125,12 +193,9 @@ export class PairGranNative extends PairGran {
           // shear history effects (the store is oriented as seen from the lower atom ID)
           const a = id[oi], b = id[oj];
           const flip = a > b;
-          const key = flip ? pairKey(b, a) : pairKey(a, b);
-          let sh = this.shear.get(key);
-          if (sh === undefined) { sh = new Float64Array(4); this.shear.set(key, sh); }
-          sh[3] = stamp;
+          const o3 = 3 * k;
           const sg = flip ? -1 : 1;
-          let shear0 = sg * sh[0], shear1 = sg * sh[1], shear2 = sg * sh[2];
+          let shear0 = sg * slotShear[o3], shear1 = sg * slotShear[o3 + 1], shear2 = sg * slotShear[o3 + 2];
           if (shearupdate) {
             shear0 += vtr1 * dt;
             shear1 += vtr2 * dt;
@@ -168,7 +233,8 @@ export class PairGranNative extends PairGran {
               fs3 *= fn / fs;
             } else fs1 = fs2 = fs3 = 0.0;
           }
-          sh[0] = sg * shear0; sh[1] = sg * shear1; sh[2] = sg * shear2;
+          slotShear[o3] = sg * shear0; slotShear[o3 + 1] = sg * shear1; slotShear[o3 + 2] = sg * shear2;
+          slotLo[k] = flip ? b : a; slotHi[k] = flip ? a : b;
         }
 
         // forces & torques
@@ -203,7 +269,6 @@ export class PairGranNative extends PairGran {
         if (pc.vatom) tallyAtomXyz(pc, ii, j, 0, fx, fy, fz, delx, dely, delz);
       }
     }
-    if (history) for (const [key, sh] of this.shear) if (sh[3] !== stamp) this.shear.delete(key);
     nb.reverseSum(tq, 3, s.torque!);
   }
 }

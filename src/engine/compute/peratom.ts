@@ -2,7 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import { parseBodyStyle } from '../bodies';
 import type { System } from '../system';
-import { hasMolecule, massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE, APIP_LAMBDA, APIP_LAMBDA_INPUT, APIP_E_FAST, APIP_E_PRECISE, isSuperEllipsoidStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { hasMolecule, massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE, APIP_LAMBDA, APIP_LAMBDA_INPUT, APIP_E_FAST, APIP_E_PRECISE, isSuperEllipsoidStyle, atomSubStyles, thermalKeys, SPH_RHO, SPH_DRHO, SPH_ESPH, SPH_DESPH, SPH_CV, MDPD_RHO, MDPD_DRHO, RHEO_STATUS, RHEO_RHO, RHEO_DRHO, RHEO_PRESSURE, RHEO_VISC, RHEO_ESPH, RHEO_COND, DIEL_AREA, DIEL_ED, DIEL_EM, DIEL_EPSILON, DIEL_CURVATURE, DIEL_QSCALED, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { lineEnds, triangleCorner } from '../lineTri';
 import { SUPER_INERTIA, superBlock } from '../superellipsoid';
 
@@ -461,6 +461,39 @@ const SPIN_ATTRS = new Set(['spx', 'spy', 'spz', 'sp', 'fmx', 'fmy', 'fmz']);
  * heat flow of spherical particle" (values from fix property/atom temperature heatflow).
  */
 const HEAT_ATTRS: Record<string, string> = { temperature: HEAT_TEMPERATURE, heatflow: HEAT_FLOW };
+/** The per-atom temperature or heat flow array: atom_style rheo/thermal's, else fix property/atom's (atoms.ts thermalKeys). */
+const heatKey = (sys: System, a: string): string => thermalKeys(sys.state)[a === 'temperature' ? 0 : 1];
+
+/** The per-atom volume of atom_style peri, which is state.vfrac rather than a per-atom prop. */
+const PERI_VFRAC = 'vfrac';
+/**
+ * The words an atom style adds to compute property/atom. As native LAMMPS does (src/compute_property_atom.cpp at
+ * b332f28: "any other attribute could be recognized by atom style", avec->property_atom and pack_atom_style), a word that
+ * is not a keyword of the compute is looked up in the atom style, and an atom outside the group gets 0. The words are
+ * those of property_atom in src/SPH/atom_vec_sph.cpp, src/DPD-MESO/atom_vec_mdpd.cpp, src/RHEO/atom_vec_rheo.cpp,
+ * src/RHEO/atom_vec_rheo_thermal.cpp, src/PERI/atom_vec_peri.cpp and src/DIELECTRIC/atom_vec_dielectric.cpp (electron
+ * and apip have their own tables above; rheo/thermal's temperature and heatflow are keywords of the compute). A hybrid
+ * style takes the word from its first sub-style that has it (src/atom_vec_hybrid.cpp property_atom).
+ */
+const STYLE_ATTRS: Record<string, Record<string, string>> = {
+  sph: { rho: SPH_RHO, drho: SPH_DRHO, esph: SPH_ESPH, desph: SPH_DESPH, cv: SPH_CV },
+  mdpd: { rho: MDPD_RHO, drho: MDPD_DRHO },
+  rheo: { rheo_status: RHEO_STATUS, pressure: RHEO_PRESSURE, rho: RHEO_RHO, drho: RHEO_DRHO, viscosity: RHEO_VISC },
+  'rheo/thermal': {
+    rheo_status: RHEO_STATUS, rho: RHEO_RHO, drho: RHEO_DRHO, esph: RHEO_ESPH, conductivity: RHEO_COND, pressure: RHEO_PRESSURE,
+    viscosity: RHEO_VISC,
+  },
+  peri: { vfrac: PERI_VFRAC },
+  dielectric: { area: DIEL_AREA, ed: DIEL_ED, em: DIEL_EM, epsilon: DIEL_EPSILON, curvature: DIEL_CURVATURE, q_scaled: DIEL_QSCALED },
+};
+/** The array of an atom-style word of compute property/atom (STYLE_ATTRS), or null when the atom style has none. */
+const styleAttrKey = (sys: System, a: string): string | null => {
+  for (const sub of atomSubStyles(sys.atomStyle)) {
+    const key = STYLE_ATTRS[sub]?.[a];
+    if (key !== undefined) return key;
+  }
+  return null;
+};
 /**
  * compute_property_atom.html: "*end1x, end1y, end1z, end2x, end2y, end2z* = end points of line segment" and
  * "*corner1x, corner1y, corner1z, corner2x, ...* = corner points of triangle" (atom_style line and tri).
@@ -477,7 +510,7 @@ const TRI_CORNER = /^corner([123])([xyz])$/;
  * property/atom and fix store/state (both take the same attribute words). Custom i_/d_ names are checked by customAttr.
  */
 export const peratomAttrProblem = (sys: System, a: string): string | null => {
-  if (HEAT_ATTRS[a] && !sys.state.custom.has(HEAT_ATTRS[a])) return 'needs fix property/atom temperature heatflow';
+  if (HEAT_ATTRS[a] && !sys.state.custom.has(heatKey(sys, a))) return 'needs fix property/atom temperature heatflow';
   // compute_property_atom.html: "espin, eradius, ervel, erforce" (atom_style electron; "spin" is the older name of espin)
   const ek = ELECTRON_ATTRS.get(a);
   if (ek && !sys.state.custom.has(ek)) return 'needs atom_style electron';
@@ -536,7 +569,10 @@ export const fillPeratomAttr = (sys: System, attr: string, groupBit: number, out
   let d = 'xyz'.indexOf(attr[attr.length - 1]);
   if (d < 0) d = 'xyz'.indexOf(attr[0]);
   const custom = customAttr(s, attr);
-  const heat = HEAT_ATTRS[attr] ? s.custom.get(HEAT_ATTRS[attr])!.data : null;
+  const heat = HEAT_ATTRS[attr] ? s.custom.get(heatKey(sys, attr))!.data : null;
+  // an atom-style word (STYLE_ATTRS), after the compute's own keywords
+  const styleKey = NATIVE_PROPERTY_ATOM.has(attr) ? null : styleAttrKey(sys, attr);
+  const styleData = styleKey === PERI_VFRAC ? s.vfrac : styleKey !== null ? s.custom.get(styleKey)?.data ?? null : null;
   const ek = ELECTRON_ATTRS.get(attr) ?? APIP_ATTRS.get(attr);
   const electron = ek ? s.custom.get(ek)!.data : null;
   const le = LINE_END.exec(attr), tc = TRI_CORNER.exec(attr);
@@ -549,6 +585,7 @@ export const fillPeratomAttr = (sys: System, attr: string, groupBit: number, out
     if (nbonds) { set(nbonds[i]); continue; }
     if (custom) { set(custom(i)); continue; }
     if (heat) { set(heat[i]); continue; }
+    if (styleData) { set(styleData[i]); continue; }
     if (electron) { set(electron[i]); continue; }
     if (le) {
       // pack_end1z / pack_end2z: the atom's z for every group atom
@@ -675,6 +712,14 @@ export class ComputePropertyAtom extends Compute {
         if (!hasMolecule(sys.state)) throw new StyleError('Compute property/atom nbonds is not available');
         attrs.push(a);
         continue;
+      }
+      // a word of the atom style (STYLE_ATTRS); peri's s0 is kept by its pair style here, not with the atoms
+      if (!NATIVE_PROPERTY_ATOM.has(a) && styleAttrKey(sys, a) !== null) {
+        attrs.push(a);
+        continue;
+      }
+      if (a === 's0' && atomSubStyles(sys.atomStyle).includes('peri')) {
+        throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
       }
       if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !SUPER_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a) && !APIP_ATTRS.has(a) && !LINE_END.test(a) && !TRI_CORNER.test(a)) {
         // a keyword of native's compute the engine does not have is refused by name; any other word is neither a keyword

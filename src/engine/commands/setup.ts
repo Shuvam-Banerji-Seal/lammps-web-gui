@@ -6,7 +6,7 @@ import { unknownStyleError } from '../nativeStyles';
 import { errorUrl } from '../formula';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, Geometry, cloneBox } from '../domain';
-import { isLineStyle, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, APIP_LAMBDA, isApipStyle, DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH, atomSubStyles, topologyLevel } from '../atoms';
+import { isLineStyle, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, APIP_LAMBDA, isApipStyle, DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, thermalKeys, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH, atomSubStyles, topologyLevel } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { parseStl } from '../stl';
@@ -2898,9 +2898,10 @@ const set: Handler = (ctx, a) => {
       }
       // set.html: "Keyword *temperature* sets the temperature of a finite-size particle." "The temperature must be
       // added using an instance of fix property/atom". Measured with native LAMMPS (black box): a negative value stops
-      // with Invalid temperature -1 in set command; zero is accepted.
+      // with Invalid temperature -1 in set command; zero is accepted. As native LAMMPS does (src/set.cpp
+      // process_temperature at b332f28: atom->temperature_flag), atom_style rheo/thermal's temperature is set as well.
       case 'temperature': {
-        const cp = s.custom.get(HEAT_TEMPERATURE);
+        const cp = s.custom.get(thermalKeys(s)[0]);
         if (!cp) throw new StyleError('set temperature needs fix property/atom temperature heatflow (GRANULAR heat conduction)');
         const v = value(a[k + 1], key);
         for (const i of atoms) {

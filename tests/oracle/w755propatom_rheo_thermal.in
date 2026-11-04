@@ -1,0 +1,18 @@
+# oracle: compute property/atom with atom_style rheo/thermal: its words (rheo_status rho drho esph conductivity pressure viscosity, native avec->property_atom) and the compute's temperature keyword, which reads the style's temperature
+units              lj
+atom_style         rheo/thermal
+lattice            sc 1.0
+region             box block 0 3 0 3 0 3
+create_box         1 box
+create_atoms       1 box
+group              half id 1:27:2
+set                group half temperature 1.5
+set                group all rheo/rho 1.2
+mass               * 1.0
+pair_style         zero 1.5
+pair_coeff         * *
+compute            p half property/atom temperature rheo_status rho drho esph conductivity pressure viscosity
+compute            r all reduce sum c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] c_p[8]
+thermo_style       custom step c_r[1] c_r[2] c_r[3] c_r[4] c_r[5] c_r[6] c_r[7] c_r[8]
+thermo_modify      format float %.15g norm no
+run                0

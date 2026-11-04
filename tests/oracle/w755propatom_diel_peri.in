@@ -1,0 +1,21 @@
+# oracle: compute property/atom words of atom_style dielectric (area ed em epsilon curvature q_scaled) and peri (vfrac), native avec->property_atom; peri s0 is not with the atoms here
+units              lj
+atom_style         hybrid dielectric peri
+lattice            sc 1.0
+region             box block 0 3 0 3 0 3
+create_box         2 box
+create_atoms       1 box
+group              half id 1:27:2
+set                group half type 2
+set                type 1 charge 0.5
+set                type 2 charge -0.5
+set                group half epsilon 2.5
+set                group half volume 0.25
+mass               * 1.0
+pair_style         zero 1.5
+pair_coeff         * *
+compute            p half property/atom area ed em epsilon curvature q_scaled vfrac
+compute            r all reduce sum c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7]
+thermo_style       custom step c_r[1] c_r[2] c_r[3] c_r[4] c_r[5] c_r[6] c_r[7]
+thermo_modify      format float %.15g
+run                0

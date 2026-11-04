@@ -115,10 +115,12 @@ export class FixBocs extends FixNH {
     if (this.basis) pc.setCgBasis(this.basis);
   }
 
-  /** couple() of fix_bocs.cpp (ISO): the mean of the basis-corrected diagonal (pressureTensor below). */
+  /**
+   * couple() of fix_bocs.cpp (ISO): "p_current[0] = p_current[1] = p_current[2] = pressure->scalar", the scalar of
+   * compute pressure/bocs, which carries the basis correction (ComputePressureBocs.computeScalar).
+   */
   protected isoPressure(pc: ComputePressure): number {
-    const v = this.pressureTensor(pc);
-    return (v[0] + v[1] + v[2]) / 3;
+    return pc.scalarValue();
   }
 
   /** couple() of fix_bocs.cpp (ISO): the barostat reads the basis-corrected pressure on every diagonal component. */

@@ -347,7 +347,12 @@ export class Thermo {
     this.sys.run.eflagStep = this.sys.state.step;
     this.sys.refreshComputes();
     const out: ThermoRow = {};
-    for (const k of this.keywords) out[k] = this.value(k);
+    this.sys.thermoOutput = true;
+    try {
+      for (const k of this.keywords) out[k] = this.value(k);
+    } finally {
+      this.sys.thermoOutput = false;
+    }
     return out;
   }
 

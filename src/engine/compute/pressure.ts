@@ -130,7 +130,9 @@ export class ComputePressure extends Compute {
     let p = trace / (d * vol);
     if (this.terms.has('ke') && this.tempId) {
       const t = this.sys.compute(this.tempId);
-      const temp = t.scalarValue();
+      // thermo output reads the temperature of the step (native's invoked rule, Compute.scalarOfStep); the fixes that read
+      // the pressure evaluate their temperature first (fix_nh.cpp: "temperature->compute_scalar(); pressure->compute_scalar();")
+      const temp = this.sys.thermoOutput ? t.scalarOfStep() : t.scalarValue();
       p += (t.dof * s.units.boltz * temp) / (d * vol);
     }
     if (this.terms.has('pair')) p += this.sys.ff.ptail(vol);
@@ -145,7 +147,7 @@ export class ComputePressure extends Compute {
   vectorAt(w: Float64Array, vol: number): Float64Array {
     const s = this.sys.state;
     const d = this.sys.dimension;
-    const ke = this.keOverride ?? (this.terms.has('ke') && this.tempId ? this.sys.compute(this.tempId).vectorValues() : null);
+    const ke = this.keOverride ?? (this.terms.has('ke') && this.tempId ? (this.sys.thermoOutput ? this.sys.compute(this.tempId).vectorOfStep() : this.sys.compute(this.tempId).vectorValues()) : null);
     const tail = this.terms.has('pair') ? this.sys.ff.ptail(vol) : 0;
     const out = new Float64Array(6);
     for (let c = 0; c < 6; c++) {

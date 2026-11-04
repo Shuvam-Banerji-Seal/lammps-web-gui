@@ -110,12 +110,20 @@ export abstract class Compute {
   /** Called at the start of every run and before first use. */
   init(): void {}
 
+  /**
+   * The temperature fix nh evaluated in final_integrate at a step (FixNH.invokeTemperature), until the compute is
+   * evaluated again: compute pressure reads it at that step's thermo output (scalarOfStep).
+   */
+  nhScalar: { step: number; value: number } | null = null;
+  nhVector: { step: number; value: Float64Array } | null = null;
+
   /** Cached evaluation entry points used by thermo, variables, fixes and dumps. */
   scalarValue(): number {
     if (!this.scalarFlag) throw new StyleError(`compute ${this.id} does not calculate a global scalar`);
     if (this.epochScalar !== this.sys.epoch) {
       this.scalar = this.computeScalar();
       this.epochScalar = this.sys.epoch;
+      this.nhScalar = null;
     }
     return this.scalar;
   }
@@ -125,8 +133,27 @@ export abstract class Compute {
     if (this.epochVector !== this.sys.epoch) {
       this.computeVector();
       this.epochVector = this.sys.epoch;
+      this.nhVector = null;
     }
     return this.vector;
+  }
+
+  /**
+   * The scalar as compute pressure reads its temperature compute at thermo output: fix nh's value of final_integrate
+   * when that was the last evaluation of the step, else a new one. As native LAMMPS does (src/compute_pressure.cpp
+   * compute_scalar at b332f28): "if (temperature->invoked_scalar != update->ntimestep) t =
+   * temperature->compute_scalar(); else t = temperature->scalar;", and src/fix_nh.cpp final_integrate evaluates it
+   * ("t_current = temperature->compute_scalar()") before nhc_temp_integrate rescales the velocities.
+   */
+  scalarOfStep(): number {
+    const v = this.nhScalar;
+    return v && v.step === this.sys.state.step ? v.value : this.scalarValue();
+  }
+
+  /** The vector the same way (compute_pressure.cpp compute_vector, fix_nh.cpp "temperature->compute_vector()"). */
+  vectorOfStep(): Float64Array {
+    const v = this.nhVector;
+    return v && v.step === this.sys.state.step ? v.value : this.vectorValues();
   }
 
   arrayValues(): Float64Array {

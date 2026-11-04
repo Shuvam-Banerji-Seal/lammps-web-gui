@@ -1,0 +1,26 @@
+# oracle: compute stress/spherical read by thermo between neighbor rebuilds (examples/PACKAGES/stressprofile/in.sphere
+#   cut down). Its occasional half list is a copy of the pair's perpetual list (src/neighbor.cpp morph_copy_trim and
+#   build_one at b332f28), so the pairs keep the orientation of the last build, and a pair's split over the shells
+#   depends on which atom is i. The engine ordered the pairs from the positions of the first request (step 50, between
+#   the rebuilds at 40 and 60): the configurational columns at steps 50 and 150 were 1e-3 to 4e-1 off.
+# oracle-compare: thermo=all rel=1e-9 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block -10 10 -10 10 -10 10
+region          liquid sphere 0 0 0 5
+create_box      1 box
+create_atoms    1 region liquid
+mass            1 1.0
+velocity        all create 0.65 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 20 delay 0 check no
+fix             1 all nvt temp 0.65 0.65 0.2
+fix             2 all recenter 0 0 0 units lattice
+compute         p all stress/spherical 0 0 0 0.25 15
+thermo          50
+thermo_style    custom step temp epair press c_p[15][3] c_p[15][5] c_p[15][6] c_p[15][7] c_p[15][8] c_p[20][6] c_p[20][8]
+thermo_modify   format float %.15g
+run             150

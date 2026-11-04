@@ -90,6 +90,7 @@ export class FixSet extends Fix {
     const ctx = {
       sys,
       fail: (m: string): never => { throw new StyleError(m); },
+      fixSet: true,
     } as unknown as Ctx;
     const [style, id] = this.actions;
     const rest = this.actions.slice(2);
@@ -111,6 +112,10 @@ export class FixSet extends Fix {
       }
       k = j;
     }
+    // As native LAMMPS does (src/fix_set.cpp FixSet::end_of_step and src/set.cpp Set::invoke_actions at b332f28): the
+    // actions change the atoms with no log, and the computes their variables invoke are computed once in the step; the
+    // cached values are dropped after the last action
+    sys.bump();
   }
 
   /**

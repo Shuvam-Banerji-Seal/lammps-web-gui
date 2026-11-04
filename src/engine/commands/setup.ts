@@ -2245,7 +2245,8 @@ const marsagliaSeed = (seed: number): void => {
  * (v_name). type/fraction, type/ratio and type/subset choose atoms with the
  * per-atom and subset streams of native LAMMPS (nativeRandom.ts).
  */
-const set: Handler = ({ sys }, a) => {
+const set: Handler = (ctx, a) => {
+  const { sys } = ctx;
   // As native LAMMPS does (src/set.cpp Set::command at b332f28): the box and atoms, the selection and every keyword are
   // checked before any atom is changed
   if (!sys.hasBox) throw new StyleError('Set command before simulation box is defined\nFor more information see https://docs.lammps.org/Errors_details.html');
@@ -2268,8 +2269,13 @@ const set: Handler = ({ sys }, a) => {
     return () => x;
   };
   let changed = 0;
+  const made: string[] = [];
   for (let k = 2; k < a.length;) {
     const key = a[k];
+    // the count of this action (each keyword's case sets or tallies it)
+    changed = 0;
+    // native names the species of cc (set.cpp Set::command: "settings made for {} index {}")
+    const label = key === 'cc' ? `cc index ${a[k + 1]}` : key;
     switch (key) {
       case 'type': {
         const v = value(typeLabelWord(sys, 'atom', a[k + 1]), 'type');
@@ -2911,9 +2917,15 @@ const set: Handler = ({ sys }, a) => {
         break;
       }
     }
+    made.push(`  ${changed} settings made for ${label}`);
   }
+  // As native LAMMPS does (src/set.cpp at b332f28): fix set runs the actions alone (FixSet::end_of_step calls
+  // Set::invoke_actions), with no log, and a compute its variables invoke is computed once in the step (variable.cpp
+  // "if (!(compute->invoked_flag & Compute::INVOKED_PERATOM))"), so the fix bumps the epoch once after all its actions
+  // (fix_set.ts). Set::command logs "Setting atom values ..." and one "N settings made for KEYWORD" line per action.
+  if (ctx.fixSet) return;
   sys.bump();
-  sys.log(`Setting atom values ...\n  ${changed} settings made for ${a[2]}`);
+  sys.log(`Setting atom values ...\n${made.join('\n')}`);
 };
 
 // ----------------------------------------------------------------- velocity

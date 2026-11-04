@@ -7,6 +7,7 @@
  * (src/engine-gpl/LICENSE).
  */
 import type { System } from '../../engine/system';
+import { nativeOrder } from '../../engine/atoms';
 import { StyleError } from '../../engine/force/types';
 import { FixBrownianBase } from './fix_brownian_base';
 import { cross3, dot3, len3, scale3, scaleadd3, scaleadd3Two, snormalize3 } from './mathextra';
@@ -55,7 +56,9 @@ export class FixBrownianSphere extends FixBrownianBase {
     const uxn = [0, 0, 0];
     const wxu = [0, 0, 0];
     const muNew = [0, 0, 0];
-    for (let i = 0; i < s.n; i++) {
+    // As native LAMMPS does (src/BROWNIAN/fix_brownian*.cpp initial_integrate at b332f28): the atoms in native's
+    // local order (it sorts them at setup), so each atom draws the random numbers native gives it
+    for (const i of nativeOrder(s)) {
       if (!(mask[i] & bit)) continue;
       let dx: number;
       let dy: number;

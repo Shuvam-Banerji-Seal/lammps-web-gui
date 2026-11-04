@@ -9,7 +9,7 @@
  */
 import type { System } from '../../engine/system';
 import { StyleError } from '../../engine/force/types';
-import { isEllipsoid } from '../../engine/atoms';
+import { isEllipsoid, nativeOrder } from '../../engine/atoms';
 import { FixBrownianBase } from './fix_brownian_base';
 import { matvec, qnormalize, quatToMat, quatToMatTrans, quatvec, transposeMatvec } from './mathextra';
 
@@ -75,7 +75,9 @@ export class FixBrownianAsphere extends FixBrownianBase {
     const tmp = [0, 0, 0];
     const dv = [0, 0, 0];
     const fRot = [0, 0, 0];
-    for (let i = 0; i < s.n; i++) {
+    // As native LAMMPS does (src/BROWNIAN/fix_brownian*.cpp initial_integrate at b332f28): the atoms in native's
+    // local order (it sorts them at setup), so each atom draws the random numbers native gives it
+    for (const i of nativeOrder(s)) {
       if (!(mask[i] & bit)) continue;
       for (let k = 0; k < 4; k++) q[k] = quat![4 * i + k];
       quatToMatTrans(q, RT);

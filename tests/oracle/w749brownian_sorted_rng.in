@@ -1,0 +1,20 @@
+# oracle: fix brownian draws its random numbers in native's local atom order. Native sorts the atoms at setup
+#   (atom_modify sort, default every 1000 steps) and its initial_integrate (src/BROWNIAN/fix_brownian.cpp at b332f28)
+#   loops over them in that order, so each atom gets native's draws; the engine looped in creation order. The sum of the
+#   squared noise does not depend on the pairing, so Temp matched without forces, but the force-noise cross term did
+#   not (examples/PACKAGES/brownian/align_self: Temp 3.7e-3 off at step 1000).
+# oracle-compare: thermo=all rel=1e-9 abs=1e-12
+units           lj
+dimension       2
+boundary        p p p
+atom_style      ellipsoid
+region          box block 0 30 0 30 -0.5 0.5
+create_box      1 box
+create_atoms    1 random 600 12345 box
+pair_style      soft 1.122
+pair_coeff      * * 33.0
+fix             1 all brownian 0.0001 12345 gamma_t 1.0
+thermo_style    custom step temp epair press
+thermo_modify   format float %.15g
+thermo          5
+run             20

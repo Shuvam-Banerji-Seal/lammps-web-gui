@@ -924,17 +924,20 @@ export class Neighbor {
    * full stencil around its bin (the rows of both halves and the bin itself), less the atom. The fullest bin times the
    * number of stencil bins first; the sums per bin only when that exceeds neigh_modify one.
    */
-  private stencilBound(bL: Int32Array, bG: Int32Array, nbins: number, rLo: Int32Array, rHi: Int32Array, nrows: number): number {
+  private stencilBound(bL: Int32Array, bG: Int32Array, occ: Int32Array, nocc: number, rLo: Int32Array, rHi: Int32Array, nrows: number): number {
     let nst = 1;
     for (let r = 0; r < nrows; r++) nst += 2 * (rHi[r] - rLo[r] + 1);
+    // over the bins that hold atoms (an empty bin adds nothing to either maximum)
     let fullest = 0;
-    for (let b = 0; b < nbins; b++) {
+    for (let o = 0; o < nocc; o++) {
+      const b = occ[o];
       const c = bL[b + 1] - bL[b] + bG[b + 1] - bG[b];
       if (c > fullest) fullest = c;
     }
     if (fullest * nst - 1 <= this.oneatom) return fullest * nst - 1;
     let bound = 0;
-    for (let b = 0; b < nbins; b++) {
+    for (let o = 0; o < nocc; o++) {
+      const b = occ[o];
       if (bL[b + 1] === bL[b]) continue;
       let c = bL[b + 1] - bL[b] + bG[b + 1] - bG[b] - 1;
       for (let r = 0; r < nrows; r++) {
@@ -948,6 +951,10 @@ export class Neighbor {
 
   /** The atom IDs of the owned and the ghost atoms in bin order (neighborKernel.ts HalfBins ltag, gtag). */
   private sTagL = new Int32Array(0);
+  /** buildList's bins that hold atoms, and the per-bin stamp that lists each bin once (binStampN: the last stamp). */
+  private sOcc = new Int32Array(0);
+  private sBinStamp = new Int32Array(0);
+  private binStampN = 0;
   private sTagG = new Int32Array(0);
 
   /** Shared-memory threads for the pair search of the common half list (set by the session with the pair threads). */
@@ -1049,6 +1056,21 @@ export class Neighbor {
       if (k < nlocal) bL[b + 1]++; else bG[b + 1]++;
     }
     for (let b = 0; b < nbins; b++) { bL[b + 1] += bL[b]; bG[b + 1] += bG[b]; }
+    // the bins that hold atoms, ascending (each bin once, by a stamp of this build): the passes over bins below visit only
+    // these, since an empty bin adds nothing to any of them; a grid over a sparse system is mostly empty bins
+    if (this.sBinStamp.length < nbins) this.sBinStamp = new Int32Array(Math.max(nbins, 2 * this.sBinStamp.length));
+    const stampOf = this.sBinStamp;
+    if (this.binStampN >= 0x3fffffff) { stampOf.fill(0); this.binStampN = 0; }
+    const stamp = ++this.binStampN;
+    const occ = (this.sOcc = grownI32(this.sOcc, nall));
+    let nocc = 0;
+    for (let k = 0; k < nall; k++) {
+      const b = binOf[k];
+      if (b < 0 || stampOf[b] === stamp) continue;
+      stampOf[b] = stamp;
+      occ[nocc++] = b;
+    }
+    occ.subarray(0, nocc).sort();
     const lk = (this.sAtoms.length >= nlocal ? this.sAtoms : (this.sAtoms = new Int32Array(Math.max(nlocal, 2 * this.sAtoms.length))));
     const gk = (this.sAtomsG.length >= nghost ? this.sAtomsG : (this.sAtomsG = new Int32Array(Math.max(nghost, 2 * this.sAtomsG.length))));
     const lxs = (this.sBx.length >= 3 * nlocal ? this.sBx : (this.sBx = new Float64Array(Math.max(3 * nlocal, 2 * this.sBx.length))));
@@ -1059,9 +1081,9 @@ export class Neighbor {
     const radius = needs.size ? s.radius : null;
     const lr = radius ? (this.sBr.length >= nlocal ? this.sBr : (this.sBr = new Float64Array(Math.max(nlocal, 2 * this.sBr.length)))) : null;
     const gr = radius ? (this.sBrG.length >= nghost ? this.sBrG : (this.sBrG = new Float64Array(Math.max(nghost, 2 * this.sBrG.length)))) : null;
-    if (!skip0) this.oneBound = this.stencilBound(bL, bG, nbins, rLo, rHi, nrows);
-    for (let b = 0; b < nbins; b++) cursor[b] = bL[b];
-    for (let b = 0; b < nbins; b++) cursor[nbins + b] = bG[b];
+    if (!skip0) this.oneBound = this.stencilBound(bL, bG, occ, nocc, rLo, rHi, nrows);
+    // the placement reads the cursors of the bins that hold atoms only
+    for (let o = 0; o < nocc; o++) { const b = occ[o]; cursor[b] = bL[b]; cursor[nbins + b] = bG[b]; }
     for (let k = 0; k < nall; k++) {
       const b = binOf[k];
       if (b < 0) continue;
@@ -1181,7 +1203,7 @@ export class Neighbor {
     // the threads' entries are segments of their arrays, which the counting sort below reads in place
     let segs: ListSegment[] | null = null;
     if (!fullList && !exclude && !incl && !lr && unmirrored === null) {
-      const B: HalfBins = { bL, bG, rLo, rHi, nrows, lk, lt, lxs, gk, gt, gxs, cutsq, nt, rule, delta };
+      const B: HalfBins = { bL, bG, rLo, rHi, nrows, lk, lt, lxs, gk, gt, gxs, cutsq, nt, rule, delta, occ, nocc };
       if (rule !== 0) {
         // the atom IDs in bin order (a ghost has its owner's ID)
         const ltag = (this.sTagL = grownI32(this.sTagL, nlocal)), gtag = (this.sTagG = grownI32(this.sTagG, nghost));
@@ -1212,7 +1234,8 @@ export class Neighbor {
           }
         }
       }
-    } else for (let b = 0; b < nbins; b++) {
+    } else for (let o = 0; o < nocc; o++) {
+      const b = occ[o];
       const l0 = bL[b], l1 = bL[b + 1], g0 = bG[b], g1 = bG[b + 1];
       if (l1 === l0 && g1 === g0) continue;
       // row -1 is the bin itself (its owned atoms pair with later owned atoms of the bin), then the

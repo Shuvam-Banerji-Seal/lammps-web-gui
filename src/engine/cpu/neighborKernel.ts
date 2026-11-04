@@ -35,7 +35,23 @@ export interface HalfBins {
   ltag?: Int32Array;
   gtag?: Int32Array;
   delta?: number;
+  /**
+   * The bins that hold atoms (owned or ghost), ascending, occ[0 .. nocc): the kernels visit only these, as the empty bins
+   * add no entry (a grid over a sparse system is mostly empty bins). Without it every bin is visited.
+   */
+  occ?: Int32Array;
+  nocc?: number;
 }
+
+/** The first index of occ[0 .. n) (ascending) whose bin is at least b. */
+const firstOccupied = (occ: Int32Array, n: number, b: number): number => {
+  let lo = 0, hi = n;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (occ[mid] < b) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+};
 
 /**
  * Whether a half list keeps the pair of owned atom i (ID itag) and ghost atom j (ID jtag), the ghost at offset
@@ -65,7 +81,10 @@ export const keepGhostPair = (rule: number, itag: number, jtag: number, ox: numb
 export const binBound = (B: HalfBins, nbins: number): number => {
   const { bL, bG, rLo, rHi } = B;
   let F = 0;
-  for (let b = 0; b < nbins; b++) {
+  const occ = B.occ;
+  const nb = occ ? B.nocc! : nbins;
+  for (let o = 0; o < nb; o++) {
+    const b = occ ? occ[o] : o;
     const c = bL[b + 1] - bL[b] + bG[b + 1] - bG[b];
     if (c > F) F = c;
   }
@@ -86,7 +105,15 @@ export const halfBinsPairs = (
   const rule = B.rule ?? 0, ltag = B.ltag!, gtag = B.gtag!, delta = B.delta ?? 0;
   let np = np0;
   let b = b0;
+  const occ = B.occ ?? null, nocc = B.nocc ?? 0;
+  let oi = occ ? firstOccupied(occ, nocc, b0) : 0;
   for (; b < b1; b++) {
+    if (occ) {
+      // the next bin that holds atoms
+      while (oi < nocc && occ[oi] < b) oi++;
+      if (oi >= nocc || occ[oi] >= b1) { b = b1; break; }
+      b = occ[oi];
+    }
     const l0 = bL[b], l1 = bL[b + 1], g0 = bG[b], g1 = bG[b + 1];
     if (l1 === l0 && g1 === g0) continue;
     if (np + binMax > cap) break;
@@ -210,7 +237,15 @@ export const halfBinsPairsSpecial = (
   const rule = B.rule ?? 0, ltag = B.ltag!, gtag = B.gtag!, delta = B.delta ?? 0;
   let np = np0;
   let b = b0;
+  const occ = B.occ ?? null, nocc = B.nocc ?? 0;
+  let oi = occ ? firstOccupied(occ, nocc, b0) : 0;
   for (; b < b1; b++) {
+    if (occ) {
+      // the next bin that holds atoms
+      while (oi < nocc && occ[oi] < b) oi++;
+      if (oi >= nocc || occ[oi] >= b1) { b = b1; break; }
+      b = occ[oi];
+    }
     const l0 = bL[b], l1 = bL[b + 1], g0 = bG[b], g1 = bG[b + 1];
     if (l1 === l0 && g1 === g0) continue;
     if (np + binMax > cap) break;

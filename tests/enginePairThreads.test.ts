@@ -138,7 +138,9 @@ const THREEBODY_STYLES: Record<string, string> = {
   // class back on the thread's copy (Pair.threadAdopt)
   'meam/spline': 'pair_style meam/spline\npair_coeff * * TiO.meam.spline Ti O',
   'meam/sw/spline': 'pair_style meam/sw/spline\npair_coeff * * Si.b.meam.sw.spline Si Si',
-  vashishta: 'pair_style vashishta\npair_coeff * * SiC.vashishta Si C',
+  // Si for both types: SiC's carbon on the silicon lattice heats the box until atoms cross it in one step (Measured with
+  // native LAMMPS: ERROR: Lost atoms: original 216 current 212)
+  vashishta: 'pair_style vashishta\npair_coeff * * SiC.vashishta Si Si',
 };
 /** pair snap (full list; each row's bispectrum energy, with its self term, is added once by the thread owning the row). */
 const SNAP_BOX = `units metal

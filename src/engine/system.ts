@@ -508,21 +508,69 @@ export class System {
     }
     // the first reset of the box (domain->pbc and reset_box at setup) replaces the create_box expansion
     this.initSmall = null;
+    const far = this.farPeriodic();
     if (g.triclinic) {
       // the next ghost build places the ghosts from the owned atoms' lamda after the wrap (Neighbor.freshLamda)
       if (this.lamdaScratch.length !== 3 * s.n) this.lamdaScratch = new Float64Array(3 * s.n);
       const lam = this.lamdaScratch;
-      for (let i = 0; i < s.n; i++) g.remapKeepLamda(s.x, s.image, i, lam);
+      for (let i = 0; i < s.n; i++) if (!far || !far[i]) g.remapKeepLamda(s.x, s.image, i, lam);
       this.nb.freshLamda = lam;
-    } else for (let i = 0; i < s.n; i++) g.remap(s.x, s.image, i);
+    } else for (let i = 0; i < s.n; i++) if (!far || !far[i]) g.remap(s.x, s.image, i);
     // a shrink-wrapped box changes the lamda of every atom
     if (shrinkWrap(s, g)) { this.nb.freshLamda = null; this.nb.forwardComm(s, g); }
-    this.checkLost();
+    this.checkLost(far);
+  }
+
+  /**
+   * The atoms that native's wrap leaves outside a periodic box, which are then lost, or null when there is none. As native
+   * LAMMPS does (src/domain.cpp Domain::pbc and src/comm_brick.cpp CommBrick::exchange at b332f28): pbc moves a periodic
+   * coordinate by one period, "if (x[i][0] < lo[0]) { x[i][0] += period[0]; ..." and "if (x[i][0] >= hi[0]) {
+   * x[i][0] -= period[0]; x[i][0] = MAX(x[i][0],lo[0]);" (in lamda coordinates, period 1, in a triclinic box), and the
+   * exchange that follows drops an atom still outside the box: with one processor along a dimension "set nrecv = 0 so
+   * buf_send atoms will be lost". Such an atom moved more than a box length since the last reneighboring.
+   */
+  private farPeriodic(): Uint8Array | null {
+    const s = this.state, g = this.geom;
+    const per = s.box.periodic;
+    if (!per[0] && !per[1] && !per[2]) return null;
+    let flags: Uint8Array | null = null;
+    const lam = [0, 0, 0];
+    for (let i = 0; i < s.n; i++) {
+      if (g.triclinic) g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
+      for (let d = 0; d < 3; d++) {
+        if (!per[d] || (s.dimension === 2 && d === 2)) continue;
+        const c = g.triclinic ? lam[d] : s.x[3 * i + d];
+        const lo = g.triclinic ? 0 : s.box.lo[d], hi = g.triclinic ? 1 : s.box.hi[d];
+        const prd = hi - lo;
+        if ((c < lo && c + prd < lo) || (c >= hi && Math.max(c - prd, lo) >= hi)) {
+          (flags ??= new Uint8Array(s.n))[i] = 1;
+          break;
+        }
+      }
+    }
+    return flags;
   }
 
   /** Atoms outside a fixed (f) boundary: "it will be deleted on the next timestep that reneighboring occurs" (boundary.html). */
-  private checkLost(): void {
-    const lost = this.lostFlags();
+  private checkLost(far: Uint8Array | null = null): void {
+    let lost = this.lostFlags();
+    if (far) {
+      // atoms that left a periodic box by more than a period: lost as native's exchange loses them (farPeriodic)
+      let nfar = 0;
+      const flags = lost ? lost.flags : new Uint8Array(this.state.n);
+      for (let i = 0; i < far.length; i++) if (far[i] && !flags[i]) { flags[i] = 1; nfar++; }
+      if (!lost) {
+        const mode = this.thermo.lost;
+        const n = this.state.n;
+        // Thermo::lost_check: "Lost atoms: original %ld current %ld"
+        const text = `Lost atoms: original ${n} current ${n - nfar}`;
+        if (mode === 'error') throw new StyleError(text);
+        if (mode === 'warn') this.warn(text);
+        this.deleteAtoms(flags);
+        return;
+      }
+      lost = { flags, nlost: lost.nlost + nfar };
+    }
     if (!lost) return;
     const mode = this.thermo.lost;
     // Measured with native LAMMPS (black box, boundary f f f, 256 lj atoms, run 10): "ERROR: Lost atoms: original 256

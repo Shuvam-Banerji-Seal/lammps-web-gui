@@ -97,7 +97,9 @@ describe('fix state in write_restart', () => {
     ['baoab', 'fix t all baoab 1.0 1.0 0.5 77', 't'],
   ])('stores the generator and counters of %s and restores them when re-specified', async (style, def, id) => {
     const { session, files } = newSession();
-    await session.execute(`${BOX}${def}\nrun 4\nwrite_restart r.restart\n`);
+    // two steps: with fix nve beside it, brownian heats the box until an atom crosses it in one step at the fourth
+    // (Measured with native LAMMPS: ERROR: Lost atoms: original 32 current 22)
+    await session.execute(`${BOX}${def}\nrun 2\nwrite_restart r.restart\n`);
     expect(files.get('r.restart')).toContain(`"style":"${style}"`);
     const written = (session.sys.fixes.find((f) => f.id === id) as unknown as { restartState(): unknown }).restartState();
     await session.execute(`clear\nread_restart r.restart\n${AFTER_READ}${def}\n`);

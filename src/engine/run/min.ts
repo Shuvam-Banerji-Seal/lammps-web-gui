@@ -305,9 +305,32 @@ export const minimize = async (
       const stepLS = (al: number): number => {
         lsEvals++;
         moveTo(al);
+        const builds = nb.nbuild;
         const en = evaluate();
+        if (!box && nb.nbuild !== builds) resetStart();
         packForce(gNew);
         return en;
+      };
+      // As native LAMMPS does (src/min.cpp energy_force and src/fix_minimize.cpp reset_coords at b332f28): after a trial
+      // that reneighbored, "update x0 of atoms crossing PBC": an atom the rebuild wrapped gets the start point of its
+      // new image (x0 = x - minimum_image(x - x0)), so the next trial starts next to it. Without it the next trial put
+      // the atom back across the boundary, a box length from the positions of the build, and the distance check
+      // rebuilt the lists again (examples/indent/in.indent.min: two builds in one iteration, so a shrink-wrapped box
+      // fitted to other positions and a pressure 3e-3 off).
+      const dmi = [0, 0, 0];
+      const resetStart = (): void => {
+        for (let i = 0; i < s.n; i++) {
+          const k = 3 * i;
+          dmi[0] = s.x[k] - x0[k]; dmi[1] = s.x[k + 1] - x0[k + 1]; dmi[2] = s.x[k + 2] - x0[k + 2];
+          const d0 = dmi[0], d1 = dmi[1], d2 = dmi[2];
+          sys.geom.minimumImage(dmi);
+          if (dmi[0] !== d0) x0[k] = s.x[k] - dmi[0];
+          if (dmi[1] !== d1) x0[k + 1] = s.x[k + 1] - dmi[1];
+          if (dmi[2] !== d2) x0[k + 2] = s.x[k + 2] - dmi[2];
+        }
+        // the image flags of the wrapped atoms stay as the rebuild left them (native keeps them), so the trials that
+        // follow start from them
+        img0.set(s.image.subarray(0, n3));
       };
       let eTry: number;
       let status: 'ok' | 'downhill' | 'zeroquad' | 'zeroalpha' | 'etol';

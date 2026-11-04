@@ -183,6 +183,11 @@ export class System {
 
   epoch = 0;
   stateVersion = 0;
+  /**
+   * True while thermo output evaluates its keywords (Thermo.row): native's Thermo::compute invokes the computes of the
+   * step's output, and a compute pressure there reads its temperature compute's value of the step (Compute.scalarOfStep).
+   */
+  thermoOutput = false;
   private forcesVersion = -1;
   private flagsUsed: ComputeFlags = {};
   private rngEqual: FormulaRandom | null = null;

@@ -768,6 +768,20 @@ export class FixNH extends Fix {
     return this.currentTemp();
   }
 
+  /**
+   * The temperature compute's evaluation of final_integrate, before the thermostat (finalIntegrate records it on the
+   * compute when the step's fix nh work is done; compute pressure reads it at the step's thermo output,
+   * Compute.scalarOfStep).
+   */
+  private invokeTemperature(): { scalar: number; vector: Float64Array | null } {
+    const tc = this.tempCompute;
+    this.sys.refreshComputes();
+    const scalar = tc.scalarValue();
+    const iso = this.couple === 'xyz' || (this.couple === 'xy' && this.sys.dimension === 2);
+    const vector = this.pstat && !iso && tc.vectorFlag ? Float64Array.from(tc.vectorValues()) : null;
+    return { scalar, vector };
+  }
+
   setup(): void {
     this.tSetup = this.currentTemp();
     this.keSetup = this.tempCompute.dof * this.sys.state.units.boltz * this.tSetup;
@@ -839,6 +853,10 @@ export class FixNH extends Fix {
       this.omegaUpdate();
       if (this.pchain > 0) this.nhcPress();
     }
+    // As native LAMMPS does (src/fix_nh.cpp final_integrate at b332f28): "t_current = temperature->compute_scalar()"
+    // after nh_v_press and, without iso coupling, "temperature->compute_vector()", before nhc_temp_integrate rescales
+    // the velocities; compute pressure reads those values for the rest of the step (thermo with thermo_modify press ID_press)
+    const tFinal = this.invokeTemperature();
     if (this.tstat) this.nhcTemp();
     else if (this.pstat) {
       // fix nph has no thermostat chain to track the kinetic energy: the next initial MTK term uses the value at the
@@ -846,6 +864,11 @@ export class FixNH extends Fix {
       const d = this.dofKT();
       this.trackKE = d.dof * d.kT;
     }
+    // the record of final_integrate's evaluation (the thermostat above evaluates the compute again here, where native
+    // uses t_current)
+    const step = this.sys.state.step, tc = this.tempCompute;
+    tc.nhScalar = { step, value: tFinal.scalar };
+    tc.nhVector = tFinal.vector ? { step, value: tFinal.vector } : null;
   }
 
   // ------------------------------------------------------------------ run_style respa (run/respa.ts)

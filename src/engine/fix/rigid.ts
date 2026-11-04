@@ -1219,28 +1219,18 @@ export class FixRigid extends Fix {
   }
 
   /**
-   * The langevin keyword: a drag plus a random force on each body's
-   * center-of-mass velocity and a drag plus a random torque on its angular
-   * velocity. docs.lammps.org/fix_rigid.html: "The *langevin* keyword applies a
-   * Langevin thermostat ... The way that Langevin thermostatting operates is
-   * explained on the fix langevin doc page." fix_langevin.html: F_f "is a
-   * frictional drag or viscous damping term proportional to the particle's
-   * velocity" with constant m/damp, F_r "is a force due to solvent atoms at a
-   * temperature" T "randomly bumping into the particle" with a magnitude
-   * proportional to sqrt(k_B T m / (dt damp)), and "a uniform random number is
-   * used (instead of a Gaussian random number) for speed", so the uniform
-   * amplitude is sqrt(24 k_B T m / (dt damp)).
-   * Measured with native LAMMPS (black box) on one tetrahedron and one dimer,
-   * thermo 1: with seed s the first RanMars(s) uniform is discarded, then each
-   * body draws its three COM force components and its three body-frame torque
-   * components as uniform()-0.5, body by body, force before torque (six draws,
-   * also in 2d, where only the in-plane force and the rotation about the plane
-   * normal are applied); the force is sqrt(24 k_B T M/(dt damp)) per component
-   * and the body-frame torque about principal axis k is
-   * sqrt(24 k_B T I_k/(dt damp)), the axes taken in increasing moment of inertia
-   * and made right-handed. The drag is -(M/damp) v_cm and, in the space frame,
-   * -(1/damp) L - dt (omega x L), evaluated after the first half kick and used
-   * for the second half kick (final integrate).
+   * The langevin keyword: a drag plus a random force on each body's center-of-mass velocity and a drag plus a random
+   * torque on its angular velocity (docs.lammps.org/fix_rigid.html: "The *langevin* keyword applies a Langevin
+   * thermostat"). As native LAMMPS does (src/RIGID/fix_rigid.cpp FixRigid::apply_langevin_thermostat and
+   * fix_rigid_small.cpp FixRigidSmall::apply_langevin_thermostat at b332f28), body by body:
+   *   gamma1 = -masstotal / t_period / ftm2v, gamma2 = sqrt(masstotal) tsqrt sqrt(24 boltz / t_period / dt / mvv2e) / ftm2v,
+   *   langextra[0..2] = gamma1 vcm + gamma2 (uniform() - 0.5);
+   *   gamma1 = -1 / t_period / ftm2v, gamma2 = tsqrt sqrt(24 boltz / t_period / dt / mvv2e) / ftm2v,
+   *   wbody = transpose_matvec(ex, ey, ez, omega), tbody[k] = inertia[k] gamma1 wbody[k] + sqrt(inertia[k]) gamma2
+   *   (uniform() - 0.5), langextra[3..5] = matvec(ex, ey, ez, tbody),
+   * with the body's principal axes and moments in their own order (ascending, z last in 2d: principalFrame) and omega as
+   * the integration left it (richardson's half-step one). compute_forces_and_torques then adds "fflag * langextra" to the
+   * force and "tflag * langextra" to the torque. RanMars(seed) here is native's after its constructor's own uniform().
    */
   private applyLangevin(): void {
     if (!this.langevin) return;
@@ -1249,40 +1239,32 @@ export class FixRigid extends Fix {
     const tt = typeof this.langTStart === 'number' ? ramp(this.sys, this.langTStart, this.langTStop) : valueOf(this.sys, this.langTStart);
     if (tt < 0) throw new StyleError(`fix ${this.id} rigid langevin: target temperature is negative`);
     const rng = this.langRng!;
-    const damp = this.langDamp;
+    const tPeriod = this.langDamp;
+    const tsqrt = Math.sqrt(tt);
+    const boltz = u.boltz, dt = s.dt, mvv2e = u.mvv2e, ftm2v = u.ftm2v;
+    const lang = [0, 0, 0, 0, 0, 0];
+    const wbody = [0, 0, 0], tbody = [0, 0, 0];
     const dim2 = s.dimension === 2;
-    const c = Math.sqrt((24 * u.boltz * tt) / (u.mvv2e * s.dt * damp)) / u.ftm2v;
     for (const b of this.bodies) {
-      const fr = [0, 1, 2].map(() => rng.uniform() - 0.5);
-      const tr = [0, 1, 2].map(() => rng.uniform() - 0.5);
-      for (let d = 0; d < 3; d++) {
-        // 2d: native LAMMPS draws the z force but applies none of it (measured).
-        if (dim2 && d === 2) continue;
-        b.fcm[d] += c * Math.sqrt(b.mass) * fr[d] - (b.mass / damp) * b.vcm[d] / u.ftm2v;
-      }
-      // Measured with native LAMMPS (black box): the body-frame random torque is
-      // drawn about the principal axes ordered by increasing moment of inertia
-      // (draw j = torque draw, k = ascending principal axis), and the axes are
-      // made right-handed by negating the third, so the torque is
-      // sum_j sqrt(24 k_B T I_j/(dt damp)) (u_j - 0.5) p_j. In 2d only the
-      // rotation about the plane normal is active; it is the largest moment
-      // (perpendicular-axis theorem), i.e. ascending index 2, and native draws
-      // all three torque components but applies only that one.
+      let gamma1 = -b.mass / tPeriod / ftm2v;
+      let gamma2 = Math.sqrt(b.mass) * tsqrt * Math.sqrt(24.0 * boltz / tPeriod / dt / mvv2e) / ftm2v;
+      lang[0] = gamma1 * b.vcm[0] + gamma2 * (rng.uniform() - 0.5);
+      lang[1] = gamma1 * b.vcm[1] + gamma2 * (rng.uniform() - 0.5);
+      lang[2] = gamma1 * b.vcm[2] + gamma2 * (rng.uniform() - 0.5);
+      gamma1 = -1.0 / tPeriod / ftm2v;
+      gamma2 = tsqrt * Math.sqrt(24.0 * boltz / tPeriod / dt / mvv2e) / ftm2v;
+      // ex, ey, ez: the columns of the body's rotation (native q_to_exyz)
       const R = qmat(b.q);
-      const idx = [0, 1, 2].sort((a, e) => b.inertia[a] - b.inertia[e]);
-      const p = idx.map((k) => [R[0][k], R[1][k], R[2][k]]);
-      const p0 = cross(p[0], p[1]);
-      if (p0[0] * p[2][0] + p0[1] * p[2][1] + p0[2] * p[2][2] < 0) p[2] = p[2].map((x) => -x);
-      for (let j = dim2 ? 2 : 0; j < 3; j++) {
-        const tau = c * Math.sqrt(b.inertia[idx[j]]) * tr[j];
-        for (let d = 0; d < 3; d++) b.torque[d] += tau * p[j][d];
+      const om = b.omega;
+      for (let k = 0; k < 3; k++) wbody[k] = R[0][k] * om[0] + R[1][k] * om[1] + R[2][k] * om[2];
+      const I = b.inertia;
+      for (let k = 0; k < 3; k++) tbody[k] = I[k] * gamma1 * wbody[k] + Math.sqrt(I[k]) * gamma2 * (rng.uniform() - 0.5);
+      for (let d = 0; d < 3; d++) lang[3 + d] = R[d][0] * tbody[0] + R[d][1] * tbody[1] + R[d][2] * tbody[2];
+      // native 2d: "fflag[i][2] = tflag[i][0] = tflag[i][1] = 0.0" (FixRigid::FixRigid; a 2d z force is refused)
+      for (let d = 0; d < 3; d++) {
+        if (b.fflag[d] && !(dim2 && d === 2)) b.fcm[d] += lang[d];
+        if (b.tflag[d] && !(dim2 && d < 2)) b.torque[d] += lang[3 + d];
       }
-      // Measured with native LAMMPS (black box) on the axes body and the tetrahedron:
-      // the COM drag is -(M/damp) v_cm and the angular drag is
-      // -(1/damp) L - dt (omega x L) (space frame, omega = the angular velocity).
-      this.omegaFromAngmom(b);
-      const wxL = cross(b.omega, b.angmom);
-      for (let d = 0; d < 3; d++) b.torque[d] -= b.angmom[d] / (damp * u.ftm2v) + s.dt * wxL[d];
     }
   }
 

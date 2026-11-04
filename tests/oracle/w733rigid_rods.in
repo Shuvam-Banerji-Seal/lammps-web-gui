@@ -1,0 +1,28 @@
+# oracle: fix rigid langevin as native LAMMPS's apply_langevin_thermostat (src/RIGID/fix_rigid.cpp at b332f28): the drag
+#   and random torque in the body frame of the body's own principal axes (ascending, z last in 2d) with omega as the
+#   integration left it, then fflag/tflag-gated sums. Rods (2d line bodies of examples/ASPHERE/line) have two equal
+#   principal moments, so an axis order taken again from the moments' values put an in-plane axis last; the engine's
+#   former measured model also added a fitted dt (omega x L) drag term.
+# oracle-inputs: w733rigid_rods.data
+# oracle-compare: thermo=all rel=1e-10 abs=1e-12
+units           lj
+atom_style      line
+dimension       2
+read_data       w733rigid_rods.data
+velocity        all create 1.44 320984 loop geom
+neighbor        0.3 bin
+neigh_modify    delay 0 every 1 check yes
+neigh_modify    exclude molecule/intra all
+pair_style      line/lj 2.5
+pair_coeff      * * 0.25 0.25 1.0 0.25 2.5
+fix             2 all rigid molecule langevin 2.0 2.0 1.0 492983
+fix             4 all enforce2d
+compute         1 all erotate/asphere
+compute         2 all ke
+compute         3 all pe
+compute_modify  thermo_temp extra/dof -350
+timestep        0.001
+thermo          50
+thermo_style    custom step f_2 pe ke c_1 c_2 c_3
+thermo_modify   format float %.15g
+run             300

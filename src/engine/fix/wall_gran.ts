@@ -190,6 +190,11 @@ export class FixWallGran extends Fix {
   /** Shear displacement per (plane index, atom ID) while in contact. */
   /** Shear history per plane (index k), by atom ID. */
   private shear: Map<number, Float64Array>[] = [];
+  /** apply's call counter: a contact record holds the stamp of the call that touched it in entry 3. */
+  private stampN = 0;
+  /** The shear of a contact without history, and apply's wall normal. */
+  private readonly zeroShear = new Float64Array(4);
+  private readonly nrm = [0, 0, 0];
   /**
    * keyword contacts: the per-atom array of the contact data, as native fix_wall_gran.cpp post_force stores it after
    * clear_stored_contacts: column 1 flag (1 in contact), 2-4 the wall force on the atom, 5-7 the contact point, 8 radius.
@@ -356,6 +361,10 @@ export class FixWallGran extends Fix {
       if (this.arrayAtom.length !== 8 * s.n) this.arrayAtom = new Float64Array(8 * s.n);
       else this.arrayAtom.fill(0);
     }
+    // a contact record carries the stamp of the call that touched it; the others leave after the loop (a contact that
+    // ends drops its shear, as at once)
+    const stamp = ++this.stampN;
+    const zero = this.zeroShear;
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
       const R = radius[i];
@@ -366,30 +375,34 @@ export class FixWallGran extends Fix {
         const mv = planeMv[k];
         const c = planeCoord[k] + (m?.kind === 'wiggle' && m.dim === d && p.variable === undefined ? off : 0);
         const sd = x[3 * i + d] - c;
-        const hist = this.shear[k] ?? (this.shear[k] = new Map());
         const key = id[i];
         const dist = Math.abs(sd);
-        if (dist >= R) { hist.delete(key); continue; }
+        if (dist >= R) continue;
+        const hist = this.shear[k] ?? (this.shear[k] = new Map());
         if (sd === 0) {
           throw new StyleError(`fix wall/gran: particle ${id[i]} is at the wall position (zero distance); native LAMMPS gives NaN forces`);
         }
         // "delta = radius - r = overlap of particle with wall"; the normal points from the wall to the particle
         const sg = sd > 0 ? 1 : -1;
-        const n = [0, 0, 0];
+        const n = this.nrm;
+        n[0] = n[1] = n[2] = 0;
         n[d] = sg;
         const ov = R - dist;
         const vr0 = v[3 * i] - mv[0], vr1 = v[3 * i + 1] - mv[1], vr2 = v[3 * i + 2] - mv[2];
         const vn = vr0 * n[0] + vr1 * n[1] + vr2 * n[2];
         const poly = this.hertz ? Math.sqrt(ov * R) : 1;
         const fn = poly * (kn * ov - mi * gn * vn);
-        if (this.limitDamping && fn < 0) { hist.delete(key); continue; }
+        if (this.limitDamping && fn < 0) continue;
         // tangential relative velocity: v_t = v_r - (v_r.n) n - (R w) x n
         const wx = R * omega[3 * i], wy = R * omega[3 * i + 1], wz = R * omega[3 * i + 2];
         const cx = wy * n[2] - wz * n[1], cy = wz * n[0] - wx * n[2], cz = wx * n[1] - wy * n[0];
         const vt0 = vr0 - vn * n[0] - cx, vt1 = vr1 - vn * n[1] - cy, vt2 = vr2 - vn * n[2] - cz;
-        let sh: Float64Array = hist.get(key) ?? new Float64Array(3);
+        let sh: Float64Array = zero;
         if (this.history) {
-          sh = Float64Array.from(sh);
+          const rec = hist.get(key);
+          if (rec) sh = rec;
+          else { sh = new Float64Array(4); hist.set(key, sh); }
+          sh[3] = stamp;
           if (update) {
             sh[0] += vt0 * dt; sh[1] += vt1 * dt; sh[2] += vt2 * dt;
             // keep the displacement in the tangent plane
@@ -417,7 +430,6 @@ export class FixWallGran extends Fix {
           }
           ft0 *= scale; ft1 *= scale; ft2 *= scale;
         }
-        if (this.history) hist.set(key, sh);
         // force on the particle: normal along n plus the tangential part
         f[3 * i] += fn * n[0] + ft0;
         f[3 * i + 1] += fn * n[1] + ft1;
@@ -437,6 +449,7 @@ export class FixWallGran extends Fix {
         torque[3 * i + 2] -= R * (n[0] * ft1 - n[1] * ft0);
       }
     }
+    for (const hist of this.shear) if (hist) for (const [key, rec] of hist) if (rec[3] !== stamp) hist.delete(key);
   }
 }
 

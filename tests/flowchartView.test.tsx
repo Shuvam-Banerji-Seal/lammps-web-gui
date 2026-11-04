@@ -7,6 +7,11 @@
  *  - START and END had a line on one side only.
  *  - The title field was a fixed 10rem, cutting "Lennard-Jones fluid (NVT)" while the row had room.
  * jsdom has no layout, so the canvas and column sizes are stubbed for the fit test.
+ *
+ * Node buttons (measured in Chromium before the change): the fork, move, enable, duplicate and remove buttons of a card
+ * and the connector pills did nothing. The card's drag handler (and the canvas pan handler for the pills) captured the
+ * pointer on every press, and a captured pointer's click goes to the capturing element, not to the button. jsdom does not
+ * retarget clicks, so the test checks that a press on a control captures nothing.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import React, { act } from 'react';
@@ -98,5 +103,34 @@ describe('Script Builder flowchart view', () => {
     expect(title.className).not.toMatch(/\bsm:w-40\b/);
     expect(title.className).toMatch(/\bflex-1\b/);
     expect(title.title).toBe(title.value);
+  });
+
+  it('a press on a card button or a connector pill does not capture the pointer; one on the card body does', async () => {
+    const proto = HTMLElement.prototype as unknown as { setPointerCapture?: (id: number) => void };
+    if (!proto.setPointerCapture) proto.setPointerCapture = () => {};
+    const capture = vi.spyOn(proto as { setPointerCapture: (id: number) => void }, 'setPointerCapture');
+    await open('light');
+    const press = async (el: Element) => {
+      await act(async () => {
+        el.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
+        el.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, cancelable: true, button: 0 }));
+      });
+    };
+    const cards = () => [...container.querySelectorAll<HTMLElement>('[role="button"][aria-label$=" step"]')];
+    const card = cards()[1];
+    for (const title of ['Move up', 'Move down', 'Disable', 'Duplicate step', 'Remove']) {
+      const b = card.querySelector<HTMLButtonElement>(`button[title="${title}"]`)!;
+      expect(b, title).toBeTruthy();
+      await press(b);
+    }
+    await press(container.querySelector<HTMLButtonElement>('button[aria-label="Connection 2 actions"]')!);
+    expect(capture).not.toHaveBeenCalled();
+    // the remove button removes its step
+    const n = cards().length;
+    await click(cards()[1].querySelector<HTMLButtonElement>('button[title="Remove"]')!);
+    expect(cards().length).toBe(n - 1);
+    // a press on the card body still starts a drag (captures the pointer)
+    await press(cards()[1].querySelector('code')!);
+    expect(capture).toHaveBeenCalledTimes(1);
   });
 });

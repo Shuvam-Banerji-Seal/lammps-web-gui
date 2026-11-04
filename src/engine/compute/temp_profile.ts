@@ -32,7 +32,8 @@ import { massOf } from '../atoms';
  * Measured with native LAMMPS (black box): an atom that has crossed a periodic boundary and is not yet wrapped
  * (between reneighborings, e.g. x slightly below lo) is binned periodically, i.e. into the last bin; clamping it into
  * the first bin departs from native from the step where that happens (tests/oracle/w48cb_tp_twobins.in, two x bins
- * under fix nve with neigh_modify every 10, 40 steps). Non-periodic dimensions clamp to the end bins.
+ * under fix nve with neigh_modify every 10, 40 steps). Non-periodic dimensions clamp to the end bins. binOf follows
+ * native's bin_assign: one period of wrap, then the truncated bin, clamped.
  *
  * out tensor (default): six components as in compute temp, without the 1/2 factor.
  * out bin: array of Nx Ny Nz rows (x fastest), columns: atom count, temperature of the bin.
@@ -123,21 +124,35 @@ export class ComputeTempProfile extends ComputeTemp {
     this.dof = this.sys.dimension * n - this.ns * this.nbins - this.extraDof - this.sys.dofRemoved(this.groupBit);
   }
 
-  /** Bin index (x fastest) of atom i; periodic dimensions wrap the index (see the file comment). */
+  /**
+   * Bin index (x fastest) of atom i. As native LAMMPS does (src/compute_temp_profile.cpp bin_assign at b332f28): along a
+   * periodic dimension the coordinate is wrapped by one period ("if (coord < boxlo[0]) coord += prd[0]; if (coord >=
+   * boxhi[0]) coord -= prd[0];"), the bin is "static_cast<int> ((coord - boxlo[0]) * invdelta[0])" with invdelta =
+   * nbins / prd (bin_setup), clamped to the first and last bins.
+   */
   private binOf(i: number): number {
-    const s = this.sys.state;
+    const x = this.sys.state.x;
+    const nx = this.nb.nx, ny = this.nb.ny;
+    const ix = this.binDims[0] ? this.binIndex(x[3 * i], 0, nx) : 0;
+    const iy = this.binDims[1] ? this.binIndex(x[3 * i + 1], 1, ny) : 0;
+    const iz = this.binDims[2] ? this.binIndex(x[3 * i + 2], 2, this.nb.nz) : 0;
+    return ix + nx * (iy + ny * iz);
+  }
+
+  /** The bin along dimension d of coordinate c, with n bins (binOf). */
+  private binIndex(c: number, d: number, n: number): number {
     const box = this.sys.state.box;
-    const idx = [0, 0, 0];
-    const ns = [this.nb.nx, this.nb.ny, this.nb.nz];
-    for (let d = 0; d < 3; d++) {
-      if (!this.binDims[d]) continue;
-      const L = box.hi[d] - box.lo[d];
-      let f = Math.floor((s.x[3 * i + d] - box.lo[d]) / L * ns[d]);
-      if (box.periodic[d]) f = ((f % ns[d]) + ns[d]) % ns[d];
-      else { if (f < 0) f = 0; if (f >= ns[d]) f = ns[d] - 1; }
-      idx[d] = f;
+    const lo = box.lo[d], hi = box.hi[d];
+    const prd = hi - lo;
+    let coord = c;
+    if (box.periodic[d]) {
+      if (coord < lo) coord += prd;
+      if (coord >= hi) coord -= prd;
     }
-    return idx[0] + this.nb.nx * (idx[1] + this.nb.ny * idx[2]);
+    let b = Math.trunc((coord - lo) * (n / prd));
+    if (b < 0) b = 0;
+    if (b > n - 1) b = n - 1;
+    return b;
   }
 
   /**
@@ -161,11 +176,36 @@ export class ComputeTempProfile extends ComputeTemp {
     return sum;
   }
 
-  /** Bin index of every atom of the group (-1 for atoms outside the group). */
+  /** Bin index of every atom of the group (-1 for atoms outside the group): binOf with the box read once. */
   private binsOfAll(): Int32Array {
     const s = this.sys.state;
+    const box = s.box, x = s.x;
     const bin = new Int32Array(s.n);
-    for (let i = 0; i < s.n; i++) bin[i] = this.counted(i) ? this.binOf(i) : -1;
+    const nx = this.nb.nx, ny = this.nb.ny, nz = this.nb.nz;
+    const n = [nx, ny, nz];
+    const on = this.binDims;
+    const lo = [box.lo[0], box.lo[1], box.lo[2]], hi = [box.hi[0], box.hi[1], box.hi[2]];
+    const prd = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
+    const inv = [n[0] / prd[0], n[1] / prd[1], n[2] / prd[2]];
+    const per = [box.periodic[0], box.periodic[1], box.periodic[2]];
+    const one = (c: number, d: number): number => {
+      let coord = c;
+      if (per[d]) {
+        if (coord < lo[d]) coord += prd[d];
+        if (coord >= hi[d]) coord -= prd[d];
+      }
+      let b = Math.trunc((coord - lo[d]) * inv[d]);
+      if (b < 0) b = 0;
+      if (b > n[d] - 1) b = n[d] - 1;
+      return b;
+    };
+    for (let i = 0; i < s.n; i++) {
+      if (!this.counted(i)) { bin[i] = -1; continue; }
+      const ix = on[0] ? one(x[3 * i], 0) : 0;
+      const iy = on[1] ? one(x[3 * i + 1], 1) : 0;
+      const iz = on[2] ? one(x[3 * i + 2], 2) : 0;
+      bin[i] = ix + nx * (iy + ny * iz);
+    }
     return bin;
   }
 

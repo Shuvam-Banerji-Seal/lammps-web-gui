@@ -20,6 +20,8 @@ export interface CellPeriod {
 
 /** Cells per atom budget: the cell count is kept at most 2 * nall + 64 by widening the cells. */
 const CELLS_PER_ATOM = 2;
+/** The candidate entries a cell list keeps sorted by cell (candidates()); past it, each query sorts its own. */
+const MEMO_ENTRIES = 1 << 23;
 
 export class CellList {
   private readonly n = [1, 1, 1];
@@ -34,6 +36,9 @@ export class CellList {
   private readonly sx = new Int32Array(3);
   private readonly sy = new Int32Array(3);
   private readonly sz = new Int32Array(3);
+  /** The sorted candidates of each cell queried so far (a query in a cell returns them), and their total length. */
+  private memo: (Int32Array | undefined)[] = [];
+  private memoEntries = 0;
 
   /**
    * Bins the nall positions of xa (3 doubles per atom). `cut` is the largest distance any caller will test; a
@@ -131,12 +136,16 @@ export class CellList {
   }
 
   /**
-   * The atoms in the cells around (x, y, z), ascending by index. The array is reused by the next call: read it before
-   * querying again. It contains every atom within the cut of the point (and possibly some further ones).
+   * The atoms in the cells around (x, y, z), ascending by index. The array may be reused by the next call (read it
+   * before querying again) or returned again for another query in the same cell: do not write it. It contains every atom within the cut of the point (and possibly some further ones).
    */
   candidates(x: number, y: number, z: number): Int32Array {
     const cx = this.coord(0, x), cy = this.coord(1, y), cz = this.coord(2, z);
     const nx = this.n[0], ny = this.n[1];
+    // the candidates depend only on the cell: each cell's are sorted once
+    const key = (cz * ny + cy) * nx + cx;
+    const kept = this.memo[key];
+    if (kept !== undefined) return kept;
     const sx = this.sx, sy = this.sy, sz = this.sz;
     const mx = this.span(0, cx, sx), my = this.span(1, cy, sy), mz = this.span(2, cz, sz);
     let m = 0;
@@ -152,6 +161,12 @@ export class CellList {
     }
     const res = out.subarray(0, m);
     res.sort();
+    if (this.memoEntries + m <= MEMO_ENTRIES) {
+      const copy = res.slice();
+      this.memo[key] = copy;
+      this.memoEntries += m;
+      return copy;
+    }
     return res;
   }
 }

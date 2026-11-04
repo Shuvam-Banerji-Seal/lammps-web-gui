@@ -50,6 +50,11 @@ interface Body {
   xcm: number[];            // unwrapped center of mass
   vcm: number[];
   image: number[];          // COM image flags (xcm wrapped into the box + image * L)
+  /**
+   * The COM image flags as of the last neighbor-list build (native imagebody, set by remap in pre_neighbor): the atoms'
+   * image flags relative to it (native xcmimage) unwrap the positions of the constraint-force virial.
+   */
+  nimage: number[];
   inertia: number[];        // principal moments
   q: number[];              // quaternion (w, x, y, z): body -> space
   angmom: number[];         // space frame
@@ -99,7 +104,7 @@ interface InfileBody {
 
 const cloneBody = (b: Body): Body => ({
   ...b,
-  atoms: b.atoms.slice(), xcm: b.xcm.slice(), vcm: b.vcm.slice(), image: b.image.slice(),
+  atoms: b.atoms.slice(), xcm: b.xcm.slice(), vcm: b.vcm.slice(), image: b.image.slice(), nimage: b.nimage.slice(),
   inertia: b.inertia.slice(), q: b.q.slice(), angmom: b.angmom.slice(), omega: b.omega.slice(),
   displace: b.displace.map((r) => r.slice()), fcm: b.fcm.slice(), torque: b.torque.slice(),
   fflag: b.fflag.slice(), tflag: b.tflag.slice(), orient: b.orient.slice(), orientQ: b.orientQ.slice(), dorient: b.dorient.slice(),
@@ -748,8 +753,10 @@ export class FixRigid extends Fix {
       orientQ,
       dorient,
       owner: s.id[idx[ref]],
+      nimage: [0, 0, 0],
     };
     this.wrapCom(b);
+    b.nimage = b.image.slice();
     return b;
   }
 
@@ -1110,6 +1117,16 @@ export class FixRigid extends Fix {
         if (virialFactor) {
           const m = massOf(s, i);
           if (setX) { u[0] = xold[0]; u[1] = xold[1]; u[2] = xold[2]; } else g.unwrap(s.x, s.image, i, u);
+          // As native LAMMPS does (src/RIGID/fix_rigid.cpp and fix_rigid_small.cpp set_xv and set_v at b332f28): the
+          // position is unwrapped by xcmimage, the atom's image flags relative to the body's ("x0 = x[i][0] + xbox*xprd
+          // + ybox*xy + zbox*xz"), i.e. the absolute unwrap less the body image of the last build; with a non-zero
+          // total constraint force on the body (a run's setup) the virial depends on it
+          const bi = b.nimage ?? b.image;
+          if (bi[0] !== 0 || bi[1] !== 0 || bi[2] !== 0) {
+            u[0] -= bi[0] * g.lx + bi[1] * g.xy + bi[2] * g.xz;
+            u[1] -= bi[1] * g.ly + bi[2] * g.yz;
+            u[2] -= bi[2] * g.lz;
+          }
           for (let d = 0; d < 3; d++) fc[d] = (m * (s.v[3 * i + d] - vold[d])) / dtf - s.f[3 * i + d];
           vir[0] += virialFactor * u[0] * fc[0]; vir[1] += virialFactor * u[1] * fc[1]; vir[2] += virialFactor * u[2] * fc[2];
           vir[3] += virialFactor * u[0] * fc[1]; vir[4] += virialFactor * u[0] * fc[2]; vir[5] += virialFactor * u[1] * fc[2];
@@ -1131,10 +1148,30 @@ export class FixRigid extends Fix {
       this.omegaFromAngmom(b);
       if (this.noSquish) b.conjqm = this.conjqmFromAngmom(b);
     }
+    // native setup_pre_neighbor -> pre_neighbor: the centre of mass remapped into the box (imagebody)
+    this.snapshotImages(true);
     // atom velocities become those of the rigid motion
     this.virial.fill(0);
     this.vAtom.fill(0);
     this.setXV(false, 1);
+  }
+
+  /** The neighbor build of the bodies' nimage. */
+  private nimageBuild = -1;
+
+  /**
+   * nimage = the COM image flags at a neighbor build (native pre_neighbor: "domain->remap(xcm[ibody],imagebody[ibody])"
+   * and image_shift), taken once per build: at the run setup (force) and, during the run, at the first set_v after a
+   * build (the build follows initial_integrate, whose wrap of the centres of mass it sees).
+   */
+  private snapshotImages(force: boolean): void {
+    const nbuild = this.sys.nb.nbuild;
+    if (!force && nbuild === this.nimageBuild) return;
+    for (const b of this.bodies) {
+      if (force) this.wrapCom(b);
+      b.nimage = b.image.slice();
+    }
+    this.nimageBuild = nbuild;
   }
 
   /** The rigid/nve styles integrate with the no-squish splitting (native FixRigidNVE); the others with Richardson. */
@@ -1271,6 +1308,7 @@ export class FixRigid extends Fix {
   finalIntegrate(): void {
     const s = this.sys.state;
     const dtf = 0.5 * s.dt * s.units.ftm2v;
+    this.snapshotImages(false);
     if (!this.early) { this.sumForces(); this.applyLangevin(); }
     for (const b of this.bodies) {
       for (let d = 0; d < 3; d++) {

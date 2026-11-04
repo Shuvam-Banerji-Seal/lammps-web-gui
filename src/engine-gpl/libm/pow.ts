@@ -300,49 +300,69 @@ const powExact = (ixHi: number, ixLo: number, y: number, signBias: number): numb
 };
 
 /**
+ * powFast's log_inline results (lh, ltail and the bound dev) of the last two |x|, with those |x| in LOGX (NaN: empty).
+ * The results depend on x alone, so a kept one is the one the computation would give again.
+ */
+const LOGX = new Float64Array([NaN, NaN]);
+const LOGV = new Float64Array(6);
+let logSlot = 0;
+
+/**
  * The fast path of pow for x > 0 normal (ix with the sign cleared) and y in the main range, in one function so nothing
  * is boxed between steps (see the header for the reasoning; the fused steps are inlined copies of fmaF).
  */
 const powFast = (ax: number, ixHi: number, ixLo: number, y: number, signBias: number): number => {
-  // log_inline: x = 2^k z, z in [OFF, 2 OFF); ax = |x| is normal, so z = ax 2^-k exactly (the same bits as the word edit)
-  const tmpHi = (ixHi - 0x3fe69555) | 0;
-  const li = (tmpHi >>> 13) & 127;
-  const k = tmpHi >> 20;
-  const z = ax * POW2_NEG[k + 1024];
-  const invc = TABL[3 * li], logc = TABL[3 * li + 1], logctail = TABL[3 * li + 2];
-  // z invc - 1 is exactly representable: (pz - 1) is exact (Sterbenz) and adding the product error rounds to it
-  const pz = z * invc;
-  let q1 = SPLIT * z;
-  const qah1 = q1 - (q1 - z), qal1 = z - qah1;
-  // the Veltkamp split of every TABL invc is exact (hi = invc, lo = +0: 26 significant bits or fewer, checked for all 128)
-  const qbh1 = invc, qbl1 = 0;
-  const ez = ((qah1 * qbh1 - pz) + qah1 * qbl1 + qal1 * qbh1) + qal1 * qbl1;
-  const r = (pz - 1.0) + ez;
-  const t1 = k * Ln2hi + logc; // exact product (Ln2hi has 11 trailing zero bits): the same rounding as fused
-  const t2 = t1 + r;
-  const lo1 = k * Ln2lo + logctail;
-  const lo2 = (t1 - t2) + r;
-  const ar = A0 * r;
-  const ar2 = r * ar;
-  const ar3 = r * ar2;
-  const hi = t2 + ar2;
-  let q2 = SPLIT * ar;
-  const qah2 = q2 - (q2 - ar), qal2 = ar - qah2;
-  q2 = SPLIT * r;
-  const qbh2 = q2 - (q2 - r), qbl2 = r - qbh2;
-  const lo3 = ((qah2 * qbh2 - ar2) + qah2 * qbl2 + qal2 * qbh2) + qal2 * qbl2;
-  const lo4 = (t2 - hi) + ar2;
-  const P = (A1 + r * A2) + ar2 * ((A3 + r * A4) + ar2 * (A5 + r * A6));
-  const lo = ar3 * P + (((lo1 + lo2) + lo3) + lo4);
-  // lo differs from the fused lo by a few ulps of its terms at most; 2^-50 of their magnitudes is a generous bound
-  const dev = (Math.abs(ar3) + Math.abs(lo1) + Math.abs(lo2) + Math.abs(lo3) + Math.abs(lo4) + Math.abs(lo))
-    * 8.881784197001252e-16 + 2.6e-26; // 2^-50, 2^-85
-  const lh = hi + lo;
-  // lh = RN(hi + lo) is libm's unless hi + lo lies within dev of a rounding boundary (RN is monotonic)
-  const lbb = lh - hi;
-  const le = (hi - (lh - lbb)) + (lo - lbb);
-  if (lh + (le + dev) !== lh || lh + (le - dev) !== lh) return powExact(ixHi, ixLo, y, signBias);
-  const ltail = (hi - lh) + lo;
+  // log_inline: the last two |x| keep their results (the same x gives the same bits, and the styles often take two
+  // powers of one x in a row, as ReaxFF's pow(r, p) and pow(r, p - 2))
+  let lh: number, ltail: number, dev: number;
+  if (ax === LOGX[0]) {
+    lh = LOGV[0]; ltail = LOGV[1]; dev = LOGV[2];
+  } else if (ax === LOGX[1]) {
+    lh = LOGV[3]; ltail = LOGV[4]; dev = LOGV[5];
+  } else {
+    // log_inline: x = 2^k z, z in [OFF, 2 OFF); ax = |x| is normal, so z = ax 2^-k exactly (the same bits as the word edit)
+    const tmpHi = (ixHi - 0x3fe69555) | 0;
+    const li = (tmpHi >>> 13) & 127;
+    const k = tmpHi >> 20;
+    const z = ax * POW2_NEG[k + 1024];
+    const invc = TABL[3 * li], logc = TABL[3 * li + 1], logctail = TABL[3 * li + 2];
+    // z invc - 1 is exactly representable: (pz - 1) is exact (Sterbenz) and adding the product error rounds to it
+    const pz = z * invc;
+    let q1 = SPLIT * z;
+    const qah1 = q1 - (q1 - z), qal1 = z - qah1;
+    // the Veltkamp split of every TABL invc is exact (hi = invc, lo = +0: 26 significant bits or fewer, checked for all 128)
+    const qbh1 = invc, qbl1 = 0;
+    const ez = ((qah1 * qbh1 - pz) + qah1 * qbl1 + qal1 * qbh1) + qal1 * qbl1;
+    const r = (pz - 1.0) + ez;
+    const t1 = k * Ln2hi + logc; // exact product (Ln2hi has 11 trailing zero bits): the same rounding as fused
+    const t2 = t1 + r;
+    const lo1 = k * Ln2lo + logctail;
+    const lo2 = (t1 - t2) + r;
+    const ar = A0 * r;
+    const ar2 = r * ar;
+    const ar3 = r * ar2;
+    const hi = t2 + ar2;
+    let q2 = SPLIT * ar;
+    const qah2 = q2 - (q2 - ar), qal2 = ar - qah2;
+    q2 = SPLIT * r;
+    const qbh2 = q2 - (q2 - r), qbl2 = r - qbh2;
+    const lo3 = ((qah2 * qbh2 - ar2) + qah2 * qbl2 + qal2 * qbh2) + qal2 * qbl2;
+    const lo4 = (t2 - hi) + ar2;
+    const P = (A1 + r * A2) + ar2 * ((A3 + r * A4) + ar2 * (A5 + r * A6));
+    const lo = ar3 * P + (((lo1 + lo2) + lo3) + lo4);
+    // lo differs from the fused lo by a few ulps of its terms at most; 2^-50 of their magnitudes is a generous bound
+    dev = (Math.abs(ar3) + Math.abs(lo1) + Math.abs(lo2) + Math.abs(lo3) + Math.abs(lo4) + Math.abs(lo))
+      * 8.881784197001252e-16 + 2.6e-26; // 2^-50, 2^-85
+    lh = hi + lo;
+    // lh = RN(hi + lo) is libm's unless hi + lo lies within dev of a rounding boundary (RN is monotonic)
+    const lbb = lh - hi;
+    const le = (hi - (lh - lbb)) + (lo - lbb);
+    if (lh + (le + dev) !== lh || lh + (le - dev) !== lh) return powExact(ixHi, ixLo, y, signBias);
+    ltail = (hi - lh) + lo;
+    const o = 3 * logSlot;
+    LOGX[logSlot] = ax; LOGV[o] = lh; LOGV[o + 1] = ltail; LOGV[o + 2] = dev;
+    logSlot ^= 1;
+  }
   // ehi = y lh (the same product as libm), elo = y ltail + (y lh - ehi)
   const ehi = y * lh;
   const yl = y * ltail;

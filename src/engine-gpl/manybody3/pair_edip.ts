@@ -132,55 +132,59 @@ const tally3 = (
   tallyTriplet(pc, i, j, k, fj, fk, drji, drki);
 };
 
-/** The coordination fc(r) and its derivative of edip/multi (pair_edip_multi.cpp edip_fc). */
-const edipFc = (r: number, p: EdipParam): [number, number] => {
+/** The results of the edip/multi functions below (two or three values; read before the next call). */
+const OUT = new Float64Array(3);
+
+/** The coordination fc(r) and its derivative of edip/multi (pair_edip_multi.cpp edip_fc), into OUT. */
+const edipFc = (r: number, p: EdipParam): void => {
   const a = p.cutoffA, c = p.cutoffC, alpha = p.alpha;
-  if (r < c + 1e-6) return [1.0, 0.0];
-  if (r > a - 1e-6) return [0.0, 0.0];
+  if (r < c + 1e-6) { OUT[0] = 1.0; OUT[1] = 0.0; return; }
+  if (r > a - 1e-6) { OUT[0] = 0.0; OUT[1] = 0.0; return; }
   const x = (a - c) / (r - c);
   const v1 = x * x * x;
   const v2 = 1.0 / (1.0 - v1);
   const f = exp(alpha * v2);
   const fdr = (3.0 * x * v1 / (a - c)) * (-alpha * v2 * v2) * f;
-  return [f, fdr];
+  OUT[0] = f; OUT[1] = fdr;
 };
 
-/** edip_fcut2 of edip/multi: the two-body cutoff exp(sigma/(r - a)). */
-const edipFcut2 = (r: number, p: EdipParam): [number, number] => {
+/** edip_fcut2 of edip/multi: the two-body cutoff exp(sigma/(r - a)), into OUT. */
+const edipFcut2 = (r: number, p: EdipParam): void => {
   const sigma = p.sigma, a = p.cutoffA;
-  if (r > a - 1e-6) return [0.0, 0.0];
+  if (r > a - 1e-6) { OUT[0] = 0.0; OUT[1] = 0.0; return; }
   const v1 = 1.0 / (r - a);
   const f = exp(sigma * v1);
   const fdr = (-sigma * v1 * v1) * f;
-  return [f, fdr];
+  OUT[0] = f; OUT[1] = fdr;
 };
 
-/** edip_fcut3 of edip/multi: the three-body cutoff exp(gamma/(r - a)). */
-const edipFcut3 = (r: number, p: EdipParam): [number, number] => {
+/** edip_fcut3 of edip/multi: the three-body cutoff exp(gamma/(r - a)), into OUT. */
+const edipFcut3 = (r: number, p: EdipParam): void => {
   const gamma = p.gamma, a = p.cutoffA;
-  if (r > a - 1e-6) return [0.0, 0.0];
+  if (r > a - 1e-6) { OUT[0] = 0.0; OUT[1] = 0.0; return; }
   const v1 = 1.0 / (r - a);
   const f = exp(gamma * v1);
   const fdr = (-gamma * v1 * v1) * f;
-  return [f, fdr];
+  OUT[0] = f; OUT[1] = fdr;
 };
 
-/** edip_tau of edip/multi: tau(Z) and its derivative. */
-const edipTau = (z: number, p: EdipParam): [number, number] => {
+/** edip_tau of edip/multi: tau(Z) and its derivative, into OUT. */
+const edipTau = (z: number, p: EdipParam): void => {
   const { u1, u2, u3, u4 } = p;
   const v1 = exp(-u4 * z);
   const v2 = exp(-2.0 * u4 * z);
   const f = u1 + u2 * u3 * v1 - u2 * v2;
   const fdZ = -u2 * u3 * u4 * v1 + 2.0 * u2 * u4 * v2;
-  return [f, fdZ];
+  OUT[0] = f; OUT[1] = fdZ;
 };
 
-/** edip_h of edip/multi: h(l, Z) and its derivatives in l and Z. */
-const edipH = (l: number, z: number, p: EdipParam): [number, number, number] => {
+/** edip_h of edip/multi: h(l, Z) and its derivatives in l and Z, into OUT. */
+const edipH = (l: number, z: number, p: EdipParam): void => {
   const { lambda, eta, Q0, mu } = p;
   const Q = Q0 * exp(-mu * z);
   const QdZ = -mu * Q;
-  const [Tau, TaudZ] = edipTau(z, p);
+  edipTau(z, p);
+  const Tau = OUT[0], TaudZ = OUT[1];
   const v1 = (l + Tau) * (l + Tau);
   const u2 = Q * v1;
   const v2 = exp(-u2);
@@ -190,31 +194,39 @@ const edipH = (l: number, z: number, p: EdipParam): [number, number, number] => 
   const fdl = v3 * du2l;
   const du2Z = QdZ * v1 + Q * 2 * (l + Tau) * TaudZ;
   const fdZ = v3 * du2Z;
-  return [f, fdl, fdZ];
+  OUT[0] = f; OUT[1] = fdl; OUT[2] = fdZ;
 };
 
-/** edip_pair of edip/multi: V_ij(r, Z) and its derivatives in r and Z. */
-const edipPair = (r: number, z: number, p: EdipParam): [number, number, number] => {
+/** edip_pair of edip/multi: V_ij(r, Z) and its derivatives in r and Z, into OUT. */
+const edipPair = (r: number, z: number, p: EdipParam): void => {
   const { A, B, rho, beta } = p;
   const v1 = pow(B / r, rho);
   const v2 = exp(-beta * z * z);
-  const [v3, v4] = edipFcut2(r, p);
+  edipFcut2(r, p);
+  const v3 = OUT[0], v4 = OUT[1];
   const eng = A * (v1 - v2) * v3;
   const fdr = A * (v1 - v2) * v4 + A * (-rho * v1 / r) * v3;
   const fZ = A * (2 * beta * z * v2) * v3;
-  return [eng, fdr, fZ];
+  OUT[0] = eng; OUT[1] = fdr; OUT[2] = fZ;
 };
 
-/** costheta_d of edip/multi: the derivatives of cos(theta_jik) with respect to the three positions. */
-const costhetaD = (drij: number[], rij: number, drik: number[], rik: number): { dri: number[]; drj: number[]; drk: number[] } => {
+/** Scratch vectors of the edip/multi three-body loop (one triplet at a time). */
+const DRIJ = new Float64Array(3), DRIK = new Float64Array(3), DRJ = new Float64Array(3), DRK = new Float64Array(3);
+const FIJ = new Float64Array(3), FIK = new Float64Array(3);
+
+/**
+ * costheta_d of edip/multi: the derivatives of cos(theta_jik) with respect to the positions of j and k, into drj and drk
+ * (the derivative for i, -drj - drk, is not used by compute).
+ */
+const costhetaD = (drij: Float64Array, rij: number, drik: Float64Array, rik: number, drj: Float64Array, drk: Float64Array): void => {
   const costheta = (drij[0] * drik[0] + drij[1] * drik[1] + drij[2] * drik[2]) / rij / rik;
   const s1 = 1 / rij / rik;
   const s2 = -costheta / rij / rij;
   const s3 = -costheta / rik / rik;
-  const drj = [0, 1, 2].map((c) => s1 * drik[c] + s2 * drij[c]);
-  const drk = [0, 1, 2].map((c) => s1 * drij[c] + s3 * drik[c]);
-  const dri = [0, 1, 2].map((c) => -1 * drj[c] + -1 * drk[c]);
-  return { dri, drj, drk };
+  for (let c = 0; c < 3; c++) {
+    drj[c] = s1 * drik[c] + s2 * drij[c];
+    drk[c] = s1 * drij[c] + s3 * drik[c];
+  }
 };
 
 /** The reading and set-up shared by edip and edip/multi. */
@@ -558,11 +570,12 @@ export class PairEDIPMulti extends EdipBase {
     const nel = C.elements.length;
     const { params, elem3param, elemOf } = C;
     const P = (i: number, j: number, k: number): EdipParam => params[elem3param[(i * nel + j) * nel + k]];
-    const preFC: number[][] = [];
+    // the coordination terms of atom i: (dzetair, delx, dely, delz, j) per partner past cutoffC
+    let preFC = new Float64Array(5 * 64);
 
     for (let i = 0; i < nlocal; i++) {
       let zeta_i = 0.0;
-      preFC.length = 0;
+      let nfc = 0;
       const itype = elemOf[type[i]];
       const xtmp = x[3 * i], ytmp = x[3 * i + 1], ztmp = x[3 * i + 2];
       const k0 = list.firstneigh[i], jnum = list.numneigh[i];
@@ -579,10 +592,13 @@ export class PairEDIPMulti extends EdipBase {
         if (r < param.cutoffC) {
           zeta_i += 1.0;
         } else {
-          const [fz, fdr] = edipFc(r, param);
+          edipFc(r, param);
+          const fz = OUT[0], fdr = OUT[1];
           zeta_i += fz;
           const dzetair = -fdr / r;
-          preFC.push([dzetair, delx, dely, delz, j]);
+          if (5 * (nfc + 1) > preFC.length) { const g = new Float64Array(2 * preFC.length); g.set(preFC); preFC = g; }
+          const q = 5 * nfc++;
+          preFC[q] = dzetair; preFC[q + 1] = delx; preFC[q + 2] = dely; preFC[q + 3] = delz; preFC[q + 4] = j;
         }
       }
 
@@ -591,13 +607,15 @@ export class PairEDIPMulti extends EdipBase {
       // two-body and three-body terms
       for (let nj = 0; nj < jnum; nj++) {
         const j = nb[k0 + nj] & NEIGHMASK;
-        const dr_ij = [x[3 * j] - xtmp, x[3 * j + 1] - ytmp, x[3 * j + 2] - ztmp];
+        const dr_ij = DRIJ;
+        dr_ij[0] = x[3 * j] - xtmp; dr_ij[1] = x[3 * j + 1] - ytmp; dr_ij[2] = x[3 * j + 2] - ztmp;
         const r2 = dr_ij[0] * dr_ij[0] + dr_ij[1] * dr_ij[1] + dr_ij[2] * dr_ij[2];
         const jtype = elemOf[type[j]];
         const ijparam = elem3param[(itype * nel + jtype) * nel + jtype];
         if (r2 > params[ijparam].cutsq) continue;
         const r_ij = Math.sqrt(r2);
-        const [evdwl, fdr, fdZ] = edipPair(r_ij, zeta_i, params[ijparam]);
+        edipPair(r_ij, zeta_i, params[ijparam]);
+        const evdwl = OUT[0], fdr = OUT[1], fdZ = OUT[2];
         const fpair = -fdr / r_ij;
         dpairZ += fdZ;
         for (let c = 0; c < 3; c++) {
@@ -611,19 +629,24 @@ export class PairEDIPMulti extends EdipBase {
           const ktype = elemOf[type[k]];
           const ikparam = elem3param[(itype * nel + ktype) * nel + ktype];
           const ijkparam = elem3param[(itype * nel + jtype) * nel + ktype];
-          const dr_ik = [x[3 * k] - xtmp, x[3 * k + 1] - ytmp, x[3 * k + 2] - ztmp];
+          const dr_ik = DRIK;
+          dr_ik[0] = x[3 * k] - xtmp; dr_ik[1] = x[3 * k + 1] - ytmp; dr_ik[2] = x[3 * k + 2] - ztmp;
           const r_ik2 = dr_ik[0] * dr_ik[0] + dr_ik[1] * dr_ik[1] + dr_ik[2] * dr_ik[2];
           if (r_ik2 > params[ikparam].cutsq) continue;
           const r_ik = Math.sqrt(r_ik2);
           const costheta = (dr_ij[0] * dr_ik[0] + dr_ij[1] * dr_ik[1] + dr_ij[2] * dr_ik[2]) / r_ij / r_ik;
-          const [v1, v2] = edipFcut3(r_ij, params[ijparam]);
-          const [v3, v4] = edipFcut3(r_ik, params[ikparam]);
-          const [v5, v6, v7] = edipH(costheta, zeta_i, params[ijkparam]);
+          edipFcut3(r_ij, params[ijparam]);
+          const v1 = OUT[0], v2 = OUT[1];
+          edipFcut3(r_ik, params[ikparam]);
+          const v3 = OUT[0], v4 = OUT[1];
+          edipH(costheta, zeta_i, params[ijkparam]);
+          const v5 = OUT[0], v6 = OUT[1], v7 = OUT[2];
           const e3 = v1 * v3 * v5;
           dtripleZ += v1 * v3 * v7;
           const dhl = v1 * v3 * v6;
-          const { drj, drk } = costhetaD(dr_ij, r_ij, dr_ik, r_ik);
-          const f_ij = new Float64Array(3), f_ik = new Float64Array(3);
+          const drj = DRJ, drk = DRK;
+          costhetaD(dr_ij, r_ij, dr_ik, r_ik, drj, drk);
+          const f_ij = FIJ, f_ik = FIK;
           for (let c = 0; c < 3; c++) {
             f_ij[c] = -dhl * drj[c];
             f_ik[c] = -dhl * drk[c];
@@ -639,13 +662,14 @@ export class PairEDIPMulti extends EdipBase {
             f[3 * k + c] += f_ik[c];
             f[3 * i + c] -= f_ij[c] + f_ik[c];
           }
-          tally3(pc, i, j, k, e3, f_ij, f_ik, Float64Array.from(dr_ij), Float64Array.from(dr_ik));
+          tally3(pc, i, j, k, e3, f_ij, f_ik, dr_ij, dr_ik);
         }
       }
 
       // forces due to the coordination f(Z)
-      for (const [dzeta0, dlx, dly, dlz, jf] of preFC) {
-        const j = jf;
+      for (let q = 0; q < 5 * nfc; q += 5) {
+        const dzeta0 = preFC[q], dlx = preFC[q + 1], dly = preFC[q + 2], dlz = preFC[q + 3];
+        const j = preFC[q + 4];
         const dzetair = dzeta0 * (dpairZ + dtripleZ);
         f[3 * j] += dzetair * dlx;
         f[3 * j + 1] += dzetair * dly;

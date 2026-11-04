@@ -1,0 +1,28 @@
+# oracle: compute born/matrix numdiff evaluates its 12 strained configurations on the step's neighbor list, as native
+#   LAMMPS does (src/EXTRA-COMPUTE/compute_born_matrix.cpp compute_numdiff at b332f28: displace_atoms of the owned and
+#   ghost atoms in the unchanged box, then update_virial); with neighbor skin 0 a rebuilt list adds or drops the pairs
+#   that the strain carries across the cutoff, and their force jump over 2 delta enters the Born terms. The running
+#   averages of fix ave/time over c_born (examples/ELASTIC_T/BORN_MATRIX/Argon/Numdiff, shortened) show it.
+# oracle-compare: thermo=all rel=1e-7 abs=1e-8
+units           real
+atom_style      atomic
+lattice         fcc 5.405
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            * 39.948
+velocity        all create 60.0 87287 loop geom
+velocity        all zero linear
+pair_style      lj/cut 9.0
+pair_coeff      1 1 0.238067 3.405
+neighbor        0.0 bin
+neigh_modify    every 1 delay 0 check no
+timestep        2.0
+compute         VIR all pressure NULL virial
+compute         born all born/matrix numdiff 1e-6 VIR
+fix             CB all ave/time 1 50 50 c_born[*] ave running
+fix             1 all nvt temp 60.0 60.0 100
+thermo_style    custom step temp press c_born[1] f_CB[1] c_born[4] f_CB[4] f_CB[7] f_CB[12] f_CB[21]
+thermo_modify   format float %.15g
+thermo          50
+run             300

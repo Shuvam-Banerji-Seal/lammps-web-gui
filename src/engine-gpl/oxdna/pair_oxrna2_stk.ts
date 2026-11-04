@@ -158,6 +158,8 @@ export class PairOxrna2Stk extends Pair {
     const { x, f, type } = pc;
     const nt = this.nt;
     const TT = this.t;
+    // the coefficient tables, read once (the table object holds them by name)
+    const { a: TT_a, a1: TT_a1, a10: TT_a10, a2: TT_a2, a5: TT_a5, a6: TT_a6, a9: TT_a9, b1: TT_b1, b10: TT_b10, b2: TT_b2, b5: TT_b5, b6: TT_b6, b9: TT_b9, bhi: TT_bhi, blo: TT_blo, cos1ast: TT_cos1ast, cos1c: TT_cos1c, cos2ast: TT_cos2ast, cos2c: TT_cos2c, cut0: TT_cut0, cuthc: TT_cuthc, cuthi: TT_cuthi, cutlc: TT_cutlc, cutlo: TT_cutlo, dth10ast: TT_dth10ast, dth10c: TT_dth10c, dth5ast: TT_dth5ast, dth5c: TT_dth5c, dth6ast: TT_dth6ast, dth6c: TT_dth6c, dth9ast: TT_dth9ast, dth9c: TT_dth9c, eps: TT_eps, shift: TT_shift, th10: TT_th10, th5: TT_th5, th6: TT_th6, th9: TT_th9 } = TT;
     const constants = oxdnaConstants(s.units.style);
     const dxCbk = constants.dx_cbk_oxdna1, dzCbk = constants.dz_cbk_oxrna2;
     const dx3p = constants.dx_cstk_3p_oxrna2, dy3p = constants.dy_cstk_3p_oxrna2;
@@ -214,11 +216,11 @@ export class PairOxrna2Stk extends Pair {
       const rinvB = 1.0 / rB;
       for (let c = 0; c < 3; c++) drbn[c] = drb[c] * rinvB;
       const ij = atype * nt + btype;
-      const f1 = F1(rS, TT.eps[ij], TT.a[ij], TT.cut0[ij], TT.cutlc[ij], TT.cuthc[ij], TT.cutlo[ij], TT.cuthi[ij], TT.blo[ij], TT.bhi[ij], TT.shift[ij]);
+      const f1 = F1(rS, TT_eps[ij], TT_a[ij], TT_cut0[ij], TT_cutlc[ij], TT_cuthc[ij], TT_cutlo[ij], TT_cuthi[ij], TT_blo[ij], TT_bhi[ij], TT_shift[ij]);
       if (f1 === 0.0) continue;
       const cost5p = clamp(dot(drsn, bz));
       const theta5p = libmAcos(cost5p);
-      const f4t5 = F4(theta5p, TT.a5[ij], TT.th5[ij], TT.dth5ast[ij], TT.b5[ij], TT.dth5c[ij]);
+      const f4t5 = F4(theta5p, TT_a5[ij], TT_th5[ij], TT_dth5ast[ij], TT_b5[ij], TT_dth5c[ij]);
       if (f4t5 === 0.0) continue;
       const cost6p = clamp(dot(drsn, az));
       const theta6p = libmAcos(cost6p);
@@ -232,20 +234,20 @@ export class PairOxrna2Stk extends Pair {
       const theta10 = libmAcos(cost10);
       const cosphi1 = clamp(dot(drbn, by));
       const cosphi2 = clamp(dot(drbn, ay));
-      const f4t6 = F4(theta6p, TT.a6[ij], TT.th6[ij], TT.dth6ast[ij], TT.b6[ij], TT.dth6c[ij]);
-      const f4t9 = F4(theta9, TT.a9[ij], TT.th9[ij], TT.dth9ast[ij], TT.b9[ij], TT.dth9c[ij]);
-      const f4t10 = F4(theta10, TT.a10[ij], TT.th10[ij], TT.dth10ast[ij], TT.b10[ij], TT.dth10c[ij]);
-      const f5c1 = F5(-cosphi1, TT.a1[ij], -TT.cos1ast[ij], TT.b1[ij], -TT.cos1c[ij]);
-      const f5c2 = F5(-cosphi2, TT.a2[ij], -TT.cos2ast[ij], TT.b2[ij], -TT.cos2c[ij]);
+      const f4t6 = F4(theta6p, TT_a6[ij], TT_th6[ij], TT_dth6ast[ij], TT_b6[ij], TT_dth6c[ij]);
+      const f4t9 = F4(theta9, TT_a9[ij], TT_th9[ij], TT_dth9ast[ij], TT_b9[ij], TT_dth9c[ij]);
+      const f4t10 = F4(theta10, TT_a10[ij], TT_th10[ij], TT_dth10ast[ij], TT_b10[ij], TT_dth10c[ij]);
+      const f5c1 = F5(-cosphi1, TT_a1[ij], -TT_cos1ast[ij], TT_b1[ij], -TT_cos1c[ij]);
+      const f5c2 = F5(-cosphi2, TT_a2[ij], -TT_cos2ast[ij], TT_b2[ij], -TT_cos2c[ij]);
       const e = f1 * f4t5 * f4t6 * f4t9 * f4t10 * f5c1 * f5c2;
       if (e === 0.0) continue;
-      const df1 = DF1(rS, TT.eps[ij], TT.a[ij], TT.cut0[ij], TT.cutlc[ij], TT.cuthc[ij], TT.cutlo[ij], TT.cuthi[ij], TT.blo[ij], TT.bhi[ij]);
-      const df4t5 = DF4(theta5p, TT.a5[ij], TT.th5[ij], TT.dth5ast[ij], TT.b5[ij], TT.dth5c[ij]) / libmSin(theta5p);
-      const df4t6 = DF4(theta6p, TT.a6[ij], TT.th6[ij], TT.dth6ast[ij], TT.b6[ij], TT.dth6c[ij]) / libmSin(theta6p);
-      const df4t9 = DF4(theta9, TT.a9[ij], TT.th9[ij], TT.dth9ast[ij], TT.b9[ij], TT.dth9c[ij]) / libmSin(theta9);
-      const df4t10 = DF4(theta10, TT.a10[ij], TT.th10[ij], TT.dth10ast[ij], TT.b10[ij], TT.dth10c[ij]) / libmSin(theta10);
-      const df5c1 = DF5(-cosphi1, TT.a1[ij], -TT.cos1ast[ij], TT.b1[ij], -TT.cos1c[ij]);
-      const df5c2 = DF5(-cosphi2, TT.a2[ij], -TT.cos2ast[ij], TT.b2[ij], -TT.cos2c[ij]);
+      const df1 = DF1(rS, TT_eps[ij], TT_a[ij], TT_cut0[ij], TT_cutlc[ij], TT_cuthc[ij], TT_cutlo[ij], TT_cuthi[ij], TT_blo[ij], TT_bhi[ij]);
+      const df4t5 = DF4(theta5p, TT_a5[ij], TT_th5[ij], TT_dth5ast[ij], TT_b5[ij], TT_dth5c[ij]) / libmSin(theta5p);
+      const df4t6 = DF4(theta6p, TT_a6[ij], TT_th6[ij], TT_dth6ast[ij], TT_b6[ij], TT_dth6c[ij]) / libmSin(theta6p);
+      const df4t9 = DF4(theta9, TT_a9[ij], TT_th9[ij], TT_dth9ast[ij], TT_b9[ij], TT_dth9c[ij]) / libmSin(theta9);
+      const df4t10 = DF4(theta10, TT_a10[ij], TT_th10[ij], TT_dth10ast[ij], TT_b10[ij], TT_dth10c[ij]) / libmSin(theta10);
+      const df5c1 = DF5(-cosphi1, TT_a1[ij], -TT_cos1ast[ij], TT_b1[ij], -TT_cos1c[ij]);
+      const df5c2 = DF5(-cosphi2, TT_a2[ij], -TT_cos2ast[ij], TT_b2[ij], -TT_cos2c[ij]);
       // radial force along the stacking vector, then the angles 5' and 6' (the stacking sites)
       delf[0] = 0.0; delf[1] = 0.0; delf[2] = 0.0;
       delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;

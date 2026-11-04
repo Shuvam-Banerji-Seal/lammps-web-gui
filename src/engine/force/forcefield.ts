@@ -4,7 +4,7 @@ import type { ThreadSkip } from '../cpu/pairThreads';
 import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, SpecialSettings } from '../neighbor';
-import { buildAtomMap, buildSpecial, filterTopo, hasCharge, type SpecialList, APIP_F_CONST_LAMBDA, APIP_F_DYN_LAMBDA, APIP_LAMBDA_REQUIRED } from '../atoms';
+import { buildAtomMap, buildSpecial, dropTopoType, filterTopo, hasCharge, removeSpecial12, type SpecialList, APIP_F_CONST_LAMBDA, APIP_F_DYN_LAMBDA, APIP_LAMBDA_REQUIRED } from '../atoms';
 import { BOND_REMOVED, clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type PairKernels, type StyleContext } from './types';
 import { PairHybrid } from './pair/hybrid';
 import { checkKspacePair } from './kspaceCheck';
@@ -401,7 +401,9 @@ export class ForceField {
    */
   private breakSpecialPairs(s: SimState, nb: Neighbor, pairs: readonly number[]): void {
     if (!this.specialList || pairs.length === 0) return;
-    this.specialList = this.buildSpecialList(s);
+    // the list without the broken pairs' entries is the rebuilt list when it holds one entry per bond (unique12)
+    const edited = this.specialStale ? null : removeSpecial12(this.specialList, s, pairs, this.map);
+    this.specialList = edited ?? this.buildSpecialList(s);
     nb.deferSpecial(this.specialList);
     nb.clearSpecialPairs(s, pairs, this.map);
   }
@@ -515,7 +517,7 @@ export class ForceField {
       // bpm bonds that broke this step (type set to 0): their 1-2 special entries go, so the next neighbor build uses the new lists
       if (this.bond?.takeTopologyChange?.()) {
         // bonds a style deleted (BOND_REMOVED) leave the topology (native removes them from the atoms' bond lists)
-        filterTopo(s.topo.bonds, (_ids, type) => type !== BOND_REMOVED);
+        dropTopoType(s.topo.bonds, BOND_REMOVED);
         const pairs = this.bond.takeBrokenPairs?.() ?? null;
         if (pairs && this.updatesSpecialInPlace()) this.breakSpecialPairs(s, nb, pairs);
         else this.topologyChanged(s, nb);

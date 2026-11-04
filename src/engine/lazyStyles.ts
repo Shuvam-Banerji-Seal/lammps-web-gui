@@ -108,6 +108,8 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'adapt_pairs', names: { HOOKS: ['adapt'] }, load: () => import('./registry/adapt_pairs') as Promise<StyleModule> },
   // loaded by the word image (dump/write_dump ... image); its createDump joins gpl_graphics' shading helpers in that slot
   { id: 'dump_image', names: { HOOKS: ['image'] }, load: () => import('./registry/dump_image') as Promise<StyleModule> },
+  // loaded by the words restart, write_restart and read_restart: the restart file writer and reader of the core
+  { id: 'restart_text', names: { HOOKS: ['restart', 'write_restart', 'read_restart'] }, load: () => import('./registry/restart_text') as Promise<StyleModule> },
   { id: 'pair_meam_spline', names: { PAIRS: ['meam/spline', 'meam/sw/spline'] }, load: () => import('./registry/pair_meam_spline') as Promise<StyleModule> },
   { id: 'pair_snap', names: { PAIRS: ['snap'] }, load: () => import('./registry/pair_snap') as Promise<StyleModule> },
   { id: 'compute_sna', names: { COMPUTES: ['sna/atom', 'snad/atom', 'snav/atom'] }, load: () => import('./registry/compute_sna') as Promise<StyleModule> },

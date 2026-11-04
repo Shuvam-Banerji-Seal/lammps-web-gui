@@ -2,7 +2,8 @@ import type { Handler } from './args';
 import { initializing, inumeric, missingArgs } from './args';
 import { StyleError } from '../force/types';
 import { setProcGrid } from '../procGrid';
-import { writeRestartText, readRestartText } from '../output/restart';
+import { gplHook } from '../gplHooks';
+import type { RestartText } from '../registry/restart_text';
 import type { System } from '../system';
 
 /** The file name with its (first) '*' wildcard replaced by text. */
@@ -94,7 +95,8 @@ const writeRestart: Handler = ({ sys }, a) => {
   sys.bump();
   sys.forces();
   const name = expandStar(file, sys.state.step);
-  sys.writeFile(name, writeRestartText(sys), false);
+  // the writer is loaded on first use (lazyStyles.ts group restart_text, slot write_restart)
+  sys.writeFile(name, gplHook<RestartText>('write_restart').write(sys), false);
   sys.log(`Wrote restart file ${name} at step ${sys.state.step}`);
 };
 
@@ -125,7 +127,7 @@ const readRestart: Handler = ({ sys }, a) => {
   }
   if (file.endsWith('.mpiio')) throw new StyleError(`read_restart ${file}: MPI-IO restart files are not supported by the browser engine`);
   const name = file.includes('*') ? latestMatch(sys, file) : file;
-  readRestartText(sys, sys.readFile(name, 'Cannot open restart file'), name);
+  gplHook<RestartText>('read_restart').read(sys, sys.readFile(name, 'Cannot open restart file'), name);
   // native read_restart: comm->set_proc_grid() once the header has set the box (src/read_restart.cpp at b332f28)
   setProcGrid(sys.procGrid);
 };
@@ -210,7 +212,8 @@ export const writeRestarts = (sys: System, step: number, force = false): void =>
     let name: string;
     if (r.mode === 'single') name = r.files[0].includes('*') ? fillWildcard(r.files[0], String(step)) : `${r.files[0]}.${step}`;
     else { name = r.files[r.flip]; r.flip = 1 - r.flip; }
-    sys.writeFile(name, writeRestartText(sys), false);
+    // a schedule exists only after a restart command, which loaded the writer (slot restart)
+    sys.writeFile(name, gplHook<RestartText>('restart').write(sys), false);
     if (r.everyVar !== null && due) r.next = nextVarStep(sys, r.everyVar);
   }
 };

@@ -108,6 +108,8 @@ export class System {
   frameVelocities = false;
   /** The per-atom masses last sent with a frame; a frame repeats them only when they change (or at a run's start). */
   frameMassSent: Float64Array | null = null;
+  /** The bond pairs (atom IDs) the last frame sent (emitFrame); null: the next frame sends them. */
+  frameBondsSent: Int32Array | null = null;
   // ---- settings that precede the box
   units: UnitSystem = UNIT_SYSTEMS.lj;
   dimension: 2 | 3 = 3;

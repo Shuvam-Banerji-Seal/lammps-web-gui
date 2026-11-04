@@ -131,6 +131,7 @@ export class EngineHost {
           const transfer = [event.x.buffer, event.image.buffer, event.type.buffer, event.id.buffer];
           if (event.v) transfer.push(event.v.buffer);
           if (event.mass) transfer.push(event.mass.buffer);
+          if (event.bonds) transfer.push(event.bonds.buffer);
           this.post({ type: 'event', id: this.current, event }, transfer);
         } else {
           this.post({ type: 'event', id: this.current, event });

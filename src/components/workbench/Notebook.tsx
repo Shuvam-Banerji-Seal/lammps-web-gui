@@ -18,7 +18,7 @@ import type { VisualizationConfig } from '../../types';
 import { EngineClient } from '../../engine/client';
 import type { BackendChoice, FromEngine } from '../../engine/protocol';
 import type { EngineEvent, ThermoKeyword, ThermoRow } from '../../engine/types';
-import { frameToMoleculeData, typeColors, type FrameEvent } from '../../engine/view';
+import { frameToMoleculeData, typeColors, typicalBondLength, type FrameEvent } from '../../engine/view';
 import { filesReadBy, formatNumber } from '../../engine/script';
 import { useInputFiles, type ImportSource } from './notebook/useInputFiles';
 import { useFullscreen } from './notebook/useFullscreen';
@@ -154,6 +154,8 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const [ready, setReady] = useState<Extract<FromEngine, { type: 'ready' }> | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [frame, setFrame] = useState<FrameEvent | null>(null);
+  /** The bonds of the last engine frame that sent them: a frame repeats them only when the topology changes. */
+  const liveBonds = useRef<Int32Array | null>(null);
   /** Engine frames kept during runs (cleared on reset), the recorded frame shown (null = the live frame), view settings. */
   const [traj] = useState(() => new TrajectoryBuffer());
   const [trajVersion, setTrajVersion] = useState(0);
@@ -216,6 +218,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const resetSession = useCallback(async (choice: BackendChoice, nThreads: number) => {
     setReady(null);
     setFrame(null);
+    liveBonds.current = null;
     traj.clear();
     renderBackup.current = null;
     setRenderSource(null);
@@ -309,7 +312,8 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           break;
         case 'frame':
           traj.append(ev);
-          showFrame(ev);
+          if (ev.bonds) liveBonds.current = ev.bonds.length ? ev.bonds : null;
+          showFrame(ev.bonds || !liveBonds.current ? ev : { ...ev, bonds: liveBonds.current });
           break;
         case 'run':
           setRunSpan({ cell: cell.id, from: ev.from, to: ev.to });
@@ -451,7 +455,14 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     const dims = hi[2] - lo[2] > 0 && shownFrame.x.some((_, k) => k % 3 === 2 && shownFrame.x[k] !== 0) ? 3 : 2;
     const vol = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (dims === 3 ? hi[2] - lo[2] : 1);
     const spacing = Math.pow(vol / Math.max(1, data.atoms.length), 1 / dims);
-    return { ...vizConfig(spacing * atomRadius, Math.max(1, ...Object.keys(data.atomTypes).map(Number)), isDarkTheme(theme)), showBox };
+    const base = vizConfig(spacing * atomRadius, Math.max(1, ...Object.keys(data.atomTypes).map(Number)), isDarkTheme(theme));
+    // a bonded system: the balls are sized from the typical bond length (radius about a quarter of it), so the bonds
+    // show between them, and the sticks scale with it (0.12 * bondScale is the stick radius)
+    const bondLen = shownFrame.bonds && data.bonds.length ? typicalBondLength(shownFrame, shownFrame.bonds) : null;
+    if (bondLen !== null) {
+      return { ...base, atomScale: Math.min(spacing, 0.55 * bondLen) * atomRadius, bondScale: bondLen / 1.5, showBonds: true, showBox };
+    }
+    return { ...base, showBox };
   }, [shownFrame, data, theme, atomRadius, showBox]);
 
   /** The thermo tables of every cell, in cell order, for the graphs and statistics; the ensemble comes from the cell's fixes. */

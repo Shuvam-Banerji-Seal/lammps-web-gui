@@ -316,6 +316,10 @@ export type EngineEvent =
    * v holds the velocities (3 per atom, the same order as x, length units per time unit as the units style),
    * mass the mass of each atom (1 per atom, same order). Both absent otherwise.
    */
-  | { kind: 'frame'; step: number; x: Float64Array; image: Int32Array; type: Int32Array; id: Int32Array; box: SimBox; v?: Float64Array; mass?: Float64Array }
+  /**
+   * bonds: the atom ID pairs of the bonds (a1 b1 a2 b2 ..., bonds of type > 0), sent with the first frame of a run and then
+   * only when the topology changed; a frame without it keeps the last bonds received.
+   */
+  | { kind: 'frame'; step: number; x: Float64Array; image: Int32Array; type: Int32Array; id: Int32Array; box: SimBox; v?: Float64Array; mass?: Float64Array; bonds?: Int32Array }
   | { kind: 'error'; message: string; line: number; command: string }
   | { kind: 'done'; steps: number; seconds: number; backend: string };

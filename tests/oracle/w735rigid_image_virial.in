@@ -1,0 +1,25 @@
+# oracle: the constraint-force virial of fix rigid/small unwraps an atom by its image relative to its body's (native
+#   xcmimage, set at the neighbor build: src/RIGID/fix_rigid_small.cpp set_xv, set_v and image_shift at b332f28); at a
+#   run's setup the body forces do not cancel, so a body whose centre of mass has crossed the periodic box gave another
+#   setup virial (examples/ASPHERE/tri/in.tri.srd, second run: press 7.065 instead of 8.047). Dimers cross the box in the
+#   first run; the second run's setup pressure is compared.
+# oracle-inputs: w735rigid_dimer.mol
+# oracle-compare: thermo=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      molecular
+boundary        p p p
+region          box block 0 6 0 6 0 6
+create_box      1 box
+molecule        dimer w735rigid_dimer.mol
+create_atoms    0 random 20 4567 NULL mol dimer 8823 overlap 1.2 maxtry 500
+mass            1 1.0
+velocity        all create 3.0 87287 loop geom
+pair_style      lj/cut 1.5
+pair_coeff      1 1 1.0 1.0 1.5
+neigh_modify    exclude molecule/intra all
+fix             1 all rigid/small molecule
+thermo_style    custom step temp pe press pxx pyy pzz pxy
+thermo_modify   format float %.15g
+thermo          50
+run             200
+run             0

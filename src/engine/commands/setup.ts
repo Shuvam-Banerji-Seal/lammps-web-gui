@@ -1305,10 +1305,25 @@ const createAtoms: Handler = ({ sys }, a) => {
     // an 8 x 7 x 6 box are all inserted by default and 256 with maxtry 10 (the engine's count with 10).
     const maxtry = kw.has('maxtry') ? int(kw.get('maxtry')![0], 'maxtry') : 1000;
     if (maxtry < 1) throw new StyleError(`Illegal create_atoms maxtry value ${maxtry}`);
-    // sample in the region's bounding box clipped to the box, accept points inside both
+    // sample in the region's bounding box clipped to the box, accept points inside both. As native LAMMPS does
+    // (src/create_atoms.cpp add_random at b332f28): the box is domain->boxlo/boxhi, which create_box moved out by SMALL
+    // of the length on a shrink-wrapped face (set_initial_box; sys.initSmall, the lattice window above), the bounding
+    // box of the tilted cell for a triclinic one (boxlo_bound)
     const bb = reg?.bbox();
-    const blo = [0, 1, 2].map((d) => Math.max(box.lo[d] + Math.min(0, d === 0 ? Math.min(box.tilt[0], box.tilt[1], box.tilt[0] + box.tilt[1]) : d === 1 ? box.tilt[2] : 0), bb ? bb.lo[d] : -Infinity));
-    const bhi = [0, 1, 2].map((d) => Math.min(box.hi[d] + Math.max(0, d === 0 ? Math.max(box.tilt[0], box.tilt[1], box.tilt[0] + box.tilt[1]) : d === 1 ? box.tilt[2] : 0), bb ? bb.hi[d] : Infinity));
+    const rLo = [0, 1, 2].map((d) => (sys.initSmall && box.boundary[d][0] === 's' ? box.lo[d] - sys.initSmall[d] : box.lo[d]));
+    const rHi = [0, 1, 2].map((d) => (sys.initSmall && box.boundary[d][1] === 's' ? box.hi[d] + sys.initSmall[d] : box.hi[d]));
+    const blo = [0, 1, 2].map((d) => Math.max(rLo[d] + Math.min(0, d === 0 ? Math.min(box.tilt[0], box.tilt[1], box.tilt[0] + box.tilt[1]) : d === 1 ? box.tilt[2] : 0), bb ? bb.lo[d] : -Infinity));
+    const bhi = [0, 1, 2].map((d) => Math.min(rHi[d] + Math.max(0, d === 0 ? Math.max(box.tilt[0], box.tilt[1], box.tilt[0] + box.tilt[1]) : d === 1 ? box.tilt[2] : 0), bb ? bb.hi[d] : Infinity));
+    // native's box test of a candidate: none for an orthogonal box (the draw is inside), the lamda coordinates of the
+    // (expanded) cell in [0, 1) for a triclinic one
+    const rGeom = box.triclinic ? new Geometry({ ...box, lo: rLo as [number, number, number], hi: rHi as [number, number, number] }) : null;
+    const rLam = [0, 0, 0];
+    const insideRandomBox = (x: number, y: number, z: number): boolean => {
+      if (!rGeom) return true;
+      rGeom.toLamda(x, y, z, rLam);
+      for (let d = 0; d < 3; d++) if (rLam[d] < 0 || rLam[d] >= 1) return false;
+      return true;
+    };
     const existing: number[] = Array.from(s.x.subarray(0, 3 * s.n));
     const tooClose = (p: number[]) => {
       if (overlap <= 0) return false;
@@ -1334,9 +1349,9 @@ const createAtoms: Handler = ({ sys }, a) => {
           const u = rng.uniform();
           return d === 2 && sys.dimension === 2 ? 0 : blo[d] + u * (bhi[d] - blo[d]);
         });
-        if (!insideBox(p[0], p[1], p[2])) continue;
         if (reg && !reg.match(p[0], p[1], p[2])) continue;
         if (!varOk(p)) continue;
+        if (!insideRandomBox(p[0], p[1], p[2])) continue;
         const atoms = tmpl ? placeMol(p) : p;
         let close = false;
         for (let j = 0; j < atoms.length && !close; j += 3) close = tooClose([atoms[j], atoms[j + 1], atoms[j + 2]]);

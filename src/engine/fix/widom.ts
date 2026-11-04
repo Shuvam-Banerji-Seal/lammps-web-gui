@@ -4,7 +4,7 @@ import { RanPark } from '../rng';
 import { appendAtoms, deleteAtoms, hasChargeStyle, isMolecularStyle } from '../atoms';
 import { appendMolecule, num } from './pour';
 import { inumeric, numeric } from '../force/util';
-import { geometricCenter, rotationMatrix, type MoleculeTemplate } from '../molecule';
+import { rotationMatrix, type MoleculeTemplate } from '../molecule';
 import { BlockRegion, type Region } from '../region';
 import { newAccum, type Accum, type Bonded, type BondedCompute } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
@@ -412,7 +412,21 @@ export class FixWidom extends Fix {
   postIntegrate(): void {
     if (this.sys.state.step !== this.nextStep) return;
     this.event();
+    this.eventStep = this.nextStep;
     this.nextStep += this.N;
+  }
+
+  /** The step of the last event (reneighborDue). */
+  private eventStep = -1;
+
+  /**
+   * As native LAMMPS does (src/MC/fix_widom.cpp at b332f28: "force_reneighbor = 1", next_reneighbor at each event step):
+   * the neighbor lists are rebuilt on every event step, after the event. A trial of the full-energy path builds lists
+   * that hold its inserted atoms, and the step's forces then used them (examples/mc/in.widom.spce: evdwl 440 above
+   * native and a NaN pressure until the next scheduled build).
+   */
+  reneighborDue(step: number): boolean {
+    return step === this.eventStep;
   }
 
   private event(): void {
@@ -484,7 +498,7 @@ export class FixWidom extends Fix {
     if (this.molTemplate) {
       const t = this.molTemplate;
       const rot = this.drawRotation();
-      const center = geometricCenter(t);
+      const center = this.templateCom(t);
       const coords = new Float64Array(3 * t.natoms);
       for (let a = 0; a < t.natoms; a++) {
         const rx = t.x[3 * a] - center[0], ry = t.x[3 * a + 1] - center[1], rz = t.x[3 * a + 2] - center[2];
@@ -515,6 +529,26 @@ export class FixWidom extends Fix {
     s.x.set(xSave); s.image.set(imageSave); s.f.set(fSave); s.order.set(orderSave);
     if (torqueSave && s.torque) s.torque.set(torqueSave);
     return dU;
+  }
+
+  /**
+   * The molecule's centre of mass, about which a trial is rotated and placed. As native LAMMPS does
+   * (src/MC/fix_widom.cpp init and src/molecule.cpp compute_mass and compute_com at b332f28): the masses of the
+   * molecule file (rmass) or else of the atom types, com = sum x m / sum m, and the template coordinates are shifted
+   * by it ("onemol->x[i][0] -= onemol->com[0]"). The geometric centre put the atoms of an uneven molecule (water)
+   * elsewhere: examples/mc/in.widom.spce gave another f_mywidom.
+   */
+  private templateCom(t: MoleculeTemplate): [number, number, number] {
+    const mByType = this.sys.state.massByType;
+    let mtot = 0;
+    for (let i = 0; i < t.natoms; i++) mtot += t.mass ? t.mass[i] : mByType[t.type[i]];
+    const c: [number, number, number] = [0, 0, 0];
+    for (let i = 0; i < t.natoms; i++) {
+      const m = t.mass ? t.mass[i] : mByType[t.type[i]];
+      for (let d = 0; d < 3; d++) c[d] += t.x[3 * i + d] * m;
+    }
+    if (mtot > 0) for (let d = 0; d < 3; d++) c[d] /= mtot;
+    return c;
   }
 
   /** Random rotation axis (rejection in the unit sphere) and angle 2 pi u (measured, see the header). */

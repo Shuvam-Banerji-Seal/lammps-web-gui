@@ -764,6 +764,9 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
   const cardPointerDown = useCallback((uid: string) => (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.stopPropagation(); // keep the canvas pan handler out of card drags
+    // A press on one of the card's own buttons (fork, move, enable, duplicate, remove) is a click, not a drag: capturing
+    // the pointer here would send the click to the card instead of the button, so none of them worked.
+    if (startsOnControl(e)) return;
     dragState.current = { uid, startX: e.clientX, startY: e.clientY, active: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, []);
@@ -818,6 +821,8 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
 
   const bgPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.button !== 1) return;
+    // the connector pills and their menu are buttons on the canvas: pressing one must not capture the pointer for a pan
+    if (startsOnControl(e)) return;
     panRef.current = { startX: e.clientX, startY: e.clientY, ox: viewTf.x, oy: viewTf.y };
     viewUntouched.current = false;
     setPanning(true);
@@ -1882,6 +1887,14 @@ const DropLine: React.FC<{ ct: ThemeTokens; active: boolean }> = ({ ct, active }
       <div className="h-1 w-full rounded-full bg-[#7fa66b] shadow-[0_0_8px_rgba(127,166,107,0.7)]" />
     </div>
   ) : null;
+
+/**
+ * Whether a pointer press starts on an interactive control (a button, link, form field or menu item). The flowchart's
+ * drag and pan handlers capture the pointer, and a captured pointer's click goes to the capturing element, so they leave
+ * presses on controls alone.
+ */
+const startsOnControl = (e: React.PointerEvent): boolean =>
+  e.target instanceof Element && e.target.closest('button, a, input, select, textarea, [role="menuitem"]') !== null;
 
 const FlowchartView: React.FC<FlowchartViewProps> = ({
   ct, flow, steps, trunkSteps, forkMap, activeBranchIds, ghostedUids,

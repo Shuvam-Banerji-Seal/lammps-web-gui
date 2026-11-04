@@ -29,9 +29,8 @@ import { formatNumber } from '../../cformat';
  *   F_j    = C 4 pi q_j / V sum_k A(k) k [Re S sin(k.r_j) - Im S cos(k.r_j)]
  *   W_ab   = C 2 pi / V sum_k A(k) |S|^2 (delta_ab - 2 k_a k_b (1/k^2 + 1/(4 g^2)))
  * Wave vectors k = 2 pi H^-T n for integer n (any restricted triclinic box),
- * |n_d| <= kmax_d, and k^2 <= max_d (2 pi kmax_d / L_d)^2 — the spherical
- * cutoff was determined from native LAMMPS output (pressures of the
- * ewald_* oracle cases agree only with it). Default parameters, when gewald / kmax/ewald are not set:
+ * |n_d| <= kmax_d, and k^2 <= 1.00001 max_d (2 pi kmax_d / L_d)^2 (buildVectors has the
+ * native rules). Default parameters, when gewald / kmax/ewald are not set:
  * g from the Kolafa-Perram real-space estimate 2 C Q2 exp(-g^2 rc^2) /
  * sqrt(N rc V) = accuracy, and kmax_d the smallest m whose Kolafa-Perram rms
  * k-space force error is below the accuracy (kmaxFor). Measured with native
@@ -431,6 +430,13 @@ export class KSpaceEwald extends KSpaceBase {
   private kvecs = new Float64Array(0);   // kx ky kz A(k) per vector (half space)
   private nvec = new Int32Array(0);      // n_x n_y n_z per vector
   private kmax: [number, number, number] = [0, 0, 0];
+  /** Largest |n_d| among the wave vectors: the phase-factor range per dimension. */
+  private krange: [number, number, number] = [0, 0, 0];
+  /** Absolute accuracy and qqrd2e of init, the box (lx ly lz xy xz yz) kmax and gsqmx were chosen for, and gsqmx. */
+  private kAcc = 0;
+  private kQqrd2e = 0;
+  private kBox: number[] = [];
+  private gsqmx = 0;
 
   modify(key: string, values: string[]): number {
     if (key === 'kmax/ewald') {
@@ -449,16 +455,11 @@ export class KSpaceEwald extends KSpaceBase {
     this.cutCoul = cutCoul;
     this.setupCharges(s, geom, ctx);
     this.gEwald = this.chooseGEwald(s, qqrd2e);
-    const g = this.gEwald;
-    if (this.kmaxUser) this.kmax = [...this.kmaxUser];
-    else {
-      // smallest kmax per dimension whose Kolafa-Perram rms force error is below the absolute accuracy
-      const acc = this.absAccuracy(s, qqrd2e);
-      const L = [geom.lx, geom.ly, geom.lz * this.slab];
-      this.kmax = [0, 1, 2].map((d) => this.kmaxFor(acc, g, L[d], qqrd2e)) as [number, number, number];
-    }
-    ctx.log(`  G vector (1/distance) = ${g}\n  kmax/ewald = ${this.kmax.join(' ')}`);
+    this.kAcc = this.absAccuracy(s, qqrd2e);
+    this.kQqrd2e = qqrd2e;
+    this.kBox = [];
     this.buildVectors(geom);
+    ctx.log(`  G vector (1/distance) = ${this.gEwald}\n  kmax/ewald = ${this.kmax.join(' ')}`);
   }
 
   /**
@@ -469,8 +470,7 @@ export class KSpaceEwald extends KSpaceBase {
    * native LAMMPS (black box, 2026-10, real units, 8 cases incl. a 12x18x24 box):
    * the printed kmax/ewald matched this rule in every case.
    */
-  private kmaxFor(acc: number, g: number, prd: number, qqrd2e: number): number {
-    const q2 = qqrd2e * this.qsqsum;
+  private kmaxFor(acc: number, g: number, prd: number, q2: number): number {
     const N = Math.max(1, this.natoms);
     for (let m = 1; m < 1000; m++) {
       const rms = (2 * q2 * g / prd) * Math.sqrt(1 / (Math.PI * m * N)) * libm.exp(-(Math.PI * Math.PI * m * m) / (g * g * prd * prd));
@@ -479,45 +479,94 @@ export class KSpaceEwald extends KSpaceBase {
     return 999;
   }
 
-  /** Half-space wave vectors for the current box. */
+  /**
+   * kmax and the cutoff gsqmx for the current box. As native LAMMPS does (src/KSPACE/ewald.cpp setup() at b332f28),
+   * they are chosen at init and again whenever the box changes, from the atom count and charges of that moment
+   * (an insertion such as fix charge/regulation's leaves them):
+   * - the automatic kmax_d is the smallest m whose Kolafa-Perram rms force error is below the accuracy;
+   * - gsqmx = 1.00001 max_d (2 pi kmax_d / L_d)^2, so vectors on the sphere (n^2 = kmax^2, e.g. (3,4,0) for kmax 5,
+   *   oracle case ewald_sphere_boundary) and just past it are kept: (4,4,4) of a 25.2628 x 25.2628 x 50.5255 box
+   *   with kmax 6 6 11 is 4e-6 outside (HEAT/in.spce.ehex);
+   * - in a triclinic box the automatic kmax_d are widened by the tilts after gsqmx is set:
+   *   kmax_y = trunc(|xy| kmax_x / lx + kmax_y), kmax_z = trunc(|xz| kmax_x / lx + |yz| kmax_y / ly + kmax_z),
+   *   each at least 1.
+   */
+  private chooseKmax(geom: Geometry): void {
+    const box = [geom.lx, geom.ly, geom.lz, geom.xy, geom.xz, geom.yz, this.slab];
+    if (box.length === this.kBox.length && box.every((v, i) => v === this.kBox[i])) return;
+    this.kBox = box;
+    const L = [geom.lx, geom.ly, geom.lz * this.slab];
+    const q2 = this.kQqrd2e * this.qsqsum;
+    const km = this.kmaxUser ? [...this.kmaxUser] : L.map((prd) => this.kmaxFor(this.kAcc, this.gEwald, prd, q2));
+    let gsqmx = 0;
+    for (let d = 0; d < 3; d++) {
+      const u = (2 * Math.PI) / L[d];
+      gsqmx = Math.max(gsqmx, u * u * km[d] * km[d]);
+    }
+    this.gsqmx = gsqmx * 1.00001;
+    if (geom.triclinic && !this.kmaxUser) {
+      const t0 = km[0] / geom.lx, t1 = km[1] / geom.ly, t2 = km[2] / geom.lz;
+      km[0] = Math.max(1, Math.trunc(geom.lx * t0));
+      km[1] = Math.max(1, Math.trunc(Math.abs(geom.xy) * t0 + geom.ly * t1));
+      km[2] = Math.max(1, Math.trunc(Math.abs(geom.xz) * t0 + Math.abs(geom.yz) * t1 + geom.lz * t2));
+    }
+    this.kmax = [km[0], km[1], km[2]];
+  }
+
+  /**
+   * Half-space wave vectors for the current box, with k^2 <= gsqmx (chooseKmax). As native LAMMPS does
+   * (src/KSPACE/ewald.cpp coeffs() and coeffs_triclinic() at b332f28): in an orthogonal box the axis vectors
+   * (m,0,0), (0,m,0), (0,0,m) run to kmax = max_d kmax_d, the others to |n_d| <= kmax_d; in a triclinic box native
+   * fills the phase factors only to kmax_d, so its axis vectors past kmax_d carry no structure factor and are left
+   * out here.
+   */
   private buildVectors(geom: Geometry): void {
-    const [kx, ky, kz] = this.kmax;
+    this.chooseKmax(geom);
     const g = this.gEwald;
+    const gsqmx = this.gsqmx;
     // reciprocal vectors: rows of 2 pi H^-1 (H columns are the edge vectors), slab-extended in z
     const lz = geom.lz * this.slab;
     const inv = invertUpper(geom.lx, geom.xy, geom.xz, geom.ly, geom.yz, lz);
     const list: number[] = [];
     const ns: number[] = [];
-    // spherical cutoff at the largest axis wave vector (see the header)
-    const L = [geom.lx, geom.ly, lz];
-    let gsqmx = 0;
-    for (let d = 0; d < 3; d++) gsqmx = Math.max(gsqmx, (2 * Math.PI * this.kmax[d] / L[d]) ** 2);
+    const range: [number, number, number] = [0, 0, 0];
+    const add = (nx: number, ny: number, nz: number): void => {
+      // k = 2 pi (n . H^-1)  (H^-1 rows), i.e. k_c = 2 pi sum_d n_d inv[d][c]
+      const kxv = 2 * Math.PI * (nx * inv[0][0] + ny * inv[1][0] + nz * inv[2][0]);
+      const kyv = 2 * Math.PI * (nx * inv[0][1] + ny * inv[1][1] + nz * inv[2][1]);
+      const kzv = 2 * Math.PI * (nx * inv[0][2] + ny * inv[1][2] + nz * inv[2][2]);
+      const k2 = kxv * kxv + kyv * kyv + kzv * kzv;
+      if (k2 > gsqmx) return;
+      list.push(kxv, kyv, kzv, libm.exp(-k2 / (4 * g * g)) / k2);
+      ns.push(nx, ny, nz);
+      range[0] = Math.max(range[0], nx);
+      range[1] = Math.max(range[1], Math.abs(ny));
+      range[2] = Math.max(range[2], Math.abs(nz));
+    };
+    const [kx, ky, kz] = this.kmax;
     for (let nx = 0; nx <= kx; nx++) {
       for (let ny = -ky; ny <= ky; ny++) {
         for (let nz = -kz; nz <= kz; nz++) {
           if (nx === 0 && (ny < 0 || (ny === 0 && nz <= 0))) continue;
-          // k = 2 pi (n . H^-1)  (H^-1 rows), i.e. k_c = 2 pi sum_d n_d inv[d][c]
-          const kxv = 2 * Math.PI * (nx * inv[0][0] + ny * inv[1][0] + nz * inv[2][0]);
-          const kyv = 2 * Math.PI * (nx * inv[0][1] + ny * inv[1][1] + nz * inv[2][1]);
-          const kzv = 2 * Math.PI * (nx * inv[0][2] + ny * inv[1][2] + nz * inv[2][2]);
-          const k2 = kxv * kxv + kyv * kyv + kzv * kzv;
-          // vectors on the sphere (n^2 = kmax^2 in a cubic box, e.g. (3,4,0) for kmax 5) are
-          // included, as native LAMMPS does (oracle case ewald_sphere_boundary); the slack only
-          // absorbs the last-bit rounding of k2 against gsqmx
-          if (k2 > gsqmx * (1 + 1e-12)) continue;
-          list.push(kxv, kyv, kzv, libm.exp(-k2 / (4 * g * g)) / k2);
-          ns.push(nx, ny, nz);
+          add(nx, ny, nz);
         }
       }
     }
+    if (!geom.triclinic) {
+      const kall = Math.max(kx, ky, kz);
+      for (let m = kx + 1; m <= kall; m++) add(m, 0, 0);
+      for (let m = ky + 1; m <= kall; m++) add(0, m, 0);
+      for (let m = kz + 1; m <= kall; m++) add(0, 0, m);
+    }
     this.kvecs = Float64Array.from(list);
     this.nvec = Int32Array.from(ns);
+    this.krange = range;
   }
 
-  /** Per-atom phase factors exp(2 pi i n_d u_d) for 0 <= n_d <= kmax_d (atom-major per dimension), by recurrence. */
+  /** Per-atom phase factors exp(2 pi i n_d u_d) for 0 <= n_d <= krange_d (atom-major per dimension), by recurrence. */
   private phaseFactors(s: SimState, g: Geometry): { cs: Float64Array[]; sn: Float64Array[] } {
     const n = s.n;
-    const [kx, ky, kz] = this.kmax;
+    const [kx, ky, kz] = this.krange;
     const lam = [0, 0, 0];
     const cs = [new Float64Array(n * (kx + 1)), new Float64Array(n * (ky + 1)), new Float64Array(n * (kz + 1))];
     const sn = [new Float64Array(n * (kx + 1)), new Float64Array(n * (ky + 1)), new Float64Array(n * (kz + 1))];
@@ -549,7 +598,7 @@ export class KSpaceEwald extends KSpaceBase {
   groupStructureFactors(s: SimState, g: Geometry, inA: (i: number) => boolean, inB: (i: number) => boolean):
     { kvecs: Float64Array; sA: Float64Array; sB: Float64Array; volume: number } {
     this.buildVectors(g);
-    const [kx, ky, kz] = this.kmax;
+    const [kx, ky, kz] = this.krange;
     const { cs, sn } = this.phaseFactors(s, g);
     const nk = this.nvec.length / 3;
     const sA = new Float64Array(2 * nk), sB = new Float64Array(2 * nk);
@@ -583,7 +632,7 @@ export class KSpaceEwald extends KSpaceBase {
     this.volume = g.volume(3) * this.slab;
     this.buildVectors(g);
     const V = this.volume;
-    const [kx, ky, kz] = this.kmax;
+    const [kx, ky, kz] = this.krange;
     const { cs, sn } = this.phaseFactors(s, g);
     const nk = this.nvec.length / 3;
     const cosk = new Float64Array(n), sink = new Float64Array(n);

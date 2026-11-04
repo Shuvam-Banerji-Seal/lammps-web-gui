@@ -4,12 +4,12 @@
  * compute_numdiff, displace_atoms, restore_atoms, update_virial, virial_addon) at commit b332f28. Copyright Sandia
  * Corporation (LAMMPS development team, GNU General Public License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
- * The numdiff method of compute born/matrix (compute_born_matrix.ts calls it for the numdiff keyword). For each of the six strain directions the cell is strained by +delta and
- * -delta about its centre; the atoms follow the same affine map (native displaces the owned and ghost atoms of its
- * fixed box, which is the same geometry as the strained periodic cell), the full force field is evaluated, and the
+ * The numdiff method of compute born/matrix (compute_born_matrix.ts calls it for the numdiff keyword). For each of the
+ * six strain directions the owned and ghost atoms are displaced by +delta and -delta of the strain about the centre
+ * of the unchanged box, with the neighbor lists of the step, as native does; the force field is evaluated and the
  * pressure of the virial-ID compute is read. The difference divided by -2 delta gives the second derivatives. The
- * pressure keeps the undeformed volume, as native does (its box is not changed), and the virial_addon terms are
- * added at the undeformed state. The result is scaled by the volume and 1/nktv2p to energy units.
+ * pressure keeps the undeformed volume, and the virial_addon terms are added at the undeformed state. The result is
+ * scaled by the volume and 1/nktv2p to energy units.
  */
 import type { System } from '../../engine/system';
 import { ComputePressure } from '../../engine/compute/pressure';
@@ -43,121 +43,83 @@ ALBE.forEach(([a, b], m) => { REVALBE[a][b] = m; REVALBE[b][a] = m; });
 export const bornMatrixNumdiff: BornNumdiffHook = (sys: System, id: string, delta: number, virialId: string): Float64Array => {
   const c = sys.compute(virialId);
   if (!(c instanceof ComputePressure)) throw new StyleError(`compute ${id} born/matrix: compute ${virialId} is not a pressure compute`);
-  const s = sys.state;
+  // the step's force evaluation, its lists and its ghosts (native: the compute is invoked after it)
+  sys.forces();
+  const s = sys.state, nb = sys.nb, geom = sys.geom, ff = sys.ff;
   const box = s.box;
-  const vol0 = sys.geom.volume(3);
+  const vol0 = geom.volume(3);
   const nktv2p = s.units.nktv2p;
-  const lo0 = [...box.lo] as [number, number, number];
-  const hi0 = [...box.hi] as [number, number, number];
-  const tilt0 = [...box.tilt] as [number, number, number];
-  const minLo0 = [...box.minLo] as [number, number, number];
-  const minHi0 = [...box.minHi] as [number, number, number];
-  const triclinic0 = box.triclinic;
-  // native fixedpoint = 0.5 (boxlo + boxhi)
-  const fp = [0, 1, 2].map((k) => 0.5 * (lo0[k] + hi0[k]));
-  const x0 = s.x.slice();
-  const image0 = s.image.slice();
-  const n = s.n;
+  const fixedpoint = [0, 1, 2].map((k) => 0.5 * (box.lo[k] + box.hi[k]));
+  const n = s.n, nall = nb.nall;
+  const xa = nb.xall;
+  // native compute_numdiff: "store copy of current forces for owned and ghost atoms" (temp_x, temp_f); the force
+  // field's accumulators and per-atom outputs are kept too, so the step's values are as before afterwards
+  const tempX = xa.slice(0, 3 * nall);
+  const x0 = s.x.slice(0, 3 * n);
+  const f0 = s.f.slice(0, 3 * n);
+  const t0 = s.torque ? s.torque.slice(0, 3 * n) : null;
+  const acc = ff.acc;
+  const accNum = [acc.evdwl, acc.ecoul, acc.elong, acc.ebond, acc.eangle, acc.edihed, acc.eimp];
+  const accVec = [acc.virial, acc.vbond, acc.vangle, acc.vdihed, acc.vimp, acc.vlong].map((v) => v.slice());
+  const { eatom, vatom, eatomTerm, vatomTerm, cvatomTerm } = ff;
 
-  const restore = (): void => {
-    s.x.set(x0);
-    s.image.set(image0);
-    box.triclinic = triclinic0;
-    sys.setBox(lo0, hi0, tilt0, 0);
-    box.minLo = [...minLo0];
-    box.minHi = [...minHi0];
-    sys.bump();
-  };
-
-  // Strain direction idir with magnitude mag: D is the symmetric strain (axial D_kk = delta mag; shear
-  // D_kl = D_lk = delta mag / 2, as native's displace_atoms), x -> x + D (x - fp). Native keeps the box and displaces
-  // the periodic images with their atoms, so the periodic cell is M = (I + D) H0, which is not in LAMMPS's upper
-  // triangular form for a shear. The strained system is rotated by Q from M = Q R (R upper triangular, positive
-  // diagonal): positions y = Q^T (x' - x'_lo) and the cell R. The virial is rotated back with the same Q (the
-  // physics is invariant under the rotation). Returns Q (row-major, Q[row][col]).
-  const deform = (idir: number, mag: number): number[][] => {
+  // native displace_atoms: the owned and ghost atoms of the unchanged box move by the strain of direction idir about
+  // the fixed point, "x[i][k] = temp_x[i][k] + numdelta * magnitude * (temp_x[i][l] - fixedpoint[l])" for an axial
+  // strain and half of it on both components for a symmetric shear; the neighbor lists are kept
+  const displace = (idir: number, magnitude: number): void => {
     const [k, l] = DIRLIST[idir];
-    const D = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-    if (k === l) D[k][k] = delta * mag;
-    else { D[k][l] = 0.5 * delta * mag; D[l][k] = 0.5 * delta * mag; }
-    const map = (x: readonly number[]): number[] => [0, 1, 2].map((r) => x[r] + D[r][0] * (x[0] - fp[0]) + D[r][1] * (x[1] - fp[1]) + D[r][2] * (x[2] - fp[2]));
-    const flo = map(lo0);
-    const H0 = [[hi0[0] - lo0[0], tilt0[0], tilt0[1]], [0, hi0[1] - lo0[1], tilt0[2]], [0, 0, hi0[2] - lo0[2]]];
-    const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-    for (let r = 0; r < 3; r++) for (let cc = 0; cc < 3; cc++) {
-      for (let q = 0; q < 3; q++) M[r][cc] += (r === q ? 1 : 0) * H0[q][cc] + D[r][q] * H0[q][cc];
+    if (l === k) {
+      for (let i = 0; i < nall; i++) xa[3 * i + k] = tempX[3 * i + k] + delta * magnitude * (tempX[3 * i + l] - fixedpoint[l]);
+    } else {
+      for (let i = 0; i < nall; i++) {
+        xa[3 * i + k] = tempX[3 * i + k] + 0.5 * delta * magnitude * (tempX[3 * i + l] - fixedpoint[l]);
+        xa[3 * i + l] = tempX[3 * i + l] + 0.5 * delta * magnitude * (tempX[3 * i + k] - fixedpoint[k]);
+      }
     }
-    const { Q, R } = qr3(M);
-    for (let i = 0; i < n; i++) {
-      const fx = map([x0[3 * i], x0[3 * i + 1], x0[3 * i + 2]]);
-      const dd = [fx[0] - flo[0], fx[1] - flo[1], fx[2] - flo[2]];
-      for (let r = 0; r < 3; r++) s.x[3 * i + r] = Q[0][r] * dd[0] + Q[1][r] * dd[1] + Q[2][r] * dd[2];
-    }
-    const lo: [number, number, number] = [0, 0, 0];
-    const hi: [number, number, number] = [R[0][0], R[1][1], R[2][2]];
-    const tilt: [number, number, number] = [R[0][1], R[0][2], R[1][2]];
-    // the geometry takes the triclinic flag when setBox rebuilds it
-    box.triclinic = triclinic0 || tilt.some((t) => t !== 0);
-    sys.setBox(lo, hi, tilt, 0);
-    return Q;
+    // the owned atoms' own coordinates (the kspace term reads them)
+    s.x.set(xa.subarray(0, 3 * n));
   };
-
-  // the virial of the strained (rotated) state, rotated back to the lab frame, with the undeformed volume (native's
-  // box is not changed); Q = null for the undeformed state
-  const strainedVirial = (Q: number[][] | null): Float64Array => {
-    sys.bump();
-    const w = c.rawVirial();
-    if (!Q) return c.vectorAt(w, vol0);
-    // symmetric tensor from Voigt (xx yy zz xy xz yz), rotated: W = Q W' Q^T
-    const Wp = [[w[0], w[3], w[4]], [w[3], w[1], w[5]], [w[4], w[5], w[2]]];
-    const W = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-    for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) {
-      let v = 0;
-      for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) v += Q[a][p] * Wp[p][q] * Q[b][q];
-      W[a][b] = v;
-    }
-    return c.vectorAt(Float64Array.from([W[0][0], W[1][1], W[2][2], W[0][1], W[0][2], W[1][2]]), vol0);
+  const restoreAtoms = (): void => {
+    xa.set(tempX);
+    s.x.set(x0);
+  };
+  // native update_virial: the pair, bonded and kspace terms with the virial only, then the pressure compute's vector
+  // (its volume is the undeformed box's: native does not change the box)
+  const updateVirial = (): Float64Array => {
+    ff.compute(s, nb, geom, {});
+    return c.vectorAt(c.rawVirial(), vol0);
   };
 
   const values = new Float64Array(21);
   try {
     for (let idir = 0; idir < 6; idir++) {
       // forward
-      let sig = strainedVirial(deform(idir, 1.0));
+      displace(idir, 1.0);
+      let sig = updateVirial();
       for (let jdir = 0; jdir < 6; jdir++) values[REVALBE[idir][jdir]] = sig[VIRIAL_OF_VOIGT[jdir]];
-      restore();
+      restoreAtoms();
       // backward
-      sig = strainedVirial(deform(idir, -1.0));
+      displace(idir, -1.0);
+      sig = updateVirial();
       for (let jdir = 0; jdir < 6; jdir++) values[REVALBE[idir][jdir]] -= sig[VIRIAL_OF_VOIGT[jdir]];
-      restore();
+      restoreAtoms();
     }
     for (let m = 0; m < 21; m++) values[m] *= -0.5 / delta;
 
-    // recompute the virial at the undeformed state; the addon terms use it (native virial_addon)
-    const sigv = strainedVirial(null);
+    // native: "recompute virial so all virial and energy contributions are as before", then virial_addon
+    const sigv = updateVirial();
     virialAddon(values, sigv);
   } finally {
-    restore();
+    restoreAtoms();
+    // native: "restore original forces for owned and ghost atoms"; the accumulators and per-atom outputs as well
+    s.f.set(f0);
+    if (t0) s.torque!.set(t0);
+    [acc.evdwl, acc.ecoul, acc.elong, acc.ebond, acc.eangle, acc.edihed, acc.eimp] = accNum;
+    [acc.virial, acc.vbond, acc.vangle, acc.vdihed, acc.vimp, acc.vlong].forEach((v, m) => v.set(accVec[m]));
+    ff.eatom = eatom; ff.vatom = vatom; ff.eatomTerm = eatomTerm; ff.vatomTerm = vatomTerm; ff.cvatomTerm = cvatomTerm;
   }
   for (let m = 0; m < 21; m++) values[m] *= (1 / nktv2p) * vol0;
   return values;
-};
-
-/** QR of a 3x3 matrix with positive diagonal R: M = Q R, Q orthogonal with det +1 (Gram-Schmidt on the columns). */
-const qr3 = (M: number[][]): { Q: number[][]; R: number[][] } => {
-  const col = (c: number): number[] => [M[0][c], M[1][c], M[2][c]];
-  const dot = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-  const a = col(0), b = col(1), c = col(2);
-  const na = Math.sqrt(dot(a, a));
-  const q1 = a.map((v) => v / na);
-  const r01 = dot(q1, b);
-  const v2 = [b[0] - r01 * q1[0], b[1] - r01 * q1[1], b[2] - r01 * q1[2]];
-  const r11 = Math.sqrt(dot(v2, v2));
-  const q2 = v2.map((v) => v / r11);
-  const q3 = [q1[1] * q2[2] - q1[2] * q2[1], q1[2] * q2[0] - q1[0] * q2[2], q1[0] * q2[1] - q1[1] * q2[0]];
-  const R = [[na, r01, dot(q1, c)], [0, r11, dot(q2, c)], [0, 0, dot(q3, c)]];
-  const Q = [[q1[0], q2[0], q3[0]], [q1[1], q2[1], q3[1]], [q1[2], q2[2], q3[2]]];
-  return { Q, R };
 };
 
 /**

@@ -65,6 +65,16 @@ interface NativeRegionWall {
   atom(aid: number, x: number, y: number, z: number, cutoff: number): number;
   history(ic: number): Float64Array;
 }
+/** The native region's contact list and match (src/engine-gpl/region/native_region.ts). */
+interface NativeRegionSurface {
+  readonly cDelx: Float64Array; readonly cDely: Float64Array; readonly cDelz: Float64Array;
+  readonly cR: Float64Array; readonly cRadius: Float64Array; readonly cIwall: Int32Array;
+  match(x: number, y: number, z: number): number;
+  surface(x: number, y: number, z: number, cutoff: number): number;
+  velocity_contact(vwall: Float64Array, x: ArrayLike<number>, ic: number, dt: number): void;
+  dynamic_check(): number;
+  prematch(): void;
+}
 interface RegionWallHook {
   createRegionWall(sys: System, regionId: string, sizeHistory: number, useHistory: boolean): NativeRegionWall | null;
 }
@@ -465,6 +475,8 @@ const WALL_WORDS = ['xplane', 'yplane', 'zplane', 'zcylinder', 'region'] as cons
 interface WallElement {
   key: string; dist: number; nx: number; ny: number; nz: number; Rf: number; source: Region | null;
   vnx?: number; vny?: number; vnz?: number;
+  /** The wall velocity of a native region contact (Region::velocity_contact; 0 for a static region). */
+  wx?: number; wy?: number; wz?: number;
 }
 
 export class FixWallGranGranular extends Fix {
@@ -624,6 +636,15 @@ export class FixWallGranGranular extends Fix {
    */
   private nativeWall(): NativeRegionWall | null {
     if (!this.regionId || this.pm.normal === 'jkr' || this.mdrMat) return null;
+    return this.regionMirror();
+  }
+
+  /**
+   * The native region of the wall (its surfaces, match and wall velocity) for every model: the jkr and mdr walls keep the
+   * engine's contact records (by wall ID) and take the contacts and velocities from it (regionElements).
+   */
+  private regionMirror(): NativeRegionWall | null {
+    if (!this.regionId) return null;
     const core = this.sys.region(this.regionId);
     if (this.nwall !== undefined && this.nwallRegion === core) return this.nwall;
     if (this.nwall !== undefined) this.sys.warn(`Region properties for region ${this.regionId} changed between runs, resetting its motion`);
@@ -638,7 +659,7 @@ export class FixWallGranGranular extends Fix {
   private nwallHistory = false;
 
   init(): void {
-    if (this.regionId) this.nativeWall()?.init();
+    if (this.regionId) this.regionMirror()?.init();
     const s = this.sys.state;
     for (const p of this.planes) {
       if (s.dimension === 2 && p.dim === 2) throw new StyleError('fix wall/gran: cannot use a z wall in a 2d simulation');
@@ -719,6 +740,14 @@ export class FixWallGranGranular extends Fix {
   private mdrContacts(i: number): Array<{ face: string; aid: number; dist: number }> {
     const s = this.sys.state;
     if (!(s.mask[i] & this.groupBit)) return [];
+    // As native LAMMPS does (src/GRANULAR/fix_granular_mdr.cpp at b332f28): the bulk update of the pair step calls
+    // "if (region->dynamic_check()) region->prematch();" before its wall loop, so the region moves to this step
+    const mirror = this.regionMirror();
+    if (mirror && this.mdrPrematchStep !== s.step) {
+      const reg = mirror.region as unknown as NativeRegionSurface;
+      if (reg.dynamic_check()) reg.prematch();
+      this.mdrPrematchStep = s.step;
+    }
     const R = s.radius![i];
     const cand: WallElement[] = [];
     this.regionElements(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], R, cand);
@@ -748,13 +777,41 @@ export class FixWallGranGranular extends Fix {
     return k;
   }
   private readonly faceKeys = new Map<Region, Map<string, string>>();
+  /** The history key of each native wall ID. */
+  private readonly iwallKeys: string[] = [];
+  /** The step of the last prematch of the mdr bulk update (mdrContacts). */
+  private mdrPrematchStep = -1;
 
   /**
    * Contact candidates of one atom at its position (region faces; all sub-regions of a compound), those closer than
    * cutoff (the atom's radius; every face for the models that act beyond contact).
    */
-  private regionElements(x: number, y: number, z: number, R: number, out: WallElement[], cutoff = Infinity): void {
+  private regionElements(x: number, y: number, z: number, R: number, out: WallElement[], cutoff = Infinity, dynamic = false): void {
     out.length = 0;
+    const nw = this.regionMirror();
+    if (nw) {
+      // native region contacts (src/engine-gpl/region): the atom must match the region (native post_force skips it
+      // otherwise); r, nx = dx * (1 / r), Reff from the contact radius; the key is the native wall ID
+      const reg = nw.region as unknown as NativeRegionSurface;
+      if (!reg.match(x, y, z)) return;
+      const nc = reg.surface(x, y, z, cutoff === Infinity ? Number.MAX_VALUE : cutoff);
+      const xi3 = this.xi3;
+      xi3[0] = x; xi3[1] = y; xi3[2] = z;
+      for (let ic = 0; ic < nc; ic++) {
+        const r = reg.cR[ic], radj = reg.cRadius[ic], rinv = 1.0 / r;
+        const Rf = radj === 0 ? R : R * radj / (R + radj);
+        const iw = reg.cIwall[ic];
+        const key = this.iwallKeys[iw] ??= `w${iw}`;
+        const nx = reg.cDelx[ic] * rinv, ny = reg.cDely[ic] * rinv, nz = reg.cDelz[ic] * rinv;
+        let wx = 0, wy = 0, wz = 0;
+        if (dynamic) {
+          reg.velocity_contact(this.vwall, xi3, ic, this.sys.state.dt);
+          wx = this.vwall[0]; wy = this.vwall[1]; wz = this.vwall[2];
+        }
+        out.push({ key, dist: r, nx, ny, nz, Rf, source: null, wx, wy, wz });
+      }
+      return;
+    }
     const r = this.sys.region(this.regionId!);
     const cs = this.csBuf;
     cs.length = 0;
@@ -802,7 +859,10 @@ export class FixWallGranGranular extends Fix {
     const mdr = this.mdrMat ? this.mdrApi(s) : null;
     if (mdr) mdr.wallProvider(this.id, (i: number) => this.mdrContacts(i));
     const vel = new Map<Region, { ddot: number[]; omega: number[]; d: number[] }>();
-    if (this.regionId) this.updateVelocities(dt, vel);
+    // the native region's motion of this step (prematch, set_velocity) and whether its walls move
+    const mirror = this.regionMirror();
+    const regionDynamic = mirror ? mirror.begin(s.step, dt) : false;
+    if (this.regionId && !mirror) this.updateVelocities(dt, vel);
     // heat conduction (fix_wall_gran.html, temperature keyword): the wall temperature of this step, from a constant or an
     // equal-style variable evaluated now
     const heat = pm.heat !== 'none';
@@ -818,7 +878,7 @@ export class FixWallGranGranular extends Fix {
       cand.length = 0;
       if (this.regionId) {
         // only the faces in contact (jkr acts beyond contact; mdr drops the bulk record of each face out of contact)
-        this.regionElements(xi, yi, zi, R, cand, jkr || mdr ? Infinity : R);
+        this.regionElements(xi, yi, zi, R, cand, jkr || mdr ? Infinity : R, regionDynamic);
       } else {
         // As native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp post_force at b332f28): the nearer of the lo and hi walls,
         // "del1 = x[i][2] - wlo; del2 = whi - x[i][2]; if (del1 < del2) dz = del1; else dz = -del2", one contact (and one
@@ -854,7 +914,9 @@ export class FixWallGranGranular extends Fix {
         // through the full relative velocity (measured with native LAMMPS, see
         // updateVelocities)
         let vrx = v[3 * i] - mv[0], vry = v[3 * i + 1] - mv[1], vrz = v[3 * i + 2] - mv[2];
-        if (e.source) {
+        if (e.wx !== undefined) {
+          vrx = v[3 * i] - e.wx; vry = v[3 * i + 1] - e.wy!; vrz = v[3 * i + 2] - e.wz!;
+        } else if (e.source) {
           const st = vel.get(e.source);
           let wx = 0, wy = 0, wz = 0;
           if (st) {
@@ -909,7 +971,8 @@ export class FixWallGranGranular extends Fix {
       // As native LAMMPS does (src/GRANULAR/fix_wall_gran_region.cpp post_force and update_contacts at b332f28): an
       // atom inside the region keeps the history of the faces it touches now only; an atom outside the region is
       // skipped ("if (!region->match(...)) continue") and keeps its history
-      if (hist && hist.size > touched.length && this.regionId && this.sys.region(this.regionId).match(xi, yi, zi)) {
+      const inRegion = this.regionId !== null && (mirror ? (mirror.region as unknown as NativeRegionSurface).match(xi, yi, zi) === 1 : this.sys.region(this.regionId).match(xi, yi, zi));
+      if (hist && hist.size > touched.length && inRegion) {
         for (const k of hist.keys()) if (!touched.includes(k)) hist.delete(k);
       }
     }

@@ -487,10 +487,23 @@ const WALL_WORDS = ['xplane', 'yplane', 'zplane', 'zcylinder', 'region'] as cons
 /** A wall contact: nx, ny, nz the force normal, vnx, vny, vnz the normal of the contact point of the wall velocity. */
 interface WallElement {
   key: string; dist: number; nx: number; ny: number; nz: number; Rf: number; source: Region | null;
-  vnx?: number; vny?: number; vnz?: number;
+  vnx: number | undefined; vny: number | undefined; vnz: number | undefined;
   /** The wall velocity of a native region contact (Region::velocity_contact; 0 for a static region). */
-  wx?: number; wy?: number; wz?: number;
+  wx: number | undefined; wy: number | undefined; wz: number | undefined;
 }
+
+/**
+ * Element k of a pool of wall elements, made on first use: the contacts of one atom are written into the pool's
+ * first elements (every field, so an element keeps one shape), and the pool is never cleared.
+ */
+const poolElement = (pool: WallElement[], k: number): WallElement => {
+  let e = pool[k];
+  if (e === undefined) {
+    e = { key: '', dist: 0, nx: 0, ny: 0, nz: 0, Rf: 0, source: null, vnx: undefined, vny: undefined, vnz: undefined, wx: undefined, wy: undefined, wz: undefined };
+    pool[k] = e;
+  }
+  return e;
+};
 
 export class FixWallGranGranular extends Fix {
   readonly style: string;
@@ -502,8 +515,10 @@ export class FixWallGranGranular extends Fix {
   private readonly step0: number;
   /** Shear history by atom ID, then by wall element key (the face of a region, or the plane index). */
   private shear = new Map<number, Map<string, Float64Array>>();
-  /** Scratch of apply and regionElements (the contacts of one atom). */
+  /** The contacts of one atom in apply: a pool regionElements writes into (poolElement). */
   private readonly candBuf: WallElement[] = [];
+  /** The same for mdrContacts (the mdr bulk update reads the walls from the pair step). */
+  private readonly mdrBuf: WallElement[] = [];
   /** The face keys an atom touches at this step (apply). */
   private readonly touchedBuf: string[] = [];
   private readonly csBuf: SurfaceContact[] = [];
@@ -762,10 +777,13 @@ export class FixWallGranGranular extends Fix {
       this.mdrPrematchStep = s.step;
     }
     const R = s.radius![i];
-    const cand: WallElement[] = [];
-    this.regionElements(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], R, cand);
+    const cand = this.mdrBuf;
+    const nc = this.regionElements(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], R, cand);
     const out: Array<{ face: string; aid: number; dist: number }> = [];
-    for (const e of cand) if (e.dist < R) out.push({ face: this.mdrFace(e.key), aid: s.id[i], dist: e.dist });
+    for (let q = 0; q < nc; q++) {
+      const e = cand[q];
+      if (e.dist < R) out.push({ face: this.mdrFace(e.key), aid: s.id[i], dist: e.dist });
+    }
     return out;
   }
 
@@ -799,14 +817,14 @@ export class FixWallGranGranular extends Fix {
    * Contact candidates of one atom at its position (region faces; all sub-regions of a compound), those closer than
    * cutoff (the atom's radius; every face for the models that act beyond contact).
    */
-  private regionElements(x: number, y: number, z: number, R: number, out: WallElement[], cutoff = Infinity, dynamic = false): void {
-    out.length = 0;
+  private regionElements(x: number, y: number, z: number, R: number, out: WallElement[], cutoff = Infinity, dynamic = false): number {
+    let n = 0;
     const nw = this.regionMirror();
     if (nw) {
       // native region contacts (src/engine-gpl/region): the atom must match the region (native post_force skips it
       // otherwise); r, nx = dx * (1 / r), Reff from the contact radius; the key is the native wall ID
       const reg = nw.region as unknown as NativeRegionSurface;
-      if (!reg.match(x, y, z)) return;
+      if (!reg.match(x, y, z)) return 0;
       const nc = reg.surface(x, y, z, cutoff === Infinity ? Number.MAX_VALUE : cutoff);
       const xi3 = this.xi3;
       xi3[0] = x; xi3[1] = y; xi3[2] = z;
@@ -821,9 +839,11 @@ export class FixWallGranGranular extends Fix {
           reg.velocity_contact(this.vwall, xi3, ic, this.sys.state.dt);
           wx = this.vwall[0]; wy = this.vwall[1]; wz = this.vwall[2];
         }
-        out.push({ key, dist: r, nx, ny, nz, Rf, source: null, wx, wy, wz });
+        const e = poolElement(out, n++);
+        e.key = key; e.dist = r; e.nx = nx; e.ny = ny; e.nz = nz; e.Rf = Rf; e.source = null;
+        e.vnx = undefined; e.vny = undefined; e.vnz = undefined; e.wx = wx; e.wy = wy; e.wz = wz;
       }
-      return;
+      return n;
     }
     const r = this.sys.region(this.regionId!);
     const cs = this.csBuf;
@@ -831,11 +851,12 @@ export class FixWallGranGranular extends Fix {
     r.surfaceContacts(x, y, z, cs, cutoff);
     for (const c of cs) {
       const Rf = c.curvature === 0 ? R : (R * c.curvature) / (R + c.curvature);
-      out.push({
-        key: this.faceKey(c.source, c.key), dist: c.dist, nx: c.nx, ny: c.ny, nz: c.nz, Rf, source: c.source,
-        vnx: c.vnx ?? c.nx, vny: c.vny ?? c.ny, vnz: c.vnz ?? c.nz,
-      });
+      const e = poolElement(out, n++);
+      e.key = this.faceKey(c.source, c.key); e.dist = c.dist; e.nx = c.nx; e.ny = c.ny; e.nz = c.nz; e.Rf = Rf;
+      e.source = c.source; e.vnx = c.vnx ?? c.nx; e.vny = c.vny ?? c.ny; e.vnz = c.vnz ?? c.nz;
+      e.wx = undefined; e.wy = undefined; e.wz = undefined;
     }
+    return n;
   }
 
   private apply(update: boolean): void {
@@ -888,10 +909,10 @@ export class FixWallGranGranular extends Fix {
       const mi = cmass[i];
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const cand = this.candBuf;
-      cand.length = 0;
+      let nc = 0;
       if (this.regionId) {
         // only the faces in contact (jkr acts beyond contact; mdr drops the bulk record of each face out of contact)
-        this.regionElements(xi, yi, zi, R, cand, jkr || mdr ? Infinity : R, regionDynamic);
+        nc = this.regionElements(xi, yi, zi, R, cand, jkr || mdr ? Infinity : R, regionDynamic);
       } else {
         // As native LAMMPS does (src/GRANULAR/fix_wall_gran.cpp post_force at b332f28): the nearer of the lo and hi walls,
         // "del1 = x[i][2] - wlo; del2 = whi - x[i][2]; if (del1 < del2) dz = del1; else dz = -del2", one contact (and one
@@ -909,20 +930,23 @@ export class FixWallGranGranular extends Fix {
           if (d === 0) throw new StyleError(`fix wall/gran: particle ${id[i]} is at the wall position (zero distance); native LAMMPS gives NaN forces`);
           const r = Math.sqrt(d * d);
           const nd = d * (1.0 / r);
-          cand.push({ key: 'w', dist: r, nx: dim === 0 ? nd : 0, ny: dim === 1 ? nd : 0, nz: dim === 2 ? nd : 0, Rf: R, source: null });
+          const e = poolElement(cand, nc++);
+          e.key = 'w'; e.dist = r; e.nx = dim === 0 ? nd : 0; e.ny = dim === 1 ? nd : 0; e.nz = dim === 2 ? nd : 0; e.Rf = R;
+          e.source = null; e.vnx = undefined; e.vny = undefined; e.vnz = undefined; e.wx = undefined; e.wy = undefined; e.wz = undefined;
         }
       }
       const aid = id[i];
       let hist = this.shear.get(aid);
+      // the faces this atom touches now: the first nt entries of the pool
       const touched = this.touchedBuf;
-      touched.length = 0;
-      for (const e of cand) {
+      let nt = 0;
+      for (let q = 0; q < nc; q++) {
+        const e = cand[q];
         if (e.dist >= R && !jkr) {
           hist?.delete(e.key);
           if (mdr) mdr.wallDrop(this.mdrFace(e.key), aid);
           continue;
         }
-        const key = `${e.key}:${aid}`;
         // region walls: the moving surface velocity enters the granular contact
         // through the full relative velocity (measured with native LAMMPS, see
         // updateVelocities)
@@ -967,7 +991,7 @@ export class FixWallGranGranular extends Fix {
           if (!hist) this.shear.set(aid, (hist = new Map()));
           hist.set(e.key, sh);
         }
-        touched.push(e.key);
+        touched[nt++] = e.key;
         if (this.contactsOn) {
           const base = i * this.sizePeratomCols;
           const av = this.arrayAtom;
@@ -985,8 +1009,12 @@ export class FixWallGranGranular extends Fix {
       // atom inside the region keeps the history of the faces it touches now only; an atom outside the region is
       // skipped ("if (!region->match(...)) continue") and keeps its history
       const inRegion = this.regionId !== null && (mirror ? (mirror.region as unknown as NativeRegionSurface).match(xi, yi, zi) === 1 : this.sys.region(this.regionId).match(xi, yi, zi));
-      if (hist && hist.size > touched.length && inRegion) {
-        for (const k of hist.keys()) if (!touched.includes(k)) hist.delete(k);
+      if (hist && hist.size > nt && inRegion) {
+        for (const k of hist.keys()) {
+          let kept = false;
+          for (let t = 0; t < nt; t++) if (touched[t] === k) { kept = true; break; }
+          if (!kept) hist.delete(k);
+        }
       }
     }
   }

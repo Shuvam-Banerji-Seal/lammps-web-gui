@@ -37,15 +37,14 @@ import { pairMatch } from '../dpdrx/pair_match';
 
 /** npair_half_bin_newton_ssa / fix_shardlow.cpp: "static constexpr double EPSILON_SQUARED = 1.0e-20;". */
 const EPSILON_SQUARED = 1.0e-20;
-const OFF = 4096, BW = 8192;
-const binKey = (ix: number, iy: number, iz: number): number => ((iz + OFF) * BW + (iy + OFF)) * BW + (ix + OFF);
 
 /** One item of work: the atoms of one work item, as entries (atom, neighbor range in the flat list). */
 interface Entries {
   atom: number[];
   nbStart: number[];
   nbEnd: number[];
-  nb: number[];
+  /** The neighbors of every entry, flat (an entry's are nb[nbStart[e] .. nbEnd[e])). */
+  nb: Int32Array;
 }
 
 /** Local work phases (item ranges of entries) and the ghost groups (one item each, AIR 1..7). */
@@ -259,6 +258,9 @@ export class FixShardlow extends Fix {
   }
 
   /** NBinSSA bins and NPairHalfBinNewtonSSA::build: the work phases of the local atoms and the ghost groups. */
+  /** The buffer of the local neighbor entries of buildPlan (grown as needed). */
+  private nbScratch = new Int32Array(1024);
+
   private buildPlan(w: Work, c: Coeffs): Plan {
     const g = this.sys.geom;
     const nb = this.sys.nb;
@@ -301,7 +303,6 @@ export class FixShardlow extends Fix {
     const st = this.stencil(sx, sy, sz, (i, j, k) => binDist(i, j, k) < cutmaxsq);
 
     // local bins (NBinSSA::bin_atoms): owned atoms in ascending chains; extent of the local bins
-    const chains = new Map<number, number[]>();
     const posIn = new Int32Array(n);
     let lbx0 = Infinity, lby0 = Infinity, lbz0 = Infinity, lbx1 = -Infinity, lby1 = -Infinity, lbz1 = -Infinity;
     const bxOf = new Int32Array(nall), byOf = new Int32Array(nall), bzOf = new Int32Array(nall);
@@ -309,29 +310,35 @@ export class FixShardlow extends Fix {
       bxOf[k] = coord(X[3 * k], 0); byOf[k] = coord(X[3 * k + 1], 1); bzOf[k] = coord(X[3 * k + 2], 2);
     }
     for (let k = 0; k < n; k++) {
-      const key = binKey(bxOf[k], byOf[k], bzOf[k]);
-      let ch = chains.get(key);
-      if (!ch) { ch = []; chains.set(key, ch); }
-      posIn[k] = ch.length;
-      ch.push(k);
       lbx0 = Math.min(lbx0, bxOf[k]); lbx1 = Math.max(lbx1, bxOf[k] + 1);
       lby0 = Math.min(lby0, byOf[k]); lby1 = Math.max(lby1, byOf[k] + 1);
       lbz0 = Math.min(lbz0, bzOf[k]); lbz1 = Math.max(lbz1, bzOf[k] + 1);
     }
-    // the chains of the local bins as a dense grid over their extent (each stencil lookup indexes it; a bin outside
-    // the extent has no owned atoms)
+    // the chains of the local bins over their extent (a bin outside the extent has no owned atoms): the atoms of cell c
+    // are chainAtom[chainStart[c] .. chainStart[c + 1]), ascending, as a counting sort by cell keeps them
     const gx = Math.max(0, lbx1 - lbx0), gy = Math.max(0, lby1 - lby0), gz = Math.max(0, lbz1 - lbz0);
-    const chainList: number[][] = [];
-    const grid = new Int32Array(gx * gy * gz).fill(-1);
+    const ncell = gx * gy * gz;
+    const chainStart = new Int32Array(ncell + 1);
+    const cellOf = new Int32Array(n);
     for (let k = 0; k < n; k++) {
       const cell = ((bzOf[k] - lbz0) * gy + (byOf[k] - lby0)) * gx + (bxOf[k] - lbx0);
-      if (grid[cell] < 0) { grid[cell] = chainList.length; chainList.push(chains.get(binKey(bxOf[k], byOf[k], bzOf[k]))!); }
+      cellOf[k] = cell;
+      chainStart[cell + 1]++;
     }
-    const chainAt = (ix: number, iy: number, iz: number): number[] | undefined => {
+    for (let cc = 0; cc < ncell; cc++) chainStart[cc + 1] += chainStart[cc];
+    const chainAtom = new Int32Array(n);
+    const fill = chainStart.slice(0, ncell);
+    for (let k = 0; k < n; k++) {
+      const cell = cellOf[k];
+      posIn[k] = fill[cell] - chainStart[cell];
+      chainAtom[fill[cell]++] = k;
+    }
+    /** The local cell of bin (ix, iy, iz), or -1 outside the extent or for an empty one. */
+    const cellAt = (ix: number, iy: number, iz: number): number => {
       const x = ix - lbx0, y = iy - lby0, z = iz - lbz0;
-      if (x < 0 || y < 0 || z < 0 || x >= gx || y >= gy || z >= gz) return undefined;
-      const c = grid[(z * gy + y) * gx + x];
-      return c < 0 ? undefined : chainList[c];
+      if (x < 0 || y < 0 || z < 0 || x >= gx || y >= gy || z >= gz) return -1;
+      const cell = (z * gy + y) * gx + x;
+      return chainStart[cell + 1] > chainStart[cell] ? cell : -1;
     };
 
     // phase count and the work-item estimate (npair_half_bin_newton_ssa.cpp: phaseLenEstimate, ssa_maxPhaseLen)
@@ -341,19 +348,27 @@ export class FixShardlow extends Fix {
     const zE = Math.floor((lbz1 - lbz0 + sz1 - 1) / sz1) + 1;
     this.maxPhaseLen = Math.max(this.maxPhaseLen, xE * yE * zE);
 
+    const cutneighsq = c.cutneighsq, cnt = c.nt;
     const pairsOk = (i: number, j: number): boolean => {
-      const t = types[i] * c.nt + types[j];
+      const t = types[i] * cnt + types[j];
       const dx = X[3 * i] - X[3 * j], dy = X[3 * i + 1] - X[3 * j + 1], dz = X[3 * i + 2] - X[3 * j + 2];
-      return dx * dx + dy * dy + dz * dz <= c.cutneighsq[t];
+      return dx * dx + dy * dy + dz * dz <= cutneighsq[t];
     };
 
+    // the neighbor entries in growing typed buffers (one per list), trimmed at the end
+    const grow = (b: { a: Int32Array; n: number }, v: number): void => {
+      if (b.n === b.a.length) { const a = new Int32Array(Math.max(64, 2 * b.a.length)); a.set(b.a); b.a = a; }
+      b.a[b.n++] = v;
+    };
     const phases: [number, number][][] = [];
-    const local: Entries = { atom: [], nbStart: [], nbEnd: [], nb: [] };
-    const pushEntry = (E: Entries, i: number, start: number): void => {
-      if (E.nb.length > start) {
+    // (the local list's buffer is kept from call to call: a plan is used by the call that builds it)
+    const localBuf = { a: this.nbScratch, n: 0 };
+    const local: Entries = { atom: [], nbStart: [], nbEnd: [], nb: localBuf.a };
+    const pushEntry = (E: Entries, buf: { n: number }, i: number, start: number): void => {
+      if (buf.n > start) {
         E.atom.push(i);
         E.nbStart.push(start);
-        E.nbEnd.push(E.nb.length);
+        E.nbEnd.push(buf.n);
       }
     };
     for (let zoff = sz; zoff >= 0; --zoff) {
@@ -369,21 +384,22 @@ export class FixShardlow extends Fix {
                   const sXb = xb + ((sub & 1) ? sx : 0);
                   if (sYb < lby0 || sYb >= lby1) continue;
                   if (sXb < lbx0 || sXb >= lbx1) continue;
-                  const ch = chainAt(sXb, sYb, zb);
-                  if (!ch) continue;
-                  for (const i of ch) {
-                    const start = local.nb.length;
+                  const ic = cellAt(sXb, sYb, zb);
+                  if (ic < 0) continue;
+                  for (let pi = chainStart[ic], pe = chainStart[ic + 1]; pi < pe; pi++) {
+                    const i = chainAtom[pi];
+                    const start = localBuf.n;
                     for (let q = st.nst[sub]; q < st.nst[sub + 1]; q++) {
                       const dx = st.off[3 * q], dy = st.off[3 * q + 1], dz = st.off[3 * q + 2];
-                      const jch = chainAt(sXb + dx, sYb + dy, zb + dz);
-                      if (!jch) continue;
+                      const jc = cellAt(sXb + dx, sYb + dy, zb + dz);
+                      if (jc < 0) continue;
                       const from = dx === 0 && dy === 0 && dz === 0 ? posIn[i] + 1 : 0;
-                      for (let p = from; p < jch.length; p++) {
-                        const j = jch[p];
-                        if (pairsOk(i, j)) local.nb.push(j);
+                      for (let p = chainStart[jc] + from, pj = chainStart[jc + 1]; p < pj; p++) {
+                        const j = chainAtom[p];
+                        if (pairsOk(i, j)) grow(localBuf, j);
                       }
                     }
-                    pushEntry(local, i, start);
+                    pushEntry(local, localBuf, i, start);
                   }
                 }
                 if (local.atom.length > itemStart) items.push([itemStart, local.atom.length]);
@@ -394,28 +410,36 @@ export class FixShardlow extends Fix {
         }
       }
     }
+    this.nbScratch = localBuf.a;
+    local.nb = localBuf.a.subarray(0, localBuf.n);
 
     // ghost groups (NPairHalfBinNewtonSSA::build, AIR ghosts only): ascending ghost order inside a group
     const ghosts: Entries[] = [];
-    for (let grp = 0; grp < 7; grp++) ghosts.push({ atom: [], nbStart: [], nbEnd: [], nb: [] });
+    const ghostBufs: { a: Int32Array; n: number }[] = [];
+    for (let grp = 0; grp < 7; grp++) {
+      ghostBufs.push({ a: new Int32Array(64), n: 0 });
+      ghosts.push({ atom: [], nbStart: [], nbEnd: [], nb: ghostBufs[grp].a });
+    }
     for (let k = n; k < nall; k++) {
       const code = coord2ssaAIR(X[3 * k], X[3 * k + 1], X[3 * k + 2], lo, hi);
       if (code < 1) continue;
-      const E = ghosts[code - 1];
-      const start = E.nb.length;
-      const gx = bxOf[k], gy = byOf[k], gz = bzOf[k];
+      const E = ghosts[code - 1], buf = ghostBufs[code - 1];
+      const start = buf.n;
+      const gbx = bxOf[k], gby = byOf[k], gbz = bzOf[k];
       for (let q = 0; q < st.full; q++) {
         const dx = st.off[3 * q], dy = st.off[3 * q + 1], dz = st.off[3 * q + 2];
-        const bx = gx + dx, by = gy + dy, bz = gz + dz;
+        const bx = gbx + dx, by = gby + dy, bz = gbz + dz;
         if (bx < lbx0 || bx >= lbx1 || by < lby0 || by >= lby1 || bz < lbz0 || bz >= lbz1) continue;
-        const ch = chainAt(bx, by, bz);
-        if (!ch) continue;
-        for (const j of ch) {
-          if (pairsOk(k, j)) E.nb.push(j);
+        const jc = cellAt(bx, by, bz);
+        if (jc < 0) continue;
+        for (let p = chainStart[jc], pj = chainStart[jc + 1]; p < pj; p++) {
+          const j = chainAtom[p];
+          if (pairsOk(k, j)) grow(buf, j);
         }
       }
-      pushEntry(E, k, start);
+      pushEntry(E, buf, k, start);
     }
+    for (let grp = 0; grp < 7; grp++) ghosts[grp].nb = ghostBufs[grp].a.subarray(0, ghostBufs[grp].n);
     return { local, phases, ghosts };
   }
 

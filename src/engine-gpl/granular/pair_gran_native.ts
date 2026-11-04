@@ -16,14 +16,29 @@
  * engine's store), carried over by atom-ID pair when the list is built again; an entry out of contact holds none.
  */
 import { PairGran, pairKey } from '../../engine/force/pair/gran';
-import { tallyAtomXyz, type PairCompute } from '../../engine/force/types';
-import { NEIGHMASK, SBBITS, type NeighList } from '../../engine/neighbor';
+import { tallyAtomXyz, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { NEIGHMASK, SBBITS, type NeighList, type Neighbor } from '../../engine/neighbor';
+import { NativePairOrder, NativeReverseComm } from '../neighbor/nativeOrder';
 import { contactMassArray } from '../../engine/atoms';
 
+/**
+ * Each pair's native list order (a cache of the current build), outside the pair's own fields: write_restart stores
+ * those, and a restored cache could be taken for a later build's.
+ */
+const natOrders = new WeakMap<PairGran, NativePairOrder>();
+/** Each pair's native reverse_comm fold (a cache of the current build, kept out of the fields as natOrders is). */
+const natComms = new WeakMap<PairGran, NativeReverseComm>();
+
 export class PairGranNative extends PairGran {
-  /** The neighbor list (and its build) the history slots follow. */
-  private slotList: NeighList | null = null;
+  /** The entries (and their build) the history slots follow. */
+  private slotEnt: Int32Array | null = null;
   private slotBuild = -1;
+  /** newton pair (StyleContext.newtonPair): with newton on the loop takes native's half list order (NativePairOrder). */
+  private newtonPair = true;
+  /** The engine list's entries as (i, j) pairs, for newton off (made once per list). */
+  private listEnt = new Int32Array(0);
+  private listEntOf: NeighList | null = null;
+  private listEntBuild = -1;
   /** Three shear values per list entry (lower-ID frame), and the entry's atom IDs (lower, higher; 0: no contact). */
   private slotShear = new Float64Array(0);
   private slotLo = new Int32Array(0);
@@ -31,9 +46,41 @@ export class PairGranNative extends PairGran {
   /** single()'s index of the entries in contact by atom-ID pair (built on demand after a compute). */
   private slotIndex: Map<number | string, number> | null = null;
 
+  override initStyle(ctx: StyleContext): void {
+    super.initStyle(ctx);
+    const nw = ctx.newtonPair !== false;
+    if (nw !== this.newtonPair) natOrders.delete(this);
+    this.newtonPair = nw;
+  }
+
+  /**
+   * The (i, j) entries of this call in the order the loop visits them: with newton on, native's half list order
+   * (npair_bin.cpp, NativePairOrder: the rows in native's atom order, each row's partners in its bin walk, and each pair
+   * in the row native gives it), so the forces are summed and each contact oriented as native does; with newton off the
+   * engine list's rows.
+   */
+  private entries(pc: PairCompute, list: NeighList, nb: Neighbor): Int32Array {
+    if (this.newtonPair) {
+      let order = natOrders.get(this);
+      if (!order) natOrders.set(this, (order = new NativePairOrder(true)));
+      return order.pairs(pc.s, nb, pc.geom, list);
+    }
+    if (list !== this.listEntOf || nb.nbuild !== this.listEntBuild) {
+      let n = 0;
+      for (let ii = 0; ii < list.inum; ii++) n += list.numneigh[ii];
+      const ent = new Int32Array(2 * n);
+      let e = 0;
+      for (let ii = 0; ii < list.inum; ii++) {
+        for (let k = list.firstneigh[ii], k1 = k + list.numneigh[ii]; k < k1; k++) { ent[e++] = ii; ent[e++] = list.neighbors[k]; }
+      }
+      this.listEnt = ent; this.listEntOf = list; this.listEntBuild = nb.nbuild;
+    }
+    return this.listEnt;
+  }
+
   override settings(args: string[]): void {
     super.settings(args);
-    this.slotList = null;
+    this.slotEnt = null;
     this.slotBuild = -1;
     this.slotLo = new Int32Array(0);
     this.slotHi = new Int32Array(0);
@@ -47,28 +94,25 @@ export class PairGranNative extends PairGran {
    * the new list's entries). The previous indices refer to the previous atoms and ghosts, so the IDs of each record are
    * kept with it.
    */
-  private ensureSlots(list: NeighList, nbuild: number, id: ArrayLike<number>, owner: Int32Array): void {
-    if (list === this.slotList && nbuild === this.slotBuild) return;
+  private ensureSlots(ent: Int32Array, nbuild: number, id: ArrayLike<number>, owner: Int32Array): void {
+    if (ent === this.slotEnt && nbuild === this.slotBuild) return;
     const oldShear = this.slotShear, oldLo = this.slotLo, oldHi = this.slotHi;
     let prev: Map<number | string, number> | null = null;
     for (let k = 0; k < oldLo.length; k++) if (oldLo[k] !== 0) (prev ??= new Map()).set(pairKey(oldLo[k], oldHi[k]), k);
-    const nent = list.neighbors.length;
+    const nent = ent.length >> 1;
     const sh = new Float64Array(3 * nent), lo = new Int32Array(nent), hi = new Int32Array(nent);
     if (prev) {
-      for (let ii = 0; ii < list.inum; ii++) {
-        const a = id[owner[ii]];
-        for (let k = list.firstneigh[ii], k1 = k + list.numneigh[ii]; k < k1; k++) {
-          const b = id[owner[list.neighbors[k] & NEIGHMASK]];
-          const l = a < b ? a : b, h = a < b ? b : a;
-          const o = prev.get(pairKey(l, h));
-          if (o === undefined) continue;
-          sh[3 * k] = oldShear[3 * o]; sh[3 * k + 1] = oldShear[3 * o + 1]; sh[3 * k + 2] = oldShear[3 * o + 2];
-          lo[k] = l; hi[k] = h;
-        }
+      for (let e = 0; e < nent; e++) {
+        const a = id[owner[ent[2 * e]]], b = id[owner[ent[2 * e + 1] & NEIGHMASK]];
+        const l = a < b ? a : b, h = a < b ? b : a;
+        const o = prev.get(pairKey(l, h));
+        if (o === undefined) continue;
+        sh[3 * e] = oldShear[3 * o]; sh[3 * e + 1] = oldShear[3 * o + 1]; sh[3 * e + 2] = oldShear[3 * o + 2];
+        lo[e] = l; hi[e] = h;
       }
     }
     this.slotShear = sh; this.slotLo = lo; this.slotHi = hi;
-    this.slotList = list;
+    this.slotEnt = ent;
     this.slotBuild = nbuild;
   }
 
@@ -97,19 +141,22 @@ export class PairGranNative extends PairGran {
     const tq = this.tq;
     tq.fill(0, 0, 3 * nall);
     const history = this.history, hertz = this.hertz;
-    if (history) this.ensureSlots(list, nb.nbuild, id, owner);
+    const ent = this.entries(pc, list, nb);
+    const nent = ent.length >> 1;
+    if (history) this.ensureSlots(ent, nb.nbuild, id, owner);
     this.slotIndex = null;
     const slotShear = this.slotShear, slotLo = this.slotLo, slotHi = this.slotHi;
     const kn = this.kn, kt = this.kt, gamman = this.gn, gammat = this.gt, xmu = this.xmu;
     const limit_damping = this.limitDamping;
     const freeze_group_bit = this.freezeBit;
     const special_lj = pc.specialLJ;
-    for (let ii = 0; ii < list.inum; ii++) {
-      const oi = owner[ii];
-      const xtmp = x[3 * ii], ytmp = x[3 * ii + 1], ztmp = x[3 * ii + 2];
-      const radi = radius[oi];
-      for (let k = list.firstneigh[ii], k1 = k + list.numneigh[ii]; k < k1; k++) {
-        const jraw = list.neighbors[k];
+    {
+      for (let k = 0; k < nent; k++) {
+        const ii = ent[2 * k];
+        const oi = owner[ii];
+        const xtmp = x[3 * ii], ytmp = x[3 * ii + 1], ztmp = x[3 * ii + 2];
+        const radi = radius[oi];
+        const jraw = ent[2 * k + 1];
         const factor_lj = special_lj[jraw >>> SBBITS];
         const j = jraw & NEIGHMASK;
         // a pair skipped or out of contact keeps no shear (native unsets touch and zeroes the shear)
@@ -269,6 +316,17 @@ export class PairGranNative extends PairGran {
         if (pc.vatom) tallyAtomXyz(pc, ii, j, 0, fx, fy, fz, delx, dely, delz);
       }
     }
-    nb.reverseSum(tq, 3, s.torque!);
+    // As native LAMMPS does (src/GRANULAR/pair_gran_hooke_history.cpp compute at b332f28): the fdotr virial over the
+    // forces of owned atoms and ghosts, then comm->reverse_comm folds the ghost forces and torques into their owners
+    // swap by swap (NativeReverseComm), when the style is the whole pair term with newton on in an orthogonal box.
+    if (this.newtonPair && !this.hybridSub && !pc.geom.triclinic && f === nb.fall && list === nb.half) {
+      let comm = natComms.get(this);
+      if (!comm) natComms.set(this, (comm = new NativeReverseComm()));
+      comm.fdotrFold(s, nb, pc.geom, x, f, pc.acc.virial);
+      pc.fdotrDone = true;
+      comm.foldInto(s, nb, pc.geom, tq, s.torque!);
+    } else {
+      nb.reverseSum(tq, 3, s.torque!);
+    }
   }
 }

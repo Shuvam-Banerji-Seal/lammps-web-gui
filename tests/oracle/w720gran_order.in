@@ -1,0 +1,29 @@
+# oracle: pair gran/hertz/history with newton on in native's half-list order and orientation (polydisperse spheres settling on a plane region of wall/gran/region; the pair term rounds with the orientation of each contact, polyhertz = sqrt((radsum - r) radi radj / radsum); the ghost forces and torques fold into their owners swap by swap as reverse_comm does)
+# oracle-compare: thermo=all atoms=all rel=1e-13 abs=1e-14 atomrel=1e-15
+units           lj
+atom_style      sphere
+boundary        p p f
+newton          on
+comm_modify     vel yes
+region          box block 0 6 0 6 0 10 units box
+create_box      1 box
+lattice         sc 1.0
+region          fill block 0.5 5.5 0.5 5.5 0.5 6.5 units box
+create_atoms    1 region fill
+variable        d atom 0.75+0.2*random(0,1,5791)
+set             group all diameter v_d
+set             group all density 1.0
+velocity        all create 0.5 4928459 loop geom
+neighbor        0.2 bin
+neigh_modify    every 1 delay 0 check yes
+pair_style      gran/hertz/history 2000.0 NULL 50.0 NULL 0.5 1
+pair_coeff      * *
+fix             1 all nve/sphere
+fix             2 all gravity 1.0 vector 0 0 -1
+region          floor plane 0 0 0 0 0 1 side in units box
+fix             3 all wall/gran/region hertz/history 2000.0 NULL 50.0 NULL 0.5 1 region floor
+timestep        0.001
+thermo          500
+thermo_style    custom step atoms ke pe
+thermo_modify   format float %.15g
+run             3000

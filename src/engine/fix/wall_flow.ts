@@ -179,6 +179,9 @@ export const fluxNormal = (r: number, a: number, b: number): number => {
   return 0.5 * (lo + hi);
 };
 
+/** The segment slot of an atom that has none yet (segments are -1 .. number of walls). */
+const NO_SEGMENT = -2;
+
 export class FixWallFlow extends Fix {
   readonly style = 'wall/flow';
   private readonly dim: 0 | 1 | 2;
@@ -192,7 +195,9 @@ export class FixWallFlow extends Fix {
    * reneighbor steps and at a run's setup, so its flow-axis coordinate is raw = x + (image - k) L with the engine's
    * coordinate x, which is wrapped every step.
    */
-  private readonly kRemap = new Map<number, number>();
+  private kRemap = new Int32Array(0);
+  /** 1 where kRemap holds the atom's image (an atom created after the last remap has none). */
+  private kRemapSet = new Uint8Array(0);
   /**
    * Per atom (by id): the segment of the flow axis it was last seen in. As native LAMMPS does
    * (src/EXTRA-FIX/fix_wall_flow.cpp at b332f28): init() sets current_segment for every atom, end_of_step() updates it
@@ -200,9 +205,18 @@ export class FixWallFlow extends Fix {
    * and box hi (pos >= walls[r] && pos < walls[r + 1]), and -1 outside the box. With a dynamic group an atom that enters
    * the group is compared with the segment it had when it was last updated (or at init).
    */
-  private readonly segment = new Map<number, number>();
+  private segment = new Int32Array(0);
   /** Neighbor-list build counter seen at the last end of step (a build = a native reneighbor step). */
   private lastBuildSeen = -2;
+
+  /** The per-atom arrays (indexed by atom ID) large enough for ID id; a new slot of segment holds NO_SEGMENT. */
+  private grow(id: number): void {
+    if (id < this.segment.length) return;
+    const n = Math.max(id + 1, 2 * this.segment.length, 64);
+    const seg = new Int32Array(n).fill(NO_SEGMENT); seg.set(this.segment); this.segment = seg;
+    const k = new Int32Array(n); k.set(this.kRemap); this.kRemap = k;
+    const ks = new Uint8Array(n); ks.set(this.kRemapSet); this.kRemapSet = ks;
+  }
   private checked = false;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
@@ -283,8 +297,12 @@ export class FixWallFlow extends Fix {
   /** init() of every run: the segment of every atom from its native coordinate (fix_wall_flow.cpp init). */
   private seedSegments(): void {
     const s = this.sys.state;
-    this.segment.clear();
-    for (let i = 0; i < s.n; i++) this.segment.set(s.id[i], this.segmentOf(this.rawCoord(i)));
+    this.segment.fill(NO_SEGMENT);
+    for (let i = 0; i < s.n; i++) {
+      const id = s.id[i];
+      this.grow(id);
+      this.segment[id] = this.segmentOf(this.rawCoord(i));
+    }
   }
 
   /** Native wraps every atom into the box when it sets up a run (Verlet::setup, domain->pbc). */
@@ -300,7 +318,8 @@ export class FixWallFlow extends Fix {
   private rawCoord(i: number): number {
     const s = this.sys.state;
     const d = this.dim;
-    const k = this.kRemap.get(s.id[i]) ?? s.image[3 * i + d];
+    const id = s.id[i];
+    const k = id < this.kRemapSet.length && this.kRemapSet[id] ? this.kRemap[id] : s.image[3 * i + d];
     return s.x[3 * i + d] + (s.image[3 * i + d] - k) * this.boxLength();
   }
 
@@ -308,7 +327,12 @@ export class FixWallFlow extends Fix {
   private remapped(): void {
     const s = this.sys.state;
     const d = this.dim;
-    for (let i = 0; i < s.n; i++) this.kRemap.set(s.id[i], s.image[3 * i + d]);
+    for (let i = 0; i < s.n; i++) {
+      const id = s.id[i];
+      this.grow(id);
+      this.kRemap[id] = s.image[3 * i + d];
+      this.kRemapSet[id] = 1;
+    }
     this.lastBuildSeen = this.sys.nb.lastBuild;
   }
 
@@ -333,11 +357,13 @@ export class FixWallFlow extends Fix {
     if (this.sys.nb.lastBuild !== this.lastBuildSeen) this.remapped();
     for (const i of nativeOrder(s)) {
       if (!(mask[i] & this.groupBit)) continue;
-      const prev = this.segment.get(id[i]);
+      const ai = id[i];
+      this.grow(ai);
+      const prev = this.segment[ai];
       const cur = this.segmentOf(this.rawCoord(i));
-      this.segment.set(id[i], cur);
+      this.segment[ai] = cur;
       // an atom created after the run's init has no segment yet (native: the uninitialized slot of a grown array)
-      if (prev === undefined || prev === cur) continue;
+      if (prev === NO_SEGMENT || prev === cur) continue;
       // one reassignment per atom per step, however many boundaries it passed
       const m = massOf(s, i);
       const sig = Math.sqrt((s.units.boltz * this.temp) / (s.units.mvv2e * m));

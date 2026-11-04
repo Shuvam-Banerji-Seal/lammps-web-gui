@@ -39,6 +39,8 @@ export interface Ctx {
   run: RunApi;
   /** The command's words as typed, before an accelerator alias was replaced by its base style (Session.baseStyleNames). */
   typed?: string[];
+  /** Set by fix set (engine-gpl/xfix/fix_set.ts), which runs the set handler's actions every Nevery steps (see set). */
+  fixSet?: boolean;
 }
 
 export type Handler = (ctx: Ctx, args: string[]) => void | Promise<void>;

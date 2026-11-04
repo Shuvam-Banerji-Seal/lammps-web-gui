@@ -830,6 +830,13 @@ export const pushTopo = (list: TopoList, type: number, ids: readonly number[]): 
   list.n++;
 };
 
+/** Removes the entries of one type from a topology list (filterTopo by type, with no pass when there is none). */
+export const dropTopoType = (list: TopoList, type: number): void => {
+  let e = 0;
+  while (e < list.n && list.type[e] !== type) e++;
+  if (e < list.n) filterTopo(list, (_ids, t) => t !== type);
+};
+
 export const filterTopo = (list: TopoList, keep: (ids: number[], type: number) => boolean): void => {
   let k = 0;
   const ids: number[] = new Array(list.width);
@@ -910,6 +917,11 @@ export interface SpecialList {
   partner: Int32Array;
   /** 1 = 1-2, 2 = 1-3, 3 = 1-4. */
   order: Int8Array;
+  /**
+   * Set on a 1-2 list of buildSpecial12 in which no two live bonds join the same atoms (no repeated partner), with the
+   * atom count it was built for: removing a broken bond's entries then gives the list a rebuild would (removeSpecial12).
+   */
+  unique12?: number;
 }
 
 /**
@@ -938,6 +950,7 @@ const buildSpecial12 = (s: SimState, ignoreBond?: (type: number) => boolean): Sp
   }
   for (let i = 0; i < n; i++) deg[i + 1] += deg[i];
   const fill = deg.slice(0, n), cand = new Int32Array(deg[n]);
+  let repeated = false;
   for (let e = 0; e < b.n; e++) {
     if (!live(e)) continue;
     const a = b.atoms[2 * e], c = b.atoms[2 * e + 1];
@@ -957,10 +970,43 @@ const buildSpecial12 = (s: SimState, ignoreBond?: (type: number) => boolean): Sp
       let dup = false;
       for (let r = row; r < m; r++) if (partner[r] === c) { dup = true; break; }
       if (!dup) partner[m++] = c;
+      else repeated = true;
     }
   }
   offset[n] = m;
-  return { offset, partner: partner.slice(0, m), order: new Int8Array(m).fill(1) };
+  const list: SpecialList = { offset, partner: partner.slice(0, m), order: new Int8Array(m).fill(1) };
+  if (!repeated && !ignoreBond) list.unique12 = n;
+  return list;
+};
+
+/**
+ * The 1-2 list after the bonds between the atoms of each pair broke (pairs: ID, ID, ...; map: atom ID to index), as
+ * native LAMMPS updates it (src/BPM/fix_update_special_bonds.cpp pre_exchange at b332f28): each atom's entry for the
+ * other leaves its row, "for (; m < n1 - 1; m++) slist[m] = slist[m + 1];", the rest keeping their order. For a list
+ * marked unique12 (each partner is one bond, the rows in the order of the bonds) that is the list buildSpecial12 gives
+ * for the topology without those bonds. Null when the list is not such a list or an atom of a pair is not here.
+ */
+export const removeSpecial12 = (list: SpecialList, s: SimState, pairs: readonly number[], map: Int32Array): SpecialList | null => {
+  const n = s.n;
+  if (list.unique12 !== n) return null;
+  const { offset, partner } = list;
+  const drop = new Uint8Array(partner.length);
+  for (let p = 0; p + 1 < pairs.length; p += 2) {
+    for (let side = 0; side < 2; side++) {
+      const ta = pairs[p + side], tb = pairs[p + 1 - side];
+      const i = ta >= 0 && ta < map.length ? map[ta] : -1;
+      if (i < 0 || i >= n || s.id[i] !== ta) return null;
+      for (let k = offset[i]; k < offset[i + 1]; k++) if (partner[k] === tb) { drop[k] = 1; break; }
+    }
+  }
+  const off = new Int32Array(n + 1), part = new Int32Array(partner.length);
+  let m = 0;
+  for (let i = 0; i < n; i++) {
+    off[i] = m;
+    for (let k = offset[i]; k < offset[i + 1]; k++) if (!drop[k]) part[m++] = partner[k];
+  }
+  off[n] = m;
+  return { offset: off, partner: part.slice(0, m), order: new Int8Array(m).fill(1), unique12: n };
 };
 
 export const buildSpecial = (s: SimState, opts: { angle?: boolean; dihedral?: boolean; ignoreBond?: (type: number) => boolean; maxOrder?: 1 | 2 | 3 } = {}): SpecialList => {

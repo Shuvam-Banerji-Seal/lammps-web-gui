@@ -116,6 +116,44 @@ export class PairGranNative extends PairGran {
     this.slotBuild = nbuild;
   }
 
+  /** The run constants of the GPU kernel (engine-gpl/granular/gpu_gran.ts). */
+  gpuParams(): {
+    kn: number; kt: number; gamman: number; gammat: number; xmu: number; limitDamping: boolean;
+    history: boolean; hertz: boolean; freezeBit: number;
+  } {
+    return {
+      kn: this.kn, kt: this.kt, gamman: this.gn, gammat: this.gt, xmu: this.xmu, limitDamping: this.limitDamping,
+      history: this.history, hertz: this.hertz, freezeBit: this.freezeBit,
+    };
+  }
+
+  /** The contacts that keep a shear: atom IDs lo < hi, and the three shear values in the frame of lo (x_lo - x_hi). */
+  historyContacts(): { lo: Int32Array; hi: Int32Array; shear: Float64Array; n: number } {
+    const L = this.slotLo, H = this.slotHi, S = this.slotShear;
+    let n = 0;
+    for (let k = 0; k < L.length; k++) if (L[k] !== 0) n++;
+    const lo = new Int32Array(n), hi = new Int32Array(n), shear = new Float64Array(3 * n);
+    let m = 0;
+    for (let k = 0; k < L.length; k++) {
+      if (L[k] === 0) continue;
+      lo[m] = L[k]; hi[m] = H[k];
+      shear[3 * m] = S[3 * k]; shear[3 * m + 1] = S[3 * k + 1]; shear[3 * m + 2] = S[3 * k + 2];
+      m++;
+    }
+    return { lo, hi, shear, n };
+  }
+
+  /**
+   * Replaces the shear history with these contacts (the GPU kernel's, in historyContacts' form): the next compute here
+   * carries them over to its list entries by atom-ID pair, as at a list build.
+   */
+  setHistoryContacts(lo: Int32Array<ArrayBuffer>, hi: Int32Array<ArrayBuffer>, shear: Float64Array<ArrayBuffer>): void {
+    this.slotLo = lo; this.slotHi = hi; this.slotShear = shear;
+    this.slotEnt = null;
+    this.slotBuild = -1;
+    this.slotIndex = null;
+  }
+
   protected override shearOf(key: number | string): Float64Array | undefined {
     if (!this.slotIndex) {
       const m = new Map<number | string, number>();

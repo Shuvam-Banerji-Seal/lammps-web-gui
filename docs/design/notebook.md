@@ -266,6 +266,26 @@ interface ForceBackend {
   In Chromium a 500-particle periodic system with all four kinds matched the CPU engine's thermo
   to 6 digits over 50 steps, and the CH4 example (f f f) conserved the CPU's total energy over 1000
   steps. A periodic box shorter than two cutoffs stays on the CPU (the Li and H atom examples).
+- **WebGPU granular contacts** (`engine-gpl/granular/gpu_gran.ts`, the atom kernel of `gpu/atomKernel.ts`):
+  `pair_style gran/hooke`, `gran/hooke/history` and `gran/hertz/history`, with `limit_damping`, the
+  fix freeze rule for m_eff and the rigid-body masses; no molecular topology. The kernel is a
+  translation of the LAMMPS source (lazy group `gpl_gran_gpu`, HOOKS words the three style names).
+  Each atom walks the cells around its own and evaluates every contact it is in, in the frame of the
+  lower atom ID (del = x_lo - x_hi, the frame the CPU style keeps the shear in), so both atoms of a
+  contact compute it from the same values and get bit-identical results: equal and opposite forces,
+  and the same updated shear. The shear history stays in the CPU pair: each evaluation hands every
+  atom a table of its contacts (partner ID and shear; 12 entries at first, more when an atom has more
+  contacts, the evaluation running again when a table overflows), and the host takes the contacts
+  back from the lower IDs' tables. A run that starts or ends on the CPU therefore carries the history
+  across, and `write_restart` and `single()` see it. Atom IDs must be below 2^24 (the tables hold them
+  as f32). The cell size is twice the largest radius at each evaluation, so `fix pour` may insert
+  larger particles. A contact of two frozen atoms takes the lower ID's mass as m_eff (the C++ takes
+  whichever its list put first). It moves nothing, since fix freeze zeroes both forces.
+  The kernel's arithmetic in fp64 matches the CPU style's forces, torques, virial and updated
+  history to 1e-10 on 216 polydisperse spheres; a CPU, accelerated, CPU sequence of runs matches the
+  CPU engine's thermo to 1e-8 (`tests/engineGpuGran.test.ts`). In Chromium (SwiftShader) the three
+  styles matched the CPU engine's thermo to 6 digits over 500 steps, and `examples/pour/in.pour` ran
+  on the GPU path with the CPU's insertion counts.
 - **The virial tensor on the GPU path.** Every per-step kernel (lj/cut, the styles kernel, EAM, SW,
   Tersoff, TIP4P) accumulates the six virial components (xx yy zz xy xz yz) next to its scalar
   virial: half of 0.5 F/r d (x) d at each atom of a pair, d1 (x) F1 + d2 (x) F2 for a three-body

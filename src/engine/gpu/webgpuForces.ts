@@ -1073,7 +1073,8 @@ export class WebGpuForceBackend implements ForceBackend {
   private atomParams: GPUBuffer | null = null;
   private atombufs: {
     pos: GPUBuffer; ints: GPUBuffer; coef: GPUBuffer; ext: GPUBuffer; out: GPUBuffer; staging: GPUBuffer;
-    atomCap: number; intsCap: number; coefCap: number; coefKey: string; binds: Map<GPUComputePipeline, GPUBindGroup>;
+    atomCap: number; intsCap: number; coefCap: number; extBytes: number; outBytes: number; coefKey: string;
+    binds: Map<GPUComputePipeline, GPUBindGroup>;
   } | null = null;
   private atomExt = new Float32Array(0);
   private atomExtSlot = new Float32Array(0);
@@ -1086,12 +1087,19 @@ export class WebGpuForceBackend implements ForceBackend {
   async computeAtomKernel(state: SimState, k: GpuAtomKernel): Promise<ForceResult & { evdwl: number; ecoul: number }> {
     if (this.disposed) throw new Error('the WebGPU backend was disposed');
     if (state.n === 0) return k.finish(state, new Float64Array(0));
-    if (shortPeriodicEdge(state, k.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
-    return validated(this.device, () => this.atomOnce(state, k));
+    // a kernel may ask to run again with what it has made larger (GpuAtomKernel.again); its inputs come from the host
+    // at each evaluation, so a second run starts from the same state
+    for (let tries = 0; tries < 8; tries++) {
+      if (shortPeriodicEdge(state, k.maxCutoff)) throw new Error('the box has fewer than 2 cutoffs in a periodic dimension');
+      const r = await validated(this.device, () => this.atomOnce(state, k));
+      if (r) return r;
+    }
+    throw new Error(`the ${k.name} kernel asked to run again 8 times`);
   }
 
-  private async atomOnce(state: SimState, k: GpuAtomKernel): Promise<ForceResult & { evdwl: number; ecoul: number }> {
+  private async atomOnce(state: SimState, k: GpuAtomKernel): Promise<(ForceResult & { evdwl: number; ecoul: number }) | null> {
     const n = state.n;
+    const ew = k.extWidth ?? 1, ow = k.outWidth ?? ATOM_KERNEL_OUT;
     const cells = this.sortByCell(state, k.maxCutoff, 0, 1);
     if (!cells) throw new Error('the box has no cell in a periodic dimension');
     const { L, tilt, nc, base, two } = cells;
@@ -1107,18 +1115,19 @@ export class WebGpuForceBackend implements ForceBackend {
     if (!this.atomParams) this.atomParams = dev.createBuffer({ size: 96, usage: BUF_UNIFORM | BUF_COPY_DST });
     const coefF32 = Float32Array.from(k.coef);
     let b = this.atombufs;
-    if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < coefF32.byteLength) {
+    if (!b || b.atomCap < n || b.intsCap < intsLen || b.coefCap < coefF32.byteLength || b.extBytes < 16 * ew * n || b.outBytes < 4 * ow * n) {
       if (b) for (const buf of [b.pos, b.ints, b.coef, b.ext, b.out, b.staging]) buf.destroy();
       const atomCap = Math.max(64, Math.ceil(n * 1.25)), intsCap = Math.max(128, Math.ceil(intsLen * 1.25));
       const coefCap = Math.max(16, coefF32.byteLength, b?.coefCap ?? 0);
+      const extBytes = 16 * ew * atomCap, outBytes = 4 * ow * atomCap;
       b = this.atombufs = {
         pos: this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST),
         ints: this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST),
         coef: this.buffer(coefCap, BUF_STORAGE | BUF_COPY_DST),
-        ext: this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST),
-        out: this.buffer(4 * ATOM_KERNEL_OUT * atomCap, BUF_STORAGE | BUF_COPY_SRC),
-        staging: this.buffer(4 * ATOM_KERNEL_OUT * atomCap, BUF_MAP_READ | BUF_COPY_DST),
-        atomCap, intsCap, coefCap, coefKey: '', binds: new Map(),
+        ext: this.buffer(extBytes, BUF_STORAGE | BUF_COPY_DST),
+        out: this.buffer(outBytes, BUF_STORAGE | BUF_COPY_SRC),
+        staging: this.buffer(outBytes, BUF_MAP_READ | BUF_COPY_DST),
+        atomCap, intsCap, coefCap, extBytes, outBytes, coefKey: '', binds: new Map(),
       };
     }
     let bind = b.binds.get(pipe);
@@ -1130,12 +1139,13 @@ export class WebGpuForceBackend implements ForceBackend {
       b.binds.set(pipe, bind);
     }
     // the per-atom inputs in the slots of the cell sort
-    if (this.atomExt.length < 4 * n) { this.atomExt = new Float32Array(4 * b.atomCap); this.atomExtSlot = new Float32Array(4 * b.atomCap); }
+    const e4 = 4 * ew;
+    if (this.atomExt.length < e4 * n) { this.atomExt = new Float32Array(e4 * b.atomCap); this.atomExtSlot = new Float32Array(e4 * b.atomCap); }
     const ext = this.atomExt, extSlot = this.atomExtSlot;
     k.extra(state, ext);
     for (let slot = 0; slot < n; slot++) {
       const i = sorted[slot];
-      for (let c = 0; c < 4; c++) extSlot[4 * slot + c] = ext[4 * i + c];
+      for (let c = 0; c < e4; c++) extSlot[e4 * slot + c] = ext[e4 * i + c];
     }
     const params = new ArrayBuffer(96);
     const pf = new Float32Array(params), pu = new Uint32Array(params);
@@ -1149,7 +1159,7 @@ export class WebGpuForceBackend implements ForceBackend {
     q.writeBuffer(this.atomParams, 0, params);
     q.writeBuffer(b.pos, 0, posData.buffer, posData.byteOffset, 16 * n);
     q.writeBuffer(b.ints, 0, ints.buffer, ints.byteOffset, 4 * intsLen);
-    q.writeBuffer(b.ext, 0, extSlot.buffer, extSlot.byteOffset, 16 * n);
+    q.writeBuffer(b.ext, 0, extSlot.buffer, extSlot.byteOffset, 16 * ew * n);
     if (b.coefKey !== k.key) {
       q.writeBuffer(b.coef, 0, coefF32.buffer, coefF32.byteOffset, coefF32.byteLength);
       b.coefKey = k.key;
@@ -1160,17 +1170,18 @@ export class WebGpuForceBackend implements ForceBackend {
     pass.setBindGroup(0, bind);
     pass.dispatchWorkgroups(Math.ceil(n / ATOM_KERNEL_WORKGROUP));
     pass.end();
-    const bytes = 4 * ATOM_KERNEL_OUT * n;
+    const bytes = 4 * ow * n;
     enc.copyBufferToBuffer(b.out, 0, b.staging, 0, bytes);
     q.submit([enc.finish()]);
     await b.staging.mapAsync(MAP_READ, 0, bytes);
     const outv = new Float32Array(b.staging.getMappedRange(0, bytes));
-    const out = new Float64Array(ATOM_KERNEL_OUT * n);
+    const out = new Float64Array(ow * n);
     for (let slot = 0; slot < n; slot++) {
       const i = sorted[slot];
-      for (let c = 0; c < ATOM_KERNEL_OUT; c++) out[ATOM_KERNEL_OUT * i + c] = outv[ATOM_KERNEL_OUT * slot + c];
+      for (let c = 0; c < ow; c++) out[ow * i + c] = outv[ow * slot + c];
     }
     b.staging.unmap();
+    if (k.again?.(state, out)) return null;
     return k.finish(state, out);
   }
 

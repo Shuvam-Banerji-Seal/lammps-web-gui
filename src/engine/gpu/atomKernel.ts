@@ -10,8 +10,8 @@ import { WGSL_BOX_IMAGE } from './cellSort';
  *          backend hands them to finish() in atom order).
  * The kernel reads WGSL_ATOM_KERNEL_HEAD's bindings: P (the box, the cell grid and eight style scalars), pos (x y z
  * type, from the box origin), ints (the cell starts, then each slot's cell at P.cellOfBase), coef (the style's
- * parameters), ext (four per-atom values, extra()) and outv. Every binding must be used by the entry point (an
- * 'auto' layout leaves an unused one out, and the bind group is then invalid).
+ * parameters), ext (extWidth vec4 per atom, extra()) and outv (outWidth values per atom). Every binding must be used by
+ * the entry point (an 'auto' layout leaves an unused one out, and the bind group is then invalid).
  */
 export const ATOM_KERNEL_WORKGROUP = 64;
 export const ATOM_KERNEL_OUT = 16;
@@ -30,16 +30,27 @@ export interface GpuAtomKernel {
   readonly maxCutoff: number;
   /** Eight style scalars of this evaluation (P.u0, P.u1). */
   scalars(state: SimState): number[];
-  /** Four values per atom, atom order (ext). */
+  /** The vec4 values per atom of ext (1 when not given). Read at each evaluation, with code and maxCutoff. */
+  readonly extWidth?: number;
+  /** The output values per atom of outv (ATOM_KERNEL_OUT when not given). */
+  readonly outWidth?: number;
+  /** Called before each evaluation: step is false at the run setup (a history style then keeps its history). */
+  begin?(state: SimState, step: boolean): void;
+  /** 4 * extWidth values per atom, atom order (ext). */
   extra(state: SimState, out: Float32Array): void;
-  /** The forces, per-atom outputs, energies and virial from ATOM_KERNEL_OUT values per atom (atom order). */
+  /**
+   * After the kernel ran, before finish(): true when it must run again (with the code and widths it has now, e.g. a
+   * contact table that overflowed and was made larger).
+   */
+  again?(state: SimState, out: ArrayLike<number>): boolean;
+  /** The forces, per-atom outputs, energies and virial from outWidth values per atom (atom order). */
   finish(state: SimState, out: ArrayLike<number>): ForceResult & { evdwl: number; ecoul: number };
-  /** The kernel's arithmetic in fp64 (ATOM_KERNEL_OUT values per atom, atom order): the tests' stand-in for the GPU. */
+  /** The kernel's arithmetic in fp64 (outWidth values per atom, atom order): the tests' stand-in for the GPU. */
   fp64(state: SimState): Float64Array;
 }
 
 /** Pair styles that build a GpuAtomKernel (a gplHook named by the style with a gpuKernel(pair, sys) helper). */
-export const GPU_ATOM_KERNEL_STYLES: readonly string[] = ['eff/cut'];
+export const GPU_ATOM_KERNEL_STYLES: readonly string[] = ['eff/cut', 'gran/hooke', 'gran/hooke/history', 'gran/hertz/history'];
 
 /** The uniform of an atom kernel: 96 bytes (webgpuForces.ts computeAtomKernel writes it). */
 export const WGSL_ATOM_KERNEL_HEAD = /* wgsl */ `

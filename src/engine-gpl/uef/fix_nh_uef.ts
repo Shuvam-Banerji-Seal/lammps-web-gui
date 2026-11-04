@@ -442,6 +442,10 @@ export class FixNHUef extends FixNH {
       img[3 * i + 1] = ri[1][0] * a + ri[1][1] * b + ri[1][2] * c;
       img[3 * i + 2] = ri[2][0] * a + ri[2][1] * b + ri[2][2] * c;
     }
+    // "put all atoms in the new box": domain->remap(x[i],image[i]) of every atom, a full wrap (the reduced cell can leave
+    // an atom several periods outside it, which the one-period wrap of the reneighboring's pbc would lose)
+    const g = this.sys.geom;
+    for (let i = 0; i < s.n; i++) g.remap(s.x, s.image, i);
   }
 
   /** post_run: the cell is reduced at the end of a run, so a later run starts from the reduced box. */

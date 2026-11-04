@@ -176,10 +176,12 @@ describe('rigid body bookkeeping with fix gcmc rigid', () => {
 
 describe('gcmc region translation rejection (fix_gcmc.rst: rejected after 1000 tries)', () => {
   it('a translation with no trial inside the region leaves the atom in place and runs to the end', async () => {
-    // one atom at the sphere's centre; displace 1000 makes a trial inside the 2.5 sphere very unlikely
+    // one atom at the sphere's centre; displace 1000 makes a trial inside the 2.5 sphere very unlikely in a box with no
+    // periodic image of it (Region::match remaps a trial into a periodic box, see the next case)
     const script = `units lj
 atom_style atomic
 pair_style lj/cut 3.0
+boundary f f f
 region box block 0 20 0 20 0 20
 create_box 1 box
 create_atoms 1 single 10.0 10.0 10.0 units box
@@ -201,5 +203,25 @@ run 3
     const counts = (session.sys.fix('mygcmc') as unknown as { computeVector(i: number): number }).computeVector(0);
     expect(counts).toBe(3);
     expect(session.sys.state.n).toBe(1);
+  });
+  it('in a periodic box a trial whose image is inside the region moves the atom out of the box, and it is lost', async () => {
+    // As native LAMMPS does (src/region.cpp Region::match at b332f28: "Remap into the box if periodic"; fix_gcmc.cpp
+    // stores the trial coordinate itself): the remapped trial lies in the sphere, the atom is put 1000 away, and the
+    // wrap of energy_full leaves it outside the box. Measured with native LAMMPS: "ERROR: Lost atoms: original 1 current 0".
+    const script = `units lj
+atom_style atomic
+pair_style lj/cut 3.0
+region box block 0 20 0 20 0 20
+create_box 1 box
+create_atoms 1 single 10.0 10.0 10.0 units box
+region sphere sphere 10.0 10.0 10.0 2.5 units box
+pair_coeff * * 1.0 1.0
+mass * 1.0
+group gcmcgroup type 1
+fix mygcmc gcmcgroup gcmc 1 0 1 1 29494 2.0 0.0 1000.0 region sphere
+run 3
+`;
+    const session = new Session({ emit: () => {} });
+    await expect(session.execute(script)).rejects.toThrow(/Lost atoms: original 1 current 0/);
   });
 });

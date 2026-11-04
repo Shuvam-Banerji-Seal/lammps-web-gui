@@ -100,18 +100,24 @@ describe('fix box/relax relaxation', () => {
     // start from a strained, untilted box: native's triclinic box force (each DOF uses its own stress component,
     // src/fix_box_relax.cpp min_energy) is the exact derivative only while the tilts are zero; a tilted start
     // differs by the off-diagonal stress times h^-1 (checked against native in tests/oracle/w189sq_min.in)
+    // the trial boxes of this check can lie away from the atoms (a trial before begin() strains about the old reference):
+    // the energy is periodic, so the atoms are wrapped into each trial box in full before it is evaluated (the wrap of a
+    // reneighboring moves an atom by one period only, and loses one that is further out, as native's does)
+    const wrap = () => { for (let i = 0; i < st.n; i++) sys.geom.remap(st.x, st.image, i); };
     bd.trial(Float64Array.from([0.02, -0.01, 0.015, 0, 0, 0]), x0, st.x);
+    wrap();
     bd.begin();
     const u0 = new Float64Array(M);
     bd.dof(u0);
     const total = (u: Float64Array) => {
       bd.trial(u, x0, st.x);
+      wrap();
       sys.bump();
       const a = sys.forces();
       return a.evdwl + a.ecoul + a.ebond + a.eangle + a.edihed + a.eimp + bd.evaluate(new Float64Array(M));
     };
     const force = new Float64Array(M);
-    bd.trial(u0, x0, st.x); sys.bump(); sys.forces(); bd.evaluate(force);
+    bd.trial(u0, x0, st.x); wrap(); sys.bump(); sys.forces(); bd.evaluate(force);
     for (let k = 0; k < M; k++) {
       const h = 1e-6;
       const up = Float64Array.from(u0); up[k] += h;

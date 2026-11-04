@@ -250,6 +250,22 @@ interface ForceBackend {
   Coulomb energy) of the CPU with `pair_modify table 0`; the CPU's default table adds another
   0.04. A box shorter than twice (cut_coul + 2 qdist) stays on the CPU, as do the gle water
   examples (12.4 A).
+- **WebGPU eFF** (`gpu/atomKernel.ts`, `engine-gpl/eff/gpu_eff.ts`, `webgpuForces.ts computeAtomKernel`):
+  `pair_style eff/cut` with nuclei, electrons, fixed cores (espin 2) and s- or p-type ECP
+  pseudo-cores (espin 3), `limit/eradius` and `pressure/evirials`; no molecular topology. The
+  kernel is a translation of the LAMMPS source, so it lives in the GPL module and loads with the
+  lazy group `gpl_eff_gpu` (HOOKS word `eff/cut`); the core runs it as an atom kernel, a pass with
+  one extra vec4 per atom (charge, spin, radius) beside the positions and 16 outputs per atom. Each
+  atom adds, from its row of a full list, what the C++ half loop gives it: the pair force, the
+  radial force its branch credits it with, half of the pair's energy, virial and compute-pair
+  terms, and once its own kinetic, fixed-core and restraint terms; the pair functions are
+  symmetric where the C++ calls them with the roles swapped, so the two rows of a pair agree. The
+  host writes `erforce` and the compute-pair vector and adds the radial virial of
+  `pressure/evirials` in fp64. The kernel's arithmetic in fp64 (`fp64()`) matches the CPU style's
+  forces and radial forces to 1e-9 for every pair of particle kinds (`tests/engineGpuEff.test.ts`).
+  In Chromium a 500-particle periodic system with all four kinds matched the CPU engine's thermo
+  to 6 digits over 50 steps, and the CH4 example (f f f) conserved the CPU's total energy over 1000
+  steps. A periodic box shorter than two cutoffs stays on the CPU (the Li and H atom examples).
 - **The virial tensor on the GPU path.** Every per-step kernel (lj/cut, the styles kernel, EAM, SW,
   Tersoff, TIP4P) accumulates the six virial components (xx yy zz xy xz yz) next to its scalar
   virial: half of 0.5 F/r d (x) d at each atom of a pair, d1 (x) F1 + d2 (x) F2 for a three-body

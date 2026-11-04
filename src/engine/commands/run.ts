@@ -341,6 +341,26 @@ export const emitFrame = (sys: System): void => {
       ev.mass = mass;
     }
   }
+  // the bonds go with the first frame of a run and then only when they change (bond/react, create_bonds, a bpm break)
+  const b = s.topo.bonds, prevB = sys.frameBondsSent;
+  let nb = 0;
+  for (let k = 0; k < b.n; k++) if (b.type[k] > 0) nb++;
+  let sameB = prevB !== null && prevB.length === 2 * nb;
+  for (let k = 0, m = 0; sameB && k < b.n; k++) {
+    if (b.type[k] <= 0) continue;
+    sameB = prevB![m] === b.atoms[2 * k] && prevB![m + 1] === b.atoms[2 * k + 1];
+    m += 2;
+  }
+  if (!sameB) {
+    const pairs = new Int32Array(2 * nb);
+    for (let k = 0, m = 0; k < b.n; k++) {
+      if (b.type[k] <= 0) continue;
+      pairs[m++] = b.atoms[2 * k];
+      pairs[m++] = b.atoms[2 * k + 1];
+    }
+    sys.frameBondsSent = pairs.slice();
+    ev.bonds = pairs;
+  }
   sys.io.emit(ev);
 };
 
@@ -694,6 +714,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
  */
 const run: Handler = async (ctx, a) => {
   ctx.sys.frameMassSent = null; // the first frame of the run carries the masses again
+  ctx.sys.frameBondsSent = null; // and the bonds
   const { sys } = ctx;
   // As native LAMMPS does (src/run.cpp Run::command at b332f28): N is read first, then the keywords in order, then N
   // (or the upto value), start and stop are checked

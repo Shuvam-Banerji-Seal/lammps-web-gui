@@ -38,6 +38,11 @@ export interface TrajectoryRecord {
    * sent it. Absent for a dump file: its masses are not in the file.
    */
   mass?: Float32Array;
+  /**
+   * Bond pairs (atom IDs, a1 b1 a2 b2 ...) at this frame; one array is shared by the records that follow the frame that
+   * sent it. Absent for a dump file and before the engine sent any.
+   */
+  bonds?: Int32Array;
 }
 
 /** Bytes a record holds: positions, velocities when present, and the bookkeeping (the shared masses are not counted). */
@@ -64,6 +69,8 @@ export class TrajectoryBuffer {
   private bytesValue = 0;
   /** The masses of the latest frame that carried them (shared by the records that follow). */
   private lastMass: Float32Array | null = null;
+  /** The bonds of the latest frame that carried them (shared by the records that follow). */
+  private lastBonds: Int32Array | null = null;
   private readonly capBytes: number;
 
   constructor(options: TrajectoryBufferOptions = {}) {
@@ -98,6 +105,7 @@ export class TrajectoryBuffer {
   clear(): void {
     this.frames = [];
     this.lastMass = null;
+    this.lastBonds = null;
     this.seen = 0;
     this.strideValue = 1;
     this.thinnings = 0;
@@ -128,6 +136,7 @@ export class TrajectoryBuffer {
   append(frame: FrameEvent): boolean {
     // a frame repeats the masses only when they change: keep the last ones, also from frames the stride skips
     if (frame.mass) this.lastMass = Float32Array.from(frame.mass);
+    if (frame.bonds) this.lastBonds = frame.bonds.length ? Int32Array.from(frame.bonds) : null;
     const idx = this.seen;
     this.seen++;
     if (idx % this.strideValue !== 0) return false;
@@ -139,6 +148,7 @@ export class TrajectoryBuffer {
     const record: TrajectoryRecord = { step: frame.step, x, box: frame.box, topo };
     if (frame.v) record.v = Float32Array.from(frame.v);
     if (frame.v && this.lastMass && this.lastMass.length === frame.id.length) record.mass = this.lastMass;
+    if (this.lastBonds) record.bonds = this.lastBonds;
     this.frames.push(record);
     this.bytesValue += recordBytes(record);
     this.countTopo(topo, 1);
@@ -185,6 +195,7 @@ export class TrajectoryBuffer {
     };
     if (r.v) ev.v = Float64Array.from(r.v);
     if (r.mass) ev.mass = Float64Array.from(r.mass);
+    if (r.bonds) ev.bonds = r.bonds;
     return ev;
   }
 

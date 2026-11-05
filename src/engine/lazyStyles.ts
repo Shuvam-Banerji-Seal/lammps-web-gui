@@ -183,6 +183,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'pair_mbtable49', names: { PAIRS: ['threebody/table', 'sw/angle/table'] }, load: () => import('./registry/pair_mbtable49') as Promise<StyleModule> },
   { id: 'gpl_granular_mdr', names: { HOOKS: ['mdr'] }, load: () => import('../engine-gpl/registry/granular_mdr') as Promise<StyleModule> },
   { id: 'gpl_granular_jkr', names: { HOOKS: ['jkr'] }, load: () => import('../engine-gpl/registry/granular_jkr') as Promise<StyleModule> },
+  { id: 'gpl_granular_gpu', names: { HOOKS: ['granular'] }, load: () => import('../engine-gpl/registry/granular_gpu') as Promise<StyleModule> },
   { id: 'gpl_tri', names: { HOOKS: ['tri'] }, load: () => import('../engine-gpl/registry/tri_hook') as Promise<StyleModule> },
   { id: 'gpl_reset_atoms', names: { HOOKS: ['reset_atoms'] }, load: () => import('../engine-gpl/registry/reset_atoms_hook') as Promise<StyleModule> },
   { id: 'gpl_linemin', names: { HOOKS: ['minimize', 'hyper', 'prd', 'tad', 'neb'] }, load: () => import('../engine-gpl/registry/linemin') as Promise<StyleModule> },

@@ -50,7 +50,7 @@ export interface GpuAtomKernel {
 }
 
 /** Pair styles that build a GpuAtomKernel (a gplHook named by the style with a gpuKernel(pair, sys) helper). */
-export const GPU_ATOM_KERNEL_STYLES: readonly string[] = ['eff/cut', 'gran/hooke', 'gran/hooke/history', 'gran/hertz/history'];
+export const GPU_ATOM_KERNEL_STYLES: readonly string[] = ['eff/cut', 'gran/hooke', 'gran/hooke/history', 'gran/hertz/history', 'granular'];
 
 /** The uniform of an atom kernel: 96 bytes (webgpuForces.ts computeAtomKernel writes it). */
 export const WGSL_ATOM_KERNEL_HEAD = /* wgsl */ `

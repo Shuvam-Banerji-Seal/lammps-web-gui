@@ -471,6 +471,21 @@ export class KSpacePPPM extends KSpaceBase {
     return { lo0: geom.lo[0], lo1: geom.lo[1], lo2: geom.lo[2], i00, i01, i02, i11, i12, i22, slab: this.slab, nx, ny, nz, order: this.order };
   }
 
+  /**
+   * As native LAMMPS does (src/KSPACE/pppm.cpp PPPM::particle_map at b332f28): a box bound that is not a number stops the
+   * run ("Non-numeric box dimensions - simulation unstable"), and so does an atom whose stencil leaves the grid brick of
+   * its process ("Out of range atoms - cannot compute PPPM"). An atom with a coordinate that is not finite always does:
+   * its grid index (a cast of NaN or infinity) is out of every brick. The brick of a finite coordinate (the subdomain
+   * plus half the skin, Grid3d::ghost_grid) is not checked here; such an atom is mapped periodically.
+   */
+  static checkFinite(s: SimState, geom: Geometry): void {
+    if (!(Number.isFinite(geom.lo[0]) && Number.isFinite(geom.lo[1]) && Number.isFinite(geom.lo[2]))) {
+      throw new StyleError('Non-numeric box dimensions - simulation unstable');
+    }
+    const x = s.x;
+    for (let k = 0; k < 3 * s.n; k++) if (!Number.isFinite(x[k])) throw new StyleError('Out of range atoms - cannot compute PPPM');
+  }
+
   /** The P mesh indices of atom i in x, y and z (from first, wrapped into the mesh), in a reused array. */
   private meshIdx = new Int32Array(0);
   protected meshIndices(i: number, first: Int32Array): Int32Array {
@@ -557,6 +572,7 @@ export class KSpacePPPM extends KSpaceBase {
     this.refreshChargeSums(s);
     const geom = kc.geom;
     const n = s.n;
+    KSpacePPPM.checkFinite(s, geom);
     const C = kc.qqrd2e;
     const [nx, ny, nz] = this.mesh;
     const P = this.order;

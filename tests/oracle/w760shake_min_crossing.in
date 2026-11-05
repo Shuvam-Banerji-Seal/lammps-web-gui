@@ -1,0 +1,22 @@
+# oracle: fix shake during minimization with water clusters across the periodic boundaries: native lists a cluster once per periodic image group and each entry's harmonic restraint acts on the owned atoms, so its force, energy and virial count that many times; the restraint virial is 0.5 del del fbond per entry (fix_shake.cpp bond_force)
+# oracle-inputs: w760_h2o.mol
+units           real
+atom_style      full
+region          box block -5 5 -5 5 -5 5
+create_box      2 box bond/types 1 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 2
+mass            1 15.9994
+mass            2 1.008
+pair_style      lj/cut/coul/cut 8.0
+pair_coeff      1 1 0.1553 3.166
+pair_coeff      2 2 0.0    1.0
+bond_style      zero
+bond_coeff      1 1.0
+angle_style     zero
+angle_coeff     1 109.47
+molecule        water w760_h2o.mol
+create_atoms    0 random 50 34564 NULL mol water 25367 overlap 1.33
+fix             rigid all shake 0.001 10 10000 b 1 a 1
+thermo_style    custom step pe evdwl ecoul f_rigid press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          5
+minimize        0.0 0.0 20 100

@@ -1,0 +1,23 @@
+# oracle: fix shake on half the dimers and fix ilves on the other half: both switch their constrained bonds off (ebond 0; each fix's exclusions are kept), and velocity create after the fixes sees no fix ilves degrees of freedom before the first run (native builds the ilves constraint list at run setup), while fix shake's count from its definition
+# oracle-inputs: w50il_dimer.data
+# oracle-compare: thermo=all atoms=all
+units           real
+atom_style      bond
+read_data       w50il_dimer.data
+pair_style      lj/cut 8.0
+pair_coeff      * * 0.1 2.0
+bond_style      harmonic
+bond_coeff      1 100.0 1.0
+special_bonds   lj 0.0 1.0 1.0
+neighbor        2.0 bin
+timestep        1.0
+group           ga id 1:64
+group           gb id 65:128
+fix             sh ga shake 1.0e-6 50 0 b 1
+fix             cons gb ilves 1.0e-6 50 0 b 1
+velocity        all create 300.0 4928 mom yes dist gaussian
+fix             1 all nvt temp 300.0 300.0 100.0
+thermo_style    custom step temp ke pe ebond press
+thermo_modify   format float %.15g
+thermo          10
+run             30

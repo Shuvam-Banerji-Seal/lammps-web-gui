@@ -325,7 +325,7 @@ export class FixIlves extends Fix {
       angles: filterList(angles, keepA),
       bondsN: bonds.n,
       anglesN: angles.n,
-    });
+    }, this);
     let bwMax = 0;
     for (const net of this.networks) bwMax = Math.max(bwMax, net.bw);
     sys.log(`fix ${this.id} ilves: ${cons.length} constraints in ${this.networks.length} network(s), largest bandwidth ${bwMax}, ${restraints.length} restraint(s)`);
@@ -383,19 +383,24 @@ export class FixIlves extends Fix {
     }
   }
 
+  /**
+   * As native LAMMPS does (src/RIGID/fix_ilves.cpp FixIlves::dof and setup_pre_neighbor at b332f28): a constraint counts
+   * against a temperature compute when both its atoms are in the compute's group, and the constraint list is built at
+   * a run's setup, so before the first run (velocity create after the fix) no degree of freedom is removed
+   * (examples/PACKAGES/ilves/in.covid: KinEng at step 0 1388 kcal/mol above the engine's earlier value).
+   */
   dofRemoved(groupBit: number): number {
-    // the constraints count against a temperature compute when their first atom is in its group
-    if (!this.builtTopology && this.sys.ff.bond) this.buildTopology(false);
+    if (!this.builtTopology) return 0;
     const s = this.sys.state;
     const index = new Map<number, number>();
     for (let i = 0; i < s.n; i++) index.set(s.id[i], i);
     let n = 0;
-    for (const c of this.cons) if (s.mask[index.get(c.a)!] & groupBit) n++;
+    for (const c of this.cons) if ((s.mask[index.get(c.a)!] & groupBit) && (s.mask[index.get(c.b)!] & groupBit)) n++;
     return n;
   }
 
   destroy(): void {
-    this.sys.ff.setTopologyOverride(null);
+    this.sys.ff.setTopologyOverride(null, this);
   }
 
   /** fix_ilves.cpp min_setup: the log line that counts the constraints replaced by restraints. */

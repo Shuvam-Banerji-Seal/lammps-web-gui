@@ -183,13 +183,28 @@ export class ForceField {
   }
 
   /**
-   * Bond and angle lists without entries that a constraint fix (fix shake)
-   * switched off; used while the live lists still have the counts it saw.
+   * Bond and angle lists without entries that a constraint fix (fix shake, fix ilves) switched off; used while the live
+   * lists still have the counts it saw. Each fix sets its own (owner); the lists in use keep an entry only when every
+   * fix keeps it, as native's constraint fixes each turn off their own bonds and angles (fix_shake.cpp and
+   * fix_ilves.cpp at b332f28: the constrained bond and angle types are made negative, and the bonded styles skip them).
    */
   private topoOverride: { bonds: TopoList; angles: TopoList; bondsN: number; anglesN: number } | null = null;
+  private topoOverrides = new Map<object, { bonds: TopoList; angles: TopoList; bondsN: number; anglesN: number }>();
 
-  setTopologyOverride(o: { bonds: TopoList; angles: TopoList; bondsN: number; anglesN: number } | null): void {
-    this.topoOverride = o;
+  setTopologyOverride(o: { bonds: TopoList; angles: TopoList; bondsN: number; anglesN: number } | null, owner: object = this): void {
+    this.topoOverrides.delete(owner);
+    if (o) this.topoOverrides.set(owner, o);
+    // the newest list sets the counts; the other fixes' lists of the same counts narrow it
+    const all = [...this.topoOverrides.values()];
+    const last = all.length ? all[all.length - 1] : null;
+    if (!last) { this.topoOverride = null; return; }
+    let bonds = last.bonds, angles = last.angles;
+    for (const ov of all) {
+      if (ov === last || ov.bondsN !== last.bondsN || ov.anglesN !== last.anglesN) continue;
+      bonds = intersectTopo(bonds, ov.bonds);
+      angles = intersectTopo(angles, ov.angles);
+    }
+    this.topoOverride = { bonds, angles, bondsN: last.bondsN, anglesN: last.anglesN };
   }
 
   /** Run-log warnings for bonded styles, set at init from the style context. */
@@ -582,3 +597,27 @@ export class ForceField {
     return this.ptailV / (volume * volume);
   }
 }
+
+/** The entries of a that b also has (the same type and atoms, counted with multiplicity), in a's order. */
+const intersectTopo = (a: TopoList, b: TopoList): TopoList => {
+  const w = a.width;
+  const key = (l: TopoList, e: number): string => {
+    let k = String(l.type[e]);
+    for (let q = 0; q < l.width; q++) k += ':' + l.atoms[e * l.width + q];
+    return k;
+  };
+  const count = new Map<string, number>();
+  for (let e = 0; e < b.n; e++) { const k = key(b, e); count.set(k, (count.get(k) ?? 0) + 1); }
+  const keep: number[] = [];
+  for (let e = 0; e < a.n; e++) {
+    const k = key(a, e);
+    const c = count.get(k) ?? 0;
+    if (c > 0) { keep.push(e); count.set(k, c - 1); }
+  }
+  const out: TopoList = { n: keep.length, width: w, type: new Int32Array(keep.length), atoms: new Int32Array(keep.length * w) };
+  keep.forEach((e, k) => {
+    out.type[k] = a.type[e];
+    for (let q = 0; q < w; q++) out.atoms[k * w + q] = a.atoms[e * w + q];
+  });
+  return out;
+};

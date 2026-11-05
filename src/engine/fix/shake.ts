@@ -6,7 +6,6 @@ import { int, num } from '../commands/args';
 import { typeWord } from '../labelmap';
 import { isMolecularStyle, massOf } from '../atoms';
 import { missingArgs, logical } from '../force/util';
-import { harmonicRestraint } from './harmonicRestraint';
 import { libm } from '../libm';
 
 /*
@@ -369,12 +368,12 @@ export class FixShake extends Fix {
       keepA.push(!(angleOff.has(key) && this.angleTypes.has(A.type[e])));
     }
     this.keepAngles = keepA;
-    ff.setTopologyOverride({ bonds: filterList(bonds, keepB), angles: filterList(A, keepA), bondsN: bonds.n, anglesN: A.n });
+    ff.setTopologyOverride({ bonds: filterList(bonds, keepB), angles: filterList(A, keepA), bondsN: bonds.n, anglesN: A.n }, this);
     sys.log(`fix ${this.id} ${this.style}: ${clusters.length} clusters (${clusters.filter((c) => c.ids.length === 2).length} of 2 atoms, ${clusters.filter((c) => c.ids.length === 3 && c.cons.length === 2).length} of 3, ${clusters.filter((c) => c.ids.length === 4).length} of 4, ${clusters.filter((c) => c.cons.length === 3 && c.ids.length === 3).length} with an angle)`);
   }
 
   destroy(): void {
-    this.sys.ff.setTopologyOverride(null);
+    this.sys.ff.setTopologyOverride(null, this);
   }
 
   /** The molecule template-ID of the mol keyword, or null (fix gcmc checks it matches its own mol). */
@@ -394,7 +393,7 @@ export class FixShake extends Fix {
     const B = s.topo.bonds, A = s.topo.angles;
     const pad = (keep: boolean[], n: number) => keep.slice(0, n).concat(new Array(Math.max(0, n - keep.length)).fill(true));
     const keepB = pad(this.keepBonds, B.n), keepA = pad(this.keepAngles, A.n);
-    ff.setTopologyOverride({ bonds: filterList(B, keepB), angles: filterList(A, keepA), bondsN: B.n, anglesN: A.n });
+    ff.setTopologyOverride({ bonds: filterList(B, keepB), angles: filterList(A, keepA), bondsN: B.n, anglesN: A.n }, this);
   }
 
   dofRemoved(groupBit: number): number {
@@ -431,13 +430,46 @@ export class FixShake extends Fix {
       if (this.arrayAtom.length !== 3 * s.n) this.arrayAtom = new Float64Array(3 * s.n);
       this.arrayAtom.fill(0);
     }
+    this.resetVirial();
     let e = 0;
     for (const c of this.clusters) {
-      for (const p of c.cons) {
-        e += harmonicRestraint(s, sys.geom, index.get(c.ids[p.a])!, index.get(c.ids[p.b])!, Math.sqrt(p.d2), kbond, 0, this.storeForces ? this.arrayAtom : null);
+      const at = c.ids.map((id) => index.get(id)!);
+      // native lists the cluster once per periodic image group (imageGroups), and each entry's bond_force maps its
+      // closest images back to the owned atoms (atom->map(atom->tag[i])), so every restraint acts that many times
+      const times = this.imageGroups(at);
+      for (let t = 0; t < times; t++) {
+        for (const p of c.cons) e += this.bondForce(at[p.a], at[p.b], Math.sqrt(p.d2), kbond);
       }
     }
     this.restraintEnergy = e;
+  }
+
+  /**
+   * As native LAMMPS does (src/RIGID/fix_shake.cpp FixShake::bond_force at b332f28): the restraint kbond (r - d)^2 on
+   * the minimum-image separation, r = sqrt(dx^2 + dy^2 + dz^2), with the force -2 kbond (r - d) / r times the
+   * separation on the two atoms (0 at r = 0); half the energy per atom; and the virial v = 0.5 del del fbond tallied
+   * with ev_tally(2, atoms, 2.0): the whole v to the global virial (half the pair's del . F) and v / 2 to each atom.
+   */
+  private bondForce(i1: number, i2: number, length: number, kbond: number): number {
+    const s = this.sys.state;
+    const d = [s.x[3 * i1] - s.x[3 * i2], s.x[3 * i1 + 1] - s.x[3 * i2 + 1], s.x[3 * i1 + 2] - s.x[3 * i2 + 2]];
+    this.sys.geom.minimumImage(d);
+    const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    const dr = r - length;
+    const rk = kbond * dr;
+    const fbond = r > 0.0 ? (-2.0 * rk) / r : 0.0;
+    const store = this.storeForces ? this.arrayAtom : null;
+    for (let q = 0; q < 3; q++) {
+      const f = d[q] * fbond;
+      s.f[3 * i1 + q] += f;
+      s.f[3 * i2 + q] -= f;
+      if (store) { store[3 * i1 + q] += f; store[3 * i2 + q] -= f; }
+    }
+    const v = [0, 0, 0, 0, 0, 0];
+    FixShake.addOuter(v, 0.5 * fbond, d);
+    for (let c = 0; c < 6; c++) this.virial[c] += v[c];
+    this.tallyCluster([i1, i2], 2, v);
+    return rk * dr;
   }
 
   energy(): number {

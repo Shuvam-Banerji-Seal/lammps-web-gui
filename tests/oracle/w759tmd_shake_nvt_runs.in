@@ -1,0 +1,35 @@
+# oracle: fix tmd after fix nvt with fix shake moving two group atoms at setup, over two runs: native adds gamma d / dt to v (not (x_new - x_old) / dt), keeps x_old and rho_start from the fix definition across runs, and writes work_analytical from the forces and gamma_back of each step
+# oracle-inputs: w48fb_tmd_target.txt
+# oracle-files: w759tmd.log
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      bond
+atom_modify     map array
+region          box block 0 4 0 4 0 4
+create_box      1 box bond/types 1 extra/bond/per/atom 1
+create_atoms    1 single 0.997619 1.002989 1.021211 units box
+create_atoms    1 single 0.998283 1.000392 3.004369 units box
+create_atoms    1 single 0.984233 3.000595 1.006494 units box
+create_atoms    1 single 1.014649 2.979706 2.990170 units box
+create_atoms    1 single 2.979534 1.015482 1.009672 units box
+create_atoms    1 single 2.977094 1.024110 3.023238 units box
+create_atoms    1 single 3.007696 3.005778 0.982875 units box
+create_atoms    1 single 2.975750 3.001419 2.977978 units box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.3 1.0 2.5
+bond_style      harmonic
+bond_coeff      1 50.0 1.5
+create_bonds    single/bond 1 1 2
+special_bonds   lj 0.0 1.0 1.0
+velocity        all create 0.1 4928 loop all
+timestep        0.005
+group           gt id 1:4
+fix             1 all nvt temp 0.1 0.1 0.5
+fix             2 gt tmd 0.8 w48fb_tmd_target.txt 2 w759tmd.log
+fix             3 all shake 1e-10 50 0 b 1
+thermo_style    custom step pe ke etotal press
+thermo_modify   format float %.15g
+thermo          2
+run             10
+run             10

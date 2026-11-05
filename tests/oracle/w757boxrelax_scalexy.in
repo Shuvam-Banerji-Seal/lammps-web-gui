@@ -1,0 +1,20 @@
+# oracle: fix box/relax aniso in a triclinic cell with xy != 0: native scales xy with ly by default (scalexy on when y is periodic and xy != 0; xy = ly h0_xy / h0_ly in remap), and keeps it with scalexy no
+units           lj
+atom_style      atomic
+lattice         fcc 0.9
+region          box prism 0 3 0 3 0 3 0.8 0 0 units lattice
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+displace_atoms  all random 0.05 0.05 0.05 4123 units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+fix             r all box/relax aniso 0.0 vmax 0.001
+thermo_style    custom step pe press pxx pyy pzz pxy lx ly lz xy
+thermo_modify   format float %.15g
+thermo          5
+min_modify      line quadratic
+minimize        0 0 25 1000
+unfix           r
+fix             r all box/relax aniso 0.0 vmax 0.001 scalexy no
+minimize        0 0 25 1000

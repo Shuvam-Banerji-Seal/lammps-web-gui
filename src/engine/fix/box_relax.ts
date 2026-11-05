@@ -1,6 +1,6 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
-import { inumeric, numeric } from '../force/util';
+import { inumeric, logical, numeric } from '../force/util';
 import type { System } from '../system';
 import { ownCompute, removeCompute } from './util';
 import type { Compute } from '../compute/compute';
@@ -58,8 +58,13 @@ import type { Compute } from '../compute/compute';
  * "the instantaneous stress will be computed as an average of the corresponding
  * diagonal components".
  *
- * dilate partial remaps only the atoms of the fix group (the others keep their coordinates). scaleyz/scalexz/
- * scalexy are accepted; their effect on the path is not measured.
+ * dilate partial remaps only the atoms of the fix group (the others keep their coordinates).
+ *
+ * Tilt scaling, as native LAMMPS does (src/fix_box_relax.cpp at b332f28): scalexy is on when the fix is defined with a
+ * periodic y and xy != 0, and in 3d scalexz and scaleyz when z is periodic and the tilt is nonzero; tri turns all three
+ * off and an xy, xz or yz target its own; the scalexy, scalexz and scaleyz keywords set them. remap() then sets a scaled
+ * tilt from the new box length and the box of the minimization's init (h0, not moved by nreset): xy = ly h0_xy / h0_ly,
+ * xz = lz h0_xz / h0_lz, yz = lz h0_yz / h0_lz (examples/streitz/in.gan: aniso relaxation of a cell with xy = -1.5).
  */
 
 /** Box degrees of freedom as the minimizer sees them (see run/min.ts). */
@@ -114,6 +119,11 @@ export class FixBoxRelax extends Fix {
   private allRemap = true;
   private nresetValue = 0;
   private fixedPoint: number[] | null = null;
+  /** scalexy, scalexz, scaleyz (the tilt order xy, xz, yz): the tilt follows its box length (native scale*). */
+  private scaleTilt = [false, false, false];
+  /** Box lengths and tilts at the minimization's init (native h0): the scaled tilts keep tilt / length from it. */
+  private h0L = [1, 1, 1];
+  private h0T = [0, 0, 0];
   private pc: Compute;
   // derived at minSetup
   private groups: number[][] = [];         // diagonal DOF groups (dims)
@@ -141,13 +151,14 @@ export class FixBoxRelax extends Fix {
     // As native LAMMPS does (src/fix_box_relax.cpp FixBoxRelax::FixBoxRelax at b332f28): the pressure targets are read
     // with utils::numeric, whose message is the first error for a word that is not a number.
     const num = (w: string, _what: string): number => numeric(w);
-    const yesno = (w: string, what: string): void => {
-      if (w !== 'yes' && w !== 'no') throw new StyleError(`fix box/relax: ${what} must be yes or no, got '${w}'`);
-    };
     // fix_box_relax.html: "*z*, *xz*, and *yz*, are not available for 2D simulations" and "*Couple xyz* can
     // be used for a 2d simulation; the *z* dimension is simply ignored", so in 2d iso, aniso and tri set
     // the x, y (and xy) targets only (examples/min/in.min.box: box/relax iso 1.5 in 2d).
     const flat = sys.dimension === 2;
+    // tilt factor scaling is on whenever applicable (native constructor, "turn on tilt factor scaling, whenever applicable")
+    const box0 = sys.state.box;
+    this.scaleTilt = [box0.periodic[1] && box0.tilt[0] !== 0, !flat && box0.periodic[2] && box0.tilt[1] !== 0,
+      !flat && box0.periodic[2] && box0.tilt[2] !== 0];
     for (let k = 0; k < args.length;) {
       const key = args[k];
       switch (key) {
@@ -168,6 +179,7 @@ export class FixBoxRelax extends Fix {
           this.pDiag = [p, p, flat ? null : p];
           this.pTilt = flat ? [0, null, null] : [0, 0, 0];
           this.couple = 'none';
+          this.scaleTilt = [false, false, false];
           k += 2; any = true; break;
         }
         case 'x': case 'y': case 'z': {
@@ -178,6 +190,7 @@ export class FixBoxRelax extends Fix {
         case 'xy': case 'xz': case 'yz': {
           const t = TILT_NAME.indexOf(key);
           this.pTilt[t] = num(need(k + 1, key), `${key} Ptarget`);
+          this.scaleTilt[t] = false;
           k += 2; any = true; break;
         }
         case 'couple': {
@@ -208,7 +221,8 @@ export class FixBoxRelax extends Fix {
           k += 2; break;
         }
         case 'scaleyz': case 'scalexz': case 'scalexy': {
-          yesno(need(k + 1, key), key);
+          // native utils::logical
+          this.scaleTilt[TILT_NAME.indexOf(key.slice(5))] = logical(need(k + 1, key));
           k += 2; break;
         }
         case 'fixedpoint': {
@@ -223,6 +237,15 @@ export class FixBoxRelax extends Fix {
       }
     }
     if (!any) throw new StyleError('fix box/relax: no pressure keyword (iso, aniso, tri, x, y, z, xy, xz, yz) given');
+    // As native LAMMPS does (src/fix_box_relax.cpp FixBoxRelax::FixBoxRelax at b332f28): a scaled tilt needs its periodic
+    // dimension and cannot also be relaxed (native's xz message names xy relaxation)
+    const per = sys.state.box.periodic;
+    if (this.scaleTilt[2] && !per[2]) throw new StyleError('Cannot use fix box/relax with yz tilt factor scaling with non-periodic z dimension');
+    if (this.scaleTilt[1] && !per[2]) throw new StyleError('Cannot use fix box/relax with xz tilt factor scaling with non-periodic z dimension');
+    if (this.scaleTilt[0] && !per[1]) throw new StyleError('Cannot use fix box/relax with xy tilt factor scaling with non-periodic y dimension');
+    if (this.pTilt[2] !== null && this.scaleTilt[2]) throw new StyleError('Cannot use fix box/relax with both yz relaxation and scaling on yz tilt factor');
+    if (this.pTilt[1] !== null && this.scaleTilt[1]) throw new StyleError('Cannot use fix box/relax with both xy relaxation and scaling on xz tilt factor');
+    if (this.pTilt[0] !== null && this.scaleTilt[0]) throw new StyleError('Cannot use fix box/relax with both xy relaxation and scaling on xy tilt factor');
     if (this.couple !== 'none') {
       // z is ignored for coupling in 2d (see the note above the keyword loop)
       const dims = COUPLE_DIMS[this.couple].filter((d) => !(flat && d === 2));
@@ -268,6 +291,8 @@ export class FixBoxRelax extends Fix {
     const specified = diagDims.map((d) => this.pDiag[d] as number);
     this.ph = specified.length ? specified.reduce((a, c) => a + c, 0) / specified.length : 0;
     this.setReference();
+    this.h0L = this.currentLengths();
+    this.h0T = [...b.tilt];
     // default fixed point: the centre of the box per dimension, 0.5 (boxlo + boxhi), without the tilt terms
     // (As native LAMMPS does, src/fix_box_relax.cpp at b332f28, FixBoxRelax::FixBoxRelax: fixedpoint[i] = 0.5*(domain->boxlo[i]+domain->boxhi[i]))
     const [lx, ly, lz] = this.currentLengths();
@@ -332,6 +357,14 @@ export class FixBoxRelax extends Fix {
     const p = this.pivot;
     const lo = [0, 1, 2].map((a) => p[a] + (this.startLo[a] - p[a]) * (newL[a] / this.startL[a]));
     const hi = [lo[0] + newL[0], lo[1] + newL[1], lo[2] + newL[2]];
+    // scaled tilts follow the new box length (native remap: "scale tilt factors with cell, if set")
+    if (this.scaleTilt[2]) newT[2] = (hi[2] - lo[2]) * this.h0T[2] / this.h0L[2];
+    if (this.scaleTilt[1]) newT[1] = (hi[2] - lo[2]) * this.h0T[1] / this.h0L[2];
+    if (this.scaleTilt[0]) newT[0] = (hi[1] - lo[1]) * this.h0T[0] / this.h0L[1];
+    if (this.scaleTilt.some((v) => v)) {
+      const hS = hMatrix(newL, newT);
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) hNew[r][c] = hS[r][c];
+    }
     this.sys.setBox(lo, hi, newT, 0, this);
     const F = mul3(hNew, inv3(this.startH));
     const n = s.n;

@@ -1,7 +1,8 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { ramp } from './util';
+import { rampFraction } from './util';
+import { fmtShortest } from '../cformat';
 import { inumeric, numeric } from '../force/util';
 import { massOf } from '../atoms';
 
@@ -25,24 +26,19 @@ import { massOf } from '../atoms';
  *     start..stop span); the logged value at the last step equals rho_final.
  *   After each step the group satisfies rho(x_s) = rho_target(s) to 1e-12 (the constraint is met exactly).
  *
- * Constraint (per step, after the integrator has moved the atoms; x_free = the moved positions, x_old = the
- * positions at the start of the step, d_i = x_old_i - y_i, e_i = x_free_i - y_i):
- *   x_new_i = x_free_i + gamma d_i,   gamma from the quadratic  sum |e + gamma d|^2 = N rho_t^2 .
- * gamma_forward is the larger root with rho_t = rho_target(s); gamma_back is the same root with rho_t replaced by
- * rho_old = rho(x_old) (the previous step's rho). Both agree with the logged columns to 1e-12 (eight atoms,
- * dump precision limited the earlier check). The velocity after the constraint is (x_new - x_old)/dt (the
- * half-step velocity); the final half kick then adds dt/2 f_new. Measured: v_native - (x_new - x_old)/dt = dt/2 f_new
- * to 8e-10 with zero pair forces.
- *
- * Output columns (file2, written every N steps; first row at step 1 for N = 1): a header line with the
- * columns Step, rho_target, rho_old, gamma_back, gamma_forward, lambda, work_lambda, work_analytical. Measured:
- *   lambda as above (equal-mass 8-atom case: exact to 1e-16 on 10 steps);
- *   work_lambda = sum over steps of lambda * (rho_target(s) - rho_old(s)) (exact);
- *   work_analytical: the increment for step s is N gamma_forward rho_old d (1 - (d / rho_old)^2) / dt^2 with
- *   d = rho_target(s) - rho_old(s): measured to 2e-9 relative for steps >= 2 (8 atoms and the 4-atom group).
- *   The first step's increment is NOT reproduced: the native value is about 0.004 (8 atoms) or 0.0035 (group)
- *   times this formula, with no closed form found, so the first row and every later row of work_analytical
- *   differ from native by that step's difference. The engine applies the formula at every step.
+ * The step, as native LAMMPS does (src/EXTRA-FIX/fix_tmd.cpp at b332f28): the fix keeps x_old, the unwrapped
+ * positions of the group, from its definition (the constructor, which also sets rho_start = rho(x_old) and rho_old =
+ * rho_start; neither is reset by a later run) and after each constraint. In initial_integrate (here postIntegrate, after
+ * every integrator; native requires tmd after them), with d = x_old - y and e = unwrapped x - y:
+ *   rho_target = rho_start + delta (rho_final - rho_start), delta = (step - beginstep) / (endstep - beginstep);
+ *   a = sum m d.d / M, b = 2 sum m e.d / M, e2 = sum m e.e / M; for rho in (rho_old, rho_target) the root
+ *   gamma = c / (a gamma_max), c = e2 - rho^2, gamma_max = (-b -/+ sqrt(b^2 - 4 a c)) / (2 a) by the sign of b (a
+ *   negative discriminant counts as 0, a = 0 gives 0): gamma_back for rho_old, gamma_forward for rho_target;
+ *   x += gamma_forward d, v += gamma_forward d / dt and f += gamma_forward d m / (dt dtf) (dtf = dt ftm2v), then
+ *   x_old = unwrap(x).
+ * Output (N > 0): fr = sum f.d (the forces at that point, those of the previous step) and kt = sum m |x + gamma_back d
+ * - x_old|^2; work_analytical += (-fr - kt / (dt dtf)) (rho_target - rho_old) / rho_old, lambda = gamma_back rho_old M /
+ * (dt dtf), work_lambda += lambda (rho_target - rho_old); a row every N steps (once per step) with {fmt}'s "{}" numbers.
  * "The scalar..." none: "No global or per-atom quantities are stored by this fix for access by various output
  * commands." Not invoked during energy minimization (no minimize hook).
  *
@@ -118,13 +114,10 @@ export class FixTmd extends Fix {
   /** masses of the group members and their sum */
   private mass: Float64Array = new Float64Array(0);
   private massSum = 0;
-  /**
-   * Output factor on lambda and work_analytical: mvv2e (real: 48.88821291^2 = 2390.06; measured on two mass ratios
-   * and the peptide), 1 in lj units. Other unit systems are not measured and refused in the constructor.
-   */
-  private unitFactor = 1;
   private xold: Float64Array = new Float64Array(0);
-  private rhoInit = 0;
+  private rhoStart = 0;
+  /** The step of the last output row (native previous_stat). */
+  private previousStat = 0;
   private rhoOld = 0;
   private rhoTarget = 0;
   private lambda = 0;
@@ -164,13 +157,11 @@ export class FixTmd extends Fix {
       const p = this.targets.get(s.id[i])!;
       this.tgt[3 * k] = p[0]; this.tgt[3 * k + 1] = p[1]; this.tgt[3 * k + 2] = p[2];
     });
-    if (this.file2 !== null) {
-      const u = sys.units.style;
-      if (u === 'lj') this.unitFactor = 1;
-      else if (u === 'real') this.unitFactor = sys.units.mvv2e;
-      else throw new StyleError(`fix tmd: the lambda and work columns of the N > 0 output are measured only in lj and real units (this is ${u})`);
-    }
     if (this.file2 !== null) sys.writeFile!(this.file2, '# Step rho_target rho_old gamma_back gamma_forward lambda work_lambda work_analytical\n', false);
+    // x_old, rho_start and rho_old from the positions at the definition (native constructor)
+    this.xold = this.positions();
+    this.rhoStart = this.rhoOf(this.xold);
+    this.rhoOld = this.rhoStart;
   }
 
   /** Unwrapped positions of the group members (3 per member). */
@@ -196,71 +187,68 @@ export class FixTmd extends Fix {
     return Math.sqrt(sum / this.massSum);
   }
 
-  setup(): void {
-    this.xold = this.positions();
-    this.rhoInit = this.rhoOf(this.xold);
-    this.rhoOld = this.rhoInit;
-  }
-
-  endOfStep(): void {
-    this.xold = this.positions();
-  }
-
   postIntegrate(): void {
     const s = this.sys.state;
-    const dt = s.dt;
+    const dtv = s.dt, dtf = s.dt * s.units.ftm2v;
     const nGroup = this.members.length;
-    const xfree = this.positions();
-    const rhoT = ramp(this.sys, this.rhoInit, this.rhoFinal);
-    // d = x_old - y, e = x_free - y; the constraint sum |e + gamma d|^2 = N rho^2 gives a quadratic in gamma
-    // the constraint is mass weighted: rho^2 = sum m |x - y|^2 / M; the correction itself is not (native, black box)
-    let A = 0, B = 0, E2 = 0;
-    for (let k = 0; k < 3 * nGroup; k++) {
-      const mk = this.mass[k / 3 | 0];
-      const d = this.xold[k] - this.tgt[k];
-      const e = xfree[k] - this.tgt[k];
-      A += mk * d * d;
-      B += mk * e * d;
-      E2 += mk * e * e;
-    }
-    B *= 2;
-    const root = (c: number): number => {
-      const disc = Math.sqrt(B * B - 4 * A * c);
-      return (-B + disc) / (2 * A);
-    };
-    const N = this.massSum;
-    const gf = root(E2 - N * rhoT * rhoT);
-    const gb = root(E2 - N * this.rhoOld * this.rhoOld);
-    // constrained positions and the half-step velocity (x_new - x_old)/dt
+    const M = this.massSum;
+    const x = this.positions();
+    const rhoT = this.rhoStart + rampFraction(this.sys) * (this.rhoFinal - this.rhoStart);
+    let a = 0, b = 0, e = 0;
     for (let k = 0; k < nGroup; k++) {
-      const i = this.members[k];
+      let dd = 0, ed = 0, ee = 0;
       for (let c = 0; c < 3; c++) {
-        const xn = xfree[3 * k + c] + gf * (this.xold[3 * k + c] - this.tgt[3 * k + c]);
-        // positions are stored wrapped: shift by the image offset of this atom
-        const dx = xn - xfree[3 * k + c];
-        s.x[3 * i + c] += dx;
-        s.v[3 * i + c] = (xn - this.xold[3 * k + c]) / dt;
+        const dOld = this.xold[3 * k + c] - this.tgt[3 * k + c];
+        const dNow = x[3 * k + c] - this.tgt[3 * k + c];
+        dd += dOld * dOld; ed += dNow * dOld; ee += dNow * dNow;
+      }
+      a += this.mass[k] * dd; b += this.mass[k] * ed; e += this.mass[k] * ee;
+    }
+    a /= M; b = (2.0 * b) / M; e /= M;
+    const root = (rho: number): number => {
+      const c = e - rho * rho;
+      let d = b * b - 4 * a * c;
+      if (d < 0) d = 0;
+      const gmax = b >= 0 ? (-b - Math.sqrt(d)) / (2 * a) : (-b + Math.sqrt(d)) / (2 * a);
+      return a === 0.0 ? 0 : c / (a * gmax);
+    };
+    const gb = root(this.rhoOld);
+    const gf = root(rhoT);
+    if (this.file2 !== null) {
+      let fr = 0, kt = 0;
+      for (let k = 0; k < nGroup; k++) {
+        const i = this.members[k];
+        let k2 = 0;
+        for (let c = 0; c < 3; c++) {
+          const dOld = this.xold[3 * k + c] - this.tgt[3 * k + c];
+          const dkt = x[3 * k + c] + gb * dOld - this.xold[3 * k + c];
+          k2 += dkt * dkt;
+          fr += s.f[3 * i + c] * dOld;
+        }
+        kt += this.mass[k] * k2;
+      }
+      this.workAnalytical += ((-fr - kt / dtv / dtf) * (rhoT - this.rhoOld)) / this.rhoOld;
+      this.lambda = (gb * this.rhoOld * M) / dtv / dtf;
+      this.workLambda += this.lambda * (rhoT - this.rhoOld);
+      if (s.step % this.every === 0 && this.previousStat !== s.step) {
+        const row = [this.rhoTarget = rhoT, this.rhoOld, gb, gf, this.lambda, this.workLambda, this.workAnalytical];
+        this.sys.writeFile!(this.file2, [String(s.step), ...row.map((v) => fmtShortest(v, false))].join(' ') + '\n', true);
+        this.previousStat = s.step;
       }
     }
-    this.lambda = (this.unitFactor * gb * N * this.rhoOld) / (dt * dt);
-    const dRho = rhoT - this.rhoOld;
-    this.workLambda += this.lambda * dRho;
-    this.workAnalytical += (this.unitFactor * N * gf * this.rhoOld * dRho * (1 - (dRho / this.rhoOld) ** 2)) / (dt * dt);
     this.rhoTarget = rhoT;
-    if (this.file2 !== null && s.step % this.every === 0) {
-      this.sys.writeFile!(this.file2, [s.step, this.rhoTarget, this.rhoOld, gb, gf, this.lambda, this.workLambda, this.workAnalytical].map(fmt).join(' ') + '\n', true);
-    }
     this.rhoOld = rhoT;
+    // the constraint, and x_old for the next step
+    for (let k = 0; k < nGroup; k++) {
+      const i = this.members[k];
+      const dtfm = dtf / this.mass[k];
+      for (let c = 0; c < 3; c++) {
+        const dOld = this.xold[3 * k + c] - this.tgt[3 * k + c];
+        s.x[3 * i + c] += gf * dOld;
+        s.v[3 * i + c] += (gf * dOld) / dtv;
+        s.f[3 * i + c] += (gf * dOld) / dtv / dtfm;
+      }
+    }
+    this.xold = this.positions();
   }
 }
-
-/** %.17g, as the native output prints it (shortest exact digits are not needed; 17 significant digits). */
-const fmt = (v: number): string => {
-  if (v === 0) return '0';
-  const e = Math.floor(Math.log10(Math.abs(v)));
-  if (e < -4 || e >= 17) {
-    const s = v.toExponential(16).replace(/\.?0+e/, 'e');
-    return s.replace(/e([+-])(\d)$/, 'e$10$2');
-  }
-  return String(Number(v.toPrecision(17)));
-};

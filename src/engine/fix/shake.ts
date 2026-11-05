@@ -628,8 +628,16 @@ export class FixShake extends Fix {
         let solved: boolean;
         if (nc === 1) {
           const c0 = C[0];
-          const x = quadraticRoot(c0 * c0 * (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]),
-            2 * c0 * (s0[0] * r[0] + s0[1] * r[1] + s0[2] * r[2]), F[0]);
+          const qa = c0 * c0 * (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+          const qb = 2 * c0 * (s0[0] * r[0] + s0[1] * r[1] + s0[2] * r[2]);
+          let x = quadraticRoot(qa, qb, F[0]);
+          // As native LAMMPS does (src/RIGID/fix_shake.cpp FixShake::shake at b332f28): a negative determinant (the
+          // predicted separation cannot be brought back to the bond length) warns and counts as zero, which gives the
+          // multiplier -b / (2 a) of the closest approach
+          if (x === null && qa !== 0) {
+            sys.warn('Shake determinant < 0.0');
+            x = -qb / (2 * qa);
+          }
           solved = x !== null;
           if (x !== null) delta[0] = x;
         } else {

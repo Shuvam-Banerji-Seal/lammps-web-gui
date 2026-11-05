@@ -101,25 +101,14 @@ import { libm } from '../libm';
  *  - the residual of the constraints after the same sweep does not separate them (a relative or absolute,
  *    squared or linear, max or sum measure all overlap), so the residual is not the stop test.
  *
- * Measured with native LAMMPS (black box, per-atom dumps of the 4500-atom SPC/E box with fix rattle in place of
- * fix shake, nve defined before the fix, dumps at steps 1 and 2):
- *  - a cluster is crossing when one of its constrained separations (bond or angle) straddles a periodic
- *    boundary in the wrapped coordinates (a minimum-image difference that is not the raw difference). Clusters
- *    without a crossing follow the RATTLE rules of this file exactly (velocities to 1e-11, forces to 5e-8);
- *  - with n crossing separations the velocity correction of the projection impulse dmu is multiplied by n at
- *    the end of the step (v = u + n c, c the projection of u; exact to 1e-11 for n = 2 and 3), and the constraint
- *    force carries the extra term -(n - 1) m c / (dt/2 ftm2v) (per atom, the same multipliers as dmu on the
- *    separations); the extra term is in the dumped forces and in the virial of the pressure (without the virial
- *    term the step-1 pressure is off by about 2150 bar; with it, by 0.04);
- *  - the position solve on crossing clusters still differs from native by a constraint-type force of relative
- *    size 1e-5 to 5e-5 (not a sweep-count effect: the converged solve differs), so the forces of the crossing
- *    atoms are open at that level;
- *  - with fix rattle defined before nve, the velocity stage is set so that the nve half kick that follows gives
- *    the full-step velocity u + c (within 1e-5 of the native value at step 1), and the extra force is
- *    -n m c / (dt/2 ftm2v) for every cluster, n >= 1 (a non-crossing cluster then has no constraint force in the
- *    dumped forces); the step-2 forces of that ordering do not follow this rule and are not matched;
- *  - with fix rattle defined before nve the native run loses atoms at about step 12 on this box (temperature
- *    grows to 265 K at step 11), so that ordering cannot be checked over 20 steps.
+ * RATTLE follows native's stages (src/RIGID/fix_rattle.cpp at b332f28): post_force takes the unconstrained half-step
+ * velocity vp = v + dt/2 F/m (update_v_half_nocons), solves the velocity constraints from it and corrects v; the
+ * integrator's final half kick (and a thermostat's scaling) follow; final_integrate then solves the position
+ * constraints for the next step as SHAKE does at the end of a step (FixShake::post_force with dtfsq = dt^2/2 ftm2v,
+ * x + dt v + dtfsq F/m), adding the constraint forces and their virial. A cluster that straddles a periodic boundary is
+ * listed once per periodic image group (imageGroups), so its velocity correction acts that many times (measured before
+ * on the 4500-atom SPC/E box: v = u + n c, and the position solve answers with -(n - 1) m c / (dt/2 ftm2v)). A fix
+ * rattle defined before the integrator solves the positions from the velocity before the final kick, as native does.
  *
  * Measured with native LAMMPS (black box, tests/oracle/w73shake_gil: the graph-il ionic liquid, 320 BMI three-atom
  * clusters with a stretched start, fix shake 1e-4 20 0 b 1 2 a 1, run 0, the pppm mesh and g_ewald pinned):
@@ -166,12 +155,6 @@ export class FixShake extends Fix {
   private molTemplateId: string | null = null;
   /** keyword store yes: per-atom constraint forces (f_ID[1..3]) set at setup (see the header). */
   private storeForces = false;
-  /**
-   * RATTLE: per cluster, from the last post-force solve: the atoms, the full-step velocity u = v + dt/2 F/m
-   * (F without the constraint force), the velocity correction dv of the projection of u, and the number of
-   * constrained separations that cross a periodic boundary (see rattleFinal).
-   */
-  private velStore: { at: number[]; u: number[][]; dv: number[][]; nCross: number }[] = [];
   /** keyword kbond: restraint spring constant during minimization (null = 1.0e9 * boltz). */
   private kbond: number | null = null;
   /** Energy of the minimization restraints of the last minimizer evaluation (fix_shake.cpp ebond, compute_scalar). */
@@ -475,6 +458,8 @@ export class FixShake extends Fix {
       this.arrayAtom.fill(0);
     }
     this.correctCoordinates();
+    // As native LAMMPS does (src/RIGID/fix_rattle.cpp correct_velocities at b332f28): vp = v, then the vrattle of every
+    // list entry, so a cluster listed n times (imageGroups) gets its correction n times
     if (this.style === 'rattle') this.rattleVelocities();
     this.shake(0.5);
   }
@@ -504,8 +489,10 @@ export class FixShake extends Fix {
       }
     }, 1);
     // the setup forces and energies stay those of the uncorrected coordinates, as in native LAMMPS
-    // (its step-0 thermo pe is the uncorrected one); the next step's integration starts from here
-    for (let i = 0; i < this.sys.state.n; i++) this.sys.geom.remap(this.sys.state.x, this.sys.state.image, i);
+    // (its step-0 thermo pe is the uncorrected one); the next step's integration starts from here. As native LAMMPS
+    // does (src/RIGID/fix_shake.cpp correct_coordinates at b332f28), the corrected atoms are not wrapped back into the
+    // box: an atom moved just past a face stays there until the next reneighboring's pbc (and RATTLE's image groups,
+    // imageGroups, see it on that side)
     // As native LAMMPS does (src/RIGID/fix_shake.cpp correct_coordinates at b332f28: comm->forward_comm(this) with
     // xshake set to x): the ghosts take the corrected positions at once, so a force evaluation before the first
     // step (compute fep at the setup's thermo output) sees them
@@ -514,12 +501,14 @@ export class FixShake extends Fix {
 
   postForce(): void {
     this.restraintEnergy = 0;
-    if (this.style === 'rattle') this.rattlePositions();
+    // FixRattle::post_force: the velocity constraints of the unconstrained half-step velocity
+    if (this.style === 'rattle') this.rattleVelocities(true);
     else this.shake(1);
   }
 
+  /** FixRattle::final_integrate: the position constraints of the next step, as SHAKE solves them at a step's end. */
   finalIntegrate(): void {
-    if (this.style === 'rattle') this.rattleFinal();
+    if (this.style === 'rattle') this.shake(0.5);
   }
 
   /**
@@ -702,123 +691,44 @@ export class FixShake extends Fix {
   }
 
   /**
-   * RATTLE post-force stage: the position constraint G is solved with the
-   * full-step velocity u = v + dt/2 F/m projected onto the velocity constraints
-   * (impulse dmu), x_next = x + dt (u + dmu/m) + dt^2/2 (F + G)/m. The
-   * constraint force of a cluster with n > 1 separations crossing a periodic
-   * boundary carries an extra term (see the header and rattleFinal).
+   * The number of times native LAMMPS lists the cluster (src/RIGID/fix_shake.cpp pre_neighbor at b332f28): atom i of
+   * the cluster lists it when the closest image of every cluster atom (domain->closest_image) has a local index >= i.
+   * The closest image of an atom across a periodic boundary from i is a ghost, so a cluster whose wrapped atoms lie in n
+   * periodic images is listed n times, once by the lowest atom of each image group. The SHAKE position solve of an entry
+   * applies its forces only to the owned atoms among its closest images, so each atom still gets them once; the RATTLE
+   * velocity corrections (vrattle2/3/4/3angle) reach every atom through atom->map, so they act n times. Two atoms are in
+   * one group when their wrapped separation is already the minimum image. For a 3-atom angle cluster n is the number of
+   * crossing separations (the measured SPC/E rule); a crossing 2-atom bond is listed twice.
    */
-  private rattlePositions(): void {
-    const s = this.sys.state;
-    const dt = s.dt;
-    const ftm2v = s.units.ftm2v;
-    const half = 0.5 * dt * dt * ftm2v;
-    const vir = this.virial;
-    this.resetVirial();
-    this.velStore = [];
-    const pending: { at: number[]; acc: number[][]; nCross: number; dmu: number[]; r: number[][]; cons: Cluster['cons'] }[] = [];
-    this.solveClusters((c, w) => {
-      const cons = c.cons;
-      const at = Array.from(w.at.subarray(0, w.nAt)), m = Array.from(w.m.subarray(0, w.nAt));
-      const r = cons.map((_k, j) => [w.r[3 * j], w.r[3 * j + 1], w.r[3 * j + 2]]);
-      // full-step velocity without G, then its projection impulse dmu (linear solve)
-      const u = at.map((i, n) => [0, 1, 2].map((q) => s.v[3 * i + q] + (0.5 * dt * ftm2v * s.f[3 * i + q]) / m[n]));
-      const nc = cons.length;
-      const sg = (atom: number, j: number) => (atom === cons[j].a ? 1 : atom === cons[j].b ? -1 : 0);
-      const A = Array.from({ length: nc }, (_, k) => Array.from({ length: nc }, (_, j) => {
-        const ck = cons[k];
-        return (sg(ck.a, j) / m[ck.a] - sg(ck.b, j) / m[ck.b]) * (r[j][0] * r[k][0] + r[j][1] * r[k][1] + r[j][2] * r[k][2]);
-      }));
-      const rhs = cons.map((k, kk) => -[0, 1, 2].reduce((acc, q) => acc + (u[k.a][q] - u[k.b][q]) * r[kk][q], 0));
-      const dmu = solve(A, rhs) ?? new Array(nc).fill(0);
-      // the impulse of the projection, per atom of the cluster: sum_j dmu_j sg r_j (momentum-like, = m dv)
-      const acc = at.map((_i, n) => [0, 1, 2].map((q) => {
-        let v = 0;
-        for (let j = 0; j < nc; j++) v += dmu[j] * sg(n, j) * r[j][q];
-        return v;
-      }));
-      const dv = acc.map((a, n) => a.map((x) => x / m[n]));
-      const nCross = this.imageCrossings(cons, at);
-      this.velStore.push({ at, u, dv, nCross });
-      // the constraint force carries the velocity correction of a cluster with more than one crossing
-      // separation: -(nCross - 1) m dv / (dt/2 ftm2v) is added to f after the position solve (see below)
-      pending.push({ at, acc, nCross, dmu, r, cons });
-      const p = at.map((_i, n) => [0, 1, 2].map((q) => {
-        let v = u[n][q];
-        for (let j = 0; j < nc; j++) v += (dmu[j] * sg(n, j) * r[j][q]) / m[n];
-        return dt * v + (half * s.f[3 * at[n] + q]) / m[n];
-      }));
-      cons.forEach((k, j) => { for (let q = 0; q < 3; q++) w.s0[3 * j + q] = r[j][q] + p[k.a][q] - p[k.b][q]; });
-      return half;
-    }, (c, w) => this.applyForces(c, w), half);
-    const kickLater = this.integratorAfter();
-    for (const e of pending) {
-      const k = kickLater ? Math.max(e.nCross, 1) : Math.max(e.nCross - 1, 0);
-      if (k === 0) continue;
-      // the extra force is a constraint-type force: multiplier -k dmu_j / (dt/2 ftm2v) on the separation r_j
-      const w = -k / (0.5 * dt * ftm2v);
-      for (let j = 0; j < e.cons.length; j++) {
-        const lam = w * e.dmu[j], rr = e.r[j], ck = e.cons[j];
-        for (let q = 0; q < 3; q++) {
-          s.f[3 * e.at[ck.a] + q] += lam * rr[q];
-          s.f[3 * e.at[ck.b] + q] -= lam * rr[q];
-        }
-        FixShake.addOuter(vir, lam, rr);
-        const cv = [0, 0, 0, 0, 0, 0];
-        FixShake.addOuter(cv, lam, rr);
-        this.tallyCluster(e.at, e.at.length, cv);
+  private imageGroups(at: number[]): number {
+    const s = this.sys.state, g = this.sys.geom;
+    const n = at.length;
+    const root = Array.from({ length: n }, (_, k) => k);
+    const find = (k: number): number => { while (root[k] !== k) k = root[k]; return k; };
+    const d = [0, 0, 0], dm = [0, 0, 0];
+    for (let a = 0; a < n; a++) {
+      for (let b = a + 1; b < n; b++) {
+        for (let q = 0; q < 3; q++) { d[q] = s.x[3 * at[b] + q] - s.x[3 * at[a] + q]; dm[q] = d[q]; }
+        g.minimumImage(dm);
+        let same = true;
+        for (let q = 0; q < 3; q++) if (Math.abs(d[q] - dm[q]) > 1e-9) { same = false; break; }
+        if (same) root[find(b)] = find(a);
       }
     }
-  }
-
-  /** Whether an integrator fix comes after this one in the list (its final half kick is still to come). */
-  private integratorAfter(): boolean {
-    const fixes = this.sys.fixes;
-    return fixes.slice(fixes.indexOf(this) + 1).some((f) => typeof f.initialIntegrate === 'function');
-  }
-
-  /** Number of the cluster's constrained separations whose wrapped coordinates straddle a periodic boundary. */
-  private imageCrossings(cons: Cluster['cons'], at: number[]): number {
-    const s = this.sys.state, g = this.sys.geom;
-    let n = 0;
-    for (const con of cons) {
-      const d = [0, 0, 0], dm = [0, 0, 0];
-      for (let q = 0; q < 3; q++) { d[q] = s.x[3 * at[con.a] + q] - s.x[3 * at[con.b] + q]; dm[q] = d[q]; }
-      g.minimumImage(dm);
-      for (let q = 0; q < 3; q++) if (Math.abs(d[q] - dm[q]) > 1e-9) { n++; break; }
-    }
-    return n;
+    let groups = 0;
+    for (let k = 0; k < n; k++) if (find(k) === k) groups++;
+    return groups;
   }
 
   /**
-   * RATTLE velocity stage of the step, after the post-force solve (see the header for the measured rules). The
-   * full-step velocity is u + c, c the projection impulse of u; a cluster with n > 1 crossing separations ends at
-   * u + n c (measured with native LAMMPS). When the integrator comes after fix rattle its final half kick
-   * has not happened yet, so the stored velocity is set so that the kick adds back to the same full-step velocity.
+   * RATTLE: removes the relative velocity along each constrained separation (exact linear solve per cluster), as
+   * native's vrattle2/3/4/3angle do: the multipliers come from vp, v at setup (correct_velocities) and v + dt/2 F/m in
+   * a step (halfKick, update_v_half_nocons), and the correction is added to v.
    */
-  private rattleFinal(): void {
-    const s = this.sys.state;
-    const dt = s.dt;
-    const ftm2v = s.units.ftm2v;
-    const kickLater = this.integratorAfter();
-    for (const e of this.velStore) {
-      const k = kickLater ? 1 : Math.max(e.nCross, 1);
-      for (let n = 0; n < e.at.length; n++) {
-        const i = e.at[n], m = massOf(s, i);
-        for (let q = 0; q < 3; q++) {
-          let v = e.u[n][q] + k * e.dv[n][q];
-          if (kickLater) v -= (0.5 * dt * ftm2v * s.f[3 * i + q]) / m;
-          s.v[3 * i + q] = v;
-        }
-      }
-    }
-    this.velStore = [];
-  }
-
-  /** RATTLE: removes the relative velocity along each constrained separation (exact linear solve per cluster). */
-  private rattleVelocities(addVirial = false): void {
+  private rattleVelocities(halfKick = false): void {
     const s = this.sys.state;
     const g = this.sys.geom;
+    const dtfv = 0.5 * s.dt * s.units.ftm2v;
     const index = this.atomIndex();
     const d = [0, 0, 0];
     for (const c of this.clusters) {
@@ -836,20 +746,13 @@ export class FixShake extends Fix {
         const w = sg(ck.a, j) / m[ck.a] - sg(ck.b, j) / m[ck.b];
         return w * (r[j][0] * r[k][0] + r[j][1] * r[k][1] + r[j][2] * r[k][2]);
       }));
-      const rhs = c.cons.map((k, kk) => -[0, 1, 2].reduce((acc, q) => acc + (s.v[3 * at[k.a] + q] - s.v[3 * at[k.b] + q]) * r[kk][q], 0));
+      const vp = (n: number, q: number) => s.v[3 * at[n] + q] + (halfKick ? (dtfv * s.f[3 * at[n] + q]) / m[n] : 0);
+      const rhs = c.cons.map((k, kk) => -[0, 1, 2].reduce((acc, q) => acc + (vp(k.a, q) - vp(k.b, q)) * r[kk][q], 0));
       const mu = solve(A, rhs);
       if (!mu) continue;
-      if (addVirial) {
-        // the velocity constraint as a force over the half step of final_integrate: F = mu r / (dt/2 ftm2v)
-        const w = 1 / (0.5 * s.dt * s.units.ftm2v);
-        for (let j = 0; j < nc; j++) {
-          const rr = r[j], f = mu[j] * w;
-          FixShake.addOuter(this.virial, f, rr);
-          const cv = [0, 0, 0, 0, 0, 0];
-          FixShake.addOuter(cv, f, rr);
-          this.tallyCluster(at, at.length, cv);
-        }
-      }
+      // a cluster native lists more than once is corrected once per entry, each from the same velocities (imageGroups)
+      const times = this.imageGroups(at);
+      if (times > 1) for (let j = 0; j < nc; j++) mu[j] *= times;
       for (let j = 0; j < nc; j++) {
         const k = c.cons[j];
         for (let q = 0; q < 3; q++) {

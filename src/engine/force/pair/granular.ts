@@ -1204,6 +1204,58 @@ export class PairGranular extends Pair {
   }
 
   /**
+   * The resolved models of each type pair for the GPU kernel (src/engine-gpl/granular/gpu_granular.ts, index
+   * itype * (ntypes + 1) + jtype, null where the pair has none) and the fix freeze group bit, or why the run stays on the
+   * CPU. The kernel evaluates the normal models hooke, hertz, hertz/material and dmt, every damping model, and the
+   * tangential models linear_nohistory, linear_history and the mindlin family; a contact of jkr or mdr, with rolling or
+   * twisting (their histories follow native's half-list orientation, nativeFrame), heat conduction or
+   * synchronized_verlet keeps the run on the CPU.
+   */
+  gpuModels(): { pm: (Pm | null)[]; stride: number; freezeBit: number } | string {
+    for (const pm of this.pm) {
+      if (!pm) continue;
+      if (pm.normal === 'jkr' || pm.normal === 'mdr') return `pair granular with the ${pm.normal} normal model`;
+      if (pm.roll !== 'none' || pm.twist !== 'none') return 'pair granular with rolling or twisting (their histories follow the half-list orientation)';
+      if (pm.heat !== 'none') return 'pair granular with heat conduction';
+      if (pm.sync) return 'pair granular with synchronized_verlet';
+      if (pm.tang === 'linear_history_classic' || pm.tang === 'mindlin_classic') return `pair granular with the ${pm.tang} tangential model`;
+    }
+    return { pm: this.pm, stride: this.ntypes + 1, freezeBit: this.freezeBit };
+  }
+
+  /**
+   * The contacts that keep a history: atom IDs lo < hi and four values each, the tangential history in the frame of lo
+   * (x_lo - x_hi) and the contact radius of the last update (granularContact's sh[0..3]).
+   */
+  historyContacts(): { lo: Int32Array; hi: Int32Array; h: Float64Array; n: number } {
+    const n = this.shear.size;
+    const lo = new Int32Array(n), hi = new Int32Array(n), h = new Float64Array(4 * n);
+    let m = 0;
+    for (const [key, rec] of this.shear) {
+      let a: number, b: number;
+      if (typeof key === 'number') { a = Math.floor(key / 67108864); b = key - a * 67108864; }
+      else { const [x, y] = key.split(':'); a = Number(x); b = Number(y); }
+      lo[m] = a; hi[m] = b;
+      for (let c = 0; c < 4; c++) h[4 * m + c] = rec[c];
+      m++;
+    }
+    return { lo, hi, h, n };
+  }
+
+  /**
+   * Replaces the history with these contacts (the GPU kernel's, in historyContacts' form). The records are new: a compute
+   * here keeps those it touches, as it keeps its own.
+   */
+  setHistoryContacts(lo: ArrayLike<number>, hi: ArrayLike<number>, h: ArrayLike<number>): void {
+    this.shear.clear();
+    for (let k = 0; k < lo.length; k++) {
+      const rec = new Float64Array(HIST_LEN);
+      for (let c = 0; c < 4; c++) rec[c] = h[4 * k + c];
+      this.shear.set(pairKey(lo[k], hi[k]), rec);
+    }
+  }
+
+  /**
    * Native single() (GRANULAR/pair_granular.cpp, single_extra = 12 plus the sub-model values, docs.lammps.org/pair_granular.html:
    * "The first 3 are the components of the tangential force between particles I and J, acting on particle I. The fourth is the
    * magnitude of this tangential force. The next 3 (5-7) are the components of the rolling torque acting on particle I. The next

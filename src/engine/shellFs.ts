@@ -35,3 +35,26 @@ export const removeDirectory = (sys: System, key: string): void => {
 
 /** The root-relative key for a shell argument, taken from the working directory. */
 export const shellKey = (sys: System, name: string): string => resolveFileName(sys.cwd, name);
+
+/**
+ * Expands the * and ? of the last component of a shell word against the session files, as sh does for a command it
+ * runs (a pattern that matches nothing stays as written; names starting with "." need a pattern starting with ".").
+ */
+export const expandShellPattern = (sys: System, word: string): string[] => {
+  if (!/[*?]/.test(word)) return [word];
+  const slash = word.lastIndexOf('/');
+  const dirPart = slash >= 0 ? word.slice(0, slash) : '';
+  const pat = word.slice(slash + 1);
+  if (/[*?]/.test(dirPart)) return [word];
+  const dirKey = dirPart === '' ? sys.cwd : shellKey(sys, dirPart);
+  const prefix = dirKey === '' ? '' : `${dirKey}/`;
+  const re = new RegExp(`^${pat.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]')}$`);
+  const out: string[] = [];
+  for (const key of sys.files.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    const rest = key.slice(prefix.length);
+    if (rest.includes('/') || (rest.startsWith('.') && !pat.startsWith('.'))) continue;
+    if (re.test(rest)) out.push(dirPart === '' ? rest : `${dirPart}/${rest}`);
+  }
+  return out.length ? out.sort() : [word];
+};

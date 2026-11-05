@@ -1,0 +1,16 @@
+# Colvars configuration added by fix_modify configfile in tests/oracle/w762cv_tri.in
+colvar {
+  name far
+  width 0.8
+  distance {
+    group1 { atomNumbersRange 10-13 }
+    group2 { atomNumbers 180 181 }
+  }
+}
+
+harmonic {
+  name hfar
+  colvars far
+  centers 2.0
+  forceConstant 3.0
+}

@@ -1,0 +1,45 @@
+# oracle: fix colvars in a triclinic LJ box (prism 1.0 0.5 -0.7: the Colvars minimum image with its neighbour-cell search), unwrap no, a configuration given by fix_modify config in triple quotes with a $(v_a) reference (substituted when fix colvars reads it), run 0 (the step is not advanced), a second configuration from fix_modify configfile between runs (the traj label is written again), and a minimization (min_post_force; the step advances once per iteration, before its line search, so the traj repeats a step for each line-search evaluation)
+# Measured max relative error, engine vs native: thermo 4.4e-15, final atoms 6.1e-13, state file byte-identical, traj 5e-15 (the same 51 lines, repeated steps included).
+# oracle-inputs: w762cv_tri.colvars
+# oracle-files: tri.colvars.traj tri.colvars.state
+# oracle-compare: thermo=all atoms=all rel=1e-10 filerel=1e-10
+units           lj
+atom_modify     map yes
+lattice         fcc 0.8442
+region          box prism 0 4 0 4 0 4 1.0 0.5 -0.7
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.2 4928459 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+variable        a equal 200
+fix             1 all nve
+fix             2 all colvars none output tri unwrap no
+fix_modify      2 config """
+  colvarsTrajFrequency 2
+  colvar {
+    name dv
+    distanceVec {
+      group1 { atomNumbers 3 }
+      group2 { atomNumbers $(v_a) 201 }
+    }
+  }
+  harmonic {
+    colvars dv
+    centers (0.5, 0.2, -0.3)
+    forceConstant 2.0
+  }
+"""
+thermo_style    custom step temp pe etotal f_2 f_2[1][1] f_2[1][2] f_2[1][3]
+thermo_modify   format float %.15g
+thermo          5
+run             0
+run             20
+fix_modify      2 configfile w762cv_tri.colvars
+thermo_style    custom step temp pe etotal f_2 f_2[1][1] f_2[1][2] f_2[1][3] f_2[2][1]
+thermo_modify   format float %.15g
+run             20
+minimize        1.0e-12 1.0e-12 30 100

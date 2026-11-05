@@ -95,6 +95,8 @@ const parseLog = (log, keywords) => {
       if (/^WARNING/.test(lines[j]) || /^For more information see/.test(lines[j])) continue;
       // fix SRP/REACT remakes its bond particles during the run and logs it between thermo rows
       if (/^Removed\/inserted \d+\/\d+ bond particles\.$/.test(lines[j].trim())) continue;
+      // fix colvars logs its state and trajectory writes between thermo rows
+      if (/^(Saving collective variables state to|Synchronizing \(emptying the buffer of\) trajectory file) ".*"\.$/.test(lines[j].trim())) continue;
       const w = lines[j].trim().split(/\s+/);
       if (w.length !== ncol || !w.every((x) => /^[-+0-9.eE]+$/.test(x) || /^-?(nan|inf)$/i.test(x))) break;
       const row = {};

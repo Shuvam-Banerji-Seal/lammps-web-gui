@@ -23,11 +23,15 @@ thermo output — no install, no server, no account.
   growing subset of LAMMPS input. Every unsupported command or style is an
   error that names it — never a silent no-op. Commands and styles that need
   a host process or an external library (`python`, `kim`, `mdi`, `plugin`,
-  `fix plumed`, `fix colvars`, `pair_style quip`, `hdnnp`, `runner`, `mbx`,
-  `kspace_style scafacos`) are errors that say why. `shell` runs only its
-  built-ins (`cd`, `mkdir`, `mv`, `rm [-f]`, `rmdir`, `putenv`) on the
-  in-browser file store; any other shell command is an error, since a
-  browser has no operating-system shell (`commands/misc.ts`).
+  `fix plumed`, `pair_style quip`, `hdnnp`, `runner`, `mbx`,
+  `kspace_style scafacos`) are errors that say why. `fix colvars` runs a
+  subset of the Colvars library ported in `src/engine-gpl/colvars/`; a
+  component, bias or keyword outside it is an error that names it. `shell`
+  runs only its built-ins (`cd`, `mkdir`, `mv`, `rm [-f]`, `rmdir`, `putenv`)
+  on the in-browser file store, and `rm [-f]` with `*` and `?` patterns when
+  it comes as one quoted word for the system shell; any other shell command
+  is an error, since a browser has no operating-system shell
+  (`commands/misc.ts`).
 - **Its core contains no LAMMPS source code.** The core engine
   (`src/engine/`) is written from textbook physics (Allen & Tildesley;
   Frenkel & Smit; Hockney & Eastwood; Deserno & Holm) and from the

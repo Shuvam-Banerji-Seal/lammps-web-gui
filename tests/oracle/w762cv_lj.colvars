@@ -1,0 +1,60 @@
+# Colvars configuration of tests/oracle/w762cv_lj.in
+colvarsTrajFrequency 5
+colvarsRestartFrequency 20
+
+colvar {
+  name d
+  width 0.5
+  distance {
+    group1 { atomNumbers 1 2 3 4 }
+    group2 { atomNumbersRange 126-131 }
+  }
+}
+
+colvar {
+  name dv
+  distanceVec {
+    group1 { atomNumbers 1 }
+    group2 {
+      atomNumbers 250
+    }
+  }
+}
+
+colvar {
+  name c
+  outputAppliedForce on
+  cartesian {
+    atoms { atomNumbers 7 9 }
+    useZ off
+  }
+}
+
+colvar {
+  name poly
+  distance {
+    componentCoeff 0.5
+    componentExp 2
+    forceNoPBC yes
+    group1 { dummyAtom (1.0, 1.0, 1.0) }
+    group2 { atomNumbers 50 51 }
+  }
+  distance {
+    group1 { atomNumbers 60 }
+    group2 { atomNumbers 61 62 }
+  }
+}
+
+harmonic {
+  name h1
+  colvars d poly
+  centers 3.0 12.0
+  forceConstant 10.0
+  outputEnergy on
+}
+
+harmonic {
+  colvars dv c
+  centers (-2.3, -1.0, -1.5) (2.6, 0.1, 3.3, -0.1)
+  forceConstant 5.0
+}

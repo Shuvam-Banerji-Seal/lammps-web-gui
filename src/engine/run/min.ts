@@ -267,6 +267,10 @@ export const minimize = async (
     let gg = dot(g, g);
     for (iter = 1; iter <= p.maxiter; iter++) {
       if (hooks.cancelled()) { reason = 'cancelled'; break; }
+      // As native LAMMPS does (src/min_cg.cpp MinCG::iterate at b332f28: ntimestep = ++update->ntimestep before the
+      // line minimization): the line-search evaluations of an iteration happen at its new step (fix colvars counts its
+      // steps from them), and a search that fails or finds zero forces ends at that step
+      s.step++;
       // line search along h, starting with the step that moves the farthest atom by dmax
       // (and the box DOF by at most vmax per iteration, as documented for fix box/relax)
       let hmax = 0, hbox = 0, hext = 0;
@@ -361,16 +365,14 @@ export const minimize = async (
         eTry = r.energy;
       }
       if (status !== 'ok') {
-        // restored start point (native: ZEROALPHA, ZEROQUAD, DOWNHILL end the minimization). Native advances the
-        // timestep before the line search, so the final thermo row of a failed search is at the next step.
+        // restored start point (native: ZEROALPHA, ZEROQUAD, DOWNHILL end the minimization), at the step the
+        // iteration advanced to
         e = eTry;
-        s.step++;
         reason = status === 'downhill' ? 'search direction is not downhill' : status === 'zeroquad' ? 'quadratic factors are zero' : status === 'etol' ? 'energy tolerance' : 'linesearch alpha is zero';
         break;
       }
       ePrev = e;
       e = eTry;
-      s.step++;
       checkMinHalt(sys);
       hooks.thermo(false);
       // function evaluation criterion (native checks it right after the line search, before the tolerances)
@@ -455,6 +457,9 @@ export const minimize = async (
     const ftm2v = s.units.ftm2v;
     for (iter = 1; iter <= p.maxiter; iter++) {
       if (hooks.cancelled()) { reason = 'cancelled'; break; }
+      // native src/min_quickmin.cpp MinQuickMin::iterate: ntimestep = ++update->ntimestep first, so both force
+      // evaluations of the iteration (a half step back and the step) are at the new step
+      s.step++;
       const f = s.f;
       let P = 0;
       for (let k = 0; k < n3; k++) P += f[k] * v[k];
@@ -529,7 +534,6 @@ export const minimize = async (
       }
       ePrev = e;
       e = evaluate();
-      s.step++;
       checkMinHalt(sys);
       hooks.thermo(false);
       // "For the damped dynamics minimizers this check is not performed for a few steps after velocities are reset to 0"

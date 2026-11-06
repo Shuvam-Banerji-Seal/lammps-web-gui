@@ -31,14 +31,14 @@
   "dependencies": {
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",
-    "lucide-react": "^1.61.0",
+    "lucide-react": "^1.64.0",
     "react": "~19.3.1",
     "react-dom": "~19.3.1",
     "three": "^0.185.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@types/react": "~19.3.0",
     "@types/react-dom": "~19.3.0",
     "@types/three": "^0.185.4",

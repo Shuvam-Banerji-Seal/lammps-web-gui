@@ -19,14 +19,6 @@ import { FixStoreLocal } from './fix_store_local';
 /** Output values in the order of the keywords (pair_tracker.cpp saved_choices numbering). */
 const CHOICES = ['id1', 'id2', 'time/created', 'time/broken', 'time/total', 'x', 'y', 'z', 'r/min', 'r/ave'] as const;
 
-/** One pair's history: pair_tracker.cpp data[0] (created step), data[1] (sum of r), data[2] (min r) and touch. */
-interface Contact {
-  created: number;
-  sum: number;
-  min: number;
-  touch: boolean;
-  gen: number;
-}
 
 /** Key of an unordered tag pair (tags below 2^21 keep the key exact). */
 const pairKey = (a: number, b: number): number => (a < b ? a * 4294967296 + b : b * 4294967296 + a);
@@ -43,8 +35,18 @@ export class PairTracker extends Pair {
   private typeFilter: Uint8Array | null = null;
   private set = new Uint8Array(0);
   private cutOwn = new Float64Array(0);
-  private hist = new Map<number, Contact>();
-  private gen = 0;
+  /**
+   * The history of each entry of the list (native's order), as fix neigh/history keeps it (src/fix_neigh_history.cpp at
+   * b332f28): pair_tracker.cpp data[0] (created step), data[1] (sum of r), data[2] (min r) and touch, with the entry's
+   * atom-ID pair key; carried over to the next build's entries by atom-ID pair (ensureSlots).
+   */
+  private slotPairs: Int32Array | null = null;
+  private slotBuild = -1;
+  private sKey = new Float64Array(0);
+  private sCreated = new Float64Array(0);
+  private sSum = new Float64Array(0);
+  private sMin = new Float64Array(0);
+  private sTouch = new Uint8Array(0);
   /** The fix STORE/LOCAL the style writes its rows to (created by settings through ctx.addFix). */
   private fix: FixStoreLocal | null = null;
   private row = new Float64Array(CHOICES.length);
@@ -62,7 +64,7 @@ export class PairTracker extends Pair {
     if (!Number.isInteger(freq) || freq <= 0) throw new StyleError(`pair_style tracker: output frequency must be a positive integer (got ${args[1]})`);
     this.freq = freq;
     this.choices = [];
-    this.hist.clear();
+    this.clearSlots();
     this.tmin = -1;
     this.typeFilter = null;
     // the keywords are read as the source reads them; finite (granular radii) is refused after
@@ -150,6 +152,42 @@ export class PairTracker extends Pair {
     return this.cutOwn[i * nt + j];
   }
 
+  private clearSlots(): void {
+    this.slotPairs = null;
+    this.slotBuild = -1;
+    this.sKey = new Float64Array(0); this.sCreated = new Float64Array(0); this.sSum = new Float64Array(0);
+    this.sMin = new Float64Array(0); this.sTouch = new Uint8Array(0);
+  }
+
+  /**
+   * The slots of this build's entries: a touching contact of the previous entries carries over by its atom-ID pair (the
+   * first entry of that pair, as fix neigh/history's post_neighbor takes the first partner with the tag); every other
+   * entry starts untouched with zeros, which is what a non-touching contact holds. A pair that left the list is gone.
+   */
+  private ensureSlots(pairs: Int32Array, nbuild: number, tag: ArrayLike<number>, owner: Int32Array): void {
+    if (pairs === this.slotPairs && nbuild === this.slotBuild) return;
+    const oldKey = this.sKey, oldTouch = this.sTouch, oldCreated = this.sCreated, oldSum = this.sSum, oldMin = this.sMin;
+    let prev: Map<number, number> | null = null;
+    for (let k = 0; k < oldTouch.length; k++) {
+      if (!oldTouch[k]) continue;
+      prev ??= new Map();
+      if (!prev.has(oldKey[k])) prev.set(oldKey[k], k);
+    }
+    const n = pairs.length >> 1;
+    const key = new Float64Array(n), created = new Float64Array(n), sum = new Float64Array(n), min = new Float64Array(n);
+    const touch = new Uint8Array(n);
+    for (let e = 0; e < n; e++) {
+      const k = pairKey(tag[owner[pairs[2 * e]]], tag[owner[pairs[2 * e + 1] & NEIGHMASK]]);
+      key[e] = k;
+      const o = prev?.get(k);
+      if (o === undefined) continue;
+      created[e] = oldCreated[o]; sum[e] = oldSum[o]; min[e] = oldMin[o]; touch[e] = 1;
+    }
+    this.sKey = key; this.sCreated = created; this.sSum = sum; this.sMin = min; this.sTouch = touch;
+    this.slotPairs = pairs;
+    this.slotBuild = nbuild;
+  }
+
   compute(pc: PairCompute): void {
     const s = pc.s;
     const { x } = pc;
@@ -162,52 +200,40 @@ export class PairTracker extends Pair {
     const owner = pc.nb.owner;
     // the pairs in native's order (nativeOrder.ts): the row order and the i/j of each row follow native's list
     const pairs = this.order.pairs(s, pc.nb, pc.geom, pc.half);
-    const gen = ++this.gen;
+    this.ensureSlots(pairs, pc.nb.nbuild, tag, owner);
+    const sCreated = this.sCreated, sSum = this.sSum, sMin = this.sMin, sTouch = this.sTouch;
     this.cur = pc;
-    let visited = 0;
-    for (let p = 0; p < pairs.length; p += 2) {
+    for (let p = 0, e = 0; p < pairs.length; p += 2, e++) {
       const i = pairs[p];
       const j = pairs[p + 1] & NEIGHMASK;
       const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
       const rsq = dx * dx + dy * dy + dz * dz;
       const r = Math.sqrt(rsq);
-      const key = pairKey(tag[owner[i]], tag[owner[j]]);
-      let c = this.hist.get(key);
-      if (!c) {
-        c = { created: 0, sum: 0, min: 0, touch: false, gen };
-        this.hist.set(key, c);
-      }
-      c.gen = gen;
-      visited++;
       if (rsq >= cutsq[type[i] * nt + type[j]]) {
         // the contact is broken: write its row (when touched), then reset the pair
-        if (c.touch) this.processData(i, j, c, step);
-        c.touch = false;
-        c.created = 0;
-        c.sum = 0;
-        c.min = 0;
+        if (sTouch[e]) this.processData(i, j, sCreated[e], sSum[e], sMin[e], step);
+        sTouch[e] = 0;
+        sCreated[e] = 0;
+        sSum[e] = 0;
+        sMin[e] = 0;
       } else {
-        if (!c.touch) {
-          c.created = step;
-          c.sum = r;
-          c.min = r;
+        if (!sTouch[e]) {
+          sCreated[e] = step;
+          sSum[e] = r;
+          sMin[e] = r;
         } else if (update) {
-          c.sum += r;
-          if (c.min > r) c.min = r;
+          sSum[e] += r;
+          if (sMin[e] > r) sMin[e] = r;
         }
-        c.touch = true;
+        sTouch[e] = 1;
       }
-    }
-    // a pair that left the neighbor list (only at a rebuild) loses its history (fix neigh/history drops it)
-    if (this.hist.size !== visited) {
-      for (const [key, c] of this.hist) if (c.gen !== gen) this.hist.delete(key);
     }
     this.cur = null;
   }
 
   /** pair_tracker.cpp process_data: the tmin and type filters, then one row into the fix. */
-  private processData(i: number, j: number, c: Contact, step: number): void {
-    if (step - c.created < this.tmin) return;
+  private processData(i: number, j: number, created: number, sum: number, min: number, step: number): void {
+    if (step - created < this.tmin) return;
     const pc = this.cur!;
     if (this.typeFilter) {
       // "if (type_filter[type[i]][type[j]] == 0) return;"
@@ -222,14 +248,14 @@ export class PairTracker extends Pair {
       switch (this.choices[n]) {
         case 0: out[n] = tag[owner[i]]; break;
         case 1: out[n] = tag[owner[j]]; break;
-        case 2: out[n] = c.created; break;
+        case 2: out[n] = created; break;
         case 3: out[n] = step; break;
-        case 4: out[n] = step - c.created; break;
+        case 4: out[n] = step - created; break;
         case 5: out[n] = (x[3 * i] + x[3 * j]) * 0.5; break;
         case 6: out[n] = (x[3 * i + 1] + x[3 * j + 1]) * 0.5; break;
         case 7: out[n] = (x[3 * i + 2] + x[3 * j + 2]) * 0.5; break;
-        case 8: out[n] = c.min; break;
-        default: out[n] = c.sum / (step - c.created); break;
+        case 8: out[n] = min; break;
+        default: out[n] = sum / (step - created); break;
       }
     }
     this.fix!.addData(out);

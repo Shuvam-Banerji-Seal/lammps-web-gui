@@ -65,8 +65,9 @@ const AtomLabels: React.FC<AtomLabelsProps> = ({ atoms, config, maxLabels = 400 
     if (!config.showLabels || atoms.length > maxLabels) return null;
 
     return atoms.map(atom => {
-      const elemMeta = ELEMENT_DATA.find(e => e.number === atom.type);
-      const symbol = elemMeta?.symbol ?? '?';
+      // the element of the atom's type (config.typeAtomicNumbers); a type number is not an atomic number
+      const z = config.typeAtomicNumbers?.[atom.type];
+      const symbol = z !== undefined ? ELEMENT_DATA[z - 1].symbol : String(atom.type);
       const color = config.customColors[atom.type] ?? DEFAULT_ATOM_COLOR;
       return {
         id: atom.id,
@@ -74,7 +75,7 @@ const AtomLabels: React.FC<AtomLabelsProps> = ({ atoms, config, maxLabels = 400 
         texture: getLabelTexture(symbol, color),
       };
     });
-  }, [atoms, config.showLabels, config.customColors, maxLabels]);
+  }, [atoms, config.showLabels, config.customColors, config.typeAtomicNumbers, maxLabels]);
 
   if (!sprites) return null;
 

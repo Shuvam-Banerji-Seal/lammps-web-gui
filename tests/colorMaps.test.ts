@@ -133,7 +133,11 @@ describe('render quality and radii', () => {
     const c = view({ typeRadii: { 6: 2 } });
     expect(atomDisplayRadius(atom({ type: 6 }), c)).toBeCloseTo(0.9, 12);
     expect(atomDisplayRadius(atom({ type: 1 }), c)).toBeCloseTo(0.45, 12);
-    expect(atomDisplayRadius(atom({ type: 6 }), view({ visualizationMode: 'element-balls' }))).toBeCloseTo(0.76 * 0.6, 12);
+    // the element radius is the type's element's (MoleculeCanvas sets typeAtomicNumbers from atomTypes), not the
+    // type number's: type 6 is carbon only when its element says so
+    expect(atomDisplayRadius(atom({ type: 6 }), view({ visualizationMode: 'element-balls', typeAtomicNumbers: { 6: 6 } }))).toBeCloseTo(0.76 * 0.6, 12);
+    expect(atomDisplayRadius(atom({ type: 2 }), view({ visualizationMode: 'element-balls', typeAtomicNumbers: { 2: 1 } }))).toBeCloseTo(0.31 * 0.6, 12);
+    expect(atomDisplayRadius(atom({ type: 6 }), view({ visualizationMode: 'element-balls' }))).toBeCloseTo(0.75 * 0.6, 12);
     expect(radiusKeyOf(c)).not.toBe(radiusKeyOf(view({})));
   });
 });

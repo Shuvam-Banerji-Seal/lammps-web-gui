@@ -1,6 +1,8 @@
 import { Atom, MoleculeData, AtomTypeInfo, BoxBounds, TrajectoryFrame } from '../types';
 import { ELEMENT_DATA, getAtomicNumberFromSymbol } from '../constants';
 import { inferBonds } from './bondInference';
+import { atomicNumberByType } from './elementTypes';
+import { resolveElementFromMass } from './parser';
 
 /**
  * Parser for native LAMMPS dump trajectories (dump custom / dump atom text
@@ -32,8 +34,18 @@ import { inferBonds } from './bondInference';
  *    real linear diffusion. A dump carrying both `xu yu zu` and `ix iy iz`
  *    must NOT pass the flags on — the coordinate is already absolute, so
  *    applying them again double-counts the box offset.
- *  - `element` column → symbol lookup; else type-as-atomic-number heuristic
- *    (types 1..118), matching the .data parser's fallback.
+ *  - Elements. A dump names an atom's element only through an `element`
+ *    column (dump_modify element), a type label that is an element symbol
+ *    (dump_modify types labels) or a `mass` column (nearest element within
+ *    0.5 u, the .data parser's rule). With an `element` column the atom's
+ *    type is that element's atomic number (one type per element, as before).
+ *    Otherwise the atom keeps its LAMMPS type and the type's element is
+ *    unknown ('X'): a type NUMBER is never read as an atomic number (types
+ *    are numbered in the input's own order, so type 2 is as likely H as He;
+ *    reading it as Z drew hydrogen as helium and nitrogen as lithium). The
+ *    viewer's Elements tab assigns an element to such a type.
+ *  - Type labels (a non-numeric `type` column) number the types in the order
+ *    of first appearance; the label names the type.
  *  - q / mol columns honored when present; arbitrary extra columns ignored.
  *
  * Multi-frame: every block becomes a TrajectoryFrame; the FIRST frame
@@ -80,12 +92,45 @@ interface ParsedFrame {
   wrapped: boolean;
 }
 
+/**
+ * The element symbol a token names. An element column (dump_modify element) holds element names in any case. A type
+ * label names an element only when it is a symbol in its own capitalization ("H", "Na", "Cl"): a label such as "CA"
+ * (an alpha carbon in a protein input) or "ca" (an aromatic carbon type) is not calcium.
+ */
+const symbolOfToken = (token: string, labelCase: boolean): string | undefined => {
+  const t = token.trim();
+  const z = getAtomicNumberFromSymbol(t);
+  if (z === undefined) return undefined;
+  const sym = ELEMENT_DATA[z - 1].symbol;
+  return !labelCase || t === sym ? sym : undefined;
+};
+
+/** What the parser learns about each atom type over the rows (the element and mass of the type, its label). */
+interface TypeTable {
+  /** type label (non-numeric `type` token) -> type id, numbered in order of first appearance */
+  labelIds: Map<string, number>;
+  /** type id -> the label that named it */
+  labels: Map<number, string>;
+  /** type id -> element symbol, when the file names it */
+  elements: Map<number, string>;
+  /** type id -> the mass column's value for its first atom */
+  masses: Map<number, number>;
+  /** element-column tokens that are not element symbols -> their synthetic type ids */
+  unknownElementIds: Map<string, number>;
+}
+
+const newTypeTable = (): TypeTable => ({ labelIds: new Map(), labels: new Map(), elements: new Map(), masses: new Map(), unknownElementIds: new Map() });
+
+/** Synthetic type ids (an element-column token that is no element) start here, clear of atomic numbers. */
+const SYNTHETIC_TYPE_BASE = 1000;
+
 /** Resolve one atom row given the column index map. */
 const rowToAtom = (
   tokens: string[],
   col: Map<string, number>,
   frameBox: BoxBounds | undefined,
   fallbackId: number,
+  types: TypeTable,
 ): { atom: Atom; wrapped: boolean } | null => {
   const num = (name: string): number | undefined => {
     const i = col.get(name);
@@ -146,27 +191,65 @@ const rowToAtom = (
   const iz = wrapped ? num('iz') : undefined;
 
   const idRaw = num('id');
-  const typeRaw = num('type');
-  const type = typeRaw !== undefined && typeRaw >= 1 ? Math.round(typeRaw) : 1;
   const id = idRaw !== undefined ? Math.round(idRaw) : fallbackId;
   const mol = num('mol');
   const q = num('q');
   const vx = num('vx');
   const vy = num('vy');
   const vz = num('vz');
-  let symbol: string | undefined;
+
+  // The LAMMPS type: a number, or a type label (dump_modify types labels) numbered in order of first appearance.
+  let type = 1;
+  const typeIdx = col.get('type');
+  if (typeIdx !== undefined && typeIdx < tokens.length) {
+    const tok = tokens[typeIdx];
+    if (isInt(tok)) {
+      const t = parseInt(tok, 10);
+      if (t >= 1) type = t;
+    } else if (isFloat(tok)) {
+      const t = Math.round(parseFloat(tok));
+      if (t >= 1) type = t;
+    } else {
+      let t = types.labelIds.get(tok);
+      if (t === undefined) {
+        t = types.labelIds.size + 1;
+        types.labelIds.set(tok, t);
+        types.labels.set(t, tok);
+        const sym = symbolOfToken(tok, true);
+        if (sym) types.elements.set(t, sym);
+      }
+      type = t;
+    }
+  }
+
+  // An element column names the element: the type becomes that element's atomic number (one type per element). A
+  // token that is no element symbol gets a synthetic type of its own, named by the token.
   const elemIdx = col.get('element');
   if (elemIdx !== undefined && elemIdx < tokens.length) {
-    // `atomicNumber`, not `z` — the outer `z` here is a COORDINATE.
-    const atomicNumber = getAtomicNumberFromSymbol(tokens[elemIdx].trim());
-    if (atomicNumber !== undefined) symbol = ELEMENT_DATA[atomicNumber - 1].symbol;
+    const tok = tokens[elemIdx].trim();
+    const sym = symbolOfToken(tok, false);
+    if (sym) {
+      // `atomicNumber`, not `z` — the outer `z` here is a COORDINATE.
+      const atomicNumber = getAtomicNumberFromSymbol(sym)!;
+      type = atomicNumber;
+      types.elements.set(type, sym);
+    } else {
+      let t = types.unknownElementIds.get(tok);
+      if (t === undefined) {
+        t = SYNTHETIC_TYPE_BASE + types.unknownElementIds.size;
+        types.unknownElementIds.set(tok, t);
+        types.labels.set(t, tok);
+      }
+      type = t;
+    }
   }
-  if (!symbol && type >= 1 && type <= 118) symbol = ELEMENT_DATA[type - 1].symbol;
+  const mass = num('mass');
+  if (mass !== undefined && !types.masses.has(type)) types.masses.set(type, mass);
 
   const atom: Atom = {
     id,
     molId: mol !== undefined ? Math.round(mol) : 1,
-    type: symbol ? (getAtomicNumberFromSymbol(symbol) ?? type) : type,
+    type,
     charge: q ?? 0,
     x, y, z,
     ...(vx !== undefined ? { vx } : {}),
@@ -184,6 +267,7 @@ export const parseDumpFile = (data: string): MoleculeData => {
 
   const lines = data.split('\n');
   const frames: ParsedFrame[] = [];
+  const types = newTypeTable();
 
   let i = 0;
   while (i < lines.length) {
@@ -256,7 +340,7 @@ export const parseDumpFile = (data: string): MoleculeData => {
       if (!row) { i++; continue; }
       if (row.startsWith('ITEM:')) break; // truncated frame
       const tokens = row.split(/\s+/);
-      const parsed = rowToAtom(tokens, col, frameBox, atoms.length + 1);
+      const parsed = rowToAtom(tokens, col, frameBox, atoms.length + 1, types);
       if (parsed) {
         atoms.push(parsed.atom);
         frameWrapped = parsed.wrapped;
@@ -281,18 +365,26 @@ export const parseDumpFile = (data: string): MoleculeData => {
   if (!first.box) throw new Error('Invalid LAMMPS dump: first frame lacks ITEM: BOX BOUNDS');
 
   // --- Type metadata from the reference frame ---
+  // The element of a type: the element column or an element type label, else the mass column (nearest element
+  // within 0.5 u), else unknown ('X'). The type number itself says nothing about the element.
   const atomTypes: Record<number, AtomTypeInfo> = {};
-  const usedTypes = Array.from(new Set(first.atoms.map(a => a.type)));
-  for (const type of usedTypes) {
-    const elem = ELEMENT_DATA.find(e => e.number === type);
-    let count = 0;
-    for (const a of first.atoms) if (a.type === type) count++;
+  const counts = new Map<number, number>();
+  for (const a of first.atoms) counts.set(a.type, (counts.get(a.type) ?? 0) + 1);
+  for (const type of [...counts.keys()].sort((a, b) => a - b)) {
+    const fileMass = types.masses.get(type);
+    let element = types.elements.get(type);
+    if (!element && fileMass !== undefined && fileMass > 0) {
+      const byMass = resolveElementFromMass(fileMass).symbol;
+      if (byMass !== 'X') element = byMass;
+    }
+    const elem = element ? ELEMENT_DATA.find(e => e.symbol === element) : undefined;
+    const name = types.labels.get(type) ?? `Type ${type}`;
     atomTypes[type] = {
       id: type,
-      mass: elem?.mass ?? 0,
+      mass: fileMass ?? elem?.mass ?? 0,
       element: elem?.symbol ?? 'X',
-      label: elem ? `${elem.name} (${elem.symbol})` : `Type ${type}`,
-      count,
+      label: elem ? `${elem.name} (${elem.symbol})` : name,
+      count: counts.get(type)!,
     };
   }
 
@@ -308,7 +400,8 @@ export const parseDumpFile = (data: string): MoleculeData => {
   }));
 
   // --- Bonds from the reference frame (dumps carry no topology) ---
-  const bonds = first.atoms.length <= 30000 ? inferBonds(first.atoms) : [];
+  // (only between atoms whose element is known: an unknown element has no covalent radius)
+  const bonds = first.atoms.length <= 30000 ? inferBonds(first.atoms, { atomicNumberOf: atomicNumberByType(atomTypes) }) : [];
 
   // --- Extents across ALL frames (atoms only, consistent with the other
   // parsers — the canvas factors the box in separately for framing) ---

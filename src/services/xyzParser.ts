@@ -1,6 +1,7 @@
 import { Atom, Bond, MoleculeData, AtomTypeInfo, TrajectoryFrame, BoxBounds } from '../types';
 import { ELEMENT_DATA, getAtomicNumberFromSymbol } from '../constants';
 import { inferBonds } from './bondInference';
+import { atomicNumberByType } from './elementTypes';
 
 /**
  * Parses XYZ file format — including multi-frame trajectories AND the
@@ -282,9 +283,22 @@ export const parseXYZFile = (data: string): MoleculeData => {
   }
 
   // Symbol token -> type id, shared across frames for stable coloring.
-  // keys are element symbols from the file: a null-prototype map (no prototype keys)
-  const elementTypeMap: Record<string, number> = Object.create(null);
+  // keys are species tokens from the file (a Map: no prototype keys)
+  const elementTypeMap = new Map<string, number>();
   let nextSyntheticTypeId = 1000;
+  // The element (symbol) and name of each type id. A known element's type is its atomic number; a LAMMPS "dump xyz"
+  // without dump_modify element writes the TYPE NUMBER in the species column, which names no element: that type keeps
+  // its number (docs.lammps.org/dump.html: the xyz style writes "atom type" unless dump_modify element is used)
+  const typeElement = new Map<number, string>();
+  const typeName = new Map<number, string>();
+  const usedTypeIds = new Set<number>();
+  const allocTypeId = (preferred: number | undefined): number => {
+    if (preferred !== undefined && !usedTypeIds.has(preferred)) { usedTypeIds.add(preferred); return preferred; }
+    let t = nextSyntheticTypeId++;
+    while (usedTypeIds.has(t)) t = nextSyntheticTypeId++;
+    usedTypeIds.add(t);
+    return t;
+  };
 
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -331,10 +345,20 @@ export const parseXYZFile = (data: string): MoleculeData => {
       // Species: first S column named `species`, else the I column named `Z`.
       let mapKey: string;
       let knownNumber: number | undefined;
+      let typeNumber: number | undefined;
+      let name: string | undefined;
       if (plan.speciesCol !== undefined) {
-        const symbol = tokens[plan.speciesCol];
-        mapKey = symbol.trim().toUpperCase();
-        knownNumber = getAtomicNumberFromSymbol(symbol);
+        const symbol = tokens[plan.speciesCol].trim();
+        if (/^\d+$/.test(symbol) && parseInt(symbol, 10) >= 1) {
+          // a LAMMPS type number, not an atomic number
+          typeNumber = parseInt(symbol, 10);
+          mapKey = `#${typeNumber}`;
+          name = `Type ${typeNumber}`;
+        } else {
+          mapKey = symbol.toUpperCase();
+          knownNumber = getAtomicNumberFromSymbol(symbol);
+          name = symbol;
+        }
       } else if (plan.atomicNumberCol !== undefined) {
         const zNum = parseInt(tokens[plan.atomicNumberCol], 10);
         if (Number.isInteger(zNum) && zNum >= 1) {
@@ -346,15 +370,19 @@ export const parseXYZFile = (data: string): MoleculeData => {
       } else {
         mapKey = ''; // Properties carries no species column at all
       }
-      if (!(mapKey in elementTypeMap)) {
-        elementTypeMap[mapKey] =
-          knownNumber !== undefined ? knownNumber : nextSyntheticTypeId++;
+      let typeId = elementTypeMap.get(mapKey);
+      if (typeId === undefined) {
+        const id = allocTypeId(knownNumber ?? typeNumber);
+        elementTypeMap.set(mapKey, id);
+        typeId = id;
+        if (knownNumber !== undefined) typeElement.set(id, ELEMENT_DATA[knownNumber - 1].symbol);
+        if (name !== undefined) typeName.set(id, name);
       }
 
       atoms.push({
         id: atoms.length + 1,
         molId: 1,
-        type: elementTypeMap[mapKey],
+        type: typeId,
         charge: 0,
         x, y, z,
       });
@@ -388,20 +416,22 @@ export const parseXYZFile = (data: string): MoleculeData => {
   const usedTypes = Array.from(new Set(atoms.map(a => a.type)));
 
   for (const type of usedTypes) {
-    const elem = ELEMENT_DATA.find(e => e.number === type);
+    // the element the file named for this type (never the type number read as an atomic number)
+    const sym = typeElement.get(type);
+    const elem = sym ? ELEMENT_DATA.find(e => e.symbol === sym) : undefined;
     let count = 0;
     for (const a of atoms) if (a.type === type) count++;
     atomTypes[type] = {
       id: type,
       mass: elem?.mass ?? 0,
       element: elem?.symbol ?? 'X',
-      label: elem ? `${elem.name} (${elem.symbol})` : `Type ${type}`,
+      label: elem ? `${elem.name} (${elem.symbol})` : typeName.get(type) ?? `Type ${type}`,
       count,
     };
   }
 
-  // --- Bonds from the reference frame's topology ---
-  const bonds: Bond[] = inferBonds(atoms);
+  // --- Bonds from the reference frame's topology (atoms of unknown element take part in none) ---
+  const bonds: Bond[] = inferBonds(atoms, { atomicNumberOf: atomicNumberByType(atomTypes) });
 
   const safeCenter = atoms.length > 0
     ? { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: (minZ + maxZ) / 2 }

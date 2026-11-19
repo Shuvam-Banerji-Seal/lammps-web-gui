@@ -345,11 +345,11 @@ describe('LAMMPS data input', () => {
 // --- refusals and limits -------------------------------------------------------------------------
 
 describe('refusals', () => {
-  it('refuses an element that is not in the table', () => {
+  it('refuses an atom whose type has no known element', () => {
     const mol = pdbMol(PDB_NOCELL);
     mol.atoms[0] = { ...mol.atoms[0], type: 999 };
     expect(() => convertStructure(mol, opts())).toThrow(StructureConvertError);
-    expect(() => convertStructure(mol, opts())).toThrow(/element table/);
+    expect(() => convertStructure(mol, opts())).toThrow(/has no known element/);
   });
 
   it('refuses an empty structure', () => {

@@ -331,7 +331,7 @@ Atoms # full
     expect(result.atomTypes[1].element).toBe('C'); // from label, no Masses entry
   });
 
-  it('keeps the type-as-atomic-number fallback for non-element labels', () => {
+  it('leaves the element unknown for a label that is no element symbol (type 1 is not hydrogen)', () => {
     const result = parseDataFile(dataFile(`1 atom types
 
 Atom Type Labels
@@ -342,7 +342,7 @@ Atoms # full
 
 1 1 OW 0.0 1.0 2.0 3.0
 `));
-    expect(result.atomTypes[1].element).toBe('H'); // unchanged fallback for type 1
+    expect(result.atomTypes[1].element).toBe('X'); // a type number is not an atomic number
   });
 });
 
@@ -432,11 +432,20 @@ describe.skipIf(!haveRealFiles)('real LAMMPS data files (read from disk)', () =>
 });
 
 describe('the bundled C60 example (public/c60.data)', () => {
-  it('declares "1 atom types" but uses type 6; all 60 carbons still load', () => {
+  it('loads the built-in C60: 60 carbons (type 1, Masses 12.011 # Carbon) and 90 bonds', () => {
     const m = parseDataFile(readFileSync('public/c60.data', 'utf8'));
     expect(m.atoms).toHaveLength(60);
     expect(m.bonds).toHaveLength(90);
+    expect(m.atoms.every((a) => a.type === 1)).toBe(true);
     expect(Object.values(m.atomTypes).map((t) => t.element)).toEqual(['C']);
     expect(Number.isFinite(m.min.x) && Number.isFinite(m.max.z)).toBe(true);
+  });
+
+  it('an atom type without a Masses entry or label has no element (type 6 is not carbon)', () => {
+    const text = readFileSync('public/c60.data', 'utf8').replace(/^(\s*\d+\s+\d+\s+)1(\s)/gm, '$16$2');
+    const m = parseDataFile(text);
+    expect(m.atoms).toHaveLength(60);
+    expect(m.atoms.every((a) => a.type === 6)).toBe(true);
+    expect(m.atomTypes[6].element).toBe('X');
   });
 });

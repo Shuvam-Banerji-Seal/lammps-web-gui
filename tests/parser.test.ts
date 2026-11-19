@@ -229,8 +229,8 @@ Atoms # full
 `;
     const result = parseDataFile(data);
     expect(result.atoms).toHaveLength(2);
-    // Without mass, type 6 should match Carbon by atomic number fallback
-    expect(result.atomTypes[6].element).toBe('C');
+    // Without a mass or label the element is unknown: a type number is not an atomic number
+    expect(result.atomTypes[6].element).toBe('X');
   });
 
   it('should skip non-atom/bond sections like Velocities', () => {

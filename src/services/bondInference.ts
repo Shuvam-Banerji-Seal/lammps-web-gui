@@ -11,6 +11,13 @@ export interface BondInferenceOptions {
   tolerance?: number;
   /** Hard cap on bond length in Angstroms regardless of radii (guards huge cells). */
   maxBondLength?: number;
+  /**
+   * The atomic number of an atom, from its type's element (atomicNumberByType in elementTypes.ts); undefined for an
+   * atom whose element is unknown, which then takes part in no bond (its covalent radius is unknown). Without this
+   * option Atom.type is taken as the atomic number, which holds for the parsers that number types by element (CIF,
+   * PDB).
+   */
+  atomicNumberOf?: (atom: Atom) => number | undefined;
 }
 
 /**
@@ -61,11 +68,19 @@ class SpatialGrid {
 const covalentRadius = (atomicNumber: number): number =>
   COVALENT_RADII[atomicNumber] ?? DEFAULT_COVALENT_RADIUS;
 
+const typeAsAtomicNumber = (a: Atom): number | undefined => a.type;
+
 /** The longest bond inferBonds can accept among these atoms: twice the largest covalent radius times the tolerance. */
-export const maxBondDistance = (atoms: readonly Atom[], tolerance = 1.2): number => {
+export const maxBondDistance = (
+  atoms: readonly Atom[],
+  tolerance = 1.2,
+  atomicNumberOf: (atom: Atom) => number | undefined = typeAsAtomicNumber,
+): number => {
   let largest = DEFAULT_COVALENT_RADIUS;
   for (const a of atoms) {
-    const r = covalentRadius(a.type);
+    const z = atomicNumberOf(a);
+    if (z === undefined) continue;
+    const r = covalentRadius(z);
     if (r > largest) largest = r;
   }
   return 2 * largest * tolerance;
@@ -89,8 +104,8 @@ const OVERLAP_FRACTION = 0.1;
  * Complexity: O(n * k) where k = average neighbors per cell neighborhood,
  * versus O(n^2) for naive all-pairs scanning. Deduplicates pairs by atom id.
  *
- * `typeOf` maps an Atom to its atomic number when Atom.type is not already
- * the atomic number (callers with symbol-derived types pass identity).
+ * `options.atomicNumberOf` gives an atom's atomic number from its type's element; an atom of unknown element is
+ * left unbonded.
  */
 export const inferBonds = (
   atoms: Atom[],
@@ -98,33 +113,42 @@ export const inferBonds = (
 ): Bond[] => {
   const tolerance = options.tolerance ?? 1.2;
   const maxBondLength = options.maxBondLength ?? Infinity;
+  const zOf = options.atomicNumberOf ?? typeAsAtomicNumber;
   const bonds: Bond[] = [];
   if (atoms.length < 2) return bonds;
+
+  // The atomic number of every atom once (NaN: unknown element, never bonded).
+  const zs = new Float64Array(atoms.length);
+  for (let i = 0; i < atoms.length; i++) zs[i] = zOf(atoms[i]) ?? NaN;
 
   // Correctness invariant of the 3x3x3 neighborhood: cellSize must be >= the
   // maximum accepted bond distance, else a valid pair could straddle
   // non-adjacent cells. Compute over ALL atoms (O(n), cheap).
   let largestRadius = DEFAULT_COVALENT_RADIUS;
-  for (const a of atoms) {
-    const r = covalentRadius(a.type);
+  for (let i = 0; i < atoms.length; i++) {
+    if (Number.isNaN(zs[i])) continue;
+    const r = covalentRadius(zs[i]);
     if (r > largestRadius) largestRadius = r;
   }
   const maxPairDistance = Math.min(2 * largestRadius * tolerance, maxBondLength);
   const cellSize = maxPairDistance;
 
   const grid = new SpatialGrid(cellSize);
-  atoms.forEach((atom, i) => grid.insert(atom, i));
+  atoms.forEach((atom, i) => { if (!Number.isNaN(zs[i])) grid.insert(atom, i); });
 
   const seen = new Set<string>();
   let bondId = 1;
 
   for (let i = 0; i < atoms.length; i++) {
     const a = atoms[i];
-    const ra = covalentRadius(a.type);
+    const za = zs[i];
+    if (Number.isNaN(za)) continue;
+    const ra = covalentRadius(za);
     grid.neighbors(a.x, a.y, a.z, j => {
       if (j <= i) return; // each unordered pair once
       const b = atoms[j];
-      const rb = covalentRadius(b.type);
+      const zb = zs[j];
+      const rb = covalentRadius(zb);
       const threshold = Math.min((ra + rb) * tolerance, maxBondLength);
       const dx = a.x - b.x;
       const dy = a.y - b.y;
@@ -136,7 +160,7 @@ export const inferBonds = (
       // there just paints a blob.
       if (d2 < (OVERLAP_FRACTION * (ra + rb)) * (OVERLAP_FRACTION * (ra + rb))) return;
       // Noble gases never bond (see NOBLE_GASES above).
-      if (NOBLE_GASES.has(a.type) || NOBLE_GASES.has(b.type)) return;
+      if (NOBLE_GASES.has(za) || NOBLE_GASES.has(zb)) return;
 
       const key = a.id < b.id ? `${a.id}-${b.id}` : `${b.id}-${a.id}`;
       if (seen.has(key)) return;

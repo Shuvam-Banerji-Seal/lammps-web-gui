@@ -204,7 +204,7 @@ const chooseSectionLayout = (
  * 2. exact element-name match on the comment ("Carbon")
  * 3. nearest IUPAC mass within 0.5 amu
  */
-const resolveElementFromMass = (
+export const resolveElementFromMass = (
   mass: number, comment?: string
 ): { symbol: string; label?: string } => {
   if (comment) {
@@ -414,13 +414,9 @@ export const parseDataFile = (data: string): MoleculeData => {
       }
     }
 
-    if (element === 'X') {
-      // Type ID doubles as atomic number in many generated files (e.g. type 6 = Carbon)
-      if (type >= 1 && type <= 118) {
-        element = ELEMENT_DATA[type - 1].symbol;
-        if (label === `Type ${type}`) label = `${ELEMENT_DATA[type - 1].name} (Type ${type})`;
-      }
-    } else if (label === `Type ${type}`) {
+    // Without a mass, a mass comment or an element type label the element stays unknown ('X'): the type number is
+    // not an atomic number (a data file numbers its types in the order the input chose; type 2 is not helium)
+    if (element !== 'X' && label === `Type ${type}`) {
       const meta = ELEMENT_DATA.find(e => e.symbol === element);
       if (meta) label = `${meta.name} (${meta.symbol})`;
     }

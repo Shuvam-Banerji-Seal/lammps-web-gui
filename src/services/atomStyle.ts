@@ -8,8 +8,10 @@ import { COVALENT_RADII, ELEMENT_RADII } from '../constants';
  */
 export const atomDisplayRadius = (atom: Atom, config: VisualizationConfig): number => {
   const s = config.atomScale * (config.typeRadii?.[atom.type] ?? 1);
+  // the element of the atom's type (config.typeAtomicNumbers); a type number is not an atomic number
+  const z = config.typeAtomicNumbers?.[atom.type];
   if (config.visualizationMode === 'space-fill' || config.visualizationMode === 'glass') {
-    return (ELEMENT_RADII[atom.type] ?? 1.7) * s * 0.5;
+    return ((z !== undefined ? ELEMENT_RADII[z] : undefined) ?? 1.7) * s * 0.5;
   }
   if (config.visualizationMode === 'lines') {
     // a small dot at each atom, so atoms without bonds stay visible
@@ -26,7 +28,7 @@ export const atomDisplayRadius = (atom: Atom, config: VisualizationConfig): numb
     return 0.14 * s;
   }
   if (config.visualizationMode === 'element-balls') {
-    return (COVALENT_RADII[atom.type] ?? 0.75) * s * 0.6;
+    return ((z !== undefined ? COVALENT_RADII[z] : undefined) ?? 0.75) * s * 0.6;
   }
   if (config.visualizationMode === 'points') {
     return 0.4 * s;
@@ -46,7 +48,9 @@ export const cylinderBondMode = (mode: VisualizationMode): boolean =>
 export const radiusKeyOf = (config: VisualizationConfig): string => {
   const t = config.typeRadii;
   const types = t ? Object.keys(t).map((k) => `${k}:${t[Number(k)]}`).join(';') : '';
-  return `${config.visualizationMode}|${config.atomScale}|${types}`;
+  const zt = config.typeAtomicNumbers;
+  const elements = zt ? Object.keys(zt).map((k) => `${k}:${zt[Number(k)]}`).join(';') : '';
+  return `${config.visualizationMode}|${config.atomScale}|${types}|${elements}`;
 };
 
 /** Sphere segments by quality for up to 1k, 10k, 30k atoms and above ('auto' is the size-adaptive default). */

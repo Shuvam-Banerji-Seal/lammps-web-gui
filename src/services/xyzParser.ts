@@ -283,8 +283,8 @@ export const parseXYZFile = (data: string): MoleculeData => {
   }
 
   // Symbol token -> type id, shared across frames for stable coloring.
-  // keys are element symbols from the file: a null-prototype map (no prototype keys)
-  const elementTypeMap: Record<string, number> = Object.create(null);
+  // keys are species tokens from the file (a Map: no prototype keys)
+  const elementTypeMap = new Map<string, number>();
   let nextSyntheticTypeId = 1000;
   // The element (symbol) and name of each type id. A known element's type is its atomic number; a LAMMPS "dump xyz"
   // without dump_modify element writes the TYPE NUMBER in the species column, which names no element: that type keeps
@@ -370,9 +370,11 @@ export const parseXYZFile = (data: string): MoleculeData => {
       } else {
         mapKey = ''; // Properties carries no species column at all
       }
-      if (!(mapKey in elementTypeMap)) {
+      let typeId = elementTypeMap.get(mapKey);
+      if (typeId === undefined) {
         const id = allocTypeId(knownNumber ?? typeNumber);
-        elementTypeMap[mapKey] = id;
+        elementTypeMap.set(mapKey, id);
+        typeId = id;
         if (knownNumber !== undefined) typeElement.set(id, ELEMENT_DATA[knownNumber - 1].symbol);
         if (name !== undefined) typeName.set(id, name);
       }
@@ -380,7 +382,7 @@ export const parseXYZFile = (data: string): MoleculeData => {
       atoms.push({
         id: atoms.length + 1,
         molId: 1,
-        type: elementTypeMap[mapKey],
+        type: typeId,
         charge: 0,
         x, y, z,
       });

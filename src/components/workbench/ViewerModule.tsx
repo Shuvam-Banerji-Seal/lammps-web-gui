@@ -7,7 +7,8 @@ import {
   LightingPreset, CameraPreset, ColorBy, RenderQuality, ToneMappingMode,
 } from '../../types';
 import { COLOR_BY_LABELS, COLOR_MAP_NAMES, colorMapGradient, isContinuous, scalarRange } from '../../services/colorMaps';
-import { DEFAULT_ATOM_COLOR, ELEMENT_DATA, ATOM_COLORS } from '../../constants';
+import { DEFAULT_ATOM_COLOR, ELEMENT_DATA } from '../../constants';
+import { applyTypeElements, defaultTypeColor, withTypeElement } from '../../services/elementTypes';
 import { emitCameraCommand } from '../../services/cameraBus';
 import { useKeyboardShortcuts, SHORTCUT_CATALOG } from '../../hooks/useKeyboardShortcuts';
 import { decodeViewState, encodeViewState, viewStateFromSearch } from '../../services/viewState';
@@ -232,6 +233,10 @@ const ViewerModule: React.FC<{
   const helpReturnFocusRef = useRef<HTMLElement | null>(null);
   /** Type ids the user manually recolored — survive re-parsing. */
   const userEditedTypes = useRef<Set<number>>(new Set());
+  /** Elements the user picked for types the file names none for, by type label (applied to later files too). */
+  const userElements = useRef<Map<string, string>>(new Map());
+  /** The loaded file's own type table, before the user's elements: which types the file left unknown. */
+  const parsedTypes = useRef<MoleculeData['atomTypes']>({});
 
   // Shared view state (P3): ?s=<token> overrides the saved settings, which override the defaults, before first paint.
   const [vizConfig, setVizConfig] = useState<VisualizationConfig>(() => ({
@@ -382,10 +387,14 @@ const ViewerModule: React.FC<{
 
   const [isParsing, setIsParsing] = useState(false);
 
-  const applyParsed = useCallback((data: MoleculeData) => {
-    if (data.atoms.length === 0) throw new Error('No atoms found in data. Check the format.');
+  const applyParsed = useCallback((parsed: MoleculeData) => {
+    if (parsed.atoms.length === 0) throw new Error('No atoms found in data. Check the format.');
+    // the elements the user gave before to types this file leaves unknown (a type number is no element)
+    parsedTypes.current = parsed.atomTypes;
+    const data = applyTypeElements(parsed, userElements.current);
 
-    // Color assignment: user-edited colors survive; others get CPK by element symbol.
+    // Color assignment: user-edited colors survive; others get CPK by element symbol, or a distinct colour per type
+    // whose element is unknown.
     const newCustomColors: Record<number, string> = {};
     for (const info of Object.values(data.atomTypes)) {
       const edited = userEditedTypes.current.has(info.id);
@@ -393,10 +402,7 @@ const ViewerModule: React.FC<{
         newCustomColors[info.id] = vizConfig.customColors[info.id];
         continue;
       }
-      const meta = ELEMENT_DATA.find(e => e.symbol === info.element);
-      newCustomColors[info.id] = meta
-        ? ATOM_COLORS[meta.number] ?? DEFAULT_ATOM_COLOR
-        : DEFAULT_ATOM_COLOR;
+      newCustomColors[info.id] = defaultTypeColor(data.atomTypes, info.id);
     }
 
     setVizConfig(prev => ({ ...prev, customColors: newCustomColors }));
@@ -571,6 +577,20 @@ const ViewerModule: React.FC<{
   /** Every view setting back to its default; the structure's type colours and sizes stay. */
   const resetView = () => {
     setVizConfig(prev => ({ ...initialConfig(), customColors: prev.customColors, typeRadii: prev.typeRadii }));
+  };
+
+  /** The Elements tab's element of a type ('X': unknown): colour (unless edited), size and guessed bonds follow. */
+  const setTypeElement = (typeId: number, symbol: string) => {
+    if (!moleculeData) return;
+    const own = parsedTypes.current[typeId];
+    if (own && own.element === 'X') {
+      if (symbol === 'X') userElements.current.delete(own.label); else userElements.current.set(own.label, symbol);
+    }
+    const next = withTypeElement(moleculeData, typeId, symbol);
+    setMoleculeData(next);
+    if (!userEditedTypes.current.has(typeId)) {
+      setVizConfig(prev => ({ ...prev, customColors: { ...prev.customColors, [typeId]: defaultTypeColor(next.atomTypes, typeId) } }));
+    }
   };
 
   const updateCustomColor = (typeId: number, color: string) => {
@@ -1375,14 +1395,26 @@ const ViewerModule: React.FC<{
                               </div>
                               <div className={`text-[9px] ${ct.muted}`}>
                                 {meta
-                                  ? `Z=${meta.number} · ${meta.mass.toFixed(2)} u`
-                                  : `ID ${typeInfo.id}${typeInfo.mass ? ` · ${typeInfo.mass.toFixed(2)} u` : ''}`}
+                                  ? `type ${typeInfo.id} · Z=${meta.number} · ${meta.mass.toFixed(2)} u`
+                                  : `type ${typeInfo.id} · element unknown${typeInfo.mass ? ` · ${typeInfo.mass.toFixed(2)} u` : ''}`}
                               </div>
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1">
-                            <div className={`px-2 py-0.5 rounded text-[10px] font-mono ${ct.chip}`}>
-                              ×{typeInfo.count}
+                            <div className="flex items-center gap-1">
+                              <select
+                                value={meta ? meta.symbol : ''}
+                                onChange={e => setTypeElement(typeInfo.id, e.target.value || 'X')}
+                                className={`text-[10px] rounded px-1 py-0.5 border ${ct.chip}`}
+                                title={`Element of type ${typeInfo.id}: sets its colour, size and guessed bonds`}
+                                aria-label={`Element of type ${typeInfo.id}`}
+                              >
+                                <option value="">?</option>
+                                {ELEMENT_DATA.map(el => <option key={el.number} value={el.symbol}>{el.symbol}</option>)}
+                              </select>
+                              <div className={`px-2 py-0.5 rounded text-[10px] font-mono ${ct.chip}`}>
+                                ×{typeInfo.count}
+                              </div>
                             </div>
                             <input
                               type="range" min="0.25" max="3" step="0.05"

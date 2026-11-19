@@ -18,6 +18,7 @@
 import type { Atom, Bond, BoxBounds, MoleculeData } from '../types';
 import { ELEMENT_DATA } from '../constants';
 import { inferBonds, maxBondDistance } from '../services/bondInference';
+import { atomicNumberByType } from '../services/elementTypes';
 import { cifCellToBoxBounds, type CifCell } from '../services/cifParser';
 
 /** Above this many atoms the notebook warns: the engine runs in the browser. */
@@ -163,13 +164,15 @@ interface PeriodicBond { a: number; b: number; shift: Vec3 }
  * and their periodic images that lie within the longest possible bond of a cell face go through inferBonds; a bond to
  * an image keeps that image's cell shift. Each bond is listed once.
  */
-const inferPeriodicBonds = (atoms: readonly Atom[], frac: readonly Vec3[], box: BoxBounds): PeriodicBond[] => {
+const inferPeriodicBonds = (
+  atoms: readonly Atom[], frac: readonly Vec3[], box: BoxBounds, atomicNumberOf: (a: Atom) => number | undefined,
+): PeriodicBond[] => {
   const lx = box.xhi - box.xlo, ly = box.yhi - box.ylo, lz = box.zhi - box.zlo;
   const xy = box.xy ?? 0, xz = box.xz ?? 0, yz = box.yz ?? 0;
   // the perpendicular widths of the cell: volume over the area of each pair of faces
   const vol = lx * ly * lz;
   const width: Vec3 = [vol / Math.hypot(ly * lz, xy * lz, xy * yz - ly * xz), vol / (lx * Math.hypot(lz, yz)), lz];
-  const dmax = maxBondDistance(atoms);
+  const dmax = maxBondDistance(atoms, 1.2, atomicNumberOf);
   const delta = width.map((w) => dmax / w);
   const ext: Atom[] = [];
   const origin: { i: number; s: Vec3 }[] = [];
@@ -190,7 +193,7 @@ const inferPeriodicBonds = (atoms: readonly Atom[], frac: readonly Vec3[], box: 
   }
   const out: PeriodicBond[] = [];
   const seen = new Set<string>();
-  for (const bd of inferBonds(ext)) {
+  for (const bd of inferBonds(ext, { atomicNumberOf })) {
     const p = origin[bd.atom1Id - 1], q = origin[bd.atom2Id - 1];
     let a = p.i, b = q.i;
     let shift: Vec3 = [q.s[0] - p.s[0], q.s[1] - p.s[1], q.s[2] - p.s[2]];
@@ -298,14 +301,19 @@ export const convertStructure = (mol: MoleculeData, opts: ConvertOptions): Conve
   const labelOf = new Array<string>(n);
   const elementOf = new Array<string>(n);
   const rows: TypeRow[] = [];
+  // the atomic number of an atom, from its type's element in atomTypes (parsers that number types by element give
+  // the same; an unknown element ('X') has none)
+  const zOf = atomicNumberByType(mol.atomTypes);
   if (opts.source === 'elements') {
     const rowByKey = new Map<string, number>();
     for (let i = 0; i < n; i++) {
       const a = mol.atoms[i];
-      const el = SYMBOL_BY_NUMBER.get(a.type);
+      // the element of the atom's type (a type number is not an atomic number: a dump's type 2 may be hydrogen)
+      const z = zOf(a);
+      const el = z !== undefined ? SYMBOL_BY_NUMBER.get(z) : undefined;
       if (!el) {
         throw new StructureConvertError(
-          `Atom ${i + 1} has an element that is not in the element table (type ${a.type}). Its mass is unknown, so the file is not converted.`,
+          `Atom ${i + 1} (type ${a.type}) has no known element, so its mass is unknown and the file is not converted. The file names no element for this type: write it with an element column (dump_modify element) or a mass column.`,
         );
       }
       const name = opts.typeBy === 'pdbName' ? opts.atomNames?.[i] : undefined;
@@ -363,14 +371,14 @@ export const convertStructure = (mol: MoleculeData, opts: ConvertOptions): Conve
   if (writeBonds) {
     const guessed = mol.bonds.length === 0 || mol.bonds.length > 0 && mol.bondsInferred === true;
     if (periodicCell && guessed && opts.source === 'elements') {
-      for (const pb of inferPeriodicBonds(mol.atoms, frac, periodicCell)) {
+      for (const pb of inferPeriodicBonds(mol.atoms, frac, periodicCell, zOf)) {
         const bd: Bond = { id: rawBonds.length + 1, type: 1, atom1Id: mol.atoms[pb.a].id, atom2Id: mol.atoms[pb.b].id };
         rawBonds.push(bd);
         shiftOf.set(bd, pb.shift);
       }
       if (rawBonds.length > 0) warnings.push('Bonds are inferred from covalent radii through the periodic cell (the file lists none); molecules cut by the cell faces are kept whole.');
     } else {
-      rawBonds = mol.bonds.length > 0 ? mol.bonds : (opts.source === 'elements' ? inferBonds(mol.atoms) : []);
+      rawBonds = mol.bonds.length > 0 ? mol.bonds : (opts.source === 'elements' ? inferBonds(mol.atoms, { atomicNumberOf: zOf }) : []);
       if (opts.source === 'elements' && mol.bonds.length === 0 && rawBonds.length > 0) {
         warnings.push('Bonds are inferred from covalent radii (the file has no CONECT records).');
       }

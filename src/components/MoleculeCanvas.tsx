@@ -4,6 +4,7 @@ import { PerformanceMonitor } from '@react-three/drei';
 import * as THREE from 'three';
 import { MoleculeData, VisualizationConfig, Atom, BoxBounds } from '../types';
 import { ELEMENT_DATA } from '../constants';
+import { typeAtomicNumbers } from '../services/elementTypes';
 import { measureSelection, MeasurementResult } from '../services/measure';
 import { getActiveGL, registerActiveGL } from '../services/glRegistry';
 import InstancedAtomMesh from './InstancedAtomMesh';
@@ -110,13 +111,16 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
 
   const { atoms, bonds } = data;
 
+  // the element of each type, from the structure's atomTypes (radii, labels, hover): a type number is not an atomic number
+  const typeAtomicNumbersMap = useMemo(() => typeAtomicNumbers(data.atomTypes), [data.atomTypes]);
   // a colour map needs its range: the caller's (the viewer resolves it over all frames), else this frame's
   const config = useMemo((): VisualizationConfig => {
+    const withElements = { ...viewConfig, typeAtomicNumbers: typeAtomicNumbersMap };
     const by = viewConfig.colorBy;
-    if (!isContinuous(by) || (viewConfig.colorMin !== undefined && viewConfig.colorMax !== undefined)) return viewConfig;
+    if (!isContinuous(by) || (viewConfig.colorMin !== undefined && viewConfig.colorMax !== undefined)) return withElements;
     const r = scalarRange([atoms], by!) ?? [0, 1];
-    return { ...viewConfig, colorMin: r[0], colorMax: r[1] };
-  }, [viewConfig, atoms]);
+    return { ...withElements, colorMin: r[0], colorMax: r[1] };
+  }, [viewConfig, atoms, typeAtomicNumbersMap]);
   const quality = config.quality;
 
   // Only bond rendering and the measurement tool look atoms up by id.
@@ -198,9 +202,8 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
     []
   );
 
-  const hoverMeta = hover
-    ? ELEMENT_DATA.find(e => e.number === hover.atom.type)
-    : undefined;
+  const hoverZ = hover ? typeAtomicNumbersMap[hover.atom.type] : undefined;
+  const hoverMeta = hoverZ !== undefined ? ELEMENT_DATA[hoverZ - 1] : undefined;
 
   const selectedAtoms = useMemo(
     () => selectedIds.map(id => atomMap.get(id)).filter((a): a is Atom => !!a),
@@ -339,7 +342,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
           role="status"
         >
           <div className="font-bold">
-            {hoverMeta ? `${hoverMeta.name} (${hoverMeta.symbol})` : `Type ${hover.atom.type}`}
+            {hoverMeta ? `${hoverMeta.name} (${hoverMeta.symbol})` : data.atomTypes[hover.atom.type]?.label ?? `Type ${hover.atom.type}`}
           </div>
           <div className="opacity-70 font-mono">
             #{hover.atom.id} · Z={hover.atom.type} · {hover.atom.charge !== 0 ? `q=${hover.atom.charge.toFixed(2)} · ` : ''}

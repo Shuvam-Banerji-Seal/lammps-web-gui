@@ -65,7 +65,7 @@ describe('LAMMPS dump parser', () => {
     expect(d.min.x).toBeCloseTo(1);
   });
 
-  it('resolves elements from the element column, else type-as-atomic-number', () => {
+  it('resolves elements from the element column; a type number alone names no element', () => {
     const d = parseDumpFile(ORTHO);
     expect(d.atomTypes[8].element).toBe('O');
     expect(d.atomTypes[11].element).toBe('Na');
@@ -80,7 +80,88 @@ ITEM: BOX BOUNDS pp pp pp
 ITEM: ATOMS id type x y z
 1 6 5 5 5
 `);
-    expect(noElem.atomTypes[6].element).toBe('C');
+    // type 6 is not carbon: LAMMPS numbers types in the input's own order
+    expect(noElem.atoms[0].type).toBe(6);
+    expect(noElem.atomTypes[6]).toMatchObject({ element: 'X', label: 'Type 6' });
+  });
+
+  it('does not draw a C/H/N dump as C/He/Li: types without element information stay unknown and unbonded', () => {
+    // a methylamine-like fragment written by "dump custom ... id type x y z": types 1 = C, 2 = H, 3 = N
+    const d = parseDumpFile(`ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+4
+ITEM: BOX BOUNDS pp pp pp
+0 20
+0 20
+0 20
+ITEM: ATOMS id type x y z
+1 1 10.0 10.0 10.0
+2 2 11.09 10.0 10.0
+3 3 9.53 11.38 10.0
+4 2 9.64 9.49 10.89
+`);
+    expect(d.atoms.map(a => a.type)).toEqual([1, 2, 3, 2]);
+    for (const t of [1, 2, 3]) expect(d.atomTypes[t].element).toBe('X');
+    expect(d.atomTypes[2]).toMatchObject({ label: 'Type 2', count: 2 });
+    // no covalent radii without elements, so no guessed bonds (He would have had none and Li far too many)
+    expect(d.bonds).toHaveLength(0);
+  });
+
+  it('takes the element from a mass column, from element type labels, and from an element column in any case', () => {
+    const byMass = parseDumpFile(`ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+3
+ITEM: BOX BOUNDS pp pp pp
+0 20
+0 20
+0 20
+ITEM: ATOMS id type mass x y z
+1 1 12.011 10.0 10.0 10.0
+2 2 1.008 11.09 10.0 10.0
+3 3 14.007 9.53 11.38 10.0
+`);
+    expect([1, 2, 3].map(t => byMass.atomTypes[t].element)).toEqual(['C', 'H', 'N']);
+    expect(byMass.atoms.map(a => a.type)).toEqual([1, 2, 3]);
+    expect(byMass.atomTypes[1].mass).toBeCloseTo(12.011);
+    // C-H (1.09) and C-N (1.47) are bonds from the covalent radii of the resolved elements
+    expect(byMass.bonds).toHaveLength(2);
+
+    const byLabel = parseDumpFile(`ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+4
+ITEM: BOX BOUNDS pp pp pp
+0 20
+0 20
+0 20
+ITEM: ATOMS id type x y z
+1 OW 10.0 10.0 10.0
+2 H 10.96 10.0 10.0
+3 CA 5.0 5.0 5.0
+4 Na 15.0 15.0 15.0
+`);
+    // labels are numbered in order of first appearance; "OW" and "CA" are no element symbols (CA is not calcium)
+    expect(byLabel.atoms.map(a => a.type)).toEqual([1, 2, 3, 4]);
+    expect([1, 2, 3, 4].map(t => byLabel.atomTypes[t].element)).toEqual(['X', 'H', 'X', 'Na']);
+    expect(byLabel.atomTypes[1].label).toBe('OW');
+    expect(byLabel.atomTypes[3].label).toBe('CA');
+
+    const lower = parseDumpFile(`ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0 20
+0 20
+0 20
+ITEM: ATOMS id type element x y z
+1 1 na 5 5 5
+2 2 cl 7.8 5 5
+`);
+    expect(lower.atomTypes[11].element).toBe('Na');
+    expect(lower.atomTypes[17].element).toBe('Cl');
   });
 
   it('converts triclinic bounding box to true box (verified Howto_triclinic inverse)', () => {

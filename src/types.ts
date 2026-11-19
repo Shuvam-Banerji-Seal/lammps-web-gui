@@ -156,4 +156,10 @@ export interface VisualizationConfig {
   boxColor?: string;
   /** Radius multiplier per atom type (1 when absent). */
   typeRadii?: Record<number, number>;
+  /**
+   * The atomic number of each atom type whose element is known, derived by MoleculeCanvas from the structure's
+   * atomTypes for the element radii and labels (not a user setting; never saved). A type number is not an atomic
+   * number: without an entry here a type has no element.
+   */
+  typeAtomicNumbers?: Record<number, number>;
 }

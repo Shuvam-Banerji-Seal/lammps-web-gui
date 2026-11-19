@@ -8,7 +8,7 @@ import {
 } from '../../types';
 import { COLOR_BY_LABELS, COLOR_MAP_NAMES, colorMapGradient, isContinuous, scalarRange } from '../../services/colorMaps';
 import { DEFAULT_ATOM_COLOR, ELEMENT_DATA } from '../../constants';
-import { applyTypeElements, defaultTypeColor, withTypeElement } from '../../services/elementTypes';
+import { applyTypeElements, defaultTypeColor, inheritTypeInfo, withTypeElement } from '../../services/elementTypes';
 import { emitCameraCommand } from '../../services/cameraBus';
 import { useKeyboardShortcuts, SHORTCUT_CATALOG } from '../../hooks/useKeyboardShortcuts';
 import { decodeViewState, encodeViewState, viewStateFromSearch } from '../../services/viewState';
@@ -237,6 +237,8 @@ const ViewerModule: React.FC<{
   const userElements = useRef<Map<string, string>>(new Map());
   /** The loaded file's own type table, before the user's elements: which types the file left unknown. */
   const parsedTypes = useRef<MoleculeData['atomTypes']>({});
+  /** The last data file the user loaded: a trajectory of the same system takes its type names and elements. */
+  const typeSource = useRef<{ atomTypes: MoleculeData['atomTypes']; natoms: number } | null>(null);
 
   // Shared view state (P3): ?s=<token> overrides the saved settings, which override the defaults, before first paint.
   const [vizConfig, setVizConfig] = useState<VisualizationConfig>(() => ({
@@ -377,7 +379,7 @@ const ViewerModule: React.FC<{
         if (!response.ok) throw new Error(String(response.status));
         const text = await response.text();
         if (takenFile.current) return; // a file from another module arrived first: keep it
-        handleVisualize(text, 'lammps');
+        handleVisualize(text, 'lammps', false); // the built-in C60 names no types for a later trajectory
       } catch {
         setError('Failed to load the built-in C60 example.');
       }
@@ -387,11 +389,14 @@ const ViewerModule: React.FC<{
 
   const [isParsing, setIsParsing] = useState(false);
 
-  const applyParsed = useCallback((parsed: MoleculeData) => {
+  const applyParsed = useCallback((parsed: MoleculeData, format?: FileFormat, fromUser = true) => {
     if (parsed.atoms.length === 0) throw new Error('No atoms found in data. Check the format.');
     // the elements the user gave before to types this file leaves unknown (a type number is no element)
     parsedTypes.current = parsed.atomTypes;
-    const data = applyTypeElements(parsed, userElements.current);
+    // a dump that only numbers its types takes their names, elements and masses from the data file loaded before it
+    // (the same system); then the elements the user picked
+    const data = applyTypeElements(format === 'lammps' ? parsed : inheritTypeInfo(parsed, typeSource.current), userElements.current);
+    if (format === 'lammps') typeSource.current = fromUser ? { atomTypes: data.atomTypes, natoms: data.atoms.length } : null;
 
     // Color assignment: user-edited colors survive; others get CPK by element symbol, or a distinct colour per type
     // whose element is unknown.
@@ -419,7 +424,7 @@ const ViewerModule: React.FC<{
    * Parse via Web Worker when available (keeps huge files from freezing the
    * UI); falls back to synchronous parsing otherwise.
    */
-  const handleVisualize = useCallback((text: string, format?: FileFormat) => {
+  const handleVisualize = useCallback((text: string, format?: FileFormat, fromUser = true) => {
     setError(null);
     setIsParsing(true);
     const fmt = format ?? detectFileFormat('pasted.txt');
@@ -428,7 +433,7 @@ const ViewerModule: React.FC<{
         if (!(err instanceof Error && /no-worker|worker-crashed/.test(err.message))) throw err;
         return parseFile(text, fmt); // synchronous fallback
       })
-      .then(applyParsed)
+      .then((d) => applyParsed(d, fmt, fromUser))
       .then(() => setInputText(text))
       .catch(e => {
         // A failed parse must never destroy the structure already on screen:
@@ -445,7 +450,7 @@ const ViewerModule: React.FC<{
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const text = await response.text();
       setFileFormat(format);
-      handleVisualize(text, format);
+      handleVisualize(text, format, false);
     } catch {
       setError(`Failed to fetch example: ${file}`);
     }
@@ -1395,7 +1400,7 @@ const ViewerModule: React.FC<{
                               </div>
                               <div className={`text-[9px] ${ct.muted}`}>
                                 {meta
-                                  ? `type ${typeInfo.id} · Z=${meta.number} · ${meta.mass.toFixed(2)} u`
+                                  ? `type ${typeInfo.id}${typeInfo.label && !typeInfo.label.includes(meta.name) && typeInfo.label !== meta.symbol && typeInfo.label !== `Type ${typeInfo.id}` ? ` (${typeInfo.label})` : ''} · Z=${meta.number} · ${meta.mass.toFixed(2)} u`
                                   : `type ${typeInfo.id} · element unknown${typeInfo.mass ? ` · ${typeInfo.mass.toFixed(2)} u` : ''}`}
                               </div>
                             </div>

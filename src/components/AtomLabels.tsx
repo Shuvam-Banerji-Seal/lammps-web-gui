@@ -1,11 +1,14 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Atom, VisualizationConfig } from '../types';
-import { DEFAULT_ATOM_COLOR, ELEMENT_DATA } from '../constants';
+import { Atom, AtomTypeInfo, VisualizationConfig } from '../types';
+import { DEFAULT_ATOM_COLOR } from '../constants';
+import { typeDisplayName } from '../services/elementTypes';
 
 interface AtomLabelsProps {
   atoms: Atom[];
   config: VisualizationConfig;
+  /** The structure's types: a label names the element, else the file's type label, else the type number. */
+  atomTypes: Readonly<Record<number, AtomTypeInfo>>;
   /** Hard cap — sprites are DOM-free but still per-object; beyond this labels auto-hide. */
   maxLabels?: number;
 }
@@ -60,14 +63,15 @@ const getLabelTexture = (symbol: string, colorHex: string): THREE.Texture => {
  * and draw-call overhead — only the first maxLabels atoms are labeled and
  * the UI surfaces that limitation.
  */
-const AtomLabels: React.FC<AtomLabelsProps> = ({ atoms, config, maxLabels = 400 }) => {
+const AtomLabels: React.FC<AtomLabelsProps> = ({ atoms, config, atomTypes, maxLabels = 400 }) => {
   const sprites = useMemo(() => {
     if (!config.showLabels || atoms.length > maxLabels) return null;
+    const names = new Map<number, string>();
+    for (const a of atoms) if (!names.has(a.type)) names.set(a.type, typeDisplayName(atomTypes, a.type));
 
     return atoms.map(atom => {
-      // the element of the atom's type (config.typeAtomicNumbers); a type number is not an atomic number
-      const z = config.typeAtomicNumbers?.[atom.type];
-      const symbol = z !== undefined ? ELEMENT_DATA[z - 1].symbol : String(atom.type);
+      // the element of the atom's type, else the file's name for the type ("OW"), else its number
+      const symbol = names.get(atom.type)!;
       const color = config.customColors[atom.type] ?? DEFAULT_ATOM_COLOR;
       return {
         id: atom.id,
@@ -75,7 +79,7 @@ const AtomLabels: React.FC<AtomLabelsProps> = ({ atoms, config, maxLabels = 400 
         texture: getLabelTexture(symbol, color),
       };
     });
-  }, [atoms, config.showLabels, config.customColors, config.typeAtomicNumbers, maxLabels]);
+  }, [atoms, atomTypes, config.showLabels, config.customColors, maxLabels]);
 
   if (!sprites) return null;
 

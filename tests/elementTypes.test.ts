@@ -122,7 +122,7 @@ Atoms # atomic
     expect(inheritTypeInfo(parseDumpFile(DUMP), { ...from, natoms: 5 }).atomTypes[2].element).toBe('X');
     const fourTypes = DUMP.replace('4 2 9.64', '4 4 9.64');
     expect(inheritTypeInfo(parseDumpFile(fourTypes), from).atomTypes[2].element).toBe('X');
-    const labelled = parseDumpFile(DUMP.replace('1 1 10.0', '1 1 10.0').replace('ITEM: ATOMS id type x y z', 'ITEM: ATOMS id type element x y z')
+    const labelled = parseDumpFile(DUMP.replace('ITEM: ATOMS id type x y z', 'ITEM: ATOMS id type element x y z')
       .replace('1 1 10.0 10.0 10.0', '1 1 O 10.0 10.0 10.0').replace('2 2 11.09', '2 2 H 11.09').replace('3 3 9.53', '3 3 N 9.53').replace('4 2 9.64', '4 2 H 9.64'));
     // the dump's element column wins (type 8 is its oxygen; the data file has no type 8, so nothing is taken)
     expect(inheritTypeInfo(labelled, from).atomTypes[8].element).toBe('O');

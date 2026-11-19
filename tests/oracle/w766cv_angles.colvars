@@ -1,0 +1,85 @@
+# Colvars configuration of tests/oracle/w766cv_angles.in
+colvarsTrajFrequency 5
+colvarsRestartFrequency 20
+
+colvar {
+  name a
+  width 2.0
+  angle {
+    group1 { atomNumbers 1 2 }
+    group2 { atomNumbers 3 }
+    group3 { atomNumbersRange 40-42 }
+  }
+}
+colvar {
+  name phi
+  dihedral {
+    group1 { atomNumbers 1 }
+    group2 { atomNumbers 9 }
+    group3 { atomNumbers 50 }
+    group4 { atomNumbers 120 }
+  }
+}
+colvar {
+  name z
+  distanceZ {
+    main { atomNumbers 10 11 }
+    ref { atomNumbers 20 }
+    axis (1, 1, 0)
+  }
+}
+colvar {
+  name z2
+  distanceZ {
+    main { atomNumbers 30 }
+    ref { atomNumbers 31 }
+    ref2 { atomNumbers 60 61 }
+  }
+}
+colvar {
+  name xy
+  distanceXY {
+    main { atomNumbers 70 }
+    ref { atomNumbers 71 72 }
+  }
+}
+colvar {
+  name xy2
+  distanceXY {
+    main { atomNumbers 80 }
+    ref { atomNumbers 81 }
+    ref2 { atomNumbers 90 }
+  }
+}
+
+harmonic {
+  colvars phi
+  centers 95.0
+  forceConstant 0.002
+  outputEnergy on
+}
+
+harmonicWalls {
+  colvars a z
+  lowerWalls 120.0 -3.0
+  upperWalls 170.0 2.0
+  lowerWallConstant 0.01
+  upperWallConstant 0.04
+  outputEnergy on
+}
+
+harmonicWalls {
+  name wz2
+  colvars z2 xy xy2
+  upperWalls 0.4 0.5 1.4
+  forceConstant 2.0
+}
+
+harmonicWalls {
+  name wphi
+  colvars phi
+  lowerWalls -60.0
+  upperWalls 60.0
+  forceConstant 0.001
+  outputEnergy on
+}

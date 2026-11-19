@@ -10,20 +10,23 @@
  * write_state, read_state, setup_input, setup_output, parse_global_params, parse_colvars, parse_biases), colvar.cpp
  * (init, collect_cvc_values, update_forces_energy, communicate_forces, dist2, dist2_lgrad, write_traj_label, write_traj,
  * get_state_params), colvarcomp.cpp (cvc::init, cvc::dist2, cvc::dist2_lgrad, cvc::apply_force),
- * colvarcomp_distances.cpp (distance, distance_vec, cartesian), colvaratoms.cpp (atom_group parse, update_total_mass,
+ * colvarcomp_distances.cpp (distance, distance_vec, distance_z, distance_xy, cartesian), colvarcomp_angles.cpp
+ * (angle, dihedral), colvaratoms.cpp (atom_group parse, update_total_mass,
  * calc_center_of_mass, set_weighted_gradient, apply_colvar_force, apply_force), colvarbias.cpp and
- * colvarbias_restraint.cpp (the harmonic restraint), colvars_system.h (system_boundary_conditions), colvartypes.h/.cpp
+ * colvarbias_restraint.cpp (the harmonic and harmonic_walls restraints), colvars_system.h (system_boundary_conditions), colvartypes.h/.cpp
  * and colvarvalue.cpp (vector arithmetic and stream formats), colvarscript_commands.h (config, configfile),
  * colvarproxy.cpp, colvarproxy_io.cpp (output streams, backup_file) and colvarproxy_lammps.cpp (init, setup, compute).
  *
- * The supported subset: the components distance, distanceVec and cartesian (atom groups from atomNumbers,
- * atomNumbersRange or a dummyAtom), linear or polynomial combinations of components (componentCoeff, componentExp),
- * the harmonic restraint, the trajectory file (colvarsTrajFrequency) and the state file (colvarsRestartFrequency, the
+ * The supported subset: the components distance, distanceVec, distanceZ, distanceXY, angle, dihedral and cartesian
+ * (atom groups from atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
+ * (componentCoeff, componentExp), periodic components (dihedral; distanceZ with period), the harmonic and
+ * harmonicWalls restraints, the trajectory file (colvarsTrajFrequency) and the state file (colvarsRestartFrequency, the
  * end of each run, the input state). Every other component, bias or keyword stops with an error naming it. The
  * arithmetic follows the library's order of operations, so the values match native LAMMPS to the last bit.
  */
 import { compileCFormat } from '../../engine/cformat';
 import { Conf, colvarsError, parseBool, parseInt10, parseReal, splitValues } from './config';
+import { acos } from '../libm/acos';
 
 /** colvarmodule.h widths and precisions of the trajectory and state files. */
 const IT_WIDTH = 12;
@@ -312,6 +315,10 @@ abstract class Component {
   readonly groups: AtomGroup[] = [];
   readonly bc = new Boundaries();
   private pbc = true;
+  /** f_cvc_periodic: enabled, its period and wrap centre (cvc::init_as_periodic_angle); available per style. */
+  periodic = false;
+  period = 0.0;
+  wrapCenter = 0.0;
 
   /** cvc::init: the keywords every component reads. */
   protected initBase(c: Conf): void {
@@ -322,17 +329,23 @@ abstract class Component {
     const exp = c.get('componentExp');
     if (exp !== undefined) this.exponent = parseInt10(exp, 'componentExp');
     const period = c.get('period');
-    if (period !== undefined && parseReal(period, 'period') !== 0.0) {
-      throw colvarsError(`Error: invalid use of period and/or wrapAround in a "${this.functionType}" component.`);
-    }
+    if (period !== undefined) this.period = parseReal(period, 'period');
     const wrap = c.get('wrapAround');
-    if (wrap !== undefined && parseReal(wrap, 'wrapAround') !== 0.0) throw colvarsError('Error: wrapAround was defined for a non-periodic component.');
+    if (wrap !== undefined) this.wrapCenter = parseReal(wrap, 'wrapAround');
+    if (this.period !== 0.0) {
+      if (!this.periodicAvailable()) throw colvarsError(`Error: invalid use of period and/or wrapAround in a "${this.functionType}" component.`);
+      this.periodic = true;
+    }
+    if (this.wrapCenter !== 0.0 && !this.periodic) throw colvarsError('Error: wrapAround was defined for a non-periodic component.');
     c.get('debugGradients');
     const nopbc = c.get('forceNoPBC');
     if (nopbc !== undefined) this.pbc = !parseBool(nopbc, 'forceNoPBC');
     const scalable = c.get('scalable');
     if (scalable !== undefined) parseBool(scalable, 'scalable');
   }
+
+  /** provide(f_cvc_periodic): whether period and wrapAround may be given. */
+  protected periodicAvailable(): boolean { return false; }
 
   /** cvc::parse_group. */
   protected group(atoms: ColvarsAtoms, c: Conf, key: string, cvName: string): AtomGroup {
@@ -356,15 +369,24 @@ abstract class Component {
     for (const g of this.groups) if (!g.noforce) g.applyColvarForce(f[0]);
   }
 
-  /** cvc::dist2 (the scalar default, non-periodic). */
+  /** cvc::dist2 (the scalar default; a periodic component takes the nearest period). */
   dist2(a: Float64Array, b: Float64Array): number {
-    const d = a[0] - b[0];
+    let d = a[0] - b[0];
+    if (this.periodic) d -= Math.floor(d / this.period + 0.5) * this.period;
     return d * d;
   }
 
   /** cvc::dist2_lgrad. */
   dist2Lgrad(a: Float64Array, b: Float64Array): Float64Array {
-    return Float64Array.of(2.0 * (a[0] - b[0]));
+    let d = a[0] - b[0];
+    if (this.periodic) d -= Math.floor(d / this.period + 0.5) * this.period;
+    return Float64Array.of(2.0 * d);
+  }
+
+  /** cvc::wrap: a periodic value into [wrapCenter - period/2, wrapCenter + period/2). */
+  wrap(x: Float64Array): void {
+    if (!this.periodic) return;
+    x[0] -= Math.floor((x[0] - this.wrapCenter) / this.period + 0.5) * this.period;
   }
 }
 
@@ -490,21 +512,247 @@ class Cartesian extends Component {
   }
 }
 
+/** 180/PI of colvarcomp_angles.cpp (cvm's PI is 3.14159265358979323846). */
+const DEG = 180.0 / Math.PI;
+
+const dot3 = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const norm3 = (a: number[]): number => Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+/** rvector::outer (the cross product, in the library's order of operations). */
+const outer3 = (a: number[], b: number[]): number[] => [a[1] * b[2] - b[1] * a[2], -a[0] * b[2] + b[0] * a[2], a[0] * b[1] - b[0] * a[1]];
+/** rvector::unit: v / |v|, or (1, 0, 0) for a zero vector. */
+const unit3 = (v: number[]): number[] => { const n = norm3(v); return n > 0.0 ? [v[0] / n, v[1] / n, v[2] / n] : [1.0, 0.0, 0.0]; };
+
+/** colvar::angle: the angle at the centre of mass of group2, in degrees. */
+class Angle extends Component {
+  readonly functionType = 'angle';
+  readonly type: ValueType = 'scalar';
+  private readonly g1: AtomGroup;
+  private readonly g2: AtomGroup;
+  private readonly g3: AtomGroup;
+  private r21 = [0, 0, 0];
+  private r23 = [0, 0, 0];
+  private r21l = 0;
+  private r23l = 0;
+
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string) {
+    super();
+    this.initBase(c);
+    this.g1 = this.group(atoms, c, 'group1', cvName);
+    this.g2 = this.group(atoms, c, 'group2', cvName);
+    this.g3 = this.group(atoms, c, 'group3', cvName);
+    const ostf = c.get('oneSiteTotalForce');
+    if (ostf !== undefined) parseBool(ostf, 'oneSiteTotalForce');
+  }
+
+  calcValue(): void {
+    const r21 = [0, 0, 0], r23 = [0, 0, 0];
+    this.bc.distance(this.g2.com, this.g1.com, r21);
+    this.bc.distance(this.g2.com, this.g3.com, r23);
+    this.r21 = r21; this.r23 = r23;
+    this.r21l = norm3(r21); this.r23l = norm3(r23);
+    const cosTheta = dot3(r21, r23) / (this.r21l * this.r23l);
+    this.x[0] = DEG * acos(cosTheta);
+  }
+
+  calcGradients(): void {
+    const { r21, r23, r21l, r23l } = this;
+    const cosTheta = dot3(r21, r23) / (r21l * r23l);
+    const dxdcos = -1.0 / Math.sqrt(1.0 - cosTheta * cosTheta);
+    const c1 = DEG * dxdcos * (1.0 / r21l), c3 = DEG * dxdcos * (1.0 / r23l);
+    const mc = -1.0 * cosTheta;
+    const d1 = [0, 1, 2].map((k) => c1 * (r23[k] / r23l + (mc * r21[k]) / r21l));
+    const d3 = [0, 1, 2].map((k) => c3 * (r21[k] / r21l + (mc * r23[k]) / r23l));
+    this.g1.setWeightedGradient(d1);
+    this.g2.setWeightedGradient([0, 1, 2].map((k) => (d1[k] + d3[k]) * -1.0));
+    this.g3.setWeightedGradient(d3);
+  }
+}
+
+/** colvar::dihedral: the dihedral angle of four centres of mass, in degrees, periodic over 360. */
+class Dihedral extends Component {
+  readonly functionType = 'dihedral';
+  readonly type: ValueType = 'scalar';
+  protected periodicAvailable(): boolean { return true; }
+  private readonly g: AtomGroup[];
+  private r12 = [0, 0, 0];
+  private r23 = [0, 0, 0];
+  private r34 = [0, 0, 0];
+
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string) {
+    super();
+    // cvc::init_as_periodic_angle: periodic, period 360
+    this.periodic = true;
+    this.period = 360.0;
+    this.initBase(c);
+    this.g = ['group1', 'group2', 'group3', 'group4'].map((k) => this.group(atoms, c, k, cvName));
+    const ostf = c.get('oneSiteTotalForce');
+    if (ostf !== undefined) parseBool(ostf, 'oneSiteTotalForce');
+  }
+
+  calcValue(): void {
+    const [g1, g2, g3, g4] = this.g;
+    const r12 = [0, 0, 0], r23 = [0, 0, 0], r34 = [0, 0, 0];
+    // the usual sign convention: r12 = r2 - r1
+    this.bc.distance(g1.com, g2.com, r12);
+    this.bc.distance(g2.com, g3.com, r23);
+    this.bc.distance(g3.com, g4.com, r34);
+    this.r12 = r12; this.r23 = r23; this.r34 = r34;
+    const n1 = outer3(r12, r23), n2 = outer3(r23, r34);
+    const cosPhi = dot3(n1, n2);
+    const sinPhi = dot3(n1, r34) * norm3(r23);
+    // std::atan2: JavaScript's Math.atan2 may differ from the C library's in the last bit
+    this.x[0] = DEG * Math.atan2(sinPhi, cosPhi);
+    this.wrap(this.x);
+  }
+
+  calcGradients(): void {
+    const { r12, r23, r34 } = this;
+    const A = outer3(r12, r23), B = outer3(r23, r34);
+    const nG = norm3(r23);
+    const A2 = dot3(A, A), B2 = dot3(B, B);
+    const K = DEG;
+    const a1 = K * nG / A2, a3 = K * nG / B2;
+    const fa = dot3(r12, r23) / (A2 * nG), fb = dot3(r34, r23) / (B2 * nG);
+    const f1 = A.map((v) => a1 * v);
+    const f2 = [0, 1, 2].map((k) => K * (fa * A[k] + fb * B[k]));
+    const f3 = B.map((v) => a3 * v);
+    const [g1, g2, g3, g4] = this.g;
+    g1.setWeightedGradient(f1.map((v) => -v));
+    g2.setWeightedGradient([0, 1, 2].map((k) => f2[k] + f1[k]));
+    g3.setWeightedGradient([0, 1, 2].map((k) => -f3[k] - f2[k]));
+    g4.setWeightedGradient(f3);
+  }
+}
+
+/** colvar::distance_z: the projection of main - ref on a fixed axis, or on the axis from ref to ref2. */
+class DistanceZ extends Component {
+  readonly functionType: string = 'distanceZ';
+  readonly type: ValueType = 'scalar';
+  protected periodicAvailable(): boolean { return true; }
+  protected readonly main: AtomGroup;
+  protected readonly ref1: AtomGroup;
+  protected readonly ref2: AtomGroup | null;
+  protected readonly fixedAxis: boolean;
+  protected axis = [0.0, 0.0, 1.0];
+  protected axisNorm = 0;
+  protected distV = [0, 0, 0];
+
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string) {
+    super();
+    this.initBase(c);
+    this.main = this.group(atoms, c, 'main', cvName);
+    this.ref1 = this.group(atoms, c, 'ref', cvName);
+    this.ref2 = c.all('ref2').length ? this.group(atoms, c, 'ref2', cvName) : null;
+    const ax = c.get('axis');
+    if (this.ref2) {
+      this.fixedAxis = false;
+    } else {
+      this.fixedAxis = true;
+      if (ax !== undefined) {
+        const v = splitValues(ax);
+        if (v.length !== 1 || !Array.isArray(v[0]) || v[0].length !== 3) throw colvarsError(`Error: could not read the vector of "axis" from "${ax.trim()}".`);
+        let a = [...v[0]];
+        const n2 = dot3(a, a);
+        if (n2 === 0.0) throw colvarsError('Axis vector is zero!');
+        if (n2 !== 1.0) a = unit3(a);
+        this.axis = a;
+      }
+    }
+    const ostf = c.get('oneSiteTotalForce');
+    if (ostf !== undefined) parseBool(ostf, 'oneSiteTotalForce');
+  }
+
+  calcValue(): void {
+    const d = [0, 0, 0];
+    if (this.fixedAxis) {
+      this.bc.distance(this.ref1.com, this.main.com, d);
+    } else {
+      const R1 = this.ref1.com, R2 = this.ref2!.com;
+      const C = [0.5 * (R1[0] + R2[0]), 0.5 * (R1[1] + R2[1]), 0.5 * (R1[2] + R2[2])];
+      this.bc.distance(C, this.main.com, d);
+      const ax = [0, 0, 0];
+      this.bc.distance(R1, R2, ax);
+      this.axisNorm = norm3(ax);
+      this.axis = unit3(ax);
+    }
+    this.distV = d;
+    this.x[0] = dot3(this.axis, d);
+    this.wrap(this.x);
+  }
+
+  calcGradients(): void {
+    this.main.setWeightedGradient(this.axis);
+    if (this.fixedAxis) {
+      this.ref1.setWeightedGradient(this.axis.map((v) => -1.0 * v));
+    } else {
+      const x = this.x[0];
+      const perp = [0, 1, 2].map((k) => this.distV[k] - this.axis[k] * x);
+      this.ref1.setWeightedGradient([0, 1, 2].map((k) => -perp[k] / this.axisNorm - 0.5 * this.axis[k]));
+      this.ref2!.setWeightedGradient([0, 1, 2].map((k) => perp[k] / this.axisNorm - 0.5 * this.axis[k]));
+    }
+  }
+}
+
+/** colvar::distance_xy: the length of the part of main - ref perpendicular to the axis. */
+class DistanceXY extends DistanceZ {
+  readonly functionType: string = 'distanceXY';
+  // provide(f_cvc_periodic, false): the inherited distanceZ flag is withdrawn
+  protected periodicAvailable(): boolean { return false; }
+  private ortho = [0, 0, 0];
+
+  calcValue(): void {
+    const d = [0, 0, 0];
+    this.bc.distance(this.ref1.com, this.main.com, d);
+    if (!this.fixedAxis) {
+      const v12 = [0, 0, 0];
+      this.bc.distance(this.ref1.com, this.ref2!.com, v12);
+      this.axisNorm = norm3(v12);
+      this.axis = unit3(v12);
+    }
+    this.distV = d;
+    const p = dot3(d, this.axis);
+    this.ortho = [0, 1, 2].map((k) => d[k] - p * this.axis[k]);
+    this.x[0] = norm3(this.ortho);
+  }
+
+  calcGradients(): void {
+    // as the library does, a zero value leaves the gradients of the step before
+    if (this.x[0] === 0.0) return;
+    const xInv = 1.0 / this.x[0];
+    const o = this.ortho;
+    if (this.fixedAxis) {
+      const c = -1.0 * xInv;
+      this.ref1.setWeightedGradient(o.map((v) => c * v));
+      this.main.setWeightedGradient(o.map((v) => xInv * v));
+    } else {
+      const A = dot3(this.distV, this.axis) / this.axisNorm;
+      const c1 = (A - 1.0) * xInv, c2 = -A * xInv, c3 = 1.0 * xInv;
+      this.ref1.setWeightedGradient(o.map((v) => c1 * v));
+      this.ref2!.setWeightedGradient(o.map((v) => c2 * v));
+      this.main.setWeightedGradient(o.map((v) => c3 * v));
+    }
+  }
+}
+
 /** The components of this port, and the ones of the library it refuses. */
 const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string) => Component> = {
   distance: (a, c, n) => new Distance(a, c, n),
   distancevec: (a, c, n) => new DistanceVec(a, c, n),
   cartesian: (a, c, n) => new Cartesian(a, c, n),
+  angle: (a, c, n) => new Angle(a, c, n),
+  dihedral: (a, c, n) => new Dihedral(a, c, n),
+  distancez: (a, c, n) => new DistanceZ(a, c, n),
+  distancexy: (a, c, n) => new DistanceXY(a, c, n),
 };
 const LIBRARY_COMPONENTS = [
-  'distanceZ', 'distanceXY', 'distanceDir', 'distanceInv', 'distancePairs', 'dipoleMagnitude', 'angle', 'dipoleAngle',
-  'dihedral', 'coordNum', 'selfCoordNum', 'groupCoord', 'hBond', 'rmsd', 'eigenvector', 'gyration', 'inertia',
+  'distanceDir', 'distanceInv', 'distancePairs', 'dipoleMagnitude', 'dipoleAngle',
+  'coordNum', 'selfCoordNum', 'groupCoord', 'hBond', 'rmsd', 'eigenvector', 'gyration', 'inertia',
   'inertiaZ', 'orientation', 'orientationAngle', 'orientationProj', 'spinAngle', 'tilt', 'alpha', 'dihedralPC',
   'polarTheta', 'polarPhi', 'linearCombination', 'customColvar', 'neuralNetwork', 'mapTotal', 'aspathCV', 'azpathCV',
   'gspath', 'gzpath', 'gspathCV', 'gzpathCV', 'euler_phi', 'euler_psi', 'euler_theta', 'dipoleDirection',
   'alchLambda', 'alchFLambda', 'componentDistance', 'distanceEuler',
 ];
-const COMPONENT_NAMES = 'distance, distanceVec, cartesian';
+const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian';
 
 /** One collective variable. */
 export class Colvar {
@@ -517,6 +765,8 @@ export class Colvar {
   fb = new Float64Array(1);
   f = new Float64Array(1);
   homogeneous = true;
+  /** f_cv_periodic. */
+  periodic = false;
   /** A bias applies forces to this colvar (f_cv_apply_force). */
   applyForceFlag = false;
   outputValue = true;
@@ -575,6 +825,11 @@ export class Colvar {
     let homogeneous = linear;
     for (const cvc of this.cvcs) if (Math.abs(Math.abs(cvc.coeff) - 1.0) > 1.0e-10) homogeneous = false;
     this.homogeneous = homogeneous;
+    // f_cv_periodic: a homogeneous colvar whose components are all periodic with one period
+    if (homogeneous && this.cvcs[0].periodic) {
+      const period = this.cvcs[0].period;
+      this.periodic = this.cvcs.every((cvc) => cvc.periodic && cvc.period === period);
+    }
     const size = this.cvcs[0].x.length;
     if (this.type === 'vector') for (const cvc of this.cvcs) if (cvc.x.length !== size) throw colvarsError(`Error: the components of colvar "${this.name}" have different sizes.`);
     this.x = new Float64Array(size);
@@ -663,26 +918,27 @@ const valueStream = (v: Float64Array, type: ValueType, fmt: (x: number) => strin
   type === 'scalar' ? fmt(v[0]) : `( ${[...v].map(fmt).join(' , ')} )`;
 
 /** colvarbias_restraint_harmonic. */
-class Harmonic {
-  readonly biasType = 'harmonic';
+/** The restraint biases: colvarbias and colvarbias_restraint (names, colvars, output, the state block). */
+abstract class Restraint {
+  abstract readonly biasType: string;
   readonly stateKeyword = 'restraint';
-  name: string;
+  name = '';
   readonly colvars: Colvar[] = [];
-  readonly centers: Float64Array[] = [];
   forceK = 1.0;
   outputEnergy = false;
   energy = 0.0;
   forces: Float64Array[] = [];
 
-  constructor(conf: string, rank: number, module: ColvarsModule) {
-    const c = new Conf(conf);
-    this.name = `harmonic${rank}`;
+  /** colvarbias::init and colvarbias_restraint_k::init: the keywords every restraint reads. */
+  protected initBase(c: Conf, rank: number, module: ColvarsModule, unsupported: string[]): void {
+    // colvarbias::init: name = bias_type + rank (bias_type is the keyword in lower case)
+    this.name = `${this.biasType.toLowerCase()}${rank}`;
     const nm = c.get('name');
     if (nm !== undefined) this.name = nm.trim();
     if (module.biases.some((b) => b.name === this.name)) throw colvarsError(`Error: this bias cannot have the same name, "${this.name}", as another bias.`);
     const names = c.get('colvars');
     if (names !== undefined) {
-      for (const n of names.trim().split(/\s+/).filter((s) => s)) {
+      for (const n of names.trim().split(/\s+/).filter((t) => t)) {
         const cv = module.colvars.find((x) => x.name === n);
         if (!cv) throw colvarsError(`Error: cannot find a colvar named "${n}".`);
         this.colvars.push(cv);
@@ -696,42 +952,19 @@ class Harmonic {
     if (of !== undefined) parseInt10(of, 'outputFreq');
     const sz = c.get('stepZeroData');
     if (sz !== undefined) parseBool(sz, 'stepZeroData');
-    for (const k of ['targetCenters', 'targetForceConstant', 'targetNumSteps', 'targetNumStages', 'lambdaSchedule', 'targetEquilSteps', 'centersFile', 'writeTIPMF', 'writeTISamples', 'decoupling', 'bypassExtendedLagrangian', 'scaledBiasingForce', 'timeStepFactor', 'outputCenters', 'outputAccumulatedWork']) {
+    for (const k of ['targetForceConstant', 'targetNumSteps', 'targetNumStages', 'lambdaSchedule', 'targetEquilSteps', 'writeTIPMF', 'writeTISamples', 'decoupling', 'scaledBiasingForce', 'timeStepFactor', 'outputAccumulatedWork', ...unsupported]) {
       const v = c.get(k);
-      if (v !== undefined && !/^\s*(off|no|false)\s*$/i.test(v)) throw colvarsError(`Error: the harmonic restraint option "${k}" is not supported by the browser engine.`);
+      if (v !== undefined && !/^\s*(off|no|false)\s*$/i.test(v)) throw colvarsError(`Error: the ${this.biasType} option "${k}" is not supported by the browser engine.`);
     }
-    const centers = c.get('centers');
-    if (centers === undefined) throw colvarsError('Error: must define the initial centers of the restraints.');
-    const vals = splitValues(centers);
-    if (vals.length !== this.colvars.length) throw colvarsError('Error: number of centers does not match that of collective variables.');
-    vals.forEach((v, i) => {
-      const cv = this.colvars[i];
-      if (cv.type === 'scalar') {
-        if (Array.isArray(v)) throw colvarsError(`Error: the center for colvar "${cv.name}" must be a scalar number.`);
-        this.centers.push(Float64Array.of(v));
-      } else {
-        if (!Array.isArray(v) || v.length !== cv.x.length) throw colvarsError(`Error: the center for colvar "${cv.name}" must be a vector of ${cv.x.length} components.`);
-        this.centers.push(Float64Array.from(v));
-      }
-    });
+    // colvarbias_restraint_k::init: forceConstant, default 1
     const k = c.get('forceConstant');
     if (k !== undefined) this.forceK = parseReal(k, 'forceConstant');
     if (this.forceK < 0.0) throw colvarsError('Error: undefined or invalid force constant.');
-    c.check(`harmonic "${this.name}"`);
     this.forces = this.colvars.map((cv) => new Float64Array(cv.x.length));
   }
 
-  /** colvarbias_restraint::update with the harmonic potential and force. */
-  update(): void {
-    this.energy = 0.0;
-    this.colvars.forEach((cv, i) => {
-      const w = cv.width;
-      this.energy += 0.5 * this.forceK / (w * w) * cv.dist2(cv.x, this.centers[i]);
-      const g = cv.dist2Lgrad(cv.x, this.centers[i]);
-      const c = -0.5 * this.forceK / (w * w);
-      for (let k = 0; k < g.length; k++) this.forces[i][k] = c * g[k];
-    });
-  }
+  /** colvarbias_restraint::update: the energy and the force on each colvar. */
+  abstract update(): void;
 
   /** colvarbias::communicate_forces: add to each colvar's bias force. */
   communicateForces(): void {
@@ -748,6 +981,142 @@ class Harmonic {
 
   stateText(step: number): string {
     return `${this.stateKeyword} {\n  configuration {\n    step ${step}\n    name ${this.name}\n  }\n}\n\n`;
+  }
+}
+
+/** One value per colvar of a bias (centers, walls): scalars or parenthesized vectors. */
+const parseColvarValues = (text: string, key: string, colvars: Colvar[]): Float64Array[] => {
+  const vals = splitValues(text);
+  if (vals.length !== colvars.length) throw colvarsError(`Error: the number of values of "${key}" does not match that of collective variables.`);
+  return vals.map((v, i) => {
+    const cv = colvars[i];
+    if (cv.type === 'scalar') {
+      if (Array.isArray(v)) throw colvarsError(`Error: the value of "${key}" for colvar "${cv.name}" must be a scalar number.`);
+      return Float64Array.of(v);
+    }
+    if (!Array.isArray(v) || v.length !== cv.x.length) throw colvarsError(`Error: the value of "${key}" for colvar "${cv.name}" must be a vector of ${cv.x.length} components.`);
+    return Float64Array.from(v);
+  });
+};
+
+/** colvarbias_restraint_harmonic. */
+class Harmonic extends Restraint {
+  readonly biasType = 'harmonic';
+  centers: Float64Array[] = [];
+
+  constructor(conf: string, rank: number, module: ColvarsModule) {
+    super();
+    const c = new Conf(conf);
+    this.initBase(c, rank, module, ['targetCenters', 'centersFile', 'bypassExtendedLagrangian', 'outputCenters']);
+    const centers = c.get('centers');
+    if (centers === undefined) throw colvarsError('Error: must define the initial centers of the restraints.');
+    if (splitValues(centers).length !== this.colvars.length) throw colvarsError('Error: number of centers does not match that of collective variables.');
+    this.centers = parseColvarValues(centers, 'centers', this.colvars);
+    c.check(`harmonic "${this.name}"`);
+  }
+
+  /** restraint_potential and restraint_force of colvarbias_restraint_harmonic. */
+  update(): void {
+    this.energy = 0.0;
+    this.colvars.forEach((cv, i) => {
+      const w = cv.width;
+      this.energy += 0.5 * this.forceK / (w * w) * cv.dist2(cv.x, this.centers[i]);
+      const g = cv.dist2Lgrad(cv.x, this.centers[i]);
+      const c = -0.5 * this.forceK / (w * w);
+      for (let k = 0; k < g.length; k++) this.forces[i][k] = c * g[k];
+    });
+  }
+}
+
+/** colvarbias_restraint_harmonic_walls: half-harmonic walls below lowerWalls and above upperWalls (scalar colvars). */
+class HarmonicWalls extends Restraint {
+  readonly biasType = 'harmonicWalls';
+  private lowerWalls: Float64Array[] = [];
+  private upperWalls: Float64Array[] = [];
+  private lowerK = -1.0;
+  private upperK = -1.0;
+
+  constructor(conf: string, rank: number, module: ColvarsModule) {
+    super();
+    const c = new Conf(conf);
+    this.initBase(c, rank, module, ['targetLowerWalls', 'targetUpperWalls']);
+    // bypassExtendedLagrangian defaults to on here; without extended Lagrangian colvars it changes nothing
+    const bel = c.get('bypassExtendedLagrangian');
+    if (bel !== undefined) parseBool(bel, 'bypassExtendedLagrangian');
+    for (const cv of this.colvars) {
+      if (cv.type !== 'scalar') throw colvarsError(`Error: the harmonicWalls bias "${this.name}" requires scalar colvars ("${cv.name}" is not).`);
+    }
+    const lw = c.get('lowerWalls');
+    const uw = c.get('upperWalls');
+    if (lw !== undefined) this.lowerWalls = parseColvarValues(lw, 'lowerWalls', this.colvars);
+    if (uw !== undefined) this.upperWalls = parseColvarValues(uw, 'upperWalls', this.colvars);
+    if (!this.lowerWalls.length && !this.upperWalls.length) throw colvarsError('Error: no walls provided.');
+    const lk = c.get('lowerWallConstant');
+    const uk = c.get('upperWallConstant');
+    if (this.lowerWalls.length) this.lowerK = lk !== undefined ? parseReal(lk, 'lowerWallConstant') : this.forceK;
+    else if (lk !== undefined) parseReal(lk, 'lowerWallConstant');
+    if (this.upperWalls.length) this.upperK = uk !== undefined ? parseReal(uk, 'upperWallConstant') : this.forceK;
+    else if (uk !== undefined) parseReal(uk, 'upperWallConstant');
+    if (!this.lowerWalls.length || !this.upperWalls.length) {
+      for (const cv of this.colvars) if (cv.periodic) throw colvarsError('Error: at least one variable is periodic, both walls must be provided.');
+    }
+    if (this.lowerWalls.length && this.upperWalls.length) {
+      this.colvars.forEach((cv, i) => {
+        if (this.lowerWalls[i][0] >= this.upperWalls[i][0]) {
+          throw colvarsError(`Error: one upper wall, ${this.upperWalls[i][0]}, is not higher than the lower wall, ${this.lowerWalls[i][0]}.`);
+        }
+        if (cv.dist2(this.lowerWalls[i], this.upperWalls[i]) < 1.0e-12) {
+          throw colvarsError(`Error: lower wall and upper wall are equal in the domain of the variable "${cv.name}".`);
+        }
+      });
+      if (this.lowerK * this.upperK === 0.0) throw colvarsError('Error: lowerWallConstant and upperWallConstant, when defined, must both be positive.');
+      // the two constants relative to their geometric mean, which becomes the force constant
+      this.forceK = Math.sqrt(this.lowerK * this.upperK);
+      this.lowerK /= this.forceK;
+      this.upperK /= this.forceK;
+    } else {
+      if (this.lowerWalls.length) { this.forceK = this.lowerK; this.lowerK = 1.0; }
+      if (this.upperWalls.length) { this.forceK = this.upperK; this.upperK = 1.0; }
+    }
+    c.check(`harmonicWalls "${this.name}"`);
+  }
+
+  /** colvar_distance: how far the colvar is beyond the wall it touches (0 between the walls). */
+  private distance(i: number): number {
+    const cv = this.colvars[i];
+    const x = cv.x;
+    if (cv.periodic) {
+      // both walls may apply to a periodic colvar: the closer one counts
+      if (cv.dist2(x, this.lowerWalls[i]) < cv.dist2(x, this.upperWalls[i])) {
+        const g = cv.dist2Lgrad(x, this.lowerWalls[i])[0];
+        if (g < 0.0) return 0.5 * g;
+      } else {
+        const g = cv.dist2Lgrad(x, this.upperWalls[i])[0];
+        if (g > 0.0) return 0.5 * g;
+      }
+      return 0.0;
+    }
+    if (this.lowerWalls.length) {
+      const g = cv.dist2Lgrad(x, this.lowerWalls[i])[0];
+      if (g < 0.0) return 0.5 * g;
+    }
+    if (this.upperWalls.length) {
+      const g = cv.dist2Lgrad(x, this.upperWalls[i])[0];
+      if (g > 0.0) return 0.5 * g;
+    }
+    return 0.0;
+  }
+
+  /** restraint_potential and restraint_force of colvarbias_restraint_harmonic_walls. */
+  update(): void {
+    this.energy = 0.0;
+    this.colvars.forEach((cv, i) => {
+      const w = cv.width;
+      const dist = this.distance(i);
+      const scale = dist > 0.0 ? this.upperK : this.lowerK;
+      this.energy += 0.5 * this.forceK * scale / (w * w) * dist * dist;
+      this.forces[i][0] = -this.forceK * scale / (w * w) * dist;
+    });
   }
 }
 
@@ -768,7 +1137,7 @@ export interface ColvarsHost {
 export class ColvarsModule {
   readonly atoms = new ColvarsAtoms();
   readonly colvars: Colvar[] = [];
-  readonly biases: Harmonic[] = [];
+  readonly biases: Restraint[] = [];
   private readonly configQueue: { cmd: 'config' | 'configfile'; text: string }[] = [];
   private biasCount = new Map<string, number>();
   trajFreq = 100;
@@ -858,13 +1227,13 @@ export class ColvarsModule {
     for (const type of BIAS_TYPES) {
       const confs = c.all(type);
       if (confs.length === 0) continue;
-      if (type !== 'harmonic') throw colvarsError(`Error: the Colvars bias "${type}" is not supported by the browser engine (supported: harmonic).`);
+      if (type !== 'harmonic' && type !== 'harmonicWalls') throw colvarsError(`Error: the Colvars bias "${type}" is not supported by the browser engine (supported: harmonic, harmonicWalls).`);
       for (const v of confs) {
         if (v.trim() === '') throw colvarsError(`Error: keyword "${type}" found without configuration.`);
         const lower = type.toLowerCase();
         const rank = (this.biasCount.get(lower) ?? 0) + 1;
         this.biasCount.set(lower, rank);
-        this.biases.push(new Harmonic(v, rank, this));
+        this.biases.push(type === 'harmonic' ? new Harmonic(v, rank, this) : new HarmonicWalls(v, rank, this));
         added = true;
       }
     }

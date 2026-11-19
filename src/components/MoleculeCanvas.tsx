@@ -307,7 +307,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
           {config.showBox && (displayBox ?? data.box) && (
             <SimulationBox box={(displayBox ?? data.box)!} showFaces={false} color={config.boxColor} />
           )}
-          <AtomLabels atoms={atoms} config={config} />
+          <AtomLabels atoms={atoms} config={config} atomTypes={data.atomTypes} />
           <MeasurementOverlay selected={selectedAtoms} config={config} result={measurement} />
         </group>
 

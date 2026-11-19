@@ -39,19 +39,78 @@ export const defaultTypeColor = (atomTypes: Readonly<Record<number, AtomTypeInfo
  * The structure with one type's element set (a symbol, or 'X' for unknown): the type's mass follows the element unless
  * the file gave its own, and bonds the parser guessed from covalent radii are guessed again with the new element.
  */
-export const withTypeElement = (data: MoleculeData, typeId: number, symbol: string): MoleculeData => {
-  const info = data.atomTypes[typeId];
-  if (!info) return data;
-  const z = symbol === 'X' ? undefined : getAtomicNumberFromSymbol(symbol);
-  const el = z !== undefined ? ELEMENT_DATA[z - 1] : undefined;
-  const old = ELEMENT_DATA.find((e) => e.symbol === info.element);
-  // a mass that is the old element's own came from the element, not from the file
-  const fileMass = info.mass > 0 && !(old && Math.abs(info.mass - old.mass) < 1e-9) ? info.mass : 0;
-  const atomTypes = { ...data.atomTypes, [typeId]: { ...info, element: el?.symbol ?? 'X', mass: fileMass || el?.mass || 0 } };
-  const bonds = data.bondsInferred && data.atoms.length <= 30000
+export const withTypeElement = (data: MoleculeData, typeId: number, symbol: string): MoleculeData =>
+  withTypeInfo(data, { [typeId]: { element: symbol } });
+
+/**
+ * The structure with new element, label or mass for some types at once. An element's mass follows it unless the
+ * update or the file gives one; bonds the parser guessed from covalent radii are guessed again (once) when an element
+ * changed.
+ */
+export const withTypeInfo = (
+  data: MoleculeData,
+  updates: Readonly<Record<number, { element?: string; label?: string; mass?: number }>>,
+): MoleculeData => {
+  const atomTypes = { ...data.atomTypes };
+  let elementChanged = false;
+  for (const [key, u] of Object.entries(updates)) {
+    const typeId = Number(key);
+    const info = atomTypes[typeId];
+    if (!info) continue;
+    let next = info;
+    if (u.element !== undefined) {
+      const z = u.element === 'X' ? undefined : getAtomicNumberFromSymbol(u.element);
+      const el = z !== undefined ? ELEMENT_DATA[z - 1] : undefined;
+      const old = ELEMENT_DATA.find((e) => e.symbol === info.element);
+      // a mass that is the old element's own came from the element, not from the file
+      const fileMass = info.mass > 0 && !(old && Math.abs(info.mass - old.mass) < 1e-9) ? info.mass : 0;
+      next = { ...next, element: el?.symbol ?? 'X', mass: fileMass || el?.mass || 0 };
+      if (next.element !== info.element) elementChanged = true;
+    }
+    if (u.label !== undefined) next = { ...next, label: u.label };
+    if (u.mass !== undefined && u.mass > 0) next = { ...next, mass: u.mass };
+    atomTypes[typeId] = next;
+  }
+  const bonds = elementChanged && data.bondsInferred && data.atoms.length <= 30000
     ? inferBonds(data.atoms, { atomicNumberOf: atomicNumberByType(atomTypes) })
     : data.bonds;
   return { ...data, atomTypes, bonds };
+};
+
+/** The generic name the parsers give a type the file says nothing about. */
+const genericLabel = (id: number): string => `Type ${id}`;
+
+/**
+ * The text that names a type on screen (atom labels): its element symbol, else the file's own type label ("OW"), else
+ * its number.
+ */
+export const typeDisplayName = (atomTypes: Readonly<Record<number, AtomTypeInfo>>, typeId: number): string => {
+  const info = atomTypes[typeId];
+  if (!info) return String(typeId);
+  const z = info.element && info.element !== 'X' ? getAtomicNumberFromSymbol(info.element) : undefined;
+  if (z !== undefined) return ELEMENT_DATA[z - 1].symbol;
+  return info.label && info.label !== genericLabel(typeId) ? info.label : String(typeId);
+};
+
+/**
+ * A trajectory that numbers its types without naming them (a dump with only a type column) takes each type's element,
+ * label and mass from the data file loaded before it, when it is the same system: the same number of atoms, and every
+ * type of the trajectory a type of the data file. Types the trajectory names itself keep its own information.
+ */
+export const inheritTypeInfo = (
+  data: MoleculeData,
+  from: { atomTypes: Readonly<Record<number, AtomTypeInfo>>; natoms: number } | null,
+): MoleculeData => {
+  if (!from || from.natoms !== data.atoms.length) return data;
+  const types = Object.values(data.atomTypes);
+  if (!types.every((t) => from.atomTypes[t.id] !== undefined)) return data;
+  const updates: Record<number, { element?: string; label?: string; mass?: number }> = {};
+  for (const t of types) {
+    if (t.element !== 'X' || t.label !== genericLabel(t.id)) continue; // the trajectory named this type
+    const p = from.atomTypes[t.id];
+    updates[t.id] = { element: p.element, label: p.label, mass: p.mass };
+  }
+  return Object.keys(updates).length ? withTypeInfo(data, updates) : data;
 };
 
 /**

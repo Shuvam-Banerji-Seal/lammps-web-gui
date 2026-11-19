@@ -200,21 +200,18 @@ const chooseSectionLayout = (
 
 /**
  * Resolve an element for a LAMMPS type from its Masses entry:
- * 1. exact symbol match on the comment ("C", "Cl")
- * 2. exact element-name match on the comment ("Carbon")
+ * 1. an element symbol as the comment ("C", "Cl"): in its own capitalization it names the element; in another case
+ *    ("ca", "NA", force-field type names) only when the mass agrees within 1 u (GAFF's "ca" is an aromatic carbon of
+ *    mass 12.01, not calcium)
+ * 2. an element name as the comment ("Carbon")
  * 3. nearest IUPAC mass within 0.5 amu
+ * Any other one-word comment names the type ("hc", "OW"), not its element: it becomes the label and the element
+ * comes from the mass.
  */
 export const resolveElementFromMass = (
   mass: number, comment?: string
 ): { symbol: string; label?: string } => {
-  if (comment) {
-    const c = comment.trim();
-    const bySymbol = getAtomicNumberFromSymbol(c);
-    if (bySymbol) return { symbol: ELEMENT_DATA[bySymbol - 1].symbol, label: c };
-    const byName = ELEMENT_DATA.find(e => e.name.toLowerCase() === c.toLowerCase());
-    if (byName) return { symbol: byName.symbol, label: byName.name };
-    if (c.length <= 2) return { symbol: c, label: c }; // opaque short label, keep verbatim
-  }
+  let byMass: string | undefined;
   if (mass > 0) {
     let best = ELEMENT_DATA[0];
     let bestDiff = Math.abs(best.mass - mass);
@@ -222,9 +219,20 @@ export const resolveElementFromMass = (
       const d = Math.abs(e.mass - mass);
       if (d < bestDiff) { bestDiff = d; best = e; }
     }
-    if (bestDiff < 0.5) return { symbol: best.symbol };
+    if (bestDiff < 0.5) byMass = best.symbol;
   }
-  return { symbol: 'X' };
+  if (comment) {
+    const c = comment.trim();
+    const bySymbol = getAtomicNumberFromSymbol(c);
+    if (bySymbol) {
+      const el = ELEMENT_DATA[bySymbol - 1];
+      if (c === el.symbol || !(mass > 0) || Math.abs(el.mass - mass) < 1.0) return { symbol: el.symbol, label: c };
+    }
+    const byName = ELEMENT_DATA.find(e => e.name.toLowerCase() === c.toLowerCase());
+    if (byName) return { symbol: byName.symbol, label: byName.name };
+    if (c && !/\s/.test(c) && c.length <= 16) return { symbol: byMass ?? 'X', label: c };
+  }
+  return { symbol: byMass ?? 'X' };
 };
 
 /**
@@ -403,15 +411,13 @@ export const parseDataFile = (data: string): MoleculeData => {
       if (resolved.label) label = resolved.label;
     }
 
-    if (element === 'X') {
-      // A type label that is an element symbol names this type's element
+    const typeLabel = labelByType.get(type);
+    if (element === 'X' && typeLabel) {
+      // A type label that is an element symbol in its own capitalization names this type's element
       // (docs.lammps.org/read_data.html: "type label ... e.g. the LAMMPS
-      // input can use type labels to refer to atom types")
-      const typeLabel = labelByType.get(type);
-      if (typeLabel) {
-        const bySymbol = getAtomicNumberFromSymbol(typeLabel);
-        if (bySymbol) element = ELEMENT_DATA[bySymbol - 1].symbol;
-      }
+      // input can use type labels to refer to atom types"); "CA" or "ca" is no element
+      const bySymbol = getAtomicNumberFromSymbol(typeLabel);
+      if (bySymbol && ELEMENT_DATA[bySymbol - 1].symbol === typeLabel) element = typeLabel;
     }
 
     // Without a mass, a mass comment or an element type label the element stays unknown ('X'): the type number is
@@ -420,6 +426,8 @@ export const parseDataFile = (data: string): MoleculeData => {
       const meta = ELEMENT_DATA.find(e => e.symbol === element);
       if (meta) label = `${meta.name} (${meta.symbol})`;
     }
+    // the file's own name for the type (Atom Type Labels) is its label, whatever names the element
+    if (typeLabel) label = typeLabel;
 
     let count = 0;
     for (const a of atoms) if (a.type === type) count++;

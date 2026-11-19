@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import MoleculeCanvas from '../../components/MoleculeCanvas';
-import { parseFile, detectFileFormat, detectFormatFromContent } from '../../services/fileParser';
+import { detectFileFormat, detectFormatFromContent } from '../../services/fileFormat';
 import { parseInWorker } from '../../services/parserClient';
 import {
   MoleculeData, VisualizationConfig, VisualizationMode, FileFormat,
@@ -431,7 +431,8 @@ const ViewerModule: React.FC<{
     parseInWorker(text, fmt)
       .catch(err => {
         if (!(err instanceof Error && /no-worker|worker-crashed/.test(err.message))) throw err;
-        return parseFile(text, fmt); // synchronous fallback
+        // synchronous fallback, without a worker: the parsers load only then (they stay out of the initial bundle)
+        return import('../../services/fileParser').then((m) => m.parseFile(text, fmt));
       })
       .then((d) => applyParsed(d, fmt, fromUser))
       .then(() => setInputText(text))

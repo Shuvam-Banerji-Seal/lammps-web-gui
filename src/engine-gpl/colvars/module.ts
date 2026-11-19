@@ -515,7 +515,6 @@ class Cartesian extends Component {
 /** 180/PI of colvarcomp_angles.cpp (cvm's PI is 3.14159265358979323846). */
 const DEG = 180.0 / Math.PI;
 
-const sub3 = (a: number[], b: number[]): number[] => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot3 = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const norm3 = (a: number[]): number => Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
 /** rvector::outer (the cross product, in the library's order of operations). */

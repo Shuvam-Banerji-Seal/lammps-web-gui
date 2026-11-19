@@ -830,6 +830,9 @@ const minimizeCmd: Handler = async (ctx, a) => {
   // the minimization converges."
   const converged = result.reason === 'energy tolerance' || result.reason === 'force tolerance' || result.reason === 'forces are zero';
   if (converged && sys.restartOut.length && s.step !== lastRestart) writeRestarts(sys, s.step, true);
+  // As native LAMMPS does (src/min.cpp Min::cleanup at b332f28): modify->post_run() after the last iteration's output,
+  // for every fix (fix colvars writes its state file, fix adapt reset yes restores its values)
+  for (const f of sys.fixes) f.postRun?.();
   sys.run.inRun = false;
   emitFrame(sys);
   if (sys.logOpen) sys.logTable(th.logEnd());

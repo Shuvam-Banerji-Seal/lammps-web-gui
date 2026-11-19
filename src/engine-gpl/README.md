@@ -59,6 +59,17 @@ part of the LAMMPS port.
   Copyright (c) 2008) Voronoi cell bundled in the PTM library, ported with the owner's approval (2026-10-16); the licence
   text is in `ptm/LICENSE.voro++`.
 
+## Third-party code: the Colvars library (LGPL-3.0)
+
+`colvars/` (fix colvars) ports the COLVARS package of LAMMPS. `colvars/fix_colvars.ts` follows
+`src/COLVARS/fix_colvars.cpp` (LAMMPS, GPL-2.0) and stays under GPL-2.0 with the rest of this directory.
+`colvars/module.ts` and `colvars/config.ts` translate the **Colvars library** that LAMMPS bundles in `lib/colvars`
+(Colvars version 2026-07-27 at commit `b332f28`) together with its LAMMPS proxy `src/COLVARS/colvarproxy_lammps.cpp`
+(part of Colvars). Colvars (<https://github.com/Colvars/colvars>; Giacomo Fiorin, Jerome Henin and the Colvars
+developers) is distributed under the **GNU Lesser General Public License, version 3**, so these two files keep that
+licence; the texts of the LGPL-3.0 and of the GPL-3.0 it builds on are in `colvars/LICENSE.lgpl-3.0` and
+`colvars/LICENSE.gpl-3.0`. Each file names its licence in its header.
+
 ## Third-party code: the C and C++ runtime libraries
 
 Native parity sometimes needs code that LAMMPS itself does not contain but calls or links. On 2026-10-16 the owner

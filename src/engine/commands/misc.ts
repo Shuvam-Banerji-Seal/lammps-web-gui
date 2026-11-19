@@ -4,7 +4,7 @@ import { StyleError } from '../force/types';
 import { formatNumber, mapUnquoted, substituteVariables } from '../script';
 import { evaluateScalar } from '../formula';
 import { clearSoftHalt } from '../run/halt';
-import { isDirectory, makeDirectories, removeDirectory, shellKey } from '../shellFs';
+import { expandShellPattern, isDirectory, makeDirectories, removeDirectory, shellKey } from '../shellFs';
 
 /*
  * General-purpose input commands.
@@ -177,6 +177,25 @@ const shell: Handler = ({ sys, session }, a) => {
   if (sub === undefined) throw new StyleError('Illegal shell command: missing argument(s)');
   const NO_SUCH = 'No such file or directory';
   const failed = (what: string, err: string) => sys.warn(`Shell command '${what}' failed with error '${err}'`);
+  // One quoted word with spaces is not a built-in: native passes the joined words to the system shell (system(cmd); a
+  // non-zero status warns "Shell command {} returned with non-zero status"). The engine runs the sh form of rm [-f]
+  // with its patterns expanded (examples/PACKAGES/colvars: shell "rm -f out*.colvars.*"); other commands are refused.
+  if (a.length === 1 && /\s/.test(sub.trim())) {
+    const words = sub.trim().split(/\s+/);
+    if (words[0] === 'rm' && words.slice(1).every((w) => !w.startsWith('-') || w === '-f')) {
+      const force = words.includes('-f');
+      let status = 0;
+      for (const w of words.slice(1).filter((x) => x !== '-f')) {
+        for (const name of expandShellPattern(sys, w)) {
+          if (sys.files.has(shellKey(sys, name))) session.forEachReplica((r) => r.files.delete(shellKey(r, name)));
+          else if (!force) status = 1;
+        }
+      }
+      if (!force && words.length < 2) status = 1;
+      if (status !== 0) sys.warn(`Shell command ${sub} returned with non-zero status`);
+      return;
+    }
+  }
   if (sub === 'cd') {
     // native: narg != 2 is "Illegal shell command: expected 2 argument but found narg" (narg counts the command word)
     if (a.length !== 2) throw new StyleError(`Illegal shell command: expected 2 argument but found ${a.length}`);

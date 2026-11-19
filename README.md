@@ -359,9 +359,10 @@ fixed, among others:
 - the "Out of range atoms" stop of PPPM on a run that blows up.
 
 **Next.**
-1. `fix colvars`: the collective-variables module (a large external library) is not in the engine. The plan is a
-   native-parity subset first: the `distance` colvar with `harmonic` biases, the state and trajectory files, and
-   `fix_modify ... config`, which is what the `examples/PACKAGES/colvars` inputs use.
+1. `fix colvars`: a native-parity subset of the Colvars library is in (the `distance`, `distanceVec` and `cartesian`
+   components, `harmonic` restraints, the trajectory and state files, `fix_modify ... config` and `configfile`), which
+   runs the `examples/PACKAGES/colvars` inputs. Next are more components (angles, dihedrals, coordination numbers, RMSD)
+   and biases (harmonic walls, metadynamics, ABF).
 2. More of `pair granular` on the GPU: rolling and twisting resistance (native reorients their history at neighbor
    rebuilds, which the GPU kernel's fixed contact frame cannot follow yet), jkr and mdr. ReaxFF on the GPU.
 3. Speed: some examples still run up to about 5x slower than single-thread native LAMMPS (the pair/tally computes, some pair

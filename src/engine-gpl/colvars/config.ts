@@ -61,7 +61,12 @@ export class Conf {
           else if (c === '}') { depth--; if (depth === 0) { done = true; break; } }
           inner += c;
         }
-        if (done) break;
+        if (done) {
+          // a keyword starts its own line (colvarparse::key_lookup): text after the closing brace is not read
+          const after = rest.slice(k + 1).trim();
+          if (after !== '') throw colvarsError(`Error: parse error: "${after}" follows the closing brace of "${key}" on the same line; each keyword must start a line.`);
+          break;
+        }
         i++;
         if (i >= lines.length) {
           throw colvarsError(`Parse error: reached the end while looking for closing brace; until now the following was parsed: "\n${key} ${rest}\n"`);

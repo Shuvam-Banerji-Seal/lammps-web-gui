@@ -51,11 +51,11 @@ describe('fix colvars: the supported subset and its refusals', () => {
   });
 
   it('refuses a component, a bias and a keyword outside the subset, naming them', async () => {
-    const angle = await run({ 'a.colvars': 'colvar {\n  name t\n  angle {\n    group1 { atomNumbers 1 }\n    group2 { atomNumbers 2 }\n    group3 { atomNumbers 3 }\n  }\n}\n' },
+    const cn = await run({ 'a.colvars': 'colvar {\n  name t\n  coordNum {\n    group1 { atomNumbers 1 }\n    group2 { atomNumbers 2 3 }\n  }\n}\n' },
       `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
-    expect(angle.error).toMatch(/Colvars component "angle" is not supported by the browser engine \(supported: distance, distanceVec, cartesian\)/);
+    expect(cn.error).toMatch(/Colvars component "coordNum" is not supported by the browser engine \(supported: distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian\)/);
     const meta = await run({ 'a.colvars': config('metadynamics {\n  colvars d\n}\n') }, `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
-    expect(meta.error).toMatch(/Colvars bias "metadynamics" is not supported by the browser engine \(supported: harmonic\)/);
+    expect(meta.error).toMatch(/Colvars bias "metadynamics" is not supported by the browser engine \(supported: harmonic, harmonicWalls\)/);
     const kw = await run({ 'a.colvars': config('harmonic {\n  colvars d\n  centers 1.0\n  springiness 3\n}\n') }, `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
     expect(kw.error).toMatch(/keyword "springiness" is not supported, or not recognized in this context/);
   });
@@ -71,6 +71,12 @@ describe('fix colvars: the supported subset and its refusals', () => {
     expect(oob.error).toBeNull();
     const row = oob.events.find((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo')!.row;
     expect(row['f_2[2][1]']).toBe(0);
+  });
+
+  it('refuses a second keyword after a closing brace on the same line (each keyword starts a line)', async () => {
+    const r = await run({ 'a.colvars': 'colvar {\n  name t\n  angle {\n    group1 { atomNumbers 1 } group2 { atomNumbers 2 }\n    group3 { atomNumbers 3 }\n  }\n}\n' },
+      `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
+    expect(r.error).toMatch(/follows the closing brace of "group1" on the same line/);
   });
 
   it('refuses a minimization before the first run (native reads no atoms then)', async () => {

@@ -369,8 +369,8 @@ fixed, among others:
 3. Speed: some examples still run up to about 5x slower than single-thread native LAMMPS (the pair/tally computes, some pair
    loops), and `pair granular` has no CPU-thread kernel yet.
 4. Parity leads from the last screen to finish: the rigid-body values of `examples/ASPHERE/poly` after a second run,
-   the first-step pressure of `ASPHERE/tri/in.tri.srd`, PPPM's grid-brick check for atoms that are finite but far
-   outside the box, and SHAKE clusters whose bond is close to half the box length. The full example screen will be
+   the first-step pressure of `ASPHERE/tri/in.tri.srd`, and SHAKE clusters whose bond is close to half the box
+   length. The full example screen will be
    repeated with the improved comparison (thermo columns of computes and variables with mixed-case names, `E_mol`,
    and thermo styles `multi` and `yaml`).
 5. Features that need native libraries or processes (KIM, Python, MPI partitions beyond the notebook's NEB

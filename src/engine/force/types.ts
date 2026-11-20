@@ -1024,6 +1024,8 @@ export abstract class KSpace {
   gEwald = 0;
   /** kspace_modify compute: false skips the kspace force, energy and virial (setup still runs; kspace_modify.html). */
   computeOn = true;
+  /** The neighbor skin (neighbor command), set by the force field before each compute: PPPM's grid brick reaches it. */
+  neighborSkin = 0;
   /**
    * The solver splits its work between an Rspace and a Kspace partition (native KSpace::rk_flag, kspace_style pppm/rk;
    * kspace_style.html: "The *pppm/rk* kspace style must be paired with an analogous *rk* type run style").

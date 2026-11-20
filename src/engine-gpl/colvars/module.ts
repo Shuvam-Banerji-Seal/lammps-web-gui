@@ -27,8 +27,8 @@
  * harmonicWalls restraints, metadynamics on one replica (hillWeight, hillWidth or gaussianSigmas, newHillFrequency,
  * useGrids with gridsUpdateFrequency, expandBoundaries, keepHills, wellTempered with biasTemperature, stepZeroData,
  * outputFreq, writeFreeEnergyFile, writeHillsTrajectory), the trajectory file (colvarsTrajFrequency) and the state
- * file (colvarsRestartFrequency, the end of each run, the input state; a metadynamics state is written but not read
- * back). Every other component, bias or keyword stops with an error naming it. The
+ * file (colvarsRestartFrequency, the end of each run, the input state, with the metadynamics grids and hills).
+ * Every other component, bias or keyword stops with an error naming it. The
  * arithmetic follows the library's order of operations, so the values match native LAMMPS to the last bit.
  */
 import { compileCFormat } from '../../engine/cformat';
@@ -1554,6 +1554,23 @@ const fmtDefault = compileCFormat('%g', 'float');
 /** std::setw(cv_width or en_width) with precision 14: %21.14e. */
 const sci21 = fmtSci;
 
+/** A cursor over the whitespace-separated words of a state block (the formatted stream reads of read_state_data). */
+class StateTokens {
+  private p = 0;
+  constructor(private readonly t: string[], private readonly error: () => Error) {}
+  done(): boolean { return this.p >= this.t.length; }
+  peek(): string { return this.t[this.p] ?? ''; }
+  fail(): never { throw this.error(); }
+  next(): string { if (this.done()) this.fail(); return this.t[this.p++]; }
+  expect(w: string): void { if (this.next() !== w) this.fail(); }
+  /** std::istream >> double: a decimal or scientific number (correctly rounded, as Number()). */
+  num(): number {
+    const w = this.next();
+    if (!/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(w)) this.fail();
+    return Number(w);
+  }
+}
+
 /**
  * colvar_grid<cvm::real> with colvar_grid_scalar (mult 1) and colvar_grid_gradient (mult = number of colvars):
  * per colvar the lower and upper boundaries, the width, the number of points nx and periodicity; the data in row-major
@@ -2050,6 +2067,108 @@ class Metadynamics extends Bias {
     return s + '\n}\n';
   }
 
+  /**
+   * colvarbias::read_state for this bias's block (the configuration's step and keepHills: set_state_params) and
+   * read_state_data_template_: with grids, both grids as written (their parameters replace the current ones when they
+   * differ: parse_params, init_from_boundaries, setup), then the hills; a hill not newer than the state's step is
+   * skipped unless the state kept every hill ("keepHills on"). The hills read count as projected (new_hills_begin is
+   * set past them); hills that were in memory before are dropped.
+   */
+  readStateBlock(tokens: string[], fileName: string): void {
+    const t = new StateTokens(tokens, () => colvarsError(`Error: in reading state data for bias "${this.name}" from "${fileName}".`));
+    // configuration { step N name X [keepHills on] }
+    t.expect('configuration'); t.expect('{');
+    let stateStep = this.module.it;
+    let restartKeepHills = false;
+    while (!t.done() && t.peek() !== '}') {
+      const k = t.next();
+      const v = t.next();
+      if (k === 'step') stateStep = Number(v);
+      else if (k === 'keepHills') restartKeepHills = /^(on|yes|true)$/i.test(v);
+    }
+    t.expect('}');
+    if (restartKeepHills) this.module.log('This state file/stream contains explicit hills.');
+    if (this.useGrids) {
+      // read_grid_data_template_: a missing key or an unreadable grid (read_restart) is "couldn't read grid data"
+      for (const [key, g] of [['hills_energy', this.hillsEnergy!], ['hills_energy_gradients', this.hillsGradients!]] as const) {
+        let ok = t.peek() === key;
+        if (ok) {
+          t.next();
+          try { this.readGrid(t, g); } catch { ok = false; }
+        }
+        if (!ok) throw colvarsError(`Error: couldn't read grid data for metadynamics bias "${this.name}"; if useGrids was off when the state file was written, try enabling rebinGrids now to regenerate the grids.`);
+      }
+      this.module.log('  successfully read the biasing potential and its gradients from grids.');
+    }
+    const existing = this.hills.length > 0;
+    const oldSize = this.hills.length, oldOffGrid = this.hillsOffGrid.length;
+    // read_hill: step, then weight, centers and widths (twice the sigmas)
+    while (!t.done() && t.peek() === 'hill') {
+      t.next(); t.expect('{');
+      t.expect('step');
+      const it = t.num();
+      let W = 0.0;
+      const centers = this.colvars.map((cv) => new Float64Array(cv.x.length));
+      const sigmas = this.colvars.map(() => 0.0);
+      if (t.peek() === 'weight') { t.next(); W = t.num(); }
+      if (t.peek() === 'centers') {
+        t.next();
+        this.colvars.forEach((cv, i) => {
+          if (cv.type === 'scalar') { centers[i][0] = t.num(); return; }
+          t.expect('(');
+          for (let d = 0; d < cv.x.length; d++) { if (d) t.expect(','); centers[i][d] = t.num(); }
+          t.expect(')');
+        });
+      }
+      if (t.peek() === 'widths') { t.next(); for (let i = 0; i < sigmas.length; i++) sigmas[i] = t.num() / 2.0; }
+      t.expect('}');
+      if (it <= stateStep && !restartKeepHills) continue;
+      const h: Hill = { it, W, centers, sigmas, value: 0.0 };
+      this.hills.push(h);
+      if (this.useGrids) {
+        const minDist = this.hillsEnergy!.binDistanceFromBoundaries(centers.map((c) => c[0]), true);
+        if (minDist < 3.0 * Math.floor(this.hillWidth) + 1.0) this.hillsOffGrid.push(copyHill(h));
+      }
+    }
+    if (!t.done()) t.fail();
+    this.module.log(`  successfully read ${this.hills.length - oldSize} explicit hills from state.`);
+    if (existing) {
+      this.hills.splice(0, oldSize);
+      this.hillsOffGrid.splice(0, oldOffGrid);
+    }
+    this.newHillsBegin = this.hills.length;
+    if (this.useGrids && this.hillsOffGrid.length) this.module.log(`${this.hillsOffGrid.length} hills are near the grid boundaries: they will be computed analytically and saved to the state files.`);
+    this.module.log(`Restarted metadynamics bias "${this.name}" with step number ${stateStep}.`);
+  }
+
+  /** colvar_grid::read_restart: grid_parameters (parse_params in restart mode), then the values (read_raw). */
+  private readGrid(t: StateTokens, g: ColvarGrid): void {
+    t.expect('grid_parameters'); t.expect('{');
+    const keys = ['n_colvars', 'lower_boundaries', 'upper_boundaries', 'widths', 'sizes'];
+    const params = new Map<string, number[]>();
+    while (!t.done() && t.peek() !== '}') {
+      const k = t.next();
+      const vals: number[] = [];
+      while (!t.done() && t.peek() !== '}' && !keys.includes(t.peek())) vals.push(t.num());
+      params.set(k, vals);
+    }
+    t.expect('}');
+    const nd = params.get('n_colvars')?.[0] ?? g.nd;
+    if (nd !== g.nd) throw colvarsError(`Error: trying to read data for a grid that contains a different number of colvars (${nd}) than the grid defined in the configuration file(${g.nd}).`);
+    const oldNx = g.nx.slice(), oldLb = g.lower.slice(), oldUb = g.upper.slice(), oldW = g.widths.slice();
+    g.lower = params.get('lower_boundaries') ?? g.lower;
+    g.upper = params.get('upper_boundaries') ?? g.upper;
+    g.widths = params.get('widths') ?? g.widths;
+    g.nx = params.get('sizes') ?? g.nx;
+    const far = (i: number, a: number, b: number) => Math.sqrt(g.cv[i].dist2(Float64Array.of(a), Float64Array.of(b))) > 1.0e-10;
+    let changed = false;
+    for (let i = 0; i < g.nd; i++) {
+      if (oldNx[i] !== g.nx[i] || far(i, oldLb[i], g.lower[i]) || far(i, oldUb[i], g.upper[i]) || Math.abs(oldW[i] - g.widths[i]) > 1.0e-10) changed = true;
+    }
+    if (changed) { g.initFromBoundaries(); g.setup(g.nx, g.mult); }
+    for (let k = 0; k < g.data.length; k++) g.data[k] = t.num();
+  }
+
   /** colvarbias_meta::get_state_params: "keepHills on" (unindented) when the hills are kept. */
   protected stateParams(step: number): string {
     return super.stateParams(step) + (this.keepHills ? 'keepHills on\n' : '');
@@ -2306,8 +2425,9 @@ export class ColvarsModule {
     for (const v of c.all('metadynamics')) {
       const inner = new Conf(new Conf(v).all('configuration')[0] ?? '');
       const nm = (inner.get('name') ?? '').trim();
-      if (this.biases.some((b) => b.name === nm)) throw colvarsError(`Error: reading the state of the metadynamics bias "${nm}" from "${name}" is not supported by the browser engine.`);
-      this.host.log(`Warning: input state file contains unknown bias object "${nm}", discarding.`);
+      const bias = this.biases.find((b) => b.name === nm);
+      if (bias instanceof Metadynamics) bias.readStateBlock(v.split(/\s+/).filter((t) => t), name);
+      else this.host.log(`Warning: input state file contains unknown bias object "${nm}", discarding.`);
     }
     for (const key of ['restraint', 'harmonic']) {
       for (const v of c.all(key)) {

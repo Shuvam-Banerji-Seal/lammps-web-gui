@@ -78,14 +78,17 @@ describe('fix colvars: the supported subset and its refusals', () => {
     // FixColvars::set_thermostat_temperature: the tstat fix must give t_target
     const ts = await run({ 'a.colvars': cv('') }, `${BOX}fix 2 all colvars a.colvars tstat 1\n`);
     expect(ts.error).toMatch(/Fix ID 1 is not a thermostat fix/);
-    // the state of a metadynamics bias is not read back (yet): an input state naming it is refused
+    // a metadynamics state is read back (grids, then the hills); a state from another grid size is an error
     const meta = cv('', 'metadynamics {\n  colvars d\n  hillWeight 0.1\n  hillWidth 2\n}\n');
     const first = await run({ 'a.colvars': meta }, `${BOX}fix 2 all colvars a.colvars output m\nrun 10\n`);
     expect(first.error).toBeNull();
     const state = first.session.sys.readFile('m.colvars.state');
     expect(state).toMatch(/metadynamics \{\n  configuration \{\n    step 10\n    name metadynamics1\n  \}\n\nhills_energy\ngrid_parameters/);
     const again = await run({ 'a.colvars': meta, 'm.colvars.state': state }, `${BOX}fix 2 all colvars a.colvars input m\nrun 0\n`);
-    expect(again.error).toMatch(/reading the state of the metadynamics bias "metadynamics1" .* is not supported by the browser engine/);
+    expect(again.error).toBeNull();
+    const cut = state.replace(/hills_energy_gradients[\s\S]*$/, '}\n');
+    const bad = await run({ 'a.colvars': meta, 'm.colvars.state': cut }, `${BOX}fix 2 all colvars a.colvars input m\nrun 0\n`);
+    expect(bad.error).toMatch(/couldn't read grid data for metadynamics bias "metadynamics1"/);
   });
 
   it('refuses a script command other than config and configfile and a second instance; a row past the colvars reads 0', async () => {

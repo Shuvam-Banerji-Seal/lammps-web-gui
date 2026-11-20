@@ -14,86 +14,91 @@
  * flipped if needed; the quaternion of the axes; and the corner points as displacements from the centroid in
  * that basis.
  *
- * Browser-engine difference: the Jacobi step is the engine's symmetric eigen solver (src/engine/bodies.ts
- * eigenSym3), sorted as jacobi3 sorts. Only the eigenvectors and eigenvalues are taken from it.
+ * The Jacobi step is the jacobi3 port of src/engine-gpl/rigid/math_extra.ts (decreasing eigenvalues) and the
+ * quaternion its exyz_to_q, so the frame matches the source to the last bit.
  */
-import { eigenSym3, rotationToQuat } from '../../engine/bodies';
+import { jacobi3, exyzToQ } from '../rigid/math_extra';
 import { StyleError } from '../../engine/force/types';
 import type { TriBody, TriBonusHook, V3 } from '../../engine/triBonus';
 
-/** MathExtra::inertia_triangle: the inertia tensor (Voigt order xx yy zz yz xz xy) of a triangle of the given mass, from its corners. */
+/** MathExtra::lensq3 and len3, in the source's order of operations. */
+const lensq3 = (v: readonly number[]): number => v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+const len3 = (v: readonly number[]): number => Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+/** MathExtra::cross3. */
+const cross3 = (a: readonly number[], b: readonly number[]): number[] =>
+  [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+/**
+ * MathExtra::inertia_triangle: the inertia tensor (Voigt order xx yy zz yz xz xy) of a triangle of the given mass, from
+ * its corners: sv = S v (times3), vtsv = v^T sv (transpose_times3), sum = lensq3 of each corner plus lensq3 of their
+ * sum, and the area factor len3 of the cross product of the edges from the first corner.
+ */
 const inertiaTriangle = (v0: V3, v1: V3, v2: V3, mass: number): number[] => {
+  const s = [[2.0, 1.0, 1.0], [1.0, 2.0, 1.0], [1.0, 1.0, 2.0]];
   const v = [v0, v1, v2];
-  // S = [[2,1,1],[1,2,1],[1,1,2]]; sv = S v; vtsv = v^T sv (rows are the corners)
-  const S = [[2, 1, 1], [1, 2, 1], [1, 1, 2]];
+  const sv = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) sv[i][j] = s[i][0] * v[0][j] + s[i][1] * v[1][j] + s[i][2] * v[2][j];
   const vtsv = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-  for (let a = 0; a < 3; a++) {
-    for (let b = 0; b < 3; b++) {
-      let acc = 0;
-      for (let k = 0; k < 3; k++) for (let l = 0; l < 3; l++) acc += v[k][a] * S[k][l] * v[l][b];
-      vtsv[a][b] = acc;
-    }
-  }
-  const sum = v0[0] * v0[0] + v0[1] * v0[1] + v0[2] * v0[2] + v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2]
-    + v2[0] * v2[0] + v2[1] * v2[1] + v2[2] * v2[2];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) vtsv[i][j] = v[0][i] * sv[0][j] + v[1][i] * sv[1][j] + v[2][i] * sv[2][j];
+  let sum = lensq3(v0) + lensq3(v1) + lensq3(v2);
   const vvv = [v0[0] + v1[0] + v2[0], v0[1] + v1[1] + v2[1], v0[2] + v1[2] + v2[2]];
-  const total = sum + vvv[0] * vvv[0] + vvv[1] * vvv[1] + vvv[2] * vvv[2];
-  const e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]], e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-  const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
-  const a = Math.hypot(n[0], n[1], n[2]);
+  sum += lensq3(vvv);
+  const v1mv0 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+  const v2mv0 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+  const a = len3(cross3(v1mv0, v2mv0));
   const inv24 = mass / 24.0;
   return [
-    inv24 * a * (total - vtsv[0][0]),
-    inv24 * a * (total - vtsv[1][1]),
-    inv24 * a * (total - vtsv[2][2]),
+    inv24 * a * (sum - vtsv[0][0]),
+    inv24 * a * (sum - vtsv[1][1]),
+    inv24 * a * (sum - vtsv[2][2]),
     -inv24 * a * vtsv[1][2],
     -inv24 * a * vtsv[0][2],
     -inv24 * a * vtsv[0][1],
   ];
 };
 
-/** The triangle body frame of data_atom_bonus, from the corner points (absolute coordinates) and the density. */
-const triBody = (c: [V3, V3, V3], density: number): TriBody => {
+/**
+ * The triangle body frame of data_atom_bonus, from the corner points (absolute coordinates, already moved near the
+ * atom by remap_near) and the density. `given` are the corner points as read, before remap_near: the source takes the
+ * edge vectors c2 - c1 and c3 - c1 of the area from them ("MathExtra::sub3(c2, c1, c2mc1)" precedes the remap).
+ */
+const triBody = (c: [V3, V3, V3], density: number, given: [V3, V3, V3] = c): TriBody => {
   const [c1, c2, c3] = c;
   // atom_vec_tri.cpp data_atom_bonus refuses two equal corner points as an invalid shape
-  for (const [p, q] of [[c1, c2], [c1, c3], [c2, c3]] as const) {
+  for (const [p, q] of [[given[0], given[1]], [given[0], given[2]], [given[1], given[2]]] as const) {
     if (p[0] === q[0] && p[1] === q[1] && p[2] === q[2]) throw new StyleError('Invalid shape for triangle in Triangles section of data file (two corner points are equal)');
   }
-  const c2mc1 = [c2[0] - c1[0], c2[1] - c1[1], c2[2] - c1[2]], c3mc1 = [c3[0] - c1[0], c3[1] - c1[1], c3[2] - c1[2]];
-  const norm = [c2mc1[1] * c3mc1[2] - c2mc1[2] * c3mc1[1], c2mc1[2] * c3mc1[0] - c2mc1[0] * c3mc1[2], c2mc1[0] * c3mc1[1] - c2mc1[1] * c3mc1[0]];
-  const area = 0.5 * Math.hypot(norm[0], norm[1], norm[2]);
-  // rmass = density * area (the mass the inertia uses)
-  const mass = density * area;
+  const c2mc1 = [given[1][0] - given[0][0], given[1][1] - given[0][1], given[1][2] - given[0][2]];
+  const c3mc1 = [given[2][0] - given[0][0], given[2][1] - given[0][1], given[2][2] - given[0][2]];
   const centroid: V3 = [(c1[0] + c2[0] + c3[0]) / 3.0, (c1[1] + c2[1] + c3[1]) / 3.0, (c1[2] + c2[2] + c3[2]) / 3.0];
-  // radius: the largest distance from the centroid to a corner
+  // radius: the largest lensq3 of a corner from the centroid, then its square root
   let r2 = 0;
-  for (const p of c) r2 = Math.max(r2, (p[0] - centroid[0]) ** 2 + (p[1] - centroid[1]) ** 2 + (p[2] - centroid[2]) ** 2);
+  for (const p of c) r2 = Math.max(r2, lensq3([p[0] - centroid[0], p[1] - centroid[1], p[2] - centroid[2]]));
   const radius = Math.sqrt(r2);
-  // inertia_triangle with the absolute corners, then jacobi3 (decreasing eigenvalues)
+  // rmass = density * area, area = 0.5 len3(c2mc1 x c3mc1)
+  const area = 0.5 * len3(cross3(c2mc1, c3mc1));
+  const mass = density * area;
+  // inertia_triangle with the (remapped) corners, then jacobi3 with its default decreasing sort
   const I6 = inertiaTriangle(c1, c2, c3, mass);
-  const M = [I6[0], I6[5], I6[4], I6[5], I6[1], I6[3], I6[4], I6[3], I6[2]];
-  const eig = eigenSym3(M);
-  const order = [0, 1, 2].sort((p, q) => eig.values[q] - eig.values[p]);
-  const moments: V3 = [eig.values[order[0]], eig.values[order[1]], eig.values[order[2]]];
-  // axes: column k of the eigenvector matrix, k in sort order
-  const axis = (k: number): V3 => [eig.vectors[order[k]], eig.vectors[3 + order[k]], eig.vectors[6 + order[k]]];
-  const ex = axis(0), ey = axis(1);
-  let ez = axis(2);
+  const tensor = [[I6[0], I6[5], I6[4]], [I6[5], I6[1], I6[3]], [I6[4], I6[3], I6[2]]];
+  const { eval: ev, evec } = jacobi3(tensor, true);
+  const moments: V3 = [ev[0], ev[1], ev[2]];
+  const ex = [evec[0][0], evec[1][0], evec[2][0]], ey = [evec[0][1], evec[1][1], evec[2][1]];
+  let ez = [evec[0][2], evec[1][2], evec[2][2]];
   // right-handed: flip the third axis if (ex x ey) . ez < 0
-  const cr = [ex[1] * ey[2] - ex[2] * ey[1], ex[2] * ey[0] - ex[0] * ey[2], ex[0] * ey[1] - ex[1] * ey[0]];
-  if (cr[0] * ez[0] + cr[1] * ez[1] + cr[2] * ez[2] < 0) ez = [-ez[0], -ez[1], -ez[2]];
-  const R = [ex[0], ey[0], ez[0], ex[1], ey[1], ez[1], ex[2], ey[2], ez[2]];
-  const quat = rotationToQuat(R);
-  // corner displacements from the centroid in the principal basis: (ex . d, ey . d, ez . d)
+  const norm = cross3(ex, ey);
+  if (norm[0] * ez[0] + norm[1] * ez[1] + norm[2] * ez[2] < 0.0) ez = [-ez[0], -ez[1], -ez[2]];
+  const q = exyzToQ(ex, ey, ez);
+  const quat: [number, number, number, number] = [q[0], q[1], q[2], q[3]];
+  // corner displacements from the centroid in the principal basis (transpose_matvec)
   const corners = new Float64Array(9);
   for (let k = 0; k < 3; k++) {
     const d = [c[k][0] - centroid[0], c[k][1] - centroid[1], c[k][2] - centroid[2]];
-    for (let b = 0; b < 3; b++) {
-      const e = b === 0 ? ex : b === 1 ? ey : ez;
-      corners[3 * k + b] = e[0] * d[0] + e[1] * d[1] + e[2] * d[2];
-    }
+    corners[3 * k] = ex[0] * d[0] + ex[1] * d[1] + ex[2] * d[2];
+    corners[3 * k + 1] = ey[0] * d[0] + ey[1] * d[1] + ey[2] * d[2];
+    corners[3 * k + 2] = ez[0] * d[0] + ez[1] * d[1] + ez[2] * d[2];
   }
-  return { area, mass, centroid, radius, quat, moments, corners };
+  return { area, mass, centroid, radius, quat, moments, corners, size: Math.max(len3(c2mc1), len3(c3mc1)) };
 };
 
 /** The hook object for the lazy HOOKS entry 'tri' (contract in src/engine/triBonus.ts). */

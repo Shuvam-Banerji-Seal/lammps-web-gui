@@ -274,6 +274,24 @@ interface ColloidWallHook {
   colloidWallForce(w: object, r: number, rad: number): { fwall: number; eng: number };
 }
 
+/** The native region surface of src/engine-gpl/region (contact arrays filled by surface()). */
+interface NativeWallSurface {
+  readonly cDelx: Float64Array; readonly cDely: Float64Array; readonly cDelz: Float64Array; readonly cR: Float64Array;
+  match(x: number, y: number, z: number): number;
+  surface(x: number, y: number, z: number, cutoff: number): number;
+  prematch(): void;
+}
+
+/** MathSpecial::powint: x^n by squaring (n < 0: the reciprocal). */
+const powint = (x: number, n: number): number => {
+  if (n === 0) return 1.0;
+  if (x === 0.0) return 0.0;
+  let nn = n > 0 ? n : -n;
+  let ww = x, yy = 1.0;
+  for (; nn !== 0; nn >>= 1, ww *= ww) if (nn & 1) yy *= ww;
+  return n > 0 ? yy : 1.0 / yy;
+};
+
 export class FixWallRegion extends Fix {
   readonly style = 'wall/region';
   readonly regionId: string;
@@ -285,6 +303,14 @@ export class FixWallRegion extends Fix {
   /** Energy and per-wall-force tallies of the last application. */
   private wallEnergy = 0;
   private wallForce = new Float64Array(3);
+  /**
+   * The native region surface (src/engine-gpl/region, the region side of fix wall/gran/region, loaded through the HOOKS
+   * word wall/region) and the coefficients of the wall styles (fix_wall_region.cpp init); null: the region has no mirror.
+   */
+  private nativeSurface: NativeWallSurface | null = null;
+  private readonly co = new Float64Array(8);
+  private fwall = 0;
+  private eng = 0;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -340,6 +366,7 @@ export class FixWallRegion extends Fix {
    * extended particles in the group, and sets its coefficients.
    */
   init(): void {
+    this.initNative();
     if (this.wallStyle !== 'colloid') return;
     const s = this.sys.state;
     if (!s.radius) throw new StyleError('Fix wall/region colloid requires atom attribute radius');
@@ -348,6 +375,123 @@ export class FixWallRegion extends Fix {
     }
     const hook = gplHook<ColloidWallHook>('colloid');
     this.colloid = { hook, w: hook.colloidWall(this.params[0], this.params[1], this.rc) };
+  }
+
+  /**
+   * As native LAMMPS does (src/fix_wall_region.cpp init at b332f28): the coefficients and the cutoff offset of the wall
+   * style; and the native surface of the region when its mirror exists (the same surface arithmetic as native).
+   */
+  private initNative(): void {
+    const [eps, b, c] = this.params;
+    const co = this.co, rc = this.rc;
+    switch (this.wallStyle) {
+      case 'lj93': {
+        co[1] = 6.0 / 5.0 * eps * powint(b, 9); co[2] = 3.0 * eps * powint(b, 3);
+        co[3] = 2.0 / 15.0 * eps * powint(b, 9); co[4] = eps * powint(b, 3);
+        const rinv = 1.0 / rc, r2inv = rinv * rinv, r4inv = r2inv * r2inv;
+        co[0] = co[3] * r4inv * r4inv * rinv - co[4] * r2inv * rinv;
+        break;
+      }
+      case 'lj126': {
+        co[1] = 48.0 * eps * powint(b, 12); co[2] = 24.0 * eps * powint(b, 6);
+        co[3] = 4.0 * eps * powint(b, 12); co[4] = 4.0 * eps * powint(b, 6);
+        const r2inv = 1.0 / (rc * rc), r6inv = r2inv * r2inv * r2inv;
+        co[0] = r6inv * (co[3] * r6inv - co[4]);
+        break;
+      }
+      case 'lj1043': {
+        const TWO_PI = 6.28318530717958647692, SQRT2 = 1.41421356237309504880;
+        co[1] = TWO_PI * 2.0 / 5.0 * eps * powint(b, 10); co[2] = TWO_PI * eps * powint(b, 4);
+        co[3] = TWO_PI * SQRT2 / 3.0 * eps * powint(b, 3); co[4] = 0.61 / SQRT2 * b;
+        co[5] = co[1] * 10.0; co[6] = co[2] * 4.0; co[7] = co[3] * 3.0;
+        const rinv = 1.0 / rc, r2inv = rinv * rinv, r4inv = r2inv * r2inv;
+        co[0] = co[1] * r4inv * r4inv * r2inv - co[2] * r4inv - co[3] * powint(rc + co[4], -3);
+        break;
+      }
+      case 'morse': {
+        // morse D0 alpha r0: epsilon = D0, alpha, sigma = r0
+        co[1] = 2 * eps * b;
+        const alphaDr = -b * (rc - c);
+        co[0] = eps * (libm.exp(2.0 * alphaDr) - 2.0 * libm.exp(alphaDr));
+        break;
+      }
+      default: break;
+    }
+    let hook: { createRegionWall(sys: System, regionId: string, sizeHistory: number, useHistory: boolean): { region: NativeWallSurface } | null } | null = null;
+    try { hook = gplHook('wall/region'); } catch { hook = null; }
+    this.nativeSurface = hook?.createRegionWall(this.sys, this.regionId, 0, false)?.region ?? null;
+  }
+
+  /** The wall force fwall and energy eng at distance r (fix_wall_region.cpp lj93, lj126, lj1043, morse, harmonic). */
+  private kernel(r: number): void {
+    const co = this.co;
+    switch (this.wallStyle) {
+      case 'lj93': {
+        const rinv = 1.0 / r, r2inv = rinv * rinv, r4inv = r2inv * r2inv, r10inv = r4inv * r4inv * r2inv;
+        this.fwall = co[1] * r10inv - co[2] * r4inv;
+        this.eng = co[3] * r4inv * r4inv * rinv - co[4] * r2inv * rinv - co[0];
+        return;
+      }
+      case 'lj126': {
+        const rinv = 1.0 / r, r2inv = rinv * rinv, r6inv = r2inv * r2inv * r2inv;
+        this.fwall = r6inv * (co[1] * r6inv - co[2]) * rinv;
+        this.eng = r6inv * (co[3] * r6inv - co[4]) - co[0];
+        return;
+      }
+      case 'lj1043': {
+        const rinv = 1.0 / r, r2inv = rinv * rinv, r4inv = r2inv * r2inv, r10inv = r4inv * r4inv * r2inv;
+        this.fwall = co[5] * r10inv * rinv - co[6] * r4inv * rinv - co[7] * powint(r + co[4], -4);
+        this.eng = co[1] * r10inv - co[2] * r4inv - co[3] * powint(r + co[4], -3) - co[0];
+        return;
+      }
+      case 'morse': {
+        const [eps, alpha, sigma] = this.params;
+        const dexp = libm.exp(-alpha * (r - sigma));
+        this.fwall = co[1] * (dexp * dexp - dexp);
+        this.eng = eps * (dexp * dexp - 2.0 * dexp) - co[0];
+        return;
+      }
+      default: {
+        const dr = this.rc - r;
+        this.fwall = 2.0 * this.params[0] * dr;
+        this.eng = this.params[0] * dr * dr;
+      }
+    }
+  }
+
+  /**
+   * As native LAMMPS does (src/fix_wall_region.cpp post_force at b332f28) on the native region surface: prematch, then
+   * per atom match and the contacts within the cutoff; a contact at r <= 0 (r <= radius for colloid) or an atom outside
+   * the region stops the run after the loop; fx = fwall delx / r per contact, tallied in contact order.
+   */
+  private postForceNative(reg: NativeWallSurface): void {
+    const s = this.sys.state;
+    const f = s.f, x = s.x;
+    reg.prematch();
+    let onflag = false;
+    for (let i = 0; i < s.n; i++) {
+      if (!this.inGroup(i)) continue;
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+      if (!reg.match(xi, yi, zi)) { onflag = true; continue; }
+      const tooclose = this.colloid ? s.radius![i] : 0.0;
+      const n = reg.surface(xi, yi, zi, this.rc);
+      for (let m = 0; m < n; m++) {
+        const r = reg.cR[m];
+        if (r <= tooclose) { onflag = true; continue; }
+        const rinv = 1.0 / r;
+        if (this.colloid) {
+          const c = this.colloid.hook.colloidWallForce(this.colloid.w, r, s.radius![i]);
+          this.fwall = c.fwall; this.eng = c.eng;
+        } else this.kernel(r);
+        const fx = this.fwall * reg.cDelx[m] * rinv;
+        const fy = this.fwall * reg.cDely[m] * rinv;
+        const fz = this.fwall * reg.cDelz[m] * rinv;
+        f[3 * i] += fx; f[3 * i + 1] += fy; f[3 * i + 2] += fz;
+        this.wallForce[0] -= fx; this.wallForce[1] -= fy; this.wallForce[2] -= fz;
+        this.wallEnergy += this.eng;
+      }
+    }
+    if (onflag) throw new StyleError('Particle outside surface of region used in fix wall/region');
   }
 
   /** Region parameter value (number or equal-style variable with scale). */
@@ -503,6 +647,7 @@ export class FixWallRegion extends Fix {
     const s = this.sys.state;
     this.wallEnergy = 0;
     this.wallForce.fill(0);
+    if (this.nativeSurface) { this.postForceNative(this.nativeSurface); return; }
     for (let i = 0; i < s.n; i++) {
       if (!this.inGroup(i)) continue;
       this.applyAtom(i, r, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]);

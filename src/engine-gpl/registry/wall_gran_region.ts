@@ -7,4 +7,5 @@
  */
 import { createRegionWall } from '../granular/wall_gran_region';
 
-export const HOOKS = { 'wall/gran/region': { createRegionWall } };
+// fix wall/region (core, src/engine/fix/misc3.ts) takes the same native region surface under its own word
+export const HOOKS = { 'wall/gran/region': { createRegionWall }, 'wall/region': { createRegionWall } };

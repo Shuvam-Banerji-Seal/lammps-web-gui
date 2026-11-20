@@ -1,0 +1,117 @@
+colvarsTrajFrequency 5
+colvarsRestartFrequency 20
+
+colvar {
+  name oa
+  width 30.0
+  orientationAngle {
+    atoms { atomNumbers 1 2 3 4 5 6 }
+    refPositions (0.390476, 0.411954, 0.484842) (0.659835, 1.535214, 0.650365) (0.839753, 0.693405, 1.461833) (-0.163297, 0.920068, 1.174485) (1.709552, 1.285355, 0.893627) (1.966499, 2.453510, 1.180779)
+  }
+}
+
+colvar {
+  name op
+  width 0.05
+  orientationProj {
+    atoms { atomNumbers 1 2 3 4 5 6 }
+    refPositions (0.390476, 0.411954, 0.484842) (0.659835, 1.535214, 0.650365) (0.839753, 0.693405, 1.461833) (-0.163297, 0.920068, 1.174485) (1.709552, 1.285355, 0.893627) (1.966499, 2.453510, 1.180779)
+  }
+}
+
+colvar {
+  name tl
+  width 0.1
+  tilt {
+    atoms { atomNumbers 1 2 3 4 5 6 }
+    refPositions (0.390476, 0.411954, 0.484842) (0.659835, 1.535214, 0.650365) (0.839753, 0.693405, 1.461833) (-0.163297, 0.920068, 1.174485) (1.709552, 1.285355, 0.893627) (1.966499, 2.453510, 1.180779)
+    axis (1.0, 1.0, 0.0)
+  }
+}
+
+colvar {
+  name sp
+  width 5.0
+  spinAngle {
+    atoms { atomNumbers 1 2 3 4 5 6 }
+    refPositions (0.390476, 0.411954, 0.484842) (0.659835, 1.535214, 0.650365) (0.839753, 0.693405, 1.461833) (-0.163297, 0.920068, 1.174485) (1.709552, 1.285355, 0.893627) (1.966499, 2.453510, 1.180779)
+    axis (0.0, 0.0, 1.0)
+  }
+}
+
+colvar {
+  name ep
+  width 5.0
+  eulerPhi {
+    atoms { atomNumbers 1 2 3 4 5 6 }
+    refPositions (0.390476, 0.411954, 0.484842) (0.659835, 1.535214, 0.650365) (0.839753, 0.693405, 1.461833) (-0.163297, 0.920068, 1.174485) (1.709552, 1.285355, 0.893627) (1.966499, 2.453510, 1.180779)
+  }
+}
+
+colvar {
+  name es
+  width 5.0
+  eulerPsi {
+    atoms { atomNumbers 1 2 3 4 5 6 }
+    refPositions (0.390476, 0.411954, 0.484842) (0.659835, 1.535214, 0.650365) (0.839753, 0.693405, 1.461833) (-0.163297, 0.920068, 1.174485) (1.709552, 1.285355, 0.893627) (1.966499, 2.453510, 1.180779)
+  }
+}
+
+colvar {
+  name et
+  width 5.0
+  eulerTheta {
+    atoms { atomNumbers 1 2 3 4 5 6 }
+    refPositions (0.390476, 0.411954, 0.484842) (0.659835, 1.535214, 0.650365) (0.839753, 0.693405, 1.461833) (-0.163297, 0.920068, 1.174485) (1.709552, 1.285355, 0.893627) (1.966499, 2.453510, 1.180779)
+  }
+}
+
+harmonic {
+  colvars oa
+  centers 15
+  forceConstant 0.01
+  outputEnergy on
+}
+
+harmonic {
+  colvars op
+  centers 0.95
+  forceConstant 5.0
+  outputEnergy on
+}
+
+harmonic {
+  colvars tl
+  centers 0.9
+  forceConstant 5.0
+  outputEnergy on
+}
+
+harmonic {
+  colvars sp
+  centers 5.0
+  forceConstant 0.01
+  outputEnergy on
+}
+
+harmonic {
+  colvars ep
+  centers 0.0
+  forceConstant 0.01
+  outputEnergy on
+}
+
+harmonic {
+  colvars es
+  centers 0.0
+  forceConstant 0.01
+  outputEnergy on
+}
+
+harmonic {
+  colvars et
+  centers 10.0
+  forceConstant 0.01
+  outputEnergy on
+}
+

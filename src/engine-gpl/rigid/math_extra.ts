@@ -198,18 +198,26 @@ export const noSquishRotate = (k: number, p: Q4, q: Q4, inertia: V3, dt: number)
  * Throws if the rotations do not converge (the source returns an error code).
  */
 export const jacobi3 = (mat: number[][], decreasing = false): { eval: V3; evec: number[][] } => {
-  const n = 3;
-  const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-  for (let i = 0; i < n; i++) for (let j = i; j < n; j++) M[i][j] = mat[i][j];
-  // E holds the eigenvectors in rows while rotating (ApplyRotLeft); transposed at the end
-  const E = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
-  const maxIdx = [0, 0, 0];
-  const maxEntryRow = (i: number): number => {
-    let jmax = i + 1;
-    for (let j = i + 2; j < n; j++) if (Math.abs(M[i][j]) > Math.abs(M[i][jmax])) jmax = j;
-    return jmax;
-  };
-  for (let i = 0; i < n - 1; i++) maxIdx[i] = maxEntryRow(i);
+  const { eval: ev, rows } = jacobiRows(mat, 3, decreasing, 'Insufficient Jacobi rotations for rigid body');
+  // MathEigen::jacobi3 transposes the eigenvector matrix (eigenvectors in columns)
+  const evec = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) evec[a][b] = rows[b][a];
+  return { eval: [ev[0], ev[1], ev[2]], evec };
+};
+
+/**
+ * MathEigen::Jacobi<..>::Diagonalize (math_eigen_impl.h) for an n x n symmetric matrix (the upper triangle is read), with
+ * max_num_sweeps 50: the eigenvalues and the eigenvectors in rows, sorted by decreasing eigenvalue when decreasing is
+ * true (SORT_DECREASING_EVALS, the default) or increasing otherwise. Throws `failure` if the rotations do not converge.
+ */
+export const jacobiRows = (mat: number[][], n: number, decreasing: boolean, failure: string): { eval: number[]; rows: number[][] } => {
+  const M: number[][] = [];
+  for (let i = 0; i < n; i++) { M.push(new Array(n).fill(0)); for (let j = i; j < n; j++) M[i][j] = mat[i][j]; }
+  // E holds the eigenvectors in rows while rotating (ApplyRotLeft)
+  const E: number[][] = [];
+  for (let i = 0; i < n; i++) { E.push(new Array(n).fill(0)); E[i][i] = 1; }
+  const maxIdx = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++) maxIdx[i] = maxEntryRow2(M, n, i);
   const maxIters = 50 * n * (n - 1) / 2;
   let c: number, s = 0, t = 0;
   let converged = false;
@@ -223,7 +231,7 @@ export const jacobi3 = (mat: number[][], decreasing = false): { eval: V3; evec: 
     }
     if (M[i][i] + M[i][j] === M[i][i] && M[j][j] + M[i][j] === M[j][j]) {
       M[i][j] = 0.0;
-      maxIdx[i] = maxEntryRow(i);
+      maxIdx[i] = maxEntryRow2(M, n, i);
     }
     if (M[i][j] === 0.0) { converged = true; break; }
     // CalcRot
@@ -279,8 +287,8 @@ export const jacobi3 = (mat: number[][], decreasing = false): { eval: V3; evec: 
       E[j][v] = s * Eiv + c * E[j][v];
     }
   }
-  if (!converged) throw new Error('Insufficient Jacobi rotations for rigid body');
-  const ev: V3 = [M[0][0], M[1][1], M[2][2]];
+  if (!converged) throw new Error(failure);
+  const ev = M.map((row, i) => row[i]);
   // SortRows (math_eigen_impl.h): selection by the larger (decreasing) or smaller (increasing) eigenvalue
   for (let a = 0; a < n - 1; a++) {
     let imax = a;
@@ -288,9 +296,7 @@ export const jacobi3 = (mat: number[][], decreasing = false): { eval: V3; evec: 
     [ev[a], ev[imax]] = [ev[imax], ev[a]];
     [E[a], E[imax]] = [E[imax], E[a]];
   }
-  const evec = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) evec[a][b] = E[b][a];
-  return { eval: ev, evec };
+  return { eval: ev, rows: E };
 };
 
 /** MaxEntryRow on the current matrix (the source's MaxEntryRow, with its out-of-range result for the last row unused). */

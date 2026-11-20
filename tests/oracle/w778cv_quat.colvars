@@ -1,0 +1,37 @@
+colvarsTrajFrequency 5
+colvarsRestartFrequency 20
+
+colvar {
+  name q
+  width 0.1
+  outputAppliedForce on
+  orientation {
+    atoms { atomNumbers 1 2 3 4 5 6 }
+    refPositions (0.390476, 0.411954, 0.484842) (0.659835, 1.535214, 0.650365) (0.839753, 0.693405, 1.461833) (-0.163297, 0.920068, 1.174485) (1.709552, 1.285355, 0.893627) (1.966499, 2.453510, 1.180779)
+  }
+}
+
+colvar {
+  name qn
+  orientation {
+    atoms { atomNumbers 40 41 42 43 }
+    refPositions (0.1, 0.2, 0.3) (1.7, 0.1, 0.2) (0.2, 1.6, 0.1) (0.1, 0.3, 1.8)
+    closestToQuaternion (0.0, 0.0, 1.0, 0.0)
+  }
+}
+
+harmonic {
+  colvars q
+  centers (2.0, 0.0, 0.0, 0.0)
+  forceConstant 0.5
+  outputEnergy on
+}
+
+metadynamics {
+  colvars qn
+  hillWeight 0.05
+  gaussianSigmas 0.3
+  newHillFrequency 5
+  useGrids off
+  outputEnergy on
+}

@@ -11,7 +11,12 @@
  * (init, collect_cvc_values, update_forces_energy, communicate_forces, dist2, dist2_lgrad, write_traj_label, write_traj,
  * get_state_params), colvarcomp.cpp (cvc::init, cvc::dist2, cvc::dist2_lgrad, cvc::apply_force),
  * colvarcomp_distances.cpp (distance, distance_vec, distance_z, distance_xy, cartesian, gyration),
- * colvarcomp_angles.cpp (angle, dihedral), colvarcomp_coordnums.cpp/.h (coordnum, selfcoordnum, groupcoordnum, the
+ * colvarcomp_angles.cpp (angle, dihedral), colvarcomp_distances.cpp rmsd (with init_permutation), colvartypes.cpp
+ * rotation (build_correlation_matrix, compute_overlap_matrix, calc_optimal_rotation with MathEigen::Jacobi on 4x4)
+ * and colvaratoms.cpp calc_required_properties, calc_apply_roto_translation, center_ref_pos, rotate,
+ * colvarcomp_rotations.cpp and colvartypes.h (orientationAngle, orientationProj, tilt, spinAngle, eulerPhi, eulerPsi,
+ * eulerTheta; rotation::cos_theta, dcos_theta_dq, spin_angle, dspin_angle_dq), colvar_rotation_derivative.h
+ * (prepare_derivative, project_force_to_C_from_dxdqi, project_force_to_group2), colvarcomp_coordnums.cpp/.h (coordnum, selfcoordnum, groupcoordnum, the
  * switching function and pair list), colvaratoms.cpp (atom_group parse, update_total_mass,
  * calc_center_of_mass, set_weighted_gradient, apply_colvar_force, apply_force), colvarbias.cpp and
  * colvarbias_restraint.cpp (the harmonic and harmonic_walls restraints), colvarbias_meta.cpp/.h (metadynamics: hills,
@@ -22,7 +27,10 @@
  * colvarproxy.cpp, colvarproxy_io.cpp (output streams, backup_file) and colvarproxy_lammps.cpp (init, setup, compute).
  *
  * The supported subset: the components distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian,
- * gyration, coordNum, selfCoordNum and groupCoord (atom groups from atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
+ * gyration, coordNum, selfCoordNum, groupCoord, rmsd with its default fit and atomPermutation, and the scalar
+ * orientation components orientationAngle, orientationProj, tilt, spinAngle, eulerPhi, eulerPsi, eulerTheta, and the
+ * quaternion orientation (quaternion dist2 and dist2_grad, normalized centres) (atom groups from
+ * atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
  * (componentCoeff, componentExp), periodic components (dihedral; distanceZ with period), the harmonic and
  * harmonicWalls restraints, metadynamics on one replica (hillWeight, hillWidth or gaussianSigmas, newHillFrequency,
  * useGrids with gridsUpdateFrequency, expandBoundaries, keepHills, wellTempered with biasTemperature, stepZeroData,
@@ -35,6 +43,8 @@ import { compileCFormat } from '../../engine/cformat';
 import { Conf, colvarsError, parseBool, parseInt10, parseReal, splitValues } from './config';
 import { acos } from '../libm/acos';
 import { exp } from '../libm/exp';
+import { cos as libmCos, sin as libmSin } from '../libm/sincos';
+import { jacobiRows } from '../rigid/math_extra';
 
 /** colvarmodule.h widths and precisions of the trajectory and state files. */
 const IT_WIDTH = 12;
@@ -63,9 +73,39 @@ const integerPower = (x: number, n: number): number => {
   return n > 0 ? yy : 1.0 / yy;
 };
 
-type ValueType = 'scalar' | '3vector' | 'vector';
+type ValueType = 'scalar' | '3vector' | 'quaternion' | 'vector';
 
-const TYPE_DESC: Record<ValueType, string> = { scalar: 'scalar number', '3vector': '3-dimensional vector', vector: 'n-dimensional vector' };
+const TYPE_DESC: Record<ValueType, string> = { scalar: 'scalar number', '3vector': '3-dimensional vector', quaternion: '4-dimensional unit quaternion', vector: 'n-dimensional vector' };
+
+/** quaternion::dist2: the squared angle between the rotations (q and -q are the same rotation). */
+const quaternionDist2 = (a: Float64Array, b: Float64Array): number => {
+  const cosOmega = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+  const omega = acos(cosOmega > 1.0 ? 1.0 : cosOmega < -1.0 ? -1.0 : cosOmega);
+  return cosOmega > 0.0 ? omega * omega : (Math.PI - omega) * (Math.PI - omega);
+};
+
+/** quaternion::dist2_grad: the gradient of dist2 with respect to the first quaternion (0 when sin(omega) < 1e-14). */
+const quaternionDist2Grad = (a: Float64Array, b: Float64Array): Float64Array => {
+  const cosOmega = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+  const omega = acos(cosOmega > 1.0 ? 1.0 : cosOmega < -1.0 ? -1.0 : cosOmega);
+  const sinOmega = libmSin(omega);
+  if (Math.abs(sinOmega) < 1.0e-14) return new Float64Array(4);
+  const g = new Float64Array(4);
+  for (let k = 0; k < 4; k++) g[k] = -1.0 * sinOmega * b[k] + cosOmega * (a[k] - cosOmega * b[k]) / sinOmega;
+  const f = cosOmega > 0.0 ? 2.0 * omega : -2.0 * (Math.PI - omega);
+  for (let k = 0; k < 4; k++) g[k] = f * g[k];
+  return g;
+};
+
+/** quaternion::rotation_matrix (row-major xx xy xz yx yy yz zx zy zz). */
+const rotationMatrix = (q: readonly number[]): number[] => {
+  const [q0, q1, q2, q3] = q;
+  return [
+    q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3, 2.0 * (q1 * q2 - q0 * q3), 2.0 * (q0 * q2 + q1 * q3),
+    2.0 * (q0 * q3 + q1 * q2), q0 * q0 - q1 * q1 + q2 * q2 - q3 * q3, 2.0 * (q2 * q3 - q0 * q1),
+    2.0 * (q1 * q3 - q0 * q2), 2.0 * (q0 * q1 + q2 * q3), q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3,
+  ];
+};
 
 /** The proxy's atoms: positions, masses and the forces the colvars apply (colvarproxy_atoms). */
 export class ColvarsAtoms {
@@ -207,13 +247,29 @@ class AtomGroup {
   px = new Float64Array(0); py = new Float64Array(0); pz = new Float64Array(0);
   gx = new Float64Array(0); gy = new Float64Array(0); gz = new Float64Array(0);
   readonly com = [0, 0, 0];
+  /** calc_center_of_geometry. */
+  readonly cog = [0, 0, 0];
 
-  constructor(readonly atoms: ColvarsAtoms, readonly key: string, readonly description: string, conf: string) {
+  /** f_ag_center and f_ag_rotate: the group is fitted to its reference positions (rmsd's default fit). */
+  center = false;
+  rotate = false;
+  /** The reference positions of the fit, centred (ref_pos after center_ref_pos), and their centre of geometry. */
+  private refX = new Float64Array(0); private refY = new Float64Array(0); private refZ = new Float64Array(0);
+  private readonly refCog = [0, 0, 0];
+  /** The optimal rotation of the last fit (rot.q). */
+  readonly q = [1, 0, 0, 0];
+  /** b_user_defined_fit: a fitting keyword was given in the group's configuration. */
+  userDefinedFit = false;
+
+  constructor(readonly atoms: ColvarsAtoms, readonly key: string, readonly description: string, conf: string, fitOk = false) {
     const c = new Conf(conf);
     c.get('name');
     for (const k of ['centerToOrigin', 'centerReference', 'centerToReference', 'rotateReference', 'rotateToReference']) {
       const v = c.get(k);
-      if (v !== undefined && parseBool(v, k)) throw colvarsError(`Error: the atom group keyword "${k}" (fitting to reference positions) is not supported by the browser engine.`);
+      if (v === undefined) continue;
+      // parse_fitting_options: any of these keywords makes the fit user-defined
+      this.userDefinedFit = true;
+      if (parseBool(v, k) || !fitOk) throw colvarsError(`Error: the atom group keyword "${k}" (fitting to reference positions, which needs the fit gradients) is not supported by the browser engine.`);
     }
     for (const k of ['atomsOfGroup', 'indexGroup', 'psfSegID', 'atomNameResidueRange', 'atomsFile', 'refPositions', 'refPositionsFile', 'fittingGroup']) {
       if (c.get(k) !== undefined) throw colvarsError(`Error: the atom group keyword "${k}" is not supported by the browser engine (supported: atomNumbers, atomNumbersRange, dummyAtom, enableForces).`);
@@ -267,18 +323,97 @@ class AtomGroup {
     if (total < 1e-15) throw colvarsError(`Error: ${this.description} has zero total mass.`);
   }
 
-  /** read_positions and calc_center_of_mass. */
+  /** read_positions and calc_center_of_mass; a fitted group is then roto-translated onto its reference (calc_required_properties). */
   calc(): void {
     if (this.dummy) { this.com[0] = this.dummy[0]; this.com[1] = this.dummy[1]; this.com[2] = this.dummy[2]; return; }
     const p = this.atoms.pos;
-    let cx = 0.0, cy = 0.0, cz = 0.0;
     for (let i = 0; i < this.ids.length; i++) {
       const k = 3 * this.index[i];
-      const m = this.atoms.mass[this.index[i]];
       this.px[i] = p[k]; this.py[i] = p[k + 1]; this.pz[i] = p[k + 2];
-      cx += m * p[k]; cy += m * p[k + 1]; cz += m * p[k + 2];
+    }
+    this.calcCom();
+    if (this.center || this.rotate) {
+      this.applyRotoTranslation();
+      this.calcCom();
+    }
+  }
+
+  /** calc_center_of_mass, then calc_center_of_geometry (cog /= size). */
+  private calcCom(): void {
+    let cx = 0.0, cy = 0.0, cz = 0.0;
+    for (let i = 0; i < this.ids.length; i++) {
+      const m = this.atoms.mass[this.index[i]];
+      cx += m * this.px[i]; cy += m * this.py[i]; cz += m * this.pz[i];
     }
     this.com[0] = cx / this.totalMass; this.com[1] = cy / this.totalMass; this.com[2] = cz / this.totalMass;
+    const n = this.ids.length;
+    let gx = 0.0, gy = 0.0, gz = 0.0;
+    for (let i = 0; i < n; i++) { gx += this.px[i]; gy += this.py[i]; gz += this.pz[i]; }
+    this.cog[0] = gx / n; this.cog[1] = gy / n; this.cog[2] = gz / n;
+  }
+
+  /**
+   * The default fit of an rmsd group (rmsd::init: enable f_ag_center and f_ag_rotate, set_ref_pos_from_aos,
+   * center_ref_pos): the reference positions are centred on their centre of geometry.
+   */
+  enableFit(ref: number[][]): void {
+    const n = ref.length;
+    this.center = true;
+    this.rotate = true;
+    this.refX = Float64Array.from(ref, (r) => r[0]); this.refY = Float64Array.from(ref, (r) => r[1]); this.refZ = Float64Array.from(ref, (r) => r[2]);
+    let cx = 0.0, cy = 0.0, cz = 0.0;
+    for (let i = 0; i < n; i++) { cx += this.refX[i]; cy += this.refY[i]; cz += this.refZ[i]; }
+    this.refCog[0] = cx / n; this.refCog[1] = cy / n; this.refCog[2] = cz / n;
+    for (let i = 0; i < n; i++) { this.refX[i] -= this.refCog[0]; this.refY[i] -= this.refCog[1]; this.refZ[i] -= this.refCog[2]; }
+  }
+
+  /**
+   * calc_apply_roto_translation: translate the centre of geometry to the origin, rotate by the optimal rotation onto
+   * the centred reference (rotation::calc_optimal_rotation: the correlation matrix, the overlap matrix S, its leading
+   * eigenvector from the Jacobi diagonalization as the quaternion), then translate to the reference's centre.
+   */
+  private applyRotoTranslation(): void {
+    const n = this.ids.length;
+    const { px, py, pz } = this;
+    let gx = 0.0, gy = 0.0, gz = 0.0;
+    for (let i = 0; i < n; i++) { gx += px[i]; gy += py[i]; gz += pz[i]; }
+    gx /= n; gy /= n; gz /= n;
+    if (this.center) {
+      const tx = -1.0 * gx, ty = -1.0 * gy, tz = -1.0 * gz;
+      for (let i = 0; i < n; i++) { px[i] += tx; py[i] += ty; pz[i] += tz; }
+    }
+    if (this.rotate) {
+      let xx = 0.0, xy = 0.0, xz = 0.0, yx = 0.0, yy = 0.0, yz = 0.0, zx = 0.0, zy = 0.0, zz = 0.0;
+      for (let i = 0; i < n; i++) {
+        xx += px[i] * this.refX[i]; xy += px[i] * this.refY[i]; xz += px[i] * this.refZ[i];
+        yx += py[i] * this.refX[i]; yy += py[i] * this.refY[i]; yz += py[i] * this.refZ[i];
+        zx += pz[i] * this.refX[i]; zy += pz[i] * this.refY[i]; zz += pz[i] * this.refZ[i];
+      }
+      // compute_overlap_matrix
+      const S = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+      S[0][0] = xx + yy + zz;
+      S[1][0] = yz - zy; S[0][1] = S[1][0];
+      S[2][0] = -xz + zx; S[0][2] = S[2][0];
+      S[3][0] = xy - yx; S[0][3] = S[3][0];
+      S[1][1] = xx - yy - zz;
+      S[2][1] = xy + yx; S[1][2] = S[2][1];
+      S[3][1] = xz + zx; S[1][3] = S[3][1];
+      S[2][2] = -xx + yy - zz;
+      S[3][2] = yz + zy; S[2][3] = S[3][2];
+      S[3][3] = -xx - yy + zz;
+      const { rows } = jacobiRows(S, 4, true, 'Error: Too many iterations in jacobi diagonalization.\nThis is usually the result of an ill-defined set of atoms for rotational alignment (RMSD, rotateReference, etc).');
+      for (let k = 0; k < 4; k++) this.q[k] = rows[0][k];
+      const R = rotationMatrix(this.q);
+      for (let i = 0; i < n; i++) {
+        const nx = R[0] * px[i] + R[1] * py[i] + R[2] * pz[i];
+        const ny = R[3] * px[i] + R[4] * py[i] + R[5] * pz[i];
+        const nz = R[6] * px[i] + R[7] * py[i] + R[8] * pz[i];
+        px[i] = nx; py[i] = ny; pz[i] = nz;
+      }
+    }
+    if (this.center) {
+      for (let i = 0; i < n; i++) { px[i] += this.refCog[0]; py[i] += this.refCog[1]; pz[i] += this.refCog[2]; }
+    }
   }
 
   /** set_weighted_gradient: grad_i = (m_i / M) grad. */
@@ -294,10 +429,19 @@ class AtomGroup {
     if (this.noforce) throw colvarsError('Error: sending a force to a group that has "enableForces" set to off.');
   }
 
-  /** apply_colvar_force: each atom gets force times its gradient. */
+  /** apply_colvar_force: each atom gets force times its gradient (rotated back to the lab frame when the group is rotated). */
   applyColvarForce(force: number): void {
     if (this.dummy) return;
     this.checkForces();
+    if (this.rotate) {
+      // rot.inverse().matrix(): the rotation matrix of the conjugate quaternion
+      const R = rotationMatrix([this.q[0], -this.q[1], -this.q[2], -this.q[3]]);
+      for (let i = 0; i < this.ids.length; i++) {
+        const g0 = this.gx[i], g1 = this.gy[i], g2 = this.gz[i];
+        this.atoms.addForce(this.index[i], force * (R[0] * g0 + R[1] * g1 + R[2] * g2), force * (R[3] * g0 + R[4] * g1 + R[5] * g2), force * (R[6] * g0 + R[7] * g1 + R[8] * g2));
+      }
+      return;
+    }
     for (let i = 0; i < this.ids.length; i++) this.atoms.addForce(this.index[i], force * this.gx[i], force * this.gy[i], force * this.gz[i]);
   }
 
@@ -361,11 +505,11 @@ abstract class Component {
   /** provide(f_cvc_periodic): whether period and wrapAround may be given. */
   protected periodicAvailable(): boolean { return false; }
 
-  /** cvc::parse_group. */
-  protected group(atoms: ColvarsAtoms, c: Conf, key: string, cvName: string): AtomGroup {
+  /** cvc::parse_group (fitOk: the component may fit the group to reference positions, rmsd). */
+  protected group(atoms: ColvarsAtoms, c: Conf, key: string, cvName: string, fitOk = false): AtomGroup {
     const conf = c.get(key);
     if (conf === undefined) throw colvarsError(`Error: definition for atom group "${key}" not found.`);
-    const g = new AtomGroup(atoms, key, `atom group "${key}" of colvar "${cvName}"`, conf);
+    const g = new AtomGroup(atoms, key, `atom group "${key}" of colvar "${cvName}"`, conf, fitOk);
     this.groups.push(g);
     return g;
   }
@@ -1042,31 +1186,483 @@ class CoordNum extends Component {
 export interface ComponentContext {
   /** force->angstrom of the unit style. */
   angstrom: number;
+  /** cvm::log. */
+  log: (text: string) => void;
 }
 
 /** The components of this port, and the ones of the library it refuses. */
+/**
+ * The orientation components (colvarcomp_rotations.cpp): the optimal rotation q of the reference positions (centred on
+ * their centre of geometry) onto the group's positions shifted by the group's centre of geometry, and the gradient of a
+ * function of q through the derivative of the leading eigenvector (colvar_rotation_derivative.h: prepare_derivative,
+ * project_force_to_C_from_dxdq, project_force_to_group2).
+ */
+abstract class OrientationBase extends Component {
+  readonly type: ValueType = 'scalar';
+  protected readonly atomsGroup: AtomGroup;
+  private readonly refX: Float64Array; private readonly refY: Float64Array; private readonly refZ: Float64Array;
+  /** rot.q, and the eigenvalues and eigenvectors (rows) of the overlap matrix. */
+  protected readonly q = [1, 0, 0, 0];
+  /** closestToQuaternion (default 1 0 0 0). */
+  protected refQuat = [1.0, 0.0, 0.0, 0.0];
+  private L: number[] = [0, 0, 0, 0];
+  private Q: number[][] = [];
+
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext) {
+    super();
+    this.setupType();
+    this.initBase(c);
+    const g = this.group(atoms, c, 'atoms', cvName);
+    this.atomsGroup = g;
+    if (g.dummy || g.ids.length === 0) throw colvarsError('Error: no atoms defined for atom group "atoms".');
+    let ref: number[][] = [];
+    const rp = c.get('refPositions');
+    if (rp !== undefined) {
+      ctx.log('Using reference positions from input file.');
+      ref = splitValues(rp).map((v) => {
+        if (!Array.isArray(v) || v.length !== 3) throw colvarsError(`Error: could not read the reference positions of "refPositions" from "${rp.trim()}".`);
+        return [...v];
+      });
+      if (ref.length !== g.ids.length) throw colvarsError('Error: reference positions do not match the number of requested atoms.');
+    }
+    if (c.get('refPositionsFile') !== undefined) throw colvarsError('Error: the orientation keyword "refPositionsFile" (reading coordinates from a file) is not supported by the browser engine; give the positions with refPositions.');
+    for (const k of ['refPositionsCol', 'refPositionsColValue']) c.get(k);
+    if (!ref.length) throw colvarsError('Error: must define a set of reference coordinates.');
+    // the reference centred on its centre of geometry (ref_cog /= size, then ref_pos[i] -= ref_cog)
+    const n = ref.length;
+    let gx = 0.0, gy = 0.0, gz = 0.0;
+    for (const r of ref) { gx += r[0]; gy += r[1]; gz += r[2]; }
+    gx /= n; gy /= n; gz /= n;
+    this.refX = Float64Array.from(ref, (r) => r[0] - gx); this.refY = Float64Array.from(ref, (r) => r[1] - gy); this.refZ = Float64Array.from(ref, (r) => r[2] - gz);
+    const cq = c.get('closestToQuaternion');
+    if (cq !== undefined) {
+      const v = splitValues(cq);
+      if (v.length !== 1 || !Array.isArray(v[0]) || v[0].length !== 4) throw colvarsError(`Error: could not read the quaternion of "closestToQuaternion" from "${cq.trim()}".`);
+      this.refQuat = [...v[0]];
+    }
+  }
+
+  /** The value type, boundaries and periodicity of the subclass (its constructor chain). */
+  protected setupType(): void {}
+
+  /** calc_value's fit: shifted = pos - cog, rot.calc_optimal_rotation_soa(ref, shifted). */
+  protected fit(): void {
+    const g = this.atomsGroup;
+    const n = g.ids.length;
+    const tx = -1.0 * g.cog[0], ty = -1.0 * g.cog[1], tz = -1.0 * g.cog[2];
+    let xx = 0.0, xy = 0.0, xz = 0.0, yx = 0.0, yy = 0.0, yz = 0.0, zx = 0.0, zy = 0.0, zz = 0.0;
+    for (let i = 0; i < n; i++) {
+      const sx = g.px[i] + tx, sy = g.py[i] + ty, sz = g.pz[i] + tz;
+      const rx = this.refX[i], ry = this.refY[i], rz = this.refZ[i];
+      xx += rx * sx; xy += rx * sy; xz += rx * sz;
+      yx += ry * sx; yy += ry * sy; yz += ry * sz;
+      zx += rz * sx; zy += rz * sy; zz += rz * sz;
+    }
+    const S = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+    S[0][0] = xx + yy + zz;
+    S[1][0] = yz - zy; S[0][1] = S[1][0];
+    S[2][0] = -xz + zx; S[0][2] = S[2][0];
+    S[3][0] = xy - yx; S[0][3] = S[3][0];
+    S[1][1] = xx - yy - zz;
+    S[2][1] = xy + yx; S[1][2] = S[2][1];
+    S[3][1] = xz + zx; S[1][3] = S[3][1];
+    S[2][2] = -xx + yy - zz;
+    S[3][2] = yz + zy; S[2][3] = S[3][2];
+    S[3][3] = -xx - yy + zz;
+    const { eval: L, rows } = jacobiRows(S, 4, true, 'Error: Too many iterations in jacobi diagonalization.\nThis is usually the result of an ill-defined set of atoms for rotational alignment (RMSD, rotateReference, etc).');
+    this.L = L;
+    this.Q = rows;
+    for (let k = 0; k < 4; k++) this.q[k] = rows[0][k];
+  }
+
+  /**
+   * The gradients of x on the atoms from dx/dq: prepare_derivative(use_dq) (tmp_Q0Q0_L[p][i][j] = sum over k = 1..3 of
+   * (Qk[i] Q0[j]) / (L0 - Lk) Qk[p]), project_force_to_C_from_dxdqi for each listed component of q (summed), then
+   * project_force_to_group2 with the centred reference.
+   */
+  protected gradientsFrom(dxdq: number[], only0 = false): void {
+    const C = this.dxdC(dxdq, only0);
+    const g = this.atomsGroup;
+    for (let ia = 0; ia < g.ids.length; ia++) {
+      const a1x = this.refX[ia], a1y = this.refY[ia], a1z = this.refZ[ia];
+      g.gx[ia] = C[0] * a1x + C[3] * a1y + C[6] * a1z;
+      g.gy[ia] = C[1] * a1x + C[4] * a1y + C[7] * a1z;
+      g.gz[ia] = C[2] * a1x + C[5] * a1y + C[8] * a1z;
+    }
+  }
+
+  /** project_force_to_group2 for atom ia of the 3x3 matrix C (row-major). */
+  protected toGroup2(ia: number, C: number[]): number[] {
+    const a1x = this.refX[ia], a1y = this.refY[ia], a1z = this.refZ[ia];
+    return [C[0] * a1x + C[3] * a1y + C[6] * a1z, C[1] * a1x + C[4] * a1y + C[7] * a1z, C[2] * a1x + C[5] * a1y + C[8] * a1z];
+  }
+
+  /** prepare_derivative(use_dq) and project_force_to_C_from_dxdq (or only its q0 term). */
+  protected dxdC(dxdq: number[], only0 = false): number[] {
+    const { Q, L } = this;
+    const T: number[][][] = [];
+    for (let p = 0; p < 4; p++) {
+      T.push([]);
+      for (let i = 0; i < 4; i++) {
+        T[p].push([]);
+        for (let j = 0; j < 4; j++) {
+          T[p][i].push((Q[1][i] * Q[0][j]) / (L[0] - L[1]) * Q[1][p] + (Q[2][i] * Q[0][j]) / (L[0] - L[2]) * Q[2][p] + (Q[3][i] * Q[0][j]) / (L[0] - L[3]) * Q[3][p]);
+        }
+      }
+    }
+    const C = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < (only0 ? 1 : 4); i++) {
+      const f = dxdq[i], t = T[i];
+      C[0] += f * (t[0][0] + t[1][1] - t[2][2] - t[3][3]);
+      C[1] += f * (t[0][3] + t[1][2] + t[2][1] + t[3][0]);
+      C[2] += f * (-t[0][2] + t[1][3] - t[2][0] + t[3][1]);
+      C[3] += f * (-t[0][3] + t[1][2] + t[2][1] - t[3][0]);
+      C[4] += f * (t[0][0] - t[1][1] + t[2][2] - t[3][3]);
+      C[5] += f * (t[0][1] + t[1][0] + t[2][3] + t[3][2]);
+      C[6] += f * (t[0][2] + t[1][3] + t[2][0] + t[3][1]);
+      C[7] += f * (-t[0][1] - t[1][0] + t[2][3] + t[3][2]);
+      C[8] += f * (t[0][0] - t[1][1] - t[2][2] + t[3][3]);
+    }
+    return C;
+  }
+}
+
+/**
+ * colvar::orientation: the optimal rotation itself, a unit quaternion (q or -q, whichever is closer to
+ * closestToQuaternion); a force on it reaches the atoms through the derivative of q (apply_force).
+ */
+class Orientation extends OrientationBase {
+  readonly functionType: string = 'orientation';
+  readonly type: ValueType = 'quaternion';
+  x = new Float64Array(4);
+
+  calcValue(): void {
+    this.fit();
+    const q = this.q, r = this.refQuat;
+    const sign = q[0] * r[0] + q[1] * r[1] + q[2] * r[2] + q[3] * r[3] >= 0.0 ? 1.0 : -1.0;
+    for (let k = 0; k < 4; k++) this.x[k] = sign === 1.0 ? q[k] : -1.0 * q[k];
+  }
+
+  applyForce(f: Float64Array): void {
+    const g = this.atomsGroup;
+    if (g.noforce) return;
+    const q = this.q, r = this.refQuat;
+    const sign = q[0] * r[0] + q[1] * r[1] + q[2] * r[2] + q[3] * r[3] >= 0.0 ? 1.0 : -1.0;
+    const C = this.dxdC([f[0], f[1], f[2], f[3]]);
+    for (let ia = 0; ia < g.ids.length; ia++) {
+      const v = this.toGroup2(ia, C);
+      g.atoms.addForce(g.index[ia], sign * v[0], sign * v[1], sign * v[2]);
+    }
+  }
+
+  dist2(a: Float64Array, b: Float64Array): number { return quaternionDist2(a, b); }
+  dist2Lgrad(a: Float64Array, b: Float64Array): Float64Array { return quaternionDist2Grad(a, b); }
+  wrap(): void {}
+}
+
+/** colvar::orientation_angle: 2 acos(|q0|) in degrees. */
+class OrientationAngle extends OrientationBase {
+  readonly functionType: string = 'orientationAngle';
+  protected setupType(): void { this.lowerBoundary = 0.0; this.upperBoundary = 180.0; }
+  calcValue(): void {
+    this.fit();
+    const q0 = this.q[0];
+    this.x[0] = q0 >= 0.0 ? (180.0 / Math.PI) * 2.0 * acos(q0) : (180.0 / Math.PI) * 2.0 * acos(-1.0 * q0);
+  }
+  calcGradients(): void {
+    const q0 = this.q[0];
+    const sign = q0 >= 0.0 ? 1.0 : -1.0;
+    const dxdq0 = sign * (q0 * q0 < 1.0 ? (180.0 / Math.PI) * -2.0 / Math.sqrt(1.0 - q0 * q0) : 0.0);
+    this.gradientsFrom([dxdq0, 0, 0, 0], true);
+  }
+}
+
+/** colvar::orientation_proj: 2 q0^2 - 1. */
+class OrientationProj extends OrientationBase {
+  readonly functionType: string = 'orientationProj';
+  protected setupType(): void { this.lowerBoundary = 0.0; this.upperBoundary = 1.0; }
+  calcValue(): void {
+    this.fit();
+    this.x[0] = 2.0 * this.q[0] * this.q[0] - 1.0;
+  }
+  calcGradients(): void {
+    this.gradientsFrom([2.0 * 2.0 * this.q[0], 0, 0, 0], true);
+  }
+}
+
+/** colvar::tilt: rotation::cos_theta(axis), the cosine of the tilt about the axis (default z, normalized). */
+class Tilt extends OrientationBase {
+  readonly functionType: string = 'tilt';
+  protected axis = [0.0, 0.0, 1.0];
+  protected setupType(): void { this.lowerBoundary = -1.0; this.upperBoundary = 1.0; }
+
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext) {
+    super(atoms, c, cvName, ctx);
+    const ax = c.get('axis');
+    if (ax !== undefined) {
+      const v = splitValues(ax);
+      if (v.length !== 1 || !Array.isArray(v[0]) || v[0].length !== 3) throw colvarsError(`Error: could not read the vector of "axis" from "${ax.trim()}".`);
+      this.axis = [...v[0]];
+    }
+    const a = this.axis;
+    const n2 = a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
+    if (n2 !== 1.0) {
+      const nrm = Math.sqrt(n2);
+      this.axis = [a[0] / nrm, a[1] / nrm, a[2] / nrm];
+      ctx.log(`Normalizing rotation axis to ( ${this.axis.join(' , ')} ).`);
+    }
+  }
+
+  protected iprod(): number {
+    const a = this.axis, q = this.q;
+    return a[0] * q[1] + a[1] * q[2] + a[2] * q[3];
+  }
+
+  calcValue(): void {
+    this.fit();
+    const q0 = this.q[0];
+    const alpha = (180.0 / Math.PI) * 2.0 * Math.atan2(this.iprod(), q0);
+    const cosSpin2 = libmCos(alpha * (Math.PI / 180.0) * 0.5);
+    const cosTheta2 = cosSpin2 !== 0.0 ? q0 / cosSpin2 : 0.0;
+    this.x[0] = 2.0 * (cosTheta2 * cosTheta2) - 1.0;
+  }
+
+  calcGradients(): void {
+    // rotation::dcos_theta_dq
+    const q0 = this.q[0], a = this.axis;
+    const iprod = this.iprod();
+    const cosSpin2 = libmCos(Math.atan2(iprod, q0));
+    let d: number[];
+    if (q0 !== 0.0) {
+      const d0 = (4.0 * q0 / (cosSpin2 * cosSpin2)) * (1.0 - (iprod * iprod) / (q0 * q0) / (1.0 + (iprod * iprod) / (q0 * q0)));
+      const dn = (4.0 * q0 / (cosSpin2 * cosSpin2) * (iprod / q0) / (1.0 + (iprod * iprod) / (q0 * q0)));
+      d = [d0, dn * a[0], dn * a[1], dn * a[2]];
+    } else {
+      const dn = (4.0 / (cosSpin2 * cosSpin2 * iprod));
+      d = [0.0, dn * a[0], dn * a[1], dn * a[2]];
+    }
+    this.gradientsFrom(d);
+  }
+}
+
+/** colvar::spin_angle: rotation::spin_angle(axis) in degrees, periodic (period 360). */
+class SpinAngle extends Tilt {
+  readonly functionType: string = 'spinAngle';
+  protected setupType(): void {
+    // cvc::init_as_periodic_angle
+    this.periodic = true;
+    this.period = 360.0;
+    this.lowerBoundary = -180.0;
+    this.upperBoundary = 180.0;
+  }
+  protected periodicAvailable(): boolean { return true; }
+
+  calcValue(): void {
+    this.fit();
+    let alpha = (180.0 / Math.PI) * 2.0 * Math.atan2(this.iprod(), this.q[0]);
+    while (alpha > 180.0) alpha -= 360;
+    while (alpha < -180.0) alpha += 360;
+    this.x[0] = alpha;
+    this.wrap(this.x);
+  }
+
+  calcGradients(): void {
+    // rotation::dspin_angle_dq
+    const q0 = this.q[0], a = this.axis;
+    const iprod = this.iprod();
+    let d: number[];
+    if (q0 !== 0.0) {
+      const dspindx = (180.0 / Math.PI) * 2.0 * (1.0 / (1.0 + (iprod * iprod) / (q0 * q0)));
+      d = [dspindx * (iprod * -1.0 / (q0 * q0)), dspindx * ((1.0 / q0) * a[0]), dspindx * ((1.0 / q0) * a[1]), dspindx * ((1.0 / q0) * a[2])];
+    } else {
+      d = [(180.0 / Math.PI) * 2.0 * (-1.0 / iprod), 0.0, 0.0, 0.0];
+    }
+    this.gradientsFrom(d);
+  }
+}
+
+/** colvar::euler_phi, euler_psi and euler_theta: the Euler angles of the optimal rotation, in degrees. */
+class EulerAngle extends OrientationBase {
+  readonly functionType: string;
+
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext, readonly kind: 'eulerPhi' | 'eulerPsi' | 'eulerTheta') {
+    super(atoms, c, cvName, ctx);
+    this.functionType = kind;
+    if (kind === 'eulerTheta') { this.lowerBoundary = 0.0; this.upperBoundary = 180.0; }
+  }
+
+  protected setupType(): void {
+    // eulerPhi and eulerPsi: cvc::init_as_periodic_angle (eulerTheta resets this in its constructor: init_as_angle)
+    this.periodic = true;
+    this.period = 360.0;
+    this.lowerBoundary = -180.0;
+    this.upperBoundary = 180.0;
+  }
+  protected periodicAvailable(): boolean { return true; }
+
+  calcValue(): void {
+    this.fit();
+    const [q0, q1, q2, q3] = this.q;
+    if (this.kind === 'eulerPhi') this.x[0] = Math.atan2(2 * (q0 * q1 + q2 * q3), 1 - 2 * (q1 * q1 + q2 * q2)) * (180.0 / Math.PI);
+    else if (this.kind === 'eulerPsi') this.x[0] = Math.atan2(2 * (q0 * q3 + q1 * q2), 1 - 2 * (q2 * q2 + q3 * q3)) * (180.0 / Math.PI);
+    else this.x[0] = Math.asin(2 * (q0 * q2 - q3 * q1)) * (180.0 / Math.PI);
+  }
+
+  calcGradients(): void {
+    const [q0, q1, q2, q3] = this.q;
+    let d: number[];
+    if (this.kind === 'eulerPhi') {
+      const den = (2 * q0 * q1 + 2 * q2 * q3) * (2 * q0 * q1 + 2 * q2 * q3) + (-2 * q1 * q1 - 2 * q2 * q2 + 1) * (-2 * q1 * q1 - 2 * q2 * q2 + 1);
+      d = [
+        (180.0 / Math.PI) * 2 * q1 * (-2 * q1 * q1 - 2 * q2 * q2 + 1) / den,
+        (180.0 / Math.PI) * (2 * q0 * (-2 * q1 * q1 - 2 * q2 * q2 + 1) - 4 * q1 * (-2 * q0 * q1 - 2 * q2 * q3)) / den,
+        (180.0 / Math.PI) * (-4 * q2 * (-2 * q0 * q1 - 2 * q2 * q3) + 2 * q3 * (-2 * q1 * q1 - 2 * q2 * q2 + 1)) / den,
+        (180.0 / Math.PI) * 2 * q2 * (-2 * q1 * q1 - 2 * q2 * q2 + 1) / den,
+      ];
+    } else if (this.kind === 'eulerPsi') {
+      const den = (2 * q0 * q3 + 2 * q1 * q2) * (2 * q0 * q3 + 2 * q1 * q2) + (-2 * q2 * q2 - 2 * q3 * q3 + 1) * (-2 * q2 * q2 - 2 * q3 * q3 + 1);
+      d = [
+        (180.0 / Math.PI) * 2 * q3 * (-2 * q2 * q2 - 2 * q3 * q3 + 1) / den,
+        (180.0 / Math.PI) * 2 * q2 * (-2 * q2 * q2 - 2 * q3 * q3 + 1) / den,
+        (180.0 / Math.PI) * (2 * q1 * (-2 * q2 * q2 - 2 * q3 * q3 + 1) - 4 * q2 * (-2 * q0 * q3 - 2 * q1 * q2)) / den,
+        (180.0 / Math.PI) * (2 * q0 * (-2 * q2 * q2 - 2 * q3 * q3 + 1) - 4 * q3 * (-2 * q0 * q3 - 2 * q1 * q2)) / den,
+      ];
+    } else {
+      const den = Math.sqrt(1 - (2 * q0 * q2 - 2 * q1 * q3) * (2 * q0 * q2 - 2 * q1 * q3));
+      d = [(180.0 / Math.PI) * 2 * q2 / den, (180.0 / Math.PI) * -2 * q3 / den, (180.0 / Math.PI) * 2 * q0 / den, (180.0 / Math.PI) * -2 * q1 / den];
+    }
+    this.gradientsFrom(d);
+  }
+}
+
+/**
+ * colvar::rmsd: the RMSD of the group "atoms" from refPositions after the optimal fit (by default the group is
+ * centred and rotated onto the reference: rmsd::init enables f_ag_center and f_ag_rotate, and the fit gradients are
+ * off since they cancel in the gradients), the minimum over the atomPermutation lists; gradients 2 (x - ref) /
+ * (2 N rmsd), rotated back to the lab frame when the forces are applied.
+ */
+class Rmsd extends Component {
+  readonly functionType = 'rmsd';
+  readonly type: ValueType = 'scalar';
+  // cvc::init_as_distance: lower boundary 0
+  lowerBoundary: number | null = 0.0;
+  private readonly atomsGroup: AtomGroup;
+  /** The reference positions (not centred) of each permutation, the identity first. */
+  private readonly refs: number[][][] = [];
+  private best = 0;
+
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext) {
+    super();
+    this.initBase(c);
+    const g = this.group(atoms, c, 'atoms', cvName, true);
+    this.atomsGroup = g;
+    if (g.dummy || g.ids.length === 0) throw colvarsError('Error: no atoms defined for atom group "atoms".');
+    if (c.get('refPositionsFile') !== undefined) throw colvarsError('Error: the rmsd keyword "refPositionsFile" (reading coordinates from a file) is not supported by the browser engine; give the positions with refPositions.');
+    for (const k of ['refPositionsCol', 'refPositionsColValue']) c.get(k);
+    const rp = c.get('refPositions');
+    if (rp === undefined) throw colvarsError('Error: no reference positions for RMSD; use either refPositions of refPositionsFile.');
+    const ref = splitValues(rp).map((v) => {
+      if (!Array.isArray(v) || v.length !== 3) throw colvarsError(`Error: could not read the reference positions of "refPositions" from "${rp.trim()}".`);
+      return [...v];
+    });
+    if (ref.length !== g.ids.length) {
+      throw colvarsError(`Error: the number of reference positions provided (${ref.length}) does not match the number of atoms of group "atoms" (${g.ids.length}).`);
+    }
+    if (g.userDefinedFit) ctx.log('WARNING: explicit fitting parameters were provided for atom group "atoms".');
+    else {
+      ctx.log('Enabling "centerToReference" and "rotateToReference", to minimize RMSD before calculating it as a variable: if this is not the desired behavior, disable them explicitly within the "atoms" block.');
+      g.enableFit(ref);
+      ctx.log('This is a standard minimum RMSD, derivatives of the optimal rotation will not be computed as they cancel out in the gradients.');
+    }
+    // init_permutation: each atomPermutation lists the atom numbers in the order matching the reference positions
+    this.refs.push(ref);
+    for (const pc of c.all('atomPermutation')) {
+      if (pc.trim() === '') continue;
+      const perm: number[] = [];
+      for (const t of pc.trim().split(/\s+/)) {
+        const id = parseInt10(t, 'atomPermutation');
+        // As native LAMMPS does (lib/colvars/colvarcomp_distances.cpp init_permutation at b332f28): the group's ids are
+        // the LAMMPS atom numbers, but the lookup is "std::find(ids.begin(), ids.end(), index-1)", so each entry
+        // names its atom as atom number + 1
+        const ia = g.ids.indexOf(id - 1);
+        if (ia < 0) throw colvarsError(`Error: atom id ${id} is not a member of group "atoms".`);
+        if (perm.includes(ia)) throw colvarsError(`Error: atom id ${id} is mentioned more than once in atomPermutation list.`);
+        perm.push(ia);
+      }
+      if (perm.length !== g.ids.length) throw colvarsError(`Error: symmetry permutation in input contains ${perm.length} indices, but group "atoms" contains ${g.ids.length} atoms.`);
+      this.refs.push(perm.map((k) => ref[k]));
+    }
+  }
+
+  calcValue(): void {
+    const g = this.atomsGroup;
+    const n = g.ids.length;
+    // permutation_msds, then the first minimum (std::min_element)
+    let bestMsd = 0.0;
+    this.refs.forEach((ref, ip) => {
+      let msd = 0;
+      for (let ia = 0; ia < n; ia++) {
+        const dx = g.px[ia] - ref[ia][0], dy = g.py[ia] - ref[ia][1], dz = g.pz[ia] - ref[ia][2];
+        msd += dx * dx + dy * dy + dz * dz;
+      }
+      if (ip === 0 || msd < bestMsd) { bestMsd = msd; this.best = ip; }
+    });
+    let x = bestMsd;
+    x /= n;
+    this.x[0] = Math.sqrt(x);
+  }
+
+  calcGradients(): void {
+    const g = this.atomsGroup;
+    const n = g.ids.length;
+    const drmsddx2 = this.x[0] > 0.0 ? 0.5 / (this.x[0] * n) : 0.0;
+    const ref = this.refs[this.best];
+    const a = drmsddx2 * 2.0;
+    for (let ia = 0; ia < n; ia++) {
+      g.gx[ia] = a * (g.px[ia] - ref[ia][0]);
+      g.gy[ia] = a * (g.py[ia] - ref[ia][1]);
+      g.gz[ia] = a * (g.pz[ia] - ref[ia][2]);
+    }
+  }
+}
+
+/**
+ * The supported components, in the order colvar::init_components reads the types (a colvar's components, and so the
+ * order of their sum, follow it): distance, distanceVec, cartesian, distanceZ, distanceXY, coordNum, selfCoordNum,
+ * groupCoord, angle, dihedral, orientation, orientationAngle, orientationProj, tilt, spinAngle, rmsd, gyration, eulerPhi, eulerPsi,
+ * eulerTheta.
+ */
 const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext) => Component> = {
   distance: (a, c, n) => new Distance(a, c, n),
   distancevec: (a, c, n) => new DistanceVec(a, c, n),
   cartesian: (a, c, n) => new Cartesian(a, c, n),
-  gyration: (a, c, n) => new Gyration(a, c, n),
+  distancez: (a, c, n) => new DistanceZ(a, c, n),
+  distancexy: (a, c, n) => new DistanceXY(a, c, n),
   coordnum: (a, c, n, x) => new CoordNum(a, c, n, x),
   selfcoordnum: (a, c, n, x) => new CoordNum(a, c, n, x, 'selfCoordNum'),
   groupcoord: (a, c, n, x) => new CoordNum(a, c, n, x, 'groupCoord'),
   angle: (a, c, n) => new Angle(a, c, n),
   dihedral: (a, c, n) => new Dihedral(a, c, n),
-  distancez: (a, c, n) => new DistanceZ(a, c, n),
-  distancexy: (a, c, n) => new DistanceXY(a, c, n),
+  orientation: (a, c, n, x) => new Orientation(a, c, n, x),
+  orientationangle: (a, c, n, x) => new OrientationAngle(a, c, n, x),
+  orientationproj: (a, c, n, x) => new OrientationProj(a, c, n, x),
+  tilt: (a, c, n, x) => new Tilt(a, c, n, x),
+  spinangle: (a, c, n, x) => new SpinAngle(a, c, n, x),
+  rmsd: (a, c, n, x) => new Rmsd(a, c, n, x),
+  gyration: (a, c, n) => new Gyration(a, c, n),
+  eulerphi: (a, c, n, x) => new EulerAngle(a, c, n, x, 'eulerPhi'),
+  eulerpsi: (a, c, n, x) => new EulerAngle(a, c, n, x, 'eulerPsi'),
+  eulertheta: (a, c, n, x) => new EulerAngle(a, c, n, x, 'eulerTheta'),
 };
 const LIBRARY_COMPONENTS = [
   'distanceDir', 'distanceInv', 'distancePairs', 'dipoleMagnitude', 'dipoleAngle',
-  'hBond', 'rmsd', 'eigenvector', 'inertia',
-  'inertiaZ', 'orientation', 'orientationAngle', 'orientationProj', 'spinAngle', 'tilt', 'alpha', 'dihedralPC',
+  'hBond', 'eigenvector', 'inertia',
+  'inertiaZ', 'alpha', 'dihedralPC',
   'polarTheta', 'polarPhi', 'linearCombination', 'customColvar', 'neuralNetwork', 'mapTotal', 'aspathCV', 'azpathCV',
-  'gspath', 'gzpath', 'gspathCV', 'gzpathCV', 'euler_phi', 'euler_psi', 'euler_theta', 'dipoleDirection',
+  'gspath', 'gzpath', 'gspathCV', 'gzpathCV', 'dipoleDirection',
   'alchLambda', 'alchFLambda', 'componentDistance', 'distanceEuler',
 ];
-const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord';
+const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord, rmsd, orientation, orientationAngle, orientationProj, tilt, spinAngle, eulerPhi, eulerPsi, eulerTheta';
 
 /** One collective variable. */
 export class Colvar {
@@ -1260,6 +1856,7 @@ export class Colvar {
     let r = 0.0;
     if (this.type === 'scalar') return (a[0] - b[0]) * (a[0] - b[0]);
     if (this.type === '3vector') { const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2]; return dx * dx + dy * dy + dz * dz; }
+    if (this.type === 'quaternion') return quaternionDist2(a, b);
     for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; r += d * d; }
     return r;
   }
@@ -1267,6 +1864,7 @@ export class Colvar {
   /** colvar::dist2_lgrad. */
   dist2Lgrad(a: Float64Array, b: Float64Array): Float64Array {
     if (this.homogeneous) return this.cvcs[0].dist2Lgrad(a, b);
+    if (this.type === 'quaternion') return quaternionDist2Grad(a, b);
     const out = new Float64Array(a.length);
     for (let i = 0; i < a.length; i++) out[i] = 2.0 * (a[i] - b[i]);
     return out;
@@ -1297,6 +1895,7 @@ export class Colvar {
   outputWidth(): number {
     if (this.type === 'scalar') return CV_WIDTH;
     if (this.type === '3vector') return 3 * CV_WIDTH + 10;
+    if (this.type === 'quaternion') return 4 * CV_WIDTH + 13;
     return CV_WIDTH * this.x.length + 3 * (this.x.length - 1) + 4;
   }
 }
@@ -1439,6 +2038,13 @@ class Harmonic extends Restraint {
     if (centers === undefined) throw colvarsError('Error: must define the initial centers of the restraints.');
     if (splitValues(centers).length !== this.colvars.length) throw colvarsError('Error: number of centers does not match that of collective variables.');
     this.centers = parseColvarValues(centers, 'centers', this.colvars);
+    // colvarvalue::apply_constraints: a quaternion centre is normalized (q /= sqrt(norm2))
+    this.colvars.forEach((cv, i) => {
+      if (cv.type !== 'quaternion') return;
+      const q = this.centers[i];
+      const nrm = Math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+      for (let k = 0; k < 4; k++) q[k] /= nrm;
+    });
     c.check(`harmonic "${this.name}"`);
   }
 
@@ -2051,7 +2657,7 @@ class Metadynamics extends Bias {
   private hillTraj(h: Hill): string {
     let s = padLeft(String(h.it), IT_WIDTH) + ' ';
     s += '  ';
-    for (const c of h.centers) s += ' ' + valueStream(c, c.length === 1 ? 'scalar' : '3vector', sci21);
+    h.centers.forEach((c, i) => { s += ' ' + valueStream(c, this.colvars[i].type, sci21); });
     s += '  ';
     for (const sg of h.sigmas) s += ' ' + sci21(sg);
     s += '  ' + sci21(h.W) + '\n';
@@ -2061,7 +2667,7 @@ class Metadynamics extends Bias {
   /** write_hill (formatted): the step, the weight, the centres and the widths (twice the sigmas). */
   private hillState(h: Hill): string {
     let s = `hill {\nstep ${padLeft(String(h.it), IT_WIDTH)}\nweight ${sci21(h.W)}\ncenters `;
-    for (const c of h.centers) s += ' ' + valueStream(c, c.length === 1 ? 'scalar' : '3vector', sci21);
+    h.centers.forEach((c, i) => { s += ' ' + valueStream(c, this.colvars[i].type, sci21); });
     s += '\nwidths ';
     for (const sg of h.sigmas) s += ' ' + sci21(2.0 * sg);
     return s + '\n}\n';
@@ -2351,7 +2957,7 @@ export class ColvarsModule {
     let added = false;
     for (const v of c.all('colvar')) {
       if (v.trim() === '') throw colvarsError('Error: "colvar" keyword found without any configuration.');
-      const cv = new Colvar(this.atoms, v, this.colvars.length + 1, (n) => this.colvars.some((x) => x.name === n), { angstrom: this.angstrom });
+      const cv = new Colvar(this.atoms, v, this.colvars.length + 1, (n) => this.colvars.some((x) => x.name === n), { angstrom: this.angstrom, log: (t: string) => this.host.log(t) });
       this.colvars.push(cv);
       added = true;
     }

@@ -1,0 +1,35 @@
+colvarsTrajFrequency 5
+colvarsRestartFrequency 20
+
+colvar {
+  name r
+  width 0.1
+  rmsd {
+    atoms { atomNumbers 1 2 3 4 5 6 7 8 }
+    refPositions (0.647150, 0.595255, 0.745280) (1.279610, 1.653108, 0.513362) (1.685201, 0.673118, 0.961491) (0.992626, 1.230141, 1.514402) (2.190504, 1.052102, -0.096150) (2.838000, 1.934620, 0.004678) (3.354081, 0.893938, 0.559829) (2.389656, 1.720771, 0.890780)
+  }
+}
+
+colvar {
+  name rp
+  rmsd {
+    atoms { atomNumbers 20 21 22 23 }
+    refPositions (-0.956006, 1.113384, 0.189484) (0.378984, 0.720833, -1.376370) (1.051421, 1.701511, -1.529486) (1.346118, 0.667495, -1.051256)
+    atomPermutation 22 21 24 23
+    atomPermutation 23 24 21 22
+  }
+}
+
+harmonic {
+  colvars r
+  centers 0.2
+  forceConstant 20.0
+  outputEnergy on
+}
+
+harmonic {
+  colvars rp
+  centers 0.0
+  forceConstant 5.0
+  outputEnergy on
+}

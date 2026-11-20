@@ -105,14 +105,21 @@ run 0`);
     expect(row['f_w[3]']).toBeCloseTo(0.2, 9);
   });
 
-  it('a side-out union/intersect region is a StyleError naming the style', async () => {
+  it('a side-out union region: the exterior faces, as native computes them on its region surface', async () => {
+    // Measured with native LAMMPS (b332f28) on this input: pe = f_w 219.153903091735, f_w[1..3] -17.094010767585 each
+    // (the particle at (5,5,5) sees the three exterior faces of the union within the cutoff)
     const r = await runScript(`${HEAD}create_atoms 1 single 5 5 5 units box
 region A block 0 2 0 2 0 2 side in units box
 region B block 1 3 0 2 0 2 side in units box
 region U union 2 A B side out
 fix w all wall/region U harmonic 1.0 1.0 20.0
+fix_modify w energy yes
+thermo_style custom step pe f_w f_w[1] f_w[2] f_w[3]
 run 0`);
-    expect(message(r.error)).toMatch(/side-out union region is not supported/);
+    expect(r.error).toBeNull();
+    const row = r.thermo[0];
+    expect(row.f_w).toBeCloseTo(219.153903091735, 10);
+    for (const k of ['f_w[1]', 'f_w[2]', 'f_w[3]']) expect(row[k]).toBeCloseTo(-17.094010767585, 10);
   });
 });
 

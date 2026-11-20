@@ -10,15 +10,16 @@
  * write_state, read_state, setup_input, setup_output, parse_global_params, parse_colvars, parse_biases), colvar.cpp
  * (init, collect_cvc_values, update_forces_energy, communicate_forces, dist2, dist2_lgrad, write_traj_label, write_traj,
  * get_state_params), colvarcomp.cpp (cvc::init, cvc::dist2, cvc::dist2_lgrad, cvc::apply_force),
- * colvarcomp_distances.cpp (distance, distance_vec, distance_z, distance_xy, cartesian), colvarcomp_angles.cpp
- * (angle, dihedral), colvaratoms.cpp (atom_group parse, update_total_mass,
+ * colvarcomp_distances.cpp (distance, distance_vec, distance_z, distance_xy, cartesian, gyration),
+ * colvarcomp_angles.cpp (angle, dihedral), colvarcomp_coordnums.cpp/.h (coordnum, its switching function and pair
+ * list), colvaratoms.cpp (atom_group parse, update_total_mass,
  * calc_center_of_mass, set_weighted_gradient, apply_colvar_force, apply_force), colvarbias.cpp and
  * colvarbias_restraint.cpp (the harmonic and harmonic_walls restraints), colvars_system.h (system_boundary_conditions), colvartypes.h/.cpp
  * and colvarvalue.cpp (vector arithmetic and stream formats), colvarscript_commands.h (config, configfile),
  * colvarproxy.cpp, colvarproxy_io.cpp (output streams, backup_file) and colvarproxy_lammps.cpp (init, setup, compute).
  *
- * The supported subset: the components distance, distanceVec, distanceZ, distanceXY, angle, dihedral and cartesian
- * (atom groups from atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
+ * The supported subset: the components distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian,
+ * gyration and coordNum (atom groups from atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
  * (componentCoeff, componentExp), periodic components (dihedral; distanceZ with period), the harmonic and
  * harmonicWalls restraints, the trajectory file (colvarsTrajFrequency) and the state file (colvarsRestartFrequency, the
  * end of each run, the input state). Every other component, bias or keyword stops with an error naming it. The
@@ -362,7 +363,8 @@ abstract class Component {
     for (const g of this.groups) g.calc();
   }
 
-  abstract calcValue(): void;
+  /** cvc::calc_value; stepRelative is the module's step since its last restart (coordNum's pair list). */
+  abstract calcValue(stepRelative: number): void;
   calcGradients(): void {}
   /** cvc::apply_force: the colvar force on each atom group. */
   applyForce(f: Float64Array): void {
@@ -734,11 +736,228 @@ class DistanceXY extends DistanceZ {
   }
 }
 
+/** colvar::gyration: the radius of gyration of the atoms about their own centre of geometry. */
+class Gyration extends Component {
+  readonly functionType = 'gyration';
+  readonly type: ValueType = 'scalar';
+  private readonly atomsGroup: AtomGroup;
+
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string) {
+    super();
+    this.initBase(c);
+    this.atomsGroup = this.group(atoms, c, 'atoms', cvName);
+    if (this.atomsGroup.dummy) throw colvarsError('Error: the "atoms" group of a gyration component cannot be a dummy atom.');
+  }
+
+  calcValue(): void {
+    // gyration::init enables f_ag_center on a reference of one point at the origin: the positions are moved by
+    // -COG (calc_apply_roto_translation), then by the reference centre (0, 0, 0); fit gradients stay off
+    const g = this.atomsGroup, n = g.ids.length;
+    let cx = 0.0, cy = 0.0, cz = 0.0;
+    for (let i = 0; i < n; i++) { cx += g.px[i]; cy += g.py[i]; cz += g.pz[i]; }
+    cx /= n; cy /= n; cz /= n;
+    const tx = -1.0 * cx, ty = -1.0 * cy, tz = -1.0 * cz;
+    for (let i = 0; i < n; i++) {
+      g.px[i] = (g.px[i] + tx) + 0.0; g.py[i] = (g.py[i] + ty) + 0.0; g.pz[i] = (g.pz[i] + tz) + 0.0;
+    }
+    // the positions are stored x of every atom, then y, then z, and summed in that order
+    let r = 0.0;
+    for (let i = 0; i < n; i++) r += g.px[i] * g.px[i];
+    for (let i = 0; i < n; i++) r += g.py[i] * g.py[i];
+    for (let i = 0; i < n; i++) r += g.pz[i] * g.pz[i];
+    this.x[0] = Math.sqrt(r / n);
+  }
+
+  calcGradients(): void {
+    const g = this.atomsGroup, n = g.ids.length;
+    const drdx = 1.0 / (n * this.x[0]);
+    for (let i = 0; i < n; i++) { g.gx[i] = drdx * g.px[i]; g.gy[i] = drdx * g.py[i]; g.gz[i] = drdx * g.pz[i]; }
+  }
+}
+
+/** coordnum::switching_function: (1 - l2^(n/2)) / (1 - l2^(d/2)), with its log-derivative, the pair-list tolerance. */
+const switchingFunction = (l2: number, en: number, ed: number, usePairlist: boolean, gradients: boolean, tol: number, out: { dFdl2: number }): number => {
+  const en2 = Math.trunc(en / 2), ed2 = Math.trunc(ed / 2);
+  const xn = integerPower(l2, en2), xd = integerPower(l2, ed2);
+  const epsL2 = 1.0e-7;
+  const h = l2 - 1.0;
+  const en2r = en2, ed2r = ed2;
+  let f0: number;
+  if (Math.abs(h) < epsL2) {
+    // order-2 Taylor expansion about l2 = 1
+    const c0 = en2r / ed2r;
+    const c1 = (en2r * (en2r - ed2r)) / (2.0 * ed2r);
+    const c2 = (en2r * (en2r - ed2r) * (2.0 * en2r - ed2r - 3.0)) / (12.0 * ed2r);
+    f0 = c0 + h * (c1 + h * c2);
+  } else {
+    f0 = (1.0 - xn) / (1.0 - xd);
+  }
+  let func: number, inv = 0;
+  if (usePairlist) {
+    inv = 1 / (1.0 - tol);
+    func = (f0 - tol) * inv;
+  } else {
+    func = f0;
+  }
+  if (func < 0) return 0;
+  if (gradients) {
+    let logDeriv: number;
+    if (Math.abs(h) < epsL2) {
+      const g0 = 0.5 * (en2r - ed2r);
+      const g1 = ((en2r - ed2r) * (en2r + ed2r - 6.0)) / 12.0;
+      logDeriv = g0 + h * g1;
+    } else {
+      logDeriv = (ed2r * xd / ((1.0 - xd) * l2)) - (en2r * xn / ((1.0 - xn) * l2));
+    }
+    out.dFdl2 = usePairlist ? f0 * inv * logDeriv : func * logDeriv;
+  }
+  return func;
+};
+
+/** colvar::coordnum: the sum over atom pairs of group1 and group2 of the switching function of their distance. */
+class CoordNum extends Component {
+  readonly functionType = 'coordNum';
+  readonly type: ValueType = 'scalar';
+  private readonly g1: AtomGroup;
+  private readonly g2: AtomGroup;
+  private readonly center1: boolean;
+  private readonly center2: boolean;
+  private r0 = [0, 0, 0];
+  private invR0 = [0, 0, 0];
+  private invR0sq = [0, 0, 0];
+  private en = 6;
+  private ed = 12;
+  private tolerance = 0.0;
+  private tolL2Max = 1.0e20;
+  private pairlistFreq = 100;
+  private pairlist: Uint8Array | null = null;
+
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext) {
+    super();
+    // the default cutoff, 4 A in the units of the input (proxy->angstrom_to_internal)
+    const r0 = 4.0 * ctx.angstrom;
+    this.updateCutoffs([r0, r0, r0]);
+    this.initBase(c);
+    this.g1 = this.group(atoms, c, 'group1', cvName);
+    if (this.g1.dummy) throw colvarsError('Error: group1 may not be a dummy atom');
+    this.g2 = this.group(atoms, c, 'group2', cvName);
+    const shared = this.g1.ids.find((id) => this.g2.ids.includes(id));
+    if (shared !== undefined) throw colvarsError(`Error: group1 and group2 share a common atom (number: ${shared})`);
+    const b1 = c.get('group1CenterOnly'), b2 = c.get('group2CenterOnly');
+    const dummy2 = this.g2.dummy !== null;
+    this.center1 = b1 !== undefined ? parseBool(b1, 'group1CenterOnly') : dummy2;
+    this.center2 = b2 !== undefined ? parseBool(b2, 'group2CenterOnly') : dummy2;
+    const cut = c.get('cutoff');
+    const cut3 = c.get('cutoff3');
+    if (cut3 !== undefined) {
+      if (cut !== undefined) throw colvarsError('Error: cannot specify "cutoff" and "cutoff3" at the same time.');
+      const v = splitValues(cut3);
+      if (v.length !== 1 || !Array.isArray(v[0]) || v[0].length !== 3) throw colvarsError(`Error: could not read the vector of "cutoff3" from "${cut3.trim()}".`);
+      // remove meaningless negative signs
+      this.updateCutoffs(v[0].map((r) => (r < 0.0 ? r * -1.0 : r)));
+    } else if (cut !== undefined) {
+      const r = parseReal(cut, 'cutoff');
+      this.updateCutoffs([r, r, r]);
+    }
+    const en = c.get('expNumer'), ed = c.get('expDenom');
+    if (en !== undefined) this.en = parseInt10(en, 'expNumer');
+    if (ed !== undefined) this.ed = parseInt10(ed, 'expDenom');
+    if (this.en % 2 || this.ed % 2) throw colvarsError('Error: odd exponent(s) provided, can only use even ones.');
+    if (this.en <= 0 || this.ed <= 0) throw colvarsError('Error: negative exponent(s) provided.');
+    const tol = c.get('tolerance');
+    if (tol !== undefined) this.tolerance = parseReal(tol, 'tolerance');
+    if (this.tolerance > 0) {
+      this.computeTolL2Max();
+      const pf = c.get('pairListFrequency');
+      if (pf !== undefined) this.pairlistFreq = parseInt10(pf, 'pairListFrequency');
+      if (!(this.pairlistFreq > 0)) throw colvarsError('Error: non-positive pairlistfrequency provided.');
+      const n1 = this.center1 ? 1 : this.g1.ids.length, n2 = this.center2 ? 1 : this.g2.ids.length;
+      this.pairlist = new Uint8Array(n1 * n2).fill(1);
+    } else {
+      c.get('pairListFrequency');
+    }
+  }
+
+  private updateCutoffs(r0: number[]): void {
+    this.r0 = r0;
+    this.invR0 = [1.0 / r0[0], 1.0 / r0[1], 1.0 / r0[2]];
+    this.invR0sq = [this.invR0[0] * this.invR0[0], this.invR0[1] * this.invR0[1], this.invR0[2] * this.invR0[2]];
+  }
+
+  /** compute_tolerance_l2_max: the l2 where the tolerance-shifted switching function reaches 0 (Newton). */
+  private computeTolL2Max(): void {
+    let l2 = 1.001;
+    const d = { dFdl2: 0.0 };
+    for (let i = 0; i < 1000000; i++) {
+      const F = switchingFunction(l2, this.en, this.ed, true, true, this.tolerance, d);
+      if (Math.abs(F) < 1.0e-6 || Math.abs(d.dFdl2) < 1.0e-9) break;
+      l2 -= F / d.dFdl2;
+    }
+    this.tolL2Max = l2;
+  }
+
+  calcValue(stepRelative: number): void {
+    const g1 = this.g1, g2 = this.g2;
+    // cvc::read_data reset the gradients; the loop sums the pair terms into them
+    g1.gx.fill(0); g1.gy.fill(0); g1.gz.fill(0);
+    g2.gx.fill(0); g2.gy.fill(0); g2.gz.fill(0);
+    const usePl = this.pairlist !== null;
+    const rebuild = usePl && stepRelative % this.pairlistFreq === 0;
+    const n1 = this.center1 ? 1 : g1.ids.length, n2 = this.center2 ? 1 : g2.ids.length;
+    const com1 = g1.com, com2 = g2.com;
+    const cg1 = [0.0, 0.0, 0.0], cg2 = [0.0, 0.0, 0.0];
+    const diff = [0, 0, 0];
+    const p1 = [0, 0, 0], p2 = [0, 0, 0];
+    const d = { dFdl2: 0.0 };
+    let x = 0.0;
+    let k = 0;
+    for (let i = 0; i < n1; i++) {
+      if (this.center1) { p1[0] = com1[0]; p1[1] = com1[1]; p1[2] = com1[2]; } else { p1[0] = g1.px[i]; p1[1] = g1.py[i]; p1[2] = g1.pz[i]; }
+      for (let j = 0; j < n2; j++) {
+        if (this.center2) { p2[0] = com2[0]; p2[1] = com2[1]; p2[2] = com2[2]; } else { p2[0] = g2.px[j]; p2[1] = g2.py[j]; p2[2] = g2.pz[j]; }
+        const within = usePl ? (this.pairlist![k] === 1 || rebuild) : true;
+        let partial = 0.0;
+        if (within) {
+          this.bc.distance(p1, p2, diff);
+          const sx = diff[0] * this.invR0[0], sy = diff[1] * this.invR0[1], sz = diff[2] * this.invR0[2];
+          const l2 = sx * sx + sy * sy + sz * sz;
+          if (!(usePl && l2 > this.tolL2Max)) {
+            d.dFdl2 = 0.0;
+            const F = switchingFunction(l2, this.en, this.ed, usePl, true, this.tolerance, d);
+            if (F > 0.0) {
+              const Gx = d.dFdl2 * ((2.0 * this.invR0sq[0]) * diff[0]);
+              const Gy = d.dFdl2 * ((2.0 * this.invR0sq[1]) * diff[1]);
+              const Gz = d.dFdl2 * ((2.0 * this.invR0sq[2]) * diff[2]);
+              if (this.center1) { cg1[0] += -1.0 * Gx; cg1[1] += -1.0 * Gy; cg1[2] += -1.0 * Gz; } else { g1.gx[i] += -1.0 * Gx; g1.gy[i] += -1.0 * Gy; g1.gz[i] += -1.0 * Gz; }
+              if (this.center2) { cg2[0] += Gx; cg2[1] += Gy; cg2[2] += Gz; } else { g2.gx[j] += Gx; g2.gy[j] += Gy; g2.gz[j] += Gz; }
+            }
+            partial = F;
+          }
+        }
+        if (usePl && rebuild) this.pairlist![k] = partial > 0.0 ? 1 : 0;
+        x += partial;
+        if (usePl) k++;
+      }
+    }
+    this.x[0] = x;
+    if (this.center1) g1.setWeightedGradient(cg1);
+    if (this.center2) g2.setWeightedGradient(cg2);
+  }
+}
+
+/** What a component needs from the module: the unit of length (proxy->angstrom_to_internal). */
+export interface ComponentContext {
+  /** force->angstrom of the unit style. */
+  angstrom: number;
+}
+
 /** The components of this port, and the ones of the library it refuses. */
-const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string) => Component> = {
+const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext) => Component> = {
   distance: (a, c, n) => new Distance(a, c, n),
   distancevec: (a, c, n) => new DistanceVec(a, c, n),
   cartesian: (a, c, n) => new Cartesian(a, c, n),
+  gyration: (a, c, n) => new Gyration(a, c, n),
+  coordnum: (a, c, n, x) => new CoordNum(a, c, n, x),
   angle: (a, c, n) => new Angle(a, c, n),
   dihedral: (a, c, n) => new Dihedral(a, c, n),
   distancez: (a, c, n) => new DistanceZ(a, c, n),
@@ -746,13 +965,13 @@ const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string) 
 };
 const LIBRARY_COMPONENTS = [
   'distanceDir', 'distanceInv', 'distancePairs', 'dipoleMagnitude', 'dipoleAngle',
-  'coordNum', 'selfCoordNum', 'groupCoord', 'hBond', 'rmsd', 'eigenvector', 'gyration', 'inertia',
+  'selfCoordNum', 'groupCoord', 'hBond', 'rmsd', 'eigenvector', 'inertia',
   'inertiaZ', 'orientation', 'orientationAngle', 'orientationProj', 'spinAngle', 'tilt', 'alpha', 'dihedralPC',
   'polarTheta', 'polarPhi', 'linearCombination', 'customColvar', 'neuralNetwork', 'mapTotal', 'aspathCV', 'azpathCV',
   'gspath', 'gzpath', 'gspathCV', 'gzpathCV', 'euler_phi', 'euler_psi', 'euler_theta', 'dipoleDirection',
   'alchLambda', 'alchFLambda', 'componentDistance', 'distanceEuler',
 ];
-const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian';
+const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum';
 
 /** One collective variable. */
 export class Colvar {
@@ -774,7 +993,7 @@ export class Colvar {
   /** The value last read from an input state file (x_restart), checked once (after_restart). */
   xRestart: Float64Array | null = null;
 
-  constructor(atoms: ColvarsAtoms, conf: string, index: number, existing: (name: string) => boolean) {
+  constructor(atoms: ColvarsAtoms, conf: string, index: number, existing: (name: string) => boolean, ctx: ComponentContext) {
     const c = new Conf(conf);
     const nm = c.get('name');
     this.name = nm !== undefined ? nm.trim() : `colvar${index}`;
@@ -809,7 +1028,7 @@ export class Colvar {
       }
     }
     for (const [lower, make] of Object.entries(COMPONENTS)) {
-      for (const v of c.all(lower)) this.cvcs.push(make(atoms, new Conf(v), this.name));
+      for (const v of c.all(lower)) this.cvcs.push(make(atoms, new Conf(v), this.name, ctx));
     }
     c.check(`colvar "${this.name}"`);
     if (this.cvcs.length === 0) throw colvarsError(`Error: no valid components were provided for this collective variable.`);
@@ -838,10 +1057,10 @@ export class Colvar {
   }
 
   /** colvar::calc: component values and gradients, then collect_cvc_values. */
-  calc(bc: Boundaries, simulationRunning: boolean): void {
+  calc(bc: Boundaries, simulationRunning: boolean, stepRelative: number): void {
     for (const cvc of this.cvcs) {
       cvc.readData(bc);
-      cvc.calcValue();
+      cvc.calcValue(stepRelative);
       cvc.calcGradients();
     }
     this.x.fill(0);
@@ -1154,6 +1373,8 @@ export class ColvarsModule {
   /** Output files this module opened (colvarproxy_io output streams). */
   private readonly open = new Set<string>();
   inputPrefix = '';
+  /** force->angstrom of the unit style (proxy->angstrom_to_internal), set by the fix. */
+  angstrom = 1.0;
   /** integration timestep in fs (dt * force->femtosecond). */
   dt = 1.0;
   readonly bc = new Boundaries();
@@ -1219,7 +1440,7 @@ export class ColvarsModule {
     let added = false;
     for (const v of c.all('colvar')) {
       if (v.trim() === '') throw colvarsError('Error: "colvar" keyword found without any configuration.');
-      const cv = new Colvar(this.atoms, v, this.colvars.length + 1, (n) => this.colvars.some((x) => x.name === n));
+      const cv = new Colvar(this.atoms, v, this.colvars.length + 1, (n) => this.colvars.some((x) => x.name === n), { angstrom: this.angstrom });
       this.colvars.push(cv);
       added = true;
     }
@@ -1323,7 +1544,7 @@ export class ColvarsModule {
   /** colvarmodule::calc. */
   private calc(): void {
     // calc_colvars
-    for (const cv of this.colvars) cv.calc(this.bc, this.running);
+    for (const cv of this.colvars) cv.calc(this.bc, this.running, this.it - this.itRestart);
     // calc_biases
     for (const cv of this.colvars) cv.fb.fill(0);
     let total = 0.0;

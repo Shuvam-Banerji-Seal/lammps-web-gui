@@ -51,9 +51,9 @@ describe('fix colvars: the supported subset and its refusals', () => {
   });
 
   it('refuses a component, a bias and a keyword outside the subset, naming them', async () => {
-    const cn = await run({ 'a.colvars': 'colvar {\n  name t\n  coordNum {\n    group1 { atomNumbers 1 }\n    group2 { atomNumbers 2 3 }\n  }\n}\n' },
+    const cn = await run({ 'a.colvars': 'colvar {\n  name t\n  selfCoordNum {\n    group1 { atomNumbers 1 2 3 }\n  }\n}\n' },
       `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
-    expect(cn.error).toMatch(/Colvars component "coordNum" is not supported by the browser engine \(supported: distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian\)/);
+    expect(cn.error).toMatch(/Colvars component "selfCoordNum" is not supported by the browser engine \(supported: distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum\)/);
     const meta = await run({ 'a.colvars': config('metadynamics {\n  colvars d\n}\n') }, `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
     expect(meta.error).toMatch(/Colvars bias "metadynamics" is not supported by the browser engine \(supported: harmonic, harmonicWalls\)/);
     const kw = await run({ 'a.colvars': config('harmonic {\n  colvars d\n  centers 1.0\n  springiness 3\n}\n') }, `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);

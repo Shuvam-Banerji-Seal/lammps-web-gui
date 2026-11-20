@@ -21,6 +21,9 @@ import type { System } from '../../engine/system';
 import { ColvarsModule } from './module';
 
 /** force->femtosecond of each unit style (src/update.cpp Update::set_units at b332f28). */
+/** force->angstrom of each unit style (src/update.cpp Update::set_units at b332f28). */
+const ANGSTROM: Record<string, number> = { lj: 1.0, real: 1.0, metal: 1.0, si: 1.0e-10, cgs: 1.0e-8, electron: 1.88972612, micro: 1.0e-4, nano: 1.0e-1 };
+
 const FEMTOSECOND: Record<string, number> = { lj: 1.0, real: 1.0, metal: 1.0e-3, si: 1.0e-15, cgs: 1.0e-15, electron: 1.0, micro: 1.0e-9, nano: 1.0e-6 };
 
 const FIX_KEYWORDS = new Set(['input', 'output', 'seed', 'unwrap', 'tstat']);
@@ -72,6 +75,8 @@ export class FixColvars extends Fix {
       log: (text: string): void => sys.log(text),
     };
     this.module = new ColvarsModule(host);
+    // colvarproxy_lammps::init: angstrom_value_ = force->angstrom
+    this.module.angstrom = ANGSTROM[sys.units.style] ?? 1.0;
     this.module.initFromEngine(sys.state.step, this.dtFs());
     if (confFile !== null) this.module.addConfig('configfile', confFile);
   }

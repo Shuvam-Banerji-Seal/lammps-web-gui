@@ -1,0 +1,55 @@
+# Colvars configuration of tests/oracle/w767cv_coord.in
+colvarsTrajFrequency 5
+colvarsRestartFrequency 20
+
+colvar {
+  name rg
+  gyration {
+    atoms { atomNumbersRange 1-20 }
+  }
+}
+
+colvar {
+  name cn
+  coordNum {
+    group1 { atomNumbers 1 2 3 }
+    group2 { atomNumbersRange 30-60 }
+    cutoff 1.5
+    expNumer 8
+    expDenom 14
+  }
+}
+
+colvar {
+  name cnd
+  coordNum {
+    group1 { atomNumbersRange 100-140 }
+    group2 { dummyAtom (3.0, 3.0, 3.0) }
+    cutoff3 (2.0, -2.5, 3.0)
+  }
+}
+
+colvar {
+  name cnp
+  coordNum {
+    group1 { atomNumbersRange 150-160 }
+    group2 { atomNumbersRange 161-200 }
+    cutoff 1.3
+    tolerance 0.001
+    pairListFrequency 3
+  }
+}
+
+harmonic {
+  colvars rg cn
+  centers 2.3 7.0
+  forceConstant 0.5
+  outputEnergy on
+}
+
+harmonicWalls {
+  colvars cnd cnp
+  lowerWalls 1.2 15.0
+  upperWalls 3.0 18.0
+  forceConstant 0.2
+}

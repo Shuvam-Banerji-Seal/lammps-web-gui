@@ -1,0 +1,37 @@
+colvarsTrajFrequency 4
+colvarsRestartFrequency 12
+
+colvar {
+  name phi
+  width 30.0
+  dihedral {
+    group1 { atomNumbers 1 }
+    group2 { atomNumbers 2 }
+    group3 { atomNumbers 17 }
+    group4 { atomNumbers 18 }
+  }
+}
+
+colvar {
+  name r
+  width 0.2
+  upperBoundary 3.0
+  distance {
+    group1 { atomNumbers 5 6 }
+    group2 { atomNumbers 40 }
+  }
+}
+
+metadynamics {
+  name wt
+  colvars phi r
+  hillWeight 0.5
+  gaussianSigmas 20.0 0.3
+  newHillFrequency 4
+  gridsUpdateFrequency 8
+  wellTempered on
+  biasTemperature 4.0
+  stepZeroData on
+  outputEnergy on
+  outputFreq 16
+}

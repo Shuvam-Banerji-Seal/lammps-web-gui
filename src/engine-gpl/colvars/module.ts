@@ -14,20 +14,27 @@
  * colvarcomp_angles.cpp (angle, dihedral), colvarcomp_coordnums.cpp/.h (coordnum, selfcoordnum, groupcoordnum, the
  * switching function and pair list), colvaratoms.cpp (atom_group parse, update_total_mass,
  * calc_center_of_mass, set_weighted_gradient, apply_colvar_force, apply_force), colvarbias.cpp and
- * colvarbias_restraint.cpp (the harmonic and harmonic_walls restraints), colvars_system.h (system_boundary_conditions), colvartypes.h/.cpp
+ * colvarbias_restraint.cpp (the harmonic and harmonic_walls restraints), colvarbias_meta.cpp/.h (metadynamics: hills,
+ * grids, well-tempered, the PMF and hills trajectory files), colvargrid.h, colvargrid_def.h and colvargrid.cpp (the
+ * scalar and gradient grids: init_from_colvars, setup, map_grid, write_restart, write_multicol), colvar.cpp
+ * init_grid_parameters and check_grid_parameters, colvars_system.h (system_boundary_conditions), colvartypes.h/.cpp
  * and colvarvalue.cpp (vector arithmetic and stream formats), colvarscript_commands.h (config, configfile),
  * colvarproxy.cpp, colvarproxy_io.cpp (output streams, backup_file) and colvarproxy_lammps.cpp (init, setup, compute).
  *
  * The supported subset: the components distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian,
  * gyration, coordNum, selfCoordNum and groupCoord (atom groups from atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
  * (componentCoeff, componentExp), periodic components (dihedral; distanceZ with period), the harmonic and
- * harmonicWalls restraints, the trajectory file (colvarsTrajFrequency) and the state file (colvarsRestartFrequency, the
- * end of each run, the input state). Every other component, bias or keyword stops with an error naming it. The
+ * harmonicWalls restraints, metadynamics on one replica (hillWeight, hillWidth or gaussianSigmas, newHillFrequency,
+ * useGrids with gridsUpdateFrequency, expandBoundaries, keepHills, wellTempered with biasTemperature, stepZeroData,
+ * outputFreq, writeFreeEnergyFile, writeHillsTrajectory), the trajectory file (colvarsTrajFrequency) and the state
+ * file (colvarsRestartFrequency, the end of each run, the input state; a metadynamics state is written but not read
+ * back). Every other component, bias or keyword stops with an error naming it. The
  * arithmetic follows the library's order of operations, so the values match native LAMMPS to the last bit.
  */
 import { compileCFormat } from '../../engine/cformat';
 import { Conf, colvarsError, parseBool, parseInt10, parseReal, splitValues } from './config';
 import { acos } from '../libm/acos';
+import { exp } from '../libm/exp';
 
 /** colvarmodule.h widths and precisions of the trajectory and state files. */
 const IT_WIDTH = 12;
@@ -320,6 +327,12 @@ abstract class Component {
   periodic = false;
   period = 0.0;
   wrapCenter = 0.0;
+  /**
+   * f_cvc_lower_boundary / f_cvc_upper_boundary: the intrinsic boundaries of a scalar component (cvc::init_as_distance
+   * sets lower 0; init_as_angle 0 and 180; init_as_periodic_angle -180 and 180; init_scalar_boundaries), null if none.
+   */
+  lowerBoundary: number | null = null;
+  upperBoundary: number | null = null;
 
   /** cvc::init: the keywords every component reads. */
   protected initBase(c: Conf): void {
@@ -395,6 +408,8 @@ abstract class Component {
 /** colvar::distance: |COM2 - COM1| (minimum image). */
 class Distance extends Component {
   readonly functionType: string = 'distance';
+  // cvc::init_as_distance: lower boundary 0
+  lowerBoundary: number | null = 0.0;
   readonly type: ValueType = 'scalar';
   protected g1: AtomGroup;
   protected g2: AtomGroup;
@@ -527,6 +542,9 @@ const unit3 = (v: number[]): number[] => { const n = norm3(v); return n > 0.0 ? 
 /** colvar::angle: the angle at the centre of mass of group2, in degrees. */
 class Angle extends Component {
   readonly functionType = 'angle';
+  // cvc::init_as_angle: boundaries 0 and 180
+  lowerBoundary: number | null = 0.0;
+  upperBoundary: number | null = 180.0;
   readonly type: ValueType = 'scalar';
   private readonly g1: AtomGroup;
   private readonly g2: AtomGroup;
@@ -573,6 +591,9 @@ class Angle extends Component {
 /** colvar::dihedral: the dihedral angle of four centres of mass, in degrees, periodic over 360. */
 class Dihedral extends Component {
   readonly functionType = 'dihedral';
+  // cvc::init_as_periodic_angle: boundaries -180 and 180
+  lowerBoundary: number | null = -180.0;
+  upperBoundary: number | null = 180.0;
   readonly type: ValueType = 'scalar';
   protected periodicAvailable(): boolean { return true; }
   private readonly g: AtomGroup[];
@@ -698,6 +719,8 @@ class DistanceZ extends Component {
 /** colvar::distance_xy: the length of the part of main - ref perpendicular to the axis. */
 class DistanceXY extends DistanceZ {
   readonly functionType: string = 'distanceXY';
+  // distance_xy: cvc::init_as_distance, lower boundary 0
+  lowerBoundary: number | null = 0.0;
   // provide(f_cvc_periodic, false): the inherited distanceZ flag is withdrawn
   protected periodicAvailable(): boolean { return false; }
   private ortho = [0, 0, 0];
@@ -739,6 +762,8 @@ class DistanceXY extends DistanceZ {
 /** colvar::gyration: the radius of gyration of the atoms about their own centre of geometry. */
 class Gyration extends Component {
   readonly functionType = 'gyration';
+  // cvc::init_as_distance: lower boundary 0
+  lowerBoundary: number | null = 0.0;
   readonly type: ValueType = 'scalar';
   private readonly atomsGroup: AtomGroup;
 
@@ -893,6 +918,10 @@ class CoordNum extends Component {
       const pairs = this.g2 === null ? (n * (n - 1)) / 2 : (this.center1 ? 1 : n) * (this.center2 ? 1 : this.g2.ids.length);
       this.pairlist = new Uint8Array(pairs).fill(1);
     }
+    // coordnum::init: init_scalar_boundaries(0.0, num_pairs)
+    const n1 = this.g1.ids.length;
+    this.lowerBoundary = 0.0;
+    this.upperBoundary = this.g2 === null ? Math.floor((n1 * (n1 - 1)) / 2) : (this.center1 ? 1 : n1) * (this.center2 ? 1 : this.g2.ids.length);
   }
 
   private updateCutoffs(r0: number[]): void {
@@ -1058,6 +1087,19 @@ export class Colvar {
   outputAppliedForce = false;
   /** The value last read from an input state file (x_restart), checked once (after_restart). */
   xRestart: Float64Array | null = null;
+  /** colvar::period of a periodic colvar (the components' period), 0 otherwise. */
+  period = 0.0;
+  /**
+   * Grid parameters (colvar::init_grid_parameters): the boundaries, default 0 and width ("Default to 1-wide grids"),
+   * f_cv_lower_boundary / f_cv_upper_boundary, the hard boundaries and expandBoundaries.
+   */
+  lowerBoundary = 0.0;
+  upperBoundary = 1.0;
+  lowerBoundaryOn = false;
+  upperBoundaryOn = false;
+  hardLower = false;
+  hardUpper = false;
+  expandBoundaries = false;
 
   constructor(atoms: ColvarsAtoms, conf: string, index: number, existing: (name: string) => boolean, ctx: ComponentContext) {
     const c = new Conf(conf);
@@ -1069,8 +1111,14 @@ export class Colvar {
       this.width = parseReal(w, 'width');
       if (!(this.width > 0.0)) throw colvarsError('Error: "width" must be positive.');
     }
-    for (const k of ['lowerBoundary', 'upperBoundary']) { const v = c.get(k); if (v !== undefined) parseReal(v, k); }
-    for (const k of ['hardLowerBoundary', 'hardUpperBoundary', 'expandBoundaries']) { const v = c.get(k); if (v !== undefined) parseBool(v, k); }
+    // the grid parameters are read here and applied once the components are known (init_grid_parameters)
+    const lbText = c.get('lowerBoundary'), ubText = c.get('upperBoundary');
+    const lbIn = lbText !== undefined ? parseReal(lbText, 'lowerBoundary') : undefined;
+    const ubIn = ubText !== undefined ? parseReal(ubText, 'upperBoundary') : undefined;
+    const hlText = c.get('hardLowerBoundary'), huText = c.get('hardUpperBoundary'), exText = c.get('expandBoundaries');
+    const hlIn = hlText !== undefined ? parseBool(hlText, 'hardLowerBoundary') : undefined;
+    const huIn = huText !== undefined ? parseBool(huText, 'hardUpperBoundary') : undefined;
+    if (exText !== undefined) this.expandBoundaries = parseBool(exText, 'expandBoundaries');
     const ov = c.get('outputValue');
     if (ov !== undefined) this.outputValue = parseBool(ov, 'outputValue');
     const oa = c.get('outputAppliedForce');
@@ -1115,11 +1163,66 @@ export class Colvar {
       const period = this.cvcs[0].period;
       this.periodic = this.cvcs.every((cvc) => cvc.periodic && cvc.period === period);
     }
+    if (this.periodic) this.period = this.cvcs[0].period;
     const size = this.cvcs[0].x.length;
     if (this.type === 'vector') for (const cvc of this.cvcs) if (cvc.x.length !== size) throw colvarsError(`Error: the components of colvar "${this.name}" have different sizes.`);
     this.x = new Float64Array(size);
+    this.initGridParameters(lbIn, ubIn, hlIn, huIn);
     this.fb = new Float64Array(size);
     this.f = new Float64Array(size);
+  }
+
+  /**
+   * colvar::init_grid_parameters for a scalar colvar: a single component (f_cv_single_cvc: one homogeneous component
+   * with coefficient 1 and exponent 1) gives its intrinsic boundaries, which are hard; a user boundary farther than
+   * colvar_boundaries_tol (1e-10 widths) from the intrinsic one is not hard; hardLowerBoundary and hardUpperBoundary
+   * set the features; then check_grid_parameters.
+   */
+  private initGridParameters(lbIn: number | undefined, ubIn: number | undefined, hlIn: boolean | undefined, huIn: boolean | undefined): void {
+    this.lowerBoundary = 0.0;
+    this.upperBoundary = this.width;
+    if (this.type !== 'scalar') return;
+    const single = this.cvcs.length === 1 && this.homogeneous && Math.abs(this.cvcs[0].coeff - 1.0) < 1.0e-10 && this.cvcs[0].exponent === 1;
+    let cvcLb = 0.0, cvcUb = 0.0;
+    if (single) {
+      const cvc = this.cvcs[0];
+      if (cvc.lowerBoundary !== null) { this.lowerBoundaryOn = true; this.hardLower = true; this.lowerBoundary = cvcLb = cvc.lowerBoundary; }
+      if (cvc.upperBoundary !== null) { this.upperBoundaryOn = true; this.hardUpper = true; this.upperBoundary = cvcUb = cvc.upperBoundary; }
+    }
+    const tol = 1.0e-10;
+    if (lbIn !== undefined) {
+      this.lowerBoundary = lbIn;
+      this.lowerBoundaryOn = true;
+      if (single && this.hardLower && Math.sqrt(this.dist2(Float64Array.of(lbIn), Float64Array.of(cvcLb))) / this.width > tol) this.hardLower = false;
+    }
+    if (ubIn !== undefined) {
+      this.upperBoundary = ubIn;
+      this.upperBoundaryOn = true;
+      if (single && this.hardUpper && Math.sqrt(this.dist2(Float64Array.of(ubIn), Float64Array.of(cvcUb))) / this.width > tol) this.hardUpper = false;
+    }
+    if (hlIn !== undefined) this.hardLower = hlIn;
+    if (huIn !== undefined) this.hardUpper = huIn;
+    if (this.hardLower && !this.lowerBoundaryOn) throw colvarsError(`Error: feature "hard_lower_boundary" of colvar "${this.name}" requires "lower_boundary" (lowerBoundary).`);
+    if (this.hardUpper && !this.upperBoundaryOn) throw colvarsError(`Error: feature "hard_upper_boundary" of colvar "${this.name}" requires "upper_boundary" (upperBoundary).`);
+    // check_grid_parameters
+    if (this.lowerBoundaryOn && this.upperBoundaryOn && this.lowerBoundary >= this.upperBoundary) {
+      throw colvarsError(`Error: the upper boundary, ${this.upperBoundary}, is not higher than the lower boundary, ${this.lowerBoundary}.`);
+    }
+    if (this.expandBoundaries && this.periodicBoundaries()) throw colvarsError('Error: trying to expand boundaries that already cover a whole period of a periodic colvar.');
+    if (this.expandBoundaries && this.hardLower && this.hardUpper) {
+      throw colvarsError('Error: inconsistent configuration (trying to expand boundaries, but both hardLowerBoundary and hardUpperBoundary are enabled).');
+    }
+  }
+
+  /** colvar::periodic_boundaries(lb, ub): a periodic colvar whose interval spans one period (within 1e-10 widths). */
+  periodicBoundariesOf(lb: number, ub: number): boolean {
+    return this.period > 0.0 && Math.sqrt(this.dist2(Float64Array.of(lb), Float64Array.of(ub))) / this.width < 1.0e-10;
+  }
+
+  /** colvar::periodic_boundaries(): false unless both boundaries are defined. */
+  periodicBoundaries(): boolean {
+    if (!this.lowerBoundaryOn || !this.upperBoundaryOn) return false;
+    return this.periodicBoundariesOf(this.lowerBoundary, this.upperBoundary);
   }
 
   /** colvar::calc: component values and gradients, then collect_cvc_values. */
@@ -1202,20 +1305,28 @@ export class Colvar {
 const valueStream = (v: Float64Array, type: ValueType, fmt: (x: number) => string): string =>
   type === 'scalar' ? fmt(v[0]) : `( ${[...v].map(fmt).join(' , ')} )`;
 
-/** colvarbias_restraint_harmonic. */
-/** The restraint biases: colvarbias and colvarbias_restraint (names, colvars, output, the state block). */
-abstract class Restraint {
+/**
+ * colvarbias: names, colvars, output, the state block. Each bias type adds its update, its state data and its output
+ * files.
+ */
+abstract class Bias {
   abstract readonly biasType: string;
-  readonly stateKeyword = 'restraint';
+  abstract readonly stateKeyword: string;
   name = '';
   readonly colvars: Colvar[] = [];
-  forceK = 1.0;
   outputEnergy = false;
   energy = 0.0;
   forces: Float64Array[] = [];
+  /** outputFreq: default the module's colvarsRestartFrequency when the bias is defined (colvarbias constructor). */
+  outputFreq = 0;
+  /** f_cvb_step_zero_data (stepZeroData). */
+  stepZeroData = false;
+  protected module!: ColvarsModule;
 
-  /** colvarbias::init and colvarbias_restraint_k::init: the keywords every restraint reads. */
-  protected initBase(c: Conf, rank: number, module: ColvarsModule, unsupported: string[]): void {
+  /** colvarbias::init: the keywords every bias reads. */
+  protected initBias(c: Conf, rank: number, module: ColvarsModule, unsupported: string[]): void {
+    this.module = module;
+    this.outputFreq = module.restartFreq;
     // colvarbias::init: name = bias_type + rank (bias_type is the keyword in lower case)
     this.name = `${this.biasType.toLowerCase()}${rank}`;
     const nm = c.get('name');
@@ -1231,24 +1342,25 @@ abstract class Restraint {
       }
     }
     if (this.colvars.length === 0) throw colvarsError('Error: no collective variables specified.');
+    const sz = c.get('stepZeroData');
+    if (sz !== undefined) this.stepZeroData = parseBool(sz, 'stepZeroData');
     const oe = c.get('outputEnergy');
     if (oe !== undefined) this.outputEnergy = parseBool(oe, 'outputEnergy');
     const of = c.get('outputFreq');
-    if (of !== undefined) parseInt10(of, 'outputFreq');
-    const sz = c.get('stepZeroData');
-    if (sz !== undefined) parseBool(sz, 'stepZeroData');
-    for (const k of ['targetForceConstant', 'targetNumSteps', 'targetNumStages', 'lambdaSchedule', 'targetEquilSteps', 'writeTIPMF', 'writeTISamples', 'decoupling', 'scaledBiasingForce', 'timeStepFactor', 'outputAccumulatedWork', ...unsupported]) {
+    if (of !== undefined) this.outputFreq = parseInt10(of, 'outputFreq');
+    for (const k of ['writeTISamples', 'writeTIPMF', 'scaledBiasingForce', 'timeStepFactor', ...unsupported]) {
       const v = c.get(k);
       if (v !== undefined && !/^\s*(off|no|false)\s*$/i.test(v)) throw colvarsError(`Error: the ${this.biasType} option "${k}" is not supported by the browser engine.`);
     }
-    // colvarbias_restraint_k::init: forceConstant, default 1
-    const k = c.get('forceConstant');
-    if (k !== undefined) this.forceK = parseReal(k, 'forceConstant');
-    if (this.forceK < 0.0) throw colvarsError('Error: undefined or invalid force constant.');
     this.forces = this.colvars.map((cv) => new Float64Array(cv.x.length));
   }
 
-  /** colvarbias_restraint::update: the energy and the force on each colvar. */
+  /** colvarbias::can_accumulate_data. */
+  protected canAccumulateData(): boolean {
+    return (this.module.stepRelative() > 0 && !this.module.continuing) || this.stepZeroData;
+  }
+
+  /** The update of the bias: the energy and the force on each colvar. */
   abstract update(): void;
 
   /** colvarbias::communicate_forces: add to each colvar's bias force. */
@@ -1264,8 +1376,38 @@ abstract class Restraint {
     return ' ' + (this.outputEnergy ? ' ' + fmtSci(this.energy) : '');
   }
 
+  /** colvarbias::write_state: the configuration block (get_state_params), then the bias's own data. */
   stateText(step: number): string {
-    return `${this.stateKeyword} {\n  configuration {\n    step ${step}\n    name ${this.name}\n  }\n}\n\n`;
+    return `${this.stateKeyword} {\n  configuration {\n${this.stateParams(step)}  }\n${this.stateData()}}\n\n`;
+  }
+
+  /** get_state_params. */
+  protected stateParams(step: number): string {
+    return `    step ${step}\n    name ${this.name}\n`;
+  }
+
+  /** write_state_data. */
+  protected stateData(): string { return ''; }
+
+  /** setup_output (each run setup). */
+  setupOutput(): void {}
+
+  /** write_output_files. */
+  writeOutputFiles(): void {}
+}
+
+/** colvarbias_restraint and colvarbias_restraint_k. */
+abstract class Restraint extends Bias {
+  readonly stateKeyword = 'restraint';
+  forceK = 1.0;
+
+  /** colvarbias::init, colvarbias_restraint::init and colvarbias_restraint_k::init. */
+  protected initBase(c: Conf, rank: number, module: ColvarsModule, unsupported: string[]): void {
+    this.initBias(c, rank, module, ['targetForceConstant', 'targetNumSteps', 'targetNumStages', 'lambdaSchedule', 'targetEquilSteps', 'decoupling', 'outputAccumulatedWork', ...unsupported]);
+    // colvarbias_restraint_k::init: forceConstant, default 1
+    const k = c.get('forceConstant');
+    if (k !== undefined) this.forceK = parseReal(k, 'forceConstant');
+    if (this.forceK < 0.0) throw colvarsError('Error: undefined or invalid force constant.');
   }
 }
 
@@ -1405,6 +1547,564 @@ class HarmonicWalls extends Restraint {
   }
 }
 
+/** The state stream's std::scientific precision 14 with no field width (write_state: "os.precision(cv_prec)"). */
+const sci14 = compileCFormat('%.14e', 'float');
+/** A std::ostringstream's default floating-point format (precision 6): %g. */
+const fmtDefault = compileCFormat('%g', 'float');
+/** std::setw(cv_width or en_width) with precision 14: %21.14e. */
+const sci21 = fmtSci;
+
+/**
+ * colvar_grid<cvm::real> with colvar_grid_scalar (mult 1) and colvar_grid_gradient (mult = number of colvars):
+ * per colvar the lower and upper boundaries, the width, the number of points nx and periodicity; the data in row-major
+ * order (the last index the fastest), nxc the strides (colvar_grid::setup, which counts the multiplicity in).
+ */
+class ColvarGrid {
+  nd: number;
+  mult: number;
+  nx: number[] = [];
+  nxc: number[] = [];
+  lower: number[];
+  upper: number[];
+  widths: number[];
+  periodic: boolean[] = [];
+  hardLower: boolean[];
+  hardUpper: boolean[];
+  data = new Float64Array(0);
+
+  /** colvar_grid::init_from_colvars (no extra bin, no template) then init_from_boundaries and setup. */
+  constructor(readonly cv: Colvar[], mult: number) {
+    this.nd = cv.length;
+    this.mult = mult;
+    for (const c of cv) {
+      if (c.type !== 'scalar') throw colvarsError('Error: Colvar grids can only be automatically constructed for scalar variables.  ABF and histogram can not be used; metadynamics can be used with useGrids disabled.');
+      if (c.width <= 0.0) throw colvarsError('Error: Tried to initialize a grid on a variable with negative or zero width.');
+    }
+    this.widths = cv.map((c) => c.width);
+    this.hardLower = cv.map((c) => c.hardLower);
+    this.hardUpper = cv.map((c) => c.hardUpper);
+    this.lower = cv.map((c) => c.lowerBoundary);
+    this.upper = cv.map((c) => c.upperBoundary);
+    this.periodic = cv.map((c, i) => c.periodicBoundariesOf(this.lower[i], this.upper[i]));
+    this.initFromBoundaries();
+    this.setup(this.nx, this.mult);
+  }
+
+  /** A copy with the same parameters and data (the copy constructor). */
+  clone(): ColvarGrid {
+    const g = Object.create(ColvarGrid.prototype) as ColvarGrid;
+    Object.assign(g, this, { nx: this.nx.slice(), nxc: this.nxc.slice(), lower: this.lower.slice(), upper: this.upper.slice(), widths: this.widths.slice(), periodic: this.periodic.slice(), data: this.data.slice() });
+    return g;
+  }
+
+  /** init_from_boundaries: nx = (ub - lb) / width rounded; an incommensurate interval moves the upper boundary. */
+  initFromBoundaries(): void {
+    this.nx = [];
+    for (let i = 0; i < this.lower.length; i++) {
+      this.periodic[i] = this.cv[i].periodicBoundariesOf(this.lower[i], this.upper[i]);
+      const nbins = (this.upper[i] - this.lower[i]) / this.widths[i];
+      const nbinsRound = Math.trunc(nbins + 0.5);
+      if (Math.abs(nbins - nbinsRound) > 1.0e-10) this.upper[i] = this.lower[i] + nbinsRound * this.widths[i];
+      this.nx.push(nbinsRound);
+    }
+  }
+
+  /** colvar_grid::setup: the strides and zeroed data. */
+  setup(nx: number[], mult: number): void {
+    this.mult = mult;
+    this.nx = nx.slice();
+    this.nxc = new Array(this.nd).fill(0);
+    let nt = mult;
+    for (let i = this.nd - 1; i >= 0; i--) {
+      if (this.nx[i] <= 0) throw colvarsError(`Error: providing an invalid number of grid points, ${this.nx[i]}.`);
+      this.nxc[i] = nt;
+      nt *= this.nx[i];
+    }
+    this.data = new Float64Array(nt);
+  }
+
+  address(ix: number[]): number {
+    let a = 0;
+    for (let i = 0; i < this.nd; i++) a += ix[i] * this.nxc[i];
+    return a;
+  }
+
+  indexOk(ix: number[]): boolean {
+    for (let i = 0; i < this.nd; i++) if (ix[i] < 0 || ix[i] >= this.nx[i]) return false;
+    return true;
+  }
+
+  /** incr: the last index runs fastest; past the end the first index becomes nx[0]. */
+  incr(ix: number[]): void {
+    for (let i = ix.length - 1; i >= 0; i--) {
+      ix[i]++;
+      if (ix[i] >= this.nx[i]) {
+        if (i > 0) { ix[i] = 0; continue; }
+        ix[0] = this.nx[0];
+        return;
+      }
+      return;
+    }
+  }
+
+  /** value_to_bin_scalar: floor((x - lb) / width). */
+  valueToBin(x: number, i: number): number {
+    return Math.floor((x - this.lower[i]) / this.widths[i]);
+  }
+
+  /** bin_to_value_scalar: the centre of the bin. */
+  binToValue(ib: number, i: number): number {
+    return this.lower[i] + this.widths[i] * (0.5 + ib);
+  }
+
+  /** get_colvars_index(values). */
+  index(values: readonly number[]): number[] {
+    return values.map((v, i) => this.valueToBin(v, i));
+  }
+
+  /** bin_distance_from_boundaries (skip_hard_boundaries): the smallest distance in bins, negative off the grid. */
+  binDistanceFromBoundaries(values: readonly number[], skipHard: boolean): number {
+    let minimum = 1.0e16;
+    for (let i = 0; i < this.nd; i++) {
+      if (this.periodic[i]) continue;
+      const cv = this.cv[i];
+      let dl = Math.sqrt(cv.dist2(Float64Array.of(values[i]), Float64Array.of(this.lower[i]))) / this.widths[i];
+      let du = Math.sqrt(cv.dist2(Float64Array.of(values[i]), Float64Array.of(this.upper[i]))) / this.widths[i];
+      if (values[i] < this.lower[i]) dl *= -1.0;
+      if (values[i] > this.upper[i]) du *= -1.0;
+      if ((!skipHard || !this.hardLower[i]) && dl < minimum) minimum = dl;
+      if ((!skipHard || !this.hardUpper[i]) && du < minimum) minimum = du;
+    }
+    return minimum;
+  }
+
+  /** map_grid: the values of the bins of `other` that hold this grid's bin centres. */
+  mapGrid(other: ColvarGrid): void {
+    const ix = new Array(this.nd).fill(0);
+    const oix = new Array(this.nd).fill(0);
+    for (; this.indexOk(ix); this.incr(ix)) {
+      for (let i = 0; i < this.nd; i++) oix[i] = Math.floor((this.binToValue(ix[i], i) - other.lower[i]) / other.widths[i]);
+      if (!other.indexOk(oix)) continue;
+      const a = this.address(ix), oa = other.address(oix);
+      for (let im = 0; im < this.mult; im++) this.data[a + im] = other.data[oa + im];
+    }
+  }
+
+  /** get_state_params: its own std::ostringstream, so the default format (%g). */
+  stateParams(): string {
+    let s = `  n_colvars ${this.nd}\n`;
+    s += '  lower_boundaries ' + this.lower.map((v) => ' ' + fmtDefault(v)).join('') + '\n';
+    s += '  upper_boundaries ' + this.upper.map((v) => ' ' + fmtDefault(v)).join('') + '\n';
+    s += '  widths ' + this.widths.map((v) => ' ' + fmtDefault(v)).join('') + '\n';
+    s += '  sizes ' + this.nx.map((v) => ' ' + v).join('') + '\n';
+    return s;
+  }
+
+  /** write_restart: the parameters block, then write_raw (three values per line). */
+  restartText(): string {
+    let s = `grid_parameters {\n${this.stateParams()}}\n`;
+    let count = 0;
+    for (let k = 0; k < this.data.length; k++) {
+      s += ' ' + sci14(this.data[k]);
+      if (++count % 3 === 0) s += '\n';
+    }
+    if (count % 3 !== 0) s += '\n';
+    return s;
+  }
+
+  /** write_multicol: the header (dimensions, then per colvar lower boundary, width, points, periodic) and the points. */
+  multicolText(): string {
+    let s = `# ${this.nd}\n`;
+    for (let i = 0; i < this.nd; i++) s += `# ${sci21(this.lower[i])} ${sci21(this.widths[i])} ${padLeft(String(this.nx[i]), 10)}  ${this.periodic[i] ? 1 : 0}\n`;
+    const ix = new Array(this.nd).fill(0);
+    for (; this.indexOk(ix); this.incr(ix)) {
+      if (ix[this.nd - 1] === 0) s += '\n';
+      for (let i = 0; i < this.nd; i++) s += ' ' + sci21(this.binToValue(ix[i], i));
+      s += ' ';
+      const a = this.address(ix);
+      for (let im = 0; im < this.mult; im++) s += ' ' + sci21(this.data[a + im]);
+      s += '\n';
+    }
+    return s;
+  }
+}
+
+/** colvarbias_meta::hill: step, weight W (sW = 1), centres, sigmas and the last Gaussian value. */
+interface Hill {
+  it: number;
+  W: number;
+  centers: Float64Array[];
+  sigmas: number[];
+  value: number;
+}
+
+const copyHill = (h: Hill): Hill => ({ it: h.it, W: h.W, centers: h.centers.map((c) => c.slice()), sigmas: h.sigmas.slice(), value: 0.0 });
+
+/**
+ * colvarbias_meta (one replica): Gaussian hills of weight hillWeight every newHillFrequency steps, with half-widths
+ * sigma = width * hillWidth / 2 (or gaussianSigmas), projected every gridsUpdateFrequency steps onto an energy grid
+ * and a gradient grid (useGrids, default on); hills near or beyond the grid edges stay off-grid and are summed
+ * analytically. Well-tempered metadynamics scales each new hill by exp(-V / (k biasTemperature)). Output: the PMF
+ * (writeFreeEnergyFile, default on with grids) and the hills trajectory (writeHillsTrajectory).
+ */
+class Metadynamics extends Bias {
+  readonly biasType = 'metadynamics';
+  readonly stateKeyword = 'metadynamics';
+  private hillWeight = 0.0;
+  private hillWidth = 0.0;
+  private newHillFreq = 1000;
+  private sigmas: number[] = [];
+  private useGrids = true;
+  private gridsFreq = 0;
+  private expandGrids = false;
+  private dumpFes = true;
+  private keepHills = false;
+  private hillsTraj = false;
+  private wellTempered = false;
+  private biasTemperature = -1.0;
+  private hills: Hill[] = [];
+  /** new_hills_begin: the first hill not yet projected onto the grids. */
+  private newHillsBegin = 0;
+  private hillsOffGrid: Hill[] = [];
+  private hillsEnergy: ColvarGrid | null = null;
+  private hillsGradients: ColvarGrid | null = null;
+  private hillsTrajBuf = '';
+  private outputPrefix = '';
+  /** The colvar values cached at update (colvar_values). */
+  private values: Float64Array[] = [];
+
+  constructor(conf: string, rank: number, module: ColvarsModule) {
+    super();
+    const c = new Conf(conf);
+    this.initBias(c, rank, module, ['multipleReplicas', 'ebMeta', 'rebinGrids', 'keepFreeEnergyFiles', 'writePartialFreeEnergyFile', 'dumpPartialFreeEnergyFile']);
+    for (const k of ['replicaID', 'replicasRegistry', 'replicaUpdateFrequency', 'targetDistFile', 'ebMetaEquilSteps', 'grid']) {
+      if (c.get(k) !== undefined) throw colvarsError(`Error: the metadynamics option "${k}" is not supported by the browser engine.`);
+    }
+    const hw = c.get('hillWeight');
+    if (hw !== undefined) this.hillWeight = parseReal(hw, 'hillWeight');
+    if (!(this.hillWeight > 0.0)) throw colvarsError('Error: hillWeight must be provided, and a positive number.');
+    const nf = c.get('newHillFrequency');
+    if (nf !== undefined) this.newHillFreq = parseInt10(nf, 'newHillFrequency');
+    const gs = c.get('gaussianSigmas');
+    if (gs !== undefined) this.sigmas = splitValues(gs).map((v) => { if (Array.isArray(v)) throw colvarsError('Error: gaussianSigmas must be numbers.'); return v; });
+    const hwid = c.get('hillWidth');
+    if (hwid !== undefined) this.hillWidth = parseReal(hwid, 'hillWidth');
+    if (this.sigmas.length > 0 && this.hillWidth > 0.0) throw colvarsError('Error: hillWidth and gaussianSigmas are mutually exclusive.');
+    if (this.hillWidth > 0.0) {
+      this.sigmas = this.colvars.map((cv) => cv.width * this.hillWidth / 2.0);
+      module.log('Half-widths of the Gaussian hills (sigma\'s) for each colvar:');
+      this.colvars.forEach((cv, i) => module.log(`  ${cv.name}: ${this.sigmas[i]}`));
+    }
+    if (this.sigmas.length === 0) throw colvarsError('either hillWidth or gaussianSigmas must be set to positive values.');
+    const ug = c.get('useGrids');
+    if (ug !== undefined) this.useGrids = parseBool(ug, 'useGrids');
+    if (this.useGrids && this.sigmas.length === this.colvars.length) {
+      if (this.gridsFreq === 0) this.gridsFreq = this.newHillFreq;
+      this.colvars.forEach((cv, i) => {
+        if (2.0 * this.sigmas[i] < cv.width) module.log(`Warning: gaussianSigmas is too narrow for the grid spacing along ${cv.name}.`);
+      });
+      const gf = c.get('gridsUpdateFrequency');
+      if (gf !== undefined) this.gridsFreq = parseInt10(gf, 'gridsUpdateFrequency');
+      for (const cv of this.colvars) {
+        if (cv.expandBoundaries) {
+          this.expandGrids = true;
+          module.log(`Metadynamics bias "${this.name}": Will expand grids when the colvar "${cv.name}" approaches its boundaries.`);
+        }
+      }
+      const wf = c.get('writeFreeEnergyFile');
+      if (wf !== undefined) this.dumpFes = parseBool(wf, 'writeFreeEnergyFile');
+      const kh = c.get('keepHills');
+      if (kh !== undefined) this.keepHills = parseBool(kh, 'keepHills');
+      this.hillsEnergy = new ColvarGrid(this.colvars, 1);
+      this.hillsGradients = new ColvarGrid(this.colvars, this.colvars.length);
+    } else {
+      this.useGrids = false;
+      this.dumpFes = false;
+    }
+    const ht = c.get('writeHillsTrajectory');
+    if (ht !== undefined) this.hillsTraj = parseBool(ht, 'writeHillsTrajectory');
+    // init_well_tempered_params
+    const wt = c.get('wellTempered');
+    if (wt !== undefined) this.wellTempered = parseBool(wt, 'wellTempered');
+    const bt = c.get('biasTemperature');
+    if (bt !== undefined) this.biasTemperature = parseReal(bt, 'biasTemperature');
+    if (this.biasTemperature === -1.0 && this.wellTempered) throw colvarsError('Error: biasTemperature must be set to a positive value.');
+    if (this.wellTempered) {
+      module.log('Well-tempered metadynamics is used.');
+      module.log(`The bias temperature is ${this.biasTemperature}.`);
+    }
+    c.check(`metadynamics "${this.name}"`);
+    this.values = this.colvars.map((cv) => new Float64Array(cv.x.length));
+  }
+
+  /** f_cvb_calc_pmf (every metadynamics bias). */
+  readonly calcPmf = true;
+
+  /** add_hill: append; with grids, a hill within 3 floor(hillWidth) + 1 bins of a soft boundary is also kept off-grid. */
+  private addHill(h: Hill): void {
+    this.hills.push(h);
+    if (this.useGrids) {
+      const minDist = this.hillsEnergy!.binDistanceFromBoundaries(h.centers.map((c) => c[0]), true);
+      if (minDist < 3.0 * Math.floor(this.hillWidth) + 1.0) this.hillsOffGrid.push(copyHill(h));
+    }
+    if (this.hillsTraj) this.hillsTrajBuf += this.hillTraj(h);
+  }
+
+  /** colvarbias_meta::update. */
+  update(): void {
+    // colvarbias::update: cache the colvar values, then calc_energy and calc_forces
+    this.colvars.forEach((cv, i) => this.values[i].set(cv.x));
+    this.calcEnergy(null);
+    this.calcForces(null);
+    this.updateGridParams();
+    this.updateBias();
+    if (this.useGrids) this.updateGridData();
+    this.calcEnergy(null);
+    this.calcForces(null);
+  }
+
+  /** update_grid_params: expand the grids by whole bins when a colvar with expandBoundaries nears a soft boundary. */
+  private updateGridParams(): void {
+    if (!this.useGrids || !this.expandGrids) return;
+    const he = this.hillsEnergy!;
+    const currBin = he.index(this.values.map((v) => v[0]));
+    let changed = false;
+    const minBuffer = 3 * Math.floor(this.hillWidth) + 1;
+    const newSizes = he.nx.slice();
+    const newLb = he.lower.slice();
+    const newUb = he.upper.slice();
+    this.colvars.forEach((cv, i) => {
+      if (!cv.expandBoundaries) return;
+      let chLb = false, chUb = false;
+      if (!cv.hardLower && currBin[i] < minBuffer) {
+        const extra = minBuffer - currBin[i];
+        newLb[i] -= extra * cv.width;
+        newSizes[i] += extra;
+        currBin[i] += extra;
+        chLb = true;
+        this.module.log(`Metadynamics bias "${this.name}": new lower boundary for colvar "${cv.name}", at ${fmtDefault(newLb[i])}.`);
+      }
+      if (!cv.hardUpper && currBin[i] > newSizes[i] - minBuffer - 1) {
+        const extra = currBin[i] - (newSizes[i] - 1) + minBuffer;
+        newUb[i] += extra * cv.width;
+        newSizes[i] += extra;
+        chUb = true;
+        this.module.log(`Metadynamics bias "${this.name}": new upper boundary for colvar "${cv.name}", at ${fmtDefault(newUb[i])}.`);
+      }
+      if (chLb || chUb) changed = true;
+    });
+    if (!changed) return;
+    const ne = he.clone();
+    ne.lower = newLb.slice(); ne.upper = newUb.slice();
+    ne.setup(newSizes, 1);
+    const ng = this.hillsGradients!.clone();
+    ng.lower = newLb.slice(); ng.upper = newUb.slice();
+    ng.setup(newSizes, this.colvars.length);
+    ne.mapGrid(he);
+    ng.mapGrid(this.hillsGradients!);
+    this.hillsEnergy = ne;
+    this.hillsGradients = ng;
+  }
+
+  /** update_bias: a new hill every newHillFrequency steps once data can be accumulated. */
+  private updateBias(): void {
+    const it = this.module.it;
+    if (!(this.newHillFreq > 0 && it % this.newHillFreq === 0 && this.canAccumulateData())) return;
+    let scale = 1.0;
+    if (this.wellTempered) {
+      let here = 0.0;
+      if (this.useGrids) {
+        const bin = this.hillsEnergy!.index(this.values.map((v) => v[0]));
+        if (this.hillsEnergy!.indexOk(bin)) here += this.hillsEnergy!.data[this.hillsEnergy!.address(bin)];
+        else here = this.calcHills(this.keepHills ? this.hills : this.hillsOffGrid, 0, here, null);
+      } else {
+        here = this.calcHills(this.hills, 0, here, null);
+      }
+      scale *= exp(-1.0 * here / (this.biasTemperature * this.module.boltzmann));
+    }
+    this.addHill({ it, W: this.hillWeight * scale, centers: this.values.map((v) => v.slice()), sigmas: this.sigmas.slice(), value: 0.0 });
+  }
+
+  /** update_grid_data: every gridsUpdateFrequency steps, project the new hills onto the grids. */
+  private updateGridData(): void {
+    if (this.module.it % this.gridsFreq === 0) this.projectNewHills();
+  }
+
+  private projectNewHills(): void {
+    this.projectHills(this.newHillsBegin, this.hills.length);
+    this.newHillsBegin = this.hills.length;
+  }
+
+  /** calc_hills: each hill's Gaussian at the values (0 past an exponent of 23), summed into energy. */
+  private calcHills(list: Hill[], first: number, energy: number, values: Float64Array[] | null): number {
+    const x = values ?? this.values;
+    for (let k = first; k < list.length; k++) {
+      const h = list[k];
+      let sq = 0.0;
+      for (let i = 0; i < this.colvars.length; i++) {
+        const sigma = h.sigmas[i];
+        sq += this.colvars[i].dist2(x[i], h.centers[i]) / (sigma * sigma);
+      }
+      // cvm::exp is the C library's exp (the glibc port)
+      h.value = sq > 23.0 ? 0.0 : exp(-0.5 * sq);
+      energy += h.W * 1.0 * h.value;
+    }
+    return energy;
+  }
+
+  /** calc_hills_force for colvar i: W v (0.5 / sigma^2) dist2_lgrad(x, centre), skipping hills of value 0. */
+  private calcHillsForce(i: number, list: Hill[], first: number, forces: Float64Array[], values: Float64Array[] | null): void {
+    const x = (values ?? this.values)[i];
+    const cv = this.colvars[i];
+    for (let k = first; k < list.length; k++) {
+      const h = list[k];
+      if (h.value === 0.0) continue;
+      const sigma = h.sigmas[i];
+      const g = cv.dist2Lgrad(x, h.centers[i]);
+      const a = h.W * 1.0 * h.value * (0.5 / (sigma * sigma));
+      for (let d = 0; d < g.length; d++) forces[i][d] += a * g[d];
+    }
+  }
+
+  /** calc_energy: the grid value at the current bin (or the off-grid hills), then the hills not projected yet. */
+  private calcEnergy(values: Float64Array[] | null): void {
+    this.energy = 0.0;
+    let ok = false;
+    let bin: number[] = [];
+    if (this.useGrids) {
+      bin = this.hillsEnergy!.index((values ?? this.values).map((v) => v[0]));
+      ok = this.hillsEnergy!.indexOk(bin);
+    }
+    if (ok) this.energy += this.hillsEnergy!.data[this.hillsEnergy!.address(bin)];
+    else this.energy = this.calcHills(this.hillsOffGrid, 0, this.energy, values);
+    this.energy = this.calcHills(this.hills, this.newHillsBegin, this.energy, values);
+  }
+
+  /** calc_forces: minus the grid gradient at the current bin (or the off-grid hills), then the new hills. */
+  private calcForces(values: Float64Array[] | null): void {
+    for (const f of this.forces) f.fill(0);
+    let ok = false;
+    let bin: number[] = [];
+    if (this.useGrids) {
+      bin = this.hillsEnergy!.index((values ?? this.values).map((v) => v[0]));
+      ok = this.hillsEnergy!.indexOk(bin);
+    }
+    if (ok) {
+      const g = this.hillsGradients!;
+      const a = g.address(bin);
+      for (let ic = 0; ic < this.colvars.length; ic++) this.forces[ic][0] += -1.0 * g.data[a + ic];
+    } else {
+      for (let ic = 0; ic < this.colvars.length; ic++) this.calcHillsForce(ic, this.hillsOffGrid, 0, this.forces, values);
+    }
+    for (let ic = 0; ic < this.colvars.length; ic++) this.calcHillsForce(ic, this.hills, this.newHillsBegin, this.forces, values);
+  }
+
+  /**
+   * project_hills: at every grid point, the energy and the forces of the given hills are accumulated (acc_value; the
+   * gradient grid sums minus the forces, acc_force); unless keepHills, all hills are then forgotten.
+   */
+  private projectHills(first: number, last: number): void {
+    const he = this.hillsEnergy!, hg = this.hillsGradients!;
+    const nv = this.colvars.length;
+    const list = this.hills.slice(first, last);
+    const vals = this.colvars.map(() => new Float64Array(1));
+    const f = this.colvars.map(() => new Float64Array(1));
+    const ix = new Array(he.nd).fill(0);
+    const gx = new Array(hg.nd).fill(0);
+    for (; he.indexOk(ix) && hg.indexOk(gx);) {
+      for (let i = 0; i < nv; i++) vals[i][0] = he.binToValue(ix[i], i);
+      const e = this.calcHills(list, 0, 0.0, vals);
+      he.data[he.address(ix)] += e;
+      const ga = hg.address(gx);
+      for (let i = 0; i < nv; i++) {
+        f[i][0] = 0.0;
+        this.calcHillsForce(i, list, 0, f, vals);
+      }
+      for (let i = 0; i < nv; i++) hg.data[ga + i] -= f[i][0];
+      he.incr(ix);
+      hg.incr(gx);
+    }
+    if (!this.keepHills) {
+      this.hills = [];
+      this.newHillsBegin = 0;
+    }
+  }
+
+  /** output_traj: one line of the hills trajectory. */
+  private hillTraj(h: Hill): string {
+    let s = padLeft(String(h.it), IT_WIDTH) + ' ';
+    s += '  ';
+    for (const c of h.centers) s += ' ' + valueStream(c, c.length === 1 ? 'scalar' : '3vector', sci21);
+    s += '  ';
+    for (const sg of h.sigmas) s += ' ' + sci21(sg);
+    s += '  ' + sci21(h.W) + '\n';
+    return s;
+  }
+
+  /** write_hill (formatted): the step, the weight, the centres and the widths (twice the sigmas). */
+  private hillState(h: Hill): string {
+    let s = `hill {\nstep ${padLeft(String(h.it), IT_WIDTH)}\nweight ${sci21(h.W)}\ncenters `;
+    for (const c of h.centers) s += ' ' + valueStream(c, c.length === 1 ? 'scalar' : '3vector', sci21);
+    s += '\nwidths ';
+    for (const sg of h.sigmas) s += ' ' + sci21(2.0 * sg);
+    return s + '\n}\n';
+  }
+
+  /** colvarbias_meta::get_state_params: "keepHills on" (unindented) when the hills are kept. */
+  protected stateParams(step: number): string {
+    return super.stateParams(step) + (this.keepHills ? 'keepHills on\n' : '');
+  }
+
+  /** write_state_data: with grids, project the pending hills first, then both grids and the off-grid hills. */
+  protected stateData(): string {
+    let s = '';
+    if (this.useGrids) {
+      this.projectNewHills();
+      s += '\nhills_energy\n' + this.hillsEnergy!.restartText();
+      s += '\nhills_energy_gradients\n' + this.hillsGradients!.restartText();
+    }
+    const list = !this.useGrids || this.keepHills ? this.hills : this.hillsOffGrid;
+    for (const h of list) s += this.hillState(h);
+    return s;
+  }
+
+  /** setup_output: the PMF prefix (with the bias name when several biases write one) and the hills trajectory file. */
+  setupOutput(): void {
+    this.outputPrefix = this.module.outputPrefixValue();
+    if (this.module.biases.filter((b) => (b as Partial<Metadynamics>).calcPmf).length > 1) this.outputPrefix += '.' + this.name;
+    if (this.hillsTraj) this.module.openOutput(this.hillsTrajName());
+  }
+
+  private hillsTrajName(): string {
+    return `${this.module.outputPrefixValue()}.colvars.${this.name}.hills.traj`;
+  }
+
+  /** write_output_files: the PMF (write_pmf) and the buffered hills trajectory. */
+  writeOutputFiles(): void {
+    if (this.dumpFes) {
+      // write_pmf: -(V - max V), times (T_bias + T) / T_bias when well-tempered
+      const pmf = this.hillsEnergy!.clone();
+      pmf.data.fill(0);
+      for (let k = 0; k < pmf.data.length; k++) pmf.data[k] += this.hillsEnergy!.data[k];
+      let max = pmf.data[0];
+      for (let k = 1; k < pmf.data.length; k++) if (pmf.data[k] > max) max = pmf.data[k];
+      for (let k = 0; k < pmf.data.length; k++) pmf.data[k] += -1.0 * max;
+      for (let k = 0; k < pmf.data.length; k++) pmf.data[k] *= -1.0;
+      if (this.wellTempered) {
+        const s = (this.biasTemperature + this.module.targetTemperature) / this.biasTemperature;
+        for (let k = 0; k < pmf.data.length; k++) pmf.data[k] *= s;
+      }
+      this.module.writeWholeFile(this.outputPrefix + '.pmf', pmf.multicolText());
+    }
+    if (this.hillsTraj) {
+      const name = this.hillsTrajName();
+      this.module.openOutput(name);
+      if (this.hillsTrajBuf) this.module.appendOutput(name, this.hillsTrajBuf);
+      this.hillsTrajBuf = '';
+    }
+  }
+}
+
 /** The bias keywords of the library, in its order of parsing (colvarmodule::parse_biases). */
 const BIAS_TYPES = ['abf', 'abmd', 'ALB', 'harmonic', 'harmonicWalls', 'histogram', 'histogramRestraint', 'linear', 'metadynamics', 'reweightaMD', 'opes_metad'];
 
@@ -1422,7 +2122,7 @@ export interface ColvarsHost {
 export class ColvarsModule {
   readonly atoms = new ColvarsAtoms();
   readonly colvars: Colvar[] = [];
-  readonly biases: Restraint[] = [];
+  readonly biases: Bias[] = [];
   private readonly configQueue: { cmd: 'config' | 'configfile'; text: string }[] = [];
   private biasCount = new Map<string, number>();
   trajFreq = 100;
@@ -1445,6 +2145,32 @@ export class ColvarsModule {
   dt = 1.0;
   readonly bc = new Boundaries();
   biasEnergy = 0.0;
+  /** proxy->boltzmann(): force->boltz of the unit style. */
+  boltzmann = 1.0;
+  /** proxy->target_temperature(): the t_target of the tstat fix when fix colvars was defined, else 0. */
+  targetTemperature = 0.0;
+  /** proxy->simulation_continuing(): the step did not advance by one since the last compute (run 0, a new run). */
+  continuing = false;
+
+  /** cvm::step_relative(). */
+  stepRelative(): number { return this.it - this.itRestart; }
+
+  /** cvm::log. */
+  log(text: string): void { this.host.log(text); }
+
+  /** cvmodule->output_prefix(). */
+  outputPrefixValue(): string { return this.outputPrefix; }
+
+  /** output_stream on first use (backup of an existing file), kept open. */
+  openOutput(name: string): void { this.openStream(name); }
+
+  appendOutput(name: string, text: string): void { this.host.writeFile(name, text, true); }
+
+  /** output_stream, write, close_output_stream: an existing file is backed up each time. */
+  writeWholeFile(name: string, text: string): void {
+    if (this.host.exists(name)) this.host.rename(name, name + (name.includes('.colvars.state') ? '.old' : '.BAK'));
+    this.host.writeFile(name, text, false);
+  }
 
   constructor(private readonly host: ColvarsHost) {}
 
@@ -1514,15 +2240,20 @@ export class ColvarsModule {
     for (const type of BIAS_TYPES) {
       const confs = c.all(type);
       if (confs.length === 0) continue;
-      if (type !== 'harmonic' && type !== 'harmonicWalls') throw colvarsError(`Error: the Colvars bias "${type}" is not supported by the browser engine (supported: harmonic, harmonicWalls).`);
+      if (type !== 'harmonic' && type !== 'harmonicWalls' && type !== 'metadynamics') throw colvarsError(`Error: the Colvars bias "${type}" is not supported by the browser engine (supported: harmonic, harmonicWalls, metadynamics).`);
       for (const v of confs) {
         if (v.trim() === '') throw colvarsError(`Error: keyword "${type}" found without configuration.`);
         const lower = type.toLowerCase();
         const rank = (this.biasCount.get(lower) ?? 0) + 1;
         this.biasCount.set(lower, rank);
-        this.biases.push(type === 'harmonic' ? new Harmonic(v, rank, this) : new HarmonicWalls(v, rank, this));
+        this.biases.push(type === 'harmonic' ? new Harmonic(v, rank, this) : type === 'harmonicWalls' ? new HarmonicWalls(v, rank, this) : new Metadynamics(v, rank, this));
         added = true;
       }
+    }
+    // time_dependent_biases: more than one bias whose forces change with time (here the metadynamics biases)
+    const timeBiases = this.biases.filter((b) => b instanceof Metadynamics).map((b) => b.name);
+    if (timeBiases.length > 1) {
+      this.host.log(`WARNING: there are ${timeBiases.length} time-dependent biases with non-zero force parameters:\n{${timeBiases.join(', ')}}\nPlease ensure that their forces do not counteract each other.`);
     }
     c.check('the global configuration');
     if (added) this.trajWriteLabels = true;
@@ -1572,6 +2303,12 @@ export class ColvarsModule {
       cv.xRestart = Array.isArray(v0) ? Float64Array.from(v0) : Float64Array.of(v0 as number);
       if (cv.xRestart.length !== cv.x.length) throw colvarsError(`Error: in reading the state of colvar "${nm}" from "${name}": wrong number of values.`);
     }
+    for (const v of c.all('metadynamics')) {
+      const inner = new Conf(new Conf(v).all('configuration')[0] ?? '');
+      const nm = (inner.get('name') ?? '').trim();
+      if (this.biases.some((b) => b.name === nm)) throw colvarsError(`Error: reading the state of the metadynamics bias "${nm}" from "${name}" is not supported by the browser engine.`);
+      this.host.log(`Warning: input state file contains unknown bias object "${nm}", discarding.`);
+    }
     for (const key of ['restraint', 'harmonic']) {
       for (const v of c.all(key)) {
         const cc = new Conf(v);
@@ -1589,6 +2326,7 @@ export class ColvarsModule {
       this.outputPrefix = this.pendingOutputPrefix;
       if (this.open.has(this.trajName)) { this.open.delete(this.trajName); this.trajWriteLabels = true; }
       this.trajName = this.outputPrefix ? this.outputPrefix + '.colvars.traj' : '';
+      for (const b of this.biases) b.setupOutput();
     }
   }
 
@@ -1598,7 +2336,7 @@ export class ColvarsModule {
   /** colvarproxy_lammps::compute: the step counter, the box, then colvarmodule::calc. Returns the bias energy. */
   compute(ntimestep: number, periodic: [boolean, boolean, boolean], A: number[], B: number[], C: number[]): number {
     if (this.firstTimestep) this.firstTimestep = false;
-    else if (ntimestep - this.previousStep === 1) this.it++;
+    else if (ntimestep - this.previousStep === 1) { this.it++; this.continuing = false; } else this.continuing = true;
     this.previousStep = ntimestep;
     this.bc.set(periodic[0], periodic[1], periodic[2], A, B, C);
     this.atoms.force.fill(0);
@@ -1627,6 +2365,10 @@ export class ColvarsModule {
     if (this.trajFreq && this.trajName) this.writeTrajFiles();
     if (this.restartFreq && this.it - this.itRestart > 0 && this.it % this.restartFreq === 0) {
       if (this.outputPrefix) this.writeRestartFile(this.outputPrefix + '.colvars.state');
+    }
+    // the output files of each bias at its outputFreq
+    for (const b of this.biases) {
+      if (b.outputFreq > 0 && this.it - this.itRestart > 0 && this.it % b.outputFreq === 0) b.writeOutputFiles();
     }
   }
 
@@ -1690,7 +2432,12 @@ export class ColvarsModule {
 
   /** colvarproxy::post_run: the final state file. */
   postRun(): void {
-    if (this.outputPrefix) this.writeRestartFile(this.outputPrefix + '.colvars.state');
+    if (!this.outputPrefix) return;
+    this.writeRestartFile(this.outputPrefix + '.colvars.state');
+    // colvarmodule::write_output_files: the biases whose files were not written at this step already
+    for (const b of this.biases) {
+      if (b.outputFreq === 0 || this.it - this.itRestart === 0 || this.it % b.outputFreq !== 0) b.writeOutputFiles();
+    }
   }
 
   /** The number of array columns (the largest colvar size). */

@@ -78,8 +78,14 @@ export class FixColvars extends Fix {
     // colvarproxy_lammps::init: angstrom_value_ = force->angstrom
     this.module.angstrom = ANGSTROM[sys.units.style] ?? 1.0;
     this.module.initFromEngine(sys.state.step, this.dtFs());
+    // colvarproxy_lammps::init: boltzmann_ = force->boltz; the constructor: proxy->set_target_temperature(t_target)
+    this.module.boltzmann = sys.state.units.boltz;
+    this.module.targetTemperature = this.tTarget;
     if (confFile !== null) this.module.addConfig('configfile', confFile);
   }
+
+  /** t_target of the tstat fix (0 without one). */
+  private tTarget = 0.0;
 
   /** The timestep in femtoseconds (update->dt * force->femtosecond), as the proxy takes it. */
   private dtFs(): number {
@@ -107,9 +113,13 @@ export class FixColvars extends Fix {
         if (!/^[-+]?\d+$/.test(v)) throw new StyleError(`Expected integer parameter instead of '${v}' in input script or data file`);
       } else if (key === 'unwrap') this.unwrapFlag = logical(v);
       else if (key === 'tstat') {
+        // FixColvars::set_thermostat_temperature: t_target of the fix (its extract("t_target"))
         if (v !== 'NULL') {
           const f = this.sys.fixes.find((x) => x.id === v);
           if (!f) throw new StyleError(`Could not find thermostat fix ID ${v}`);
+          const tt = (f as { extract?: (name: string) => unknown }).extract?.('t_target');
+          if (typeof tt !== 'number') throw new StyleError(`Fix ID ${v} is not a thermostat fix`);
+          this.tTarget = tt;
         }
       }
       iarg += 2;

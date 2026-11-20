@@ -1,0 +1,31 @@
+# oracle: fix colvars well-tempered metadynamics on two colvars: a periodic dihedral (width 30, its intrinsic -180..180
+#   boundaries: a 12-bin periodic grid) and a distance (width 0.2, intrinsic lower boundary 0, upperBoundary 3), with
+#   gaussianSigmas 20 and 0.3, a hill every 4 steps (stepZeroData on: also at step 0), the grids updated every 8 steps,
+#   biasTemperature 4 with the target temperature of the nvt fix (tstat 1) scaling the PMF, outputFreq 16.
+# Measured with native LAMMPS: traj and PMF files byte-identical; the state differs by 1 ulp in a few grid values and
+#   one well-tempered hill weight (from the trajectory's last bits).
+# oracle-inputs: w773cv_wtmeta.colvars
+# oracle-files: wtm.colvars.traj wtm.colvars.state wtm.pmf wtm.pmf.BAK
+# oracle-compare: thermo=all atoms=all rel=1e-10 filerel=1e-10
+units           lj
+atom_modify     map array
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+set             atom 1*128 type 2
+mass            1 1.0
+mass            2 2.5
+velocity        all create 1.5 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all nvt temp 1.5 1.5 0.5
+fix             2 all colvars w773cv_wtmeta.colvars output wtm tstat 1
+fix_modify      2 energy yes
+thermo_style    custom step temp pe etotal f_2 f_2[1][1] f_2[2][1]
+thermo_modify   format float %.15g
+thermo          4
+run             40
+run             20

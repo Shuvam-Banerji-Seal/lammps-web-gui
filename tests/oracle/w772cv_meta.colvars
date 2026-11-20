@@ -1,0 +1,22 @@
+colvarsTrajFrequency 5
+colvarsRestartFrequency 20
+
+colvar {
+  name d
+  width 0.25
+  lowerBoundary 0.5
+  upperBoundary 5.5
+  distance {
+    group1 { atomNumbers 1 2 3 }
+    group2 { atomNumbers 100 101 }
+  }
+}
+
+metadynamics {
+  colvars d
+  hillWeight 0.2
+  hillWidth 2.0
+  newHillFrequency 5
+  outputEnergy on
+  writeHillsTrajectory on
+}

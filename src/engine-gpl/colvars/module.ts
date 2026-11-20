@@ -11,7 +11,9 @@
  * (init, collect_cvc_values, update_forces_energy, communicate_forces, dist2, dist2_lgrad, write_traj_label, write_traj,
  * get_state_params), colvarcomp.cpp (cvc::init, cvc::dist2, cvc::dist2_lgrad, cvc::apply_force),
  * colvarcomp_distances.cpp (distance, distance_vec, distance_z, distance_xy, cartesian, gyration),
- * colvarcomp_angles.cpp (angle, dihedral), colvarcomp_coordnums.cpp/.h (coordnum, selfcoordnum, groupcoordnum, the
+ * colvarcomp_angles.cpp (angle, dihedral), colvarcomp_distances.cpp rmsd (with init_permutation), colvartypes.cpp
+ * rotation (build_correlation_matrix, compute_overlap_matrix, calc_optimal_rotation with MathEigen::Jacobi on 4x4)
+ * and colvaratoms.cpp calc_required_properties, calc_apply_roto_translation, center_ref_pos, rotate, colvarcomp_coordnums.cpp/.h (coordnum, selfcoordnum, groupcoordnum, the
  * switching function and pair list), colvaratoms.cpp (atom_group parse, update_total_mass,
  * calc_center_of_mass, set_weighted_gradient, apply_colvar_force, apply_force), colvarbias.cpp and
  * colvarbias_restraint.cpp (the harmonic and harmonic_walls restraints), colvarbias_meta.cpp/.h (metadynamics: hills,
@@ -22,7 +24,8 @@
  * colvarproxy.cpp, colvarproxy_io.cpp (output streams, backup_file) and colvarproxy_lammps.cpp (init, setup, compute).
  *
  * The supported subset: the components distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian,
- * gyration, coordNum, selfCoordNum and groupCoord (atom groups from atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
+ * gyration, coordNum, selfCoordNum, groupCoord and rmsd with its default fit and atomPermutation (atom groups from
+ * atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
  * (componentCoeff, componentExp), periodic components (dihedral; distanceZ with period), the harmonic and
  * harmonicWalls restraints, metadynamics on one replica (hillWeight, hillWidth or gaussianSigmas, newHillFrequency,
  * useGrids with gridsUpdateFrequency, expandBoundaries, keepHills, wellTempered with biasTemperature, stepZeroData,
@@ -35,6 +38,7 @@ import { compileCFormat } from '../../engine/cformat';
 import { Conf, colvarsError, parseBool, parseInt10, parseReal, splitValues } from './config';
 import { acos } from '../libm/acos';
 import { exp } from '../libm/exp';
+import { jacobiRows } from '../rigid/math_extra';
 
 /** colvarmodule.h widths and precisions of the trajectory and state files. */
 const IT_WIDTH = 12;
@@ -66,6 +70,16 @@ const integerPower = (x: number, n: number): number => {
 type ValueType = 'scalar' | '3vector' | 'vector';
 
 const TYPE_DESC: Record<ValueType, string> = { scalar: 'scalar number', '3vector': '3-dimensional vector', vector: 'n-dimensional vector' };
+
+/** quaternion::rotation_matrix (row-major xx xy xz yx yy yz zx zy zz). */
+const rotationMatrix = (q: readonly number[]): number[] => {
+  const [q0, q1, q2, q3] = q;
+  return [
+    q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3, 2.0 * (q1 * q2 - q0 * q3), 2.0 * (q0 * q2 + q1 * q3),
+    2.0 * (q0 * q3 + q1 * q2), q0 * q0 - q1 * q1 + q2 * q2 - q3 * q3, 2.0 * (q2 * q3 - q0 * q1),
+    2.0 * (q1 * q3 - q0 * q2), 2.0 * (q0 * q1 + q2 * q3), q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3,
+  ];
+};
 
 /** The proxy's atoms: positions, masses and the forces the colvars apply (colvarproxy_atoms). */
 export class ColvarsAtoms {
@@ -208,12 +222,26 @@ class AtomGroup {
   gx = new Float64Array(0); gy = new Float64Array(0); gz = new Float64Array(0);
   readonly com = [0, 0, 0];
 
-  constructor(readonly atoms: ColvarsAtoms, readonly key: string, readonly description: string, conf: string) {
+  /** f_ag_center and f_ag_rotate: the group is fitted to its reference positions (rmsd's default fit). */
+  center = false;
+  rotate = false;
+  /** The reference positions of the fit, centred (ref_pos after center_ref_pos), and their centre of geometry. */
+  private refX = new Float64Array(0); private refY = new Float64Array(0); private refZ = new Float64Array(0);
+  private readonly refCog = [0, 0, 0];
+  /** The optimal rotation of the last fit (rot.q). */
+  readonly q = [1, 0, 0, 0];
+  /** b_user_defined_fit: a fitting keyword was given in the group's configuration. */
+  userDefinedFit = false;
+
+  constructor(readonly atoms: ColvarsAtoms, readonly key: string, readonly description: string, conf: string, fitOk = false) {
     const c = new Conf(conf);
     c.get('name');
     for (const k of ['centerToOrigin', 'centerReference', 'centerToReference', 'rotateReference', 'rotateToReference']) {
       const v = c.get(k);
-      if (v !== undefined && parseBool(v, k)) throw colvarsError(`Error: the atom group keyword "${k}" (fitting to reference positions) is not supported by the browser engine.`);
+      if (v === undefined) continue;
+      // parse_fitting_options: any of these keywords makes the fit user-defined
+      this.userDefinedFit = true;
+      if (parseBool(v, k) || !fitOk) throw colvarsError(`Error: the atom group keyword "${k}" (fitting to reference positions, which needs the fit gradients) is not supported by the browser engine.`);
     }
     for (const k of ['atomsOfGroup', 'indexGroup', 'psfSegID', 'atomNameResidueRange', 'atomsFile', 'refPositions', 'refPositionsFile', 'fittingGroup']) {
       if (c.get(k) !== undefined) throw colvarsError(`Error: the atom group keyword "${k}" is not supported by the browser engine (supported: atomNumbers, atomNumbersRange, dummyAtom, enableForces).`);
@@ -267,18 +295,92 @@ class AtomGroup {
     if (total < 1e-15) throw colvarsError(`Error: ${this.description} has zero total mass.`);
   }
 
-  /** read_positions and calc_center_of_mass. */
+  /** read_positions and calc_center_of_mass; a fitted group is then roto-translated onto its reference (calc_required_properties). */
   calc(): void {
     if (this.dummy) { this.com[0] = this.dummy[0]; this.com[1] = this.dummy[1]; this.com[2] = this.dummy[2]; return; }
     const p = this.atoms.pos;
-    let cx = 0.0, cy = 0.0, cz = 0.0;
     for (let i = 0; i < this.ids.length; i++) {
       const k = 3 * this.index[i];
-      const m = this.atoms.mass[this.index[i]];
       this.px[i] = p[k]; this.py[i] = p[k + 1]; this.pz[i] = p[k + 2];
-      cx += m * p[k]; cy += m * p[k + 1]; cz += m * p[k + 2];
+    }
+    this.calcCom();
+    if (this.center || this.rotate) {
+      this.applyRotoTranslation();
+      this.calcCom();
+    }
+  }
+
+  private calcCom(): void {
+    let cx = 0.0, cy = 0.0, cz = 0.0;
+    for (let i = 0; i < this.ids.length; i++) {
+      const m = this.atoms.mass[this.index[i]];
+      cx += m * this.px[i]; cy += m * this.py[i]; cz += m * this.pz[i];
     }
     this.com[0] = cx / this.totalMass; this.com[1] = cy / this.totalMass; this.com[2] = cz / this.totalMass;
+  }
+
+  /**
+   * The default fit of an rmsd group (rmsd::init: enable f_ag_center and f_ag_rotate, set_ref_pos_from_aos,
+   * center_ref_pos): the reference positions are centred on their centre of geometry.
+   */
+  enableFit(ref: number[][]): void {
+    const n = ref.length;
+    this.center = true;
+    this.rotate = true;
+    this.refX = Float64Array.from(ref, (r) => r[0]); this.refY = Float64Array.from(ref, (r) => r[1]); this.refZ = Float64Array.from(ref, (r) => r[2]);
+    let cx = 0.0, cy = 0.0, cz = 0.0;
+    for (let i = 0; i < n; i++) { cx += this.refX[i]; cy += this.refY[i]; cz += this.refZ[i]; }
+    this.refCog[0] = cx / n; this.refCog[1] = cy / n; this.refCog[2] = cz / n;
+    for (let i = 0; i < n; i++) { this.refX[i] -= this.refCog[0]; this.refY[i] -= this.refCog[1]; this.refZ[i] -= this.refCog[2]; }
+  }
+
+  /**
+   * calc_apply_roto_translation: translate the centre of geometry to the origin, rotate by the optimal rotation onto
+   * the centred reference (rotation::calc_optimal_rotation: the correlation matrix, the overlap matrix S, its leading
+   * eigenvector from the Jacobi diagonalization as the quaternion), then translate to the reference's centre.
+   */
+  private applyRotoTranslation(): void {
+    const n = this.ids.length;
+    const { px, py, pz } = this;
+    let gx = 0.0, gy = 0.0, gz = 0.0;
+    for (let i = 0; i < n; i++) { gx += px[i]; gy += py[i]; gz += pz[i]; }
+    gx /= n; gy /= n; gz /= n;
+    if (this.center) {
+      const tx = -1.0 * gx, ty = -1.0 * gy, tz = -1.0 * gz;
+      for (let i = 0; i < n; i++) { px[i] += tx; py[i] += ty; pz[i] += tz; }
+    }
+    if (this.rotate) {
+      let xx = 0.0, xy = 0.0, xz = 0.0, yx = 0.0, yy = 0.0, yz = 0.0, zx = 0.0, zy = 0.0, zz = 0.0;
+      for (let i = 0; i < n; i++) {
+        xx += px[i] * this.refX[i]; xy += px[i] * this.refY[i]; xz += px[i] * this.refZ[i];
+        yx += py[i] * this.refX[i]; yy += py[i] * this.refY[i]; yz += py[i] * this.refZ[i];
+        zx += pz[i] * this.refX[i]; zy += pz[i] * this.refY[i]; zz += pz[i] * this.refZ[i];
+      }
+      // compute_overlap_matrix
+      const S = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+      S[0][0] = xx + yy + zz;
+      S[1][0] = yz - zy; S[0][1] = S[1][0];
+      S[2][0] = -xz + zx; S[0][2] = S[2][0];
+      S[3][0] = xy - yx; S[0][3] = S[3][0];
+      S[1][1] = xx - yy - zz;
+      S[2][1] = xy + yx; S[1][2] = S[2][1];
+      S[3][1] = xz + zx; S[1][3] = S[3][1];
+      S[2][2] = -xx + yy - zz;
+      S[3][2] = yz + zy; S[2][3] = S[3][2];
+      S[3][3] = -xx - yy + zz;
+      const { rows } = jacobiRows(S, 4, true, 'Error: Too many iterations in jacobi diagonalization.\nThis is usually the result of an ill-defined set of atoms for rotational alignment (RMSD, rotateReference, etc).');
+      for (let k = 0; k < 4; k++) this.q[k] = rows[0][k];
+      const R = rotationMatrix(this.q);
+      for (let i = 0; i < n; i++) {
+        const nx = R[0] * px[i] + R[1] * py[i] + R[2] * pz[i];
+        const ny = R[3] * px[i] + R[4] * py[i] + R[5] * pz[i];
+        const nz = R[6] * px[i] + R[7] * py[i] + R[8] * pz[i];
+        px[i] = nx; py[i] = ny; pz[i] = nz;
+      }
+    }
+    if (this.center) {
+      for (let i = 0; i < n; i++) { px[i] += this.refCog[0]; py[i] += this.refCog[1]; pz[i] += this.refCog[2]; }
+    }
   }
 
   /** set_weighted_gradient: grad_i = (m_i / M) grad. */
@@ -294,10 +396,19 @@ class AtomGroup {
     if (this.noforce) throw colvarsError('Error: sending a force to a group that has "enableForces" set to off.');
   }
 
-  /** apply_colvar_force: each atom gets force times its gradient. */
+  /** apply_colvar_force: each atom gets force times its gradient (rotated back to the lab frame when the group is rotated). */
   applyColvarForce(force: number): void {
     if (this.dummy) return;
     this.checkForces();
+    if (this.rotate) {
+      // rot.inverse().matrix(): the rotation matrix of the conjugate quaternion
+      const R = rotationMatrix([this.q[0], -this.q[1], -this.q[2], -this.q[3]]);
+      for (let i = 0; i < this.ids.length; i++) {
+        const g0 = this.gx[i], g1 = this.gy[i], g2 = this.gz[i];
+        this.atoms.addForce(this.index[i], force * (R[0] * g0 + R[1] * g1 + R[2] * g2), force * (R[3] * g0 + R[4] * g1 + R[5] * g2), force * (R[6] * g0 + R[7] * g1 + R[8] * g2));
+      }
+      return;
+    }
     for (let i = 0; i < this.ids.length; i++) this.atoms.addForce(this.index[i], force * this.gx[i], force * this.gy[i], force * this.gz[i]);
   }
 
@@ -361,11 +472,11 @@ abstract class Component {
   /** provide(f_cvc_periodic): whether period and wrapAround may be given. */
   protected periodicAvailable(): boolean { return false; }
 
-  /** cvc::parse_group. */
-  protected group(atoms: ColvarsAtoms, c: Conf, key: string, cvName: string): AtomGroup {
+  /** cvc::parse_group (fitOk: the component may fit the group to reference positions, rmsd). */
+  protected group(atoms: ColvarsAtoms, c: Conf, key: string, cvName: string, fitOk = false): AtomGroup {
     const conf = c.get(key);
     if (conf === undefined) throw colvarsError(`Error: definition for atom group "${key}" not found.`);
-    const g = new AtomGroup(atoms, key, `atom group "${key}" of colvar "${cvName}"`, conf);
+    const g = new AtomGroup(atoms, key, `atom group "${key}" of colvar "${cvName}"`, conf, fitOk);
     this.groups.push(g);
     return g;
   }
@@ -1042,31 +1153,130 @@ class CoordNum extends Component {
 export interface ComponentContext {
   /** force->angstrom of the unit style. */
   angstrom: number;
+  /** cvm::log. */
+  log: (text: string) => void;
 }
 
 /** The components of this port, and the ones of the library it refuses. */
+/**
+ * colvar::rmsd: the RMSD of the group "atoms" from refPositions after the optimal fit (by default the group is
+ * centred and rotated onto the reference: rmsd::init enables f_ag_center and f_ag_rotate, and the fit gradients are
+ * off since they cancel in the gradients), the minimum over the atomPermutation lists; gradients 2 (x - ref) /
+ * (2 N rmsd), rotated back to the lab frame when the forces are applied.
+ */
+class Rmsd extends Component {
+  readonly functionType = 'rmsd';
+  readonly type: ValueType = 'scalar';
+  // cvc::init_as_distance: lower boundary 0
+  lowerBoundary: number | null = 0.0;
+  private readonly atomsGroup: AtomGroup;
+  /** The reference positions (not centred) of each permutation, the identity first. */
+  private readonly refs: number[][][] = [];
+  private best = 0;
+
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext) {
+    super();
+    this.initBase(c);
+    const g = this.group(atoms, c, 'atoms', cvName, true);
+    this.atomsGroup = g;
+    if (g.dummy || g.ids.length === 0) throw colvarsError('Error: no atoms defined for atom group "atoms".');
+    if (c.get('refPositionsFile') !== undefined) throw colvarsError('Error: the rmsd keyword "refPositionsFile" (reading coordinates from a file) is not supported by the browser engine; give the positions with refPositions.');
+    for (const k of ['refPositionsCol', 'refPositionsColValue']) c.get(k);
+    const rp = c.get('refPositions');
+    if (rp === undefined) throw colvarsError('Error: no reference positions for RMSD; use either refPositions of refPositionsFile.');
+    const ref = splitValues(rp).map((v) => {
+      if (!Array.isArray(v) || v.length !== 3) throw colvarsError(`Error: could not read the reference positions of "refPositions" from "${rp.trim()}".`);
+      return [...v];
+    });
+    if (ref.length !== g.ids.length) {
+      throw colvarsError(`Error: the number of reference positions provided (${ref.length}) does not match the number of atoms of group "atoms" (${g.ids.length}).`);
+    }
+    if (g.userDefinedFit) ctx.log('WARNING: explicit fitting parameters were provided for atom group "atoms".');
+    else {
+      ctx.log('Enabling "centerToReference" and "rotateToReference", to minimize RMSD before calculating it as a variable: if this is not the desired behavior, disable them explicitly within the "atoms" block.');
+      g.enableFit(ref);
+      ctx.log('This is a standard minimum RMSD, derivatives of the optimal rotation will not be computed as they cancel out in the gradients.');
+    }
+    // init_permutation: each atomPermutation lists the atom numbers in the order matching the reference positions
+    this.refs.push(ref);
+    for (const pc of c.all('atomPermutation')) {
+      if (pc.trim() === '') continue;
+      const perm: number[] = [];
+      for (const t of pc.trim().split(/\s+/)) {
+        const id = parseInt10(t, 'atomPermutation');
+        // As native LAMMPS does (lib/colvars/colvarcomp_distances.cpp init_permutation at b332f28): the group's ids are
+        // the LAMMPS atom numbers, but the lookup is "std::find(ids.begin(), ids.end(), index-1)", so each entry
+        // names its atom as atom number + 1
+        const ia = g.ids.indexOf(id - 1);
+        if (ia < 0) throw colvarsError(`Error: atom id ${id} is not a member of group "atoms".`);
+        if (perm.includes(ia)) throw colvarsError(`Error: atom id ${id} is mentioned more than once in atomPermutation list.`);
+        perm.push(ia);
+      }
+      if (perm.length !== g.ids.length) throw colvarsError(`Error: symmetry permutation in input contains ${perm.length} indices, but group "atoms" contains ${g.ids.length} atoms.`);
+      this.refs.push(perm.map((k) => ref[k]));
+    }
+  }
+
+  calcValue(): void {
+    const g = this.atomsGroup;
+    const n = g.ids.length;
+    // permutation_msds, then the first minimum (std::min_element)
+    let bestMsd = 0.0;
+    this.refs.forEach((ref, ip) => {
+      let msd = 0;
+      for (let ia = 0; ia < n; ia++) {
+        const dx = g.px[ia] - ref[ia][0], dy = g.py[ia] - ref[ia][1], dz = g.pz[ia] - ref[ia][2];
+        msd += dx * dx + dy * dy + dz * dz;
+      }
+      if (ip === 0 || msd < bestMsd) { bestMsd = msd; this.best = ip; }
+    });
+    let x = bestMsd;
+    x /= n;
+    this.x[0] = Math.sqrt(x);
+  }
+
+  calcGradients(): void {
+    const g = this.atomsGroup;
+    const n = g.ids.length;
+    const drmsddx2 = this.x[0] > 0.0 ? 0.5 / (this.x[0] * n) : 0.0;
+    const ref = this.refs[this.best];
+    const a = drmsddx2 * 2.0;
+    for (let ia = 0; ia < n; ia++) {
+      g.gx[ia] = a * (g.px[ia] - ref[ia][0]);
+      g.gy[ia] = a * (g.py[ia] - ref[ia][1]);
+      g.gz[ia] = a * (g.pz[ia] - ref[ia][2]);
+    }
+  }
+}
+
+/**
+ * The supported components, in the order colvar::init_components reads the types (a colvar's components, and so the
+ * order of their sum, follow it): distance, distanceVec, cartesian, distanceZ, distanceXY, coordNum, selfCoordNum,
+ * groupCoord, angle, dihedral, rmsd, gyration.
+ */
 const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext) => Component> = {
   distance: (a, c, n) => new Distance(a, c, n),
   distancevec: (a, c, n) => new DistanceVec(a, c, n),
   cartesian: (a, c, n) => new Cartesian(a, c, n),
-  gyration: (a, c, n) => new Gyration(a, c, n),
+  distancez: (a, c, n) => new DistanceZ(a, c, n),
+  distancexy: (a, c, n) => new DistanceXY(a, c, n),
   coordnum: (a, c, n, x) => new CoordNum(a, c, n, x),
   selfcoordnum: (a, c, n, x) => new CoordNum(a, c, n, x, 'selfCoordNum'),
   groupcoord: (a, c, n, x) => new CoordNum(a, c, n, x, 'groupCoord'),
   angle: (a, c, n) => new Angle(a, c, n),
   dihedral: (a, c, n) => new Dihedral(a, c, n),
-  distancez: (a, c, n) => new DistanceZ(a, c, n),
-  distancexy: (a, c, n) => new DistanceXY(a, c, n),
+  rmsd: (a, c, n, x) => new Rmsd(a, c, n, x),
+  gyration: (a, c, n) => new Gyration(a, c, n),
 };
 const LIBRARY_COMPONENTS = [
   'distanceDir', 'distanceInv', 'distancePairs', 'dipoleMagnitude', 'dipoleAngle',
-  'hBond', 'rmsd', 'eigenvector', 'inertia',
+  'hBond', 'eigenvector', 'inertia',
   'inertiaZ', 'orientation', 'orientationAngle', 'orientationProj', 'spinAngle', 'tilt', 'alpha', 'dihedralPC',
   'polarTheta', 'polarPhi', 'linearCombination', 'customColvar', 'neuralNetwork', 'mapTotal', 'aspathCV', 'azpathCV',
   'gspath', 'gzpath', 'gspathCV', 'gzpathCV', 'euler_phi', 'euler_psi', 'euler_theta', 'dipoleDirection',
   'alchLambda', 'alchFLambda', 'componentDistance', 'distanceEuler',
 ];
-const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord';
+const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord, rmsd';
 
 /** One collective variable. */
 export class Colvar {
@@ -2351,7 +2561,7 @@ export class ColvarsModule {
     let added = false;
     for (const v of c.all('colvar')) {
       if (v.trim() === '') throw colvarsError('Error: "colvar" keyword found without any configuration.');
-      const cv = new Colvar(this.atoms, v, this.colvars.length + 1, (n) => this.colvars.some((x) => x.name === n), { angstrom: this.angstrom });
+      const cv = new Colvar(this.atoms, v, this.colvars.length + 1, (n) => this.colvars.some((x) => x.name === n), { angstrom: this.angstrom, log: (t: string) => this.host.log(t) });
       this.colvars.push(cv);
       added = true;
     }

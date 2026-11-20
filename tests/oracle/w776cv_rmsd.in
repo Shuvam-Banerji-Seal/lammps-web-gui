@@ -1,0 +1,32 @@
+# oracle: fix colvars rmsd components (colvar::rmsd) on a 256-atom LJ liquid: 8 atoms against reference positions that
+#   are their lattice sites rotated by 0.5 rad, shifted and perturbed (the default fit: centerToReference and
+#   rotateToReference, the Coutsias quaternion from the Jacobi diagonalization of the 4x4 overlap matrix, forces
+#   rotated back by the inverse rotation), and 4 atoms with two atomPermutation lists (in LAMMPS each entry names its
+#   atom as atom number + 1: init_permutation looks up index-1 among the LAMMPS atom numbers), each under a harmonic
+#   restraint; two runs.
+# Measured with native LAMMPS: state files byte-identical, traj within 1e-15 (the LJ trajectory's last bits).
+# oracle-inputs: w776cv_rmsd.colvars
+# oracle-files: rm.colvars.traj rm.colvars.state
+# oracle-compare: thermo=all atoms=all rel=1e-10 filerel=1e-10
+units           lj
+atom_modify     map array
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+set             atom 1*128 type 2
+mass            1 1.0
+mass            2 2.5
+velocity        all create 1.5 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all nve
+fix             2 all colvars w776cv_rmsd.colvars output rm
+fix_modify      2 energy yes
+thermo_style    custom step temp pe etotal f_2 f_2[1][1] f_2[2][1]
+thermo_modify   format float %.15g
+thermo          5
+run             50
+run             30

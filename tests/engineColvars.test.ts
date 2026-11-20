@@ -51,9 +51,18 @@ describe('fix colvars: the supported subset and its refusals', () => {
   });
 
   it('refuses a component, a bias and a keyword outside the subset, naming them', async () => {
-    const cn = await run({ 'a.colvars': 'colvar {\n  name t\n  rmsd {\n    atoms { atomNumbers 1 2 3 }\n  }\n}\n' },
+    const cn = await run({ 'a.colvars': 'colvar {\n  name t\n  orientation {\n    atoms { atomNumbers 1 2 3 }\n  }\n}\n' },
       `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
-    expect(cn.error).toMatch(/Colvars component "rmsd" is not supported by the browser engine \(supported: distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord\)/);
+    expect(cn.error).toMatch(/Colvars component "orientation" is not supported by the browser engine \(supported: distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord, rmsd\)/);
+    // rmsd (colvar::rmsd::init): reference positions are required and must match the group; an explicit fit needs the
+    // fit gradients, which are not ported
+    const rm = (body: string) => run({ 'a.colvars': `colvar {\n  name r\n  rmsd {\n${body}  }\n}\n` }, `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
+    expect((await rm('    atoms { atomNumbers 1 2 3 }\n')).error).toMatch(/no reference positions for RMSD; use either refPositions of refPositionsFile/);
+    expect((await rm('    atoms { atomNumbers 1 2 3 }\n    refPositions (0,0,0) (1,0,0)\n')).error)
+      .toMatch(/the number of reference positions provided \(2\) does not match the number of atoms of group "atoms" \(3\)/);
+    expect((await rm('    atoms { atomNumbers 1 2 3\n      rotateToReference on }\n    refPositions (0,0,0) (1,0,0) (0,1,0)\n')).error)
+      .toMatch(/atom group keyword "rotateToReference" .* is not supported by the browser engine/);
+    expect((await rm('    atoms { atomNumbers 1 2 3 }\n    refPositions (0,0,0) (1,0,0) (0,1,0)\n')).error).toBeNull();
     const abf = await run({ 'a.colvars': config('abf {\n  colvars d\n}\n') }, `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
     expect(abf.error).toMatch(/Colvars bias "abf" is not supported by the browser engine \(supported: harmonic, harmonicWalls, metadynamics\)/);
     // colvarbias_meta::init: "Error: hillWeight must be provided, and a positive number."

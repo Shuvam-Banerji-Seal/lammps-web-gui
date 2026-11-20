@@ -1,0 +1,43 @@
+colvarsTrajFrequency 5
+colvarsRestartFrequency 25
+
+colvar {
+  name dv
+  distanceVec {
+    group1 { atomNumbers 1 2 }
+    group2 { atomNumbers 60 }
+  }
+}
+
+colvar {
+  name z
+  width 0.1
+  lowerBoundary -0.3
+  upperBoundary 0.3
+  expandBoundaries on
+  distanceZ {
+    main { atomNumbers 33 }
+    ref { atomNumbers 9 10 }
+  }
+}
+
+metadynamics {
+  name nogrid
+  colvars dv
+  hillWeight 0.1
+  gaussianSigmas 0.4
+  newHillFrequency 5
+  useGrids off
+  writeHillsTrajectory on
+  outputEnergy on
+}
+
+metadynamics {
+  name grow
+  colvars z
+  hillWeight 0.3
+  hillWidth 3.0
+  newHillFrequency 5
+  keepHills on
+  outputEnergy on
+}

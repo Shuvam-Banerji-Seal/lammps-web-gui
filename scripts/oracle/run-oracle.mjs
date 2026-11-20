@@ -97,6 +97,8 @@ const parseLog = (log, keywords) => {
       if (/^Removed\/inserted \d+\/\d+ bond particles\.$/.test(lines[j].trim())) continue;
       // fix colvars logs its state and trajectory writes between thermo rows
       if (/^(Saving collective variables state to|Synchronizing \(emptying the buffer of\) trajectory file) ".*"\.$/.test(lines[j].trim())) continue;
+      // Colvars metadynamics growing its grids (expandBoundaries) logs between thermo rows too
+      if (/^Metadynamics bias ".*": new (lower|upper) boundary for colvar ".*", at .*\.$/.test(lines[j].trim())) continue;
       const w = lines[j].trim().split(/\s+/);
       if (w.length !== ncol || !w.every((x) => /^[-+0-9.eE]+$/.test(x) || /^-?(nan|inf)$/i.test(x))) break;
       const row = {};

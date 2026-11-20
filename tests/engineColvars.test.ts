@@ -54,10 +54,38 @@ describe('fix colvars: the supported subset and its refusals', () => {
     const cn = await run({ 'a.colvars': 'colvar {\n  name t\n  rmsd {\n    atoms { atomNumbers 1 2 3 }\n  }\n}\n' },
       `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
     expect(cn.error).toMatch(/Colvars component "rmsd" is not supported by the browser engine \(supported: distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord\)/);
+    const abf = await run({ 'a.colvars': config('abf {\n  colvars d\n}\n') }, `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
+    expect(abf.error).toMatch(/Colvars bias "abf" is not supported by the browser engine \(supported: harmonic, harmonicWalls, metadynamics\)/);
+    // colvarbias_meta::init: "Error: hillWeight must be provided, and a positive number."
     const meta = await run({ 'a.colvars': config('metadynamics {\n  colvars d\n}\n') }, `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
-    expect(meta.error).toMatch(/Colvars bias "metadynamics" is not supported by the browser engine \(supported: harmonic, harmonicWalls\)/);
+    expect(meta.error).toMatch(/hillWeight must be provided, and a positive number/);
     const kw = await run({ 'a.colvars': config('harmonic {\n  colvars d\n  centers 1.0\n  springiness 3\n}\n') }, `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
     expect(kw.error).toMatch(/keyword "springiness" is not supported, or not recognized in this context/);
+  });
+
+  it('checks the grid parameters and the metadynamics keywords as the library does', async () => {
+    const cv = (opts: string, bias = '') => `colvar {\n  name d\n${opts}  distance {\n    group1 { atomNumbers 1 2 }\n    group2 { atomNumbers 3 }\n  }\n}\n${bias}`;
+    const go = (text: string, extra = '') => run({ 'a.colvars': text }, `${BOX}${extra}fix 2 all colvars a.colvars\nrun 0\n`);
+    // colvar::check_grid_parameters
+    expect((await go(cv('  lowerBoundary 2.0\n  upperBoundary 1.0\n'))).error).toMatch(/the upper boundary, 1, is not higher than the lower boundary, 2/);
+    // distance has a hard lower boundary at 0 (cvc::init_as_distance); hardUpperBoundary makes both hard
+    expect((await go(cv('  upperBoundary 3.0\n  hardUpperBoundary on\n  expandBoundaries on\n'))).error)
+      .toMatch(/trying to expand boundaries, but both hardLowerBoundary and hardUpperBoundary are enabled/);
+    // colvarbias_meta::init and init_well_tempered_params
+    expect((await go(cv('', 'metadynamics {\n  colvars d\n  hillWeight 0.1\n  hillWidth 2\n  gaussianSigmas 0.3\n}\n'))).error).toMatch(/hillWidth and gaussianSigmas are mutually exclusive/);
+    expect((await go(cv('', 'metadynamics {\n  colvars d\n  hillWeight 0.1\n}\n'))).error).toMatch(/either hillWidth or gaussianSigmas must be set to positive values/);
+    expect((await go(cv('', 'metadynamics {\n  colvars d\n  hillWeight 0.1\n  hillWidth 2\n  wellTempered on\n}\n'))).error).toMatch(/biasTemperature must be set to a positive value/);
+    // FixColvars::set_thermostat_temperature: the tstat fix must give t_target
+    const ts = await run({ 'a.colvars': cv('') }, `${BOX}fix 2 all colvars a.colvars tstat 1\n`);
+    expect(ts.error).toMatch(/Fix ID 1 is not a thermostat fix/);
+    // the state of a metadynamics bias is not read back (yet): an input state naming it is refused
+    const meta = cv('', 'metadynamics {\n  colvars d\n  hillWeight 0.1\n  hillWidth 2\n}\n');
+    const first = await run({ 'a.colvars': meta }, `${BOX}fix 2 all colvars a.colvars output m\nrun 10\n`);
+    expect(first.error).toBeNull();
+    const state = first.session.sys.readFile('m.colvars.state');
+    expect(state).toMatch(/metadynamics \{\n  configuration \{\n    step 10\n    name metadynamics1\n  \}\n\nhills_energy\ngrid_parameters/);
+    const again = await run({ 'a.colvars': meta, 'm.colvars.state': state }, `${BOX}fix 2 all colvars a.colvars input m\nrun 0\n`);
+    expect(again.error).toMatch(/reading the state of the metadynamics bias "metadynamics1" .* is not supported by the browser engine/);
   });
 
   it('refuses a script command other than config and configfile and a second instance; a row past the colvars reads 0', async () => {

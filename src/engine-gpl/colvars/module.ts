@@ -11,15 +11,15 @@
  * (init, collect_cvc_values, update_forces_energy, communicate_forces, dist2, dist2_lgrad, write_traj_label, write_traj,
  * get_state_params), colvarcomp.cpp (cvc::init, cvc::dist2, cvc::dist2_lgrad, cvc::apply_force),
  * colvarcomp_distances.cpp (distance, distance_vec, distance_z, distance_xy, cartesian, gyration),
- * colvarcomp_angles.cpp (angle, dihedral), colvarcomp_coordnums.cpp/.h (coordnum, its switching function and pair
- * list), colvaratoms.cpp (atom_group parse, update_total_mass,
+ * colvarcomp_angles.cpp (angle, dihedral), colvarcomp_coordnums.cpp/.h (coordnum, selfcoordnum, groupcoordnum, the
+ * switching function and pair list), colvaratoms.cpp (atom_group parse, update_total_mass,
  * calc_center_of_mass, set_weighted_gradient, apply_colvar_force, apply_force), colvarbias.cpp and
  * colvarbias_restraint.cpp (the harmonic and harmonic_walls restraints), colvars_system.h (system_boundary_conditions), colvartypes.h/.cpp
  * and colvarvalue.cpp (vector arithmetic and stream formats), colvarscript_commands.h (config, configfile),
  * colvarproxy.cpp, colvarproxy_io.cpp (output streams, backup_file) and colvarproxy_lammps.cpp (init, setup, compute).
  *
  * The supported subset: the components distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian,
- * gyration and coordNum (atom groups from atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
+ * gyration, coordNum, selfCoordNum and groupCoord (atom groups from atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
  * (componentCoeff, componentExp), periodic components (dihedral; distanceZ with period), the harmonic and
  * harmonicWalls restraints, the trajectory file (colvarsTrajFrequency) and the state file (colvarsRestartFrequency, the
  * end of each run, the input state). Every other component, bias or keyword stops with an error naming it. The
@@ -814,12 +814,15 @@ const switchingFunction = (l2: number, en: number, ed: number, usePairlist: bool
   return func;
 };
 
-/** colvar::coordnum: the sum over atom pairs of group1 and group2 of the switching function of their distance. */
+/**
+ * colvar::coordnum and its kinds: coordNum (the sum over atom pairs of group1 and group2 of the switching function of
+ * their distance), selfCoordNum (over the pairs i < j of group1) and groupCoord (between the two centres of mass).
+ */
 class CoordNum extends Component {
-  readonly functionType = 'coordNum';
+  readonly functionType: string;
   readonly type: ValueType = 'scalar';
   private readonly g1: AtomGroup;
-  private readonly g2: AtomGroup;
+  private readonly g2: AtomGroup | null;
   private readonly center1: boolean;
   private readonly center2: boolean;
   private r0 = [0, 0, 0];
@@ -832,21 +835,35 @@ class CoordNum extends Component {
   private pairlistFreq = 100;
   private pairlist: Uint8Array | null = null;
 
-  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext) {
+  constructor(atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext, kind: 'coordNum' | 'selfCoordNum' | 'groupCoord' = 'coordNum') {
     super();
+    this.functionType = kind;
     // the default cutoff, 4 A in the units of the input (proxy->angstrom_to_internal)
     const r0 = 4.0 * ctx.angstrom;
     this.updateCutoffs([r0, r0, r0]);
     this.initBase(c);
     this.g1 = this.group(atoms, c, 'group1', cvName);
     if (this.g1.dummy) throw colvarsError('Error: group1 may not be a dummy atom');
-    this.g2 = this.group(atoms, c, 'group2', cvName);
-    const shared = this.g1.ids.find((id) => this.g2.ids.includes(id));
-    if (shared !== undefined) throw colvarsError(`Error: group1 and group2 share a common atom (number: ${shared})`);
-    const b1 = c.get('group1CenterOnly'), b2 = c.get('group2CenterOnly');
-    const dummy2 = this.g2.dummy !== null;
-    this.center1 = b1 !== undefined ? parseBool(b1, 'group1CenterOnly') : dummy2;
-    this.center2 = b2 !== undefined ? parseBool(b2, 'group2CenterOnly') : dummy2;
+    if (kind === 'selfCoordNum') {
+      this.g2 = null;
+      this.center1 = false;
+      this.center2 = false;
+    } else {
+      const g2 = this.group(atoms, c, 'group2', cvName);
+      this.g2 = g2;
+      const shared = this.g1.ids.find((id) => g2.ids.includes(id));
+      if (shared !== undefined) throw colvarsError(`Error: group1 and group2 share a common atom (number: ${shared})`);
+      if (kind === 'coordNum') {
+        const b1 = c.get('group1CenterOnly'), b2 = c.get('group2CenterOnly');
+        const dummy2 = g2.dummy !== null;
+        this.center1 = b1 !== undefined ? parseBool(b1, 'group1CenterOnly') : dummy2;
+        this.center2 = b2 !== undefined ? parseBool(b2, 'group2CenterOnly') : dummy2;
+      } else {
+        // groupCoord: hard-coded centres of mass
+        this.center1 = true;
+        this.center2 = true;
+      }
+    }
     const cut = c.get('cutoff');
     const cut3 = c.get('cutoff3');
     if (cut3 !== undefined) {
@@ -864,17 +881,17 @@ class CoordNum extends Component {
     if (ed !== undefined) this.ed = parseInt10(ed, 'expDenom');
     if (this.en % 2 || this.ed % 2) throw colvarsError('Error: odd exponent(s) provided, can only use even ones.');
     if (this.en <= 0 || this.ed <= 0) throw colvarsError('Error: negative exponent(s) provided.');
-    const tol = c.get('tolerance');
+    // every kind but groupCoord may use a pair list
+    const tol = kind !== 'groupCoord' ? c.get('tolerance') : undefined;
     if (tol !== undefined) this.tolerance = parseReal(tol, 'tolerance');
     if (this.tolerance > 0) {
       this.computeTolL2Max();
       const pf = c.get('pairListFrequency');
       if (pf !== undefined) this.pairlistFreq = parseInt10(pf, 'pairListFrequency');
       if (!(this.pairlistFreq > 0)) throw colvarsError('Error: non-positive pairlistfrequency provided.');
-      const n1 = this.center1 ? 1 : this.g1.ids.length, n2 = this.center2 ? 1 : this.g2.ids.length;
-      this.pairlist = new Uint8Array(n1 * n2).fill(1);
-    } else {
-      c.get('pairListFrequency');
+      const n = this.g1.ids.length;
+      const pairs = this.g2 === null ? (n * (n - 1)) / 2 : (this.center1 ? 1 : n) * (this.center2 ? 1 : this.g2.ids.length);
+      this.pairlist = new Uint8Array(pairs).fill(1);
     }
   }
 
@@ -896,13 +913,30 @@ class CoordNum extends Component {
     this.tolL2Max = l2;
   }
 
+  /** The pair term of compute_pair_coordnum: F, with the gradient G added to (g1, i) negated and to (g2, j). */
+  private pair(p1: number[], p2: number[], usePl: boolean, diff: number[], d: { dFdl2: number }, G: number[]): number {
+    this.bc.distance(p1, p2, diff);
+    const sx = diff[0] * this.invR0[0], sy = diff[1] * this.invR0[1], sz = diff[2] * this.invR0[2];
+    const l2 = sx * sx + sy * sy + sz * sz;
+    if (usePl && l2 > this.tolL2Max) return -1;
+    d.dFdl2 = 0.0;
+    const F = switchingFunction(l2, this.en, this.ed, usePl, true, this.tolerance, d);
+    if (F > 0.0) {
+      G[0] = d.dFdl2 * ((2.0 * this.invR0sq[0]) * diff[0]);
+      G[1] = d.dFdl2 * ((2.0 * this.invR0sq[1]) * diff[1]);
+      G[2] = d.dFdl2 * ((2.0 * this.invR0sq[2]) * diff[2]);
+    }
+    return F;
+  }
+
   calcValue(stepRelative: number): void {
+    const usePl = this.pairlist !== null;
+    const rebuild = usePl && stepRelative % this.pairlistFreq === 0;
+    if (this.g2 === null) { this.selfLoop(usePl, rebuild); return; }
     const g1 = this.g1, g2 = this.g2;
     // cvc::read_data reset the gradients; the loop sums the pair terms into them
     g1.gx.fill(0); g1.gy.fill(0); g1.gz.fill(0);
     g2.gx.fill(0); g2.gy.fill(0); g2.gz.fill(0);
-    const usePl = this.pairlist !== null;
-    const rebuild = usePl && stepRelative % this.pairlistFreq === 0;
     const n1 = this.center1 ? 1 : g1.ids.length, n2 = this.center2 ? 1 : g2.ids.length;
     const com1 = g1.com, com2 = g2.com;
     const cg1 = [0.0, 0.0, 0.0], cg2 = [0.0, 0.0, 0.0];
@@ -943,6 +977,36 @@ class CoordNum extends Component {
     if (this.center1) g1.setWeightedGradient(cg1);
     if (this.center2) g2.setWeightedGradient(cg2);
   }
+
+  /** selfcoordnum_sequential_loop: the pairs i < j of group1, in order. */
+  private selfLoop(usePl: boolean, rebuild: boolean): void {
+    const g = this.g1, n = g.ids.length;
+    g.gx.fill(0); g.gy.fill(0); g.gz.fill(0);
+    const diff = [0, 0, 0], p1 = [0, 0, 0], p2 = [0, 0, 0], G = [0, 0, 0];
+    const d = { dFdl2: 0.0 };
+    let x = 0.0;
+    let k = 0;
+    for (let i = 0; i < n - 1; i++) {
+      p1[0] = g.px[i]; p1[1] = g.py[i]; p1[2] = g.pz[i];
+      for (let j = i + 1; j < n; j++) {
+        p2[0] = g.px[j]; p2[1] = g.py[j]; p2[2] = g.pz[j];
+        const within = usePl ? (this.pairlist![k] === 1 || rebuild) : true;
+        let partial = 0.0;
+        if (within) {
+          const F = this.pair(p1, p2, usePl, diff, d, G);
+          if (F > 0.0) {
+            g.gx[i] += -1.0 * G[0]; g.gy[i] += -1.0 * G[1]; g.gz[i] += -1.0 * G[2];
+            g.gx[j] += G[0]; g.gy[j] += G[1]; g.gz[j] += G[2];
+          }
+          partial = F < 0 ? 0.0 : F;
+        }
+        if (usePl && rebuild) this.pairlist![k] = partial > 0.0 ? 1 : 0;
+        x += partial;
+        if (usePl) k++;
+      }
+    }
+    this.x[0] = x;
+  }
 }
 
 /** What a component needs from the module: the unit of length (proxy->angstrom_to_internal). */
@@ -958,6 +1022,8 @@ const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string, 
   cartesian: (a, c, n) => new Cartesian(a, c, n),
   gyration: (a, c, n) => new Gyration(a, c, n),
   coordnum: (a, c, n, x) => new CoordNum(a, c, n, x),
+  selfcoordnum: (a, c, n, x) => new CoordNum(a, c, n, x, 'selfCoordNum'),
+  groupcoord: (a, c, n, x) => new CoordNum(a, c, n, x, 'groupCoord'),
   angle: (a, c, n) => new Angle(a, c, n),
   dihedral: (a, c, n) => new Dihedral(a, c, n),
   distancez: (a, c, n) => new DistanceZ(a, c, n),
@@ -965,13 +1031,13 @@ const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string, 
 };
 const LIBRARY_COMPONENTS = [
   'distanceDir', 'distanceInv', 'distancePairs', 'dipoleMagnitude', 'dipoleAngle',
-  'selfCoordNum', 'groupCoord', 'hBond', 'rmsd', 'eigenvector', 'inertia',
+  'hBond', 'rmsd', 'eigenvector', 'inertia',
   'inertiaZ', 'orientation', 'orientationAngle', 'orientationProj', 'spinAngle', 'tilt', 'alpha', 'dihedralPC',
   'polarTheta', 'polarPhi', 'linearCombination', 'customColvar', 'neuralNetwork', 'mapTotal', 'aspathCV', 'azpathCV',
   'gspath', 'gzpath', 'gspathCV', 'gzpathCV', 'euler_phi', 'euler_psi', 'euler_theta', 'dipoleDirection',
   'alchLambda', 'alchFLambda', 'componentDistance', 'distanceEuler',
 ];
-const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum';
+const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord';
 
 /** One collective variable. */
 export class Colvar {

@@ -359,13 +359,13 @@ fixed, among others:
 - the "Out of range atoms" stop of PPPM on a run that blows up.
 
 **Next.**
-1. `fix colvars`: a native-parity subset of the Colvars library is in (the `distance`, `distanceVec`, `distanceZ`,
-   `distanceXY`, `angle`, `dihedral`, `cartesian`, `gyration`, `coordNum`, `selfCoordNum`, `groupCoord` and `rmsd`
-   (optimal fit, `atomPermutation`) components, `harmonic` and `harmonicWalls` restraints, metadynamics (grids,
-   well-tempered, `expandBoundaries`, the PMF and hills trajectory files), the trajectory and state files,
-   `fix_modify ... config` and `configfile`), which runs the `examples/PACKAGES/colvars` inputs; a metadynamics state
-   is read back to continue a run. Next are more
-   components (orientations, user-defined fits with fit gradients), multiple-walker metadynamics and ABF.
+1. `fix colvars`: a native-parity subset of the Colvars library is in: the `distance`, `distanceVec`, `distanceZ`,
+   `distanceXY`, `angle`, `dihedral`, `cartesian`, `gyration`, `coordNum`, `selfCoordNum`, `groupCoord`, `rmsd`
+   (optimal fit, `atomPermutation`), `orientationAngle`, `orientationProj`, `tilt`, `spinAngle` and Euler angle
+   components; `harmonic` and `harmonicWalls` restraints; metadynamics (grids, well-tempered, `expandBoundaries`, the
+   PMF and hills trajectory files, a state read back to continue a run); the trajectory and state files;
+   `fix_modify ... config` and `configfile`. It runs the `examples/PACKAGES/colvars` inputs. Next are the quaternion
+   `orientation` component, user-defined fits with fit gradients, multiple-walker metadynamics and ABF.
 2. More of `pair granular` on the GPU: rolling and twisting resistance (native reorients their history at neighbor
    rebuilds, which the GPU kernel's fixed contact frame cannot follow yet), jkr and mdr. ReaxFF on the GPU.
 3. Speed: some examples still run up to about 5x slower than single-thread native LAMMPS (the pair/tally computes, some pair

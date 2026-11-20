@@ -1,0 +1,33 @@
+# oracle: the scalar orientation components of fix colvars (colvarcomp_rotations.cpp): orientationAngle,
+#   orientationProj, tilt (axis 1 1 0, normalized), spinAngle (axis z, periodic), eulerPhi, eulerPsi and eulerTheta of 6
+#   atoms against reference positions rotated by 0.6 rad, shifted and perturbed, each under a harmonic restraint. The
+#   optimal rotation of the centred reference onto the group's positions minus their centre of geometry, and the
+#   gradients through the leading eigenvector's derivative (colvar_rotation_derivative.h prepare_derivative,
+#   project_force_to_C_from_dxdq, project_force_to_group2).
+# Measured with native LAMMPS: state files byte-identical; the traj equal to every printed digit to step 25, then
+#   within 4.3e-13 (the restraint forces amplify the LJ trajectory's last-bit differences).
+# oracle-inputs: w777cv_orient.colvars
+# oracle-files: or.colvars.traj or.colvars.state
+# oracle-compare: thermo=all atoms=all rel=1e-10 filerel=1e-10
+units           lj
+atom_modify     map array
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+set             atom 1*128 type 2
+mass            1 1.0
+mass            2 2.5
+velocity        all create 1.5 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all nve
+fix             2 all colvars w777cv_orient.colvars output or
+fix_modify      2 energy yes
+thermo_style    custom step temp pe etotal f_2 f_2[1][1] f_2[2][1] f_2[3][1] f_2[4][1] f_2[5][1] f_2[6][1] f_2[7][1]
+thermo_modify   format float %.15g
+thermo          5
+run             50
+run             30

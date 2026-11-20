@@ -74,6 +74,9 @@ export class KSpacePPPMTIP4P extends KSpace {
     const s = kc.s;
     const n = s.n;
     const m = this.model();
+    // the brick of the PPPM it wraps reaches 0.5 skin + qdist (native PPPMTIP4P sets qdist from the pair style)
+    this.solver.neighborSkin = this.neighborSkin;
+    this.solver.brickQdist = (this.pair as { qdist?: number } | null)?.qdist ?? 0;
     const sites = buildOwnedSites(n, s.x, s.type, s.id, kc.geom, m);
     const x = Float64Array.from(s.x.subarray(0, 3 * n));
     for (let i = 0; i < n; i++) {

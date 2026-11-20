@@ -543,6 +543,7 @@ export class ForceField {
       timer.stamp(BOND);
     }
     if (this.kspace && this.kspace.computeOn && want('kspace')) {
+      this.kspace.neighborSkin = nb.skin;
       this.kspace.compute({
         s, geom, f: s.f, qqrd2e: qqrd2e * this.kspace.scale, acc, torque: s.torque, ...termArrays('kspace'),
         threads: (this.pairThreads as Partial<PppmThreads> | null)?.pppmWeights ? this.pairThreads as unknown as PppmThreads : null,

@@ -339,6 +339,8 @@ export class KSpacePPPM extends KSpaceBase {
 
   init(s: SimState, geom: Geometry, cutCoul: number, qqrd2e: number, ctx: StyleContext): void {
     this.cutCoul = cutCoul;
+    // the brick is set up again at each init (native PPPM::init builds its Grid3d), from the box of the first compute
+    this.brick = null;
     this.setupCharges(s, geom, ctx);
     this.checkOrder();
     const ortho = !s.box.triclinic && geom.xy === 0 && geom.xz === 0 && geom.yz === 0;
@@ -475,8 +477,8 @@ export class KSpacePPPM extends KSpaceBase {
    * As native LAMMPS does (src/KSPACE/pppm.cpp PPPM::particle_map at b332f28): a box bound that is not a number stops the
    * run ("Non-numeric box dimensions - simulation unstable"), and so does an atom whose stencil leaves the grid brick of
    * its process ("Out of range atoms - cannot compute PPPM"). An atom with a coordinate that is not finite always does:
-   * its grid index (a cast of NaN or infinity) is out of every brick. The brick of a finite coordinate (the subdomain
-   * plus half the skin, Grid3d::ghost_grid) is not checked here; such an atom is mapped periodically.
+   * its grid index (a cast of NaN or infinity) is out of every brick. The brick of a finite coordinate is checked by
+   * checkBrick once the stencils are known.
    */
   static checkFinite(s: SimState, geom: Geometry): void {
     if (!(Number.isFinite(geom.lo[0]) && Number.isFinite(geom.lo[1]) && Number.isFinite(geom.lo[2]))) {
@@ -484,6 +486,77 @@ export class KSpacePPPM extends KSpaceBase {
     }
     const x = s.x;
     for (let k = 0; k < 3 * s.n; k++) if (!Number.isFinite(x[k])) throw new StyleError('Out of range atoms - cannot compute PPPM');
+  }
+
+  /** The distance of the TIP4P charge from its O (pppm/tip4p sets it on the solver it wraps), widening the brick. */
+  brickQdist = 0;
+  /** The grid brick of the run (out lo/hi in x, y, z), computed at the first compute after init. */
+  private brick: Int32Array | null = null;
+
+  /**
+   * The grid brick the atoms of the (single) process may reach, as native LAMMPS computes it (src/grid3d.cpp
+   * Grid3d::ghost_grid at b332f28, set up in PPPM::init with set_distance(0.5 skin + qdist), set_stencil_atom(-nlower,
+   * nupper), set_shift_atom and set_zfactor): the box widened by 0.5 skin + qdist (in fractional units for a triclinic
+   * box, MathExtra::tribbox), mapped to the mesh with the shift of the order, plus the stencil; at least the mesh itself;
+   * clipped to the mesh in a non-periodic dimension; in z with a slab, up to the top mesh plane.
+   */
+  private computeBrick(geom: Geometry): Int32Array {
+    const OFFSET = 16384;
+    const P = this.order;
+    const nlower = -Math.trunc((P - 1) / 2), nupper = Math.trunc(P / 2);
+    const shiftLo = P % 2 ? 0.5 : 0.0, shiftHi = shiftLo;
+    const maxdist = 0.5 * this.neighborSkin + this.brickQdist;
+    const mesh = this.mesh;
+    const tri = geom.xy !== 0 || geom.xz !== 0 || geom.yz !== 0;
+    let dist: number[], prd: number[], boxlo: number[], sublo: number[], subhi: number[];
+    if (!tri) {
+      dist = [maxdist, maxdist, maxdist];
+      prd = [geom.lx, geom.ly, geom.lz];
+      boxlo = [geom.lo[0], geom.lo[1], geom.lo[2]];
+      sublo = boxlo;
+      subhi = [geom.hi[0], geom.hi[1], geom.hi[2]];
+    } else {
+      const lx = geom.lx, ly = geom.ly, lz = geom.lz, yz = geom.yz, xz = geom.xz, xy = geom.xy;
+      dist = [
+        maxdist * Math.sqrt(ly * ly * lz * lz + ly * ly * xz * xz - 2.0 * ly * xy * xz * yz + lz * lz * xy * xy + xy * xy * yz * yz) / (lx * ly * lz),
+        maxdist * Math.sqrt(lz * lz + yz * yz) / (ly * lz),
+        maxdist / lz,
+      ];
+      prd = [1.0, 1.0, 1.0];
+      boxlo = [0.0, 0.0, 0.0];
+      sublo = boxlo;
+      subhi = [1.0, 1.0, 1.0];
+    }
+    const zextra = this.slab !== 1;
+    const out = new Int32Array(6);
+    for (let d = 0; d < 3; d++) {
+      const n = mesh[d];
+      const dinv = d === 2 && zextra ? n / (prd[2] * this.slab) : n / prd[d];
+      const lo = Math.trunc((sublo[d] - dist[d] - boxlo[d]) * dinv + shiftLo + OFFSET) - OFFSET;
+      const hi = Math.trunc((subhi[d] + dist[d] - boxlo[d]) * dinv + shiftHi + OFFSET) - OFFSET;
+      let outlo = Math.min(lo + nlower, 0);
+      let outhi = Math.max(hi + nupper, n - 1);
+      if (d === 2 && zextra) outhi = n - 1;
+      else if (!geom.periodic[d]) { outlo = Math.max(0, outlo); outhi = Math.min(n - 1, outhi); }
+      out[2 * d] = outlo; out[2 * d + 1] = outhi;
+    }
+    return out;
+  }
+
+  /**
+   * As native LAMMPS does (src/KSPACE/pppm.cpp PPPM::particle_map at b332f28): an atom whose stencil (first .. first +
+   * order - 1 in each direction, native nx + nlower .. nx + nupper) leaves the grid brick stops the run with "Out of
+   * range atoms - cannot compute PPPM" (an atom that moved farther than half the skin since the last reneighboring).
+   */
+  protected checkBrick(first: Int32Array, n: number, geom: Geometry): void {
+    if (!this.brick) this.brick = this.computeBrick(geom);
+    const b = this.brick, P1 = this.order - 1;
+    for (let i = 0; i < n; i++) {
+      for (let d = 0; d < 3; d++) {
+        const f = first[3 * i + d];
+        if (f < b[2 * d] || f + P1 > b[2 * d + 1]) throw new StyleError('Out of range atoms - cannot compute PPPM');
+      }
+    }
   }
 
   /** The P mesh indices of atom i in x, y and z (from first, wrapped into the mesh), in a reused array. */
@@ -588,6 +661,7 @@ export class KSpacePPPM extends KSpaceBase {
     const grid = this.grid(geom);
     const tw = thr && this.assignWeights === KSpacePPPM.prototype.assignWeights ? thr.pppmWeights(grid, s.x, n) : null;
     const { first, wts } = tw ?? this.assignWeights(s, geom);
+    this.checkBrick(first, n, geom);
     const qg = this.gridCharges(s);
     // the charge spread and the FFTs on the threads too when the weights were (chunks of mesh z planes and of FFT lines;
     // the same mesh as the loop below, bit for bit: pppmKernel.ts pppmSpread, fft.ts fftPassLines)

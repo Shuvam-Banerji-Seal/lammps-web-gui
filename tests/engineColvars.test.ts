@@ -51,9 +51,9 @@ describe('fix colvars: the supported subset and its refusals', () => {
   });
 
   it('refuses a component, a bias and a keyword outside the subset, naming them', async () => {
-    const cn = await run({ 'a.colvars': 'colvar {\n  name t\n  orientation {\n    atoms { atomNumbers 1 2 3 }\n  }\n}\n' },
+    const cn = await run({ 'a.colvars': 'colvar {\n  name t\n  inertia {\n    atoms { atomNumbers 1 2 3 }\n  }\n}\n' },
       `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);
-    expect(cn.error).toMatch(/Colvars component "orientation" is not supported by the browser engine \(supported: distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord, rmsd, orientationAngle, orientationProj, tilt, spinAngle, eulerPhi, eulerPsi, eulerTheta\)/);
+    expect(cn.error).toMatch(/Colvars component "inertia" is not supported by the browser engine \(supported: distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord, rmsd, orientation, orientationAngle, orientationProj, tilt, spinAngle, eulerPhi, eulerPsi, eulerTheta\)/);
     // rmsd (colvar::rmsd::init): reference positions are required and must match the group; an explicit fit needs the
     // fit gradients, which are not ported
     const rm = (body: string) => run({ 'a.colvars': `colvar {\n  name r\n  rmsd {\n${body}  }\n}\n` }, `${BOX}fix 2 all colvars a.colvars\nrun 0\n`);

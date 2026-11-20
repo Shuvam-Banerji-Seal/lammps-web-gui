@@ -28,7 +28,8 @@
  *
  * The supported subset: the components distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian,
  * gyration, coordNum, selfCoordNum, groupCoord, rmsd with its default fit and atomPermutation, and the scalar
- * orientation components orientationAngle, orientationProj, tilt, spinAngle, eulerPhi, eulerPsi, eulerTheta (atom groups from
+ * orientation components orientationAngle, orientationProj, tilt, spinAngle, eulerPhi, eulerPsi, eulerTheta, and the
+ * quaternion orientation (quaternion dist2 and dist2_grad, normalized centres) (atom groups from
  * atomNumbers, atomNumbersRange or a dummyAtom), linear or polynomial combinations of components
  * (componentCoeff, componentExp), periodic components (dihedral; distanceZ with period), the harmonic and
  * harmonicWalls restraints, metadynamics on one replica (hillWeight, hillWidth or gaussianSigmas, newHillFrequency,
@@ -42,7 +43,7 @@ import { compileCFormat } from '../../engine/cformat';
 import { Conf, colvarsError, parseBool, parseInt10, parseReal, splitValues } from './config';
 import { acos } from '../libm/acos';
 import { exp } from '../libm/exp';
-import { cos as libmCos } from '../libm/sincos';
+import { cos as libmCos, sin as libmSin } from '../libm/sincos';
 import { jacobiRows } from '../rigid/math_extra';
 
 /** colvarmodule.h widths and precisions of the trajectory and state files. */
@@ -72,9 +73,29 @@ const integerPower = (x: number, n: number): number => {
   return n > 0 ? yy : 1.0 / yy;
 };
 
-type ValueType = 'scalar' | '3vector' | 'vector';
+type ValueType = 'scalar' | '3vector' | 'quaternion' | 'vector';
 
-const TYPE_DESC: Record<ValueType, string> = { scalar: 'scalar number', '3vector': '3-dimensional vector', vector: 'n-dimensional vector' };
+const TYPE_DESC: Record<ValueType, string> = { scalar: 'scalar number', '3vector': '3-dimensional vector', quaternion: '4-dimensional unit quaternion', vector: 'n-dimensional vector' };
+
+/** quaternion::dist2: the squared angle between the rotations (q and -q are the same rotation). */
+const quaternionDist2 = (a: Float64Array, b: Float64Array): number => {
+  const cosOmega = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+  const omega = acos(cosOmega > 1.0 ? 1.0 : cosOmega < -1.0 ? -1.0 : cosOmega);
+  return cosOmega > 0.0 ? omega * omega : (Math.PI - omega) * (Math.PI - omega);
+};
+
+/** quaternion::dist2_grad: the gradient of dist2 with respect to the first quaternion (0 when sin(omega) < 1e-14). */
+const quaternionDist2Grad = (a: Float64Array, b: Float64Array): Float64Array => {
+  const cosOmega = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+  const omega = acos(cosOmega > 1.0 ? 1.0 : cosOmega < -1.0 ? -1.0 : cosOmega);
+  const sinOmega = libmSin(omega);
+  if (Math.abs(sinOmega) < 1.0e-14) return new Float64Array(4);
+  const g = new Float64Array(4);
+  for (let k = 0; k < 4; k++) g[k] = -1.0 * sinOmega * b[k] + cosOmega * (a[k] - cosOmega * b[k]) / sinOmega;
+  const f = cosOmega > 0.0 ? 2.0 * omega : -2.0 * (Math.PI - omega);
+  for (let k = 0; k < 4; k++) g[k] = f * g[k];
+  return g;
+};
 
 /** quaternion::rotation_matrix (row-major xx xy xz yx yy yz zx zy zz). */
 const rotationMatrix = (q: readonly number[]): number[] => {
@@ -1182,6 +1203,8 @@ abstract class OrientationBase extends Component {
   private readonly refX: Float64Array; private readonly refY: Float64Array; private readonly refZ: Float64Array;
   /** rot.q, and the eigenvalues and eigenvectors (rows) of the overlap matrix. */
   protected readonly q = [1, 0, 0, 0];
+  /** closestToQuaternion (default 1 0 0 0). */
+  protected refQuat = [1.0, 0.0, 0.0, 0.0];
   private L: number[] = [0, 0, 0, 0];
   private Q: number[][] = [];
 
@@ -1215,6 +1238,7 @@ abstract class OrientationBase extends Component {
     if (cq !== undefined) {
       const v = splitValues(cq);
       if (v.length !== 1 || !Array.isArray(v[0]) || v[0].length !== 4) throw colvarsError(`Error: could not read the quaternion of "closestToQuaternion" from "${cq.trim()}".`);
+      this.refQuat = [...v[0]];
     }
   }
 
@@ -1257,6 +1281,24 @@ abstract class OrientationBase extends Component {
    * project_force_to_group2 with the centred reference.
    */
   protected gradientsFrom(dxdq: number[], only0 = false): void {
+    const C = this.dxdC(dxdq, only0);
+    const g = this.atomsGroup;
+    for (let ia = 0; ia < g.ids.length; ia++) {
+      const a1x = this.refX[ia], a1y = this.refY[ia], a1z = this.refZ[ia];
+      g.gx[ia] = C[0] * a1x + C[3] * a1y + C[6] * a1z;
+      g.gy[ia] = C[1] * a1x + C[4] * a1y + C[7] * a1z;
+      g.gz[ia] = C[2] * a1x + C[5] * a1y + C[8] * a1z;
+    }
+  }
+
+  /** project_force_to_group2 for atom ia of the 3x3 matrix C (row-major). */
+  protected toGroup2(ia: number, C: number[]): number[] {
+    const a1x = this.refX[ia], a1y = this.refY[ia], a1z = this.refZ[ia];
+    return [C[0] * a1x + C[3] * a1y + C[6] * a1z, C[1] * a1x + C[4] * a1y + C[7] * a1z, C[2] * a1x + C[5] * a1y + C[8] * a1z];
+  }
+
+  /** prepare_derivative(use_dq) and project_force_to_C_from_dxdq (or only its q0 term). */
+  protected dxdC(dxdq: number[], only0 = false): number[] {
     const { Q, L } = this;
     const T: number[][][] = [];
     for (let p = 0; p < 4; p++) {
@@ -1281,14 +1323,41 @@ abstract class OrientationBase extends Component {
       C[7] += f * (-t[0][1] - t[1][0] + t[2][3] + t[3][2]);
       C[8] += f * (t[0][0] - t[1][1] - t[2][2] + t[3][3]);
     }
+    return C;
+  }
+}
+
+/**
+ * colvar::orientation: the optimal rotation itself, a unit quaternion (q or -q, whichever is closer to
+ * closestToQuaternion); a force on it reaches the atoms through the derivative of q (apply_force).
+ */
+class Orientation extends OrientationBase {
+  readonly functionType: string = 'orientation';
+  readonly type: ValueType = 'quaternion';
+  x = new Float64Array(4);
+
+  calcValue(): void {
+    this.fit();
+    const q = this.q, r = this.refQuat;
+    const sign = q[0] * r[0] + q[1] * r[1] + q[2] * r[2] + q[3] * r[3] >= 0.0 ? 1.0 : -1.0;
+    for (let k = 0; k < 4; k++) this.x[k] = sign === 1.0 ? q[k] : -1.0 * q[k];
+  }
+
+  applyForce(f: Float64Array): void {
     const g = this.atomsGroup;
+    if (g.noforce) return;
+    const q = this.q, r = this.refQuat;
+    const sign = q[0] * r[0] + q[1] * r[1] + q[2] * r[2] + q[3] * r[3] >= 0.0 ? 1.0 : -1.0;
+    const C = this.dxdC([f[0], f[1], f[2], f[3]]);
     for (let ia = 0; ia < g.ids.length; ia++) {
-      const a1x = this.refX[ia], a1y = this.refY[ia], a1z = this.refZ[ia];
-      g.gx[ia] = C[0] * a1x + C[3] * a1y + C[6] * a1z;
-      g.gy[ia] = C[1] * a1x + C[4] * a1y + C[7] * a1z;
-      g.gz[ia] = C[2] * a1x + C[5] * a1y + C[8] * a1z;
+      const v = this.toGroup2(ia, C);
+      g.atoms.addForce(g.index[ia], sign * v[0], sign * v[1], sign * v[2]);
     }
   }
+
+  dist2(a: Float64Array, b: Float64Array): number { return quaternionDist2(a, b); }
+  dist2Lgrad(a: Float64Array, b: Float64Array): Float64Array { return quaternionDist2Grad(a, b); }
+  wrap(): void {}
 }
 
 /** colvar::orientation_angle: 2 acos(|q0|) in degrees. */
@@ -1560,7 +1629,7 @@ class Rmsd extends Component {
 /**
  * The supported components, in the order colvar::init_components reads the types (a colvar's components, and so the
  * order of their sum, follow it): distance, distanceVec, cartesian, distanceZ, distanceXY, coordNum, selfCoordNum,
- * groupCoord, angle, dihedral, orientationAngle, orientationProj, tilt, spinAngle, rmsd, gyration, eulerPhi, eulerPsi,
+ * groupCoord, angle, dihedral, orientation, orientationAngle, orientationProj, tilt, spinAngle, rmsd, gyration, eulerPhi, eulerPsi,
  * eulerTheta.
  */
 const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string, ctx: ComponentContext) => Component> = {
@@ -1574,6 +1643,7 @@ const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string, 
   groupcoord: (a, c, n, x) => new CoordNum(a, c, n, x, 'groupCoord'),
   angle: (a, c, n) => new Angle(a, c, n),
   dihedral: (a, c, n) => new Dihedral(a, c, n),
+  orientation: (a, c, n, x) => new Orientation(a, c, n, x),
   orientationangle: (a, c, n, x) => new OrientationAngle(a, c, n, x),
   orientationproj: (a, c, n, x) => new OrientationProj(a, c, n, x),
   tilt: (a, c, n, x) => new Tilt(a, c, n, x),
@@ -1587,12 +1657,12 @@ const COMPONENTS: Record<string, (atoms: ColvarsAtoms, c: Conf, cvName: string, 
 const LIBRARY_COMPONENTS = [
   'distanceDir', 'distanceInv', 'distancePairs', 'dipoleMagnitude', 'dipoleAngle',
   'hBond', 'eigenvector', 'inertia',
-  'inertiaZ', 'orientation', 'alpha', 'dihedralPC',
+  'inertiaZ', 'alpha', 'dihedralPC',
   'polarTheta', 'polarPhi', 'linearCombination', 'customColvar', 'neuralNetwork', 'mapTotal', 'aspathCV', 'azpathCV',
   'gspath', 'gzpath', 'gspathCV', 'gzpathCV', 'dipoleDirection',
   'alchLambda', 'alchFLambda', 'componentDistance', 'distanceEuler',
 ];
-const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord, rmsd, orientationAngle, orientationProj, tilt, spinAngle, eulerPhi, eulerPsi, eulerTheta';
+const COMPONENT_NAMES = 'distance, distanceVec, distanceZ, distanceXY, angle, dihedral, cartesian, gyration, coordNum, selfCoordNum, groupCoord, rmsd, orientation, orientationAngle, orientationProj, tilt, spinAngle, eulerPhi, eulerPsi, eulerTheta';
 
 /** One collective variable. */
 export class Colvar {
@@ -1786,6 +1856,7 @@ export class Colvar {
     let r = 0.0;
     if (this.type === 'scalar') return (a[0] - b[0]) * (a[0] - b[0]);
     if (this.type === '3vector') { const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2]; return dx * dx + dy * dy + dz * dz; }
+    if (this.type === 'quaternion') return quaternionDist2(a, b);
     for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; r += d * d; }
     return r;
   }
@@ -1793,6 +1864,7 @@ export class Colvar {
   /** colvar::dist2_lgrad. */
   dist2Lgrad(a: Float64Array, b: Float64Array): Float64Array {
     if (this.homogeneous) return this.cvcs[0].dist2Lgrad(a, b);
+    if (this.type === 'quaternion') return quaternionDist2Grad(a, b);
     const out = new Float64Array(a.length);
     for (let i = 0; i < a.length; i++) out[i] = 2.0 * (a[i] - b[i]);
     return out;
@@ -1823,6 +1895,7 @@ export class Colvar {
   outputWidth(): number {
     if (this.type === 'scalar') return CV_WIDTH;
     if (this.type === '3vector') return 3 * CV_WIDTH + 10;
+    if (this.type === 'quaternion') return 4 * CV_WIDTH + 13;
     return CV_WIDTH * this.x.length + 3 * (this.x.length - 1) + 4;
   }
 }
@@ -1965,6 +2038,13 @@ class Harmonic extends Restraint {
     if (centers === undefined) throw colvarsError('Error: must define the initial centers of the restraints.');
     if (splitValues(centers).length !== this.colvars.length) throw colvarsError('Error: number of centers does not match that of collective variables.');
     this.centers = parseColvarValues(centers, 'centers', this.colvars);
+    // colvarvalue::apply_constraints: a quaternion centre is normalized (q /= sqrt(norm2))
+    this.colvars.forEach((cv, i) => {
+      if (cv.type !== 'quaternion') return;
+      const q = this.centers[i];
+      const nrm = Math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+      for (let k = 0; k < 4; k++) q[k] /= nrm;
+    });
     c.check(`harmonic "${this.name}"`);
   }
 
@@ -2577,7 +2657,7 @@ class Metadynamics extends Bias {
   private hillTraj(h: Hill): string {
     let s = padLeft(String(h.it), IT_WIDTH) + ' ';
     s += '  ';
-    for (const c of h.centers) s += ' ' + valueStream(c, c.length === 1 ? 'scalar' : '3vector', sci21);
+    h.centers.forEach((c, i) => { s += ' ' + valueStream(c, this.colvars[i].type, sci21); });
     s += '  ';
     for (const sg of h.sigmas) s += ' ' + sci21(sg);
     s += '  ' + sci21(h.W) + '\n';
@@ -2587,7 +2667,7 @@ class Metadynamics extends Bias {
   /** write_hill (formatted): the step, the weight, the centres and the widths (twice the sigmas). */
   private hillState(h: Hill): string {
     let s = `hill {\nstep ${padLeft(String(h.it), IT_WIDTH)}\nweight ${sci21(h.W)}\ncenters `;
-    for (const c of h.centers) s += ' ' + valueStream(c, c.length === 1 ? 'scalar' : '3vector', sci21);
+    h.centers.forEach((c, i) => { s += ' ' + valueStream(c, this.colvars[i].type, sci21); });
     s += '\nwidths ';
     for (const sg of h.sigmas) s += ' ' + sci21(2.0 * sg);
     return s + '\n}\n';

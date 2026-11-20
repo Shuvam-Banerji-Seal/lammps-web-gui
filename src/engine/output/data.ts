@@ -286,7 +286,9 @@ const remapEndsNear = (s: SimState, i: number, ends: [number, number][]): [numbe
  * triangle with edges 5 and 5.001 from its first corner and 7 between the other two corners).
  */
 const checkCentre = (s: SimState, i: number, c: readonly number[], size: number, msg: string, at: number): void => {
-  const d = Math.hypot(c[0] - s.x[3 * i], c[1] - s.x[3 * i + 1], c[2] - s.x[3 * i + 2]);
+  // As native LAMMPS does (src/atom_vec_tri.cpp data_atom_bonus at b332f28): "delta = sqrt(dx * dx + dy * dy + dz * dz)"
+  const dx = c[0] - s.x[3 * i], dy = c[1] - s.x[3 * i + 1], dz = c[2] - s.x[3 * i + 2];
+  const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
   if (d / size > 0.001) throw new StyleError(`data file line ${at}: ${msg}`);
   // the stored position becomes the exact centre (measured with native read_data: an atom at x 5.0015 on a segment
   // centred at 5 is written back at x 5)
@@ -1125,12 +1127,9 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
           const c2 = [7, 8, 9].map((c) => numOf(w[c], 'corner', at));
           const r: [number, number, number] = [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]];
           const cr = [c0, c1, c2].map((p) => remapNear3(s, p as [number, number, number], r)) as [V3, V3, V3];
-          const size = Math.max(
-            Math.hypot(cr[1][0] - cr[0][0], cr[1][1] - cr[0][1], cr[1][2] - cr[0][2]),
-            Math.hypot(cr[2][0] - cr[0][0], cr[2][1] - cr[0][1], cr[2][2] - cr[0][2]),
-          );
-          const tb = triBodyHook().triBody(cr, dens);
-          checkCentre(s, i, tb.centroid, size, 'Inconsistent triangle in data file', at);
+          // the area and the size of the centre check come from the corner points as read (before the remap)
+          const tb = triBodyHook().triBody(cr, dens, [c0, c1, c2] as [V3, V3, V3]);
+          checkCentre(s, i, tb.centroid, tb.size, 'Inconsistent triangle in data file', at);
           setTriBonus(s, i, tb);
           triPending.delete(aid);
         }

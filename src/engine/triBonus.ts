@@ -25,9 +25,12 @@ export interface TriBody {
   moments: V3;
   /** Corner displacements from the centroid in the principal frame (9 values, corner-major). */
   corners: Float64Array;
+  /** The longer of the two edges from the first corner point (the scale of the centre check of read_data). */
+  size: number;
 }
 
 /** The hook registered as HOOKS 'tri' (src/engine-gpl/registry/tri_hook.ts). */
 export interface TriBonusHook {
-  triBody(corners: [V3, V3, V3], density: number): TriBody;
+  /** `given` are the corner points as read, before they were moved near the atom (default: `corners`). */
+  triBody(corners: [V3, V3, V3], density: number, given?: [V3, V3, V3]): TriBody;
 }

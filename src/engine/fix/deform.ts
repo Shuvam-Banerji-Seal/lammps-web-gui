@@ -127,7 +127,7 @@ export interface DeformChildArgs {
 /**
  * The box of one update while it is being built: lo and hi bounds, lengths, tilts (xy, xz, yz), and the rates other
  * fixes and computes read (length rate, lo-boundary rate, tilt rate). apply is false for the rates set at init (no box
- * change); setup is true for the update the fix makes at the run setup.
+ * change).
  */
 export interface DeformTargets {
   lo: number[];
@@ -138,7 +138,6 @@ export interface DeformTargets {
   tilt: number[];
   tiltD: number[];
   apply: boolean;
-  setup: boolean;
 }
 
 /** How a volume dimension follows the others (native ONE_FROM_ONE, ONE_FROM_TWO, TWO_FROM_ONE). */
@@ -512,8 +511,8 @@ export class FixDeform extends Fix {
   }
 
   setup(): void {
-    // LAMMPS calls end_of_step() from the fix's setup() as well (also for N = 0)
-    if (this.nevery === 0 || this.sys.state.step % this.nevery === 0) this.deform(true, true);
+    // As native LAMMPS does (src/fix_deform.cpp at b332f28): the fix has no setup(), so the box first changes at the
+    // first post_integrate (or end_of_step) and the run setup keeps the atoms where they are; the rates are set at init.
     // remap v: the first remap window starts at the run setup
     const s = this.sys.state;
     this.remapLastStep = s.step;
@@ -532,7 +531,7 @@ export class FixDeform extends Fix {
    * fractional coordinates of the fix group's atoms, v/none keep their
    * Cartesian ones).
    */
-  private deform(apply: boolean, setup = false): void {
+  private deform(apply: boolean): void {
     if (!this.captured) return;
     const sys = this.sys;
     const s = sys.state;
@@ -612,7 +611,7 @@ export class FixDeform extends Fix {
 
     // the child's controls (fix deform/pressure), then the volume dimensions, which follow the others' new lengths
     const tiltD = [0, 0, 0];
-    const tg: DeformTargets = { lo, hi, len, lenD, loD, tilt, tiltD, apply, setup };
+    const tg: DeformTargets = { lo, hi, len, lenD, loD, tilt, tiltD, apply };
     this.controlTargets(tg);
     this.applyVolume(tg);
 

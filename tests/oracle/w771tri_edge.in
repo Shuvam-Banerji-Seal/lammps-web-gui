@@ -1,0 +1,32 @@
+# oracle: fix rigid/small triangle bodies whose centre of mass lies on the y box edge, with fix deform (remap x).
+#   Bodies 7 and 10 are bodies 27 and 30 of examples/ASPHERE/tri (tri.srd): their centres of mass sit exactly on
+#   ylo, so the last bit of the triangle centroids and masses (atom_vec_tri.cpp data_atom_bonus: the area from the
+#   corner points as read, len3 = sqrt of the squared sum) decides whether domain->remap moves them to yhi with image
+#   -1, which changes the lever arm of their setup virial (fix_rigid_small.cpp set_v, x unwrapped by xcmimage). fix
+#   deform has no setup() in src/fix_deform.cpp at b332f28, so the run setup must not map the atoms to lamda
+#   coordinates and back. Measured with native LAMMPS: step-0 c_pf -0.00307532600454042 at both runs' step 0 (the
+#   engine gave -0.00204 and -0.00059 when its centroids and masses were an ulp off).
+# oracle-inputs: w771tri_edge.data
+# oracle-compare: thermo=all rel=1e-9 abs=1e-13
+units           lj
+atom_style      tri
+atom_modify     first big map yes
+read_data       w771tri_edge.data
+group           big type 1
+neighbor        0.3 bin
+neigh_modify    delay 0 every 1 check yes
+neigh_modify    exclude molecule/intra big
+pair_style      tri/lj 3.5
+pair_coeff      1 1 0.1 1.0
+timestep        0.001
+fix             1 big rigid/small molecule
+fix             3 all deform 1 x scale 0.8 y scale 0.8 z scale 0.8
+compute         pv all pressure NULL virial
+compute         pp all pressure NULL pair
+compute         pf all pressure NULL fix
+compute         xs all reduce sum x y z
+thermo_style    custom step pe c_pv c_pp c_pf c_pv[2] c_pf[2] c_pf[4] c_xs[1] c_xs[2] c_xs[3] lx
+thermo_modify   format float %.15g
+thermo          10
+run             0
+run             50

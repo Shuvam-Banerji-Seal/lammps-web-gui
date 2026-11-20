@@ -368,10 +368,10 @@ fixed, among others:
    rebuilds, which the GPU kernel's fixed contact frame cannot follow yet), jkr and mdr. ReaxFF on the GPU.
 3. Speed: some examples still run up to about 5x slower than single-thread native LAMMPS (the pair/tally computes, some pair
    loops), and `pair granular` has no CPU-thread kernel yet.
-4. Parity leads from the last screen to finish: the rigid-body values of `examples/ASPHERE/poly` after a second run,
-   the first-step pressure of `ASPHERE/tri/in.tri.srd`, and SHAKE clusters whose bond is close to half the box
-   length. The full example screen will be
-   repeated with the improved comparison (thermo columns of computes and variables with mixed-case names, `E_mol`,
+4. Parity leads from the last screen to finish: SHAKE clusters whose bond is close to half the box length. (The
+   `examples/ASPHERE/poly` values after a second run differ between native runs on 1 and 4 processes too, so they are
+   chaotic, not an engine bug; `ASPHERE/tri/in.tri.srd` now matches native from its first step.) The full example
+   screen will be repeated with the improved comparison (thermo columns of computes and variables with mixed-case names, `E_mol`,
    and thermo styles `multi` and `yaml`).
 5. Features that need native libraries or processes (KIM, Python, MPI partitions beyond the notebook's NEB
    partitions, external codes) stay out of scope; they stop with an error that says so.

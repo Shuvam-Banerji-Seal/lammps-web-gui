@@ -335,9 +335,9 @@ export class FixDeformPressure extends FixDeform {
     return super.modify(key, values);
   }
 
-  /** A box update (not the rates at init, nor the parent's update at the run setup). */
+  /** A box update (not the rates at init). */
   private updating(tg: DeformTargets): boolean {
-    return tg.apply && !tg.setup;
+    return tg.apply;
   }
 
   /** update_box: the pressures of this update, the saved values of the first one, and apply_pressure. */
